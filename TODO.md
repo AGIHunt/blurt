@@ -14,11 +14,20 @@
 - [ ] Project homepage
 - [ ] Windows sound/notification polish; macOS menu-bar "stop" button (today: say "done" in chat)
 
+## v0.2
+- [x] Native macOS recorder (ScreenCaptureKit): region picker, countdown, floating bar (pause / restart / finish),
+      hotkeys, never-captured chrome, events.jsonl (pauses, clicks, cursor samples)
+- [x] Tk recorder for Windows (+ macOS fallback): same flow, ffmpeg segments for pause, WDA_EXCLUDEFROMCAPTURE
+- [x] Standalone Blurt app + recordings inbox (~/Movies/Blurt), `record.py inbox`, batch processing in SKILL
+- [x] Review page v2: focus mode with keyboard triage, list view, undo, merge, answers to open questions
+- [ ] Verify the Tk recorder + Start-menu shortcut on real Windows 10/11 (DPI, multi-monitor, gdigrab region)
+- [ ] Use events.jsonl clicks/cursor in frame selection (auto red circle at the click position)
+
 ## Next
-- [ ] **Cursor track as data**: record mouse position / clicks / "circle" gestures to `cursor.jsonl` (macOS CGEventTap,
-      Windows low-level hook) → precise crops and auto red circles, no pixel guessing
+- [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): circle-gesture detection,
+      Windows hook → precise crops and auto red circles, no pixel guessing
 - [ ] **Annotation overlay**: transparent click-through window; hold a key to draw circles/arrows that fade; click ripples
-- [ ] **Marker hotkey**: one key = "new issue starts here" (optional hint for segmentation)
+- [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl
 - [ ] **Browser telemetry** (extension or injected script): console errors, failed network requests, URL changes,
       clicked element selector/text — timestamp-aligned with the video → exact component lookup
 - [ ] Native recorder binaries (ScreenCaptureKit / Windows.Graphics.Capture) for lower CPU and better cursor capture

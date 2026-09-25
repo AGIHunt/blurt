@@ -43,9 +43,28 @@ Requirements: macOS or Windows, [`uv`](https://docs.astral.sh/uv/), `ffmpeg`.
 Then in your project: say **"/blurt"** or **"开始吐槽"**. First run sets up ASR (asks before downloading) and
 checks screen/mic permissions (macOS: grant *Screen Recording* + *Microphone* to the app running your agent).
 
-## Already have a video?
+## Recording that stays out of your way
 
-"Turn `~/Desktop/feedback.mov` into issues" works too — any recorder (QuickTime, OBS, Loom, phone).
+- **Pick exactly what's recorded** — drag an area, click a window, or full screen. Tabs, bookmarks and other
+  windows stay private. The last area is remembered.
+- **3-2-1 countdown** (click to skip), then a tiny floating bar: timer · mic level · ⏸ pause · ↺ restart ·
+  **Finish**. `⌥⇧P` pause/resume, `⌥⇧S` finish (Windows: `Alt+Shift`). The bar is never in the video.
+- **Finish on the bar** — your agent is notified and starts processing; no need to switch back to the chat.
+- Native ScreenCaptureKit recorder on macOS (built locally on first use); Tk + ffmpeg on Windows.
+
+## Record now, process later
+
+Install the standalone recorder — `record.py install-app` → **Blurt** in Applications / the Start menu.
+Record whenever (or hand the app to a teammate); videos land in `~/Movies/Blurt`. Later, tell your agent
+"process my blurt recordings" and it works through the inbox in one go.
+
+Already have a video from QuickTime, OBS, Loom or a phone? "Turn `~/Desktop/feedback.mov` into issues" works too.
+
+## Review like triage, not like a form
+
+One issue at a time, full-screen evidence on the left, editable fields on the right: `A` keep, `X` drop, `J/K`
+next/prev, `Z` undo, `M` merge into previous, `1/2/3` severity, `Space` play the clip, `O` jump to that moment in
+the recording. Or switch to a list with `G`.
 
 ## Pieces
 

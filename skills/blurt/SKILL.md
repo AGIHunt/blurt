@@ -4,8 +4,9 @@ description: >-
   Turn a narrated screen recording into a clean list of bug/feedback issues (title, module, owner, actual vs
   expected, repro steps, screenshots, clips, suspected code) and export them to Feishu/Lark Bitable, CSV/Markdown,
   GitHub Issues or wherever the user wants. Use when the user wants to record feedback / QA / polish notes by talking
-  while using their app, or hands over such a video. Triggers: "blurt", "/blurt", "start blurt", "开始吐槽",
-  "吐槽鸡", "开始录反馈", "录屏提 bug", "record feedback", "turn this recording into issues".
+  while using their app, hands over such a video, or wants to process recordings made with the Blurt app.
+  Triggers: "blurt", "/blurt", "start blurt", "开始吐槽", "吐槽鸡", "开始录反馈", "录屏提 bug", "record feedback",
+  "turn this recording into issues", "处理我录的视频", "process my recordings".
 ---
 
 # blurt 🐔 — say it while you use it, get tickets
@@ -25,6 +26,8 @@ Always reply in the user's language; write issue content in the language the use
 - ASR: if none configured, pick using `asr_recommendations` + the language the user speaks, tell the user in one
   line what you picked and why (size, local vs cloud, cost), then run the `setup` command. Details:
   `reference/asr.md`. Keys for cloud ASR must be set by the user in their env — never ask them to paste keys in chat.
+- Recorder: on macOS the native recorder is compiled once with `swiftc` (`record.py build`; needs Xcode Command
+  Line Tools — otherwise a Tk fallback is used). Windows uses the Tk recorder + ffmpeg.
 - Recording check: `record.py test` → look at the returned `frame` image yourself. Wallpaper-only/black frame or
   `ok: false` ⇒ Screen Recording permission missing; `mic_silent: true` ⇒ Microphone permission / wrong mic.
   On macOS the permission belongs to the app hosting you (Terminal, iTerm, VS Code, Claude, Codex…), and that app
@@ -37,14 +40,25 @@ Always reply in the user's language; write issue content in the language the use
 ## 1. Record
 
 1. If the app under test is a local dev server/app in this repo, check it is running (start it if the user wants).
-2. Tell the user, briefly: recording is about to start; talk naturally — what's wrong, what they expected, who
-   should own it; wave the mouse/click on the spot they mean; say when they're done in chat ("好了"/"done")
-   or run `record.py stop`. A chime plays at start and stop.
-3. Start **in the background**: `record.py start` (prints `RECORDING session=<dir>`). Then end your turn and wait.
-4. When the user says they're done: `record.py stop`. The background task then prints `DONE video=...`.
+2. Start **in the background**: `record.py start` (add `--last-region` if the user wants the same area as last
+   time). Then tell the user, briefly, what happens next and end your turn:
+   - a dimmed overlay appears: drag to select the area to record (or click a window, F = full screen) → **开始录制**;
+     only that area is recorded — tabs, bookmarks, other windows stay private;
+   - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
+     **完成**. Shortcuts: ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
+   - talk naturally — what's wrong, what they expected, who should own it; point with the mouse;
+   - click **完成** when done. No need to come back to the chat — you'll be notified.
+3. The background task ends with `DONE video=…` (or `CANCELLED`, exit 2 → acknowledge and stop). Continue with §2.
+   From the chat you can also `record.py stop | pause | resume | restart`.
 
-If the user already has a video (QuickTime, OBS, Loom, phone recording…), skip recording: create
-`.blurt/sessions/<timestamp>/`, copy/link the file in as `recording.<ext>`, and continue.
+Existing videos: if the user hands over a file (QuickTime, OBS, Loom, phone…), create
+`.blurt/sessions/<timestamp>/`, copy/link it in as `recording.<ext>`, and continue with §2.
+
+Standalone recordings: the user can record without you via the Blurt app (`record.py install-app` puts it in
+~/Applications / the Start menu). Recordings land in `~/Movies/Blurt/<timestamp>/` (Windows: `~/Videos/Blurt`).
+`record.py inbox` lists them with `processed` flags. To process several: run §2–§4 per recording (fan out to
+subagents if available), then review them together — one `review.py` per session, or merge into one session
+directory when the user wants a single list — and export once.
 
 ## 2. Transcribe
 
@@ -83,9 +97,11 @@ For each issue, pick 1–3 frames that show the problem, not just the page:
 
 - ≤ 5 issues: show a compact numbered list in chat (title · module · owner, plus any `questions`) and ask for
   corrections in one message.
-- More: run `review.py <session>` **in the background** — it opens a local page (cards with frames, clips,
-  editable fields, delete/merge, jump-to-moment player) and exits when the user clicks Confirm. Tell the user
-  what to do there, end your turn, then reload `issues.json` when it finishes.
+- More: run `review.py <session>` **in the background** — it opens a local review page and exits when the user
+  finishes. Tell the user in two lines: one issue at a time, **A** keep · **X** drop · **J/K** next/prev ·
+  **Z** undo · **?** all shortcuts; fields are editable in place, there's a list view (G), and "完成审核" hands it
+  back. End your turn, then reload `issues.json` when it finishes (dropped issues have `status: "deleted"`;
+  answers to `questions` are in `answer`).
 Apply corrections the user gives in chat directly to `issues.json`.
 
 ## 6. Export

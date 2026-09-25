@@ -151,3 +151,17 @@ def _nvidia_gpu() -> str | None:
         return out.splitlines()[0] if out else None
     except Exception:
         return None
+
+
+def fix_tcl_env() -> None:
+    """uv-managed Pythons can't find Tcl/Tk inside venvs; point TCL_LIBRARY/TK_LIBRARY at the base install."""
+    if os.environ.get("TCL_LIBRARY"):
+        return
+    base = Path(sys.base_prefix)
+    for init in list(base.glob("lib/tcl*/init.tcl")) + list(base.glob("tcl/tcl*/init.tcl")):
+        os.environ["TCL_LIBRARY"] = str(init.parent)
+        ver = init.parent.name.replace("tcl", "")
+        for tkdir in (init.parent.parent / f"tk{ver}", init.parent.parent / f"tk{ver.split('.')[0]}"):
+            if tkdir.exists():
+                os.environ["TK_LIBRARY"] = str(tkdir)
+        return

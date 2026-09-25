@@ -3,122 +3,489 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>blurt review</title>
+<title>blurt · Review</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐔</text></svg>">
 <style>
-:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--mute:#6b6b70;--line:#e4e2dc;--acc:#ff5a3c;--acc2:#ffc83d;--warn:#fff4d6;--warnink:#8a5a00;--del:.38}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#151516;--card:#1f1f21;--ink:#ececee;--mute:#9a9aa1;--line:#333336;--warn:#3a2f12;--warnink:#ffd66b}}
-:root[data-theme=dark]{--bg:#151516;--card:#1f1f21;--ink:#ececee;--mute:#9a9aa1;--line:#333336;--warn:#3a2f12;--warnink:#ffd66b}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
-header{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
-header h1{font-size:16px;margin:0;white-space:nowrap}header .sp{flex:1}header .meta{color:var(--mute);font-size:12px}
-button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}
-button:hover{border-color:var(--mute)}button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
-main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
-@media (max-width:1000px){main{grid-template-columns:1fr}aside{position:static!important}}
-aside{position:sticky;top:64px;align-self:start}aside video{width:100%;border-radius:10px;background:#000}
-aside .hint{color:var(--mute);font-size:12px;margin-top:6px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-.card.deleted{opacity:var(--del)}.card.deleted .body{display:none}
-.top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.id{font-weight:700;color:var(--acc);font-family:ui-monospace,monospace}
-.title{flex:1;min-width:200px;font-size:15px;font-weight:600}
-input,textarea,select{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 6px;width:100%}
-input:hover,textarea:hover,select:hover{border-color:var(--line)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
-textarea{resize:vertical;min-height:34px}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 12px;margin-top:8px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:6px}
-@media (max-width:640px){.grid{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}}
-label{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;padding-left:6px}
-.frames{display:flex;gap:8px;overflow-x:auto;margin-top:10px}.frame{position:relative;flex:0 0 auto}
-.frame img{height:140px;border-radius:8px;border:2px solid var(--line);cursor:zoom-in;display:block}
-.frame.primary img{border-color:var(--acc2)}.frame .x{position:absolute;top:4px;right:4px;padding:0 6px;font-size:12px}
-.frame .star{position:absolute;top:4px;left:4px;padding:0 6px;font-size:12px}
-.quote{margin-top:10px;padding:8px 10px;border-left:3px solid var(--acc2);color:var(--mute);font-size:13px}
-.quote button{margin-left:6px;font-size:12px;padding:1px 8px}
-.q{margin-top:8px;padding:8px 10px;background:var(--warn);color:var(--warnink);border-radius:8px;font-size:13px}
-.refs{font-family:ui-monospace,monospace;font-size:12px;color:var(--mute)}
-.pill{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
-#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:10;cursor:zoom-out}
-#lightbox img{max-width:95vw;max-height:95vh}
-.saved{font-size:12px;color:var(--mute)}
+:root{
+  --bg:#0c0c0e; --bg-2:#131316; --panel:#17171b; --panel-2:#1e1e23; --line:rgba(255,255,255,.075); --line-2:rgba(255,255,255,.13);
+  --ink:#f3f3f5; --ink-2:#c7c7cd; --mute:#8b8b94; --faint:#5d5d66;
+  --accent:#ff5c3d; --accent-ink:#fff; --accent-soft:rgba(255,92,61,.14);
+  --keep:#3ecf8e; --keep-soft:rgba(62,207,142,.14); --drop:#f2555a; --drop-soft:rgba(242,85,90,.13);
+  --amber:#ffc23d; --amber-soft:rgba(255,194,61,.12);
+  --sev-high:#ff5c3d; --sev-medium:#ffc23d; --sev-low:#7aa2ff;
+  --shadow:0 20px 60px -20px rgba(0,0,0,.6); --r:14px; --r-sm:9px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+:root[data-theme=light]{
+  --bg:#f5f4f1; --bg-2:#eeede9; --panel:#ffffff; --panel-2:#f7f6f3; --line:rgba(20,20,30,.08); --line-2:rgba(20,20,30,.14);
+  --ink:#18181b; --ink-2:#3f3f46; --mute:#71717a; --faint:#a1a1aa;
+  --accent-soft:rgba(255,92,61,.1); --keep:#16a36a; --keep-soft:rgba(22,163,106,.1); --drop:#dc3c42; --drop-soft:rgba(220,60,66,.08);
+  --amber:#b7791f; --amber-soft:rgba(234,170,40,.14); --shadow:0 20px 50px -24px rgba(20,20,40,.25);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;overflow:hidden}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+input,textarea{font:inherit;color:inherit}
+kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:var(--panel-2);border:1px solid var(--line-2);color:var(--mute);min-width:18px;text-align:center;display:inline-block}
+::selection{background:var(--accent-soft)}
+.scroll::-webkit-scrollbar{width:10px;height:10px}.scroll::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:10px;border:3px solid transparent;background-clip:content-box}
+
+/* ---------- top bar ---------- */
+.top{height:58px;display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(18px);position:relative;z-index:5}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:-.01em}
+.brand .logo{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(145deg,#ffd166,#ff8a3d);font-size:16px;box-shadow:0 4px 14px -4px rgba(255,138,61,.6)}
+.brand small{color:var(--mute);font-weight:500;margin-left:2px;white-space:nowrap}
+.brand{white-space:nowrap}
+.progress{display:flex;align-items:center;gap:12px;margin-left:10px;min-width:0}
+.bar{width:180px;height:6px;border-radius:9px;background:var(--panel-2);overflow:hidden;display:flex}
+.bar i{display:block;height:100%;transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.bar .k{background:var(--keep)}.bar .d{background:var(--drop)}
+.counts{display:flex;gap:10px;color:var(--mute);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.counts b{color:var(--ink);font-weight:600}
+.dot{width:7px;height:7px;border-radius:9px;display:inline-block;margin-right:5px;vertical-align:1px}
+.sp{flex:1}
+.seg{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{white-space:nowrap;padding:5px 12px;border-radius:7px;color:var(--mute);font-weight:600;font-size:12.5px;display:flex;gap:6px;align-items:center}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.icon-btn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--mute);border:1px solid transparent}
+.icon-btn:hover{background:var(--panel-2);color:var(--ink);border-color:var(--line)}
+.btn{white-space:nowrap;height:36px;padding:0 14px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);background:var(--panel);transition:transform .08s,background .15s,border-color .15s}
+.btn:hover{border-color:var(--mute)}.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);box-shadow:0 6px 20px -8px rgba(255,92,61,.7)}
+.btn.primary:hover{filter:brightness(1.07)}
+.saved{font-size:12px;color:var(--faint);min-width:52px;text-align:right}
+
+/* ---------- focus view ---------- */
+.focus{display:grid;grid-template-columns:248px minmax(0,1fr) 420px;height:calc(100vh - 58px)}
+.queue{border-right:1px solid var(--line);overflow:auto;padding:10px 8px 80px}
+.qi{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:10px;cursor:pointer;color:var(--ink-2);position:relative}
+.qi:hover{background:var(--panel)}
+.qi.cur{background:var(--panel);box-shadow:inset 0 0 0 1px var(--line-2)}
+.qi.cur::before{content:"";position:absolute;left:-8px;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--accent)}
+.qi .n{font:600 11px/20px var(--mono);color:var(--faint);min-width:20px}
+.qi .t{font-size:13px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;flex:1}
+.qi .st{width:8px;height:8px;border-radius:9px;margin-top:6px;flex:none;background:var(--line-2)}
+.qi.keep .st{background:var(--keep)}.qi.drop .st{background:var(--drop)}.qi.drop .t{text-decoration:line-through;color:var(--faint)}
+.qi .q{color:var(--amber);font-size:11px;margin-top:6px}
+
+.stage{position:relative;overflow:hidden;display:flex;flex-direction:column;background:radial-gradient(1200px 600px at 50% -10%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 60%),var(--bg-2)}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;padding:18px 22px 92px;will-change:transform,opacity}
+.slide.in-up{animation:inUp .34s cubic-bezier(.2,.8,.2,1)}.slide.in-down{animation:inDown .34s cubic-bezier(.2,.8,.2,1)}
+@keyframes inUp{from{transform:translateY(38px);opacity:0}to{transform:none;opacity:1}}
+@keyframes inDown{from{transform:translateY(-38px);opacity:0}to{transform:none;opacity:1}}
+.media{flex:1;min-height:0;border-radius:var(--r);background:#050506;border:1px solid var(--line);position:relative;overflow:hidden;display:grid;place-items:center;box-shadow:var(--shadow)}
+.media img,.media video{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.media img{cursor:zoom-in}
+.media .badge{position:absolute;left:12px;top:12px;padding:4px 10px;border-radius:99px;background:rgba(0,0,0,.6);backdrop-filter:blur(10px);color:#fff;font:600 11.5px/1.4 var(--mono);display:flex;gap:8px;align-items:center}
+.media .empty{color:var(--faint)}
+.stamp{position:absolute;right:16px;top:14px;padding:6px 14px;border-radius:9px;font-weight:800;letter-spacing:.06em;font-size:13px;transform:rotate(4deg);border:2px solid;backdrop-filter:blur(6px)}
+.stamp.keep{color:var(--keep);border-color:var(--keep);background:rgba(10,30,20,.55)}
+.stamp.drop{color:var(--drop);border-color:var(--drop);background:rgba(40,10,12,.55)}
+.strip{display:flex;gap:8px;margin-top:12px;overflow-x:auto;padding-bottom:2px}
+.th{flex:none;height:62px;width:104px;border-radius:9px;overflow:hidden;border:2px solid transparent;opacity:.62;position:relative;background:var(--panel);display:grid;place-items:center;transition:opacity .15s,border-color .15s}
+.th img{width:100%;height:100%;object-fit:cover;display:block}
+.th:hover{opacity:.9}.th.on{opacity:1;border-color:var(--accent)}
+.th .lbl{position:absolute;inset:auto 0 0 0;font:600 10px/1.6 var(--mono);color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.75));text-align:center}
+.th.vid{width:auto;padding:0 14px;color:var(--ink-2);font-weight:600;font-size:12px;gap:6px;display:flex;align-items:center}
+.nav-hint{position:absolute;right:26px;bottom:98px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.nav-hint button{width:36px;height:36px;border-radius:12px;background:var(--panel);border:1px solid var(--line-2);color:var(--ink-2);display:grid;place-items:center;box-shadow:var(--shadow)}
+.nav-hint button:hover{color:var(--ink);border-color:var(--mute)}
+.actions{position:absolute;left:0;right:0;bottom:0;height:80px;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 20px;z-index:3;background:linear-gradient(transparent,var(--bg-2) 40%)}
+.act{height:46px;padding:0 18px;border-radius:14px;font-weight:650;display:flex;align-items:center;gap:10px;border:1px solid var(--line-2);background:var(--panel);transition:transform .08s,background .15s,border-color .15s;box-shadow:var(--shadow)}
+.act:hover{border-color:var(--mute)}.act:active{transform:scale(.96)}
+.act kbd{background:transparent}
+.act.drop{color:var(--drop)}.act.drop:hover{background:var(--drop-soft);border-color:var(--drop)}
+.act.keep{background:var(--keep);border-color:var(--keep);color:#062316;padding:0 26px}
+:root[data-theme=light] .act.keep{color:#fff}
+.act.keep kbd{color:inherit;border-color:rgba(0,0,0,.2)}
+.act.keep:hover{filter:brightness(1.06)}
+.act.ghost{background:transparent;box-shadow:none;border-color:transparent;color:var(--mute)}.act.ghost:hover{color:var(--ink);border-color:var(--line-2)}
+
+.side{border-left:1px solid var(--line);overflow:auto;padding:18px 20px 90px;background:var(--bg)}
+.idrow{display:flex;align-items:center;gap:8px;color:var(--mute);font:600 12px/1 var(--mono);margin-bottom:10px}
+.idrow .pos{margin-left:auto;font-variant-numeric:tabular-nums}
+.title{width:100%;border:1px solid transparent;background:transparent;font-size:21px;line-height:1.3;font-weight:700;letter-spacing:-.015em;padding:6px 8px;margin:0 -8px 8px;border-radius:10px;resize:none;overflow:hidden}
+.title:hover{border-color:var(--line)}.title:focus{outline:none;border-color:var(--accent);background:var(--panel)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.chip{height:28px;padding:0 11px;border-radius:99px;border:1px solid var(--line-2);display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--ink-2);background:var(--panel)}
+.chip:hover{border-color:var(--mute)}
+.chip .sw{width:8px;height:8px;border-radius:9px}
+.chip.sev-high{color:var(--sev-high);border-color:color-mix(in srgb,var(--sev-high) 45%,transparent);background:color-mix(in srgb,var(--sev-high) 10%,transparent)}
+.chip.sev-medium{color:var(--sev-medium);border-color:color-mix(in srgb,var(--sev-medium) 45%,transparent);background:color-mix(in srgb,var(--sev-medium) 9%,transparent)}
+.chip.sev-low{color:var(--sev-low);border-color:color-mix(in srgb,var(--sev-low) 45%,transparent);background:color-mix(in srgb,var(--sev-low) 9%,transparent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f{margin-bottom:12px}
+.f label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:0 0 5px 2px}
+.f input,.f textarea{width:100%;border:1px solid var(--line);background:var(--panel);border-radius:var(--r-sm);padding:8px 10px;line-height:1.5;resize:none;transition:border-color .15s,background .15s}
+.f input:hover,.f textarea:hover{border-color:var(--line-2)}
+.f input:focus,.f textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.f.exp textarea{border-left:3px solid var(--keep)}.f.act-f textarea{border-left:3px solid var(--drop)}
+.quote{position:relative;margin:4px 0 14px;padding:12px 14px 12px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);color:var(--ink-2);font-size:13.5px}
+.quote::before{content:"“";position:absolute;left:8px;top:-6px;font:700 34px/1 Georgia,serif;color:var(--accent);opacity:.8}
+.quote .meta{display:flex;align-items:center;gap:8px;margin-top:8px;color:var(--mute);font:600 11.5px/1 var(--mono)}
+.linkbtn{color:var(--accent);font-weight:600;font-size:12px;display:inline-flex;gap:5px;align-items:center;padding:4px 8px;border-radius:7px;margin:-4px -8px}
+.linkbtn:hover{background:var(--accent-soft)}
+.ask{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent)}
+.ask .h{font-size:12px;font-weight:700;color:var(--amber);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.ask .qq{font-size:13px;color:var(--ink-2);margin-bottom:6px}
+.ask input{width:100%;border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);background:var(--panel);border-radius:8px;padding:7px 10px}
+.ask input:focus{outline:none;border-color:var(--amber)}
+.code{display:flex;flex-direction:column;gap:5px}
+.code button{font:12px/1.5 var(--mono);text-align:left;color:var(--ink-2);padding:6px 9px;border-radius:8px;background:var(--panel);border:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;overflow:hidden}
+.code button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.code button:hover{border-color:var(--line-2);color:var(--ink)}
+.code button em{font-style:normal;color:var(--faint);font-family:inherit;flex:none}
+
+/* ---------- list view ---------- */
+.list{height:calc(100vh - 58px);overflow:auto;padding:18px 24px 60px}
+.toolbar{display:flex;gap:10px;align-items:center;margin:0 auto 14px;max-width:1280px}
+.search{flex:1;max-width:360px;height:36px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel);padding:0 12px 0 34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b8b94' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m14 14-3.5-3.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:11px center}
+.search:focus{outline:none;border-color:var(--accent)}
+.cards{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;display:flex;flex-direction:column;transition:transform .15s,border-color .15s,box-shadow .15s}
+.card:hover{transform:translateY(-2px);border-color:var(--line-2);box-shadow:var(--shadow)}
+.card .img{aspect-ratio:16/10;background:#050506 center/cover no-repeat;position:relative}
+.card .img .stamp{font-size:11px;padding:3px 9px;right:10px;top:10px}
+.card .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.card .h{display:flex;gap:8px;align-items:center;color:var(--faint);font:600 11.5px/1 var(--mono)}
+.card .tt{font-weight:650;font-size:14.5px;line-height:1.4}
+.card .mm{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.card .mm .chip{height:23px;font-size:11.5px;padding:0 9px}
+.card.drop{opacity:.5}.card.drop .tt{text-decoration:line-through}
+
+/* ---------- overlays ---------- */
+.toast{position:fixed;left:50%;bottom:98px;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:12px;font-weight:600;font-size:13px;display:flex;gap:12px;align-items:center;transition:all .25s cubic-bezier(.2,.8,.2,1);z-index:30;box-shadow:var(--shadow)}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast button{color:var(--accent);font-weight:700}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);display:none;place-items:center;z-index:40}
+.modal-bg.show{display:grid;animation:fade .18s}
+@keyframes fade{from{opacity:0}}
+.modal{width:min(520px,92vw);background:var(--panel);border:1px solid var(--line-2);border-radius:18px;padding:22px;box-shadow:var(--shadow)}
+.modal h3{margin:0 0 6px;font-size:18px}
+.modal p{margin:0 0 16px;color:var(--mute)}
+.modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+.keys{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;font-size:13px;color:var(--ink-2)}
+.keys div{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:4px 0;border-bottom:1px dashed var(--line)}
+.sum{display:flex;gap:10px;margin:6px 0 4px}
+.sum div{flex:1;padding:12px;border-radius:12px;background:var(--panel-2);text-align:center}
+.sum b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;place-items:center;z-index:50;cursor:zoom-out}
+.lightbox.show{display:grid}
+.lightbox img{max-width:96vw;max-height:94vh;transition:transform .2s}
+.done{position:fixed;inset:0;display:none;place-items:center;background:var(--bg);z-index:60;text-align:center}
+.done.show{display:grid}
+.done .big{font-size:56px}
+.done h2{margin:10px 0 6px;font-size:24px}
+.done p{color:var(--mute)}
+@media (max-width:1180px){.focus{grid-template-columns:0 minmax(0,1fr) 380px}.queue{display:none}}
+@media (max-width:1000px){.brand small,.counts,.saved,#langBtn,#helpBtn{display:none}}
+@media (max-width:860px){body{overflow:auto}.focus{display:flex;flex-direction:column;height:auto}.stage{height:64vh;flex:none}.side{border-left:0;overflow:visible}.progress .bar{width:90px}.act kbd,.act.ghost{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <h1>🐔 blurt</h1><span class="meta" id="meta"></span><span class="sp"></span>
+<header class="top">
+  <div class="brand"><div class="logo">🐔</div>blurt<small id="sessionName"></small></div>
+  <div class="progress">
+    <div class="bar"><i class="k" id="barK"></i><i class="d" id="barD"></i></div>
+    <div class="counts" id="counts"></div>
+  </div>
+  <div class="sp"></div>
   <span class="saved" id="saved"></span>
-  <button id="lang">中/EN</button>
-  <button class="primary" id="confirm"></button>
+  <div class="seg" role="tablist">
+    <button id="vFocus" data-i18n="focus"></button>
+    <button id="vList" data-i18n="list"></button>
+  </div>
+  <button class="icon-btn" id="themeBtn" title="Theme"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <button class="icon-btn" id="langBtn" title="中文 / English" style="font-weight:700;font-size:12px">文A</button>
+  <button class="icon-btn" id="helpBtn" title="Shortcuts ?"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></button>
+  <button class="btn primary" id="finishBtn"></button>
 </header>
-<main>
-  <section id="list"></section>
-  <aside><video id="player" controls preload="metadata"></video><div class="hint" id="hint"></div></aside>
-</main>
-<div id="lightbox"><img></div>
-<script>
-const I18N={
- en:{confirm:"Confirm & continue",issues:"issues",deleted:"deleted",title:"Title",module:"Module",owner:"Owner",severity:"Severity",type:"Type",
-  actual:"Actual",expected:"Expected",steps:"Steps to reproduce (one per line)",code:"Suspected code",del:"Delete",restore:"Restore",merge:"Merge into previous",
-  play:"▶ play",saved:"Saved",saving:"Saving…",hint:"Click ▶ on any quote to jump the full recording to that moment.",primary:"Primary frame",
-  confirmAsk:"Confirm {n} issues and hand them back to the agent?",done:"Confirmed. You can close this tab and return to your agent.",questions:"Needs your input"},
- zh:{confirm:"确认并继续",issues:"条问题",deleted:"已删除",title:"标题",module:"所属模块",owner:"负责人",severity:"严重程度",type:"类型",
-  actual:"实际效果",expected:"预期效果",steps:"复现步骤（每行一步）",code:"疑似代码位置",del:"删除",restore:"恢复",merge:"合并到上一条",
-  play:"▶ 播放",saved:"已保存",saving:"保存中…",hint:"点击原话旁的 ▶ 可以跳到完整录屏的对应时刻。",primary:"主图",
-  confirmAsk:"确认这 {n} 条问题并交回给 agent？",done:"已确认，可以关闭此页回到 agent 了。",questions:"需要你确认"}};
-const ls=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
-let lang=(ls("blurt.lang")||navigator.language||"en").startsWith("zh")?"zh":"en";
-const t=k=>I18N[lang][k];
-let data={issues:[]},timer=null;
-const $=s=>document.querySelector(s);
-const fmt=s=>{s=Math.max(0,s||0);const m=Math.floor(s/60),r=(s%60).toFixed(1).padStart(4,"0");return `${String(m).padStart(2,"0")}:${r}`};
-const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const file=p=>p?("/files/"+String(p).split("/").map(encodeURIComponent).join("/")):"";
 
-async function load(){data=await (await fetch("/api/issues")).json();if(!data.issues)data.issues=[];
-  if(data.language&&!ls("blurt.lang"))lang=data.language.startsWith("zh")?"zh":"en";
-  if(data.source_video)$("#player").src=file(data.source_video);render()}
-function save(){$("#saved").textContent=t("saving");clearTimeout(timer);timer=setTimeout(async()=>{
-  await fetch("/api/issues",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},400)}
-function field(i,key,label,multi){const v=Array.isArray(i[key])?i[key].join("\n"):(i[key]??"");
-  return `<div><label>${label}</label>${multi?`<textarea data-k="${key}" rows="${Math.max(2,String(v).split("\n").length)}">${esc(v)}</textarea>`:`<input data-k="${key}" value="${esc(v)}">`}</div>`}
-function render(){
-  document.documentElement.lang=lang;$("#confirm").textContent=t("confirm");$("#hint").textContent=t("hint");
-  const live=data.issues.filter(i=>i.status!=="deleted");
-  $("#meta").textContent=`${live.length} ${t("issues")}`+(data.issues.length-live.length?` · ${data.issues.length-live.length} ${t("deleted")}`:"");
-  $("#list").innerHTML=data.issues.map((i,idx)=>{const del=i.status==="deleted",tm=i.time||{};
-   return `<div class="card ${del?"deleted":""}" data-i="${idx}">
-    <div class="top"><span class="id">${esc(i.id)}</span><input class="title" data-k="title" value="${esc(i.title)}" placeholder="${t("title")}">
-     ${i.confidence==="low"?'<span class="pill">?</span>':""}
-     ${idx>0&&!del?`<button data-a="merge">${t("merge")}</button>`:""}<button data-a="del">${del?t("restore"):t("del")}</button></div>
-    <div class="body">
-     <div class="grid">${field(i,"module",t("module"))}${field(i,"owner",t("owner"))}${field(i,"severity",t("severity"))}${field(i,"type",t("type"))}</div>
-     <div class="grid2">${field(i,"actual",t("actual"),1)}${field(i,"expected",t("expected"),1)}</div>
-     ${field(i,"steps",t("steps"),1)}
-     ${(i.questions||[]).length?`<div class="q"><b>${t("questions")}:</b> ${i.questions.map(esc).join(" · ")}</div>`:""}
-     <div class="frames">${(i.frames||[]).map((f,k)=>`<div class="frame ${k===0?"primary":""}"><img src="${file(f.path)}" data-full="${file(f.path)}" title="${esc(f.caption||"")} t=${fmt(f.t)}">
-       ${k>0?`<button class="star" data-a="star" data-f="${k}" title="${t("primary")}">★</button>`:""}<button class="x" data-a="rmf" data-f="${k}">✕</button></div>`).join("")}
-       ${i.clip?`<video src="${file(i.clip)}" controls preload="none" style="height:140px;border-radius:8px"></video>`:""}</div>
-     ${i.quote?`<div class="quote">“${esc(i.quote)}” <button data-a="play">${t("play")} ${fmt(tm.start)}</button></div>`:""}
-     ${(i.code_refs||[]).length?`<div class="refs">${t("code")}: ${i.code_refs.map(esc).join(", ")}</div>`:""}
-    </div></div>`}).join("")}
-$("#list").addEventListener("input",e=>{const el=e.target,k=el.dataset.k;if(!k)return;const i=data.issues[+el.closest(".card").dataset.i];
-  i[k]=k==="steps"?el.value.split("\n").filter(s=>s.trim()):el.value;save()});
-$("#list").addEventListener("click",e=>{const img=e.target.closest("img[data-full]");if(img){$("#lightbox img").src=img.dataset.full;$("#lightbox").style.display="flex";return}
-  const b=e.target.closest("button[data-a]");if(!b)return;const idx=+b.closest(".card").dataset.i,i=data.issues[idx],a=b.dataset.a;
-  if(a==="del")i.status=i.status==="deleted"?"draft":"deleted";
-  if(a==="rmf")i.frames.splice(+b.dataset.f,1);
-  if(a==="star"){const f=i.frames.splice(+b.dataset.f,1)[0];i.frames.unshift(f)}
-  if(a==="play"){const p=$("#player");p.currentTime=Math.max(0,(i.time?.start||0)-1);p.play();return}
-  if(a==="merge"){let j=idx-1;while(j>=0&&data.issues[j].status==="deleted")j--;if(j<0)return;const p=data.issues[j];
-    p.actual=[p.actual,i.actual].filter(Boolean).join("\n");p.quote=[p.quote,i.quote].filter(Boolean).join(" … ");
-    p.frames=[...(p.frames||[]),...(i.frames||[])];p.steps=[...(p.steps||[]),...(i.steps||[])];
-    p.merged_from=[...(p.merged_from||[]),i.id];i.status="deleted"}
-  save();render()});
-$("#lightbox").onclick=()=>$("#lightbox").style.display="none";
-$("#lang").onclick=()=>{lang=lang==="zh"?"en":"zh";try{localStorage.setItem("blurt.lang",lang)}catch(e){}render()};
-$("#confirm").onclick=async()=>{const n=data.issues.filter(i=>i.status!=="deleted").length;if(!confirm(t("confirmAsk").replace("{n}",n)))return;
-  data.issues.forEach(i=>{if(i.status!=="deleted")i.status="confirmed"});
+<main id="focusView" class="focus">
+  <nav class="queue scroll" id="queue"></nav>
+  <section class="stage" id="stage">
+    <div class="nav-hint">
+      <button id="prevBtn" title="↑ / K"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 15 6-6 6 6"/></svg></button>
+      <button id="nextBtn" title="↓ / J"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m6 9 6 6 6-6"/></svg></button>
+    </div>
+    <div class="actions">
+      <button class="act drop" id="dropBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg><span data-i18n="drop"></span><kbd>X</kbd></button>
+      <button class="act ghost" id="mergeBtn"><span data-i18n="merge"></span><kbd>M</kbd></button>
+      <button class="act ghost" id="undoBtn"><span data-i18n="undo"></span><kbd>Z</kbd></button>
+      <button class="act keep" id="keepBtn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="keep"></span><kbd>A</kbd></button>
+    </div>
+  </section>
+  <aside class="side scroll" id="side"></aside>
+</main>
+
+<main id="listView" class="list scroll" hidden>
+  <div class="toolbar">
+    <input class="search" id="search">
+    <div class="seg" id="filters"></div>
+  </div>
+  <div class="cards" id="cards"></div>
+</main>
+
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo"></button></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="lightbox" id="lightbox"><img alt=""></div>
+<div class="done" id="done"><div><div class="big">🐔</div><h2 data-i18n="doneTitle"></h2><p data-i18n="doneBody"></p></div></div>
+
+<script>
+const T = {
+  en:{focus:"Focus",list:"List",keep:"Keep",drop:"Drop",merge:"Merge ↑",undo:"Undo",finish:"Finish review",pending:"to review",kept:"kept",dropped:"dropped",
+    module:"Module",owner:"Owner",actual:"Actual",expected:"Expected",steps:"Steps to reproduce",code:"Suspected code",quote:"They said",
+    playOrig:"Play from recording",answer:"Your answer…",ask:"Needs your input",sevHigh:"High",sevMedium:"Medium",sevLow:"Low",
+    frame:"Frame",clip:"Clip",orig:"Recording",noMedia:"No screenshot",saved:"Saved",saving:"Saving…",kept1:"Kept",dropped1:"Dropped",merged:"Merged into",
+    undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, owner…",
+    keysTitle:"Keyboard shortcuts",confirmTitle:"Hand the list back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
+    pendingAs:"Treat unreviewed as kept",reviewRest:"Review the rest",confirm:"Confirm & continue",cancel:"Cancel",
+    doneTitle:"All set — back to your agent",doneBody:"You can close this tab. Your agent picks it up from here.",
+    k_next:"Next / previous",k_keep:"Keep and go next",k_drop:"Drop and go next",k_undo:"Undo",k_merge:"Merge into previous",
+    k_sev:"Severity high / medium / low",k_media:"Previous / next frame",k_play:"Play clip or recording",k_edit:"Edit title",
+    k_view:"Focus ⇄ list",k_finish:"Finish review",k_help:"This panel",types:{bug:"Bug",ui:"UI",ux:"UX",copy:"Copy",perf:"Perf",idea:"Idea"}},
+  zh:{focus:"专注",list:"列表",keep:"保留",drop:"丢弃",merge:"并入上一条",undo:"撤销",finish:"完成审核",pending:"待审",kept:"保留",dropped:"丢弃",
+    module:"所属模块",owner:"负责人",actual:"实际效果",expected:"预期效果",steps:"复现步骤",code:"疑似代码位置",quote:"你当时说",
+    playOrig:"回到录屏这一刻",answer:"在这里回答…",ask:"需要你确认",sevHigh:"严重",sevMedium:"一般",sevLow:"轻微",
+    frame:"截图",clip:"片段",orig:"原录屏",noMedia:"没有截图",saved:"已保存",saving:"保存中…",kept1:"已保留",dropped1:"已丢弃",merged:"已并入",
+    undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、负责人…",
+    keysTitle:"快捷键",confirmTitle:"把问题清单交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
+    pendingAs:"没看的也保留",reviewRest:"继续审",confirm:"确认并继续",cancel:"取消",
+    doneTitle:"搞定，交回给 agent 了",doneBody:"可以关掉这个页面了，agent 会接着处理。",
+    k_next:"下一条 / 上一条",k_keep:"保留并下一条",k_drop:"丢弃并下一条",k_undo:"撤销",k_merge:"并入上一条",
+    k_sev:"严重程度 高 / 中 / 低",k_media:"上一张 / 下一张图",k_play:"播放片段或原录屏",k_edit:"编辑标题",
+    k_view:"专注 ⇄ 列表",k_finish:"完成审核",k_help:"显示本面板",types:{bug:"Bug",ui:"界面",ux:"体验",copy:"文案",perf:"性能",idea:"想法"}}
+};
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+let lang=(store.get("blurt.lang")||navigator.language||"en").startsWith("zh")?"zh":"en";
+const t=k=>T[lang][k]??k;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const file=p=>p?"/files/"+String(p).split("/").map(encodeURIComponent).join("/"):"";
+const fmt=s=>{s=Math.max(0,+s||0);const m=Math.floor(s/60),r=Math.floor(s%60);return `${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`};
+const SEV=["high","medium","low"];
+
+let loaded=false,data={issues:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
+const live=()=>data.issues.filter(i=>i.status!=="deleted"||i._dropped);
+const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched?"keep":i._touched?"keep":"pending";
+
+async function load(){
+  data=await (await fetch("/api/issues")).json();
+  data.issues=data.issues||[];
+  // anything already deleted before this review is hidden; reviewer decisions are tracked with _touched/_dropped
+  data.issues=data.issues.filter(i=>!(i.status==="deleted"&&!i._dropped));
+  if(!store.get("blurt.lang")&&data.language)lang=String(data.language).startsWith("zh")?"zh":"en";
+  const th=store.get("blurt.theme");if(th)document.documentElement.dataset.theme=th;
+  $("#sessionName").textContent=data.session?"· "+data.session:"";
+  cur=Math.max(0,data.issues.findIndex(i=>!i._touched));
+  if(cur<0)cur=0;
+  view=store.get("blurt.view")||(data.issues.length>1?"focus":"list");
+  render(true);loaded=true;
+}
+function save(){
+  $("#saved").textContent=t("saving");clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{await fetch("/api/issues",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},450);
+}
+function snapshot(){undo.push(JSON.stringify({issues:data.issues,cur}));if(undo.length>80)undo.shift()}
+function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.issues=o.issues;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
+
+function counts(){let k=0,d=0,p=0;data.issues.forEach(i=>{const s=statusOf(i);s==="keep"?k++:s==="drop"?d++:p++});return{k,d,p,n:data.issues.length}}
+function renderTop(){
+  const c=counts();
+  $("#counts").innerHTML=`<span><span class="dot" style="background:var(--line-2)"></span><b>${c.p}</b> ${t("pending")}</span><span><span class="dot" style="background:var(--keep)"></span><b>${c.k}</b> ${t("kept")}</span><span><span class="dot" style="background:var(--drop)"></span><b>${c.d}</b> ${t("dropped")}</span>`;
+  $("#barK").style.width=(c.n?c.k/c.n*100:0)+"%";$("#barD").style.width=(c.n?c.d/c.n*100:0)+"%";
+  $("#finishBtn").innerHTML=`${t("finish")} <kbd style="background:rgba(0,0,0,.18);border-color:transparent;color:inherit">⌘⏎</kbd>`;
+  document.querySelectorAll("[data-i18n]").forEach(e=>e.textContent=t(e.dataset.i18n));
+  $("#vFocus").classList.toggle("on",view==="focus");$("#vList").classList.toggle("on",view==="list");
+  $("#focusView").hidden=view!=="focus";$("#listView").hidden=view!=="list";
+  document.documentElement.lang=lang==="zh"?"zh-CN":"en";
+}
+function render(anim){renderTop();view==="focus"?renderFocus(anim):renderList()}
+
+/* ---------- focus ---------- */
+function mediaItems(i){
+  const m=(i.frames||[]).map((f,k)=>({kind:"img",src:file(f.path),label:f.t!=null?fmt(f.t):`#${k+1}`,cap:f.caption}));
+  if(i.clip)m.push({kind:"clip",src:file(i.clip),label:t("clip")});
+  if(data.source_video&&i.time)m.push({kind:"orig",src:file(data.source_video),label:t("orig"),start:i.time.start,end:i.time.end});
+  return m;
+}
+function renderFocus(anim){
+  const q=$("#queue");
+  q.innerHTML=data.issues.map((i,k)=>{const s=statusOf(i);return `<div class="qi ${s} ${k===cur?"cur":""}" data-k="${k}"><span class="n">${String(k+1).padStart(2,"0")}</span><div style="flex:1;min-width:0"><div class="t">${esc(i.title)}</div>${(i.questions||[]).length&&!i.answer?`<div class="q">● ${t("ask")}</div>`:""}</div><span class="st"></span></div>`}).join("");
+  q.querySelector(".cur")?.scrollIntoView({block:"nearest"});
+  const i=data.issues[cur];
+  const stage=$("#stage");stage.querySelector(".slide")?.remove();
+  const side=$("#side");
+  if(!i){side.innerHTML="";return}
+  const items=mediaItems(i);media=Math.min(media,Math.max(0,items.length-1));
+  const s=statusOf(i);
+  const slide=document.createElement("div");slide.className="slide"+(anim?(dir==="up"?" in-up":" in-down"):"");
+  slide.innerHTML=`<div class="media" id="mediaBox"></div>
+    <div class="strip scroll">${items.map((m,k)=>m.kind==="img"?`<button class="th ${k===media?"on":""}" data-m="${k}"><img src="${m.src}" alt=""><span class="lbl">${esc(m.label)}</span></button>`
+      :`<button class="th vid ${k===media?"on":""}" data-m="${k}">${m.kind==="clip"?"▶":"◉"} ${esc(m.label)}</button>`).join("")}</div>`;
+  stage.prepend(slide);
+  showMedia(items,s);
+  slide.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{media=+b.dataset.m;renderFocus(false)});
+
+  const sev=SEV.includes(i.severity)?i.severity:"medium";
+  const types=T[lang].types;
+  side.innerHTML=`
+    <div class="idrow"><span>${esc(i.id||"")}</span>${i.merged_from?.length?`<span>+ ${i.merged_from.map(esc).join(", ")}</span>`:""}<span class="pos">${cur+1} / ${data.issues.length}</span></div>
+    <textarea class="title" data-k="title" rows="1">${esc(i.title)}</textarea>
+    <div class="chips">
+      <button class="chip sev-${sev}" id="sevChip" title="1 / 2 / 3"><span class="sw" style="background:currentColor"></span>${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</button>
+      <button class="chip" id="typeChip">${esc(types[i.type]||i.type||"—")}</button>
+      ${i.confidence==="low"?`<span class="chip" style="color:var(--amber)">?</span>`:""}
+    </div>
+    ${(i.questions||[]).length?`<div class="ask"><div class="h">● ${t("ask")}</div>${i.questions.map(q=>`<div class="qq">${esc(q)}</div>`).join("")}<input data-k="answer" placeholder="${t("answer")}" value="${esc(i.answer||"")}"></div>`:""}
+    ${i.quote?`<div class="quote">${esc(i.quote)}<div class="meta">${i.time?`${fmt(i.time.start)} – ${fmt(i.time.end)}`:""}${data.source_video&&i.time?`<button class="linkbtn" id="origBtn">▶ ${t("playOrig")} <kbd>O</kbd></button>`:""}</div></div>`:""}
+    <div class="grid2"><div class="f"><label>${t("module")}</label><input data-k="module" value="${esc(i.module)}"></div>
+      <div class="f"><label>${t("owner")}</label><input data-k="owner" value="${esc(i.owner)}"></div></div>
+    <div class="f act-f"><label>${t("actual")}</label><textarea data-k="actual">${esc(i.actual)}</textarea></div>
+    <div class="f exp"><label>${t("expected")}</label><textarea data-k="expected">${esc(i.expected)}</textarea></div>
+    <div class="f"><label>${t("steps")}</label><textarea data-k="steps">${esc((i.steps||[]).map((x,n)=>`${n+1}. ${x}`).join("\n"))}</textarea></div>
+    ${(i.code_refs||[]).length?`<div class="f"><label>${t("code")}</label><div class="code">${i.code_refs.map(c=>`<button data-copy="${esc(c)}"><span>${esc(c)}</span><em>⧉</em></button>`).join("")}</div></div>`:""}`;
+  side.querySelectorAll("textarea").forEach(autosize);
+  side.querySelectorAll("[data-k]").forEach(el=>el.addEventListener("input",()=>{
+    const k=el.dataset.k;let v=el.value;
+    if(k==="steps")v=v.split("\n").map(x=>x.replace(/^\s*\d+[.)、]\s*/,"").trim()).filter(Boolean);
+    i[k]=v;if(el.tagName==="TEXTAREA")autosize(el);if(k==="title")q.querySelector(".cur .t").textContent=el.value;save();
+  }));
+  $("#sevChip").onclick=()=>setSev(SEV[(SEV.indexOf(sev)+1)%3]);
+  $("#typeChip").onclick=()=>{const ks=Object.keys(types);i.type=ks[(ks.indexOf(i.type)+1)%ks.length];save();renderFocus(false)};
+  $("#origBtn")?.addEventListener("click",playOrig);
+  side.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(b.dataset.copy);toast(`${b.dataset.copy} ${t("copy")}`)});
+}
+function showMedia(items,s){
+  const box=$("#mediaBox");if(!box)return;
+  const m=items[media];
+  const stamp=s==="keep"?`<div class="stamp keep">✓ ${t("kept1")}</div>`:s==="drop"?`<div class="stamp drop">✕ ${t("dropped1")}</div>`:"";
+  if(!m){box.innerHTML=`<div class="empty">${t("noMedia")}</div>${stamp}`;return}
+  if(m.kind==="img"){
+    box.innerHTML=`<img src="${m.src}" alt=""><div class="badge">${esc(m.label)}${m.cap?` · <span style="font-family:inherit;font-weight:500">${esc(m.cap)}</span>`:""}</div>${stamp}`;
+    box.querySelector("img").onclick=()=>{$("#lightbox img").src=m.src;$("#lightbox").classList.add("show")};
+  }else{
+    box.innerHTML=`<video src="${m.src}" controls playsinline preload="metadata"></video><div class="badge">${esc(m.label)}${m.start!=null?` · ${fmt(m.start)}`:""}</div>${stamp}`;
+    const v=box.querySelector("video");
+    if(m.kind==="orig"){v.addEventListener("loadedmetadata",()=>{v.currentTime=Math.max(0,m.start-1.5)},{once:true});
+      v.addEventListener("timeupdate",()=>{if(v.currentTime>m.end+2&&!v.dataset.freed){v.pause();v.dataset.freed=1}})}
+  }
+}
+function autosize(el){el.style.height="auto";el.style.height=Math.min(el.scrollHeight+2,el.classList.contains("title")?200:260)+"px"}
+function go(k,d){if(k<0||k>=data.issues.length)return;dir=d||(k>cur?"up":"down");cur=k;media=0;renderFocus(true)}
+function next(){const n=data.issues.findIndex((i,k)=>k>cur&&statusOf(i)==="pending");go(n>=0?n:Math.min(cur+1,data.issues.length-1),"up")}
+function decide(kind){
+  const i=data.issues[cur];if(!i)return;snapshot();
+  i._touched=true;
+  if(kind==="keep"){i.status="confirmed";delete i._dropped}else{i.status="deleted";i._dropped=true}
+  save();toast(kind==="keep"?`✓ ${t("kept1")} · ${i.id||""}`:`✕ ${t("dropped1")} · ${i.id||""}`,true);
+  renderTop();
+  if(counts().p===0&&cur===data.issues.length-1){renderFocus(false);setTimeout(openFinish,250);return}
+  setTimeout(next,90);
+}
+function setSev(v){const i=data.issues[cur];if(!i)return;i.severity=v;save();renderFocus(false)}
+function mergePrev(){
+  let j=cur-1;while(j>=0&&statusOf(data.issues[j])==="drop")j--;if(j<0)return;
+  snapshot();const p=data.issues[j],i=data.issues[cur];
+  const join=(a,b,s)=>[a,b].filter(Boolean).join(s);
+  p.actual=join(p.actual,i.actual,"\n");p.expected=join(p.expected,i.expected,"\n");p.quote=join(p.quote,i.quote," … ");
+  p.frames=[...(p.frames||[]),...(i.frames||[])];p.steps=[...(p.steps||[]),...(i.steps||[])];
+  p.code_refs=[...new Set([...(p.code_refs||[]),...(i.code_refs||[])])];
+  p.merged_from=[...(p.merged_from||[]),i.id];
+  if(i.time&&p.time)p.time={start:Math.min(p.time.start,i.time.start),end:Math.max(p.time.end,i.time.end)};
+  data.issues.splice(cur,1);cur=j;save();toast(`${t("merged")} ${p.id||""}`,true);render(true);
+}
+function playOrig(){const items=mediaItems(data.issues[cur]);const k=items.findIndex(m=>m.kind==="orig");if(k<0)return;media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}
+function togglePlay(){const v=$("#mediaBox video");if(v){v.paused?v.play():v.pause();return}
+  const items=mediaItems(data.issues[cur]);const k=items.findIndex(m=>m.kind!=="img");if(k>=0){media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}}
+
+/* ---------- list ---------- */
+function renderList(){
+  const fs=[["all",t("all")],["pending",t("filterPending")],["keep",t("filterKept")],["drop",t("filterDropped")]];
+  $("#filters").innerHTML=fs.map(([k,l])=>`<button class="${filter===k?"on":""}" data-f="${k}">${l}</button>`).join("");
+  $("#filters").querySelectorAll("button").forEach(b=>b.onclick=()=>{filter=b.dataset.f;renderList()});
+  $("#search").placeholder=t("search");
+  const types=T[lang].types,ql=query.toLowerCase();
+  $("#cards").innerHTML=data.issues.map((i,k)=>({i,k,s:statusOf(i)})).filter(({i,s})=>(filter==="all"||filter===s)&&
+    (!ql||[i.title,i.module,i.owner,i.id].join(" ").toLowerCase().includes(ql))).map(({i,k,s})=>{
+    const img=(i.frames||[])[0];const sev=SEV.includes(i.severity)?i.severity:"medium";
+    return `<article class="card ${s}" data-k="${k}"><div class="img" style="${img?`background-image:url('${file(img.path)}')`:""}">${s!=="pending"?`<div class="stamp ${s}">${s==="keep"?"✓":"✕"}</div>`:""}</div>
+      <div class="body"><div class="h">${esc(i.id||"")}<span style="margin-left:auto">${i.time?fmt(i.time.start):""}</span></div><div class="tt">${esc(i.title)}</div>
+      <div class="mm"><span class="chip sev-${sev}">${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</span>${i.module?`<span class="chip">${esc(i.module)}</span>`:""}${i.owner?`<span class="chip">@${esc(i.owner)}</span>`:""}<span class="chip">${esc(types[i.type]||i.type||"")}</span></div></div></article>`}).join("");
+  $("#cards").querySelectorAll(".card").forEach(c=>c.onclick=()=>{cur=+c.dataset.k;media=0;setView("focus")});
+}
+function setView(v){view=v;store.set("blurt.view",v);render(true)}
+
+/* ---------- overlays ---------- */
+let toastTimer;
+function toast(msg,withUndo){$("#toastMsg").textContent=msg;$("#toastUndo").textContent=withUndo?t("undo")+"  Z":"";$("#toastUndo").style.display=withUndo?"":"none";
+  $("#toast").classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("#toast").classList.remove("show"),2200)}
+function modal(html){$("#modal").innerHTML=html;$("#modalBg").classList.add("show")}
+function closeModal(){$("#modalBg").classList.remove("show")}
+function openHelp(){
+  const rows=[["↓ ↑ / J K",t("k_next")],["A / ⏎",t("k_keep")],["X / ⌫",t("k_drop")],["Z",t("k_undo")],["M",t("k_merge")],["1 2 3",t("k_sev")],
+    ["← →",t("k_media")],["Space / O",t("k_play")],["E",t("k_edit")],["G",t("k_view")],["⌘⏎",t("k_finish")],["?",t("k_help")]];
+  modal(`<h3>${t("keysTitle")}</h3><div class="keys">${rows.map(([k,l])=>`<div><span>${l}</span><span>${k.split(" ").map(x=>x==="/"?"<span style='color:var(--faint)'>/</span>":`<kbd>${x}</kbd>`).join(" ")}</span></div>`).join("")}</div>
+    <div class="row"><button class="btn" onclick="closeModal()">OK</button></div>`);
+}
+function openFinish(){
+  const c=counts();
+  modal(`<h3>${t("confirmTitle")}</h3><p>${t("confirmBody").replace("{k}",c.k).replace("{d}",c.d).replace("{p}",c.p)}</p>
+    <div class="sum"><div><b style="color:var(--keep)">${c.k}</b>${t("kept")}</div><div><b style="color:var(--drop)">${c.d}</b>${t("dropped")}</div><div><b>${c.p}</b>${t("pending")}</div></div>
+    <div class="row">${c.p?`<button class="btn" id="mRest">${t("reviewRest")}</button>`:`<button class="btn" id="mCancel">${t("cancel")}</button>`}
+    <button class="btn primary" id="mOk">${c.p?t("pendingAs"):t("confirm")}</button></div>`);
+  $("#mRest")?.addEventListener("click",()=>{closeModal();const n=data.issues.findIndex(i=>statusOf(i)==="pending");setView("focus");go(n)});
+  $("#mCancel")?.addEventListener("click",closeModal);
+  $("#mOk").onclick=finish;
+}
+async function finish(){
+  data.issues.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
   await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
-  document.body.innerHTML=`<div style="padding:60px;text-align:center;font-size:18px">🐔 ${t("done")}</div>`};
+  closeModal();$("#done").classList.add("show");
+}
+
+/* ---------- wiring ---------- */
+$("#vFocus").onclick=()=>setView("focus");$("#vList").onclick=()=>setView("list");
+$("#keepBtn").onclick=()=>decide("keep");$("#dropBtn").onclick=()=>decide("drop");$("#mergeBtn").onclick=mergePrev;$("#undoBtn").onclick=doUndo;
+$("#prevBtn").onclick=()=>go(cur-1,"down");$("#nextBtn").onclick=()=>go(cur+1,"up");
+$("#finishBtn").onclick=openFinish;$("#helpBtn").onclick=openHelp;$("#toastUndo").onclick=doUndo;
+$("#modalBg").onclick=e=>{if(e.target.id==="modalBg")closeModal()};
+$("#lightbox").onclick=()=>$("#lightbox").classList.remove("show");
+$("#queue").onclick=e=>{const q=e.target.closest(".qi");if(q)go(+q.dataset.k)};
+$("#search").oninput=e=>{query=e.target.value;renderList()};
+$("#themeBtn").onclick=()=>{const r=document.documentElement,n=r.dataset.theme==="light"?"dark":"light";r.dataset.theme=n;store.set("blurt.theme",n)};
+$("#langBtn").onclick=()=>{lang=lang==="zh"?"en":"zh";store.set("blurt.lang",lang);render(false)};
+let wheelLock=0;
+$("#stage").addEventListener("wheel",e=>{if(e.target.closest("video,.strip"))return;if(Math.abs(e.deltaY)<18||Date.now()<wheelLock)return;
+  wheelLock=Date.now()+520;e.deltaY>0?go(cur+1,"up"):go(cur-1,"down")},{passive:true});
+let touchY=null;$("#stage").addEventListener("touchstart",e=>touchY=e.touches[0].clientY,{passive:true});
+$("#stage").addEventListener("touchend",e=>{if(touchY==null)return;const d=touchY-e.changedTouches[0].clientY;if(Math.abs(d)>50)d>0?go(cur+1,"up"):go(cur-1,"down");touchY=null});
+document.addEventListener("keydown",e=>{
+  if(!loaded)return;
+  const typing=/INPUT|TEXTAREA/.test(document.activeElement?.tagName);
+  if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();openFinish();return}
+  if(e.key==="Escape"){if($("#modalBg").classList.contains("show"))closeModal();else if($("#lightbox").classList.contains("show"))$("#lightbox").classList.remove("show");else document.activeElement?.blur();return}
+  if(typing||e.metaKey||e.ctrlKey||e.altKey)return;
+  if($("#modalBg").classList.contains("show"))return;
+  const k=e.key;
+  if(k==="?"){openHelp();return}
+  if(k==="g"||k==="G"){setView(view==="focus"?"list":"focus");return}
+  if(view!=="focus")return;
+  const items=mediaItems(data.issues[cur]||{});
+  const map={j:()=>go(cur+1,"up"),ArrowDown:()=>go(cur+1,"up"),k:()=>go(cur-1,"down"),ArrowUp:()=>go(cur-1,"down"),
+    a:()=>decide("keep"),Enter:()=>decide("keep"),x:()=>decide("drop"),Backspace:()=>decide("drop"),Delete:()=>decide("drop"),
+    z:doUndo,u:doUndo,m:mergePrev,"1":()=>setSev("high"),"2":()=>setSev("medium"),"3":()=>setSev("low"),
+    ArrowLeft:()=>{if(media>0){media--;renderFocus(false)}},ArrowRight:()=>{if(media<items.length-1){media++;renderFocus(false)}},
+    " ":togglePlay,o:playOrig,e:()=>{const ta=$(".title");ta?.focus();ta?.select()}};
+  const f=map[k]||map[k.toLowerCase?.()];
+  if(f){e.preventDefault();f()}
+});
 load();
 </script>
 </body>
