@@ -1,0 +1,19 @@
+{
+  "name": "blurt",
+  "version": "0.1.0",
+  "description": "Record your screen, rant out loud, get clean bug tickets. 边用边吐槽，AI 帮你提单。",
+  "license": "MIT",
+  "keywords": [
+    "feedback",
+    "bug-report",
+    "screen-recording",
+    "asr",
+    "feishu",
+    "qa"
+  ],
+  "repository": "https://github.com/AGIHunt/blurt",
+  "homepage": "https://github.com/AGIHunt/blurt",
+  "author": {
+    "name": "AGI Hunt"
+  }
+}

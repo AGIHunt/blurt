@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>blurt review</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--mute:#6b6b70;--line:#e4e2dc;--acc:#ff5a3c;--acc2:#ffc83d;--warn:#fff4d6;--warnink:#8a5a00;--del:.38}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#151516;--card:#1f1f21;--ink:#ececee;--mute:#9a9aa1;--line:#333336;--warn:#3a2f12;--warnink:#ffd66b}}
+:root[data-theme=dark]{--bg:#151516;--card:#1f1f21;--ink:#ececee;--mute:#9a9aa1;--line:#333336;--warn:#3a2f12;--warnink:#ffd66b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+header{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;white-space:nowrap}header .sp{flex:1}header .meta{color:var(--mute);font-size:12px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--mute)}button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
+@media (max-width:1000px){main{grid-template-columns:1fr}aside{position:static!important}}
+aside{position:sticky;top:64px;align-self:start}aside video{width:100%;border-radius:10px;background:#000}
+aside .hint{color:var(--mute);font-size:12px;margin-top:6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card.deleted{opacity:var(--del)}.card.deleted .body{display:none}
+.top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.id{font-weight:700;color:var(--acc);font-family:ui-monospace,monospace}
+.title{flex:1;min-width:200px;font-size:15px;font-weight:600}
+input,textarea,select{font:inherit;color:inherit;background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 6px;width:100%}
+input:hover,textarea:hover,select:hover{border-color:var(--line)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
+textarea{resize:vertical;min-height:34px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 12px;margin-top:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:6px}
+@media (max-width:640px){.grid{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}}
+label{display:block;font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;padding-left:6px}
+.frames{display:flex;gap:8px;overflow-x:auto;margin-top:10px}.frame{position:relative;flex:0 0 auto}
+.frame img{height:140px;border-radius:8px;border:2px solid var(--line);cursor:zoom-in;display:block}
+.frame.primary img{border-color:var(--acc2)}.frame .x{position:absolute;top:4px;right:4px;padding:0 6px;font-size:12px}
+.frame .star{position:absolute;top:4px;left:4px;padding:0 6px;font-size:12px}
+.quote{margin-top:10px;padding:8px 10px;border-left:3px solid var(--acc2);color:var(--mute);font-size:13px}
+.quote button{margin-left:6px;font-size:12px;padding:1px 8px}
+.q{margin-top:8px;padding:8px 10px;background:var(--warn);color:var(--warnink);border-radius:8px;font-size:13px}
+.refs{font-family:ui-monospace,monospace;font-size:12px;color:var(--mute)}
+.pill{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:10;cursor:zoom-out}
+#lightbox img{max-width:95vw;max-height:95vh}
+.saved{font-size:12px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🐔 blurt</h1><span class="meta" id="meta"></span><span class="sp"></span>
+  <span class="saved" id="saved"></span>
+  <button id="lang">中/EN</button>
+  <button class="primary" id="confirm"></button>
+</header>
+<main>
+  <section id="list"></section>
+  <aside><video id="player" controls preload="metadata"></video><div class="hint" id="hint"></div></aside>
+</main>
+<div id="lightbox"><img></div>
+<script>
+const I18N={
+ en:{confirm:"Confirm & continue",issues:"issues",deleted:"deleted",title:"Title",module:"Module",owner:"Owner",severity:"Severity",type:"Type",
+  actual:"Actual",expected:"Expected",steps:"Steps to reproduce (one per line)",code:"Suspected code",del:"Delete",restore:"Restore",merge:"Merge into previous",
+  play:"▶ play",saved:"Saved",saving:"Saving…",hint:"Click ▶ on any quote to jump the full recording to that moment.",primary:"Primary frame",
+  confirmAsk:"Confirm {n} issues and hand them back to the agent?",done:"Confirmed. You can close this tab and return to your agent.",questions:"Needs your input"},
+ zh:{confirm:"确认并继续",issues:"条问题",deleted:"已删除",title:"标题",module:"所属模块",owner:"负责人",severity:"严重程度",type:"类型",
+  actual:"实际效果",expected:"预期效果",steps:"复现步骤（每行一步）",code:"疑似代码位置",del:"删除",restore:"恢复",merge:"合并到上一条",
+  play:"▶ 播放",saved:"已保存",saving:"保存中…",hint:"点击原话旁的 ▶ 可以跳到完整录屏的对应时刻。",primary:"主图",
+  confirmAsk:"确认这 {n} 条问题并交回给 agent？",done:"已确认，可以关闭此页回到 agent 了。",questions:"需要你确认"}};
+const ls=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+let lang=(ls("blurt.lang")||navigator.language||"en").startsWith("zh")?"zh":"en";
+const t=k=>I18N[lang][k];
+let data={issues:[]},timer=null;
+const $=s=>document.querySelector(s);
+const fmt=s=>{s=Math.max(0,s||0);const m=Math.floor(s/60),r=(s%60).toFixed(1).padStart(4,"0");return `${String(m).padStart(2,"0")}:${r}`};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const file=p=>p?("/files/"+String(p).split("/").map(encodeURIComponent).join("/")):"";
+
+async function load(){data=await (await fetch("/api/issues")).json();if(!data.issues)data.issues=[];
+  if(data.language&&!ls("blurt.lang"))lang=data.language.startsWith("zh")?"zh":"en";
+  if(data.source_video)$("#player").src=file(data.source_video);render()}
+function save(){$("#saved").textContent=t("saving");clearTimeout(timer);timer=setTimeout(async()=>{
+  await fetch("/api/issues",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},400)}
+function field(i,key,label,multi){const v=Array.isArray(i[key])?i[key].join("\n"):(i[key]??"");
+  return `<div><label>${label}</label>${multi?`<textarea data-k="${key}" rows="${Math.max(2,String(v).split("\n").length)}">${esc(v)}</textarea>`:`<input data-k="${key}" value="${esc(v)}">`}</div>`}
+function render(){
+  document.documentElement.lang=lang;$("#confirm").textContent=t("confirm");$("#hint").textContent=t("hint");
+  const live=data.issues.filter(i=>i.status!=="deleted");
+  $("#meta").textContent=`${live.length} ${t("issues")}`+(data.issues.length-live.length?` · ${data.issues.length-live.length} ${t("deleted")}`:"");
+  $("#list").innerHTML=data.issues.map((i,idx)=>{const del=i.status==="deleted",tm=i.time||{};
+   return `<div class="card ${del?"deleted":""}" data-i="${idx}">
+    <div class="top"><span class="id">${esc(i.id)}</span><input class="title" data-k="title" value="${esc(i.title)}" placeholder="${t("title")}">
+     ${i.confidence==="low"?'<span class="pill">?</span>':""}
+     ${idx>0&&!del?`<button data-a="merge">${t("merge")}</button>`:""}<button data-a="del">${del?t("restore"):t("del")}</button></div>
+    <div class="body">
+     <div class="grid">${field(i,"module",t("module"))}${field(i,"owner",t("owner"))}${field(i,"severity",t("severity"))}${field(i,"type",t("type"))}</div>
+     <div class="grid2">${field(i,"actual",t("actual"),1)}${field(i,"expected",t("expected"),1)}</div>
+     ${field(i,"steps",t("steps"),1)}
+     ${(i.questions||[]).length?`<div class="q"><b>${t("questions")}:</b> ${i.questions.map(esc).join(" · ")}</div>`:""}
+     <div class="frames">${(i.frames||[]).map((f,k)=>`<div class="frame ${k===0?"primary":""}"><img src="${file(f.path)}" data-full="${file(f.path)}" title="${esc(f.caption||"")} t=${fmt(f.t)}">
+       ${k>0?`<button class="star" data-a="star" data-f="${k}" title="${t("primary")}">★</button>`:""}<button class="x" data-a="rmf" data-f="${k}">✕</button></div>`).join("")}
+       ${i.clip?`<video src="${file(i.clip)}" controls preload="none" style="height:140px;border-radius:8px"></video>`:""}</div>
+     ${i.quote?`<div class="quote">“${esc(i.quote)}” <button data-a="play">${t("play")} ${fmt(tm.start)}</button></div>`:""}
+     ${(i.code_refs||[]).length?`<div class="refs">${t("code")}: ${i.code_refs.map(esc).join(", ")}</div>`:""}
+    </div></div>`}).join("")}
+$("#list").addEventListener("input",e=>{const el=e.target,k=el.dataset.k;if(!k)return;const i=data.issues[+el.closest(".card").dataset.i];
+  i[k]=k==="steps"?el.value.split("\n").filter(s=>s.trim()):el.value;save()});
+$("#list").addEventListener("click",e=>{const img=e.target.closest("img[data-full]");if(img){$("#lightbox img").src=img.dataset.full;$("#lightbox").style.display="flex";return}
+  const b=e.target.closest("button[data-a]");if(!b)return;const idx=+b.closest(".card").dataset.i,i=data.issues[idx],a=b.dataset.a;
+  if(a==="del")i.status=i.status==="deleted"?"draft":"deleted";
+  if(a==="rmf")i.frames.splice(+b.dataset.f,1);
+  if(a==="star"){const f=i.frames.splice(+b.dataset.f,1)[0];i.frames.unshift(f)}
+  if(a==="play"){const p=$("#player");p.currentTime=Math.max(0,(i.time?.start||0)-1);p.play();return}
+  if(a==="merge"){let j=idx-1;while(j>=0&&data.issues[j].status==="deleted")j--;if(j<0)return;const p=data.issues[j];
+    p.actual=[p.actual,i.actual].filter(Boolean).join("\n");p.quote=[p.quote,i.quote].filter(Boolean).join(" … ");
+    p.frames=[...(p.frames||[]),...(i.frames||[])];p.steps=[...(p.steps||[]),...(i.steps||[])];
+    p.merged_from=[...(p.merged_from||[]),i.id];i.status="deleted"}
+  save();render()});
+$("#lightbox").onclick=()=>$("#lightbox").style.display="none";
+$("#lang").onclick=()=>{lang=lang==="zh"?"en":"zh";try{localStorage.setItem("blurt.lang",lang)}catch(e){}render()};
+$("#confirm").onclick=async()=>{const n=data.issues.filter(i=>i.status!=="deleted").length;if(!confirm(t("confirmAsk").replace("{n}",n)))return;
+  data.issues.forEach(i=>{if(i.status!=="deleted")i.status="confirmed"});
+  await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+  document.body.innerHTML=`<div style="padding:60px;text-align:center;font-size:18px">🐔 ${t("done")}</div>`};
+load();
+</script>
+</body>
+</html>
