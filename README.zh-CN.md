@@ -51,7 +51,7 @@ Vibe coding 完之后的细节打磨，最累的是提反馈：截图、画框�
 
 ## 先录，回头再处理
 
-安装独立录屏 App：`record.py install-app` →「应用程序」/「开始菜单」里的 **Blurt**。随时录、录几段都行，也可以把 App
+第一次录制时会自动装好独立的 **Blurt** 录屏 App（macOS 在「应用程序」，Windows 在「开始菜单」），不用额外操作。随时录、录几段都行，也可以把 App
 给同事用；视频存在 `~/Movies/Blurt`。之后对 agent 说「处理我录的吐槽视频」，它会把收件箱一次处理完。
 
 已经有 QuickTime、OBS、Loom 或手机录好的视频？直接说「把 ~/Desktop/feedback.mov 整理成问题」即可。

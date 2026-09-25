@@ -54,8 +54,8 @@ checks screen/mic permissions (macOS: grant *Screen Recording* + *Microphone* to
 
 ## Record now, process later
 
-Install the standalone recorder — `record.py install-app` → **Blurt** in Applications / the Start menu.
-Record whenever (or hand the app to a teammate); videos land in `~/Movies/Blurt`. Later, tell your agent
+The first time blurt records, it also installs a standalone **Blurt** app (Applications on macOS, Start menu on
+Windows) — nothing extra to do. Record whenever (or hand the app to a teammate); videos land in `~/Movies/Blurt`. Later, tell your agent
 "process my blurt recordings" and it works through the inbox in one go.
 
 Already have a video from QuickTime, OBS, Loom or a phone? "Turn `~/Desktop/feedback.mov` into issues" works too.

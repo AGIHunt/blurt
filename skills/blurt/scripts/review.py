@@ -46,6 +46,9 @@ def make_handler(session: Path, done: threading.Event):
             path = unquote(urlparse(self.path).path)
             if path in ("/", "/index.html"):
                 return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
+            if path in ("/icon.png", "/favicon.ico"):
+                icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+                return self._send(200, icon.read_bytes(), "image/png") if icon.exists() else self._send(404, b"", "text/plain")
             if path == "/api/issues":
                 return self._send(200, json.dumps(load_json(issues_path, {})).encode(), "application/json")
             if path.startswith("/files/"):

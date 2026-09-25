@@ -26,8 +26,9 @@ Always reply in the user's language; write issue content in the language the use
 - ASR: if none configured, pick using `asr_recommendations` + the language the user speaks, tell the user in one
   line what you picked and why (size, local vs cloud, cost), then run the `setup` command. Details:
   `reference/asr.md`. Keys for cloud ASR must be set by the user in their env — never ask them to paste keys in chat.
-- Recorder: on macOS the native recorder is compiled once with `swiftc` (`record.py build`; needs Xcode Command
-  Line Tools — otherwise a Tk fallback is used). Windows uses the Tk recorder + ffmpeg.
+- Recorder: on first setup run `record.py build` — on macOS it compiles the native recorder (needs Xcode Command
+  Line Tools, else a Tk fallback is used) and installs the standalone **Blurt** app into ~/Applications; on Windows
+  the Start-menu shortcut is created on first recording. Mention it to the user in one line.
 - Recording check: `record.py test` → look at the returned `frame` image yourself. Wallpaper-only/black frame or
   `ok: false` ⇒ Screen Recording permission missing; `mic_silent: true` ⇒ Microphone permission / wrong mic.
   On macOS the permission belongs to the app hosting you (Terminal, iTerm, VS Code, Claude, Codex…), and that app
@@ -54,8 +55,8 @@ Always reply in the user's language; write issue content in the language the use
 Existing videos: if the user hands over a file (QuickTime, OBS, Loom, phone…), create
 `.blurt/sessions/<timestamp>/`, copy/link it in as `recording.<ext>`, and continue with §2.
 
-Standalone recordings: the user can record without you via the Blurt app (`record.py install-app` puts it in
-~/Applications / the Start menu). Recordings land in `~/Movies/Blurt/<timestamp>/` (Windows: `~/Videos/Blurt`).
+Standalone recordings: the user can record without you via the Blurt app (installed automatically in
+~/Applications / the Start menu; `record.py install-app` reinstalls it). Recordings land in `~/Movies/Blurt/<timestamp>/` (Windows: `~/Videos/Blurt`).
 `record.py inbox` lists them with `processed` flags. To process several: run §2–§4 per recording (fan out to
 subagents if available), then review them together — one `review.py` per session, or merge into one session
 directory when the user wants a single list — and export once.

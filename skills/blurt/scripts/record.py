@@ -267,7 +267,43 @@ def native_binary(build: bool = True) -> Path | None:
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     run(["codesign", "--force", "--sign", "-", str(APP_BUNDLE)], check=False)
     stamp.write_text(digest)
+    ensure_app_installed(force=True)
     return exe
+
+
+def ensure_app_installed(force: bool = False) -> Path | None:
+    """Keep a double-clickable recorder where people look for apps — done automatically on first use / update.
+    Opt out with ~/.blurt/config.json → {"record": {"install_app": false}}."""
+    if global_config().get("record", {}).get("install_app") is False:
+        return None
+    try:
+        if IS_MAC:
+            dest = Path.home() / "Applications" / "Blurt.app"
+            if dest.exists() and not force:
+                return dest
+            if not (APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder").exists():
+                return None
+            dest.parent.mkdir(exist_ok=True)
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.copytree(APP_BUNDLE, dest, symlinks=True)
+            run(["codesign", "--force", "--sign", "-", str(dest)], check=False)
+            print(f"installed standalone recorder: {dest}", file=sys.stderr, flush=True)
+            return dest
+        if IS_WIN:
+            lnk = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Blurt.lnk"
+            if lnk.exists() and not force:
+                return lnk
+            uv = shutil.which("uv")
+            if not uv:
+                return None
+            ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}');$s.TargetPath='{uv}';"
+                  f"$s.Arguments='run --gui-script \"{Path(__file__).resolve()}\" start --inbox';"
+                  f"$s.WorkingDirectory='{Path.home()}';$s.Save()")
+            run(["powershell", "-NoProfile", "-Command", ps], check=False)
+            return lnk if lnk.exists() else None
+    except Exception as e:  # never block a recording on this
+        print(f"(could not install standalone recorder: {e})", file=sys.stderr)
+    return None
 
 
 def make_icns(dest: Path) -> None:
@@ -358,6 +394,8 @@ def cmd_start(a) -> None:
     session.mkdir(parents=True, exist_ok=True)
     cfg = global_config().get("record", {})
     engine = choose_engine(a.engine or cfg.get("engine"))
+    if IS_WIN:
+        ensure_app_installed()
     last = cfg.get("last_region")
     region = parse_region(a.region) or (last if a.last_region else None)
     cmd_file = session / ".cmd"
@@ -555,39 +593,18 @@ def cmd_inbox(_a) -> None:
 
 
 def cmd_install_app(_a) -> None:
-    """Put a double-clickable recorder in Applications (macOS) / the Start menu (Windows)."""
-    if IS_MAC:
-        exe = native_binary() or die("Needs Xcode Command Line Tools: xcode-select --install")
-        dest = Path.home() / "Applications" / "Blurt.app"
-        dest.parent.mkdir(exist_ok=True)
-        shutil.rmtree(dest, ignore_errors=True)
-        shutil.copytree(APP_BUNDLE, dest, symlinks=True)
-        run(["codesign", "--force", "--sign", "-", str(dest)], check=False)
-        print(json.dumps({"installed": str(dest), "recordings": str(inbox_dir()), "binary": str(exe),
-                          "note": "First launch asks for Screen Recording + Microphone permission for “Blurt”."}, ensure_ascii=False))
-    elif IS_WIN:
-        uv = shutil.which("uv") or die("uv not found")
-        lnk = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Blurt.lnk"
-        script = Path(__file__).resolve()
-        ico = ICON.with_suffix(".ico")
-        if ICON.exists() and not ico.exists():
-            try:
-                from PIL import Image  # optional
-                Image.open(ICON).save(ico)
-            except Exception:
-                ico = None
-        ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}');$s.TargetPath='{uv}';"
-              f"$s.Arguments='run --gui-script \"{script}\" start --inbox';$s.WorkingDirectory='{Path.home()}';"
-              + (f"$s.IconLocation='{ico}';" if ico else "") + "$s.Save()")
-        run(["powershell", "-NoProfile", "-Command", ps], check=False)
-        print(json.dumps({"installed": str(lnk), "recordings": str(inbox_dir())}))
-    else:
-        die("macOS / Windows only")
+    """(Re)install the standalone recorder: ~/Applications/Blurt.app (macOS) / Start-menu "Blurt" (Windows).
+    Normally not needed — it's installed automatically the first time the recorder is built / used."""
+    if IS_MAC and not native_binary():
+        die("Needs Xcode Command Line Tools: xcode-select --install")
+    dest = ensure_app_installed(force=True)
+    print(json.dumps({"installed": str(dest) if dest else None, "recordings": str(inbox_dir())}, ensure_ascii=False))
 
 
 def cmd_build(_a) -> None:
     exe = native_binary()
-    print(json.dumps({"native": str(exe) if exe else None,
+    app = ensure_app_installed() if exe else None
+    print(json.dumps({"native": str(exe) if exe else None, "app": str(app) if app else None,
                       "hint": None if exe else "needs macOS + Xcode Command Line Tools (xcode-select --install)"}))
 
 
