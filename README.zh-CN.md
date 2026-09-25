@@ -68,4 +68,17 @@ Vibe coding 完之后的细节打磨，最累的是提反馈：截图、画框�
 
 路线图：鼠标轨迹记录、屏幕画圈标注层、浏览器 console / 网络请求捕获 —— 见 [TODO.md](TODO.md)。
 
+## 开发检查
+
+安装 Python 3.10+ 后，在仓库根目录运行：
+
+```sh
+python -m compileall -q skills/blurt/scripts tests
+python -m unittest discover -s tests -v
+```
+
+GitHub Actions 会在 push 和 pull request 时，使用 Python 3.10、3.14 在 Linux、macOS、Windows 上执行这些检查。
+测试通过临时数据验证本地 Markdown/CSV 导出，仅使用 Python 标准库，无需 API key、`ffmpeg` 或 ASR 模型。
+录屏、转写及原生界面仍需手动测试。
+
 MIT 协议。

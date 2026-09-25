@@ -79,4 +79,17 @@ the recording. Or switch to a list with `G`.
 
 Roadmap: cursor-trajectory capture, on-screen annotation overlay, browser console/network capture — see [TODO.md](TODO.md).
 
+## Development checks
+
+With Python 3.10+ installed, run from the repository root:
+
+```sh
+python -m compileall -q skills/blurt/scripts tests
+python -m unittest discover -s tests -v
+```
+
+GitHub Actions runs these checks on Linux, macOS and Windows with Python 3.10 and 3.14 for pushes and pull
+requests. The tests cover local Markdown/CSV export using temporary fixtures and the Python standard library;
+they need no API keys, `ffmpeg` or ASR models. Recording, transcription and native UI still need manual testing.
+
 MIT License.
