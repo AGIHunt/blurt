@@ -89,21 +89,29 @@ For each issue, pick 1–3 frames that show the problem, not just the page:
 - `frames.py sheet <video> --from S --to E -o <session>/sheets/<id>.jpg` shows ~6 diverse, settled candidates
   with timestamps in ONE image — look at it, pick the best time(s). `--at t1 t2 …` to inspect specific moments
   (e.g. when the user said "这里 / this / look"). Speech often trails the action, so glance a few seconds before S.
-- `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h` (fractions 0–1) outlines the spot
-  in red; add a `--crop` second frame when the detail is tiny. The cursor is visible in the recording — use it.
+- Marking the spot — never estimate coordinates from a thumbnail or contact sheet:
+  1. `frames.py grid <video> --at T -o <session>/sheets/<id>-grid.jpg` → the frame with a labelled 0–1 grid, plus
+     the recorded cursor position and nearby clicks (from events.jsonl; exact, not guessed). Look at it and read
+     the box edges off the grid lines (`--crop` zooms in; labels stay in full-frame fractions).
+  2. `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h` (fractions). When the user was
+     pointing at / clicked the thing, `--ring cursor` or `--ring click` marks it exactly. Tiny detail → add a second
+     frame with `--crop` around the box.
+  3. **Look at every annotated frame before using it.** If the box doesn't sit on the problem, fix and re-grab.
 - Animations / flows / timing bugs: add `frames.py clip --from --to -o <session>/clips/<id>.mp4` (keep < 20MB).
 - Many issues (> ~12)? If your harness has subagents, fan out frame selection in batches, one issue list each.
 
 ## 5. Review with the user
 
-- ≤ 5 issues: show a compact numbered list in chat (title · module · owner, plus any `questions`) and ask for
-  corrections in one message.
-- More: run `review.py <session>` **in the background** — it opens a local review page and exits when the user
-  finishes. Tell the user in two lines: one issue at a time, **A** keep · **X** drop · **J/K** next/prev ·
-  **Z** undo · **?** all shortcuts; fields are editable in place, there's a list view (G), and "完成审核" hands it
-  back. End your turn, then reload `issues.json` when it finishes (dropped issues have `status: "deleted"`;
-  answers to `questions` are in `answer`).
-Apply corrections the user gives in chat directly to `issues.json`.
+Always open the review page — screenshots are the point, and chat can't show them well. Run
+`review.py <session>` **in the background** (it opens the browser itself and exits when the user finishes), and
+in the same message give:
+- ≤ 5 issues: the full numbered list (title · module · owner, plus any `questions`);
+- more: a short summary (count, by module / severity, the open `questions`);
+- two lines on the page: one issue at a time, **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** all
+  shortcuts; fields are editable in place, **G** list view, "完成审核" hands it back to you.
+The user may answer in chat or on the page. End your turn. When the page finishes, reload `issues.json` (dropped
+issues have `status: "deleted"`; answers to `questions` are in `answer`). If they reply in chat instead, apply it
+to `issues.json` yourself and close the page (`pkill -f "review.py <session>"`).
 
 ## 6. Export
 

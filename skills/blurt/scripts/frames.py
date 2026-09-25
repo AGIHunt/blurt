@@ -8,10 +8,16 @@
   frames.py candidates VIDEO --from S --to E    suggest diverse, settled frame times inside a window (JSON)
   frames.py sheet VIDEO --from S --to E -o x.jpg   contact sheet of candidates with timestamps (one image to review)
   frames.py sheet VIDEO --at 12.5 14 20 -o x.jpg   contact sheet of explicit times
-  frames.py grab  VIDEO --at T -o x.jpg [--box x,y,w,h] [--crop x,y,w,h]   full-res frame, optional red box / crop
+  frames.py grid  VIDEO --at T -o x.jpg          frame with a labelled 0–1 coordinate grid + where the cursor / clicks
+                                                were (from events.jsonl) — read positions off this, don't guess
+  frames.py pointer VIDEO --at T                 cursor position and nearby clicks at T (JSON)
+  frames.py grab  VIDEO --at T -o x.jpg [--box x,y,w,h] [--ring cursor|click|x,y] [--crop x,y,w,h]
+                                                full-res frame with red box / ring, optional crop
   frames.py clip  VIDEO --from S --to E -o x.mp4   small shareable clip (with audio)
 
-Coordinates for --box/--crop are fractions (0-1) of width/height, so they work at any resolution.
+Coordinates for --box/--crop/--ring are fractions (0-1) of the frame, so they work at any resolution. The native
+recorder logs the cursor and clicks in events.jsonl (same fractions): when the user pointed at or clicked the thing,
+`--ring cursor` / `--ring click` marks it exactly.
 """
 from __future__ import annotations
 
@@ -104,6 +110,87 @@ def grab(video: Path, t: float, max_w: int | None = None) -> Image.Image:
     return Image.open(BytesIO(raw)).convert("RGB")
 
 
+# ------------------------------------------------------------------ pointer (events.jsonl from the recorder)
+def load_events(video: Path) -> list[dict]:
+    f = video.parent / "events.jsonl"
+    if not f.exists():
+        return []
+    out = []
+    for line in f.read_text(encoding="utf-8").splitlines():
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return out
+
+
+def pointer_at(video: Path, t: float, window: float = 4.0) -> dict:
+    ev = load_events(video)
+    cur = [e for e in ev if e.get("type") == "cursor" and e["t"] <= t + 0.15]
+    cursor = cur[-1] if cur and t - cur[-1]["t"] < 5 else None   # cursor is logged only when it moves
+    clicks = sorted((e for e in ev if e.get("type") == "click" and abs(e["t"] - t) <= window), key=lambda e: abs(e["t"] - t))
+    return {"t": t, "has_events": bool(ev),
+            "cursor": {"x": cursor["x"], "y": cursor["y"], "since": round(t - cursor["t"], 2)} if cursor else None,
+            "clicks": [{"x": c["x"], "y": c["y"], "t": round(c["t"], 2)} for c in clicks[:5]]}
+
+
+def _point(spec: str, video: Path, t: float) -> tuple[float, float] | None:
+    if spec in ("cursor", "click"):
+        p = pointer_at(video, t)
+        if spec == "cursor" and p["cursor"]:
+            return p["cursor"]["x"], p["cursor"]["y"]
+        if spec == "click" and p["clicks"]:
+            return p["clicks"][0]["x"], p["clicks"][0]["y"]
+        die(f"no {spec} position recorded near t={t} (events.jsonl missing or empty) — use --box instead")
+    x, y = (float(v) for v in spec.split(","))
+    return x, y
+
+
+def draw_ring(im: Image.Image, x: float, y: float, r_frac: float = 0.028) -> None:
+    d = ImageDraw.Draw(im)
+    r = max(22, int(im.width * r_frac))
+    cx, cy = int(x * im.width), int(y * im.height)
+    w = max(3, im.width // 400)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline="#ff2d2d", width=w)
+
+
+def grid_image(im: Image.Image, video: Path, t: float) -> dict:
+    """Overlay a 0–1 grid (minor 0.05, labelled 0.1) and pointer markers so positions can be read, not guessed."""
+    base = im.convert("RGBA")
+    ov = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    W, H = base.size
+    f = _font(max(13, W // 110))
+    for i in range(1, 20):
+        v = i / 20
+        major = i % 2 == 0
+        col = (0, 170, 255, 150) if major else (0, 170, 255, 70)
+        x, y = int(v * W), int(v * H)
+        d.line([(x, 0), (x, H)], fill=col, width=2 if major else 1)
+        d.line([(0, y), (W, y)], fill=col, width=2 if major else 1)
+        if major:
+            lbl = f".{i // 2}"
+            for pos in ((x + 3, 2), (x + 3, H - f.size - 4)):
+                d.rectangle([pos[0] - 1, pos[1], pos[0] + f.size * 1.3, pos[1] + f.size + 2], fill=(0, 0, 0, 170))
+                d.text(pos, lbl, fill=(255, 255, 255, 255), font=f)
+            for pos in ((3, y + 2), (W - f.size * 1.5, y + 2)):
+                d.rectangle([pos[0] - 1, pos[1], pos[0] + f.size * 1.3, pos[1] + f.size + 2], fill=(0, 0, 0, 170))
+                d.text(pos, lbl, fill=(255, 255, 255, 255), font=f)
+    info = pointer_at(video, t)
+    r = max(10, W // 120)
+    for c in info["clicks"]:
+        cx, cy = c["x"] * W, c["y"] * H
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(255, 200, 0, 255), width=3)
+        d.text((cx + r + 3, cy - r), f"click {c['t']:.1f}s ({c['x']:.2f},{c['y']:.2f})", fill=(255, 200, 0, 255), font=f)
+    if info["cursor"]:
+        cx, cy = info["cursor"]["x"] * W, info["cursor"]["y"] * H
+        d.line([(cx - 2 * r, cy), (cx + 2 * r, cy)], fill=(255, 45, 45, 255), width=3)
+        d.line([(cx, cy - 2 * r), (cx, cy + 2 * r)], fill=(255, 45, 45, 255), width=3)
+        d.text((cx + r + 3, cy + 3), f"cursor ({info['cursor']['x']:.2f},{info['cursor']['y']:.2f})", fill=(255, 45, 45, 255), font=f)
+    im.paste(Image.alpha_composite(base, ov).convert("RGB"))
+    return info
+
+
 def _font(size: int):
     for name in ("Arial.ttf", "DejaVuSans.ttf", "arial.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
                  "C:/Windows/Fonts/arial.ttf"):
@@ -153,11 +240,20 @@ def main():
         if name == "sheet":
             c.add_argument("-o", "--out", required=True)
             c.add_argument("--cols", type=int, default=3)
+    gr = sub.add_parser("grid")
+    gr.add_argument("video")
+    gr.add_argument("--at", type=float, required=True)
+    gr.add_argument("-o", "--out", required=True)
+    gr.add_argument("--crop", help="x,y,w,h: zoom into part of the frame (grid labels stay in full-frame fractions)")
+    po = sub.add_parser("pointer")
+    po.add_argument("video")
+    po.add_argument("--at", type=float, required=True)
     g = sub.add_parser("grab")
     g.add_argument("video")
     g.add_argument("--at", type=float, required=True)
     g.add_argument("-o", "--out", required=True)
     g.add_argument("--box", action="append", help="x,y,w,h (fractions or px) to outline in red; repeatable")
+    g.add_argument("--ring", action="append", help="cursor | click | x,y — red circle at the pointer / a point; repeatable")
     g.add_argument("--crop", help="x,y,w,h (fractions or px) to crop to, applied after boxes")
     g.add_argument("--max-width", type=int, default=1920)
     cl = sub.add_parser("clip")
@@ -189,12 +285,25 @@ def main():
         else:
             contact_sheet(video, times, Path(a.out), a.cols)
             print(json.dumps({"sheet": a.out, "times": times, "labels": {f"#{i + 1}": t for i, t in enumerate(times)}}))
+    elif a.cmd == "pointer":
+        print(json.dumps(pointer_at(video, a.at)))
+    elif a.cmd == "grid":
+        im = grab(video, a.at, 1920)
+        info = grid_image(im, video, a.at)
+        if a.crop:
+            x0, y0, x1, y1 = _frac_box(a.crop, im.width, im.height)
+            im = im.crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1)))
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        im.save(a.out, quality=88)
+        print(json.dumps({"grid": a.out, **info}))
     elif a.cmd == "grab":
         im = grab(video, a.at, a.max_width)
         d = ImageDraw.Draw(im)
         for b in a.box or []:
             x0, y0, x1, y1 = _frac_box(b, im.width, im.height)
             d.rounded_rectangle([x0, y0, x1, y1], radius=6, outline="#ff2d2d", width=max(3, im.width // 400))
+        for r in a.ring or []:
+            draw_ring(im, *_point(r, video, a.at))
         if a.crop:
             x0, y0, x1, y1 = _frac_box(a.crop, im.width, im.height)
             im = im.crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1)))

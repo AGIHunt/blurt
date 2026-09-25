@@ -706,6 +706,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var border: NSWindow?
     var borderView = BorderView()
     var ticker: Timer?
+    var cursorTicker: Timer?
     var clickMonitor: Any?
     var frames = 0
     var audioBuffers = 0
@@ -851,7 +852,10 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             guard let self = self else { return }
             self.hud.update(elapsed: self.elapsed(), paused: self.isPaused, level: self.micLevel)
             self.borderView.color = self.isPaused ? amber : accent
-            if !self.isPaused, self.sessionStart.isValid { self.logCursor() }
+        }
+        cursorTicker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self, !self.isPaused, self.sessionStart.isValid else { return }
+            self.logCursor()
         }
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
             guard let self = self, !self.isPaused, let p = self.relative(NSEvent.mouseLocation) else { return }
@@ -1006,6 +1010,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         let endAt = CMTimeSubtract(pausedAt ?? hostNow(), offset)
         stopping = true
         ticker?.invalidate()
+        cursorTicker?.invalidate()
         if let m = clickMonitor { NSEvent.removeMonitor(m) }
         log("stop")
         try? events?.close()
