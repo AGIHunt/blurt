@@ -225,11 +225,11 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>dev.blurt.recorder</string>
 <key>CFBundleName</key><string>Blurt</string>
-<key>CFBundleDisplayName</key><string>Blurt 吐槽鸡</string>
+<key>CFBundleDisplayName</key><string>Blurt 口喷鸡</string>
 <key>CFBundleExecutable</key><string>blurt-recorder</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.3.0</string>
+<key>CFBundleShortVersionString</key><string>0.3.1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
 <key>NSMicrophoneUsageDescription</key><string>Blurt records your voice while you narrate feedback.</string>

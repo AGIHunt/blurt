@@ -37,7 +37,7 @@ npx skills add AGIHunt/blurt
 ```
 <sub>Claude Code: <code>/plugin marketplace add AGIHunt/blurt</code> · or just paste this repo's URL to your agent and ask it to install the skill.</sub>
 
-Then, in any project, tell your agent **"start blurt"** / **「开始吐槽」**.
+Then, in any project, tell your agent **"start blurt"** / **「开始口喷」**.
 The first run picks a speech model for your machine and installs the **Blurt** menu-bar app.
 
 ## How it feels

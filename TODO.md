@@ -10,7 +10,7 @@
 - [x] Verified on macOS 26 (Apple Silicon): real screen + mic, transcription, frames, review, Feishu export
 - [ ] Verify on Windows 10/11 (ddagrab/gdigrab, WASAPI mic via sounddevice, DPI scaling, wall-clock sync)
 - [x] End-to-end Feishu export with lark-cli (multi-attachment cells, resumable)
-- [x] Logo (吐槽鸡, 3 variants in assets/)
+- [x] Logo (口喷鸡, formerly 吐槽鸡, 3 variants in assets/)
 - [ ] Project homepage
 - [ ] Windows sound/notification polish; macOS menu-bar "stop" button (today: say "done" in chat)
 

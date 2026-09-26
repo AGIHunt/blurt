@@ -514,7 +514,7 @@ final class CountdownView: NSView {
         let s = NSAttributedString(string: "\(n)", attributes: [
             .font: NSFont.systemFont(ofSize: 64, weight: .bold), .foregroundColor: NSColor.white])
         s.draw(at: NSPoint(x: r.midX - s.size().width / 2, y: r.midY - s.size().height / 2))
-        let sub = NSAttributedString(string: L("准备，开始吐槽", "Get ready to blurt"), attributes: [
+        let sub = NSAttributedString(string: L("准备，开喷", "Get ready to blurt"), attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.white])
         _ = pill(sub.string, font: NSFont.systemFont(ofSize: 13, weight: .medium), fg: .white,
                  bg: NSColor(white: 0.05, alpha: 0.72), at: NSPoint(x: bounds.midX - (sub.size().width + 24) / 2, y: r.minY - 40), pad: 12)
@@ -1146,10 +1146,10 @@ func ensureDefaultWorkspace() {
         let text = """
         # Blurt workspace
 
-        This folder is the default workspace of **blurt** (吐槽鸡). Each folder in `recordings/` is one screen
+        This folder is the default workspace of **blurt** (口喷鸡). Each folder in `recordings/` is one screen
         recording with narration (`recording.mp4`, `events.jsonl`, `meta.json`). Use the `blurt` skill to turn a
         recording into structured output (issues, ideas, notes…) — e.g. "process my latest blurt recording" /
-        "处理最新的吐槽录屏". Outputs are written next to the recording.
+        "处理最新的录屏". Outputs are written next to the recording.
         """
         try? text.write(to: guide, atomically: true, encoding: .utf8)
         try? fm.createSymbolicLink(at: defaultWorkspace.appendingPathComponent("CLAUDE.md"), withDestinationURL: guide)
@@ -1404,7 +1404,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            toast(L("吐槽鸡已常驻 🐔  ⌥⇧R 开始 / 结束录制 · ⌥⇧B 打开菜单", "blurt is running 🐔  ⌥⇧R start / finish · ⌥⇧B menu"))
+            toast(L("口喷鸡已常驻 🐔  ⌥⇧R 开始 / 结束录制 · ⌥⇧B 打开菜单", "blurt is running 🐔  ⌥⇧R start / finish · ⌥⇧B menu"))
         }
         // `--process <session dir> [--agent claude|codex]`: process an existing recording (also handy for testing)
         let args = CommandLine.arguments
@@ -1490,11 +1490,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let name = agent == "codex" ? "Codex" : "Claude Code"
         guard let bin = findExecutable(agent == "codex" ? "codex" : "claude") else {
             alert(L("没找到 \(name)", "\(name) not found"),
-                  L("吐槽鸡要调用命令行里的 `\(agent == "codex" ? "codex" : "claude")`，但在你的 PATH 里没找到。装好 \(name) 命令行后再试，或者在菜单里改成「只保存」。",
+                  L("口喷鸡要调用命令行里的 `\(agent == "codex" ? "codex" : "claude")`，但在你的 PATH 里没找到。装好 \(name) 命令行后再试，或者在菜单里改成「只保存」。",
                     "blurt calls the `\(agent == "codex" ? "codex" : "claude")` command line tool, which isn't on your PATH. Install the \(name) CLI, or switch to “Just save”."))
             return
         }
-        let prompt = L("用 blurt skill 处理这段录屏：\(dir.path)\n这是吐槽鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
+        let prompt = L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
                        "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it when you finish); write items.json, then summarise in 2–3 sentences.")
         let cmd: String
         if agent == "codex" {
@@ -1545,8 +1545,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             b.imagePosition = .imageLeft
             b.attributedTitle = NSAttributedString(string: processing.isEmpty ? "" : " …", attributes: [
                 .font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
-            b.toolTip = processing.isEmpty ? L("吐槽鸡 · ⌥⇧R 开始录制 · ⌥⇧B 菜单", "blurt · ⌥⇧R record · ⌥⇧B menu")
-                                           : L("吐槽鸡 · 正在后台整理…", "blurt · processing in the background…")
+            b.toolTip = processing.isEmpty ? L("口喷鸡 · ⌥⇧R 开始录制 · ⌥⇧B 菜单", "blurt · ⌥⇧R record · ⌥⇧B menu")
+                                           : L("口喷鸡 · 正在后台整理…", "blurt · processing in the background…")
         }
     }
 
@@ -1641,7 +1641,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         menu.addItem(.separator())
         _ = add(L("使用说明 / GitHub", "Help / GitHub"), #selector(mHelp))
-        _ = add(L("退出吐槽鸡", "Quit blurt"), #selector(mQuit), key: "q")
+        _ = add(L("退出口喷鸡", "Quit blurt"), #selector(mQuit), key: "q")
     }
 
     @objc func mStart() { startRecording(useLast: false) }
@@ -1724,9 +1724,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let a = NSAlert()
         a.messageText = L("需要「录屏」权限", "Screen Recording permission needed")
         a.informativeText = L("""
-            在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开吐槽鸡（macOS 只在启动时读取权限）。
+            在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开口喷鸡（macOS 只在启动时读取权限）。
 
-            如果列表里已经是打开的：选中「Blurt」点下面的「−」删掉，再重新打开吐槽鸡授权一次（旧版本留下的授权对新版本无效）。
+            如果列表里已经是打开的：选中「Blurt」点下面的「−」删掉，再重新打开口喷鸡授权一次（旧版本留下的授权对新版本无效）。
             """, """
             Turn on “Blurt” in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen blurt \
             (macOS reads the permission at launch).
@@ -1734,7 +1734,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Already on? Select “Blurt”, remove it with “−”, reopen blurt and allow it again (a grant from an older build doesn't carry over).
             """)
         a.addButton(withTitle: L("打开系统设置", "Open System Settings"))
-        a.addButton(withTitle: L("退出吐槽鸡", "Quit blurt"))
+        a.addButton(withTitle: L("退出口喷鸡", "Quit blurt"))
         a.addButton(withTitle: L("稍后", "Later"))
         activateApp()
         switch a.runModal() {

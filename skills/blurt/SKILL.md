@@ -6,7 +6,7 @@ description: >-
   ideas with the inspiration behind them, notes, todos — let them review on a local page, then export (Feishu/Lark
   Bitable, CSV/Markdown, GitHub Issues…) or start fixing. Use when the user wants to record feedback / QA / ideas by
   talking while using their screen, hands over such a video, or wants to process recordings from the Blurt app.
-  Triggers: "blurt", "/blurt", "开始吐槽", "吐槽鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
+  Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始吐槽", "吐槽鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
   "turn this recording into issues", "处理我录的视频", "process my recordings".
 ---
 
