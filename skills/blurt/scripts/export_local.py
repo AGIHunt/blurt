@@ -38,10 +38,6 @@ COMMON = ["id", "title", "time", "quote", "frames", "clip", "source", "tags", "q
 SKIP = {"kind", "status", "exported", "confidence", "merged_from", "_touched", "_dropped"}
 
 
-def live_issues(data: dict) -> list[dict]:  # kept for feishu.py
-    return live_items(data, "issue")
-
-
 def text(v) -> str:
     if isinstance(v, list):
         return "\n".join(f"{n}. {x}" if not isinstance(x, dict) else json.dumps(x, ensure_ascii=False) for n, x in enumerate(v, 1))
@@ -59,7 +55,7 @@ def main():
     p.add_argument("--lang")
     a = p.parse_args()
     session = Path(a.session)
-    data = load_session(session) or die("no items.json / issues.json in this session")
+    data = load_session(session) or die("no items.json in this session")
     lang = a.lang or ("zh" if str(data.get("language", "")).startswith("zh") else "en")
     L = LABELS[lang]
     out = Path(a.out or session)

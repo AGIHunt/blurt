@@ -316,7 +316,7 @@ const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched
 
 async function load(){
   data=await (await fetch("/api/items")).json();
-  data.items=data.items||data.issues||[];delete data.issues;
+  data.items=data.items||[];
   data.items.forEach(i=>{if(!i.kind)i.kind="issue"});
   // anything already deleted before this review is hidden; reviewer decisions are tracked with _touched/_dropped
   data.items=data.items.filter(i=>!(i.status==="deleted"&&!i._dropped));

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Local review page for a session's items.json (legacy issues.json works too). Blocks until the user clicks "Confirm" in the browser
+"""Local review page for a session's items.json. Blocks until the user clicks "Confirm" in the browser
 (or Ctrl+C), then exits — run it in the background and continue when it finishes.
 
   review.py SESSION_DIR [--port 0] [--no-open]
@@ -48,7 +48,7 @@ def make_handler(session: Path, done: threading.Event):
             if path in ("/icon.png", "/favicon.ico"):
                 icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
                 return self._send(200, icon.read_bytes(), "image/png") if icon.exists() else self._send(404, b"", "text/plain")
-            if path in ("/api/items", "/api/issues"):
+            if path == "/api/items":
                 return self._send(200, json.dumps(load_session(session) or {"items": []}).encode(), "application/json")
             if path.startswith("/files/"):
                 return self._file(path[len("/files/"):])
@@ -77,7 +77,7 @@ def make_handler(session: Path, done: threading.Event):
         def do_POST(self):
             path = urlparse(self.path).path
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            if path in ("/api/items", "/api/issues", "/api/confirm"):
+            if path in ("/api/items", "/api/confirm"):
                 data = json.loads(body or b"{}")
                 if path == "/api/confirm":
                     data["reviewed"] = True
@@ -99,7 +99,7 @@ def main():
     a = p.parse_args()
     session = Path(a.session)
     if load_session(session) is None:
-        die(f"{session}: no items.json (or issues.json) yet")
+        die(f"{session}: no items.json yet")
     done = threading.Event()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(session, done))
     url = f"http://127.0.0.1:{srv.server_address[1]}/"

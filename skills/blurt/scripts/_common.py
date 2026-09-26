@@ -167,19 +167,9 @@ def fix_tcl_env() -> None:
         return
 
 
-# ------------------------------------------------------------------ session outputs (items.json; issues.json = legacy)
+# ------------------------------------------------------------------ session output: items.json
 def load_session(session: Path) -> dict | None:
-    """Return the session's output normalised to {"items": [...], ...}; every item has a `kind`."""
-    session = Path(session)
-    data = load_json(session / "items.json")
-    if data is None:
-        data = load_json(session / "issues.json")
-        if data is None:
-            return None
-        data["items"] = data.pop("issues", [])
-    for it in data.get("items", []):
-        it.setdefault("kind", "issue")
-    return data
+    return load_json(Path(session) / "items.json")
 
 
 def save_session(session: Path, data: dict) -> None:

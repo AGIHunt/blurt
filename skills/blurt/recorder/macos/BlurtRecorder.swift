@@ -60,7 +60,7 @@ struct Options {
     }
 }
 
-// MARK: - Standalone app mode (double-click Blurt.app): recordings land in ~/Movies/Blurt/<timestamp>/
+// MARK: - Config shared with record.py (~/.blurt/config.json)
 
 let configURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".blurt/config.json")
 
@@ -1395,12 +1395,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         busy = true
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
             DispatchQueue.main.async {
-                if let err = err {
+                if err != nil {
                     self.busy = false
                     try? FileManager.default.removeItem(at: dir)
-                    self.alert(L("需要「屏幕录制」权限", "Screen Recording permission needed"),
-                               L("请在 系统设置 → 隐私与安全性 → 录屏与系统录音 中打开「Blurt」，然后重新打开吐槽鸡。\n\n\(err.localizedDescription)",
-                                 "Enable “Blurt” in System Settings → Privacy & Security → Screen & System Audio Recording, then reopen blurt."))
+                    self.permissionHelp()
                     return
                 }
                 if useLast, let r = opts.lastRegion { self.begin(r) } else { self.pick() }
@@ -1527,8 +1525,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for d in recents {
             let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("meta.json")))) as? [String: Any]
             let dur = fmtDur(meta?["duration"] as? Double ?? 0)
-            let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("issues.json").path)
-                || FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
+            let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
             let name = d.lastPathComponent
             let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
             let it = NSMenuItem(title: "\(pretty)  ·  \(dur)\(done ? "  ✓" : "")\(processing.contains(d.path) ? "  …" : "")", action: nil, keyEquivalent: "")
@@ -1640,6 +1637,32 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         toastWin = win
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self, weak win] in
             if self?.toastWin === win { win?.orderOut(nil) }
+        }
+    }
+
+    func permissionHelp() {
+        let a = NSAlert()
+        a.messageText = L("需要「录屏」权限", "Screen Recording permission needed")
+        a.informativeText = L("""
+            在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开吐槽鸡（macOS 只在启动时读取权限）。
+
+            如果列表里已经是打开的：选中「Blurt」点下面的「−」删掉，再重新打开吐槽鸡授权一次（旧版本留下的授权对新版本无效）。
+            """, """
+            Turn on “Blurt” in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen blurt \
+            (macOS reads the permission at launch).
+
+            Already on? Select “Blurt”, remove it with “−”, reopen blurt and allow it again (a grant from an older build doesn't carry over).
+            """)
+        a.addButton(withTitle: L("打开系统设置", "Open System Settings"))
+        a.addButton(withTitle: L("退出吐槽鸡", "Quit blurt"))
+        a.addButton(withTitle: L("稍后", "Later"))
+        activateApp()
+        switch a.runModal() {
+        case .alertFirstButtonReturn:
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+        case .alertSecondButtonReturn:
+            NSApp.terminate(nil)
+        default: break
         }
     }
 

@@ -36,8 +36,7 @@ kind-specific fields come from its **lens** (`reference/lenses/<kind>.md`, or a 
 
 Unknown fields are fine — the review page shows any extra string / list fields generically, exporters ignore them.
 
-Backward compatibility: older sessions have `issues.json` with `issues: [...]` (no `kind`). Every script reads
-`items.json` first and falls back to `issues.json`, treating those entries as `kind: "issue"`.
+Every item must have a `kind`.
 
 ## Custom lenses
 

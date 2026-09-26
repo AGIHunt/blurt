@@ -330,7 +330,7 @@ def main():
         return
 
     session = Path(a.session)
-    data = load_session(session) or die("no items.json / issues.json in this session")
+    data = load_session(session) or die("no items.json in this session")
     lang = "zh" if str(data.get("language", "")).startswith("zh") else "en"
     mapping = default_map(lang, a.kind)
     if a.map:
@@ -343,7 +343,7 @@ def main():
     todo = [i for i in live_items(data, a.kind) if not (i.get("exported") or {}).get("feishu_done")]
     if a.dry_run:
         print(json.dumps({"backend": be.name, "base": base, "table": table, "will_create_columns": missing,
-                          "issues": len(todo), "mapping": mapping}, ensure_ascii=False, indent=2))
+                          "items": len(todo), "mapping": mapping}, ensure_ascii=False, indent=2))
         return
     for col, kind in missing.items():
         be.add_field(base, table, col, kind)

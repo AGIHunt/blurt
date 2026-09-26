@@ -277,7 +277,7 @@ def native_binary(build: bool = True) -> Path | None:
     shutil.move(str(tmp), exe)
     (APP_BUNDLE / "Contents" / "Info.plist").write_text(INFO_PLIST, encoding="utf-8")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
-    run(["codesign", "--force", "--sign", "-", str(APP_BUNDLE)], check=False)
+    sign_app(APP_BUNDLE)
     stamp.write_text(digest)
     ensure_app_installed(force=True)
     return exe
@@ -298,7 +298,7 @@ def ensure_app_installed(force: bool = False) -> Path | None:
             dest.parent.mkdir(exist_ok=True)
             shutil.rmtree(dest, ignore_errors=True)
             shutil.copytree(APP_BUNDLE, dest, symlinks=True)
-            run(["codesign", "--force", "--sign", "-", str(dest)], check=False)
+            sign_app(dest)
             print(f"installed standalone recorder: {dest}", file=sys.stderr, flush=True)
             return dest
         if IS_WIN:
@@ -316,6 +316,13 @@ def ensure_app_installed(force: bool = False) -> Path | None:
     except Exception as e:  # never block a recording on this
         print(f"(could not install standalone recorder: {e})", file=sys.stderr)
     return None
+
+
+def sign_app(bundle: Path) -> None:
+    """Ad-hoc sign with a designated requirement on the bundle id (not the default per-build cdhash), so macOS keeps
+    the Screen Recording / Microphone grant across rebuilds and updates instead of silently revoking it."""
+    run(["codesign", "--force", "--sign", "-", "--identifier", "dev.blurt.recorder",
+         "-r=designated => identifier \"dev.blurt.recorder\"", str(bundle)], check=False)
 
 
 def make_icns(dest: Path) -> None:
@@ -338,11 +345,10 @@ def inbox_dir() -> Path:
 
 
 def recording_roots() -> list[Path]:
-    """Everywhere recordings may live: default workspace, projects bound in the app, the legacy location."""
+    """Everywhere recordings may live: the default workspace and projects bound in the app."""
     roots = [inbox_dir()]
     for w in global_config().get("record", {}).get("workspaces", []) or []:
         roots.append(Path(w) / ".blurt" / "sessions")
-    roots.append(Path.home() / ("Movies" if IS_MAC else "Videos") / "Blurt")
     return [r for r in dict.fromkeys(roots) if r.exists()]
 
 
@@ -606,7 +612,7 @@ def cmd_inbox(_a) -> None:
     dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists()]
     for d in sorted(dirs, key=lambda x: x.name, reverse=True):
         meta = load_json(d / "meta.json", {}) or {}
-        out = load_json(d / "items.json") or load_json(d / "issues.json")
+        out = load_json(d / "items.json")
         rows.append({"session": str(d), "duration": meta.get("duration") or round(probe_duration(d / "recording.mp4"), 1),
                      "author": meta.get("author"), "processed": out is not None,
                      "reviewed": bool((out or {}).get("reviewed"))})
