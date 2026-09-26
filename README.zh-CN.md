@@ -36,7 +36,7 @@ npx skills add AGIHunt/blurt
 ```
 <sub>Claude Code 也可以用 <code>/plugin marketplace add AGIHunt/blurt</code>，或者直接把本仓库地址丢给你的 agent，让它帮你装。</sub>
 
-然后在任意项目里对 agent 说 **「开始口喷」**（「开始吐槽」也行）。首次运行会按你的电脑选好语音模型，并装好菜单栏里的 **Blurt** App。
+然后在任意项目里对 agent 说 **「开始口喷」**。首次运行会按你的电脑选好语音模型，并装好菜单栏里的 **Blurt** App。
 
 ## 用起来是什么样
 
