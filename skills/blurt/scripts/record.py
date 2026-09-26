@@ -334,15 +334,11 @@ def sign_app(bundle: Path) -> None:
 
 
 def make_menu_icon(res: Path) -> None:
-    """Menu-bar icon: the logo trimmed to its content, 18 pt tall (36 px @2x)."""
-    if not ICON.exists():
-        return
-    tmp = BLURT_HOME / "build" / "menu.png"
-    tmp.parent.mkdir(parents=True, exist_ok=True)
-    # crop to the logo's content box (transparent margins trimmed)
-    run(["sips", "-c", "349", "425", "--cropOffset", "80", "47", str(ICON), "--out", str(tmp)], check=False)
-    run(["sips", "-Z", "44", str(tmp), "--out", str(res / "MenuIcon@2x.png")], check=False)
-    run(["sips", "-Z", "22", str(tmp), "--out", str(res / "MenuIcon.png")], check=False)
+    """Menu-bar icon: a monochrome template (macOS tints it for light / dark menu bars)."""
+    for name in ("MenuIconTemplate.png", "MenuIconTemplate@2x.png"):
+        src = ICON.parent / name
+        if src.exists():
+            shutil.copy(src, res / name)
 
 
 def make_icns(dest: Path) -> None:

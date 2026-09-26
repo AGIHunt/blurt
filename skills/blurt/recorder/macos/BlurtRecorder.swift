@@ -1550,13 +1550,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// The chicken from the app icon, full colour, 18 pt tall (MenuIcon.png is generated at build time).
+    /// The chicken as a monochrome template image, like every other menu-bar icon (macOS tints it).
     lazy var menuIcon: NSImage? = {
-        let img = Bundle.main.image(forResource: "MenuIcon")
+        let img = Bundle.main.image(forResource: "MenuIconTemplate")
             ?? NSImage(systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: "blurt")
         if let i = img, i.size.height > 0 {
             i.size = NSSize(width: 18 * i.size.width / i.size.height, height: 18)
-            i.isTemplate = Bundle.main.image(forResource: "MenuIcon") == nil
+            i.isTemplate = true
         }
         return img
     }()
