@@ -1,82 +1,84 @@
-<p align="center"><img src="assets/logo.png" width="140" alt="blurt 吐槽鸡"></p>
-<h1 align="center">blurt 🐔 吐槽鸡</h1>
-<p align="center"><b>Just blurt it. Your agent files the bugs.</b><br>
-Record your screen, rant out loud, get clean tickets. · <a href="README.zh-CN.md">中文</a></p>
+<p align="center"><img src="assets/logo.png" width="132" alt="blurt"></p>
+<h1 align="center">blurt 🐔</h1>
+<p align="center"><b>Show it. Say it. Your AI gets it.</b><br>
+Record your screen, think out loud — your coding agent turns it into bug tickets, idea boards and todos.<br>
+<a href="README.zh-CN.md">中文</a> · works with Claude Code, Codex and any agent that runs skills</p>
 
 ---
 
-Polishing an AI-built product means hundreds of small notes. Writing each one up — screenshot, red box,
-"expected vs actual", repro steps, owner — caps you at 10–20 an hour. **blurt** flips it: you use the app and
-talk, like you would to a colleague sitting next to you. Jump between modules, change your mind, point with the
-mouse. Your coding agent (Claude Code, Codex, …) turns the recording into a reviewed issue list with
-screenshots, clips and **suspected code locations**, then files it to Feishu/Lark Bitable, CSV, GitHub…
+**Voice alone is blind. Screenshots plus typing is slow.** The most natural way to tell an AI what you mean is the
+way you'd tell a colleague sitting next to you: point at the screen and talk. blurt records exactly that, and
+your agent does the rest:
 
-```
-you: /blurt                       🐔 checks env → starts recording
-you: (use the app, talk for 30 min)
-you: done
-🐔: transcribes locally → splits into issues → picks & marks frames → finds code
-🐔: opens a review page (or lists them in chat) → you tweak → exports
-```
+- splits a rambling half hour into separate items, even when you jump between topics and correct yourself
+- picks the right frame for each one and boxes the exact spot, using where your mouse actually was
+- writes it up: actual vs. expected, repro steps, owner, and **the code that's probably responsible**
+- lets you triage it in a review page, one item at a time with the keyboard
+- files it to Feishu/Lark, GitHub, Linear or Markdown, or goes straight to fixing it
 
-## Why it's different
+> What used to take two days of screenshots, red boxes and spreadsheet rows is now a 30-minute walkthrough.
 
-- **One recording → many issues.** Topic-jumping, corrections, and revisits are handled by the model.
-- **Runs inside your repo.** Every issue gets `code_refs` — the fix is one prompt away.
-- **Local-first ASR.** SenseVoice via sherpa-onnx (~240 MB, fast on any CPU, great zh/en code-switching);
-  Whisper on Apple Silicon / NVIDIA; or your own Groq/OpenAI/DashScope key. Nothing leaves your machine by default.
-- **Language-agnostic.** Speak any language; issues come out in it.
-- **Agent-native.** Deterministic work (recording, ASR, frames) is in scripts; judgement is left to the model.
+## What people blurt
 
-## Install
-
-Requirements: macOS or Windows, [`uv`](https://docs.astral.sh/uv/), `ffmpeg`.
-
-**Claude Code**
-```
-/plugin marketplace add AGIHunt/blurt
-/plugin install blurt@blurt
-```
-**Codex / other agents** — copy `skills/blurt` into your agent's skills folder (e.g. `~/.codex/skills/blurt`,
-`~/.claude/skills/blurt`), or `npx skills add AGIHunt/blurt`.
-
-Then in your project: say **"/blurt"** or **"开始吐槽"**. First run sets up ASR (asks before downloading) and
-checks screen/mic permissions (macOS: grant *Screen Recording* + *Microphone* to the app running your agent).
-
-## Recording that stays out of your way
-
-- **Pick exactly what's recorded** — drag an area, click a window, or full screen. Tabs, bookmarks and other
-  windows stay private. The last area is remembered.
-- **3-2-1 countdown** (click to skip), then a tiny floating bar: timer · mic level · ⏸ pause · ↺ restart ·
-  **Finish**. `⌥⇧P` pause/resume, `⌥⇧S` finish (Windows: `Alt+Shift`). The bar is never in the video.
-- **Finish on the bar** — your agent is notified and starts processing; no need to switch back to the chat.
-- Native ScreenCaptureKit recorder on macOS (built locally on first use); Tk + ffmpeg on Windows.
-
-## Record now, process later
-
-The first time blurt records, it also installs a standalone **Blurt** app (Applications on macOS, Start menu on
-Windows) — nothing extra to do. Record whenever (or hand the app to a teammate); videos land in `~/Movies/Blurt`. Later, tell your agent
-"process my blurt recordings" and it works through the inbox in one go.
-
-Already have a video from QuickTime, OBS, Loom or a phone? "Turn `~/Desktop/feedback.mov` into issues" works too.
-
-## Review like triage, not like a form
-
-One issue at a time, full-screen evidence on the left, editable fields on the right: `A` keep, `X` drop, `J/K`
-next/prev, `Z` undo, `M` merge into previous, `1/2/3` severity, `Space` play the clip, `O` jump to that moment in
-the recording. Or switch to a list with `G`.
-
-## Pieces
-
-| script | does |
+| | |
 |---|---|
-| `doctor.py` | environment check + ASR recommendation for this machine |
-| `record.py` | ffmpeg screen + mic capture (macOS avfoundation, Windows ddagrab/gdigrab) |
-| `transcribe.py` | VAD → local/cloud ASR → timestamped transcript |
-| `frames.py` | activity scan, candidate frames, contact sheets, red boxes, clips |
-| `review.py` | local review page; blocks until you confirm |
-| `export_local.py` / `feishu.py` | Markdown + CSV / Feishu Bitable |
+| 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. This is the fastest way to push AI to the finish line. |
+| 💡 **Capture ideas while browsing** | "I like how this site does onboarding… and this pricing page…" You get an idea board: each idea, why you had it, where it came from, the next step, plus a one-page digest. |
+| 🤝 **Hand off from anyone** | PMs, designers, ops, clients: anyone can record with the Blurt app, no repo needed, and send the video. The developer's agent processes it with the code at hand. |
+| 🔎 **Research and walkthroughs** | Competitor tours, UX research, "how this works": you get notes and findings with the frames to prove them. |
 
-Roadmap: cursor-trajectory capture, on-screen annotation overlay, browser console/network capture — see [TODO.md](TODO.md).
+One recording can mix all of these. The agent decides what each item is, and teams can add their own
+[lenses](skills/blurt/reference/schema.md#custom-lenses) (e.g. `ux-research`, `sales-call`, `sop`).
 
-MIT License.
+## Get it
+
+```bash
+npx skills add AGIHunt/blurt
+```
+<sub>Claude Code: <code>/plugin marketplace add AGIHunt/blurt</code> · or just paste this repo's URL to your agent and ask it to install the skill.</sub>
+
+Then, in any project, tell your agent **"start blurt"** / **「开始吐槽」**.
+The first run picks a speech model for your machine and installs the **Blurt** menu-bar app.
+
+## How it feels
+
+1. **Draw the area** to record: drag a region, click a window, or go full screen. Tabs, bookmarks and everything
+   else stay out of the video.
+2. **3-2-1**, then talk. A tiny floating bar shows time and mic level, with ⏸ pause, ↺ redo and **Finish**. The bar
+   itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧S` finish.
+3. Click **Finish** and get back to work. Your agent transcribes locally, writes the items, and opens the review page.
+4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
+   or say "fix them".
+
+**Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
+finishes it; `⌥⇧B` opens the menu. Recordings go to a workspace: `~/Blurt` by default, or a project you bind, so
+your agent can process them with the code. Turn on *After recording → Claude Code / Codex* and every recording gets
+processed in the background, with the review page popping up when it's ready.
+
+## Solo or team
+
+- **Solo:** record → your agent in the same repo processes and fixes. No forms, no copy-paste.
+- **Team:** teammates without a repo just [download Blurt for macOS](https://github.com/AGIHunt/blurt/releases/latest)
+  (unzip, then right-click → Open the first time) and press `⌥⇧R`. Anyone records with the app, then uses *Recent recordings → Copy video* and pastes it into
+  Slack/Feishu. Or bind a shared project folder. Items keep the recorder's name, and exports land in the team's
+  existing tables with your column names.
+
+## Under the hood
+
+- **Local-first speech recognition.** [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) via sherpa-onnx is
+  about 240 MB, very fast on any CPU, and handles mixed Chinese/English well. Whisper on Apple Silicon or NVIDIA.
+  You can also bring your own Groq, OpenAI or DashScope key. By default nothing leaves your machine.
+- **Native recorder.** ScreenCaptureKit on macOS with audio and video in sync to within one frame. Tk + ffmpeg on
+  Windows.
+- **Deterministic tools, flexible model.** Scripts handle the recording, speech-to-text, frames, the review page
+  and exports. All the judgement is left to your agent (see [SKILL.md](skills/blurt/SKILL.md)), so it adapts to your
+  product, your language and your team.
+- **Any language in, same language out.** Speak Chinese, English, Japanese…; the items come back in your language.
+
+## Roadmap
+
+Browser capture (console errors and network failures lined up with the video) · circle-to-highlight gestures ·
+Windows tray app · a hosted speech API · more lenses and exporters · toward a personal assistant that watches,
+listens and keeps your projects moving. See [TODO.md](TODO.md).
+
+<p align="center"><sub>MIT · made by <a href="https://github.com/AGIHunt">AGI Hunt</a> · 🐔 if blurt saved you a day, a ⭐ helps others find it</sub></p>

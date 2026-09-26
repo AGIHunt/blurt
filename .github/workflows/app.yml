@@ -1,0 +1,34 @@
+name: Blurt.app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build universal Blurt.app
+        env:
+          BLURT_HOME: ${{ runner.temp }}/blurt
+          BLURT_UNIVERSAL: "1"
+        run: |
+          mkdir -p "$BLURT_HOME" && echo '{"record": {"install_app": false}}' > "$BLURT_HOME/config.json"
+          uv run skills/blurt/scripts/record.py build
+          lipo -info "$BLURT_HOME/Blurt.app/Contents/MacOS/blurt-recorder"
+          ditto -c -k --keepParent "$BLURT_HOME/Blurt.app" Blurt-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blurt-macOS
+          path: Blurt-macOS.zip
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Blurt-macOS.zip

@@ -16,7 +16,7 @@ Engines (auto-selected; override with --engine or ~/.blurt/config.json → recor
   record.py start [--session DIR] [--region x,y,w,h | --last-region] [--engine E] [--countdown 3]
                                         run in the background; exits when the user stops (prints DONE …)
   record.py stop | pause | resume | restart | discard     control the active recording from the chat
-  record.py inbox                       recordings made with the standalone app (~/Movies/Blurt) + processed?
+  record.py inbox                       recordings made with the Blurt app (~/Blurt, bound projects) + processed?
   record.py install-app                 double-clickable recorder: ~/Applications/Blurt.app / Start-menu "Blurt"
   record.py status                      active recording, if any
   record.py devices                     screens / microphones (JSON)
@@ -255,7 +255,19 @@ def native_binary(build: bool = True) -> Path | None:
     print("building native recorder (one-time, ~20s)…", file=sys.stderr, flush=True)
     tmp = BLURT_HOME / "build" / "blurt-recorder"
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    r = run([swiftc, "-O", "-swift-version", "5", str(SWIFT_SRC), "-o", str(tmp)], check=False)
+    if os.environ.get("BLURT_UNIVERSAL"):  # release builds: arm64 + x86_64 in one binary
+        parts = []
+        for arch in ("arm64", "x86_64"):
+            out_arch = tmp.with_name(f"blurt-recorder-{arch}")
+            r = run([swiftc, "-O", "-swift-version", "5", "-target", f"{arch}-apple-macos13.0", str(SWIFT_SRC), "-o", str(out_arch)],
+                    check=False)
+            if r.returncode:
+                print(f"build failed for {arch}:\n{r.stderr[-1500:]}", file=sys.stderr)
+                return None
+            parts.append(str(out_arch))
+        r = run(["lipo", "-create", *parts, "-output", str(tmp)], check=False)
+    else:
+        r = run([swiftc, "-O", "-swift-version", "5", str(SWIFT_SRC), "-o", str(tmp)], check=False)
     if r.returncode:
         print(f"native recorder build failed, falling back:\n{r.stderr[-1500:]}", file=sys.stderr)
         return None
@@ -321,8 +333,17 @@ def make_icns(dest: Path) -> None:
 
 
 def inbox_dir() -> Path:
-    """Where standalone recordings go (and --inbox sessions): ~/Movies/Blurt or ~/Videos/Blurt."""
-    return Path.home() / ("Movies" if IS_MAC else "Videos") / "Blurt"
+    """The default workspace's recordings (the Blurt app and --inbox): ~/Blurt/recordings."""
+    return Path.home() / "Blurt" / "recordings"
+
+
+def recording_roots() -> list[Path]:
+    """Everywhere recordings may live: default workspace, projects bound in the app, the legacy location."""
+    roots = [inbox_dir()]
+    for w in global_config().get("record", {}).get("workspaces", []) or []:
+        roots.append(Path(w) / ".blurt" / "sessions")
+    roots.append(Path.home() / ("Movies" if IS_MAC else "Videos") / "Blurt")
+    return [r for r in dict.fromkeys(roots) if r.exists()]
 
 
 def tk_available() -> bool:
@@ -582,14 +603,14 @@ def cmd_devices(_a) -> None:
 def cmd_inbox(_a) -> None:
     """Recordings made with the standalone app (or --inbox) and whether they've been turned into issues yet."""
     rows = []
-    for d in sorted(inbox_dir().glob("*/"), reverse=True):
-        v = d / "recording.mp4"
-        if not v.exists():
-            continue
+    dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists()]
+    for d in sorted(dirs, key=lambda x: x.name, reverse=True):
         meta = load_json(d / "meta.json", {}) or {}
-        rows.append({"session": str(d), "duration": meta.get("duration") or round(probe_duration(v), 1),
-                     "processed": (d / "issues.json").exists(), "exported": bool((load_json(d / "issues.json", {}) or {}).get("reviewed"))})
-    print(json.dumps({"inbox": str(inbox_dir()), "recordings": rows}, ensure_ascii=False, indent=2))
+        out = load_json(d / "items.json") or load_json(d / "issues.json")
+        rows.append({"session": str(d), "duration": meta.get("duration") or round(probe_duration(d / "recording.mp4"), 1),
+                     "author": meta.get("author"), "processed": out is not None,
+                     "reviewed": bool((out or {}).get("reviewed"))})
+    print(json.dumps({"roots": [str(r) for r in recording_roots()], "recordings": rows}, ensure_ascii=False, indent=2))
 
 
 def cmd_install_app(_a) -> None:
@@ -667,7 +688,7 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("start")
     s.add_argument("--session", help="session dir (default: ./.blurt/sessions/<timestamp>)")
-    s.add_argument("--inbox", action="store_true", help="save to the recordings inbox (~/Movies/Blurt) instead of the project")
+    s.add_argument("--inbox", action="store_true", help="save to the default workspace (~/Blurt/recordings) instead of the project")
     s.add_argument("--engine", choices=["native", "tk", "ffmpeg"])
     s.add_argument("--region", help="x,y,w,h in screen points — skip the picker")
     s.add_argument("--last-region", action="store_true", help="reuse the last area without asking")

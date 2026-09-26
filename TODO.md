@@ -23,6 +23,18 @@
 - [ ] Verify the Tk recorder + Start-menu shortcut on real Windows 10/11 (DPI, multi-monitor, gdigrab region)
 - [ ] Use events.jsonl clicks/cursor in frame selection (auto red circle at the click position)
 
+## v0.3
+- [x] Generalized beyond bugs: items with kinds (issue / idea / note / task) + custom lenses, session digest
+- [x] Review page: per-kind layouts, generic fields for custom lenses, Overview tab, kind filters
+- [x] Exports: Markdown grouped by kind, one CSV per kind, Feishu `--kind` with per-kind default columns
+- [x] Menu-bar resident app: ⌥⇧R start/finish, ⌥⇧B menu, workspaces (~/Blurt or bound project), recent recordings
+      (copy to share / reveal / process), background processing via Claude Code or Codex, open at login
+- [x] Region picker fixes: click-through hole, drag vs move, Esc/Enter without app activation
+- [x] Universal Blurt.app built in CI (attach to releases on `v*` tags)
+- [ ] Developer ID signing + notarization (no right-click-Open on first launch)
+- [ ] Demo GIF / video for the README
+- [ ] Windows tray app (resident mode parity)
+
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): circle-gesture detection,
       Windows hook → precise crops and auto red circles, no pixel guessing

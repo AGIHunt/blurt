@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Local review page for a session's issues.json. Blocks until the user clicks "Confirm" in the browser
+"""Local review page for a session's items.json (legacy issues.json works too). Blocks until the user clicks "Confirm" in the browser
 (or Ctrl+C), then exits — run it in the background and continue when it finishes.
 
   review.py SESSION_DIR [--port 0] [--no-open]
@@ -19,13 +19,12 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, load_json, save_json  # noqa: E402
+from _common import die, load_session, save_session  # noqa: E402
 
 HTML = Path(__file__).with_name("review.html")
 
 
 def make_handler(session: Path, done: threading.Event):
-    issues_path = session / "issues.json"
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -49,8 +48,8 @@ def make_handler(session: Path, done: threading.Event):
             if path in ("/icon.png", "/favicon.ico"):
                 icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
                 return self._send(200, icon.read_bytes(), "image/png") if icon.exists() else self._send(404, b"", "text/plain")
-            if path == "/api/issues":
-                return self._send(200, json.dumps(load_json(issues_path, {})).encode(), "application/json")
+            if path in ("/api/items", "/api/issues"):
+                return self._send(200, json.dumps(load_session(session) or {"items": []}).encode(), "application/json")
             if path.startswith("/files/"):
                 return self._file(path[len("/files/"):])
             self._send(404, b"not found", "text/plain")
@@ -78,11 +77,11 @@ def make_handler(session: Path, done: threading.Event):
         def do_POST(self):
             path = urlparse(self.path).path
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            if path in ("/api/issues", "/api/confirm"):
+            if path in ("/api/items", "/api/issues", "/api/confirm"):
                 data = json.loads(body or b"{}")
                 if path == "/api/confirm":
                     data["reviewed"] = True
-                save_json(issues_path, data)
+                save_session(session, data)
                 self._send(200, b'{"ok":true}', "application/json")
                 if path == "/api/confirm":
                     done.set()
@@ -99,8 +98,8 @@ def main():
     p.add_argument("--no-open", action="store_true")
     a = p.parse_args()
     session = Path(a.session)
-    if not (session / "issues.json").exists():
-        die(f"{session}/issues.json not found")
+    if load_session(session) is None:
+        die(f"{session}: no items.json (or issues.json) yet")
     done = threading.Event()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(session, done))
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
@@ -113,10 +112,14 @@ def main():
     except KeyboardInterrupt:
         pass
     srv.shutdown()
-    data = load_json(session / "issues.json", {})
-    items = data.get("issues", [])
+    data = load_session(session) or {}
+    items = data.get("items", [])
     kept = [i for i in items if i.get("status") != "deleted"]
-    print(json.dumps({"reviewed": bool(data.get("reviewed")), "issues": len(kept), "deleted": len(items) - len(kept)}))
+    kinds: dict[str, int] = {}
+    for i in kept:
+        kinds[i["kind"]] = kinds.get(i["kind"], 0) + 1
+    print(json.dumps({"reviewed": bool(data.get("reviewed")), "kept": len(kept), "kinds": kinds,
+                      "deleted": len(items) - len(kept), "file": str(session / "items.json")}))
 
 
 if __name__ == "__main__":

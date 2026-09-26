@@ -713,6 +713,13 @@ func overlayWindow(_ frame: NSRect, view: NSView) -> NSWindow {
 
 // MARK: - Recorder
 
+func audioInputDevices() -> [AVCaptureDevice] {
+    if #available(macOS 14.0, *) {
+        return AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified).devices
+    }
+    return AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInMicrophone, .externalUnknown], mediaType: .audio, position: .unspecified).devices
+}
+
 final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     let region: CGRect
     var stream: SCStream?
@@ -797,8 +804,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         if opts.mic, #available(macOS 15.0, *) {
             cfg.captureMicrophone = true
             if let name = opts.micName,
-               let dev = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio,
-                                                          position: .unspecified).devices
+               let dev = audioInputDevices()
                 .first(where: { $0.localizedName.localizedCaseInsensitiveContains(name) }) {
                 cfg.microphoneCaptureDeviceID = dev.uniqueID
             }
@@ -845,7 +851,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     }
 
     func setupLegacyMic() throws {
-        let devs = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified).devices
+        let devs = audioInputDevices()
         guard let dev = (opts.micName.flatMap { n in devs.first { $0.localizedName.localizedCaseInsensitiveContains(n) } })
                 ?? AVCaptureDevice.default(for: .audio) else { return }
         let cs = AVCaptureSession()

@@ -143,6 +143,20 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
 .code button:hover{border-color:var(--line-2);color:var(--ink)}
 .code button em{font-style:normal;color:var(--faint);font-family:inherit;flex:none}
 
+.qi .ki{margin-right:6px;font-size:12px}
+.kind-chip{background:var(--panel-2)}
+.f.big textarea{font-size:15px;line-height:1.6;min-height:84px}
+.ov{max-width:860px;margin:0 auto;padding:10px 4px 60px}
+.ov h1{font-size:30px;letter-spacing:-.02em;margin:10px 0 12px}
+.ov h3{margin:26px 0 10px;font-size:15px;color:var(--ink-2)}
+.ov-kinds{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.ov .md{background:var(--panel);border-radius:16px;padding:18px 22px;color:var(--ink-2);font-size:15px;line-height:1.7}
+.ov .md h2,.ov .md h3,.ov .md h4{color:var(--ink);margin:14px 0 6px}.ov .md ul{padding-left:20px;margin:6px 0}.ov .md code{font-family:var(--mono);font-size:13px;background:var(--panel-2);padding:1px 5px;border-radius:5px}
+.ov .md a{color:var(--accent)}
+.ov-list{display:flex;flex-direction:column;gap:6px}
+.ov-list button{display:flex;gap:12px;text-align:left;padding:10px 14px;border-radius:12px;background:var(--panel);color:var(--ink);font-weight:550}
+.ov-list button:hover{background:var(--panel-2)}.ov-list button span{font:600 12px/20px var(--mono);color:var(--faint);min-width:52px}
+
 /* ---------- list view ---------- */
 .list{height:calc(100vh - 58px);overflow:auto;padding:18px 24px 60px}
 .toolbar{display:flex;gap:10px;align-items:center;margin:0 auto 14px;max-width:1280px}
@@ -184,7 +198,7 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
 .done .big{width:88px;height:88px;margin:0 auto}
 .done h2{margin:10px 0 6px;font-size:24px}
 .done p{color:var(--mute)}
-@media (max-width:1180px){.focus{grid-template-columns:0 minmax(0,1fr) 380px}.queue{display:none}}
+@media (max-width:1180px){.focus{grid-template-columns:minmax(0,1fr) 380px}.queue{display:none}}
 @media (max-width:1000px){.brand small,.counts,.saved,#langBtn,#helpBtn{display:none}}
 @media (max-width:860px){body{overflow:auto}.focus{display:flex;flex-direction:column;height:auto}.stage{height:64vh;flex:none}.side{overflow:visible}.progress .bar{width:90px}.act kbd,.act.ghost{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -200,6 +214,7 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
   <div class="sp"></div>
   <span class="saved" id="saved"></span>
   <div class="seg" role="tablist">
+    <button id="vOverview" data-i18n="overview" hidden></button>
     <button id="vFocus" data-i18n="focus"></button>
     <button id="vList" data-i18n="list"></button>
   </div>
@@ -230,9 +245,12 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
   <div class="toolbar">
     <input class="search" id="search">
     <div class="seg" id="filters"></div>
+    <div class="seg" id="kindFilter" hidden></div>
   </div>
   <div class="cards" id="cards"></div>
 </main>
+
+<main id="overviewView" class="list scroll" hidden></main>
 
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo"></button></div>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -245,24 +263,30 @@ const T = {
     module:"Module",owner:"Owner",actual:"Actual",expected:"Expected",steps:"Steps to reproduce",code:"Suspected code",quote:"They said",
     playOrig:"Play from recording",answer:"Your answer…",ask:"Needs your input",sevHigh:"High",sevMedium:"Medium",sevLow:"Low",
     frame:"Frame",clip:"Clip",orig:"Recording",noMedia:"No screenshot",saved:"Saved",saving:"Saving…",kept1:"Kept",dropped1:"Dropped",merged:"Merged into",
-    undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, owner…",
-    keysTitle:"Keyboard shortcuts",confirmTitle:"Hand the list back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
+    undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, tags…",
+    keysTitle:"Keyboard shortcuts",confirmTitle:"Hand this back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
     pendingAs:"Treat unreviewed as kept",reviewRest:"Review the rest",confirm:"Confirm & continue",cancel:"Cancel",
     doneTitle:"All set — back to your agent",doneBody:"You can close this tab. Your agent picks it up from here.",
     k_next:"Next / previous",k_keep:"Keep and go next",k_drop:"Drop and go next",k_undo:"Undo",k_merge:"Merge into previous",
     k_sev:"Severity high / medium / low",k_media:"Previous / next frame",k_play:"Play clip or recording",k_edit:"Edit title",
-    k_view:"Focus ⇄ list",k_finish:"Finish review",k_help:"This panel",types:{bug:"Bug",ui:"UI",ux:"UX",copy:"Copy",perf:"Perf",idea:"Idea"}},
+    k_ov:"Overview",k_view:"Focus ⇄ list",k_finish:"Finish review",k_help:"This panel",types:{bug:"Bug",ui:"UI",ux:"UX",copy:"Copy",perf:"Perf"},
+    overview:"Overview",kinds:{issue:"Issue",idea:"Idea",note:"Note",task:"Task"},allKinds:"All kinds",
+    summary:"The idea",summaryNote:"Summary",why:"Why",inspired_by:"Inspired by",next_steps:"Next steps",open_questions:"Still open",
+    details:"Details",due:"Due",tags:"Tags",source:"Source (URL)",items:"items",confirmTitle2:"Hand this back to your agent?"},
   zh:{focus:"专注",list:"列表",keep:"保留",drop:"丢弃",merge:"并入上一条",undo:"撤销",finish:"完成审核",pending:"待审",kept:"保留",dropped:"丢弃",
     module:"所属模块",owner:"负责人",actual:"实际效果",expected:"预期效果",steps:"复现步骤",code:"疑似代码位置",quote:"你当时说",
     playOrig:"回到录屏这一刻",answer:"在这里回答…",ask:"需要你确认",sevHigh:"严重",sevMedium:"一般",sevLow:"轻微",
     frame:"截图",clip:"片段",orig:"原录屏",noMedia:"没有截图",saved:"已保存",saving:"保存中…",kept1:"已保留",dropped1:"已丢弃",merged:"已并入",
-    undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、负责人…",
-    keysTitle:"快捷键",confirmTitle:"把问题清单交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
+    undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、标签…",
+    keysTitle:"快捷键",confirmTitle:"把整理结果交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
     pendingAs:"没看的也保留",reviewRest:"继续审",confirm:"确认并继续",cancel:"取消",
     doneTitle:"搞定，交回给 agent 了",doneBody:"可以关掉这个页面了，agent 会接着处理。",
     k_next:"下一条 / 上一条",k_keep:"保留并下一条",k_drop:"丢弃并下一条",k_undo:"撤销",k_merge:"并入上一条",
     k_sev:"严重程度 高 / 中 / 低",k_media:"上一张 / 下一张图",k_play:"播放片段或原录屏",k_edit:"编辑标题",
-    k_view:"专注 ⇄ 列表",k_finish:"完成审核",k_help:"显示本面板",types:{bug:"Bug",ui:"界面",ux:"体验",copy:"文案",perf:"性能",idea:"想法"}}
+    k_ov:"总览",k_view:"专注 ⇄ 列表",k_finish:"完成审核",k_help:"显示本面板",types:{bug:"Bug",ui:"界面",ux:"体验",copy:"文案",perf:"性能"},
+    overview:"总览",kinds:{issue:"问题",idea:"想法",note:"笔记",task:"待办"},allKinds:"全部类型",
+    summary:"想法",summaryNote:"概述",why:"为什么",inspired_by:"灵感来源",next_steps:"下一步",open_questions:"待想清楚",
+    details:"详情",due:"截止",tags:"标签",source:"来源链接",items:"条",confirmTitle2:"把整理结果交回 agent？"}
 };
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let lang=(store.get("blurt.lang")||navigator.language||"en").startsWith("zh")?"zh":"en";
@@ -272,32 +296,47 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const file=p=>p?"/files/"+String(p).split("/").map(encodeURIComponent).join("/"):"";
 const fmt=s=>{s=Math.max(0,+s||0);const m=Math.floor(s/60),r=Math.floor(s%60);return `${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`};
 const SEV=["high","medium","low"];
+const KIND_ICON={issue:"🐞",idea:"💡",note:"📝",task:"✅"};
+const kindOf=i=>i.kind||"issue";
+const kindLabel=k=>T[lang].kinds[k]||k;
+const kindIcon=k=>KIND_ICON[k]||"◆";
+const RESERVED=new Set(["id","kind","title","quote","time","frames","clip","source","tags","confidence","questions","answer","status","exported","merged_from","_touched","_dropped","severity","type"]);
+function mdLite(src){ // tiny markdown: headings, lists, bold, code, links
+  const lines=String(src||"").split("\n");let out="",inList=false;
+  const inline=x=>esc(x).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2" target="_blank">$1</a>');
+  for(const l of lines){const m=l.match(/^\s*[-*]\s+(.*)/),h=l.match(/^(#{1,4})\s+(.*)/);
+    if(m){if(!inList){out+="<ul>";inList=true}out+=`<li>${inline(m[1])}</li>`;continue}
+    if(inList){out+="</ul>";inList=false}
+    if(h)out+=`<h${h[1].length+1}>${inline(h[2])}</h${h[1].length+1}>`;else if(l.trim())out+=`<p>${inline(l)}</p>`}
+  return out+(inList?"</ul>":"")}
 
-let loaded=false,data={issues:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
-const live=()=>data.issues.filter(i=>i.status!=="deleted"||i._dropped);
+let loaded=false,kindF="",data={items:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
+const live=()=>data.items.filter(i=>i.status!=="deleted"||i._dropped);
 const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched?"keep":i._touched?"keep":"pending";
 
 async function load(){
-  data=await (await fetch("/api/issues")).json();
-  data.issues=data.issues||[];
+  data=await (await fetch("/api/items")).json();
+  data.items=data.items||data.issues||[];delete data.issues;
+  data.items.forEach(i=>{if(!i.kind)i.kind="issue"});
   // anything already deleted before this review is hidden; reviewer decisions are tracked with _touched/_dropped
-  data.issues=data.issues.filter(i=>!(i.status==="deleted"&&!i._dropped));
+  data.items=data.items.filter(i=>!(i.status==="deleted"&&!i._dropped));
   if(!store.get("blurt.lang")&&data.language)lang=String(data.language).startsWith("zh")?"zh":"en";
   const th=store.get("blurt.theme");if(th)document.documentElement.dataset.theme=th;
   $("#sessionName").textContent=data.session?"· "+data.session:"";
-  cur=Math.max(0,data.issues.findIndex(i=>!i._touched));
+  cur=Math.max(0,data.items.findIndex(i=>!i._touched));
   if(cur<0)cur=0;
-  view=store.get("blurt.view")||(data.issues.length>1?"focus":"list");
+  view=store.get("blurt.view")||(data.digest?"overview":data.items.length>1?"focus":"list");
+  if(view==="overview"&&!data.digest&&!data.title)view="focus";
   render(true);loaded=true;
 }
 function save(){
   $("#saved").textContent=t("saving");clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{await fetch("/api/issues",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},450);
+  saveTimer=setTimeout(async()=>{await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},450);
 }
-function snapshot(){undo.push(JSON.stringify({issues:data.issues,cur}));if(undo.length>80)undo.shift()}
-function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.issues=o.issues;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
+function snapshot(){undo.push(JSON.stringify({items:data.items,cur}));if(undo.length>80)undo.shift()}
+function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.items=o.items;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
 
-function counts(){let k=0,d=0,p=0;data.issues.forEach(i=>{const s=statusOf(i);s==="keep"?k++:s==="drop"?d++:p++});return{k,d,p,n:data.issues.length}}
+function counts(){let k=0,d=0,p=0;data.items.forEach(i=>{const s=statusOf(i);s==="keep"?k++:s==="drop"?d++:p++});return{k,d,p,n:data.items.length}}
 function renderTop(){
   const c=counts();
   $("#counts").innerHTML=`<span><span class="dot" style="background:var(--line-2)"></span><b>${c.p}</b> ${t("pending")}</span><span><span class="dot" style="background:var(--keep)"></span><b>${c.k}</b> ${t("kept")}</span><span><span class="dot" style="background:var(--drop)"></span><b>${c.d}</b> ${t("dropped")}</span>`;
@@ -305,11 +344,22 @@ function renderTop(){
   $("#finishBtn").innerHTML=`${t("finish")} <kbd style="background:rgba(0,0,0,.18);border-color:transparent;color:inherit">⌘⏎</kbd>`;
   document.querySelectorAll("[data-i18n]").forEach(e=>e.textContent=t(e.dataset.i18n));
   $("#vFocus").classList.toggle("on",view==="focus");$("#vList").classList.toggle("on",view==="list");
-  $("#focusView").hidden=view!=="focus";$("#listView").hidden=view!=="list";
+  $("#vOverview").classList.toggle("on",view==="overview");$("#vOverview").hidden=!(data.digest||data.title);
+  $("#focusView").hidden=view!=="focus";$("#listView").hidden=view!=="list";$("#overviewView").hidden=view!=="overview";
   document.documentElement.lang=lang==="zh"?"zh-CN":"en";
   $("#langLbl").textContent=lang==="zh"?"中文":"English";
 }
-function render(anim){renderTop();view==="focus"?renderFocus(anim):renderList()}
+function render(anim){renderTop();view==="focus"?renderFocus(anim):view==="list"?renderList():renderOverview()}
+function renderOverview(){
+  const ks={};data.items.forEach(i=>{const k=kindOf(i);(ks[k]=ks[k]||[]).push(i)});
+  $("#overviewView").innerHTML=`<article class="ov">
+    ${data.title?`<h1>${esc(data.title)}</h1>`:""}
+    <div class="ov-kinds">${Object.entries(ks).map(([k,v])=>`<span class="chip">${kindIcon(k)} ${esc(kindLabel(k))} · ${v.length}</span>`).join("")}</div>
+    ${data.digest?`<div class="md">${mdLite(data.digest)}</div>`:""}
+    ${Object.entries(ks).map(([k,v])=>`<h3>${kindIcon(k)} ${esc(kindLabel(k))}</h3><div class="ov-list">${v.map(i=>`<button data-k="${data.items.indexOf(i)}"><span>${esc(i.id||"")}</span>${esc(i.title)}</button>`).join("")}</div>`).join("")}
+  </article>`;
+  $("#overviewView").querySelectorAll("[data-k]").forEach(b=>b.onclick=()=>{cur=+b.dataset.k;media=0;setView("focus")});
+}
 
 /* ---------- focus ---------- */
 function mediaItems(i){
@@ -320,9 +370,9 @@ function mediaItems(i){
 }
 function renderFocus(anim){
   const q=$("#queue");
-  q.innerHTML=data.issues.map((i,k)=>{const s=statusOf(i);return `<div class="qi ${s} ${k===cur?"cur":""}" data-k="${k}"><span class="n">${String(k+1).padStart(2,"0")}</span><div style="flex:1;min-width:0"><div class="t">${esc(i.title)}</div>${(i.questions||[]).length&&!i.answer?`<div class="q">● ${t("ask")}</div>`:""}</div><span class="st"></span></div>`}).join("");
+  q.innerHTML=data.items.map((i,k)=>{const s=statusOf(i);return `<div class="qi ${s} ${k===cur?"cur":""}" data-k="${k}"><span class="n">${String(k+1).padStart(2,"0")}</span><div style="flex:1;min-width:0"><div class="t"><span class="ki">${kindIcon(kindOf(i))}</span>${esc(i.title)}</div>${(i.questions||[]).length&&!i.answer?`<div class="q">● ${t("ask")}</div>`:""}</div><span class="st"></span></div>`}).join("");
   q.querySelector(".cur")?.scrollIntoView({block:"nearest"});
-  const i=data.issues[cur];
+  const i=data.items[cur];
   const stage=$("#stage");stage.querySelector(".slide")?.remove();
   const side=$("#side");
   if(!i){side.innerHTML="";return}
@@ -337,31 +387,49 @@ function renderFocus(anim){
   slide.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{media=+b.dataset.m;renderFocus(false)});
 
   const sev=SEV.includes(i.severity)?i.severity:"medium";
-  const types=T[lang].types;
+  const types=T[lang].types,kind=kindOf(i);
+  const F=(k,label,type="area",cls="")=>{const v=i[k];
+    if(type==="text")return `<div class="f ${cls}"><label>${label}</label><input data-k="${k}" value="${esc(v)}"></div>`;
+    if(type==="list")return `<div class="f ${cls}"><label>${label}</label><textarea data-k="${k}" data-list="${k==="steps"?"num":"dash"}">${esc((v||[]).map((x,n)=>k==="steps"?`${n+1}. ${x}`:`- ${x}`).join("\n"))}</textarea></div>`;
+    return `<div class="f ${cls}"><label>${label}</label><textarea data-k="${k}">${esc(v)}</textarea></div>`};
+  let body="";
+  if(kind==="issue"){
+    body=`<div class="grid2">${F("module",t("module"),"text")}${F("owner",t("owner"),"text")}</div>${F("actual",t("actual"),"area","act-f")}${F("expected",t("expected"),"area","exp")}${F("steps",t("steps"),"list")}
+      ${(i.code_refs||[]).length?`<div class="f"><label>${t("code")}</label><div class="code">${i.code_refs.map(c=>`<button data-copy="${esc(c)}"><span>${esc(c)}</span><em>⧉</em></button>`).join("")}</div></div>`:""}`;
+  }else if(kind==="idea"){
+    body=F("summary",t("summary"),"area","big")+F("why",t("why"))+F("inspired_by",t("inspired_by"))+F("next_steps",t("next_steps"),"list")+(i.open_questions?F("open_questions",t("open_questions"),"list"):"");
+  }else if(kind==="task"){
+    body=F("details",t("details"))+`<div class="grid2">${F("owner",t("owner"),"text")}${F("due",t("due"),"text")}</div>`;
+  }else{
+    body=F("summary",kind==="note"?t("summaryNote"):t("summaryNote"),"area","big")+(i.details!==undefined||kind==="note"?F("details",t("details")):"");
+  }
+  // anything else the lens added: shown generically so custom lenses just work
+  const shown=new Set(["module","owner","actual","expected","steps","code_refs","summary","why","inspired_by","next_steps","open_questions","details","due"]);
+  for(const [k,v] of Object.entries(i)){if(RESERVED.has(k)||shown.has(k)||k.startsWith("_"))continue;
+    if(typeof v==="string")body+=F(k,k.replace(/_/g," "));else if(Array.isArray(v)&&v.every(x=>typeof x==="string"))body+=F(k,k.replace(/_/g," "),"list")}
+  body+=`<div class="grid2">${`<div class="f"><label>${t("tags")}</label><input data-k="tags" data-tags="1" value="${esc((i.tags||[]).join(", "))}"></div>`}${`<div class="f"><label>${t("source")}</label><input data-k="source" data-src="1" value="${esc(i.source?.url||"")}"></div>`}</div>`;
   side.innerHTML=`
-    <div class="idrow"><span>${esc(i.id||"")}</span>${i.merged_from?.length?`<span>+ ${i.merged_from.map(esc).join(", ")}</span>`:""}<span class="pos">${cur+1} / ${data.issues.length}</span></div>
+    <div class="idrow"><span>${esc(i.id||"")}</span>${i.merged_from?.length?`<span>+ ${i.merged_from.map(esc).join(", ")}</span>`:""}<span class="pos">${cur+1} / ${data.items.length}</span></div>
     <textarea class="title" data-k="title" rows="1">${esc(i.title)}</textarea>
     <div class="chips">
-      <button class="chip sev-${sev}" id="sevChip" title="1 / 2 / 3"><span class="sw" style="background:currentColor"></span>${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</button>
-      <button class="chip" id="typeChip">${esc(types[i.type]||i.type||"—")}</button>
+      <span class="chip kind-chip">${kindIcon(kind)} ${esc(kindLabel(kind))}</span>
+      ${kind==="issue"?`<button class="chip sev-${sev}" id="sevChip" title="1 / 2 / 3"><span class="sw" style="background:currentColor"></span>${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</button>
+      <button class="chip" id="typeChip">${esc(types[i.type]||i.type||"—")}</button>`:""}
       ${i.confidence==="low"?`<span class="chip" style="color:var(--amber)">?</span>`:""}
     </div>
     ${(i.questions||[]).length?`<div class="ask"><div class="h">● ${t("ask")}</div>${i.questions.map(q=>`<div class="qq">${esc(q)}</div>`).join("")}<input data-k="answer" placeholder="${t("answer")}" value="${esc(i.answer||"")}"></div>`:""}
     ${i.quote?`<div class="quote">${esc(i.quote)}<div class="meta">${i.time?`${fmt(i.time.start)} – ${fmt(i.time.end)}`:""}${data.source_video&&i.time?`<button class="linkbtn" id="origBtn">▶ ${t("playOrig")} <kbd>O</kbd></button>`:""}</div></div>`:""}
-    <div class="grid2"><div class="f"><label>${t("module")}</label><input data-k="module" value="${esc(i.module)}"></div>
-      <div class="f"><label>${t("owner")}</label><input data-k="owner" value="${esc(i.owner)}"></div></div>
-    <div class="f act-f"><label>${t("actual")}</label><textarea data-k="actual">${esc(i.actual)}</textarea></div>
-    <div class="f exp"><label>${t("expected")}</label><textarea data-k="expected">${esc(i.expected)}</textarea></div>
-    <div class="f"><label>${t("steps")}</label><textarea data-k="steps">${esc((i.steps||[]).map((x,n)=>`${n+1}. ${x}`).join("\n"))}</textarea></div>
-    ${(i.code_refs||[]).length?`<div class="f"><label>${t("code")}</label><div class="code">${i.code_refs.map(c=>`<button data-copy="${esc(c)}"><span>${esc(c)}</span><em>⧉</em></button>`).join("")}</div></div>`:""}`;
+    ${body}`;
   side.querySelectorAll("textarea").forEach(autosize);
   side.querySelectorAll("[data-k]").forEach(el=>el.addEventListener("input",()=>{
     const k=el.dataset.k;let v=el.value;
-    if(k==="steps")v=v.split("\n").map(x=>x.replace(/^\s*\d+[.)、]\s*/,"").trim()).filter(Boolean);
+    if(el.dataset.list)v=v.split("\n").map(x=>x.replace(/^\s*(\d+[.)、]|[-*•])\s*/,"").trim()).filter(Boolean);
+    if(el.dataset.tags)v=v.split(/[,，]/).map(x=>x.trim()).filter(Boolean);
+    if(el.dataset.src){i.source={...(i.source||{}),url:v.trim()};save();return}
     i[k]=v;if(el.tagName==="TEXTAREA")autosize(el);if(k==="title")q.querySelector(".cur .t").textContent=el.value;save();
   }));
-  $("#sevChip").onclick=()=>setSev(SEV[(SEV.indexOf(sev)+1)%3]);
-  $("#typeChip").onclick=()=>{const ks=Object.keys(types);i.type=ks[(ks.indexOf(i.type)+1)%ks.length];save();renderFocus(false)};
+  if($("#sevChip"))$("#sevChip").onclick=()=>setSev(SEV[(SEV.indexOf(sev)+1)%3]);
+  if($("#typeChip"))$("#typeChip").onclick=()=>{const ks=Object.keys(types);i.type=ks[(ks.indexOf(i.type)+1)%ks.length];save();renderFocus(false)};
   $("#origBtn")?.addEventListener("click",playOrig);
   side.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(b.dataset.copy);toast(`${b.dataset.copy} ${t("copy")}`)});
 }
@@ -381,32 +449,34 @@ function showMedia(items,s){
   }
 }
 function autosize(el){el.style.height="auto";el.style.height=Math.min(el.scrollHeight+2,el.classList.contains("title")?200:260)+"px"}
-function go(k,d){if(k<0||k>=data.issues.length)return;dir=d||(k>cur?"up":"down");cur=k;media=0;renderFocus(true)}
-function next(){const n=data.issues.findIndex((i,k)=>k>cur&&statusOf(i)==="pending");go(n>=0?n:Math.min(cur+1,data.issues.length-1),"up")}
+function go(k,d){if(k<0||k>=data.items.length)return;dir=d||(k>cur?"up":"down");cur=k;media=0;renderFocus(true)}
+function next(){const n=data.items.findIndex((i,k)=>k>cur&&statusOf(i)==="pending");go(n>=0?n:Math.min(cur+1,data.items.length-1),"up")}
 function decide(kind){
-  const i=data.issues[cur];if(!i)return;snapshot();
+  const i=data.items[cur];if(!i)return;snapshot();
   i._touched=true;
   if(kind==="keep"){i.status="confirmed";delete i._dropped}else{i.status="deleted";i._dropped=true}
   save();toast(kind==="keep"?`✓ ${t("kept1")} · ${i.id||""}`:`✕ ${t("dropped1")} · ${i.id||""}`,true);
   renderTop();
-  if(counts().p===0&&cur===data.issues.length-1){renderFocus(false);setTimeout(openFinish,250);return}
+  if(counts().p===0&&cur===data.items.length-1){renderFocus(false);setTimeout(openFinish,250);return}
   setTimeout(next,90);
 }
-function setSev(v){const i=data.issues[cur];if(!i)return;i.severity=v;save();renderFocus(false)}
+function setSev(v){const i=data.items[cur];if(!i||kindOf(i)!=="issue")return;i.severity=v;save();renderFocus(false)}
 function mergePrev(){
-  let j=cur-1;while(j>=0&&statusOf(data.issues[j])==="drop")j--;if(j<0)return;
-  snapshot();const p=data.issues[j],i=data.issues[cur];
+  let j=cur-1;while(j>=0&&statusOf(data.items[j])==="drop")j--;if(j<0)return;
+  snapshot();const p=data.items[j],i=data.items[cur];
   const join=(a,b,s)=>[a,b].filter(Boolean).join(s);
-  p.actual=join(p.actual,i.actual,"\n");p.expected=join(p.expected,i.expected,"\n");p.quote=join(p.quote,i.quote," … ");
-  p.frames=[...(p.frames||[]),...(i.frames||[])];p.steps=[...(p.steps||[]),...(i.steps||[])];
-  p.code_refs=[...new Set([...(p.code_refs||[]),...(i.code_refs||[])])];
+  p.quote=join(p.quote,i.quote," … ");
+  for(const [k,v] of Object.entries(i)){if(["id","kind","title","quote","time","status","merged_from","exported"].includes(k)||k.startsWith("_"))continue;
+    if(typeof v==="string"&&v&&k!=="severity"&&k!=="type"&&k!=="owner"&&k!=="module")p[k]=join(p[k],v,"\n");
+    else if(Array.isArray(v))p[k]=[...new Set([...(p[k]||[]),...v].map(x=>typeof x==="string"?x:JSON.stringify(x)))].map(x=>{try{return JSON.parse(x)}catch(e){return x}});
+    else if(p[k]==null)p[k]=v}
   p.merged_from=[...(p.merged_from||[]),i.id];
   if(i.time&&p.time)p.time={start:Math.min(p.time.start,i.time.start),end:Math.max(p.time.end,i.time.end)};
-  data.issues.splice(cur,1);cur=j;save();toast(`${t("merged")} ${p.id||""}`,true);render(true);
+  data.items.splice(cur,1);cur=j;save();toast(`${t("merged")} ${p.id||""}`,true);render(true);
 }
-function playOrig(){const items=mediaItems(data.issues[cur]);const k=items.findIndex(m=>m.kind==="orig");if(k<0)return;media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}
+function playOrig(){const items=mediaItems(data.items[cur]);const k=items.findIndex(m=>m.kind==="orig");if(k<0)return;media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}
 function togglePlay(){const v=$("#mediaBox video");if(v){v.paused?v.play():v.pause();return}
-  const items=mediaItems(data.issues[cur]);const k=items.findIndex(m=>m.kind!=="img");if(k>=0){media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}}
+  const items=mediaItems(data.items[cur]);const k=items.findIndex(m=>m.kind!=="img");if(k>=0){media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}}
 
 /* ---------- list ---------- */
 function renderList(){
@@ -415,12 +485,17 @@ function renderList(){
   $("#filters").querySelectorAll("button").forEach(b=>b.onclick=()=>{filter=b.dataset.f;renderList()});
   $("#search").placeholder=t("search");
   const types=T[lang].types,ql=query.toLowerCase();
-  $("#cards").innerHTML=data.issues.map((i,k)=>({i,k,s:statusOf(i)})).filter(({i,s})=>(filter==="all"||filter===s)&&
-    (!ql||[i.title,i.module,i.owner,i.id].join(" ").toLowerCase().includes(ql))).map(({i,k,s})=>{
+  const kinds=[...new Set(data.items.map(kindOf))];
+  $("#kindFilter").hidden=kinds.length<2;
+  $("#kindFilter").innerHTML=[["",t("allKinds")],...kinds.map(k=>[k,kindIcon(k)+" "+kindLabel(k)])].map(([k,l])=>`<button class="${kindF===k?"on":""}" data-kf="${k}">${esc(l)}</button>`).join("");
+  $("#kindFilter").querySelectorAll("button").forEach(b=>b.onclick=()=>{kindF=b.dataset.kf;renderList()});
+  $("#cards").innerHTML=data.items.map((i,k)=>({i,k,s:statusOf(i)})).filter(({i,s})=>(filter==="all"||filter===s)&&(!kindF||kindOf(i)===kindF)&&
+    (!ql||[i.title,i.module,i.owner,i.id,i.summary,(i.tags||[]).join(" ")].join(" ").toLowerCase().includes(ql))).map(({i,k,s})=>{
     const img=(i.frames||[])[0];const sev=SEV.includes(i.severity)?i.severity:"medium";
+    const kd=kindOf(i);
     return `<article class="card ${s}" data-k="${k}"><div class="img" style="${img?`background-image:url('${file(img.path)}')`:""}">${s!=="pending"?`<div class="stamp ${s}">${s==="keep"?"✓":"✕"}</div>`:""}</div>
       <div class="body"><div class="h">${esc(i.id||"")}<span style="margin-left:auto">${i.time?fmt(i.time.start):""}</span></div><div class="tt">${esc(i.title)}</div>
-      <div class="mm"><span class="chip sev-${sev}">${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</span>${i.module?`<span class="chip">${esc(i.module)}</span>`:""}${i.owner?`<span class="chip">@${esc(i.owner)}</span>`:""}<span class="chip">${esc(types[i.type]||i.type||"")}</span></div></div></article>`}).join("");
+      <div class="mm"><span class="chip">${kindIcon(kd)} ${esc(kindLabel(kd))}</span>${kd==="issue"?`<span class="chip sev-${sev}">${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</span>`:""}${i.module?`<span class="chip">${esc(i.module)}</span>`:""}${i.owner?`<span class="chip">@${esc(i.owner)}</span>`:""}<span class="chip">${esc(types[i.type]||i.type||"")}</span></div></div></article>`}).join("");
   $("#cards").querySelectorAll(".card").forEach(c=>c.onclick=()=>{cur=+c.dataset.k;media=0;setView("focus")});
 }
 function setView(v){view=v;store.set("blurt.view",v);render(true)}
@@ -433,7 +508,7 @@ function modal(html){$("#modal").innerHTML=html;$("#modalBg").classList.add("sho
 function closeModal(){$("#modalBg").classList.remove("show")}
 function openHelp(){
   const rows=[["↓ ↑ / J K",t("k_next")],["A / ⏎",t("k_keep")],["X / ⌫",t("k_drop")],["Z",t("k_undo")],["M",t("k_merge")],["1 2 3",t("k_sev")],
-    ["← →",t("k_media")],["Space / O",t("k_play")],["E",t("k_edit")],["G",t("k_view")],["⌘⏎",t("k_finish")],["?",t("k_help")]];
+    ["← →",t("k_media")],["Space / O",t("k_play")],["E",t("k_edit")],["G",t("k_view")],["V",t("k_ov")],["⌘⏎",t("k_finish")],["?",t("k_help")]];
   modal(`<h3>${t("keysTitle")}</h3><div class="keys">${rows.map(([k,l])=>`<div><span>${l}</span><span>${k.split(" ").map(x=>x==="/"?"<span style='color:var(--faint)'>/</span>":`<kbd>${x}</kbd>`).join(" ")}</span></div>`).join("")}</div>
     <div class="row"><button class="btn" onclick="closeModal()">OK</button></div>`);
 }
@@ -443,18 +518,18 @@ function openFinish(){
     <div class="sum"><div><b style="color:var(--keep)">${c.k}</b>${t("kept")}</div><div><b style="color:var(--drop)">${c.d}</b>${t("dropped")}</div><div><b>${c.p}</b>${t("pending")}</div></div>
     <div class="row">${c.p?`<button class="btn" id="mRest">${t("reviewRest")}</button>`:`<button class="btn" id="mCancel">${t("cancel")}</button>`}
     <button class="btn primary" id="mOk">${c.p?t("pendingAs"):t("confirm")}</button></div>`);
-  $("#mRest")?.addEventListener("click",()=>{closeModal();const n=data.issues.findIndex(i=>statusOf(i)==="pending");setView("focus");go(n)});
+  $("#mRest")?.addEventListener("click",()=>{closeModal();const n=data.items.findIndex(i=>statusOf(i)==="pending");setView("focus");go(n)});
   $("#mCancel")?.addEventListener("click",closeModal);
   $("#mOk").onclick=finish;
 }
 async function finish(){
-  data.issues.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
+  data.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
   await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
   closeModal();$("#done").classList.add("show");
 }
 
 /* ---------- wiring ---------- */
-$("#vFocus").onclick=()=>setView("focus");$("#vList").onclick=()=>setView("list");
+$("#vFocus").onclick=()=>setView("focus");$("#vOverview").onclick=()=>setView("overview");$("#vList").onclick=()=>setView("list");
 $("#keepBtn").onclick=()=>decide("keep");$("#dropBtn").onclick=()=>decide("drop");$("#mergeBtn").onclick=mergePrev;$("#undoBtn").onclick=doUndo;
 $("#prevBtn").onclick=()=>go(cur-1,"down");$("#nextBtn").onclick=()=>go(cur+1,"up");
 $("#finishBtn").onclick=openFinish;$("#helpBtn").onclick=openHelp;$("#toastUndo").onclick=doUndo;
@@ -479,8 +554,9 @@ document.addEventListener("keydown",e=>{
   const k=e.key;
   if(k==="?"){openHelp();return}
   if(k==="g"||k==="G"){setView(view==="focus"?"list":"focus");return}
+  if((k==="v"||k==="V")&&(data.digest||data.title)){setView("overview");return}
   if(view!=="focus")return;
-  const items=mediaItems(data.issues[cur]||{});
+  const items=mediaItems(data.items[cur]||{});
   const map={j:()=>go(cur+1,"up"),ArrowDown:()=>go(cur+1,"up"),k:()=>go(cur-1,"down"),ArrowUp:()=>go(cur-1,"down"),
     a:()=>decide("keep"),Enter:()=>decide("keep"),x:()=>decide("drop"),Backspace:()=>decide("drop"),Delete:()=>decide("drop"),
     z:doUndo,u:doUndo,m:mergePrev,"1":()=>setSev("high"),"2":()=>setSev("medium"),"3":()=>setSev("low"),
