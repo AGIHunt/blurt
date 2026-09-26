@@ -14,13 +14,14 @@ import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
 import ScreenCaptureKit
+import ServiceManagement
 
 // MARK: - Options & utilities
 
 struct Options {
     var out = ""
     var events: String? = nil
-    var standalone = false         // launched as an app (no --out): save to ~/Movies/Blurt/<timestamp>/
+    var standalone = false         // launched as an app (no --out): lives in the menu bar, records into a workspace
     var fps = 30
     var maxWidth = 2560
     var countdown = 3
@@ -68,25 +69,22 @@ func readConfig() -> [String: Any] {
     return o
 }
 
-func saveLastRegion(_ r: CGRect) {
+func recordConfig() -> [String: Any] { readConfig()["record"] as? [String: Any] ?? [:] }
+
+func setRecordConfig(_ key: String, _ value: Any?) {
     var cfg = readConfig()
     var rec = cfg["record"] as? [String: Any] ?? [:]
-    rec["last_region"] = [Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)]
+    rec[key] = value
     cfg["record"] = rec
     try? FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     if let d = try? JSONSerialization.data(withJSONObject: cfg, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: configURL) }
 }
 
-func prepareStandalone() {
-    let f = DateFormatter()
-    f.dateFormat = "yyyyMMdd-HHmmss"
-    let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies/Blurt/\(f.string(from: Date()))")
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    opts.out = dir.appendingPathComponent("recording.mp4").path
-    opts.events = dir.appendingPathComponent("events.jsonl").path
-    if opts.lastRegion == nil, let r = (readConfig()["record"] as? [String: Any])?["last_region"] as? [Double], r.count == 4 {
-        opts.lastRegion = CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
-    }
+func saveLastRegion(_ r: CGRect) { setRecordConfig("last_region", [Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)]) }
+
+func lastRegionFromConfig() -> CGRect? {
+    guard let r = recordConfig()["last_region"] as? [Double], r.count == 4 else { return nil }
+    return CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
 }
 
 var opts = Options.parse()
@@ -109,6 +107,10 @@ func toNS(_ r: CGRect) -> NSRect { NSRect(x: r.minX, y: primaryHeight - r.maxY, 
 /// from blurt's own recording via the content filter).
 let chromeSharing: NSWindow.SharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly
 
+func activateApp() {
+    if #available(macOS 14.0, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
+}
+
 func hostNow() -> CMTime { CMClockGetTime(CMClockGetHostTimeClock()) }
 
 let accent = NSColor(calibratedRed: 1.0, green: 0.36, blue: 0.24, alpha: 1)   // coral
@@ -129,11 +131,14 @@ func pill(_ text: String, font: NSFont, fg: NSColor, bg: NSColor, at p: NSPoint,
 final class KeyWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+    override func keyDown(with event: NSEvent) { contentView?.keyDown(with: event) }
+    override func cancelOperation(_ sender: Any?) { (contentView as? PickerView)?.controller?.finish(false) }
 }
 
 final class PickerController {
     var windows: [KeyWindow] = []
     var selection: NSRect?          // global AppKit coords
+    var snapped = false             // selection came from clicking a window (or F / last area): drag = draw new
     var hovered: NSRect?
     var onDone: ((CGRect?) -> Void)?
     let toolbar = PickerToolbar()
@@ -158,10 +163,11 @@ final class PickerController {
         }
         toolbar.controller = self
         if let p = preselect { selection = toNS(p) }
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
         let mouse = NSEvent.mouseLocation
         let keyWin = windows.first(where: { $0.frame.contains(mouse) }) ?? windows.first
         keyWin?.makeKeyAndOrderFront(nil)
+        if let w = keyWin { w.makeFirstResponder(w.contentView) }
         refresh()
         emit(["event": "ready"])
     }
@@ -200,11 +206,12 @@ final class PickerController {
 
     func fullScreen() {
         selection = screenFrame(containing: NSEvent.mouseLocation)
+        snapped = true
         refresh()
     }
 
     func useLast() {
-        if let l = opts.lastRegion { selection = toNS(l); refresh() }
+        if let l = opts.lastRegion { selection = toNS(l); snapped = true; refresh() }
     }
 }
 
@@ -244,6 +251,11 @@ final class PickerView: NSView {
         }
         NSColor(white: 0, alpha: 0.42).setFill()
         dim.fill()
+        // Fully transparent pixels let clicks fall through to the app underneath — keep the hole a hair opaque.
+        if let h = hole {
+            NSColor(white: 0, alpha: 0.012).setFill()
+            NSBezierPath(rect: h).fill()
+        }
 
         if let sel = c.selection.map(local) {
             NSColor.white.withAlphaComponent(0.95).setStroke()
@@ -267,13 +279,17 @@ final class PickerView: NSView {
             _ = pill(label, font: f, fg: .white, bg: NSColor(white: 0.08, alpha: 0.82), at: at)
         } else if let h = hole {
             accent.withAlphaComponent(0.9).setStroke()
-            let b = NSBezierPath(rect: h.insetBy(dx: 1, dy: 1))
+            let b = NSBezierPath(rect: h.insetBy(dx: 1.5, dy: 1.5))
             b.lineWidth = 3
+            b.setLineDash([10, 6], count: 2, phase: 0)
             b.stroke()
+            let f = NSFont.systemFont(ofSize: 12, weight: .semibold)
+            _ = pill(L("单击选中这个窗口 · 或直接拖拽框选", "Click to pick this window · or drag to draw"), font: f, fg: .white,
+                     bg: accent.withAlphaComponent(0.92), at: NSPoint(x: h.minX + 10, y: max(10, h.maxY - 34)))
         }
 
         // hint on every screen, top centre
-        let hint = L("拖拽框选录制区域 · 单击选中整个窗口 · F 全屏 · ⏎ 开始 · Esc 取消",
+        let hint = L("拖拽框选录制区域 · 单击选中窗口 · F 全屏 · ⏎ 开始 · Esc 取消",
                      "Drag to select an area · Click a window · F full screen · ⏎ start · Esc cancel")
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let w = NSAttributedString(string: hint, attributes: [.font: f]).size().width + 28
@@ -312,7 +328,7 @@ final class PickerView: NSView {
             for (i, h) in handles(s).enumerated() where hypot(h.x - p.x, h.y - p.y) < 10 {
                 mode = .resize(i, s); return
             }
-            if s.contains(p) { mode = .move(p, s); return }
+            if s.contains(p) && !c.snapped { mode = .move(p, s); return }
         }
         mode = .create(p)
     }
@@ -324,9 +340,7 @@ final class PickerView: NSView {
         switch mode {
         case .create(let s):
             guard hypot(p.x - s.x, p.y - s.y) > 4 else { return }
-            let q = NSPoint(x: min(max(p.x, bounds.minX), bounds.maxX), y: min(max(p.y, bounds.minY), bounds.maxY))
-            c.selection = NSRect(x: min(s.x, q.x), y: min(s.y, q.y), width: abs(q.x - s.x), height: abs(q.y - s.y))
-            c.hovered = nil
+            drawRect(from: s, to: p, in: bounds)
         case .move(let s, let r):
             var n = r.offsetBy(dx: p.x - s.x, dy: p.y - s.y)
             n.origin.x = min(max(n.minX, bounds.minX), bounds.maxX - n.width)
@@ -340,15 +354,29 @@ final class PickerView: NSView {
             if [4, 5, 6].contains(i) { y1 = p.y }
             c.selection = NSRect(x: min(x0, x1), y: min(y0, y1), width: abs(x1 - x0), height: abs(y1 - y0))
                 .intersection(bounds)
+            c.snapped = false
         case .none: break
         }
         c.refresh()
     }
 
+    func drawRect(from s: NSPoint, to p: NSPoint, in bounds: NSRect) {
+        guard let c = controller else { return }
+        let q = NSPoint(x: min(max(p.x, bounds.minX), bounds.maxX), y: min(max(p.y, bounds.minY), bounds.maxY))
+        c.selection = NSRect(x: min(s.x, q.x), y: min(s.y, q.y), width: abs(q.x - s.x), height: abs(q.y - s.y))
+        c.snapped = false
+        c.hovered = nil
+    }
+
     override func mouseUp(with e: NSEvent) {
         guard let c = controller else { return }
-        if case .create(let s) = mode, hypot(global(e).x - s.x, global(e).y - s.y) <= 4 {
-            if let h = c.hovered ?? windowRect(at: s) { c.selection = h; c.hovered = nil }
+        if case .create(let s) = mode {
+            let p = global(e)
+            if hypot(p.x - s.x, p.y - s.y) <= 4 {
+                if let h = c.hovered ?? windowRect(at: s) { c.selection = h; c.snapped = true; c.hovered = nil }
+            } else {
+                drawRect(from: s, to: p, in: c.screenFrame(containing: downAt))   // drag events can be coalesced
+            }
         }
         if let s = c.selection, s.width < 16 || s.height < 16 { c.selection = nil }
         mode = .none
@@ -660,7 +688,7 @@ final class HUD: NSPanel {
         a.addButton(withTitle: L("重新录制", "Restart"))
         a.addButton(withTitle: L("继续录制", "Keep recording"))
         a.addButton(withTitle: L("放弃", "Discard"))
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
         switch a.runModal() {
         case .alertFirstButtonReturn: rec.stop(discard: true, restart: true)
         case .alertThirdButtonReturn: rec.stop(discard: true)
@@ -833,8 +861,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     func start() {
         stream?.startCapture { err in
             if let err = err {
-                emit(["event": "error", "code": "capture", "message": err.localizedDescription])
-                exit(3)
+                DispatchQueue.main.async { sessionEnded(3, ["event": "error", "code": "capture", "message": err.localizedDescription]) }
             }
         }
         captureSession?.startRunning()
@@ -861,17 +888,6 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             guard let self = self, !self.isPaused, let p = self.relative(NSEvent.mouseLocation) else { return }
             self.log("click", ["x": p.x, "y": p.y, "button": e.type == .rightMouseDown ? "right" : "left"])
         }
-    }
-
-    func finishStandalone(duration: Double) {
-        let dir = (opts.out as NSString).deletingLastPathComponent
-        let meta: [String: Any] = ["engine": "native-app", "duration": duration, "video": "recording.mp4",
-                                   "region": [region.minX, region.minY, region.width, region.height],
-                                   "started_at": ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -duration))]
-        if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
-            try? d.write(to: URL(fileURLWithPath: dir).appendingPathComponent("meta.json"))
-        }
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: opts.out)])
     }
 
     func relative(_ ns: NSPoint) -> CGPoint? {
@@ -1022,8 +1038,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                 guard self.started else {
                     DispatchQueue.main.async {
                         if restart { emit(["event": "restarting"]); self.onRestart?(); return }
-                        emit(discard ? ["event": "cancelled"] : ["event": "error", "code": "no_frames", "message": "no video frames captured"])
-                        exit(discard ? 2 : 4)
+                        sessionEnded(discard ? 2 : 4, discard ? ["event": "cancelled"]
+                                     : ["event": "error", "code": "no_frames", "message": "no video frames captured"])
                     }
                     return
                 }
@@ -1037,19 +1053,17 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                             try? FileManager.default.removeItem(atPath: opts.out)
                             if let e = opts.events { try? FileManager.default.removeItem(atPath: e) }
                             if restart { emit(["event": "restarting"]); self.onRestart?(); return }
-                            if opts.standalone { try? FileManager.default.removeItem(atPath: (opts.out as NSString).deletingLastPathComponent) }
-                            emit(["event": "cancelled", "reason": "discarded"])
-                            exit(2)
+                            sessionEnded(2, ["event": "cancelled", "reason": "discarded"])
+                            return
                         }
                         if self.writer.status == .failed {
-                            emit(["event": "error", "code": "writer", "message": self.writer.error?.localizedDescription ?? "?"])
-                            exit(5)
+                            sessionEnded(5, ["event": "error", "code": "writer", "message": self.writer.error?.localizedDescription ?? "?"])
+                            return
                         }
-                        emit(["event": "stopped", "file": opts.out, "duration": CMTimeGetSeconds(CMTimeSubtract(endAt, self.sessionStart)),
-                              "frames": self.frames, "audio_buffers": self.audioBuffers])
                         NSSound(named: "Submarine")?.play()
-                        if opts.standalone { self.finishStandalone(duration: CMTimeGetSeconds(CMTimeSubtract(endAt, self.sessionStart))) }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { exit(0) }
+                        sessionEnded(0, ["event": "stopped", "file": opts.out, "duration": CMTimeGetSeconds(CMTimeSubtract(endAt, self.sessionStart)),
+                                         "frames": self.frames, "audio_buffers": self.audioBuffers,
+                                         "region": [self.region.minX, self.region.minY, self.region.width, self.region.height]])
                     }
                 }
             }
@@ -1058,43 +1072,150 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     }
 }
 
-// MARK: - Hotkeys & stdin
+// MARK: - Hotkeys (Carbon: work without Accessibility permission, even when we're not the active app)
 
-var hotkeyHandler: ((UInt32) -> Void)?
+enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pickEnter = 10, pickEsc = 11, pickFull = 12 }
+var hotkeyHandler: ((HK) -> Void)?
+var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
 
-func registerHotkeys() {
+func installHotkeyHandler() {
     var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
     InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
         var id = EventHotKeyID()
         GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
                           MemoryLayout<EventHotKeyID>.size, nil, &id)
-        hotkeyHandler?(id.id)
+        if let k = HK(rawValue: id.id) { hotkeyHandler?(k) }
         return noErr
     }, 1, &spec, nil, nil)
-    let mods = UInt32(optionKey | shiftKey)
-    for (i, key) in [kVK_ANSI_P, kVK_ANSI_M, kVK_ANSI_S].enumerated() {
-        var ref: EventHotKeyRef?
-        RegisterEventHotKey(UInt32(key), mods, EventHotKeyID(signature: OSType(0x626C7274), id: UInt32(i + 1)),
-                            GetApplicationEventTarget(), 0, &ref)
-    }
 }
+
+func registerHotkey(_ k: HK, key: Int, mods: Int) {
+    guard hotkeyRefs[k.rawValue] == nil else { return }
+    var ref: EventHotKeyRef?
+    RegisterEventHotKey(UInt32(key), UInt32(mods), EventHotKeyID(signature: OSType(0x626C7274), id: k.rawValue),
+                        GetApplicationEventTarget(), 0, &ref)
+    if let r = ref { hotkeyRefs[k.rawValue] = r }
+}
+
+func unregisterHotkey(_ k: HK) {
+    if let r = hotkeyRefs.removeValue(forKey: k.rawValue) { UnregisterEventHotKey(r) }
+}
+
+let optShift = optionKey | shiftKey
 
 var signalSources: [DispatchSourceSignal] = []
 
+/// Called by the recorder when a take ends (stopped / cancelled / error). CLI mode exits; the menu-bar app carries on.
+var sessionEnded: (Int32, [String: Any]) -> Void = { code, event in
+    emit(event)
+    DispatchQueue.main.asyncAfter(deadline: .now() + (code == 0 ? 0.4 : 0)) { exit(code) }
+}
+
+// MARK: - Workspaces (menu-bar app): where recordings go
+
+let homeDir = FileManager.default.homeDirectoryForCurrentUser
+let defaultWorkspace = homeDir.appendingPathComponent("Blurt")
+
+func currentWorkspace() -> URL {
+    if let p = recordConfig()["workspace"] as? String, FileManager.default.fileExists(atPath: p) { return URL(fileURLWithPath: p) }
+    return defaultWorkspace
+}
+
+func knownWorkspaces() -> [URL] {
+    let list = (recordConfig()["workspaces"] as? [String] ?? []).filter { FileManager.default.fileExists(atPath: $0) }
+    return list.map { URL(fileURLWithPath: $0) }
+}
+
+/// Default workspace keeps recordings visible (~/Blurt/recordings); a bound project uses <repo>/.blurt/sessions.
+func sessionsRoot(for ws: URL) -> URL {
+    ws.standardizedFileURL == defaultWorkspace.standardizedFileURL
+        ? ws.appendingPathComponent("recordings") : ws.appendingPathComponent(".blurt/sessions")
+}
+
+func ensureDefaultWorkspace() {
+    let fm = FileManager.default
+    try? fm.createDirectory(at: defaultWorkspace.appendingPathComponent("recordings"), withIntermediateDirectories: true)
+    let guide = defaultWorkspace.appendingPathComponent("AGENTS.md")
+    if !fm.fileExists(atPath: guide.path) {
+        let text = """
+        # Blurt workspace
+
+        This folder is the default workspace of **blurt** (吐槽鸡). Each folder in `recordings/` is one screen
+        recording with narration (`recording.mp4`, `events.jsonl`, `meta.json`). Use the `blurt` skill to turn a
+        recording into structured output (issues, ideas, notes…) — e.g. "process my latest blurt recording" /
+        "处理最新的吐槽录屏". Outputs are written next to the recording.
+        """
+        try? text.write(to: guide, atomically: true, encoding: .utf8)
+        try? fm.createSymbolicLink(at: defaultWorkspace.appendingPathComponent("CLAUDE.md"), withDestinationURL: guide)
+    }
+}
+
+func newSessionDir() -> URL {
+    let f = DateFormatter()
+    f.dateFormat = "yyyyMMdd-HHmmss"
+    let dir = sessionsRoot(for: currentWorkspace()).appendingPathComponent(f.string(from: Date()))
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+func recentSessions(limit: Int = 8) -> [URL] {
+    var dirs: [URL] = []
+    for ws in Set([defaultWorkspace] + knownWorkspaces() + [currentWorkspace()]) {
+        let root = sessionsRoot(for: ws)
+        let items = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        dirs += items.filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("recording.mp4").path) }
+    }
+    return Array(dirs.sorted { $0.lastPathComponent > $1.lastPathComponent }.prefix(limit))
+}
+
+func shell(_ cmd: String, cwd: URL, log: URL, done: @escaping (Int32) -> Void) {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+    p.arguments = ["-lc", cmd]          // login shell: the user's PATH (claude / codex / uv)
+    p.currentDirectoryURL = cwd
+    FileManager.default.createFile(atPath: log.path, contents: nil)
+    let fh = try? FileHandle(forWritingTo: log)
+    p.standardOutput = fh
+    p.standardError = fh
+    p.terminationHandler = { pr in DispatchQueue.main.async { done(pr.terminationStatus) } }
+    try? p.run()
+}
+
+func shq(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+
 // MARK: - App
 
-final class App: NSObject, NSApplicationDelegate {
+final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var picker: PickerController?
     var rec: Recorder?
     var countdownWin: NSWindow?
+    var statusItem: NSStatusItem?
+    var busy = false                 // picking / counting down / recording
+    var processing: [String] = []    // sessions being processed by an agent
+    var statusTimer: Timer?
+    var lastSession: URL?
+
+    var resident: Bool { opts.standalone }
 
     func applicationDidFinishLaunching(_ n: Notification) {
         for sig in [SIGTERM, SIGINT] {
             signal(sig, SIG_IGN)
             let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-            s.setEventHandler { [weak self] in self?.command("stop") }
+            s.setEventHandler { [weak self] in
+                guard let self = self else { return }
+                if self.rec != nil { self.command("stop") } else if !self.resident { self.command("stop") } else { NSApp.terminate(nil) }
+            }
             s.resume()
             signalSources.append(s)
+        }
+        installHotkeyHandler()
+        hotkeyHandler = { [weak self] k in self?.hotkey(k) }
+        registerHotkey(.pause, key: kVK_ANSI_P, mods: optShift)
+        registerHotkey(.marker, key: kVK_ANSI_M, mods: optShift)
+        registerHotkey(.stop, key: kVK_ANSI_S, mods: optShift)
+        if resident {
+            startResident()
+            return
         }
         DispatchQueue.global().async {
             while let line = readLine() {
@@ -1102,26 +1223,35 @@ final class App: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async { self.command(cmd) }
             }
         }
-        hotkeyHandler = { [weak self] id in
-            self?.command(["", "toggle", "marker", "stop"][Int(id)])
-        }
-        registerHotkeys()
         // Probe permission early so the user isn't asked mid-flow.
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
             DispatchQueue.main.async {
                 if let err = err {
-                    emit(["event": "error", "code": "screen_permission", "message": err.localizedDescription])
-                    exit(3)
+                    sessionEnded(3, ["event": "error", "code": "screen_permission", "message": err.localizedDescription])
+                    return
                 }
                 if let r = opts.region { self.begin(r) } else { self.pick() }
             }
         }
     }
 
+    func hotkey(_ k: HK) {
+        switch k {
+        case .pause: command("toggle")
+        case .marker: command("marker")
+        case .stop: command("stop")
+        case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
+        case .menu: popMenu()
+        case .pickEnter: picker?.finish(true)
+        case .pickEsc: picker?.finish(false)
+        case .pickFull: picker?.fullScreen()
+        }
+    }
+
     func command(_ c: String) {
         switch c {
         case "stop":
-            if let r = rec { r.stop() } else { emit(["event": "cancelled"]); exit(2) }
+            if let r = rec { r.stop() } else if let p = picker { p.finish(false) } else if !resident { sessionEnded(2, ["event": "cancelled"]) }
         case "discard": rec?.stop(discard: true)
         case "restart": rec?.stop(discard: true, restart: true)
         case "pause": if rec?.isPaused == false { rec?.togglePause() }
@@ -1133,23 +1263,30 @@ final class App: NSObject, NSApplicationDelegate {
     }
 
     func pick() {
+        busy = true
         let p = PickerController()
         p.onDone = { [weak self] r in
             guard let self = self else { return }
-            guard let r = r else { emit(["event": "cancelled"]); exit(2) }
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull)
             self.picker = nil
+            guard let r = r else { self.busy = false; sessionEnded(2, ["event": "cancelled"]); return }
             self.begin(r)
         }
         picker = p
+        // Esc / Enter / F must work even if macOS refuses to make us the active app
+        registerHotkey(.pickEnter, key: kVK_Return, mods: 0)
+        registerHotkey(.pickEsc, key: kVK_Escape, mods: 0)
+        registerHotkey(.pickFull, key: kVK_ANSI_F, mods: 0)
         p.show(preselect: opts.preselect)
     }
 
     func begin(_ region: CGRect) {
+        busy = true
         emit(["event": "selected", "region": [region.minX, region.minY, region.width, region.height]])
-        if opts.standalone { saveLastRegion(region) }
+        saveLastRegion(region)
+        opts.lastRegion = region
         let r = Recorder(region: region)
         r.onRestart = { [weak self] in
-            // fresh file for the new take
             FileManager.default.createFile(atPath: opts.events ?? "/dev/null", contents: nil)
             self?.rec = nil
             self?.begin(region)
@@ -1157,8 +1294,8 @@ final class App: NSObject, NSApplicationDelegate {
         rec = r
         r.prepare { err in
             if let err = err {
-                emit(["event": "error", "code": "setup", "message": err.localizedDescription])
-                exit(3)
+                sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription])
+                return
             }
             self.countdown(opts.countdown, over: region) { r.start() }
         }
@@ -1196,9 +1333,326 @@ final class App: NSObject, NSApplicationDelegate {
             emit(["event": "countdown", "n": left])
         }
     }
+
+    // MARK: menu-bar app
+
+    func startResident() {
+        ensureDefaultWorkspace()
+        registerHotkey(.toggleRec, key: kVK_ANSI_R, mods: optShift)
+        registerHotkey(.menu, key: kVK_ANSI_B, mods: optShift)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
+        item.autosaveName = "blurt"
+        item.isVisible = true
+        statusItem = item
+        refreshStatus()
+        statusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.refreshStatus() }
+        sessionEnded = { [weak self] code, event in
+            emit(event)
+            self?.takeEnded(code, event)
+        }
+        // A second launch (double-click the app again) → start recording in the running instance
+        DistributedNotificationCenter.default().addObserver(forName: .init("dev.blurt.recorder.start"), object: nil, queue: .main) { [weak self] _ in
+            guard let self = self, !self.busy else { return }
+            self.startRecording(useLast: false)
+        }
+        if recordConfig()["welcomed"] == nil {
+            setRecordConfig("welcomed", true)
+            toast(L("吐槽鸡已常驻 🐔  ⌥⇧R 开始 / 结束录制 · ⌥⇧B 打开菜单", "blurt is running 🐔  ⌥⇧R start / finish · ⌥⇧B menu"))
+        }
+        if !CommandLine.arguments.contains("--background") { startRecording(useLast: false) }
+    }
+
+    /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥⇧B shows the same menu at the pointer.
+    func popMenu() {
+        let m = NSMenu()
+        menuNeedsUpdate(m)
+        activateApp()
+        m.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if resident && !busy { startRecording(useLast: false) }
+        return false
+    }
+
+    func startRecording(useLast: Bool) {
+        guard !busy else { return }
+        let dir = newSessionDir()
+        opts.out = dir.appendingPathComponent("recording.mp4").path
+        opts.events = dir.appendingPathComponent("events.jsonl").path
+        opts.lastRegion = lastRegionFromConfig()
+        opts.countdown = recordConfig()["countdown"] as? Int ?? 3
+        lastSession = dir
+        busy = true
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
+            DispatchQueue.main.async {
+                if let err = err {
+                    self.busy = false
+                    try? FileManager.default.removeItem(at: dir)
+                    self.alert(L("需要「屏幕录制」权限", "Screen Recording permission needed"),
+                               L("请在 系统设置 → 隐私与安全性 → 录屏与系统录音 中打开「Blurt」，然后重新打开吐槽鸡。\n\n\(err.localizedDescription)",
+                                 "Enable “Blurt” in System Settings → Privacy & Security → Screen & System Audio Recording, then reopen blurt."))
+                    return
+                }
+                if useLast, let r = opts.lastRegion { self.begin(r) } else { self.pick() }
+            }
+        }
+    }
+
+    func takeEnded(_ code: Int32, _ event: [String: Any]) {
+        rec = nil
+        busy = false
+        picker = nil
+        guard let dir = lastSession else { return }
+        if code != 0 {
+            try? FileManager.default.removeItem(at: dir)       // cancelled / failed take: leave no empty folder
+            if event["event"] as? String == "error" {
+                alert(L("录制失败", "Recording failed"), event["message"] as? String ?? "")
+            }
+            refreshStatus()
+            return
+        }
+        let dur = event["duration"] as? Double ?? 0
+        let meta: [String: Any] = [
+            "engine": "native-app", "duration": dur, "video": "recording.mp4", "region": event["region"] ?? [],
+            "started_at": ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -dur)),
+            "author": recordConfig()["author"] as? String ?? NSFullUserName(),
+            "workspace": currentWorkspace().path,
+        ]
+        if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: dir.appendingPathComponent("meta.json"))
+        }
+        let mode = recordConfig()["process"] as? String ?? "off"
+        if mode == "off" {
+            toast(L("已保存 \(fmtDur(dur)) 的录屏 · 在菜单里可以拷贝发给同事，或让 agent 处理", "Saved a \(fmtDur(dur)) recording · copy it from the menu or let your agent process it"))
+        } else {
+            process(dir, with: mode)
+        }
+        refreshStatus()
+    }
+
+    /// Hand the recording to a coding agent in the workspace, headless. It writes the outputs next to the recording
+    /// and opens the review page itself.
+    func process(_ dir: URL, with agent: String) {
+        let ws = currentWorkspace()
+        let prompt = L("用 blurt skill 处理这段录屏：\(dir.path)\n这是无人值守的后台运行：不要提问；整理好后用 nohup 在后台启动审核页（不要等待它结束），最后用两三句话总结。",
+                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run: don't ask questions; when done, start the review page detached with nohup (don't wait for it) and finish with a 2–3 sentence summary.")
+        let cmd: String
+        if agent == "codex" {
+            cmd = "codex exec --full-auto --skip-git-repo-check \(shq(prompt))"
+        } else {
+            cmd = "claude -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
+        }
+        processing.append(dir.path)
+        toast(L("已保存，\(agent == "codex" ? "Codex" : "Claude Code") 正在后台整理…", "Saved — \(agent == "codex" ? "Codex" : "Claude Code") is processing it in the background…"))
+        shell(cmd, cwd: ws, log: dir.appendingPathComponent("agent.log")) { [weak self] status in
+            guard let self = self else { return }
+            self.processing.removeAll { $0 == dir.path }
+            self.toast(status == 0 ? L("整理好了，审核页已打开", "Done — the review page is open")
+                                   : L("后台整理失败，详见 agent.log", "Background processing failed — see agent.log"))
+            self.refreshStatus()
+        }
+        refreshStatus()
+    }
+
+    func fmtDur(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
+
+    func refreshStatus() {
+        guard let b = statusItem?.button else { return }
+        if let r = rec, r.sessionStart.isValid {
+            let s = Int(r.elapsed())
+            b.image = nil
+            b.attributedTitle = NSAttributedString(string: (r.isPaused ? "❚❚ " : "● ") + String(format: "%02d:%02d", s / 60, s % 60), attributes: [
+                .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
+        } else {
+            let sym = processing.isEmpty ? "bubble.left.and.text.bubble.right" : "hourglass"
+            let img = NSImage(systemSymbolName: sym, accessibilityDescription: "blurt") ?? NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
+            img?.isTemplate = true
+            b.image = img
+            b.attributedTitle = NSAttributedString(string: "")
+            b.toolTip = L("吐槽鸡 · ⌥⇧R 开始录制", "blurt · ⌥⇧R to record")
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        func add(_ title: String, _ sel: Selector?, key: String = "", to m: NSMenu = menu, obj: Any? = nil, on: Bool = false) -> NSMenuItem {
+            let it = NSMenuItem(title: title, action: sel, keyEquivalent: key)
+            it.target = self
+            it.representedObject = obj
+            it.state = on ? .on : .off
+            m.addItem(it)
+            return it
+        }
+        if let r = rec {
+            _ = add(L("完成录制", "Finish recording") + "   ⌥⇧S", #selector(mStop))
+            _ = add((r.isPaused ? L("继续", "Resume") : L("暂停", "Pause")) + "   ⌥⇧P", #selector(mPause))
+            _ = add(L("重新录制", "Restart"), #selector(mRestart))
+            _ = add(L("放弃这次录制", "Discard"), #selector(mDiscard))
+            return
+        }
+        if busy { _ = add(L("正在选择区域…", "Selecting an area…"), nil); return }
+        _ = add(L("开始录制", "Start recording") + "   ⌥⇧R", #selector(mStart))
+        if lastRegionFromConfig() != nil { _ = add(L("录制上次的区域", "Record the last area"), #selector(mStartLast)) }
+        menu.addItem(.separator())
+
+        let ws = currentWorkspace()
+        let wsItem = NSMenuItem(title: L("工作区：", "Workspace: ") + ws.lastPathComponent, action: nil, keyEquivalent: "")
+        let wsMenu = NSMenu()
+        _ = add(L("默认（~/Blurt）", "Default (~/Blurt)"), #selector(mWorkspace(_:)), to: wsMenu, obj: defaultWorkspace.path,
+                on: ws.standardizedFileURL == defaultWorkspace.standardizedFileURL)
+        for w in knownWorkspaces() where w.standardizedFileURL != defaultWorkspace.standardizedFileURL {
+            _ = add(w.lastPathComponent + "  ·  " + (w.path as NSString).abbreviatingWithTildeInPath, #selector(mWorkspace(_:)), to: wsMenu,
+                    obj: w.path, on: w.standardizedFileURL == ws.standardizedFileURL)
+        }
+        wsMenu.addItem(.separator())
+        _ = add(L("绑定一个项目文件夹…", "Bind a project folder…"), #selector(mChooseWorkspace), to: wsMenu)
+        _ = add(L("在访达中打开工作区", "Open workspace in Finder"), #selector(mOpenWorkspace), to: wsMenu)
+        wsItem.submenu = wsMenu
+        menu.addItem(wsItem)
+
+        let recents = recentSessions()
+        let rItem = NSMenuItem(title: L("最近的录制", "Recent recordings"), action: nil, keyEquivalent: "")
+        let rMenu = NSMenu()
+        if recents.isEmpty { _ = add(L("还没有录制", "No recordings yet"), nil, to: rMenu) }
+        for d in recents {
+            let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("meta.json")))) as? [String: Any]
+            let dur = fmtDur(meta?["duration"] as? Double ?? 0)
+            let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("issues.json").path)
+                || FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
+            let name = d.lastPathComponent
+            let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
+            let it = NSMenuItem(title: "\(pretty)  ·  \(dur)\(done ? "  ✓" : "")\(processing.contains(d.path) ? "  …" : "")", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            _ = add(L("拷贝视频（粘贴发给同事）", "Copy video (paste to share)"), #selector(mCopyVideo(_:)), to: sub, obj: d.path)
+            _ = add(L("在访达中显示", "Show in Finder"), #selector(mReveal(_:)), to: sub, obj: d.path)
+            _ = add(L("让 Claude Code 整理", "Process with Claude Code"), #selector(mProcessClaude(_:)), to: sub, obj: d.path)
+            _ = add(L("让 Codex 整理", "Process with Codex"), #selector(mProcessCodex(_:)), to: sub, obj: d.path)
+            it.submenu = sub
+            rMenu.addItem(it)
+        }
+        rItem.submenu = rMenu
+        menu.addItem(rItem)
+        menu.addItem(.separator())
+
+        let mode = recordConfig()["process"] as? String ?? "off"
+        let pItem = NSMenuItem(title: L("录完自动整理", "After recording"), action: nil, keyEquivalent: "")
+        let pMenu = NSMenu()
+        _ = add(L("只保存（手动处理 / 发给别人）", "Just save (process later / share)"), #selector(mProcessMode(_:)), to: pMenu, obj: "off", on: mode == "off")
+        _ = add(L("交给 Claude Code 后台整理", "Process with Claude Code"), #selector(mProcessMode(_:)), to: pMenu, obj: "claude", on: mode == "claude")
+        _ = add(L("交给 Codex 后台整理", "Process with Codex"), #selector(mProcessMode(_:)), to: pMenu, obj: "codex", on: mode == "codex")
+        pItem.submenu = pMenu
+        menu.addItem(pItem)
+
+        let cd = recordConfig()["countdown"] as? Int ?? 3
+        let cItem = NSMenuItem(title: L("倒计时", "Countdown"), action: nil, keyEquivalent: "")
+        let cMenu = NSMenu()
+        for n in [0, 3, 5] { _ = add(n == 0 ? L("不倒计时", "None") : L("\(n) 秒", "\(n) s"), #selector(mCountdown(_:)), to: cMenu, obj: n, on: cd == n) }
+        cItem.submenu = cMenu
+        menu.addItem(cItem)
+        if #available(macOS 13.0, *) {
+            _ = add(L("开机时启动", "Open at login"), #selector(mLogin), on: SMAppService.mainApp.status == .enabled)
+        }
+        menu.addItem(.separator())
+        _ = add(L("使用说明 / GitHub", "Help / GitHub"), #selector(mHelp))
+        _ = add(L("退出吐槽鸡", "Quit blurt"), #selector(mQuit), key: "q")
+    }
+
+    @objc func mStart() { startRecording(useLast: false) }
+    @objc func mStartLast() { startRecording(useLast: true) }
+    @objc func mStop() { command("stop") }
+    @objc func mPause() { command("toggle") }
+    @objc func mRestart() { command("restart") }
+    @objc func mDiscard() { command("discard") }
+    @objc func mWorkspace(_ it: NSMenuItem) {
+        guard let p = it.representedObject as? String else { return }
+        setRecordConfig("workspace", p == defaultWorkspace.path ? nil : p)
+    }
+    @objc func mChooseWorkspace() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = L("绑定", "Bind")
+        panel.message = L("录屏会保存到这个项目的 .blurt/sessions 里，agent 可以直接结合代码处理", "Recordings go to <project>/.blurt/sessions so your agent can process them with the code")
+        activateApp()
+        guard panel.runModal() == .OK, let u = panel.url else { return }
+        var list = recordConfig()["workspaces"] as? [String] ?? []
+        if !list.contains(u.path) { list.insert(u.path, at: 0) }
+        setRecordConfig("workspaces", Array(list.prefix(8)))
+        setRecordConfig("workspace", u.path)
+    }
+    @objc func mOpenWorkspace() { NSWorkspace.shared.open(currentWorkspace()) }
+    @objc func mReveal(_ it: NSMenuItem) {
+        guard let p = it.representedObject as? String else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p).appendingPathComponent("recording.mp4")])
+    }
+    @objc func mCopyVideo(_ it: NSMenuItem) {
+        guard let p = it.representedObject as? String else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([URL(fileURLWithPath: p).appendingPathComponent("recording.mp4") as NSURL])
+        toast(L("已拷贝，去飞书 / 微信 / Slack 里直接粘贴", "Copied — paste it into Slack, Feishu, email…"))
+    }
+    @objc func mProcessClaude(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p), with: "claude") } }
+    @objc func mProcessCodex(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p), with: "codex") } }
+    @objc func mProcessMode(_ it: NSMenuItem) { setRecordConfig("process", it.representedObject as? String) }
+    @objc func mCountdown(_ it: NSMenuItem) { setRecordConfig("countdown", it.representedObject as? Int) }
+    @objc func mLogin() {
+        guard #available(macOS 13.0, *) else { return }
+        do {
+            if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() }
+        } catch { alert(L("设置失败", "Couldn't change it"), error.localizedDescription) }
+    }
+    @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
+    @objc func mQuit() { NSApp.terminate(nil) }
+
+    // tiny, non-blocking toast under the menu bar (no notification permission needed)
+    var toastWin: NSWindow?
+    func toast(_ text: String) {
+        toastWin?.orderOut(nil)
+        let f = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let w = NSAttributedString(string: text, attributes: [.font: f]).size().width + 36
+        let screen = NSScreen.main?.visibleFrame ?? .zero
+        let frame = NSRect(x: screen.maxX - w - 16, y: screen.maxY - 56, width: w, height: 40)
+        let v = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
+        v.material = .hudWindow
+        v.state = .active
+        v.appearance = NSAppearance(named: .vibrantDark)
+        v.wantsLayer = true
+        v.layer?.cornerRadius = 12
+        let label = NSTextField(labelWithString: text)
+        label.font = f
+        label.textColor = .white
+        label.frame = NSRect(x: 18, y: 11, width: w - 30, height: 18)
+        v.addSubview(label)
+        let win = overlayWindow(frame, view: v)
+        win.level = .statusBar
+        win.orderFrontRegardless()
+        toastWin = win
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self, weak win] in
+            if self?.toastWin === win { win?.orderOut(nil) }
+        }
+    }
+
+    func alert(_ title: String, _ text: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = text
+        activateApp()
+        a.runModal()
+    }
 }
 
-if opts.standalone { prepareStandalone() }
+// A second copy of the app (double-click while it's running) just asks the running one to start recording.
+if opts.standalone,
+   NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.blurt.recorder")
+       .contains(where: { $0.processIdentifier != getpid() }) {
+    DistributedNotificationCenter.default().postNotificationName(.init("dev.blurt.recorder.start"), object: nil, userInfo: nil, deliverImmediately: true)
+    exit(0)
+}
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = App()
