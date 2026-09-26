@@ -1174,10 +1174,48 @@ func recentSessions(limit: Int = 8) -> [URL] {
     return Array(dirs.sorted { $0.lastPathComponent > $1.lastPathComponent }.prefix(limit))
 }
 
+/// Apps opened from Finder get a bare PATH, and many people add ~/.local/bin etc. only in ~/.zshrc — so ask an
+/// interactive shell once (with a timeout) and add the usual install locations.
+let userPATH: String = {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+    p.arguments = ["-ilc", "printf '\\n__BLURT_PATH__%s' \"$PATH\""]
+    let pipe = Pipe()
+    p.standardOutput = pipe
+    p.standardError = FileHandle.nullDevice
+    p.standardInput = FileHandle.nullDevice
+    var found = ""
+    if (try? p.run()) != nil {
+        let deadline = Date().addingTimeInterval(6)
+        while p.isRunning && Date() < deadline { usleep(50_000) }
+        if p.isRunning { p.terminate() }
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        if let r = out.range(of: "__BLURT_PATH__") { found = String(out[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+    let home = NSHomeDirectory()
+    let extra = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.bun/bin", "\(home)/.npm-global/bin",
+                 "\(home)/.cargo/bin", "\(home)/.volta/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    var seen = Set<String>()
+    return (found.split(separator: ":").map(String.init) + extra).filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: ":")
+}()
+
+func findExecutable(_ name: String) -> String? {
+    for dir in userPATH.split(separator: ":") {
+        let path = "\(dir)/\(name)"
+        if FileManager.default.isExecutableFile(atPath: path) { return path }
+    }
+    return nil
+}
+
 func shell(_ cmd: String, cwd: URL, log: URL, done: @escaping (Int32) -> Void) {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    p.arguments = ["-lc", cmd]          // login shell: the user's PATH (claude / codex / uv)
+    p.arguments = ["-c", cmd]
+    var env = ProcessInfo.processInfo.environment
+    env["PATH"] = userPATH
+    env["BLURT_APP"] = "1"
+    p.environment = env
+    p.standardInput = FileHandle.nullDevice   // codex exec otherwise waits for more prompt on stdin
     p.currentDirectoryURL = cwd
     FileManager.default.createFile(atPath: log.path, contents: nil)
     let fh = try? FileHandle(forWritingTo: log)
@@ -1368,7 +1406,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setRecordConfig("welcomed", true)
             toast(L("吐槽鸡已常驻 🐔  ⌥⇧R 开始 / 结束录制 · ⌥⇧B 打开菜单", "blurt is running 🐔  ⌥⇧R start / finish · ⌥⇧B menu"))
         }
-        if !CommandLine.arguments.contains("--background") { startRecording(useLast: false) }
+        // `--process <session dir> [--agent claude|codex]`: process an existing recording (also handy for testing)
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--process"), i + 1 < args.count {
+            let agent = args.firstIndex(of: "--agent").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "claude"
+            process(URL(fileURLWithPath: args[i + 1]), with: agent)
+        } else if !args.contains("--background") {
+            startRecording(useLast: false)
+        }
     }
 
     /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥⇧B shows the same menu at the pointer.
@@ -1442,24 +1487,48 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// and opens the review page itself.
     func process(_ dir: URL, with agent: String) {
         let ws = currentWorkspace()
-        let prompt = L("用 blurt skill 处理这段录屏：\(dir.path)\n这是无人值守的后台运行：不要提问；整理好后用 nohup 在后台启动审核页（不要等待它结束），最后用两三句话总结。",
-                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run: don't ask questions; when done, start the review page detached with nohup (don't wait for it) and finish with a 2–3 sentence summary.")
+        let name = agent == "codex" ? "Codex" : "Claude Code"
+        guard let bin = findExecutable(agent == "codex" ? "codex" : "claude") else {
+            alert(L("没找到 \(name)", "\(name) not found"),
+                  L("吐槽鸡要调用命令行里的 `\(agent == "codex" ? "codex" : "claude")`，但在你的 PATH 里没找到。装好 \(name) 命令行后再试，或者在菜单里改成「只保存」。",
+                    "blurt calls the `\(agent == "codex" ? "codex" : "claude")` command line tool, which isn't on your PATH. Install the \(name) CLI, or switch to “Just save”."))
+            return
+        }
+        let prompt = L("用 blurt skill 处理这段录屏：\(dir.path)\n这是吐槽鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
+                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it when you finish); write items.json, then summarise in 2–3 sentences.")
         let cmd: String
         if agent == "codex" {
-            cmd = "codex exec --full-auto --skip-git-repo-check \(shq(prompt))"
+            // the skill needs uv's cache, the models in ~/.blurt and ffmpeg — outside the workspace sandbox
+            cmd = "\(shq(bin)) exec --skip-git-repo-check --sandbox danger-full-access \(shq(prompt))"
         } else {
-            cmd = "claude -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
+            cmd = "\(shq(bin)) -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
         }
         processing.append(dir.path)
-        toast(L("已保存，\(agent == "codex" ? "Codex" : "Claude Code") 正在后台整理…", "Saved — \(agent == "codex" ? "Codex" : "Claude Code") is processing it in the background…"))
+        toast(L("\(name) 正在后台整理…", "\(name) is processing it in the background…"))
         shell(cmd, cwd: ws, log: dir.appendingPathComponent("agent.log")) { [weak self] status in
             guard let self = self else { return }
             self.processing.removeAll { $0 == dir.path }
-            self.toast(status == 0 ? L("整理好了，审核页已打开", "Done — the review page is open")
-                                   : L("后台整理失败，详见 agent.log", "Background processing failed — see agent.log"))
+            let ok = status == 0 && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path)
+            if ok && self.openReview(dir) {
+                self.toast(L("整理好了，审核页已打开", "Done — the review page is open"))
+            } else if ok {
+                self.toast(L("整理好了（items.json 已生成）", "Done — items.json is ready"))
+            } else {
+                self.toast(L("后台整理失败，详见录屏文件夹里的 agent.log", "Processing failed — see agent.log in the recording folder"))
+            }
             self.refreshStatus()
         }
         refreshStatus()
+    }
+
+    /// Open the review page ourselves (the agent has exited; a page it started could die with it).
+    @discardableResult
+    func openReview(_ dir: URL) -> Bool {
+        guard let skill = readConfig()["skill_dir"] as? String,
+              FileManager.default.fileExists(atPath: "\(skill)/scripts/review.py"), let uv = findExecutable("uv") else { return false }
+        shell("\(shq(uv)) run -q \(shq("\(skill)/scripts/review.py")) \(shq(dir.path))", cwd: dir,
+              log: dir.appendingPathComponent("review.log")) { _ in }
+        return true
     }
 
     func fmtDur(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
@@ -1472,14 +1541,25 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             b.attributedTitle = NSAttributedString(string: (r.isPaused ? "❚❚ " : "● ") + String(format: "%02d:%02d", s / 60, s % 60), attributes: [
                 .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
         } else {
-            let sym = processing.isEmpty ? "bubble.left.and.text.bubble.right" : "hourglass"
-            let img = NSImage(systemSymbolName: sym, accessibilityDescription: "blurt") ?? NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
-            img?.isTemplate = true
-            b.image = img
-            b.attributedTitle = NSAttributedString(string: "")
-            b.toolTip = L("吐槽鸡 · ⌥⇧R 开始录制", "blurt · ⌥⇧R to record")
+            b.image = menuIcon
+            b.imagePosition = .imageLeft
+            b.attributedTitle = NSAttributedString(string: processing.isEmpty ? "" : " …", attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
+            b.toolTip = processing.isEmpty ? L("吐槽鸡 · ⌥⇧R 开始录制 · ⌥⇧B 菜单", "blurt · ⌥⇧R record · ⌥⇧B menu")
+                                           : L("吐槽鸡 · 正在后台整理…", "blurt · processing in the background…")
         }
     }
+
+    /// The chicken from the app icon, full colour, 18 pt tall (MenuIcon.png is generated at build time).
+    lazy var menuIcon: NSImage? = {
+        let img = Bundle.main.image(forResource: "MenuIcon")
+            ?? NSImage(systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: "blurt")
+        if let i = img, i.size.height > 0 {
+            i.size = NSSize(width: 18 * i.size.width / i.size.height, height: 18)
+            i.isTemplate = Bundle.main.image(forResource: "MenuIcon") == nil
+        }
+        return img
+    }()
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -1676,7 +1756,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 }
 
 // A second copy of the app (double-click while it's running) just asks the running one to start recording.
-if opts.standalone,
+// Only for plain launches — `--process`, `--background` etc. are explicit instructions for this process.
+let plainLaunch = !CommandLine.arguments.dropFirst().contains { $0.hasPrefix("--") && !$0.hasPrefix("--lang") }
+if opts.standalone, plainLaunch, ProcessInfo.processInfo.environment["BLURT_ALLOW_MULTI"] == nil,
    NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.blurt.recorder")
        .contains(where: { $0.processIdentifier != getpid() }) {
     DistributedNotificationCenter.default().postNotificationName(.init("dev.blurt.recorder.start"), object: nil, userInfo: nil, deliverImmediately: true)

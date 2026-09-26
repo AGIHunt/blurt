@@ -116,9 +116,10 @@ The user may answer in chat or on the page. End your turn. Afterwards reload `it
 `status: "deleted"`, answers are in `answer`). If they reply in chat instead, apply it yourself and close the page
 (`pkill -f "review.py <session>"`).
 
-**Unattended runs** (started by the Blurt app via `claude -p` / `codex exec`, or any non-interactive mode): don't ask
-anything; do §2–§4, start the page detached (`nohup uv run …/review.py <session> >/dev/null 2>&1 &`), and finish
-with a 2–3 sentence summary. Never export to external systems unattended.
+**Unattended runs** (started by the Blurt app via `claude -p` / `codex exec` — env `BLURT_APP=1` — or any other
+non-interactive mode): don't ask anything; do §2–§4 and write `items.json`, then finish with a 2–3 sentence summary.
+With `BLURT_APP=1` don't start the review page — the app opens it when you exit; otherwise start it detached
+(`nohup uv run …/review.py <session> >/dev/null 2>&1 &`). Never export to external systems unattended.
 
 ## 6. Export / act
 

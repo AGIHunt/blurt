@@ -242,6 +242,7 @@ def native_binary(build: bool = True) -> Path | None:
     """The recorder lives inside ~/.blurt/Blurt.app so it can also be launched as a standalone app."""
     if not IS_MAC or not SWIFT_SRC.exists():
         return None
+    remember_skill_dir()
     digest = hashlib.sha256(SWIFT_SRC.read_bytes() + INFO_PLIST.encode()).hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"
@@ -277,10 +278,17 @@ def native_binary(build: bool = True) -> Path | None:
     shutil.move(str(tmp), exe)
     (APP_BUNDLE / "Contents" / "Info.plist").write_text(INFO_PLIST, encoding="utf-8")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
+    make_menu_icon(APP_BUNDLE / "Contents" / "Resources")
+    stamp.write_text(digest)          # before signing: the signature seals Resources/
     sign_app(APP_BUNDLE)
-    stamp.write_text(digest)
     ensure_app_installed(force=True)
     return exe
+
+
+def remember_skill_dir() -> None:
+    skill = str(Path(__file__).resolve().parent.parent)
+    if global_config().get("skill_dir") != skill:
+        update_global_config({"skill_dir": skill})
 
 
 def ensure_app_installed(force: bool = False) -> Path | None:
@@ -323,6 +331,18 @@ def sign_app(bundle: Path) -> None:
     the Screen Recording / Microphone grant across rebuilds and updates instead of silently revoking it."""
     run(["codesign", "--force", "--sign", "-", "--identifier", "dev.blurt.recorder",
          "-r=designated => identifier \"dev.blurt.recorder\"", str(bundle)], check=False)
+
+
+def make_menu_icon(res: Path) -> None:
+    """Menu-bar icon: the logo trimmed to its content, 18 pt tall (36 px @2x)."""
+    if not ICON.exists():
+        return
+    tmp = BLURT_HOME / "build" / "menu.png"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    # crop to the logo's content box (transparent margins trimmed)
+    run(["sips", "-c", "349", "425", "--cropOffset", "80", "47", str(ICON), "--out", str(tmp)], check=False)
+    run(["sips", "-Z", "44", str(tmp), "--out", str(res / "MenuIcon@2x.png")], check=False)
+    run(["sips", "-Z", "22", str(tmp), "--out", str(res / "MenuIcon.png")], check=False)
 
 
 def make_icns(dest: Path) -> None:
