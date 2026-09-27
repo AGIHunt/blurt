@@ -1,0 +1,31 @@
+name: check
+
+# Cheap smoke check: people install the skill straight from main, so main must never be broken.
+# Runs only when the skill or tests change; one Linux job, ~1 min.
+on:
+  push:
+    branches: [main]
+    paths: ["skills/**", "tests/**", ".github/workflows/check.yml"]
+  pull_request:
+    paths: ["skills/**", "tests/**", ".github/workflows/check.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Syntax
+        run: python3 -m compileall -q skills/blurt/scripts tests
+      - name: Every script starts (resolves its inline deps)
+        run: for f in doctor export_local feishu frames record review transcribe; do uv run -q skills/blurt/scripts/$f.py --help > /dev/null; done
+      - name: Tests
+        run: python3 -m unittest discover -s tests -v

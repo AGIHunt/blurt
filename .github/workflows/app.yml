@@ -3,6 +3,10 @@ name: Blurt.app
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", ".github/workflows/app.yml"]
+  pull_request:
+    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", ".github/workflows/app.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +28,7 @@ jobs:
           lipo -info "$BLURT_HOME/Blurt.app/Contents/MacOS/blurt-recorder"
           ditto -c -k --keepParent "$BLURT_HOME/Blurt.app" Blurt-macOS.zip
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
         with:
           name: Blurt-macOS
           path: Blurt-macOS.zip
