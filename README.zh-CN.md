@@ -4,6 +4,9 @@
 指着屏幕口喷，想到哪喷到哪，coding agent 帮你整理成问题单、想法清单和待办。<br>
 <a href="README.md">English</a> · 支持 Claude Code、Codex 等所有能装 skill 的 agent</p>
 
+<p align="center"><a href="assets/blurt-promo.mp4"><img src="assets/blurt-promo-poster.jpg" width="720" alt="看 80 秒宣传片"></a><br>
+<sub>▶ <a href="assets/blurt-promo.mp4">看 80 秒宣传片</a>（记得开声音 🐔）· 全部用代码做的，<a href="promo/">源码在这</a></sub></p>
+
 ---
 
 **vibe coding 早就进入口喷时代了，但光靠语音输入，AI 没有眼睛；截图打字又太慢。** 把想法告诉 AI 最自然的方式，
