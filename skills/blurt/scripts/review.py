@@ -25,6 +25,8 @@ HTML = Path(__file__).with_name("review.html")
 
 
 def make_handler(session: Path, done: threading.Event):
+    write_lock = threading.Lock()
+    confirmed = False
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -75,18 +77,44 @@ def make_handler(session: Path, done: threading.Event):
             self._send(200, f.read_bytes(), ctype, {"Accept-Ranges": "bytes"})
 
         def do_POST(self):
+            nonlocal confirmed
             path = urlparse(self.path).path
-            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            if path in ("/api/items", "/api/confirm"):
-                data = json.loads(body or b"{}")
-                if path == "/api/confirm":
-                    data["reviewed"] = True
-                save_session(session, data)
-                self._send(200, b'{"ok":true}', "application/json")
-                if path == "/api/confirm":
+            if path not in ("/api/items", "/api/confirm"):
+                return self._send(404, b"not found", "text/plain")
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length < 0:
+                    raise ValueError("negative content length")
+                data = json.loads(self.rfile.read(length))
+            except (ValueError, UnicodeError):
+                return self._send(400, b'{"error":"invalid JSON body"}', "application/json")
+            if not isinstance(data, dict) or not isinstance(data.get("items"), list) or any(
+                not isinstance(item, dict) or not isinstance(item.get("kind"), str) for item in data["items"]
+            ):
+                return self._send(400, b'{"error":"expected an items array with kind on each item"}', "application/json")
+
+            # The check and write must be atomic: a delayed autosave must never replace a confirmed session.
+            # Also serialize save_session's shared temporary file across request threads.
+            with write_lock:
+                if confirmed:
+                    code, body = 409, b'{"error":"review already confirmed"}'
+                else:
+                    if path == "/api/confirm":
+                        data["reviewed"] = True
+                    try:
+                        save_session(session, data)
+                    except OSError:
+                        code, body = 500, b'{"error":"could not save review"}'
+                    else:
+                        if path == "/api/confirm":
+                            confirmed = True
+                        code, body = 200, b'{"ok":true}'
+            try:
+                self._send(code, body, "application/json")
+            finally:
+                if path == "/api/confirm" and code == 200:
+                    # Keep the server alive until the response is sent (or the browser disconnects).
                     done.set()
-                return
-            self._send(404, b"not found", "text/plain")
 
     return H
 

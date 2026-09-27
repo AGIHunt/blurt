@@ -264,7 +264,7 @@ const T = {
   en:{focus:"Focus",list:"List",keep:"Keep",drop:"Drop",merge:"Merge ↑",undo:"Undo",finish:"Finish review",pending:"to review",kept:"kept",dropped:"dropped",
     module:"Module",owner:"Owner",actual:"Actual",expected:"Expected",steps:"Steps to reproduce",code:"Suspected code",quote:"They said",
     playOrig:"Play from recording",answer:"Your answer…",ask:"Needs your input",sevHigh:"High",sevMedium:"Medium",sevLow:"Low",
-    frame:"Frame",clip:"Clip",orig:"Recording",noMedia:"No screenshot",saved:"Saved",saving:"Saving…",kept1:"Kept",dropped1:"Dropped",merged:"Merged into",
+    frame:"Frame",clip:"Clip",orig:"Recording",noMedia:"No screenshot",saved:"Saved",saving:"Saving…",saveFailed:"Could not save",retrySave:"Keep this tab open and try again.",kept1:"Kept",dropped1:"Dropped",merged:"Merged into",
     undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, tags…",
     keysTitle:"Keyboard shortcuts",confirmTitle:"Hand this back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
     pendingAs:"Treat unreviewed as kept",reviewRest:"Review the rest",confirm:"Confirm & continue",cancel:"Cancel",
@@ -278,7 +278,7 @@ const T = {
   zh:{focus:"专注",list:"列表",keep:"保留",drop:"丢弃",merge:"并入上一条",undo:"撤销",finish:"完成审核",pending:"待审",kept:"保留",dropped:"丢弃",
     module:"所属模块",owner:"负责人",actual:"实际效果",expected:"预期效果",steps:"复现步骤",code:"疑似代码位置",quote:"你当时说",
     playOrig:"回到录屏这一刻",answer:"在这里回答…",ask:"需要你确认",sevHigh:"严重",sevMedium:"一般",sevLow:"轻微",
-    frame:"截图",clip:"片段",orig:"原录屏",noMedia:"没有截图",saved:"已保存",saving:"保存中…",kept1:"已保留",dropped1:"已丢弃",merged:"已并入",
+    frame:"截图",clip:"片段",orig:"原录屏",noMedia:"没有截图",saved:"已保存",saving:"保存中…",saveFailed:"保存失败",retrySave:"请保持此页面打开，再试一次。",kept1:"已保留",dropped1:"已丢弃",merged:"已并入",
     undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、标签…",
     keysTitle:"快捷键",confirmTitle:"把整理结果交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
     pendingAs:"没看的也保留",reviewRest:"继续审",confirm:"确认并继续",cancel:"取消",
@@ -313,6 +313,7 @@ function mdLite(src){ // tiny markdown: headings, lists, bold, code, links
   return out+(inList?"</ul>":"")}
 
 let loaded=false,kindF="",data={items:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
+let saveChain=Promise.resolve(),editVersion=0,finishing=false,finished=false;
 const live=()=>data.items.filter(i=>i.status!=="deleted"||i._dropped);
 const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched?"keep":i._touched?"keep":"pending";
 
@@ -331,12 +332,32 @@ async function load(){
   if(view==="overview"&&!data.digest&&!data.title)view="focus";
   render(true);loaded=true;
 }
+async function postJSON(url,body){
+  const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body});
+  if(!response.ok)throw new Error(`Save failed: HTTP ${response.status}`);
+}
 function save(){
+  if(finishing||finished)return;
+  const version=++editVersion;
   $("#saved").textContent=t("saving");clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},450);
+  saveTimer=setTimeout(()=>{
+    const body=JSON.stringify(data);
+    // Snapshot each edit and serialize requests; an older response must not mark a newer edit as saved.
+    saveChain=saveChain.then(async()=>{
+      try{
+        await postJSON("/api/items",body);
+        if(version===editVersion&&!finishing&&!finished)$("#saved").textContent=t("saved");
+      }catch(e){
+        if(version===editVersion&&!finishing&&!finished){
+          $("#saved").textContent=t("saveFailed");toast(t("saveFailed")+" — "+t("retrySave"));
+        }
+      }
+    });
+    return saveChain;
+  },450);
 }
 function snapshot(){undo.push(JSON.stringify({items:data.items,cur}));if(undo.length>80)undo.shift()}
-function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.items=o.items;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
+function doUndo(){if(finishing||finished)return;const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.items=o.items;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
 
 function counts(){let k=0,d=0,p=0;data.items.forEach(i=>{const s=statusOf(i);s==="keep"?k++:s==="drop"?d++:p++});return{k,d,p,n:data.items.length}}
 function renderTop(){
@@ -507,7 +528,7 @@ let toastTimer;
 function toast(msg,withUndo){$("#toastMsg").textContent=msg;$("#toastUndo").textContent=withUndo?t("undo")+"  Z":"";$("#toastUndo").style.display=withUndo?"":"none";
   $("#toast").classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("#toast").classList.remove("show"),2200)}
 function modal(html){$("#modal").innerHTML=html;$("#modalBg").classList.add("show")}
-function closeModal(){$("#modalBg").classList.remove("show")}
+function closeModal(){if(!finishing)$("#modalBg").classList.remove("show")}
 function openHelp(){
   const rows=[["↓ ↑ / J K",t("k_next")],["A / ⏎",t("k_keep")],["X / ⌫",t("k_drop")],["Z",t("k_undo")],["M",t("k_merge")],["1 2 3",t("k_sev")],
     ["← →",t("k_media")],["Space / O",t("k_play")],["E",t("k_edit")],["G",t("k_view")],["V",t("k_ov")],["⌘⏎",t("k_finish")],["?",t("k_help")]];
@@ -515,19 +536,38 @@ function openHelp(){
     <div class="row"><button class="btn" onclick="closeModal()">OK</button></div>`);
 }
 function openFinish(){
+  if(finishing||finished)return;
   const c=counts();
   modal(`<h3>${t("confirmTitle")}</h3><p>${t("confirmBody").replace("{k}",c.k).replace("{d}",c.d).replace("{p}",c.p)}</p>
     <div class="sum"><div><b style="color:var(--keep)">${c.k}</b>${t("kept")}</div><div><b style="color:var(--drop)">${c.d}</b>${t("dropped")}</div><div><b>${c.p}</b>${t("pending")}</div></div>
     <div class="row">${c.p?`<button class="btn" id="mRest">${t("reviewRest")}</button>`:`<button class="btn" id="mCancel">${t("cancel")}</button>`}
-    <button class="btn primary" id="mOk">${c.p?t("pendingAs"):t("confirm")}</button></div>`);
+    <button class="btn primary" id="mOk">${c.p?t("pendingAs"):t("confirm")}</button></div>
+    <p id="finishError" role="alert" hidden></p>`);
   $("#mRest")?.addEventListener("click",()=>{closeModal();const n=data.items.findIndex(i=>statusOf(i)==="pending");setView("focus");go(n)});
   $("#mCancel")?.addEventListener("click",closeModal);
   $("#mOk").onclick=finish;
 }
 async function finish(){
-  data.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
-  await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
-  closeModal();$("#done").classList.add("show");
+  if(finishing||finished)return;
+  finishing=true;clearTimeout(saveTimer);++editVersion;
+  document.activeElement?.blur();
+  const views=document.querySelectorAll(".top, #focusView, #listView, #overviewView, #toast");
+  views.forEach(el=>el.inert=true);
+  const button=$("#mOk"),error=$("#finishError");
+  button.disabled=true;error.hidden=true;$("#saved").textContent=t("saving");
+  const confirmed=JSON.parse(JSON.stringify(data));
+  confirmed.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
+  try{
+    await saveChain; // previous autosaves must finish before the final snapshot is submitted
+    await postJSON("/api/confirm",JSON.stringify(confirmed));
+    data=confirmed;finished=true;loaded=false;finishing=false;
+    closeModal();$("#done").classList.add("show");
+  }catch(e){
+    $("#saved").textContent=t("saveFailed");
+    error.textContent=t("saveFailed")+" — "+t("retrySave");error.hidden=false;
+  }finally{
+    finishing=false;button.disabled=false;views.forEach(el=>el.inert=false);
+  }
 }
 
 /* ---------- wiring ---------- */
@@ -547,7 +587,7 @@ $("#stage").addEventListener("wheel",e=>{if(e.target.closest("video,.strip"))ret
 let touchY=null;$("#stage").addEventListener("touchstart",e=>touchY=e.touches[0].clientY,{passive:true});
 $("#stage").addEventListener("touchend",e=>{if(touchY==null)return;const d=touchY-e.changedTouches[0].clientY;if(Math.abs(d)>50)d>0?go(cur+1,"up"):go(cur-1,"down");touchY=null});
 document.addEventListener("keydown",e=>{
-  if(!loaded)return;
+  if(!loaded||finishing||finished)return;
   const typing=/INPUT|TEXTAREA/.test(document.activeElement?.tagName);
   if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();openFinish();return}
   if(e.key==="Escape"){if($("#modalBg").classList.contains("show"))closeModal();else if($("#lightbox").classList.contains("show"))$("#lightbox").classList.remove("show");else document.activeElement?.blur();return}
