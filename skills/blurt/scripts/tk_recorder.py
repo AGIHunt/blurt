@@ -273,7 +273,7 @@ class TkRecorder:
         cw.configure(bg=BG)
         lbl = tk.Label(cw, text=str(n), fg="white", bg=BG, font=("Segoe UI", 64, "bold"))
         lbl.pack(expand=True, fill="both")
-        tk.Label(cw, text=self.t("准备，开始吐槽", "Get ready"), fg=MUTED, bg=BG, font=("Segoe UI", 10)).pack()
+        tk.Label(cw, text=self.t("准备，开喷", "Get ready"), fg=MUTED, bg=BG, font=("Segoe UI", 10)).pack()
         hint = self.t("Alt+Shift+P 暂停/继续 · Alt+Shift+S 完成 · 点一下跳过", "Alt+Shift+P pause · Alt+Shift+S finish · click to skip")
         tk.Label(cw, text=hint if IS_WIN else self.t("点一下跳过", "click to skip"), fg=MUTED, bg=BG,
                  font=("Segoe UI", 8), wraplength=size + 120).pack(pady=(2, 10))

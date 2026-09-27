@@ -16,7 +16,7 @@ Engines (auto-selected; override with --engine or ~/.blurt/config.json → recor
   record.py start [--session DIR] [--region x,y,w,h | --last-region] [--engine E] [--countdown 3]
                                         run in the background; exits when the user stops (prints DONE …)
   record.py stop | pause | resume | restart | discard     control the active recording from the chat
-  record.py inbox                       recordings made with the standalone app (~/Movies/Blurt) + processed?
+  record.py inbox                       recordings made with the Blurt app (~/Blurt, bound projects) + processed?
   record.py install-app                 double-clickable recorder: ~/Applications/Blurt.app / Start-menu "Blurt"
   record.py status                      active recording, if any
   record.py devices                     screens / microphones (JSON)
@@ -225,11 +225,11 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>dev.blurt.recorder</string>
 <key>CFBundleName</key><string>Blurt</string>
-<key>CFBundleDisplayName</key><string>Blurt 吐槽鸡</string>
+<key>CFBundleDisplayName</key><string>Blurt 口喷鸡</string>
 <key>CFBundleExecutable</key><string>blurt-recorder</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.0</string>
+<key>CFBundleShortVersionString</key><string>0.3.1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
 <key>NSMicrophoneUsageDescription</key><string>Blurt records your voice while you narrate feedback.</string>
@@ -242,6 +242,7 @@ def native_binary(build: bool = True) -> Path | None:
     """The recorder lives inside ~/.blurt/Blurt.app so it can also be launched as a standalone app."""
     if not IS_MAC or not SWIFT_SRC.exists():
         return None
+    remember_skill_dir()
     digest = hashlib.sha256(SWIFT_SRC.read_bytes() + INFO_PLIST.encode()).hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"
@@ -255,7 +256,19 @@ def native_binary(build: bool = True) -> Path | None:
     print("building native recorder (one-time, ~20s)…", file=sys.stderr, flush=True)
     tmp = BLURT_HOME / "build" / "blurt-recorder"
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    r = run([swiftc, "-O", "-swift-version", "5", str(SWIFT_SRC), "-o", str(tmp)], check=False)
+    if os.environ.get("BLURT_UNIVERSAL"):  # release builds: arm64 + x86_64 in one binary
+        parts = []
+        for arch in ("arm64", "x86_64"):
+            out_arch = tmp.with_name(f"blurt-recorder-{arch}")
+            r = run([swiftc, "-O", "-swift-version", "5", "-target", f"{arch}-apple-macos13.0", str(SWIFT_SRC), "-o", str(out_arch)],
+                    check=False)
+            if r.returncode:
+                print(f"build failed for {arch}:\n{r.stderr[-1500:]}", file=sys.stderr)
+                return None
+            parts.append(str(out_arch))
+        r = run(["lipo", "-create", *parts, "-output", str(tmp)], check=False)
+    else:
+        r = run([swiftc, "-O", "-swift-version", "5", str(SWIFT_SRC), "-o", str(tmp)], check=False)
     if r.returncode:
         print(f"native recorder build failed, falling back:\n{r.stderr[-1500:]}", file=sys.stderr)
         return None
@@ -265,10 +278,17 @@ def native_binary(build: bool = True) -> Path | None:
     shutil.move(str(tmp), exe)
     (APP_BUNDLE / "Contents" / "Info.plist").write_text(INFO_PLIST, encoding="utf-8")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
-    run(["codesign", "--force", "--sign", "-", str(APP_BUNDLE)], check=False)
-    stamp.write_text(digest)
+    make_menu_icon(APP_BUNDLE / "Contents" / "Resources")
+    stamp.write_text(digest)          # before signing: the signature seals Resources/
+    sign_app(APP_BUNDLE)
     ensure_app_installed(force=True)
     return exe
+
+
+def remember_skill_dir() -> None:
+    skill = str(Path(__file__).resolve().parent.parent)
+    if global_config().get("skill_dir") != skill:
+        update_global_config({"skill_dir": skill})
 
 
 def ensure_app_installed(force: bool = False) -> Path | None:
@@ -286,7 +306,7 @@ def ensure_app_installed(force: bool = False) -> Path | None:
             dest.parent.mkdir(exist_ok=True)
             shutil.rmtree(dest, ignore_errors=True)
             shutil.copytree(APP_BUNDLE, dest, symlinks=True)
-            run(["codesign", "--force", "--sign", "-", str(dest)], check=False)
+            sign_app(dest)
             print(f"installed standalone recorder: {dest}", file=sys.stderr, flush=True)
             return dest
         if IS_WIN:
@@ -306,6 +326,21 @@ def ensure_app_installed(force: bool = False) -> Path | None:
     return None
 
 
+def sign_app(bundle: Path) -> None:
+    """Ad-hoc sign with a designated requirement on the bundle id (not the default per-build cdhash), so macOS keeps
+    the Screen Recording / Microphone grant across rebuilds and updates instead of silently revoking it."""
+    run(["codesign", "--force", "--sign", "-", "--identifier", "dev.blurt.recorder",
+         "-r=designated => identifier \"dev.blurt.recorder\"", str(bundle)], check=False)
+
+
+def make_menu_icon(res: Path) -> None:
+    """Menu-bar icon: a monochrome template (macOS tints it for light / dark menu bars)."""
+    for name in ("MenuIconTemplate.png", "MenuIconTemplate@2x.png"):
+        src = ICON.parent / name
+        if src.exists():
+            shutil.copy(src, res / name)
+
+
 def make_icns(dest: Path) -> None:
     if not ICON.exists():
         return
@@ -321,8 +356,16 @@ def make_icns(dest: Path) -> None:
 
 
 def inbox_dir() -> Path:
-    """Where standalone recordings go (and --inbox sessions): ~/Movies/Blurt or ~/Videos/Blurt."""
-    return Path.home() / ("Movies" if IS_MAC else "Videos") / "Blurt"
+    """The default workspace's recordings (the Blurt app and --inbox): ~/Blurt/recordings."""
+    return Path.home() / "Blurt" / "recordings"
+
+
+def recording_roots() -> list[Path]:
+    """Everywhere recordings may live: the default workspace and projects bound in the app."""
+    roots = [inbox_dir()]
+    for w in global_config().get("record", {}).get("workspaces", []) or []:
+        roots.append(Path(w) / ".blurt" / "sessions")
+    return [r for r in dict.fromkeys(roots) if r.exists()]
 
 
 def tk_available() -> bool:
@@ -582,14 +625,14 @@ def cmd_devices(_a) -> None:
 def cmd_inbox(_a) -> None:
     """Recordings made with the standalone app (or --inbox) and whether they've been turned into issues yet."""
     rows = []
-    for d in sorted(inbox_dir().glob("*/"), reverse=True):
-        v = d / "recording.mp4"
-        if not v.exists():
-            continue
+    dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists()]
+    for d in sorted(dirs, key=lambda x: x.name, reverse=True):
         meta = load_json(d / "meta.json", {}) or {}
-        rows.append({"session": str(d), "duration": meta.get("duration") or round(probe_duration(v), 1),
-                     "processed": (d / "issues.json").exists(), "exported": bool((load_json(d / "issues.json", {}) or {}).get("reviewed"))})
-    print(json.dumps({"inbox": str(inbox_dir()), "recordings": rows}, ensure_ascii=False, indent=2))
+        out = load_json(d / "items.json")
+        rows.append({"session": str(d), "duration": meta.get("duration") or round(probe_duration(d / "recording.mp4"), 1),
+                     "author": meta.get("author"), "processed": out is not None,
+                     "reviewed": bool((out or {}).get("reviewed"))})
+    print(json.dumps({"roots": [str(r) for r in recording_roots()], "recordings": rows}, ensure_ascii=False, indent=2))
 
 
 def cmd_install_app(_a) -> None:
@@ -667,7 +710,7 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("start")
     s.add_argument("--session", help="session dir (default: ./.blurt/sessions/<timestamp>)")
-    s.add_argument("--inbox", action="store_true", help="save to the recordings inbox (~/Movies/Blurt) instead of the project")
+    s.add_argument("--inbox", action="store_true", help="save to the default workspace (~/Blurt/recordings) instead of the project")
     s.add_argument("--engine", choices=["native", "tk", "ffmpeg"])
     s.add_argument("--region", help="x,y,w,h in screen points — skip the picker")
     s.add_argument("--last-region", action="store_true", help="reuse the last area without asking")

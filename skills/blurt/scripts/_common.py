@@ -165,3 +165,16 @@ def fix_tcl_env() -> None:
             if tkdir.exists():
                 os.environ["TK_LIBRARY"] = str(tkdir)
         return
+
+
+# ------------------------------------------------------------------ session output: items.json
+def load_session(session: Path) -> dict | None:
+    return load_json(Path(session) / "items.json")
+
+
+def save_session(session: Path, data: dict) -> None:
+    save_json(Path(session) / "items.json", data)
+
+
+def live_items(data: dict, kind: str | None = None) -> list[dict]:
+    return [i for i in data.get("items", []) if i.get("status") != "deleted" and (kind is None or i.get("kind") == kind)]

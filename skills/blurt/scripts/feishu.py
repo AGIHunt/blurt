@@ -37,8 +37,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts, global_config, load_json, save_json  # noqa: E402
-from export_local import LABELS, live_issues  # noqa: E402
+from _common import die, fmt_ts, global_config, live_items, load_session, save_session  # noqa: E402
+from export_local import LABELS  # noqa: E402
 
 ATTACH_KEYS = {"frames", "clip"}
 
@@ -250,7 +250,17 @@ class OpenAPI:
 
 
 # ------------------------------------------------------------------ mapping
-def default_map(lang: str) -> dict:
+def default_map(lang: str, kind: str = "issue") -> dict:
+    if kind == "idea":
+        if lang == "zh":
+            return {"title": "想法", "summary": "概述", "why": "为什么", "inspired_by": "灵感来源", "next_steps": "下一步",
+                    "frames": "截图", "clip": "截图", "tags": "标签", "quote": "原话", "time": "录屏时间点", "id": "编号"}
+        return {"title": "Idea", "summary": "Summary", "why": "Why", "inspired_by": "Inspired by", "next_steps": "Next steps",
+                "frames": "Screenshots", "clip": "Screenshots", "tags": "Tags", "quote": "Quote", "time": "Time", "id": "ID"}
+    if kind != "issue":
+        L = LABELS[lang]
+        return {"title": L["title"], "summary": L["summary"], "details": L["details"], "owner": L["owner"], "due": L["due"],
+                "tags": L["tags"], "frames": L["frames"], "quote": L["quote"], "time": L["time"], "id": L["id"]}
     if lang == "zh":  # the classic bug-sheet header
         return {"title": "异常描述", "module": "所属模块", "expected": "预期效果与实际效果", "actual": "预期效果与实际效果",
                 "steps": "复现步骤", "frames": "截图或视频", "clip": "截图或视频", "owner": "对应 owner",
@@ -298,6 +308,7 @@ def main():
     e.add_argument("url")
     e.add_argument("--map", help="JSON file or inline JSON mapping issue keys → column names")
     e.add_argument("--dry-run", action="store_true")
+    e.add_argument("--kind", default="issue", help="which items to export: issue (default) | idea | note | task | <lens>")
     c = sub.add_parser("create")
     c.add_argument("name")
     c.add_argument("--table", default=None)
@@ -319,9 +330,9 @@ def main():
         return
 
     session = Path(a.session)
-    data = load_json(session / "issues.json") or die("issues.json not found")
+    data = load_session(session) or die("no items.json in this session")
     lang = "zh" if str(data.get("language", "")).startswith("zh") else "en"
-    mapping = default_map(lang)
+    mapping = default_map(lang, a.kind)
     if a.map:
         mapping = json.loads(Path(a.map).read_text(encoding="utf-8") if Path(a.map).exists() else a.map)
     L = LABELS[lang]
@@ -329,10 +340,10 @@ def main():
     existing = {x["name"]: x["kind"] for x in be.fields(base, table)}
     missing = {col: ("attachment" if set(keys) & ATTACH_KEYS else "text") for col, keys in cols.items()
                if col not in existing}
-    todo = [i for i in live_issues(data) if not (i.get("exported") or {}).get("feishu_done")]
+    todo = [i for i in live_items(data, a.kind) if not (i.get("exported") or {}).get("feishu_done")]
     if a.dry_run:
         print(json.dumps({"backend": be.name, "base": base, "table": table, "will_create_columns": missing,
-                          "issues": len(todo), "mapping": mapping}, ensure_ascii=False, indent=2))
+                          "items": len(todo), "mapping": mapping}, ensure_ascii=False, indent=2))
         return
     for col, kind in missing.items():
         be.add_field(base, table, col, kind)
@@ -352,16 +363,16 @@ def main():
             parts = [(k, text_value(i, k)) for k in keys if k not in ATTACH_KEYS]
             parts = [(k, v) for k, v in parts if v]
             if parts:
-                rec[col] = parts[0][1] if len(parts) == 1 else "\n".join(f"{L[k]}：{v}" for k, v in parts)
+                rec[col] = parts[0][1] if len(parts) == 1 else "\n".join(f"{L.get(k, k)}：{v}" for k, v in parts)
         exp = i.setdefault("exported", {})
         rid = exp.get("feishu")  # record created on an earlier, interrupted run -> only attach
         if not rid:
             rid = exp["feishu"] = be.create_record(base, table, rec)
-            save_json(session / "issues.json", data)  # save as we go: a rerun never duplicates
+            save_session(session, data)  # save as we go: a rerun never duplicates
         for col, paths in files.items():
             be.attach(base, table, rid, col, paths)
         exp["feishu_done"] = True
-        save_json(session / "issues.json", data)
+        save_session(session, data)
         done += 1
         print(f"  {i.get('id')} → {rid}", file=sys.stderr, flush=True)
     print(json.dumps({"backend": be.name, "exported": done, "created_columns": list(missing), "url": a.url},

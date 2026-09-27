@@ -2,6 +2,6 @@
   "name": "blurt",
   "owner": { "name": "AGI Hunt", "url": "https://github.com/AGIHunt" },
   "plugins": [
-    { "name": "blurt", "source": "./", "description": "Narrated screen recording → issues (Feishu/CSV/GitHub…)" }
+    { "name": "blurt", "source": "./", "description": "Screen + voice → bugs, ideas, notes and todos (review page; Feishu/CSV/GitHub export). 口喷鸡" }
   ]
 }

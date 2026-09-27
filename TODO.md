@@ -10,7 +10,7 @@
 - [x] Verified on macOS 26 (Apple Silicon): real screen + mic, transcription, frames, review, Feishu export
 - [ ] Verify on Windows 10/11 (ddagrab/gdigrab, WASAPI mic via sounddevice, DPI scaling, wall-clock sync)
 - [x] End-to-end Feishu export with lark-cli (multi-attachment cells, resumable)
-- [x] Logo (吐槽鸡, 3 variants in assets/)
+- [x] Logo (口喷鸡, 3 variants in assets/)
 - [ ] Project homepage
 - [ ] Windows sound/notification polish; macOS menu-bar "stop" button (today: say "done" in chat)
 
@@ -22,6 +22,18 @@
 - [x] Review page v2: focus mode with keyboard triage, list view, undo, merge, answers to open questions
 - [ ] Verify the Tk recorder + Start-menu shortcut on real Windows 10/11 (DPI, multi-monitor, gdigrab region)
 - [ ] Use events.jsonl clicks/cursor in frame selection (auto red circle at the click position)
+
+## v0.3
+- [x] Generalized beyond bugs: items with kinds (issue / idea / note / task) + custom lenses, session digest
+- [x] Review page: per-kind layouts, generic fields for custom lenses, Overview tab, kind filters
+- [x] Exports: Markdown grouped by kind, one CSV per kind, Feishu `--kind` with per-kind default columns
+- [x] Menu-bar resident app: ⌥⇧R start/finish, ⌥⇧B menu, workspaces (~/Blurt or bound project), recent recordings
+      (copy to share / reveal / process), background processing via Claude Code or Codex, open at login
+- [x] Region picker fixes: click-through hole, drag vs move, Esc/Enter without app activation
+- [x] Universal Blurt.app built in CI (attach to releases on `v*` tags)
+- [ ] Developer ID signing + notarization (no right-click-Open on first launch)
+- [ ] Demo GIF / video for the README
+- [ ] Windows tray app (resident mode parity)
 
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): circle-gesture detection,

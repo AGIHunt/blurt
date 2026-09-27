@@ -1,127 +1,137 @@
 ---
 name: blurt
 description: >-
-  Turn a narrated screen recording into a clean list of bug/feedback issues (title, module, owner, actual vs
-  expected, repro steps, screenshots, clips, suspected code) and export them to Feishu/Lark Bitable, CSV/Markdown,
-  GitHub Issues or wherever the user wants. Use when the user wants to record feedback / QA / polish notes by talking
-  while using their app, hands over such a video, or wants to process recordings made with the Blurt app.
-  Triggers: "blurt", "/blurt", "start blurt", "开始吐槽", "吐槽鸡", "开始录反馈", "录屏提 bug", "record feedback",
+  Screen + voice → structured work. The user records their screen while talking (demoing their product, browsing,
+  exploring an idea); turn the recording into items — bug/polish issues with repro steps, frames and suspected code,
+  ideas with the inspiration behind them, notes, todos — let them review on a local page, then export (Feishu/Lark
+  Bitable, CSV/Markdown, GitHub Issues…) or start fixing. Use when the user wants to record feedback / QA / ideas by
+  talking while using their screen, hands over such a video, or wants to process recordings from the Blurt app.
+  Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
   "turn this recording into issues", "处理我录的视频", "process my recordings".
 ---
 
-# blurt 🐔 — say it while you use it, get tickets
+# blurt 🐔 — show it, say it, get structured work back
 
-The user demos their product and rants out loud — jumping between modules, correcting themselves, pointing at
-things. Your job: capture that cheaply, then do the tedious part (splitting, writing, screenshotting, filing)
-with care. Optimise for the user's flow: never interrupt a recording, ask few questions, and make review fast.
+People think best out loud with their eyes on the screen. They jump between topics, correct themselves, point at
+things. Your job: capture that with no friction, then do the tedious part (splitting, writing up, picking and
+marking screenshots, finding the code, filing) with care. Optimise for the user's flow: never interrupt a
+recording, ask few questions, make review fast.
 
-Scripts live in `scripts/` next to this file; run them with `uv run <skill-dir>/scripts/<name>.py ...`
-(each declares its own deps; `uv` installs them on first use). Every script has `--help`.
-Always reply in the user's language; write issue content in the language the user spoke.
+Scripts live in `scripts/` next to this file; run them with `uv run <skill-dir>/scripts/<name>.py ...` (each
+declares its deps; `uv` installs them on first use). Every script has `--help`. Always reply in the user's
+language; write items in the language the user spoke.
 
 ## 0. Setup (first run, or when something fails)
 
-- `doctor.py` → JSON report: OS, RAM/GPU, ffmpeg, configured ASR, recommendations, `todo` list.
+- `doctor.py` → OS, RAM/GPU, ffmpeg, configured ASR, recommendations, `todo` list.
 - Missing ffmpeg/uv: offer the install command; run it only after the user agrees.
-- ASR: if none configured, pick using `asr_recommendations` + the language the user speaks, tell the user in one
-  line what you picked and why (size, local vs cloud, cost), then run the `setup` command. Details:
-  `reference/asr.md`. Keys for cloud ASR must be set by the user in their env — never ask them to paste keys in chat.
-- Recorder: on first setup run `record.py build` — on macOS it compiles the native recorder (needs Xcode Command
-  Line Tools, else a Tk fallback is used) and installs the standalone **Blurt** app into ~/Applications; on Windows
-  the Start-menu shortcut is created on first recording. Mention it to the user in one line.
-- Recording check: `record.py test` → look at the returned `frame` image yourself. Wallpaper-only/black frame or
-  `ok: false` ⇒ Screen Recording permission missing; `mic_silent: true` ⇒ Microphone permission / wrong mic.
-  On macOS the permission belongs to the app hosting you (Terminal, iTerm, VS Code, Claude, Codex…), and that app
-  must be restarted after granting. macOS 15+ may also show a one-off "allow … to bypass the window picker"
-  prompt — the user must click Allow themselves. `record.py devices` lists screens/mics; persist a choice in
-  `~/.blurt/config.json` (`{"record": {"mic": "<name>", "screen": <idx>}}`).
-- Project config (optional) `.blurt/config.json` in the repo: export target, owners/module map, column mapping.
-  Suggest adding `.blurt/sessions/` to `.gitignore`.
+- ASR: if none configured, pick from `asr_recommendations` + the language the user speaks, tell the user in one
+  line what and why (size, local vs cloud, cost), run its `setup`. Details: `reference/asr.md`. Cloud keys are set
+  by the user in their env — never ask them to paste keys in chat.
+- `record.py build` — macOS: compiles the native recorder (Xcode Command Line Tools; else a Tk fallback) and
+  installs the **Blurt** menu-bar app into ~/Applications. Windows: the Start-menu shortcut appears on first
+  recording. Mention it in one line: "Blurt is also in your Applications — ⌥⇧R records from anywhere".
+- `record.py test` → look at the returned `frame` yourself. Wallpaper-only/black or `ok: false` ⇒ Screen Recording
+  permission missing; `mic_silent: true` ⇒ Microphone permission / wrong mic. On macOS the permission belongs to the
+  app hosting you (Terminal, iTerm, VS Code, Claude, Codex…) and that app must be restarted after granting.
+  macOS 15+ may show an "allow … to bypass the window picker" prompt — the user clicks Allow themselves.
+- Optional project config `.blurt/config.json`: export target, owners/module map, column mapping, custom lenses in
+  `.blurt/lenses/`. Suggest adding `.blurt/sessions/` to `.gitignore`.
 
-## 1. Record
+## 1. Record (or pick up a recording)
 
-1. If the app under test is a local dev server/app in this repo, check it is running (start it if the user wants).
-2. Start **in the background**: `record.py start` (add `--last-region` if the user wants the same area as last
-   time). Then tell the user, briefly, what happens next and end your turn:
-   - a dimmed overlay appears: drag to select the area to record (or click a window, F = full screen) → **开始录制**;
-     only that area is recorded — tabs, bookmarks, other windows stay private;
-   - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
-     **完成**. Shortcuts: ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
-   - talk naturally — what's wrong, what they expected, who should own it; point with the mouse;
-   - click **完成** when done. No need to come back to the chat — you'll be notified.
-3. The background task ends with `DONE video=…` (or `CANCELLED`, exit 2 → acknowledge and stop). Continue with §2.
-   From the chat you can also `record.py stop | pause | resume | restart`.
+**From the chat:** if the thing to look at is a local dev server/app in this repo, check it is running. Start
+`record.py start` **in the background** (`--last-region` to reuse the last area), tell the user in a few lines what
+happens, and end your turn:
+- a dimmed overlay: drag to draw the area (or click a window, F = full screen) → **开始录制** / Enter. Only that area
+  is recorded — tabs, bookmarks and other windows stay private;
+- 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
+  **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
+- talk naturally, point with the mouse; click **完成** — no need to come back to the chat, you'll be notified.
+The task ends with `DONE video=…` (or `CANCELLED`, exit 2 → acknowledge and stop). From the chat you can also
+`record.py stop | pause | resume | restart`.
 
-Existing videos: if the user hands over a file (QuickTime, OBS, Loom, phone…), create
-`.blurt/sessions/<timestamp>/`, copy/link it in as `recording.<ext>`, and continue with §2.
+**Existing video** (QuickTime, OBS, Loom, phone, a teammate's Blurt recording…): create
+`.blurt/sessions/<timestamp>/`, copy it in as `recording.<ext>` (with `events.jsonl` / `meta.json` if it came from
+Blurt), continue with §2.
 
-Standalone recordings: the user can record without you via the Blurt app (installed automatically in
-~/Applications / the Start menu; `record.py install-app` reinstalls it). Recordings land in `~/Movies/Blurt/<timestamp>/` (Windows: `~/Videos/Blurt`).
-`record.py inbox` lists them with `processed` flags. To process several: run §2–§4 per recording (fan out to
-subagents if available), then review them together — one `review.py` per session, or merge into one session
-directory when the user wants a single list — and export once.
+**Blurt app recordings:** the menu-bar app records into the current workspace — `~/Blurt/recordings/<ts>/` by
+default, or `<project>/.blurt/sessions/<ts>/` when a project is bound. `record.py inbox` lists all of them with
+`processed` / `reviewed` flags. "Process my recordings" → do §2–§4 for each unprocessed one (fan out to subagents
+if available), then one review per session (or merge into one session dir if the user wants a single list).
+`meta.json` has `author` — keep it on items when several people's recordings are combined.
 
 ## 2. Transcribe
 
 `transcribe.py run <session>/recording.mp4` → `transcript.json` + `transcript.txt` (`[mm:ss.s-mm:ss.s] text`).
-For Whisper/API backends pass `--prompt` with a short glossary (product name, module/page names, people named in
-the project) — gather it from the repo (routes, nav labels, i18n files, CODEOWNERS). Also start
-`frames.py scan <video>` now (visual-activity index; used by candidates/sheet).
+For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.
+Also run `frames.py scan <video>` (visual-activity index for candidates/sheets).
 
-## 3. Understand → issues
+## 3. Understand → items
 
-Read the whole transcript first. Then produce `<session>/issues.json` (schema: `reference/schema.md`).
-Principles — use judgement, these are not rules:
-- One issue = one thing to fix. People jump around, come back to an earlier point, correct themselves
-  ("不对，是…"), or say two things in one sentence. Merge revisits, drop retracted remarks, split compounds.
-- Fix ASR errors using context (the repo's vocabulary, what's on screen). Keep `quote` close to what was said.
-- Fill `actual` / `expected` / `steps` from speech + what the frames show. Don't invent; when something is
-  genuinely unclear, write your best guess, set `confidence: "low"` and add a short `questions` entry.
-- `module`: use the product's own names (nav labels, routes). `owner`: whoever the user named; otherwise infer
-  from project config / CODEOWNERS / git history of the suspected files, or leave empty.
-- `code_refs` (the killer feature — you are inside the repo): for each issue, grep for the visible text/route/
-  component and list the most likely `path:line`s. Keep it quick; skip if nothing credible.
-- Positive remarks or ideas are fine as `type: "idea"`; pure narration ("ok, next page") is not an issue.
+Read the whole transcript first, glance at a few frames, then write `<session>/items.json`
+(schema: `reference/schema.md`). Decide **per item** what it is — the recording decides, not a mode switch:
+
+| kind | when | lens |
+|---|---|---|
+| `issue` | something in the product to fix or polish | `reference/lenses/issue.md` |
+| `idea` | something to build / change / borrow ("这个网站的这里好") | `reference/lenses/idea.md` |
+| `note` | an observation / finding / fact worth keeping | `reference/lenses/note.md` |
+| `task` | an action item that isn't a product issue | `reference/lenses/task.md` |
+| custom | a lens in `.blurt/lenses/` or `~/.blurt/lenses/` fits, or the user asked for it | that file |
+
+Principles — judgement, not rules:
+- One item = one thing. People jump around, revisit, correct themselves ("不对，是…"), or say two things in one
+  sentence: merge revisits, drop retracted remarks, split compounds. Pure narration is not an item.
+- Fix ASR errors from context (repo vocabulary, what's on screen). Keep `quote` close to what was said.
+- Don't invent. When unsure, write your best guess, set `confidence: "low"`, add a short `questions` entry.
+- Read URLs / product names off the frames into `source`.
+- `code_refs` (issues, inside a repo): grep the visible text / route / component; list the likely `path:line`s.
+- Give the session a `title`. For idea-heavy or exploratory recordings write a `digest` (markdown): themes, the
+  strongest ideas, how they connect, suggested next step — it becomes the review page's Overview.
 
 ## 4. Evidence: frames & clips
 
-For each issue, pick 1–3 frames that show the problem, not just the page:
-- `frames.py sheet <video> --from S --to E -o <session>/sheets/<id>.jpg` shows ~6 diverse, settled candidates
-  with timestamps in ONE image — look at it, pick the best time(s). `--at t1 t2 …` to inspect specific moments
-  (e.g. when the user said "这里 / this / look"). Speech often trails the action, so glance a few seconds before S.
+Pick 1–3 frames per item that show *the point* (the bug itself, the part of the page that inspired the idea):
+- `frames.py sheet <video> --from S --to E -o <session>/sheets/<id>.jpg` → ~6 diverse settled candidates with
+  timestamps in one image; `--at t1 t2 …` for specific moments ("这里 / this / look"). Speech often trails the action.
 - Marking the spot — never estimate coordinates from a thumbnail or contact sheet:
-  1. `frames.py grid <video> --at T -o <session>/sheets/<id>-grid.jpg` → the frame with a labelled 0–1 grid, plus
-     the recorded cursor position and nearby clicks (from events.jsonl; exact, not guessed). Look at it and read
-     the box edges off the grid lines (`--crop` zooms in; labels stay in full-frame fractions).
-  2. `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h` (fractions). When the user was
-     pointing at / clicked the thing, `--ring cursor` or `--ring click` marks it exactly. Tiny detail → add a second
-     frame with `--crop` around the box.
-  3. **Look at every annotated frame before using it.** If the box doesn't sit on the problem, fix and re-grab.
-- Animations / flows / timing bugs: add `frames.py clip --from --to -o <session>/clips/<id>.mp4` (keep < 20MB).
-- Many issues (> ~12)? If your harness has subagents, fan out frame selection in batches, one issue list each.
+  1. `frames.py grid <video> --at T -o <session>/sheets/<id>-grid.jpg` → labelled 0–1 grid plus the recorded cursor
+     and nearby clicks (events.jsonl — exact). Read box edges off the grid (`--crop` zooms, labels stay full-frame).
+  2. `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h`; `--ring cursor|click` when the user
+     pointed at / clicked it. Tiny detail → second frame with `--crop`.
+  3. **Look at every annotated frame before using it.** Box not on the point → fix and re-grab.
+- Animations / flows / timing: `frames.py clip --from --to -o <session>/clips/<id>.mp4` (< 20 MB).
+- Many items (> ~12)? Fan out frame work to subagents in batches if your harness has them.
 
 ## 5. Review with the user
 
-Always open the review page — screenshots are the point, and chat can't show them well. Run
-`review.py <session>` **in the background** (it opens the browser itself and exits when the user finishes), and
-in the same message give:
-- ≤ 5 issues: the full numbered list (title · module · owner, plus any `questions`);
-- more: a short summary (count, by module / severity, the open `questions`);
-- two lines on the page: one issue at a time, **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** all
-  shortcuts; fields are editable in place, **G** list view, "完成审核" hands it back to you.
-The user may answer in chat or on the page. End your turn. When the page finishes, reload `issues.json` (dropped
-issues have `status: "deleted"`; answers to `questions` are in `answer`). If they reply in chat instead, apply it
-to `issues.json` yourself and close the page (`pkill -f "review.py <session>"`).
+Always open the review page — the frames are the point. Run `review.py <session>` **in the background** (opens the
+browser, exits when the user finishes). In the same message:
+- ≤ 5 items: the full numbered list (kind · title · owner/module, plus `questions`); more: a short summary (counts by
+  kind, the headline items, open questions);
+- two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
+  fields editable in place; **G** list view; **V** overview (when there's a digest); "完成审核" hands it back.
+The user may answer in chat or on the page. End your turn. Afterwards reload `items.json` (dropped items have
+`status: "deleted"`, answers are in `answer`). If they reply in chat instead, apply it yourself and close the page
+(`pkill -f "review.py <session>"`).
 
-## 6. Export
+**Unattended runs** (started by the Blurt app via `claude -p` / `codex exec` — env `BLURT_APP=1` — or any other
+non-interactive mode): don't ask anything; do §2–§4 and write `items.json`, then finish with a 2–3 sentence summary.
+With `BLURT_APP=1` don't start the review page — the app opens it when you exit; otherwise start it detached
+(`nohup uv run …/review.py <session> >/dev/null 2>&1 &`). Never export to external systems unattended.
 
-Ask once where issues should go (then remember it in `.blurt/config.json` → `export`). Guides in `reference/`:
-- Feishu/Lark Bitable → `feishu.py export <session> "<table url>"` (uses `lark-cli` if installed, else app
-  credentials; maps to the classic bug-sheet columns, creates missing ones, uploads frames + clips, resumable).
-  No table yet → `feishu.py create "<name>"`. Existing table with other columns → `feishu.py fields` then `--map`.
+## 6. Export / act
+
+Ask once where things go (remember in `.blurt/config.json` → `export`). Typical: issues → the team's bug table;
+ideas → an ideas board / doc; notes → Markdown; tasks → the user's todo tool.
+- Feishu/Lark Bitable → `feishu.py export <session> "<table url>" [--kind issue|idea|…]` (lark-cli if installed,
+  else app credentials; default columns per kind, creates missing ones, uploads frames + clips, resumable).
+  No table yet → `feishu.py create "<name>"`. Other columns → `feishu.py fields` then `--map`.
   Details: `reference/export-feishu.md`.
-- CSV + Markdown → `export_local.py <session>` (always cheap; good as a local record too).
-- GitHub Issues / Linear / Jira / Notion / anything else → `reference/export-other.md`; use whatever CLI or MCP
-  tool the user already has. Map fields semantically to the destination's existing columns.
-Before creating anything in an external system, confirm the destination and count with the user. Afterwards,
-report links and offer the natural next step: "want me to start fixing these?" (you already have code_refs).
+- Markdown + CSV → `export_local.py <session>` (all kinds; always a good local record).
+- GitHub Issues / Linear / Jira / Notion / Obsidian / anything else → `reference/export-other.md`; use the CLI or
+  MCP tool the user has; map fields by meaning.
+Confirm destination and count before creating anything remotely; report links afterwards. Then offer the natural
+next step — for issues "want me to start fixing these?" (you have `code_refs`), for ideas "want a quick prototype /
+spec of the top one?".
