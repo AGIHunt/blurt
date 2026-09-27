@@ -4,8 +4,9 @@
 Record your screen, think out loud — your coding agent turns it into bug tickets, idea boards and todos.<br>
 <a href="README.zh-CN.md">中文</a> · works with Claude Code, Codex and any agent that runs skills</p>
 
-<p align="center"><a href="assets/blurt-promo.mp4"><img src="assets/blurt-promo-poster.jpg" width="720" alt="Watch the 80-second film"></a><br>
-<sub>▶ <a href="assets/blurt-promo.mp4">Watch the 80-second film</a> (sound on 🐔) · made entirely in code, <a href="promo/">source here</a></sub></p>
+https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
+
+<p align="center"><sub>▶ 80 seconds, sound on 🐔 · made entirely in code — <a href="promo/">source</a></sub></p>
 
 ---
 
