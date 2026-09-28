@@ -41,15 +41,17 @@ language; write items in the language the user spoke.
 ## 1. Record (or pick up a recording)
 
 **From the chat:** if the thing to look at is a local dev server/app in this repo, check it is running. Start
-`record.py start` **in the background** (`--last-region` to reuse the last area), tell the user in a few lines what
-happens, and end your turn:
+`record.py start` in a live background tool session (`--last-region` to reuse the last area) and tell the user in a
+few lines what happens:
 - a dimmed overlay: drag to draw the area (or click a window, F = full screen) → **开始录制** / Enter. Only that area
   is recorded — tabs, bookmarks and other windows stay private;
 - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
   **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
-- talk naturally, point with the mouse; click **完成** — no need to come back to the chat, you'll be notified.
-The task ends with `DONE video=…` (or `CANCELLED`, exit 2 → acknowledge and stop). From the chat you can also
-`record.py stop | pause | resume | restart`.
+- talk naturally, point with the mouse; click **完成** — no need to send another chat message.
+Keep the current turn active and wait on that same tool session (long polls, no busy loop) until it prints
+`DONE video=…`; then continue immediately with §2. Do not send a final response while the recorder is running: a
+finished agent turn cannot be resumed by the child process. `CANCELLED` / exit 2 → acknowledge and stop. From the
+chat you can also `record.py stop | pause | resume | restart`.
 
 **Existing video** (QuickTime, OBS, Loom, phone, a teammate's Blurt recording…): create
 `.blurt/sessions/<timestamp>/`, copy it in as `recording.<ext>` (with `events.jsonl` / `meta.json` if it came from
@@ -106,14 +108,16 @@ Pick 1–3 frames per item that show *the point* (the bug itself, the part of th
 
 ## 5. Review with the user
 
-Always open the review page — the frames are the point. Run `review.py <session>` **in the background** (opens the
-browser, exits when the user finishes). In the same message:
+Always open the review page — the frames are the point. Run `review.py <session>` in a live background tool session
+(opens the browser, exits when the user finishes). In the same commentary update:
 - ≤ 5 items: the full numbered list (kind · title · owner/module, plus `questions`); more: a short summary (counts by
   kind, the headline items, open questions);
 - two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
   fields editable in place; **G** list view; **V** overview (when there's a digest); "完成审核" hands it back.
-The user may answer in chat or on the page. End your turn. Afterwards reload `items.json` (dropped items have
-`status: "deleted"`, answers are in `answer`). If they reply in chat instead, apply it yourself and close the page
+The user may answer in chat or on the page. Keep the current turn active and wait on the same tool session until the
+review summary is printed; then reload `items.json` (dropped items have `status: "deleted"`, answers are in
+`answer`) and continue with §6. Do not send a final response while review is open. If they reply in chat instead,
+apply it yourself and close the page
 (`pkill -f "review.py <session>"`).
 
 **Unattended runs** (started by the Blurt app via `claude -p` / `codex exec` — env `BLURT_APP=1` — or any other
