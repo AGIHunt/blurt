@@ -86,3 +86,7 @@ Windows tray app · a hosted speech API · more lenses and exporters · toward a
 listens and keeps your projects moving. See [TODO.md](TODO.md).
 
 <p align="center"><sub>MIT · made by <a href="https://github.com/AGIHunt">AGI Hunt</a> · 🐔 if blurt saved you a day, a ⭐ helps others find it</sub></p>
+
+### macOS recording history and post-review execution
+
+The local history page tracks organizing, review, and explicitly started follow-up tasks. It preserves review decisions and execution results, offers per-recording context copying and a folder shortcut, and returns from review to the same record. See [workflow, scope, and validation](docs/history-workflow.md) for the current Chinese UI and Codex-only follow-up support.

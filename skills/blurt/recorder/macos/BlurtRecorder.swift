@@ -1476,6 +1476,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let mode = recordConfig()["process"] as? String ?? "off"
         if mode == "off" {
+            openHistory(dir)
             toast(L("已保存 \(fmtDur(dur)) 的录屏 · 在菜单里可以拷贝发给同事，或让 agent 处理", "Saved a \(fmtDur(dur)) recording · copy it from the menu or let your agent process it"))
         } else {
             process(dir, with: mode)
@@ -1486,6 +1487,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Hand the recording to a coding agent in the workspace, headless. It writes the outputs next to the recording
     /// and opens the review page itself.
     func process(_ dir: URL, with agent: String) {
+        guard !processing.contains(dir.path) else { openHistory(dir); return }
         let ws = currentWorkspace()
         let name = agent == "codex" ? "Codex" : "Claude Code"
         guard let bin = findExecutable(agent == "codex" ? "codex" : "claude") else {
@@ -1503,16 +1505,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             cmd = "\(shq(bin)) -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
         }
+        let oldLog = dir.appendingPathComponent("agent.log")
+        if FileManager.default.fileExists(atPath: oldLog.path) {
+            try? FileManager.default.moveItem(at: oldLog, to: dir.appendingPathComponent("agent-\(Int(Date().timeIntervalSince1970)).log"))
+        }
+        writeProcessing(dir, status: "running", agent: agent)
         processing.append(dir.path)
+        openHistory(dir)
         toast(L("\(name) 正在后台整理…", "\(name) is processing it in the background…"))
         shell(cmd, cwd: ws, log: dir.appendingPathComponent("agent.log")) { [weak self] status in
             guard let self = self else { return }
             self.processing.removeAll { $0 == dir.path }
             let ok = status == 0 && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path)
-            if ok && self.openReview(dir) {
-                self.toast(L("整理好了，审核页已打开", "Done — the review page is open"))
-            } else if ok {
-                self.toast(L("整理好了（items.json 已生成）", "Done — items.json is ready"))
+            self.writeProcessing(dir, status: ok ? "completed" : "failed", agent: agent, code: status)
+            if ok {
+                self.toast(L("整理好了，请在处理记录页审核", "Ready to review in workflow history"))
             } else {
                 self.toast(L("后台整理失败，详见录屏文件夹里的 agent.log", "Processing failed — see agent.log in the recording folder"))
             }
@@ -1521,12 +1528,37 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
+    func writeProcessing(_ dir: URL, status: String, agent: String, code: Int32? = nil) {
+        var state = ((try? Data(contentsOf: dir.appendingPathComponent("processing.json")))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
+        state["status"] = status
+        state["agent"] = agent
+        state["pid"] = ProcessInfo.processInfo.processIdentifier
+        state["updated"] = Date().timeIntervalSince1970
+        if status == "running" { state["started"] = Date().timeIntervalSince1970; state.removeValue(forKey: "exit_code") }
+        if let c = code { state["exit_code"] = c }
+        if let data = try? JSONSerialization.data(withJSONObject: state) {
+            try? data.write(to: dir.appendingPathComponent("processing.json"), options: .atomic)
+        }
+    }
+
+    func openHistory(_ dir: URL? = nil) {
+        guard let skill = readConfig()["skill_dir"] as? String, let uv = findExecutable("uv") else { return }
+        let session = dir.map { " --session " + shq($0.path) } ?? ""
+        shell("\(shq(uv)) run -q \(shq("\(skill)/scripts/history.py"))\(session)", cwd: currentWorkspace(),
+              log: configURL.deletingLastPathComponent().appendingPathComponent("history-launch.log")) { _ in }
+    }
+    @objc func mHistory() { openHistory() }
+    @objc func mSessionHistory(_ it: NSMenuItem) {
+        if let p = it.representedObject as? String { openHistory(URL(fileURLWithPath: p)) }
+    }
+
     /// Open the review page ourselves (the agent has exited; a page it started could die with it).
     @discardableResult
     func openReview(_ dir: URL) -> Bool {
         guard let skill = readConfig()["skill_dir"] as? String,
               FileManager.default.fileExists(atPath: "\(skill)/scripts/review.py"), let uv = findExecutable("uv") else { return false }
-        shell("\(shq(uv)) run -q \(shq("\(skill)/scripts/review.py")) \(shq(dir.path))", cwd: dir,
+        shell("history_url=$(\(shq(uv)) run -q \(shq("\(skill)/scripts/history.py")) --no-open --session \(shq(dir.path))); \(shq(uv)) run -q \(shq("\(skill)/scripts/review.py")) \(shq(dir.path)) --history-url \"$history_url\"", cwd: dir,
               log: dir.appendingPathComponent("review.log")) { _ in }
         return true
     }
@@ -1598,6 +1630,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         wsItem.submenu = wsMenu
         menu.addItem(wsItem)
 
+        _ = add(L("处理记录与结果…", "Workflow history…"), #selector(mHistory))
         let recents = recentSessions()
         let rItem = NSMenuItem(title: L("最近的录制", "Recent recordings"), action: nil, keyEquivalent: "")
         let rMenu = NSMenu()
@@ -1610,6 +1643,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
             let it = NSMenuItem(title: "\(pretty)  ·  \(dur)\(done ? "  ✓" : "")\(processing.contains(d.path) ? "  …" : "")", action: nil, keyEquivalent: "")
             let sub = NSMenu()
+            _ = add(L("查看处理进度与结果", "View progress and results"), #selector(mSessionHistory(_:)), to: sub, obj: d.path)
             _ = add(L("拷贝视频（粘贴发给同事）", "Copy video (paste to share)"), #selector(mCopyVideo(_:)), to: sub, obj: d.path)
             _ = add(L("在访达中显示", "Show in Finder"), #selector(mReveal(_:)), to: sub, obj: d.path)
             _ = add(L("让 Claude Code 整理", "Process with Claude Code"), #selector(mProcessClaude(_:)), to: sub, obj: d.path)

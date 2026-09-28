@@ -13,6 +13,8 @@ import json
 import mimetypes
 import sys
 import threading
+import time
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,7 +26,7 @@ from _common import die, load_session, save_session  # noqa: E402
 HTML = Path(__file__).with_name("review.html")
 
 
-def make_handler(session: Path, done: threading.Event):
+def make_handler(session: Path, done: threading.Event, history_url: str = ""):
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -44,7 +46,7 @@ def make_handler(session: Path, done: threading.Event):
         def do_GET(self):
             path = unquote(urlparse(self.path).path)
             if path in ("/", "/index.html"):
-                return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
+                return self._send(200, HTML.read_text().replace("<!-- HISTORY_LINK -->", ('<p><a class="btn primary" href="' + __import__('html').escape(history_url, quote=True) + '">查看完整处理记录 →</a></p>') if history_url else '').encode(), "text/html; charset=utf-8")
             if path in ("/icon.png", "/favicon.ico"):
                 icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
                 return self._send(200, icon.read_bytes(), "image/png") if icon.exists() else self._send(404, b"", "text/plain")
@@ -82,6 +84,11 @@ def make_handler(session: Path, done: threading.Event):
                 if path == "/api/confirm":
                     data["reviewed"] = True
                 save_session(session, data)
+                if path == "/api/confirm":
+                    archive = session / "reviews"
+                    archive.mkdir(exist_ok=True)
+                    (archive / (str(time.time_ns()) + "-" + uuid.uuid4().hex[:6] + ".json")).write_text(
+                        json.dumps({"confirmed_at": time.time(), "items": data.get("items", [])}, ensure_ascii=False), encoding="utf-8")
                 self._send(200, b'{"ok":true}', "application/json")
                 if path == "/api/confirm":
                     done.set()
@@ -96,12 +103,13 @@ def main():
     p.add_argument("session")
     p.add_argument("--port", type=int, default=0)
     p.add_argument("--no-open", action="store_true")
+    p.add_argument("--history-url", default="")
     a = p.parse_args()
     session = Path(a.session)
     if load_session(session) is None:
         die(f"{session}: no items.json yet")
     done = threading.Event()
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(session, done))
+    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(session, done, a.history_url))
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print(f"REVIEW {url}", flush=True)

@@ -257,7 +257,7 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastUndo"></button></div>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="lightbox" id="lightbox"><img alt=""></div>
-<div class="done" id="done"><div><img class="big" src="/icon.png" alt=""><h2 data-i18n="doneTitle"></h2><p data-i18n="doneBody"></p></div></div>
+<div class="done" id="done"><div><img class="big" src="/icon.png" alt=""><h2 data-i18n="doneTitle"></h2><p data-i18n="doneBody"></p><!-- HISTORY_LINK --></div></div>
 
 <script>
 const T = {
@@ -266,29 +266,29 @@ const T = {
     playOrig:"Play from recording",answer:"Your answer…",ask:"Needs your input",sevHigh:"High",sevMedium:"Medium",sevLow:"Low",
     frame:"Frame",clip:"Clip",orig:"Recording",noMedia:"No screenshot",saved:"Saved",saving:"Saving…",kept1:"Kept",dropped1:"Dropped",merged:"Merged into",
     undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, tags…",
-    keysTitle:"Keyboard shortcuts",confirmTitle:"Hand this back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
+    keysTitle:"Keyboard shortcuts",confirmTitle:"Save these review results?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
     pendingAs:"Treat unreviewed as kept",reviewRest:"Review the rest",confirm:"Confirm & continue",cancel:"Cancel",
-    doneTitle:"All set — back to your agent",doneBody:"You can close this tab. Your agent picks it up from here.",
+    doneTitle:"Review saved",doneBody:"Your review is saved. No follow-up task has been started. Open workflow history to choose what happens next.",
     k_next:"Next / previous",k_keep:"Keep and go next",k_drop:"Drop and go next",k_undo:"Undo",k_merge:"Merge into previous",
     k_sev:"Severity high / medium / low",k_media:"Previous / next frame",k_play:"Play clip or recording",k_edit:"Edit title",
     k_ov:"Overview",k_view:"Focus ⇄ list",k_finish:"Finish review",k_help:"This panel",types:{bug:"Bug",ui:"UI",ux:"UX",copy:"Copy",perf:"Perf"},
     overview:"Overview",kinds:{issue:"Issue",idea:"Idea",note:"Note",task:"Task"},allKinds:"All kinds",
     summary:"The idea",summaryNote:"Summary",why:"Why",inspired_by:"Inspired by",next_steps:"Next steps",open_questions:"Still open",
-    details:"Details",due:"Due",tags:"Tags",source:"Source (URL)",items:"items",confirmTitle2:"Hand this back to your agent?"},
+    details:"Details",due:"Due",tags:"Tags",source:"Source (URL)",items:"items",confirmTitle2:"Save these review results?"},
   zh:{focus:"专注",list:"列表",keep:"保留",drop:"丢弃",merge:"并入上一条",undo:"撤销",finish:"完成审核",pending:"待审",kept:"保留",dropped:"丢弃",
     module:"所属模块",owner:"负责人",actual:"实际效果",expected:"预期效果",steps:"复现步骤",code:"疑似代码位置",quote:"你当时说",
     playOrig:"回到录屏这一刻",answer:"在这里回答…",ask:"需要你确认",sevHigh:"严重",sevMedium:"一般",sevLow:"轻微",
     frame:"截图",clip:"片段",orig:"原录屏",noMedia:"没有截图",saved:"已保存",saving:"保存中…",kept1:"已保留",dropped1:"已丢弃",merged:"已并入",
     undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、标签…",
-    keysTitle:"快捷键",confirmTitle:"把整理结果交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
+    keysTitle:"快捷键",confirmTitle:"保存这次审核结果？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
     pendingAs:"没看的也保留",reviewRest:"继续审",confirm:"确认并继续",cancel:"取消",
-    doneTitle:"搞定，交回给 agent 了",doneBody:"可以关掉这个页面了，agent 会接着处理。",
+    doneTitle:"审核结果已保存",doneBody:"尚未启动后续任务。请前往处理记录，确认目标项目和执行任务。",
     k_next:"下一条 / 上一条",k_keep:"保留并下一条",k_drop:"丢弃并下一条",k_undo:"撤销",k_merge:"并入上一条",
     k_sev:"严重程度 高 / 中 / 低",k_media:"上一张 / 下一张图",k_play:"播放片段或原录屏",k_edit:"编辑标题",
     k_ov:"总览",k_view:"专注 ⇄ 列表",k_finish:"完成审核",k_help:"显示本面板",types:{bug:"Bug",ui:"界面",ux:"体验",copy:"文案",perf:"性能"},
     overview:"总览",kinds:{issue:"问题",idea:"想法",note:"笔记",task:"待办"},allKinds:"全部类型",
     summary:"想法",summaryNote:"概述",why:"为什么",inspired_by:"灵感来源",next_steps:"下一步",open_questions:"待想清楚",
-    details:"详情",due:"截止",tags:"标签",source:"来源链接",items:"条",confirmTitle2:"把整理结果交回 agent？"}
+    details:"详情",due:"截止",tags:"标签",source:"来源链接",items:"条",confirmTitle2:"保存这次审核结果？"}
 };
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let lang=(store.get("blurt.lang")||navigator.language||"en").startsWith("zh")?"zh":"en";
@@ -312,9 +312,10 @@ function mdLite(src){ // tiny markdown: headings, lists, bold, code, links
     if(h)out+=`<h${h[1].length+1}>${inline(h[2])}</h${h[1].length+1}>`;else if(l.trim())out+=`<p>${inline(l)}</p>`}
   return out+(inList?"</ul>":"")}
 
+let saveChain=Promise.resolve(), finishing=false, hasChanges=false;
 let loaded=false,kindF="",data={items:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
 const live=()=>data.items.filter(i=>i.status!=="deleted"||i._dropped);
-const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched?"keep":i._touched?"keep":"pending";
+const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"?"keep":i._touched?"keep":"pending";
 
 async function load(){
   data=await (await fetch("/api/items")).json();
@@ -332,8 +333,9 @@ async function load(){
   render(true);loaded=true;
 }
 function save(){
+  hasChanges=true;
   $("#saved").textContent=t("saving");clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},450);
+  saveTimer=setTimeout(()=>{const body=JSON.stringify(data); saveChain=saveChain.catch(()=>{}).then(async()=>{const response=await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},body});if(!response.ok)throw Error("保存失败");$("#saved").textContent=t("saved")});saveChain.catch(()=>{$("#saved").textContent="保存失败，请重试"})},450);
 }
 function snapshot(){undo.push(JSON.stringify({items:data.items,cur}));if(undo.length>80)undo.shift()}
 function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.items=o.items;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
@@ -525,11 +527,21 @@ function openFinish(){
   $("#mOk").onclick=finish;
 }
 async function finish(){
+  if(finishing)return; finishing=true; clearTimeout(saveTimer);
+  await saveChain.catch(()=>{});
   data.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
-  await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+  try { const response=await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)}); if(!response.ok) throw Error("保存失败"); } catch(e) { alert("审核结果未保存，请重试："+e.message); finishing=false; return; }
+  clearInterval(window.blurtReviewHeartbeat);
+  if(window.BLURT_HISTORY_URL){sessionStorage.setItem("blurt.reviewCompleted",window.BLURT_HISTORY_URL);location.replace(window.BLURT_HISTORY_URL);return;}
   closeModal();$("#done").classList.add("show");
 }
 
+if(window.BLURT_HISTORY_URL){
+  const back=document.createElement('button');back.className='btn';back.textContent='← 处理记录';back.title='返回记录，已保存的审核进度会保留';
+  back.onclick=async()=>{clearTimeout(saveTimer);await saveChain.catch(()=>{});const response=hasChanges?await fetch("/api/items",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}):{ok:true};if(response.ok){clearInterval(window.blurtReviewHeartbeat);await fetch("/api/leave",{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});location.assign(window.BLURT_HISTORY_URL)}else alert('保存失败，请稍后重试')};
+  document.querySelector('.top').prepend(back);
+  const heartbeat=()=>{if(!finishing)fetch("/api/heartbeat",{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{})};heartbeat();window.blurtReviewHeartbeat=setInterval(heartbeat,6000);
+}
 /* ---------- wiring ---------- */
 $("#vFocus").onclick=()=>setView("focus");$("#vOverview").onclick=()=>setView("overview");$("#vList").onclick=()=>setView("list");
 $("#keepBtn").onclick=()=>decide("keep");$("#dropBtn").onclick=()=>decide("drop");$("#mergeBtn").onclick=mergePrev;$("#undoBtn").onclick=doUndo;
