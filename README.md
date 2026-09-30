@@ -30,6 +30,7 @@ your agent does the rest:
 | 💡 **Capture ideas while browsing** | "I like how this site does onboarding… and this pricing page…" You get an idea board: each idea, why you had it, where it came from, the next step, plus a one-page digest. |
 | 🤝 **Hand off from anyone** | PMs, designers, ops, clients: anyone can record with the Blurt app, no repo needed, and send the video. The developer's agent processes it with the code at hand. |
 | 🔎 **Research and walkthroughs** | Competitor tours, UX research, "how this works": you get notes and findings with the frames to prove them. |
+| 🖥️ **Not just web apps** | Terminals, TUIs and desktop apps record and get boxed the same way. For phones, use the built-in screen recorder with the mic on; for hardware, film it with your phone. Hand the video to your agent: "process this video". |
 
 One recording can mix all of these. The agent decides what each item is, and teams can add their own
 [lenses](skills/blurt/reference/schema.md#custom-lenses) (e.g. `ux-research`, `sales-call`, `sop`).
@@ -77,7 +78,20 @@ processed in the background, with the review page popping up when it's ready.
 - **Deterministic tools, flexible model.** Scripts handle the recording, speech-to-text, frames, the review page
   and exports. All the judgement is left to your agent (see [SKILL.md](skills/blurt/SKILL.md)), so it adapts to your
   product, your language and your team.
-- **Any language in, same language out.** Speak Chinese, English, Japanese…; the items come back in your language.
+- **Any language in, same language out.** SenseVoice covers Chinese, English, Japanese, Korean and Cantonese; for
+  German, French, Spanish and the rest (99 languages) use Whisper locally or a cloud key. The first run picks one for
+  the language you speak, and items come back in that language.
+
+## FAQ
+
+**Does it burn a lot of tokens?** The video is never fed to the model. Speech is transcribed locally (free), the agent
+reads the text, and it looks at a few frames only for the moments that become items. Cost follows how many things you
+talk about, not how long you record; silence and clicking around cost nothing. A short clip with one issue took Codex
+about 30k tokens in total, most of it reading the skill's instructions. More items mean more frames and text. Quality
+follows the model: use one with vision, the stronger the better.
+
+**I don't do frontend. Is it for me?** Yes, if you can see the problem on screen or film it with a phone. See
+*Not just web apps* above.
 
 ## Roadmap
 
