@@ -204,6 +204,10 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
 @media (max-width:1000px){.brand small,.counts,.saved,#langBtn,#helpBtn{display:none}}
 @media (max-width:860px){body{overflow:auto}.focus{display:flex;flex-direction:column;height:auto}.stage{height:64vh;flex:none}.side{overflow:visible}.progress .bar{width:90px}.act kbd,.act.ghost{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* numbered voice bookmarks */
+#markBar{position:fixed;left:14px;bottom:14px;z-index:60;display:flex;gap:6px;flex-wrap:wrap;max-width:60vw}
+#markBar .mk{border:1px solid rgba(255,45,69,.45);background:rgba(255,45,69,.10);color:inherit;border-radius:999px;padding:4px 11px;font-weight:600;font-size:12.5px;line-height:1.2;cursor:pointer}
+#markBar .mk:hover{background:rgba(255,45,69,.22)}
 </style>
 </head>
 <body>
@@ -264,6 +268,7 @@ const T = {
   en:{focus:"Focus",list:"List",keep:"Keep",drop:"Drop",merge:"Merge ↑",undo:"Undo",finish:"Finish review",pending:"to review",kept:"kept",dropped:"dropped",
     module:"Module",owner:"Owner",actual:"Actual",expected:"Expected",steps:"Steps to reproduce",code:"Suspected code",quote:"They said",
     playOrig:"Play from recording",answer:"Your answer…",ask:"Needs your input",sevHigh:"High",sevMedium:"Medium",sevLow:"Low",
+    mark:"Mark",
     frame:"Frame",clip:"Clip",orig:"Recording",noMedia:"No screenshot",saved:"Saved",saving:"Saving…",kept1:"Kept",dropped1:"Dropped",merged:"Merged into",
     undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, tags…",
     keysTitle:"Keyboard shortcuts",confirmTitle:"Hand this back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
@@ -278,6 +283,7 @@ const T = {
   zh:{focus:"专注",list:"列表",keep:"保留",drop:"丢弃",merge:"并入上一条",undo:"撤销",finish:"完成审核",pending:"待审",kept:"保留",dropped:"丢弃",
     module:"所属模块",owner:"负责人",actual:"实际效果",expected:"预期效果",steps:"复现步骤",code:"疑似代码位置",quote:"你当时说",
     playOrig:"回到录屏这一刻",answer:"在这里回答…",ask:"需要你确认",sevHigh:"严重",sevMedium:"一般",sevLow:"轻微",
+    mark:"编号",
     frame:"截图",clip:"片段",orig:"原录屏",noMedia:"没有截图",saved:"已保存",saving:"保存中…",kept1:"已保留",dropped1:"已丢弃",merged:"已并入",
     undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、标签…",
     keysTitle:"快捷键",confirmTitle:"把整理结果交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
@@ -329,7 +335,28 @@ async function load(){
   if(cur<0)cur=0;
   view=store.get("blurt.view")||(data.digest?"overview":data.items.length>1?"focus":"list");
   if(view==="overview"&&!data.digest&&!data.title)view="focus";
-  render(true);loaded=true;
+  render(true);loaded=true;renderMarkers();
+}
+// numbered voice bookmarks (recorder ⚑ / Alt+Shift+M): chips seek the recording to the marked
+// moment — "点'编号 1'就会播放声音，相当于表达编号 1 处的意思"
+function renderMarkers(){
+  const ms=data.markers||[];const old=$("#markBar");if(old)old.remove();
+  if(!ms.length)return;
+  const bar=document.createElement("div");bar.id="markBar";
+  bar.innerHTML=ms.map(m=>`<button class="mk" data-vt="${m.vt??m.t}" title="${t("mark")} ${m.n} · ${fmt(m.vt??m.t)}">⚑${m.n}</button>`).join("");
+  bar.querySelectorAll("button").forEach(b=>b.onclick=()=>playMarker(parseFloat(b.dataset.vt)));
+  document.body.appendChild(bar);
+}
+function playMarker(vt){
+  if(isNaN(vt))return;
+  let items=mediaItems(data.items[cur]),k=items.findIndex(m=>m.kind==="orig");
+  if(k<0){ // current item has no recording attached — hop to one that does
+    const j=data.items.findIndex(i=>i.time&&data.source_video);
+    if(j>=0&&j!==cur){go(j);items=mediaItems(data.items[j]);k=items.findIndex(m=>m.kind==="orig")}
+  }
+  if(k<0)return;
+  media=k;renderFocus(false);
+  setTimeout(()=>{const v=$("#mediaBox video");if(v){v.currentTime=vt;v.play()}},160);
 }
 function save(){
   $("#saved").textContent=t("saving");clearTimeout(saveTimer);
