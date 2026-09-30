@@ -492,6 +492,8 @@ def run_native(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
         args += ["--no-mic"]
     elif a.mic or cfg.get("mic"):
         args += ["--mic", str(a.mic or cfg.get("mic"))]
+    if a.system_audio or cfg.get("system_audio"):
+        args += ["--system-audio"]
     p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8")
     final: dict = {}
     selected = None
@@ -718,6 +720,8 @@ def main() -> None:
     s.add_argument("--screen", type=int, help="ffmpeg engine: screen index")
     s.add_argument("--mic", help="mic name substring or index (see `devices`)")
     s.add_argument("--no-mic", action="store_true")
+    s.add_argument("--system-audio", action="store_true",
+                   help="also record what the Mac plays (call voices, demo sound) as a second track; native engine, macOS 13+")
     s.add_argument("--fps", type=int)
     s.add_argument("--max-width", type=int)
     s.add_argument("--max-minutes", type=float, default=120)

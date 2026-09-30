@@ -90,8 +90,14 @@ def download(rel: str) -> Path:
 
 
 # ------------------------------------------------------------------ audio + VAD
-def load_audio(path: Path) -> np.ndarray:
-    raw = subprocess.run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-i", str(path), "-vn", "-ac", "1",
+def audio_tracks(path: Path) -> int:
+    info = subprocess.run([ffmpeg_bin(), "-nostdin", "-hide_banner", "-i", str(path)], capture_output=True, text=True,
+                          errors="replace").stderr
+    return sum(1 for line in info.splitlines() if "Stream #" in line and "Audio:" in line)
+
+
+def load_audio(path: Path, track: int = 0) -> np.ndarray:
+    raw = subprocess.run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-i", str(path), "-map", f"0:a:{track}", "-ac", "1",
                           "-af", "aresample=async=1000:first_pts=0", "-ar", str(SR), "-f", "s16le", "-"], capture_output=True).stdout
     if not raw:
         die(f"No audio track decoded from {path}")
@@ -302,41 +308,54 @@ def cmd_run(a):
         die(f"unknown backend {name}; choose from {list(BACKENDS)}")
 
     t0 = time.time()
-    samples = load_audio(src)
-    duration = len(samples) / SR
     backend = BACKENDS[name](a)
-    segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
-    chunks = group_chunks(segs, backend.max_chunk)
-    speech = sum(e - s for s, e in chunks)
-    print(f"audio {fmt_ts(duration)}, speech {fmt_ts(speech)} in {len(chunks)} chunks → {name}", file=sys.stderr, flush=True)
-
-    def work(ch):
-        s, e = ch
-        return [(s + rs, s + min(re_, e - s), t) for rs, re_, t in backend.transcribe(samples[int(s * SR):int(e * SR)])]
-
     workers = 1 if name in LOCAL else a.concurrency
-    results, blank = [], 0.0
-    with ThreadPoolExecutor(workers) as pool:
-        for i, ((s, e), r) in enumerate(zip(chunks, pool.map(work, chunks))):
-            results.extend(r)
-            if not any(ch.isalnum() for *_, t in r for ch in t):
-                blank += e - s
-            if (i + 1) % 20 == 0:
-                print(f"  {i + 1}/{len(chunks)} chunks", file=sys.stderr, flush=True)
+    # Blurt's native recorder writes the mic as track 0 and, with --system-audio, what the Mac played as track 1.
+    # Transcribing them apart labels who spoke: the user ("mic") or the call / demo ("system").
+    n_tracks = max(1, audio_tracks(src))
+    duration = speech = blank = 0.0
+    results = []
+    for track in range(min(n_tracks, 2)):
+        samples = load_audio(src, track)
+        duration = max(duration, len(samples) / SR)
+        segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
+        chunks = group_chunks(segs, backend.max_chunk)
+        label = ("mic", "system")[track] if n_tracks > 1 else None
+        sp = sum(e - s for s, e in chunks)
+        print(f"audio {fmt_ts(len(samples) / SR)}{f' ({label})' if label else ''}, speech {fmt_ts(sp)} "
+              f"in {len(chunks)} chunks → {name}", file=sys.stderr, flush=True)
 
-    segments = [{"start": round(s, 2), "end": round(e, 2), "text": t} for s, e, t in results if t]
+        def work(ch, samples=samples):
+            s, e = ch
+            return [(s + rs, s + min(re_, e - s), t) for rs, re_, t in backend.transcribe(samples[int(s * SR):int(e * SR)])]
+
+        with ThreadPoolExecutor(workers) as pool:
+            for i, ((s, e), r) in enumerate(zip(chunks, pool.map(work, chunks))):
+                results.extend((s_, e_, t, label) for s_, e_, t in r)
+                if track == 0 and not any(ch.isalnum() for *_, t in r for ch in t):
+                    blank += e - s
+                if (i + 1) % 20 == 0:
+                    print(f"  {i + 1}/{len(chunks)} chunks", file=sys.stderr, flush=True)
+        if track == 0:
+            speech = sp
+
+    results.sort(key=lambda r: r[0])
+    segments = [{"start": round(s, 2), "end": round(e, 2), "text": t, **({"speaker": lb} if lb else {})}
+                for s, e, t, lb in results if t]
     data = {"source": src.name, "backend": name, "model": getattr(backend, "model", None) if name != "sensevoice" else "sense-voice-small-int8",
             "duration": round(duration, 2), "speech_seconds": round(speech, 2),
             "elapsed_seconds": round(time.time() - t0, 1), "segments": segments}
     # SenseVoice knows only zh/en/ja/ko/yue; other languages (German…) mostly come back as "." tagged <|en|>, so
     # the language tag can't catch it. Supported speech that VAD kept practically never decodes to nothing.
+    # Mic track only: system audio may be music or effects.
     if name == "sensevoice" and speech >= 5 and blank / speech > 0.3:
         data["warning"] = (f"{blank:.0f}s of {speech:.0f}s of speech decoded to nothing: the language is probably "
                            "not zh/en/ja/ko/yue, which is all SenseVoice supports. Re-run with a Whisper or cloud "
                            "backend (see reference/asr.md) and pass --language.")
         print("warning: " + data["warning"], file=sys.stderr, flush=True)
     save_json(out / "transcript.json", data)
-    lines = [f"[{fmt_ts(s['start'])}-{fmt_ts(s['end'])}] {s['text']}" for s in segments]
+    lines = [f"[{fmt_ts(s['start'])}-{fmt_ts(s['end'])}] {'(system) ' if s.get('speaker') == 'system' else ''}{s['text']}"
+             for s in segments]
     (out / "transcript.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in data.items() if k != "segments"} | {"segments": len(segments),
                                                                               "files": [str(out / "transcript.json"), str(out / "transcript.txt")]},

@@ -69,6 +69,9 @@ if available), then one review per session (or merge into one session dir if the
 ## 2. Transcribe
 
 `transcribe.py run <session>/recording.mp4` → `transcript.json` + `transcript.txt` (`[mm:ss.s-mm:ss.s] text`).
+Recorded with system audio (`record.py start --system-audio`, or the app's menu toggle — calls, product demos),
+the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lines are the user. Speaker bleed can
+repeat a system line on the mic.
 For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.
 Also run `frames.py scan <video>` (visual-activity index for candidates/sheets).
 A `warning` in the output, or a transcript that reads as nonsense (SenseVoice turns unsupported languages such as

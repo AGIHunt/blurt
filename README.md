@@ -73,7 +73,8 @@ processed in the background, with the review page popping up when it's ready.
 - **Local-first speech recognition.** [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) via sherpa-onnx is
   about 240 MB, very fast on any CPU, and handles mixed Chinese/English well. Whisper on Apple Silicon or NVIDIA.
   You can also bring your own Groq, OpenAI or DashScope key. By default nothing leaves your machine.
-- **Native recorder.** ScreenCaptureKit on macOS with audio and video in sync to within one frame. Tk + ffmpeg on
+- **Native recorder.** ScreenCaptureKit on macOS with audio and video in sync to within one frame. Turn on system
+  audio for calls and demos: it goes on its own track, so the transcript tells your words from the other side's. Tk + ffmpeg on
   Windows.
 - **Deterministic tools, flexible model.** Scripts handle the recording, speech-to-text, frames, the review page
   and exports. All the judgement is left to your agent (see [SKILL.md](skills/blurt/SKILL.md)), so it adapts to your

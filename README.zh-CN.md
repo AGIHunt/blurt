@@ -68,7 +68,8 @@ Claude Code / Codex」后，每段录屏都会在后台自动整理，好了审�
 - **语音识别优先在本地跑**：默认用 [SenseVoice](https://github.com/FunAudioLLM/SenseVoice)（通过 sherpa-onnx 运行），
   约 240MB，普通 CPU 就很快，中英混说效果好；Apple Silicon 或 NVIDIA 显卡上可以用 Whisper；也可以用你自己的
   Groq、OpenAI 或百炼 Key。默认不会上传任何内容。
-- **原生录屏**：macOS 用 ScreenCaptureKit，音画同步误差在一帧以内；Windows 用 Tk + ffmpeg。
+- **原生录屏**：macOS 用 ScreenCaptureKit，音画同步误差在一帧以内；开会、演示时可以同时录系统声音，
+  单独一条音轨，转写时能分清哪句是你说的、哪句是对方说的；Windows 用 Tk + ffmpeg。
 - **确定的事交给脚本，判断交给模型**：录屏、识别、抽帧、审核页、导出由脚本完成；怎么拆、怎么写、怎么判断全交给
   agent（见 [SKILL.md](skills/blurt/SKILL.md)），所以能适应你的产品、你的语言和你的团队。
 - **说什么语言都行**：中英日韩粤用默认的 SenseVoice；德语、法语、西语等其他语言用 Whisper（本地）或云端 Key，

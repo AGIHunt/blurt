@@ -31,6 +31,7 @@ struct Options {
     var preselect: CGRect? = nil   // picker opens with this selection (testing / "last region")
     var mic = true
     var micName: String? = nil
+    var systemAudio = false        // second audio track: what the Mac plays (meeting voices, demo sound), macOS 13+
 
     static func parse() -> Options {
         var o = Options()
@@ -52,6 +53,7 @@ struct Options {
             case "--preselect": o.preselect = rect(it.next())
             case "--no-mic": o.mic = false
             case "--mic": o.micName = it.next()
+            case "--system-audio": o.systemAudio = true
             default: break
             }
         }
@@ -726,6 +728,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var writer: AVAssetWriter!
     var vIn: AVAssetWriterInput!
     var aIn: AVAssetWriterInput?
+    var sysIn: AVAssetWriterInput?
     let q = DispatchQueue(label: "blurt.capture")
     var started = false
     var sessionStart = CMTime.invalid
@@ -745,6 +748,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var clickMonitor: Any?
     var frames = 0
     var audioBuffers = 0
+    var systemBuffers = 0
     var onRestart: (() -> Void)?
 
     init(region: CGRect) { self.region = region }
@@ -810,6 +814,14 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             }
             scMic = true
         }
+        var sys = false
+        if opts.systemAudio, #available(macOS 13.0, *) {
+            cfg.capturesAudio = true
+            cfg.excludesCurrentProcessAudio = true
+            cfg.sampleRate = 48000
+            cfg.channelCount = 1
+            sys = true
+        }
 
         let url = URL(fileURLWithPath: opts.out)
         try? FileManager.default.removeItem(at: url)
@@ -835,10 +847,22 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             writer.add(a)
             aIn = a
         }
+        if sys {  // kept as its own track: transcripts can then tell "me" (mic) from "others" (system)
+            let a = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48000, AVNumberOfChannelsKey: 1,
+                AVEncoderBitRateKey: 96000,
+            ])
+            a.expectsMediaDataInRealTime = true
+            writer.add(a)
+            sysIn = a
+        }
         let s = SCStream(filter: filter, configuration: cfg, delegate: self)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: q)
         if scMic, #available(macOS 15.0, *) {
             try s.addStreamOutput(self, type: .microphone, sampleHandlerQueue: q)
+        }
+        if sys, #available(macOS 13.0, *) {
+            try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: q)
         }
         stream = s
         if opts.mic && !scMic { try setupLegacyMic() }
@@ -847,7 +871,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             events = FileHandle(forWritingAtPath: e)
         }
         emit(["event": "configured", "width": W, "height": H, "display": Int(display.displayID),
-              "region": [clipped.minX, clipped.minY, clipped.width, clipped.height], "mic": opts.mic ? (scMic ? "screencapturekit" : "avcapture") : "none"])
+              "region": [clipped.minX, clipped.minY, clipped.width, clipped.height], "mic": opts.mic ? (scMic ? "screencapturekit" : "avcapture") : "none", "system_audio": sys])
     }
 
     func setupLegacyMic() throws {
@@ -953,6 +977,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             guard let att = CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
                   let raw = att.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete else { return }
             handleVideo(sb)
+        } else if isSystemAudio(type) {
+            handleSystemAudio(sb)
         } else {
             handleAudio(sb)
         }
@@ -1000,6 +1026,18 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         let pts = CMSampleBufferGetPresentationTimeStamp(sb)
         guard CMTimeCompare(pts, sessionStart) >= 0, let s = adjusted(sb), a.isReadyForMoreMediaData else { return }
         if a.append(s) { audioBuffers += 1 }
+    }
+
+    func isSystemAudio(_ type: SCStreamOutputType) -> Bool {
+        if #available(macOS 13.0, *) { return type == .audio }
+        return false
+    }
+
+    func handleSystemAudio(_ sb: CMSampleBuffer) {
+        guard started, !isPaused, let a = sysIn else { return }
+        let pts = CMSampleBufferGetPresentationTimeStamp(sb)
+        guard CMTimeCompare(pts, sessionStart) >= 0, let s = adjusted(sb), a.isReadyForMoreMediaData else { return }
+        if a.append(s) { systemBuffers += 1 }
     }
 
     func rms(_ sb: CMSampleBuffer) -> Float {
@@ -1051,6 +1089,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                 }
                 self.vIn.markAsFinished()
                 self.aIn?.markAsFinished()
+                self.sysIn?.markAsFinished()
                 // screen content may have been static at the end: extend to the real stop time
                 self.writer.endSession(atSourceTime: CMTimeMaximum(endAt, self.lastVideo))
                 self.writer.finishWriting {
@@ -1068,7 +1107,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                         }
                         NSSound(named: "Submarine")?.play()
                         sessionEnded(0, ["event": "stopped", "file": opts.out, "duration": CMTimeGetSeconds(CMTimeSubtract(endAt, self.sessionStart)),
-                                         "frames": self.frames, "audio_buffers": self.audioBuffers,
+                                         "frames": self.frames, "audio_buffers": self.audioBuffers, "system_buffers": self.systemBuffers,
                                          "region": [self.region.minX, self.region.minY, self.region.width, self.region.height]])
                     }
                 }
@@ -1436,6 +1475,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.events = dir.appendingPathComponent("events.jsonl").path
         opts.lastRegion = lastRegionFromConfig()
         opts.countdown = recordConfig()["countdown"] as? Int ?? 3
+        opts.systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         lastSession = dir
         busy = true
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
@@ -1637,6 +1677,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cItem.submenu = cMenu
         menu.addItem(cItem)
         if #available(macOS 13.0, *) {
+            _ = add(L("同时录系统声音（会议、演示）", "Also record system audio (calls, demos)"), #selector(mSystemAudio),
+                    on: recordConfig()["system_audio"] as? Bool ?? false)
+        }
+        if #available(macOS 13.0, *) {
             _ = add(L("开机时启动", "Open at login"), #selector(mLogin), on: SMAppService.mainApp.status == .enabled)
         }
         menu.addItem(.separator())
@@ -1683,6 +1727,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mProcessCodex(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p), with: "codex") } }
     @objc func mProcessMode(_ it: NSMenuItem) { setRecordConfig("process", it.representedObject as? String) }
     @objc func mCountdown(_ it: NSMenuItem) { setRecordConfig("countdown", it.representedObject as? Int) }
+    @objc func mSystemAudio() { setRecordConfig("system_audio", !(recordConfig()["system_audio"] as? Bool ?? false)) }
     @objc func mLogin() {
         guard #available(macOS 13.0, *) else { return }
         do {
