@@ -118,8 +118,11 @@ def main():
     kinds: dict[str, int] = {}
     for i in kept:
         kinds[i["kind"]] = kinds.get(i["kind"], 0) + 1
+    # merged items leave the list; say so, or the agent reads the gap as data loss and restores them
+    merged = {i["id"]: i["merged_from"] for i in items if i.get("merged_from")}
     print(json.dumps({"reviewed": bool(data.get("reviewed")), "kept": len(kept), "kinds": kinds,
-                      "deleted": len(items) - len(kept), "file": str(session / "items.json")}))
+                      "deleted": len(items) - len(kept), **({"merged": merged} if merged else {}),
+                      "file": str(session / "items.json")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

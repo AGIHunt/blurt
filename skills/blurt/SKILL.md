@@ -120,7 +120,8 @@ browser, exits when the user finishes). In the same message:
 - two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
   fields editable in place; **G** list view; **V** overview (when there's a digest); "完成审核" hands it back.
 The user may answer in chat or on the page. Wait as in §1 until the review summary prints, then reload `items.json`
-(dropped items have `status: "deleted"`, answers are in `answer`) and continue with §6. If they reply in chat
+(dropped items have `status: "deleted"`, answers are in `answer`, merged items are gone on purpose and listed in the
+target's `merged_from`) and continue with §6. If they reply in chat
 instead, apply it yourself and close the page (`pkill -f "review.py <session>"`).
 
 **Unattended runs** (started by the Blurt app via `claude -p` / `codex exec` — env `BLURT_APP=1` — or any other

@@ -86,9 +86,16 @@ processed in the background, with the review page popping up when it's ready.
 
 **Does it burn a lot of tokens?** The video is never fed to the model. Speech is transcribed locally (free), the agent
 reads the text, and it looks at a few frames only for the moments that become items. Cost follows how many things you
-talk about, not how long you record; silence and clicking around cost nothing. A short clip with one issue took Codex
-about 30k tokens in total, most of it reading the skill's instructions. More items mean more frames and text. Quality
-follows the model: use one with vision, the stronger the better.
+talk about, not how long you record; silence and clicking around cost nothing. Quality follows the model: use one with
+vision, the stronger the better. Two real sessions (Claude Code, Opus 5.5, a production web app):
+
+| recording | speech | items | transcription (local) | recording → review page | new input / output tokens | at API prices |
+|---|---|---|---|---|---|---|
+| 7.0 min | 2.8 min | 9 | 4 s | ~4 min | ~142k / ~19k | ~$2 |
+| 8.6 min | 5.0 min | 20 | 5 s | ~5 min | ~150k / ~20k | ~$2 |
+
+<sub>Plus cache reads of the ongoing conversation (~4–5M tokens, 1/20 of the input price, included above), which depend
+on how long your chat already is.</sub>
 
 **I don't do frontend. Is it for me?** Yes, if you can see the problem on screen or film it with a phone. See
 *Not just web apps* above.
