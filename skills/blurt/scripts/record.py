@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["sounddevice"]
+# dependencies = ["sounddevice", "pillow"]
 # ///
 """Screen + microphone recorder (macOS & Windows) with a proper recording UI.
 
@@ -151,20 +151,79 @@ class MicRecorder:
 
 
 # ---------------------------------------------------------------- video helpers (tk / ffmpeg engines)
+_enc_cache: dict[str, list[str]] = {}
+
+
 def pick_encoder(ff: str) -> list[str]:
+    """Hardware encoders are probed with a real screen capture: some pass a lavfi test yet starve actual
+    captures (seen on Windows: gdigrab + h264_qsv delivered ~2fps and wedged the shutdown). Cached per binary;
+    the winning choice is also persisted to config so later sessions skip the probe entirely."""
+    if ff in _enc_cache:
+        return _enc_cache[ff]
+    forced = os.environ.get("BLURT_ENCODER")
+    if not forced:
+        cached = global_config().get("encoder_probe", {}).get(ff)
+        if isinstance(cached, list) and len(cached) >= 2 and cached[0] == "-c:v":
+            _enc_cache[ff] = list(cached)
+            return _enc_cache[ff]
+    if forced:
+        _enc_cache[ff] = ["-c:v", forced, "-b:v", "2500k"]
+        return _enc_cache[ff]
+    args = None
     candidates = (["h264_videotoolbox"] if IS_MAC else ["h264_nvenc", "h264_qsv", "h264_amf"]) + ["libx264"]
     for enc in candidates:
         if enc == "libx264":
             break
-        test = run([ff, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=0.2",
-                    "-c:v", enc, "-f", "null", "-"], check=False)
-        if test.returncode == 0:
-            if enc == "h264_videotoolbox":
-                return ["-c:v", enc, "-b:v", "2500k", "-maxrate", "4M", "-bufsize", "8M", "-realtime", "1"]
-            if enc == "h264_nvenc":
-                return ["-c:v", enc, "-preset", "p4", "-cq", "30"]
-            return ["-c:v", enc, "-b:v", "2500k"]
-    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-tune", "zerolatency"]
+        if IS_MAC:
+            ok = run([ff, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=0.2",
+                      "-c:v", enc, "-f", "null", "-"], check=False).returncode == 0
+        else:
+            ok = _enc_survives_gdigrab(ff, enc)
+        if not ok:
+            continue
+        if enc == "h264_videotoolbox":
+            args = ["-c:v", enc, "-b:v", "2500k", "-maxrate", "4M", "-bufsize", "8M", "-realtime", "1"]
+        elif enc == "h264_nvenc":
+            args = ["-c:v", enc, "-preset", "p4", "-cq", "30"]
+        else:
+            args = ["-c:v", enc, "-b:v", "2500k"]
+        break
+    if args is None:
+        args = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-tune", "zerolatency"]
+    _enc_cache[ff] = args
+    try:
+        update_global_config({"encoder_probe": {ff: args}})
+    except Exception:
+        pass
+    return args
+
+
+def _enc_survives_gdigrab(ff: str, enc: str) -> bool:
+    """~1.5s real gdigrab capture through the encoder; a healthy one lands ~45 frames, a starving one far less."""
+    probe = Path(os.environ.get("TEMP", ".")) / f"blurt_encprobe_{enc}.mkv"
+    try:
+        probe.unlink(missing_ok=True)
+    except OSError:
+        pass
+    try:
+        r = run([ff, "-hide_banner", "-loglevel", "error", "-y", "-f", "gdigrab", "-framerate", "30",
+                 "-offset_x", "60", "-offset_y", "60", "-video_size", "480x320", "-i", "desktop", "-t", "1.5",
+                 "-c:v", enc, "-b:v", "1M", str(probe)], check=False, timeout=8)
+    except Exception:
+        return False
+    frames = -1
+    if r.returncode == 0 and probe.exists():
+        try:
+            out = run([ffmpeg_bin("ffprobe"), "-v", "error", "-count_frames", "-select_streams", "v:0",
+                       "-show_entries", "stream=nb_read_frames", "-of", "default=nw=1:nk=1", str(probe)], check=False)
+            frames = int(out.stdout.strip() or -1)
+        except Exception:
+            pass
+    try:
+        probe.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return frames >= 30
 
 
 def first_frame_wall(log: Path) -> float | None:
@@ -471,6 +530,16 @@ def cmd_start(a) -> None:
     final = session / "recording.mp4"
     if result.get("region"):
         update_global_config({"record": {"last_region": result["region"]}})
+    # Windows: composite the halo disc into the video (window halos freeze/vanish under real
+    # capture on this machine — the post-process pass is the reliable halo; raw is kept).
+    if IS_WIN and engine == "tk" and (global_config().get("record", {}) or {}).get("halo_overlay", True):
+        try:
+            from overlay_halo import overlay
+            note = overlay(session, result.get("region"))
+            if note:
+                out(note)
+        except Exception as e:
+            out(f"halo overlay skipped: {e}")
     dur = probe_duration(final)
     events = session / "events.jsonl"
     n_markers = sum(1 for l in events.open(encoding="utf-8") if '"marker"' in l) if events.exists() else 0
