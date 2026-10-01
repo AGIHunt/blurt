@@ -79,42 +79,26 @@ def make_handler(session: Path, done: threading.Event):
         def do_POST(self):
             nonlocal confirmed
             path = urlparse(self.path).path
-            if path not in ("/api/items", "/api/confirm"):
-                return self._send(404, b"not found", "text/plain")
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-                if length < 0:
-                    raise ValueError("negative content length")
-                data = json.loads(self.rfile.read(length))
-            except (ValueError, UnicodeError):
-                return self._send(400, b'{"error":"invalid JSON body"}', "application/json")
-            if not isinstance(data, dict) or not isinstance(data.get("items"), list) or any(
-                not isinstance(item, dict) or not isinstance(item.get("kind"), str) for item in data["items"]
-            ):
-                return self._send(400, b'{"error":"expected an items array with kind on each item"}', "application/json")
-
-            # The check and write must be atomic: a delayed autosave must never replace a confirmed session.
-            # Also serialize save_session's shared temporary file across request threads.
-            with write_lock:
-                if confirmed:
-                    code, body = 409, b'{"error":"review already confirmed"}'
-                else:
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            if path in ("/api/items", "/api/confirm"):
+                data = json.loads(body or b"{}")
+                with write_lock:
+                    if confirmed:
+                        return self._send(409, b"already confirmed", "text/plain")
                     if path == "/api/confirm":
                         data["reviewed"] = True
                     try:
                         save_session(session, data)
                     except OSError:
-                        code, body = 500, b'{"error":"could not save review"}'
-                    else:
-                        if path == "/api/confirm":
-                            confirmed = True
-                        code, body = 200, b'{"ok":true}'
-            try:
-                self._send(code, body, "application/json")
-            finally:
-                if path == "/api/confirm" and code == 200:
-                    # Keep the server alive until the response is sent (or the browser disconnects).
-                    done.set()
+                        return self._send(500, b"could not save", "text/plain")
+                    confirmed = path == "/api/confirm"
+                try:
+                    self._send(200, b'{"ok":true}', "application/json")
+                finally:
+                    if path == "/api/confirm":
+                        done.set()
+                return
+            self._send(404, b"not found", "text/plain")
 
     return H
 
@@ -146,8 +130,11 @@ def main():
     kinds: dict[str, int] = {}
     for i in kept:
         kinds[i["kind"]] = kinds.get(i["kind"], 0) + 1
+    # merged items leave the list; say so, or the agent reads the gap as data loss and restores them
+    merged = {i["id"]: i["merged_from"] for i in items if i.get("merged_from")}
     print(json.dumps({"reviewed": bool(data.get("reviewed")), "kept": len(kept), "kinds": kinds,
-                      "deleted": len(items) - len(kept), "file": str(session / "items.json")}))
+                      "deleted": len(items) - len(kept), **({"merged": merged} if merged else {}),
+                      "file": str(session / "items.json")}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
