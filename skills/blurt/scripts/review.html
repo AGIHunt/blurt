@@ -313,6 +313,7 @@ function mdLite(src){ // tiny markdown: headings, lists, bold, code, links
   return out+(inList?"</ul>":"")}
 
 let loaded=false,kindF="",data={items:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
+let saving=Promise.resolve(),confirming=false;
 const live=()=>data.items.filter(i=>i.status!=="deleted"||i._dropped);
 const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched?"keep":i._touched?"keep":"pending";
 
@@ -331,9 +332,22 @@ async function load(){
   if(view==="overview"&&!data.digest&&!data.title)view="focus";
   render(true);loaded=true;
 }
+async function post(path,body){
+  const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body});
+  if(!response.ok)throw new Error(`HTTP ${response.status}`);
+}
+const saveError=()=>lang==="zh"?"保存失败，请重试。":"Could not save. Please retry.";
 function save(){
+  if(confirming)return;
   $("#saved").textContent=t("saving");clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{await fetch("/api/items",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});$("#saved").textContent=t("saved")},450);
+  saveTimer=setTimeout(()=>{
+    const body=JSON.stringify(data);
+    // Keep every started save in the promise chain so confirmation waits for all of them.
+    saving=saving.then(async()=>{
+      try{await post("/api/items",body);$("#saved").textContent=t("saved")}
+      catch{$("#saved").textContent=saveError()}
+    });
+  },450);
 }
 function snapshot(){undo.push(JSON.stringify({items:data.items,cur}));if(undo.length>80)undo.shift()}
 function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.items=o.items;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
@@ -525,9 +539,16 @@ function openFinish(){
   $("#mOk").onclick=finish;
 }
 async function finish(){
-  data.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
-  await fetch("/api/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
-  closeModal();$("#done").classList.add("show");
+  if(confirming)return;
+  confirming=true;clearTimeout(saveTimer);document.body.inert=true;
+  try{
+    await saving;
+    const final=JSON.parse(JSON.stringify(data));
+    final.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
+    await post("/api/confirm",JSON.stringify(final));
+    closeModal();$("#done").classList.add("show");
+  }catch{confirming=false;$("#modal p").textContent=saveError()}
+  finally{document.body.inert=false}
 }
 
 /* ---------- wiring ---------- */
@@ -547,7 +568,7 @@ $("#stage").addEventListener("wheel",e=>{if(e.target.closest("video,.strip"))ret
 let touchY=null;$("#stage").addEventListener("touchstart",e=>touchY=e.touches[0].clientY,{passive:true});
 $("#stage").addEventListener("touchend",e=>{if(touchY==null)return;const d=touchY-e.changedTouches[0].clientY;if(Math.abs(d)>50)d>0?go(cur+1,"up"):go(cur-1,"down");touchY=null});
 document.addEventListener("keydown",e=>{
-  if(!loaded)return;
+  if(!loaded||confirming)return;
   const typing=/INPUT|TEXTAREA/.test(document.activeElement?.tagName);
   if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();openFinish();return}
   if(e.key==="Escape"){if($("#modalBg").classList.contains("show"))closeModal();else if($("#lightbox").classList.contains("show"))$("#lightbox").classList.remove("show");else document.activeElement?.blur();return}
