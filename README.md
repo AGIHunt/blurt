@@ -2,7 +2,7 @@
 <h1 align="center">blurt 🐔</h1>
 <p align="center"><b>Show it. Say it. Your AI gets it.</b><br>
 Record your screen, think out loud — your coding agent turns it into bug tickets, idea boards and todos.<br>
-<a href="README.zh-CN.md">中文</a> · works with Claude Code, Codex and any agent that runs skills</p>
+<a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · works with Claude Code, Codex and any agent that runs skills</p>
 
 https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
 
@@ -15,7 +15,8 @@ way you'd tell a colleague sitting next to you: point at the screen and talk. bl
 your agent does the rest:
 
 - splits a rambling half hour into separate items, even when you jump between topics and correct yourself
-- picks the right frame for each one and boxes the exact spot, using where your mouse actually was
+- picks the right frame for each one and boxes the exact spot, using where your mouse actually was. Want it exact?
+  **Hold ⌃ and circle it on screen**
 - writes it up: actual vs. expected, repro steps, owner, and **the code that's probably responsible**
 - lets you triage it in a review page, one item at a time with the keyboard
 - files it to Feishu/Lark, GitHub, Linear or Markdown, or goes straight to fixing it
@@ -28,6 +29,7 @@ your agent does the rest:
 |---|---|
 | 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. This is the fastest way to push AI to the finish line. |
 | 💡 **Capture ideas while browsing** | "I like how this site does onboarding… and this pricing page…" You get an idea board: each idea, why you had it, where it came from, the next step, plus a one-page digest. |
+| 📐 **Browse, then get the spec** | Building a landing page or a store? Tour a few dozen reference sites, circle what you like and say why. Your agent turns it into a requirements doc and a design doc, each requirement next to the frame you circled, ready to build from. |
 | 🤝 **Hand off from anyone** | PMs, designers, ops, clients: anyone can record with the Blurt app, no repo needed, and send the video. The developer's agent processes it with the code at hand. |
 | 🔎 **Research and walkthroughs** | Competitor tours, UX research, "how this works": you get notes and findings with the frames to prove them. |
 | 🖥️ **Not just web apps** | Terminals, TUIs and desktop apps record and get boxed the same way. For phones, use the built-in screen recorder with the mic on; for hardware, film it with your phone. Hand the video to your agent: "process this video". |
@@ -51,6 +53,8 @@ The first run picks a speech model for your machine and installs the **Blurt** m
    else stay out of the video.
 2. **3-2-1**, then talk. A tiny floating bar shows time and mic level, with ⏸ pause, ↺ redo and **Finish**. The bar
    itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧S` finish.
+   When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
+   your agent sees exactly what you meant.
 3. Click **Finish** and get back to work. Your agent transcribes locally, writes the items, and opens the review page.
 4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".
@@ -103,7 +107,7 @@ on how long your chat already is.</sub>
 
 ## Roadmap
 
-Browser capture (console errors and network failures lined up with the video) · circle-to-highlight gestures ·
+Browser capture (console errors and network failures lined up with the video) · the pen on Windows ·
 Windows tray app · a hosted speech API · more lenses and exporters · toward a personal assistant that watches,
 listens and keeps your projects moving. See [TODO.md](TODO.md).
 

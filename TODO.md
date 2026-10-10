@@ -11,7 +11,7 @@
 - [ ] Verify on Windows 10/11 (ddagrab/gdigrab, WASAPI mic via sounddevice, DPI scaling, wall-clock sync)
 - [x] End-to-end Feishu export with lark-cli (multi-attachment cells, resumable)
 - [x] Logo (口喷鸡, 3 variants in assets/)
-- [ ] Project homepage
+- [x] Project homepage: `site/` (static, zh + en), on Cloudflare Pages → blurt.agihunt.info (`site/README.md`)
 - [ ] Windows sound/notification polish; macOS menu-bar "stop" button (today: say "done" in chat)
 
 ## v0.2
@@ -36,9 +36,12 @@
 - [ ] Windows tray app (resident mode parity)
 
 ## Next
-- [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): circle-gesture detection,
-      Windows hook → precise crops and auto red circles, no pixel guessing
-- [ ] **Annotation overlay**: transparent click-through window; hold a key to draw circles/arrows that fade; click ripples
+- [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and
+      auto red circles, no pixel guessing
+- [x] **Pen** (macOS): hold ⌃ and drag to circle / underline; ink fades 3 s after the last stroke, is in the video and
+      in events.jsonl (`frames.py marks`, `grab --crop/--box stroke`); ✎ on the bar / ⌥⇧D keeps it on
+- [ ] Pen on Windows (Tk overlay), click ripples, pen for the review page (draw on a frame to correct the agent)
+- [x] Documents from recordings (requirements / design doc with the marked frames): `reference/docs.md`
 - [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl
 - [ ] **Browser telemetry** (extension or injected script): console errors, failed network requests, URL changes,
       clicked element selector/text — timestamp-aligned with the video → exact component lookup

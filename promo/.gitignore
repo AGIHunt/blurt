@@ -2,3 +2,7 @@ node_modules/
 out/
 audio/.premaster.wav
 public/soundtrack*.wav
+
+# case recordings are large; frames, docs and clips are small enough to commit
+cases/**/recording.mp4
+cases/**/*.scan.npz

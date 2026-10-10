@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>口喷鸡 blurt：边看边喷，AI 全懂</title>
+<meta name="description" content="指着屏幕口喷，想到哪喷到哪。口喷鸡把屏幕和声音一起录下来，你的 coding agent 整理成问题单、想法清单和待办。开源，语音识别在本地跑。">
+<link rel="canonical" href="https://blurt.agihunt.info/">
+<link rel="alternate" hreflang="zh" href="https://blurt.agihunt.info/">
+<link rel="alternate" hreflang="en" href="https://blurt.agihunt.info/en/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="口喷鸡 blurt：边看边喷，AI 全懂">
+<meta property="og:description" content="指着屏幕口喷，coding agent 帮你整理成问题单、想法清单和待办。">
+<meta property="og:url" content="https://blurt.agihunt.info/">
+<meta property="og:image" content="https://blurt.agihunt.info/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/logo.png" alt="" width="40" height="40">口喷鸡 <small>blurt</small></a>
+    <a class="link" href="#how">怎么用</a>
+    <a class="link" href="#privacy">隐私</a>
+    <a class="link" href="#faq">常见问题</a>
+    <a class="link lang" href="en/" lang="en">EN</a>
+    <a class="gh" href="https://github.com/AGIHunt/blurt" aria-label="GitHub 仓库">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub <span class="stars"></span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="wrap">
+    <h1><span>边看边喷，</span><br><span>AI <span class="circled">全懂。<svg viewBox="0 0 200 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M22 46C14 20 58 6 104 7c48 1 86 15 82 37-4 22-48 32-94 30C48 72 12 62 22 34"/></svg></span></span></h1>
+    <p class="sub">指着屏幕口喷，想到哪喷到哪。你的 coding agent 把它整理成问题单、想法清单和待办。</p>
+
+    <div class="actions">
+      <a class="btn" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip" data-other="在 GitHub 查看">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+        <span>下载 Mac 版</span> <small>免费</small>
+      </a>
+      <div class="cmd" title="点击复制">
+        <code>npx skills add AGIHunt/blurt</code>
+        <button type="button" data-done="✓ 已复制">复制</button>
+      </div>
+    </div>
+    <p class="fine">左边是给谁都能用的录制 App，右边是装进 <b>Claude Code、Codex</b> 等 agent 的 skill。<br>macOS 13 及以上 · 首次打开请右键 →「打开」 · Windows 版还在测试</p>
+
+    <div class="film">
+      <video muted loop playsinline preload="none" poster="assets/poster.jpg" src="assets/promo.mp4"></video>
+      <button class="sound" type="button" hidden>🔊 开声音，从头看</button>
+    </div>
+  </div>
+</section>
+
+<section class="center">
+  <div class="wrap">
+    <div class="versus">
+      <div class="before"><div class="what">截图、画红框、填表格</div><div class="big">2 天</div></div>
+      <i class="arrow" aria-hidden="true">→</i>
+      <div class="after"><div class="what">边看边喷</div><div class="big"><span class="circled">半小时<svg viewBox="0 0 200 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M22 46C14 20 58 6 104 7c48 1 86 15 82 37-4 22-48 32-94 30C48 72 12 62 22 34"/></svg></span></div></div>
+    </div>
+    <p class="source">以前要截图、画红框、填表格，花两天才反馈完的问题，现在半小时讲完。</p>
+    <div class="facts">
+      <span>7 分钟录屏</span><i>→</i><span>9 条事项</span><i>→</i><span>约 4 分钟出审核页</span><i>→</i><span>约 2 美元</span>
+    </div>
+    <p class="pitch">给 agent <em>一双眼睛</em>，给你<em>省下两天</em>。</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="eyebrow">怎么用</div>
+    <h2>按一下，开喷。</h2>
+    <div class="steps">
+      <div class="step first">
+        <h3>在任何地方按一下</h3>
+        <p>框出要录的区域，或者点一下选中某个窗口。标签栏、收藏夹不会被录进去。</p>
+        <div class="keys"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>R</kbd></div>
+      </div>
+      <div class="step">
+        <h3>边用边说</h3>
+        <p>想到哪说到哪，说错了改口也没关系。说「这里」的时候，按住 <kbd class="sm">⌃</kbd> 拖动鼠标把它圈出来。</p>
+      </div>
+      <div class="step">
+        <h3>点「完成」，去干别的</h3>
+        <p>agent 在本地把语音转成文字，拆成一条条事项，给每条挑截图、找最可能出问题的代码。</p>
+      </div>
+      <div class="step">
+        <h3>像刷短视频一样审核</h3>
+        <p>一条一条过，全程键盘。审完导出，或者直接说「帮我改掉」。</p>
+        <div class="keys legend"><span><kbd class="sm">A</kbd>保留</span><span><kbd class="sm">X</kbd>丢弃</span><span><kbd class="sm">J</kbd>下一条</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">可以喷点什么</div>
+    <h2>不只是提 bug。</h2>
+    <div class="uses">
+      <div class="use"><div class="emoji">🐞</div><h3>打磨 vibe coding 出来的产品</h3><p>AI 通宵做完的东西，你挨个页面点一遍、边用边喷，拿到一份带代码定位的问题清单，直接交给 AI 去改。</p></div>
+      <div class="use new"><div class="emoji">📐</div><h3>逛完直接出需求文档 <span class="tag">新</span></h3><p>想做个官网或独立站？逛一圈参考站，看到好的就圈出来说一句，agent 整理成需求文档和设计文档。这个页面就是这么来的。</p></div>
+      <div class="use"><div class="emoji">💡</div><h3>边逛边记灵感</h3><p>「这个引导做得好……这个定价页也不错……」整理成想法清单：是什么、为什么、灵感来自哪、下一步做什么。</p></div>
+      <div class="use"><div class="emoji">🤝</div><h3>谁都能反馈</h3><p>产品、设计、运营、客户，不需要有代码库。用 App 录好把视频发过来，开发那边的 agent 结合代码来处理。</p></div>
+      <div class="use"><div class="emoji">🔎</div><h3>调研和讲解</h3><p>竞品走查、用户研究、「这个是怎么运作的」，整理成带截图佐证的笔记和结论。</p></div>
+      <div class="use"><div class="emoji">🖥️</div><h3>不只是网页</h3><p>终端、TUI、桌面 App 照样录。手机上的问题用自带录屏，硬件直接拿手机拍，把视频丢给 agent 就行。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="center">
+  <div class="wrap">
+    <div class="eyebrow">整理好的事项去哪</div>
+    <h2>进你现在就在用的工具。</h2>
+    <div class="dest">
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M3 15h18M9 4v16"/></svg>飞书多维表格 <small>带截图和片段</small></span>
+      <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub Issues</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/></svg>Linear</span>
+      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9.5 13h6M9.5 17h6"/></svg>Markdown · CSV</span>
+    </div>
+    <p class="lead">Jira、Notion、Obsidian 也行：agent 用你已经装好的 CLI 或 MCP 去写。或者不导出，直接让它开始修。</p>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <div class="eyebrow">隐私</div>
+    <h2>默认什么都不上传。</h2>
+    <div class="cols">
+      <div class="col local">
+        <h3>留在你电脑上</h3>
+        <ul>
+          <li><b>录屏和录音。</b>存在你选的工作区里，默认是 <code>~/Blurt</code>。</li>
+          <li><b>语音识别。</b>默认用 SenseVoice 在本机跑，约 240 MB，普通 CPU 就够。</li>
+          <li><b>抽帧和画框。</b>脚本在本地从视频里取。</li>
+          <li><b>审核页。</b>本机起的一个页面，只有你自己能打开。</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>你选了才出去</h3>
+        <ul>
+          <li><b>给 agent 的内容。</b>文字稿和它挑出的几张截图，会发给你自己在用的 coding agent，也就是它背后的模型服务。视频本身不会发。</li>
+          <li><b>云端语音识别。</b>只有你配了自己的 Groq、OpenAI 或百炼 Key 才会用。</li>
+          <li><b>导出。</b>写进飞书、GitHub 之前，会先跟你确认去哪、几条。</li>
+          <li><b>发给同事的视频。</b>你自己复制，自己粘贴。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="oss">
+      <div>
+        <div class="eyebrow">开源 · MIT</div>
+        <h2>没有黑盒。</h2>
+        <p>一个要录你屏幕的工具，应该让你看得到它做了什么。确定的事交给脚本，判断交给模型，两边都在仓库里。</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/AGIHunt/blurt/blob/main/skills/blurt/SKILL.md">怎么拆、怎么写、怎么判断 <small>SKILL.md</small></a></li>
+        <li><a href="https://github.com/AGIHunt/blurt/tree/main/skills/blurt/scripts">录屏、识别、抽帧、审核、导出 <small>scripts/</small></a></li>
+        <li><a href="https://github.com/AGIHunt/blurt/tree/main/promo">连宣传片都是代码做的 <small>promo/</small></a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="center"><div class="eyebrow">常见问题</div><h2>问得最多的。</h2></div>
+    <div class="faq">
+      <details open>
+        <summary>很费 token 吗？</summary>
+        <p>不会把视频喂给模型。语音在本地转成文字，不花钱；agent 读的是文字稿，只给真正成条的事项挑几张截图看。花费跟你讲了几件事有关，跟录了多久关系不大。两次真实使用（Claude Code + Opus 5.5，一个线上 Web 产品）：</p>
+        <div class="tablewrap"><table>
+          <tr><th>录屏</th><th>说话</th><th>事项</th><th>语音识别（本地）</th><th>录完到审核页</th><th>新输入 / 输出 token</th><th>按 API 价格</th></tr>
+          <tr><td>7.0 分钟</td><td>2.8 分钟</td><td>9 条</td><td>4 秒</td><td>约 4 分钟</td><td>约 14 万 / 1.9 万</td><td>约 2 美元</td></tr>
+          <tr><td>8.6 分钟</td><td>5.0 分钟</td><td>20 条</td><td>5 秒</td><td>约 5 分钟</td><td>约 15 万 / 2 万</td><td>约 2 美元</td></tr>
+        </table></div>
+        <p class="note">另有对话上下文的缓存读取，约 400–500 万 token，按输入价的 1/20 计费，已算进上表。</p>
+      </details>
+      <details>
+        <summary>不做前端能用吗？</summary>
+        <p>能。只要问题能在屏幕上看到，或者能用手机拍下来，就能喷：终端、桌面 App、手机录屏、拿手机拍的硬件都行。</p>
+      </details>
+      <details>
+        <summary>说什么语言都行吗？</summary>
+        <p>中、英、日、韩、粤语用默认的 SenseVoice。德语、法语、西语等其他语言用本地 Whisper 或云端 Key，首次运行时 agent 会按你说的语言来选。说什么语言，整理出来就是什么语言。</p>
+      </details>
+      <details>
+        <summary>Windows 能用吗？</summary>
+        <p>能录：Windows 上是 Tk + ffmpeg 的录制器，由 agent 启动。但还没有常驻的托盘 App，画笔目前只有 macOS，也还没在足够多的真机上验证过，所以这里先不放 Windows 下载按钮。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section class="closing">
+  <div class="wrap">
+    <h2>下次有话想说，<br>直接喷。</h2>
+    <div class="actions">
+      <a class="btn" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip" data-other="在 GitHub 查看">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/></svg>
+        <span>下载 Mac 版</span> <small>免费</small>
+      </a>
+      <div class="cmd" title="点击复制">
+        <code>npx skills add AGIHunt/blurt</code>
+        <button type="button" data-done="✓ 已复制">复制</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="sp">🐔 口喷鸡 blurt · MIT · 出品 <a href="https://github.com/AGIHunt">AGI Hunt</a></span>
+    <a href="https://github.com/AGIHunt/blurt">GitHub</a>
+    <a href="https://github.com/AGIHunt/blurt/releases/latest">更新记录</a>
+    <a href="en/" lang="en">English</a>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>
