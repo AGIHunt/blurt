@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -92,6 +93,34 @@ class ReviewServer(Base):
         urllib.request.urlopen(req, timeout=5).read()
         summary = json.loads(proc.communicate(timeout=10)[0].strip().splitlines()[-1])
         self.assertEqual((summary["reviewed"], summary["kept"], summary["deleted"]), (True, 3, 2))
+
+
+class PenMarks(unittest.TestCase):
+    def test_strokes_group_into_marks(self):
+        try:
+            import numpy, PIL  # noqa: F401  (frames.py imports them at module level)
+        except ImportError:
+            self.skipTest("numpy / pillow not installed")
+        sys.path.insert(0, str(SCRIPTS))
+        import frames
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        video = Path(tmp.name) / "recording.mp4"
+        loop = [[0.5 + 0.1 * math.cos(i / 4), 0.5 + 0.1 * math.sin(i / 4)] for i in range(27)]
+        events = [{"t": 1.0, "type": "click", "x": 0.1, "y": 0.1},
+                  {"t": 5.0, "t0": 4.0, "type": "stroke", "visible": 3, "points": loop},
+                  {"t": 7.5, "t0": 7.0, "type": "stroke", "visible": 3, "points": [[0.2, 0.8], [0.3, 0.8], [0.4, 0.8]]},
+                  {"t": 30.0, "t0": 30.0, "type": "stroke", "visible": 3, "points": [[0.9, 0.9]]}]
+        (video.parent / "events.jsonl").write_text("\n".join(map(json.dumps, events)), encoding="utf-8")
+        (video.parent / "transcript.json").write_text(json.dumps({"segments": [
+            {"start": 3.0, "end": 8.0, "text": "this headline"}, {"start": 20.0, "end": 22.0, "text": "unrelated"}]}))
+        frames.probe_size = lambda _: (1600, 1000)
+        m = frames.marks(video)["marks"]
+        self.assertEqual([[s["shape"] for s in g["strokes"]] for g in m], [["loop", "line"], ["tap"]])
+        self.assertEqual(m[0]["frame_t"], 7.8)          # both strokes of the first mark are on screen then
+        self.assertEqual(m[0]["said"], "this headline")
+        x, y, w, h = m[0]["box"]
+        self.assertTrue(x <= 0.2 and y <= 0.4 and x + w >= 0.6 and y + h >= 0.8)
 
 
 if __name__ == "__main__":

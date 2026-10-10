@@ -47,7 +47,8 @@ what happens:
   is recorded — tabs, bookmarks and other windows stay private;
 - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
   **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
-- talk naturally, point with the mouse; click **完成** — no need to send another chat message.
+- talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
+  fades after 3 s; ✎ on the bar or ⌥⇧D keeps the pen on); click **完成** — no need to send another chat message.
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
 the chat you can also `record.py stop | pause | resume | restart`.
 
@@ -73,7 +74,8 @@ Recorded with system audio (`record.py start --system-audio`, or the app's menu 
 the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lines are the user. Speaker bleed can
 repeat a system line on the mic.
 For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.
-Also run `frames.py scan <video>` (visual-activity index for candidates/sheets).
+Also run `frames.py scan <video>` (visual-activity index for candidates/sheets) and `frames.py marks <video>`: what
+the user drew with the pen — when, where (box), what was being said — plus ⌥⇧M markers.
 A `warning` in the output, or a transcript that reads as nonsense (SenseVoice turns unsupported languages such as
 French into fake English), means the language needs another backend: set it up (`reference/asr.md`) and re-run.
 
@@ -91,6 +93,8 @@ Read the whole transcript first, glance at a few frames, then write `<session>/i
 | custom | a lens in `.blurt/lenses/` or `~/.blurt/lenses/` fits, or the user asked for it | that file |
 
 Principles — judgement, not rules:
+- A pen mark is the user saying "this, exactly": it anchors an item's time and subject. What they circled outranks
+  your reading of a vague sentence — but a mark is not an item by itself, and items without marks are normal.
 - One item = one thing. People jump around, revisit, correct themselves ("不对，是…"), or say two things in one
   sentence: merge revisits, drop retracted remarks, split compounds. Pure narration is not an item.
 - Fix ASR errors from context (repo vocabulary, what's on screen). Keep `quote` close to what was said.
@@ -105,7 +109,9 @@ Principles — judgement, not rules:
 Pick 1–3 frames per item that show *the point* (the bug itself, the part of the page that inspired the idea):
 - `frames.py sheet <video> --from S --to E -o <session>/sheets/<id>.jpg` → ~6 diverse settled candidates with
   timestamps in one image; `--at t1 t2 …` for specific moments ("这里 / this / look"). Speech often trails the action.
-- Marking the spot — never estimate coordinates from a thumbnail or contact sheet:
+- The user drew on it (`marks`)? Their ink is in the video: `frames.py grab --at <frame_t>` and the frame is already
+  annotated — add no box. `--crop stroke` for a zoomed second frame; `--box stroke` on a frame where the ink is gone.
+- Otherwise, marking the spot — never estimate coordinates from a thumbnail or contact sheet:
   1. `frames.py grid <video> --at T -o <session>/sheets/<id>-grid.jpg` → labelled 0–1 grid plus the recorded cursor
      and nearby clicks (events.jsonl — exact). Read box edges off the grid (`--crop` zooms, labels stay full-frame).
   2. `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h`; `--ring cursor|click` when the user
@@ -143,6 +149,8 @@ ideas → an ideas board / doc; notes → Markdown; tasks → the user's todo to
 - Markdown + CSV → `export_local.py <session>` (all kinds; always a good local record).
 - GitHub Issues / Linear / Jira / Notion / Obsidian / anything else → `reference/export-other.md`; use the CLI or
   MCP tool the user has; map fields by meaning.
+- A document rather than a list ("整理成需求文档和设计文档", a brief, a comparison — typically after walking through
+  reference sites or a competitor, often across several recordings) → `reference/docs.md`.
 Confirm destination and count before creating anything remotely; report links afterwards. Then offer the natural
 next step — for issues "want me to start fixing these?" (you have `code_refs`), for ideas "want a quick prototype /
 spec of the top one?".

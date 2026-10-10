@@ -10,19 +10,24 @@
   frames.py sheet VIDEO --at 12.5 14 20 -o x.jpg   contact sheet of explicit times
   frames.py grid  VIDEO --at T -o x.jpg          frame with a labelled 0–1 coordinate grid + where the cursor / clicks
                                                 were (from events.jsonl) — read positions off this, don't guess
-  frames.py pointer VIDEO --at T                 cursor position and nearby clicks at T (JSON)
-  frames.py grab  VIDEO --at T -o x.jpg [--box x,y,w,h] [--ring cursor|click|x,y] [--crop x,y,w,h]
+  frames.py pointer VIDEO --at T                 cursor position and nearby clicks / pen strokes at T (JSON)
+  frames.py marks VIDEO                          everything the user drew with the pen (⌃-drag) and every marker: when,
+                                                where (box), what shapes, what was being said, and the time to grab
+  frames.py grab  VIDEO --at T -o x.jpg [--box x,y,w,h|stroke] [--ring cursor|click|x,y] [--crop x,y,w,h|stroke]
                                                 full-res frame with red box / ring, optional crop
   frames.py clip  VIDEO --from S --to E -o x.mp4   small shareable clip (with audio)
 
 Coordinates for --box/--crop/--ring are fractions (0-1) of the frame, so they work at any resolution. The native
 recorder logs the cursor and clicks in events.jsonl (same fractions): when the user pointed at or clicked the thing,
-`--ring cursor` / `--ring click` marks it exactly.
+`--ring cursor` / `--ring click` marks it exactly. Pen strokes are in the video itself (visible for ~3 s) and in
+events.jsonl: grab at a mark's `frame_t` and the user's own circle is the annotation; `--crop stroke` zooms in on it,
+`--box stroke` re-draws its box on a frame where the ink is gone.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -131,7 +136,83 @@ def pointer_at(video: Path, t: float, window: float = 4.0) -> dict:
     clicks = sorted((e for e in ev if e.get("type") == "click" and abs(e["t"] - t) <= window), key=lambda e: abs(e["t"] - t))
     return {"t": t, "has_events": bool(ev),
             "cursor": {"x": cursor["x"], "y": cursor["y"], "since": round(t - cursor["t"], 2)} if cursor else None,
-            "clicks": [{"x": c["x"], "y": c["y"], "t": round(c["t"], 2)} for c in clicks[:5]]}
+            "clicks": [{"x": c["x"], "y": c["y"], "t": round(c["t"], 2)} for c in clicks[:5]],
+            "strokes": [s for s in strokes(video) if s["t0"] - window <= t <= s["t"] + window]}
+
+
+# ------------------------------------------------------------------ pen strokes (drawn while recording)
+def strokes(video: Path) -> list[dict]:
+    """Pen strokes from events.jsonl with what the agent needs: box, shape, and the moment the ink is complete.
+    Ink stays until `visible` seconds after the last stroke, so strokes drawn in one go form a `mark`: they are all
+    on screen at the mark's `frame_t`."""
+    raw = [e for e in load_events(video) if e.get("type") == "stroke" and e.get("points")]
+    if not raw:
+        return []
+    w, h = probe_size(video)
+    out: list[dict] = []
+    for n, e in enumerate(raw, 1):
+        pts = e["points"]
+        xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+        box = [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)]
+        px = [(x * w, y * h) for x, y in pts]            # shape is judged in pixels, not in stretched 0–1 space
+        length = sum(math.dist(a, b) for a, b in zip(px, px[1:]))
+        gap, diag = math.dist(px[0], px[-1]), math.hypot(box[2] * w, box[3] * h)
+        if len(pts) == 1:
+            shape = "tap"                                 # the recorder rings the spot
+        elif gap < 0.4 * diag and length > 2.2 * diag:
+            shape = "loop"                                # circled something: the box is the thing
+        elif length < 1.3 * gap:
+            shape = "line"                                # underline, or an arrow from → to
+        else:
+            shape = "free"
+        t0, vis = e.get("t0", e["t"]), e.get("visible", 3.0)
+        joins = bool(out) and t0 <= out[-1]["t"] + out[-1]["_vis"]
+        out.append({"n": n, "mark": out[-1]["mark"] if joins else (out[-1]["mark"] + 1 if out else 1),
+                    "t0": round(t0, 2), "t": round(e["t"], 2), "shape": shape, "box": [round(v, 3) for v in box],
+                    "from": pts[0], "to": pts[-1], "_vis": vis})
+    for s in out:
+        last = [o for o in out if o["mark"] == s["mark"]][-1]
+        s["frame_t"] = round(last["t"] + min(0.3, last["_vis"] / 3), 2)
+    for s in out:
+        del s["_vis"]
+    return out
+
+
+def _union(boxes: list[list[float]]) -> list[float]:
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    x1, y1 = max(b[0] + b[2] for b in boxes), max(b[1] + b[3] for b in boxes)
+    return [round(x0, 3), round(y0, 3), round(x1 - x0, 3), round(y1 - y0, 3)]
+
+
+def marks(video: Path) -> dict:
+    """Pen marks (strokes drawn in one go) + markers, each with the words spoken around it (transcript.json next to
+    the video, if present)."""
+    tr = video.parent / "transcript.json"
+    segs = json.loads(tr.read_text(encoding="utf-8")).get("segments", []) if tr.exists() else []
+
+    def said(a: float, b: float) -> str:
+        return " ".join(s["text"] for s in segs if s["end"] >= a - 1.5 and s["start"] <= b + 2.5)
+
+    groups: dict[int, list[dict]] = {}
+    for s in strokes(video):
+        groups.setdefault(s["mark"], []).append(s)
+    out = [{"mark": m, "t0": g[0]["t0"], "t": g[-1]["t"], "frame_t": g[-1]["frame_t"], "box": _union([s["box"] for s in g]),
+            "strokes": [{"shape": s["shape"], "box": s["box"], "from": s["from"], "to": s["to"]} for s in g],
+            "said": said(g[0]["t0"], g[-1]["t"])} for m, g in groups.items()]
+    mk = [{"t": round(e["t"], 2), "said": said(e["t"], e["t"])} for e in load_events(video) if e.get("type") == "marker"]
+    return {"marks": out, "markers": mk}
+
+
+def _stroke_box(video: Path, t: float, pad: float, least: float = 0.0) -> str:
+    """Box of the pen mark nearest to t, grown by pad × its size and to at least `least` of the frame per side."""
+    st = strokes(video)
+    if not st:
+        die("no pen strokes in events.jsonl — give x,y,w,h instead")
+    near = min(st, key=lambda s: 0 if s["t0"] <= t <= s["frame_t"] + 2.5 else min(abs(s["t0"] - t), abs(s["t"] - t)))
+    x, y, bw, bh = _union([s["box"] for s in st if s["mark"] == near["mark"]])
+    w, h = max(bw * (1 + 2 * pad), least, 0.02), max(bh * (1 + 2 * pad), least, 0.02)
+    x0, y0 = min(max(0, x + bw / 2 - w / 2), 1 - min(w, 1)), min(max(0, y + bh / 2 - h / 2), 1 - min(h, 1))
+    return f"{x0},{y0},{min(w, 1)},{min(h, 1)}"
 
 
 def _point(spec: str, video: Path, t: float) -> tuple[float, float] | None:
@@ -182,6 +263,10 @@ def grid_image(im: Image.Image, video: Path, t: float) -> dict:
         cx, cy = c["x"] * W, c["y"] * H
         d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(255, 200, 0, 255), width=3)
         d.text((cx + r + 3, cy - r), f"click {c['t']:.1f}s ({c['x']:.2f},{c['y']:.2f})", fill=(255, 200, 0, 255), font=f)
+    for s in info["strokes"]:
+        x, y, bw, bh = s["box"]
+        d.rectangle([x * W, y * H, (x + bw) * W, (y + bh) * H], outline=(255, 110, 60, 255), width=3)
+        d.text((x * W + 4, (y + bh) * H + 3), f"stroke #{s['n']} {s['shape']} {s['t']:.1f}s", fill=(255, 110, 60, 255), font=f)
     if info["cursor"]:
         cx, cy = info["cursor"]["x"] * W, info["cursor"]["y"] * H
         d.line([(cx - 2 * r, cy), (cx + 2 * r, cy)], fill=(255, 45, 45, 255), width=3)
@@ -252,9 +337,13 @@ def main():
     g.add_argument("video")
     g.add_argument("--at", type=float, required=True)
     g.add_argument("-o", "--out", required=True)
-    g.add_argument("--box", action="append", help="x,y,w,h (fractions or px) to outline in red; repeatable")
+    g.add_argument("--box", action="append", help="x,y,w,h (fractions or px) to outline in red; repeatable; "
+                                                  "'stroke' = the pen stroke nearest to --at")
     g.add_argument("--ring", action="append", help="cursor | click | x,y — red circle at the pointer / a point; repeatable")
-    g.add_argument("--crop", help="x,y,w,h (fractions or px) to crop to, applied after boxes")
+    g.add_argument("--crop", help="x,y,w,h (fractions or px) to crop to, applied after boxes; "
+                                  "'stroke' = around the pen stroke nearest to --at")
+    mk = sub.add_parser("marks")
+    mk.add_argument("video")
     g.add_argument("--max-width", type=int, default=1920)
     cl = sub.add_parser("clip")
     cl.add_argument("video")
@@ -287,6 +376,8 @@ def main():
             print(json.dumps({"sheet": a.out, "times": times, "labels": {f"#{i + 1}": t for i, t in enumerate(times)}}))
     elif a.cmd == "pointer":
         print(json.dumps(pointer_at(video, a.at)))
+    elif a.cmd == "marks":
+        print(json.dumps(marks(video), ensure_ascii=False))
     elif a.cmd == "grid":
         im = grab(video, a.at, 1920)
         info = grid_image(im, video, a.at)
@@ -300,12 +391,12 @@ def main():
         im = grab(video, a.at, a.max_width)
         d = ImageDraw.Draw(im)
         for b in a.box or []:
-            x0, y0, x1, y1 = _frac_box(b, im.width, im.height)
+            x0, y0, x1, y1 = _frac_box(_stroke_box(video, a.at, 0.15) if b == "stroke" else b, im.width, im.height)
             d.rounded_rectangle([x0, y0, x1, y1], radius=6, outline="#ff2d2d", width=max(3, im.width // 400))
         for r in a.ring or []:
             draw_ring(im, *_point(r, video, a.at))
         if a.crop:
-            x0, y0, x1, y1 = _frac_box(a.crop, im.width, im.height)
+            x0, y0, x1, y1 = _frac_box(_stroke_box(video, a.at, 0.5, 0.45) if a.crop == "stroke" else a.crop, im.width, im.height)
             im = im.crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1)))
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         im.save(a.out, quality=90)

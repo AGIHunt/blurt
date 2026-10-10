@@ -1,10 +1,11 @@
 // BlurtRecorder — native macOS recorder for blurt (ScreenCaptureKit + AVAssetWriter).
 //
 // Flow: region picker (drag / click a window / F = full screen) → 3-2-1 countdown → recording with a floating
-// control bar (timer, mic level, pause, marker, stop) that is never captured. Output: H.264/AAC mp4 + events.jsonl
-// (pauses, markers, clicks, cursor samples). Built on first use by record.py with `swiftc`.
+// control bar (timer, mic level, pause, pen, stop) that is never captured. Output: H.264/AAC mp4 + events.jsonl
+// (pauses, markers, clicks, cursor samples, pen strokes). Built on first use by record.py with `swiftc`.
+// Pen: hold ⌃ and drag to circle / underline / point at things — the ink is in the video and in events.jsonl.
 //
-// Control: HUD buttons, global hotkeys (⌥⇧P pause/resume, ⌥⇧M marker, ⌥⇧S stop), stdin lines
+// Control: HUD buttons, global hotkeys (⌥⇧P pause/resume, ⌥⇧M marker, ⌥⇧D pen on/off, ⌥⇧S stop), stdin lines
 // ("pause" | "resume" | "toggle" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
 // stdout: one JSON object per line: ready, selected, countdown, recording, paused, resumed, marker, level?, stopped,
 // cancelled, error.
@@ -582,11 +583,12 @@ final class HUD: NSPanel {
     let status = NSTextField(labelWithString: "")
     let meter = LevelView(frame: NSRect(x: 0, y: 0, width: 26, height: 20))
     var pauseBtn: IconButton!
+    var penBtn: IconButton!
     weak var rec: Recorder?
 
     init(rec: Recorder) {
         self.rec = rec
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 314, height: 48), styleMask: [.nonactivatingPanel, .borderless],
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 350, height: 48), styleMask: [.nonactivatingPanel, .borderless],
                    backing: .buffered, defer: false)
         level = .statusBar
         isFloatingPanel = true
@@ -598,7 +600,7 @@ final class HUD: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         sharingType = chromeSharing
 
-        let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 314, height: 48))
+        let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 350, height: 48))
         fx.material = .hudWindow
         fx.blendingMode = .behindWindow
         fx.state = .active
@@ -642,13 +644,18 @@ final class HUD: NSPanel {
 
         pauseBtn = IconButton(symbol: "pause.fill", tip: L("暂停 / 继续（⌥⇧P）", "Pause / resume (⌥⇧P)"), target: self, action: #selector(togglePause))
         let redo = IconButton(symbol: "arrow.counterclockwise", tip: L("重录或放弃…", "Restart or discard…"), target: self, action: #selector(redoRec))
+        penBtn = IconButton(symbol: "scribble.variable", tip: "", target: self, action: #selector(togglePen))
+        penBtn.toolTip = rec.penKey.map { L("画笔：按住 \($0.1) 拖动圈出重点；点这里常开（⌥⇧D）", "Pen: hold \($0.1) and drag to circle things; click to keep it on (⌥⇧D)") }
+            ?? L("画笔：圈出重点（⌥⇧D）", "Pen: circle things (⌥⇧D)")
         pauseBtn.frame.origin = NSPoint(x: 150, y: 8)
-        redo.frame.origin = NSPoint(x: 186, y: 8)
+        penBtn.frame.origin = NSPoint(x: 186, y: 8)
+        redo.frame.origin = NSPoint(x: 222, y: 8)
         fx.addSubview(pauseBtn)
+        fx.addSubview(penBtn)
         fx.addSubview(redo)
         let done = PillButton(L("完成", "Finish"), symbol: "stop.fill", fill: NSColor.systemRed.withAlphaComponent(0.92), target: self, action: #selector(stopRec))
         done.toolTip = L("结束录制，开始整理（⌥⇧S）", "Stop and process (⌥⇧S)")
-        done.frame.origin = NSPoint(x: 224, y: 8)
+        done.frame.origin = NSPoint(x: 260, y: 8)
         fx.addSubview(done)
         let w = done.frame.maxX + 8
         setContentSize(NSSize(width: w, height: 48))
@@ -675,9 +682,12 @@ final class HUD: NSPanel {
         dot.layer?.backgroundColor = (paused ? amber : NSColor.systemRed).cgColor
         pauseBtn.symbol = paused ? "play.fill" : "pause.fill"
         meter.level = paused ? 0 : lv
+        penBtn.bg = rec?.inkOn == true ? accent : NSColor(white: 1, alpha: 0.1)
+        penBtn.needsDisplay = true
     }
 
     @objc func togglePause() { rec?.togglePause() }
+    @objc func togglePen() { rec?.togglePen() }
     @objc func stopRec() { rec?.stop() }
     @objc func redoRec() {
         guard let rec = rec else { return }
@@ -713,6 +723,138 @@ func overlayWindow(_ frame: NSRect, view: NSView) -> NSWindow {
     return w
 }
 
+// MARK: - Pen: draw on the screen while recording
+
+/// Covers the recorded area. Click-through until the pen is on (pen key held, or toggled from the HUD / ⌥⇧D); then a
+/// drag draws a stroke. Ink fades a few seconds after the last stroke, so a circle and the arrow drawn right after
+/// it share a frame. Unlike the rest of the chrome this window *is* captured, and each stroke is logged to
+/// events.jsonl in the same 0–1 coordinates as clicks.
+final class InkView: NSView {
+    static let visible = 3.0          // seconds the ink stays after the last stroke
+    weak var rec: Recorder?
+    var pts: [NSPoint] = []
+    var live: CAShapeLayer?
+    var done: [CAShapeLayer] = []     // finished strokes still on screen
+    var fade: DispatchWorkItem?
+    var t0 = 0.0
+    let halo = CAShapeLayer()         // small ring at the cursor: "the pen is on"
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        halo.path = CGPath(ellipseIn: CGRect(x: -9, y: -9, width: 18, height: 18), transform: nil)
+        halo.fillColor = accent.withAlphaComponent(0.25).cgColor
+        halo.strokeColor = accent.cgColor
+        halo.lineWidth = 2
+        halo.isHidden = true
+        layer?.addSublayer(halo)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }    // top-left origin, like events.jsonl
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    func setOn(_ on: Bool) {
+        guard live == nil else { return }     // finish the stroke in progress first
+        window?.ignoresMouseEvents = !on
+        // a fully transparent window lets clicks fall through; a whisper of fill makes it take them
+        layer?.backgroundColor = on ? NSColor(white: 0, alpha: 0.02).cgColor : nil
+        if on, let w = window { moveHalo(convert(w.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)) }
+        halo.isHidden = !on
+    }
+
+    func moveHalo(_ p: NSPoint) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        halo.position = p
+        CATransaction.commit()
+    }
+
+    func shape() -> CAShapeLayer {
+        let l = CAShapeLayer()
+        l.fillColor = nil
+        l.strokeColor = accent.cgColor
+        l.lineWidth = 4
+        l.lineCap = .round
+        l.lineJoin = .round
+        l.shadowColor = NSColor.black.cgColor     // stays readable on light and dark pages
+        l.shadowOpacity = 0.45
+        l.shadowRadius = 1.5
+        l.shadowOffset = .zero
+        return l
+    }
+
+    func path() -> CGPath {
+        let p = CGMutablePath()
+        guard let first = pts.first else { return p }
+        p.move(to: first)
+        if pts.count < 3 { pts.dropFirst().forEach { p.addLine(to: $0) }; return p }
+        for i in 1..<pts.count - 1 {              // through the midpoints: smooth without lagging behind the hand
+            p.addQuadCurve(to: NSPoint(x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2), control: pts[i])
+        }
+        p.addLine(to: pts[pts.count - 1])
+        return p
+    }
+
+    override func mouseMoved(with e: NSEvent) { moveHalo(convert(e.locationInWindow, from: nil)) }
+
+    override func mouseDown(with e: NSEvent) {
+        fade?.cancel()
+        pts = [convert(e.locationInWindow, from: nil)]
+        t0 = rec?.elapsed() ?? 0
+        let l = shape()
+        layer?.insertSublayer(l, below: halo)
+        live = l
+    }
+
+    override func mouseDragged(with e: NSEvent) {
+        guard let l = live, let last = pts.last else { return }
+        let p = convert(e.locationInWindow, from: nil)
+        moveHalo(p)
+        guard hypot(p.x - last.x, p.y - last.y) >= 1.5 else { return }
+        pts.append(p)
+        l.path = path()
+    }
+
+    override func mouseUp(with e: NSEvent) {
+        guard let l = live else { return }
+        live = nil
+        let length = zip(pts, pts.dropFirst()).reduce(0) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) }
+        if length < 6 {                            // a tap: ring the spot
+            pts = [pts[0]]
+            l.path = CGPath(ellipseIn: CGRect(x: pts[0].x - 18, y: pts[0].y - 18, width: 36, height: 36), transform: nil)
+        }
+        var keep: [NSPoint] = []                   // thin out for the log: ≥ 3 pt apart, at most ~120 points
+        for p in pts where keep.last.map({ hypot(p.x - $0.x, p.y - $0.y) >= 3 }) ?? true { keep.append(p) }
+        if let end = pts.last, keep.last != end { keep.append(end) }
+        if keep.count > 120 { keep = stride(from: 0, to: keep.count, by: keep.count / 120 + 1).map { keep[$0] } + [keep[keep.count - 1]] }
+        let r3 = { (v: CGFloat) in (max(0, min(1, v)) * 1000).rounded() / 1000 }
+        rec?.log("stroke", ["t0": (t0 * 1000).rounded() / 1000, "visible": InkView.visible,
+                            "points": keep.map { [r3($0.x / bounds.width), r3($0.y / bounds.height)] }])
+        done.append(l)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            let layers = self.done
+            self.done = []
+            CATransaction.begin()
+            CATransaction.setCompletionBlock { layers.forEach { $0.removeFromSuperlayer() } }
+            for l in layers {
+                let a = CABasicAnimation(keyPath: "opacity")
+                a.fromValue = 1
+                a.toValue = 0
+                a.duration = 0.5
+                l.opacity = 0
+                l.add(a, forKey: "fade")
+            }
+            CATransaction.commit()
+        }
+        fade = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + InkView.visible, execute: work)
+        rec?.syncInk()
+    }
+}
+
 // MARK: - Recorder
 
 func audioInputDevices() -> [AVCaptureDevice] {
@@ -746,6 +888,20 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var ticker: Timer?
     var cursorTicker: Timer?
     var clickMonitor: Any?
+    var inkWin: NSPanel?
+    var inkView: InkView?
+    var inkTicker: Timer?
+    var penSticky = false             // toggled from the HUD / ⌥⇧D
+    var inkOn = false
+    /// record.draw_key in ~/.blurt/config.json: "control" (default) | "option" | "fn" | "off"
+    let penKey: (CGEventFlags, String)? = {
+        switch recordConfig()["draw_key"] as? String ?? "control" {
+        case "option": return (.maskAlternate, "⌥")
+        case "fn": return (.maskSecondaryFn, "fn")
+        case "off": return nil
+        default: return (.maskControl, "⌃")
+        }
+    }()
     var frames = 0
     var audioBuffers = 0
     var systemBuffers = 0
@@ -900,6 +1056,24 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
     func showChrome() {
         let r = toNS(region)
+        let iv = InkView(frame: NSRect(origin: .zero, size: r.size))
+        iv.rec = self
+        let ip = NSPanel(contentRect: r, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+        ip.level = .statusBar
+        ip.isFloatingPanel = true
+        ip.hidesOnDeactivate = false
+        ip.isOpaque = false
+        ip.backgroundColor = .clear
+        ip.hasShadow = false
+        ip.ignoresMouseEvents = true
+        ip.acceptsMouseMovedEvents = true
+        ip.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        ip.contentView = iv
+        ip.orderFrontRegardless()                 // below the border and the HUD
+        inkWin = ip
+        inkView = iv
+        inkTicker = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.syncInk() }
+        RunLoop.main.add(inkTicker!, forMode: .common)
         border = overlayWindow(r.insetBy(dx: -4, dy: -4), view: borderView)
         border?.orderFrontRegardless()
         hud = HUD(rec: self)
@@ -946,6 +1120,25 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                 DispatchQueue.main.async { emit(["event": "paused", "t": self.elapsed()]) }
             }
         }
+    }
+
+    func togglePen() {
+        penSticky.toggle()
+        syncInk()
+    }
+
+    /// The pen is on while its key is held alone (polled: needs no Accessibility permission) or after a toggle.
+    func syncInk() {
+        var held = false
+        if let key = penKey?.0 {
+            let f = CGEventSource.flagsState(.combinedSessionState)
+            let mods: [CGEventFlags] = [.maskControl, .maskAlternate, .maskCommand, .maskShift, .maskSecondaryFn]
+            held = mods.allSatisfy { f.contains($0) == ($0 == key) }
+        }
+        let on = !isPaused && !stopping && sessionStart.isValid && (penSticky || held)
+        guard on != inkOn, inkView?.live == nil else { return }
+        inkOn = on
+        inkView?.setOn(on)
     }
 
     func marker() {
@@ -1071,6 +1264,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         stopping = true
         ticker?.invalidate()
         cursorTicker?.invalidate()
+        inkTicker?.invalidate()
+        inkWin?.orderOut(nil)
         if let m = clickMonitor { NSEvent.removeMonitor(m) }
         log("stop")
         try? events?.close()
@@ -1119,7 +1314,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
 // MARK: - Hotkeys (Carbon: work without Accessibility permission, even when we're not the active app)
 
-enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pickEnter = 10, pickEsc = 11, pickFull = 12 }
+enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, pickEnter = 10, pickEsc = 11, pickFull = 12 }
 var hotkeyHandler: ((HK) -> Void)?
 var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
 
@@ -1296,6 +1491,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerHotkey(.pause, key: kVK_ANSI_P, mods: optShift)
         registerHotkey(.marker, key: kVK_ANSI_M, mods: optShift)
         registerHotkey(.stop, key: kVK_ANSI_S, mods: optShift)
+        registerHotkey(.pen, key: kVK_ANSI_D, mods: optShift)
         if resident {
             startResident()
             return
@@ -1323,6 +1519,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pause: command("toggle")
         case .marker: command("marker")
         case .stop: command("stop")
+        case .pen: command("pen")
         case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
         case .menu: popMenu()
         case .pickEnter: picker?.finish(true)
@@ -1341,6 +1538,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "resume": if rec?.isPaused == true { rec?.togglePause() }
         case "toggle": rec?.togglePause()
         case "marker": rec?.marker()
+        case "pen": rec?.togglePen()
         default: break
         }
     }
