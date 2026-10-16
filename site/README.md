@@ -8,8 +8,10 @@ python3 -m http.server 4173 --directory site      # preview at http://localhost:
 npx wrangler pages deploy site --project-name blurt --branch main      # publish (Cloudflare Pages)
 ```
 
-`_headers` makes browsers revalidate `style.css`, `main.js` and `fonts/` on every visit; the `?v=` on the two
-stylesheet/script tags only had to bust caches left over from the old page.
+**When `style.css`, `main.js` or a font changes, bump `?v=`** (both pages' `<link>`/`<script>`/font preload, and the
+`url()`s at the top of `style.css`). The agihunt.info zone's Browser Cache TTL (4 h) overrides `_headers` on the custom
+domain, so without a new URL visitors get new HTML on top of the old CSS. `_headers` (revalidate every visit) does
+apply on `*.pages.dev`.
 
 Fonts are self-hosted subsets (Noto Serif SC, LXGW WenKai, IBM Plex Mono; all OFL). After changing copy, rebuild them
 from the full fonts so new characters don't fall back: `python3 site/fonts/build.py <dir>` (the docstring lists the
