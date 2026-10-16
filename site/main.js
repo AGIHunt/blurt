@@ -228,10 +228,14 @@
     ink.setAttribute("width", W); ink.setAttribute("height", H); ink.setAttribute("viewBox", `0 0 ${W} ${H}`);
   }
   let penOn = false, stroke = null, mouse = null, fadeT = 0;
+  const hints = $$(".pen-hint span");
+  hints.forEach((el) => { el.dataset.off = el.textContent; });
   function setPen(on) {
     penOn = on;
     btn("pen").setAttribute("aria-pressed", on);
     html.classList.toggle("pen-on", on);
+    // say how to get out while it's on — the app learned this the hard way
+    hints.forEach((el) => { el.textContent = on ? el.parentElement.dataset.on : (fine ? el.dataset.off : el.parentElement.dataset.touch); });
   }
   const blocked = (t) => t.closest && t.closest("a, button, .cmd, .sheet, video, kbd");
   function begin(x, y) {
@@ -276,6 +280,7 @@
   addEventListener("pointerup", () => { if (!keyPen) end(); });
   addEventListener("pointercancel", end);
   let keyPen = false;
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && penOn) { end(); setPen(false); } });
   addEventListener("keydown", (e) => {
     if (e.key !== "Control" || e.repeat || !mouse || stroke) return;
     keyPen = true; begin(...mouse);

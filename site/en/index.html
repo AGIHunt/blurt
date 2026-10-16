@@ -14,7 +14,7 @@
 <meta property="og:url" content="https://blurt.agihunt.info/en/">
 <meta property="og:image" content="https://blurt.agihunt.info/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#F8F3E5">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="../assets/favicon.png">
 <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
 <link rel="preload" href="../fonts/serif-900.woff2" as="font" type="font/woff2" crossorigin>
@@ -56,11 +56,11 @@
   <ol class="script">
     <li class="say v2">
       <span class="tc" data-t="0"><time>00:00</time><i class="lv" data-on="2"><b></b><b></b><b></b><b></b><b></b></i></span>
-      <span class="words">this bit's off…</span>
+      <span class="words">this bit's off...</span>
     </li>
     <li class="say v3">
       <span class="tc" data-t="1"><time>00:01</time><i class="lv" data-on="3"><b></b><b></b><b></b><b></b><b></b></i></span>
-      <span class="words">this <s class="asr" title="speech recognition heard “butter”">butter</s> button looks weird…</span>
+      <span class="words">this <s class="asr" title="speech recognition heard “butter”">butter</s> button looks weird...</span>
     </li>
     <li class="say v1">
       <span class="tc" data-t="2"><time>00:02</time><i class="lv" data-on="1"><b></b><b></b><b></b><b></b><b></b></i></span>
@@ -85,7 +85,7 @@
   </ol>
 
   <div class="doors-row">
-    <p class="pen-hint" data-touch="Tap the pen in the bar to draw on this page"><kbd>⌃</kbd><span>Hold it and move the mouse to circle something here</span></p>
+    <p class="pen-hint" data-touch="Tap the pen in the bar to draw on this page" data-on="Pen is on: drag to draw, tap ✎ again or press Esc to stop"><kbd>⌃</kbd><span>Hold it and move to draw on this page</span></p>
     <div class="doors">
       <div class="door">
         <a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip" data-other="View on GitHub">
@@ -153,7 +153,7 @@
     <div class="row-body">
       <div class="head">
         <p class="amount">2 days</p>
-        <p class="steps"><span class="strike" data-mark="old">Screenshots, red boxes, spreadsheet rows<svg viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 34 C80 27 160 38 240 31 C300 26 344 33 366 30 C388 27 398 13 388 10 C376 7 371 25 384 35 C390 39 396 40 400 38"/></svg></span></p>
+        <p class="steps"><span class="strike" data-mark="old">Screenshots, red boxes, spreadsheet rows<svg viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 34 C80 27 160 38 240 31 C300 26 352 33 398 27"/></svg></span></p>
       </div>
       <div class="track" aria-hidden="true">
         <div class="fill"></div>
@@ -229,9 +229,8 @@
     <div class="beat-body">
       <div class="beat-text">
         <h3>Click Finish, get back to work</h3>
-        <p>Your agent transcribes locally, splits the ramble into items, picks the frame for each and finds the code that's probably responsible.</p>
+        <p>Your agent transcribes locally (4 seconds for a 7-minute recording), splits the ramble into items, picks the frame for each and finds the code that's probably responsible. The review page opens itself when it's done.</p>
       </div>
-      <p class="finish-note">That 7-minute recording: speech transcribed locally in <b>4 s</b>, split into <b>9 items</b>, and the review page opened itself <b>about 4 minutes</b> later.</p>
     </div>
   </div>
 
@@ -262,6 +261,35 @@
           <button type="button" data-k="j"><kbd class="sm">J</kbd>next</button>
           <button type="button" data-k="a"><kbd class="sm">A</kbd>keep</button>
         </footer>
+      </div>
+    </div>
+  </div>
+
+  <div class="beat keymap">
+    <span class="tc" data-t="170"><time>02:50</time><span class="what">shortcuts</span></span>
+    <div class="beat-body">
+      <div class="keys-col">
+        <p class="kl-h">While recording</p>
+        <dl class="keylist">
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">R</kbd></dt><dd>start / finish, from anywhere</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">P</kbd></dt><dd>pause / resume</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">S</kbd></dt><dd>finish</dd></div>
+        <div><dt>hold <kbd class="sm">⌃</kbd></dt><dd>pen, stops when you let go</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">D</kbd></dt><dd>keep the pen on (or ✎ on the bar); press again or <kbd class="sm">Esc</kbd> to stop</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">M</kbd></dt><dd>drop a marker at this moment</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">B</kbd></dt><dd>open the blurt menu</dd></div>
+      </dl>
+      </div>
+      <div class="keys-col">
+        <p class="kl-h">While reviewing</p>
+        <dl class="keylist">
+        <div><dt><kbd class="sm">A</kbd></dt><dd>keep</dd></div>
+        <div><dt><kbd class="sm">X</kbd></dt><dd>drop</dd></div>
+        <div><dt><kbd class="sm">J</kbd> <kbd class="sm">K</kbd></dt><dd>next / previous</dd></div>
+        <div><dt><kbd class="sm">Z</kbd></dt><dd>undo</dd></div>
+        <div><dt><kbd class="sm">G</kbd></dt><dd>list</dd></div>
+        <div><dt><kbd class="sm">V</kbd></dt><dd>overview</dd></div>
+      </dl>
       </div>
     </div>
   </div>

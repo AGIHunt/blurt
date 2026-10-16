@@ -14,7 +14,7 @@
 <meta property="og:url" content="https://blurt.agihunt.info/">
 <meta property="og:image" content="https://blurt.agihunt.info/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#F8F3E5">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="preload" href="fonts/serif-900.woff2" as="font" type="font/woff2" crossorigin>
@@ -85,7 +85,7 @@
   </ol>
 
   <div class="doors-row">
-    <p class="pen-hint" data-touch="点悬浮条上的画笔，就能在这页上画"><kbd>⌃</kbd><span>按住它移动鼠标，在这页上圈一笔</span></p>
+    <p class="pen-hint" data-touch="点悬浮条上的画笔，就能在这页上画" data-on="画笔开着：拖动就能画，再点 ✎ 或按 Esc 关"><kbd>⌃</kbd><span>按住它移动鼠标，在这页上圈一笔</span></p>
     <div class="doors">
       <div class="door">
         <a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip" data-other="在 GitHub 查看">
@@ -155,7 +155,7 @@
     <div class="row-body">
       <div class="head">
         <p class="amount">2 天</p>
-        <p class="steps"><span class="strike" data-mark="old">截图、画红框、填表格<svg viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 34 C80 27 160 38 240 31 C300 26 344 33 366 30 C388 27 398 13 388 10 C376 7 371 25 384 35 C390 39 396 40 400 38"/></svg></span></p>
+        <p class="steps"><span class="strike" data-mark="old">截图、画红框、填表格<svg viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 34 C80 27 160 38 240 31 C300 26 352 33 398 27"/></svg></span></p>
       </div>
       <div class="track" aria-hidden="true">
         <div class="fill"></div>
@@ -232,9 +232,8 @@
     <div class="beat-body">
       <div class="beat-text">
         <h3>点「完成」，去干别的</h3>
-        <p>agent 在本地把语音转成文字，拆成一条条事项，给每条挑截图、找最可能出问题的代码。</p>
+        <p>agent 在本地把语音转成文字（7 分钟的录屏只要 4 秒），拆成一条条事项，给每条挑截图、找最可能出问题的代码。整理好了审核页会自己弹出来。</p>
       </div>
-      <p class="finish-note">那次 7 分钟的录屏：语音在本地识别了 <b>4 秒</b>，拆成 <b>9 条</b>事项，<b>约 4 分钟</b>后审核页自己弹了出来。</p>
     </div>
   </div>
 
@@ -265,6 +264,35 @@
           <button type="button" data-k="j"><kbd class="sm">J</kbd>下一条</button>
           <button type="button" data-k="a"><kbd class="sm">A</kbd>保留</button>
         </footer>
+      </div>
+    </div>
+  </div>
+
+  <div class="beat keymap">
+    <span class="tc" data-t="170"><time>02:50</time><span class="what">快捷键</span></span>
+    <div class="beat-body">
+      <div class="keys-col">
+        <p class="kl-h">录制时</p>
+        <dl class="keylist">
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">R</kbd></dt><dd>开始 / 结束录制，在哪都能按</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">P</kbd></dt><dd>暂停 / 继续</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">S</kbd></dt><dd>完成</dd></div>
+        <div><dt>按住 <kbd class="sm">⌃</kbd></dt><dd>画笔，松开就停</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">D</kbd></dt><dd>画笔常开（悬浮条上的 ✎ 也行）；再按一次或按 <kbd class="sm">Esc</kbd> 关掉</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">M</kbd></dt><dd>在这一刻打个标记</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">B</kbd></dt><dd>打开口喷鸡菜单</dd></div>
+      </dl>
+      </div>
+      <div class="keys-col">
+        <p class="kl-h">审核时</p>
+        <dl class="keylist">
+        <div><dt><kbd class="sm">A</kbd></dt><dd>保留</dd></div>
+        <div><dt><kbd class="sm">X</kbd></dt><dd>丢弃</dd></div>
+        <div><dt><kbd class="sm">J</kbd> <kbd class="sm">K</kbd></dt><dd>下一条 / 上一条</dd></div>
+        <div><dt><kbd class="sm">Z</kbd></dt><dd>撤销</dd></div>
+        <div><dt><kbd class="sm">G</kbd></dt><dd>列表</dd></div>
+        <div><dt><kbd class="sm">V</kbd></dt><dd>总览</dd></div>
+      </dl>
       </div>
     </div>
   </div>
