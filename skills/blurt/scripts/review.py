@@ -25,6 +25,8 @@ HTML = Path(__file__).with_name("review.html")
 
 
 def make_handler(session: Path, done: threading.Event):
+    write_lock = threading.Lock()
+    confirmed = False
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -75,16 +77,26 @@ def make_handler(session: Path, done: threading.Event):
             self._send(200, f.read_bytes(), ctype, {"Accept-Ranges": "bytes"})
 
         def do_POST(self):
+            nonlocal confirmed
             path = urlparse(self.path).path
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             if path in ("/api/items", "/api/confirm"):
                 data = json.loads(body or b"{}")
-                if path == "/api/confirm":
-                    data["reviewed"] = True
-                save_session(session, data)
-                self._send(200, b'{"ok":true}', "application/json")
-                if path == "/api/confirm":
-                    done.set()
+                with write_lock:
+                    if confirmed:
+                        return self._send(409, b"already confirmed", "text/plain")
+                    if path == "/api/confirm":
+                        data["reviewed"] = True
+                    try:
+                        save_session(session, data)
+                    except OSError:
+                        return self._send(500, b"could not save", "text/plain")
+                    confirmed = path == "/api/confirm"
+                try:
+                    self._send(200, b'{"ok":true}', "application/json")
+                finally:
+                    if path == "/api/confirm":
+                        done.set()
                 return
             self._send(404, b"not found", "text/plain")
 
