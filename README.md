@@ -54,7 +54,8 @@ The first run picks a speech model for your machine and installs the **Blurt** m
 2. **3-2-1**, then talk. A tiny floating bar shows time and mic level, with ⏸ pause, ↺ redo and **Finish**. The bar
    itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧S` finish.
    When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
-   your agent sees exactly what you meant.
+   your agent sees exactly what you meant. To keep the pen on, click ✎ on the bar or press `⌥⇧D`; while it's on,
+   clicks draw instead of reaching your app, and **`Esc`**, `⌥⇧D` or ✎ again turns it off.
 3. Click **Finish** and get back to work. Your agent transcribes locally, writes the items, and opens the review page.
 4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".

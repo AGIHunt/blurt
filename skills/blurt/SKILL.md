@@ -48,7 +48,7 @@ what happens:
 - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
   **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
-  fades after 3 s; ✎ on the bar or ⌥⇧D keeps the pen on); click **完成** — no need to send another chat message.
+  fades after 3 s; ✎ on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D / ✎ turns it off); click **完成** — no need to send another chat message.
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
 the chat you can also `record.py stop | pause | resume | restart`.
 

@@ -631,7 +631,7 @@ final class HUD: NSPanel {
         fx.addSubview(time)
         status.font = .systemFont(ofSize: 10, weight: .semibold)
         status.textColor = amber
-        status.frame = NSRect(x: 36, y: 3, width: 70, height: 12)
+        status.frame = NSRect(x: 36, y: 3, width: 96, height: 12)
         fx.addSubview(status)
 
         meter.frame.origin = NSPoint(x: 104, y: 14)
@@ -645,8 +645,8 @@ final class HUD: NSPanel {
         pauseBtn = IconButton(symbol: "pause.fill", tip: L("暂停 / 继续（⌥⇧P）", "Pause / resume (⌥⇧P)"), target: self, action: #selector(togglePause))
         let redo = IconButton(symbol: "arrow.counterclockwise", tip: L("重录或放弃…", "Restart or discard…"), target: self, action: #selector(redoRec))
         penBtn = IconButton(symbol: "scribble.variable", tip: "", target: self, action: #selector(togglePen))
-        penBtn.toolTip = rec.penKey.map { L("画笔：按住 \($0.1) 拖动圈出重点；点这里常开（⌥⇧D）", "Pen: hold \($0.1) and drag to circle things; click to keep it on (⌥⇧D)") }
-            ?? L("画笔：圈出重点（⌥⇧D）", "Pen: circle things (⌥⇧D)")
+        penBtn.toolTip = rec.penKey.map { L("画笔：按住 \($0.1) 拖动圈出重点；点这里常开，再点一次或按 Esc 关（⌥⇧D）", "Pen: hold \($0.1) and drag to circle things; click to keep it on, click again or press Esc to stop (⌥⇧D)") }
+            ?? L("画笔：圈出重点；再点一次或按 Esc 关（⌥⇧D）", "Pen: circle things; click again or press Esc to stop (⌥⇧D)")
         pauseBtn.frame.origin = NSPoint(x: 150, y: 8)
         penBtn.frame.origin = NSPoint(x: 186, y: 8)
         redo.frame.origin = NSPoint(x: 222, y: 8)
@@ -676,7 +676,7 @@ final class HUD: NSPanel {
         let s = Int(elapsed)
         time.stringValue = s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
                                      : String(format: "%02d:%02d", s / 60, s % 60)
-        status.stringValue = paused ? L("已暂停", "PAUSED") : ""
+        status.stringValue = paused ? L("已暂停", "PAUSED") : rec?.penSticky == true ? L("画笔 · Esc 关", "PEN · Esc off") : ""
         pauseBtn.toolTip = paused ? L("继续录制（⌥⇧P）", "Resume (⌥⇧P)") : L("暂停（⌥⇧P）", "Pause (⌥⇧P)")
         time.frame.origin.y = paused ? 17 : 14
         dot.layer?.backgroundColor = (paused ? amber : NSColor.systemRed).cgColor
@@ -851,6 +851,7 @@ final class InkView: NSView {
         }
         fade = work
         DispatchQueue.main.asyncAfter(deadline: .now() + InkView.visible, execute: work)
+        rec?.hud?.orderFrontRegardless()          // keep ✎ and Done clickable when the HUD sits inside the region
         rec?.syncInk()
     }
 }
@@ -1124,6 +1125,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
     func togglePen() {
         penSticky.toggle()
+        // while the pen is latched the recorded app can't be clicked, so give an obvious way out
+        if penSticky { registerHotkey(.penEsc, key: kVK_Escape, mods: 0) } else { unregisterHotkey(.penEsc) }
         syncInk()
     }
 
@@ -1139,6 +1142,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         guard on != inkOn, inkView?.live == nil else { return }
         inkOn = on
         inkView?.setOn(on)
+        hud?.orderFrontRegardless()
     }
 
     func marker() {
@@ -1262,6 +1266,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         self.discard = discard
         let endAt = CMTimeSubtract(pausedAt ?? hostNow(), offset)
         stopping = true
+        penSticky = false
+        unregisterHotkey(.penEsc)
         ticker?.invalidate()
         cursorTicker?.invalidate()
         inkTicker?.invalidate()
@@ -1314,7 +1320,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
 // MARK: - Hotkeys (Carbon: work without Accessibility permission, even when we're not the active app)
 
-enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, pickEnter = 10, pickEsc = 11, pickFull = 12 }
+enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, pickEnter = 10, pickEsc = 11, pickFull = 12 }
 var hotkeyHandler: ((HK) -> Void)?
 var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
 
@@ -1520,6 +1526,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .marker: command("marker")
         case .stop: command("stop")
         case .pen: command("pen")
+        case .penEsc: if rec?.penSticky == true { command("pen") }
         case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
         case .menu: popMenu()
         case .pickEnter: picker?.finish(true)
