@@ -1,0 +1,8 @@
+# Cloudflare Pages: stylesheets, scripts and font subsets keep stable names, so make browsers revalidate them
+# (cheap 304s via ETag) instead of caching for 4 h. Otherwise a visitor gets new HTML on top of the old CSS.
+/style.css
+  Cache-Control: public, max-age=0, must-revalidate
+/main.js
+  Cache-Control: public, max-age=0, must-revalidate
+/fonts/*
+  Cache-Control: public, max-age=0, must-revalidate

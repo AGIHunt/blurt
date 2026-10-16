@@ -8,6 +8,9 @@ python3 -m http.server 4173 --directory site      # preview at http://localhost:
 npx wrangler pages deploy site --project-name blurt --branch main      # publish (Cloudflare Pages)
 ```
 
+`_headers` makes browsers revalidate `style.css`, `main.js` and `fonts/` on every visit; the `?v=` on the two
+stylesheet/script tags only had to bust caches left over from the old page.
+
 Fonts are self-hosted subsets (Noto Serif SC, LXGW WenKai, IBM Plex Mono; all OFL). After changing copy, rebuild them
 from the full fonts so new characters don't fall back: `python3 site/fonts/build.py <dir>` (the docstring lists the
 files it expects).
