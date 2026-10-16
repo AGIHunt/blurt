@@ -136,7 +136,7 @@ h1 { font: 900 clamp(64px, 12vw, 172px)/1.02 var(--serif); letter-spacing: -.02e
 .frame[data-state="paused"] { outline-color: var(--amber); outline-style: dashed; }
 
 .cbar { position: absolute; z-index: 30; left: 50%; top: -6px; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 6px 0 18px; border-radius: 24px; background: rgba(38, 36, 33, .86); color: #fff; font-family: var(--ui); }
-.cbar.docked { position: fixed; top: auto; bottom: 18px; transform: translateX(-50%); height: 42px; gap: 6px; padding-left: 14px; box-shadow: 0 6px 24px rgba(24, 24, 24, .18); animation: dock .28s cubic-bezier(.2,.8,.3,1); }
+.cbar.docked { position: fixed; top: auto; bottom: 18px; transform: translateX(-50%); height: 42px; gap: 6px; padding-left: 14px; animation: dock .28s cubic-bezier(.2,.8,.3,1); }
 .cbar.docked .vu, .cbar.docked .sep { display: none; }
 .cbar.docked .cb-btn { width: 32px; height: 32px; }
 .cbar.docked .clock { font-size: 17px; margin-right: 6px; }

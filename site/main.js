@@ -290,7 +290,7 @@
   addEventListener("blur", () => { keyPen = false; end(); });
   addEventListener("contextmenu", (e) => { if (stroke) e.preventDefault(); });
   if (!fine) {
-    $$(".pen-hint").forEach((el) => { $("span", el).textContent = el.dataset.touch; $("kbd", el).textContent = "✎"; });
+    $$(".pen-hint").forEach((el) => { $("span", el).textContent = el.dataset.touch; $("kbd", el).innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M3.5 15.5C5.6 11 8.4 5 10.6 5c2 0-2.9 9.4-.4 9.4 1.7 0 2.5-3.6 4.1-3.6 1.2 0 .6 2.9 2.2 2.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'; });
     $$(".try[data-touch]").forEach((el) => { el.textContent = el.dataset.touch; });
   }
 
