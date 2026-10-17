@@ -1,13 +1,13 @@
 /* blurt.agihunt.info — the whole page is one blurt recording (neutral white, not cream: cream + serif + terracotta reads as the default AI look): a time rail on the left whose codes run 00:00 → 07:58,
    mumbles set small, the shout set huge, and the recorder bar docking to the bottom once you scroll past the hero.
    Coral is only ever ink or the recording border; yellow is only the download. */
-@font-face { font-family: "Blurt Serif"; src: url("fonts/serif-500.woff2?v=0.4.2") format("woff2"); font-weight: 500; font-display: swap; }
-@font-face { font-family: "Blurt Serif"; src: url("fonts/serif-700.woff2?v=0.4.2") format("woff2"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "Blurt Serif"; src: url("fonts/serif-900.woff2?v=0.4.2") format("woff2"); font-weight: 900; font-display: swap; }
-@font-face { font-family: "Blurt Kai"; src: url("fonts/kai-400.woff2?v=0.4.2") format("woff2"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Blurt Mono"; src: url("fonts/mono-400.woff2?v=0.4.2") format("woff2"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Blurt Mono"; src: url("fonts/mono-500.woff2?v=0.4.2") format("woff2"); font-weight: 500; font-display: swap; }
-@font-face { font-family: "Blurt Mono"; src: url("fonts/mono-600.woff2?v=0.4.2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Blurt Serif"; src: url("fonts/serif-500.woff2?v=0.4.2b") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Blurt Serif"; src: url("fonts/serif-700.woff2?v=0.4.2b") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Blurt Serif"; src: url("fonts/serif-900.woff2?v=0.4.2b") format("woff2"); font-weight: 900; font-display: swap; }
+@font-face { font-family: "Blurt Kai"; src: url("fonts/kai-400.woff2?v=0.4.2b") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Blurt Mono"; src: url("fonts/mono-400.woff2?v=0.4.2b") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Blurt Mono"; src: url("fonts/mono-500.woff2?v=0.4.2b") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Blurt Mono"; src: url("fonts/mono-600.woff2?v=0.4.2b") format("woff2"); font-weight: 600; font-display: swap; }
 
 :root {
   --paper: #FFFFFF;
@@ -235,6 +235,8 @@ h1 { font: 900 clamp(64px, 12vw, 172px)/1.02 var(--serif); letter-spacing: -.02e
 .br-m { display: none; }
 .evidence { margin-top: 30px; display: flex; flex-wrap: wrap; align-items: baseline; font-size: 19px; font-weight: 700; color: var(--ink); }
 .evidence span { white-space: nowrap; }
+.evidence .lbl { font-weight: inherit; }
+html[lang="en"] .evidence .lbl { margin-right: .35em; }
 .evidence span + span::before { content: "→"; margin: 0 12px; color: var(--coral); font-weight: 500; }
 .source { margin-top: 10px; max-width: 40em; font-size: 15px; color: var(--graphite); }
 
