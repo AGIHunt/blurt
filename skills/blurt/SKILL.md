@@ -123,7 +123,8 @@ Pick 1–3 frames per item that show *the point* (the bug itself, the part of th
 ## 5. Review with the user
 
 Always open the review page — the frames are the point. Run `review.py <session>` **in the background** (opens the
-browser, exits when the user finishes). In the same message:
+browser, exits when the user finishes). It prints `REVIEW <url>`: if no browser can open where you run (SSH, container),
+give the user that URL. In the same message:
 - ≤ 5 items: the full numbered list (kind · title · owner/module, plus `questions`); more: a short summary (counts by
   kind, the headline items, open questions);
 - two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;

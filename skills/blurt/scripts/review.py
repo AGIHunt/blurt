@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import threading
 import webbrowser
@@ -19,7 +20,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, load_session, save_session  # noqa: E402
+from _common import IS_LINUX, die, load_session, save_session  # noqa: E402
 
 HTML = Path(__file__).with_name("review.html")
 
@@ -117,7 +118,9 @@ def main():
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print(f"REVIEW {url}", flush=True)
-    if not a.no_open:
+    # Linux without a display (SSH, container): webbrowser would fall back to a console browser and block
+    has_gui = not IS_LINUX or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    if not a.no_open and has_gui:
         webbrowser.open(url)
     try:
         done.wait()
