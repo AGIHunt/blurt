@@ -9,6 +9,8 @@
 - [x] Export: Markdown + CSV, Feishu (lark-cli guide + OpenAPI fallback), GitHub/other guides
 - [x] Verified on macOS 26 (Apple Silicon): real screen + mic, transcription, frames, review, Feishu export
 - [ ] Verify on Windows 10/11 (ddagrab/gdigrab, WASAPI mic via sounddevice, DPI scaling, wall-clock sync)
+  — 2026-10-18 on a Windows Server 2022 VM over RDP: full pipeline, ddagrab→gdigrab fallback, no-mic path OK.
+  Still open: a real mic (WASAPI), high DPI, multi-monitor, hardware encoders (#7: h264_qsv passes the lavfi probe but starves)
 - [x] End-to-end Feishu export with lark-cli (multi-attachment cells, resumable)
 - [x] Logo (口喷鸡, 3 variants in assets/)
 - [x] Project homepage: `site/` (static, zh + en), on Cloudflare Pages → blurt.agihunt.info (`site/README.md`)
@@ -21,6 +23,8 @@
 - [x] Standalone Blurt app + recordings inbox (~/Movies/Blurt), `record.py inbox`, batch processing in SKILL
 - [x] Review page v2: focus mode with keyboard triage, list view, undo, merge, answers to open questions
 - [ ] Verify the Tk recorder + Start-menu shortcut on real Windows 10/11 (DPI, multi-monitor, gdigrab region)
+  — 2026-10-18 VM: picker (drag / F / Esc), countdown, region crop, bar hidden from capture, Alt+Shift P/M/S,
+  chat pause/resume/stop, Start-menu shortcut OK at 100% scale, one monitor
 - [ ] Use events.jsonl clicks/cursor in frame selection (auto red circle at the click position)
 
 ## v0.3
@@ -48,6 +52,7 @@
 - [ ] Native recorder binaries (ScreenCaptureKit / Windows.Graphics.Capture) for lower CPU and better cursor capture
 - [ ] Mobile: `xcrun simctl io booted recordVideo`, `adb screenrecord` / scrcpy
 - [ ] Qwen3-ASR (sherpa-onnx int8) as optional local multilingual backend; auto-benchmark on install
-- [ ] Linux support (x11grab / PipeWire portal)
+- [x] Linux/X11 support (x11grab, Tk recorder; verified on Ubuntu 24.04 + Xvfb)
+- [ ] Linux Wayland (PipeWire portal); global hotkeys on Linux
 - [ ] More exporters as scripts where CLIs are awkward (Linear, Jira, Notion)
 - [ ] Hosted ASR API (paid, with free trial minutes) — later
