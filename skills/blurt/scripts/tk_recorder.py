@@ -1,7 +1,7 @@
 """Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / marker / discard / stop).
 
-Used on Windows (primary) and on macOS when the native Swift recorder can't be built. Video is captured with
-ffmpeg (Windows: gdigrab region; macOS: avfoundation + crop), audio with PortAudio (MicRecorder). Pause stops the
+Used on Windows (primary), Linux/X11, and on macOS when the native Swift recorder can't be built. Video is captured
+with ffmpeg (Windows: gdigrab region; Linux: x11grab region; macOS: avfoundation + crop), audio with PortAudio (MicRecorder). Pause stops the
 current video segment and drops audio; segments are aligned by wall clock and joined on stop.
 
 The control bar is excluded from capture on Windows 10 2004+ (SetWindowDisplayAffinity) and always sits outside
@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import IS_MAC, IS_WIN, ffmpeg_bin, fix_tcl_env, run  # noqa: E402
+from _common import IS_LINUX, IS_MAC, IS_WIN, ffmpeg_bin, fix_tcl_env, run  # noqa: E402
 
 ACCENT = "#ff5c3d"
 AMBER = "#ffc23d"
@@ -375,6 +375,10 @@ class TkRecorder:
         elif IS_WIN:
             cmd += ["-thread_queue_size", "1024", "-f", "gdigrab", "-framerate", str(self.fps), "-draw_mouse", "1",
                     "-offset_x", str(x), "-offset_y", str(y), "-video_size", f"{w}x{h}", "-i", "desktop"]
+            vf = scale
+        elif IS_LINUX:  # X11 only; under Wayland x11grab sees just XWayland windows
+            cmd += ["-thread_queue_size", "1024", "-f", "x11grab", "-framerate", str(self.fps), "-draw_mouse", "1",
+                    "-video_size", f"{w}x{h}", "-i", f"{os.environ.get('DISPLAY', ':0')}+{x},{y}"]
             vf = scale
         else:
             from record import list_screens

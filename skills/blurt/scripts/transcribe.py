@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["numpy", "sherpa-onnx>=1.12"]
+# dependencies = ["numpy", "sherpa-onnx>=1.12", "truststore"]
 # ///
 """Speech-to-text with timestamps. Always VAD-first: silence is dropped, speech is chunked, and every
 chunk keeps its offset in the original video, so any backend (even ones without timestamps) works.
@@ -37,7 +37,10 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import MODELS_DIR, die, ffmpeg_bin, fmt_ts, global_config, save_json, update_global_config  # noqa: E402
+from _common import (MODELS_DIR, die, ffmpeg_bin, fmt_ts, global_config, save_json, update_global_config,  # noqa: E402
+                     use_system_certs)
+
+use_system_certs()
 
 SR = 16000
 SENSEVOICE_REPO = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"

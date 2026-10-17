@@ -12,6 +12,7 @@ from pathlib import Path
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = os.name == "nt"
+IS_LINUX = sys.platform.startswith("linux")
 
 BLURT_HOME = Path(os.environ.get("BLURT_HOME", Path.home() / ".blurt"))
 MODELS_DIR = BLURT_HOME / "models"
@@ -31,6 +32,16 @@ def ensure_utf8_stdio() -> None:
 ensure_utf8_stdio()
 
 
+def use_system_certs() -> None:
+    """Verify TLS through the OS (truststore) when available. A fresh Windows fetches many root CAs on demand
+    (e.g. the one behind huggingface.co); Python's own store lookup never triggers that and fails verification."""
+    try:
+        import truststore
+        truststore.inject_into_ssl()
+    except ImportError:
+        pass
+
+
 def die(msg: str, code: int = 1) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
     sys.exit(code)
@@ -39,7 +50,7 @@ def die(msg: str, code: int = 1) -> None:
 def ffmpeg_bin(name: str = "ffmpeg") -> str:
     path = shutil.which(name)
     if not path:
-        hint = "brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg" if IS_WIN else "apt install ffmpeg"
+        hint = "brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg" if IS_WIN else "sudo apt install ffmpeg"
         die(f"{name} not found on PATH. Install it first: {hint}")
     return path
 
@@ -65,7 +76,7 @@ def probe_size(video: Path) -> tuple[int, int]:
 
 def load_json(path: Path, default=None):
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        return json.loads(Path(path).read_text(encoding="utf-8-sig"))  # utf-8-sig: PowerShell/Notepad write a BOM
     except FileNotFoundError:
         return default
 

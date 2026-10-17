@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["sounddevice"]
 # ///
-"""Screen + microphone recorder (macOS & Windows) with a proper recording UI.
+"""Screen + microphone recorder (macOS, Windows, Linux/X11) with a proper recording UI.
 
 The user picks the area to record (drag / click a window / full screen), a 3-2-1 countdown runs, and a floating
 control bar offers pause, marker, discard and stop — so they never have to come back to the chat to stop.
@@ -10,7 +10,7 @@ The control bar and the region border are never part of the recording.
 
 Engines (auto-selected; override with --engine or ~/.blurt/config.json → record.engine):
   native   macOS: ScreenCaptureKit app (recorder/macos/BlurtRecorder.swift), built on first use with swiftc.
-  tk       Windows (and macOS fallback): Tk picker + control bar, ffmpeg video, PortAudio mic.
+  tk       Windows, Linux/X11 (and macOS fallback): Tk picker + control bar, ffmpeg video, PortAudio mic.
   ffmpeg   headless full-screen capture, stop from chat only (no GUI available).
 
   record.py start [--session DIR] [--region x,y,w,h | --last-region] [--engine E] [--countdown 3]
@@ -42,7 +42,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (BLURT_HOME, IS_MAC, IS_WIN, STATE_FILE, die, ffmpeg_bin, fix_tcl_env, fmt_ts,  # noqa: E402
+from _common import (BLURT_HOME, IS_LINUX, IS_MAC, IS_WIN, STATE_FILE, die, ffmpeg_bin, fix_tcl_env, fmt_ts,  # noqa: E402
                      global_config, load_json, new_session_dir, probe_duration, run, save_json, update_global_config)
 
 VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", "teams", "oray", "vb-audio",
@@ -74,7 +74,12 @@ def list_screens() -> list[dict]:
 
 
 def list_mics() -> list[dict]:
-    import sounddevice as sd
+    try:
+        import sounddevice as sd
+        sd.query_hostapis()
+    except Exception as e:  # PortAudio missing (Linux: libportaudio2) or no audio service/device at all
+        print(f"no microphone available: {e}", file=sys.stderr)
+        return []
     try:
         default_in = sd.default.device[0]
     except Exception:
@@ -188,10 +193,17 @@ def headless_video_cmd(out_path: Path, screen, fps: int, max_width: int) -> list
             screen = screens[0]["index"]
         cmd += ["-thread_queue_size", "1024", "-f", "avfoundation", "-capture_cursor", "1",
                 "-capture_mouse_clicks", "1", "-framerate", str(fps), "-i", f"{screen}:none"]
+    elif IS_LINUX:
+        cmd += ["-thread_queue_size", "1024", "-f", "x11grab", "-framerate", str(fps), "-draw_mouse", "1",
+                "-i", os.environ.get("DISPLAY", ":0")]
     else:
-        has_dda = "ddagrab" in run([ff, "-hide_banner", "-filters"], check=False).stdout
+        dda = f"ddagrab=output_idx={screen or 0}:framerate={fps}:draw_mouse=1"
+        # ddagrab needs Desktop Duplication on a D3D11 device: absent over RDP, on GPU-less VMs, in service sessions
+        has_dda = "ddagrab" in run([ff, "-hide_banner", "-filters"], check=False).stdout and run(
+            [ff, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", dda, "-frames:v", "1", "-f", "null", "-"],
+            check=False).returncode == 0
         if has_dda:
-            cmd += ["-f", "lavfi", "-i", f"ddagrab=output_idx={screen or 0}:framerate={fps}:draw_mouse=1"]
+            cmd += ["-f", "lavfi", "-i", dda]
             scale = "hwdownload,format=bgra," + scale
         else:
             cmd += ["-thread_queue_size", "1024", "-f", "gdigrab", "-framerate", str(fps), "-draw_mouse", "1",

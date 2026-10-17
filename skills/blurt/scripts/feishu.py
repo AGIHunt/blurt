@@ -1,5 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
+# dependencies = ["truststore"]
 # ///
 """Export a session's issues to a Feishu / Lark Bitable (多维表格).
 
@@ -37,8 +38,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts, global_config, live_items, load_session, save_session  # noqa: E402
+from _common import die, fmt_ts, global_config, live_items, load_session, save_session, use_system_certs  # noqa: E402
 from export_local import LABELS  # noqa: E402
+
+use_system_certs()
 
 ATTACH_KEYS = {"frames", "clip"}
 

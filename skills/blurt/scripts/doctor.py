@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
+from _common import IS_LINUX, IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
 
 
 def recommend(info: dict) -> list[dict]:
@@ -60,7 +60,8 @@ def main():
         "todo": [],
     }
     if not ff:
-        report["todo"].append("Install ffmpeg: " + ("brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg"))
+        report["todo"].append("Install ffmpeg: " + ("brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg" if IS_WIN
+                                                     else "sudo apt install ffmpeg"))
     if not report["asr_configured"]:
         report["todo"].append("Choose an ASR backend (see asr_recommendations) and run its setup command")
     if IS_MAC:
@@ -68,6 +69,13 @@ def main():
                               "app hosting this agent (Terminal/iTerm/VS Code/Claude/Codex), then a restart of that app")
     if IS_WIN and ff and "ddagrab" not in run([ff, "-hide_banner", "-filters"], check=False).stdout:
         report["todo"].append("ffmpeg lacks ddagrab (needs ffmpeg ≥ 6); gdigrab will be used (fine, a bit heavier)")
+    if IS_LINUX:
+        import ctypes.util
+        if not ctypes.util.find_library("portaudio"):
+            report["todo"].append("Recording the mic needs PortAudio: sudo apt install libportaudio2")
+        if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+            report["todo"].append("Screen recording uses X11 (x11grab): log in with an Xorg session, or record with "
+                                  "another tool and hand the video over")
     if report["disk_free_gb"] < 5:
         report["todo"].append("Low disk space: recordings use ~1–2 GB per hour")
     print(json.dumps(report, ensure_ascii=False, indent=2))
