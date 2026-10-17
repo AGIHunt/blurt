@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="../assets/favicon.png">
 <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
-<link rel="preload" href="../fonts/serif-900.woff2?v=0.4.1" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../style.css?v=0.4.1">
+<link rel="preload" href="../fonts/serif-900.woff2?v=0.4.2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../style.css?v=0.4.2">
 <script>document.documentElement.classList.replace("no-js", "js")</script>
 </head>
 <body>
@@ -180,7 +180,7 @@
     <span class="tc" data-t="44"><time>00:44</time></span>
     <div class="row-body">
       <p class="claim">Eyes for your agent.<br> Two days back for you.</p>
-      <p class="evidence">One real session: <span>7-minute recording</span><span>9 items</span><span>review page in ~4 min</span><span>~$2</span></p>
+      <p class="evidence">One real walkthrough: <span>20-minute recording</span><span>34 items</span><span>review page in 6 min</span><span>~$2</span></p>
       <p class="source">What used to take two days of screenshots, red boxes and spreadsheet rows is now a 30-minute walkthrough.</p>
     </div>
   </div>
@@ -229,7 +229,7 @@
     <div class="beat-body">
       <div class="beat-text">
         <h3>Click Finish, get back to work</h3>
-        <p>Your agent transcribes locally (4 seconds for a 7-minute recording), splits the ramble into items, picks the frame for each and finds the code that's probably responsible. The review page opens itself when it's done.</p>
+        <p>Your agent transcribes locally (15 seconds for a 20-minute recording), splits the ramble into items, picks the frame for each and finds the code that's probably responsible. The review page opens itself when it's done.</p>
       </div>
     </div>
   </div>
@@ -245,8 +245,8 @@
       </div>
       <div class="sheet" data-state="idle" tabindex="0" aria-label="Sorted items (demo): A keeps, X drops, J moves on">
         <header class="sheet-h">
-          <b>Done · 9 items</b>
-          <span class="tally"><span data-n="left">9</span> to review · <span data-n="keep">0</span> kept · <span data-n="drop">0</span> dropped</span>
+          <b>Done · 34 items</b>
+          <span class="tally"><span data-n="left">34</span> to review · <span data-n="keep">0</span> kept · <span data-n="drop">0</span> dropped</span>
         </header>
         <p class="busy" aria-hidden="true">Sorting it out…</p>
         <ol class="items">
@@ -255,7 +255,7 @@
           <li><span class="k todo">TO-DO</span><span class="t">Ask design for empty-state copy and art</span><span class="q">“design should do this one”</span><span class="m">01:20 · owner: design</span></li>
           <li><span class="k bug">BUG</span><span class="t">Time zone doesn't save, resets on reload</span><span class="q">“wait, where did my time zone go”</span><span class="m">02:47 · src/settings/TimeZone.tsx</span></li>
         </ol>
-        <p class="more">5 more</p>
+        <p class="more">30 more</p>
         <footer class="sheet-f">
           <button type="button" data-k="x"><kbd class="sm">X</kbd>drop</button>
           <button type="button" data-k="j"><kbd class="sm">J</kbd>next</button>
@@ -302,7 +302,7 @@
   </header>
   <ol class="use-list">
     <li><p class="said">“the page the agent built last night… empty again”</p><div><h3>Polish a vibe-coded product</h3><p>An agent built it overnight; you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix.</p></div></li>
-    <li class="this"><p class="said">“this hero is good, circle it, we want that”</p><div><h3><span class="ul" data-mark="spec">Browse, then get the spec<svg viewBox="0 0 400 30" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 18 C70 12 150 22 230 16 C300 11 360 19 397 13"/></svg></span></h3><p>Building a landing page or a store? Tour reference sites, circle what you like and say why. Your agent writes the requirements and design docs. <b>This page started that way.</b></p></div></li>
+    <li class="this"><p class="said">“this hero is good, circle it, we want that”</p><div><h3><span class="ul" data-mark="spec">Browse, then get the spec<svg viewBox="0 0 400 30" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 18 C70 12 150 22 230 16 C300 11 360 19 397 13"/></svg></span></h3><p>Building a landing page or a store? Tour reference sites, circle what you like and say why. Your agent writes the requirements and design docs. <b>This site was designed exactly this way, with Claude Code + blurt. We eat our own dog food.</b></p></div></li>
     <li><p class="said">“I like how this site does onboarding… and this pricing page”</p><div><h3>Capture ideas while browsing</h3><p>You get an idea board: each idea, why, where it came from, the next step.</p></div></li>
     <li><p class="said">“I don't write code, but this is clearly wrong”</p><div><h3>Hand off from anyone</h3><p>PMs, designers, ops, clients: record with the app, no repo needed, and send the video. The developer's agent processes it with the code at hand.</p></div></li>
     <li><p class="said">“how does this actually work?”</p><div><h3>Research and walkthroughs</h3><p>Competitor tours, UX research, explaining how something works: notes and findings with the frames to prove them.</p></div></li>
@@ -310,7 +310,7 @@
   </ol>
   <figure class="proof">
     <figcaption>
-      <b>This page started that way.</b>
+      <b>Dogfooding.</b>
       <span>Finding references for this site: one 4-minute-56 recording, Jam, Cap, Wispr Flow and three more, 19 pen strokes, 16 items. On the right is the first one on the review page, with the quote, the time span, the idea and where it came from.</span>
     </figcaption>
     <img src="../assets/review-item.jpg" alt="The first item on the real review page: an export-destinations block, with the quote, time span, idea, why and source" width="778" height="1470" loading="lazy">
@@ -377,22 +377,22 @@
     <div class="qa wide">
       <div class="qa-text">
         <h3>Does it burn a lot of tokens?</h3>
-        <p>The video is never fed to the model. Speech is transcribed locally, for free; the agent reads the text and looks at a few frames only for the moments that become items. Cost follows how many things you talk about, not how long you record.</p>
-        <p class="note">Plus cache reads of the ongoing conversation, about 4–5M tokens at 1/20 of the input price, included in the prices on the right.</p>
+        <p>The video is never fed to the model. Speech is transcribed locally, for free; the agent reads the text and looks at a few frames only for the moments that become items. So a longer recording barely costs more: 7 minutes and 9 items, or 20 minutes and 34, both came to about $2.</p>
+        <p class="note">Plus cache reads of the ongoing conversation, about 3–5M tokens at 1/20 of the input price, included in the prices on the right.</p>
       </div>
       <table class="receipt">
-        <caption>Two real sessions: Claude Code, Opus 5.5, a production web app</caption>
-        <thead><tr><th></th><th>1st</th><th>2nd</th></tr></thead>
+        <caption>Real sessions: Claude Code, Opus 5.5, a production web app</caption>
+        <thead><tr><th></th><th>1st</th><th>2nd</th><th>3rd</th></tr></thead>
         <tbody>
-          <tr><th>recording</th><td>7.0 min</td><td>8.6 min</td></tr>
-          <tr><th>speech</th><td>2.8 min</td><td>5.0 min</td></tr>
-          <tr><th>items</th><td>9</td><td>20</td></tr>
-          <tr><th>transcription (local)</th><td>4 s</td><td>5 s</td></tr>
-          <tr><th>to review page</th><td>~4 min</td><td>~5 min</td></tr>
-          <tr><th>new input tokens</th><td>~142k</td><td>~150k</td></tr>
-          <tr><th>output tokens</th><td>~19k</td><td>~20k</td></tr>
+          <tr><th>recording</th><td>7.0 min</td><td>14.3 min</td><td>20.0 min</td></tr>
+          <tr><th>speech</th><td>2.8 min</td><td>12.3 min</td><td>17.7 min</td></tr>
+          <tr><th>items</th><td>9</td><td>23</td><td>34</td></tr>
+          <tr><th>transcription (local)</th><td>4 s</td><td>12 s</td><td>15 s</td></tr>
+          <tr><th>to review page</th><td>~4 min</td><td>~7 min</td><td>~6 min</td></tr>
+          <tr><th>new input tokens</th><td>~142k</td><td>~138k</td><td>~122k</td></tr>
+          <tr><th>output tokens</th><td>~19k</td><td>~27k</td><td>~27k</td></tr>
         </tbody>
-        <tfoot><tr><th>at API prices</th><td>~$2</td><td>~$2</td></tr></tfoot>
+        <tfoot><tr><th>at API prices</th><td>~$2</td><td>~$2.6</td><td>~$2.1</td></tr></tfoot>
       </table>
     </div>
     <div class="qa">
@@ -449,6 +449,6 @@
 </footer>
 
 <svg class="ink-layer" aria-hidden="true"></svg>
-<script src="../main.js?v=0.4.1"></script>
+<script src="../main.js?v=0.4.2"></script>
 </body>
 </html>

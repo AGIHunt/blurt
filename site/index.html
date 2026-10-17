@@ -17,8 +17,8 @@
 <meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="preload" href="fonts/serif-900.woff2?v=0.4.1" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=0.4.1">
+<link rel="preload" href="fonts/serif-900.woff2?v=0.4.2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=0.4.2">
 <script>document.documentElement.classList.replace("no-js", "js")</script>
 </head>
 <body>
@@ -182,7 +182,7 @@
     <span class="tc" data-t="44"><time>00:44</time></span>
     <div class="row-body">
       <p class="claim">给 agent 一双眼睛，<br class="br-m">给你省下两天。</p>
-      <p class="evidence">一次真实使用：<span>7 分钟录屏</span><span>9 条事项</span><span>约 4 分钟出审核页</span><span>约 2 美元</span></p>
+      <p class="evidence">一次真实走查：<span>20 分钟录屏</span><span>34 条事项</span><span>6 分钟出审核页</span><span>约 2 美元</span></p>
       <p class="source">以前要截图、画红框、填表格，花两天才反馈完的问题，现在半小时讲完。</p>
     </div>
   </div>
@@ -232,7 +232,7 @@
     <div class="beat-body">
       <div class="beat-text">
         <h3>点「完成」，去干别的</h3>
-        <p>agent 在本地把语音转成文字（7 分钟的录屏只要 4 秒），拆成一条条事项，给每条挑截图、找最可能出问题的代码。整理好了审核页会自己弹出来。</p>
+        <p>agent 在本地把语音转成文字（20 分钟的录屏只要 15 秒），拆成一条条事项，给每条挑截图、找最可能出问题的代码。整理好了审核页会自己弹出来。</p>
       </div>
     </div>
   </div>
@@ -248,8 +248,8 @@
       </div>
       <div class="sheet" data-state="idle" tabindex="0" aria-label="整理好的事项（演示），按 A 保留、X 丢弃、J 下一条">
         <header class="sheet-h">
-          <b>整理好了 · 9 条事项</b>
-          <span class="tally"><span data-n="left">9</span> 待审 · <span data-n="keep">0</span> 保留 · <span data-n="drop">0</span> 丢弃</span>
+          <b>整理好了 · 34 条事项</b>
+          <span class="tally"><span data-n="left">34</span> 待审 · <span data-n="keep">0</span> 保留 · <span data-n="drop">0</span> 丢弃</span>
         </header>
         <p class="busy" aria-hidden="true">整理中……</p>
         <ol class="items">
@@ -258,7 +258,7 @@
           <li><span class="k todo">待办</span><span class="t">找设计要空状态的文案和插画</span><span class="q">「这个得让设计出一下」</span><span class="m">01:20 · 负责人：设计</span></li>
           <li><span class="k bug">问题</span><span class="t">时区选完不保存，刷新就回到默认</span><span class="q">「诶，我刚改的时区呢」</span><span class="m">02:47 · src/settings/TimeZone.tsx</span></li>
         </ol>
-        <p class="more">还有 5 条</p>
+        <p class="more">还有 30 条</p>
         <footer class="sheet-f">
           <button type="button" data-k="x"><kbd class="sm">X</kbd>丢弃</button>
           <button type="button" data-k="j"><kbd class="sm">J</kbd>下一条</button>
@@ -306,7 +306,7 @@
   </header>
   <ol class="use-list">
     <li><p class="said">「昨晚 AI 写的这页……又是空的」</p><div><h3>打磨 vibe coding 出来的产品</h3><p>AI 通宵做完的东西，你挨个页面点一遍、边用边喷，拿到一份带代码定位的问题清单，直接交给 AI 去改。</p></div></li>
-    <li class="this"><p class="said">「这个首屏好，圈一下，我们也要」</p><div><h3><span class="ul" data-mark="spec">逛完直接出需求文档<svg viewBox="0 0 400 30" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 18 C70 12 150 22 230 16 C300 11 360 19 397 13"/></svg></span></h3><p>想做个官网或独立站？逛一圈参考站，看到好的就圈出来说一句，agent 整理成需求文档和设计文档。<b>这个页面就是这么来的。</b></p></div></li>
+    <li class="this"><p class="said">「这个首屏好，圈一下，我们也要」</p><div><h3><span class="ul" data-mark="spec">逛完直接出需求文档<svg viewBox="0 0 400 30" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M3 18 C70 12 150 22 230 16 C300 11 360 19 397 13"/></svg></span></h3><p>想做个官网或独立站？逛一圈参考站，看到好的就圈出来说一句，agent 整理成需求文档和设计文档。<b>本官网就是由 Claude Code + 口喷鸡这样设计的——吃自己的狗粮（dogfooding）。</b></p></div></li>
     <li><p class="said">「这个引导做得好……这个定价页也不错」</p><div><h3>边逛边记灵感</h3><p>整理成想法清单：是什么、为什么、灵感来自哪、下一步做什么。</p></div></li>
     <li><p class="said">「我不会写代码，但这里明显不对」</p><div><h3>谁都能反馈</h3><p>产品、设计、运营、客户，不需要有代码库。用 App 录好把视频发过来，开发那边的 agent 结合代码来处理。</p></div></li>
     <li><p class="said">「这个是怎么运作的？」</p><div><h3>调研和讲解</h3><p>竞品走查、用户研究、讲清楚一个东西怎么运作，整理成带截图佐证的笔记和结论。</p></div></li>
@@ -314,8 +314,8 @@
   </ol>
   <figure class="proof">
     <figcaption>
-      <b>这个页面就是这么来的。</b>
-      <span>给官网找参考：一段 4 分 56 秒的录屏，逛了 Jam、Cap、Wispr Flow 等 6 个站，圈了 19 笔，整理出 16 条。右边是审核页里的第 1 条，原话、时间段、想法和灵感来源都在。</span>
+      <b>吃自己的狗粮。</b>
+      <span>给本官网找参考：一段 4 分 56 秒的录屏，逛了 Jam、Cap、Wispr Flow 等 6 个站，圈了 19 笔，整理出 16 条。右边是审核页里的第 1 条，原话、时间段、想法和灵感来源都在。</span>
     </figcaption>
     <img src="assets/review-item.jpg" alt="真实审核页里的第 1 条：导出目的地的图标区，带原话、时间段、想法、为什么和灵感来源" width="778" height="1470" loading="lazy">
   </figure>
@@ -385,22 +385,22 @@
     <div class="qa wide">
       <div class="qa-text">
         <h3>很费 token 吗？</h3>
-        <p>不会把视频喂给模型。语音在本地转成文字，不花钱；agent 读的是文字稿，只给真正成条的事项挑几张截图看。花费跟你讲了几件事有关，跟录了多久关系不大。</p>
-        <p class="note">另有对话上下文的缓存读取，约 400–500 万 token，按输入价的 1/20 计费，已算进右边的价格。</p>
+        <p>不会把视频喂给模型。语音在本地转成文字，不花钱；agent 读的是文字稿，只给真正成条的事项挑几张截图看。所以录得再久，花费也差不多：7 分钟 9 条和 20 分钟 34 条，都在 2 美元上下。</p>
+        <p class="note">另有对话上下文的缓存读取，约 300–500 万 token，按输入价的 1/20 计费，已算进右边的价格。</p>
       </div>
       <table class="receipt">
-        <caption>两次真实使用：Claude Code + Opus 5.5，一个线上 Web 产品</caption>
-        <thead><tr><th></th><th>第 1 次</th><th>第 2 次</th></tr></thead>
+        <caption>真实使用：Claude Code + Opus 5.5，一个线上 Web 产品</caption>
+        <thead><tr><th></th><th>第 1 次</th><th>第 2 次</th><th>第 3 次</th></tr></thead>
         <tbody>
-          <tr><th>录屏</th><td>7.0 分钟</td><td>8.6 分钟</td></tr>
-          <tr><th>说话</th><td>2.8 分钟</td><td>5.0 分钟</td></tr>
-          <tr><th>事项</th><td>9 条</td><td>20 条</td></tr>
-          <tr><th>语音识别（本地）</th><td>4 秒</td><td>5 秒</td></tr>
-          <tr><th>录完到审核页</th><td>约 4 分钟</td><td>约 5 分钟</td></tr>
-          <tr><th>新输入 token</th><td>约 14 万</td><td>约 15 万</td></tr>
-          <tr><th>输出 token</th><td>约 1.9 万</td><td>约 2 万</td></tr>
+          <tr><th>录屏</th><td>7.0 分钟</td><td>14.3 分钟</td><td>20.0 分钟</td></tr>
+          <tr><th>说话</th><td>2.8 分钟</td><td>12.3 分钟</td><td>17.7 分钟</td></tr>
+          <tr><th>事项</th><td>9 条</td><td>23 条</td><td>34 条</td></tr>
+          <tr><th>语音识别（本地）</th><td>4 秒</td><td>12 秒</td><td>15 秒</td></tr>
+          <tr><th>录完到审核页</th><td>约 4 分钟</td><td>约 7 分钟</td><td>约 6 分钟</td></tr>
+          <tr><th>新输入 token</th><td>约 14 万</td><td>约 14 万</td><td>约 12 万</td></tr>
+          <tr><th>输出 token</th><td>约 1.9 万</td><td>约 2.7 万</td><td>约 2.7 万</td></tr>
         </tbody>
-        <tfoot><tr><th>按 API 价格</th><td>约 2 美元</td><td>约 2 美元</td></tr></tfoot>
+        <tfoot><tr><th>按 API 价格</th><td>约 2 美元</td><td>约 2.6 美元</td><td>约 2.1 美元</td></tr></tfoot>
       </table>
     </div>
     <div class="qa">
@@ -457,6 +457,6 @@
 </footer>
 
 <svg class="ink-layer" aria-hidden="true"></svg>
-<script src="main.js?v=0.4.1"></script>
+<script src="main.js?v=0.4.2"></script>
 </body>
 </html>
