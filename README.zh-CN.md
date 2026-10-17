@@ -48,7 +48,7 @@ npx skills add AGIHunt/blurt
 
 1. **框出要录的区域**：拖拽框选、单击选中某个窗口，或者全屏。标签栏、收藏夹这些都不会被录进去。
 2. **3-2-1 倒计时后开始说**。屏幕上有一个很小的悬浮条，显示计时和音量，带 ⏸ 暂停、↺ 重录、**完成** 按钮，
-   悬浮条本身不会被录进去。快捷键：`⌥⇧P` 暂停，`⌥⇧S` 完成。
+   悬浮条本身不会被录进去。快捷键：`⌥⇧P` 暂停，`⌥⇧S` 完成（Windows 是 `Alt+Shift+P` / `Alt+Shift+S`）。
    说「这里」的时候**按住 `⌃` 拖动鼠标**，圈出来或者划条线（macOS）。笔迹 3 秒后自己消失，agent 能看到你圈的到底是哪。
    想一直画就点悬浮条上的 ✎ 或按 `⌥⇧D`；常开时点击会变成画线、点不到被录的 App，**按 `Esc`**、再按 `⌥⇧D` 或再点 ✎ 就关掉。
 3. **点「完成」就可以去干别的了**。agent 会在本地识别语音、整理事项，然后打开审核页。
@@ -72,7 +72,7 @@ Claude Code / Codex」后，每段录屏都会在后台自动整理，好了审�
   约 240MB，普通 CPU 就很快，中英混说效果好；Apple Silicon 或 NVIDIA 显卡上可以用 Whisper；也可以用你自己的
   Groq、OpenAI 或百炼 Key。默认不会上传任何内容。
 - **原生录屏**：macOS 用 ScreenCaptureKit，音画同步误差在一帧以内；开会、演示时可以同时录系统声音，
-  单独一条音轨，转写时能分清哪句是你说的、哪句是对方说的；Windows 用 Tk + ffmpeg。
+  单独一条音轨，转写时能分清哪句是你说的、哪句是对方说的；Windows 和 Linux（X11）用 Tk + ffmpeg。
 - **确定的事交给脚本，判断交给模型**：录屏、识别、抽帧、审核页、导出由脚本完成；怎么拆、怎么写、怎么判断全交给
   agent（见 [SKILL.md](skills/blurt/SKILL.md)），所以能适应你的产品、你的语言和你的团队。
 - **说什么语言都行**：中英日韩粤用默认的 SenseVoice；德语、法语、西语等其他语言用 Whisper（本地）或云端 Key，
@@ -91,6 +91,11 @@ Claude Code / Codex」后，每段录屏都会在后台自动整理，好了审�
 | 20.0 分钟 | 17.7 分钟 | 34 条 | 15 秒 | 约 6 分钟 | 约 12 万 / 2.7 万 | 约 2.1 美元 |
 
 <sub>另有对话上下文的缓存读取（约 300–500 万 token，按输入价的 1/20 计费，已算进上表），多少取决于你当前对话已经有多长。</sub>
+
+**Windows、Linux 能用吗？** 能。录屏、本地转写、截帧、审核页、导出都在 Windows 和 Linux 上逐项实测过，CI 也在两边跑。
+Windows 上由 agent 启动录制器，录过一次后开始菜单里就有 **Blurt**；Linux 需要 X11 桌面。托盘 App、画笔和系统声音
+目前只有 macOS。准备工作（`doctor.py` 会告诉你缺什么）：Windows `winget install astral-sh.uv` 和 `winget install Gyan.FFmpeg`；
+Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk`，再装 [uv](https://docs.astral.sh/uv/)。
 
 **不做前端能用吗？** 能。只要问题能在屏幕上看到，或者能用手机拍下来，就能喷，见上面「不只是网页」。
 
