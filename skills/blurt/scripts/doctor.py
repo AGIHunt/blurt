@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -42,6 +43,73 @@ def recommend(info: dict) -> list[dict]:
     return recs
 
 
+# Variables an agent session (Claude Code, the Claude / Codex desktop apps, codex) exports to its children; the Blurt
+# app drops them before launching the agent (BlurtRecorder.swift: isAgentSessionVar) — e.g. CLAUDE_CODE_SIMPLE=1 makes
+# `claude` skip the keychain login. Check login state the way the app will run the agent, not the way this session does.
+_SESSION_PREFIXES = ("CLAUDE", "ANTHROPIC_", "CODEX_", "MCP_", "OTEL_")
+_SESSION_NAMES = {"AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH", "API_TIMEOUT_MS", "DISABLE_AUTOUPDATER",
+                  "DISABLE_MICROCOMPACT", "BLURT_APP"}
+
+
+def _is_session_var(k: str) -> bool:
+    return k.startswith(_SESSION_PREFIXES) or k in _SESSION_NAMES
+
+
+def agent_env() -> dict:
+    """Like the app's agentEnvironment(): this env minus agent-session vars, plus what the user's login shell sets."""
+    env = {k: v for k, v in os.environ.items() if not _is_session_var(k)}
+    sh = os.environ.get("SHELL")
+    if not IS_WIN and sh and os.path.isabs(sh) and os.access(sh, os.X_OK):
+        try:
+            out = run([sh, "-ilc", "printf '\\n__BLURT_ENV__\\n'; env -0"], check=False, env=env, timeout=8,
+                      stdin=subprocess.DEVNULL).stdout
+            _, sep, rest = out.partition("\n__BLURT_ENV__\n")
+            for entry in rest.split("\0") if sep else []:
+                k, eq, v = entry.partition("=")
+                if eq and k and k not in ("SHLVL", "_", "PWD", "OLDPWD"):
+                    env[k] = v
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return env
+
+
+def agent_clis() -> dict:
+    """The agent CLIs the Blurt app can hand recordings to: path, version, logged in (None = couldn't tell)."""
+    env = agent_env()
+    path = env.get("PATH")
+    report = {}
+    for name, login_args in (("claude", ["auth", "status", "--json"]), ("codex", ["login", "status"])):
+        exe = shutil.which(name, path=path) or shutil.which(name)
+        info: dict = {"path": exe, "version": None, "logged_in": None}
+        if exe:
+            try:
+                v = run([exe, "--version"], check=False, env=env, timeout=15, stdin=subprocess.DEVNULL)
+                info["version"] = (v.stdout or v.stderr).strip().splitlines()[0] if (v.stdout or v.stderr).strip() else None
+                r = run([exe, *login_args], check=False, env=env, timeout=20, stdin=subprocess.DEVNULL)
+                text = (r.stdout or "") + (r.stderr or "")
+                info["logged_in"] = parse_login(name, r.returncode, text)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        report[name] = info
+    return report
+
+
+def parse_login(name: str, code: int, text: str) -> bool | None:
+    if name == "claude" and "{" in text:
+        try:
+            v = json.loads(text[text.index("{"):]).get("loggedIn")
+            if isinstance(v, bool):
+                return v
+        except ValueError:
+            pass
+    low = text.lower()
+    if "not logged in" in low or "please run /login" in low:
+        return False
+    if name == "codex" and code == 0 and "logged in" in low:
+        return True
+    return None
+
+
 def main():
     info = system_info()
     ff = shutil.which("ffmpeg")
@@ -57,8 +125,14 @@ def main():
         "api_keys": {k: bool(os.environ.get(k)) for k in
                      ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "DASHSCOPE_API_KEY")},
         "asr_recommendations": recommend(info),
+        "agent_cli": agent_clis(),
         "todo": [],
     }
+    for name, a in report["agent_cli"].items():
+        if a["path"] and a["logged_in"] is False:
+            fix = "run `claude` in a terminal and /login" if name == "claude" else "run `codex login` in a terminal"
+            report["todo"].append(f"The `{name}` CLI ({a['path']}) is not logged in, so the Blurt app can't hand recordings "
+                                  f"to it for background processing: {fix}")
     if not ff:
         report["todo"].append("Install ffmpeg: " + ("brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg" if IS_WIN
                                                      else "sudo apt install ffmpeg"))
