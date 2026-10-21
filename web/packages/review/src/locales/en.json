@@ -170,7 +170,7 @@
   "source.type.url": "Web page",
   "source.type.import": "Imported",
   "source.type.service": "From a service",
-  "source.at": "{time} into the recording",
+  "source.at": "at {time}",
   "source.captured": "Captured",
   "source.by": "By",
   "source.app": "App",

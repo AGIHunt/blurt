@@ -162,7 +162,7 @@ describe("v3 UI", () => {
     expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it's fixed/);
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as done");
     expect(el.querySelector("#workSession")).not.toBeNull();
-    expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*0:12 into the recording/);
+    expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
     expect(el.querySelector("#provenance")?.textContent).toContain("Captured in this project");
     expect(el.querySelector("#provenance")?.textContent).toContain("blurt.dev/login");
     await act(async () => (el.querySelector("#copyInstruction") as HTMLButtonElement).click());

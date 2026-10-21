@@ -1,5 +1,5 @@
 // The review canvas in a real WKWebView with the C6 macos host: a reference implementation of the native side
-// (WKURLSchemeHandler for blurt-app://ui/* and blurt-app://session/*, the "blurt" message bridge, items.py user-ops)
+// (WKURLSchemeHandler for blurt-app://ui/*, blurt-app://session/* and blurt-app://file/*, the "blurt" message bridge, items.py user-ops)
 // plus an acceptance run against a fixture session. Not part of the app — WP5's WebHost implements the same contract.
 //
 //   swiftc -O Harness.swift -o harness && ./harness --html dist/index.html --session <copy of a fixture> \
@@ -77,6 +77,10 @@ final class Scheme: NSObject, WKURLSchemeHandler {
         var file: URL?
         if url.host == "ui" {
             file = url.path == "/icon.png" ? URL(fileURLWithPath: opts.icon) : URL(fileURLWithPath: opts.html)
+        } else if url.host == "file" {
+            // protocol v3: blurt-app://file/<percent-encoded absolute path>; this harness only serves its session
+            let f = URL(fileURLWithPath: String(url.path.dropFirst())).standardizedFileURL
+            if f.path.hasPrefix(sessionURL.path + "/") { file = f }
         } else if url.host == "session" {
             let rel = String(url.path.dropFirst())   // URL.path is percent-decoded
             let f = sessionURL.appendingPathComponent(rel).standardizedFileURL
@@ -170,7 +174,7 @@ cfg.setURLSchemeHandler(scheme, forURLScheme: "blurt-app")
 let bridge = Bridge()
 let ucc = WKUserContentController()
 ucc.add(bridge, name: "blurt")
-let methods = ["reveal", "quickLook", "openCode", "fixWithAgent", "registerDragRects", "download"]
+let methods = ["reveal", "quickLook", "openCode", "dispatch", "registerDragRects", "download"]
 ucc.addUserScript(WKUserScript(source: """
     window.blurtHostInfo = {host: "macos", methods: \(methods), accent: "\(hex(NSColor.controlAccentColor))"};
     """, injectionTime: .atDocumentStart, forMainFrameOnly: true))

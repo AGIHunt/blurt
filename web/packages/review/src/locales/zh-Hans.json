@@ -168,7 +168,7 @@
   "source.type.url": "网页",
   "source.type.import": "导入",
   "source.type.service": "来自服务",
-  "source.at": "录屏第 {time}",
+  "source.at": "第 {time}",
   "source.captured": "记录于",
   "source.by": "记录人",
   "source.app": "应用",

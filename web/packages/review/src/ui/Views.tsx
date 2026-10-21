@@ -76,7 +76,6 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
   const fresh = !!img && s.fresh.has(src);
   const wait = !img && !!s.data.processing && !s.stalled;
   const sel = s.isSelected(i);
-  const proj = s.canMove && s.data.scope && "session" in s.data.scope ? s.project(i.project) : undefined;
   const w = s.workOf(i);
   const meta = [
     kd === "issue" ? (
@@ -134,7 +133,6 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
           <span className="rd" />
           <KindIcon kind={kd} size={14} title={s.kindLabel(kd)} />
           <span>{i.id || ""}</span>
-          {proj && <span className="pj">{proj.key}</span>}
           <span className="sp" />
           {i.time && i.time.start != null ? <span className="tm">{s.clock(i.time.start)}</span> : null}
           <WorkRing i={i} />
