@@ -20,6 +20,8 @@ extension HotkeyCenter.Action {
         case .pen: return .pen
         case .finish: return .stop
         case .openMain: return nil
+        case .voice: return .voice
+        case .project: return .project
         }
     }
 }

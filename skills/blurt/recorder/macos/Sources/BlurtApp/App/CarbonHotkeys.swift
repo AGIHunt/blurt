@@ -10,7 +10,7 @@ import ServiceManagement
 // active app). Configurable actions arrive through HotkeyCenter.onFire; the fixed keys below (Esc for the pen, ↩ / Esc / F
 // in the picker) through onRaw.
 
-enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11, pickFull = 12 }
+enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11, pickFull = 12, voice = 13, project = 14 }
 var hotkeyHandler: ((HK) -> Void)?
 
 func installHotkeyHandler() {

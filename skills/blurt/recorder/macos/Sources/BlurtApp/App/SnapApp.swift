@@ -148,6 +148,9 @@ extension App {
         }
     }
 
+    /// ⌥⇧V (voice input) and ⌥⇧O (project switcher), K7.
+    func captureHotkey(_ k: HK) {}
+
     func addSnapMenuItems(_ menu: NSMenu, recording: Bool) {
         @discardableResult
         func item(_ title: String, _ sel: Selector, on: Bool = false) -> NSMenuItem {

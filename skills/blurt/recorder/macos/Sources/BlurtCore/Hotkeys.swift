@@ -192,7 +192,7 @@ public final class HotkeyCenter {
 
     /// Raw values are the config keys (record.hotkeys) — shared with _common.py / the Windows recorder.
     public enum Action: String, CaseIterable {
-        case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main"
+        case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main", voice, project
 
         /// nil = off unless the user sets one
         public var defaultKey: String? {
@@ -205,6 +205,8 @@ public final class HotkeyCenter {
             case .pen: return "D"
             case .finish: return "S"
             case .openMain: return nil
+            case .voice: return "V"
+            case .project: return "O"
             }
         }
         public var title: String {
@@ -217,10 +219,12 @@ public final class HotkeyCenter {
             case .pen: return L("画笔常开 / 关", "Pen on / off")
             case .finish: return L("完成录制", "Finish recording")
             case .openMain: return L("打开口喷鸡窗口", "Open the Blurt window")
+            case .voice: return L("语音输入", "Voice input")
+            case .project: return L("切换项目", "Switch project")
             }
         }
         /// Only the menu-bar app registers these (a recording started from the chat has no menu or window to open).
-        public var residentOnly: Bool { self == .toggleRecord || self == .openMenu || self == .openMain }
+        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project].contains(self) }
         public var defaultCombo: KeyCombo? { defaultKey.flatMap { KeyCombo(mods: defaultHotkeyMods, key: $0) } }
         var carbonID: UInt32 { 100 + UInt32(Action.allCases.firstIndex(of: self)!) }
     }

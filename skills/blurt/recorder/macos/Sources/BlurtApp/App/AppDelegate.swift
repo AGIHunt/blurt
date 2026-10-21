@@ -73,6 +73,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEnter: picker?.finish(true)
         case .pickEsc: picker?.finish(false)
         case .pickFull: picker?.fullScreen()
+        case .voice, .project: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
     }
 
