@@ -442,42 +442,64 @@
     const untip = () => { coach.hidden = true; coachAt = null; };
     $(".c-x", coach).addEventListener("click", () => { coachOff = true; untip(); });
 
-    /* the perch: a twine rope, simulated as a damped string between two pegs (same model as the app's perch).
-       Each shot hangs its weight on it, so the rope sags with the cards; a shot tilts with the rope's slope and swings
-       as a pendulum around that tilt. Hanging one adds its load and a downward tug, tossing one drops the load (the rope
-       springs up and overshoots), hovering one lifts it a little and holds it still while its neighbours make room. */
-    const perch = $(".perch", desk), rope = $(".rope", perch), ropeLines = $$("path", rope), pegs = $$(".peg", rope);
-    const RN = 20, RY0 = 9, RT = 4450, RC = 5, RW = 580, RP = 4450; // RT: fundamental ≈ 0.6 s; RW: ~6.5 px rest sag; RP: ~+5 px for one card mid-rope
-    const rpY = new Float64Array(RN + 1), rpV = new Float64Array(RN + 1), load = new Float64Array(RN + 1);
-    let rx0 = 12, rx1 = 300, swingQ = 0, last = 0, liveUntil = 0;
+    /* the perch: a twine rope between two pegs, simulated as a damped string (the app's Rope.swift model and numbers).
+       Every shot hangs its weight on it, so the rope sags with the cards and stiffens as the load grows; a shot hangs
+       at the rope's height, tilts with its slope and swings as a pendulum around that tilt. Hanging one dips the rope,
+       tossing one (or sorting, 80 ms apart) drops the load and it springs up past rest, hovering one lifts its weight off,
+       and now and then a breeze passes. */
+    const perch = $(".perch", desk), rope = $(".rope", perch);
+    const ropeLine = (c) => $(`.rope-${c}`, rope), twist = ropeLine("twist"), ends = $$(".rope-end", rope);
+    const ropeLines = ["sh", "edge", "body", "shine"].map(ropeLine);
+    const RN = 48, RY0 = 9, RX = 16, PERIOD = 0.62, REST = 10, CARD = 5, GAMMA = 4, BETA = 0.0018;
+    // discrete string, unit node spacing: fundamental ω = 2√T·sin(π/2N) → T = (π/PERIOD / sin(π/2N))²;
+    // rest sag W·N²/8T = REST; a load P at the middle sags P·N/4T = CARD
+    const T0 = (Math.PI / PERIOD / Math.sin(Math.PI / (2 * RN))) ** 2, W0 = REST * 8 * T0 / (RN * RN), P0 = CARD * 4 * T0 / RN;
+    // the tension stiffens with the total load: sag 10 / 15 / 18.4 / 23.8 / 27.9 px for 0 / 1 / 2 / 4 / 8 cards at the middle
+    const STIFF = [[0, 1], [1, 1], [2, 20 / 18.4], [4, 30 / 23.8], [8, 50 / 27.9]];
+    const stiff = (w) => { for (let i = 1; i < STIFF.length; i++) { const [a, ta] = STIFF[i - 1], [b, tb] = STIFF[i]; if (w <= b) return ta + (tb - ta) * Math.max(0, w - a) / (b - a); } return STIFF[STIFF.length - 1][1] + (w - 8) * 0.03; };
+    const ry = new Float64Array(RN + 1), rvel = new Float64Array(RN + 1), load = new Float64Array(RN + 1), racc = new Float64Array(RN + 1);
+    let rx0 = RX, rx1 = 300, rq = 0, rlast = 0, rliveUntil = 0, tau = 1;
     const cardX = (s) => s.el.offsetLeft + s.el.offsetWidth / 2;
-    const node = (x) => Math.max(0, Math.min(RN, ((x - rx0) / (rx1 - rx0)) * RN));
-    const ropeAt = (x) => { const u = node(x), i = Math.min(RN - 1, Math.floor(u)), f = u - i; return rpY[i] + (rpY[i + 1] - rpY[i]) * f; };
-    const slopeAt = (x) => { const i = Math.min(RN - 1, Math.floor(node(x))); return (rpY[i + 1] - rpY[i]) / ((rx1 - rx0) / RN); };
+    const gap = () => (rx1 - rx0) / RN;
+    const node = (x) => Math.max(0, Math.min(RN, (x - rx0) / gap()));
+    const ropeAt = (x) => { const u = node(x), i = Math.min(RN - 1, Math.floor(u)), f = u - i; return ry[i] + (ry[i + 1] - ry[i]) * f; };
+    const slopeDeg = (x) => { const u = node(x), i = Math.max(1, Math.min(RN - 1, Math.round(u))); return Math.atan((ry[i + 1] - ry[i - 1]) / (2 * gap())) * 180 / Math.PI; };
     function loads() {
-      // tension rises with the load, so the sag grows sublinearly: 1 card ≈ +5 px, 4 ≈ +13, 12 ≈ +21 at the middle
-      const hung = shots.filter((s) => s.onRope), n = hung.length, m = n ? (n * 5) / (12.33 * Math.log(1 + 0.5 * n)) : 1;
+      let w = 0;
       load.fill(0);
-      hung.forEach((s) => {
+      shots.forEach((s) => {
+        if (!s.onRope) return;
         s.cx = cardX(s);
-        const u = node(s.cx), i = Math.min(RN - 1, Math.floor(u)), f = u - i, P = (s.hold ? -0.15 : 1) * RP / m;
-        load[i] += P * (1 - f); load[i + 1] += P * f;
+        const k = s.hold ? 0 : 1; // a hovered card is lifted: it weighs nothing
+        w += k;
+        const u = node(s.cx), i = Math.min(RN - 1, Math.floor(u)), f = u - i;
+        load[i] += P0 * k * (1 - f); load[i + 1] += P0 * k * f;
       });
+      tau = stiff(w);
     }
     function stepRope(dt) {
-      for (let k = 0; k < 4; k++) {
-        const h = dt / 4;
-        for (let i = 1; i < RN; i++) rpV[i] += (RT * (rpY[i - 1] - 2 * rpY[i] + rpY[i + 1]) + RW + load[i] - RC * rpV[i]) * h;
-        for (let i = 1; i < RN; i++) rpY[i] += rpV[i] * h;
+      const n = Math.max(1, Math.ceil(dt / 0.0025)), h = dt / n, T = T0 * tau;
+      for (let k = 0; k < n; k++) {
+        for (let i = 1; i < RN; i++) {
+          const lap = ry[i - 1] - 2 * ry[i] + ry[i + 1], lapv = rvel[i - 1] - 2 * rvel[i] + rvel[i + 1];
+          racc[i] = T * (lap + BETA * lapv) + W0 + load[i] - GAMMA * rvel[i];
+        }
+        for (let i = 1; i < RN; i++) { rvel[i] += racc[i] * h; ry[i] += rvel[i] * h; }
       }
     }
-    function restRope() { // reduced motion: jump straight to where the rope comes to rest
-      rpV.fill(0);
-      for (let it = 0; it < 600; it++) for (let i = 1; i < RN; i++) rpY[i] = (rpY[i - 1] + rpY[i + 1] + (RW + load[i]) / RT) / 2;
+    function restRope() { // reduced motion: straight to where the rope comes to rest
+      rvel.fill(0);
+      const T = T0 * tau;
+      for (let it = 0; it < 4000; it++) for (let i = 1; i < RN; i++) ry[i] = (ry[i - 1] + ry[i + 1] + (W0 + load[i]) / T) / 2;
+    }
+    // tug: v += amp·exp(-(d/spread)²) px/s along the rope (+ is down)
+    function tug(x, amp, spread) {
+      if (reduce || x == null) return;
+      for (let i = 1; i < RN; i++) { const d = rx0 + i * gap() - x; rvel[i] += amp * Math.exp(-((d / spread) ** 2)); }
     }
     function drawRope() {
-      const dx = (rx1 - rx0) / RN, P = [];
-      for (let i = 0; i <= RN; i++) P.push([rx0 + i * dx, RY0 + rpY[i]]);
+      const g = gap(), P = [];
+      for (let i = 0; i <= RN; i++) P.push([rx0 + i * g, RY0 + ry[i]]);
       const f = (v) => v.toFixed(2);
       let d = `M${f(P[0][0])} ${f(P[0][1])}`;
       for (let i = 0; i < RN; i++) {
@@ -485,38 +507,58 @@
         d += `C${f(p[0] + (c[0] - a[0]) / 6)} ${f(p[1] + (c[1] - a[1]) / 6)} ${f(c[0] - (e[0] - p[0]) / 6)} ${f(c[1] - (e[1] - p[1]) / 6)} ${f(c[0])} ${f(c[1])}`;
       }
       ropeLines.forEach((l) => l.setAttribute("d", d));
+      // the twist: short slanted strokes across the cord every 3.2 px along it
+      let t = "", next = 1.6, run = 0;
+      for (let i = 0; i < RN; i++) {
+        const [x0, y0] = P[i], [x1, y1] = P[i + 1], L = Math.hypot(x1 - x0, y1 - y0), tx = (x1 - x0) / L, ty = (y1 - y0) / L;
+        for (; next < run + L; next += 3.2) {
+          const s = next - run, x = x0 + tx * s, y = y0 + ty * s;
+          t += `M${f(x - ty * 1.2 - tx * 0.9)} ${f(y + tx * 1.2 - ty * 0.9)}L${f(x + ty * 1.2 + tx * 0.9)} ${f(y - tx * 1.2 + ty * 0.9)}`;
+        }
+        run += L;
+      }
+      twist.setAttribute("d", t);
     }
     function placeCards(dt) {
       shots.forEach((s) => {
         if (!s.sw) return;
-        const x = s.cx ?? cardX(s), dy = ropeAt(x), tilt = Math.atan(slopeAt(x)) * 180 / Math.PI * 0.85;
-        if (dt) { if (s.hold) { s.v = 0; s.a *= 0.8; } else { s.v += (-46 * s.a - 2.6 * s.v) * dt; s.a += s.v * dt; } }
-        s.sw.style.transform = `translateY(${dy.toFixed(2)}px) rotate(${(tilt + s.a).toFixed(2)}deg)`;
+        if (s.tilt0 == null) s.tilt0 = (Math.random() * 2 - 1) * 2.5;
+        const x = s.cx ?? cardX(s), dy = ropeAt(x), target = 0.85 * slopeDeg(x);
+        if (s.th == null || !dt) { if (s.th == null || reduce) { s.th = target; s.v = 0; } }
+        else { s.v += (-46 * (s.th - target) - (s.hold ? 16 : 3.4) * s.v) * dt; s.th += s.v * dt; }
+        s.sw.style.transform = `translateY(${dy.toFixed(2)}px) rotate(${(s.th + s.tilt0).toFixed(2)}deg)`;
       });
     }
     function sizeRope() {
       const W = perch.clientWidth, H = perch.clientHeight;
-      rx0 = 12; rx1 = Math.max(rx0 + 40, W - 12);
+      rx0 = RX; rx1 = Math.max(rx0 + 40, W - RX);
       rope.setAttribute("width", W); rope.setAttribute("height", H); rope.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      pegs.forEach((c, i) => { c.setAttribute("cx", i ? rx1 : rx0); c.setAttribute("cy", RY0); c.setAttribute("r", 3.2); });
+      ends.forEach((e, i) => e.setAttribute("transform", `translate(${i ? rx1 : rx0} ${RY0})${i ? " scale(-1 1)" : ""}`));
       wake();
     }
-    // tug: an impulse on the rope at x (px/s, + is down); spin: one on the card's swing
-    function wake(x, tug = 0) {
-      if (x != null && tug) { const u = node(x), i = Math.max(1, Math.min(RN - 1, Math.round(u))); rpV[i] += tug; rpV[i - 1] += tug * 0.5; rpV[i + 1] += tug * 0.5; }
-      if (reduce) { loads(); restRope(); shots.forEach((s) => { s.a = s.v = 0; }); placeCards(0); return drawRope(); }
-      liveUntil = performance.now() + 700;
-      if (!swingQ) { last = performance.now(); swingQ = requestAnimationFrame(tick); }
+    function wake() {
+      if (reduce) { loads(); restRope(); placeCards(0); return drawRope(); }
+      rliveUntil = performance.now() + 400;
+      if (!rq) { rlast = performance.now(); rq = requestAnimationFrame(tick); }
     }
-    function kick(s, v) { if (!reduce && s.sw) s.v += v; wake(); }
+    function kick(s, v) { if (!reduce && s.sw) s.v = (s.v || 0) + v; wake(); }
     function tick(now) {
-      const dt = Math.min(0.034, (now - last) / 1000); last = now;
+      const dt = Math.min(0.034, (now - rlast) / 1000); rlast = now;
       loads(); stepRope(dt); placeCards(dt); drawRope();
-      let live = now < liveUntil;
-      for (let i = 1; i < RN && !live; i++) if (Math.abs(rpV[i]) > 0.3) live = true;
-      shots.forEach((s) => { if (Math.abs(s.a) > 0.04 || Math.abs(s.v) > 0.04) live = true; else if (!s.hold) s.a = s.v = 0; });
-      swingQ = live ? requestAnimationFrame(tick) : 0;
+      let live = now < rliveUntil;
+      for (let i = 1; i < RN && !live; i++) if (Math.abs(rvel[i]) > 1.5) live = true;
+      shots.forEach((s) => { if (Math.abs(s.v || 0) > 0.05) live = true; });
+      rq = live ? requestAnimationFrame(tick) : 0;
     }
+    // a breeze every 7–16 s while the perch is out: ±45 px/s somewhere in the middle half
+    (function breeze() {
+      setTimeout(() => {
+        if (!reduce && shots.length && document.visibilityState === "visible") {
+          const W = rx1 - rx0; tug(rx0 + W * (0.25 + Math.random() * 0.5), (Math.random() < 0.5 ? -1 : 1) * 45, 0.2 * W); wake();
+        }
+        breeze();
+      }, 7000 + Math.random() * 9000);
+    })();
     sizeRope(); loads(); restRope(); drawRope();
     const cardW = () => { const w = desk.clientWidth; return Math.round(small() ? Math.max(52, Math.min(72, w * 0.17)) : Math.max(56, Math.min(112, w * 0.125))); };
     // the shot is a scaled clone of the app (pure DOM, sized in em), cropped to what was selected
@@ -566,6 +608,7 @@
       Object.assign(s, { el: li, sw: $(".sw", li), ph, W, H });
       placeCards(0); // its slot sits on the rope as it hangs right now
       // fly from the selection to the slot (FLIP), then clip onto the rope: its weight pulls the rope down and it swings in
+      if (!shots.some((o) => o !== s)) tug((rx0 + rx1) / 2, -30, 0.6 * (rx1 - rx0)); // the strip slides down: the rope lags a little
       if (reduce) { s.onRope = true; wake(); }
       else {
         const to = R(pol), o = R(li), dx = from.x - to.x, dy = from.y - to.y;
@@ -577,14 +620,14 @@
         li.style.transform = "";
         const land = () => {
           li.style.transition = ""; li.style.transformOrigin = ""; $(".claw", li).style.opacity = "";
-          s.onRope = true; wake(cardX(s), 150);
+          s.onRope = true; tug(cardX(s), 300, 120); wake();
           kick(s, Math.max(-120, Math.min(120, dx * 0.5)) + (dx >= 0 ? 45 : -45));
           shots.forEach((o2) => { if (o2 !== s) kick(o2, (Math.random() - 0.5) * 40); });
         };
         li.addEventListener("transitionend", land, { once: true });
       }
-      li.addEventListener("pointerenter", () => { s.hold = true; wake(cardX(s), -40); });
-      li.addEventListener("pointerleave", () => { s.hold = false; wake(cardX(s), 40); });
+      li.addEventListener("pointerenter", () => { s.hold = true; wake(); });
+      li.addEventListener("pointerleave", () => { s.hold = false; wake(); });
       let clickT = 0;
       pol.addEventListener("click", (e) => {
         clearTimeout(clickT);
@@ -600,7 +643,7 @@
       s.el.classList.add("fall");
       const x = s.cx ?? cardX(s); s.onRope = false;
       shots = shots.filter((o) => o !== s); batchSaid.delete(s.say);
-      count(); wake(x, -60); // the load is gone: the rope springs up and overshoots
+      count(); tug(x, -70, 90); wake(); // the load is gone: the rope springs up and overshoots
       setTimeout(() => { s.el.remove(); wake(); }, reduce ? 400 : 760);
       if (!shots.length) { desk.classList.remove("has-shots"); tip(1, snapBtn, "above"); }
     }
@@ -714,7 +757,7 @@
       endSelect(); untip(); set("hatch");
       shots.forEach((s, i) => setTimeout(() => $(".pol", s.el).insertAdjacentHTML("beforeend", EGG(s.kind, "hatch-egg")), reduce ? 0 : i * 130));
       setTimeout(() => {
-        shots.forEach((s, i) => setTimeout(() => s.el.classList.add("fall"), reduce ? 0 : i * 90));
+        shots.forEach((s, i) => setTimeout(() => { s.el.classList.add("fall"); s.onRope = false; tug(s.cx, -70, 90); wake(); }, reduce ? 0 : i * 80)); // the rope ripples as they go
         setTimeout(openReview, reduce ? 150 : 520);
       }, reduce ? 300 : 1500);
     });

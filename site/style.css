@@ -548,15 +548,18 @@ html.drawing { user-select: none; -webkit-user-select: none; }
 /* the perch: a rod under the menu bar, shots clipped on with a chicken foot */
 .perch { position: absolute; z-index: 5; left: 0; right: 0; top: 26px; height: calc(var(--cw) * 1.25 + 40px); transform: translateY(-105%); transition: transform .45s cubic-bezier(.2,.9,.3,1.08); pointer-events: none; }
 .desk.has-shots .perch { transform: none; }
-/* the line is a twine rope (a damped string in main.js): retune it here */
-.desk { --rope: #F2E4C4; --rope-edge: #B4915C; --rope-twist: #B4915C; --rope-shadow: rgba(60, 40, 10, .30); }
+/* the line is a twine rope (a damped string in main.js, same numbers as the app's Rope.swift): retune it here */
+.desk { --rope: #F2E4C4; --rope-edge: rgba(156, 122, 72, .75); --rope-twist: rgba(180, 145, 92, .7); --rope-shine: rgba(255, 255, 255, .7); --rope-shadow: rgba(60, 40, 10, .30); }
 .rope { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .rope path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.rope-sh { stroke: var(--rope-shadow); stroke-width: 4px; transform: translateY(1.5px); }
-.rope-edge { stroke: var(--rope-edge); stroke-width: 3.6px; }
+.rope-sh { stroke: var(--rope-shadow); stroke-width: 3.8px; transform: translateY(1.6px); }
+.rope-edge { stroke: var(--rope-edge); stroke-width: 3.7px; }
 .rope-body { stroke: var(--rope); stroke-width: 2.4px; }
-.rope-twist { stroke: var(--rope-twist); stroke-width: 2.4px; stroke-dasharray: 1.2 3.2; stroke-linecap: butt !important; opacity: .55; }
-.peg { fill: var(--rope-edge); stroke: var(--rope-shadow); stroke-width: 1px; }
+.rope .rope-twist { stroke: var(--rope-twist); stroke-width: .75px; stroke-linecap: butt; }
+.rope-shine { stroke: var(--rope-shine); stroke-width: .7px; stroke-dasharray: 5 4; transform: translateY(-.55px); }
+.rope .rope-tail { stroke: var(--rope); stroke-width: 1.6px; filter: drop-shadow(0 0 .4px var(--rope-edge)); }
+.rope-knot { fill: var(--rope); stroke: var(--rope-edge); stroke-width: .7px; }
+.peg { stroke: rgba(80, 58, 26, .45); stroke-width: .6px; }
 .hang { position: relative; display: flex; justify-content: center; align-items: flex-start; gap: 10px; height: 100%; padding: 4px 150px 0 24px; pointer-events: none; }
 .card { position: relative; flex: none; transition: margin .45s cubic-bezier(.3,1.7,.5,1); pointer-events: auto; }
 .card .sw { display: flex; flex-direction: column; align-items: center; transform-origin: 50% 0; will-change: transform; }
@@ -701,7 +704,7 @@ html.drawing { user-select: none; -webkit-user-select: none; }
   .copy.ok { color: var(--paper); }
   .cbar { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08); }
   .frame { outline-color: var(--coral); }
-  .desk { --rope: #EADBB8; --rope-edge: #A8895A; --rope-twist: #A8895A; --rope-shadow: rgba(0, 0, 0, .5); }
+  .desk { --rope: #EADBB8; --rope-edge: rgba(58, 42, 18, .55); --rope-twist: rgba(168, 137, 90, .75); --rope-shine: rgba(255, 255, 255, .5); --rope-shadow: rgba(0, 0, 0, .5); }
   .desk { --rv-bg: #1c1c1e; --rv-ink: #f2f2f3; --rv-mute: #98989d; --rv-line: #2f2f33; --rv-cur: #27272b; --wall: linear-gradient(150deg, #1f2733 0%, #23252b 45%, #2d2620 100%); }
   .mb { background: rgba(40, 40, 44, .75); color: #ececee; box-shadow: 0 .5px 0 rgba(255, 255, 255, .08); }
   .hatching { color: #b9b9be; }
