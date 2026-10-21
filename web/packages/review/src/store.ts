@@ -173,6 +173,8 @@ export class ReviewStore {
     return this.data.items[this.cur];
   }
   keyOf = (i: Item) => this.key(i);
+  /** keep / drop / pending (sync.statusOf) for this doc's shape */
+  st = (i: Item) => statusOf(i, this.v3);
   get stalled(): boolean {
     const raw = this.data.agent_at;
     const at = typeof raw === "string" ? Date.parse(raw) / 1000 : Number(raw);
@@ -188,7 +190,7 @@ export class ReviewStore {
   counts() {
     let k = 0, d = 0, p = 0;
     for (const i of this.data.items) {
-      const s = statusOf(i);
+      const s = this.st(i);
       if (s === "keep") k++;
       else if (s === "drop") d++;
       else p++;
@@ -264,8 +266,13 @@ export class ReviewStore {
     this.showToast(this.plural("project.moved", moving.length, { project: name }), false, "folder");
   };
 
+  /** the host can write a handoff (the browser page only when review.py says it can: doc `_caps`) */
+  get canHandoff() {
+    const caps = Array.isArray(this.data._caps) ? (this.data._caps as string[]) : [];
+    return !!this.host.handoff && (this.host.host !== "browser" || caps.includes("handoff"));
+  }
   handoff = async (items: Item[], what: "instruction" | "full") => {
-    const h = this.host.handoff;
+    const h = this.canHandoff ? this.host.handoff : undefined;
     const live = items.filter((i) => i.status !== "deleted");
     if (!h || !live.length) return;
     try {
@@ -350,7 +357,7 @@ export class ReviewStore {
       this.base = new Map(S.map((i) => [this.key(i), clone(i)]));
       if (!this.langPicked && this.data.language) this.i18n = makeI18n(resolveLang(String(this.data.language), systemLanguages()));
       if (this.mode === "item") this.cur = Math.max(0, this.findCur());
-      else this.cur = Math.max(0, this.data.items.findIndex((i) => statusOf(i) === "pending"));
+      else this.cur = Math.max(0, this.data.items.findIndex((i) => this.st(i) === "pending"));
       const v = storage.get("blurt.view") as View | null;
       this.view = v === "focus" || v === "list" || v === "overview" ? v : this.data.digest ? "overview" : this.data.items.length > 1 ? "focus" : "list";
       if (this.view === "overview" && !this.hasOverview) this.view = "focus";
@@ -532,7 +539,7 @@ export class ReviewStore {
     this.emit();
   };
   nextPending = () => {
-    const n = this.data.items.findIndex((i, k) => k > this.cur && statusOf(i) === "pending");
+    const n = this.data.items.findIndex((i, k) => k > this.cur && this.st(i) === "pending");
     this.go(n >= 0 ? n : Math.min(this.cur + 1, this.data.items.length - 1), "up");
   };
   decide = (kind: "keep" | "drop") => {
@@ -590,7 +597,7 @@ export class ReviewStore {
   mergePrev = () => {
     if (this.mode === "item") return;
     let j = this.cur - 1;
-    while (j >= 0 && statusOf(this.data.items[j]) === "drop") j--;
+    while (j >= 0 && this.st(this.data.items[j]) === "drop") j--;
     if (j < 0) return;
     this.snapshot();
     const p = this.data.items[j];
@@ -706,7 +713,7 @@ export class ReviewStore {
   };
   reviewRest = () => {
     this.modal = null;
-    const n = this.data.items.findIndex((i) => statusOf(i) === "pending");
+    const n = this.data.items.findIndex((i) => this.st(i) === "pending");
     this.view = "focus";
     storage.set("blurt.view", "focus");
     this.go(n);
@@ -848,7 +855,7 @@ export class ReviewStore {
   listed() {
     const ql = this.query.toLowerCase();
     return this.data.items
-      .map((i, k) => ({ i, k, s: statusOf(i) }))
+      .map((i, k) => ({ i, k, s: this.st(i) }))
       .filter(
         ({ i, s }) =>
           (this.filter === "all" || this.filter === s) &&

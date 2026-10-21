@@ -35,7 +35,7 @@ describe("browser host (review.py)", () => {
     expect(h.fileUrl("C:\\p\\1.png")).toBe("files/C%3A%5Cp%5C1.png");
     expect(h.downloadUrl!("clips/I-001.mp4")).toBe("files/clips/I-001.mp4?download=1");
     expect(h.inApp).toBe(false);
-    expect(h.handoff).toBeUndefined();
+    expect(h.handoff).toBeTypeOf("function"); // offered only when the doc has _caps: ["handoff"]
     vi.unstubAllGlobals();
   });
 });

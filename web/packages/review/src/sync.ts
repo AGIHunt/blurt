@@ -38,9 +38,10 @@ export const norm = (items: Item[] | undefined): Item[] =>
   (items || []).filter(shown).map((i) => (i.kind ? i : { ...i, kind: "issue" }));
 
 export type Status = "keep" | "drop" | "pending";
-/** review state: dropped, kept (confirmed, or decided in this review) or still to review (draft) */
-export const statusOf = (i: Item): Status =>
-  i.status === "deleted" ? "drop" : i._touched || i.status === "confirmed" ? "keep" : "pending";
+/** review state: dropped, kept or still to review. A session's batch (v2) counts what was decided in this review
+    (`_touched`); a v3 doc's status is persistent, so confirmed = kept, draft = to review. */
+export const statusOf = (i: Item, persistent = false): Status =>
+  i.status === "deleted" ? "drop" : i._touched || (persistent && i.status === "confirmed") ? "keep" : "pending";
 
 export interface RebaseResult {
   items: Item[];

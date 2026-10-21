@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DragRect } from "../host";
 import type { Media, ReviewStore } from "../store";
-import { statusOf } from "../sync";
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 
@@ -211,7 +210,7 @@ export function Stage() {
   const s = useStore();
   const ref = useRef<HTMLElement>(null);
   const i = s.item;
-  const st = i ? statusOf(i) : "pending";
+  const st = i ? s.st(i) : "pending";
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;

@@ -2,7 +2,6 @@ import { KindIcon, StatusRing } from "@blurt/ui/react";
 import { useLayoutEffect, useRef } from "react";
 import type { Item } from "../host";
 import { kindOf, type ReviewStore } from "../store";
-import { statusOf } from "../sync";
 import { cx, useStore } from "./ctx";
 
 /** The work ring with its localized name; "handed off" says to whom (K10 work.handed_off.session / .external). */
@@ -31,7 +30,7 @@ export function Queue() {
   return (
     <nav className="queue scroll" id="queue" ref={ref} aria-label={s.t("view.list")}>
       {s.data.items.map((i, k) => {
-        const st = statusOf(i);
+        const st = s.st(i);
         const ask = (i.questions || []).length > 0 && !i.answer;
         const kd = kindOf(i);
         return (

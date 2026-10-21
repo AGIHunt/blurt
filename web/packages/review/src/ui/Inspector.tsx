@@ -5,7 +5,6 @@ import type { FixRecord, Item, WorkRecord } from "../host";
 import { fieldLabel } from "../fields";
 import { isEnter } from "../ime";
 import { isTitle, kindOf, SEV, type ReviewStore } from "../store";
-import { statusOf } from "../sync";
 import { Icon, type IconName } from "./Icon";
 import { cx, useStore } from "./ctx";
 import { agentName, WorkRing, workText } from "./Queue";
@@ -113,7 +112,7 @@ function fixAsWork(f: FixRecord): WorkRecord {
 function WorkPanel({ i }: { i: Item }) {
   const s = useStore();
   const w = s.workOf(i);
-  const rec = i.work;
+  const rec = i.work ?? (i.fix ? fixAsWork(i.fix) : undefined);
   const can = s.canWork && i.status !== "deleted";
   const who = rec?.by === "user" ? s.t("work.by_you") : rec?.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(rec.agent) }) : "";
   const when = rec?.at ? s.i18n.formatRelative(rec.at) : "";
@@ -164,7 +163,7 @@ function WorkPanel({ i }: { i: Item }) {
 function HandoffPanel({ i }: { i: Item }) {
   const s = useStore();
   const h = s.host;
-  if (!h.dispatch && !h.handoff) return null;
+  if (!h.dispatch && !s.canHandoff) return null;
   if (i.status === "deleted") return null;
   const w = s.workOf(i);
   if (w === "done" || w === "wontfix") return null;
@@ -176,7 +175,7 @@ function HandoffPanel({ i }: { i: Item }) {
           {s.mode === "item" && <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>}
         </button>
       )}
-      {h.handoff && (
+      {s.canHandoff && (
         <>
           <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff([i], "instruction")}>
             <Icon name="copy" size={14} /> {s.t("handoff.copy_instruction")}
@@ -296,7 +295,7 @@ export function Inspector() {
     if (side.current) side.current.scrollTop = 0;
   }, [ik]);
   if (!i) return <aside className="side insp scroll" id="side" ref={side} />;
-  const st = statusOf(i);
+  const st = s.st(i);
   const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
   const kind = kindOf(i);
   const F = (k: string, label: string, type: FieldType = "area", cls?: string) => <Field key={ik + k} i={i} k={k} label={label} type={type} cls={cls} />;

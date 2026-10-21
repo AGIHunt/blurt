@@ -3,7 +3,6 @@ import { KindIcon } from "@blurt/ui/react";
 import { useState } from "react";
 import type { Item } from "../host";
 import { kindOf, SEV, type Filter } from "../store";
-import { statusOf } from "../sync";
 import { Icon } from "./Icon";
 import { cx, mdLite, useStore } from "./ctx";
 import { WorkRing, workText } from "./Queue";
@@ -163,7 +162,7 @@ function SelectionBar() {
         <Icon name="x" size={14} /> {s.t("action.drop")}
       </button>
       {s.canMove && <MovePicker items={items} id="selMove" />}
-      {s.host.handoff && live.length > 0 && (
+      {s.canHandoff && live.length > 0 && (
         <button className="btn sm" id="selCopy" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff(live, "instruction")}>
           <Icon name="copy" size={14} /> {s.t("handoff.copy_instruction")}
         </button>
@@ -277,7 +276,7 @@ export function Overview() {
             </h3>
             <div className="ov-list">
               {v.map((i) => (
-                <button key={s.keyOf(i)} className={cx(statusOf(i), "w-" + s.workOf(i))} data-k={s.data.items.indexOf(i)} onClick={() => s.openItem(s.data.items.indexOf(i))}>
+                <button key={s.keyOf(i)} className={cx(s.st(i), "w-" + s.workOf(i))} data-k={s.data.items.indexOf(i)} onClick={() => s.openItem(s.data.items.indexOf(i))}>
                   <span>{i.id || ""}</span>
                   <span className="tt">{i.title}</span>
                   <WorkRing i={i} />
