@@ -414,20 +414,22 @@ final class Perch: NSObject {
 
     private func style(_ c: PerchCard) {
         let dark = isDarkMode
-        c.frame.backgroundColor = (dark ? NSColor(calibratedRed: 0.24, green: 0.235, blue: 0.225, alpha: 1)
+        c.frame.backgroundColor = (dark ? NSColor(calibratedRed: 0.89, green: 0.875, blue: 0.85, alpha: 1)
                                         : NSColor(calibratedRed: 1, green: 0.995, blue: 0.98, alpha: 1)).cgColor
-        c.frame.borderColor = (dark ? NSColor(white: 1, alpha: 0.10) : NSColor(white: 0, alpha: 0.07)).cgColor
+        c.frame.borderColor = (dark ? NSColor(white: 1, alpha: 0.18) : NSColor(white: 0, alpha: 0.07)).cgColor
         c.frame.borderWidth = 0.5
         c.frame.shadowOpacity = dark ? 0.5 : 0.22
         c.photo.borderColor = (dark ? NSColor(white: 1, alpha: 0.08) : NSColor(white: 0, alpha: 0.10)).cgColor
         setCaption(c)
     }
 
-    /// Handwriting for the polaroid caption; Chinese falls back to a hand-lettered face if installed, else PingFang.
-    private func captionFont(_ size: CGFloat) -> NSFont {
-        let base = NSFont(name: "Noteworthy-Light", size: size) ?? NSFont(name: "Bradley Hand", size: size) ?? .systemFont(ofSize: size)
-        let cascade = ["HannotateSC-W5", "Kaiti SC", "PingFangSC-Regular"].map { NSFontDescriptor(fontAttributes: [.name: $0]) }
-        return NSFont(descriptor: base.fontDescriptor.addingAttributes([.cascadeList: cascade]), size: size) ?? base
+    /// Handwriting for the polaroid caption: Noteworthy for Latin; for Chinese a hand-lettered face if installed
+    /// (Hannotate / Kaiti), else PingFang. One font per caption — mixed cascades get tall, clipped line boxes.
+    private func captionFont(_ size: CGFloat, for text: String) -> NSFont {
+        let cjk = text.unicodeScalars.contains { (0x2E80...0x9FFF).contains($0.value) || (0xF900...0xFAFF).contains($0.value) }
+        let names = cjk ? ["HannotateSC-W5", "STKaitiSC-Regular", "PingFangSC-Regular"] : ["Noteworthy-Light", "Bradley Hand"]
+        for n in names { if let f = NSFont(name: n, size: cjk ? size - 0.5 : size) { return f } }
+        return .systemFont(ofSize: size)
     }
 
     private func setCaption(_ c: PerchCard) {
@@ -436,10 +438,15 @@ final class Perch: NSObject {
         var text = (s.text ?? "").replacingOccurrences(of: "\n", with: " ")
         if text.isEmpty, s.voice != nil { text = L("🎙 语音备注", "🎙 voice note") }
         if text.isEmpty { text = s.t.map { L("录制中 \(fmtClock($0))", "at \(fmtClock($0))") } ?? timeLabel(s.wall) }
+        let ps = NSMutableParagraphStyle()
+        ps.minimumLineHeight = 17
+        ps.maximumLineHeight = 17          // hand-lettered CJK faces have very tall line boxes
+        ps.lineBreakMode = .byTruncatingTail
         c.caption.string = NSAttributedString(string: text, attributes: [
-            .font: captionFont(12.5),
-            .foregroundColor: (s.text ?? "").isEmpty ? (dark ? NSColor(white: 1, alpha: 0.45) : NSColor(white: 0, alpha: 0.38))
-                                                    : (dark ? NSColor(white: 1, alpha: 0.88) : NSColor(calibratedRed: 0.17, green: 0.15, blue: 0.13, alpha: 1)),
+            .font: captionFont(12.5, for: text), .paragraphStyle: ps,
+            // a polaroid stays a (slightly dimmed) paper card in dark mode too, so its ink stays dark
+            .foregroundColor: (s.text ?? "").isEmpty ? NSColor(white: 0, alpha: dark ? 0.45 : 0.38)
+                                                    : NSColor(calibratedRed: 0.17, green: 0.15, blue: 0.13, alpha: 1),
         ])
         var marks = ""
         if s.voice != nil, !(s.text ?? "").isEmpty { marks += "🎙" }
@@ -477,7 +484,7 @@ final class Perch: NSObject {
         c.photo.cornerRadius = 1.5
         c.photo.borderWidth = 0.5
         c.photo.backgroundColor = NSColor(white: 0.5, alpha: 0.15).cgColor
-        c.caption.frame = CGRect(x: Perch.padSide + 1, y: Perch.padTop + c.photoSize.height + 5, width: Perch.cardW - Perch.padSide * 2 - 18, height: 19)
+        c.caption.frame = CGRect(x: Perch.padSide + 1, y: Perch.padTop + c.photoSize.height + 5, width: Perch.cardW - Perch.padSide * 2 - 18, height: 18)
         c.caption.contentsScale = 2
         c.caption.truncationMode = .end
         c.caption.isWrapped = false
@@ -1189,6 +1196,7 @@ final class Perch: NSObject {
         }
         guard let c = d.card, c === card(at: p) else { return }
         if e.clickCount >= 2 {
+            c.copiedUntil = 0
             NoteBubble.shared.begin(c.shot, mode: .edit)
         } else if let u = c.shot.bestURL {
             copyImageToPasteboard(u)

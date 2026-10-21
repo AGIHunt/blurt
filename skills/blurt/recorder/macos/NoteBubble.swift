@@ -578,6 +578,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 p.animator().alphaValue = 1
             }
         }
+        // typing needs us in front for a moment (the user just took the shot / clicked 📸); close() hands focus back
+        if mode == .recording { snapper.rememberFrontApp() }
+        activateApp()
         p.makeKey()
         p.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
@@ -764,7 +767,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let p = panel
         let done = { [weak self] in
             p?.orderOut(nil)
-            if self?.mode != .recording { snapper.restoreFocus() }
+            snapper.restoreFocus()
             let cb = self?.onClose
             self?.onClose = nil
             cb?()

@@ -15,7 +15,8 @@ Engines (auto-selected; override with --engine or ~/.blurt/config.json → recor
 
   record.py start [--session DIR] [--region x,y,w,h | --last-region] [--engine E] [--countdown 3]
                                         run in the background; exits when the user stops (prints DONE …)
-  record.py stop | pause | resume | restart | discard     control the active recording from the chat
+  record.py stop | pause | resume | restart | discard | snap   control the active recording from the chat (snap =
+                                        a full-resolution still of the area now → shots/)
   record.py inbox                       recordings made with the Blurt app (~/Blurt, bound projects) + processed?
   record.py install-app                 double-clickable recorder: ~/Applications/Blurt.app / Start-menu "Blurt"
   record.py status                      active recording, if any
@@ -716,7 +717,9 @@ def cmd_start(a) -> None:
     n_markers = sum(1 for l in events.open(encoding="utf-8") if '"marker"' in l) if events.exists() else 0
     meta.update({k: v for k, v in result.items() if k not in ("event", "file")}, video=final.name, duration=dur)
     save_json(session / "meta.json", meta)
-    out(f"DONE video={final} duration={fmt_ts(dur)} markers={n_markers} events={'events.jsonl' if events.exists() else '-'}")
+    shots = session / "shots.jsonl"
+    n_shots = len({json.loads(l)["n"] for l in shots.open(encoding="utf-8") if l.strip()}) if shots.exists() else 0
+    out(f"DONE video={final} duration={fmt_ts(dur)} markers={n_markers} shots={n_shots} events={'events.jsonl' if events.exists() else '-'}")
 
 
 def run_native(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
@@ -996,7 +999,7 @@ def main() -> None:
     s.add_argument("--fps", type=int)
     s.add_argument("--max-width", type=int)
     s.add_argument("--max-minutes", type=float, default=120)
-    for c in ("stop", "pause", "resume", "restart", "marker", "discard", "status", "devices", "build", "inbox", "install-app"):
+    for c in ("stop", "pause", "resume", "restart", "marker", "snap", "discard", "status", "devices", "build", "inbox", "install-app"):
         sub.add_parser(c)
     t = sub.add_parser("test")
     t.add_argument("--seconds", type=float, default=3)
@@ -1004,7 +1007,7 @@ def main() -> None:
     t.add_argument("--mic")
     t.add_argument("--out")
     a = p.parse_args()
-    if a.cmd in ("stop", "pause", "resume", "restart", "marker", "discard"):
+    if a.cmd in ("stop", "pause", "resume", "restart", "marker", "snap", "discard"):
         return send(a.cmd)
     {"start": cmd_start, "status": cmd_status, "devices": cmd_devices, "build": cmd_build, "test": cmd_test,
      "inbox": cmd_inbox, "install-app": cmd_install_app}[a.cmd](a)
