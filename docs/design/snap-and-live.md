@@ -82,7 +82,7 @@
 `<session>/live/`：
 
 - `audio.pcm`：s16le、16 kHz、单声道的麦克风音频，由录制器边录边追加（约每 100 毫秒刷新一次）。暂停期间不写入，所以字节偏移 ÷ 32000 = 视频时间（视频时间同样不含暂停）。
-- `transcript.jsonl`：`live.py` 写，每段定稿一行 `{"start","end","text"}`。分段和 `transcribe.py` 完全一致（Silero VAD，≤1 秒的间隙合并，单段最长取后端上限），所以实时稿和整段转写逐字相同；停顿约 2 秒后当前段收口，思考时的长停顿不会把句子断开。
+- `transcript.jsonl`：`live.py` 写，每段定稿一行 `{"start","end","text"}`。分段和 `transcribe.py` 完全一致（Silero VAD，≤1 秒的间隙合并，单段最长取后端上限），所以同样的音频转出来逐段相同（和从 mp4 的 AAC 音轨重转相比，偶有标点级差异）；停顿约 2 秒后当前段收口，思考时的长停顿不会把句子断开。
 - `drafts.jsonl`：`live.py` 写，每行 `{"id","op":"add|update|drop","kind","title","t","confidence"}`，同一个 id 以后面的行为准。
 - `status.json`：`{"asr":"running|done|off|error","drafts":"running|off|error","updated":<epoch>,"note":"…"}`。
 - `stop`：录制器停止时创建。`live.py` 处理完剩下的音频，写出最终的 `<session>/transcript.json`（格式和 `transcribe.py run` 完全一致），然后退出。

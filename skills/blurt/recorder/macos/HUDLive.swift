@@ -143,6 +143,7 @@ final class HUDLive {
     private var drafts: DraftsWatcher?
     private var transcript: JSONLTail?
     private var lastCaption = ""
+    private var pendingCaption: String?
     private var timer: Timer?
     private var nestShown = false
 
@@ -210,8 +211,11 @@ final class HUDLive {
 
     private func poll() {
         drafts?.poll()
-        guard let lines = transcript?.poll(), let last = lines.last, let text = last["text"] as? String else { return }
-        guard liveCaptionOn, text != lastCaption, let hud = hud, let rec = rec, !rec.isPaused else { return }
+        if let last = transcript?.poll().last, let text = last["text"] as? String { pendingCaption = text }
+        // a sentence that closes while paused is shown on resume rather than dropped
+        guard liveCaptionOn, let text = pendingCaption, let hud = hud, let rec = rec, !rec.isPaused else { return }
+        pendingCaption = nil
+        guard text != lastCaption else { return }
         lastCaption = text
         caption.show(text, near: hud.frame, region: toNS(rec.region))
     }

@@ -123,7 +123,7 @@ func launchLive(_ session: URL) {
     guard FileManager.default.fileExists(atPath: live.path) else { return }   // no mic → no sidecar
     liveLaunched.insert(session.path)
     shell("\(shq(uv)) run -q \(shq("\(skill)/scripts/live.py")) run \(shq(session.path)) --watch-pid \(getpid())",
-          cwd: session, log: live.appendingPathComponent("live.log")) { _ in }
+          cwd: session, log: session.appendingPathComponent("live.log")) { _ in }   // outside live/: survives a restart
 }
 
 /// After a saved take: a sidecar nobody consumes is just litter.

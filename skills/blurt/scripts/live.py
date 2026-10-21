@@ -23,8 +23,8 @@ A starting outline only. Config ($BLURT_HOME/config.json → record): live (defa
 an agent CLI is installed), live_drafts_agent ("claude" | "codex"), live_drafts_model. Env BLURT_LIVE_DRAFTS_CMD = a
 command that reads the prompt on stdin and prints the JSON answer (tests / other agents).
 
-Files in <session>/live/: audio.pcm, stop (recorder) · transcript.jsonl, drafts.jsonl, status.json, live.log,
-drafts.log (per-call latency / cost).
+Files in <session>/live/: audio.pcm, stop (recorder) · transcript.jsonl, drafts.jsonl, status.json,
+drafts.log (per-call latency / cost). Our stderr goes to <session>/live.log (kept across restarts).
 """
 from __future__ import annotations
 

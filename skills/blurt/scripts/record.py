@@ -339,7 +339,7 @@ def start_live(session: Path) -> subprocess.Popen | None:
     live = session / "live"
     try:
         live.mkdir(parents=True, exist_ok=True)
-        log = open(live / "live.log", "a", encoding="utf-8")
+        log = open(session / "live.log", "a", encoding="utf-8")  # outside live/: a restart deletes live/
         kw = {"creationflags": 0x00000200 | 0x08000000} if IS_WIN else {"start_new_session": True}  # own group, no window
         return subprocess.Popen([shutil.which("uv"), "run", "-q", str(Path(__file__).parent / "live.py"), "run",
                                  str(session), "--watch-pid", str(os.getpid())],
