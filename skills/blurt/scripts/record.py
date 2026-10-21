@@ -577,6 +577,11 @@ def ensure_app_installed(force: bool = False) -> Path | None:
     try:
         if IS_MAC:
             dest = Path.home() / "Applications" / "Blurt.app"
+            # a release install (the DMG, with Sparkle) updates itself: a skill build neither replaces nor duplicates it
+            sparkle = Path("Contents") / "Frameworks" / "Sparkle.framework"
+            release = next((a for a in (Path("/Applications/Blurt.app"), dest) if (a / sparkle).exists()), None)
+            if release and setting is not True and not (APP_BUNDLE / sparkle).exists():
+                return release
             if dest.exists() and not force:
                 return dest
             if not (APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder").exists():
