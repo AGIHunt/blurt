@@ -2,10 +2,11 @@
 // command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "record" | "snap" |"snapregion x,y,w,h" | "perch" |
 //       "hide" | "process" | "commit" | "cancel" | "edit N" | "hatch DIR" | "hatched DIR ok|fail" | "stop" | "shortcuts" |
-//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT"}
+//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT" | "webjs CODE"}
 
 import AppKit
 import Carbon.HIToolbox
+import WebKit
 import BlurtCore
 
 var testMenu: NSMenu?
@@ -61,6 +62,11 @@ extension App {
             if parts[0] == "raise" { HotkeySettings.shared.window?.orderFrontRegardless() }
         case "js":                                      // js CODE: run in the front review window (tests: switch views, open modals)
             ReviewHub.shared.windows.last?.web.evaluateJavaScript(arg) { r, e in emit(["event": "js", "result": "\(r ?? e ?? "")"]) }
+        case "webjs":                                   // webjs CODE: run in every blurt-app:// canvas (main window detail)
+            func webViews(_ v: NSView) -> [WKWebView] { (v as? WKWebView).map { [$0] } ?? v.subviews.flatMap(webViews) }
+            for w in NSApp.windows { for wv in webViews(w.contentView ?? NSView()) where wv.url?.scheme == "blurt-app" {
+                wv.evaluateJavaScript(arg) { r, e in emit(["event": "webjs", "window": w.windowNumber, "result": "\(r ?? e ?? "")"]) }
+            } }
         case "recordkey":                               // recordkey ACTION: click that recorder field
             HotkeySettings.shared.show()
             if let a = HotAction(rawValue: arg) { HotkeySettings.shared.fields[a]?.start() }

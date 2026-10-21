@@ -253,6 +253,10 @@ final class FixRunner: NSObject, NSWindowDelegate {
         host.sizingOptions = [.preferredContentSize]
         w.contentViewController = host
         w.center()
+        // one panel per run: a second run's panel must not sit exactly on top of a first one that is still open
+        if let prev = windows.last(where: { $0.isVisible }) {
+            w.setFrameTopLeftPoint(NSPoint(x: prev.frame.minX + 28, y: prev.frame.maxY - 28))
+        }
         activateApp()
         w.makeKeyAndOrderFront(nil)
         windows.append(w)

@@ -3,6 +3,7 @@
 //   blurt://session/<abs-path-encoded>     → the session in the main window, else its review window
 //   blurt://settings[/<pane>]              → Settings (general, shortcuts, speech, agents, export, privacy, storage)
 //   blurt://onboarding                     → the setup assistant
+//   blurt://open                           → the main window (same as the menu's "Open Blurt"; the Tauri app has it too)
 //   blurt://record, blurt://snap           → not handled here (false): the shell starts them
 // Anything that would start an agent or change data is deliberately not reachable from a URL: any web page can open
 // one.
@@ -16,6 +17,7 @@ enum URLRouter {
         case session(URL)
         case settings(String?)
         case onboarding
+        case open
         case shell(String)          // record / snap — the shell's
         case unknown
     }
@@ -38,6 +40,7 @@ enum URLRouter {
             return .session(URL(fileURLWithPath: p))
         case "settings": return .settings(rest.isEmpty ? nil : rest)
         case "onboarding": return .onboarding
+        case "open": return .open
         case "record", "snap": return .shell(host)
         default: return .unknown
         }
@@ -64,6 +67,10 @@ enum URLRouter {
             return true
         case .onboarding:
             Onboarding.shared.show()
+            return true
+        case .open:
+            guard let mw = AppEnvironment.mainWindow else { return false }
+            mw.show()
             return true
         case .shell, .unknown:
             return false

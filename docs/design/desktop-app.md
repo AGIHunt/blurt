@@ -728,6 +728,7 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   - `blurt://record`
   - `blurt://snap`
   - `blurt://settings[/<pane>]`（pane：`general`、`shortcuts`、`speech`、`agents`、`export`、`privacy`、`storage`）、`blurt://onboarding`（WP6 加）
+  - `blurt://open`：打开主窗口（和菜单「打开口喷鸡」一样；Tauri 也认，见 C8）
 
 细则（WP6 实现时补充，以代码为准）：
 - **URL 安全**：任何网页都能打开 `blurt://`，所以 URL 只做「打开、定位」，不启动 agent，不写数据。`item` / `session` 先交给
