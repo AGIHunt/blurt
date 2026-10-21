@@ -294,6 +294,11 @@ final class Hotkeys {
     func publish() {
         let fm = FileManager.default
         try? fm.createDirectory(at: Hotkeys.registryDir, withIntermediateDirectories: true)
+        for f in (try? fm.contentsOfDirectory(atPath: Hotkeys.registryDir.path)) ?? [] {   // instances that died without cleaning up
+            if let pid = Int32(f.replacingOccurrences(of: ".json", with: "")), kill(pid, 0) != 0, errno == ESRCH {
+                try? fm.removeItem(at: Hotkeys.registryDir.appendingPathComponent(f))
+            }
+        }
         let held = HotAction.allCases.compactMap { a -> String? in states[a] == .ok || states[a] == .system ? map[a]?.spec : nil }
         let obj: [String: Any] = ["pid": Int(getpid()), "home": blurtHome.path, "hotkeys": held]
         if let d = try? JSONSerialization.data(withJSONObject: obj) {
