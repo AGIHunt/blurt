@@ -3,7 +3,8 @@ import type { FixRecord, Item } from "../host";
 import { isEnter } from "../ime";
 import { fmt, kindOf, SEV } from "../store";
 import { statusOf } from "../sync";
-import { Egg, ICheck, ICode, IDown, IUp, IWand, IX } from "./icons";
+import { Egg } from "./icons";
+import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 import { isMacLike } from "./TopBar";
 
@@ -72,7 +73,10 @@ function Field({ i, k, label, type = "area", cls, title, placeholder }: { i: Ite
   if (k === "answer") return box;
   return (
     <div className={cx("f", cls)}>
-      <label>{label}</label>
+      <label>
+        {label}
+        <Icon name="pencil" className="pen" />
+      </label>
       {box}
     </div>
   );
@@ -112,7 +116,7 @@ function FixHistory({ i }: { i: Item }) {
             {f.commit ? <code>{shortSha(f.commit)}</code> : null}
             {f.pr ? (
               <a href={f.pr} target="_blank" rel="noreferrer">
-                PR
+                PR <Icon name="external-link" size={11} />
               </a>
             ) : null}
             <span className="fxt">{when(f.at, s.lang)}</span>
@@ -157,7 +161,7 @@ export function Inspector() {
               <button key={c} data-copy={c} title={s.host.openCode ? s.t("openCode") : undefined}
                 onClick={() => (s.host.openCode ? s.host.openCode(c) : s.copy(c))}>
                 <span>{c}</span>
-                <em>{s.host.openCode ? <ICode size={12} /> : "⧉"}</em>
+                <em>{s.host.openCode ? <Icon name="code" size={13} /> : <Icon name="copy" size={13} />}</em>
               </button>
             ))}
           </div>
@@ -204,10 +208,10 @@ export function Inspector() {
             </span>
             <span className="nav">
               <button data-nav="-1" title="↑ / K" aria-label={s.t("prev")} onClick={() => s.go(s.cur - 1, "down")}>
-                <IUp />
+                <Icon name="chevron-up" />
               </button>
               <button data-nav="1" title="↓ / J" aria-label={s.t("next")} onClick={() => s.go(s.cur + 1, "up")}>
-                <IDown />
+                <Icon name="chevron-down" />
               </button>
             </span>
           </>
@@ -217,12 +221,12 @@ export function Inspector() {
       <div className="chips">
         {st === "keep" ? (
           <span className="chip st-keep">
-            <ICheck />
+            <Icon name="check" />
             {s.t("kept1")}
           </span>
         ) : st === "drop" ? (
           <span className="chip st-drop">
-            <IX />
+            <Icon name="x" />
             {s.t("dropped1")}
           </span>
         ) : null}
@@ -249,13 +253,15 @@ export function Inspector() {
       </div>
       {s.host.fixWithAgent && (
         <button className="btn fixbtn" id="fixBtn" onClick={s.fixWithAgent}>
-          <IWand size={15} /> {s.t("fixWithAgent")}
+          <Icon name="wand" size={15} /> {s.t("fixWithAgent")}
           {s.mode === "item" && <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>}
         </button>
       )}
       {(i.questions || []).length > 0 && (
         <div className="ask">
-          <div className="h">● {s.t("ask")}</div>
+          <div className="h">
+            <Icon name="help-circle" size={14} /> {s.t("ask")}
+          </div>
           {i.questions!.map((q, n) => (
             <div className="qq" key={n}>
               {q}
@@ -266,12 +272,13 @@ export function Inspector() {
       )}
       {i.quote && (
         <div className="quote">
+          <Icon name="quote" className="qmark" />
           {i.quote}
           <div className="meta">
             {i.time && i.time.start != null ? `${fmt(i.time.start)} – ${fmt(i.time.end)}` : ""}
             {s.hasVideo(i) && (
               <button className="linkbtn" id="origBtn" onClick={s.playOrig}>
-                ▶ {s.t("playOrig")} <kbd>O</kbd>
+                <Icon name="play" size={12} /> {s.t("playOrig")} <kbd>O</kbd>
               </button>
             )}
           </div>

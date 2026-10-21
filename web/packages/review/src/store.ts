@@ -82,7 +82,7 @@ export class ReviewStore {
   warnedProc = false;
   finishWarn = false;
   modal: null | "help" | "finish" = null;
-  toast: { msg: string; undo: boolean; show: boolean } | null = null;
+  toast: { msg: string; undo: boolean; show: boolean; icon?: "check" | "x" } | null = null;
   lightbox: string | null = null;
   proc: ProcPhase = "hidden";
 
@@ -402,7 +402,7 @@ export class ReviewStore {
       i._dropped = true;
     }
     this.save();
-    this.showToast(kind === "keep" ? `✓ ${this.t("kept1")} · ${i.id || ""}` : `✕ ${this.t("dropped1")} · ${i.id || ""}`, true);
+    this.showToast(`${this.t(kind === "keep" ? "kept1" : "dropped1")} · ${i.id || ""}`, true, kind === "keep" ? "check" : "x");
     if (this.counts().p === 0 && this.cur === this.data.items.length - 1) {
       setTimeout(() => this.openFinish(), 250);
       return;
@@ -506,8 +506,8 @@ export class ReviewStore {
     this.emit();
   };
 
-  showToast(msg: string, withUndo = false) {
-    this.toast = { msg, undo: withUndo, show: true };
+  showToast(msg: string, withUndo = false, icon?: "check" | "x") {
+    this.toast = { msg, undo: withUndo, show: true, icon };
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {
       if (this.toast) this.toast = { ...this.toast, show: false };
