@@ -86,6 +86,11 @@ def gen_swift(icons) -> str:
     for ic in icons:
         o.append(f"        case .{swift_case(ic.name)}: return {swift_str(ic.title or ic.name)}")
     o += ["        }", "    }", "",
+          "    /// The icon's SVG body (paths in the 24 grid, currentColor) — for HTML the app generates itself; see `svg(size:)`.",
+          "    var svgInner: String {", "        switch self {"]
+    for ic in icons:
+        o.append(f"        case .{swift_case(ic.name)}: return {swift_str(iconlib.inner_markup(ic))}")
+    o += ["        }", "    }", "",
           "    /// The painted layers, in order. Strokes use the family width (1.75 in grid units, scaled with the icon).",
           "    func makeLayers() -> [BlurtIconLayer] {", "        switch self {"]
     for ic in icons:

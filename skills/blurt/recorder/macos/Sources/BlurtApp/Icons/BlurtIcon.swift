@@ -115,6 +115,23 @@ extension BlurtIcon {
         return ctx.makeImage()
     }
 
+    /// A CALayer showing the icon, for layer-built UIs (the perch, the HUD). CATextLayer can't draw NSTextAttachment, so
+    /// an icon next to CATextLayer text is a sibling layer: place this one, then start the text after it.
+    func makeLayer(size: CGFloat, color: CGColor, scale: CGFloat = 2) -> CALayer {
+        let l = CALayer()
+        l.bounds = CGRect(x: 0, y: 0, width: size, height: size)
+        l.contentsScale = scale
+        l.contents = cgImage(size: size, scale: scale, color: color)
+        return l
+    }
+
+    /// Inline SVG markup (currentColor) for HTML the app builds itself, e.g. the review window's error page.
+    func svg(size: CGFloat = 24) -> String {
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"\(Int(size))\" height=\"\(Int(size))\" viewBox=\"0 0 24 24\" fill=\"none\" "
+            + "stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">"
+            + svgInner + "</svg>"
+    }
+
     /// The SF Symbol for a generic icon (first of `sfSymbols` this macOS has), else our own vector. Brand icons always
     /// return our vector. Template image either way.
     func symbolImage(pointSize: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage {
