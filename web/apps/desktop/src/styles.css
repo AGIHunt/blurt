@@ -825,6 +825,10 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: visible;
+}
+.session-bar .txt {
+  flex: 0 1 auto;
 }
 .session-bar .nm .ids {
   margin-left: 0;

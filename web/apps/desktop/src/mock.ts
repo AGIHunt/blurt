@@ -80,8 +80,8 @@ function doc(scope: { session?: string; project?: string }) {
 }
 
 const sessions = () => [
-  { job: 'j-20261022-094100-k2m4', project: 'p1', agent: 'claude', items: ['SF-9'], window: '@3', status: 'waiting_input', status_at: '2026-10-22T09:52:00+02:00', worktree: `${H}/code/.storefront-worktrees/SF-9`, branch: 'blurt/sf-9-avatar-upload', cwd: `${H}/code/.storefront-worktrees/SF-9`, started: new Date((now - 1500) * 1000).toISOString(), ended: null, exit: null },
-  { job: 'j-20261021-161000-a7q2', project: 'p2', agent: 'codex', items: ['MA-3'], window: '@1', status: 'running', status_at: null, worktree: null, branch: null, cwd: `${H}/code/mobile-app`, started: new Date((now - 7200) * 1000).toISOString(), ended: null, exit: null },
+  { job: 'j-20261022-094100-k2m4', project: 'p1', agent: 'claude', items: ['u04'], window: 'SF-9', status: 'waiting_input', status_at: '2026-10-22T09:52:00+02:00', worktree: `${H}/code/.storefront-worktrees/SF-9`, branch: 'blurt/sf-9-avatar-upload', cwd: `${H}/code/.storefront-worktrees/SF-9`, started: new Date((now - 1500) * 1000).toISOString(), ended: null, exit: null },
+  { job: 'j-20261021-161000-a7q2', project: 'p2', agent: 'codex', items: ['u11'], window: 'MA-3', status: 'running', status_at: null, worktree: null, branch: null, cwd: `${H}/code/mobile-app`, started: new Date((now - 7200) * 1000).toISOString(), ended: null, exit: null },
 ];
 
 const TERM = [
