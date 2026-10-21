@@ -703,6 +703,53 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
     `blurt://perch`（Rust→鸡舍：set/add/remove/show/hide/busy）、`blurt://note-done`、`blurt://ready`；
   - Linux X11 没有排除截屏的办法，所以 HUD 放在录制区域外面，放不下才贴着区域底边放在里面。
 
+细则（WP7 实现时补充，以 `apps/desktop/src-tauri/src/lib.rs` 为准）：
+- **参数名**：Rust 用 snake_case，JS `invoke` 用 camelCase（Tauri 默认），例如 `fix_with_agent(session, item_ids)` →
+  `invoke('fix_with_agent', {session, itemIds})`。对象参数里的字段保持 C3 的写法（`q.fix_state`）。
+- **`ItemQuery`** = `{query?, kind?: [], status?: [], fix_state?: [], severity?: [], workspace?: id|path, session?: id|dir,
+  has_code_refs?: bool, sort?: "updated"|"created"|"t_start", limit=50, offset=0}`，查询规则照搬 C3 细则。
+  返回 `{total, items, missing}`，`missing: true` 表示还没有 `index.db`（不是错误）。
+  ItemRow 在 C3 的 12 个字段之外还带 `workspace_id, created, session_title, quote, tags, owner, module, t_start,
+  frame_count, has_code_refs, user_edited, exported`。
+- **`index_sessions(q?)`**：`q = {workspace?, state?: "unprocessed"|"processing"|"unreviewed"|"reviewed"|"inbox", limit, offset}`，
+  `inbox` = 没整理、整理中或没审核；行 = `sessions` 表全部列 + `workspace_name, workspace_path, fixed_count`。
+  `index_workspaces()` 的行 = `workspaces` 表 + `sessions, open_items`（open 的定义同 C4）。
+- **review**：`review_load(session) → {doc, etag, session}`；`review_poll(session, etag) → {etag}`（没变）或 `{doc, etag}`；
+  `review_ops(session, ops, confirm?) → items.py user-ops 的那行 JSON（{ok, etag}）`。ETag 与 `_common.file_etag` 相同。
+  文件走 asset protocol（`convertFileSrc`）；应用把每个工作区的 sessions 目录和打开过的会话目录动态加进 asset scope。
+- **agent**：`agents_detect() → agents.py detect 的输出`；`agent_run(id, prompt, repo) → run_id`（`r-YYYYMMDD-HHMMSS-xxxx`，
+  提示词写进 `$BLURT_HOME/prompts/<run_id>.md`，用 `agents.py command … --prompt-file … --var run_id=…` 拿 argv，
+  注入 `BLURT_AGENT` / `BLURT_RUN_ID`）。事件：`agent://started {run_id, agent}`、`agent://line {run_id, line, stream}`、
+  `agent://exit {run_id, code, state}`；结束时发系统通知。补充命令：`agent_runs() → [AgentRun]`（最近 400 行日志、
+  `total_cost_usd`）、`agent_stop(run_id)`、`agent_prompt(uids)`、
+  `fix_with_agent(session, item_ids, agent?) → {run_id, agent, repo}`（会话必须在仓库工作区里；先 `items.py fix --state fixing`，
+  agent 不给时用 detect 的 `pick`）、`process_session(session, agent?)`（提示词和 macOS 的 AgentHub / Snap 同一句）。
+- **设置**：`settings_get() → {config, hotkeys: [HotkeyRow], hotkey_mode, wayland, export_targets, config_path}`；
+  `settings_set(patch)` 按 `update_global_config` 的规则合并（顶层对象只合并一层），值为 `null` 删除该键。
+- **快捷键**：配置沿用 `record.hotkeys`（不是 C7 写的 `record.shortcuts`，以现有代码为准），语法同 `_common.parse_hotkey`。
+  常驻注册 `record` / `menu` / `snap`，其余录制中才注册。
+  `HotkeyRow = {action, spec, label, default, active, result, of?, name?, hint?}`，
+  `result = ok | off | idle（录制时生效）| duplicate（of）| system（name）| taken | unsupported（pen）| invalid | portal | pending | manual`。
+  `shortcut_set(action, combo) → {result: ok|duplicate|system|taken|invalid, action?, name?, spec, label, hint?, row?}`，
+  有冲突时不保存。Wayland：先用 GlobalShortcuts 门户（`hotkey_mode = portal`），没有门户时 `manual`，
+  提示用户在系统设置里绑定命令 `blurt blurt://record`（单实例把 URL 转给正在运行的应用）。事件 `hotkeys://changed [HotkeyRow]`。
+- **其它命令**：`app_status()`、`index_summary() → {missing, items, sessions, inbox, fixing}`、`index_item(uid)`、
+  `index_rescan()`、`asr_models()`（`transcribe.py models`）、`open_path(path)`、`update_check()`、
+  `capture_start(opts?: {session?, region?: [x,y,w,h], pick=true}) → session dir`（阻塞到开始录或取消，选区在 worker 线程里）、
+  `capture_control("pause"|"resume"|"stop"|"snap"|"marker"|"discard")`、`capture_state()`。
+  `open_external` 只放行 `http(s) vscode cursor zed claude-cli file` 这几种 scheme。
+- **事件**：`index://changed {sessions}`（watcher 防抖 300 ms 后执行 `index.py update` 再发）、`index://status {scanning, error?}`、
+  `capture://status`（状态行 + `session`，外加 `picking` / `cancelled`）、`nav {item: uid}|{session: dir}`（deep link）、
+  `perch://action`。
+- **deep link**：C7 的四个之外，`blurt://open|pause|stop|marker` 也认（给 Wayland 的系统快捷键用）。
+- **配置键（新增）**：`record.last_region_px`（上次选区，物理像素）、`record.mic`（`false`/`"off"` = 不录麦克风，或设备名）、
+  `app.editor`（`vscode`|`cursor`|`zed`，打开 code_refs 用）、`app.disable_dmabuf`（Linux：关 WebKit DMA-BUF 渲染；
+  不设时检测到 NVIDIA 驱动就关）。
+- **环境变量**：`BLURT_HOME`、`BLURT_WORKSPACE`、`HOME` 同 Python 侧；`BLURT_SCRIPTS`（脚本目录，默认依次找打包的
+  `resources/scripts`、仓库、`~/.claude/skills/blurt/scripts`）；测试用：`BLURT_START_VIEW`、`BLURT_QUIT_ON_CLOSE`、
+  `BLURT_LANG`、`BLURT_NO_SCAN`、`BLURT_NO_LOGIN_SHELL`、`BLURT_HOTKEY_MODS`、`BLURT_DISABLE_DMABUF`。
+- **bundle id**：Tauri 应用用 `dev.blurt.desktop`（Windows/Linux 专用，和 macOS 的 `dev.blurt.recorder` 分开，以免在 Mac 上冒烟时冲突）。
+
 ---
 
 ## 6. 并行实施计划（8 个工作包）
