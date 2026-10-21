@@ -17,7 +17,7 @@ protocol MainWindowHosting: AnyObject {
 // G0 stub defaults (v0.7 contract): until the main window embeds the terminal (P4), a job opens in P3's own
 // Sessions window.
 extension MainWindowHosting {
-    func reveal(job: String) { SessionsWindowController.shared.show(job: job) }
+    func reveal(job: String) { MainActor.assumeIsolated { SessionsWindowController.shared.show(job: job) } }
     func reveal(project: String) { show() }
     func showInbox() { show() }
 }

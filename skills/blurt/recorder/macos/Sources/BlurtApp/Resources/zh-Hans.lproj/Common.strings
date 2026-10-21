@@ -1,0 +1,11 @@
+/* G0 占位（Common 表归 P4）：只放 Terminal 包用到的 K10 通用词。合并时以 P4 的文件为准。 */
+"session.running" = "运行中";
+"session.waiting_input" = "等你回答";
+"session.turn_done" = "本轮完成";
+"session.exited" = "已退出";
+"session.error" = "出错";
+"project.inbox" = "待分配";
+"job.type.agent" = "agent 会话";
+"job.step.launch" = "启动";
+"job.step.work" = "处理中";
+"job.step.finish" = "收尾";

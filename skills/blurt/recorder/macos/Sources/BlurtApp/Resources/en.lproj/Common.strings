@@ -1,0 +1,11 @@
+/* G0 stand-in (P4 owns Common): only the K10 shared words the Terminal package shows. On merge, take P4's file. */
+"session.running" = "Working";
+"session.waiting_input" = "Needs your input";
+"session.turn_done" = "Turn finished";
+"session.exited" = "Exited";
+"session.error" = "Error";
+"project.inbox" = "Unassigned";
+"job.type.agent" = "Agent session";
+"job.step.launch" = "Starting";
+"job.step.work" = "Working";
+"job.step.finish" = "Finishing";
