@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { comboFromEvent, comboLabel, egg } from './util';
 import { codeUrl, repoOf } from './host';
-import { isImeKey, _setCompositionEnd } from './review/ime';
+import { isImeKey, _setCompositionEnd } from './ime';
 import { joinPath } from './api';
 
 const ev = (code: string, mods: Partial<Record<'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey', boolean>> = {}) => ({
@@ -49,8 +49,8 @@ describe('paths', () => {
     expect(joinPath('C:\\s\\dir', 'frames/a.jpg')).toBe('C:\\s\\dir\\frames\\a.jpg');
   });
   it('egg states', () => {
-    expect(egg({ processed: 0, processing: 0, reviewed: 0 }).icon).toBe('🥚');
+    expect(egg({ processed: 0, processing: 0, reviewed: 0 }).icon).toBe('egg');
     expect(egg({ processed: 1, processing: 1, reviewed: 0 }).cls).toContain('wobble');
-    expect(egg({ processed: 1, processing: 0, reviewed: 0 }).icon).toBe('🐣');
+    expect(egg({ processed: 1, processing: 0, reviewed: 0 }).icon).toBe('chick');
   });
 });

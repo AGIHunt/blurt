@@ -1,9 +1,9 @@
-// The 'tauri' BlurtHost (C6) for one session dir: reads via review_load / review_poll, writes via review_ops
-// (→ items.py user-ops), files through the asset protocol. WP3's package ships its own tauri adapter with the same
-// calls; until then the app uses this one.
+// The 'tauri' BlurtHost (C6) for one session dir: WP3's adapter (review_load / review_poll / review_ops → items.py
+// user-ops, files through the asset protocol) plus what the shell adds — open code refs in the editor and
+// "let agent fix" with feedback in the main window. In a plain browser (mock data) the same calls go to ./mock.
 
-import { api, fileSrc, invoke, joinPath } from './api';
-import type { BlurtHost, SessionDoc, UserOp } from './review';
+import { api, fileSrc, inTauri, invoke, joinPath } from './api';
+import { createTauriHost, type BlurtHost, type UserOp } from './review';
 
 export interface HostCallbacks {
   onFixWithAgent?: (session: string, itemIds: string[]) => void;
@@ -25,18 +25,28 @@ export function repoOf(session: string): string | null {
   return m ? m[1] : null;
 }
 
-export function tauriHost(session: string, cb: HostCallbacks = {}, editor = 'vscode'): BlurtHost {
-  const repo = repoOf(session);
+function mockHost(session: string): BlurtHost {
   return {
     host: 'tauri',
-    load: () => invoke<{ doc: SessionDoc; etag: string }>('review_load', { session }),
-    poll: (etag: string) => invoke<{ doc?: SessionDoc; etag: string }>('review_poll', { session, etag }),
-    sendOps: (ops: UserOp[], confirm = false) =>
-      invoke<{ ok: boolean; etag: string }>('review_ops', { session, ops, confirm }).catch((e) => {
+    inApp: true,
+    load: () => invoke('review_load', { session }),
+    poll: (etag: string) => invoke('review_poll', { session, etag }),
+    sendOps: (ops: UserOp[], confirm = false) => invoke('review_ops', { session, ops, confirm }),
+    fileUrl: (rel: string) => fileSrc(joinPath(session, rel)),
+  };
+}
+
+export function tauriHost(session: string, cb: HostCallbacks = {}, editor = 'vscode'): BlurtHost {
+  const repo = repoOf(session);
+  const base = inTauri ? createTauriHost(session) : mockHost(session);
+  return {
+    ...base,
+    inApp: true,
+    sendOps: (ops, confirm) =>
+      base.sendOps(ops, confirm).catch((e) => {
         cb.onError?.(String(e));
         throw e;
       }),
-    fileUrl: (rel: string) => fileSrc(joinPath(session, rel)),
     reveal: (rel: string) => void api.reveal(joinPath(session, rel)).catch((e) => cb.onError?.(String(e))),
     openCode: repo ? (ref: string) => void api.openExternal(codeUrl(repo, ref, editor)).catch((e) => cb.onError?.(String(e))) : undefined,
     fixWithAgent: repo && cb.onFixWithAgent ? (ids: string[]) => cb.onFixWithAgent!(session, ids) : undefined,

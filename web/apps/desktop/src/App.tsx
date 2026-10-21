@@ -7,8 +7,10 @@ import { tauriHost } from './host';
 import { ReviewPane } from './components/ReviewPane';
 import { SettingsView } from './components/SettingsView';
 import { AgentsView } from './components/AgentsView';
-import { isImeKey } from './review/ime';
-import { ago, debounce, egg, inField, kindIcon, setLang, t } from './util';
+import { isImeKey } from './ime';
+import { applyPlatform, applyTheme } from '@blurt/ui';
+import { Icon, KindIcon } from './icons';
+import { ago, debounce, egg, inField, setLang, t } from './util';
 
 type View = 'inbox' | 'items' | 'sessions' | 'agents' | 'settings' | 'review';
 const KINDS = ['issue', 'idea', 'note', 'task'] as const;
@@ -48,7 +50,7 @@ function Highlight({ text }: { text: string }) {
 function FixBadge({ state }: { state: string | null }) {
   if (!state) return null;
   const label = { fixing: t('修复中', 'fixing'), fixed: t('已修', 'fixed'), wontfix: t('不修', "won't fix"), reopened: t('重开', 'reopened') }[state] ?? state;
-  return <span className={`fix fix-${state}`}>{state === 'fixed' ? '✓ ' : state === 'fixing' ? '● ' : ''}{label}</span>;
+  return <span className={`fix fix-${state}`}>{state === 'fixed' ? <Icon name="check" size={11} /> : state === 'fixing' ? <Icon name="fixing" size={11} /> : null} {label}</span>;
 }
 
 function SessionList({ rows, onReview, onProcess, onReveal }: {
@@ -61,7 +63,7 @@ function SessionList({ rows, onReview, onProcess, onReveal }: {
         const e = egg(s);
         return (
           <li key={s.id} onDoubleClick={() => s.processed && onReview(s)}>
-            <span className={e.cls} title={e.label}>{e.icon}</span>
+            <span className={e.cls} title={e.label}><Icon name={e.icon} size={26} /></span>
             <div className="s-main">
               <div className="s-title">{s.title || s.dir.split(/[\\/]/).pop()}</div>
               <div className="dim small">
@@ -116,6 +118,7 @@ export default function App() {
   const [scanning, setScanning] = useState(false);
   const [tick, setTick] = useState(0);
   const [recordKey, setRecordKey] = useState('');
+  const [editor, setEditor] = useState('vscode');
   const toast = useToast();
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -127,7 +130,8 @@ export default function App() {
       setLang(s.lang);
       setStatus(s);
       setCapture(s.capture);
-      document.documentElement.dataset.platform = s.platform;
+      applyPlatform(s.platform);
+      applyTheme('auto');
       const sv = s.start_view;
       if (sv?.startsWith('review:')) {
         setReview({ dir: sv.slice(7), title: '' });
@@ -161,7 +165,10 @@ export default function App() {
       listen('agent://exit', refresh),
       listen<{ action: string; label: string }[]>('hotkeys://changed', (rows) => setRecordKey(rows.find((r) => r.action === 'record')?.label ?? '')),
     ];
-    api.settings().then((s) => setRecordKey(s.hotkeys.find((r) => r.action === 'record')?.label ?? ''), () => {});
+    api.settings().then((s) => {
+      setRecordKey(s.hotkeys.find((r) => r.action === 'record')?.label ?? '');
+      if (typeof s.config?.app?.editor === 'string') setEditor(s.config.app.editor); // vscode | cursor | zed
+    }, () => {});
     return () => offs.forEach((o) => o());
   }, []);
 
@@ -227,10 +234,10 @@ export default function App() {
   }, []);
 
   const host = useMemo(
-    () => (current ? tauriHost(current.session_dir, { onFixWithAgent: fixWithAgent, onError: toast.show }) : null),
-    [current?.session_dir, fixWithAgent],
+    () => (current ? tauriHost(current.session_dir, { onFixWithAgent: fixWithAgent, onError: toast.show }, editor) : null),
+    [current?.session_dir, fixWithAgent, editor],
   );
-  const reviewHost = useMemo(() => (review ? tauriHost(review.dir, { onFixWithAgent: fixWithAgent, onError: toast.show }) : null), [review?.dir, fixWithAgent]);
+  const reviewHost = useMemo(() => (review ? tauriHost(review.dir, { onFixWithAgent: fixWithAgent, onError: toast.show }, editor) : null), [review?.dir, fixWithAgent, editor]);
 
   const setItemField = async (row: ItemRow, set: Record<string, unknown>) => {
     try {
@@ -267,10 +274,11 @@ export default function App() {
       if (e.key === 'Escape') {
         if (palette) setPalette(false);
         else if (help) setHelp(false);
-        else if (view === 'review') setView('items');
+        else if (view === 'review' && !document.querySelector('.modal, .lightbox')) setView('items');
         return;
       }
-      if (inField(e.target) || isImeKey(e) || palette) return;
+      // the review canvas handles its own keys first (Ctrl+Enter, E, 1–3, ?, ←/→ …) and marks them handled
+      if (e.defaultPrevented || inField(e.target) || isImeKey(e) || palette) return;
       if (view === 'review') return; // the review component has its own keys
       const k = e.key;
       if (k === '/') {
@@ -287,12 +295,7 @@ export default function App() {
         }
         e.preventDefault();
       } else if (!current) return;
-      else if (k === 'Enter' && mod) fixWithAgent(current.session_dir, [current.item_id]);
-      else if (k === 'Enter') (document.querySelector('[data-testid="item-title"]') as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
-      else if (k === 'e' || k === 'E') {
-        e.preventDefault();
-        (document.querySelector('[data-testid="item-title"]') as HTMLInputElement | null)?.focus();
-      } else if ('1234'.includes(k) && k.length === 1) setItemField(current, { kind: KINDS[Number(k) - 1] });
+      else if (k === 'Enter') (document.querySelector('.review-pane textarea.title') as HTMLElement | null)?.focus();
       else if (k === 's' || k === 'S') setItemField(current, { status: current.status === 'draft' ? 'confirmed' : current.status === 'confirmed' ? 'deleted' : 'draft' });
       else if (k === 'r' || k === 'R') openReview(current.session_dir, current.session_title ?? '');
     };
@@ -308,11 +311,11 @@ export default function App() {
 
   return (
     <div className="app" data-platform={platform}>
-      <header className="toolbar">
+      <header className="topbar">
         <button className={`rec ${capture.recording ? 'on' : ''}`} onClick={record} data-testid="record" disabled={capture.picking}>
-          <span className="dot" /> {capture.recording ? t('结束录制', 'Finish') : t('录制', 'Record')} {recordKey && <kbd>{recordKey}</kbd>}
+          <Icon name="record" size={12} className="rec-dot" /> {capture.recording ? t('结束录制', 'Finish') : t('录制', 'Record')} {recordKey && <kbd>{recordKey}</kbd>}
         </button>
-        <button onClick={() => api.captureControl('snap').catch((e) => toast.show(String(e)))} disabled={!capture.recording}>📸 {t('截图', 'Snap')}</button>
+        <button onClick={() => api.captureControl('snap').catch((e) => toast.show(String(e)))} disabled={!capture.recording}><Icon name="snap" /> {t('截图', 'Snap')}</button>
         <label className="project">
           {t('项目', 'Project')}
           <select
@@ -330,8 +333,8 @@ export default function App() {
         </label>
         <div className="spacer" />
         {scanning && <span className="dim small">{t('建索引…', 'Indexing…')}</span>}
-        {!!summary?.fixing && <span className="pill" onClick={() => nav('agents')}>● {summary.fixing} {t('修复中', 'fixing')}</span>}
-        <div className="search">
+        {!!summary?.fixing && <span className="pill" onClick={() => nav('agents')}><Icon name="fixing" size={13} /> {summary.fixing} {t('修复中', 'fixing')}</span>}
+        <div className="searchbox">
           <input
             ref={searchRef}
             data-testid="search"
@@ -353,18 +356,18 @@ export default function App() {
       </header>
 
       <nav className="sidebar">
-        <a className={view === 'inbox' ? 'sel' : ''} onClick={() => nav('inbox', workspace)} data-testid="nav-inbox">📥 {t('收件箱', 'Inbox')}<span className="count">{summary?.inbox || ''}</span></a>
-        <a className={view === 'items' && !workspace ? 'sel' : ''} onClick={() => nav('items')} data-testid="nav-items">🗂 {t('全部条目', 'All items')}<span className="count">{summary?.items ?? ''}</span></a>
-        <a className={view === 'sessions' ? 'sel' : ''} onClick={() => nav('sessions', workspace)}>🎞 {t('会话', 'Sessions')}<span className="count">{summary?.sessions || ''}</span></a>
-        <a className={view === 'agents' ? 'sel' : ''} onClick={() => nav('agents')}>🤖 {t('Agent 运行', 'Agent runs')}{summary?.fixing ? <span className="live">●</span> : null}</a>
+        <a className={view === 'inbox' ? 'sel' : ''} onClick={() => nav('inbox', workspace)} data-testid="nav-inbox"><Icon name="inbox" /> {t('收件箱', 'Inbox')}<span className="count">{summary?.inbox || ''}</span></a>
+        <a className={view === 'items' && !workspace ? 'sel' : ''} onClick={() => nav('items')} data-testid="nav-items"><Icon name="items" /> {t('全部条目', 'All items')}<span className="count">{summary?.items ?? ''}</span></a>
+        <a className={view === 'sessions' ? 'sel' : ''} onClick={() => nav('sessions', workspace)}><Icon name="sessions" /> {t('会话', 'Sessions')}<span className="count">{summary?.sessions || ''}</span></a>
+        <a className={view === 'agents' ? 'sel' : ''} onClick={() => nav('agents')}><Icon name="agent" /> {t('Agent 运行', 'Agent runs')}{summary?.fixing ? <span className="live"><Icon name="dot" size={10} /></span> : null}</a>
         <div className="section">{t('项目', 'Projects')}</div>
         {workspaces.map((w) => (
           <a key={w.id} className={view === 'items' && workspace === w.id ? 'sel' : ''} onClick={() => nav('items', w.id)} title={w.path}>
-            {w.kind === 'default' ? '🏠' : '📁'} {w.name}<span className="count">{w.open_items || ''}</span>
+            <Icon name={w.kind === 'default' ? 'home' : 'folder'} /> {w.name}<span className="count">{w.open_items || ''}</span>
           </a>
         ))}
         <div className="grow" />
-        <a className={view === 'settings' ? 'sel' : ''} onClick={() => nav('settings')} data-testid="nav-settings">⚙ {t('设置', 'Settings')}</a>
+        <a className={view === 'settings' ? 'sel' : ''} onClick={() => nav('settings')} data-testid="nav-settings"><Icon name="settings" /> {t('设置', 'Settings')}</a>
       </nav>
 
       <main className={`content view-${view}`}>
@@ -373,9 +376,9 @@ export default function App() {
             <section className="items">
               <div className="filters">
                 {KINDS.map((k, i) => (
-                  <button key={k} className={`chip ${kinds.includes(k) ? 'on' : ''}`} title={`${i + 1}`}
+                  <button key={k} className={`fchip ${kinds.includes(k) ? 'on' : ''}`} title={`${i + 1}`}
                     onClick={() => setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]))}>
-                    {kindIcon(k)} {k}
+                    <KindIcon kind={k} size={14} /> {k}
                   </button>
                 ))}
                 <select value={statusF} onChange={(e) => setStatusF(e.target.value)} aria-label="status">
@@ -397,15 +400,15 @@ export default function App() {
                 <div className="table" role="grid" data-testid="items">
                   {items.map((r) => (
                     <div key={r.uid} role="row" data-uid={r.uid} data-testid="item-row"
-                      className={`row ${r.uid === sel ? 'sel' : ''} st-${r.status} ${r.fix_state === 'fixed' ? 'done' : ''}`}
+                      className={`row ${r.uid === sel ? 'sel' : ''} st-${r.status} ${r.fix_state === 'fixed' ? 'is-fixed' : ''}`}
                       onClick={() => setSel(r.uid)} onDoubleClick={() => openReview(r.session_dir, r.session_title ?? '')}>
-                      <span className="kind" title={r.kind}>{kindIcon(r.kind)}</span>
-                      <span className="title">
+                      <span className="kind"><KindIcon kind={r.kind} /></span>
+                      <span className="ititle">
                         {r.title || <i className="dim">{t('（无标题）', '(untitled)')}</i>}
                         {r.snippet && <span className="snippet"><Highlight text={r.snippet} /></span>}
                       </span>
                       <FixBadge state={r.fix_state} />
-                      {r.severity && <span className={`sev sev-${r.severity}`}>{r.severity}</span>}
+                      {r.severity && <span className={`sevtag sevtag-${r.severity}`}>{r.severity}</span>}
                       <span className="ws dim">{wsName(r.workspace_id)}</span>
                       <span className="age dim">{ago(r.updated)}</span>
                     </div>
@@ -423,7 +426,7 @@ export default function App() {
                     <button className="link" onClick={() => openReview(current.session_dir, current.session_title ?? '')}>{t('审核整个会话', 'Review session')} R</button>
                     <button className="link" onClick={() => api.reveal(current.session_dir)}>{t('打开文件夹', 'Folder')}</button>
                   </div>
-                  <ReviewPane host={host} hostKey={current.session_dir} opts={{ mode: 'item', itemId: current.item_id, platform: platform === 'mac' ? 'mac' : platform, theme: 'auto' }} />
+                  <ReviewPane host={host} hostKey={current.session_dir} opts={{ mode: 'item', itemId: current.item_id, platform, theme: 'auto', lang: status?.lang }} />
                 </>
               ) : (
                 <div className="empty">{current === null && sel ? '' : t('选一条看详情', 'Pick an item')}</div>
@@ -452,10 +455,10 @@ export default function App() {
         {view === 'review' && review && reviewHost && (
           <section className="review-full" data-testid="review-mode">
             <div className="detail-bar">
-              <button className="link" onClick={() => setView('items')}>← {t('返回', 'Back')} Esc</button>
+              <button className="link" onClick={() => setView('items')}><Icon name="back" size={14} /> {t('返回', 'Back')} <kbd>Esc</kbd></button>
               <b>{review.title || review.dir.split(/[\\/]/).pop()}</b>
             </div>
-            <ReviewPane host={reviewHost} hostKey={review.dir} opts={{ mode: 'review', platform: platform === 'mac' ? 'mac' : platform, theme: 'auto' }} />
+            <ReviewPane host={reviewHost} hostKey={review.dir} opts={{ mode: 'review', platform, theme: 'auto', lang: status?.lang }} />
           </section>
         )}
       </main>
@@ -476,13 +479,13 @@ export default function App() {
       )}
       {help && (
         <div className="overlay" onClick={() => setHelp(false)}>
-          <div className="sheet keys" onClick={(e) => e.stopPropagation()}>
+          <div className="sheet keymap" onClick={(e) => e.stopPropagation()}>
             <h3>{t('键位', 'Keys')}</h3>
             <table><tbody>{KEYMAP.map(([k, zh, en]) => <tr key={k}><td><kbd>{k}</kbd></td><td>{t(zh, en)}</td></tr>)}</tbody></table>
           </div>
         </div>
       )}
-      {toast.msg && <div className="toast" role="status">{toast.msg}</div>}
+      {toast.msg && <div className="shell-toast" role="status">{toast.msg}</div>}
     </div>
   );
 }
@@ -507,7 +510,7 @@ function Palette({ onClose, onPick }: { onClose: () => void; onPick: (action: st
   }, [q]);
   const list: [string, string, string?][] = [
     ...cmds.filter(([, l]) => !q || l.toLowerCase().includes(q.toLowerCase())).map(([a, l]) => [a, l] as [string, string]),
-    ...hits.map((h) => [`item:${h.uid}`, `${kindIcon(h.kind)} ${h.title}`, h.primary_frame ?? undefined] as [string, string, string?]),
+    ...hits.map((h) => [`item:${h.uid}`, h.title, h.primary_frame ?? undefined] as [string, string, string?]),
   ];
   return (
     <div className="overlay" onClick={onClose}>
@@ -523,7 +526,7 @@ function Palette({ onClose, onPick }: { onClose: () => void; onPick: (action: st
         <ul>
           {list.map(([a, l, img], i) => (
             <li key={a} className={i === ix ? 'sel' : ''} onMouseEnter={() => setIx(i)} onClick={() => onPick(a)}>
-              {img && <img src={fileSrc(img)} alt="" />}{l}
+              {img ? <img src={fileSrc(img)} alt="" /> : <Icon name={a.startsWith('item:') ? 'note' : 'next'} />}{l}
             </li>
           ))}
         </ul>

@@ -29,6 +29,8 @@ const P: Record<string, string> = {
   prev: 'M15 6l-6 6l6 6',
   next: 'M9 6l6 6l-6 6',
   back: 'M19 12H5 M11 6l-6 6l6 6',
+  up: 'M6 15l6-6l6 6',
+  down: 'M6 9l6 6l6-6',
   fixing: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5l-2.4-.6l-.6-2.4z',
   stop: 'M7 7h10v10H7z',
   dot: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z',
@@ -44,7 +46,7 @@ export function Icon({ name, size = 16, className, style, title }: { name: IconN
       fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
       role={title ? 'img' : undefined} aria-hidden={title ? undefined : true} aria-label={title}>
       {title && <title>{title}</title>}
-      {d.split(' M').map((seg, i) => <path key={i} d={i ? `M${seg}` : seg} />)}
+      <path d={d} />
     </svg>
   );
 }

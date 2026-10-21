@@ -4,9 +4,6 @@ export const getLang = () => lang;
 /** t('中文', 'English') */
 export const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
 
-export const KIND_ICON: Record<string, string> = { issue: '🐞', idea: '💡', note: '📝', task: '☑️' };
-export const kindIcon = (k: string) => KIND_ICON[k] ?? '•';
-
 export function ago(epoch: number | null | undefined, now = Date.now() / 1000): string {
   if (!epoch) return '';
   const d = Math.max(0, now - epoch);
@@ -17,11 +14,12 @@ export function ago(epoch: number | null | undefined, now = Date.now() / 1000): 
   return new Date(epoch * 1000).toLocaleDateString();
 }
 
+/** Session state as an egg (§2.1): icon names of ./icons (→ @blurt/icons). */
 export function egg(s: { processed: number; processing: number; reviewed: number }): { icon: string; label: string; cls: string } {
-  if (!s.processed) return { icon: '🥚', label: t('待整理', 'to process'), cls: 'egg' };
-  if (s.processing) return { icon: '🥚', label: t('整理中', 'processing'), cls: 'egg wobble' };
-  if (!s.reviewed) return { icon: '🐣', label: t('待审核', 'to review'), cls: 'egg' };
-  return { icon: '🐔', label: t('已审核', 'reviewed'), cls: 'egg done' };
+  if (!s.processed) return { icon: 'egg', label: t('待整理', 'to process'), cls: 'egg-ic' };
+  if (s.processing) return { icon: 'egg', label: t('整理中', 'processing'), cls: 'egg-ic wobble' };
+  if (!s.reviewed) return { icon: 'chick', label: t('待审核', 'to review'), cls: 'egg-ic' };
+  return { icon: 'chicken', label: t('已审核', 'reviewed'), cls: 'egg-ic is-done' };
 }
 
 /** A keydown → the config grammar ("ctrl+opt+shift+cmd+KEY"), or null while only modifiers are down. */

@@ -375,8 +375,21 @@ fn tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open, &record, &snap, &sep, &quit])?;
     *app.state::<AppState>().tray_record.lock().unwrap() = Some(record);
     let mut b = TrayIconBuilder::with_id("main").menu(&menu).tooltip("Blurt").show_menu_on_left_click(false);
-    if let Some(icon) = app.default_window_icon() {
-        b = b.icon(icon.clone());
+    // monochrome, template-style (icons/tray.svg → scripts/tray_icons.swift): black as a macOS template image; white on
+    // Windows / Linux panels, which are dark by default — black when the system theme is light
+    let light = app.get_webview_window("main").and_then(|w| w.theme().ok()) == Some(tauri::Theme::Light);
+    let png: &[u8] = if cfg!(target_os = "macos") || (light && !cfg!(target_os = "linux")) {
+        include_bytes!("../icons/tray-black.png")
+    } else {
+        include_bytes!("../icons/tray-white.png")
+    };
+    match tauri::image::Image::from_bytes(png) {
+        Ok(icon) => b = b.icon(icon).icon_as_template(cfg!(target_os = "macos")),
+        Err(_) => {
+            if let Some(icon) = app.default_window_icon() {
+                b = b.icon(icon.clone());
+            }
+        }
     }
     b.on_menu_event(|app, ev| match ev.id().as_ref() {
         "quit" => app.exit(0),

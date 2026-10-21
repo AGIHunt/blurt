@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type AppStatus, type AsrModel, type Detect, type HotkeyResult, type HotkeyRow, type Settings } from '../api';
 import { comboFromEvent, comboLabel, t } from '../util';
+import { Icon } from '../icons';
 
 const ACTION_NAME: Record<string, [string, string]> = {
   record: ['开始 / 结束录制', 'Start / finish recording'],
@@ -178,8 +179,8 @@ export function SettingsView({ status, onToast }: { status: AppStatus; onToast: 
                     <td className={a.login === 'ok' ? 'ok' : a.installed ? 'warn' : 'dim'}>{a.why}{a.version ? ` · ${a.version}` : ''}</td>
                     <td className="dim small">{a.fix}</td>
                     <td>
-                      <button className="link" onClick={() => moveAgent(a.id, -1)} disabled={i === 0}>↑</button>
-                      <button className="link" onClick={() => moveAgent(a.id, 1)} disabled={i === detect.agents.length - 1}>↓</button>
+                      <button className="link" aria-label="up" onClick={() => moveAgent(a.id, -1)} disabled={i === 0}><Icon name="up" size={14} /></button>
+                      <button className="link" aria-label="down" onClick={() => moveAgent(a.id, 1)} disabled={i === detect.agents.length - 1}><Icon name="down" size={14} /></button>
                     </td>
                   </tr>
                 ))}

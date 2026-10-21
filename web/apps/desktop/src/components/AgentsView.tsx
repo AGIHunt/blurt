@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { api, listen, type AgentRun, type Detect } from '../api';
 import { ago, t } from '../util';
+import { Icon } from '../icons';
 
 function duration(r: AgentRun) {
   const s = Math.round((r.ended ?? Date.now() / 1000) - r.started);
@@ -18,7 +19,7 @@ function pretty(line: string): string {
         .filter(Boolean)
         .join(' ');
     }
-    if (v?.type === 'result') return `✓ ${v.result ?? ''}${v.total_cost_usd ? ` ($${Number(v.total_cost_usd).toFixed(2)})` : ''}`;
+    if (v?.type === 'result') return `done: ${v.result ?? ''}${v.total_cost_usd ? ` ($${Number(v.total_cost_usd).toFixed(2)})` : ''}`;
     if (v?.msg?.type) return `${v.msg.type}${v.msg.message ? `: ${v.msg.message}` : ''}`;
     return line;
   } catch {
@@ -68,7 +69,7 @@ export function AgentsView({ onToast }: { onToast: (m: string) => void }) {
           {runs.map((r) => (
             <Fragment key={r.run_id}>
               <tr className={`run-${r.state}`} onClick={() => setOpen(open === r.run_id ? null : r.run_id)}>
-                <td>{r.state === 'running' ? '●' : r.state === 'done' ? '✓' : r.state === 'stopped' ? '■' : '✗'}</td>
+                <td><Icon name={r.state === 'running' ? 'dot' : r.state === 'done' ? 'check' : r.state === 'stopped' ? 'stop' : 'x'} size={14} /></td>
                 <td><b>{r.agent}</b></td>
                 <td className="dim">{r.repo.split(/[\\/]/).pop()}</td>
                 <td>{r.items.map((i) => i.id).filter(Boolean).join(', ')}</td>

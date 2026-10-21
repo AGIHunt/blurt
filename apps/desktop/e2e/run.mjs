@@ -6,6 +6,7 @@
 // It lays out the fixture sessions and builds index.db (scripts/fixture_index.py), starts the app on them, and checks:
 // the items table shows the fixture index → search (trigram) narrows it → opening an item shows its detail → editing
 // the title saves through items.py user-ops → items.json has the new title and a _user stamp → the index finds it.
+// Selectors: the shell's data-testid attributes, and the review canvas's own markup (textarea.title).
 
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -74,26 +75,24 @@ try {
   await search.sendKeys('头像上');
   await waitFor(async () => (await rows()).length === 1, 'one search hit');
 
-  // 3. open it
+  // 3. open it: the review component (WP3, mode=item) shows the item; its title is a one-line textarea.title
   await (await rows())[0].click();
+  const TITLE = '.review-pane textarea.title';
   const title = await waitFor(async () => {
-    const el = await wd.findElement(By.css('[data-testid="item-title"]'));
+    const el = await wd.findElement(By.css(TITLE));
     return (await el.getAttribute('value')).includes('头像上传') && el;
   }, 'the item detail');
-  const itemId = await wd.findElement(By.css('[data-testid="item-detail"]')).getAttribute('data-item-id');
   await shot('2-item');
 
-  // 4. edit the title → saved through items.py user-ops
+  // 4. edit the title (Enter commits) → saved through review_ops → items.py user-ops
   const NEW = '头像上传返回 500（e2e）';
   await title.click();
   await title.sendKeys(Key.chord(Key.CONTROL, 'a'), NEW, Key.ENTER);
-  await waitFor(async () => (await wd.findElement(By.css('[data-testid="save-state"]')).getText()) === 'Saved', '"Saved"');
 
   const file = join(fx.repo, '.blurt/sessions/20261021-101500/items.json');
   const item = await waitFor(() => {
     const doc = JSON.parse(readFileSync(file, 'utf-8'));
-    const it = doc.items.find((i) => i.id === itemId);
-    return it?.title === NEW && it;
+    return doc.items.find((i) => i.title === NEW);
   }, 'items.json to have the new title');
   assert.equal(typeof item._user?.title, 'number', '_user.title stamped');
   console.log('items.json updated:', item.id, item.title, item._user);
