@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { FixRecord, Item } from "../host";
+import { fieldLabel } from "../fields";
 import { isEnter } from "../ime";
-import { fmt, kindOf, SEV } from "../store";
+import { fmt, isTitle, kindOf, SEV } from "../store";
 import { statusOf } from "../sync";
 import { Egg } from "./icons";
 import { Icon } from "./Icon";
@@ -41,6 +42,7 @@ function Field({ i, k, label, type = "area", cls, title, placeholder }: { i: Ite
   const s = useStore();
   const [draft, setDraft] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
+  const atFocus = useRef("");
   const value = draft ?? format(i, k, type);
   const multiline = type === "area" || type === "list" || title;
   useLayoutEffect(() => {
@@ -51,8 +53,18 @@ function Field({ i, k, label, type = "area", cls, title, placeholder }: { i: Ite
     value,
     "data-k": k,
     placeholder: title ? undefined : (placeholder ?? "—"),
-    onFocus: () => setDraft(format(i, k, type)),
-    onBlur: () => setDraft(null),
+    onFocus: () => {
+      atFocus.current = format(i, k, type);
+      setDraft(atFocus.current);
+    },
+    onBlur: () => {
+      // an emptied title is never saved (setField refuses it): put back the one it had when editing began
+      if (title && draft !== null && !isTitle(draft) && isTitle(atFocus.current)) {
+        if (i.title !== atFocus.current) s.setField(i, k, atFocus.current);
+        s.showToast(s.t("titleEmpty"), false, "x");
+      }
+      setDraft(null);
+    },
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setDraft(e.target.value);
       s.setField(i, k, parse(e.target.value, type));
@@ -185,8 +197,8 @@ export function Inspector() {
   // anything else the lens added: shown generically so custom lenses just work
   for (const [k, v] of Object.entries(i)) {
     if (RESERVED.has(k) || SHOWN.has(k) || k.startsWith("_")) continue;
-    if (typeof v === "string") body.push(F(k, k.replace(/_/g, " ")));
-    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) body.push(F(k, k.replace(/_/g, " "), "list"));
+    if (typeof v === "string") body.push(F(k, fieldLabel(k, s.lang)));
+    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) body.push(F(k, fieldLabel(k, s.lang), "list"));
   }
   body.push(
     <div className="grid2" key="ts">

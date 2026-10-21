@@ -2,7 +2,9 @@
 // command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "record" | "snap" |"snapregion x,y,w,h" | "perch" |
 //       "hide" | "process" | "commit" | "cancel" | "edit N" | "hatch DIR" | "hatched DIR ok|fail" | "stop" | "shortcuts" |
-//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT" | "webjs CODE"}
+//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT" | "webjs CODE" | "axperch" | "menuicon DIR"}
+//   axperch       the perch's accessibility elements (role, label, frame) as one "ax" event
+//   menuicon DIR  renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x → DIR/menuicon-*.png
 
 import AppKit
 import Carbon.HIToolbox
@@ -126,6 +128,17 @@ extension App {
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }
         case "toast": toast(arg.replacingOccurrences(of: "\\n", with: "\n"))
         case "gather": perch.gather(into: ["note", "note", "note"])
+        case "axperch":
+            let els = perch.accessibilityElements().map { e -> [String: Any] in
+                let r = toCG(e.accessibilityFrame())
+                return ["role": e.accessibilityRole()?.rawValue ?? "", "label": e.accessibilityLabel() ?? "",
+                        "help": e.accessibilityHelp() ?? "", "actions": (e.accessibilityCustomActions() ?? []).map(\.name),
+                        "rect": [r.minX, r.minY, r.width, r.height].map { ($0 * 10).rounded() / 10 }]
+            }
+            emit(["event": "ax", "elements": els])
+        case "menuicon":
+            let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
+            emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])
         case "cards":   // where things are, in global top-left points, so a test can point the mouse at them
             for s in snapper.batch?.live ?? [] {
                 if let r = perch.cardScreenRect(s) { let c = toCG(r); emit(["event": "card", "n": s.n, "rect": [c.minX, c.minY, c.width, c.height]]) }
@@ -166,4 +179,45 @@ extension App {
         snapper.syncCollector()
     }
     @objc func mLiveCaption() { setRecordConfig("live_caption", !liveCaptionOn) }
+}
+
+/// The menu-bar icon as macOS would show it, without capturing the real menu bar: the template image tinted like a
+/// status item (black 85 % on a light bar, white on a dark one) on a 24 pt strip, next to an SF Symbol for scale.
+func renderMenuIconPreviews(into dir: URL) -> [URL] {
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let icon = App.makeMenuIcon()
+    let ref = NSImage(systemSymbolName: "wifi", accessibilityDescription: nil)?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+    var out: [URL] = []
+    for (theme, bar, ink) in [("light", NSColor(white: 0.93, alpha: 1), NSColor(white: 0, alpha: 0.85)),
+                              ("dark", NSColor(calibratedRed: 0.16, green: 0.16, blue: 0.17, alpha: 1), NSColor.white)] {
+        for scale in [1, 2] {
+            let size = NSSize(width: 96, height: 24)
+            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * scale, pixelsHigh: Int(size.height) * scale,
+                                             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+                  let g = NSGraphicsContext(bitmapImageRep: rep) else { continue }
+            rep.size = size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = g
+            g.cgContext.scaleBy(x: CGFloat(scale), y: CGFloat(scale))   // the context is in pixels
+            bar.setFill()
+            NSRect(origin: .zero, size: size).fill()
+            func tinted(_ im: NSImage, in r: NSRect) {
+                let t = NSImage(size: r.size, flipped: false) { b in
+                    im.draw(in: b)
+                    ink.set()
+                    b.fill(using: .sourceAtop)
+                    return true
+                }
+                t.draw(in: r)
+            }
+            tinted(icon, in: NSRect(x: 14, y: 3, width: 18, height: 18))
+            if let w = ref { tinted(w, in: NSRect(x: 56, y: (24 - w.size.height) / 2, width: w.size.width, height: w.size.height)) }
+            NSGraphicsContext.restoreGraphicsState()
+            let u = dir.appendingPathComponent("menuicon-\(theme)@\(scale)x.png")
+            if let d = rep.representation(using: .png, properties: [:]) { try? d.write(to: u); out.append(u) }
+        }
+    }
+    return out
 }

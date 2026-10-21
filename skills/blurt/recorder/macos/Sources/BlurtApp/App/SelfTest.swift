@@ -42,6 +42,12 @@ func runSelfTest(_ args: [String]) -> Never {
           && URLRouter.route(URL(string: "blurt://record")!) == .shell("record")
           && URLRouter.route(URL(string: "blurt://nope")!) == .unknown)
 
+    // Spotlight results: only our item uids (an extra hit whose id is a window number was returned once)
+    check("spotlight_ids", Spotlight.isItemUID("01KAQ6N2W8C3D4E5F6G7H8J9KM") && Spotlight.isItemUID("L" + String(repeating: "a1", count: 12) + "f")
+          && !Spotlight.isItemUID("12345") && !Spotlight.isItemUID("01KAQ6N2W8C3D4E5F6G7H8J9KU") && !Spotlight.isItemUID("")
+          && Spotlight.ours([("01KAQ6N2W8C3D4E5F6G7H8J9KM", Spotlight.domain), ("4711", nil), ("01KAQ6N2W8C3D4E5F6G7H8J9KN", "other.domain"),
+                             ("01KAQ6N2W8C3D4E5F6G7H8J9KP", nil)]) == ["01KAQ6N2W8C3D4E5F6G7H8J9KM", "01KAQ6N2W8C3D4E5F6G7H8J9KP"])
+
     // ScriptRunner
     let r = ScriptRunner.shared
     check("uv", r.uvAvailable, r.uvPath ?? "missing")

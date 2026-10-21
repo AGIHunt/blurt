@@ -723,6 +723,31 @@ button.chip:hover {
   color: var(--fx);
   font-weight: 600;
 }
+/* the item list (queue rows, list cards): fixed = title struck through + a check, fixing = the agent-run mark,
+   pulsing — the main window's semantics */
+.qi.fx-fixed .tt,
+.card.fx-fixed .tt,
+.ov-list .fx-fixed .tt {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  color: var(--mute);
+}
+.fxi {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-left: 5px;
+  color: var(--fx);
+  flex: none;
+}
+.fxi-fixing {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fxi-fixing,
+  .fx-fixing .fxd {
+    animation: none;
+  }
+}
 .fixbtn {
   margin: -6px 0 18px;
 }
@@ -1035,7 +1060,7 @@ button.chip:hover {
 .ov-list button:hover {
   background: var(--hover);
 }
-.ov-list button span {
+.ov-list button span:first-child {
   font: 600 12px/20px var(--mono);
   color: var(--faint);
   min-width: 52px;

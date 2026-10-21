@@ -294,10 +294,32 @@ def file_etag(raw: bytes) -> str:
 SERVER_KEYS = {"id", "uid", "_user", "fix", "fix_history", "schema"}  # set only by the server / `items.py fix`, never by a page
 
 
+class InvalidEdit(ValueError):
+    """An edit the store refuses (review.py answers 400 with it, items.py exits 1 with it)."""
+
+
+REQUIRED_TEXT = ("title",)  # an item without a title can't be listed, searched, exported or reviewed
+
+
+def check_item_fields(sets: dict, unsets=(), where: str = "") -> None:
+    """Raises InvalidEdit when an edit would leave an item's title empty / whitespace-only, or remove it."""
+    for k in REQUIRED_TEXT:
+        if k in (unsets or ()):
+            raise InvalidEdit(f"{where}{k} can't be removed: every item needs a {k}")
+        if k in sets and (sets[k] is None or (isinstance(sets[k], str) and not sets[k].strip())):
+            raise InvalidEdit(f"{where}{k} can't be empty: keep the previous {k} or type a new one")
+
+
 def apply_user_ops(data: dict, ops: list[dict]) -> None:
     """The page sends what the user changed, not the whole list, so the agent's concurrent writes survive.
     Each field the user sets is recorded in the item's _user (field -> epoch); items.py won't overwrite those.
-    One implementation for review.py (POST /api/items) and `items.py user-ops` (the desktop apps)."""
+    One implementation for review.py (POST /api/items) and `items.py user-ops` (the desktop apps).
+    All ops are checked first (check_item_fields): an invalid one raises InvalidEdit and nothing is applied."""
+    for n, op in enumerate(ops):
+        if op.get("op") == "set":
+            check_item_fields(op.get("set") or {}, op.get("unset") or [], f"ops[{n}] ({op.get('id')}): ")
+        elif op.get("op") == "add" and isinstance(op.get("item"), dict) and "title" in op["item"]:
+            check_item_fields({"title": op["item"]["title"]}, (), f"ops[{n}] ({op['item'].get('id')}): ")
     now = round(time.time(), 1)
     items = data.setdefault("items", [])
     removed = data.setdefault("_removed", {})

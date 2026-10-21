@@ -346,16 +346,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// The chicken as a monochrome template image, like every other menu-bar icon (macOS tints it).
-    lazy var menuIcon: NSImage? = {
-        let img = Bundle.main.image(forResource: "MenuIconTemplate")
-            ?? NSImage(systemSymbolName: "bubble.left.and.text.bubble.right", accessibilityDescription: "blurt")
-        if let i = img, i.size.height > 0 {
-            i.size = NSSize(width: 18 * i.size.width / i.size.height, height: 18)
-            i.isTemplate = true
-        }
+    /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray), drawn at 18 pt as a monochrome
+    /// template image like every other menu-bar icon: macOS tints it for light / dark menu bars, and it is vector, so
+    /// it is crisp at every scale.
+    lazy var menuIcon: NSImage? = App.makeMenuIcon()
+
+    static func makeMenuIcon() -> NSImage {
+        let img = BlurtIcon.blurt.image(size: 18)
+        img.isTemplate = true
+        img.accessibilityDescription = L("口喷鸡", "blurt")
         return img
-    }()
+    }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()

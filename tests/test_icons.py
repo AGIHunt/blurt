@@ -37,6 +37,15 @@ def test_path_parser_expands_everything_to_absolute_cubics():
     assert iconlib.transform_segs([("M", (1.0, 1.0))], m) == [("M", (12.0, 2.0))]
 
 
+def test_menu_bar_icons_are_the_blurt_glyph():
+    """macOS status item and Tauri tray show the same mark: the `blurt` glyph (no stale hand-made template PNGs)."""
+    mac = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/AppDelegate.swift").read_text()
+    assert "BlurtIcon.blurt.image(size: 18)" in mac and "MenuIconTemplate" not in mac
+    assert not list((ROOT / "skills/blurt/assets").glob("MenuIconTemplate*.png"))
+    build = (ROOT / "assets/icons/tools/build.py").read_text()
+    assert 'TRAY_ICON = "blurt"' in build
+
+
 def test_tk_recorder_uses_png_icons_not_emoji():
     src = (ROOT / "skills/blurt/scripts/tk_recorder.py").read_text()
     assert not [c for c in BAD.findall(src) if c not in ALLOWED]

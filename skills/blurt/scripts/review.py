@@ -30,7 +30,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (BLURT_HOME, IS_LINUX, IS_MAC, SERVER_KEYS, apply_user_ops, die, find_item,  # noqa: E402,F401
+from _common import (BLURT_HOME, IS_LINUX, IS_MAC, SERVER_KEYS, InvalidEdit, apply_user_ops, die, find_item,  # noqa: E402,F401
                      global_config, items_lock, load_json,
                      load_session, save_session)
 
@@ -129,7 +129,11 @@ def make_handler(session: Path, done: threading.Event, app_seen: threading.Event
                         with items_lock(session):
                             if ops is not None:  # current page: a patch, merged into what is on disk now
                                 data = load_session(session) or {"items": []}
-                                apply_user_ops(data, ops)
+                                try:
+                                    apply_user_ops(data, ops)
+                                except InvalidEdit as e:  # e.g. an empty title: nothing saved, the page reverts
+                                    return self._send(400, json.dumps({"ok": False, "error": str(e)}).encode(),
+                                                      "application/json")
                             # else: an older page posting the whole document — last writer wins, as before
                             if path == "/api/confirm":
                                 data["reviewed"] = True

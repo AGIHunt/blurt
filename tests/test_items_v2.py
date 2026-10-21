@@ -306,6 +306,40 @@ class UserOps(Base):
         self.assertEqual(code, 1)
         self.assertEqual(self.raw(s), before)
 
+    def test_empty_titles_are_refused_everywhere(self):
+        s = self.copy(V1)
+        before = self.raw(s)
+        for title in ("", "   ", "\n\t", "\u3000", None):
+            bad = [{"op": "set", "id": "I-002", "set": {"answer": "x"}},
+                   {"op": "set", "id": "I-001", "set": {"title": title}}]
+            code, out = cli(s, "user-ops", "--json", json.dumps(bad))
+            self.assertEqual((code, out["ok"]), (1, False), title)
+            self.assertIn("title can't be empty", out["error"])
+            self.assertIn("I-001", out["error"])
+            # review.py: 400 with the same message, nothing written (not even the valid op before it)
+            h = review.make_handler(s, threading.Event())
+            r = h.__new__(h)
+            body = json.dumps({"ops": bad}).encode()
+            r.path, r.command = "/api/items", "POST"
+            r.headers, r.rfile, r._send = {"Content-Length": str(len(body))}, io.BytesIO(body), Mock()
+            r.do_POST()
+            code, payload, _ctype = r._send.call_args.args[:3]
+            self.assertEqual(code, 400)
+            self.assertIn("title can't be empty", json.loads(payload)["error"])
+        code, out = cli(s, "user-ops", "--json", json.dumps([{"op": "set", "id": "I-001", "unset": ["title"]}]))
+        self.assertEqual(code, 1)
+        self.assertIn("title can't be removed", out["error"])
+        code, out = cli(s, "user-ops", "--json", json.dumps([{"op": "add", "item": {"id": "I-009", "title": " "}}]))
+        self.assertEqual(code, 1)
+        self.assertEqual(self.raw(s), before)
+        # the agent's patch too
+        for args in (["--set", "title="], ["--set", "title=  "], ["--unset", "title"]):
+            code, out = cli(s, "patch", "I-001", *args)
+            self.assertEqual((code, out["ok"]), (1, False), args)
+            self.assertIn("title", out["error"])
+        self.assertEqual(self.raw(s), before)
+        ok(s, "patch", "I-001", "--set", "title=  still fine ")  # a real title (spaces around it) is fine
+
     def test_apply_user_ops_is_shared(self):
         self.assertIs(review.apply_user_ops, _common.apply_user_ops)
         self.assertIs(items.apply_user_ops, _common.apply_user_ops)
