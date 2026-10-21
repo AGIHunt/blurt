@@ -2,7 +2,8 @@
 // command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "record" | "snap" |"snapregion x,y,w,h" | "perch" |
 //       "hide" | "process" | "commit" | "cancel" | "edit N" | "hatch DIR" | "hatched DIR ok|fail" | "stop" | "shortcuts" |
-//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT" | "webjs CODE"}
+//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT" | "webjs CODE" | "axperch"}
+//   axperch       the perch's accessibility elements (role, label, frame) as one "ax" event
 
 import AppKit
 import Carbon.HIToolbox
@@ -126,6 +127,14 @@ extension App {
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }
         case "toast": toast(arg.replacingOccurrences(of: "\\n", with: "\n"))
         case "gather": perch.gather(into: ["note", "note", "note"])
+        case "axperch":
+            let els = perch.accessibilityElements().map { e -> [String: Any] in
+                let r = toCG(e.accessibilityFrame())
+                return ["role": e.accessibilityRole()?.rawValue ?? "", "label": e.accessibilityLabel() ?? "",
+                        "help": e.accessibilityHelp() ?? "", "actions": (e.accessibilityCustomActions() ?? []).map(\.name),
+                        "rect": [r.minX, r.minY, r.width, r.height].map { ($0 * 10).rounded() / 10 }]
+            }
+            emit(["event": "ax", "elements": els])
         case "cards":   // where things are, in global top-left points, so a test can point the mouse at them
             for s in snapper.batch?.live ?? [] {
                 if let r = perch.cardScreenRect(s) { let c = toCG(r); emit(["event": "card", "n": s.n, "rect": [c.minX, c.minY, c.width, c.height]]) }
@@ -167,3 +176,4 @@ extension App {
     }
     @objc func mLiveCaption() { setRecordConfig("live_caption", !liveCaptionOn) }
 }
+

@@ -181,11 +181,50 @@ final class PerchView: NSView, NSDraggingSource {
     override func mouseUp(with e: NSEvent) { perch?.mouseUp(e, at: convert(e.locationInWindow, from: nil)) }
     override func rightMouseDown(with e: NSEvent) { perch?.rightMouseDown(e, at: convert(e.locationInWindow, from: nil)) }
 
+    // Accessibility: everything here is drawn in layers, so the controls and the cards are exposed as elements
+    // (PerchAXElement) — VoiceOver reads "整理 3 张, 按钮", a card's note, and can press them.
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .group }
+    override func accessibilityLabel() -> String? { L("鸡舍", "Perch") }
+    override func accessibilityChildren() -> [Any]? { perch?.accessibilityElements() ?? [] }
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        let hit = (perch?.accessibilityElements() ?? []).reversed().first { $0.accessibilityFrame().contains(point) }
+        return hit ?? self
+    }
+
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         context == .outsideApplication ? [.copy, .generic] : []
     }
     func draggingSession(_ session: NSDraggingSession, endedAt p: NSPoint, operation: NSDragOperation) {
         perch?.dragEnded(operation: operation)
+    }
+}
+
+/// One drawn control (or card) of the perch, as an accessibility element: its frame follows the layer it stands for.
+final class PerchAXElement: NSAccessibilityElement {
+    weak var layer: CALayer?
+    weak var host: NSView?
+    var press: (() -> Void)?
+
+    static func make(role: NSAccessibility.Role, layer: CALayer, host: NSView) -> PerchAXElement {
+        let e = PerchAXElement()
+        e.setAccessibilityRole(role)
+        e.setAccessibilityParent(host)
+        e.layer = layer
+        e.host = host
+        return e
+    }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityFrame() -> NSRect {
+        guard let l = layer, let v = host, let root = v.layer, let w = v.window else { return .zero }
+        let r = l.convert(l.bounds, to: root)          // the root layer is flipped like the view (y down)
+        return w.convertToScreen(v.convert(r, to: nil))
+    }
+    override func accessibilityPerformPress() -> Bool {
+        guard let p = press else { return false }
+        p()
+        return true
     }
 }
 
@@ -284,6 +323,7 @@ final class Perch: NSObject {
             p.acceptsMouseMovedEvents = true
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             p.sharingType = chromeSharing
+            p.setAccessibilityTitle(L("鸡舍", "Perch"))
             let v = PerchView(frame: NSRect(origin: .zero, size: f.size))
             v.perch = self
             v.wantsLayer = true
@@ -1250,6 +1290,70 @@ final class Perch: NSObject {
             if r.contains(p) { return c }
         }
         return nil
+    }
+
+    // MARK: accessibility
+
+    private var axProcess: PerchAXElement?, axClear: PerchAXElement?
+    private var axCards: [ObjectIdentifier: PerchAXElement] = [:]
+
+    /// What PerchView exposes: the cards on the rope (left to right), then "清空" and "整理 N 张" while there is a batch.
+    func accessibilityElements() -> [PerchAXElement] {
+        guard let v = view else { return [] }
+        if axProcess == nil {
+            axProcess = .make(role: .button, layer: processBtn, host: v)
+            axProcess?.press = { snapper.processBatch() }
+            axClear = .make(role: .button, layer: clearBtn, host: v)
+            axClear?.press = { snapper.clearBatch() }
+        }
+        let n = batch?.live.count ?? 0
+        axProcess?.setAccessibilityLabel(L("整理 \(n) 张", "Process \(n)"))
+        axProcess?.setAccessibilityHelp(L("交给 agent 整理这批截图", "Hand this batch to an agent"))
+        axClear?.setAccessibilityLabel(L("清空", "Clear"))
+        axClear?.setAccessibilityHelp(L("移除这批截图", "Remove this batch"))
+        var out: [PerchAXElement] = []
+        var keep: [ObjectIdentifier: PerchAXElement] = [:]
+        for c in cards where !c.flying {
+            let key = ObjectIdentifier(c)
+            let e = axCards[key] ?? {
+                let e = PerchAXElement.make(role: .button, layer: c.frame, host: v)
+                e.press = { [weak self, weak c] in
+                    guard let c = c, let u = c.shot.bestURL else { return }
+                    copyImageToPasteboard(u)
+                    c.copiedUntil = CACurrentMediaTime() + 1.2
+                    self?.startNudge(c, 3)
+                }
+                e.setAccessibilityCustomActions([
+                    NSAccessibilityCustomAction(name: L("编辑备注", "Edit note")) { [weak c] in
+                        guard let c = c else { return false }
+                        NoteBubble.shared.begin(c.shot, mode: .edit)
+                        return true
+                    },
+                    NSAccessibilityCustomAction(name: L("删除", "Delete")) { [weak self, weak c] in
+                        guard let c = c else { return false }
+                        snapper.delete(c.shot)
+                        self?.update(c.shot)
+                        return true
+                    },
+                ])
+                return e
+            }()
+            e.setAccessibilityLabel(Perch.cardLabel(c.shot))
+            e.setAccessibilityRoleDescription(L("截图", "screenshot"))
+            e.setAccessibilityHelp(L("按下拷贝图片", "Press to copy the image"))
+            keep[key] = e
+            out.append(e)
+        }
+        axCards = keep
+        if n > 0, let p = axProcess, let c = axClear { out += [c, p] }
+        return out
+    }
+
+    /// A card's spoken name: its note, or "截图 N".
+    static func cardLabel(_ s: Shot) -> String {
+        let t = (s.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty { return s.voice != nil ? t + L("（含语音）", " (with voice)") : t }
+        return L("截图 \(s.n)", "Screenshot \(s.n)") + (s.voice != nil ? L("（语音备注）", " (voice note)") : "")
     }
 
     private func button(at p: NSPoint) -> CALayer? {
