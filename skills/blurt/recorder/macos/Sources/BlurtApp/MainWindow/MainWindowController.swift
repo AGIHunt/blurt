@@ -180,6 +180,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         list.forgetSelection()        // a new place starts at its first row
         shownJob = nil
         model.scope = s
+        if s.isTable { roomForTable() }
         model.reload()
         sidebar.select(s)
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
@@ -187,6 +188,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func sidebarSelected(_ s: Scope) { go(s) }
+
+    /// The full table wants ~760 pt: take it from the detail column while that keeps its minimum.
+    func roomForTable() {
+        let sv = split.splitView
+        let items = split.splitViewItems
+        guard items.count == 3, !items[2].isCollapsed else { return }
+        let list = sv.convert(items[1].viewController.view.bounds, from: items[1].viewController.view)
+        let detail = items[2].viewController.view.frame
+        let want: CGFloat = 760, minDetail: CGFloat = 400
+        guard list.width < want, detail.width > minDetail else { return }
+        let give = min(want - list.width, detail.width - minDetail)
+        sv.setPosition(list.maxX + give, ofDividerAt: 1)
+    }
 
     func updateTitle() {
         window?.title = model.scopeTitle

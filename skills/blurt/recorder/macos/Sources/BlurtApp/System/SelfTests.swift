@@ -134,6 +134,15 @@ enum SelfTests {
         case "mainjob":                 // mainjob ID: the job's detail
             MainWindowController.shared.selectJob(arg)
             out(["job": arg, "found": JobStore.shared.job(arg) != nil])
+        case "mainsize":                // mainsize W H: the window's size (screenshots)
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            if a.count == 2, let w = MainWindowController.shared.window, let sc = w.screen?.visibleFrame {
+                w.setFrame(NSRect(x: sc.midX - a[0] / 2, y: sc.midY - a[1] / 2, width: a[0], height: a[1]), display: true)
+            }
+        case "mainsplit":               // the three columns' frames and the table's columns
+            let c = MainWindowController.shared
+            out(["columns": c.split.splitViewItems.map { "\($0.viewController.view.frame)" },
+                 "table": c.list.table.tableColumns.map { "\($0.identifier.rawValue)=\(Int($0.width))\($0.isHidden ? "h" : "")" }])
         case "mainviews":               // frames of the detail's views (layout checks)
             let d = MainWindowController.shared.detail
             func dump(_ v: NSView, _ depth: Int) -> [String] {

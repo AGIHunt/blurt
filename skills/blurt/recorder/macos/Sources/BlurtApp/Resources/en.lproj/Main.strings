@@ -231,6 +231,7 @@
 "main.project.agent.default" = "Default";
 "main.project.description" = "Description";
 "main.project.description.note" = "What the project is. The AI reads it when it sorts captures into projects.";
+"main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
 "main.project.key" = "Key";
 "main.project.key.invalid" = "2–5 letters or digits, starting with a letter (IN is taken).";
 "main.project.key.note" = "Items are numbered %1$@-1, %1$@-2…";

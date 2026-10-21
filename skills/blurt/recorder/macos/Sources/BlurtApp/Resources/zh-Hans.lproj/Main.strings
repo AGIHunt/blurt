@@ -231,6 +231,7 @@
 "main.project.agent.default" = "默认";
 "main.project.description" = "描述";
 "main.project.description.note" = "这个项目是做什么的。AI 分项目时会参考它。";
+"main.project.description.placeholder" = "例如：官网和注册流程";
 "main.project.key" = "前缀";
 "main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
 "main.project.key.note" = "条目编号为 %1$@-1、%1$@-2…";

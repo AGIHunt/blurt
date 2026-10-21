@@ -54,6 +54,16 @@ enum Look {
 final class LeadCell: NSTableCellView {
     let dot = DotView()
     let icon = NSImageView()
+    /// The kind icon in its colour; white on a selected (emphasized) row, like the text next to it.
+    var kindImage: NSImage? { didSet { restyle() } }
+    override var backgroundStyle: NSView.BackgroundStyle { didSet { restyle() } }
+    private func restyle() {
+        let on = backgroundStyle == .emphasized
+        dot.inverted = on
+        guard let k = kindImage else { icon.image = nil; return }
+        if on, let t = k.copy() as? NSImage { t.isTemplate = true; icon.image = t; icon.contentTintColor = .white }
+        else { icon.image = k; icon.contentTintColor = nil }
+    }
     override init(frame: NSRect) {
         super.init(frame: frame)
         for v in [dot, icon] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
@@ -70,9 +80,10 @@ final class LeadCell: NSTableCellView {
 
 final class DotView: NSView {
     var on = false { didSet { needsDisplay = true } }
+    var inverted = false { didSet { needsDisplay = true } }
     override func draw(_ dirtyRect: NSRect) {
         guard on else { return }
-        Look.brand.setFill()
+        (inverted ? NSColor.white : Look.brand).setFill()
         NSBezierPath(ovalIn: bounds).fill()
     }
 }

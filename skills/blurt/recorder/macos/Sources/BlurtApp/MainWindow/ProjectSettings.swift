@@ -11,7 +11,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     private let onSave: ([String: Any]) -> Void
     private let name = NSTextField()
     private let key = NSTextField()
-    private let desc = NSTextView()
+    private let desc = NSTextField()
     private let agent = NSPopUpButton()
     private let worktree = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let keyNote = NSTextField(labelWithString: "")
@@ -44,18 +44,15 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         keyNote.font = .systemFont(ofSize: 11)
         keyNote.textColor = .secondaryLabelColor
         keyNote.stringValue = T("main.project.key.note", p.key)
-        desc.string = p.description
-        desc.font = .systemFont(ofSize: 13)
-        desc.isRichText = false
-        desc.textContainerInset = NSSize(width: 4, height: 4)
-        let scroll = NSScrollView()
-        scroll.documentView = desc
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        desc.autoresizingMask = [.width]
-        desc.isVerticallyResizable = true
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.heightAnchor.constraint(equalToConstant: 64).isActive = true
+       desc.stringValue = p.description
+        desc.placeholderString = T("main.project.description.placeholder")
+        desc.usesSingleLineMode = false
+        desc.cell?.wraps = true
+        desc.cell?.isScrollable = false
+        desc.lineBreakMode = .byWordWrapping
+        desc.maximumNumberOfLines = 4
+        desc.translatesAutoresizingMaskIntoConstraints = false
+        desc.heightAnchor.constraint(equalToConstant: 62).isActive = true
         let descNote = NSTextField(wrappingLabelWithString: T("main.project.description.note"))
         descNote.font = .systemFont(ofSize: 11)
         descNote.textColor = .secondaryLabelColor
@@ -83,7 +80,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
             [label(T("main.project.name")), name],
             [label(T("main.project.key")), key],
             [NSGridCell.emptyContentView, keyNote],
-            [label(T("main.project.description")), scroll],
+            [label(T("main.project.description")), desc],
             [NSGridCell.emptyContentView, descNote],
             [label(T("main.project.agent")), agent],
             [NSGridCell.emptyContentView, worktree],
@@ -112,6 +109,9 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         stack.setCustomSpacing(18, after: grid)
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 18, right: 22)
         buttons.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
+        path.widthAnchor.constraint(lessThanOrEqualTo: grid.widthAnchor).isActive = true
+        path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         panel.contentView = stack
         panel.setContentSize(stack.fittingSize)
         validate()
@@ -140,7 +140,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         let n = name.stringValue.trimmingCharacters(in: .whitespaces)
         if n != project.name { patch["name"] = n }
         if key.stringValue != project.key { patch["key"] = key.stringValue }
-        if desc.string != project.description { patch["description"] = desc.string }
+        if desc.stringValue != project.description { patch["description"] = desc.stringValue }
         let a = agent.selectedItem?.representedObject as? String
         if a != project.defaultAgent { patch["default_agent"] = a ?? NSNull() }
         if project.isGitRepo, (worktree.state == .on) != project.worktree { patch["worktree"] = worktree.state == .on }

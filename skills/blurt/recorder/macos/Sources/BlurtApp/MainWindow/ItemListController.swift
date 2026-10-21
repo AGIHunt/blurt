@@ -247,6 +247,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let scroll = NSScrollView()
     private var suppressSelection = false
     private var header: NSTableHeaderView?
+    private var appliedLayout: [Bool] = []
 
     init(model: MainModel) {
         self.model = model
@@ -325,12 +326,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func applyLayout() {
         let full = model.scope.isTable
         let inProject: Bool = { if case .project = model.scope { return true }; return model.scope == .unassigned }()
+        // only when the layout changes: a column the user resized keeps its width across reloads
+        guard appliedLayout != [full, inProject] else { return }
+        appliedLayout = [full, inProject]
         for c in table.tableColumns {
             switch c.identifier.rawValue {
-            case "review": c.isHidden = !full
-            case "project": c.isHidden = inProject || !full
-            case "meta": c.width = full ? 64 : (inProject ? 56 : 132); c.maxWidth = full ? 120 : 200
-            case "work": c.width = full ? 132 : 22; c.minWidth = full ? 60 : 22
+            case "review": c.isHidden = !full; c.width = 76
+            case "project": c.isHidden = inProject || !full; c.width = 100
+            case "meta": c.width = full ? 58 : (inProject ? 56 : 132); c.maxWidth = full ? 120 : 200
+            case "work": c.width = full ? 116 : 22; c.minWidth = full ? 60 : 22
+            case "time": c.width = 72
             default: break
             }
         }
@@ -403,7 +408,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         model.reload()
     }
 
-    func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared) }
+    func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
 
     func updateEmpty() {
         switch model.indexState {
@@ -478,7 +483,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "lead":
             let c = make("lead") { LeadCell() }
             c.dot.on = it.status == "draft"
-            c.icon.image = Look.kindImage(it.kind)
+            c.kindImage = Look.kindImage(it.kind)
             c.icon.alphaValue = dropped ? 0.4 : 1
             c.setAccessibilityLabel(Look.kindName(it.kind))
             return c

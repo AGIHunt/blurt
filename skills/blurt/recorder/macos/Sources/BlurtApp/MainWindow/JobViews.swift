@@ -93,7 +93,7 @@ final class JobsSection: NSView {
     /// The job the detail shows: its row stays highlighted.
     var selected: String? { didSet { rows.forEach { $0.value.selected = $0.key == selected } } }
 
-    func set(_ jobs: [Job], store: ProjectStore) {
+    func set(_ jobs: [Job], store: ProjectStore, showProject: Bool = true) {
         isHidden = jobs.isEmpty
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !jobs.isEmpty else { return }
@@ -110,7 +110,7 @@ final class JobsSection: NSView {
         var keep: [String: JobRow] = [:]
         for j in ordered.prefix(Self.maxRows) {
             let r = rows[j.id] ?? JobRow()
-            r.set(j, project: j.project.flatMap { store.project(id: $0) }?.name)
+            r.set(j, project: showProject ? j.project.flatMap { store.project(id: $0) }?.name : nil)
             r.onClick = { [weak self] in self?.onSelect?(j.id) }
             r.selected = j.id == selected
             keep[j.id] = r
