@@ -641,14 +641,34 @@ reveal(path) / open_external(url)
 录制（WP8 的 `crates/blurt-capture` 加 `record.py` 的 ffmpeg 引擎）：
 
 ```
-record.py start --engine ffmpeg --session DIR --region x,y,w,h [--screen N] [--mic M|--no-mic] --status-jsonl
-   stdout JSON lines: {"ev":"started","t0":…} {"ev":"level","rms":0.12} {"ev":"paused"} {"ev":"resumed"}
-                      {"ev":"snap","n":3,"file":"shots/003.png"} {"ev":"stopped","video":"recording.mp4"} {"ev":"error","msg":…}
+record.py start --engine ffmpeg --session DIR [--region=x,y,w,h] [--screen N] [--mic M|--no-mic] --status-jsonl
+   stdout JSON lines: {"ev":"started","t0":…} {"ev":"level","rms":0.12} {"ev":"paused","t":…} {"ev":"resumed","t":…}
+                      {"ev":"snap","n":3,"file":"shots/003.png","t":…} {"ev":"stopped","video":"recording.mp4","duration":…,"shots":…}
+                      {"ev":"discarded"} {"ev":"error","msg":…,"code":…}
    control: existing `record.py stop|pause|resume|snap|discard` (cmd file), unchanged
    writes the same files as today (recording.mp4, events.jsonl, meta.json, live/audio.pcm, shots.jsonl)
-Rust: blurt_capture::{pick_region(app) -> Region, start(opts) -> CaptureHandle, handle.pause/resume/stop/snap,
-      overlay::{hud, perch, note}: create transparent, always-on-top, non-focusable, content-protected windows}
+Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.pause/resume/snap/stop/discard/wait,
+      overlay::pick_region(app, cfg, last) -> Option<Region>,
+      overlay::{hud, perch, note, record}: transparent, always-on-top, non-focusable, content-protected windows}
 ```
+
+- **状态行**：
+  - 有 `--status-jsonl` 时 stdout 只有状态行，其余输出（`SESSION`、`DONE`、日志）都走 stderr；
+  - 流一定以 `stopped`、`discarded`、`error` 三者之一结束，之后进程退出（退出码 0 / 2 / 非 0）；
+  - `t` 是视频时间（秒），`t0` 是第一帧的墙钟时间；`level` 只在有麦克风时出现，约 10 Hz；
+  - `{"ev":"error","code":"snap"}` 只表示这一张没截到，录制继续，不是结束行；
+  - 字段只加不减，Rust 端遇到不认识的 `ev` 原样转给 HUD。
+- **`--status-jsonl` 只配 `--engine ffmpeg`**，别的引擎直接报错。ffmpeg 引擎不支持 `restart`（先 `discard` 再重新 `start`）。
+- **`--region` 的坐标**：Windows/Linux 是虚拟桌面的物理像素（gdigrab、x11grab 直接用），macOS 是主屏的点；
+  宽高向下取偶数；x 可能为负，所以写成 `--region=x,y,w,h`。不给 `--region` 就录整个屏幕。
+- **录制中截图**：Windows/Linux 另起一个 ffmpeg 抓一帧全分辨率（gdigrab、x11grab 可以和录像同时打开）；
+  macOS 的 avfoundation 不能同时打开同一块屏幕（第二个会卡住），改用系统的 `screencapture`。暂停时也能截。
+- **浮层窗口**（`blurt-overlay-picker|hud|perch|note`，页面在 `<frontendDist>/overlays/*.html`，由 `web/apps/overlays` 构建）：
+  - 宿主应用（WP7）要给 `blurt-overlay-*` 窗口 `core:default` 权限，并打开 asset protocol（截图缩略图用）；
+  - 页面和 Rust 之间只走事件：`blurt://status`（Rust→HUD，原样的状态行）、`blurt://action`（浮层→Rust，按钮）、
+    `blurt://picked`（选区，窗口内 CSS 像素）、`blurt://hit-rects`（鸡舍可点区域，其余部分鼠标穿透）、
+    `blurt://perch`（Rust→鸡舍：set/add/remove/show/hide/busy）、`blurt://note-done`、`blurt://ready`；
+  - Linux X11 没有排除截屏的办法，所以 HUD 放在录制区域外面，放不下才贴着区域底边放在里面。
 
 ---
 

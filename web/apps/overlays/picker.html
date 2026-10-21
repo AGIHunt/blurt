@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blurt region</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+    <link rel="stylesheet" href="./src/picker.css" />
+  </head>
+  <body>
+    <div class="mask"></div>
+    <div class="sel" hidden><span class="size"></span></div>
+    <div class="hint"></div>
+    <div class="bar" hidden>
+      <button data-a="last" hidden></button>
+      <button data-a="full"></button>
+      <button data-a="cancel"></button>
+      <button data-a="ok" class="primary"></button>
+    </div>
+    <script type="module" src="./src/picker.ts"></script>
+  </body>
+</html>

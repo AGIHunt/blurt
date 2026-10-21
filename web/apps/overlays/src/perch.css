@@ -1,0 +1,159 @@
+.perch {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 100%;
+  will-change: transform;
+}
+.rod {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 8px;
+  height: 9px;
+  border-radius: 5px;
+  background: linear-gradient(#c58d52, #9a6534 60%, #7d4f27);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.cards {
+  position: absolute;
+  inset: 0;
+}
+.card {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 132px;
+  transform-origin: 66px 0;
+  will-change: transform;
+  cursor: pointer;
+}
+.card .leg {
+  display: block;
+  width: 34px;
+  height: 30px;
+  margin: 0 auto -9px;
+  position: relative;
+  z-index: 1;
+}
+.card .photo {
+  background: #fbfaf7;
+  padding: 6px 6px 7px;
+  border-radius: 3px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.card img {
+  display: block;
+  width: 120px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 1px;
+  background: #ddd;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  -webkit-user-drag: none;
+}
+.card .cap {
+  height: 15px;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 15px;
+  color: #3a3a3a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .cap:empty::before {
+  content: attr(data-n);
+  color: #9a9a9a;
+}
+.card .x {
+  position: absolute;
+  right: -7px;
+  top: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--s2);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 120ms;
+  z-index: 2;
+}
+.card:hover .x {
+  opacity: 1;
+}
+.card.copied .photo {
+  outline: 2px solid var(--accent);
+}
+.end {
+  position: absolute;
+  right: 22px;
+  top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px var(--line), 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.end[hidden] {
+  display: none;
+}
+.end button {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: var(--radius);
+  color: var(--fg2);
+}
+.end button:hover {
+  background: var(--s3);
+  color: var(--fg);
+}
+.end button.primary {
+  background: var(--accent);
+  color: #1e1e1e;
+  font-weight: 600;
+}
+.end [hidden] {
+  display: none;
+}
+.nest {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 8px 0 6px;
+  color: var(--fg2);
+}
+.nest i {
+  width: 11px;
+  height: 14px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: radial-gradient(circle at 35% 30%, #fff, #f1e6d2 60%, #d9c4a0);
+  animation: wobble 1.2s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+.nest i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.nest i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.nest span {
+  margin-left: 6px;
+}
+@keyframes wobble {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-12deg);
+  }
+  75% {
+    transform: rotate(12deg);
+  }
+}
