@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>Issue egg — speckled, with a tiny bug</title>
+<defs><radialGradient id="eg-gloss-issue" cx=".34" cy=".26" r=".62"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".45" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><radialGradient id="eg-issue" cx=".4" cy=".34" r=".78"><stop offset="0" stop-color="#fbf4e6"/><stop offset=".7" stop-color="#ead7b5"/><stop offset="1" stop-color="#c9ad80"/></radialGradient></defs>
+<path d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z" fill="url(#eg-issue)" stroke="#7a5c38" stroke-opacity=".5" stroke-width=".7"/>
+<g fill="#9a7650"><circle cx="5.5" cy="6.6" r=".5"/><circle cx="7.3" cy="3.9" r=".35"/><circle cx="10.5" cy="5.6" r=".4"/><circle cx="5" cy="10.4" r=".42"/><circle cx="11.5" cy="8.4" r=".3"/><circle cx="6.6" cy="13" r=".3"/></g>
+<g fill="#33261d" stroke="#33261d" stroke-width=".6" stroke-linecap="round" transform="translate(9.4 11) scale(.72) translate(-8.8 -10.6)"><path d="M7.55 9.7 6.3 9.15M7.4 10.9H6.05M7.6 12.05l-1.05.75M10.05 9.7l1.25-.55M10.2 10.9h1.35M10 12.05l1.05.75M8.35 7.6l-.55-.85M9.25 7.6l.55-.85" fill="none"/><ellipse cx="8.8" cy="10.85" rx="1.55" ry="1.9" stroke="none"/><circle cx="8.8" cy="8.55" r=".85" stroke="none"/></g>
+<path d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z" fill="url(#eg-gloss-issue)"/>
+</svg>

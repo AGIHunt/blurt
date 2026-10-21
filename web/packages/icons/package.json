@@ -1,0 +1,32 @@
+{
+  "name": "@blurt/icons",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor) + the kind eggs, generated from assets/icons/*.svg: <Icon name/> and <Egg kind/> for React, iconSvg()/eggSvg()/SPRITE for plain pages.",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./core": "./src/core.ts",
+    "./sprite.svg": "./sprite.svg"
+  },
+  "scripts": {
+    "generate": "python3 ../../../assets/icons/tools/build.py --no-png",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

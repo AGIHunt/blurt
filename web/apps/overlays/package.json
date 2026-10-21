@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@blurt/icons": "workspace:*",
     "@tauri-apps/api": "^2.12.4"
   },
   "devDependencies": {
