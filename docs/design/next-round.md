@@ -781,6 +781,45 @@ uid 01JB… · issue · high · module auth
     深色从 HSL(h, 70%, 68%) 起，不够 3:1 就按 2% 一步变暗 / 变亮直到够（黄绿色相会走几步）。web 和 Swift 用同一条规则。
   - 圆环几何（14 / 18 px，线宽 1.5）以 `ringShapes()` 为准，Swift 按同样的数字 y 轴向下画，两边像素一致。
 
+**细则（P6）**
+
+- **终值**：种类色 issue `#D93D42` / `#FF6B6B`，idea `#A8710A` / `#FFC53D`（浅色从 `#B7791F` 加深，在 `#EAEAEA` 上才够 3:1），
+  note `#3E63DD` / `#8DA4EF`，task `#218358` / `#3DD68C`；圆环的提醒色 `--warn` = `#B86E00` / `#F5A524`（`#E5A000` 在浅底上只有 1.9:1），
+  done 用 `--keep`（`#15965F` / `#2B9466`），handed_off / in_progress 用 `--accent`（`#F55B3E` / `#FF7A5C`）。to_verify 实心圆里的「!」
+  浅色是白、深色是 `#2A1A00`；done 的勾是白。自定义 lens：色相 `h = (h·31 + UTF-16 码元) mod 360`，从 HSL(h, 55%, 42%) / HSL(h, 70%, 68%)
+  起每次 2% 变深 / 变浅，直到在 `#EAEAEA` / `#383838` 上 ≥ 3:1。web（`tokens.css`、`ui/src/kinds.ts`）和 Swift（`KindStyle.swift`、
+  `StatusRing.swift`）同值同几何，`tests/test_icons.py` 和 ui 的 vitest 校验。
+- **圆环几何**（size × size，线宽 1.5，`u = size / 14`）：环半径 `size/2 − 1.25`；handed_off 中心圆点半径 `2u`；in_progress 右半圆半径
+  `R − 1.75u`；to_verify / done 实心圆半径 `R + 0.75`；「!」= 竖线 `(c, c−3u)→(c, c+0.6u)` + 圆点 `(c, c+2.85u)` 半径 `0.95u`；勾 =
+  `(c−2.9u, c+0.1u)→(c−0.9u, c+2u)→(c+3u, c−2.2u)`；wontfix 斜线是环内 45°。y 向下。
+- **图标**：`note.svg` 改名 `document.svg`，`task.svg` 由 `checklist.svg` 取代；`note`、`task`、`todo`、`idea`、`issue`、`lens` 作为别名
+  （各平台 `BlurtIcon(named:)` / `<Icon name>` 照常能查到）。`bug` 改为 generic（macOS 用 SF `ladybug`）。
+- **web API**：`@blurt/ui` 导出 `KINDS`、`WORK_STATES`、`kindIcon`、`kindStyle`、`customKindColor`、`workStateOf`（含 v2 fix 映射）、
+  `ringShapes`、`statusRingSvg`；React 组件在 `@blurt/ui/react`（`<KindIcon kind size title/>`、`<StatusRing state size label/>`），样式在
+  `base.css`（`.kind-ic`、`.sring`）。`@blurt/i18n`：复数键必须有 `_other`，zh-Hans 只需要 `_other`；`checkCatalogs(en, zh)` 比较去掉复数后缀
+  的键和占位符；`formatDuration` 的 clock 样式向下取整（0.9 秒 = 0:00，同播放器）。
+- **审核组件宿主协议 v3（定稿）**：
+  - `BlurtHost.scope` = `{session: 绝对路径}` | `{project: id, status?, work?, kind?}`。macOS 的消息参数：`load {scope}`、`poll {etag, scope}`、
+    `sendOps {ops, confirm, scope}`、`confirmed {scope}`；返回值同 v2（`{doc, etag}` / `{etag, doc?}` / `{ok, etag, doc?}`，sendOps 可以只确认）。
+    scope 来自 `blurtHostInfo.scope`，没有就看 URL 的 `?project=` / `?session=`。
+  - 可选方法（`blurtHostInfo.methods` 列出才出现）：`reveal {path}`、`quickLook {path}`、`openCode {ref}`、`dispatch {uids}`、
+    `handoff {uids, what: "instruction"|"full"}` → `{id, path, text}`（要回复；宿主复制 `text` 并调 `handoff.py --mark`）、`openSession {job}`、
+    `registerDragRects {rects}`、`download {path}`。`fixWithAgent` 删除。`path` 是 doc 里的原样路径（v3 绝对，v2 相对会话）。
+  - `fileUrl`：v3 的绝对路径——浏览器 `files/` + `encodeURIComponent(绝对路径)`（**整个路径一个段**，`/` 编成 `%2F`；review.py 解码后只放行
+    已登记的 store、会话目录和 `$BLURT_HOME/handoff`）；macOS `blurt-app://file/` + `encodeURIComponent(绝对路径)`；Tauri `convertFileSrc(绝对路径)`。
+    v2 的相对路径照旧（`files/<逐段编码>`、`blurt-app://session/<rel>`）。
+  - Tauri：`items_doc {scope}` → `{doc, etag}`，`items_poll {scope, etag}` → `{etag, doc?}`，`items_ops {scope, ops, confirm}` → `{ok, etag, doc?}`，
+    `handoff_create {uids, full}` → `{id, path, text}`（Rust 侧复制并 mark）。`dispatch` / `openSession` 是外壳的导航，由 `web/apps/desktop` 给
+    `createTauriHost(scope)` 的结果补上。
+  - 组件发的 op：字段改动 = `set`（v3 一律用 uid 作 `id`；`set.project` = 用户换项目）；`{op: "work", id, state, note?}` = 用户的确认完成 /
+    重新打开 / 不处理；`add` / `remove` 同 v2（v3 的 `merged_from` 和 `into` 是 uid）。id、work、work_history、aliases、path、updated、created、
+    project_by / project_confidence / suggested_project 永远以服务端为准，组件不发。
+  - **review.py 可选**（P1）：doc 带 `"_caps": ["handoff"]` 并实现 `POST /api/handoff {uids, what}` → `{id, path, text}` 时，浏览器页也显示
+    「复制指令 / 复制全文」（页面在点击里用 ClipboardItem 复制，Safari 也允许）；没有就不显示。
+  - 挂载：`mountReview(el, host, {embedded})`——嵌进主窗口时不显示品牌、主题和语言按钮，不改 `document.title`，填满 `el`，浮层只盖住 `el`；
+    macOS 宿主默认 embedded（URL `embedded=0|1` 可改）。宿主可调 `window.__blurtSetLang("en"|"zh-Hans")` 跟随应用的 `lang`。
+  - 审核状态：v2 会话（items.json）里「待审」= 本次审核还没动过；v3 doc 里 `status` 是持久的（confirmed = 保留，draft = 待审，行首强调色圆点）。
+
 ### K9 · 本地语音识别：按机器自适应
 
 - **硬件探测** `transcribe.py probe`（P7）→ `{"os","arch","chip","perf_cores","eff_cores","ram_gb","gpu":{"kind":"apple|nvidia|none","name","cores"?,"vram_gb"?},
