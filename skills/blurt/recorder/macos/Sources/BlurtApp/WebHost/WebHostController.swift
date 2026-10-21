@@ -441,7 +441,7 @@ final class ItemBanner: NSView {
             b.identifier = .init(a)
             b.bezelStyle = .rounded
             b.controlSize = .small
-            if primary { b.keyEquivalent = "\r"; b.keyEquivalentModifierMask = [.command, .shift] }
+            if primary { b.bezelColor = .controlAccentColor; b.keyEquivalent = "\r"; b.keyEquivalentModifierMask = [.command, .shift] }
             buttons.addArrangedSubview(b)
         }
         guard let it = it, it.status != "deleted" else { return hide() }
@@ -453,8 +453,8 @@ final class ItemBanner: NSView {
             tint = StatusRing.attention
             icon.image = Look.ring("to_verify", size: 16)
             text.stringValue = agent.map { T("main.banner.to_verify", $0) } ?? T("main.banner.to_verify.anon")
-            button(T("work.reopen"), "todo")
-            button(T("work.confirm_done"), "done", primary: true)
+            button(T("main.cmd.reopen"), "todo")
+            button(T("main.cmd.mark_done"), "done", primary: true)
         case "session":
             tint = StatusRing.accent
             icon.image = Look.ring(it.workState, size: 16)
@@ -465,8 +465,8 @@ final class ItemBanner: NSView {
             tint = StatusRing.accent
             icon.image = Look.ring(it.workState, size: 16)
             text.stringValue = T("main.banner.external")
-            button(T("work.wontfix"), "wontfix")
-            button(T("work.confirm_done"), "done", primary: true)
+            button(T("main.cmd.wontfix"), "wontfix")
+            button(T("main.cmd.mark_done"), "done", primary: true)
         default:
             if let s = suggested, it.projectID == "inbox" {
                 tint = .controlAccentColor

@@ -1,0 +1,17 @@
+/* Settings — the settings window and the setup assistant (K10). Owner: P4.
+   Same keys and placeholders in the other language (tests/test_l10n.py). */
+
+"settings.general.after_recording" = "After a recording";
+"settings.general.app" = "App";
+"settings.general.assistant" = "Run the Setup Assistant Again…";
+"settings.general.auto" = "Auto — the AI sorts them into projects";
+"settings.general.capture_into" = "New captures go to";
+"settings.general.language" = "Language";
+"settings.general.language.restart" = "Takes effect the next time Blurt opens.";
+"settings.general.language.system" = "Same as the system";
+"settings.general.login" = "Open Blurt at login";
+"settings.general.open_unassigned" = "Show Unassigned in Finder";
+"settings.general.projects.hint" = "A project is a folder on this Mac. Its items live in the folder's .blurt, which Blurt keeps out of git for you.";
+"settings.general.recording" = "Recording";
+"settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
+"settings.general.spotlight" = "Show items in Spotlight";

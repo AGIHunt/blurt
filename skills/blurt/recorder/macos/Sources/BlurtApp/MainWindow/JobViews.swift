@@ -13,7 +13,7 @@ enum JobLook {
         } else {
             what = T("job.type.\(j.type.rawValue)")
         }
-        let detail = j.title ?? j.agent?.windowName ?? j.session.map { sessionLabel($0) }
+        let detail = j.title ?? j.agent?.windowName.map { $0.replacingOccurrences(of: ",", with: ", ") } ?? j.session.map { sessionLabel($0) }
         return detail.map { "\(what) · \($0)" } ?? what
     }
 
@@ -69,7 +69,7 @@ final class JobsSection: NSView {
         header.font = .systemFont(ofSize: 11, weight: .semibold)
         header.textColor = .secondaryLabelColor
         stack.orientation = .vertical
-        stack.alignment = .width
+        stack.alignment = .leading
         stack.spacing = 2
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -90,6 +90,9 @@ final class JobsSection: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The job the detail shows: its row stays highlighted.
+    var selected: String? { didSet { rows.forEach { $0.value.selected = $0.key == selected } } }
+
     func set(_ jobs: [Job], store: ProjectStore) {
         isHidden = jobs.isEmpty
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -109,8 +112,10 @@ final class JobsSection: NSView {
             let r = rows[j.id] ?? JobRow()
             r.set(j, project: j.project.flatMap { store.project(id: $0) }?.name)
             r.onClick = { [weak self] in self?.onSelect?(j.id) }
+            r.selected = j.id == selected
             keep[j.id] = r
             stack.addArrangedSubview(r)
+            r.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20).isActive = true
         }
         rows = keep
         if jobs.count > Self.maxRows {
@@ -133,6 +138,7 @@ final class JobRow: NSView {
     let status = NSTextField(labelWithString: "")
     let bar = NSProgressIndicator()
     private var hover = false { didSet { needsDisplay = true } }
+    var selected = false { didSet { needsDisplay = true; setAccessibilitySelected(selected) } }
 
     init() {
         super.init(frame: .zero)
@@ -183,8 +189,8 @@ final class JobRow: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard hover else { return }
-        NSColor.labelColor.withAlphaComponent(0.06).setFill()
+        guard hover || selected else { return }
+        (selected ? NSColor.controlAccentColor.withAlphaComponent(0.14) : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
     }
     override func mouseEntered(with event: NSEvent) { hover = true }
@@ -248,7 +254,7 @@ final class JobDetailView: NSView {
         let sameJob = job?.id == j.id
         job = j
         header.stringValue = JobLook.title(j)
-        var parts = [T("job.type.\(j.type.rawValue)")]
+        var parts = j.type == .agent ? [T("job.type.agent")] : []
         if let p = projectName { parts.append(p) }
         parts.append(Loc.relative(j.started ?? j.created))
         if let a = j.agent { parts.append(T("session.\(a.status.rawValue)")) }
@@ -321,7 +327,7 @@ final class StepRow: NSView {
         let name = NSTextField(labelWithString: label ?? T("job.step.\(s.id)"))
         name.font = .systemFont(ofSize: 13, weight: s.state == .running ? .semibold : .regular)
         name.textColor = s.state == .pending || s.state == .skipped ? .tertiaryLabelColor : s.state == .failed ? .systemRed : .labelColor
-        let extra = NSTextField(labelWithString: s.progress.map { Loc.percent($0) } ?? (s.state == .skipped ? T("main.job.skipped") : ""))
+        let extra = NSTextField(labelWithString: s.state == .running ? s.progress.map { Loc.percent($0) } ?? "" : s.state == .skipped ? T("main.job.skipped") : "")
         extra.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         extra.textColor = .secondaryLabelColor
         let line = NSBox()

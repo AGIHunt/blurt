@@ -58,7 +58,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
         case (.process, .done), (.route, .done):
             let n = j.items.isEmpty ? nil : j.items.count
             let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps") : T("notify.done.recording") } ?? T("notify.done.generic")
-            let text = n.map { TP("notify.done.with_count", $0, what) } ?? what
+            let text = n.map { "\(what) · \(TP("app.menu.to_review", $0))" } ?? what
             quiet(text, action: T("notify.open")) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
             if !frontmost, ran >= 20, setting("done") { post("done", title: text, body: JobLook.title(j), job: j) }
         case (_, .failed):

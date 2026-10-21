@@ -1,9 +1,9 @@
 // K10 shorthands for P4's string tables (Sources/BlurtApp/Resources/{en,zh-Hans}.lproj): the key's first part picks
 // the table — main.* / menu.* / app.* / notify.* → Main, settings.* / onboarding.* → Settings, anything else
 // (kind.*, work.*, session.*, project.*, job.*, action.*…) → Common.
-//   T("main.inbox")                         Loc.t("main.inbox", table: "Main")
-//   T("main.move.done", name)               %@ / %ld placeholders
-//   TP("main.items.selected", n)            Loc.plural(…, count: n) — the .stringsdict entry
+//   T("main.place.inbox")                   Loc.t("main.place.inbox", table: "Main")
+//   T("main.open.failed", name)             %@ / %ld placeholders
+//   TP("main.items.count", n)               Loc.plural(…, count: n) — the .stringsdict entry
 import BlurtCore
 
 func table(of key: String) -> String {

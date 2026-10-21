@@ -204,7 +204,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func listSelectionChanged() {
         let items = list.selectedItems
-        if !items.isEmpty { shownJob = nil }
+        if !items.isEmpty { shownJob = nil; list.jobs.selected = nil }
         if shownJob != nil { return }
         if items.count == 1, let it = items.first {
             detail.show(item: it, projects: model.projects)
@@ -218,6 +218,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard let j = JobStore.shared.job(id) else { return }
         list.table.deselectAll(nil)
         shownJob = id
+        list.jobs.selected = id
         detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
     }
 
@@ -495,13 +496,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let n = items.count
         // hand off
         _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
-        _ = add(m, T("handoff.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
-        _ = add(m, T("handoff.copy_full"), #selector(mCopyFull), "text.alignleft")
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
+        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         m.addItem(.separator())
         // work state
-        _ = add(m, T("work.confirm_done"), #selector(mWork(_:)), "checkmark.circle", obj: "done", key: "d", mods: [])
-        _ = add(m, T("work.reopen"), #selector(mWork(_:)), "arrow.uturn.backward.circle", obj: "todo", key: "r", mods: [])
-        _ = add(m, T("work.wontfix"), #selector(mWork(_:)), "nosign", obj: "wontfix")
+        _ = add(m, T("main.cmd.mark_done"), #selector(mWork(_:)), "checkmark.circle", obj: "done", key: "d", mods: [])
+        _ = add(m, T("main.cmd.reopen"), #selector(mWork(_:)), "arrow.uturn.backward.circle", obj: "todo", key: "r", mods: [])
+        _ = add(m, T("main.cmd.wontfix"), #selector(mWork(_:)), "nosign", obj: "wontfix")
         m.addItem(.separator())
         m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
         m.addItem(submenu(T("main.menu.review"), "checklist", reviewMenu(items)))
@@ -774,8 +775,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
             menu.addItem(.separator())
             menu.addItem(menuHeader(T("main.toolbar.handoff.own")))
-            _ = add(menu, T("handoff.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
-            _ = add(menu, T("handoff.copy_full"), #selector(mCopyFull), "text.alignleft")
+            _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
+            _ = add(menu, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         case "toolbar-2":
             for it in moveMenu().items { it.menu?.removeItem(it); menu.addItem(it) }
         default: break

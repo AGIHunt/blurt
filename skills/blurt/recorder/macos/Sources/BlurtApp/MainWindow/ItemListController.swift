@@ -306,9 +306,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let stack = NSStackView(views: [jobs, bar])
         stack.orientation = .vertical
         stack.spacing = 0
-        stack.alignment = .width
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
+            jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: stack.bottomAnchor),

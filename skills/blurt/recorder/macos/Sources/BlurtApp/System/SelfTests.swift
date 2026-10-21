@@ -120,6 +120,66 @@ enum SelfTests {
                 await sm.runBench(m)
                 out(["backend": arg, "installed": m.installed, "rtf": sm.bench[arg]?.rtf ?? -1, "error": sm.bench[arg]?.error ?? NSNull()])
             }
+        case "main":                    // main SCOPE (inbox | progress | unassigned | all | project:<id>): go there
+            let c = MainWindowController.shared
+            c.show()
+            if let s = Scope(key: arg) { c.go(s) }
+            out(["scope": c.model.scope.key, "rows": c.model.rowCount, "jobs": c.model.jobs.count, "ms": c.model.lastReloadMS])
+        case "mainsel":                 // mainsel N[,M…]: select those rows of the list
+            let c = MainWindowController.shared
+            let rows = IndexSet(arg.split(separator: ",").compactMap { Int($0) })
+            c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
+            c.window?.makeFirstResponder(c.list.table)
+            out(["selected": c.list.selectedIDs])
+        case "mainjob":                 // mainjob ID: the job's detail
+            MainWindowController.shared.selectJob(arg)
+            out(["job": arg, "found": JobStore.shared.job(arg) != nil])
+        case "mainviews":               // frames of the detail's views (layout checks)
+            let d = MainWindowController.shared.detail
+            func dump(_ v: NSView, _ depth: Int) -> [String] {
+                guard depth < 4 else { return [] }
+                return ["\(String(repeating: " ", count: depth))\(type(of: v)) \(v.frame) hidden=\(v.isHidden)"] + v.subviews.flatMap { dump($0, depth + 1) }
+            }
+            out(["views": dump(d.jobView, 0)])
+        case "mainsearch":
+            let c = MainWindowController.shared
+            c.searchItem?.searchField.stringValue = arg
+            c.model.text = arg
+            c.model.reload()
+            out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS])
+        case "mainproject":             // mainproject ID: its settings sheet
+            MainWindowController.shared.projectSettings(arg)
+        case "mainwork", "mainmove":    // mainwork STATE / mainmove PROJECT: on the selection
+            let c = MainWindowController.shared
+            if parts[0] == "mainwork" { c.setWork(arg) } else { c.move(uids: c.list.selectedItems.map(\.uid), to: arg) }
+        case "mainhandoff":             // mainhandoff instruction|full: copy for your own agent
+            let c = MainWindowController.shared
+            c.handOff(uids: c.list.selectedItems.map(\.uid), what: arg.isEmpty ? "instruction" : arg) { r in
+                out(["text": r?["text"] ?? NSNull(), "clipboard": NSPasteboard.general.string(forType: .string) ?? ""])
+            }
+        case "mainmenu":                // mainmenu: the context menu of the selection, as titles (enabled ones)
+            let c = MainWindowController.shared
+            let m = c.contextMenu(for: c.list.table.selectedRowIndexes)
+            m?.update()
+            out(["items": m?.items.filter { !$0.isSeparatorItem }.map { "\($0.title)\($0.isEnabled ? "" : " (off)")" } ?? []])
+        case "perfscopes":              // filter / search timings on the current index
+            let c = MainWindowController.shared
+            var res: [String: Double] = [:]
+            for s in ["inbox", "progress", "unassigned", "all"] {
+                c.go(Scope(key: s)!)
+                let t0 = DispatchTime.now().uptimeNanoseconds
+                c.model.reload()
+                res[s] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            }
+            for q in ["login", "按钮", "ui"] {
+                let t0 = DispatchTime.now().uptimeNanoseconds
+                c.model.text = q
+                c.model.reload()
+                res["search:" + q] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            }
+            c.model.text = ""
+            c.model.reload()
+            out(["ms": res])
         case "perms":
             let p = Permissions()
             out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue])

@@ -7,6 +7,9 @@
 <key>CFBundleIdentifier</key><string>dev.blurt.recorder</string>
 <key>CFBundleName</key><string>Blurt</string>
 <key>CFBundleDisplayName</key><string>Blurt 口喷鸡</string>
+<!-- K10: English is the development language; the string tables are Contents/Resources/{en,zh-Hans}.lproj -->
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
 <key>CFBundleExecutable</key><string>blurt-recorder</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
@@ -23,6 +26,13 @@
   <key>CFBundleURLName</key><string>dev.blurt.recorder</string>
   <key>CFBundleTypeRole</key><string>Viewer</string>
   <key>CFBundleURLSchemes</key><array><string>blurt</string><string>blurt-app</string></array>
+</dict></array>
+<!-- K2: folders dropped on the Dock icon (or "Open With") open as projects -->
+<key>CFBundleDocumentTypes</key><array><dict>
+  <key>CFBundleTypeName</key><string>Folder</string>
+  <key>CFBundleTypeRole</key><string>Viewer</string>
+  <key>LSHandlerRank</key><string>None</string>
+  <key>LSItemContentTypes</key><array><string>public.folder</string></array>
 </dict></array>
 <!-- Services → "Add to Blurt": selected text or image becomes a note in the inbox (implemented by WP6:
      NSApp.servicesProvider.addToBlurt(_:userData:error:)) -->

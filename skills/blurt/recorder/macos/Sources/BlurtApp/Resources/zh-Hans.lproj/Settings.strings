@@ -1,0 +1,17 @@
+/* Settings — 设置窗口和设置助手（K10）。拥有者：P4。
+   键和占位符与另一种语言一致（tests/test_l10n.py）。 */
+
+"settings.general.after_recording" = "录完之后";
+"settings.general.app" = "应用";
+"settings.general.assistant" = "重新运行设置助手…";
+"settings.general.auto" = "自动：AI 分到各项目";
+"settings.general.capture_into" = "新的捕获归到";
+"settings.general.language" = "语言";
+"settings.general.language.restart" = "下次打开口喷鸡时生效。";
+"settings.general.language.system" = "跟随系统";
+"settings.general.login" = "登录时打开口喷鸡";
+"settings.general.open_unassigned" = "在访达中显示待分配";
+"settings.general.projects.hint" = "项目就是本机上的一个文件夹。条目放在它的 .blurt 里，口喷鸡会帮你把它排除在 git 之外。";
+"settings.general.recording" = "录制";
+"settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
+"settings.general.spotlight" = "在 Spotlight 里搜得到条目";

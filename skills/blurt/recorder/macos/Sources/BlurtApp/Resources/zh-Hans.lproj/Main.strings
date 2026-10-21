@@ -1,0 +1,324 @@
+/* Main — 主窗口、菜单栏菜单、通知（docs/design/next-round.md K10）。拥有者：P4。
+   键和占位符与另一种语言一致（tests/test_l10n.py）。 */
+
+"app.agent.none_short" = "没有能用的 agent";
+"app.agent.unfinished" = "%@ 没整理完（退出码 %ld）";
+
+"app.login.failed" = "没能修改「登录时打开」";
+
+"app.menu.after.keep" = "只保存视频";
+"app.menu.after.organise" = "整理成条目";
+"app.menu.after_recording" = "录完之后";
+"app.menu.countdown" = "倒计时";
+"app.menu.countdown.none" = "不倒计时";
+"app.menu.countdown.seconds" = "%ld 秒";
+"app.menu.discard" = "放弃这次录制";
+"app.menu.finish" = "完成录制";
+"app.menu.help" = "帮助";
+"app.menu.login" = "登录时打开";
+"app.menu.open" = "打开口喷鸡";
+"app.menu.pause" = "暂停";
+"app.menu.project" = "当前项目：%@";
+"app.menu.project.auto_tip" = "捕获由 AI 分到对应项目";
+"app.menu.quit" = "退出口喷鸡";
+"app.menu.record" = "开始录制";
+"app.menu.record_last" = "录制上次的区域";
+"app.menu.restart" = "重新录制";
+"app.menu.resume" = "继续";
+"app.menu.selecting" = "正在选择区域…";
+"app.menu.shortcuts" = "快捷键…";
+"app.menu.system_audio" = "同时录系统声音";
+"app.menu.updates" = "检查更新…";
+
+"app.name" = "口喷鸡";
+
+"app.permission.detail" = "在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开口喷鸡（macOS 只在启动时读取权限）。\n\n如果已经是打开的：选中「Blurt」点「−」删掉，再重新打开口喷鸡授权一次（旧版本的授权对新版本无效）。";
+"app.permission.later" = "稍后";
+"app.permission.open_settings" = "打开系统设置";
+"app.permission.title" = "需要「录屏」权限";
+
+"app.record.failed" = "录屏没能保存";
+
+"app.status.ax_count" = "口喷鸡 · %@";
+
+"app.toast.saved" = "录屏已保存（%@）\n随时可以在主窗口里整理。";
+"app.toast.welcome" = "口喷鸡已在菜单栏\n%@ 开始 / 结束录制 · %@ 打开菜单";
+
+"app.url.no_item" = "索引里找不到这个条目（%@）";
+"app.url.no_session" = "这次捕获已经不在了：%@";
+
+"main.action.record" = "录制";
+"main.action.snap" = "截图";
+
+"main.banner.agent" = "agent";
+"main.banner.external" = "已复制给你的 agent。做完后在这里确认完成。";
+"main.banner.move" = "移过去";
+"main.banner.open_session" = "打开会话";
+"main.banner.suggested" = "看起来属于「%@」（把握 %@）。";
+"main.banner.to_verify" = "%@ 说已经处理好了。检查一下，再确认完成。";
+"main.banner.to_verify.anon" = "agent 说已经处理好了。检查一下，再确认完成。";
+"main.banner.with_agent" = "已交给 %@ · %@";
+
+"main.cmd.copy_full" = "复制全文";
+"main.cmd.copy_instruction" = "复制指令";
+"main.cmd.mark_done" = "确认完成";
+"main.cmd.reopen" = "重新打开";
+"main.cmd.wontfix" = "不处理";
+
+"main.col.id" = "编号";
+"main.col.kind" = "种类";
+"main.col.project" = "项目";
+"main.col.review" = "审核";
+"main.col.title" = "标题";
+"main.col.updated" = "更新";
+"main.col.work" = "处理";
+
+"main.detail.gone" = "这一条的文件不见了";
+"main.detail.label" = "条目详情";
+"main.detail.legacy" = "还没转换";
+"main.detail.legacy.detail" = "这一条来自旧版本的录屏，口喷鸡正在后台转换，完成后就能在这里打开。";
+"main.detail.none" = "没有选中条目";
+"main.detail.none.detail" = "在左边选一条 · J / K 上下切换，空格预览";
+"main.detail.parse_error" = "这一条的文件读不出来";
+
+"main.dispatch.concurrent" = "%@ 里已经有一个会话在直接改文件。同时改同一批文件可能冲突，建议用 worktree 分开。";
+"main.dispatch.concurrent.title" = "已经有会话在改这里的文件";
+"main.dispatch.failed" = "没能开始会话";
+"main.dispatch.needs_project" = "先把这些条目移到一个项目里";
+"main.dispatch.needs_project.detail" = "agent 需要在项目文件夹里工作。用「移到项目」之后再开会话。";
+"main.dispatch.one_project" = "请选同一个项目里的条目";
+"main.dispatch.one_project.detail" = "一个 agent 会话只在一个项目文件夹里工作，请按项目分别交出。";
+"main.dispatch.use_worktree" = "用 worktree";
+
+"main.empty.all_filed" = "都归好项目了";
+"main.empty.all_filed.detail" = "还没归属项目的捕获会在这里等你或 AI 分配。";
+"main.empty.clear_all" = "清除搜索和筛选";
+"main.empty.clear_filters" = "清除筛选";
+"main.empty.filters_on" = "筛选条件也还开着。";
+"main.empty.first" = "边用边说";
+"main.empty.first.detail" = "打开一个项目文件夹，然后边说边录屏（%@）或截图（%@）。口喷鸡会把它整理成 agent 能接手的条目。";
+"main.empty.inbox_zero" = "都处理完了";
+"main.empty.inbox_zero.detail" = "没有待审的，也没有等你验证的。";
+"main.empty.no_index" = "还没有索引";
+"main.empty.no_index.detail" = "口喷鸡会为你的项目和捕获建一份本地搜索索引，不会上传任何东西。";
+"main.empty.no_match" = "没有符合筛选的条目";
+"main.empty.no_results" = "没有找到「%@」";
+"main.empty.no_scripts" = "找不到 blurt skill 的脚本";
+"main.empty.no_scripts.detail" = "先装好或更新 skill（npx skills add AGIHunt/blurt），再重开这个窗口。";
+"main.empty.nothing_in_progress" = "没有进行中的事";
+"main.empty.nothing_in_progress.detail" = "交给 agent 的条目会显示在这里，直到你确认完成。";
+"main.empty.outdated" = "索引需要重建";
+"main.empty.outdated.detail" = "这一版口喷鸡把条目存成 Markdown 文件，重建索引只要一会儿，不会丢任何东西。";
+"main.empty.project" = "这个项目里还没有条目";
+"main.empty.project.detail" = "把它设为当前项目，然后边用边说：录一段屏（%@），或截几张图（%@）。";
+"main.empty.rebuild" = "重建";
+"main.empty.scan" = "建立索引";
+"main.empty.scan_failed" = "扫描失败";
+"main.empty.scanning" = "正在扫描你的捕获…";
+"main.empty.try_shorter" = "试试更短的词，或换个说法。";
+
+"main.error.bad_transition" = "当前状态下不能这样改。";
+"main.error.cant_edit" = "现在不能修改";
+"main.error.generic" = "出了点问题，详情见日志。";
+"main.error.key_taken" = "这个前缀已经被别的项目用了。";
+"main.error.needs_project" = "先把条目移到一个项目里。";
+"main.error.no_scripts" = "需要 blurt skill 的脚本和 uv。运行一次 record.py build，或重新安装 skill。";
+"main.error.no_uv" = "没装 uv，口喷鸡的设置助手可以帮你装。";
+"main.error.not_found" = "找不到了。";
+"main.error.save_title" = "没能保存";
+"main.error.timeout" = "等太久了，稍后再试。";
+"main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
+
+"main.filter.any_review" = "全部审核状态";
+"main.filter.any_work" = "全部处理状态";
+"main.filter.kind" = "按种类筛选";
+"main.filter.only_kind" = "只看%@（%ld）";
+"main.filter.review" = "按审核状态筛选";
+"main.filter.work" = "按处理状态筛选";
+
+"main.handoff.copied" = "指令已复制，粘贴到 Claude Code、Codex 或其它 agent 里";
+"main.handoff.copied_full" = "全文已复制，截图用路径引用";
+"main.handoff.failed" = "没能准备交接内容";
+
+"main.item.untitled" = "无标题";
+
+"main.job.error.auth" = "agent 没有登录。";
+"main.job.error.conflict" = "改动和你的冲突了。";
+"main.job.error.git" = "git 操作没完成。";
+"main.job.error.model" = "模型不可用。";
+"main.job.error.network" = "网络断了。";
+"main.job.error.quota" = "agent 的额度用完了。";
+"main.job.error.tmux" = "没装 tmux，可以用 Homebrew 安装（brew install tmux）。";
+"main.job.hint.no_agent" = "还没有能用的 coding agent。在 设置 → Agent 里安装或登录 Claude Code、Codex。";
+"main.job.no_terminal" = "终端不可用";
+"main.job.no_terminal.detail" = "可以在你自己的终端里打开这个会话。";
+"main.job.open_terminal_app" = "在终端中打开";
+"main.job.show_log" = "查看日志";
+"main.job.skipped" = "跳过";
+"main.job.step_state.done" = "完成";
+"main.job.step_state.failed" = "失败";
+"main.job.step_state.pending" = "未开始";
+"main.job.step_state.running" = "进行中";
+"main.job.step_state.skipped" = "跳过";
+"main.job.stop" = "停止";
+
+"main.keys.keep" = "保留 / 改回待审";
+"main.keys.kind" = "种类：问题、想法、笔记、任务";
+"main.keys.next" = "下一条 / 上一条";
+"main.keys.open" = "打开（进入详情）";
+"main.keys.palette" = "命令面板";
+"main.keys.places" = "收件箱、进行中、待分配、全部条目";
+"main.keys.projects" = "前五个项目";
+"main.keys.reveal_copy" = "在访达中显示 · 拷贝路径";
+"main.keys.search" = "搜索";
+"main.keys.space" = "空格";
+"main.keys.this" = "这个面板";
+
+"main.list.label" = "条目";
+
+"main.menu.copy_link" = "拷贝链接";
+"main.menu.kind" = "种类";
+"main.menu.move_to" = "移到项目";
+"main.menu.open_in" = "在 %@ 中打开";
+"main.menu.quick_look" = "快速查看";
+"main.menu.rename" = "改标题…";
+"main.menu.review" = "审核";
+"main.menu.review_batch" = "审核整批捕获";
+"main.menu.start_session" = "开 agent 会话处理";
+
+"main.move.failed" = "没能移动条目";
+
+"main.open.failed" = "没能打开「%@」";
+"main.open.message" = "选一个文件夹：代码仓库，或者任何放笔记的文件夹。口喷鸡把条目放在它的 .blurt 里，不会进 git。";
+"main.open.prompt" = "打开";
+
+"main.palette.field" = "命令";
+"main.palette.move_to" = "把选中的移到「%@」";
+"main.palette.only_kind" = "只看%@";
+"main.palette.placeholder" = "输入命令、项目或条目…";
+"main.palette.project" = "项目 · %@";
+
+"main.place.all" = "全部条目";
+"main.place.inbox" = "收件箱";
+"main.place.progress" = "进行中";
+"main.place.project" = "项目";
+"main.place.session" = "捕获";
+
+"main.project.agent" = "Agent";
+"main.project.agent.default" = "默认";
+"main.project.description" = "描述";
+"main.project.description.note" = "这个项目是做什么的。AI 分项目时会参考它。";
+"main.project.key" = "前缀";
+"main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
+"main.project.key.note" = "条目编号为 %1$@-1、%1$@-2…";
+"main.project.name" = "名称";
+"main.project.open_as" = "作为项目打开";
+"main.project.remove" = "从口喷鸡移除…";
+"main.project.remove.confirm" = "移除";
+"main.project.remove.detail" = "文件夹和里面的条目都不会动，重新打开这个文件夹就能回来。";
+"main.project.remove.title" = "从口喷鸡移除「%@」？";
+"main.project.save_failed" = "没能保存项目";
+"main.project.settings" = "项目设置…";
+"main.project.settings.title" = "「%@」设置";
+"main.project.use" = "设为当前项目";
+"main.project.use.tip" = "新的录屏、截图和语音都归当前项目";
+"main.project.use_auto" = "取消当前项目（自动）";
+"main.project.worktree" = "每次交出都用单独的 worktree";
+"main.project.worktree.no_git" = "不是 git 仓库：agent 直接在文件夹里改。";
+"main.project.worktree.note" = "agent 在你工作区旁边的分支上改，之后由你合并、开 PR 或丢弃。";
+
+"main.rename.title" = "改标题";
+
+"main.search.label" = "搜索";
+"main.search.placeholder" = "搜索条目、原话和字段";
+
+"main.session.recording" = "录屏 %@";
+"main.session.snaps" = "截图 %@";
+"main.session.voice" = "语音 %@";
+
+"main.sidebar.inbox.ax" = "收件箱：待审和待验证的条目";
+"main.sidebar.label" = "侧栏";
+"main.sidebar.missing" = "文件夹不见了";
+"main.sidebar.not_opened" = "还没作为项目打开";
+"main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
+"main.sidebar.progress.ax" = "进行中：交给 agent 的条目和正在运行的任务";
+"main.sidebar.projects" = "项目";
+"main.sidebar.unassigned.ax" = "待分配：还没归到项目的条目";
+
+"main.toast.download_failed" = "没能保存：%@";
+"main.toast.downloaded" = "已存到「下载」：%@";
+
+"main.toolbar.handoff" = "交出";
+"main.toolbar.handoff.own" = "给你自己的 agent";
+"main.toolbar.handoff.tip" = "在口喷鸡里开一个 agent 会话，或复制指令给你自己的 agent";
+"main.toolbar.move" = "移动";
+"main.toolbar.move.tip" = "把选中的条目移到某个项目";
+"main.toolbar.record.tip" = "录制屏幕和讲解 %@";
+"main.toolbar.snap.tip" = "截一张图，说一句 %@";
+
+"main.window.label" = "口喷鸡";
+
+"menu.close" = "关闭窗口";
+
+"menu.copy" = "拷贝";
+
+"menu.cut" = "剪切";
+
+"menu.edit" = "编辑";
+
+"menu.file" = "文件";
+
+"menu.find" = "查找";
+
+"menu.go" = "前往";
+
+"menu.help" = "帮助";
+
+"menu.hide" = "隐藏口喷鸡";
+
+"menu.item" = "条目";
+
+"menu.minimize" = "最小化";
+
+"menu.open_recent" = "最近打开";
+
+"menu.palette" = "命令面板…";
+
+"menu.paste" = "粘贴";
+
+"menu.quit" = "退出口喷鸡";
+
+"menu.redo" = "重做";
+
+"menu.rescan" = "重新扫描全部";
+
+"menu.select_all" = "全选";
+
+"menu.settings" = "设置…";
+
+"menu.shortcuts" = "键盘快捷键";
+
+"menu.toggle_sidebar" = "显示或隐藏侧栏";
+
+"menu.undo" = "撤销";
+
+"menu.website" = "口喷鸡主页";
+
+"menu.window" = "窗口";
+
+"menu.zoom" = "缩放";
+
+"notify.agent.turn" = "%@ 本轮完成";
+"notify.agent.turn.body" = "看看结果，或者告诉它下一步。";
+"notify.agent.waiting" = "%@ 在等你回答";
+"notify.agent.waiting.body" = "点一下，到它的终端里回答。";
+
+"notify.done.generic" = "整理好了";
+"notify.done.recording" = "录屏整理好了";
+"notify.done.snaps" = "截图整理好了";
+
+"notify.failed" = "%@ 没有完成";
+
+"notify.open" = "打开";
+
+"notify.show" = "查看";

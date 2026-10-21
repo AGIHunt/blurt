@@ -66,11 +66,11 @@ enum MainMenu {
         let move = NSMenuItem(title: T("main.menu.move_to"), action: nil, keyEquivalent: "")
         move.submenu = c.moveMenu()
         _ = menu(T("menu.item"), [item(T("main.menu.start_session"), #selector(MainWindowController.mHandOff), "\r"),
-                                  item(T("handoff.copy_instruction"), #selector(MainWindowController.mCopyInstruction), "c", [.command, .shift]),
-                                  item(T("handoff.copy_full"), #selector(MainWindowController.mCopyFull)), .separator(),
-                                  item(T("work.confirm_done"), #selector(MainWindowController.mWork(_:)), obj: "done"),
-                                  item(T("work.reopen"), #selector(MainWindowController.mWork(_:)), obj: "todo"),
-                                  item(T("work.wontfix"), #selector(MainWindowController.mWork(_:)), obj: "wontfix"), .separator(),
+                                  item(T("main.cmd.copy_instruction"), #selector(MainWindowController.mCopyInstruction), "c", [.command, .shift]),
+                                  item(T("main.cmd.copy_full"), #selector(MainWindowController.mCopyFull)), .separator(),
+                                  item(T("main.cmd.mark_done"), #selector(MainWindowController.mWork(_:)), obj: "done"),
+                                  item(T("main.cmd.reopen"), #selector(MainWindowController.mWork(_:)), obj: "todo"),
+                                  item(T("main.cmd.wontfix"), #selector(MainWindowController.mWork(_:)), obj: "wontfix"), .separator(),
                                   move,
                                   item(T("main.menu.rename"), #selector(MainWindowController.mRename)),
                                   item(T("review.confirmed"), #selector(MainWindowController.mSetStatus(_:)), obj: "confirmed"),
@@ -114,8 +114,8 @@ enum ShortcutsSheet {
         let rows: [(String, String)] = [
             ("⌘K", T("main.keys.palette")), ("/  ⌘F", T("main.keys.search")), ("⌘O", T("project.open_folder")),
             ("J / K  ↓ / ↑", T("main.keys.next")), ("↩", T("main.keys.open")),
-            ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("handoff.copy_instruction")),
-            ("D", T("work.confirm_done")), ("R", T("work.reopen")), ("E", T("main.menu.rename")),
+            ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("main.cmd.copy_instruction")),
+            ("D", T("main.cmd.mark_done")), ("R", T("main.cmd.reopen")), ("E", T("main.menu.rename")),
             ("1 2 3 4", T("main.keys.kind")), ("S", T("main.keys.keep")), ("⌫", T("review.deleted")),
             (T("main.keys.space"), "Quick Look"),
             ("⌘1 … ⌘4", T("main.keys.places")), ("⌘5 … ⌘9", T("main.keys.projects")),

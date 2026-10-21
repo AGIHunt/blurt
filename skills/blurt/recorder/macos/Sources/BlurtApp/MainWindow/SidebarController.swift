@@ -102,7 +102,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             place(T("main.place.inbox"), .inbox, "tray", c.attention, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.dashed", c.active + c.toVerify, ax: T("main.sidebar.progress.ax")),
             place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
-            place(T("main.place.all"), .all, "square.stack", c.all),
+            place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
         ]
         let projectNodes = model.projects.map { p -> SidebarNode in
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",

@@ -1,9 +1,9 @@
 // K10: the app's strings, from per-package tables — Sources/BlurtApp/Resources/{en,zh-Hans}.lproj/<Table>.strings
 // (plurals in the same-named .stringsdict). record.py build copies the .lproj folders into Contents/Resources; a
 // `swift build` binary run from the source tree finds them next to the sources.
-//   Loc.t("main.inbox.title", table: "Main")                     → "Inbox" / "收件箱"
-//   Loc.t("main.items.selected", table: "Main", name)            → %@ / %ld placeholders, String(format:locale:)
-//   Loc.plural("main.items.count", table: "Main", count: n)      → .stringsdict (count is the first argument)
+//   Loc.t("main.place.inbox", table: "Main")                     → "Inbox" / "收件箱"
+//   Loc.t("main.open.failed", table: "Main", name)            → %@ / %ld placeholders, String(format:locale:)
+//   Loc.plural("main.items.count", table: "Main", count: n)       → .stringsdict (count is the first argument)
 // Language: config `lang` = auto (default: the system's first preferred language, zh-* → zh-Hans, anything else → en) |
 // en | zh | zh-Hans; `Loc.setting` (the app's --lang) wins. A key missing from the language falls back to en, then to
 // the key itself, so a gap shows up as "main.inbox.title" rather than an empty label.
