@@ -147,12 +147,12 @@ export function DispatchSheet({
             {error && <p className="warn small">{error}</p>}
           </>
         )}
+        <div className="copy">
+          <span className="dim small">{t('dispatch.copy')}</span>
+          <button className="link" onClick={() => copy(false)}><Icon name="copy" size={14} />{t('handoff.copy_instruction')}</button>
+          <button className="link" onClick={() => copy(true)}>{t('handoff.copy_full')}</button>
+        </div>
         <div className="foot">
-          <span className="copy">
-            <span className="dim small">{t('dispatch.copy')}</span>
-            <button className="link" onClick={() => copy(false)}><Icon name="copy" size={14} />{t('handoff.copy_instruction')}</button>
-            <button className="link" onClick={() => copy(true)}>{t('handoff.copy_full')}</button>
-          </span>
           <span className="grow" />
           <button onClick={onClose}>{t('dispatch.cancel')}</button>
           {!concurrent && (

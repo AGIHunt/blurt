@@ -1143,6 +1143,12 @@ tr.conflict td:first-child {
   align-items: center;
   gap: 2px;
   flex-wrap: wrap;
+  margin: 2px 0 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-2);
+}
+.dispatch .copy > span {
+  margin-right: 4px;
 }
 .shell-toast {
   position: fixed;
