@@ -1,6 +1,8 @@
-// The middle column: a filter bar (kind eggs, status, fix state, count) over a view-based NSTableView with a fixed
-// row height. Lists items, or sessions for Inbox / All Sessions. Keyboard-first (§2.5): J/K, ↩, ⌘↩, E, 1–4, S, R,
-// Space (Quick Look of the primary frame), ⌘C (path), ⌫ (drop). Empty states for first run, no matches, nothing yet.
+// The middle column: the running jobs (K4) above a filter bar and a view-based NSTableView with a fixed row height.
+// Dense one-line rows everywhere; All Items shows the same table with a header and every column. Keyboard-first:
+// J/K, ↩, ⌘↩ (hand off), E, 1–4 (kind), S (keep / review), D (mark done), R (reopen), Space (Quick Look), ⌘C (path),
+// ⌫ (drop). Rows drag out as their primary frame (a file) and onto a project in the sidebar (move). Empty states for
+// first run, no matches, nothing yet.
 import AppKit
 import BlurtCore
 import Quartz
@@ -8,17 +10,23 @@ import Quartz
 protocol ItemListActions: AnyObject {
     func listSelectionChanged()
     func openSelection()                       // ↩: focus the detail
-    func fixSelection()                        // ⌘↩
+    func handOffSelection()                    // ⌘↩
     func renameSelection()                     // E
     func setKind(_ kind: String)               // 1–4
     func cycleStatus()                         // S
     func setStatus(_ status: String)
-    func reviewMode()                          // R
+    func setWork(_ state: String)              // D = done, R = reopen
     func copyPaths()                           // ⌘C
     func contextMenu(for rows: IndexSet) -> NSMenu?
     func showShortcuts()                       // ?
     func focusSearch()                         // /
     func emptyAction(_ tag: Int)               // buttons in the empty states
+    func selectJob(_ id: String)               // a row of the jobs section
+}
+
+/// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
+extension NSPasteboard.PasteboardType {
+    static let blurtItems = NSPasteboard.PasteboardType("dev.blurt.items")
 }
 
 final class ItemTableView: NSTableView {
@@ -28,7 +36,7 @@ final class ItemTableView: NSTableView {
     override func keyDown(with e: NSEvent) {
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
         let ch = e.charactersIgnoringModifiers ?? ""
-        if mods == .command, e.keyCode == 36 || e.keyCode == 76 { actions?.fixSelection(); return }
+        if mods == .command, e.keyCode == 36 || e.keyCode == 76 { actions?.handOffSelection(); return }
         if mods.isEmpty || mods == .shift {
             switch (e.keyCode, ch) {
             case (36, _), (76, _): actions?.openSelection(); return
@@ -38,7 +46,8 @@ final class ItemTableView: NSTableView {
             case (_, "k"): move(-1); return
             case (_, "e"): actions?.renameSelection(); return
             case (_, "s"): actions?.cycleStatus(); return
-            case (_, "r"): actions?.reviewMode(); return
+            case (_, "d"): actions?.setWork("done"); return
+            case (_, "r"): actions?.setWork("todo"); return
             case (_, "/"): actions?.focusSearch(); return
             case (_, "?"): actions?.showShortcuts(); return
             case (_, "1"): actions?.setKind("issue"); return
@@ -81,7 +90,7 @@ final class ItemTableView: NSTableView {
     }
 }
 
-/// Big centred message with an SF Symbol and up to two buttons.
+/// Big centred message with an image and up to two buttons.
 final class EmptyStateView: NSView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
@@ -129,7 +138,7 @@ final class EmptyStateView: NSView {
             let b = NSButton(title: label, target: self, action: #selector(tap(_:)))
             b.tag = tag
             b.bezelStyle = .rounded
-            if k == 0 { b.keyEquivalent = "\r"; b.bezelColor = Look.brand }
+            if k == 0 { b.keyEquivalent = "\r" }
             buttons.addArrangedSubview(b)
         }
         buttons.isHidden = bs.isEmpty
@@ -142,30 +151,30 @@ final class EmptyStateView: NSView {
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
 }
 
+/// Kind segments, the review and work filters, and the count.
 final class FilterBar: NSView {
     let kinds = NSSegmentedControl()
     let status = NSPopUpButton()
-    let fix = NSPopUpButton()
+    let work = NSPopUpButton()
     let count = NSTextField(labelWithString: "")
     var onChange: (() -> Void)?
-    static let kindKeys = ["issue", "idea", "note", "task"]
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        kinds.segmentCount = 4
+        kinds.segmentCount = KindStyle.builtIn.count
         kinds.trackingMode = .selectAny
-        kinds.segmentStyle = .rounded
+        kinds.segmentStyle = .roundRect
         kinds.controlSize = .small
-        for (k, key) in Self.kindKeys.enumerated() {
-            kinds.setImage(BrandIcon.kind(key, variant: "bar", size: 14), forSegment: k)
-            kinds.setLabel(Look.kindName(key), forSegment: k)
-            kinds.setImageScaling(.scaleProportionallyDown, forSegment: k)
-            kinds.setToolTip(L("只看", "Only ") + Look.kindName(key) + " (\(k + 1))", forSegment: k)
+        for (k, key) in KindStyle.builtIn.enumerated() {
+            kinds.setImage(Look.kindImage(key), forSegment: k)
+            kinds.setImageScaling(.scaleNone, forSegment: k)
+            kinds.setWidth(28, forSegment: k)
+            kinds.setToolTip(T("main.filter.only_kind", Look.kindName(key), k + 1), forSegment: k)
         }
         kinds.target = self
         kinds.action = #selector(changed)
-        kinds.setAccessibilityLabel(L("按类型筛选", "Filter by kind"))
-        for p in [status, fix] {
+        kinds.setAccessibilityLabel(T("main.filter.kind"))
+        for p in [status, work] {
             p.controlSize = .small
             p.font = .systemFont(ofSize: 11)
             p.bezelStyle = .recessed
@@ -173,21 +182,23 @@ final class FilterBar: NSView {
             p.target = self
             p.action = #selector(changed)
         }
-        let st: [(String, String?)] = [(L("全部状态", "Any Status"), nil), (L("待审", "Draft"), "draft"),
-                                        (L("已确认", "Confirmed"), "confirmed"), (L("已丢弃", "Dropped"), "deleted")]
+        let st: [(String, String?)] = [(T("main.filter.any_review"), nil), (Look.reviewName("draft"), "draft"),
+                                        (Look.reviewName("confirmed"), "confirmed"), (Look.reviewName("deleted"), "deleted")]
         for (t, v) in st { status.addItem(withTitle: t); status.lastItem?.representedObject = v }
-        let fx: [(String, String?)] = [(L("修复：全部", "Any Fix State"), nil), (L("没交给 agent", "Not Sent"), "none"),
-                                        (L("修复中", "Fixing"), "fixing"), (L("已修复", "Fixed"), "fixed"),
-                                        (L("不修", "Won't Fix"), "wontfix"), (L("重新打开", "Reopened"), "reopened")]
-        for (t, v) in fx { fix.addItem(withTitle: t); fix.lastItem?.representedObject = v }
-        status.setAccessibilityLabel(L("按状态筛选", "Filter by status"))
-        fix.setAccessibilityLabel(L("按修复状态筛选", "Filter by fix state"))
+        work.addItem(withTitle: T("main.filter.any_work"))
+        for s in StatusRing.states {
+            work.addItem(withTitle: Look.workName(s))
+            work.lastItem?.representedObject = s
+            work.lastItem?.image = Look.ring(s, size: 12)
+        }
+        status.setAccessibilityLabel(T("main.filter.review"))
+        work.setAccessibilityLabel(T("main.filter.work"))
         count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         count.textColor = .secondaryLabelColor
         count.alignment = .right
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let row = NSStackView(views: [kinds, status, fix, spacer, count])
+        let row = NSStackView(views: [kinds, status, work, spacer, count])
         row.orientation = .horizontal
         row.spacing = 8
         row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 14)
@@ -202,7 +213,7 @@ final class FilterBar: NSView {
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
             line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
             line.bottomAnchor.constraint(equalTo: bottomAnchor),
-            heightAnchor.constraint(equalToConstant: 34),
+            heightAnchor.constraint(equalToConstant: 32),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -210,20 +221,19 @@ final class FilterBar: NSView {
     @objc func changed() { onChange?() }
 
     var selectedKinds: Set<String> {
-        Set(Self.kindKeys.enumerated().filter { kinds.isSelected(forSegment: $0.offset) }.map(\.element))
+        Set(KindStyle.builtIn.enumerated().filter { kinds.isSelected(forSegment: $0.offset) }.map(\.element))
     }
 
     func sync(_ m: MainModel) {
-        for (k, key) in Self.kindKeys.enumerated() { kinds.setSelected(m.kinds.contains(key), forSegment: k) }
+        for (k, key) in KindStyle.builtIn.enumerated() { kinds.setSelected(m.kinds.contains(key), forSegment: k) }
         status.selectItem(at: status.itemArray.firstIndex { $0.representedObject as? String == m.status } ?? 0)
-        fix.selectItem(at: fix.itemArray.firstIndex { $0.representedObject as? String == m.fix } ?? 0)
-        let listsSessions = m.scope.listsSessions || m.indexState != .ready
-        kinds.isHidden = listsSessions
-        status.isHidden = listsSessions
-        count.isHidden = m.indexState != .ready
-        fix.isHidden = listsSessions || m.scope == .smart(.fixing) || m.scope == .smart(.fixed)
-        let n = NumberFormatter.localizedString(from: m.rowCount as NSNumber, number: .decimal)
-        count.stringValue = listsSessions ? L("\(n) 个会话", "\(n) sessions") : L("\(n) 条", m.rowCount == 1 ? "1 item" : "\(n) items")
+        work.selectItem(at: work.itemArray.firstIndex { $0.representedObject as? String == m.work } ?? 0)
+        let ready = m.indexState == .ready
+        kinds.isHidden = !ready
+        status.isHidden = !ready || m.scope == .inbox
+        work.isHidden = !ready
+        count.isHidden = !ready
+        count.stringValue = TP("main.items.count", m.rowCount)
     }
 }
 
@@ -231,10 +241,12 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let model: MainModel
     weak var actions: ItemListActions? { didSet { table.actions = actions } }
     let table = ItemTableView()
+    let jobs = JobsSection()
     let bar = FilterBar()
     let empty = EmptyStateView()
     let scroll = NSScrollView()
     private var suppressSelection = false
+    private var header: NSTableHeaderView?
 
     init(model: MainModel) {
         self.model = model
@@ -243,14 +255,15 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     required init?(coder: NSCoder) { fatalError() }
 
     struct Col { let id: String; let title: String; let width: CGFloat; let min: CGFloat; let max: CGFloat; let sort: String? }
-    static let columns = [
-        Col(id: "egg", title: "", width: 30, min: 30, max: 30, sort: "kind"),
-        Col(id: "title", title: L("标题", "Title"), width: 220, min: 140, max: 2000, sort: "title"),
-        Col(id: "status", title: L("状态", "Status"), width: 84, min: 60, max: 120, sort: "status"),
-        Col(id: "fix", title: L("修复", "Fix"), width: 92, min: 60, max: 140, sort: "fix"),
-        Col(id: "project", title: L("项目", "Project"), width: 104, min: 60, max: 220, sort: nil),
-        Col(id: "time", title: L("更新", "Updated"), width: 86, min: 60, max: 140, sort: "updated"),
-    ]
+    static var columns: [Col] { [
+        Col(id: "lead", title: "", width: 34, min: 34, max: 34, sort: "kind"),
+        Col(id: "title", title: T("main.col.title"), width: 260, min: 140, max: 4000, sort: "title"),
+        Col(id: "meta", title: T("main.col.id"), width: 64, min: 48, max: 120, sort: "id"),
+        Col(id: "project", title: T("main.col.project"), width: 110, min: 60, max: 240, sort: "project"),
+        Col(id: "review", title: T("main.col.review"), width: 84, min: 60, max: 140, sort: "status"),
+        Col(id: "work", title: T("main.col.work"), width: 132, min: 22, max: 220, sort: "work"),
+        Col(id: "time", title: T("main.col.updated"), width: 78, min: 56, max: 140, sort: "updated"),
+    ] }
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 560, height: 600))
@@ -260,8 +273,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             col.width = c.width
             col.minWidth = c.min
             col.maxWidth = c.max
-            if let s = c.sort { col.sortDescriptorPrototype = NSSortDescriptor(key: s, ascending: s == "title" || s == "kind" || s == "status") }
-            if c.id == "egg" { col.headerToolTip = L("类型", "Kind") }
+            if let s = c.sort { col.sortDescriptorPrototype = NSSortDescriptor(key: s, ascending: ["title", "kind", "status", "work", "project"].contains(s)) }
+            if c.id == "lead" { col.headerToolTip = T("main.col.kind") }
+            if c.id == "time" { col.headerCell.alignment = .right }
             table.addTableColumn(col)
         }
         table.style = .inset
@@ -275,31 +289,53 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         table.delegate = self
         table.target = self
         table.doubleAction = #selector(doubleClicked)
-        table.setAccessibilityLabel(L("条目", "Items"))
+        table.setAccessibilityLabel(T("main.list.label"))
         table.quickLook = { [weak self] in self?.toggleQuickLook() }
-        table.registerForDraggedTypes([])
+        table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
-        // let the title column take the slack
+        header = table.headerView
         table.tableColumns.forEach { $0.resizingMask = $0.identifier.rawValue == "title" ? [.autoresizingMask, .userResizingMask] : .userResizingMask }
-        table.sizeLastColumnToFit()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         bar.onChange = { [weak self] in self?.filtersChanged() }
+        jobs.onSelect = { [weak self] id in self?.actions?.selectJob(id) }
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
-        for v in [bar, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        let stack = NSStackView(views: [jobs, bar])
+        stack.orientation = .vertical
+        stack.spacing = 0
+        stack.alignment = .width
+        for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
-            bar.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
-            bar.leadingAnchor.constraint(equalTo: root.leadingAnchor), bar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: stack.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            empty.topAnchor.constraint(equalTo: bar.bottomAnchor), empty.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            empty.topAnchor.constraint(equalTo: stack.bottomAnchor), empty.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             empty.leadingAnchor.constraint(equalTo: root.leadingAnchor), empty.trailingAnchor.constraint(equalTo: root.trailingAnchor),
         ])
         view = root
+        applyLayout()
+    }
+
+    /// Dense list vs. full table: which columns show, whether there is a header.
+    func applyLayout() {
+        let full = model.scope.isTable
+        let inProject: Bool = { if case .project = model.scope { return true }; return model.scope == .unassigned }()
+        for c in table.tableColumns {
+            switch c.identifier.rawValue {
+            case "review": c.isHidden = !full
+            case "project": c.isHidden = inProject || !full
+            case "meta": c.width = full ? 64 : (inProject ? 56 : 132); c.maxWidth = full ? 120 : 200
+            case "work": c.width = full ? 132 : 22; c.minWidth = full ? 60 : 22
+            default: break
+            }
+        }
+        table.headerView = full ? header : nil
+        fitTitle()
     }
 
     /// The title column takes whatever the fixed columns leave (users can still resize those).
@@ -323,18 +359,19 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // MARK: reload
 
-    /// Reload rows, keeping the selection (by uid / session id) and the scroll position where possible.
+    /// Reload rows, keeping the selection (by uid) and the scroll position where possible.
     func reload(keep: [String]? = nil) {
         let keepIDs = keep ?? selectionIDs     // captured before the model changed (row numbers mean other rows now)
         let top = table.rows(in: table.visibleRect).location
         let topID = id(at: top)
         suppressSelection = true
+        applyLayout()
         table.reloadData()
         var set = IndexSet()
-        for k in keepIDs { if let r = row(of: k) { set.insert(r) } }
+        for k in keepIDs { if let r = model.row(of: k) { set.insert(r) } }
         table.selectRowIndexes(set, byExtendingSelection: false)
-        if let t = topID, let r = row(of: t), r != top, keep == nil {
-            table.scroll(NSPoint(x: 0, y: table.rect(ofRow: r).minY - table.headerView!.frame.height))
+        if let t = topID, let r = model.row(of: t), r != top, keep == nil {
+            table.scroll(NSPoint(x: 0, y: table.rect(ofRow: r).minY - (table.headerView?.frame.height ?? 0)))
         } else if keep != nil, let first = set.first {
             table.scrollRowToVisible(first)
         }
@@ -345,20 +382,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let ids = set.compactMap { id(at: $0) }
         if ids != selectionIDs { selectionIDs = ids; actions?.listSelectionChanged() }
     }
-    /// The selected uids / session ids, kept up to date on every selection change.
+    /// The selected uids, kept up to date on every selection change.
     private(set) var selectionIDs: [String] = []
     func forgetSelection() { selectionIDs = [] }
 
-    func id(at row: Int) -> String? {
-        model.scope.listsSessions ? model.session(at: row)?.id : (row >= 0 && row < model.uids.count ? model.uids[row] : nil)
-    }
-    func row(of id: String) -> Int? { model.scope.listsSessions ? model.row(ofSession: id) : model.row(of: id) }
+    func id(at row: Int) -> String? { row >= 0 && row < model.uids.count ? model.uids[row] : nil }
     var selectedIDs: [String] { table.selectedRowIndexes.compactMap { id(at: $0) } }
-    var selectedItems: [ItemRow] { model.scope.listsSessions ? [] : table.selectedRowIndexes.compactMap { model.item(at: $0) } }
-    var selectedSessions: [SessionRow] { model.scope.listsSessions ? table.selectedRowIndexes.compactMap { model.session(at: $0) } : [] }
+    var selectedItems: [ItemRow] { table.selectedRowIndexes.compactMap { model.item(at: $0) } }
 
     func select(id: String) {
-        guard let r = row(of: id) else { return }
+        guard let r = model.row(of: id) else { return }
         table.selectRowIndexes([r], byExtendingSelection: false)
         table.scrollRowToVisible(r)
     }
@@ -366,78 +399,64 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func filtersChanged() {
         model.kinds = bar.selectedKinds
         model.status = bar.status.selectedItem?.representedObject as? String
-        model.fix = bar.fix.selectedItem?.representedObject as? String
+        model.work = bar.work.selectedItem?.representedObject as? String
         model.reload()
     }
 
+    func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared) }
+
     func updateEmpty() {
-        let titleCol = table.tableColumn(withIdentifier: .init("title"))
-        titleCol?.title = model.scope.listsSessions ? L("会话", "Session") : L("标题", "Title")
-        table.tableColumn(withIdentifier: .init("status"))?.title = model.scope.listsSessions ? L("进度", "Progress") : L("状态", "Status")
-        table.tableColumn(withIdentifier: .init("fix"))?.title = model.scope.listsSessions ? L("条目", "Items") : L("修复", "Fix")
-        table.tableColumn(withIdentifier: .init("time"))?.title = model.scope.listsSessions ? L("录制于", "Recorded") : L("更新", "Updated")
-        let hideProject: Bool = { if case .workspace = model.scope { return true }; return false }()
-        if projectColumn?.isHidden != hideProject { projectColumn?.isHidden = hideProject; fitTitle() }
         switch model.indexState {
         case .scanning:
-            empty.show(symbol: nil, title: L("正在扫描录制…", "Scanning your recordings…"), message: "", busy: true)
+            empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
             return
         case .noScripts:
-            empty.show(symbol: "puzzlepiece.extension", title: L("找不到 blurt skill 的脚本", "The blurt skill's scripts are missing"),
-                       message: L("先在终端里装好或更新 skill（npx skills add AGIHunt/blurt），然后重开这个窗口。",
-                                  "Install or update the skill (npx skills add AGIHunt/blurt), then reopen this window."))
+            empty.show(symbol: "puzzlepiece.extension", title: T("main.empty.no_scripts"), message: T("main.empty.no_scripts.detail"))
             return
         case .missing:
-            empty.show(symbol: nil, image: BrandIcon.image(.egg, size: 44),
-                       title: L("还没有索引", "No index yet"),
-                       message: L("Blurt 会扫描 ~/Blurt 和绑定的项目里的录屏、截图批次，建一份本地搜索索引。不会上传任何东西。",
-                                  "Blurt scans the recordings and snap batches in ~\u{2060}/\u{2060}Blurt and your bound projects into a local search index. Nothing is uploaded."),
-                       buttons: [(L("扫描录制", "Scan Recordings"), 1)])
+            empty.show(symbol: "tray.full", title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"),
+                       buttons: [(T("main.empty.scan"), 1)])
             return
         case .failed(let e):
-            empty.show(symbol: "exclamationmark.triangle", title: L("扫描失败", "The scan failed"), message: e,
-                       buttons: [(L("重试", "Try Again"), 1)])
+            empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: e, buttons: [(T("action.retry"), 1)])
             return
         case .ready: break
         }
         guard model.rowCount == 0 else { empty.isHidden = true; return }
         let q = model.text.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty {
-            empty.show(symbol: "magnifyingglass", title: L("没有找到「\(q)」", "No results for “\(q)”"),
-                       message: model.filtered && (model.kinds.count + (model.status == nil ? 0 : 1) + (model.fix == nil ? 0 : 1)) > 0
-                           ? L("还开着筛选条件。", "Filters are on, too.") : L("试试更短的词，或者别的说法。", "Try a shorter word or another phrasing."),
-                       buttons: [(L("清除搜索和筛选", "Clear Search & Filters"), 2)])
+            empty.show(symbol: "magnifyingglass", title: T("main.empty.no_results", q),
+                       message: model.kinds.count + (model.status == nil ? 0 : 1) + (model.work == nil ? 0 : 1) > 0
+                           ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
+                       buttons: [(T("main.empty.clear_all"), 2)])
         } else if model.filtered {
-            empty.show(symbol: "line.3.horizontal.decrease.circle", title: L("没有符合筛选的条目", "Nothing matches these filters"),
-                       message: "", buttons: [(L("清除筛选", "Clear Filters"), 2)])
-        } else if model.scope == .inbox {
-            empty.show(symbol: nil, image: BrandIcon.image(.nest, size: 44),
-                       title: L("收件箱清空了", "Inbox zero"),
-                       message: L("所有录屏和截图批次都整理、审核完了。", "Every recording and snap batch is processed and reviewed."))
-        } else if model.counts.all == 0 && model.counts.sessions == 0 {
-            empty.show(symbol: nil, image: BrandIcon.kind("idea", size: 44),
-                       title: L("还什么都没有", "Nothing here yet"),
-                       message: L("边用你的产品边说出想法和 bug：录一段屏（\(hint(.toggleRecord))），或者截几张图（\(hint(.snap))）。",
-                                  "Talk through your product while you use it: record your screen (\(hint(.toggleRecord))) or snap a few shots (\(hint(.snap)))."),
-                       buttons: [(L("录制", "Record"), 3), (L("截图", "Snap"), 4)])
+            empty.show(symbol: "line.3.horizontal.decrease.circle", title: T("main.empty.no_match"), message: "",
+                       buttons: [(T("main.empty.clear_filters"), 2)])
         } else {
-            empty.show(symbol: "tray", title: L("这里是空的", "Nothing here"), message: "")
+            switch model.scope {
+            case .inbox where model.counts.all > 0:
+                empty.show(symbol: "checkmark.circle", title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
+            case .inProgress:
+                empty.show(symbol: "circle.dashed", title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
+            case .unassigned:
+                empty.show(symbol: "tray", title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
+            case .project:
+                empty.show(symbol: "folder", title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
+                           buttons: [(T("main.action.record"), 3), (T("main.action.snap"), 4)])
+            default:
+                empty.show(symbol: "waveform.and.mic", title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
+                           buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])
+            }
         }
     }
-
-    var projectColumn: NSTableColumn? { table.tableColumn(withIdentifier: .init("project")) }
-
-    func hint(_ a: HotAction) -> String { hk(a) }
 
     // MARK: table
 
     func numberOfRows(in tableView: NSTableView) -> Int { model.indexState == .ready ? model.rowCount : 0 }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let col = tableColumn?.identifier.rawValue else { return nil }
-        if model.scope.listsSessions, let s = model.session(at: row) { return sessionCell(col, s) }
-        guard let it = model.item(at: row) else { return nil }
-        return itemCell(col, it, row: row)
+        guard let col = tableColumn?.identifier.rawValue, let it = model.item(at: row) else { return nil }
+        return itemCell(col, it)
     }
 
     func make<T: NSView>(_ id: String, _ f: () -> T) -> T {
@@ -447,86 +466,55 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return v
     }
 
-    func itemCell(_ col: String, _ it: ItemRow, row: Int) -> NSView? {
+    var inOwnProject: Bool { if case .project = model.scope { return true }; return model.scope == .unassigned }
+
+    func itemCell(_ col: String, _ it: ItemRow) -> NSView? {
+        let dropped = it.status == "deleted"
         switch col {
-        case "egg":
-            let c = make("egg") { EggCell() }
-            c.egg.image = BrandIcon.kind(it.kind, variant: it.uid, size: 23)
-            c.egg.alphaValue = it.status == "deleted" ? 0.4 : 1
+        case "lead":
+            let c = make("lead") { LeadCell() }
+            c.dot.on = it.status == "draft"
+            c.icon.image = Look.kindImage(it.kind)
+            c.icon.alphaValue = dropped ? 0.4 : 1
             c.setAccessibilityLabel(Look.kindName(it.kind))
-            c.spinner.stopAnimation(nil)
-            c.egg.isHidden = false
             return c
         case "title":
             let c = make("title") { TitleCell() }
-            let session = it.sessionTitle.flatMap { $0.isEmpty ? nil : $0 } ?? URL(fileURLWithPath: it.sessionDir).lastPathComponent
             // the search hit, unless it is just the title again
             let plain = (it.snippet ?? "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "…"))
-            let hasHit = !plain.isEmpty && !model.text.trimmingCharacters(in: .whitespaces).isEmpty && !it.title.contains(plain)
-            let sub = hasHit ? it.snippet! : [session, it.itemID, it.quote.isEmpty ? nil : "“\(it.quote)”"].compactMap { $0 }.joined(separator: " · ")
-            c.set(title: it.title, struck: it.status == "deleted" || it.fixState == "fixed", sub: sub, highlight: hasHit)
-            c.setAccessibilityLabel((it.title.isEmpty ? L("无标题", "untitled") : it.title) + ", " + c.sub.stringValue)
+            let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
+            let hit = searching && !plain.isEmpty && !it.title.contains(plain) ? it.snippet : nil
+            c.set(title: it.title, unread: it.status == "draft", dimmed: dropped || it.workState == "done" || it.workState == "wontfix",
+                  struck: dropped, hit: hit)
+            c.toolTip = [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
             return c
-        case "status":
-            let c = make("pill") { PillCell() }
-            c.pill.text = Look.statusName(it.status)
-            c.setAccessibilityLabel(L("状态：", "Status: ") + Look.statusName(it.status))
-            c.pill.color = it.status == "confirmed" ? .systemGreen : it.status == "deleted" ? .systemRed : .secondaryLabelColor
-            return c
-        case "fix":
-            let c = make("icontext") { IconTextCell() }
-            c.set(Look.fixName(it.fixState) ?? "—", symbol: Look.fixSymbol(it.fixState),
-                  color: it.fixState == nil ? .tertiaryLabelColor : .secondaryLabelColor)
-            c.setAccessibilityLabel(L("修复：", "Fix: ") + (Look.fixName(it.fixState) ?? L("没交给 agent", "not sent")))
+        case "meta":
+            let c = make("meta") { MetaCell() }
+            let full = model.scope.isTable
+            c.key.stringValue = full || inOwnProject || it.projectID == "inbox" ? it.itemID : "\(it.itemID) · \(it.projectName)"
+            c.key.alignment = full ? .left : .right
             return c
         case "project":
             let c = make("icontext") { IconTextCell() }
-            c.set(it.workspaceName ?? "")
+            c.set(it.projectID == "inbox" ? T("project.inbox") : it.projectName)
+            return c
+        case "review":
+            let c = make("icontext") { IconTextCell() }
+            c.set(Look.reviewName(it.status), color: it.status == "draft" ? Look.brand : .secondaryLabelColor)
+            return c
+        case "work":
+            let c = make("icontext") { IconTextCell() }
+            c.set(model.scope.isTable ? Look.workLabel(it) : "", image: Look.ring(it.workState),
+                  color: it.workState == "to_verify" ? StatusRing.color("to_verify") : .secondaryLabelColor)
+            c.toolTip = Look.workLabel(it)
+            c.setAccessibilityLabel(Look.workLabel(it))
             return c
         case "time":
-            let c = make("icontext") { IconTextCell() }
-            c.set(MainModel.relative(it.updated))
+            let c = make("time") { IconTextCell() }
+            c.set(MainModel.relative(it.updated), font: Look.monoSub, align: .right)
+            c.label.textColor = .tertiaryLabelColor
             c.toolTip = MainModel.shortDate(it.updated)
-            return c
-        default: return nil
-        }
-    }
-
-    func sessionCell(_ col: String, _ s: SessionRow) -> NSView? {
-        switch col {
-        case "egg":
-            let c = make("egg") { EggCell() }
-            c.egg.image = BrandIcon.sessionImage(s, size: 23)
-            c.egg.alphaValue = 1
-            if s.processing { c.spinner.startAnimation(nil); c.egg.isHidden = true } else { c.spinner.stopAnimation(nil); c.egg.isHidden = false }
-            return c
-        case "title":
-            let c = make("title") { TitleCell() }
-            var parts = [s.mode == "shots" ? L("截图批次", "Snap batch") + (s.shotCount > 0 ? " · \(s.shotCount)" + L(" 张", " shots") : "")
-                                           : L("录屏", "Recording") + (s.duration.map { " · " + String(format: "%d:%02d", Int($0) / 60, Int($0) % 60) } ?? "")]
-            parts.append(URL(fileURLWithPath: s.dir).lastPathComponent)
-            c.set(title: MainModel.title(of: s), struck: false, sub: parts.joined(separator: " · "), highlight: false)
-            c.setAccessibilityLabel(MainModel.title(of: s) + ", " + parts.joined(separator: ", "))
-            return c
-        case "status":
-            let c = make("pill") { PillCell() }
-            c.pill.text = Look.sessionStateName(s.state)
-            c.setAccessibilityLabel(Look.sessionStateName(s.state))
-            c.pill.color = s.state == "unprocessed" ? Look.brand : s.state == "processing" ? .systemOrange : s.state == "unreviewed" ? .systemBlue : .systemGreen
-            return c
-        case "fix":
-            let c = make("icontext") { IconTextCell() }
-            c.set(s.processed ? "\(s.itemCount)" : "—", symbol: s.processed ? ("square.stack", .secondaryLabelColor) : nil)
-            return c
-        case "project":
-            let c = make("icontext") { IconTextCell() }
-            c.set(s.workspaceName ?? "")
-            return c
-        case "time":
-            let c = make("icontext") { IconTextCell() }
-            c.set(s.created.map(MainModel.relative) ?? "")
-            c.toolTip = s.created.map(MainModel.shortDate)
             return c
         default: return nil
         }
@@ -534,14 +522,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let v = make("row") { ItemRowView() }
-        if model.scope.listsSessions, let s = model.session(at: row) {
-            v.label = [MainModel.title(of: s), s.mode == "shots" ? L("截图批次", "snap batch") : L("录屏", "recording"),
-                       Look.sessionStateName(s.state), s.processed ? L("\(s.itemCount) 条", "\(s.itemCount) items") : nil,
-                       s.workspaceName, s.created.map(MainModel.relative)].compactMap { $0 }.joined(separator: ", ")
-        } else if let it = model.item(at: row) {
-            v.label = [Look.kindName(it.kind), it.title.isEmpty ? L("无标题", "untitled") : it.title, Look.statusName(it.status),
-                       Look.fixName(it.fixState).map { L("修复：", "fix: ") + $0 }, it.severity.map { L("严重度 ", "severity ") + $0 },
-                       it.workspaceName, MainModel.relative(it.updated)].compactMap { $0 }.joined(separator: ", ")
+        if let it = model.item(at: row) {
+            v.label = [Look.kindName(it.kind), it.title.isEmpty ? T("main.item.untitled") : it.title, it.itemID, Look.reviewName(it.status),
+                       Look.workLabel(it), it.projectID == "inbox" ? T("project.inbox") : it.projectName,
+                       MainModel.relative(it.updated)].joined(separator: ", ")
         }
         return v
     }
@@ -562,27 +546,25 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     @objc func doubleClicked() {
         guard table.clickedRow >= 0 else { return }
-        actions?.reviewMode()
+        actions?.openSelection()
     }
 
-    // drag rows out: the primary frame as a file (Finder makes a copy, Terminal pastes the path)
+    // drag rows: the uids (onto a project), the primary frame as a file (Finder makes a copy, Terminal pastes the path)
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        if model.scope.listsSessions { return model.session(at: row).map { $0.url as NSURL } }
-        guard let f = model.item(at: row)?.primaryFrame, FileManager.default.fileExists(atPath: f) else { return nil }
-        return URL(fileURLWithPath: f) as NSURL
+        guard let it = model.item(at: row) else { return nil }
+        let pb = NSPasteboardItem()
+        pb.setString(it.uid, forType: .blurtItems)
+        if let f = it.primaryFrame, FileManager.default.fileExists(atPath: f) {
+            pb.setString(URL(fileURLWithPath: f).absoluteString, forType: .fileURL)
+        }
+        pb.setString(it.title, forType: .string)
+        return pb
     }
 
     // MARK: Quick Look
 
     var previewURLs: [URL] {
-        if model.scope.listsSessions {
-            return selectedSessions.compactMap { s in
-                let v = s.url.appendingPathComponent("recording.mp4")
-                return FileManager.default.fileExists(atPath: v.path) ? v : s.url
-            }
-        }
-        return selectedItems.compactMap { $0.primaryFrame.map { URL(fileURLWithPath: $0) } }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        selectedItems.compactMap { $0.primaryFrame.map { URL(fileURLWithPath: $0) } }.filter { FileManager.default.fileExists(atPath: $0.path) }
     }
     var quickLookOverride: [URL]?
 
@@ -616,9 +598,4 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let cell = table.frameOfCell(atColumn: 0, row: r)
         return w.convertToScreen(table.convert(cell, to: nil))
     }
-}
-
-/// Row view: VoiceOver reads the whole row as one sentence (kind, title, status, fix, project, time).
-final class ItemRowView: NSTableRowView {
-    var label = "" { didSet { setAccessibilityLabel(label) } }
 }

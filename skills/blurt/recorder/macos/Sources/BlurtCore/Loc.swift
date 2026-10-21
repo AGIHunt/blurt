@@ -67,7 +67,7 @@ public enum Loc {
         bundle(language).map { $0.localizedString(forKey: key, value: missing, table: table) != missing } ?? false
     }
 
-    static func format(_ fmt: String, _ args: [CVarArg]) -> String {
+    public static func format(_ fmt: String, _ args: [CVarArg]) -> String {
         args.isEmpty && !fmt.contains("%") ? fmt : String(format: fmt, locale: locale, arguments: args)
     }
 

@@ -1,14 +1,19 @@
-// FSEvents on the session containers (~/Blurt/recordings, <repo>/.blurt/sessions…) → the session dirs that changed,
-// debounced (300 ms, §3). The app then runs `index.py update <dirs>`; index.py is the only writer of index.db.
+// FSEvents on the item stores (<project>/.blurt, ~/Blurt/inbox — K1) and on legacy session containers
+// (~/Blurt/recordings) → the paths index.py should look at again, debounced (300 ms). The app then runs
+// `index.py update <paths>`; index.py is the only writer of index.db.
 //
-// Only changes that matter to the index count: items.json, meta.json, shots.jsonl, recording.mp4, and a session dir
-// appearing or disappearing. Frames being written, live/ captions, logs and lock files don't wake anybody up.
+// What counts: an item file (<store>/items/*.md) appearing, changing or going away, and in a session dir
+// (<store>/sessions/<s>/, or <legacy root>/<s>/) the files the index reads — batch.json, items.json (the agent's
+// draft, ingested by items.py), meta.json, shots.jsonl, recording.mp4 — or the dir itself. Frames being written,
+// live/ captions, logs and lock files wake nobody up.
 import CoreServices
 import Foundation
 
 public final class IndexWatcher {
-    /// Session containers: each direct child directory is one session.
-    public let roots: [URL]
+    /// Item stores: items/ and sessions/ underneath.
+    public let stores: [URL]
+    /// Legacy session containers: each direct child directory is one session.
+    public let legacyRoots: [URL]
     public var onChange: (([URL]) -> Void)?
     public var debounce: TimeInterval = 0.3
 
@@ -16,13 +21,16 @@ public final class IndexWatcher {
     private var pending = Set<String>()
     private var timer: DispatchWorkItem?
     private let queue = DispatchQueue(label: "dev.blurt.index-watcher")
-    private let rootPaths: [String]
+    private let storePaths: [String]
+    private let legacyPaths: [String]
 
-    static let relevant: Set<String> = ["items.json", "meta.json", "shots.jsonl", "recording.mp4"]
+    static let relevant: Set<String> = ["batch.json", "items.json", "meta.json", "shots.jsonl", "recording.mp4"]
 
-    public init(roots: [URL]) {
-        self.roots = roots
-        rootPaths = roots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
+    public init(stores: [URL], legacyRoots: [URL] = []) {
+        self.stores = stores
+        self.legacyRoots = legacyRoots
+        storePaths = stores.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
+        legacyPaths = legacyRoots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
     }
 
     deinit { stop() }
@@ -30,7 +38,7 @@ public final class IndexWatcher {
     /// Starts watching (the roots that exist). Callbacks arrive on the main queue.
     public func start() {
         guard stream == nil else { return }
-        let paths = rootPaths.filter { FileManager.default.fileExists(atPath: $0) }
+        let paths = (storePaths + legacyPaths).filter { FileManager.default.fileExists(atPath: $0) }
         guard !paths.isEmpty else { return }
         var ctx = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
         let cb: FSEventStreamCallback = { _, info, n, paths, _, _ in
@@ -54,13 +62,24 @@ public final class IndexWatcher {
         stream = nil
     }
 
-    /// The session dir a changed path belongs to, if the change is one the index cares about.
-    public func sessionDir(for path: String) -> String? {
+    /// The path index.py should update for a changed path (an item file or a session dir), nil if it doesn't matter.
+    public func target(for path: String) -> String? {
         let p = URL(fileURLWithPath: path).standardizedFileURL.path
-        for root in rootPaths where p.hasPrefix(root + "/") {
+        for root in storePaths where p.hasPrefix(root + "/") {
+            let rest = p.dropFirst(root.count + 1).split(separator: "/", omittingEmptySubsequences: true)
+            guard let top = rest.first else { return nil }
+            if top == "items", rest.count == 2, rest[1].hasSuffix(".md"), !rest[1].hasPrefix(".") { return p }
+            if top == "sessions", rest.count >= 2, !rest[1].hasPrefix(".") {
+                let dir = root + "/sessions/" + rest[1]
+                if rest.count == 2 { return dir }
+                if rest.count == 3, Self.relevant.contains(String(rest[2])) { return dir }
+            }
+            return nil
+        }
+        for root in legacyPaths where p.hasPrefix(root + "/") {
             let rest = p.dropFirst(root.count + 1).split(separator: "/", omittingEmptySubsequences: true)
             guard let first = rest.first, !first.hasPrefix(".") else { return nil }
-            if rest.count == 1 { return root + "/" + first }                       // the session dir itself
+            if rest.count == 1 { return root + "/" + first }
             if rest.count == 2, Self.relevant.contains(String(rest[1])) { return root + "/" + first }
             return nil
         }
@@ -68,9 +87,9 @@ public final class IndexWatcher {
     }
 
     private func received(_ paths: [String]) {
-        let dirs = paths.compactMap(sessionDir(for:))
-        guard !dirs.isEmpty else { return }
-        pending.formUnion(dirs)
+        let hits = paths.compactMap(target(for:))
+        guard !hits.isEmpty else { return }
+        pending.formUnion(hits)
         timer?.cancel()
         let w = DispatchWorkItem { [weak self] in
             guard let self = self, !self.pending.isEmpty else { return }
