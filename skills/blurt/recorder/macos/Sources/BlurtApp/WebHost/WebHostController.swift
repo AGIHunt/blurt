@@ -188,6 +188,12 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     func reload() { if let s = loadedScope { load(s, mode: loadedMode, item: currentItem?.uid) } }
 
+    /// Jobs moved on: the line above the item may say something else now.
+    func refreshBanner(projects: [ProjectEntry]) {
+        guard let it = currentItem, !web.isHidden else { return }
+        banner.set(it, suggested: it.suggestedProject.flatMap { s in projects.first { $0.id == s } })
+    }
+
     private func load(_ scope: DocScope, mode: String, item: String?) {
         loadedScope = scope
         loadedMode = mode
@@ -216,6 +222,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         switch a {
         case "done", "todo", "wontfix": actions?.setWork(a, uids: [it.uid])
         case "session": if let j = it.workJob { actions?.revealJob(j) }
+        case "progress": if let j = banner.processingJob { actions?.revealJob(j) }
         case "move": if let p = it.suggestedProject { actions?.move(uids: [it.uid], to: p) }
         default: break
         }
@@ -403,6 +410,8 @@ final class ItemBanner: NSView {
     private let buttons = NSStackView()
     private var height: NSLayoutConstraint!
     private var tint: NSColor = .clear
+    /// The process job the "still organising" line points at.
+    private(set) var processingJob: String?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -444,6 +453,7 @@ final class ItemBanner: NSView {
             if primary { b.bezelColor = .controlAccentColor; b.keyEquivalent = "\r"; b.keyEquivalentModifierMask = [.command, .shift] }
             buttons.addArrangedSubview(b)
         }
+        processingJob = nil
         guard let it = it, it.status != "deleted" else { return hide() }
         let agent = it.workAgent.flatMap { AgentHub.shared.def($0)?.name } ?? it.workAgent
         let active = it.workState == "handed_off" || it.workState == "in_progress"
@@ -468,7 +478,14 @@ final class ItemBanner: NSView {
             button(T("main.cmd.wontfix"), "wontfix")
             button(T("main.cmd.mark_done"), "done", primary: true)
         default:
-            if let s = suggested, it.projectID == "inbox" {
+            // the batch it came from is still being organised: the item fills in as the agent goes
+            if let dir = it.sessionDir, let j = JobStore.shared.active.first(where: { $0.type == .process && $0.session?.path == dir }) {
+                tint = .controlAccentColor
+                icon.image = Look.symbol("wand.and.sparkles", "", size: 13)
+                text.stringValue = T("main.banner.organising", JobLook.status(j))
+                processingJob = j.id
+                button(T("main.banner.show_progress"), "progress", primary: true)
+            } else if let s = suggested, it.projectID == "inbox" {
                 tint = .controlAccentColor
                 icon.image = Look.symbol("folder.badge.questionmark", "", size: 13)
                 text.stringValue = T("main.banner.suggested", s.name, Loc.percent(it.suggestedConfidence ?? 0))

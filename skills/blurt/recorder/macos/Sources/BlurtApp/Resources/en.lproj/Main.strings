@@ -69,6 +69,8 @@
 "main.banner.external" = "Copied to your agent. Mark it done when it is.";
 "main.banner.move" = "Move There";
 "main.banner.open_session" = "Open Session";
+"main.banner.organising" = "Still being organised · %@";
+"main.banner.show_progress" = "Show Progress";
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
 "main.banner.to_verify" = "%@ says it's done. Check it, then mark it done.";
 "main.banner.to_verify.anon" = "The agent says it's done. Check it, then mark it done.";

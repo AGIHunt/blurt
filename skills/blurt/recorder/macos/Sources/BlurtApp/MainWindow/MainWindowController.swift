@@ -211,6 +211,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func jobsChanged(_ changed: [Job]) {
         model.reloadJobs()
+        detail.refreshBanner(projects: model.projects)
         if let id = shownJob, let j = JobStore.shared.job(id) {
             detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
         }

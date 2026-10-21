@@ -139,6 +139,9 @@ enum SelfTests {
         case "alertbutton":             // alertbutton N: answer the reminder sheet
             if let a = MainWindowController.shared.openAlert, let n = Int(arg), n < a.buttons.count { a.buttons[n].performClick(nil) }
             out(["answered": arg])
+        case "mainreveal":              // mainreveal UID: what blurt://item/<uid> does in the main window
+            MainWindowController.shared.reveal(uid: arg)
+            out(["scope": MainWindowController.shared.model.scope.key, "selected": MainWindowController.shared.list.selectedIDs])
         case "mainclose":               // close the main window (then nothing may reopen it by itself)
             MainWindowController.shared.window?.performClose(nil)
             out(["visible": MainWindowController.shared.window?.isVisible ?? false])

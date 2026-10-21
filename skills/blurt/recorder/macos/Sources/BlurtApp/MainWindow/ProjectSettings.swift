@@ -111,6 +111,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         buttons.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
         path.widthAnchor.constraint(lessThanOrEqualTo: grid.widthAnchor).isActive = true
         stack.widthAnchor.constraint(equalToConstant: 520).isActive = true
+        grid.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -44).isActive = true
         path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         panel.contentView = stack

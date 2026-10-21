@@ -69,6 +69,8 @@
 "main.banner.external" = "已复制给你的 agent。做完后在这里确认完成。";
 "main.banner.move" = "移过去";
 "main.banner.open_session" = "打开会话";
+"main.banner.organising" = "还在整理 · %@";
+"main.banner.show_progress" = "查看进度";
 "main.banner.suggested" = "看起来属于「%@」（把握 %@）。";
 "main.banner.to_verify" = "%@ 说已经处理好了。检查一下，再确认完成。";
 "main.banner.to_verify.anon" = "agent 说已经处理好了。检查一下，再确认完成。";
