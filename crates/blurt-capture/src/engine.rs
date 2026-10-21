@@ -280,10 +280,7 @@ impl CaptureHandle {
 
     /// The recorder process has exited.
     pub fn is_finished(&mut self) -> bool {
-        match self.child.as_mut().map(|c| c.try_wait()) {
-            Some(Ok(None)) => false,
-            _ => true,
-        }
+        !matches!(self.child.as_mut().map(|c| c.try_wait()), Some(Ok(None)))
     }
 
     /// Waits for the recorder to exit; returns its final line (`Stopped` / `Discarded` / `Error`).
