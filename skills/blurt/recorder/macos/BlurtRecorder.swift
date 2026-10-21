@@ -65,7 +65,10 @@ struct Options {
 
 // MARK: - Config shared with record.py (~/.blurt/config.json)
 
-let configURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".blurt/config.json")
+// BLURT_HOME (as in record.py) relocates config/build state; tests use it to stay out of the user's real setup.
+let blurtHome = ProcessInfo.processInfo.environment["BLURT_HOME"].map { URL(fileURLWithPath: $0) }
+    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".blurt")
+let configURL = blurtHome.appendingPathComponent("config.json")
 
 func readConfig() -> [String: Any] {
     guard let d = try? Data(contentsOf: configURL), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
@@ -1360,7 +1363,8 @@ var sessionEnded: (Int32, [String: Any]) -> Void = { code, event in
 // MARK: - Workspaces (menu-bar app): where recordings go
 
 let homeDir = FileManager.default.homeDirectoryForCurrentUser
-let defaultWorkspace = homeDir.appendingPathComponent("Blurt")
+let defaultWorkspace = ProcessInfo.processInfo.environment["BLURT_WORKSPACE"].map { URL(fileURLWithPath: $0) }
+    ?? homeDir.appendingPathComponent("Blurt")
 
 func currentWorkspace() -> URL {
     if let p = recordConfig()["workspace"] as? String, FileManager.default.fileExists(atPath: p) { return URL(fileURLWithPath: p) }

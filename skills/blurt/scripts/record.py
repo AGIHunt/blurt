@@ -48,7 +48,8 @@ from _common import (BLURT_HOME, IS_LINUX, IS_MAC, IS_WIN, STATE_FILE, die, ffmp
 VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", "teams", "oray", "vb-audio",
                      "voicemeeter", "stereo mix", "立体声混音", "aggregate", "聚集", "cable")
 AUDIO_SR = 48000
-SWIFT_SRC = Path(__file__).resolve().parent.parent / "recorder" / "macos" / "BlurtRecorder.swift"
+SWIFT_DIR = Path(__file__).resolve().parent.parent / "recorder" / "macos"
+SWIFT_SRC = SWIFT_DIR / "BlurtRecorder.swift"  # entry point (top-level code); other *.swift files are compiled with it
 
 
 def out(obj: dict | str) -> None:
@@ -255,7 +256,11 @@ def native_binary(build: bool = True) -> Path | None:
     if not IS_MAC or not SWIFT_SRC.exists():
         return None
     remember_skill_dir()
-    digest = hashlib.sha256(SWIFT_SRC.read_bytes() + INFO_PLIST.encode()).hexdigest()[:12]
+    others = sorted(p for p in SWIFT_DIR.glob("*.swift") if p != SWIFT_SRC)
+    h = hashlib.sha256(SWIFT_SRC.read_bytes() + INFO_PLIST.encode())
+    for p in others:
+        h.update(p.name.encode() + p.read_bytes())
+    digest = h.hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"
     if exe.exists() and stamp.exists() and stamp.read_text().strip() == digest:
@@ -268,11 +273,19 @@ def native_binary(build: bool = True) -> Path | None:
     print("building native recorder (one-time, ~20s)…", file=sys.stderr, flush=True)
     tmp = BLURT_HOME / "build" / "blurt-recorder"
     tmp.parent.mkdir(parents=True, exist_ok=True)
+    # swiftc only allows top-level code in a file named main.swift once there is more than one file
+    src_dir = tmp.parent / "src"
+    shutil.rmtree(src_dir, ignore_errors=True)
+    src_dir.mkdir()
+    shutil.copy(SWIFT_SRC, src_dir / "main.swift")
+    for p in others:
+        shutil.copy(p, src_dir / p.name)
+    srcs = [str(src_dir / "main.swift")] + [str(src_dir / p.name) for p in others]
     if os.environ.get("BLURT_UNIVERSAL"):  # release builds: arm64 + x86_64 in one binary
         parts = []
         for arch in ("arm64", "x86_64"):
             out_arch = tmp.with_name(f"blurt-recorder-{arch}")
-            r = run([swiftc, "-O", "-swift-version", "5", "-target", f"{arch}-apple-macos13.0", str(SWIFT_SRC), "-o", str(out_arch)],
+            r = run([swiftc, "-O", "-swift-version", "5", "-target", f"{arch}-apple-macos13.0", *srcs, "-o", str(out_arch)],
                     check=False)
             if r.returncode:
                 print(f"build failed for {arch}:\n{r.stderr[-1500:]}", file=sys.stderr)
@@ -280,7 +293,7 @@ def native_binary(build: bool = True) -> Path | None:
             parts.append(str(out_arch))
         r = run(["lipo", "-create", *parts, "-output", str(tmp)], check=False)
     else:
-        r = run([swiftc, "-O", "-swift-version", "5", str(SWIFT_SRC), "-o", str(tmp)], check=False)
+        r = run([swiftc, "-O", "-swift-version", "5", *srcs, "-o", str(tmp)], check=False)
     if r.returncode:
         print(f"native recorder build failed, falling back:\n{r.stderr[-1500:]}", file=sys.stderr)
         return None
