@@ -11,6 +11,7 @@ described (contract C5): the apps and live.py run what this returns instead of b
                                    → {"order": [...], "pick": id|null, "agents": [{id, name, path, state, why, fix,
                                       installed, version, login, headless, interactive}]}
   agents.py command ID headless|interactive --prompt TEXT|--prompt-file F --repo DIR [--var k=v …] [--no-events]
+                   [--no-mcp]
                                    → {"id","mode","argv","cwd","env","url","events","terminal","clipboard","open_app",
                                       "retry_exit","prompt_file"}
   agents.py install ID [--skill] [--mcp] [--dry-run]   → {"changes": [{action, path|argv, …}], "applied": bool}
@@ -331,7 +332,7 @@ def _prompt_file(prompt: str, agent: str) -> Path:
 
 
 def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | None = None, events: bool = True,
-            cfg: dict | None = None, env: dict | None = None) -> dict:
+            cfg: dict | None = None, env: dict | None = None, mcp: bool = True) -> dict:
     """What to execute for `agent`. headless: argv (absolute bin when found) run in cwd with env added; interactive:
     a url to open, or argv to run in the user's terminal, and/or text to put on the clipboard."""
     from urllib.parse import quote
@@ -352,6 +353,9 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
             raise ValueError(f"{agent} has no headless mode")
         vals = {**vars, "prompt": prompt, "repo": repo}
         argv = [bin_, *_fill(d["run"], vals)]
+        hm = d.get("headless_mcp") or {}
+        if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run
+            argv += _fill(hm["args"], {**vals, "mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER))})
         ev = d.get("events") or {}
         if events and ev.get("args"):
             argv += _fill(ev["args"], vals)
@@ -561,6 +565,7 @@ def main():
     s.add_argument("--repo", required=True)
     s.add_argument("--var", action="append", default=[], metavar="K=V", help="placeholder values; run_id → $BLURT_RUN_ID")
     s.add_argument("--no-events", action="store_true", help="plain output instead of the stream-json flags")
+    s.add_argument("--no-mcp", action="store_true", help="leave out the headless_mcp args (blurt MCP server)")
     s = sub.add_parser("install")
     s.add_argument("id")
     s.add_argument("--skill", action="store_true")
@@ -579,7 +584,7 @@ def main():
         if a.cmd == "command":
             prompt = a.prompt if a.prompt is not None else Path(a.prompt_file).read_text(encoding="utf-8")
             vars = dict(kv.partition("=")[::2] for kv in a.var)
-            _emit(command(a.id, a.mode, prompt, a.repo, vars, events=not a.no_events))
+            _emit(command(a.id, a.mode, prompt, a.repo, vars, events=not a.no_events, mcp=not a.no_mcp))
             return
         if a.cmd == "install":
             both = not a.skill and not a.mcp

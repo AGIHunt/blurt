@@ -529,7 +529,17 @@ agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --re
   → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
      "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
      "terminal": bool, "clipboard": null|"…", "open_app": null|"…", "retry_exit": null|n, "prompt_file": null|"…"}
-     headless：argv = bin + run + events.args（--no-events 不加）；prompt 永远是单独一个 argv 元素，不经过 shell。
+     headless：argv = bin + run + headless_mcp.args（--no-mcp 不加）+ events.args（--no-events 不加）；prompt 永远是单独一个
+     argv 元素，不经过 shell。
+     **headless_mcp**（codex，实测）：`codex exec` 的审批策略是 never，没批准过的 MCP 调用一律失败（"MCP tool call requires
+     approval, but approval policy is never"）。所以 headless 命令带上整个 blurt 服务：`-c mcp_servers.blurt.command="uv"`、
+     `…args=["run","-q","--script","<mcp_server.py>"]`、`…env_vars=["BLURT_HOME","BLURT_WORKSPACE","BLURT_AGENT",
+     "BLURT_RUN_ID"]`（codex 给 MCP 服务的环境很干净，不转发的话 run_id 和改过位置的 BLURT_HOME 到不了服务）、
+     `…default_tools_approval_mode="approve"`（可选值 auto|prompt|writes|approve）。必须给全：只对没注册的服务给一个
+     `-c mcp_servers.blurt.<key>`，codex 会直接报 "invalid transport" 起不来。这样不管用户装没装 MCP，后台修复都能用。
+     claude 的 `run` 在 `--allowedTools` 里加了 `mcp__blurt`（-p 模式下没放行的工具会被拒；未实跑 ⚠）。
+     **应用要用 `command` 的 argv**：Agents.swift 现在直接拿 `run` 拼命令，拿不到 headless_mcp，要么改成调 `agents.py command`，
+     要么照同样规则把 headless_mcp.args（替换 `{mcp_server_json}`）追加上。
      interactive：url（提示词超过 max_prompt 时写进 $BLURT_HOME/prompts/*.md，q 改成「Read <file> and do what it says.」）；
      或 terminal: true + argv（在用户的终端里跑）；paste_prompt / copy_prompt → clipboard；zcode 还给 open_app。
      --var run_id=R → env BLURT_RUN_ID（items.py fix 和 mark_fixed 的默认值）。出错：{"ok": false, "error"}，退出码 1。
