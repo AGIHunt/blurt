@@ -222,7 +222,7 @@
   /* ---------- section marks draw themselves once they scroll into view ---------- */
   once(frame, drawScreen, 0.5);
   once($(".ledger"), () => $(".ledger").classList.add("play"), 0.3);
-  once($(".wait"), () => $(".wait").classList.add("play"), 0.6);
+  once($(".after"), () => $(".after").classList.add("play"), 0.6);
   $$("[data-mark]").forEach((el) => { if (!el.closest(".take, .ledger")) once(el, () => el.classList.add("drawn"), 0.9); });
 
   // the chickens squawk only while on screen
@@ -442,24 +442,82 @@
     const untip = () => { coach.hidden = true; coachAt = null; };
     $(".c-x", coach).addEventListener("click", () => { coachOff = true; untip(); });
 
-    /* the perch: shots swing on a damped pendulum; hovering one holds it still and its neighbours make room */
-    let swingQ = 0, last = 0;
-    function kick(s, v) {
-      if (reduce || !s.sw) return;
-      s.v += v;
-      if (!swingQ) { last = performance.now(); swingQ = requestAnimationFrame(swing); }
+    /* the perch: a twine rope, simulated as a damped string between two pegs (same model as the app's perch).
+       Each shot hangs its weight on it, so the rope sags with the cards; a shot tilts with the rope's slope and swings
+       as a pendulum around that tilt. Hanging one adds its load and a downward tug, tossing one drops the load (the rope
+       springs up and overshoots), hovering one lifts it a little and holds it still while its neighbours make room. */
+    const perch = $(".perch", desk), rope = $(".rope", perch), ropeLines = $$("path", rope), pegs = $$(".peg", rope);
+    const RN = 20, RY0 = 9, RT = 4450, RC = 5, RW = 580, RP = 4450; // RT: fundamental ≈ 0.6 s; RW: ~6.5 px rest sag; RP: ~+5 px for one card mid-rope
+    const rpY = new Float64Array(RN + 1), rpV = new Float64Array(RN + 1), load = new Float64Array(RN + 1);
+    let rx0 = 12, rx1 = 300, swingQ = 0, last = 0, liveUntil = 0;
+    const cardX = (s) => s.el.offsetLeft + s.el.offsetWidth / 2;
+    const node = (x) => Math.max(0, Math.min(RN, ((x - rx0) / (rx1 - rx0)) * RN));
+    const ropeAt = (x) => { const u = node(x), i = Math.min(RN - 1, Math.floor(u)), f = u - i; return rpY[i] + (rpY[i + 1] - rpY[i]) * f; };
+    const slopeAt = (x) => { const i = Math.min(RN - 1, Math.floor(node(x))); return (rpY[i + 1] - rpY[i]) / ((rx1 - rx0) / RN); };
+    function loads() {
+      // tension rises with the load, so the sag grows sublinearly: 1 card ≈ +5 px, 4 ≈ +13, 12 ≈ +21 at the middle
+      const hung = shots.filter((s) => s.onRope), n = hung.length, m = n ? (n * 5) / (12.33 * Math.log(1 + 0.5 * n)) : 1;
+      load.fill(0);
+      hung.forEach((s) => {
+        s.cx = cardX(s);
+        const u = node(s.cx), i = Math.min(RN - 1, Math.floor(u)), f = u - i, P = (s.hold ? -0.15 : 1) * RP / m;
+        load[i] += P * (1 - f); load[i + 1] += P * f;
+      });
     }
-    function swing(now) {
-      const dt = Math.min(0.034, (now - last) / 1000); last = now;
-      let live = false;
+    function stepRope(dt) {
+      for (let k = 0; k < 4; k++) {
+        const h = dt / 4;
+        for (let i = 1; i < RN; i++) rpV[i] += (RT * (rpY[i - 1] - 2 * rpY[i] + rpY[i + 1]) + RW + load[i] - RC * rpV[i]) * h;
+        for (let i = 1; i < RN; i++) rpY[i] += rpV[i] * h;
+      }
+    }
+    function restRope() { // reduced motion: jump straight to where the rope comes to rest
+      rpV.fill(0);
+      for (let it = 0; it < 600; it++) for (let i = 1; i < RN; i++) rpY[i] = (rpY[i - 1] + rpY[i + 1] + (RW + load[i]) / RT) / 2;
+    }
+    function drawRope() {
+      const dx = (rx1 - rx0) / RN, P = [];
+      for (let i = 0; i <= RN; i++) P.push([rx0 + i * dx, RY0 + rpY[i]]);
+      const f = (v) => v.toFixed(2);
+      let d = `M${f(P[0][0])} ${f(P[0][1])}`;
+      for (let i = 0; i < RN; i++) {
+        const a = P[i - 1] || P[i], p = P[i], c = P[i + 1], e = P[i + 2] || c;
+        d += `C${f(p[0] + (c[0] - a[0]) / 6)} ${f(p[1] + (c[1] - a[1]) / 6)} ${f(c[0] - (e[0] - p[0]) / 6)} ${f(c[1] - (e[1] - p[1]) / 6)} ${f(c[0])} ${f(c[1])}`;
+      }
+      ropeLines.forEach((l) => l.setAttribute("d", d));
+    }
+    function placeCards(dt) {
       shots.forEach((s) => {
         if (!s.sw) return;
-        if (s.hold) { s.v = 0; s.a *= 0.8; } else { s.v += (-46 * s.a - 3 * s.v) * dt; s.a += s.v * dt; }
-        if (Math.abs(s.a) > 0.04 || Math.abs(s.v) > 0.04) live = true; else s.a = s.v = 0;
-        s.sw.style.transform = s.a ? `rotate(${s.a.toFixed(2)}deg)` : "";
+        const x = s.cx ?? cardX(s), dy = ropeAt(x), tilt = Math.atan(slopeAt(x)) * 180 / Math.PI * 0.85;
+        if (dt) { if (s.hold) { s.v = 0; s.a *= 0.8; } else { s.v += (-46 * s.a - 2.6 * s.v) * dt; s.a += s.v * dt; } }
+        s.sw.style.transform = `translateY(${dy.toFixed(2)}px) rotate(${(tilt + s.a).toFixed(2)}deg)`;
       });
-      swingQ = live ? requestAnimationFrame(swing) : 0;
     }
+    function sizeRope() {
+      const W = perch.clientWidth, H = perch.clientHeight;
+      rx0 = 12; rx1 = Math.max(rx0 + 40, W - 12);
+      rope.setAttribute("width", W); rope.setAttribute("height", H); rope.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      pegs.forEach((c, i) => { c.setAttribute("cx", i ? rx1 : rx0); c.setAttribute("cy", RY0); c.setAttribute("r", 3.2); });
+      wake();
+    }
+    // tug: an impulse on the rope at x (px/s, + is down); spin: one on the card's swing
+    function wake(x, tug = 0) {
+      if (x != null && tug) { const u = node(x), i = Math.max(1, Math.min(RN - 1, Math.round(u))); rpV[i] += tug; rpV[i - 1] += tug * 0.5; rpV[i + 1] += tug * 0.5; }
+      if (reduce) { loads(); restRope(); shots.forEach((s) => { s.a = s.v = 0; }); placeCards(0); return drawRope(); }
+      liveUntil = performance.now() + 700;
+      if (!swingQ) { last = performance.now(); swingQ = requestAnimationFrame(tick); }
+    }
+    function kick(s, v) { if (!reduce && s.sw) s.v += v; wake(); }
+    function tick(now) {
+      const dt = Math.min(0.034, (now - last) / 1000); last = now;
+      loads(); stepRope(dt); placeCards(dt); drawRope();
+      let live = now < liveUntil;
+      for (let i = 1; i < RN && !live; i++) if (Math.abs(rpV[i]) > 0.3) live = true;
+      shots.forEach((s) => { if (Math.abs(s.a) > 0.04 || Math.abs(s.v) > 0.04) live = true; else if (!s.hold) s.a = s.v = 0; });
+      swingQ = live ? requestAnimationFrame(tick) : 0;
+    }
+    sizeRope(); loads(); restRope(); drawRope();
     const cardW = () => { const w = desk.clientWidth; return Math.round(small() ? Math.max(52, Math.min(72, w * 0.17)) : Math.max(56, Math.min(112, w * 0.125))); };
     // the shot is a scaled clone of the app (pure DOM, sized in em), cropped to what was selected
     function shoot(r, W, H) {
@@ -506,8 +564,10 @@
       pol.setAttribute("aria-label", L.card(s.n, ""));
       hang.appendChild(li);
       Object.assign(s, { el: li, sw: $(".sw", li), ph, W, H });
-      // fly from the selection to the slot (FLIP), then swing in
-      if (!reduce) {
+      placeCards(0); // its slot sits on the rope as it hangs right now
+      // fly from the selection to the slot (FLIP), then clip onto the rope: its weight pulls the rope down and it swings in
+      if (reduce) { s.onRope = true; wake(); }
+      else {
         const to = R(pol), o = R(li), dx = from.x - to.x, dy = from.y - to.y;
         li.style.transformOrigin = `${to.x - o.x}px ${to.y - o.y}px`;
         li.style.transform = `translate(${dx}px, ${dy}px) scale(${from.w / to.w}, ${from.h / to.h})`;
@@ -517,13 +577,14 @@
         li.style.transform = "";
         const land = () => {
           li.style.transition = ""; li.style.transformOrigin = ""; $(".claw", li).style.opacity = "";
+          s.onRope = true; wake(cardX(s), 150);
           kick(s, Math.max(-120, Math.min(120, dx * 0.5)) + (dx >= 0 ? 45 : -45));
           shots.forEach((o2) => { if (o2 !== s) kick(o2, (Math.random() - 0.5) * 40); });
         };
         li.addEventListener("transitionend", land, { once: true });
       }
-      li.addEventListener("pointerenter", () => { s.hold = true; kick(s, 0); });
-      li.addEventListener("pointerleave", () => { s.hold = false; });
+      li.addEventListener("pointerenter", () => { s.hold = true; wake(cardX(s), -40); });
+      li.addEventListener("pointerleave", () => { s.hold = false; wake(cardX(s), 40); });
       let clickT = 0;
       pol.addEventListener("click", (e) => {
         clearTimeout(clickT);
@@ -537,9 +598,10 @@
       if (state === "hatch" || state === "review") return;
       if (curNote === s) { curNote = null; clearTimeout(typeT); hideNote(true); set("idle"); }
       s.el.classList.add("fall");
+      const x = s.cx ?? cardX(s); s.onRope = false;
       shots = shots.filter((o) => o !== s); batchSaid.delete(s.say);
-      count();
-      setTimeout(() => s.el.remove(), reduce ? 400 : 760);
+      count(); wake(x, -60); // the load is gone: the rope springs up and overshoots
+      setTimeout(() => { s.el.remove(); wake(); }, reduce ? 400 : 760);
       if (!shots.length) { desk.classList.remove("has-shots"); tip(1, snapBtn, "above"); }
     }
     const count = () => { hatchN.textContent = shots.length; set(state); };
@@ -658,7 +720,7 @@
     });
     function openReview() {
       batch = shots; shots = []; batchSaid.clear(); cur = 0;
-      hang.innerHTML = ""; desk.classList.remove("has-shots");
+      hang.innerHTML = ""; desk.classList.remove("has-shots"); wake();
       set("review"); rv.hidden = false; fin.hidden = true; list.innerHTML = ""; list.scrollTop = 0;
       st.classList.remove("fin", "out");
       const m = batch.length, gap = reduce ? 0 : 230;
@@ -731,18 +793,18 @@
       if (k.length !== 1 || !"axjkz".includes(k)) return;
       e.preventDefault(); act(k);
     });
-    addEventListener("resize", () => { placeCoach(); if (curNote) placeNote(curNote); });
+    addEventListener("resize", () => { placeCoach(); if (curNote) placeNote(curNote); sizeRope(); });
   })();
   // @fonts:system-ui-end
 
 
-  /* ---------- copy the install command ---------- */
+  /* ---------- copy the install command (several lines paste as several commands) ---------- */
   $$(".cmd").forEach((box) => {
-    const b = $(".copy", box), code = $(".cmd-t", box), label = b.textContent;
+    const b = $(".copy", box), lines = $$(".cmd-t", box), label = b.textContent;
     b.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(code.textContent.trim()); }
+      try { await navigator.clipboard.writeText(lines.map((c) => c.textContent.trim()).join("\n")); }
       catch {
-        const r = document.createRange(); r.selectNodeContents(code);
+        const r = document.createRange(); r.selectNodeContents($(".cmd-lines", box));
         const s = getSelection(); s.removeAllRanges(); s.addRange(r);
         return; // selected instead: ⌘C still works
       }
@@ -751,14 +813,50 @@
     });
   });
 
-  /* ---------- only Macs get the zip ---------- */
-  if (!/Mac/i.test(navigator.platform || navigator.userAgent) || /iPhone|iPad/i.test(navigator.userAgent)) {
-    $$(".btn-dl[data-other]").forEach((a) => {
-      a.href = "https://github.com/AGIHunt/blurt/releases/latest";
-      $("span", a).textContent = a.dataset.other;
-      const s = $("small", a); if (s) s.remove();
-    });
-  }
+  /* ---------- which computer: ?os= (for testing and sharing) > the visitor's pick > a guess from the browser ---------- */
+  // The guess only picks a default; the radio group next to it is the real control (and works without JS).
+  const gets = $$(".get");
+  if (gets.length) (() => {
+    const NAME = { mac: "macOS", win: "Windows", linux: "Linux" };
+    const norm = (v) => ({ mac: "mac", macos: "mac", osx: "mac", win: "win", windows: "win", linux: "linux", ios: "ios", ipados: "ios", android: "android", chromeos: "cros", cros: "cros" })[String(v || "").toLowerCase()] || "";
+    function guess() {
+      const ua = navigator.userAgent || "", hint = (navigator.userAgentData && navigator.userAgentData.platform) || "", plat = hint || navigator.platform || "";
+      if (/android/i.test(plat) || /Android/.test(ua)) return "android";
+      // iPadOS asks for desktop sites and says "Macintosh"; a real Mac has no touch points
+      if (/^iOS$|iPhone|iPad|iPod/i.test(plat) || /iPhone|iPad|iPod/.test(ua) || (/Mac/i.test(plat + ua) && navigator.maxTouchPoints > 1)) return "ios";
+      if (/^mac/i.test(plat) || /Macintosh|Mac OS X/.test(ua)) return "mac";
+      if (/^win/i.test(plat) || /Windows/.test(ua)) return "win";
+      if (/chrome ?os|CrOS/i.test(plat + " " + ua)) return "cros";
+      if (/linux|bsd|x11/i.test(plat) || /Linux|X11|BSD/.test(ua)) return "linux"; // Ubuntu, Fedora, Arch… all say Linux
+      return "";
+    }
+    const store = { get() { try { return norm(localStorage.getItem("blurt-os")); } catch { return ""; } }, set(v) { try { localStorage.setItem("blurt-os", v); } catch {} } };
+    const real = (v) => (NAME[v] ? v : "");
+    const fromLink = norm(new URLSearchParams(location.search).get("os"));
+    const seen = fromLink || guess(), mine = real(store.get());
+    const S = zh ? {
+      found: (n) => `已识别：<b>${n}</b> · 不对就切换`, mine: (n) => `已选：<b>${n}</b>`, link: (n) => `按链接显示：<b>${n}</b>`,
+      phone: "在手机上？口喷鸡装在电脑上用，选你电脑的系统", cros: "ChromeOS 暂不支持，选你要装的那台电脑", none: "没认出你的系统，选一个",
+    } : {
+      found: (n) => `Detected <b>${n}</b> · switch if that's wrong`, mine: (n) => `Your pick: <b>${n}</b>`, link: (n) => `Showing <b>${n}</b> (from the link)`,
+      phone: "On a phone? blurt runs on your computer. Pick its system", cros: "ChromeOS isn't supported yet. Pick the computer you'll use", none: "Couldn't tell your system. Pick one",
+    };
+    const linked = real(fromLink);
+    const os = linked || mine || real(seen) || (seen === "android" ? "win" : "mac");
+    let said = linked ? S.link(NAME[os]) : seen === "ios" || seen === "android" ? S.phone : mine ? S.mine(NAME[os]) : real(seen) ? S.found(NAME[os]) : seen === "cros" ? S.cros : S.none;
+    function show(v) {
+      gets.forEach((g) => {
+        g.dataset.os = v;
+        const r = $(`input[value="${v}"]`, g); if (r) r.checked = true;
+        $(".os-said", g).innerHTML = said;
+      });
+    }
+    gets.forEach((g) => $$("input", g).forEach((r) => r.addEventListener("change", () => {
+      if (!r.checked) return;
+      store.set(r.value); said = S.mine(NAME[r.value]); show(r.value);
+    })));
+    show(os);
+  })();
 
   /* ---------- GitHub stars: show nothing rather than a wrong number ---------- */
   const stars = $$(".stars");
