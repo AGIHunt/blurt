@@ -144,6 +144,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    func reveal(job: String) { show() }
+    func reveal(project: String) { show() }
+    func showInbox() { show() }
+
     func becomeRegular() {
         NSApp.setActivationPolicy(.regular)
         NSApp.mainMenu = MainMenu.build()

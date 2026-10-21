@@ -27,4 +27,7 @@ final class MainWindowHost: MainWindowHosting {
     func show() { MainWindowController.shared.show() }
     func reveal(uid: String) { MainWindowController.shared.reveal(uid: uid) }
     func reveal(session: URL) { MainWindowController.shared.reveal(session: session) }
+    func reveal(job: String) { MainWindowController.shared.reveal(job: job) }
+    func reveal(project: String) { MainWindowController.shared.reveal(project: project) }
+    func showInbox() { MainWindowController.shared.showInbox() }
 }

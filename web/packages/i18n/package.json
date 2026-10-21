@@ -1,0 +1,21 @@
+{
+  "name": "@blurt/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Blurt's web localization (contract K10): message catalogs with {name} placeholders and CLDR plural keys, locale-aware dates, numbers, durations and relative times on Intl. No runtime dependencies.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./common/en.json": "./src/common/en.json",
+    "./common/zh-Hans.json": "./src/common/zh-Hans.json"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
