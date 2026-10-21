@@ -1501,10 +1501,13 @@ func runCapture(_ exe: String, _ args: [String], env: [String: String]? = nil, t
 /// auth proxy; USE_STAGING_OAUTH, CLAUDECODE, session ids, CODEX_SANDBOX… make the child act like a nested agent.
 /// None of them are the user's own settings — whatever their shell profile sets comes back via `loginShellEnv`.
 func isAgentSessionVar(_ k: String) -> Bool {
+    if userAgentConfigVars.contains(k) { return false }     // where the user keeps an agent's config: theirs, keep it
     for prefix in ["CLAUDE", "ANTHROPIC_", "CODEX_", "MCP_", "OTEL_"] where k.hasPrefix(prefix) { return true }
     return ["AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH", "API_TIMEOUT_MS", "DISABLE_AUTOUPDATER",
             "DISABLE_MICROCOMPACT", "BLURT_APP"].contains(k)
 }
+
+let userAgentConfigVars: Set<String> = ["CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIMI_CODE_HOME"]
 
 /// Our own environment minus anything an agent session leaked into it.
 let inheritedEnv: [String: String] = ProcessInfo.processInfo.environment.filter { !isAgentSessionVar($0.key) }

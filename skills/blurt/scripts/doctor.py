@@ -51,8 +51,11 @@ _SESSION_NAMES = {"AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH",
                   "DISABLE_MICROCOMPACT", "BLURT_APP"}
 
 
+_USER_CONFIG_VARS = {"CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIMI_CODE_HOME"}  # the user's own config locations: keep
+
+
 def _is_session_var(k: str) -> bool:
-    return k.startswith(_SESSION_PREFIXES) or k in _SESSION_NAMES
+    return k not in _USER_CONFIG_VARS and (k.startswith(_SESSION_PREFIXES) or k in _SESSION_NAMES)
 
 
 def agent_env() -> dict:

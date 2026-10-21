@@ -16,7 +16,8 @@ class AgentCliTest(unittest.TestCase):
     def test_session_vars(self):
         for k in ("CLAUDE_CODE_SIMPLE", "CLAUDECODE", "ANTHROPIC_BASE_URL", "USE_STAGING_OAUTH", "CODEX_SANDBOX", "BLURT_APP"):
             self.assertTrue(doctor._is_session_var(k), k)
-        for k in ("HOME", "PATH", "BLURT_HOME", "BLURT_WORKSPACE", "SSH_AUTH_SOCK", "LANG"):
+        for k in ("HOME", "PATH", "BLURT_HOME", "BLURT_WORKSPACE", "SSH_AUTH_SOCK", "LANG", "CODEX_HOME", "CLAUDE_CONFIG_DIR",
+                  "KIMI_CODE_HOME"):
             self.assertFalse(doctor._is_session_var(k), k)
 
     def test_agent_env_drops_leaks(self):
