@@ -506,7 +506,7 @@ Swift、Rust、live.py 不各自拼命令。
 的绝对路径）、`--var k=v` 给的任意 `{k}`。
 
 **顺序**（app-ux 已实现，WP2 沿用）：`record.agents` 是**排他**列表——只用列出的 id，按列出的顺序，未知 id 忽略，全部无效时退回默认；
-没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。
+没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。`"headless": false` 的条目（zcode）永远不进 order（默认顺序和 `record.agents` 都一样，Python `agent_order()` 和 Swift `AgentHub.order()` 同一规则）。
 读 `$BLURT_HOME/config.json`；Python 侧带 `--repo` 时，`<repo>/.blurt/config.json` 里的 `record.agents` / `record.process` 优先，
 `agent_defs` 合并（应用没有项目上下文时不用管）。
 
@@ -524,7 +524,7 @@ agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang zh
                  installed: bool, version: str|null,
                  login: "ok"|"logged_out"|"unknown"|"n/a",          // ready→ok，configured/unknown→unknown，not_installed→n/a
                  headless: bool, interactive: "url"|"terminal"|"copy"|null}]}
-     agents 按 order 排；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
+     agents 按 order 排，后面再跟上 order 之外的 app-only 条目（不带 --ids 时，供「复制提示词」用）；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
 agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
   → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
      "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
