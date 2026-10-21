@@ -60,10 +60,22 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
         return;
       }
       if (r && typeof (r as Promise<unknown>).then === "function") {
-        // WKScriptMessageHandlerWithReply: the reply comes back as the promise
-        pending.delete(id);
-        clearTimeout(timer);
-        (r as Promise<T>).then(resolve, (e) => reject(e instanceof Error ? e : new Error(String(e))));
+        // WKScriptMessageHandlerWithReply answers through this promise. Recent WebKit also returns a promise for a
+        // plain handler, resolved with undefined — then the answer still comes through __blurtReply.
+        (r as Promise<T>).then(
+          (v) => {
+            if (v === undefined || !pending.has(id)) return;
+            pending.delete(id);
+            clearTimeout(timer);
+            resolve(v);
+          },
+          (e) => {
+            if (!pending.has(id)) return;
+            pending.delete(id);
+            clearTimeout(timer);
+            reject(e instanceof Error ? e : new Error(String(e)));
+          },
+        );
       }
     });
   }
