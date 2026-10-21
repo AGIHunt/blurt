@@ -641,6 +641,35 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
 - **嵌入终端**：macOS SwiftTerm（P3，源码 vendored，见「所有权」），Tauri xterm.js（P8）。终端里执行 `attach-cmd` 的 argv。
   关掉应用会话照常在跑；再打开时主窗口的会话列表来自 `sessions.py list` 和任务文件。
 
+**细则（P8，Windows / Linux 的 Tauri 应用，2026-10-22 在本机用 P1 + P2 的脚本实测）**：
+- **Tauri 命令**：契约里的名字全部实现；另有（参数 camelCase）`index_query / index_item / index_sessions / index_summary`（schema v2 的
+  只读查询）、`projects_open_folder(makeCurrent)`（系统选文件夹 → `projects.py add`）、`items_work(uids, work, note)`、
+  `items_move(uids, project)`、`agents_detect`、`sessions_stop(job, kill)`、`sessions_open_external(job, terminal)`、
+  `sessions_send(job, text, enter)`、`pty_close(ptyId)`、`clipboard_write(text)`。`pty_open(job, cols, rows)` → `{ptyId, replay, owned}`
+  （app runner 的会话留最后 1 MB 输出，后开的终端先回放）；`handoff_create(uids, full)` → `{id, path, text}`，Rust 用 `create --mark`
+  并把 `text` 放进剪贴板。命令失败时消息末尾带 CLI 的机器码 ` [code]`，界面按 `error.<code>` 本地化，不显示英文原文。
+  `jobs://changed` 的载荷是变了的那些任务（有效状态，Rust 的 `jobs::fold` 与 jobs.py 同一规则）。
+- **派发**：runner 默认 Windows = `app`，其它 = `auto`。`launch[]` 由应用在 portable-pty（Windows 即 ConPTY）里起，`paste` 3 秒后用
+  bracketed paste 粘进去，退出时 `sessions.py event --event pane-dead --exit N`。`sessions.py monitor` 在应用运行期间常驻（独立进程组，
+  退出时整组结束——只杀 `uv run` 会留下它起的 Python）。app runner 的终端兜底（`launch[].patterns`）**还没做**；Claude / Codex 有 hooks，
+  不受影响。
+- **能开会话的 agent**：`agents.py detect` 的行里还没有「能开会话」的字段，界面暂用 `headless` 近似；建议 P2 每行加 `session: bool`
+  （界面已经优先读它）。
+- **岛**（`blurt-overlay-island`，`blurt_capture::overlay::island`）：一个窗口 = 指针所在屏幕工作区顶部整条、高 600 逻辑像素，透明、置顶、
+  点穿（页面上报 hit rects；拖卡片时整窗接收鼠标），只在项目切换器打开时可聚焦。Rust → 页面 `blurt://island`：`state`（`IslandState`，见
+  `web/apps/overlays/src/host.ts`）、`cards`、`card {card, pull}`、`toast {kind: sorted | failed | error}`、`switcher`、`peek`、`attention`、
+  `status`、`level`；页面 → Rust `blurt://action`：`record snap voice pause resume stop discard voice.stop voice.cancel keyboard project.use
+  project.open card.assign card.inbox card.ai_sort card.remove card.copy card.note open.inbox open.session retry log`。Linux 的录屏区域
+  盖住岛时，岛移到区域下方（X11 没有截屏排除）。录屏 HUD 和鸡舍（perch）窗口删除，`overlay::record` 换成不带窗口的 `engine::record`。
+- **录屏外的截图 / 语音**：`tk_recorder.py shot SESSION --region x,y,w,h [--project P]`、`tk_recorder.py voice SESSION [--project P]
+  [--silence-ms] [--max] [--hold]`（`BLURT_TEST_MIC_WAV` 测试用），写 K7 的 shots.jsonl 行；转写用 `transcribe.py note`（P7），没有时 `said`
+  留空、整理时再转写。有当前项目时 8 秒内的捕获合并成一个 process 任务（`process_captures` 不写归属行，归属已在捕获行里）；auto 下是卡片
+  （= inbox store 里还开着的截图批次中 project 为 null、没删的行）。
+- **整理**：process 任务由应用跑 `agents.py command <pick> headless`（`BLURT_JOB`、`BLURT_PROJECT`，输出进 `jobs/<id>.log`）；录屏一结束就
+  整理（parent = record 任务），失败的原因按输出归到 `auth / quota / network / unknown`。
+- **测试通道**（只给脚本化冒烟用）：`BLURT_TEST_EVAL=<文件>`——文件一变，第一行是窗口 label、其余是在那个窗口里执行的 JS；页面用
+  `emit('blurt://test-result', …)` 回报，Rust 追加到 `<文件>.out`。不碰真实的鼠标键盘。
+
 ### K6 · 交给外部 agent：交接单
 
 - 文件 `$BLURT_HOME/handoff/<H-id>.md`，id = `H-` + 4 位以上数字，全局递增（`handoff/.seq`，锁内读写）。派发到会话（K5）也写一份，
