@@ -23,29 +23,23 @@ sys.path.insert(0, str(SCRIPTS))
 import index  # noqa: E402
 
 
-def fixture_sessions() -> list[Path]:
-    """WP1's shared fixtures (tests/fixtures/sessions/<name>/) when present, else WP2's own (tests/fixtures/index)."""
-    shared = FIXTURES / "sessions"
-    if shared.is_dir() and any(shared.iterdir()):
-        return sorted(p for p in shared.iterdir() if p.is_dir())
-    return []
+def copy_fixtures(home: Path, repo: Path) -> None:
+    """WP1's shared fixtures (tests/fixtures/sessions/<name>/) split over two workspaces: the shots batch goes to the
+    default workspace (~/Blurt/recordings), the video sessions to a repo (<repo>/.blurt/sessions)."""
+    for s in sorted(p for p in (FIXTURES / "sessions").iterdir() if p.is_dir()):
+        dest = (home / "Blurt" / "recordings") if s.name.endswith("-shots") else (repo / ".blurt" / "sessions")
+        shutil.copytree(s, dest / s.name)
 
 
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     """A fake HOME (with ~/Blurt/recordings), a repo workspace and $BLURT_HOME, from the fixtures."""
     home, repo, bh = tmp_path / "home", tmp_path / "repo", tmp_path / "blurt-home"
-    shared = fixture_sessions()
-    if shared:  # WP1 layout: flat session dirs → split them over the two workspaces
-        for s in shared:
-            dest = (home / "Blurt" / "recordings") if s.name.endswith("-shots") else (repo / ".blurt" / "sessions")
-            shutil.copytree(s, dest / s.name)
-    else:
-        shutil.copytree(FIXTURES / "index" / "home", home)
-        shutil.copytree(FIXTURES / "index" / "repo", repo)
+    copy_fixtures(home, repo)
     bh.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("BLURT_HOME", str(bh))
+    monkeypatch.delenv("BLURT_NO_INDEX", raising=False)
     return {"home": home, "repo": repo, "bh": bh, "tmp": tmp_path}
 
 
@@ -198,6 +192,50 @@ def test_backlog(env):
     text = Path(out["path"]).read_text()
     assert out["items"] >= 1 and text.startswith("# Blurt backlog")
     assert "uid `" in text
+
+
+def test_items_py_write_updates_index(env):
+    """C2 hook end to end: an items.py write re-indexes its session in-process, in < 50 ms."""
+    cli("scan", "--root", env["repo"])
+    s = env["repo"] / ".blurt" / "sessions" / "20261021-101500"
+    p = subprocess.run([sys.executable, str(SCRIPTS / "items.py"), "patch", str(s), "I-003", "--set", "title=键盘快捷键 walrus"],
+                       capture_output=True, text=True, encoding="utf-8", env=os.environ.copy())
+    assert p.returncode == 0, p.stderr
+    hit = cli("search", "walrus")
+    assert hit["total"] == 1 and hit["items"][0]["item_id"] == "I-003"
+    assert hit["items"][0]["uid"] == "01KAQ6N2W8C3D4E5F6G7H8J9KP"
+    p = subprocess.run([sys.executable, str(SCRIPTS / "items.py"), "fix", str(s), "I-003", "--state", "fixed",
+                        "--agent", "codex"], capture_output=True, text=True, encoding="utf-8", env=os.environ.copy())
+    assert p.returncode == 0, p.stderr
+    assert cli("search", "walrus", "--fix-state", "fixed")["total"] == 1
+    # the hook itself (items.reindex → index.update_sessions), timed in-process
+    import items
+    times = []
+    real_update = index.update_sessions
+
+    def timed(dirs, **kw):
+        t0 = time.perf_counter()
+        try:
+            return real_update(dirs, **kw)
+        finally:
+            times.append((time.perf_counter() - t0) * 1000)
+    index.update_sessions = timed
+    try:
+        for _ in range(5):
+            items.reindex(s)
+    finally:
+        index.update_sessions = real_update
+    print("reindex ms", [round(t, 1) for t in times])
+    assert len(times) == 5 and sorted(times)[2] < 50, times
+
+
+def test_legacy_uid_matches_items_py(env):
+    import _common
+    cli("scan", "--root", env["repo"])
+    s = env["repo"] / ".blurt" / "sessions" / "20261019-093000"
+    want = _common.legacy_uid(s.name, "I-001") if hasattr(_common, "legacy_uid") else index.legacy_uid(s.name, "I-001")
+    assert want == index.legacy_uid(s.name, "I-001")
+    assert cli("search", "登录按")["items"][0]["uid"] == want
 
 
 def test_path():
