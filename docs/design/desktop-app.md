@@ -597,6 +597,39 @@ export interface BlurtHost {
 
 组件里的所有回车处理都必须先判断 `e.isComposing || e.keyCode === 229`，并在 `compositionend` 之后 50 ms 内忽略回车 [S39]。
 
+细则（WP3 实现时补充，以 `web/packages/review/src/host.ts` 为准）：
+- **接口补充**（都是可选项，不影响已有宿主）：
+  - `sendOps` 返回值可以带 `doc`（写入后合并好的文件，`review.py` 本来就返回）。不带时，组件会用写入**前**的 etag 调一次
+    `poll` 取回合并结果再 rebase，所以原生宿主只回 `{ok, etag}` 即可（`items.py user-ops` 的输出）。
+  - `download?(rel)`：把会话文件存到「下载」；`confirmed?()`：审核已确认，宿主可以关窗；
+    `inApp?: boolean`：在应用窗口里（主题跟随系统、不显示主题按钮和会话名）。
+  - 只给 browser 用：`saveDoc?(doc, confirm)`（没有 id 的手写 items.json 整份保存，和旧页面一样）、`downloadUrl?(rel)`（`?download=1`）。
+  - `load` / `poll` 返回的 doc 要像 `review.py` 一样带 `_video`（`source_video` 文件是否存在；截图会话为 false）。etag 用 `file_etag`。
+- **挂载**：`mountReview(el, host, opts)` 返回 `{setItem(id), setTheme(t), setPlatform(p), unmount()}`；单文件页面里挂在
+  `window.blurtReview` 上。宿主也可以随时调 `window.__blurtSetAccent('#rrggbb' | null)`、`window.__blurtSetTheme('auto'|'light'|'dark')`。
+  - URL 参数：`mode=review|item`、`item=<id|uid>`、`platform=mac|win|gnome`、`theme=auto|light|dark`、`lang=en|zh`、
+    `host=browser|macos|tauri`（一般自动识别：`blurt-app:` → macos，有 Tauri IPC → tauri，其余 → browser）、`session=<abs>`（tauri）。
+  - item 模式：`itemId` 可以是条目号或 uid；没有队列和保留/丢弃栏，键位只剩 ← → / Space / O / E / 1 2 3 / ⌘↩（= `fixWithAgent`）。
+- **产物**：三个宿主用同一个单文件 `skills/blurt/scripts/review.html`（≈280 KB）。macOS 应用把它打包成 `blurt-app://ui/index.html`，
+  旁边放 `ui/icon.png`（页面用相对路径 `icon.png`）。
+- **macos 细节**（参考实现和验收：`web/packages/review/e2e/wkwebview/Harness.swift`，`pnpm -C web/packages/review test:wkwebview`
+  在真实 WKWebView 里跑 17 项检查）：
+  - document-start 注入 `window.blurtHostInfo = {host: "macos", methods: ["reveal","quickLook","openCode","fixWithAgent","registerDragRects","download"], accent: "#rrggbb"}`；
+    `methods` 只列原生真正实现了的可选方法（组件据此显示按钮），`accent` 是 `NSColor.controlAccentColor`，只用于焦点环和选区，不替代品牌橙。
+  - 请求：`load {}` → `{doc, etag}`；`poll {etag}` → `{etag}` 或 `{doc, etag}`；`sendOps {ops, confirm}` → `{ok, etag}`
+    （`items.py user-ops SESSION --stdin [--confirm]`，stdin 是 `{"ops": [...]}`）。回复：`window.__blurtReply(id, result, null)`，失败时 `(id, null, "message")`。
+  - `id: 0` 是通知，不回复：`reveal {rel}`、`quickLook {rel}`、`openCode {ref}`、`fixWithAgent {itemIds}`（uid 优先）、
+    `registerDragRects {rects: [{rel, x, y, w, h}]}`（视口内的 CSS px，帧和缩略图；卸载时发空数组）、`download {rel}`、`confirmed {}`。
+  - macOS 26 的 WebKit 对普通 `WKScriptMessageHandler` 的 `postMessage` 也返回一个 resolve 成 undefined 的 Promise；组件两种都认：
+    Promise 给了值就用（`WKScriptMessageHandlerWithReply`），否则等 `__blurtReply`。
+  - `blurt-app://session/<rel>` 必须支持 `Range`（206 + `Content-Range` + `Accept-Ranges`），否则 `<video>` 播不了片段和原录屏
+    （已实测）；要拒绝 `..` 跳出会话目录。
+- **当前的审核窗口**（`ReviewWindow.swift`，WKWebView 打开 `review.py` 的 http 页）**不需要改**：页面走 browser 宿主，识别
+  `window.blurtApp`，确认后照旧发 `{type: "confirmed"}`，标题照旧走 `document.title`（已在本机构建的 Blurt.app 里用真实按键验证）。
+  可选：在它的 document-start 脚本里加 `window.blurtHostInfo = {accent: "#rrggbb"}`（不带 `host`），就能用上系统强调色。
+- **tauri**：`fileUrl` 用 `convertFileSrc(<session>/<rel>, 'asset')`，所以 shell 要把会话目录加进 asset 协议的 scope；
+  `reveal` 传 `{path: <绝对路径>}`；`fix_with_agent` 传 `{session, itemIds}`。
+
 ### C7 · Swift 模块边界（`skills/blurt/recorder/macos/Package.swift`，只用 Command Line Tools 就能 `swift build`）
 
 ```
@@ -670,6 +703,11 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   为空时应用不启动 Sparkle）。WP6 只写这些声明背后的实现代码。
 - 构建：`record.py build` = `swift build -c release --product blurt-recorder`（scratch 在 `$BLURT_HOME/build/swiftpm`），
   `BLURT_UNIVERSAL=1` 时 arm64 和 x86_64 各 `--triple` 构建一次再 `lipo`；然后组装 bundle、ad-hoc 签名。
+- Sparkle（2.10.0，校验和固定）只进发布构建：`BLURT_SPARKLE=1` 时链接，`record.py build` 把 `Sparkle.framework` 放进
+  `Contents/Frameworks` 并删掉非沙盒应用用不到的头文件和 XPC 服务。skill 用户本地构建不带 Sparkle、不需要联网，由 skill 自己更新；
+  本地构建也不会覆盖或另装一份已安装的发布版（带 Sparkle 的那个自己更新）。体积：通用 + Sparkle 5.49 MB，本地 arm64 1.7 MB。
+- 发布脚本在仓库根目录 `scripts/release-mac.sh`（不在 `skills/blurt/scripts/`，不随 skill 分发）：签名（Developer ID + hardened
+  runtime）、DMG、公证和 staple、Sparkle zip 和 `appcast.xml`；钥匙串里没有 Developer ID 证书时自动 dry run（ad-hoc 签名、一次性 EdDSA 密钥）。
 - 外部 URL：
   - `blurt://item/<uid>`
   - `blurt://session/<abs-path-encoded>`
@@ -718,14 +756,81 @@ reveal(path) / open_external(url)
 录制（WP8 的 `crates/blurt-capture` 加 `record.py` 的 ffmpeg 引擎）：
 
 ```
-record.py start --engine ffmpeg --session DIR --region x,y,w,h [--screen N] [--mic M|--no-mic] --status-jsonl
-   stdout JSON lines: {"ev":"started","t0":…} {"ev":"level","rms":0.12} {"ev":"paused"} {"ev":"resumed"}
-                      {"ev":"snap","n":3,"file":"shots/003.png"} {"ev":"stopped","video":"recording.mp4"} {"ev":"error","msg":…}
+record.py start --engine ffmpeg --session DIR [--region=x,y,w,h] [--screen N] [--mic M|--no-mic] --status-jsonl
+   stdout JSON lines: {"ev":"started","t0":…} {"ev":"level","rms":0.12} {"ev":"paused","t":…} {"ev":"resumed","t":…}
+                      {"ev":"snap","n":3,"file":"shots/003.png","t":…} {"ev":"stopped","video":"recording.mp4","duration":…,"shots":…}
+                      {"ev":"discarded"} {"ev":"error","msg":…,"code":…}
    control: existing `record.py stop|pause|resume|snap|discard` (cmd file), unchanged
    writes the same files as today (recording.mp4, events.jsonl, meta.json, live/audio.pcm, shots.jsonl)
-Rust: blurt_capture::{pick_region(app) -> Region, start(opts) -> CaptureHandle, handle.pause/resume/stop/snap,
-      overlay::{hud, perch, note}: create transparent, always-on-top, non-focusable, content-protected windows}
+Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.pause/resume/snap/stop/discard/wait,
+      overlay::pick_region(app, cfg, last) -> Option<Region>,
+      overlay::{hud, perch, note, record}: transparent, always-on-top, non-focusable, content-protected windows}
 ```
+
+- **状态行**：
+  - 有 `--status-jsonl` 时 stdout 只有状态行，其余输出（`SESSION`、`DONE`、日志）都走 stderr；
+  - 流一定以 `stopped`、`discarded`、`error` 三者之一结束，之后进程退出（退出码 0 / 2 / 非 0）；
+  - `t` 是视频时间（秒），`t0` 是第一帧的墙钟时间；`level` 只在有麦克风时出现，约 10 Hz；
+  - `{"ev":"error","code":"snap"}` 只表示这一张没截到，录制继续，不是结束行；
+  - 字段只加不减，Rust 端遇到不认识的 `ev` 原样转给 HUD。
+- **`--status-jsonl` 只配 `--engine ffmpeg`**，别的引擎直接报错。ffmpeg 引擎不支持 `restart`（先 `discard` 再重新 `start`）。
+- **`--region` 的坐标**：Windows/Linux 是虚拟桌面的物理像素（gdigrab、x11grab 直接用），macOS 是主屏的点；
+  宽高向下取偶数；x 可能为负，所以写成 `--region=x,y,w,h`。不给 `--region` 就录整个屏幕。
+- **录制中截图**：Windows/Linux 另起一个 ffmpeg 抓一帧全分辨率（gdigrab、x11grab 可以和录像同时打开）；
+  macOS 的 avfoundation 不能同时打开同一块屏幕（第二个会卡住），改用系统的 `screencapture`。暂停时也能截。
+- **浮层窗口**（`blurt-overlay-picker|hud|perch|note`，页面在 `<frontendDist>/overlays/*.html`，由 `web/apps/overlays` 构建）：
+  - 宿主应用（WP7）要给 `blurt-overlay-*` 窗口 `core:default` 权限，并打开 asset protocol（截图缩略图用）；
+  - 页面和 Rust 之间只走事件：`blurt://status`（Rust→HUD，原样的状态行）、`blurt://action`（浮层→Rust，按钮）、
+    `blurt://picked`（选区，窗口内 CSS 像素）、`blurt://hit-rects`（鸡舍可点区域，其余部分鼠标穿透）、
+    `blurt://perch`（Rust→鸡舍：set/add/remove/show/hide/busy）、`blurt://note-done`、`blurt://ready`；
+  - Linux X11 没有排除截屏的办法，所以 HUD 放在录制区域外面，放不下才贴着区域底边放在里面。
+
+细则（WP7 实现时补充，以 `apps/desktop/src-tauri/src/lib.rs` 为准）：
+- **参数名**：Rust 用 snake_case，JS `invoke` 用 camelCase（Tauri 默认），例如 `fix_with_agent(session, item_ids)` →
+  `invoke('fix_with_agent', {session, itemIds})`。对象参数里的字段保持 C3 的写法（`q.fix_state`）。
+- **`ItemQuery`** = `{query?, kind?: [], status?: [], fix_state?: [], severity?: [], workspace?: id|path, session?: id|dir,
+  has_code_refs?: bool, sort?: "updated"|"created"|"t_start", limit=50, offset=0}`，查询规则照搬 C3 细则。
+  返回 `{total, items, missing}`，`missing: true` 表示还没有 `index.db`（不是错误）。
+  ItemRow 在 C3 的 12 个字段之外还带 `workspace_id, created, session_title, quote, tags, owner, module, t_start,
+  frame_count, has_code_refs, user_edited, exported`。
+- **`index_sessions(q?)`**：`q = {workspace?, state?: "unprocessed"|"processing"|"unreviewed"|"reviewed"|"inbox", limit, offset}`，
+  `inbox` = 没整理、整理中或没审核；行 = `sessions` 表全部列 + `workspace_name, workspace_path, fixed_count`。
+  `index_workspaces()` 的行 = `workspaces` 表 + `sessions, open_items`（open 的定义同 C4）。
+- **review**：`review_load(session) → {doc, etag, session}`；`review_poll(session, etag) → {etag}`（没变）或 `{doc, etag}`；
+  `review_ops(session, ops, confirm?) → items.py user-ops 的那行 JSON（{ok, etag}）`。ETag 与 `_common.file_etag` 相同。
+  文件走 asset protocol（`convertFileSrc`）；应用把每个工作区的 sessions 目录和打开过的会话目录动态加进 asset scope。
+- **agent**：`agents_detect() → agents.py detect 的输出`；`agent_run(id, prompt, repo) → run_id`（`r-YYYYMMDD-HHMMSS-xxxx`，
+  提示词写进 `$BLURT_HOME/prompts/<run_id>.md`，用 `agents.py command … --prompt-file … --var run_id=…` 拿 argv，
+  注入 `BLURT_AGENT` / `BLURT_RUN_ID`）。事件：`agent://started {run_id, agent}`、`agent://line {run_id, line, stream}`、
+  `agent://exit {run_id, code, state}`；结束时发系统通知。补充命令：`agent_runs() → [AgentRun]`（最近 400 行日志、
+  `total_cost_usd`）、`agent_stop(run_id)`、`agent_prompt(uids)`、
+  `fix_with_agent(session, item_ids, agent?) → {run_id, agent, repo}`（会话必须在仓库工作区里；先 `items.py fix --state fixing`，
+  agent 不给时用 detect 的 `pick`）、`process_session(session, agent?)`（提示词和 macOS 的 AgentHub / Snap 同一句）。
+- **设置**：`settings_get() → {config, hotkeys: [HotkeyRow], hotkey_mode, wayland, export_targets, config_path}`；
+  `settings_set(patch)` 按 `update_global_config` 的规则合并（顶层对象只合并一层），值为 `null` 删除该键。
+- **快捷键**：配置沿用 `record.hotkeys`（不是 C7 写的 `record.shortcuts`，以现有代码为准），语法同 `_common.parse_hotkey`。
+  常驻注册 `record` / `menu` / `snap`，其余录制中才注册。
+  `HotkeyRow = {action, spec, label, default, active, result, of?, name?, hint?}`，
+  `result = ok | off | idle（录制时生效）| duplicate（of）| system（name）| taken | unsupported（pen）| invalid | portal | pending | manual`。
+  `shortcut_set(action, combo) → {result: ok|duplicate|system|taken|invalid, action?, name?, spec, label, hint?, row?}`，
+  有冲突时不保存。Wayland：先用 GlobalShortcuts 门户（`hotkey_mode = portal`），没有门户时 `manual`，
+  提示用户在系统设置里绑定命令 `blurt blurt://record`（单实例把 URL 转给正在运行的应用）。事件 `hotkeys://changed [HotkeyRow]`。
+- **其它命令**：`app_status()`、`index_summary() → {missing, items, sessions, inbox, fixing}`、`index_item(uid)`、
+  `index_rescan()`、`asr_models()`（`transcribe.py models`）、`open_path(path)`、`update_check()`、
+  `capture_start(opts?: {session?, region?: [x,y,w,h], pick=true}) → session dir`（阻塞到开始录或取消，选区在 worker 线程里）、
+  `capture_control("pause"|"resume"|"stop"|"snap"|"marker"|"discard")`、`capture_state()`。
+  `open_external` 只放行 `http(s) vscode cursor zed claude-cli file` 这几种 scheme。
+- **事件**：`index://changed {sessions}`（watcher 防抖 300 ms 后执行 `index.py update` 再发）、`index://status {scanning, error?}`、
+  `capture://status`（状态行 + `session`，外加 `picking` / `cancelled`）、`nav {item: uid}|{session: dir}`（deep link）、
+  `perch://action`。
+- **deep link**：C7 的四个之外，`blurt://open|pause|stop|marker` 也认（给 Wayland 的系统快捷键用）。
+- **配置键（新增）**：`record.last_region_px`（上次选区，物理像素）、`record.mic`（`false`/`"off"` = 不录麦克风，或设备名）、
+  `app.editor`（`vscode`|`cursor`|`zed`，打开 code_refs 用）、`app.disable_dmabuf`（Linux：关 WebKit DMA-BUF 渲染；
+  不设时检测到 NVIDIA 驱动就关）。
+- **环境变量**：`BLURT_HOME`、`BLURT_WORKSPACE`、`HOME` 同 Python 侧；`BLURT_SCRIPTS`（脚本目录，默认依次找打包的
+  `resources/scripts`、仓库、`~/.claude/skills/blurt/scripts`）；测试用：`BLURT_START_VIEW`、`BLURT_QUIT_ON_CLOSE`、
+  `BLURT_LANG`、`BLURT_NO_SCAN`、`BLURT_NO_LOGIN_SHELL`、`BLURT_HOTKEY_MODS`、`BLURT_DISABLE_DMABUF`。
+- **bundle id**：Tauri 应用用 `dev.blurt.desktop`（Windows/Linux 专用，和 macOS 的 `dev.blurt.recorder` 分开，以免在 Mac 上冒烟时冲突）。
 
 ---
 

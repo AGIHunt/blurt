@@ -174,6 +174,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
         writeAppInfo()
+        Updater.shared.start()
         ReviewHub.shared.listen()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
@@ -461,6 +462,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add(L("快捷键…", "Shortcuts…"), #selector(mShortcuts), key: AppEnvironment.settings == nil ? "," : "")
         if AppEnvironment.settings != nil { add(L("设置…", "Settings…"), #selector(mSettings), key: ",") }
         menu.addItem(.separator())
+        if Updater.shared.available {
+            let u = add(L("检查更新…", "Check for Updates…"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
+            u.target = Updater.shared
+        }
         _ = add(L("使用说明 / GitHub", "Help / GitHub"), #selector(mHelp))
         _ = add(L("退出口喷鸡", "Quit blurt"), #selector(mQuit), key: "q")
     }

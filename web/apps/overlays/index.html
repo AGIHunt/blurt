@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blurt overlays</title>
+    <style>
+      /* Dev gallery: every overlay in demo mode over a busy backdrop, to see what is transparent. */
+      body {
+        margin: 0;
+        padding: 16px;
+        font: 13px system-ui, sans-serif;
+        color: #eee;
+        background: #333 repeating-conic-gradient(#3c3c3c 0 25%, #2e2e2e 0 50%) 0 0 / 24px 24px;
+      }
+      h2 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 16px 0 6px;
+      }
+      iframe {
+        display: block;
+        border: 1px dashed rgba(255, 255, 255, 0.25);
+        background: transparent;
+        color-scheme: normal;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>HUD</h2>
+    <iframe src="./hud.html?demo=1" width="420" height="56" allowtransparency="true"></iframe>
+    <iframe src="./hud.html?demo=paused&amp;lang=zh" width="420" height="56" allowtransparency="true"></iframe>
+    <h2>Perch</h2>
+    <iframe src="./perch.html?demo=1" width="900" height="200" allowtransparency="true"></iframe>
+    <h2>Note bubble</h2>
+    <iframe src="./note.html?demo=1&amp;n=3" width="420" height="340" allowtransparency="true"></iframe>
+    <h2>Region picker</h2>
+    <iframe src="./picker.html?demo=1&amp;last=40,40,300,200" width="900" height="420" allowtransparency="true"></iframe>
+  </body>
+</html>

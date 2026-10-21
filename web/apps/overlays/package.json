@@ -1,0 +1,21 @@
+{
+  "name": "@blurt/overlays",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Transparent overlay windows for the Tauri app on Windows/Linux: region picker, HUD, perch, note bubble (crates/blurt-capture opens them)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
