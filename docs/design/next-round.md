@@ -771,6 +771,15 @@ uid 01JB… · issue · high · module auth
   实现：web `StatusRing` 组件（`packages/ui`），Swift `StatusRing.image(_ state: String, size: CGFloat) -> NSImage`（模板化以外的彩色图，带无障碍描述 = `work.<state>` 的文案）。
 - **蛋只用在品牌和动效**（整理中的孵化、破壳、完成时的鸡）。列表、侧栏、详情里不再用种类彩蛋和状态蛋（`EggKind` 只留给动效）。
   「完成提示里的鸡」重画成多层矢量插画，有几种表情，只在条目到「待验证 / 已完成」时出现（P5）。
+- **细则（P6）**：终值如下，web（`packages/ui/tokens.css`、`kinds.ts`）和 Swift（`KindStyle.swift`、`StatusRing.swift`）一致，
+  `packages/ui/src/kinds.test.tsx` 和 `tests/test_icons.py` 检查两边相同。
+  - 种类颜色：idea 浅色改成 `#A8710A`（起始值 `#B7791F` 在最暗的浅色面板 `#EAEAEA` 上只有 3.03:1，没有余量）；其余三个和深色 idea 沿用起始值。
+    对比度按各平台 token 里所有面板色算（浅色最难的是 `#EAEAEA`，深色是 `#383838`），全部 ≥ 3:1。
+  - 待验证（to_verify）的提醒色：浅 `#B86E00`、深 `#F5A524`（token `--warn`；起始值 `#E5A000` 在浅色面板上只有约 1.9:1）。
+    深色主题下圆环里的 `!` 用深色（`--ring-cut`），浅色主题和 done 的勾用白色。
+  - 自定义 lens：色相 h = 名字逐个 UTF-16 码元 `h = (h·31 + c) mod 360`（和旧彩蛋同一个哈希）；浅色从 HSL(h, 55%, 42%) 起、
+    深色从 HSL(h, 70%, 68%) 起，不够 3:1 就按 2% 一步变暗 / 变亮直到够（黄绿色相会走几步）。web 和 Swift 用同一条规则。
+  - 圆环几何（14 / 18 px，线宽 1.5）以 `ringShapes()` 为准，Swift 按同样的数字 y 轴向下画，两边像素一致。
 
 ### K9 · 本地语音识别：按机器自适应
 
