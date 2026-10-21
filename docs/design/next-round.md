@@ -490,6 +490,7 @@ route 由 `items.py ingest` 在 auto 模式下调用（后台、写 K4 的 route
 | to_verify → done | **只有 user**（审核页或列表上「确认完成」） | |
 | to_verify → todo | user（重新打开，note 写原因） | |
 | 任意 → wontfix | user；agent 只能到 to_verify（claim wontfix） | |
+| handed_off(external) / in_progress → done | user | 复制给外部 agent、那边没接 MCP：只能由你手动标完成（§1.3「之后手动标」），不经过 to_verify |
 | done / wontfix → todo | user（重新打开） | |
 | deleted 的条目 | 不能派发、不能交出；work 保持原样 | |
 
