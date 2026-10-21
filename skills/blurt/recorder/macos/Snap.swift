@@ -546,8 +546,8 @@ func isShotsSession(_ dir: URL) -> Bool {
 /// The prompt for an unattended run on a shots session (nil for recordings: App.process keeps its own).
 func shotsPrompt(_ dir: URL) -> String? {
     guard isShotsSession(dir) else { return nil }
-    return L("用 blurt skill 处理这批截图：\(dir.path)\n这是截图模式的 session（mode: shots，没有录屏视频）：每张截图锚定一条，截图就是这一条的首帧；有语音备注的先转写；.marked.png 上已经有用户的笔迹。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
-             "Use the blurt skill to process this batch of screenshots: \(dir.path)\nIt is a shots session (mode: shots, no video): each shot anchors one item and is that item's primary frame; transcribe voice notes first; .marked.png files already carry the user's ink.\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it when you finish); write items.json, then summarise in 2–3 sentences.")
+    return L("用 blurt skill 处理这批截图：\(dir.path)\n这是截图模式的 session（mode: shots，没有录屏视频）：每张截图锚定一条，截图就是这一条的首帧；有语音备注的先转写；.marked.png 上已经有用户的笔迹。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
+             "Use the blurt skill to process this batch of screenshots: \(dir.path)\nIt is a shots session (mode: shots, no video): each shot anchors one item and is that item's primary frame; transcribe voice notes first; .marked.png files already carry the user's ink.\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")
 }
 
 final class Snapper {

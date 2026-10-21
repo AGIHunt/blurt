@@ -790,7 +790,7 @@ final class Perch: NSObject {
 
     /// ok: the review page is up → the eggs hatch and the nest leaves. Failed: grey eggs + a hint for a while.
     func hatched(id: String, ok: Bool) {
-        guard let i = hatches.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = hatches.firstIndex(where: { $0.id == id }), hatches[i].state == 0 else { return }
         hatches[i].state = ok ? 1 : 2
         hatches[i].since = CACurrentMediaTime()
         let h = hatches[i]

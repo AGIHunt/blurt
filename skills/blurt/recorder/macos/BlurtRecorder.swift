@@ -1439,30 +1439,93 @@ func recentSessions(limit: Int = 8) -> [URL] {
     return Array(dirs.sorted { $0.lastPathComponent > $1.lastPathComponent }.prefix(limit))
 }
 
-/// Apps opened from Finder get a bare PATH, and many people add ~/.local/bin etc. only in ~/.zshrc — so ask an
-/// interactive shell once (with a timeout) and add the usual install locations.
-let userPATH: String = {
+// MARK: - Launching the user's agent CLI (claude / codex) and other tools
+
+/// Run a program, capture stdout+stderr, give up after `timeout` seconds. Reads concurrently so a chatty child never
+/// blocks on a full pipe. status nil = could not start, or timed out.
+func runCapture(_ exe: String, _ args: [String], env: [String: String]? = nil, timeout: Double) -> (status: Int32?, out: Data) {
     let p = Process()
-    p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-    p.arguments = ["-ilc", "printf '\\n__BLURT_PATH__%s' \"$PATH\""]
+    p.executableURL = URL(fileURLWithPath: exe)
+    p.arguments = args
+    if let env = env { p.environment = env }
     let pipe = Pipe()
     p.standardOutput = pipe
-    p.standardError = FileHandle.nullDevice
+    p.standardError = pipe
     p.standardInput = FileHandle.nullDevice
-    var found = ""
-    if (try? p.run()) != nil {
-        let deadline = Date().addingTimeInterval(6)
-        while p.isRunning && Date() < deadline { usleep(50_000) }
-        if p.isRunning { p.terminate() }
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        if let r = out.range(of: "__BLURT_PATH__") { found = String(out[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines) }
+    guard (try? p.run()) != nil else { return (nil, Data()) }
+    var data = Data()
+    let lock = NSLock()
+    let drained = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        while true {
+            let chunk = pipe.fileHandleForReading.availableData
+            if chunk.isEmpty { break }
+            lock.lock(); data.append(chunk); lock.unlock()
+        }
+        drained.signal()
     }
+    let deadline = Date().addingTimeInterval(timeout)
+    while p.isRunning && Date() < deadline { usleep(30_000) }
+    let finished = !p.isRunning
+    if !finished { p.terminate() }
+    _ = drained.wait(timeout: .now() + 1)      // a background job started by the shell may hold the pipe; don't wait on it
+    lock.lock(); defer { lock.unlock() }
+    return (finished ? p.terminationStatus : nil, data)
+}
+
+/// Variables a coding-agent session (Claude Code, the Claude / Codex desktop apps, codex) exports to its children.
+/// When the app itself was opened from inside such a session (the skill does that), they leak into every agent the app
+/// launches later, long after that session is gone: CLAUDE_CODE_SIMPLE=1 puts `claude -p` in bare mode, which never
+/// reads the keychain login ("Not logged in · Please run /login"); ANTHROPIC_BASE_URL points at that session's local
+/// auth proxy; USE_STAGING_OAUTH, CLAUDECODE, session ids, CODEX_SANDBOX… make the child act like a nested agent.
+/// None of them are the user's own settings — whatever their shell profile sets comes back via `loginShellEnv`.
+func isAgentSessionVar(_ k: String) -> Bool {
+    for prefix in ["CLAUDE", "ANTHROPIC_", "CODEX_", "MCP_", "OTEL_"] where k.hasPrefix(prefix) { return true }
+    return ["AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH", "API_TIMEOUT_MS", "DISABLE_AUTOUPDATER",
+            "DISABLE_MICROCOMPACT", "BLURT_APP"].contains(k)
+}
+
+/// Our own environment minus anything an agent session leaked into it.
+let inheritedEnv: [String: String] = ProcessInfo.processInfo.environment.filter { !isAgentSessionVar($0.key) }
+
+/// What a new terminal would have. Apps opened from Finder get launchd's bare env, and people set PATH, API keys,
+/// CLAUDE_CONFIG_DIR, proxies… in ~/.zshrc — so ask the user's login shell once (interactive, with a timeout).
+let loginShellEnv: [String: String] = {
+    var sh = inheritedEnv["SHELL"] ?? "/bin/zsh"
+    if !sh.hasPrefix("/") || !FileManager.default.isExecutableFile(atPath: sh) { sh = "/bin/zsh" }
+    let marker = Data("\n__BLURT_ENV__\n".utf8)
+    let (_, data) = runCapture(sh, ["-ilc", "printf '\\n__BLURT_ENV__\\n'; /usr/bin/env -0"], env: inheritedEnv, timeout: 8)
+    guard let r = data.range(of: marker) else { return [:] }
+    var env: [String: String] = [:]
+    for entry in data[r.upperBound...].split(separator: 0) {
+        guard let s = String(data: Data(entry), encoding: .utf8), let eq = s.firstIndex(of: "="), eq != s.startIndex else { continue }
+        let k = String(s[..<eq])
+        if ["SHLVL", "_", "PWD", "OLDPWD"].contains(k) { continue }
+        env[k] = String(s[s.index(after: eq)...])
+    }
+    return env
+}()
+
+/// The user's PATH — login shell first, so we run the same `claude` / `codex` their terminal runs — plus the usual
+/// install locations in case the shell probe failed.
+let userPATH: String = {
     let home = NSHomeDirectory()
     let extra = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.bun/bin", "\(home)/.npm-global/bin",
                  "\(home)/.cargo/bin", "\(home)/.volta/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    let found = (loginShellEnv["PATH"] ?? "").split(separator: ":").map(String.init)
     var seen = Set<String>()
-    return (found.split(separator: ":").map(String.init) + extra).filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: ":")
+    return (found + extra).filter { !$0.isEmpty && seen.insert($0).inserted }.joined(separator: ":")
 }()
+
+/// The environment for everything the app launches (the agent, review.py, live.py…): the login the user has in their
+/// terminal, not whatever session happened to open the app. Inherited BLURT_* (BLURT_HOME / BLURT_WORKSPACE) win.
+func agentEnvironment() -> [String: String] {
+    var env = inheritedEnv.merging(loginShellEnv) { _, fromShell in fromShell }
+    for (k, v) in inheritedEnv where k.hasPrefix("BLURT_") { env[k] = v }
+    env["PATH"] = userPATH
+    env["BLURT_APP"] = "1"
+    return env
+}
 
 func findExecutable(_ name: String) -> String? {
     for dir in userPATH.split(separator: ":") {
@@ -1472,14 +1535,33 @@ func findExecutable(_ name: String) -> String? {
     return nil
 }
 
+enum AgentLogin { case ok, loggedOut, unknown }
+
+/// Is the agent CLI logged in, in the env it will get? `claude auth status --json` / `codex login status`.
+/// `.unknown` when the installed version can't tell (old CLI, timeout) — then we just try.
+func agentLogin(_ agent: String, bin: String) -> AgentLogin {
+    let args = agent == "codex" ? ["login", "status"] : ["auth", "status", "--json"]
+    let (status, data) = runCapture(bin, args, env: agentEnvironment(), timeout: 15)
+    let out = String(data: data, encoding: .utf8) ?? ""
+    if agent != "codex", let s = out.firstIndex(of: "{"),
+       let j = try? JSONSerialization.jsonObject(with: Data(out[s...].utf8)) as? [String: Any], let li = j["loggedIn"] as? Bool {
+        return li ? .ok : .loggedOut
+    }
+    if looksLoggedOut(out) { return .loggedOut }
+    if agent == "codex", status == 0, out.lowercased().contains("logged in") { return .ok }
+    return .unknown
+}
+
+func looksLoggedOut(_ text: String) -> Bool {
+    let t = text.lowercased()
+    return t.contains("not logged in") || t.contains("please run /login") || t.contains("codex login")
+}
+
 func shell(_ cmd: String, cwd: URL, log: URL, done: @escaping (Int32) -> Void) {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/zsh")
     p.arguments = ["-c", cmd]
-    var env = ProcessInfo.processInfo.environment
-    env["PATH"] = userPATH
-    env["BLURT_APP"] = "1"
-    p.environment = env
+    p.environment = agentEnvironment()
     p.standardInput = FileHandle.nullDevice   // codex exec otherwise waits for more prompt on stdin
     p.currentDirectoryURL = cwd
     FileManager.default.createFile(atPath: log.path, contents: nil)
@@ -1503,8 +1585,33 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var processing: [String] = []    // sessions being processed by an agent
     var statusTimer: Timer?
     var lastSession: URL?
+    var agentChecks: [String: (login: AgentLogin, at: Date)] = [:]   // preflight cache, per agent
 
     var resident: Bool { opts.standalone }
+
+    /// Check (off the main thread) whether `agent` is installed and logged in; cached, an OK result for 10 minutes.
+    func preflight(_ agent: String, force: Bool = false, then: ((String?, AgentLogin) -> Void)? = nil) {
+        if !force, let c = agentChecks[agent], c.login == .ok, Date().timeIntervalSince(c.at) < 600 {
+            then?(findExecutable(agent), .ok)
+            return
+        }
+        DispatchQueue.global().async {
+            let bin = findExecutable(agent)
+            let login = bin.map { agentLogin(agent, bin: $0) } ?? .unknown
+            DispatchQueue.main.async {
+                if bin != nil { self.agentChecks[agent] = (login, Date()) }
+                then?(bin, login)
+            }
+        }
+    }
+
+    func notLoggedInMessage(_ agent: String) -> String {
+        agent == "codex"
+            ? L("Codex 没登录，没法后台整理：在终端运行 codex login，然后在菜单「最近的录制」里重新整理",
+                "Codex isn't logged in, so it can't process this: run `codex login` in a terminal, then Recent recordings → Process")
+            : L("Claude Code 没登录，没法后台整理：在终端运行 claude 并 /login，然后在菜单「最近的录制」里重新整理",
+                "Claude Code isn't logged in, so it can't process this: run `claude` in a terminal and /login, then Recent recordings → Process")
+    }
 
     func applicationDidFinishLaunching(_ n: Notification) {
         for sig in [SIGTERM, SIGINT] {
@@ -1655,6 +1762,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func startResident() {
         ensureDefaultWorkspace()
+        DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
         registerHotkey(.toggleRec, key: kVK_ANSI_R, mods: optShift)
         registerHotkey(.menu, key: kVK_ANSI_B, mods: optShift)
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -1714,6 +1822,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         lastSession = dir
         busy = true
+        if let mode = recordConfig()["process"] as? String, mode == "claude" || mode == "codex" {
+            preflight(mode, force: true)     // warm the cache while recording; process() re-checks a bad result
+        }
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
             DispatchQueue.main.async {
                 if err != nil {
@@ -1761,17 +1872,37 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Hand the recording to a coding agent in the workspace, headless. It writes the outputs next to the recording
     /// and opens the review page itself.
-    func process(_ dir: URL, with agent: String) {
+    func process(_ dir: URL, with agentName: String) {
+        let agent = agentName == "codex" ? "codex" : "claude"
+        let name = agent == "codex" ? "Codex" : "Claude Code"
+        processing.append(dir.path)
+        refreshStatus()
+        preflight(agent) { [weak self] bin, login in
+            guard let self = self else { return }
+            guard let bin = bin else {
+                self.processing.removeAll { $0 == dir.path }
+                self.refreshStatus()
+                self.alert(L("没找到 \(name)", "\(name) not found"),
+                           L("口喷鸡要调用命令行里的 `\(agent)`，但在你的 PATH 里没找到。装好 \(name) 命令行后再试，或者在菜单里改成「只保存」。",
+                             "blurt calls the `\(agent)` command line tool, which isn't on your PATH. Install the \(name) CLI, or switch to “Just save”."))
+                return
+            }
+            if login == .loggedOut {
+                self.processing.removeAll { $0 == dir.path }
+                self.refreshStatus()
+                try? (self.notLoggedInMessage(agent) + "\n").write(to: dir.appendingPathComponent("agent.log"), atomically: true, encoding: .utf8)
+                self.toast(self.notLoggedInMessage(agent), seconds: 12)
+                return
+            }
+            self.runAgent(dir, agent: agent, bin: bin)
+        }
+    }
+
+    func runAgent(_ dir: URL, agent: String, bin: String) {
         let ws = currentWorkspace()
         let name = agent == "codex" ? "Codex" : "Claude Code"
-        guard let bin = findExecutable(agent == "codex" ? "codex" : "claude") else {
-            alert(L("没找到 \(name)", "\(name) not found"),
-                  L("口喷鸡要调用命令行里的 `\(agent == "codex" ? "codex" : "claude")`，但在你的 PATH 里没找到。装好 \(name) 命令行后再试，或者在菜单里改成「只保存」。",
-                    "blurt calls the `\(agent == "codex" ? "codex" : "claude")` command line tool, which isn't on your PATH. Install the \(name) CLI, or switch to “Just save”."))
-            return
-        }
-        let prompt = shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
-                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it when you finish); write items.json, then summarise in 2–3 sentences.")
+        let prompt = shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
+                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")
         let cmd: String
         if agent == "codex" {
             // the skill needs uv's cache, the models in ~/.blurt and ffmpeg — outside the workspace sandbox
@@ -1779,18 +1910,33 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             cmd = "\(shq(bin)) -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
         }
-        processing.append(dir.path)
         perch.hatch(id: dir.path, kinds: draftKinds(in: dir))
+        // text-first runs: items.json appears long before the agent exits → open the review page right then
+        var reviewOpen = false
+        let watch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
+            guard let self = self, FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path) else { return }
+            t.invalidate()
+            reviewOpen = self.openReview(dir)
+            perch.hatched(id: dir.path, ok: true)
+            if reviewOpen { self.toast(L("条目已就绪，审核页已打开（截图还在补）", "Items are ready — the review page is open (frames still coming)")) }
+        }
         toast(L("\(name) 正在后台整理…", "\(name) is processing it in the background…"))
-        shell(cmd, cwd: ws, log: dir.appendingPathComponent("agent.log")) { [weak self] status in
+        let log = dir.appendingPathComponent("agent.log")
+        shell(cmd, cwd: ws, log: log) { [weak self] status in
             guard let self = self else { return }
             self.processing.removeAll { $0 == dir.path }
+            watch.invalidate()
             let ok = status == 0 && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path)
             perch.hatched(id: dir.path, ok: ok)
-            if ok && self.openReview(dir) {
+            if ok && reviewOpen {
+                self.toast(L("整理完了，审核页里的截图都补齐了", "Done — every frame is on the review page"))
+            } else if ok && self.openReview(dir) {
                 self.toast(L("整理好了，审核页已打开", "Done — the review page is open"))
             } else if ok {
                 self.toast(L("整理好了（items.json 已生成）", "Done — items.json is ready"))
+            } else if looksLoggedOut(String((try? String(contentsOf: log, encoding: .utf8))?.suffix(4000) ?? "")) {
+                self.agentChecks[agent] = nil
+                self.toast(self.notLoggedInMessage(agent), seconds: 12)
             } else {
                 self.toast(L("后台整理失败，详见录屏文件夹里的 agent.log", "Processing failed — see agent.log in the recording folder"))
             }
@@ -1983,7 +2129,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // tiny, non-blocking toast under the menu bar (no notification permission needed)
     var toastWin: NSWindow?
-    func toast(_ text: String) {
+    func toast(_ text: String, seconds: Double = 4.5) {
         toastWin?.orderOut(nil)
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let w = NSAttributedString(string: text, attributes: [.font: f]).size().width + 36
@@ -2004,7 +2150,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         win.level = .statusBar
         win.orderFrontRegardless()
         toastWin = win
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self, weak win] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self, weak win] in
             if self?.toastWin === win { win?.orderOut(nil) }
         }
     }

@@ -7,6 +7,9 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -84,9 +87,16 @@ def load_json(path: Path, default=None):
 def save_json(path: Path, data) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(20):  # Windows: replace fails while a reader has the target open
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def global_config() -> dict:
@@ -185,6 +195,63 @@ def load_session(session: Path) -> dict | None:
 
 def save_session(session: Path, data: dict) -> None:
     save_json(Path(session) / "items.json", data)
+
+
+# items.json has two writers once the review page is open: the agent (items.py) and the page (review.py). Every
+# write is read-modify-write under one lock file per session, shared across processes and threads.
+_THREAD_LOCKS: dict[str, threading.Lock] = {}
+
+
+@contextmanager
+def items_lock(session: Path, timeout: float = 15.0):
+    path = Path(session) / ".items.lock"
+    tl = _THREAD_LOCKS.setdefault(str(path.resolve()), threading.Lock())
+    if not tl.acquire(timeout=timeout):
+        raise TimeoutError(f"{path} is locked")
+    try:
+        fh = open(path, "a+b")
+        try:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    if IS_WIN:
+                        import msvcrt
+                        fh.seek(0)
+                        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"{path} is locked by another process")
+                    time.sleep(0.02)
+            try:
+                yield
+            finally:
+                if IS_WIN:
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+    finally:
+        tl.release()
+
+
+def find_item(data: dict, item_id: str) -> dict | None:
+    return next((i for i in data.get("items", []) if i.get("id") == item_id), None)
+
+
+def removed_into(data: dict, item_id: str) -> str | None:
+    """Where an item the user merged away went ("" = removed without a target), else None."""
+    gone = data.get("_removed") or {}
+    if item_id in gone:
+        return gone[item_id] or ""
+    return next((i.get("id") for i in data.get("items", []) if item_id in (i.get("merged_from") or [])), None)
 
 
 def live_items(data: dict, kind: str | None = None) -> list[dict]:
