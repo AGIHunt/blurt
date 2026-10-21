@@ -587,6 +587,39 @@ export interface BlurtHost {
 
 组件里的所有回车处理都必须先判断 `e.isComposing || e.keyCode === 229`，并在 `compositionend` 之后 50 ms 内忽略回车 [S39]。
 
+细则（WP3 实现时补充，以 `web/packages/review/src/host.ts` 为准）：
+- **接口补充**（都是可选项，不影响已有宿主）：
+  - `sendOps` 返回值可以带 `doc`（写入后合并好的文件，`review.py` 本来就返回）。不带时，组件会用写入**前**的 etag 调一次
+    `poll` 取回合并结果再 rebase，所以原生宿主只回 `{ok, etag}` 即可（`items.py user-ops` 的输出）。
+  - `download?(rel)`：把会话文件存到「下载」；`confirmed?()`：审核已确认，宿主可以关窗；
+    `inApp?: boolean`：在应用窗口里（主题跟随系统、不显示主题按钮和会话名）。
+  - 只给 browser 用：`saveDoc?(doc, confirm)`（没有 id 的手写 items.json 整份保存，和旧页面一样）、`downloadUrl?(rel)`（`?download=1`）。
+  - `load` / `poll` 返回的 doc 要像 `review.py` 一样带 `_video`（`source_video` 文件是否存在；截图会话为 false）。etag 用 `file_etag`。
+- **挂载**：`mountReview(el, host, opts)` 返回 `{setItem(id), setTheme(t), setPlatform(p), unmount()}`；单文件页面里挂在
+  `window.blurtReview` 上。宿主也可以随时调 `window.__blurtSetAccent('#rrggbb' | null)`、`window.__blurtSetTheme('auto'|'light'|'dark')`。
+  - URL 参数：`mode=review|item`、`item=<id|uid>`、`platform=mac|win|gnome`、`theme=auto|light|dark`、`lang=en|zh`、
+    `host=browser|macos|tauri`（一般自动识别：`blurt-app:` → macos，有 Tauri IPC → tauri，其余 → browser）、`session=<abs>`（tauri）。
+  - item 模式：`itemId` 可以是条目号或 uid；没有队列和保留/丢弃栏，键位只剩 ← → / Space / O / E / 1 2 3 / ⌘↩（= `fixWithAgent`）。
+- **产物**：三个宿主用同一个单文件 `skills/blurt/scripts/review.html`（≈280 KB）。macOS 应用把它打包成 `blurt-app://ui/index.html`，
+  旁边放 `ui/icon.png`（页面用相对路径 `icon.png`）。
+- **macos 细节**（参考实现和验收：`web/packages/review/e2e/wkwebview/Harness.swift`，`pnpm -C web/packages/review test:wkwebview`
+  在真实 WKWebView 里跑 17 项检查）：
+  - document-start 注入 `window.blurtHostInfo = {host: "macos", methods: ["reveal","quickLook","openCode","fixWithAgent","registerDragRects","download"], accent: "#rrggbb"}`；
+    `methods` 只列原生真正实现了的可选方法（组件据此显示按钮），`accent` 是 `NSColor.controlAccentColor`，只用于焦点环和选区，不替代品牌橙。
+  - 请求：`load {}` → `{doc, etag}`；`poll {etag}` → `{etag}` 或 `{doc, etag}`；`sendOps {ops, confirm}` → `{ok, etag}`
+    （`items.py user-ops SESSION --stdin [--confirm]`，stdin 是 `{"ops": [...]}`）。回复：`window.__blurtReply(id, result, null)`，失败时 `(id, null, "message")`。
+  - `id: 0` 是通知，不回复：`reveal {rel}`、`quickLook {rel}`、`openCode {ref}`、`fixWithAgent {itemIds}`（uid 优先）、
+    `registerDragRects {rects: [{rel, x, y, w, h}]}`（视口内的 CSS px，帧和缩略图；卸载时发空数组）、`download {rel}`、`confirmed {}`。
+  - macOS 26 的 WebKit 对普通 `WKScriptMessageHandler` 的 `postMessage` 也返回一个 resolve 成 undefined 的 Promise；组件两种都认：
+    Promise 给了值就用（`WKScriptMessageHandlerWithReply`），否则等 `__blurtReply`。
+  - `blurt-app://session/<rel>` 必须支持 `Range`（206 + `Content-Range` + `Accept-Ranges`），否则 `<video>` 播不了片段和原录屏
+    （已实测）；要拒绝 `..` 跳出会话目录。
+- **当前的审核窗口**（`ReviewWindow.swift`，WKWebView 打开 `review.py` 的 http 页）**不需要改**：页面走 browser 宿主，识别
+  `window.blurtApp`，确认后照旧发 `{type: "confirmed"}`，标题照旧走 `document.title`（已在本机构建的 Blurt.app 里用真实按键验证）。
+  可选：在它的 document-start 脚本里加 `window.blurtHostInfo = {accent: "#rrggbb"}`（不带 `host`），就能用上系统强调色。
+- **tauri**：`fileUrl` 用 `convertFileSrc(<session>/<rel>, 'asset')`，所以 shell 要把会话目录加进 asset 协议的 scope；
+  `reveal` 传 `{path: <绝对路径>}`；`fix_with_agent` 传 `{session, itemIds}`。
+
 ### C7 · Swift 模块边界（`skills/blurt/recorder/macos/Package.swift`，只用 Command Line Tools 就能 `swift build`）
 
 ```
