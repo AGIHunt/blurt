@@ -473,7 +473,8 @@ def swift_build(scratch: Path, triple: str | None = None) -> Path | None:
 
 def native_binary(build: bool = True) -> Path | None:
     """The recorder lives inside ~/.blurt/Blurt.app so it can also be launched as a standalone app.
-    Built from recorder/macos (a SwiftPM package) with `swift build`; BLURT_UNIVERSAL=1 → arm64 + x86_64 (lipo)."""
+    Built from recorder/macos (a SwiftPM package) with `swift build`; BLURT_UNIVERSAL=1 → arm64 + x86_64 (lipo);
+    BLURT_SPARKLE=1 → with Sparkle (auto-update; release builds, see scripts/release-mac.sh)."""
     if not IS_MAC or not (SWIFT_DIR / "Package.swift").exists():
         return None
     remember_skill_dir()
@@ -484,6 +485,9 @@ def native_binary(build: bool = True) -> Path | None:
         h.update(AGENTS_JSON.read_bytes())
     if os.environ.get("BLURT_UNIVERSAL"):
         h.update(b"universal")
+    sparkle = os.environ.get("BLURT_SPARKLE") == "1"
+    if sparkle:
+        h.update(b"sparkle")
     digest = h.hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"
@@ -494,7 +498,8 @@ def native_binary(build: bool = True) -> Path | None:
     if not shutil.which("swift"):
         return None
     print("building native recorder (one-time, ~1 min)…", file=sys.stderr, flush=True)
-    scratch = BLURT_HOME / "build" / "swiftpm"
+    # Package.swift reads BLURT_SPARKLE: separate scratch dirs so SwiftPM's cached manifest never mixes the two
+    scratch = BLURT_HOME / "build" / ("swiftpm-sparkle" if sparkle else "swiftpm")
     tmp = BLURT_HOME / "build" / "blurt-recorder"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.unlink(missing_ok=True)
@@ -514,10 +519,23 @@ def native_binary(build: bool = True) -> Path | None:
         if not built:
             return None
         shutil.copy2(built, tmp)
+    run(["strip", "-S", "-x", str(tmp)], check=False)   # local symbols / debug notes: ~1.9 → 1.2 MB per arch
     shutil.rmtree(APP_BUNDLE, ignore_errors=True)
     (APP_BUNDLE / "Contents" / "MacOS").mkdir(parents=True)
     (APP_BUNDLE / "Contents" / "Resources").mkdir(parents=True)
     shutil.move(str(tmp), exe)
+    if sparkle:  # swift build leaves the (universal, Sparkle-signed) framework next to the executable
+        fw = Path(run(["swift", "build", "-c", "release", "--package-path", str(SWIFT_DIR), "--scratch-path", str(scratch),
+                       "--show-bin-path"], check=False).stdout.strip().splitlines()[-1]) / "Sparkle.framework"
+        if not fw.exists():
+            fw = next(scratch.glob("*/release/Sparkle.framework"), fw)
+        if not fw.exists():
+            print("Sparkle.framework missing from the build", file=sys.stderr)
+            return None
+        (APP_BUNDLE / "Contents" / "Frameworks").mkdir()
+        dest = APP_BUNDLE / "Contents" / "Frameworks" / "Sparkle.framework"
+        shutil.copytree(fw, dest, symlinks=True)
+        prune_sparkle(dest)
     shutil.copy(INFO_PLIST, APP_BUNDLE / "Contents" / "Info.plist")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     make_menu_icon(APP_BUNDLE / "Contents" / "Resources")
@@ -527,6 +545,20 @@ def native_binary(build: bool = True) -> Path | None:
     sign_app(APP_BUNDLE)
     ensure_app_installed(force=True)
     return exe
+
+
+def prune_sparkle(fw: Path) -> None:
+    """Drop what a non-sandboxed app doesn't load (headers, module map, the XPC services Sparkle only needs inside the
+    App Sandbox) — ~0.6 MB — and re-sign what's left ad hoc, inside out (release-mac.sh re-signs with Developer ID)."""
+    for rel in ("Headers", "PrivateHeaders", "Modules", "XPCServices"):
+        for p in (fw / rel, fw / "Versions" / "B" / rel):
+            if p.is_symlink():
+                p.unlink()
+            elif p.exists():
+                shutil.rmtree(p)
+    b = fw / "Versions" / "B"
+    for nested in (b / "Autoupdate", b / "Updater.app", fw):
+        run(["codesign", "--force", "--sign", "-", str(nested)], check=False)
 
 
 def remember_skill_dir() -> None:
