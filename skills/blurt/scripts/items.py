@@ -590,10 +590,10 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
         shots = read_shots(session)
         default = data.get("project") or b.get("project") or meta.get("project") or os.environ.get("BLURT_PROJECT") \
             or (None if home.is_inbox else home.project_id)
-        if default and default != st.INBOX:
-            import projects  # noqa: PLC0415
-            if projects.by_id(default) is None:
-                default = None
+        import projects  # noqa: PLC0415
+        if default and default != st.INBOX and projects.by_id(default) is None:
+            default = None
+        threshold = float(projects.load().get("route_threshold") or projects.THRESHOLD)
         for k in ("title", "digest", "language", "source_video"):
             if data.get(k) is not None:
                 b[k] = data[k]
@@ -634,20 +634,33 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
                     order.append(uid)
                 continue
             shot = _shot_of(it)
-            pid = it.get("project") if isinstance(it.get("project"), str) else None
             by = "migrate" if mode == "migrate" else "capture"
-            if pid is None and shot is not None and isinstance((shots.get(shot) or {}).get("project"), str):
-                pid = shots[shot]["project"]
-                by = "user" if shots[shot].get("assigned_by") == "user" else \
-                    ("ai" if shots[shot].get("assigned_by") == "ai" else by)
+            pid, conf, suggestion = None, None, None
+            if shot is not None and isinstance((shots.get(shot) or {}).get("project"), str):
+                pid = shots[shot]["project"]  # the user (or the AI) filed this capture on the island
+                by = {"user": "user", "ai": "ai"}.get(shots[shot].get("assigned_by"), by)
+            elif isinstance(it.get("project"), str):  # the agent proposed a project for this item (SKILL.md §3)
+                hit = projects.find(it["project"])
+                c = it.get("project_confidence")
+                c = float(c) if isinstance(c, (int, float)) and not isinstance(c, bool) else None
+                if hit is not None and c is not None and c < threshold and hit["id"] != default:
+                    suggestion = {"id": hit["id"], "confidence": round(c, 2),
+                                  "reason": str(it.get("project_reason") or "")[:200]}
+                elif hit is not None:
+                    pid, conf, by = hit["id"], c, "ai"
             pid = pid or default
             target = store_for_project(pid) if pid else st.inbox_store()
             target.ensure()
+            fields = {k: v for k, v in it.items() if k not in ("project_confidence", "project_reason")}
             with target.lock():
-                item = build_item(dict(it), uid, target, project_by=by, created=created, session=session, meta=meta,
+                item = build_item(fields, uid, target, project_by=by, created=created, session=session, meta=meta,
                                   local=lid, language=data.get("language"), shot=shot)
+                if conf is not None:
+                    item["project_confidence"] = conf
+                if suggestion and target.is_inbox:
+                    item["suggested_project"] = suggestion
                 p = write_new(target, item)
-            if not pid:
+            if not pid and not suggestion:
                 routed.append(uid)
             order.append(uid)
             results.append({"local": lid, "uid": uid, "id": item["id"], "path": str(p), "project": item["project"]})

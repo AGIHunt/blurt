@@ -251,6 +251,28 @@ class Route(TmpCase):
         doc = ok("items.py", "doc", session, env=self.e.env())["doc"]  # the batch still lists both, wherever they are
         self.assertEqual([i["_project"]["key"] for i in doc["items"]], ["WA", "IN"])
 
+    def test_the_agent_proposes_a_project_per_item(self):
+        """SKILL.md §3 in auto mode: project + project_confidence per item; below the threshold → Unassigned with
+        the suggestion, and no background routing for it."""
+        session = self.e.ws / "inbox" / "sessions" / "20261022-141500"
+        session.mkdir(parents=True)
+        (session / "items.json").write_text(json.dumps({"items": [
+            {"id": "I-001", "kind": "issue", "title": "sure", "project": "WA", "project_confidence": 0.92},
+            {"id": "I-002", "kind": "issue", "title": "unsure", "project": self.pd["id"], "project_confidence": 0.4,
+             "project_reason": "mentions onboarding"},
+            {"id": "I-003", "kind": "note", "title": "no idea"},
+            {"id": "I-004", "kind": "note", "title": "unknown project", "project": "NOPE"}]}))
+        out = ok("items.py", "ingest", session, env=self.e.env())
+        by = {r["local"]: r for r in out["items"]}
+        self.assertEqual((by["I-001"]["project"], by["I-001"]["id"]), (self.pw["id"], "WA-1"))
+        a = ok("items.py", "get", by["I-001"]["uid"], env=self.e.env())["item"]
+        self.assertEqual((a["project_by"], a["project_confidence"]), ("ai", 0.92))
+        self.assertNotIn("project_reason", a)
+        b = ok("items.py", "get", by["I-002"]["uid"], env=self.e.env())["item"]
+        self.assertEqual((b["project"], b["suggested_project"]),
+                         ("inbox", {"id": self.pd["id"], "confidence": 0.4, "reason": "mentions onboarding"}))
+        self.assertEqual((by["I-003"]["project"], by["I-004"]["project"]), ("inbox", "inbox"))
+
     def test_capture_with_a_current_project_goes_straight_there(self):
         session = self.web / ".blurt" / "sessions" / "20261022-101500"
         session.mkdir(parents=True)

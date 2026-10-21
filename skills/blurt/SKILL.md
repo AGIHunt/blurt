@@ -10,7 +10,7 @@ description: >-
   "turn this recording into issues", "处理我录的视频", "process my recordings".
 ---
 
-# blurt 🐔 — show it, say it, get structured work back
+# blurt — show it, say it, get structured work back
 
 People think best out loud with their eyes on the screen. They jump between topics, correct themselves, point at
 things. Your job: capture that with no friction, then do the tedious part (splitting, writing up, picking and
@@ -36,7 +36,8 @@ language; write items in the language the user spoke.
   app hosting you (Terminal, iTerm, VS Code, Claude, Codex…) and that app must be restarted after granting.
   macOS 15+ may show an "allow … to bypass the window picker" prompt — the user clicks Allow themselves.
 - Optional project config `.blurt/config.json`: export target, owners/module map, column mapping, custom lenses in
-  `.blurt/lenses/`. Suggest adding `.blurt/sessions/` to `.gitignore`.
+  `.blurt/lenses/`. `.blurt/` is never committed: items.py / projects.py add it to `.git/info/exclude` (not
+  `.gitignore`) the first time they write there.
 
 ## 1. Record (or pick up a recording)
 
@@ -50,15 +51,17 @@ what happens:
   them in the app's Shortcuts… window / config `record.hotkeys`, and the countdown shows the real ones). The bar is
   never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
-  fades after 3 s; ✎ on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D / ✎ turns it off); click **完成** — no need to send another chat message.
-- **⌥⇧A snaps** (Windows/Linux Alt+Shift+A, 📸 on the bar; ⌥⇧M too): a full-resolution still of the area right
-  now, no pause → `shots/`. Best evidence there is — mention it in one line.
+  fades after 3 s; the pen button on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D turns it off); click **完成** — no need
+  to send another chat message.
+- **⌥⇧A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥⇧M too): a full-resolution still of
+  the area right now, no pause → `shots/`. Best evidence there is — mention it in one line.
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
 the chat you can also `record.py stop | pause | resume | restart | snap`.
 
-**Snap mode** (macOS app, not recording): ⌥⇧A → drag an area, let go = shot; it hangs on the perch at the top of the
-screen and a bubble takes a spoken (or typed) note; ⌃-drag on it circles things. "🐔 整理 N 张" hands the batch
-(`<ts>-shots/`, `meta.json` `"mode": "shots"`, no video) to the agent. Suggest it for "one screen + one sentence"
+**Snap mode** (macOS app, not recording): ⌥⇧A → drag an area, let go = shot, with a spoken (or typed) note; ⌃-drag on
+it circles things. With a current project the shot goes straight to it; in auto mode it waits as a card until the
+user files it (or lets AI sort). The batch is `<ts>-shots/` (`meta.json` `"mode": "shots"`, no video; a line of
+`shots.jsonl` may carry the `project` the user filed it into). Suggest it for "one screen + one sentence"
 feedback (a wrong label, a layout glitch): faster to give and to process. Video is for flows, animations, timing and
 long rambles — anything where what happened *between* screens matters.
 
@@ -71,11 +74,16 @@ response while it runs.
 `.blurt/sessions/<timestamp>/`, copy it in as `recording.<ext>` (with `events.jsonl` / `meta.json` if it came from
 Blurt), continue with §2.
 
-**Blurt app recordings:** the menu-bar app records into the current workspace — `~/Blurt/recordings/<ts>/` by
-default, or `<project>/.blurt/sessions/<ts>/` when a project is bound. `record.py inbox` lists all of them with
-`processed` / `reviewed` flags. "Process my recordings" → do §2–§4 for each unprocessed one (fan out to subagents
-if available), then one review per session (or merge into one session dir if the user wants a single list).
-`meta.json` has `author` — keep it on items when several people's recordings are combined.
+**Projects and the inbox.** A project is a folder the user opened in Blurt (`projects.py list`: id, key such as `BA`,
+name, description, modules). Each has a store `<folder>/.blurt/`: items in `items/<KEY-n>-<slug>.md`, screenshots in
+`assets/<uid>/`, raw captures in `sessions/<ts>/`. Captures that belong to no project yet live in the inbox store
+`~/Blurt/inbox/` (shown as "Unassigned"). The user picks a current project, or "auto" (`projects.py current`).
+
+**Blurt app recordings:** the menu-bar app records into the current project's store, or the inbox in auto mode.
+`record.py inbox` lists them all with `processed` / `reviewed` flags (v0.6 recordings in `~/Blurt/recordings/` too).
+"Process my recordings" → do §2–§4 for each unprocessed one (fan out to subagents if available), then one review per
+session (or merge into one session dir if the user wants a single list). `meta.json` has `author` — keep it on items
+when several people's recordings are combined.
 
 ## 2. Transcribe
 
@@ -122,19 +130,27 @@ Principles — judgement, not rules:
 - Give the session a `title`. For idea-heavy or exploratory recordings a `digest` (markdown: themes, the strongest
   ideas, how they connect, suggested next step) becomes the page's Overview — it can follow in §4.
 
+**Which project** (only when the session is in the inbox — auto mode — and `projects.py list` has projects): for
+each item propose `"project": "<id or key>"` with `"project_confidence": 0–1` and a few words in `"project_reason"`.
+Evidence, strongest first: `code_refs` that exist in one project's folder, the source URL / app (the project's
+`hints`), a module name, the project's description. 0.75 or more files the item there; below that it stays in
+Unassigned with your suggestion for the user to accept. Unsure → leave `project` out; Blurt routes those itself.
+
 Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
-picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). **Right away** start `review.py <session>` **in the background** (on macOS it opens in a Blurt app window when the app is
-installed, else the browser; exits when the user
-finishes; prints `REVIEW <url>` — give the user that URL if no browser can open where you run: SSH, container) and
-tell the user in one short message:
+picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). Then `items.py ingest
+<session>` turns it into one Markdown item per entry (any later `items.py` command on the session does it too).
+**Right away** start `review.py <session>` **in the background** (on macOS it opens in a Blurt app window when the
+app is installed, else the browser; exits when the user finishes; prints `REVIEW <url>` — give the user that URL if
+no browser can open where you run: SSH, container) and tell the user in one short message:
 - ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
   items, open questions; screenshots are still filling in;
 - two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
   fields editable in place; **G** list view; **V** overview; "完成审核" hands it back.
 
-From here on the user edits the same file: change items **only** with `items.py` (`patch`, `set-frames`, `add`,
-`done`; `--help`). It keeps fields the user edited and items they dropped or merged stay gone — never rewrite
-`items.json` yourself.
+From here on the user edits the same items: change them **only** with `items.py` (`patch`, `set-frames`, `add`,
+`done`; `--help`). Address an item as `<session> I-003` (your draft id), by its id (`BA-12`) or by its uid. It keeps
+fields the user edited, and items they dropped or merged stay gone — never write items.json again, nor the `.md`
+files.
 
 ## 4. Evidence: frames & clips (while the user reviews)
 
@@ -163,13 +179,15 @@ top-down — the user reviews from the top — and write each item as soon as it
   Each gets the session dir, the video, its items (id, kind, title, time, quote, the marks / snaps that anchor them),
   this section, and the rule: write only your items, only with `items.py`. They report nothing back.
 - Then `items.py done <session>` (it lists items still without frames — fine where none would help).
+  `set-frames` copies the files into the store (`assets/<uid>/`): keep giving paths relative to the session.
 
 ## 5. Review with the user
 
 The page has been open since §3. Wait as in §1 until the review summary prints. The user may finish before the
-frames are in (`"processing": true` in the summary): complete §4 anyway, then `done`. Reload `items.json` (dropped
-items have `status: "deleted"`, answers are in `answer`, merged items are gone on purpose — `_removed` and the
-target's `merged_from`; `_user` lists fields the user edited) and continue with §6. If they reply in chat instead,
+frames are in (`"processing": true` in the summary): complete §4 anyway, then `done`. Read the result with
+`items.py list <session>` (`--status deleted` for what they dropped; answers are in `answer`; merged items are gone
+on purpose — see the target's `merged_from`; `_user` lists fields the user edited; the user may have moved items to
+another project: ids follow the project, uids never change) and continue with §6. If they reply in chat instead,
 apply it with `items.py … --force` and close the page (`pkill -f "review.py <session>"`).
 
 **Unattended runs** (started by the Blurt app via the first usable agent CLI — `claude -p`, `codex exec`,
@@ -183,11 +201,13 @@ Never export to external systems unattended.
 
 Ask once where things go (remember in `.blurt/config.json` → `export`). Typical: issues → the team's bug table;
 ideas → an ideas board / doc; notes → Markdown; tasks → the user's todo tool.
-- Feishu/Lark Bitable → `feishu.py export <session> "<table url>" [--kind issue|idea|…]` (lark-cli if installed,
+- Feishu/Lark Bitable → `feishu.py export <session> "<table url>" [--kind issue|idea|…]` (`--project <key>` for a
+  whole project; lark-cli if installed,
   else app credentials; default columns per kind, creates missing ones, uploads frames + clips, resumable).
   No table yet → `feishu.py create "<name>"`. Other columns → `feishu.py fields` then `--map`.
   Details: `reference/export-feishu.md`.
-- Markdown + CSV → `export_local.py <session>` (all kinds; always a good local record).
+- Markdown + CSV → `export_local.py <session>` or `export_local.py --project <key>` (all kinds: one document and a
+  CSV per kind; the items themselves are Markdown files already).
 - GitHub Issues / Linear / Jira / Notion / Obsidian / anything else → `reference/export-other.md`; use the CLI or
   MCP tool the user has; map fields by meaning.
 - A document rather than a list ("整理成需求文档和设计文档", a brief, a comparison — typically after walking through
@@ -196,30 +216,35 @@ Confirm destination and count before creating anything remotely; report links af
 next step — for issues "want me to start fixing these?" (you have `code_refs`), for ideas "want a quick prototype /
 spec of the top one?".
 
-## 7. Fix items (and say so)
+## 7. Work on items (and say so)
 
-When the user asks you to fix items — "fix these", the Blurt app's "Let Claude fix it", a prompt from
-`agents.py prompt fix` — for each item:
-1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <session> <id|uid>` and open the
-   frame files. Look at the frames; they are the evidence.
-2. `items.py fix <session> <id|uid> --state fixing` (MCP: `mark_fixed(uid, state="fixing")`) before you start —
-   the app shows the chick working on it.
-3. Fix it, smallest change that does it. Don't commit or push unless the user asks; they check the result.
-4. `items.py fix … --state fixed --note "<one line: what changed, which files>"` (`--commit SHA` / `--pr URL` if
-   there is one); can't or shouldn't fix → `--state wontfix --note "<why>"`. The user reopens with `reopened`.
-`--agent` / `--run-id` default to `$BLURT_AGENT` / `$BLURT_RUN_ID` (set by the app). Never set `fix` with
-`patch`, and never edit items.json yourself.
+When the user asks you to handle items — "fix these", a Blurt session that started you, a handoff file
+(`~/.blurt/handoff/H-….md`, see `reference/sessions.md`) — for each item:
+1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <uid|id>` and open the frame files
+   (absolute paths). Look at the frames; they are the evidence.
+2. `items.py work <uid> --state in_progress` (MCP: `mark_fixed(uid, state="fixing")`) before you start — the app
+   shows it in progress.
+3. Do it, smallest change that does it. Commit only when the handoff says so (a worktree session); never push.
+4. `items.py work <uid> --state to_verify --claim fixed --note "<one line: what changed, which files>"`
+   (`--commit SHA` / `--pr URL` if there is one; MCP: `mark_fixed(uid, state="fixed", note=…)`); can't or shouldn't →
+   `--claim wontfix --note "<why>"`. That is your claim: the item waits for the user to verify it — only they mark it
+   done or reopen it.
+`--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set by the app). The v0.6 form `items.py fix <session>
+<id> --state fixing|fixed|wontfix` still works. Never set `work` with `patch`, and never edit item files yourself.
 
 ## 8. Across recordings: index and MCP
 
-All sessions on this machine (`~/Blurt/recordings` and every repo's `.blurt/sessions`) are indexed in
-`~/.blurt/index.db` (`index.py`; items.py keeps it fresh). To find things across recordings:
-`index.py search "<words>" [--kind issue] [--fix-state none] [--workspace <repo>]` → items with uid, session dir,
-title, status, fix state (Chinese works; 1–2 character words too). `index.py backlog <repo>` writes
-`.blurt/BACKLOG.md` with the open items.
+Every item on this machine (every project's store, the inbox, v0.6 sessions not migrated yet) is indexed in
+`~/.blurt/index.db` (`index.py`; items.py keeps it fresh). To find things across projects:
+`index.py search "<words>" [--kind issue] [--work todo] [--project <key|folder|inbox>]` → items with uid, id,
+project, path, title, status, work state (Chinese works; 1–2 character words too). `index.py backlog <repo>` writes
+`.blurt/BACKLOG.md` with the open items. `items.py migrate --all` moves v0.6 sessions into the stores (the app does
+it on start).
 
 The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_server.py`, stdio): `list_projects`,
 `list_sessions`, `search_items`, `get_item` (returns the screenshots as images), `get_transcript`, `update_item`
-(= `items.py patch`, keeps the user's edits), `mark_fixed` (= `items.py fix`). The plugin registers it for Claude
-Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first shows what changes).
-Prefer the tools when they are there; they write through items.py like everything else.
+(= `items.py patch`, keeps the user's edits), `mark_fixed` (fixing → in progress; fixed / wontfix → to verify). The
+plugin registers it for Claude Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first
+shows what changes). Prefer the tools when they are there; they write through items.py like everything else.
+
+Agent sessions inside Blurt (tmux), worktrees, handoff files and the jobs the app shows: `reference/sessions.md`.
