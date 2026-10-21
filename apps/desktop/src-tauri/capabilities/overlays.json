@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlays",
+  "description": "blurt_capture's overlay windows (picker, HUD, perch, note): events only (C8)",
+  "windows": ["blurt-overlay-*"],
+  "permissions": ["core:default"]
+}

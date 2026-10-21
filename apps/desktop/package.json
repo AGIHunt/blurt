@@ -1,0 +1,16 @@
+{
+  "name": "blurt-desktop-shell",
+  "private": true,
+  "description": "Tauri shell for Windows/Linux. The UI is web/apps/desktop (pnpm workspace in web/).",
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "tauri": "tauri",
+    "fixture": "python3 scripts/fixture_index.py",
+    "e2e": "node e2e/run.mjs",
+    "size-report": "python3 scripts/size_report.py"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.3",
+    "selenium-webdriver": "4.51.0"
+  }
+}
