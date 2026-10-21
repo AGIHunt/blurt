@@ -1925,8 +1925,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func runAgent(_ dir: URL, agent: String, bin: String) {
         let ws = currentWorkspace()
         let name = agent == "codex" ? "Codex" : "Claude Code"
-        let prompt = shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
-                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")
+        // name the skill's path: the agent's own skill list may lack blurt (installed for one CLI only) or hold another
+        // version than the one this app was built from
+        let skillHint = (readConfig()["skill_dir"] as? String).map { "\n" + L("blurt skill：\($0)/SKILL.md", "The blurt skill: \($0)/SKILL.md") } ?? ""
+        let prompt = (shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
+                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")) + skillHint
         let cmd: String
         if agent == "codex" {
             // the skill needs uv's cache, the models in ~/.blurt and ffmpeg — outside the workspace sandbox
