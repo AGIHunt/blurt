@@ -64,7 +64,7 @@ describe("work state ring (K8)", () => {
   it("distinct drawing per state; glyphs are shapes, never text", () => {
     const svgs = WORK_STATES.map((s) => statusRingSvg(s, 14));
     expect(new Set(svgs).size).toBe(6);
-    for (const s of svgs) expect(s).not.toMatch(/<text|[!✓✔]/);
+    for (const s of svgs) expect(s).not.toMatch(/<text|[!\u2713\u2714]/);
     expect(statusRingSvg("done", 14, "Done")).toContain('aria-label="Done"');
   });
   it("<StatusRing> matches the string version", () => {

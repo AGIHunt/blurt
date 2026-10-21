@@ -70,3 +70,20 @@ def test_glyph_check_catches_what_it_should():
         assert not [c for c in check_glyphs.BAD.findall(ok) if c not in check_glyphs.ALLOWED], ok
     assert check_glyphs.strip_comments('let x = 1  // 🐔 is fine in a comment', ".swift").strip() == "let x = 1"
     assert "https://x" in check_glyphs.strip_comments('let u = "https://x"', ".swift")
+
+
+def test_kind_and_ring_colours_match_between_web_and_swift():
+    """K8: KindStyle.swift / StatusRing.swift use the same light / dark values as web/packages/ui/src/tokens.css."""
+    css = (ROOT / "web/packages/ui/src/tokens.css").read_text()
+    light, dark = css.split('[data-theme="dark"] {', 1)
+
+    def tok(block, name):
+        return re.search(rf"{name}:\s*#([0-9a-f]{{6}})", block, re.I).group(1).upper()
+
+    icons = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Icons"
+    kinds = (icons / "KindStyle.swift").read_text()
+    for k in ("issue", "idea", "note", "task"):
+        assert f'"{k}": (0x{tok(light, "--kind-" + k)}, 0x{tok(dark, "--kind-" + k)})' in kinds, k
+    ring = (icons / "StatusRing.swift").read_text()
+    for swift, token in (("accent", "--accent"), ("attention", "--warn"), ("keep", "--keep")):
+        assert f"static let {swift} = KindStyle.dynamic(KindStyle.rgb(0x{tok(light, token)}), KindStyle.rgb(0x{tok(dark, token)}))" in ring, swift
