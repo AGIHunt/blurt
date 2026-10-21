@@ -650,6 +650,11 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   为空时应用不启动 Sparkle）。WP6 只写这些声明背后的实现代码。
 - 构建：`record.py build` = `swift build -c release --product blurt-recorder`（scratch 在 `$BLURT_HOME/build/swiftpm`），
   `BLURT_UNIVERSAL=1` 时 arm64 和 x86_64 各 `--triple` 构建一次再 `lipo`；然后组装 bundle、ad-hoc 签名。
+- Sparkle（2.10.0，校验和固定）只进发布构建：`BLURT_SPARKLE=1` 时链接，`record.py build` 把 `Sparkle.framework` 放进
+  `Contents/Frameworks` 并删掉非沙盒应用用不到的头文件和 XPC 服务。skill 用户本地构建不带 Sparkle、不需要联网，由 skill 自己更新；
+  本地构建也不会覆盖或另装一份已安装的发布版（带 Sparkle 的那个自己更新）。体积：通用 + Sparkle 5.49 MB，本地 arm64 1.7 MB。
+- 发布脚本在仓库根目录 `scripts/release-mac.sh`（不在 `skills/blurt/scripts/`，不随 skill 分发）：签名（Developer ID + hardened
+  runtime）、DMG、公证和 staple、Sparkle zip 和 `appcast.xml`；钥匙串里没有 Developer ID 证书时自动 dry run（ad-hoc 签名、一次性 EdDSA 密钥）。
 - 外部 URL：
   - `blurt://item/<uid>`
   - `blurt://session/<abs-path-encoded>`
