@@ -1,4 +1,5 @@
-// blurt.agihunt.info — the recording bar, the visitor's pen, the review demo, copy, stars. No dependencies.
+// blurt.agihunt.info — the recording bar (with 📸, live captions and the nest of live drafts), the visitor's pen, the review demo,
+// the playable snap-mode desk, copy, stars. No dependencies.
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -8,6 +9,11 @@
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const fine = matchMedia("(pointer: fine)").matches;
   const ink = $(".ink-layer");
+  const EGG = (k, cls = "") => `<svg class="egg ${cls}" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-${k}"/></svg>`;
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const bump = (el) => { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); };
+  let deskOwns = () => false; // the snap desk's review takes A/X/J/K/Z while it's on screen
+  let snapKey = () => {};
 
   /* ---------- page-drawn pen marks: refit each path to real pixels so draw-on reaches the end ---------- */
   const pens = $$("[data-mark] > svg, svg.brace");
@@ -100,13 +106,34 @@
   function tick() {
     if (paused) return;
     const t = Math.max(intro, Math.floor(railTime()));
-    if (t !== shown) { shown = t; clock.textContent = fmt(t); }
+    if (t !== shown) { shown = t; clock.textContent = fmt(t); layEggs(t); }
+  }
+  // live captions under the bar, and an egg in the nest each time a draft item takes shape (times match the sheet below)
+  const cap = $(".cap", frame), nest = $(".nest", frame), nestEggs = $(".eggs", nest), nestN = $("b", nest);
+  // @fonts:system-ui-start (strings below render in the system UI font, not the self-hosted subsets)
+  const CAPS = zh ? [[150, "这里不对……"], [1050, "……这个按钮抽……"], [2050, "……不对，是那个"]]
+    : [[150, "this bit's off…"], [1050, "…this butter looks weird…"], [2050, "…no, not that one"]];
+  // @fonts:system-ui-end
+  let capT = 0;
+  function say(text, ms) { cap.textContent = text; cap.classList.add("on"); clearTimeout(capT); capT = setTimeout(() => cap.classList.remove("on"), ms); }
+  const DRAFTS = [[3, "issue"], [72, "idea"], [80, "task"], [167, "issue"], [196, "idea"], [262, "note"], [318, "task"], [392, "issue"], [446, "idea"]];
+  let laid = 0;
+  function layEggs(t) {
+    const n = DRAFTS.filter(([at]) => at <= t).length;
+    if (n <= laid) return;
+    DRAFTS.slice(laid, n).forEach(([, k]) => {
+      nestEggs.insertAdjacentHTML("beforeend", EGG(k, reduce ? "" : "drop"));
+      while (nestEggs.children.length > 3) nestEggs.firstElementChild.remove();
+    });
+    laid = n; nest.hidden = false; nestN.textContent = n; bump(nestN);
+    nest.setAttribute("aria-label", (zh ? "实时草稿：" : "Live drafts: ") + n);
   }
   function play() {
     timers.forEach(clearTimeout); timers = [];
     take.classList.remove("play"); void take.offsetWidth;
     take.classList.add("play");
-    intro = 0; shown = -1; tick();
+    intro = 0; shown = -1; laid = 0; nestEggs.innerHTML = ""; nest.hidden = true; tick();
+    CAPS.forEach(([ms, text], i) => later(ms, () => say(text, i === CAPS.length - 1 ? 2600 : 1400)));
     if (reduce) return;
     [[0, 2], [60, 3], [220, 4], [400, 1], [560, 5], [900, 2]].forEach(([t, n]) => later(t, () => level(n)));
   }
@@ -132,6 +159,7 @@
     if (v && !v.hidden) paused ? v.pause() : v.play().catch(() => {});
   });
   function redo() {
+    snaps = 0; badge.hidden = true;
     paused = false; frame.dataset.state = "rec"; html.classList.remove("paused");
     btn("pause").setAttribute("aria-pressed", "false");
     if (scrollY > 40) scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
@@ -141,6 +169,7 @@
   // the real shortcut works here too: the keycaps go down and the take starts over
   const caps = $$(".keys kbd");
   addEventListener("keydown", (e) => {
+    if (e.altKey && e.shiftKey && e.code === "KeyA") { e.preventDefault(); return snapKey(); }
     if (!(e.altKey && e.shiftKey && e.code === "KeyR")) return;
     e.preventDefault();
     caps.forEach((k) => k.classList.add("down"));
@@ -148,6 +177,22 @@
     redo();
   });
   btn("pen").addEventListener("click", () => setPen(!penOn));
+  // 📸 while recording: no pause, no popup; the frame's border flashes (the border itself is never recorded)
+  const badge = $(".badge", btn("snap"));
+  let snaps = 0;
+  function heroSnap() {
+    snaps += 1; badge.hidden = false; badge.textContent = snaps; bump(badge);
+    frame.classList.remove("snapped"); void frame.offsetWidth; frame.classList.add("snapped");
+    if (!reduce && frame.getBoundingClientRect().bottom > 0) {
+      const f = document.createElement("i"); f.className = "shutter"; frame.appendChild(f);
+      f.addEventListener("animationend", () => f.remove());
+    }
+  // @fonts:system-ui-start (strings below render in the system UI font, not the self-hosted subsets)
+    if (!cbar.classList.contains("docked")) say(zh ? "📸 截下这一刻，录制没停" : "📸 snapped, still recording", 1600);
+  // @fonts:system-ui-end
+  }
+  btn("snap").addEventListener("click", heroSnap);
+  snapKey = heroSnap;
   const doneT = $(".done-t", frame), doneLabel = doneT.textContent;
   btn("done").addEventListener("click", () => {
     doneT.textContent = doneT.dataset.busy;
@@ -177,6 +222,7 @@
   /* ---------- section marks draw themselves once they scroll into view ---------- */
   once(frame, drawScreen, 0.5);
   once($(".ledger"), () => $(".ledger").classList.add("play"), 0.3);
+  once($(".wait"), () => $(".wait").classList.add("play"), 0.6);
   $$("[data-mark]").forEach((el) => { if (!el.closest(".take, .ledger")) once(el, () => el.classList.add("drawn"), 0.9); });
 
   // the chickens squawk only while on screen
@@ -206,9 +252,10 @@
     else if (k === "z") li.classList.remove("keep", "drop");
     render();
   }
+  // like the real page now: the transcript is ready, so the items come first and show up one by one
   function sheetBusy() {
-    sheet.dataset.state = "busy";
-    setTimeout(() => { sheet.dataset.state = "idle"; sheet.focus({ preventScroll: true }); }, reduce ? 0 : 1400);
+    sheet.dataset.state = "busy"; sheet.classList.remove("fill");
+    setTimeout(() => { sheet.dataset.state = "idle"; sheet.classList.add("fill"); sheet.focus({ preventScroll: true }); }, reduce ? 0 : 1000);
   }
   $$(".sheet-f button", sheet).forEach((b) => b.addEventListener("click", () => act(b.dataset.k)));
   let sheetSeen = false;
@@ -217,7 +264,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey || /input|textarea/i.test(e.target.tagName)) return;
     const k = e.key.toLowerCase();
     if (!"axjkz".includes(k) || k.length !== 1) return;
-    if (!sheetSeen && document.activeElement !== sheet) return;
+    if ((!sheetSeen && document.activeElement !== sheet) || deskOwns()) return;
     e.preventDefault(); act(k);
   });
   render();
@@ -237,7 +284,7 @@
     // say how to get out while it's on — the app learned this the hard way
     hints.forEach((el) => { el.textContent = on ? el.parentElement.dataset.on : (fine ? el.dataset.off : el.parentElement.dataset.touch); });
   }
-  const blocked = (t) => t.closest && t.closest("a, button, .cmd, .sheet, video, kbd");
+  const blocked = (t) => t.closest && t.closest("a, button, .cmd, .sheet, .desk, video, kbd");
   function begin(x, y) {
     clearTimeout(fadeT);
     sizeInk();
@@ -293,6 +340,401 @@
     $$(".pen-hint").forEach((el) => { $("span", el).textContent = el.dataset.touch; $("kbd", el).innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M3.5 15.5C5.6 11 8.4 5 10.6 5c2 0-2.9 9.4-.4 9.4 1.7 0 2.5-3.6 4.1-3.6 1.2 0 .6 2.9 2.2 2.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'; });
     $$(".try[data-touch]").forEach((el) => { el.textContent = el.dataset.touch; });
   }
+
+  // @fonts:system-ui-start (strings below render in the system UI font, not the self-hosted subsets)
+  /* ---------- snap mode, playable: ⌥⇧A → drag → flash → onto the perch → one sentence → 🐔 sort → eggs → A/X ---------- */
+  const desk = $(".desk");
+  if (desk) (() => {
+    const app = $(".app", desk), mb = $(".mb", desk), hang = $(".hang", desk), hatchB = $(".hatch", desk), hatchN = $("b", hatchB);
+    const snapBtn = $(".snap-btn", desk), sel = $(".sel", desk), box = $(".sel-box", sel), boxN = $("b", box), win = $(".sel-win", sel);
+    const note = $(".note", desk), inp = $("input", note), hint = $("small", note);
+    const rv = $(".rv", desk), list = $(".rv-list", rv), st = $(".rv-st", rv), stT = $(":scope > span", st), fin = $(".rv-done", rv), rvF = $(".rv-f", rv);
+    const coach = $(".coach", desk), small = () => matchMedia("(max-width: 760px)").matches;
+    const L = zh ? {
+      lines: [
+        { kind: "issue", said: "这个按钮点了没反应", title: "Export CSV 点了没反应" },
+        { kind: "idea", said: "这里空着，放个本周用量趋势就好了", title: "用量卡片里放一张本周趋势图" },
+        { kind: "task", said: "记一下，发票要能下载 PDF", title: "发票列表加「下载 PDF」" },
+        { kind: "note", said: "套餐名这么长，客户看得懂吗", title: "套餐名称偏长，待确认" },
+      ],
+      kinds: { issue: "问题", idea: "想法", note: "笔记", task: "待办" },
+      coach: [
+        fine ? "按 ⌥⇧A，或者点这里截图。" : "点这里截图。",
+        fine ? "拖出一块，松手就截好了。点一下 = 整个窗口，Esc 取消。" : "手指拖出一块，松手就截好了。点一下 = 整个窗口。",
+        "截完直接说，停一下就收好。这里替你说了一句；想自己写，点气泡打字。",
+        fine ? "挂上鸡舍了。再按 ⌥⇧A 截一张，或者点「🐔 整理」交给 agent。" : "挂上鸡舍了。再截一张，或者点「🐔 整理」交给 agent。",
+        fine ? "一条一颗蛋。A 保留 · X 丢弃 · J 下一条。" : "一条一颗蛋。点「保留」或「丢弃」。",
+      ],
+      full: "鸡舍挂满了，点「🐔 整理」吧。",
+      hint: fine ? "Enter 保存 · Esc 跳过 · ⌥⇧A 下一张" : "回车保存 · 点别处也行",
+      saved: "✓ 已保存", skipped: "没写备注，也挂上了", copied: "✓ 已复制", bare: "一张没写备注的截图", noNote: "（没有备注）",
+      card: (n, t) => `第 ${n} 张截图${t ? "：" + t : ""}。单击复制，双击改备注`, del: "扔掉这张",
+      q: (t) => `「${t}」`,
+      st: (n, k, m) => `整理中… 已出 ${n} 条，截图补充中 ${k}/${m}`, done: "✓ 整理完了",
+      end: (k, d) => `审完了：保留 ${k} 条，丢弃 ${d} 条。接下来导出到飞书、GitHub，或者直接说「帮我改掉」。`,
+      rules: [[/记一下|记得|待办|todo|要找|找.{1,6}要/i, "task"], [/没反应|不对|错|bug|崩|卡住|丑|坏|不了|没用|看不清/i, "issue"], [/要|应该|放个|加个|可以|想|最好|如果/, "idea"]],
+    } : {
+      lines: [
+        { kind: "issue", said: "I click this button and nothing happens", title: "Export CSV does nothing on click" },
+        { kind: "idea", said: "this is empty, a weekly usage trend would be nice", title: "Show a weekly trend in the usage card" },
+        { kind: "task", said: "note to self: invoices need a PDF download", title: "Add “Download PDF” to invoices" },
+        { kind: "note", said: "that plan name is long, will customers get it?", title: "Plan name may be too long" },
+      ],
+      kinds: { issue: "issue", idea: "idea", note: "note", task: "task" },
+      coach: [
+        fine ? "Press ⌥⇧A, or click here to snap." : "Tap here to snap.",
+        fine ? "Drag an area and let go, that's the shot. A click takes the whole window, Esc cancels." : "Drag an area with your finger and let go. A tap takes the whole window.",
+        "Then just say it, and pause. We said a line for you here; to write your own, click the bubble and type.",
+        fine ? "It's on the perch. Press ⌥⇧A for another, or hit “🐔 Sort” to hand them to your agent." : "It's on the perch. Snap another, or tap “🐔 Sort” to hand them to your agent.",
+        fine ? "One item, one egg. A keeps · X drops · J moves on." : "One item, one egg. Tap Keep or Drop.",
+      ],
+      full: "The perch is full. Hit “🐔 Sort”.",
+      hint: fine ? "Enter saves · Esc skips · ⌥⇧A next shot" : "Return saves · or tap elsewhere",
+      saved: "✓ saved", skipped: "no note, hung up anyway", copied: "✓ copied", bare: "A screenshot without a note", noNote: "(no note)",
+      card: (n, t) => `Screenshot ${n}${t ? ": " + t : ""}. Click to copy, double-click to edit the note`, del: "Toss this one",
+      q: (t) => `“${t}”`,
+      st: (n, k, m) => `Sorting… ${n} items so far, frames ${k}/${m}`, done: "✓ all sorted",
+      end: (k, d) => `Done: ${k} kept, ${d} dropped. Next, export to Lark or GitHub, or just say “fix these”.`,
+      rules: [[/\b(todo|to-do|remember|note to self|ask|need to)\b/i, "task"], [/nothing happens|broken|bug|wrong|doesn'?t|does not|crash|ugly|can'?t|unreadable/i, "issue"], [/should|would be nice|could|idea|maybe|let'?s|want|how about/i, "idea"]],
+    };
+    const classify = (t) => (L.rules.find(([r]) => r.test(t)) || [, "note"])[1];
+    const MAX = () => (small() ? 3 : 6);
+    let state = "idle", shots = [], batch = [], cur = 0, seq = 0, curNote = null, typing = false, typeT = 0, gen = 0, coachOff = false, coachAt = null;
+    const set = (s) => { state = s; desk.dataset.state = s; hatchB.disabled = !shots.length || s === "hatch" || s === "review"; };
+    // geometry in the desk's own coordinates
+    const R = (el) => {
+      const d = desk.getBoundingClientRect(), r = el.getBoundingClientRect();
+      return { x: r.left - d.left - desk.clientLeft, y: r.top - d.top - desk.clientTop, w: r.width, h: r.height };
+    };
+    const local = (e) => { const d = desk.getBoundingClientRect(); return [e.clientX - d.left - desk.clientLeft, e.clientY - d.top - desk.clientTop]; };
+    const inter = (a, b) => {
+      const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y), w = Math.min(a.x + a.w, b.x + b.w) - x, h = Math.min(a.y + a.h, b.y + b.h) - y;
+      return w > 0 && h > 0 ? { x, y, w, h } : null;
+    };
+    const norm = ([x0, y0], [x1, y1]) => {
+      const W = desk.clientWidth, H = desk.clientHeight;
+      x1 = Math.max(0, Math.min(W, x1)); y1 = Math.max(0, Math.min(H, y1));
+      return { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
+    };
+    const put = (el, r) => Object.assign(el.style, { left: r.x + "px", top: r.y + "px", width: r.w + "px", height: r.h + "px" });
+    const hhmm = () => new Date().toTimeString().slice(0, 5);
+    mb.querySelector(".mb-r").lastChild.textContent = hhmm();
+    if (!fine) { $("kbd", snapBtn).remove(); $("span", snapBtn).textContent = snapBtn.dataset.touch; $(".sel-hint", sel).textContent = $(".sel-hint", sel).dataset.touch; }
+    inp.setAttribute("enterkeyhint", "done");
+
+    /* coach marks: one step at a time, pointing at the thing to touch */
+    function tip(n, el, dir, text) {
+      coachAt = [el, dir];
+      if (coachOff || !el) return (coach.hidden = true);
+      $(".c-n", coach).textContent = n ? `${n} / 5` : "";
+      $(".c-t", coach).textContent = text || L.coach[n - 1];
+      coach.hidden = false; placeCoach();
+    }
+    function placeCoach() {
+      if (!coachAt || coach.hidden) return;
+      const [el, dir] = coachAt, r = R(el), W = desk.clientWidth, cw = coach.offsetWidth, ch = coach.offsetHeight;
+      const x = Math.max(8, Math.min(W - cw - 8, r.x + r.w / 2 - cw / 2));
+      const y = dir === "above" ? r.y - ch - 12 : r.y + r.h + 12;
+      Object.assign(coach.style, { left: x + "px", top: Math.max(30, Math.min(desk.clientHeight - ch - 6, y)) + "px" });
+      coach.style.setProperty("--ax", Math.max(14, Math.min(cw - 14, r.x + r.w / 2 - x)) + "px");
+      coach.dataset.dir = dir;
+    }
+    const untip = () => { coach.hidden = true; coachAt = null; };
+    $(".c-x", coach).addEventListener("click", () => { coachOff = true; untip(); });
+
+    /* the perch: shots swing on a damped pendulum; hovering one holds it still and its neighbours make room */
+    let swingQ = 0, last = 0;
+    function kick(s, v) {
+      if (reduce || !s.sw) return;
+      s.v += v;
+      if (!swingQ) { last = performance.now(); swingQ = requestAnimationFrame(swing); }
+    }
+    function swing(now) {
+      const dt = Math.min(0.034, (now - last) / 1000); last = now;
+      let live = false;
+      shots.forEach((s) => {
+        if (!s.sw) return;
+        if (s.hold) { s.v = 0; s.a *= 0.8; } else { s.v += (-46 * s.a - 3 * s.v) * dt; s.a += s.v * dt; }
+        if (Math.abs(s.a) > 0.04 || Math.abs(s.v) > 0.04) live = true; else s.a = s.v = 0;
+        s.sw.style.transform = s.a ? `rotate(${s.a.toFixed(2)}deg)` : "";
+      });
+      swingQ = live ? requestAnimationFrame(swing) : 0;
+    }
+    const cardW = () => { const w = desk.clientWidth; return Math.round(small() ? Math.max(52, Math.min(72, w * 0.17)) : Math.max(56, Math.min(112, w * 0.125))); };
+    // the shot is a scaled clone of the app (pure DOM, sized in em), cropped to what was selected
+    function shoot(r, W, H) {
+      const a = R(app), c = app.cloneNode(true);
+      const s = Math.max(W / r.w, H / r.h), ox = r.x - a.x - (W / s - r.w) / 2, oy = r.y - a.y - (H / s - r.h) / 2;
+      c.className = "app clone"; c.querySelectorAll("[data-say]").forEach((el) => el.removeAttribute("data-say"));
+      Object.assign(c.style, { width: a.w + "px", height: a.h + "px", fontSize: getComputedStyle(app).fontSize, left: "0", top: "0", right: "auto", bottom: "auto", borderRadius: "0", boxShadow: "none",
+        transform: `scale(${s.toFixed(4)}) translate(${(-ox).toFixed(1)}px, ${(-oy).toFixed(1)}px)` });
+      return c;
+    }
+    function pick(r) {
+      let best = -1, score = 0;
+      $$("[data-say]", app).forEach((el) => {
+        const i = +el.dataset.say, b = R(el), o = inter(r, b), f = o ? (o.w * o.h) / (b.w * b.h) : 0;
+        const v = f + (shots.some((s) => s.say === i) || batchSaid.has(i) ? 0 : 1.5) * (f > 0);
+        if (v > score) { score = v; best = i; }
+      });
+      if (best >= 0) return best;
+      const free = [0, 1, 2, 3].find((i) => !shots.some((s) => s.say === i));
+      return free ?? 0;
+    }
+    const batchSaid = new Set();
+    function capture(r) {
+      endSelect(); untip();
+      snapBtn.focus({ preventScroll: true }); // the overlay that had focus is gone; keep keyboard users inside the desk
+      const a = R(app);
+      let c = inter(r, a);
+      if (!c || c.w < 10 || c.h < 10) c = a;
+      const say = pick(c);
+      if (!reduce) { const f = document.createElement("i"); f.className = "flash"; put(f, r); desk.appendChild(f); f.addEventListener("animationend", () => f.remove()); }
+      const shot = { n: ++seq, r: c, say, line: L.lines[say], text: "", a: 0, v: 0 };
+      shots.push(shot); batchSaid.add(say);
+      hangUp(shot, r);
+      desk.classList.add("has-shots"); count();
+      setTimeout(() => startNote(shot), reduce ? 60 : 640);
+    }
+    function hangUp(s, from) {
+      const W = cardW(), H = Math.round(W * Math.max(0.56, Math.min(1, s.r.h / s.r.w)));
+      const li = document.createElement("li");
+      li.className = "card";
+      li.innerHTML = `<div class="sw"><svg class="claw" viewBox="0 0 14 20" aria-hidden="true"><use href="#claw"/></svg><button type="button" class="pol"><span class="ph" style="--w:${W}px;--h:${H}px"></span><span class="ts"><span>${hhmm()}</span><i></i></span><span class="stamp">${L.copied}</span></button><button type="button" class="x" aria-label="${L.del}">×</button><span class="tip"></span></div>`;
+      const ph = $(".ph", li), pol = $(".pol", li);
+      ph.appendChild(shoot(s.r, W, H));
+      pol.setAttribute("aria-label", L.card(s.n, ""));
+      hang.appendChild(li);
+      Object.assign(s, { el: li, sw: $(".sw", li), ph, W, H });
+      // fly from the selection to the slot (FLIP), then swing in
+      if (!reduce) {
+        const to = R(pol), o = R(li), dx = from.x - to.x, dy = from.y - to.y;
+        li.style.transformOrigin = `${to.x - o.x}px ${to.y - o.y}px`;
+        li.style.transform = `translate(${dx}px, ${dy}px) scale(${from.w / to.w}, ${from.h / to.h})`;
+        $(".claw", li).style.opacity = "0";
+        void li.offsetWidth;
+        li.style.transition = "transform .6s cubic-bezier(.2,.8,.25,1)";
+        li.style.transform = "";
+        const land = () => {
+          li.style.transition = ""; li.style.transformOrigin = ""; $(".claw", li).style.opacity = "";
+          kick(s, Math.max(-120, Math.min(120, dx * 0.5)) + (dx >= 0 ? 45 : -45));
+          shots.forEach((o2) => { if (o2 !== s) kick(o2, (Math.random() - 0.5) * 40); });
+        };
+        li.addEventListener("transitionend", land, { once: true });
+      }
+      li.addEventListener("pointerenter", () => { s.hold = true; kick(s, 0); });
+      li.addEventListener("pointerleave", () => { s.hold = false; });
+      let clickT = 0;
+      pol.addEventListener("click", (e) => {
+        clearTimeout(clickT);
+        if (e.detail > 1) return;
+        clickT = setTimeout(() => { li.classList.add("copied"); setTimeout(() => li.classList.remove("copied"), 900); }, e.detail ? 230 : 0);
+      });
+      pol.addEventListener("dblclick", () => { clearTimeout(clickT); if (state === "idle" || state === "note") { if (curNote && curNote !== s) save(); startNote(s, true); } });
+      $(".x", li).addEventListener("click", () => toss(s));
+    }
+    function toss(s) {
+      if (state === "hatch" || state === "review") return;
+      if (curNote === s) { curNote = null; clearTimeout(typeT); hideNote(true); set("idle"); }
+      s.el.classList.add("fall");
+      shots = shots.filter((o) => o !== s); batchSaid.delete(s.say);
+      count();
+      setTimeout(() => s.el.remove(), reduce ? 400 : 760);
+      if (!shots.length) { desk.classList.remove("has-shots"); tip(1, snapBtn, "above"); }
+    }
+    const count = () => { hatchN.textContent = shots.length; set(state); };
+
+    /* selecting: dim the screen, drag a box, a plain click takes the window under it */
+    function beginSelect() {
+      if (state === "hatch" || state === "review" || state === "select") return;
+      if (curNote) save();
+      if (shots.length >= MAX()) return tip(0, hatchB, "below", L.full);
+      set("select"); sel.hidden = false; sel.classList.remove("dragging", "over-win");
+      sel.focus({ preventScroll: true });
+      tip(2, mb, "below");
+    }
+    function endSelect() { sel.hidden = true; p0 = null; sel.classList.remove("dragging", "over-win"); if (state === "select") set("idle"); }
+    let p0 = null;
+    sel.addEventListener("pointerdown", (e) => {
+      if (e.button) return;
+      e.preventDefault(); sel.setPointerCapture(e.pointerId); p0 = local(e);
+    });
+    sel.addEventListener("pointermove", (e) => {
+      const q = local(e);
+      if (!p0) {
+        const a = R(app), over = q[0] >= a.x && q[0] <= a.x + a.w && q[1] >= a.y && q[1] <= a.y + a.h;
+        sel.classList.toggle("over-win", over); if (over) put(win, a);
+        return;
+      }
+      const r = norm(p0, q);
+      if (r.w > 4 || r.h > 4) sel.classList.add("dragging");
+      put(box, r); boxN.textContent = `${Math.round(r.w * 2)} × ${Math.round(r.h * 2)}`;
+    });
+    sel.addEventListener("pointerup", (e) => {
+      if (!p0) return;
+      const r = norm(p0, local(e)); p0 = null;
+      capture(r.w < 14 || r.h < 14 ? R(app) : r);
+    });
+    sel.addEventListener("pointercancel", () => { p0 = null; sel.classList.remove("dragging"); });
+    sel.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); endSelect(); tip(shots.length ? 4 : 1, shots.length ? hatchB : snapBtn, shots.length ? "below" : "above"); snapBtn.focus({ preventScroll: true }); }
+      else if (e.key === "Enter" || e.key === "f" || e.key === "F") { e.preventDefault(); capture(R(app)); }
+    });
+    snapBtn.addEventListener("click", beginSelect);
+
+    /* the note: "listening…", then the sentence streams in; typing first switches to text, like the app */
+    function placeNote(s) {
+      note.hidden = false;
+      const c = R($(".pol", s.el)), W = desk.clientWidth, nw = note.offsetWidth;
+      const x = Math.max(8, Math.min(W - nw - 8, c.x + c.w / 2 - nw / 2));
+      Object.assign(note.style, { left: x + "px", top: c.y + c.h + 14 + "px" });
+      note.style.setProperty("--ax", Math.max(16, Math.min(nw - 16, c.x + c.w / 2 - x)) + "px");
+    }
+    function startNote(s, edit = false) {
+      if (!s.el.isConnected || state === "hatch" || state === "review") return;
+      curNote = s; typing = edit; gen += 1; set("note");
+      note.classList.remove("saved", "out"); note.classList.toggle("typing", edit);
+      inp.value = edit ? s.text : ""; inp.placeholder = edit ? inp.dataset.typing : inp.dataset.listen;
+      hint.textContent = L.hint;
+      placeNote(s);
+      clearTimeout(typeT);
+      if (edit) { untip(); return inp.focus({ preventScroll: true }); }
+      tip(3, note, "below");
+      const text = s.line.said, g = gen;
+      let i = 0;
+      const step = () => {
+        if (typing || g !== gen) return;
+        inp.value = text.slice(0, ++i);
+        typeT = setTimeout(i < text.length ? step : save, i < text.length ? (zh ? 95 : 36) : 1200);
+      };
+      typeT = setTimeout(step, reduce ? 250 : 950);
+    }
+    inp.dataset.listen = inp.placeholder;
+    const takeOver = () => {
+      if (typing || !curNote) return;
+      typing = true; clearTimeout(typeT); inp.value = ""; inp.placeholder = inp.dataset.typing; note.classList.add("typing");
+    };
+    inp.addEventListener("pointerdown", takeOver);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); return save(); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return save(true); }
+      if (e.altKey && e.shiftKey && e.code === "KeyA") return;
+      if (!e.metaKey && !e.ctrlKey && (e.key.length === 1 || e.key === "Backspace" || e.key === "Process")) takeOver();
+    });
+    function hideNote(now) {
+      const g = gen;
+      if (now) { note.hidden = true; return; }
+      setTimeout(() => { if (g !== gen || curNote) return; note.classList.add("out"); setTimeout(() => { if (g === gen && !curNote) note.hidden = true; }, 260); }, reduce ? 400 : 800);
+    }
+    function save(skip = false) {
+      const s = curNote;
+      if (!s) return;
+      clearTimeout(typeT); curNote = null;
+      if (typing) { const t = skip ? "" : inp.value.trim(); s.text = t; s.kind = t ? classify(t) : "note"; s.title = t || L.bare; }
+      else if (skip) { s.text = ""; s.kind = "note"; s.title = L.bare; }
+      else { s.text = s.line.said; s.kind = s.line.kind; s.title = s.line.title; inp.value = s.text; }
+      s.el.classList.toggle("noted", !!s.text);
+      $(".tip", s.el).textContent = s.text;
+      $(".pol", s.el).setAttribute("aria-label", L.card(s.n, s.text));
+      note.classList.add("saved"); note.classList.remove("typing"); hint.textContent = s.text ? L.saved : L.skipped;
+      if (document.activeElement === inp) snapBtn.focus({ preventScroll: true });
+      hideNote();
+      set("idle");
+      tip(4, hatchB, "below");
+    }
+    // a tap anywhere else on the desk saves what's typed, like clicking away from the bubble
+    desk.addEventListener("pointerdown", (e) => { if (curNote && typing && !note.contains(e.target)) save(); }, true);
+
+    /* 🐔 sort: the eggs wobble on the perch, the shots drop, the review page opens text-first and the frames stream in */
+    hatchB.addEventListener("click", () => {
+      if (!shots.length || state === "hatch" || state === "review") return;
+      if (curNote) save();
+      endSelect(); untip(); set("hatch");
+      shots.forEach((s, i) => setTimeout(() => $(".pol", s.el).insertAdjacentHTML("beforeend", EGG(s.kind, "hatch-egg")), reduce ? 0 : i * 130));
+      setTimeout(() => {
+        shots.forEach((s, i) => setTimeout(() => s.el.classList.add("fall"), reduce ? 0 : i * 90));
+        setTimeout(openReview, reduce ? 150 : 520);
+      }, reduce ? 300 : 1500);
+    });
+    function openReview() {
+      batch = shots; shots = []; batchSaid.clear(); cur = 0;
+      hang.innerHTML = ""; desk.classList.remove("has-shots");
+      set("review"); rv.hidden = false; fin.hidden = true; list.innerHTML = ""; list.scrollTop = 0;
+      st.classList.remove("fin", "out");
+      const m = batch.length, gap = reduce ? 0 : 230;
+      let k = 0;
+      const status = () => { stT.textContent = k >= m ? L.done : L.st(list.children.length, k, m); st.classList.toggle("fin", k >= m); };
+      status();
+      batch.forEach((s, i) => setTimeout(() => {
+        if (state !== "review") return;
+        const li = document.createElement("li");
+        li.innerHTML = `${EGG(s.kind)}<span class="t"><span class="kk">${L.kinds[s.kind]}</span>${esc(s.title)}</span><span class="q">${s.text ? esc(L.q(s.text)) : L.noNote}</span><span class="th shim"></span>`;
+        li.addEventListener("click", () => { cur = i; render(); });
+        list.appendChild(li); s.li = li; render(); status();
+      }, 200 + i * gap));
+      batch.forEach((s, i) => setTimeout(() => {
+        if (state !== "review" || !s.li) return;
+        const th = $(".th", s.li), tw = th.clientWidth, tH = th.clientHeight, c = s.ph.cloneNode(true), sc = Math.max(tw / s.W, tH / s.H);
+        c.style.transform = `translate(${((tw - s.W * sc) / 2).toFixed(1)}px, ${((tH - s.H * sc) / 2).toFixed(1)}px) scale(${sc.toFixed(4)})`;
+        th.classList.remove("shim"); th.appendChild(c);
+        k += 1; status();
+        if (k === m) setTimeout(() => st.classList.add("out"), 1800);
+      }, (reduce ? 0 : 900) + m * gap + i * (reduce ? 0 : 560)));
+      setTimeout(() => { if (state !== "review") return; list.focus({ preventScroll: true }); tip(5, rvF, "above"); }, 300 + m * gap);
+    }
+    function render() {
+      batch.forEach((b, i) => b.li && b.li.classList.toggle("cur", i === cur));
+      const li = batch[cur] && batch[cur].li;
+      if (!li) return;
+      if (li.offsetTop < list.scrollTop) list.scrollTop = li.offsetTop;
+      else if (li.offsetTop + li.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = li.offsetTop + li.offsetHeight - list.clientHeight;
+    }
+    function act(k) {
+      const s = batch[cur];
+      if (!s || !s.li || !fin.hidden) return;
+      if (k === "a" || k === "x") {
+        s.li.classList.remove("keep", "drop"); s.li.classList.add(k === "a" ? "keep" : "drop"); s.res = k;
+        const next = batch.findIndex((b, i) => i > cur && !b.res && b.li);
+        if (next >= 0) cur = next;
+        else { const any = batch.findIndex((b) => !b.res && b.li); if (any >= 0) cur = any; }
+      } else if (k === "j") cur = Math.min(batch.filter((b) => b.li).length - 1, cur + 1);
+      else if (k === "k") cur = Math.max(0, cur - 1);
+      else if (k === "z") { s.li.classList.remove("keep", "drop"); s.res = null; }
+      render();
+      if (batch.every((b) => b.res)) {
+        const kept = batch.filter((b) => b.res === "a").length;
+        $("p", fin).textContent = L.end(kept, batch.length - kept);
+        fin.hidden = false; untip();
+        $(".again", fin).focus({ preventScroll: true });
+      }
+    }
+    $$("button[data-k]", rvF).forEach((b) => b.addEventListener("click", () => act(b.dataset.k)));
+    $(".again", fin).addEventListener("click", () => {
+      rv.hidden = true; batch = []; set("idle");
+      tip(1, snapBtn, "above"); snapBtn.focus({ preventScroll: true });
+    });
+
+    /* keys: ⌥⇧A snaps here while the desk is on screen; A/X/J/K/Z drive its review */
+    let seen = false;
+    if ("IntersectionObserver" in window) new IntersectionObserver((es) => es.forEach((e) => {
+      seen = e.isIntersecting;
+      if (seen && state === "idle" && !shots.length && !coachAt) tip(1, snapBtn, "above");
+    }), { threshold: 0.4 }).observe(desk);
+    const mine = () => seen || desk.contains(document.activeElement);
+    const heroSnapKey = snapKey;
+    snapKey = () => (seen ? (state === "review" ? null : beginSelect()) : heroSnapKey());
+    deskOwns = () => state === "review" && mine();
+    addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && state === "select") return endSelect();
+      if (state !== "review" || !mine() || e.metaKey || e.ctrlKey || e.altKey || /input|textarea/i.test(e.target.tagName)) return;
+      const k = e.key.toLowerCase();
+      if (k.length !== 1 || !"axjkz".includes(k)) return;
+      e.preventDefault(); act(k);
+    });
+    addEventListener("resize", () => { placeCoach(); if (curNote) placeNote(curNote); });
+  })();
+  // @fonts:system-ui-end
+
 
   /* ---------- copy the install command ---------- */
   $$(".cmd").forEach((box) => {

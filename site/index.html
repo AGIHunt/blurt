@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>口喷鸡 blurt：边看边喷，AI 全懂</title>
-<meta name="description" content="指着屏幕口喷，想到哪喷到哪。口喷鸡把屏幕和声音一起录下来，你的 coding agent 整理成问题单、想法清单和待办。开源，语音识别在本地跑。">
+<meta name="description" content="指着屏幕口喷，想到哪喷到哪；或者截一张图，说一句。口喷鸡把画面和声音一起记下来，你的 coding agent 整理成问题单、想法清单和待办。开源，语音识别在本地跑。">
 <link rel="canonical" href="https://blurt.agihunt.info/">
 <link rel="alternate" hreflang="zh" href="https://blurt.agihunt.info/">
 <link rel="alternate" hreflang="en" href="https://blurt.agihunt.info/en/">
@@ -14,11 +14,14 @@
 <meta property="og:url" content="https://blurt.agihunt.info/">
 <meta property="og:image" content="https://blurt.agihunt.info/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt：写给 AI agent 的口喷鸡说明">
 <link rel="icon" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="preload" href="fonts/serif-900.woff2?v=0.4.2b" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=0.4.2b">
+<link rel="preload" href="fonts/serif-900.woff2?v=0.5.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=0.5.0">
 <script>document.documentElement.classList.replace("no-js", "js")</script>
 </head>
 <body>
@@ -30,6 +33,52 @@
   以前要截图、画红框、填表格，花两天才反馈完的问题，现在半小时讲完。/ 按一下，开喷。/ 不只是提 bug。
   默认什么都不上传。/ 没有黑盒。/ 下次有话想说，直接喷。
 -->
+<!-- 蛋：一条一颗，和 App、审核页同一套形状。问题 = 带小虫的斑点蛋，想法 = 金蛋，笔记 = 白蛋，待办 = 打勾的铜蛋，自定义 = 淡彩蛋（currentColor）。另有鸡舍的鸡爪夹子和悬浮条上的小窝。 -->
+<svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <path id="egg-o" d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z"/>
+  <radialGradient id="eg-gloss" cx=".34" cy=".26" r=".62"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".45" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <radialGradient id="eg-issue" cx=".4" cy=".34" r=".78"><stop offset="0" stop-color="#fbf4e6"/><stop offset=".7" stop-color="#ead7b5"/><stop offset="1" stop-color="#c9ad80"/></radialGradient>
+  <radialGradient id="eg-idea" cx=".4" cy=".32" r=".8"><stop offset="0" stop-color="#fff1a8"/><stop offset=".5" stop-color="#f4c22e"/><stop offset="1" stop-color="#bf830a"/></radialGradient>
+  <radialGradient id="eg-note" cx=".4" cy=".32" r=".82"><stop offset="0" stop-color="#fff"/><stop offset=".72" stop-color="#f2efe9"/><stop offset="1" stop-color="#d6d0c4"/></radialGradient>
+  <radialGradient id="eg-task" cx=".4" cy=".32" r=".82"><stop offset="0" stop-color="#e9b783"/><stop offset=".6" stop-color="#c3824a"/><stop offset="1" stop-color="#8e5427"/></radialGradient>
+  <radialGradient id="eg-shade" cx=".5" cy=".42" r=".62"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient>
+  <symbol id="egg-issue" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-issue)" stroke="#7a5c38" stroke-opacity=".5" stroke-width=".7"/>
+    <g fill="#9a7650"><circle cx="5.5" cy="6.6" r=".5"/><circle cx="7.3" cy="3.9" r=".35"/><circle cx="10.5" cy="5.6" r=".4"/><circle cx="5" cy="10.4" r=".42"/><circle cx="11.5" cy="8.4" r=".3"/><circle cx="6.6" cy="13" r=".3"/></g>
+    <g fill="#33261d" stroke="#33261d" stroke-width=".6" stroke-linecap="round" transform="translate(9.4 11) scale(.72) translate(-8.8 -10.6)">
+      <path d="M7.55 9.7 6.3 9.15M7.4 10.9H6.05M7.6 12.05l-1.05.75M10.05 9.7l1.25-.55M10.2 10.9h1.35M10 12.05l1.05.75M8.35 7.6l-.55-.85M9.25 7.6l.55-.85" fill="none"/>
+      <ellipse cx="8.8" cy="10.85" rx="1.55" ry="1.9" stroke="none"/><circle cx="8.8" cy="8.55" r=".85" stroke="none"/>
+    </g>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+  </symbol>
+  <symbol id="egg-idea" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-idea)" stroke="#8a5d05" stroke-opacity=".55" stroke-width=".7"/>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+    <path d="M10.4 4.1l.32.9.9.32-.9.32-.32.9-.32-.9-.9-.32.9-.32z" fill="#fff"/>
+  </symbol>
+  <symbol id="egg-note" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-note)" stroke="#6f695e" stroke-opacity=".75" stroke-width=".75"/>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+  </symbol>
+  <symbol id="egg-task" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-task)" stroke="#5e3615" stroke-opacity=".55" stroke-width=".7"/>
+    <use href="#egg-o" fill="url(#eg-gloss)" opacity=".7"/>
+    <path d="M5.5 9.6l1.75 1.75 3.3-3.6" fill="none" stroke="#fff" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="egg-custom" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="currentColor"/>
+    <use href="#egg-o" fill="url(#eg-shade)" stroke="#000" stroke-opacity=".22" stroke-width=".7"/>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+  </symbol>
+  <symbol id="claw" viewBox="0 0 14 20">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M7 .5V11M7 11 2.6 17.4M7 11v7.6M7 11l4.4 6.4" stroke="#a2611a" stroke-width="3.3"/><path d="M7 .5V11M7 11 2.6 17.4M7 11v7.6M7 11l4.4 6.4" stroke="#f0ad45" stroke-width="1.9"/></g>
+    <circle cx="7" cy="11" r="1.9" fill="#f0ad45" stroke="#a2611a" stroke-width=".7"/><path d="M5.6 4.4h2.8M5.6 6.8h2.8" stroke="#a2611a" stroke-width=".7" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="nest" viewBox="0 0 40 16">
+    <path d="M1.5 4.5C3 13.5 9.5 15.5 20 15.5S37 13.5 38.5 4.5C31 7.5 9 7.5 1.5 4.5Z" fill="#9b6b3a"/>
+    <g fill="none" stroke-linecap="round" stroke-width="1.1"><path d="M3 6.5c8 4 26 4 34 0" stroke="#d9ad6b"/><path d="M4.5 9.5c8 3.5 23 3.5 31 0" stroke="#6e4823"/><path d="M7 12.4c7 2.4 19 2.4 26 0" stroke="#d9ad6b"/><path d="M1 4.2l5 3.4M39 4.2l-5 3.4M12 14.6 17 9M28 14.6 23 9" stroke="#c28e4f"/></g>
+  </symbol>
+</defs></svg>
 
 <header class="top">
   <a class="brand" href="#top" aria-label="口喷鸡 blurt">
@@ -38,6 +87,7 @@
   </a>
   <nav class="links" aria-label="页面导航">
     <a href="#how">怎么用</a>
+    <a href="#snap">截图模式</a>
     <a href="#privacy">隐私</a>
     <a href="#faq">常见问题</a>
   </nav>
@@ -116,9 +166,12 @@
           <span class="sep" aria-hidden="true"></span>
           <button type="button" class="cb-btn" data-act="pause" aria-label="暂停" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><rect class="ic-pause" x="5" y="4" width="3.2" height="12" rx="1"/><rect class="ic-pause" x="11.8" y="4" width="3.2" height="12" rx="1"/><path class="ic-play" d="M6.5 4.2v11.6L16 10z"/></svg></button>
           <button type="button" class="cb-btn pen" data-act="pen" aria-label="画笔" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 15.5C5.6 11 8.4 5 10.6 5c2 0-2.9 9.4-.4 9.4 1.7 0 2.5-3.6 4.1-3.6 1.2 0 .6 2.9 2.2 2.9"/></svg></button>
+          <button type="button" class="cb-btn snap" data-act="snap" aria-label="截一张（⌥⇧A）"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.2 7.1c0-.9.7-1.6 1.6-1.6h1.7l1.2-1.8h4.6l1.2 1.8h1.7c.9 0 1.6.7 1.6 1.6v7.1c0 .9-.7 1.6-1.6 1.6H4.8c-.9 0-1.6-.7-1.6-1.6z"/><circle cx="10" cy="10.6" r="2.7"/></svg><b class="badge" hidden>0</b></button>
           <button type="button" class="cb-btn undo" data-act="redo" aria-label="重录"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6.6A5.4 5.4 0 1 1 4.7 11"/><path d="M5.8 2.9v3.9h3.9"/></svg></button>
+          <span class="nest" role="status" aria-label="实时草稿" hidden><i class="eggs"></i><svg class="bowl" viewBox="0 0 40 16" aria-hidden="true"><use href="#nest"/></svg><b>0</b></span>
           <button type="button" class="done" data-act="done"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.6"/></svg><span class="done-t" data-busy="整理中…">完成</span></button>
         </div>
+        <p class="cap" aria-label="实时字幕" aria-live="off"></p>
         <div class="screen" aria-label="示意：一个设置页，保存按钮比取消低了一截">
           <div class="win-bar"><i></i><i></i><i></i><span>Orbit — Settings</span></div>
           <div class="form">
@@ -212,6 +265,7 @@
       <div class="beat-text">
         <h3>边用边说</h3>
         <p>想到哪说到哪，说错了改口也没关系。说「这里」的时候，按住 <kbd class="sm">⌃</kbd> 拖动鼠标把它圈出来。</p>
+        <p>悬浮条下面有一行实时字幕。每听出一条事项，就有一颗蛋落进悬浮条的小窝里。录的时候不出声，不会录进去。</p>
       </div>
       <figure class="asr">
         <figcaption>听错的词，agent 会对着画面里的网址、你圈的东西和仓库里的词还原。给这个官网找参考的那次录屏里：</figcaption>
@@ -231,9 +285,14 @@
     <span class="tc" data-t="136"><time>02:16</time><span class="what">完成</span></span>
     <div class="beat-body">
       <div class="beat-text">
-        <h3>点「完成」，去干别的</h3>
-        <p>agent 在本地把语音转成文字（20 分钟的录屏只要 15 秒），拆成一条条事项，给每条挑截图、找最可能出问题的代码。整理好了审核页会自己弹出来。</p>
+        <h3>点「完成」，一分钟后开审</h3>
+        <p>语音边录边在本地转写，停下时文字稿已经好了。agent 先写纯文字的条目，审核页大约 1 分钟就打开；挑截图、找最可能出问题的代码在后台接着做，陆续补进页面，你边审它边补。</p>
       </div>
+      <figure class="wait" aria-label="从点完成到审核页打开：以前中位数约 4.5 分钟，现在约 1 分钟">
+        <div class="w-row old"><span class="w-l">以前</span><span class="w-bar"><i></i></span><span class="w-v">约 4.5 分钟</span></div>
+        <div class="w-row new"><span class="w-l">现在</span><span class="w-bar"><i></i><em>截图陆续补上</em></span><span class="w-v">约 1 分钟</span></div>
+        <figcaption>点「完成」到审核页打开。「以前」是 10 段真实录屏的中位数。</figcaption>
+      </figure>
     </div>
   </div>
 
@@ -243,6 +302,7 @@
       <div class="beat-text">
         <h3>像刷短视频一样审核</h3>
         <p>一条一条过，全程键盘。审完导出，或者直接说「帮我改掉」。</p>
+        <p class="eggs-key"><b>一条一颗蛋</b><span><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-issue"/></svg>问题</span><span><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-idea"/></svg>想法，金点子</span><span><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-note"/></svg>笔记</span><span><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-task"/></svg>待办</span><span><svg class="egg" viewBox="0 0 16 16" aria-hidden="true" style="color:#cfe3b0"><use href="#egg-custom"/></svg>自定义</span></p>
         <p class="legend"><span><kbd class="sm">A</kbd>保留</span><span><kbd class="sm">X</kbd>丢弃</span><span><kbd class="sm">J</kbd>下一条</span></p>
         <p class="try" data-touch="在下面这张单子上点点看">在右边这张单子上按键试试</p>
       </div>
@@ -251,12 +311,12 @@
           <b>整理好了 · 52 条事项</b>
           <span class="tally"><span data-n="left">52</span> 待审 · <span data-n="keep">0</span> 保留 · <span data-n="drop">0</span> 丢弃</span>
         </header>
-        <p class="busy" aria-hidden="true">整理中……</p>
+        <p class="busy" aria-hidden="true"><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-note"/></svg><span>整理中……</span></p>
         <ol class="items">
-          <li class="cur"><span class="k bug">问题</span><span class="t">保存按钮比取消低 6px</span><span class="q">「这个按钮丑……不对，是那个」</span><span class="m">00:01 · src/settings/SaveBar.tsx</span></li>
-          <li><span class="k">想法</span><span class="t">Reports 空状态换成一张上手提示卡</span><span class="q">「这个空页面太死了，放点东西」</span><span class="m">01:12 · src/reports/Empty.tsx</span></li>
-          <li><span class="k todo">待办</span><span class="t">找设计要空状态的文案和插画</span><span class="q">「这个得让设计出一下」</span><span class="m">01:20 · 负责人：设计</span></li>
-          <li><span class="k bug">问题</span><span class="t">时区选完不保存，刷新就回到默认</span><span class="q">「诶，我刚改的时区呢」</span><span class="m">02:47 · src/settings/TimeZone.tsx</span></li>
+          <li class="cur"><span class="k bug"><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-issue"/></svg>问题</span><span class="t">保存按钮比取消低 6px</span><span class="q">「这个按钮丑……不对，是那个」</span><span class="m">00:01 · src/settings/SaveBar.tsx</span></li>
+          <li><span class="k idea"><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-idea"/></svg>想法</span><span class="t">Reports 空状态换成一张上手提示卡</span><span class="q">「这个空页面太死了，放点东西」</span><span class="m">01:12 · src/reports/Empty.tsx</span></li>
+          <li><span class="k todo"><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-task"/></svg>待办</span><span class="t">找设计要空状态的文案和插画</span><span class="q">「这个得让设计出一下」</span><span class="m">01:20 · 负责人：设计</span></li>
+          <li><span class="k bug"><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-issue"/></svg>问题</span><span class="t">时区选完不保存，刷新就回到默认</span><span class="q">「诶，我刚改的时区呢」</span><span class="m">02:47 · src/settings/TimeZone.tsx</span></li>
         </ol>
         <p class="more">还有 48 条</p>
         <footer class="sheet-f">
@@ -275,11 +335,12 @@
         <p class="kl-h">录制时</p>
         <dl class="keylist">
         <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">R</kbd></dt><dd>开始 / 结束录制，在哪都能按</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">A</kbd></dt><dd>截一张图：不暂停，直接截下这一刻（没在录也能按）</dd></div>
         <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">P</kbd></dt><dd>暂停 / 继续</dd></div>
         <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">S</kbd></dt><dd>完成</dd></div>
         <div><dt>按住 <kbd class="sm">⌃</kbd></dt><dd>画笔，松开就停</dd></div>
         <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">D</kbd></dt><dd>画笔常开（点悬浮条上的画笔按钮也行）；再按一次或按 <kbd class="sm">Esc</kbd> 关掉</dd></div>
-        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">M</kbd></dt><dd>在这一刻打个标记</dd></div>
+        <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">M</kbd></dt><dd>打个标记，同时截一张图</dd></div>
         <div><dt><kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">B</kbd></dt><dd>打开口喷鸡菜单</dd></div>
       </dl>
       </div>
@@ -296,6 +357,67 @@
       </div>
     </div>
   </div>
+</section>
+
+<!-- 截图模式：一张图 + 一句话。这一块能玩：⌥⇧A（或点按钮）→ 拖一块 → 闪一下飞上鸡舍 → 说一句 → 🐔 整理 → 孵成条目 → A/X 审 -->
+<section class="snap" id="snap" aria-labelledby="snap-t">
+  <header class="sec-head">
+    <span class="tc" data-t="185"><time>03:05</time><b>截图模式</b></span>
+    <h2 id="snap-t">一张图，一句话<span class="stop">。</span></h2>
+  </header>
+  <div class="snap-body">
+    <div class="snap-text">
+      <p class="snap-lede">很多反馈就是一个画面加一句话，用不着录一段。按 <kbd class="sm">⌥</kbd><kbd class="sm">⇧</kbd><kbd class="sm">A</kbd>，拖一块，松手就截好；接着直接说，说完停一下就收好了。</p>
+      <ul class="snap-facts">
+        <li><b>没在录</b>截图挂到屏幕顶上的鸡舍里，配一句话（打字也行）。攒几张，点「🐔 整理」交给 agent。</li>
+        <li><b>正在录</b>不暂停、不弹框，截下全分辨率的这一刻。备注就是你前后说的那几句。</li>
+        <li><b>挂在鸡舍上</b>单击复制，拖进 Claude Code 或聊天窗口，双击改备注，× 扔掉。</li>
+      </ul>
+      <p class="try" data-touch="在下面上手点点看">在右边上手试试</p>
+    </div>
+    <figure class="desk" data-state="idle" aria-label="截图模式演示">
+      <div class="mb" aria-hidden="true"><b>Orbit</b><span>文件</span><span>编辑</span><span>显示</span><i class="mb-r"><svg class="egg" viewBox="0 0 16 16"><use href="#egg-note"/></svg>10:24</i></div>
+      <button type="button" class="snap-btn" data-touch="截图"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 7.5V4.8c0-.7.6-1.3 1.3-1.3h2.7M12.5 3.5h2.7c.7 0 1.3.6 1.3 1.3v2.7M16.5 12.5v2.7c0 .7-.6 1.3-1.3 1.3h-2.7M7.5 16.5H4.8c-.7 0-1.3-.6-1.3-1.3v-2.7"/></svg><span>截图</span><kbd>⌥⇧A</kbd></button>
+      <div class="perch" aria-label="鸡舍">
+        <i class="rod" aria-hidden="true"></i>
+        <ol class="hang"></ol>
+        <p class="perch-r"><span class="hatching" aria-hidden="true">孵化中…</span><button type="button" class="hatch" disabled>🐔 整理 <b>0</b> 张</button></p>
+      </div>
+      <div class="app" aria-hidden="true">
+        <div class="win-bar"><i></i><i></i><i></i><span>Orbit — Billing</span></div>
+        <div class="bill">
+          <div class="bill-h"><p class="form-h">Billing</p><span class="b-exp" data-say="0">Export CSV</span></div>
+          <div class="bill-grid">
+            <div class="plan" data-say="3"><small>Plan</small><b>Team Pro Annual (Legacy 2024 Edition)</b><span>$48 / mo · renews Nov 1</span></div>
+            <div class="usage" data-say="1"><small>Usage this week</small><span class="u-empty">No data yet</span></div>
+          </div>
+          <div class="inv" data-say="2">
+            <p class="inv-h"><span>Invoice</span><span>Date</span><span>Amount</span><span>Status</span></p>
+            <p><span>INV-1042</span><span>Oct 1</span><span>$48.00</span><span class="paid">Paid</span></p>
+            <p><span>INV-0981</span><span>Sep 1</span><span>$48.00</span><span class="paid">Paid</span></p>
+          </div>
+        </div>
+      </div>
+      <div class="sel" tabindex="-1" hidden aria-label="拖出要截的区域；按 Enter 截整个窗口，Esc 取消"><i class="sel-win"></i><i class="sel-box"><b></b></i><p class="sel-hint" data-touch="手指拖一块 · 点一下 = 整个窗口">拖一块 · 点一下 = 整个窗口 · Enter 全窗口 · Esc 取消</p></div>
+      <div class="note" hidden>
+        <span class="mic" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <input type="text" maxlength="60" aria-label="这张图的备注" placeholder="在听… 说完停一下就好 · 直接打字也行" data-typing="打字吧，Enter 保存">
+        <small>Enter 保存 · Esc 跳过 · ⌥⇧A 下一张</small>
+      </div>
+      <div class="rv" hidden>
+        <div class="rv-bar"><b>审核 · 口喷鸡</b><span class="rv-st"><svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-note"/></svg><span></span></span></div>
+        <ol class="rv-list" tabindex="0" aria-label="整理出的事项：A 保留，X 丢弃，J 下一条"></ol>
+        <div class="rv-done" hidden><p></p><button type="button" class="again">再截一轮</button></div>
+        <p class="rv-f"><button type="button" data-k="x">丢弃 <kbd>X</kbd></button><button type="button" data-k="a">保留 <kbd>A</kbd></button></p>
+        <p class="rv-fine">演示加速了。真实情况：停下约 1 分钟审核页打开，截图陆续补上。</p>
+      </div>
+      <div class="coach" role="status" hidden><b class="c-n"></b><span class="c-t"></span><button type="button" class="c-x" aria-label="关掉提示">×</button></div>
+    </figure>
+  </div>
+  <figure class="snap-real">
+    <picture><source srcset="assets/perch-dark.jpg" media="(prefers-color-scheme: dark)"><img src="assets/perch.jpg" alt="App 里真实的鸡舍：菜单栏下面一根横杆，五张截图用鸡爪夹子挂着，第一张带着备注，第二张上圈了一笔，右上角是「整理 5 张」" width="1600" height="168" loading="lazy"></picture>
+    <figcaption>App 里真实的鸡舍。平时收在菜单栏下面，截了图，或者指针停在屏幕顶部中间，它才滑下来。</figcaption>
+  </figure>
 </section>
 
 <!-- 可以喷点什么：你说的话 → 它整理出的东西 -->
@@ -340,7 +462,7 @@
     <div class="inside">
       <p class="zone">留在你电脑上</p>
       <ul>
-        <li><b>录屏和录音</b>存在你选的工作区里，默认是 <code>~/Blurt</code>。</li>
+        <li><b>录屏、截图和录音</b>存在你选的工作区里，默认是 <code>~/Blurt</code>。</li>
         <li><b>语音识别</b>默认用 SenseVoice 在本机跑，约 240 MB，普通 CPU 就够。</li>
         <li><b>抽帧和画框</b>脚本在本地从视频里取。</li>
         <li><b>审核页</b>本机起的一个页面，只有你自己能打开。</li>
@@ -387,6 +509,7 @@
         <h3>很费 token 吗？</h3>
         <p>不会把视频喂给模型。语音在本地转成文字，不花钱；agent 读的是文字稿，只给真正成条的事项挑几张截图看。所以录得再久，花费也差不多：7 分钟 9 条和 20 分钟 34 条，都在 2 美元上下。</p>
         <p class="note">另有对话上下文的缓存读取，约 300–500 万 token，按输入价的 1/20 计费，已算进右边的价格。</p>
+        <p class="note">这三次是旧流程：等全部整理完才打开审核页。现在约 1 分钟就打开，截图随后补上。</p>
       </div>
       <table class="receipt">
         <caption>真实使用：Claude Code + Opus 5.5，一个线上 Web 产品</caption>
@@ -396,7 +519,7 @@
           <tr><th>说话</th><td>2.8 分钟</td><td>12.3 分钟</td><td>17.7 分钟</td></tr>
           <tr><th>事项</th><td>9 条</td><td>23 条</td><td>34 条</td></tr>
           <tr><th>语音识别（本地）</th><td>4 秒</td><td>12 秒</td><td>15 秒</td></tr>
-          <tr><th>录完到审核页</th><td>约 4 分钟</td><td>约 7 分钟</td><td>约 6 分钟</td></tr>
+          <tr><th>录完到审核页（旧流程）</th><td>约 4 分钟</td><td>约 7 分钟</td><td>约 6 分钟</td></tr>
           <tr><th>新输入 token</th><td>约 14 万</td><td>约 14 万</td><td>约 12 万</td></tr>
           <tr><th>输出 token</th><td>约 1.9 万</td><td>约 2.7 万</td><td>约 2.7 万</td></tr>
         </tbody>
@@ -413,7 +536,7 @@
     </div>
     <div class="qa">
       <h3>Windows、Linux 能用吗？</h3>
-      <p>能。录屏、本地转写、截帧、审核页、导出，在 Windows 和 Linux 上一项一项都跑通了。Windows 上由 agent 启动录制器，录过一次后开始菜单里就有「Blurt」，Alt+Shift+P 暂停、Alt+Shift+S 完成；Linux 需要 X11 桌面。托盘 App 和画笔目前只有 macOS，所以不用再下载什么：装上 skill 就能用。</p>
+      <p>能。录屏、本地转写、截帧、审核页、导出，在 Windows 和 Linux 上一项一项都跑通了。Windows 上由 agent 启动录制器，录过一次后开始菜单里就有「Blurt」，Alt+Shift+P 暂停、Alt+Shift+S 完成；Linux 需要 X11 桌面。托盘 App、画笔、单独截图和鸡舍目前只有 macOS，所以不用再下载什么：装上 skill 就能用。</p>
     </div>
   </div>
 </section>
@@ -453,10 +576,11 @@
   <span class="sp"><img src="assets/logo.png" alt="" width="22" height="22">口喷鸡 blurt · MIT · 出品 <a href="https://github.com/AGIHunt">AGI Hunt</a></span>
   <a href="https://github.com/AGIHunt/blurt">GitHub</a>
   <a href="https://github.com/AGIHunt/blurt/releases/latest">更新记录</a>
+  <a href="llms.txt" type="text/plain">llms.txt</a>
   <a href="en/" lang="en" hreflang="en">English</a>
 </footer>
 
 <svg class="ink-layer" aria-hidden="true"></svg>
-<script src="main.js?v=0.4.2b"></script>
+<script src="main.js?v=0.5.0"></script>
 </body>
 </html>

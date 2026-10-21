@@ -1,0 +1,53 @@
+# blurt (口喷鸡)
+
+> blurt is an open-source Agent Skill plus a macOS menu-bar app. You record your screen while talking, or snap one screenshot and say one sentence; your coding agent (Claude Code, Codex or any agent that runs skills) turns it into structured items: bug/polish issues with repro steps, frames and the code that's probably responsible, ideas with where they came from, notes and tasks. You triage them on a local review page with the keyboard, then export them or tell the agent to start fixing. Speech recognition runs locally by default. MIT licensed, made by AGI Hunt.
+
+Website: https://blurt.agihunt.info/en/ (English) · https://blurt.agihunt.info/ (Chinese) · Source: https://github.com/AGIHunt/blurt · Skill instructions: https://github.com/AGIHunt/blurt/blob/main/skills/blurt/SKILL.md · Releases: https://github.com/AGIHunt/blurt/releases/latest
+
+## Facts
+- Name: blurt; Chinese name 口喷鸡 ("the blurting chicken"). Tagline: "Show it. Say it. Your AI gets it."
+- What it is: a skill (scripts + instructions for your coding agent) and a native recorder. Scripts do the deterministic work (recording, speech-to-text, frames, the review page, exports); the agent does the judgement (splitting a ramble into items, writing them up, picking frames, finding code).
+- License: MIT. Made by AGI Hunt (https://github.com/AGIHunt).
+- Price: free. Cost is whatever your agent's model usage costs; the video is never sent to the model.
+- Works with: Claude Code, Codex and other agents that run skills.
+
+## Install
+- Skill: `npx skills add AGIHunt/blurt`. In Claude Code you can also run `/plugin marketplace add AGIHunt/blurt`, or paste the repo URL to your agent and ask it to install the skill.
+- Then, in any project, tell your agent "start blurt" (or 「开始口喷」). The first run picks a speech model for your machine and installs the Blurt menu-bar app on macOS.
+- Recorder app for teammates without a repo (macOS 13 or later): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip (unzip, then right-click → Open the first time).
+
+## Platforms
+- macOS: everything below, including the menu-bar app, the pen (hold ⌃ and drag to circle things while recording), system audio, standalone snaps and the perch.
+- Windows and Linux (X11): recording, local transcription, frames, the review page and exports, started by your agent (Tk + ffmpeg recorder). On Windows a "Blurt" entry appears in the Start menu after the first recording. The tray app, the pen, system audio, standalone snaps and the perch are macOS-only for now.
+- Setup check: `doctor.py` reports what's missing. Windows: `winget install astral-sh.uv` and `winget install Gyan.FFmpeg`. Ubuntu/Debian: `sudo apt install ffmpeg libportaudio2 python3-tk`, plus uv.
+
+## Recording mode
+- ⌥⇧R starts a recording from anywhere (drag a region, click a window, or full screen); ⌥⇧R again or ⌥⇧S finishes; ⌥⇧P pauses; ⌥⇧B opens the menu. Windows: Alt+Shift+P / Alt+Shift+S.
+- A floating bar shows time and mic level, with pause, pen, 📸, redo and Finish. The bar is never recorded.
+- While you record, speech is transcribed locally in the background and a one-line live caption runs under the bar; each time a draft item takes shape, an egg drops into a small nest on the bar. Nothing makes a sound while recording.
+- When you finish, the transcript is already there. The agent writes the items as text first and the review page opens in about a minute; frames and code pointers are added in the background and stream into the page. Before this, stop → review page took a median of about 4.5 minutes (10 real recordings).
+- Recordings go to a workspace: `~/Blurt` by default, or a project folder you bind. Optionally, the app hands every finished recording to Claude Code or Codex in the background.
+
+## Snap mode ("one shot, one sentence")
+- ⌥⇧A (Alt+Shift+A on Windows/Linux, same idea as the Alt+A screenshot key in WeChat/QQ).
+- Not recording (macOS): drag a region, click a window, F for full screen or L for the last area; letting go takes the shot. A white flash, then the shot flies onto the perch, a thin rod under the menu bar where shots hang from a chicken-foot clip. The mic opens for a note: stop talking for about 1.8 s and it's saved (no speech in 8 s means no note; 60 s max). Typing instead switches to a text note; Enter saves, Esc skips. You can circle things on the enlarged preview. ⌥⇧A again saves the note and takes the next shot.
+- On the perch: click copies the image, drag it out as a file (into Claude Code, a chat, Finder), double-click edits the note, × deletes. "🐔 整理 N 张" (sort N) hands the batch to the agent.
+- While recording: ⌥⇧A (or ⌥⇧M, which also still drops a marker) takes a full-resolution still of the recorded area without pausing or popping anything up; its note is what you said around that moment. Each snap anchors an item and becomes its first frame. On Windows/Linux this is the only snap mode (Alt+Shift+A, 📸 on the bar).
+- Choose video for flows and animations; choose snaps when one screen and one sentence say it all.
+
+## Items and the review page
+- Kinds: issue, idea, note, task, plus custom "lenses" teams define (e.g. ux-research, sales-call, sop). Each kind has an egg: issue = speckled egg with a tiny bug, idea = golden egg, note = white egg, task = copper egg with a check, custom = pastel egg.
+- Review keys: A keep · X drop · J/K next/previous · Z undo · G list · V overview.
+- Exports: Feishu/Lark Base (with frames and clips), GitHub Issues, Linear, Markdown, CSV; Jira, Notion, Obsidian and others through the CLI or MCP your agent already has. Or skip exporting and tell the agent to fix the items.
+
+## Privacy
+- By default nothing is uploaded. Recordings, screenshots and audio stay in your workspace on your machine.
+- Speech recognition runs locally: SenseVoice via sherpa-onnx (about 240 MB, fast on any CPU, strong on mixed Chinese/English) or Whisper on Apple Silicon/NVIDIA. Cloud recognition (Groq, OpenAI, DashScope) is used only if you set your own key.
+- What leaves your machine: the transcript and the few frames the agent picks go to the coding agent you already use (i.e. its model provider). The video itself is never sent. Exports ask you to confirm where and how many first.
+- The review page is served locally, for you only.
+
+## Languages
+- SenseVoice covers Chinese, English, Japanese, Korean and Cantonese; other languages (99 in total) use Whisper locally or a cloud key. Items come back in the language you spoke.
+
+## Cost (real sessions, Claude Code + Opus 5.5, old flow)
+- 7.0 min recording → 9 items, about $2; 14.3 min → 23 items, about $2.6; 20.0 min → 34 items, about $2.1 at API prices. Local transcription took 4–15 s. Longer recordings barely cost more because the model reads text, not video.
