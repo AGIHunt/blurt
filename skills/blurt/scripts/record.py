@@ -9,7 +9,7 @@ control bar offers pause, marker, discard and stop — so they never have to com
 The control bar and the region border are never part of the recording.
 
 Engines (auto-selected; override with --engine or ~/.blurt/config.json → record.engine):
-  native   macOS: ScreenCaptureKit app (recorder/macos/BlurtRecorder.swift), built on first use with swiftc.
+  native   macOS: ScreenCaptureKit app (recorder/macos, a SwiftPM package), built on first use with `swift build`.
   tk       Windows, Linux/X11 (and macOS fallback): Tk picker + control bar, ffmpeg video, PortAudio mic.
   ffmpeg   headless full-screen capture, stop from chat only (no GUI available).
 
@@ -50,7 +50,6 @@ VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", 
                      "voicemeeter", "stereo mix", "立体声混音", "aggregate", "聚集", "cable")
 AUDIO_SR = 48000
 SWIFT_DIR = Path(__file__).resolve().parent.parent / "recorder" / "macos"
-SWIFT_SRC = SWIFT_DIR / "BlurtRecorder.swift"  # entry point (top-level code); other *.swift files are compiled with it
 AGENTS_JSON = Path(__file__).with_name("agents.json")  # bundled into the app (Agents.swift)
 
 
@@ -446,36 +445,45 @@ def mux(video: Path, audio: Path | None, offset: float, dest: Path) -> None:
 # ---------------------------------------------------------------- native macOS recorder
 APP_BUNDLE = BLURT_HOME / "Blurt.app"
 ICON = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
-INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>dev.blurt.recorder</string>
-<key>CFBundleName</key><string>Blurt</string>
-<key>CFBundleDisplayName</key><string>Blurt 口喷鸡</string>
-<key>CFBundleExecutable</key><string>blurt-recorder</string>
-<key>CFBundleIconFile</key><string>AppIcon</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.5.0</string>
-<key>LSMinimumSystemVersion</key><string>13.0</string>
-<key>LSUIElement</key><true/>
-<key>NSMicrophoneUsageDescription</key><string>Blurt records your voice while you narrate feedback.</string>
-<key>NSScreenCaptureUsageDescription</key><string>Blurt records the screen area you select.</string>
-<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
-</dict></plist>
-"""
+INFO_PLIST = SWIFT_DIR / "Info.plist"
+
+
+def swift_sources() -> list[Path]:
+    """Everything the build depends on: Package.swift, Info.plist, Sources/** (not .build/)."""
+    files = [SWIFT_DIR / "Package.swift", INFO_PLIST]
+    files += sorted(p for p in (SWIFT_DIR / "Sources").rglob("*") if p.is_file() and not p.name.startswith("."))
+    return [f for f in files if f.exists()]
+
+
+def swift_build(scratch: Path, triple: str | None = None) -> Path | None:
+    """`swift build -c release` (Command Line Tools are enough) → the blurt-recorder executable, or None."""
+    cmd = ["swift", "build", "-c", "release", "--package-path", str(SWIFT_DIR), "--scratch-path", str(scratch),
+           "--product", "blurt-recorder"]
+    if triple:
+        cmd += ["--triple", triple]
+    r = run(cmd, check=False)
+    if r.returncode:
+        print(f"native recorder build failed{f' for {triple}' if triple else ''}:\n{(r.stderr or r.stdout)[-2500:]}",
+              file=sys.stderr)
+        return None
+    r = run(cmd + ["--show-bin-path"], check=False)
+    exe = Path(r.stdout.strip().splitlines()[-1]) / "blurt-recorder" if r.returncode == 0 and r.stdout.strip() else None
+    return exe if exe and exe.exists() else None
 
 
 def native_binary(build: bool = True) -> Path | None:
-    """The recorder lives inside ~/.blurt/Blurt.app so it can also be launched as a standalone app."""
-    if not IS_MAC or not SWIFT_SRC.exists():
+    """The recorder lives inside ~/.blurt/Blurt.app so it can also be launched as a standalone app.
+    Built from recorder/macos (a SwiftPM package) with `swift build`; BLURT_UNIVERSAL=1 → arm64 + x86_64 (lipo)."""
+    if not IS_MAC or not (SWIFT_DIR / "Package.swift").exists():
         return None
     remember_skill_dir()
-    others = sorted(p for p in SWIFT_DIR.glob("*.swift") if p != SWIFT_SRC)
-    h = hashlib.sha256(SWIFT_SRC.read_bytes() + INFO_PLIST.encode())
-    for p in others:
-        h.update(p.name.encode() + p.read_bytes())
+    h = hashlib.sha256()
+    for p in swift_sources():
+        h.update(str(p.relative_to(SWIFT_DIR)).encode() + b"\0" + p.read_bytes())
     if AGENTS_JSON.exists():
         h.update(AGENTS_JSON.read_bytes())
+    if os.environ.get("BLURT_UNIVERSAL"):
+        h.update(b"universal")
     digest = h.hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"
@@ -483,41 +491,34 @@ def native_binary(build: bool = True) -> Path | None:
         return exe
     if not build:
         return None
-    swiftc = shutil.which("swiftc")
-    if not swiftc:
+    if not shutil.which("swift"):
         return None
-    print("building native recorder (one-time, ~20s)…", file=sys.stderr, flush=True)
+    print("building native recorder (one-time, ~1 min)…", file=sys.stderr, flush=True)
+    scratch = BLURT_HOME / "build" / "swiftpm"
     tmp = BLURT_HOME / "build" / "blurt-recorder"
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    # swiftc only allows top-level code in a file named main.swift once there is more than one file
-    src_dir = tmp.parent / "src"
-    shutil.rmtree(src_dir, ignore_errors=True)
-    src_dir.mkdir()
-    shutil.copy(SWIFT_SRC, src_dir / "main.swift")
-    for p in others:
-        shutil.copy(p, src_dir / p.name)
-    srcs = [str(src_dir / "main.swift")] + [str(src_dir / p.name) for p in others]
+    tmp.unlink(missing_ok=True)
     if os.environ.get("BLURT_UNIVERSAL"):  # release builds: arm64 + x86_64 in one binary
         parts = []
         for arch in ("arm64", "x86_64"):
-            out_arch = tmp.with_name(f"blurt-recorder-{arch}")
-            r = run([swiftc, "-O", "-swift-version", "5", "-target", f"{arch}-apple-macos13.0", *srcs, "-o", str(out_arch)],
-                    check=False)
-            if r.returncode:
-                print(f"build failed for {arch}:\n{r.stderr[-1500:]}", file=sys.stderr)
+            built = swift_build(scratch, f"{arch}-apple-macosx13.0")
+            if not built:
                 return None
-            parts.append(str(out_arch))
+            parts.append(str(built))
         r = run(["lipo", "-create", *parts, "-output", str(tmp)], check=False)
+        if r.returncode:
+            print(f"lipo failed: {r.stderr[-800:]}", file=sys.stderr)
+            return None
     else:
-        r = run([swiftc, "-O", "-swift-version", "5", *srcs, "-o", str(tmp)], check=False)
-    if r.returncode:
-        print(f"native recorder build failed, falling back:\n{r.stderr[-1500:]}", file=sys.stderr)
-        return None
+        built = swift_build(scratch)
+        if not built:
+            return None
+        shutil.copy2(built, tmp)
     shutil.rmtree(APP_BUNDLE, ignore_errors=True)
     (APP_BUNDLE / "Contents" / "MacOS").mkdir(parents=True)
     (APP_BUNDLE / "Contents" / "Resources").mkdir(parents=True)
     shutil.move(str(tmp), exe)
-    (APP_BUNDLE / "Contents" / "Info.plist").write_text(INFO_PLIST, encoding="utf-8")
+    shutil.copy(INFO_PLIST, APP_BUNDLE / "Contents" / "Info.plist")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     make_menu_icon(APP_BUNDLE / "Contents" / "Resources")
     if AGENTS_JSON.exists():
