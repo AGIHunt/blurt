@@ -280,7 +280,10 @@ final class Hotkeys {
         guard !c.isEmpty, recordConfig()["hotkeys_warned"] as? String != sig else { return }
         setRecordConfig("hotkeys_warned", sig)
         let keys = c.map { label($0) }.joined(separator: L("、", ", "))
-        toast(L("快捷键 \(keys) 被占用了 · 菜单 → 快捷键… 可以换", "Shortcut \(keys) is already taken · menu → Shortcuts… to change it"))
+        let first = c[0], why = states[first]?.text ?? ""
+        toast(L("快捷键 \(keys) 用不了", "Shortcut \(keys) won't work") + "\n"
+              + (c.count == 1 ? "\(label(first))：\(why)" : L("被别的 App 占用或互相重复", "taken by another app or used twice"))
+              + L(" · 菜单 → 快捷键… 可以换", " · menu → Shortcuts… to change it"))
     }
 
     // MARK: other running Blurts

@@ -63,20 +63,29 @@ extension App {
         case "recordkey":                               // recordkey ACTION: click that recorder field
             HotkeySettings.shared.show()
             if let a = HotAction(rawValue: arg) { HotkeySettings.shared.fields[a]?.start() }
-        case "presskey":                                // presskey SPEC|esc|delete: a real key event through the app's queue
-            guard let w = HotkeySettings.shared.window else { return }
+        case "presskey", "rkey":                        // presskey SPEC|esc|delete: a real key event through the app's queue,
+                                                        // to the Shortcuts window (presskey) or the review window (rkey)
+            guard let w = parts[0] == "rkey" ? ReviewHub.shared.windows.last?.window : HotkeySettings.shared.window else { return }
+            if parts[0] == "rkey" {                     // key equivalents need us active with that window key
+                NSApp.activate(ignoringOtherApps: true)
+                w.makeKeyAndOrderFront(nil)
+            }
             var code = 0, flags: NSEvent.ModifierFlags = []
+            var chars = ""
             if arg == "esc" { code = 53 } else if arg == "delete" { code = 51 }
             else if let s = Shortcut.parse(arg) {
                 code = s.code
+                if s.key.count == 1 { chars = s.key.lowercased() }
                 if s.mods & controlKey != 0 { flags.insert(.control) }
                 if s.mods & optionKey != 0 { flags.insert(.option) }
                 if s.mods & shiftKey != 0 { flags.insert(.shift) }
                 if s.mods & cmdKey != 0 { flags.insert(.command) }
             } else if let s = hotkeyKeyTable.first(where: { $0.name == arg.uppercased() }) { code = s.code }   // no modifiers: refused
             if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
-                                        windowNumber: w.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
-                                        isARepeat: false, keyCode: UInt16(code)) { NSApp.postEvent(e, atStart: false) }
+                                        windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                        isARepeat: false, keyCode: UInt16(code)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + (parts[0] == "rkey" ? 0.6 : 0)) { NSApp.postEvent(e, atStart: false) }
+            }
         case "hotkeys":                                 // dump the state, for scripted checks
             emit(["event": "hotkeys", "keys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
                   "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.states[$0].map { "\($0)" } ?? "") })])
