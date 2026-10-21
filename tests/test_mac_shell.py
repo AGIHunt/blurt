@@ -40,13 +40,12 @@ class Layout(unittest.TestCase):
         self.assertIn("SUPublicEDKey", p)
         self.assertTrue(p["CFBundleVersion"])
 
-    def test_perch_controls_are_accessible(self):
-        # The perch draws everything in CALayers: without these overrides VoiceOver / the AX tree saw an empty window
-        # (verified live with the `axperch` test command and AXPress on "清空").
-        src = (MAC / "Sources/BlurtApp/Capture/Perch.swift").read_text()
-        for needle in ["override func accessibilityChildren()", "final class PerchAXElement: NSAccessibilityElement",
-                       'axProcess?.setAccessibilityLabel(L("整理 \\(n) 张"', 'axClear?.setAccessibilityLabel(L("清空"',
-                       'L("截图 \\(s.n)"', "override func accessibilityPerformPress()"]:
+    def test_claw_cards_are_accessible(self):
+        # The claws (K7, which replaced the perch) draw the cards in CALayers: without these overrides VoiceOver / the AX
+        # tree would see an empty window (live check: the `axcards` test command).
+        src = (MAC / "Sources/BlurtApp/Capture/Island/Claws.swift").read_text()
+        for needle in ["override func accessibilityChildren()", "final class LayerAXElement: NSAccessibilityElement",
+                       '"capture.card.ax_shot_n"', "setAccessibilityCustomActions", "override func accessibilityPerformPress()"]:
             self.assertIn(needle, src)
 
     def test_build_inputs(self):

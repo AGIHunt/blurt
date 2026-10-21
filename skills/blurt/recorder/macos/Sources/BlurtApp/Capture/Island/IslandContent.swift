@@ -458,8 +458,10 @@ final class IslandContent: NSView {
         let sp = label("", size: 11.5, color: ink3)
         place(sp, x: h.frame.maxX + (hint.isEmpty ? 0 : 10), y: y + 7, w: 140)
         spotted = sp
-        let c = chip(w, small: true)
-        place(c, x: w - 14 - c.frame.width, y: y + 2)
+        if (NSApp.delegate as? App)?.resident == true {     // a recording started from the chat has its session already
+            let c = chip(w, small: true)
+            place(c, x: w - 14 - c.frame.width, y: y + 2)
+        }
         y += 34
         return y + 6
     }
