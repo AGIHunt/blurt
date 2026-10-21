@@ -830,6 +830,16 @@ uid 01JB… · issue · high · module auth
   `handoff.copy_instruction` Copy instruction / 复制指令，`handoff.copy_full` Copy full text / 复制全文；
   `job.type.<type>`、`job.step.<id>`（K4 的每个 type 和 step id 都要有）。
 
+细则（P4）：
+- macOS 的表：`Common`（上面的通用键，另有 `job.state.*`、`time.just_now`、`action.*` 几个通用按钮）、`Main`（主窗口、菜单栏菜单、通知：`main.*`、`menu.*`、`app.*`、`notify.*`）、
+  `Settings`（设置窗口和设置助手：`settings.*`、`onboarding.*`）。BlurtApp 里的简写 `T("key", args…)` / `TP("key", n, args…)`（`App/Strings.swift`）
+  按键的第一段选表，其余照 `Loc.t` / `Loc.plural`。占位符用 `%@` / `%ld`，顺序和语言有关时用 `%1$@`。
+- 原生菜单和按钮按 macOS 的大小写习惯（en 用 Title Case：`main.cmd.mark_done` = Mark as Done），状态名等标签用通用键（Mark as done）。
+- 语言：config `lang` = `auto | en | zh-Hans`（`zh` 视为 zh-Hans）；`--lang` 优先（`Loc.setting`）。界面语言变化在重开应用后生效。
+- 表放在 `Sources/BlurtApp/Resources/<lang>.lproj/`，`Package.swift` 把 `Resources` 排除在 SwiftPM 之外，`record.py build` 拷进 `Contents/Resources/`；
+  `swift build` 出来的二进制按源码位置找表（`Loc.searchRoots`），测试可用 `BLURT_L10N_DIR`。
+- `tests/test_l10n.py`：每张表两种语言键完全一致、占位符一致、复数有 other（en 还要 one）、代码里按名字引用的键都在表里、Common 有上面的通用键。
+
 ### 所有权、闸门和合并
 
 **闸门 G0（扇出之前，一个提交，≤ 1 小时，由 P4 或协调方做）**：把下面这些跨包接口写成能编译的桩（空实现），提交到 `feat/live-snap`，
