@@ -1,0 +1,9 @@
+{
+  "mode": "shots",
+  "engine": "native-app",
+  "shots": 2,
+  "started_at": "2026-10-20T06:15:00Z",
+  "author": "Bo",
+  "workspace": "tests/fixtures/index/home/Blurt",
+  "state": "done"
+}

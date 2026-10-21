@@ -1,5 +1,5 @@
 {
-  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation.",
+  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation. WP2 fields (agents.py detect / command / install): version = args printing the version; events = args appended to run for machine-readable progress + its format; headless: false = never run unattended (skip it in the auto chain); interactive = {url (placeholders {repo_q} {prompt_q}, max_prompt), | terminal (args after the bin, run in the user's terminal; paste_prompt: put the prompt on the clipboard), | copy_prompt}; app = {macos: path} for app-only agents; skill_dir = where the blurt skill is linked; mcp = {args (+check: args that exit 0 when already added) | json: {path, key, value} merged into a config file}, {mcp_server} = absolute path of mcp_server.py. Paths take ~ and ${VAR:-default}.",
   "agents": [
     {
       "id": "claude", "name": "Claude Code", "bins": ["claude"], "verified": "run",
@@ -7,6 +7,11 @@
       "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep"],
       "fix": {"zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal and /login"},
       "install": {"zh": "curl -fsSL https://claude.ai/install.sh | bash", "en": "curl -fsSL https://claude.ai/install.sh | bash"},
+      "version": ["--version"], "events": {"args": ["--output-format", "stream-json", "--verbose"], "format": "claude-stream-json"},
+      "interactive": {"url": "claude-cli://open?cwd={repo_q}&q={prompt_q}", "max_prompt": 5000},
+      "skill_dir": "~/.claude/skills",
+      "mcp": {"args": ["mcp", "add", "--scope", "user", "blurt", "--", "uv", "run", "--script", "{mcp_server}"],
+              "check": ["mcp", "get", "blurt"], "verified": "cli"},
       "drafts": true
     },
     {
@@ -15,6 +20,11 @@
       "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],
       "fix": {"zh": "在终端运行 codex login", "en": "run `codex login` in a terminal"},
       "install": {"zh": "npm i -g @openai/codex", "en": "npm i -g @openai/codex"},
+      "version": ["--version"], "events": {"args": ["--json"], "format": "codex-jsonl"},
+      "interactive": {"terminal": ["{prompt}"]},
+      "skill_dir": "~/.agents/skills",
+      "mcp": {"args": ["mcp", "add", "blurt", "--", "uv", "run", "--script", "{mcp_server}"], "check": ["mcp", "get", "blurt"],
+              "verified": "run"},
       "drafts": true
     },
     {
@@ -23,7 +33,12 @@
                  "configured_if": "models=[1-9]", "otherwise": "logged_out"},
       "run": ["-p", "{prompt}"],
       "fix": {"zh": "在终端运行 kimi login", "en": "run `kimi login` in a terminal"},
-      "install": {"zh": "见 moonshotai.github.io/kimi-code", "en": "see moonshotai.github.io/kimi-code"}
+      "install": {"zh": "见 moonshotai.github.io/kimi-code", "en": "see moonshotai.github.io/kimi-code"},
+      "version": ["--version"], "events": {"args": ["--output-format", "stream-json"], "format": "kimi-stream-json"},
+      "interactive": {"terminal": [], "paste_prompt": true},
+      "skill_dir": "~/.agents/skills",
+      "mcp": {"json": {"path": "${KIMI_CODE_HOME:-~/.kimi-code}/mcp.json", "key": ["mcpServers", "blurt"],
+                       "value": {"command": "uv", "args": ["run", "--script", "{mcp_server}"]}}, "verified": "docs"}
     },
     {
       "id": "opencode", "name": "OpenCode", "bins": ["opencode"], "verified": "cli",
@@ -32,7 +47,13 @@
                  "otherwise": "logged_out"},
       "run": ["run", "{prompt}"],
       "fix": {"zh": "在终端运行 opencode auth login", "en": "run `opencode auth login` in a terminal"},
-      "install": {"zh": "curl -fsSL https://opencode.ai/install | bash", "en": "curl -fsSL https://opencode.ai/install | bash"}
+      "install": {"zh": "curl -fsSL https://opencode.ai/install | bash", "en": "curl -fsSL https://opencode.ai/install | bash"},
+      "version": ["--version"], "events": {"args": ["--format", "json"], "format": "opencode-json"},
+      "interactive": {"terminal": ["--prompt", "{prompt}"]},
+      "skill_dir": "~/.config/opencode/skills",
+      "mcp": {"json": {"path": "~/.config/opencode/opencode.json", "key": ["mcp", "blurt"],
+                       "value": {"type": "local", "command": ["uv", "run", "--script", "{mcp_server}"], "enabled": true}},
+              "verified": "docs"}
     },
     {
       "id": "gemini", "name": "Gemini CLI", "bins": ["gemini"], "verified": "docs",
@@ -40,7 +61,17 @@
                  "otherwise": "logged_out"},
       "run": ["-p", "{prompt}", "--yolo"],
       "fix": {"zh": "在终端运行 gemini 登录一次（或设置 GEMINI_API_KEY）", "en": "run `gemini` once in a terminal to sign in (or set GEMINI_API_KEY)"},
-      "install": {"zh": "npm i -g @google/gemini-cli", "en": "npm i -g @google/gemini-cli"}
+      "install": {"zh": "npm i -g @google/gemini-cli", "en": "npm i -g @google/gemini-cli"},
+      "version": ["--version"], "events": {"args": ["--output-format", "stream-json"], "format": "gemini-stream-json"},
+      "interactive": {"terminal": ["-i", "{prompt}"]},
+      "skill_dir": "~/.agents/skills",
+      "mcp": {"args": ["mcp", "add", "--scope", "user", "blurt", "uv", "run", "--script", "{mcp_server}"], "verified": "docs"}
+    },
+    {
+      "id": "zcode", "name": "ZCode", "bins": [], "app": {"macos": "/Applications/ZCode.app"}, "verified": "docs",
+      "headless": false, "interactive": {"copy_prompt": true},
+      "fix": {"zh": "在 ZCode 设置 → Skills / MCP 里手动导入 blurt", "en": "in ZCode Settings → Skills / MCP, import blurt by hand"},
+      "install": {"zh": "见 zcode.z.ai", "en": "see zcode.z.ai"}
     }
   ],
   "failures": [
