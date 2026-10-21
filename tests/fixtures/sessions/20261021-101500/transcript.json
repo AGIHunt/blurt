@@ -1,0 +1,33 @@
+{
+  "source": "recording.mp4",
+  "backend": "fixture",
+  "model": "none",
+  "duration": 6.0,
+  "segments": [
+    {
+      "start": 0.1,
+      "end": 1.4,
+      "text": "上传头像直接报 500。"
+    },
+    {
+      "start": 1.5,
+      "end": 2.8,
+      "text": "保存以后 toast 叠了三个。"
+    },
+    {
+      "start": 2.9,
+      "end": 4.0,
+      "text": "命令面板要能模糊搜索。"
+    },
+    {
+      "start": 4.1,
+      "end": 5.0,
+      "text": "埋点文档回头整理一下。"
+    },
+    {
+      "start": 5.1,
+      "end": 5.9,
+      "text": "登录页验证码倒计时不会重置。"
+    }
+  ]
+}
