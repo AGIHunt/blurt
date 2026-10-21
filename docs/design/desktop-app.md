@@ -270,6 +270,25 @@ Windows/Linux: Blurt（Tauri 2）
 | Deep link | `claude-cli://open?q=…&cwd=…`：q 最多 5000 字符，只预填不执行 [S23]；桌面版用 `claude://code/new` [S30] | ⚠ 没找到 | ⚠ 没找到 | ⚠ 没找到 |
 | 登录检测 | `claude auth status --json` | `codex login status` | 没有专门的命令；发一个极短的 `--print` 探测，看退出码是不是 1、输出里有没有登录相关字样 ⚠ | 只能检测是否安装 |
 
+**WP2 在本机实测后的更正（2026-10-21，以此为准）**：
+- **Kimi**：本机装的是新版 **Kimi Code 0.36.0**（`~/.kimi-code/bin/kimi`，单文件二进制），上表 Kimi 一列按旧版 kimi-cli 写的，
+  大多不适用了：
+  - 没有 `--print`、`-w`、`info`、`mcp` 子命令；headless 是 `kimi -p "<prompt>" [--output-format stream-json]`，
+    在 cwd 里运行（没有工作目录参数，`--add-dir` 只是追加目录）；`-p` 不能和 `--yolo` / `--auto` 同时用。
+  - MCP 没有命令行的添加方式，配置文件是 `~/.kimi-code/mcp.json`（`$KIMI_CODE_HOME`；项目级 `.kimi-code/mcp.json`），
+    格式 `{"mcpServers": {"<name>": {"command", "args", "env", "cwd"}}}`（官方文档，未实跑）。
+  - Skill 目录是 `~/.kimi-code/skills`、`~/.agents/skills` 和项目里的 `.kimi-code/skills`、`.agents/skills`；文档没提 `.claude/skills`。
+  - 登录：没有状态命令；本机 `kimi -p` 退出码 1，stderr 为 `provider managed:kimi-code has no credential configured`；
+    `~/.kimi-code/credentials/kimi-code.json` 里的 token 为空 → agents.json 的 `creds_json` 规则据此判为没登录（不花 token）。
+    退出码 75 的说法在新版文档里找不到 ⚠。
+- **Codex 0.157**：`codex mcp add <name> -- <cmd…>` 已在临时 `CODEX_HOME` 实测；`codex mcp get <name>` 存在时退出码 0；
+  `codex exec … "<prompt>" --json` 带上 blurt MCP 真跑通过（search_items → get_item 看到图 → mark_fixed 写回）。
+- **Claude Code 2.1.259**：`claude mcp add --scope user blurt -- uv run --script …` 只按 `--help` 核对了；本机 standalone CLI 没登录，
+  `claude -p --mcp-config …` 的加分项没法跑。
+- **OpenCode 1.1.56**（本机也装了）：headless `opencode run "<prompt>" [--format json]`；`opencode mcp add` 是交互式的，
+  改成写 `~/.config/opencode/opencode.json` 的 `mcp.<name> = {"type": "local", "command": [...], "enabled": true}`（文档，未实跑）；
+  登录看 `opencode auth list` 的凭据数。**Gemini CLI** 没装，条目全部来自文档。
+
 结论：SKILL.md 是事实标准。skill 装两处（`~/.claude/skills/blurt`，再在 `~/.agents/skills/blurt` 放一个符号链接）
 就能覆盖 Claude、Codex、Kimi 三家，ZCode 需要用户手动导入一次。MCP 是四家都支持的第二层。
 
@@ -278,7 +297,7 @@ Windows/Linux: Blurt（Tauri 2）
 - **Skill**（主契约）：插件里加三样东西：
   - `mcpServers`：`uv run --script ${CLAUDE_PLUGIN_ROOT}/skills/blurt/scripts/mcp_server.py`；
   - `items.py fix` 的用法说明；
-  - 一个 `Stop` hook，会话结束时执行 `index.py update`。
+  - 一个 `SessionEnd` hook，会话结束时执行 `index.py update --workspace ${CLAUDE_PROJECT_DIR}`（`Stop` 每轮都触发，太频繁）。
 - **MCP**：工具定义见 C4。
 - **应用拉起 agent**：
   - **后台整理**和**后台修复**：从 `agents.py command <id> headless` 拿到 argv 后执行，解析 stream-json 显示进度；
@@ -401,6 +420,27 @@ SELECT i.* FROM items i JOIN items_fts f ON f.rowid = i.rowid
 WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] ORDER BY i.updated DESC LIMIT ?2 OFFSET ?3
 ```
 
+细则（WP2 实现时补充，以 `index.py` 为准）：
+- **查询词**：QUERY 按空白切成多个词，全部要命中（AND）。≥ 3 个字符的词交给 FTS5，作为带引号的短语
+  （`"` 写成 `""`，所以用户输入里的 FTS 语法只当普通文字）；1–2 个字符的词用
+  `(i.title LIKE ? ESCAPE '\' OR i.quote LIKE ? ESCAPE '\' OR i.body LIKE ? ESCAPE '\')`，`%` `_` `\` 要转义。
+  snippet：走 FTS 时用 `snippet(items_fts, -1, '[', ']', '…', 12)`；只有短词时由宿主自己截（`index.py` 截命中处前后约 20 字）。
+- **筛选**：`--kind` / `--status` / `--fix-state` 都可以重复给；不带 `--status` 时排除 `deleted`；`--fix-state none` = `fix_state IS NULL`。
+  `--workspace` / `--session` 接受 id 或目录（`--workspace` 还接受名字）。
+  排序：`updated` = `i.updated DESC`；`created` = `s.created DESC, i.t_start`；`t_start` = `i.t_start, s.created DESC`；最后都按 `item_id`。
+- **工作区判定**：`~/Blurt/recordings/<ts>` 属于默认工作区 `~/Blurt`（kind `default`，名字 `Blurt`）；`<repo>/.blurt/sessions/<ts>`
+  属于 `<repo>`；其它目录里的会话归到它的父目录。会话目录 = 含 `meta.json`、`items.json`、`recording.mp4`、`shots.jsonl` 之一。
+- **scan 的范围**：`~/Blurt/recordings`、`$BLURT_HOME/config.json` 的 `record.workspaces`、**索引里已有的工作区**、`--root`。
+  默认跳过没变的会话（`items_mtime`、`shots_mtime` 相同，且 `meta.json` 不比 `indexed_at` 新），`--full` 全部重建。
+  没有会话的工作区从表里删掉。实测本机 11 个会话、149 条：全量 37 ms，增量 2 ms。
+- **`index.py update --workspace DIR`**：只重建 DIR 下变过的会话（插件 hook 用）；DIR 没有 `.blurt/sessions` 时什么都不做，也不建库。
+- **同一个 uid 出现在两个会话里**（会话目录被复制）：先入库的保留，后面的跳过，`update` 的输出里带 `duplicate_uids`。
+- **`body`**：条目里除 `id uid kind title quote tags status severity owner module confidence time frames clip exported fix
+  fix_history merged_from` 和 `_` 开头之外的字段，把其中的字符串（含嵌套的列表 / 对象）按行拼起来。
+- **`updated`** = max(`_user` 里的时间, `fix.at`, `items_mtime`)；**`t_start`** = `time.start`，没有就取首帧的 `t`。
+- Python API 还有：`scan(roots, full)`、`search(...)`、`ensure_index()`（读者用：没有库就先 scan）、`connect(readonly=True)`、
+  `legacy_uid(name, id)`、`read_shots(dir)`。实测 `items.py` 写入后的索引更新约 2 ms。
+
 ### C4 · MCP 服务 `blurt`（`mcp_server.py`，stdio，用官方 `mcp` Python SDK 的 FastMCP）
 
 启动命令：`uv run --script <skill>/scripts/mcp_server.py`。不依赖应用；没有索引时先做一次 scan。
@@ -417,51 +457,103 @@ WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] ORDER B
 
 工具描述里要写明：只能用这些工具或 `items.py` 改条目，不能直接写文件。
 
+细则（WP2 实现时补充，以 `mcp_server.py` 为准）：
+- **SDK 版本**：`mcp>=1.20,<2`（脚本头里声明，另加 `pillow`）。`mcp` 2.x 把 FastMCP 改名成 `MCPServer`，API 也变了，所以先钉在 1.x
+  （实测 1.30.0）。注册时用 `uv run -q --script …`，`-q` 防止 uv 的提示混进 stdio。
+- **写入**：`update_item` / `mark_fixed` 以子进程调用 `items.py patch|fix SESSION UID …`（同一个 Python），返回它输出的那行 JSON；
+  items.py 失败时把它的 `error` 作为工具错误（`isError`）返回。之后再调一次 `index.update_sessions`，保证读者马上看到。
+  `mark_fixed` 的 agent 不传时由 items.py 取 `$BLURT_AGENT`（应用拉起 agent 时注入，见 C5 `command` 的 `env`）。
+- **`get_item`**：第一个 content 是 JSON 文本 `{item, session, session_id, session_title, language, source_video, author, how_to_change}`，
+  `item` 带 `uid`，`frames[].path`、`clip` 都是绝对路径；后面是最多 `max_frames` 张 `image/jpeg`（长边 ≤ 1280 px，质量 82）。
+  uid 先查索引，查不到就 scan 一次再查。
+- **`get_transcript`**：`session` 接受会话 id 或目录；截图会话没有 transcript.json，返回每张图的备注
+  `[{start: t|null, end: null, text, shot, file}]`。
+- **`list_projects`**：`open_items` = 没删除且 `fix_state` 为空、`fixing` 或 `reopened` 的条目数。`project` 参数（`list_sessions` /
+  `search_items`）接受工作区 id、名字或路径。
+- 返回列表的工具同时给 structuredContent（`{"result": [...]}`）和每行一段 JSON 文本。
+
 ### C5 · agents.json 和 agents.py
 
-`skills/blurt/agents.json`：
+**位置和来源**（WP2 修订）：注册表是 **`skills/blurt/scripts/agents.json`**（不是 `skills/blurt/agents.json`），
+由 app-ux 先建（`status` / `order` / `classify`、Agents.swift、live.py 已经在用），WP2 在它上面只加字段和命令；
+`record.py build` 把它拷进 `Blurt.app/Contents/Resources`。`agents.json` 是唯一的事实来源：顺序、探测、命令行、安装方式都只写在这里，
+Swift、Rust、live.py 不各自拼命令。
 
 ```jsonc
-{ "version": 1, "agents": [
-  { "id": "claude", "name": "Claude Code", "bin": "claude",
-    "detect": ["claude", "--version"],
-    "login": { "argv": ["claude", "auth", "status", "--json"], "ok": "\"loggedIn\"\\s*:\\s*true",
-               "logged_out": "(?i)not logged in|/login" },
-    "headless": { "argv": ["claude", "-p", "{prompt}", "--output-format", "stream-json", "--verbose",
-                           "--permission-mode", "{permission_mode}"], "cwd": "{repo}", "events": "claude-stream-json",
-                  "defaults": { "permission_mode": "acceptEdits" } },
-    "interactive": { "url": "claude-cli://open?cwd={repo_q}&q={prompt_q}", "max_prompt": 5000 },
-    "skill_dir": "~/.claude/skills",
-    "mcp_install": ["claude", "mcp", "add", "--scope", "user", "blurt", "--", "uv", "run", "--script", "{mcp_server}"] },
-  { "id": "codex", "name": "Codex", "bin": "codex", "detect": ["codex", "--version"],
-    "login": { "argv": ["codex", "login", "status"], "ok": "(?i)logged in", "logged_out": "(?i)not logged in" },
-    "headless": { "argv": ["codex", "exec", "--json", "--sandbox", "workspace-write", "{prompt}"], "cwd": "{repo}",
-                  "events": "codex-jsonl" },
-    "interactive": { "terminal": ["codex", "{prompt}"], "cwd": "{repo}" },
+{ "_doc": "…", "agents": [                // 数组顺序 = 默认的回退顺序：claude, codex, kimi, opencode, gemini, zcode
+  { "id": "codex", "name": "Codex", "bins": ["codex"],
+    "verified": "run",                     // run = 真跑过 | cli = 只核对了 --help | docs = 只看了文档
+    // app-ux 的字段（Agents.swift 和 live.py 依赖，含义不变）
+    "status": { "args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"],
+                "env_any": ["OPENAI_API_KEY"] },   // 另有 json_key、creds_json{path,keys}、configured_if、files_any、otherwise
+    "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],   // headless，bin 后面的参数
+    "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
+    // WP2 加的字段
+    "version": ["--version"],
+    "events": { "args": ["--json"], "format": "codex-jsonl" },   // 追加在 run 后面，得到可解析的进度流
+    "interactive": { "terminal": ["{prompt}"] },   // 或 {"url": "claude-cli://open?cwd={repo_q}&q={prompt_q}", "max_prompt": 5000}
+                                                   // 或 {"terminal": [], "paste_prompt": true}（kimi）或 {"copy_prompt": true}（zcode）
     "skill_dir": "~/.agents/skills",
-    "mcp_install": ["codex", "mcp", "add", "blurt", "--", "uv", "run", "--script", "{mcp_server}"] },
-  { "id": "kimi", "name": "Kimi Code", "bin": "kimi", "detect": ["kimi", "info"],
-    "login": { "argv": ["kimi", "--print", "--quiet", "-p", "reply with: ok"], "timeout": 45,
-               "ok_exit": 0, "logged_out": "(?i)login|unauthori[sz]ed|401" },
-    "headless": { "argv": ["kimi", "--print", "--output-format", "stream-json", "-w", "{repo}", "-p", "{prompt}"],
-                  "cwd": "{repo}", "events": "kimi-stream-json", "retry_exit": 75 },
-    "interactive": { "terminal": ["kimi"], "cwd": "{repo}", "paste_prompt": true },
-    "skill_dir": "~/.claude/skills",
-    "mcp_install": ["kimi", "mcp", "add", "--transport", "stdio", "blurt", "--", "uv", "run", "--script", "{mcp_server}"] },
-  { "id": "zcode", "name": "ZCode", "app": { "macos": "/Applications/ZCode.app" },
-    "interactive": { "copy_prompt": true }, "manual_setup": "docs: Settings → Skills / MCP" }
-]}
+    "mcp": { "args": ["mcp", "add", "blurt", "--", "uv", "run", "--script", "{mcp_server}"],
+             "check": ["mcp", "get", "blurt"], "verified": "run" } },
+         // 或 {"json": {"path": "${KIMI_CODE_HOME:-~/.kimi-code}/mcp.json", "key": ["mcpServers", "blurt"], "value": {…}}}
+  { "id": "zcode", "name": "ZCode", "bins": [], "app": { "macos": "/Applications/ZCode.app" },
+    "headless": false, "interactive": { "copy_prompt": true }, … }
+], "failures": [ … ] }                     // app-ux：skill | model | auth | quota | network，classify() 用
 ```
 
-`codex mcp add` 和 `kimi mcp add` 的确切语法要在 WP2 里实测，用 `--dry-run` 校对后再固定下来 ⚠。
+路径支持 `~` 和 `${VAR:-default}`；占位符：`{prompt}`、`{repo}`、`{repo_q}` / `{prompt_q}`（URL 编码）、`{mcp_server}`（mcp_server.py
+的绝对路径）、`--var k=v` 给的任意 `{k}`。
+
+**顺序**（app-ux 已实现，WP2 沿用）：`record.agents` 是**排他**列表——只用列出的 id，按列出的顺序，未知 id 忽略，全部无效时退回默认；
+没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。
+读 `$BLURT_HOME/config.json`；Python 侧带 `--repo` 时，`<repo>/.blurt/config.json` 里的 `record.agents` / `record.process` 优先，
+`agent_defs` 合并（应用没有项目上下文时不用管）。
+
+**探测**：`status` / `detect` 在去掉调用方 agent 会话变量（`CLAUDE*`、`ANTHROPIC_*`、`CODEX_*`、`MCP_*`、`OTEL_*` 等，
+和 `isAgentSessionVar` 一致）的环境里跑，但保留 `CODEX_HOME`、`CLAUDE_CONFIG_DIR`、`KIMI_CODE_HOME`（用户的配置位置）。
+`install` 用调用方的环境，不做任何删减——配置写到哪儿由这些变量决定。
 
 ```
-agents.py detect                         → [{"id","installed","version","login":"ok|logged_out|unknown","path"}]
-agents.py command ID headless|interactive --prompt TEXT --repo DIR [--var k=v …]
-                                         → {"argv":[…],"cwd":"…","env":{},"url":null|"…","events":"…"}
-agents.py install ID [--skill] [--mcp] [--dry-run]  → {"changes":[{"action","path|argv"}],"applied":bool}
-agents.py prompt fix --items UID … [--repo DIR]   → {"prompt": "…"}   (one place for the fix prompt wording)
+agents.py status [--json]          app-ux：[{id, name, path, state, why, fix}]，state = ready|configured|logged_out|unknown|not_installed
+agents.py order [--json] [--repo DIR]   一行一个 id；--json → {"order": [...]}
+agents.py classify FILE            app-ux：{"class": "auth|quota|network|model|skill"|null, "reason": "…"}
+agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang zh|en]
+  → {"order": [ids], "pick": id|null,
+     "agents": [{id, name, path, state, why, fix,                     // 与 status 的行完全相同
+                 installed: bool, version: str|null,
+                 login: "ok"|"logged_out"|"unknown"|"n/a",          // ready→ok，configured/unknown→unknown，not_installed→n/a
+                 headless: bool, interactive: "url"|"terminal"|"copy"|null}]}
+     agents 按 order 排；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
+agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
+  → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
+     "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
+     "terminal": bool, "clipboard": null|"…", "open_app": null|"…", "retry_exit": null|n, "prompt_file": null|"…"}
+     headless：argv = bin + run + events.args（--no-events 不加）；prompt 永远是单独一个 argv 元素，不经过 shell。
+     interactive：url（提示词超过 max_prompt 时写进 $BLURT_HOME/prompts/*.md，q 改成「Read <file> and do what it says.」）；
+     或 terminal: true + argv（在用户的终端里跑）；paste_prompt / copy_prompt → clipboard；zcode 还给 open_app。
+     --var run_id=R → env BLURT_RUN_ID（items.py fix 和 mark_fixed 的默认值）。出错：{"ok": false, "error"}，退出码 1。
+agents.py install ID [--skill] [--mcp] [--dry-run]     （两个都不给 = 都做）
+  → {"changes": [{"action": "symlink", "path", "target"} | {"action": "exists", "path"|"argv"} |
+                 {"action": "conflict", "path", "points_to"} | {"action": "run", "argv", ok?, exit?, output?} |
+                 {"action": "json_merge", "path", "key", "value", ok?} | {"action": "error"|"manual", …}],
+     "applied": bool}
+     skill：<skill_dir>/blurt → skill 根目录的符号链接；已有别的 skill 就报 conflict，绝不覆盖。
+     mcp：args 形式先跑 check（退出码 0 = 已注册 → exists），否则跑 args；json 形式合并进配置文件（保留其它键，原子写）。
+     --dry-run 什么都不改（args 形式的 check 照样会跑，它只读）。
+agents.py prompt fix --items UID … [--repo DIR]
+  → {"prompt": "…", "repo": "<abs>", "items": [uid…]}   修复提示词只在这里写：逐条 get_item → mark_fixed fixing → 修 →
+     mark_fixed fixed|wontfix（带 note），不提交不推送，不许直接改 items.json；同时给出 items.py 的等价命令。
+     --repo 不给时取第一个条目所在的仓库工作区，再不行用 cwd。uid 不在索引里 → 退出码 1。
 ```
+
+Python API（live.py、测试用）：`agent_order(cfg)`、`definitions(cfg)`、`check(defn, env, lang)`、`config(repo)`、`detect(...)`、
+`command(...)`、`install(...)`、`fix_prompt(uids, repo)`、`clean_env(env)`。
+
+**本机实测（2026-10-21）**：`detect` → claude `logged_out`、codex `ok`（与 Swift preflight 一致），kimi `logged_out`
+（creds_json），opencode `unknown`（configured），gemini / zcode 未安装，pick = codex。
+各条目的 `verified`：claude run=`run`（app-ux）、mcp=`cli`；codex run=`run`、mcp=`run`；kimi `cli`、mcp=`docs`；
+opencode `cli`、mcp=`docs`；gemini、zcode 全部 `docs`。
 
 原生应用只执行 `command` 返回的 argv 或 url，并且注入登录 shell 的环境（沿用 `agentEnvironment()`）。
 
@@ -571,7 +663,7 @@ Rust: blurt_capture::{pick_region(app) -> Region, start(opts) -> CaptureHandle, 
 | WP | 名称 | 拥有的路径 | 提供 / 依赖的契约 | 合并顺序 |
 |---|---|---|---|---|
 | 1 | core-py | `scripts/items.py`、`scripts/_common.py`、`scripts/review.py`（只把 `apply_user_ops` 挪到 `_common`）、`reference/schema.md`、`tests/test_items_v2.py`、`tests/fixtures/sessions/**` | 提供 C1、C2 | 1 |
-| 2 | services-py | `scripts/index.py`、`scripts/mcp_server.py`、`scripts/agents.py`、`skills/blurt/agents.json`、`scripts/transcribe.py`（只新增 `models` / `bench` 子命令）、`SKILL.md`（新增 MCP 和 fix 两节）、`.claude-plugin/plugin.json`、`tests/test_index.py`、`test_mcp.py`、`test_agents.py`、`tests/fixtures/index/**` | 提供 C3、C4、C5；依赖 C1、C2 | 2 |
+| 2 | services-py | `scripts/index.py`、`scripts/mcp_server.py`、`scripts/agents.py`、`scripts/agents.json`、`scripts/transcribe.py`（只新增 `models` / `bench` 子命令）、`SKILL.md`（新增 MCP 和 fix 两节）、`.claude-plugin/plugin.json`、`tests/test_index.py`、`test_mcp.py`、`test_agents.py`、`tests/fixtures/index/**` | 提供 C3、C4、C5；依赖 C1、C2 | 2 |
 | 3 | web-review | `web/**`（pnpm workspace，`apps/*`、`packages/*` 用 glob 收录）、`skills/blurt/scripts/review.html`（构建产物，提交进仓库）、`.github/workflows/web.yml` | 提供 C6，含三种宿主适配；依赖 C1 | 3 |
 | 4 | mac-shell | `skills/blurt/recorder/macos/**` 里的现有文件（迁到 C7 的目录结构）、`Package.swift`、`Sources/BlurtCore/{Paths,Config,Script,Hotkeys}.swift`、`Sources/BlurtApp/App/**`、Info.plist 模板、`record.py` 里构建和安装相关的函数、`.github/workflows/` 里现有的 mac 任务、`scripts/release-mac.sh`（签名、公证、Sparkle appcast） | 提供 C7 骨架 | 4 |
 | 5 | mac-main-window | 新建：`Sources/BlurtApp/MainWindow/**`、`Sources/BlurtApp/WebHost/**`、`Sources/BlurtCore/Index/**` | 依赖 C3、C6、C7 | 5 |
