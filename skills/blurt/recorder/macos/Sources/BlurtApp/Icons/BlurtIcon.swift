@@ -13,6 +13,7 @@
 //   BlurtIcon(named: "close")                               names and aliases as in the web package
 
 import AppKit
+import SwiftUI
 
 /// One painted shape of an icon: a CGPath in the 24×24 y-down grid, stroked (1.75, round caps/joins) or filled.
 struct BlurtIconLayer {
@@ -167,6 +168,19 @@ extension BlurtIcon {
         }
         im.accessibilityDescription = "\(kind.rawValue) egg"
         return im
+    }
+}
+
+extension BlurtIcon {
+    /// SwiftUI: a template Image that tints with .foregroundStyle / .foregroundColor. Generic icons should prefer
+    /// `Image(systemName: icon.sfSymbols[0])` in SwiftUI; this is for the brand glyphs.
+    func swiftUIImage(size: CGFloat = 16) -> Image {
+        Image(nsImage: image(size: size)).renderingMode(.template)
+    }
+
+    /// SwiftUI: a kind egg (full colour).
+    static func swiftUIEgg(_ kind: EggKind, size: CGFloat = 16) -> Image {
+        Image(nsImage: egg(kind, size: size))
     }
 }
 
