@@ -12,6 +12,10 @@ chunk keeps its offset in the original video, so any backend (even ones without 
   transcribe.py run    <session dir>                 a shots session (snap mode): transcribe each voice note
                                                      shots/NNN.wav into its shots.jsonl record ("said")
   transcribe.py backends                             list backends and whether they are ready
+  transcribe.py models                               ASR models: installed / downloadable, size, languages (JSON)
+  transcribe.py bench [AUDIO] [--backend B] [--seconds 30]
+                                                     real-time factor on a sample (first 30 s of AUDIO; default a
+                                                     macOS `say` sample) → {"rtf", "load_seconds", …}
 
 Backends
   sensevoice   local, sherpa-onnx + SenseVoice-Small int8 (~240MB). zh/en/ja/ko/yue, fast on any CPU.  [default]
@@ -587,6 +591,121 @@ def cmd_backends(_a):
     }, indent=2))
 
 
+# ------------------------------------------------------------------ models / bench (for the apps' ASR settings)
+# Sizes are what the download weighs (MB, approximate when not installed); "installed" is checked on disk.
+CATALOG = [
+    {"id": "silero-vad", "backend": "vad", "role": "vad", "local": True, "size_mb": 0.6, "languages": ["*"],
+     "files": ["silero_vad.onnx"], "setup": "transcribe.py setup --backend sensevoice"},
+    {"id": "sense-voice-small-int8", "backend": "sensevoice", "role": "asr", "local": True, "size_mb": 228,
+     "languages": ["zh", "en", "ja", "ko", "yue"], "files": ["sensevoice/model.int8.onnx", "sensevoice/tokens.txt"],
+     "setup": "transcribe.py setup --backend sensevoice", "default": True},
+    {"id": "mlx-community/whisper-large-v3-turbo", "backend": "mlx-whisper", "role": "asr", "local": True,
+     "size_mb": 1600, "languages": ["99 languages"], "platform": "macos-arm64",
+     "hf_cache": "models--mlx-community--whisper-large-v3-turbo",
+     "setup": "uv run --with mlx-whisper transcribe.py setup --backend mlx-whisper"},
+    {"id": "large-v3-turbo", "backend": "faster-whisper", "role": "asr", "local": True, "size_mb": 1600,
+     "languages": ["99 languages"], "dir": "faster-whisper",
+     "setup": "uv run --with faster-whisper transcribe.py setup --backend faster-whisper"},
+    {"id": "openai-compatible", "backend": "openai", "role": "asr", "local": False, "size_mb": 0,
+     "languages": ["depends on the model"], "keys": list(API_KEYS["openai"])},
+    {"id": "qwen3-asr-flash", "backend": "dashscope", "role": "asr", "local": False, "size_mb": 0,
+     "languages": ["zh", "en", "ja", "ko", "yue", "+"], "keys": list(API_KEYS["dashscope"])},
+]
+
+
+def _du_mb(paths: list[Path]) -> float:
+    total = 0
+    for p in paths:
+        if p.is_file():
+            total += p.stat().st_size
+        elif p.is_dir():
+            total += sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+    return round(total / 2**20, 1)
+
+
+def model_rows() -> list[dict]:
+    cfg = global_config().get("asr") or {}
+    hf = Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface") / "hub"
+    rows = []
+    for m in CATALOG:
+        r = {k: v for k, v in m.items() if k not in ("files", "hf_cache", "dir", "keys")}
+        if m.get("files"):
+            paths = [MODELS_DIR / f for f in m["files"]]
+            r["installed"] = all(p.exists() and p.stat().st_size > 0 for p in paths)
+            r["path"] = str(MODELS_DIR / Path(m["files"][0]).parts[0])
+        elif m.get("hf_cache"):
+            paths = [hf / m["hf_cache"]]
+            r["installed"], r["path"] = paths[0].is_dir(), str(paths[0])
+        elif m.get("dir"):
+            d = MODELS_DIR / m["dir"]
+            paths = list(d.glob(f"*{m['id']}*")) if d.is_dir() else []
+            r["installed"], r["path"] = bool(paths), str(paths[0]) if paths else str(d)
+        else:
+            paths = []
+            r["installed"] = any(os.environ.get(k) for k in m["keys"])  # cloud: "installed" = a key is set
+            r["keys"] = m["keys"]
+        if r["installed"] and paths:
+            r["size_mb"], r["approx"] = _du_mb(paths), False
+        else:
+            r["approx"] = bool(m["local"])
+        if m["backend"] in EXTRA_PACKAGES:
+            r["package"] = m["backend"]
+        r["configured"] = m["role"] == "asr" and m["backend"] == (cfg.get("backend") or "sensevoice")
+        rows.append(r)
+    return rows
+
+
+def cmd_models(_a):
+    print(json.dumps({"models_dir": str(MODELS_DIR), "configured": global_config().get("asr"), "models": model_rows()},
+                     ensure_ascii=False, indent=2))
+
+
+BENCH_TEXT = ("大家好，这是一段用来测试语音识别速度的样本。我们先打开登录页面，输入账号和密码，然后点击登录按钮。"
+              "按钮点了之后没有任何反应，控制台也没有报错。接着看一下设置页，保存按钮的颜色太浅了，看不出来可以点击。"
+              "最后还有一个想法，以后可以加一个导出表格的功能，方便发给运营的同事。")
+
+
+def bench_sample(seconds: float) -> Path:
+    """A spoken sample made with macOS `say` (repeated to fill `seconds`), cached under $BLURT_HOME/bench/."""
+    import shutil
+    out = MODELS_DIR.parent / "bench" / f"sample-{int(seconds)}s.wav"
+    if out.exists():
+        return out
+    if not shutil.which("say"):
+        die("no AUDIO given and no `say` to make a sample: pass a recording, e.g. transcribe.py bench clip.mp4")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    raw = out.with_suffix(".aiff")
+    subprocess.run(["say", "-v", "Tingting", "-o", str(raw), BENCH_TEXT * 3], check=False, capture_output=True)
+    if not raw.exists():
+        subprocess.run(["say", "-o", str(raw), "This is a speech recognition speed test. " * 20], check=True)
+    subprocess.run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", "-i", str(raw), "-t", str(seconds), "-ar",
+                    str(SR), "-ac", "1", str(out)], check=True)
+    raw.unlink(missing_ok=True)
+    return out
+
+
+def cmd_bench(a):
+    src = Path(a.input) if a.input else bench_sample(a.seconds)
+    if not src.exists():
+        die(f"{src} not found")
+    name = resolve_backend(a)
+    samples = load_audio(src)[: int(a.seconds * SR)]
+    audio_s = len(samples) / SR
+    t0 = time.perf_counter()
+    backend = BACKENDS[name](a)
+    load_s = time.perf_counter() - t0
+    t1 = time.perf_counter()
+    results, speech, _blank = transcribe_track(samples, backend, name, 1 if name in LOCAL else a.concurrency, quiet=True)
+    dec_s = time.perf_counter() - t1
+    text = "".join(t for _, _, t, _ in results)
+    print(json.dumps({"backend": name, "model": model_label(name, backend, a), "audio": str(src),
+                      "audio_seconds": round(audio_s, 2), "speech_seconds": round(speech, 2),
+                      "load_seconds": round(load_s, 2), "decode_seconds": round(dec_s, 2),
+                      "rtf": round(dec_s / audio_s, 4) if audio_s else None,
+                      "cpu_count": os.cpu_count(), "chars": len(text), "text_preview": text[:120]},
+                     ensure_ascii=False, indent=2))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -604,8 +723,17 @@ def main():
     s.add_argument("--model")
     s.add_argument("--language")
     sub.add_parser("backends")
+    sub.add_parser("models")
+    b = sub.add_parser("bench")
+    b.add_argument("input", nargs="?", help="audio / video file (default: a spoken sample made with `say`)")
+    b.add_argument("--backend", choices=list(BACKENDS))
+    b.add_argument("--model")
+    b.add_argument("--language")
+    b.add_argument("--prompt")
+    b.add_argument("--seconds", type=float, default=30)
+    b.add_argument("--concurrency", type=int, default=4)
     a = p.parse_args()
-    {"run": cmd_run, "setup": cmd_setup, "backends": cmd_backends}[a.cmd](a)
+    {"run": cmd_run, "setup": cmd_setup, "backends": cmd_backends, "models": cmd_models, "bench": cmd_bench}[a.cmd](a)
 
 
 if __name__ == "__main__":

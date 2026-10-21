@@ -240,3 +240,24 @@ def test_legacy_uid_matches_items_py(env):
 
 def test_path():
     assert cli("path")["db"].endswith("index.db")
+
+
+def _models() -> list[dict]:
+    p = subprocess.run([sys.executable, str(SCRIPTS / "transcribe.py"), "models"], capture_output=True, text=True,
+                       encoding="utf-8", env=os.environ.copy())
+    assert p.returncode == 0, p.stderr
+    return json.loads(p.stdout)["models"]
+
+
+def test_transcribe_models_lists_catalog(env):
+    """WP2 also owns `transcribe.py models`: installed / downloadable ASR models for the apps' settings."""
+    rows = {m["backend"]: m for m in _models()}
+    assert {"sensevoice", "mlx-whisper", "faster-whisper", "openai", "dashscope", "vad"} <= set(rows)
+    sv = rows["sensevoice"]
+    assert sv["installed"] is False and sv["approx"] is True and sv["size_mb"] > 100 and "zh" in sv["languages"]
+    assert sv["configured"] is True  # the default backend
+    (env["bh"] / "models" / "sensevoice").mkdir(parents=True)
+    for f in ("model.int8.onnx", "tokens.txt"):
+        (env["bh"] / "models" / "sensevoice" / f).write_bytes(b"x" * 1024)
+    sv = next(m for m in _models() if m["backend"] == "sensevoice")
+    assert sv["installed"] is True and sv["approx"] is False
