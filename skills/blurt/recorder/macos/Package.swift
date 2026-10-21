@@ -18,6 +18,7 @@ let package = Package(
         // status menu, agents hub, review window, shortcuts window), MainWindow/ + WebHost/ (WP5), Settings/,
         // Onboarding/, System/ (WP6). main.swift = the launch code.
         .executableTarget(name: "BlurtApp", dependencies: ["BlurtCore"], path: "Sources/BlurtApp"),
+        .testTarget(name: "BlurtCoreTests", dependencies: ["BlurtCore"], path: "Tests/BlurtCoreTests"),   // WP5: needs Xcode's XCTest; `swift build` ignores it
     ],
     swiftLanguageVersions: [.v5]
 )
