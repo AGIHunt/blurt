@@ -81,10 +81,8 @@ French into fake English), means the language needs another backend: set it up (
 
 ## 3. Understand → items (text first), open the review page
 
-The user is waiting from the moment they stop. Write the items as text, open the page, then add frames while they
-read (§4) — don't make them wait for screenshots.
-
-Read the whole transcript. `live/drafts.jsonl` (items drafted during the recording; last line per `id` wins, `op: drop`
+The user is waiting: write the items as text, open the page, add frames while they read (§4). Read the whole
+transcript. `live/drafts.jsonl` (items drafted during the recording; last line per `id` wins, `op: drop`
 = gone) is your outline if it exists: check each draft against the transcript, merge / split / drop freely. Look at
 frames now only when the words alone can't tell what an item is about. Decide **per item** what it is — the
 recording decides, not a mode switch:
