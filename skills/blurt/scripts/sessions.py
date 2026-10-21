@@ -873,11 +873,13 @@ def stop(job_id: str, kill: bool = False) -> dict:
         if w and kill:
             tmux("kill-window", "-t", w["window"], check=False)
 
-    def cancelled(j):
-        if j.get("state") in ("running", "queued"):
+    def cancelled(j):  # the user stopped it, even when the agent's own exit hook got there first
+        if j.get("state") in ("running", "queued", "done") and not (j.get("agent") or {}).get("finish"):
             _set_status(j, "exited", "app")
-            jobs.finish(j, "cancelled")
-            _step(j, "work", "skipped")
+            j["state"] = "cancelled"
+            j["ended"] = j.get("ended") or jobs.now_iso()
+            if next((s["state"] for s in j.get("steps", []) if s["id"] == "work"), None) != "done":
+                _step(j, "work", "skipped")
     jobs.update(job_id, cancelled)
     sync([job_id])
     return {"ok": True, "job": jobs.get(job_id)}

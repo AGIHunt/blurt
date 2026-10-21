@@ -170,6 +170,7 @@ def test_parallel_worktrees_diff_merge_discard(p2):
     (wb / "notes.md").write_text("draft\n")
     for j in (ja, jb):
         p2.run("sessions.py", "stop", j["id"])
+        assert p2.job(j["id"])["state"] == "cancelled"
     d = p2.run("sessions.py", "finish", ja["id"], "--action", "diff")
     assert d["branch"] == ja["branch"] and d["base"] == "main" and d["uncommitted"] == 0
     assert d["stat"] == [{"path": "src/login.txt", "added": 1, "deleted": 1}] and "button: blue" in Path(d["patch"]).read_text()
