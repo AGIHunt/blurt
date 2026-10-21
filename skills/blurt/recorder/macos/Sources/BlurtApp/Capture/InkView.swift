@@ -7,7 +7,7 @@ import ServiceManagement
 
 // MARK: - Pen: draw on the screen while recording
 
-/// Covers the recorded area. Click-through until the pen is on (pen key held, or toggled from the HUD / ⌥⇧D); then a
+/// Covers the recorded area. Click-through until the pen is on (pen key held, or toggled with ⌥⇧D); then a
 /// drag draws a stroke. Ink fades a few seconds after the last stroke, so a circle and the arrow drawn right after
 /// it share a frame. Unlike the rest of the chrome this window *is* captured, and each stroke is logged to
 /// events.jsonl in the same 0–1 coordinates as clicks.

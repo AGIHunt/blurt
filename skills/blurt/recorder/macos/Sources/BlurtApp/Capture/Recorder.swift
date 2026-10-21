@@ -42,7 +42,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var inkWin: NSPanel?
     var inkView: InkView?
     var inkTicker: Timer?
-    var penSticky = false             // toggled from the HUD / ⌥⇧D
+    var penSticky = false             // toggled with ⌥⇧D
     var inkOn = false
     /// record.draw_key in ~/.blurt/config.json: "control" (default) | "option" | "fn" | "off"
     let penKey: (CGEventFlags, String)? = {
@@ -229,7 +229,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         ip.acceptsMouseMovedEvents = true
         ip.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         ip.contentView = iv
-        ip.orderFrontRegardless()                 // below the border and the HUD
+        ip.orderFrontRegardless()                 // below the border and the island
         inkWin = ip
         inkView = iv
         snaps = RecordingSnaps(rec: self, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())

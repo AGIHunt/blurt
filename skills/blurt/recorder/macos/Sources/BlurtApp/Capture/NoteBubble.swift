@@ -6,7 +6,7 @@
 //  • the shot is shown enlarged; drag (⌃-drag, as with the recorder's pen — or just drag) to circle things → the
 //    ink is burnt into shots/NNN.marked.png, the original stays as it was.
 //  • ⌥⇧A while it is open saves the note and takes the next shot.
-// The same panel, text-only, is the note popover for snaps taken while recording (opened from the HUD's 📸,
+// The same panel, text-only, is the note popover for snaps taken while recording (the island's snap button,
 // the recording pauses while it is open).
 //
 // Tests: BLURT_NOTE_WAV=<file.wav> feeds that file through the same path instead of the microphone.

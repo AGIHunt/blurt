@@ -51,6 +51,8 @@ final class ClawCard {
     var leaving: (start: CFTimeInterval, into: CGPoint?, from: CGPoint)?
     /// the claw reaching down: 0.35 s ease-out from `from` to `to`, starting at `start` (then the spring takes over)
     var reach: (start: CFTimeInterval, from: CGFloat, to: CGFloat)?
+    /// assigned while still in the air: pulled into the island right after the catch
+    var pullAfterCatch = false
 
     init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
         shot = s
@@ -384,7 +386,9 @@ final class Claws: NSObject {
     /// Sync the cards with the captures (new ones appear quietly, gone ones leave).
     func refresh(quiet: Bool = false) {
         let want = snapper.cards
-        for c in cards where !want.contains(where: { $0 === c.shot }) && dragging !== c { remove(c, fall: false) }
+        // a capture that came with a project hangs only until it is pulled into the island (pullIn removes it)
+        for c in cards where !want.contains(where: { $0 === c.shot }) && dragging !== c
+            && !(c.shot.assignedBy == "capture" && !c.shot.deleted) { remove(c, fall: false) }
         for s in want where !cards.contains(where: { $0.shot === s }) {
             if panel == nil { ensurePanel(on: island.screen ?? NSScreen.main ?? NSScreen.screens[0]) }
             let c = makeCard(s, x: anchor.x)
@@ -394,7 +398,7 @@ final class Claws: NSObject {
             cards.append(c)
         }
         layout(instant: quiet)
-        island.cardsChanged(cards.count)
+        island.cardsChanged(cards.filter { $0.shot.isCard }.count)
     }
 
     func layout(instant: Bool = false) {
@@ -439,7 +443,7 @@ final class Claws: NSObject {
             CATransaction.commit()
         }
         layout()
-        island.cardsChanged(cards.count)
+        island.cardsChanged(cards.filter { $0.shot.isCard }.count)
     }
 
     // MARK: arrivals and departures
@@ -454,7 +458,7 @@ final class Claws: NSObject {
         layout()
         if let i = cards.firstIndex(where: { $0 === c }) { c.x.value = targets().xs[i]; c.x.snap() }
         show(peek: 3.2)
-        island.cardsChanged(cards.count)
+        island.cardsChanged(cards.filter { $0.shot.isCard }.count)
         let restY = anchor.y
         if reduceMotion {
             c.grip.value = restY; c.grip.snap()
@@ -484,6 +488,9 @@ final class Claws: NSObject {
         c.openTarget = 0
         c.omega += 30            // the catch sets it swinging
         wake()
+        if c.pullAfterCatch {    // a capture with a project: caught, a beat, then up into the island
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.pullIn(c.shot) }
+        }
     }
 
     private func fadeIn(_ c: ClawCard) {
@@ -498,6 +505,7 @@ final class Claws: NSObject {
     /// Assigned: the claw pulls the card up into the island (0.45 s ease-in, shrinking to 0.2), which bumps.
     func pullIn(_ s: Shot) {
         guard let c = cards.first(where: { $0.shot === s }) else { island.bump(); return }
+        if c.flying { c.pullAfterCatch = true; return }
         if let i = cards.firstIndex(where: { $0 === c }) { cards.remove(at: i) }
         if hoverCard === c { hoverCard = nil; tip.isHidden = true }
         let a = anchor
@@ -505,7 +513,7 @@ final class Claws: NSObject {
         if !c.flying { show(peek: 1.0) }
         leaving.append(c)
         layout()
-        island.cardsChanged(cards.count)
+        island.cardsChanged(cards.filter { $0.shot.isCard }.count)
         DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.2 : 0.45)) { island.bump() }
     }
 
