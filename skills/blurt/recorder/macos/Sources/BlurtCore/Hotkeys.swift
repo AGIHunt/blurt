@@ -178,11 +178,11 @@ public enum HotkeyResult: Equatable {
     public var text: String {
         switch self {
         case .ok, .notHere: return ""
-        case .off: return L("已关闭", "Off")
-        case .duplicate(let a): return L("和「\(a.title)」重复，没生效", "Same as “\(a.title)” — not active")
-        case .failed(let st): return L("注册失败（\(st)），可能被占用", "Couldn't register it (\(st)) — probably taken")
-        case .taken(let pid): return L("被另一个口喷鸡（pid \(pid)）占用", "Taken by another Blurt (pid \(pid))")
-        case .system: return L("和 macOS 系统快捷键冲突", "Clashes with a macOS system shortcut")
+        case .off: return Loc.t("capture.keys.state_off", table: "Capture")
+        case .duplicate(let a): return Loc.t("capture.keys.duplicate", table: "Capture", a.title)
+        case .failed(let st): return Loc.t("capture.keys.failed", table: "Capture", "\(st)")
+        case .taken(let pid): return Loc.t("capture.keys.taken", table: "Capture", "\(pid)")
+        case .system: return Loc.t("capture.keys.system", table: "Capture")
         }
     }
 }
@@ -211,16 +211,16 @@ public final class HotkeyCenter {
         }
         public var title: String {
             switch self {
-            case .toggleRecord: return L("开始 / 结束录制", "Start / finish recording")
-            case .openMenu: return L("打开菜单", "Open the menu")
-            case .snap: return L("截图", "Snap")
-            case .pause: return L("暂停 / 继续", "Pause / resume")
-            case .marker: return L("标记（同时截图）", "Marker (also snaps)")
-            case .pen: return L("画笔常开 / 关", "Pen on / off")
-            case .finish: return L("完成录制", "Finish recording")
-            case .openMain: return L("打开口喷鸡窗口", "Open the Blurt window")
-            case .voice: return L("语音输入", "Voice input")
-            case .project: return L("切换项目", "Switch project")
+            case .toggleRecord: return Loc.t("capture.action.record", table: "Capture")
+            case .openMenu: return Loc.t("capture.action.menu", table: "Capture")
+            case .snap: return Loc.t("capture.action.snap", table: "Capture")
+            case .pause: return Loc.t("capture.action.pause", table: "Capture")
+            case .marker: return Loc.t("capture.action.marker", table: "Capture")
+            case .pen: return Loc.t("capture.action.pen", table: "Capture")
+            case .finish: return Loc.t("capture.action.stop", table: "Capture")
+            case .openMain: return Loc.t("capture.action.main", table: "Capture")
+            case .voice: return Loc.t("capture.action.voice", table: "Capture")
+            case .project: return Loc.t("capture.action.project", table: "Capture")
             }
         }
         /// Only the menu-bar app registers these (a recording started from the chat has no menu or window to open).
@@ -240,6 +240,8 @@ public final class HotkeyCenter {
     public var disabled: Set<Action> = []
 
     public var onFire: ((Action) -> Void)?
+    /// The keys of an action were let go (only voice input cares: push-to-talk)
+    public var onRelease: ((Action) -> Void)?
     /// Fixed keys registered with registerRaw
     public var onRaw: ((UInt32) -> Void)?
     /// any binding or state changed (settings UI refresh)
@@ -322,11 +324,11 @@ public final class HotkeyCenter {
         let sig = c.map { "\($0.rawValue)=\(map[$0]?.spec ?? "")" }.joined(separator: ",")
         guard !c.isEmpty, Config.shared["record.hotkeys_warned"] as? String != sig else { return }
         Config.shared.set("record.hotkeys_warned", sig)
-        let keys = c.map { label($0) }.joined(separator: L("、", ", "))
+        let keys = ListFormatter.localizedString(byJoining: c.map { label($0) })
         let first = c[0], why = states[first]?.text ?? ""
-        toast(L("快捷键 \(keys) 用不了", "Shortcut \(keys) won't work") + "\n"
-              + (c.count == 1 ? "\(label(first))：\(why)" : L("被别的 App 占用或互相重复", "taken by another app or used twice"))
-              + L(" · 菜单 → 快捷键… 可以换", " · menu → Shortcuts… to change it"))
+        toast(Loc.t("capture.keys.wont_work", table: "Capture", keys) + "\n"
+              + (c.count == 1 ? Loc.t("capture.keys.why", table: "Capture", label(first), why) : Loc.t("capture.keys.taken_or_twice", table: "Capture"))
+              + Loc.t("capture.keys.change_it", table: "Capture"))
     }
 
     // MARK: Carbon
@@ -334,19 +336,28 @@ public final class HotkeyCenter {
     public func installHandler() {
         guard !handlerInstalled else { return }
         handlerInstalled = true
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        // pressed and released: voice input tells a tap from push-to-talk by the release (K7)
+        var specs = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+                     EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
         InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
             var id = EventHotKeyID()
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
                               MemoryLayout<EventHotKeyID>.size, nil, &id)
-            HotkeyCenter.shared.fire(id.id)
+            if GetEventKind(event) == UInt32(kEventHotKeyReleased) { HotkeyCenter.shared.release(id.id) } else { HotkeyCenter.shared.fire(id.id) }
             return noErr
-        }, 1, &spec, nil, nil)
+        }, 2, &specs, nil, nil)
     }
 
     func fire(_ id: UInt32) {
         if id >= 100, let a = Action.allCases.first(where: { $0.carbonID == id }) { onFire?(a) } else { onRaw?(id) }
     }
+
+    func release(_ id: UInt32) {
+        if id >= 100, let a = Action.allCases.first(where: { $0.carbonID == id }) { onRelease?(a) }
+    }
+
+    /// Test channel: the same path a real press / release of an action's keys takes.
+    public func simulate(_ a: Action, released: Bool) { released ? onRelease?(a) : onFire?(a) }
 
     /// A fixed key of the app's own (id < 100). Already registered = noErr.
     @discardableResult

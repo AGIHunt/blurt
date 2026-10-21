@@ -73,7 +73,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEnter: picker?.finish(true)
         case .pickEsc: picker?.finish(false)
         case .pickFull: picker?.fullScreen()
-        case .voice, .project: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
     }
 
@@ -88,7 +88,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "toggle": rec?.togglePause()
         case "marker": rec?.marker()
         case "snap": if let r = rec { r.snap(via: "command") } else if resident { snapper.hotkey() }
-        case "notes": rec?.hud?.live?.openNotes()
+        case "notes": island.openRecordingNotes()     // K7 (P5): the island replaced the HUD
         case "pen": rec?.togglePen()
         default: break
         }

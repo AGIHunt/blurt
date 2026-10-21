@@ -9,7 +9,10 @@ public enum StepState: String { case pending, running, done, failed, skipped }
 public enum AgentSessionStatus: String { case running, waitingInput = "waiting_input", turnDone = "turn_done", exited, error }
 
 public struct JobStep { public let id: String; public let state: StepState; public let progress: Double? }
-public struct JobError { public let code: String; public let message: String; public let hintKey: String? }
+public struct JobError {
+    public let code: String; public let message: String; public let hintKey: String?
+    public init(code: String, message: String, hintKey: String?) { self.code = code; self.message = message; self.hintKey = hintKey }
+}
 public struct AgentInfo {
     public let agent, mode, runner: String
     public let tmuxSession, tmuxWindow, windowName, branch, handoff: String?

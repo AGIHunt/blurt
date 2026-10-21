@@ -14,18 +14,18 @@ final class ServiceProvider: NSObject {
         let from = NSWorkspace.shared.frontmostApplication?.localizedName
         let note = Note(pboard: pboard, from: from)
         guard !note.isEmpty else {
-            error.pointee = L("没有可以加入的文字或图片", "Nothing to add: select text or an image") as NSString
+            error.pointee = Loc.t("capture.service.empty", table: "Capture") as NSString
             return
         }
         Task { @MainActor in
             do {
                 let r = try await ServiceProvider.add(note)
                 emit(["event": "service_note", "session": r.session.path, "uid": r.uid])
-                appDelegate?.toast(L("已加入收件箱：", "Added to the inbox: ") + note.title)
+                island.toast(Loc.t("capture.service.added", table: "Capture", note.title), actionTitle: nil, action: nil)
                 Spotlight.shared.refreshSoon()
             } catch {
                 emit(["event": "service_note", "error": "\(error)"])
-                appDelegate?.toast(L("没加进去：", "Couldn't add it: ") + "\(error)")
+                island.toast(Loc.t("capture.service.failed", table: "Capture", "\(error)"), actionTitle: nil, action: nil)
             }
         }
     }
@@ -56,7 +56,7 @@ final class ServiceProvider: NSObject {
         var title: String {
             let first = text.split(separator: "\n").first.map(String.init) ?? ""
             if !first.isEmpty { return first.count > 60 ? String(first.prefix(59)) + "…" : first }
-            return L("图片", "Image") + (from.map { L("（来自 \($0)）", " from \($0)") } ?? "")
+            return from.map { Loc.t("capture.service.image_from", table: "Capture", $0) } ?? Loc.t("capture.service.image", table: "Capture")
         }
     }
 
@@ -78,13 +78,13 @@ final class ServiceProvider: NSObject {
         let dir = root.appendingPathComponent(f.string(from: Date()) + "-shots")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let meta: [String: Any] = ["mode": "shots", "source": "service", "engine": "services",
-                                   "title": L("收集的笔记", "Collected notes"),
+                                   "title": Loc.t("capture.service.title", table: "Capture"),
                                    "started_at": ISO8601DateFormatter().string(from: Date()),
                                    "author": recordConfig()["author"] as? String ?? NSFullUserName(),
                                    "workspace": currentWorkspace().path]
         try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]).write(to: dir.appendingPathComponent("meta.json"))
         // the session header items.py keeps (C1); items.py add fills in the rest
-        let head: [String: Any] = ["session": dir.lastPathComponent, "title": L("收集的笔记", "Collected notes"),
+        let head: [String: Any] = ["session": dir.lastPathComponent, "title": Loc.t("capture.service.title", table: "Capture"),
                                    "language": opts.lang, "items": []]
         try JSONSerialization.data(withJSONObject: head, options: [.prettyPrinted, .sortedKeys]).write(to: dir.appendingPathComponent("items.json"))
         return dir

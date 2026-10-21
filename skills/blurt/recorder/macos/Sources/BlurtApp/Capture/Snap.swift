@@ -1,15 +1,13 @@
-// Snap mode — "one picture + one sentence" (docs/design/snap-and-live.md §1).
+// Stills and the captures model (docs/design/next-round.md K7).
 //
-// Two entry points, one hotkey (⌥⇧A):
-//  • while recording: a full-resolution still of the recorded area at that instant → <session>/shots/NNN.png +
+//  • while recording, ⌥⇧A: a full-resolution still of the recorded area at that instant → <session>/shots/NNN.png +
 //    shots.jsonl (t = video time) + a "snap" event in events.jsonl. No pause, no prompt; the border flashes and the
-//    thumbnail flies into the HUD. ⌥⇧M (marker) does the same and still logs its marker.
-//  • not recording (menu-bar app): the area picker with release-to-capture, a shutter flash, the card flies to the
-//    perch (Perch.swift) and a note bubble listens (NoteBubble.swift). A batch of shots is one session
-//    <sessions>/<ts>-shots/ with meta.json {"mode": "shots"}; "🐔 整理 N 张" on the perch processes it.
+//    thumbnail flies into the island. The island's snap button also pauses and opens the note. ⌥⇧M = marker + snap.
+//  • not recording: see Captures.swift (the area picker, then a card on a claw or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
-// {"n","file","marked","t","wall","region","voice","text","strokes"} — the later line for the same n wins.
+// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
+// same n win key by key; {"n","project","assigned_by"} assigns a card, {"n","deleted":true} deletes one.
 
 import AppKit
 import AVFoundation
@@ -138,19 +136,28 @@ final class OneShotCapture: NSObject, SCStreamOutput {
     }
 }
 
-// MARK: - Shots on disk
+// MARK: - Captures on disk
+
+/// A capture of a shots batch: a still (shot) or a voice input (voice) — K7.
+enum CaptureKind: String { case shot, voice }
 
 final class Shot {
     let n: Int
-    var file: String
+    var kind: CaptureKind = .shot
+    var file: String?            // shots/NNN.png; nil for voice
     var marked: String?
     var t: Double?
     var wall: Double
     var region: [Double]
-    var voice: String?
-    var text: String?
+    var voice: String?           // shots/NNN.wav: the note on a shot, or the voice input itself
+    var text: String?            // typed note
+    var said: String?            // transcript of `voice` (voice inputs)
+    var duration: Double?        // voice inputs
     var strokes: [[[Double]]] = []
     var deleted = false
+    /// project id | "inbox" | nil (nil and not assigned = a card waiting on a claw)
+    var project: String?
+    var assignedBy: String?      // capture | user | ai
     var pixelSize: CGSize = .zero
     var scale: CGFloat = 2
     var thumb: CGImage?
@@ -158,23 +165,30 @@ final class Shot {
     var markedThumb: CGImage?
     weak var batch: ShotBatch?
 
-    init(n: Int, file: String, wall: Double, region: [Double]) {
+    init(n: Int, file: String?, wall: Double, region: [Double]) {
         self.n = n; self.file = file; self.wall = wall; self.region = region
     }
 
-    var url: URL? { batch?.dir.appendingPathComponent(file) }
+    var url: URL? { file.flatMap { batch?.dir.appendingPathComponent($0) } }
     var markedURL: URL? { marked.flatMap { batch?.dir.appendingPathComponent($0) } }
-    /// What gets copied / dragged: the inked version if there is one.
-    var bestURL: URL? { markedURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } ?? url }
+    /// What gets copied / dragged: the inked version if there is one (a voice input: its wav).
+    var bestURL: URL? { markedURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } ?? url ?? voiceURL }
     var voiceURL: URL? { voice.flatMap { batch?.dir.appendingPathComponent($0) } }
     var hasNote: Bool { !(text ?? "").isEmpty || voice != nil }
+    /// Waiting on a claw: not assigned to a project, not handed to the AI, not deleted, not part of a recording.
+    var isCard: Bool { !deleted && project == nil && assignedBy == nil && batch?.inRecording == false }
+    /// What the card says: the typed note, else the transcript.
+    var words: String? { [text, said].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } }
 
     func image() -> CGImage? { full ?? url.flatMap(loadCGImage) }
 
     var line: [String: Any] {
-        var o: [String: Any] = ["n": n, "file": file, "marked": marked ?? NSNull(), "t": t.map { ($0 * 1000).rounded() / 1000 } ?? NSNull(),
+        var o: [String: Any] = ["n": n, "type": kind.rawValue, "file": file ?? NSNull(), "marked": marked ?? NSNull(),
+                                "t": t.map { ($0 * 1000).rounded() / 1000 } ?? NSNull(),
                                 "wall": (wall * 1000).rounded() / 1000, "region": region, "voice": voice ?? NSNull(),
-                                "text": text ?? NSNull(), "strokes": strokes]
+                                "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull()]
+        if kind == .voice { o["said"] = said ?? NSNull(); o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
+        if let a = assignedBy { o["assigned_by"] = a }
         if deleted { o["deleted"] = true }
         return o
     }
@@ -190,7 +204,7 @@ func appendJSONL(_ url: URL, _ obj: [String: Any]) {
     fh.write(Data([0x0A]))
 }
 
-/// The shots of one session — a recording (snaps while recording) or a `-shots` batch.
+/// The captures of one session — a recording (snaps while recording) or a `-shots` batch in a store (K1 / K7).
 final class ShotBatch {
     let dir: URL
     let inRecording: Bool
@@ -213,18 +227,17 @@ final class ShotBatch {
 
     /// Writes the PNG off the main thread; the shots.jsonl line follows once the file is there.
     @discardableResult
-    func add(n: Int, image: CGImage, scale: CGFloat, region: CGRect, t: Double?, wall: Date = Date(), done: ((Shot) -> Void)? = nil) -> Shot {
+    func add(n: Int, image: CGImage, scale: CGFloat, region: CGRect, t: Double?, project: String? = nil, wall: Date = Date(),
+             done: ((Shot) -> Void)? = nil) -> Shot {
         let file = "shots/\(ShotBatch.name(n)).png"
         let s = Shot(n: n, file: file, wall: wall.timeIntervalSince1970,
                      region: [region.minX, region.minY, region.width, region.height].map { Double(($0 * 10).rounded() / 10) })
         s.t = t
-        s.batch = self
         s.scale = scale
         s.pixelSize = CGSize(width: image.width, height: image.height)
         s.thumb = thumbnail(image, maxPixels: 520)
         s.full = image
-        shots.append(s)
-        shots.sort { $0.n < $1.n }
+        insert(s, project: project)
         let url = dir.appendingPathComponent(file)
         let dirURL = shotsDir
         let line = s.line
@@ -241,6 +254,27 @@ final class ShotBatch {
         return s
     }
 
+    /// A voice input whose wav (shots/NNN.wav) is already written.
+    @discardableResult
+    func addVoice(n: Int, duration: Double, project: String?, wall: Date = Date()) -> Shot {
+        let s = Shot(n: n, file: nil, wall: wall.timeIntervalSince1970, region: [])
+        s.kind = .voice
+        s.voice = "shots/\(ShotBatch.name(n)).wav"
+        s.duration = duration
+        insert(s, project: project)
+        save(s)
+        if !inRecording { writeMeta() }
+        return s
+    }
+
+    private func insert(_ s: Shot, project: String?) {
+        s.batch = self
+        s.project = project
+        if project != nil { s.assignedBy = "capture" }
+        shots.append(s)
+        shots.sort { $0.n < $1.n }
+    }
+
     /// Appends the shot's current state (later line wins).
     func save(_ s: Shot) {
         let line = s.line
@@ -248,13 +282,25 @@ final class ShotBatch {
         onChange?()
     }
 
+    /// K7: an assignment is its own short line `{"n", "project", "assigned_by"}`; handing it to the AI ("ai") keeps
+    /// project null until ingest routes the item.
+    func assign(_ s: Shot, project: String?, by: String) {
+        s.project = by == "ai" ? nil : project
+        s.assignedBy = by
+        let o: [String: Any] = ["n": s.n, "project": s.project ?? NSNull(), "assigned_by": by]
+        io.async { appendJSONL(self.jsonl, o) }
+        onChange?()
+    }
+
+    /// `{"n", "deleted": true}`; the files go to the Trash (recoverable).
     func delete(_ s: Shot) {
         s.deleted = true
-        save(s)
+        io.async { appendJSONL(self.jsonl, ["n": s.n, "deleted": true]) }
         for u in [s.url, s.markedURL, s.voiceURL].compactMap({ $0 }) where FileManager.default.fileExists(atPath: u.path) {
             NSWorkspace.shared.recycle([u]) { _, _ in }
         }
         if !inRecording { writeMeta() }
+        onChange?()
     }
 
     func sync(_ then: @escaping () -> Void) { io.async { DispatchQueue.main.async(execute: then) } }
@@ -264,7 +310,8 @@ final class ShotBatch {
         (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any] ?? [:]
     }
 
-    func writeMeta(state: String? = nil) {
+    /// meta.json {"mode": "shots", "project": <the store's project id; null in the inbox>, "state", …}
+    func writeMeta(state: String? = nil, project: String?? = nil) {
         var m = meta
         m["mode"] = "shots"
         m["engine"] = "native-app"
@@ -273,14 +320,14 @@ final class ShotBatch {
             m["started_at"] = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: shots.first?.wall ?? Date().timeIntervalSince1970))
         }
         m["author"] = m["author"] ?? recordConfig()["author"] as? String ?? NSFullUserName()
-        m["workspace"] = m["workspace"] ?? currentWorkspace().path
+        if let p = project { m["project"] = p ?? NSNull() }
         if let s = state { m["state"] = s } else if m["state"] == nil { m["state"] = "collecting" }
         if let d = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
     }
 
-    /// Re-reads shots.jsonl (later lines win) — the perch comes back after a restart.
+    /// Re-reads shots.jsonl (later lines win, key by key).
     static func load(_ dir: URL) -> ShotBatch? {
         let b = ShotBatch(dir: dir, inRecording: false)
         guard let raw = try? String(contentsOf: b.jsonl, encoding: .utf8) else { return nil }
@@ -290,21 +337,28 @@ final class ShotBatch {
             byN[n] = (byN[n] ?? [:]).merging(o) { $1 }
         }
         for (n, o) in byN.sorted(by: { $0.key < $1.key }) {
-            let s = Shot(n: n, file: o["file"] as? String ?? "shots/\(name(n)).png", wall: o["wall"] as? Double ?? 0,
+            let kind = CaptureKind(rawValue: o["type"] as? String ?? "shot") ?? .shot
+            let s = Shot(n: n, file: kind == .voice ? nil : o["file"] as? String ?? "shots/\(name(n)).png", wall: o["wall"] as? Double ?? 0,
                          region: o["region"] as? [Double] ?? [])
+            s.kind = kind
             s.marked = o["marked"] as? String
             s.t = o["t"] as? Double
             s.voice = o["voice"] as? String
             s.text = o["text"] as? String
+            s.said = o["said"] as? String
+            s.duration = o["duration"] as? Double
             s.strokes = o["strokes"] as? [[[Double]]] ?? []
             s.deleted = o["deleted"] as? Bool ?? false
+            s.project = o["project"] as? String
+            s.assignedBy = o["assigned_by"] as? String
             s.batch = b
-            if !s.deleted, let u = s.url, let img = loadCGImage(u) {
+            if kind == .shot, !s.deleted, let u = s.url, let img = loadCGImage(u) {
                 s.pixelSize = CGSize(width: img.width, height: img.height)
                 s.scale = s.region.count == 4 && s.region[2] > 0 ? CGFloat(img.width) / CGFloat(s.region[2]) : 2
                 s.thumb = thumbnail(img, maxPixels: 520)
                 if let m = s.markedURL, let mi = loadCGImage(m) { s.markedThumb = thumbnail(mi, maxPixels: 520) }
-            } else if !s.deleted { s.deleted = true }
+            } else if kind == .shot, !s.deleted { s.deleted = true }
+            if kind == .voice, !s.deleted, !(s.voiceURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false) { s.deleted = true }
             b.shots.append(s)
             b.nextN = max(b.nextN, n + 1)
         }
@@ -399,10 +453,12 @@ func borderFlash(around r: NSRect) {
     CATransaction.commit()
 }
 
-/// Flies an image from one global rect to another along a gentle arc (Tendedero-style: ease-in-out, lifts ~30 pt
-/// mid-flight, picks up the card's tilt, a frame appears around the photo on the way).
+/// Flies an image from one global rect to another along a gentle arc (lifts ~30 pt mid-flight, picks up a tilt).
+/// `springy`: the progress follows a spring (response 0.55 s, damping 0.72 — K7's fly-up), so it lands with a little
+/// overshoot, as if caught; else ease-in-out over `duration`. The corners round to `cornerRadius` on the way.
 func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval = 0.65, tilt: CGFloat = 0,
-              polaroid: Bool = true, shrinkAway: Bool = false, done: @escaping () -> Void) {
+              polaroid: Bool = false, shrinkAway: Bool = false, springy: Bool = false, cornerRadius: CGFloat = 0,
+              done: @escaping () -> Void) {
     let reduce = reduceMotion
     let screen = NSScreen.screens.first(where: { $0.frame.intersects(to) }) ?? NSScreen.screens[0]
     let span = screen.frame.union(from.intersection(screen.frame).isEmpty ? screen.frame : from)
@@ -410,21 +466,21 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
     let root = w.contentView!.layer!
     let local = { (r: NSRect) in r.offsetBy(dx: -span.minX, dy: -span.minY) }
     let a = local(from), b = local(to)
-    let card = CALayer()
+    let card = CALayer()                 // the shadow
     card.bounds = CGRect(origin: .zero, size: a.size)
     card.position = CGPoint(x: a.midX, y: a.midY)
-    card.contents = img
-    card.contentsGravity = .resizeAspectFill
-    card.masksToBounds = false
     card.shadowColor = NSColor.black.cgColor
     card.shadowOpacity = 0.28
-    card.shadowRadius = 10
-    card.shadowOffset = CGSize(width: 0, height: -4)
-    if polaroid {
-        card.borderColor = NSColor(white: 1, alpha: 1).cgColor
-        card.borderWidth = 0
-        card.cornerRadius = 0
-    }
+    card.shadowRadius = 12
+    card.shadowOffset = CGSize(width: 0, height: -5)
+    let photo = CALayer()                // the picture, clipped to the corners
+    photo.frame = card.bounds
+    photo.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+    photo.contents = img
+    photo.contentsGravity = .resizeAspectFill
+    photo.masksToBounds = true
+    if polaroid { photo.borderColor = NSColor.white.cgColor }
+    card.addSublayer(photo)
     root.addSublayer(card)
     w.orderFrontRegardless()
     if reduce {
@@ -437,36 +493,55 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
         CATransaction.commit()
         return
     }
-    let steps = 40
+    // the progress curve: a sampled spring, or ease-in-out
+    var ks: [CGFloat] = []
+    var total = duration
+    if springy {
+        var s = Spring(0, response: 0.55, damping: 0.72)
+        s.target = 1
+        let dt: CGFloat = 1.0 / 60
+        var t: CGFloat = 0
+        repeat { ks.append(s.step(dt)); t += dt } while t < 2 && !(t > 0.3 && s.resting)
+        total = CFTimeInterval(t)
+    } else {
+        ks = (0...40).map { i in Ease.inOutCubic(CGFloat(i) / 40) }
+    }
     var pos: [NSValue] = [], size: [NSValue] = []
-    for i in 0...steps {
-        let r = CGFloat(i) / CGFloat(steps)
-        let k = r < 0.5 ? 4 * r * r * r : 1 - pow(-2 * r + 2, 3) / 2      // easeInOutCubic
+    for k in ks {
         let x = a.midX + (b.midX - a.midX) * k
-        let y = a.midY + (b.midY - a.midY) * k + sin(.pi * k) * 30
+        let y = a.midY + (b.midY - a.midY) * k + sin(.pi * min(1, k)) * 30
         pos.append(NSValue(point: NSPoint(x: x, y: y)))
-        size.append(NSValue(size: NSSize(width: a.width + (b.width - a.width) * k, height: a.height + (b.height - a.height) * k)))
+        size.append(NSValue(size: NSSize(width: max(1, a.width + (b.width - a.width) * k), height: max(1, a.height + (b.height - a.height) * k))))
     }
     let pa = CAKeyframeAnimation(keyPath: "position"); pa.values = pos
     let sa = CAKeyframeAnimation(keyPath: "bounds.size"); sa.values = size
     let ra = CABasicAnimation(keyPath: "transform.rotation.z"); ra.fromValue = 0; ra.toValue = -tilt * .pi / 180
     ra.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-    let bw = CABasicAnimation(keyPath: "borderWidth"); bw.fromValue = 0; bw.toValue = polaroid ? 3 : 0
     let g = CAAnimationGroup()
-    g.animations = [pa, sa, ra, bw]
+    g.animations = [pa, sa, ra]
     if shrinkAway {
         let op = CAKeyframeAnimation(keyPath: "opacity"); op.values = [1, 1, 0]; op.keyTimes = [0, 0.75, 1]
         g.animations?.append(op)
     }
-    g.duration = duration
+    g.duration = total
     g.fillMode = .forwards
     g.isRemovedOnCompletion = false
+    let pg = CAAnimationGroup()          // the picture follows the size, and rounds its corners on the way
+    let ps = CAKeyframeAnimation(keyPath: "bounds.size"); ps.values = size
+    let pp = CAKeyframeAnimation(keyPath: "position"); pp.values = size.map { NSValue(point: NSPoint(x: $0.sizeValue.width / 2, y: $0.sizeValue.height / 2)) }
+    let cr = CABasicAnimation(keyPath: "cornerRadius"); cr.fromValue = 0; cr.toValue = cornerRadius
+    let bw = CABasicAnimation(keyPath: "borderWidth"); bw.fromValue = 0; bw.toValue = polaroid ? 3 : 0
+    pg.animations = [ps, pp, cr, bw]
+    pg.duration = total
+    pg.fillMode = .forwards
+    pg.isRemovedOnCompletion = false
     CATransaction.begin()
     CATransaction.setCompletionBlock {
         done()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { w.orderOut(nil) }
     }
     card.add(g, forKey: "fly")
+    photo.add(pg, forKey: "fly")
     CATransaction.commit()
 }
 
@@ -484,8 +559,8 @@ final class RecordingSnaps {
 
     var count: Int { batch.live.count }
 
-    /// `via`: "hotkey" | "hud" | "marker" | "stdin"
-    func snap(via: String) {
+    /// `via`: "hotkey" | "island" | "marker" | "command"; `then` gets the saved shot (the island's button opens its note)
+    func snap(via: String, then: ((Shot) -> Void)? = nil) {
         guard let rec = rec, rec.sessionStart.isValid, !rec.stopping else { return }
         let t = rec.elapsed()
         let n = batch.reserve()
@@ -506,9 +581,9 @@ final class RecordingSnaps {
                 return
             }
             self.batch.add(n: n, image: im, scale: sc, region: region, t: t) { s in
-                emit(["event": "snap_saved", "n": n, "file": s.file, "size": [im.width, im.height]])
+                emit(["event": "snap_saved", "n": n, "file": s.file ?? "", "size": [im.width, im.height]])
             }
-            if let s = self.batch.shots.first(where: { $0.n == n }) { self.onLanded?(s) }
+            if let s = self.batch.shots.first(where: { $0.n == n }) { self.onLanded?(s); then?(s) }
         }
     }
 
@@ -519,202 +594,3 @@ final class RecordingSnaps {
     }
 }
 
-// MARK: - Standalone snaps (menu-bar app, not recording)
-
-func isShotsSession(_ dir: URL) -> Bool {
-    dir.lastPathComponent.hasSuffix("-shots") || FileManager.default.fileExists(atPath: dir.appendingPathComponent("shots.jsonl").path)
-        && !FileManager.default.fileExists(atPath: dir.appendingPathComponent("recording.mp4").path)
-}
-
-/// The prompt for an unattended run on a shots session (nil for recordings: App.process keeps its own).
-func shotsPrompt(_ dir: URL) -> String? {
-    guard isShotsSession(dir) else { return nil }
-    return L("用 blurt skill 处理这批截图：\(dir.path)\n这是截图模式的 session（mode: shots，没有录屏视频）：每张截图锚定一条，截图就是这一条的首帧；有语音备注的先转写；.marked.png 上已经有用户的笔迹。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
-             "Use the blurt skill to process this batch of screenshots: \(dir.path)\nIt is a shots session (mode: shots, no video): each shot anchors one item and is that item's primary frame; transcribe voice notes first; .marked.png files already carry the user's ink.\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")
-}
-
-final class Snapper {
-    var batch: ShotBatch?
-    var prevApp: NSRunningApplication?
-    var app: App? { NSApp.delegate as? App }
-    var collectTimer: Timer?
-    var collectSeen = Set<String>()
-
-    /// ⌥⇧A when not recording. While a note is open: save it, then take the next shot.
-    func hotkey() {
-        guard let app = app, app.resident, app.rec == nil else { return }
-        if app.picker != nil { return }
-        if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
-        guard !app.busy else { return }
-        pick()
-    }
-
-    func rememberFrontApp() {
-        if let f = NSWorkspace.shared.frontmostApplication, f.processIdentifier != getpid() { prevApp = f }
-    }
-
-    func restoreFocus() {
-        if let p = prevApp, !p.isTerminated { p.activate() }
-    }
-
-    func pick(preselect: CGRect? = nil) {
-        guard let app = app else { return }
-        rememberFrontApp()
-        app.busy = true
-        let p = PickerController()
-        p.snapMode = true
-        p.onDone = { [weak self, weak app] r in
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull)
-            app?.picker = nil
-            app?.busy = false
-            guard let r = r else { self?.restoreFocus(); return }
-            setRecordConfig("last_snap_region", [Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)])
-            self?.capture(r)
-        }
-        app.picker = p
-        registerHotkey(.pickEnter, key: kVK_Return, mods: 0)
-        registerHotkey(.pickEsc, key: kVK_Escape, mods: 0)
-        registerHotkey(.pickFull, key: kVK_ANSI_F, mods: 0)
-        if let r = recordConfig()["last_snap_region"] as? [Double], r.count == 4 {
-            opts.lastRegion = CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
-        } else {
-            opts.lastRegion = lastRegionFromConfig()
-        }
-        p.show(preselect: preselect)
-    }
-
-    func ensureBatch() -> ShotBatch {
-        if let b = batch { return b }
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd-HHmmss"
-        let dir = sessionsRoot(for: currentWorkspace()).appendingPathComponent(f.string(from: Date()) + "-shots")
-        try? FileManager.default.createDirectory(at: dir.appendingPathComponent("shots"), withIntermediateDirectories: true)
-        let b = ShotBatch(dir: dir, inRecording: false)
-        b.onChange = { perch.refreshControls() }
-        batch = b
-        perch.batch = b
-        return b
-    }
-
-    /// `region`: global top-left points. Also used directly by tests (`snapregion x,y,w,h`).
-    func capture(_ region: CGRect, withNote: Bool = true) {
-        let ns = toNS(region)
-        captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
-            guard let self = self else { return }
-            guard let img = img else {
-                self.app?.toast(L("截图失败：需要「录屏」权限", "Couldn't take the shot — Screen Recording permission needed"))
-                self.restoreFocus()
-                return
-            }
-            shutterFlash(ns)
-            self.playShutter()
-            let b = self.ensureBatch()
-            let n = b.reserve()
-            let shot = b.add(n: n, image: img, scale: scale, region: region, t: nil)
-            emit(["event": "snap", "n": n, "file": shot.file, "session": b.dir.path])
-            perch.hang(shot, from: ns)
-            if withNote { NoteBubble.shared.begin(shot, mode: .listen) } else { self.restoreFocus() }
-        }
-    }
-
-    func playShutter() {
-        guard recordConfig()["snap_sound"] as? Bool ?? true else { return }
-        let p = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"
-        if FileManager.default.fileExists(atPath: p) { NSSound(contentsOfFile: p, byReference: true)?.play() }
-    }
-
-    /// "🐔 整理 N 张": the batch becomes a session to process — same code path as a finished recording.
-    func processBatch() {
-        guard let b = batch, !b.live.isEmpty, let app = app else { return }
-        NoteBubble.shared.commit()
-        b.sync {
-            b.writeMeta(state: "processing")
-            let kinds = Array(repeating: "note", count: min(5, b.live.count))
-            perch.gather(into: kinds)
-            self.batch = nil
-            perch.batch = nil
-            app.process(b.dir)
-        }
-    }
-
-    /// "清空": the whole batch goes to the Trash (recoverable), the perch empties with a cascade of falls.
-    func clearBatch() {
-        guard let b = batch else { return }
-        NoteBubble.shared.cancel()
-        perch.dropAll()
-        batch = nil
-        perch.batch = nil
-        b.sync { NSWorkspace.shared.recycle([b.dir]) { _, _ in } }
-    }
-
-    func delete(_ s: Shot) {
-        if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
-        s.batch?.delete(s)
-        if let b = batch, b.live.isEmpty {
-            batch = nil
-            perch.batch = nil
-            b.sync { NSWorkspace.shared.recycle([b.dir]) { _, _ in } }
-        }
-    }
-
-    /// The perch comes back after a restart with the batch that was still being collected.
-    func restore() {
-        let root = sessionsRoot(for: currentWorkspace())
-        let dirs = ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.lastPathComponent.hasSuffix("-shots") }.sorted { $0.lastPathComponent > $1.lastPathComponent }
-        guard let d = dirs.first, !FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path),
-              let b = ShotBatch.load(d), (b.meta["state"] as? String ?? "collecting") == "collecting", !b.live.isEmpty else { return }
-        b.onChange = { perch.refreshControls() }
-        batch = b
-        perch.batch = b
-        for s in b.live { perch.hang(s, from: nil, quiet: true) }
-    }
-
-    // --- optional: collect the system's own screenshots (⌘⇧3/4/5) onto the perch
-    var collecting: Bool { recordConfig()["collect_system_shots"] as? Bool ?? false }
-
-    func screenshotFolder() -> URL {
-        let d = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location")
-        let p = (d.map { ($0 as NSString).expandingTildeInPath }).flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
-        return URL(fileURLWithPath: p ?? (NSHomeDirectory() + "/Desktop"))
-    }
-
-    func syncCollector() {
-        collectTimer?.invalidate()
-        collectTimer = nil
-        guard collecting else { return }
-        let folder = screenshotFolder()
-        let since = Date()
-        collectSeen = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
-        collectTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in self?.scanScreenshots(folder, since: since) }
-    }
-
-    func scanScreenshots(_ folder: URL, since: Date) {
-        guard let app = app, app.rec == nil else { return }
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
-        for name in names where !collectSeen.contains(name) {
-            collectSeen.insert(name)
-            let url = folder.appendingPathComponent(name)
-            guard ["png", "jpg", "jpeg", "heic"].contains(url.pathExtension.lowercased()), !name.hasPrefix("."),
-                  let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-                  (attrs[.creationDate] as? Date ?? .distantPast) >= since, isScreenCapture(url),
-                  let img = loadCGImage(url) else { continue }
-            let b = ensureBatch()
-            let n = b.reserve()
-            let scale = NSScreen.main?.backingScaleFactor ?? 2
-            let sz = CGSize(width: CGFloat(img.width) / scale, height: CGFloat(img.height) / scale)
-            let shot = b.add(n: n, image: img, scale: scale, region: CGRect(origin: .zero, size: sz), t: nil)
-            shot.region = []        // unknown: taken by the system
-            perch.hang(shot, from: nil)
-        }
-    }
-
-    func isScreenCapture(_ url: URL) -> Bool {
-        if let item = MDItemCreateWithURL(nil, url as CFURL),
-           let v = MDItemCopyAttribute(item, "kMDItemIsScreenCapture" as CFString) as? Bool { return v }
-        let n = url.lastPathComponent.lowercased()
-        return n.hasPrefix("screenshot") || n.hasPrefix("screen shot") || n.hasPrefix("截屏") || n.hasPrefix("屏幕快照")
-    }
-}
-
-let snapper = Snapper()

@@ -1,4 +1,5 @@
 import AppKit
+import BlurtCore
 import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
@@ -165,16 +166,14 @@ final class PickerView: NSView {
             b.setLineDash([10, 6], count: 2, phase: 0)
             b.stroke()
             let f = NSFont.systemFont(ofSize: 12, weight: .semibold)
-            _ = pill(c.snapMode ? L("单击截这个窗口 · 或直接拖拽框选", "Click to snap this window · or drag an area")
-                                : L("单击选中这个窗口 · 或直接拖拽框选", "Click to pick this window · or drag to draw"), font: f, fg: .white,
+            _ = pill(c.snapMode ? Loc.t("capture.picker.window_snap", table: "Capture")
+                                : Loc.t("capture.picker.window_record", table: "Capture"), font: f, fg: .white,
                      bg: accent.withAlphaComponent(0.92), at: NSPoint(x: h.minX + 10, y: max(10, h.maxY - 34)))
         }
 
         // hint on every screen, top centre
-        let hint = c.snapMode ? L("拖拽框选，松手即截 · 单击截窗口 · F 全屏 · L 上次区域 · Esc 取消",
-                                 "Drag an area, release to snap · Click a window · F full screen · L last area · Esc cancel")
-                              : L("拖拽框选录制区域 · 单击选中窗口 · F 全屏 · ⏎ 开始 · Esc 取消",
-                                  "Drag to select an area · Click a window · F full screen · ⏎ start · Esc cancel")
+        let hint = c.snapMode ? Loc.t("capture.picker.hint_snap", table: "Capture")
+                              : Loc.t("capture.picker.hint_record", table: "Capture")
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let icon: BlurtIcon? = c.snapMode ? .snap : nil
         let w = NSAttributedString(string: hint, attributes: [.font: f]).size().width + 28 + (icon == nil ? 0 : pillIconWidth(f))
@@ -350,15 +349,15 @@ final class PickerToolbar: NSVisualEffectView {
         layer?.masksToBounds = true
         maskImage = roundedMask(22)     // clips the behind-window blur too (HUDLive.swift)
         var buttons: [NSButton] = []
-        buttons.append(PillButton(L("全屏", "Full screen"), symbol: "arrow.up.left.and.arrow.down.right",
+        buttons.append(PillButton(Loc.t("capture.picker.full_screen", table: "Capture"), symbol: "arrow.up.left.and.arrow.down.right",
                                   fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(full)))
         if hasLast {
-            buttons.append(PillButton(L("上次区域", "Last area"), symbol: "clock.arrow.circlepath",
+            buttons.append(PillButton(Loc.t("capture.picker.last_area", table: "Capture"), symbol: "clock.arrow.circlepath",
                                       fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(last)))
         }
-        buttons.append(PillButton(L("取消", "Cancel"), fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(cancel)))
+        buttons.append(PillButton(Loc.t("capture.picker.cancel", table: "Capture"), fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(cancel)))
         let snap = controller?.snapMode == true
-        buttons.append(PillButton(snap ? L("截图", "Snap") : L("开始录制", "Start recording"), symbol: snap ? "camera.fill" : "record.circle.fill",
+        buttons.append(PillButton(snap ? Loc.t("capture.picker.snap", table: "Capture") : Loc.t("capture.picker.start", table: "Capture"), symbol: snap ? "camera.fill" : "record.circle.fill",
                                   fill: accent, target: self, action: #selector(start)))
         var x: CGFloat = 6
         for b in buttons {

@@ -35,12 +35,17 @@ func hk(_ a: HotAction) -> String { Hotkeys.shared.label(a) }
 /// "（⌥⇧P）" / " (⌥⇧P)" for tooltips, "" when off.
 func hkTip(_ a: HotAction) -> String {
     let l = hk(a)
-    return l.isEmpty ? "" : L("（\(l)）", " (\(l))")
+    return l.isEmpty ? "" : Loc.t("capture.hotkey.tip", table: "Capture", l)
 }
-/// "⌥⇧A 下一张" — a hint that only exists while the hotkey does.
+/// "⌥⇧A next shot" — a hint (a Capture table key) that only exists while the hotkey does.
+func hkHint(_ a: HotAction, _ key: String) -> String? {
+    let l = hk(a)
+    return l.isEmpty ? nil : Loc.t("capture.hotkey.hint", table: "Capture", l, Loc.t(key, table: "Capture"))
+}
+/// The same, for callers that still pass both strings (AppDelegate's welcome toast and tooltip); goes with L().
 func hkHint(_ a: HotAction, _ zh: String, _ en: String) -> String? {
     let l = hk(a)
-    return l.isEmpty ? nil : "\(l) " + L(zh, en)
+    return l.isEmpty ? nil : "\(l) " + (Loc.language == "zh-Hans" ? zh : en)
 }
 
 extension NSMenuItem {

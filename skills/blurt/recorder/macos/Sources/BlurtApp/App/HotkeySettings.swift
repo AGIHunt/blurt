@@ -2,6 +2,7 @@
 // the pen's hold key (record.draw_key), and each action's conflict state inline (Hotkeys.swift works them out).
 
 import AppKit
+import BlurtCore
 import Carbon.HIToolbox
 
 /// Click, then press the new combination. Esc cancels, ⌫ turns the hotkey off. Global hotkeys are suspended
@@ -39,9 +40,9 @@ final class ShortcutField: NSView {
         let text: String
         let color: NSColor
         if let r = refuse { text = r; color = .systemOrange }
-        else if recording { text = live.isEmpty ? L("按下新的快捷键…", "Type a shortcut…") : live; color = .controlAccentColor }
+        else if recording { text = live.isEmpty ? Loc.t("capture.keys.type", table: "Capture") : live; color = .controlAccentColor }
         else if let s = s { text = s.label; color = .labelColor }
-        else { text = L("关闭", "Off"); color = .tertiaryLabelColor }
+        else { text = Loc.t("capture.keys.off", table: "Capture"); color = .tertiaryLabelColor }
         let font = recording || s == nil || refuse != nil ? NSFont.systemFont(ofSize: 12, weight: .medium)
                                                           : NSFont.systemFont(ofSize: 13.5, weight: .semibold)
         let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
@@ -79,8 +80,8 @@ final class ShortcutField: NSView {
         let mods = Shortcut.carbonMods(e.modifierFlags)
         if Int(e.keyCode) == kVK_Escape && mods == 0 { stop(); return }
         if (Int(e.keyCode) == kVK_Delete || Int(e.keyCode) == kVK_ForwardDelete) && mods == 0 { stop(); onSet?(nil); return }
-        guard let s = Shortcut(mods: mods, code: Int(e.keyCode)) else { flash(L("这个键不能用", "That key can't be used")); return }
-        guard s.isAcceptable else { flash(L("要带 ⌃ / ⌥ / ⌘", "Needs ⌃ / ⌥ / ⌘")); return }
+        guard let s = Shortcut(mods: mods, code: Int(e.keyCode)) else { flash(Loc.t("capture.keys.bad_key", table: "Capture")); return }
+        guard s.isAcceptable else { flash(Loc.t("capture.keys.needs_mod", table: "Capture")); return }
         stop()
         onSet?(s)
     }
@@ -122,7 +123,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
     func build() {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 420), styleMask: [.titled, .closable],
                          backing: .buffered, defer: false)
-        w.title = L("快捷键", "Shortcuts")
+        w.title = Loc.t("capture.keys.title", table: "Capture")
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.sharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly
@@ -162,12 +163,12 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             f.heightAnchor.constraint(equalToConstant: 26).isActive = true
             f.onSet = { [weak self] s in Hotkeys.shared.set(s, for: a); self?.refresh() }
             fields[a] = f
-            let clear = NSButton(image: NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: L("关闭", "Off")) ?? NSImage(),
+            let clear = NSButton(image: NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: Loc.t("capture.keys.off", table: "Capture")) ?? NSImage(),
                                  target: self, action: #selector(clear(_:)))
             clear.isBordered = false
             clear.contentTintColor = .tertiaryLabelColor
             clear.identifier = NSUserInterfaceItemIdentifier(a.rawValue)
-            clear.toolTip = L("关闭这个快捷键", "Turn this shortcut off")
+            clear.toolTip = Loc.t("capture.keys.turn_off", table: "Capture")
             let note = NSTextField(labelWithString: "")
             note.font = .systemFont(ofSize: 11.5)
             note.lineBreakMode = .byTruncatingTail
@@ -180,21 +181,21 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             return r
         }
 
-        stack.addArrangedSubview(header(L("随时可用", "ANYTIME")))
+        stack.addArrangedSubview(header(Loc.t("capture.keys.anytime", table: "Capture")))
         for a in [HotAction.toggleRecord, .snap, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]) { stack.addArrangedSubview(row(a)) }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last!)
-        stack.addArrangedSubview(header(L("录制中", "WHILE RECORDING")))
+        stack.addArrangedSubview(header(Loc.t("capture.keys.while_recording", table: "Capture")))
         for a in [HotAction.pause, .marker, .pen, .finish] { stack.addArrangedSubview(row(a)) }
 
         // the pen's hold-to-draw modifier (record.draw_key)
-        let dTitle = NSTextField(labelWithString: L("按住画图", "Hold to draw"))
+        let dTitle = NSTextField(labelWithString: Loc.t("capture.keys.hold_draw", table: "Capture"))
         dTitle.font = .systemFont(ofSize: 13)
         dTitle.alignment = .right
         dTitle.translatesAutoresizingMaskIntoConstraints = false
         dTitle.widthAnchor.constraint(equalToConstant: 150).isActive = true
         let pop = NSPopUpButton(frame: .zero, pullsDown: false)
-        for (k, t) in [("control", L("⌃ Control 键", "⌃ Control")), ("option", L("⌥ Option 键", "⌥ Option")),
-                       ("fn", L("fn 键", "fn")), ("off", L("关闭", "Off"))] {
+        for (k, t) in [("control", Loc.t("capture.keys.control", table: "Capture")), ("option", Loc.t("capture.keys.option", table: "Capture")),
+                       ("fn", Loc.t("capture.keys.fn", table: "Capture")), ("off", Loc.t("capture.keys.off", table: "Capture"))] {
             pop.addItem(withTitle: t)
             pop.lastItem?.representedObject = k
         }
@@ -203,7 +204,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         pop.translatesAutoresizingMaskIntoConstraints = false
         pop.widthAnchor.constraint(equalToConstant: 150).isActive = true
         drawPopup = pop
-        let dNote = NSTextField(labelWithString: L("录制时按住它拖动，圈出重点", "hold it and drag to circle things while recording"))
+        let dNote = NSTextField(labelWithString: Loc.t("capture.keys.draw_note", table: "Capture"))
         dNote.font = .systemFont(ofSize: 11.5)
         dNote.textColor = .secondaryLabelColor
         let dRow = NSStackView(views: [dTitle, pop, dNote])
@@ -219,9 +220,9 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(sep)
         sep.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -52).isActive = true
 
-        let reset = NSButton(title: L("恢复默认", "Restore defaults"), target: self, action: #selector(restore))
+        let reset = NSButton(title: Loc.t("capture.keys.restore", table: "Capture"), target: self, action: #selector(restore))
         reset.bezelStyle = .rounded
-        let hint = NSTextField(labelWithString: L("点一下再按新的组合键 · Esc 取消 · ⌫ 关闭", "Click, then press the new keys · Esc cancels · ⌫ turns it off"))
+        let hint = NSTextField(labelWithString: Loc.t("capture.keys.hint", table: "Capture"))
         hint.font = .systemFont(ofSize: 11.5)
         hint.textColor = .secondaryLabelColor
         let spacer = NSView()
@@ -253,19 +254,19 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             fields[a]?.needsDisplay = true
             guard let n = notes[a] else { continue }
             if let bad = hk.invalid[a] {
-                n.stringValue = L("配置里的「\(bad)」看不懂，用了默认", "Couldn't read “\(bad)” in the config — using the default")
+                n.stringValue = Loc.t("capture.keys.unreadable", table: "Capture", bad)
                 n.textColor = .systemOrange
             } else if st.isConflict {
                 n.attributedStringValue = BlurtIcon.warning.label(st.text, font: n.font ?? .systemFont(ofSize: 11), color: .systemOrange,
                                                                   preferSymbol: true)
                 n.textColor = .systemOrange
             } else if st == .notHere {
-                n.stringValue = L("菜单栏 App 里生效", "used by the menu-bar app")
+                n.stringValue = Loc.t("capture.keys.menu_bar_only", table: "Capture")
                 n.textColor = .tertiaryLabelColor
             } else if st == .off {
                 n.stringValue = ""
             } else {
-                n.stringValue = a.defaultCombo == hk.shortcut(a) ? "" : L("已自定义", "custom")
+                n.stringValue = a.defaultCombo == hk.shortcut(a) ? "" : Loc.t("capture.keys.custom", table: "Capture")
                 n.textColor = .tertiaryLabelColor
             }
             n.toolTip = n.stringValue

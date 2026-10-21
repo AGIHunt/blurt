@@ -5,8 +5,8 @@
 //   note   white egg                            task  brown egg with a check stripe
 //   custom pastel egg (hue from the lens name)
 //
-// Also here: the woven nest the eggs sit in (HUD + perch), and NestView — the HUD's little nest that eggs drop into
-// while live drafts come in during a recording.
+// Eggs are brand and motion only (K8): the island's hatching egg, the kind eggs in the main window's legacy rows.
+// Also here: the readers for a recording's live/*.jsonl (drafts, transcript).
 
 import AppKit
 import QuartzCore
@@ -222,72 +222,6 @@ func drawSparkle(_ ctx: CGContext, at c: CGPoint, size s: CGFloat) {
     ctx.restoreGState()
 }
 
-/// The woven nest: `back` is drawn behind the eggs, `front` over their lower halves. y-up rect.
-func drawNest(_ ctx: CGContext, in r: CGRect, part: Int, seed: UInt64 = 3) {
-    var g = SeededRandom(seed)
-    let cx = r.midX
-    let rimY = r.minY + r.height * 0.58
-    let w = r.width / 2
-    ctx.saveGState()
-    ctx.setLineCap(.round)
-    if part == 0 {
-        // inside of the bowl (dark) + back rim
-        let inner = CGRect(x: cx - w * 0.86, y: rimY - r.height * 0.16, width: w * 1.72, height: r.height * 0.34)
-        ctx.setFillColor(rgb(0.30, 0.19, 0.09))
-        ctx.fillEllipse(in: inner)
-        for _ in 0..<26 {   // back rim: short straw arcs along the upper half of the rim ellipse
-            let t0 = g.range(0.0, 1.0) * .pi, len = g.range(0.4, 1.0)
-            ctx.setStrokeColor(rgb(0.58 + g.range(-0.08, 0.12), 0.42 + g.range(-0.06, 0.1), 0.20, 0.95))
-            ctx.setLineWidth(r.height * g.range(0.03, 0.06))
-            let rx = w * g.range(0.88, 0.98), ry = r.height * g.range(0.14, 0.22)
-            for k in 0...8 {
-                let t = t0 + len * CGFloat(k) / 8
-                let p = CGPoint(x: cx + rx * cos(t), y: rimY + ry * sin(t))
-                if k == 0 { ctx.move(to: p) } else { ctx.addLine(to: p) }
-            }
-            ctx.strokePath()
-        }
-    } else {
-        // the front of the bowl: a half ellipse of woven straw
-        let bowl = CGMutablePath()
-        bowl.move(to: CGPoint(x: cx - w, y: rimY))
-        bowl.addCurve(to: CGPoint(x: cx, y: r.minY + r.height * 0.04), control1: CGPoint(x: cx - w * 0.98, y: r.minY + r.height * 0.18),
-                      control2: CGPoint(x: cx - w * 0.55, y: r.minY + r.height * 0.02))
-        bowl.addCurve(to: CGPoint(x: cx + w, y: rimY), control1: CGPoint(x: cx + w * 0.55, y: r.minY + r.height * 0.02),
-                      control2: CGPoint(x: cx + w * 0.98, y: r.minY + r.height * 0.18))
-        bowl.addCurve(to: CGPoint(x: cx - w, y: rimY), control1: CGPoint(x: cx + w * 0.5, y: rimY - r.height * 0.20),
-                      control2: CGPoint(x: cx - w * 0.5, y: rimY - r.height * 0.20))
-        ctx.saveGState()
-        ctx.addPath(bowl)
-        ctx.clip()
-        let space = CGColorSpace(name: CGColorSpace.sRGB)!
-        if let gr = CGGradient(colorsSpace: space, colors: [rgb(0.80, 0.62, 0.34), rgb(0.55, 0.38, 0.18)] as CFArray, locations: [0, 1]) {
-            ctx.drawLinearGradient(gr, start: CGPoint(x: cx, y: rimY), end: CGPoint(x: cx, y: r.minY), options: [])
-        }
-        for i in 0..<34 {   // straw strands across the bowl
-            let y = r.minY + r.height * g.range(0.02, 0.62)
-            let x0 = cx - w * g.range(0.3, 1.1), x1 = x0 + w * g.range(0.5, 1.2)
-            ctx.setStrokeColor(i % 3 == 0 ? rgb(0.95, 0.82, 0.52, 0.9) : rgb(0.45 + g.range(0, 0.2), 0.30 + g.range(0, 0.14), 0.12, 0.85))
-            ctx.setLineWidth(r.height * g.range(0.025, 0.05))
-            ctx.move(to: CGPoint(x: x0, y: y))
-            ctx.addQuadCurve(to: CGPoint(x: x1, y: y + r.height * g.range(-0.08, 0.08)), control: CGPoint(x: (x0 + x1) / 2, y: y - r.height * 0.10))
-            ctx.strokePath()
-        }
-        ctx.restoreGState()
-        // a few loose ends sticking out of the rim
-        for i in 0..<6 {
-            let side: CGFloat = i % 2 == 0 ? -1 : 1
-            let x = cx + side * w * g.range(0.72, 0.96)
-            ctx.setStrokeColor(rgb(0.74, 0.56, 0.28, 0.9))
-            ctx.setLineWidth(r.height * 0.03)
-            ctx.move(to: CGPoint(x: x, y: rimY - r.height * 0.06))
-            ctx.addLine(to: CGPoint(x: x + side * w * g.range(0.08, 0.2), y: rimY + r.height * g.range(0.02, 0.12)))
-            ctx.strokePath()
-        }
-    }
-    ctx.restoreGState()
-}
-
 /// Renders vector art into a CGImage at the best backing scale of any screen.
 func renderImage(_ size: CGSize, _ draw: (CGContext) -> Void) -> CGImage? {
     let scale = max(2, NSScreen.screens.map(\.backingScaleFactor).max() ?? 2)
@@ -307,132 +241,6 @@ func eggImage(_ kind: EggKind, size: CGSize, seed: UInt64 = 7, shadow: Bool = tr
     let img = renderImage(size) { drawEgg($0, in: CGRect(origin: .zero, size: size), kind: kind, seed: seed, shadow: shadow) }
     eggCache[key] = img
     return img
-}
-
-func nestImage(_ size: CGSize, part: Int) -> CGImage? {
-    renderImage(size) { drawNest($0, in: CGRect(origin: .zero, size: size), part: part) }
-}
-
-// MARK: - HUD nest: eggs drop in as live drafts arrive
-
-final class NestView: NSView {
-    struct Egg { let id: String; let layer: CALayer; let kind: EggKind }
-    private(set) var eggs: [Egg] = []
-    private let back = CALayer(), front = CALayer(), count = CATextLayer()
-    private let eggLayer = CALayer()
-    static let size = NSSize(width: 64, height: 32)
-    let nestRect = CGRect(x: 2, y: 2, width: 40, height: 20)
-    let eggSize = CGSize(width: 13, height: 17)
-
-    override init(frame: NSRect) {
-        super.init(frame: NSRect(origin: frame.origin, size: NestView.size))
-        wantsLayer = true
-        layer?.masksToBounds = false
-        back.frame = nestRect
-        back.contents = nestImage(nestRect.size, part: 0)
-        front.frame = nestRect
-        front.contents = nestImage(nestRect.size, part: 1)
-        eggLayer.frame = bounds
-        layer?.addSublayer(back)
-        layer?.addSublayer(eggLayer)
-        layer?.addSublayer(front)
-        count.frame = CGRect(x: 44, y: 7, width: 20, height: 16)
-        count.font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold)
-        count.fontSize = 13
-        count.foregroundColor = NSColor.white.cgColor
-        count.contentsScale = 2
-        count.alignmentMode = .left
-        layer?.addSublayer(count)
-        toolTip = L("实时草稿：每识别出一条就下一颗蛋", "Live drafts: one egg per item spotted so far")
-        relayout(animated: false)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override var allowsVibrancy: Bool { false }
-
-    var total: Int { eggs.count }
-
-    /// Where egg i of n sits: up to 4 visible, nestled in a row and slightly overlapping.
-    private func slot(_ i: Int, of n: Int) -> CGPoint {
-        let shown = min(n, 4)
-        let step: CGFloat = 8.5
-        let x0 = nestRect.midX - CGFloat(shown - 1) * step / 2
-        let j = i - (n - shown)
-        return CGPoint(x: x0 + CGFloat(j) * step, y: nestRect.minY + 9 + eggSize.height / 2 + (j % 2 == 0 ? 0 : 1.5))
-    }
-
-    func add(id: String, kindName: String?, animated: Bool = true) {
-        guard !eggs.contains(where: { $0.id == id }) else { return }
-        let kind = EggKind(kindName)
-        let l = CALayer()
-        l.bounds = CGRect(origin: .zero, size: eggSize)
-        l.contents = eggImage(kind, size: eggSize, seed: EggKind.seed(kindName, id: id), shadow: false)
-        l.contentsGravity = .resizeAspect
-        eggLayer.addSublayer(l)
-        eggs.append(Egg(id: id, layer: l, kind: kind))
-        relayout(animated: animated, dropped: animated ? l : nil)
-    }
-
-    func remove(id: String) {
-        guard let i = eggs.firstIndex(where: { $0.id == id }) else { return }
-        let e = eggs.remove(at: i)
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.25)
-        CATransaction.setCompletionBlock { e.layer.removeFromSuperlayer() }
-        e.layer.opacity = 0
-        e.layer.transform = CATransform3DMakeScale(0.4, 0.4, 1)
-        CATransaction.commit()
-        relayout(animated: true)
-    }
-
-    private func relayout(animated: Bool, dropped: CALayer? = nil) {
-        let reduce = reduceMotion
-        CATransaction.begin()
-        CATransaction.setDisableActions(!animated)
-        for (i, e) in eggs.enumerated() {
-            let visible = i >= eggs.count - 4
-            let p = slot(i, of: eggs.count)
-            if e.layer === dropped {
-                CATransaction.setDisableActions(true)
-                e.layer.position = p
-                e.layer.opacity = 1
-                CATransaction.setDisableActions(!animated)
-                if reduce {
-                    let f = CABasicAnimation(keyPath: "opacity")
-                    f.fromValue = 0; f.toValue = 1; f.duration = 0.3
-                    e.layer.add(f, forKey: "in")
-                } else {
-                    // falls in from above and settles with a little bounce + wobble
-                    let drop = CASpringAnimation(keyPath: "position.y")
-                    drop.fromValue = p.y + 26
-                    drop.toValue = p.y
-                    drop.mass = 0.6; drop.stiffness = 260; drop.damping = 9; drop.initialVelocity = -2
-                    drop.duration = drop.settlingDuration
-                    e.layer.add(drop, forKey: "drop")
-                    let wob = CASpringAnimation(keyPath: "transform.rotation.z")
-                    wob.fromValue = 0.5; wob.toValue = 0
-                    wob.mass = 0.5; wob.stiffness = 180; wob.damping = 5
-                    wob.duration = wob.settlingDuration
-                    e.layer.add(wob, forKey: "wob")
-                }
-            } else {
-                e.layer.position = p
-                e.layer.opacity = visible ? 1 : 0
-            }
-        }
-        CATransaction.commit()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        count.string = eggs.isEmpty ? "" : "\(eggs.count)"
-        count.isHidden = eggs.isEmpty
-        CATransaction.commit()
-        if animated, dropped != nil, !reduce {
-            let pop = CASpringAnimation(keyPath: "transform.scale")
-            pop.fromValue = 1.35; pop.toValue = 1
-            pop.mass = 0.5; pop.stiffness = 300; pop.damping = 10
-            pop.duration = pop.settlingDuration
-            count.add(pop, forKey: "pop")
-        }
-    }
 }
 
 // MARK: - live/*.jsonl readers (tolerant: missing file, partial last line, truncation)

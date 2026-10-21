@@ -23,6 +23,9 @@ var targets: [Target] = [
         name: "BlurtApp",
         dependencies: ["BlurtCore"] + (sparkle ? ["Sparkle"] : []),
         path: "Sources/BlurtApp",
+        // K10 string tables: record.py build copies Resources/*.lproj into the .app (Loc reads Bundle.main), so SwiftPM
+        // leaves them alone
+        exclude: ["Resources"],
         linkerSettings: sparkle ? [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])] : []),
 ]
 // WP5: IndexReader tests + the 20k-row perf budget (`swift test`; needs Xcode's XCTest, `swift build` ignores it)

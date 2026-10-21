@@ -1,10 +1,14 @@
-// Menu-bar app glue for snap mode: menu items, start-up, and (BLURT_TEST_COMMANDS=1 only) a distributed-notification
-// command channel so scripted UI tests can drive the app without global hotkeys:
-//   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "record" | "snap" |"snapregion x,y,w,h" | "perch" |
-//       "hide" | "process" | "commit" | "cancel" | "edit N" | "hatch DIR" | "hatched DIR ok|fail" | "stop" | "shortcuts" |
-//       "menu" | "review DIR" | "processdir [AGENT ]DIR" | "toast TEXT" | "webjs CODE" | "axperch" | "menuicon DIR"}
-//   axperch       the perch's accessibility elements (role, label, frame) as one "ax" event
-//   menuicon DIR  renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x → DIR/menuicon-*.png
+// Menu-bar app glue for captures (K7): menu items, the voice / project hotkeys, start-up, and (BLURT_TEST_COMMANDS=1
+// only) a distributed-notification command channel so scripted UI tests can drive the app without global hotkeys:
+//   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
+//     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
+//     cards [show|hide]       the claws down / up; every card's rect as "card" events (global top-left points)
+//     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
+//     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
+//     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
+//     project ID|auto         switch the current project · hatch DIR · hatched DIR ok|fail (v0.6 AgentHub calls)
+//     peck [to_verify|done] TITLE   the completion chicken · axcards  the cards' accessibility elements ("ax" event)
+//     menuicon DIR            renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x
 
 import AppKit
 import Carbon.HIToolbox
@@ -20,7 +24,6 @@ extension App {
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
         default: break
         }
-        snapper.restore()
         snapper.syncCollector()
         guard ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" else { return }
         let channel = ProcessInfo.processInfo.environment["BLURT_TEST_CHANNEL"].map { ".\($0)" } ?? ""
@@ -42,19 +45,44 @@ extension App {
             guard p.count == 4 else { return }
             snapper.rememberFrontApp()
             snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]))
-        case "perch": perch.show(pinned: true)
-        case "hide": perch.hide()
-        case "process": snapper.processBatch()
-        case "clear": snapper.clearBatch()
+        case "cards":
+            if arg == "show" { claws.show(peek: 8) }
+            for (s, r) in claws.cardRects() { emit(["event": "card", "n": s.n, "session": s.batch?.dir.path ?? "", "rect": [r.minX, r.minY, r.width, r.height]]) }
+            if let r = NoteBubble.shared.canvasScreenRect { let c = toCG(r); emit(["event": "canvas", "rect": [c.minX, c.minY, c.width, c.height]]) }
+        case "island":
+            switch arg {
+            case "open": island.setOpen(true)
+            case "close": island.setOpen(false); island.closeSwitcher()
+            case "switcher": island.showSwitcher()
+            default: break
+            }
+            let f = toCG(island.frameOnScreen)
+            emit(["event": "island", "rect": [f.minX, f.minY, f.width, f.height], "open": island.open, "cards": claws.count])
+        case "voice":
+            if arg != "up" { Hotkeys.shared.simulate(.voice, released: false) }
+            if arg == "tap" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Hotkeys.shared.simulate(.voice, released: true) } }
+            if arg == "up" { Hotkeys.shared.simulate(.voice, released: true) }
+        case "assign":
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) { snapper.assign(s, to: a[1]) }
+        case "aisort": snapper.aiSort()
+        case "deleteall": snapper.deleteAllCards()
+        case "project":
+            Task { try? await ProjectStore.shared.use(arg == "auto" ? nil : arg); await MainActor.run { island.projectChanged() } }
         case "commit": NoteBubble.shared.commit()
         case "cancel": NoteBubble.shared.cancel()
         case "edit":
-            if let n = Int(arg), let s = snapper.batch?.live.first(where: { $0.n == n }) { NoteBubble.shared.begin(s, mode: .edit) }
-        case "hatch": perch.hatch(id: arg, kinds: draftKinds(in: URL(fileURLWithPath: arg)))
+            if let n = Int(arg), let s = snapper.cards.first(where: { $0.n == n }) { NoteBubble.shared.begin(s, mode: .edit) }
+        case "hatch": perch.hatch(id: arg, kinds: [])
         case "hatched":
             let a = arg.split(separator: " ").map(String.init)
             if let id = a.first { perch.hatched(id: id, ok: a.last == "ok") }
-        case "notes": rec?.hud?.live?.openNotes()
+        case "peck":
+            let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            let state = ["to_verify", "done"].contains(a.first ?? "") ? a[0] : "to_verify"
+            let title = a.count > 1 || !["to_verify", "done"].contains(a.first ?? "") ? (a.last ?? "") : "Login button does nothing"
+            PeckCard.shared.play(title: title, detail: "", uid: "test", state: state)
+        case "notes": island.openRecordingNotes()
         case "shortcuts": HotkeySettings.shared.show()
         case "raise", "lower":                          // review windows above everything for a screenshot, and back
             for w in ReviewHub.shared.windows {
@@ -127,9 +155,8 @@ extension App {
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }
         case "toast": toast(arg.replacingOccurrences(of: "\\n", with: "\n"))
-        case "gather": perch.gather(into: ["note", "note", "note"])
-        case "axperch":
-            let els = perch.accessibilityElements().map { e -> [String: Any] in
+        case "axcards":
+            let els = claws.accessibilityElements().map { e -> [String: Any] in
                 let r = toCG(e.accessibilityFrame())
                 return ["role": e.accessibilityRole()?.rawValue ?? "", "label": e.accessibilityLabel() ?? "",
                         "help": e.accessibilityHelp() ?? "", "actions": (e.accessibilityCustomActions() ?? []).map(\.name),
@@ -139,22 +166,24 @@ extension App {
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
             emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])
-        case "cards":   // where things are, in global top-left points, so a test can point the mouse at them
-            for s in snapper.batch?.live ?? [] {
-                if let r = perch.cardScreenRect(s) { let c = toCG(r); emit(["event": "card", "n": s.n, "rect": [c.minX, c.minY, c.width, c.height]]) }
-            }
-            if let r = NoteBubble.shared.canvasScreenRect { let c = toCG(r); emit(["event": "canvas", "rect": [c.minX, c.minY, c.width, c.height]]) }
         default: command(cmd)
         }
     }
 
-    /// ⌥⇧V (voice input) and ⌥⇧O (project switcher), K7.
-    func captureHotkey(_ k: HK) {}
+    /// ⌥⇧V (voice input), ⌥⇧O (the project switcher), Esc while listening — K7.
+    func captureHotkey(_ k: HK) {
+        switch k {
+        case .voice: VoiceInput.shared.pressed()
+        case .voiceEsc: VoiceInput.shared.cancel()
+        case .project: if resident { island.toggleSwitcher() }
+        default: break
+        }
+    }
 
     func addSnapMenuItems(_ menu: NSMenu, recording: Bool) {
         @discardableResult
-        func item(_ title: String, _ sel: Selector, on: Bool = false) -> NSMenuItem {
-            let it = NSMenuItem(title: title, action: sel, keyEquivalent: "")
+        func item(_ key: String, _ sel: Selector, on: Bool = false) -> NSMenuItem {
+            let it = NSMenuItem(title: Loc.t(key, table: "Capture"), action: sel, keyEquivalent: "")
             it.target = self
             it.state = on ? .on : .off
             menu.addItem(it)
@@ -162,13 +191,18 @@ extension App {
         }
         if recording {
             menu.addItem(.separator())
-            item(L("截图", "Snap"), #selector(mSnap)).showHotkey(.snap)
-            item(L("实时字幕", "Live caption"), #selector(mLiveCaption), on: liveCaptionOn)
+            item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
+            item("capture.menu.live_caption", #selector(mLiveCaption), on: liveCaptionOn)
             return
         }
-        item(L("截图", "Snap"), #selector(mSnap)).showHotkey(.snap)
-        item(L("显示鸡舍", "Show the perch"), #selector(mShowPerch))
-        item(L("收集系统截图（⌘⇧3/4/5）", "Collect system screenshots (⌘⇧3/4/5)"), #selector(mCollect), on: snapper.collecting)
+        item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
+        item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
+        item("capture.menu.switch_project", #selector(mSwitchProject)).showHotkey(.project)
+        if claws.count > 0 {
+            let it = item("capture.menu.show_cards", #selector(mShowCards))
+            it.title = Loc.plural("capture.menu.show_cards", table: "Capture", count: claws.count)
+        }
+        item("capture.menu.collect", #selector(mCollect), on: snapper.collecting)
     }
 
     @objc func mSnap() {
@@ -176,7 +210,9 @@ extension App {
         // the menu is still closing: let it go before the picker takes the screen
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() }
     }
-    @objc func mShowPerch() { perch.show(pinned: true) }
+    @objc func mVoice() { VoiceInput.shared.toggle() }
+    @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
+    @objc func mShowCards() { claws.show(peek: 6) }
     @objc func mCollect() {
         setRecordConfig("collect_system_shots", !snapper.collecting)
         snapper.syncCollector()
