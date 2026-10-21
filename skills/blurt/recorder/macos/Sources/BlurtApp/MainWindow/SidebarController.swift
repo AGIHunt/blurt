@@ -67,7 +67,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         let smart = SidebarNode(L("智能筛选", "Smart Filters"), scope: nil, children: [
             SidebarNode(L("待修问题", "Open Issues"), scope: .smart(.openIssues), image: BrandIcon.image(.bug, size: 16), count: c.openIssues),
             SidebarNode(L("想法", "Ideas"), scope: .smart(.ideas), symbol: "lightbulb", count: c.ideas),
-            SidebarNode(L("Agent 修复中", "Agent Fixing"), scope: .smart(.fixing), symbol: "hammer", count: c.fixing),
+            SidebarNode(L("Agent 修复中", "Agent Fixing"), scope: .smart(.fixing), image: BrandIcon.image(.agentRun, size: 16), count: c.fixing),
             SidebarNode(L("已修复", "Fixed"), scope: .smart(.fixed), symbol: "checkmark.seal", count: c.fixed),
         ])
         let projects = SidebarNode(L("项目", "Projects"), scope: nil, children: model.workspaces.map { w in

@@ -217,9 +217,10 @@ final class FilterBar: NSView {
         for (k, key) in Self.kindKeys.enumerated() { kinds.setSelected(m.kinds.contains(key), forSegment: k) }
         status.selectItem(at: status.itemArray.firstIndex { $0.representedObject as? String == m.status } ?? 0)
         fix.selectItem(at: fix.itemArray.firstIndex { $0.representedObject as? String == m.fix } ?? 0)
-        let listsSessions = m.scope.listsSessions
+        let listsSessions = m.scope.listsSessions || m.indexState != .ready
         kinds.isHidden = listsSessions
         status.isHidden = listsSessions
+        count.isHidden = m.indexState != .ready
         fix.isHidden = listsSessions || m.scope == .smart(.fixing) || m.scope == .smart(.fixed)
         let n = NumberFormatter.localizedString(from: m.rowCount as NSNumber, number: .decimal)
         count.stringValue = listsSessions ? L("\(n) 个会话", "\(n) sessions") : L("\(n) 条", m.rowCount == 1 ? "1 item" : "\(n) items")
@@ -324,7 +325,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     /// Reload rows, keeping the selection (by uid / session id) and the scroll position where possible.
     func reload(keep: [String]? = nil) {
-        let keepIDs = keep ?? selectedIDs
+        let keepIDs = keep ?? selectionIDs     // captured before the model changed (row numbers mean other rows now)
         let top = table.rows(in: table.visibleRect).location
         let topID = id(at: top)
         suppressSelection = true
@@ -341,10 +342,12 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         bar.sync(model)
         updateEmpty()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().reloadData() }
-        if set.map({ $0 }) != previousSelection { actions?.listSelectionChanged() }
-        previousSelection = set.map { $0 }
+        let ids = set.compactMap { id(at: $0) }
+        if ids != selectionIDs { selectionIDs = ids; actions?.listSelectionChanged() }
     }
-    private var previousSelection: [Int] = []
+    /// The selected uids / session ids, kept up to date on every selection change.
+    private(set) var selectionIDs: [String] = []
+    func forgetSelection() { selectionIDs = [] }
 
     func id(at row: Int) -> String? {
         model.scope.listsSessions ? model.session(at: row)?.id : (row >= 0 && row < model.uids.count ? model.uids[row] : nil)
@@ -388,7 +391,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: nil, image: BrandIcon.image(.egg, size: 44),
                        title: L("还没有索引", "No index yet"),
                        message: L("Blurt 会扫描 ~/Blurt 和绑定的项目里的录屏、截图批次，建一份本地搜索索引。不会上传任何东西。",
-                                  "Blurt scans the recordings and snap batches in ~/Blurt and your bound projects into a local search index. Nothing is uploaded."),
+                                  "Blurt scans the recordings and snap batches in ~\u{2060}/\u{2060}Blurt and your bound projects into a local search index. Nothing is uploaded."),
                        buttons: [(L("扫描录制", "Scan Recordings"), 1)])
             return
         case .failed(let e):
@@ -544,8 +547,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        previousSelection = table.selectedRowIndexes.map { $0 }
-        guard !suppressSelection else { return }
+        guard !suppressSelection else { return }    // reload() settles the selection itself
+        selectionIDs = selectedIDs
         actions?.listSelectionChanged()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().reloadData() }
     }

@@ -129,7 +129,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         let hasItems = !c.list.selectedItems.isEmpty
         var out = [
             e(L("录制", "Record"), "record.circle", hk(.toggleRecord)) { c.record() },
-            e(L("截图", "Snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
+            b(L("截图", "Snap"), .snap, hk(.snap)) { c.snap() },
             b(L("让 Agent 修选中的条目", "Let Agent Fix Selection"), .peck, "⌘↩", enabled: hasItems && AppEnvironment.fixWithAgent != nil) { c.fixSelection() },
             e(L("预览主帧", "Quick Look"), "eye", L("空格", "Space"), enabled: hasItems) { c.list.toggleQuickLook() },
             e(L("审核模式", "Review Mode"), "rectangle.stack", "R", enabled: hasItems) { c.reviewMode() },
@@ -142,7 +142,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(L("全部条目", "Go to All Items"), "square.stack", "⌘2") { c.go(.all) },
             b(L("待修问题", "Go to Open Issues"), .bug, "⌘3") { c.go(.smart(.openIssues)) },
             e(L("想法", "Go to Ideas"), "lightbulb", "⌘4") { c.go(.smart(.ideas)) },
-            e(L("Agent 修复中", "Go to Agent Fixing"), "hammer", "⌘5") { c.go(.smart(.fixing)) },
+            b(L("Agent 修复中", "Go to Agent Fixing"), .agentRun, "⌘5") { c.go(.smart(.fixing)) },
             e(L("已修复", "Go to Fixed"), "checkmark.seal", "⌘6") { c.go(.smart(.fixed)) },
             e(L("全部会话", "Go to All Sessions"), "clock", "⌘7") { c.go(.sessions) },
             e(L("清除筛选", "Clear Filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },

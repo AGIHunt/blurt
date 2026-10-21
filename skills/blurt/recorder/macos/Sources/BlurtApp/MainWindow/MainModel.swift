@@ -129,15 +129,17 @@ final class MainModel {
         guard let r = reader else {
             if FileManager.default.fileExists(atPath: BlurtPaths.indexDB.path), indexState != .scanning {
                 open()
-                if reader != nil { reloadAll() }
+                if reader != nil { reloadAll(); onIndexState?() }
             }
             return
         }
         let v = r.dataVersion
         if v != version {
             version = v
-            if indexState == .missing { indexState = .ready; onIndexState?() }
+            let wasMissing = indexState == .missing
+            if wasMissing { indexState = .ready }
             reloadAll()
+            if wasMissing { onIndexState?() }
         }
     }
 

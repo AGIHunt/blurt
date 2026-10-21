@@ -84,7 +84,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         sidebar.menuProvider = { [weak self] s in self?.sidebarMenu(s) }
         model.onReload = { [weak self] in self?.list.reload(); self?.updateTitle(); self?.scheduleSave() }
         model.onSidebar = { [weak self] in self?.sidebar.rebuild(); self?.updateWatcher() }
-        model.onIndexState = { [weak self] in self?.list.reload(); self?.updateTitle() }
+        model.onIndexState = { [weak self] in
+            guard let self = self else { return }
+            self.list.reload()
+            self.updateTitle()
+            if self.model.indexState == .ready, self.list.table.selectedRow < 0, self.model.rowCount > 0 {
+                self.list.table.selectRowIndexes([0], byExtendingSelection: false)
+            }
+        }
 
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] n in
             guard let self = self, (n.object as? NSWindow) !== self.window else { return }
@@ -146,6 +153,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func go(_ s: Scope) {
         guard s != model.scope || model.rowCount == 0 else { return }
+        list.forgetSelection()        // a new place starts at its first row
         model.scope = s
         model.reload()
         sidebar.select(s)
@@ -505,7 +513,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let i = button(L("录制", "Record"), "record.circle", #selector(record), tip: L("录制屏幕和讲解 ", "Record your screen and voice ") + hk(.toggleRecord))
             return i
         case Self.snapID:
-            return button(L("截图", "Snap"), "camera.viewfinder", #selector(snap), tip: L("截一张图，随口说两句 ", "Snap a shot and say a word ") + hk(.snap))
+            let i = button(L("截图", "Snap"), "camera.viewfinder", #selector(snap), tip: L("截一张图，随口说两句 ", "Snap a shot and say a word ") + hk(.snap))
+            i.image = BrandIcon.image(.snap, size: 19)
+            return i
         case Self.fixID:
             let i = button(L("让 Agent 修", "Let Agent Fix"), "wand.and.stars", #selector(toolbarFix), tip: L("把选中的条目交给 coding agent（⌘↩）", "Hand the selected items to your coding agent (⌘↩)"))
             i.image = BrandIcon.image(.peck, size: 19)
