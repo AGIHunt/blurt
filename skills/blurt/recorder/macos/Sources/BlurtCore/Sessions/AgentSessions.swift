@@ -22,6 +22,9 @@ public struct AppLaunch {
     public let argv: [String]
     public let env: [String: String]
     public let cwd: URL
+    public init(job: String, argv: [String], env: [String: String], cwd: URL) {
+        self.job = job; self.argv = argv; self.env = env; self.cwd = cwd
+    }
 }
 
 public struct DispatchResult {

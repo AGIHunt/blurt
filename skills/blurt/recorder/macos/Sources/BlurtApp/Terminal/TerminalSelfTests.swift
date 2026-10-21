@@ -76,6 +76,23 @@ enum TerminalSelfTests {
                 await m.run(arg)
                 out(["action": arg, "phase": "\(m.phase)", "pr": m.prURL ?? NSNull()])
             }
+        case "dispatch-app":            // dispatch-app REF: as on a Mac without tmux (sessions.py --runner app → AppRunner)
+            Task { @MainActor in
+                do {
+                    let o = try await ScriptRunner.shared.json("sessions.py", ["dispatch", "--items", arg, "--worktree", "off", "--runner", "app"], timeout: 120)
+                    for l in o["launch"] as? [[String: Any]] ?? [] {
+                        guard let job = l["job"] as? String, let argv = l["argv"] as? [String], !argv.isEmpty else { continue }
+                        AppRunner.shared.launch(AppLaunch(job: job, argv: argv, env: l["env"] as? [String: String] ?? [:],
+                                                          cwd: URL(fileURLWithPath: l["cwd"] as? String ?? NSHomeDirectory())))
+                        TerminalModule.reveal(job: job)
+                        out(["job": job])
+                    }
+                } catch { out(["error": "\(error)"]) }
+            }
+        case "fixwatch":                // the stores FixWatcher follows and what it reads from FILE's front-matter
+            let fm = arg.isEmpty ? nil : FixWatcher.frontMatter(URL(fileURLWithPath: arg))
+            out(["stores": FixWatcher.stores().map(\.path), "work": fm.flatMap(FixWatcher.workState) ?? NSNull(),
+                 "projects": ProjectStore.shared.projects.map(\.id)])
         case "type":
             guard words.count >= 2, let n = Int(words[0]), let t = pane(n)?.surface.term else { out(["error": "no terminal"]); return }
             let text = words.dropFirst().joined(separator: " ").replacingOccurrences(of: "\\r", with: "\r")

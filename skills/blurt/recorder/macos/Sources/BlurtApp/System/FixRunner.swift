@@ -30,6 +30,7 @@ final class FixRunner {
         let claim = work["claim"] as? String
         let by = agent.map { claim == "wontfix" ? TL("verify.by.wontfix", $0) : TL("verify.by", $0) }
         let detail = [by, note.isEmpty ? nil : note].compactMap { $0 }.joined(separator: " · ")
+        emit(["event": "to_verify", "uid": uid, "title": title, "detail": detail])
         PeckCard.shared.play(title: title, detail: detail, uid: uid)
         Notify.post(title: TL("verify.notification", title), body: detail, uid: uid)
     }

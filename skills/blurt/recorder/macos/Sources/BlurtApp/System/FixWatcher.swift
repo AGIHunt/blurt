@@ -20,7 +20,8 @@ final class FixWatcher {
     static func stores() -> [URL] {
         let ps = ProjectStore.shared
         var seen = Set<String>()
-        return (ps.projects.map(\.store) + [ps.inbox.store]).map(\.standardizedFileURL).filter { seen.insert($0.path).inserted }
+        return (ps.projects.map(\.store) + [ps.inbox.store]).map { URL(fileURLWithPath: Self.real($0.path)) }
+            .filter { seen.insert($0.path).inserted }
     }
 
     /// Where recordings live, for the storage panes: each store's sessions/ plus the v0.6 locations still on disk.
@@ -76,13 +77,22 @@ final class FixWatcher {
 
     /// Compare one item file with what we knew.
     func check(_ file: URL) {
-        let p = file.path
+        let p = Self.real(file.path)         // FSEvents says /private/tmp where URL APIs say /tmp: one key for both
         guard FileManager.default.fileExists(atPath: p), let fm = Self.frontMatter(file) else { states[p] = nil; return }
         let now = Self.workState(fm) ?? "todo"
         let before = states[p]
         states[p] = now
         guard let b = before, b != "to_verify", now == "to_verify", let uid = fm["uid"] as? String else { return }
         onFixed?(uid, fm, file)
+    }
+
+    /// The canonical path (symlinks resolved, /tmp → /private/tmp); for a file that's gone, its folder's.
+    static func real(_ p: String) -> String {
+        if let r = realpath(p, nil) { defer { free(r) }; return String(cString: r) }
+        let u = URL(fileURLWithPath: p)
+        guard let d = realpath(u.deletingLastPathComponent().path, nil) else { return p }
+        defer { free(d) }
+        return String(cString: d) + "/" + u.lastPathComponent
     }
 
     static func workState(_ fm: [String: Any]) -> String? { (fm["work"] as? [String: Any])?["state"] as? String }
