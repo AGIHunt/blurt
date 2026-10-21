@@ -161,7 +161,7 @@ extension BlurtIcon {
             im = NSImage(size: s.size, flipped: false) { r in
                 s.draw(in: r)
                 c.set()
-                r.fill(using: .sourceAtop)
+                r.fill(using: .sourceIn)      // the symbol's shape in exactly c (alpha included)
                 return true
             }
         } else {
