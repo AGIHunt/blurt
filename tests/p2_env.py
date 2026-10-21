@@ -216,7 +216,10 @@ class P2:
         return self.job(jid)["agent"]["status"]
 
     def close(self):
-        subprocess.run([TMUX, "-L", self.socket, "kill-server"], capture_output=True, env=self.env)
+        for sock in (self.socket, self.socket + "-outer"):
+            subprocess.run([TMUX, "-L", sock, "kill-server"], capture_output=True, env=self.env)
+            tmpdir = Path(os.environ.get("TMUX_TMPDIR") or "/tmp") / f"tmux-{os.getuid()}"
+            (tmpdir / sock).unlink(missing_ok=True)  # kill-server leaves the socket file
 
 
 needs_tmux = pytest.mark.skipif(not shutil.which("tmux") or os.name == "nt", reason="needs tmux")
