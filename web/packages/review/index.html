@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>blurt · Review</title>
+<title>Blurt</title>
 <link rel="icon" href="icon.png">
 <script>/* theme + platform before first paint (the bundle re-applies the same rules): ?theme= / ?platform= win; then the
    user's pick (browser page only); an app window always follows the system */
-(function(){var d=document.documentElement,q=new URLSearchParams(location.search),app=!!window.blurtApp||location.protocol==="blurt-app:",s=null;
+(function(){var d=document.documentElement,q=new URLSearchParams(location.search),app=location.protocol==="blurt-app:"||q.get("host")==="macos"||q.get("host")==="tauri",s=null;
 try{s=localStorage.getItem("blurt.theme")}catch(e){}
 var t=q.get("theme");if(t!=="light"&&t!=="dark")t=(!app&&(s==="light"||s==="dark")&&s)||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
 d.dataset.theme=t;var p=q.get("platform"),u=(navigator.platform+" "+navigator.userAgent).toLowerCase();

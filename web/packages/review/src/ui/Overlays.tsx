@@ -1,4 +1,3 @@
-import { Egg } from "./icons";
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 import { Logo, isMacLike } from "./TopBar";
@@ -12,7 +11,7 @@ export function Toast() {
       <span id="toastMsg">{t?.msg}</span>
       {t?.undo && (
         <button id="toastUndo" onClick={s.undo}>
-          {s.t("undo")}  Z
+          {s.t("action.undo")} <kbd>Z</kbd>
         </button>
       )}
     </div>
@@ -24,21 +23,22 @@ function Keys() {
   const mod = isMacLike() ? "⌘⏎" : "Ctrl+⏎";
   const rows: [string, string][] =
     s.mode === "item"
-      ? [["← →", s.t("k_media")], ["Space / O", s.t("k_play")], ["E", s.t("k_edit")], ["1 2 3", s.t("k_sev")], [mod, s.t("k_fix")], ["?", s.t("k_help")]]
-      : [["↓ ↑ / J K", s.t("k_next")], ["A / ⏎", s.t("k_keep")], ["X / ⌫", s.t("k_drop")], ["Z", s.t("k_undo")], ["M", s.t("k_merge")],
-         ["1 2 3", s.t("k_sev")], ["← →", s.t("k_media")], ["Space / O", s.t("k_play")], ["E", s.t("k_edit")], ["G", s.t("k_view")],
-         ["V", s.t("k_ov")], [mod, s.t("k_finish")], ["?", s.t("k_help")]];
+      ? [["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["1 2 3", "keys.severity"],
+         ...(s.host.dispatch ? [[mod, "keys.dispatch"] as [string, string]] : []), ["?", "keys.help"]]
+      : [["↓ ↑ / J K", "keys.next"], ["A / ⏎", "keys.keep"], ["X / ⌫", "keys.drop"], ["Z", "keys.undo"], ["M", "keys.merge"],
+         ["1 2 3", "keys.severity"], ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["G", "keys.view"],
+         ["V", "keys.overview"], ...(s.isSession ? [[mod, "keys.finish"] as [string, string]] : []), ["?", "keys.help"]];
   return (
     <>
-      <h3>{s.t("keysTitle")}</h3>
+      <h3>{s.t("keys.title")}</h3>
       <div className="keys">
         {rows.map(([k, l]) => (
           <div key={l}>
-            <span>{l}</span>
+            <span>{s.t(l)}</span>
             <span>
               {k.split(" ").map((x, n) =>
                 x === "/" ? (
-                  <span key={n} style={{ color: "var(--faint)" }}>
+                  <span key={n} className="kor">
                     {" / "}
                   </span>
                 ) : (
@@ -51,7 +51,7 @@ function Keys() {
       </div>
       <div className="row">
         <button className="btn" onClick={s.closeModal} autoFocus>
-          {s.t("ok")}
+          {s.t("action.ok")}
         </button>
       </div>
     </>
@@ -61,42 +61,43 @@ function Keys() {
 function Finish() {
   const s = useStore();
   const c = s.counts();
+  const n = s.i18n.formatNumber;
   return (
     <>
-      <h3>{s.t("confirmTitle")}</h3>
-      <p>{s.finishError ? s.t("saveError") : s.t("confirmBody").replace("{k}", String(c.k)).replace("{d}", String(c.d)).replace("{p}", String(c.p))}</p>
+      <h3>{s.t("finish.title")}</h3>
+      <p>{s.finishError ? s.t("finish.error") : s.t("finish.body", { k: c.k, d: c.d, p: c.p })}</p>
       {s.finishWarn && (
         <div className="warn">
-          <Egg kind="note" />
-          <span>{s.t("stillProc")}</span>
+          <Icon name="hatch" className="hatching" />
+          <span>{s.t("finish.still_processing")}</span>
         </div>
       )}
       <div className="sum">
         <div>
-          <b style={{ color: "var(--keep-ink)" }}>{c.k}</b>
-          {s.t("kept")}
+          <b className="k">{n(c.k)}</b>
+          {s.t("counts.kept")}
         </div>
         <div>
-          <b style={{ color: "var(--drop-ink)" }}>{c.d}</b>
-          {s.t("dropped")}
+          <b className="d">{n(c.d)}</b>
+          {s.t("counts.dropped")}
         </div>
         <div>
-          <b>{c.p}</b>
-          {s.t("pending")}
+          <b>{n(c.p)}</b>
+          {s.t("counts.pending")}
         </div>
       </div>
       <div className="row">
         {c.p ? (
           <button className="btn" id="mRest" onClick={s.reviewRest}>
-            {s.t("reviewRest")}
+            {s.t("finish.review_rest")}
           </button>
         ) : (
           <button className="btn" id="mCancel" onClick={s.closeModal}>
-            {s.t("cancel")}
+            {s.t("action.cancel")}
           </button>
         )}
         <button className="btn primary" id="mOk" onClick={s.finish} disabled={s.confirming}>
-          {c.p ? s.t("pendingAs") : s.t("confirm")}
+          {c.p ? s.t("finish.pending_as_kept") : s.t("finish.confirm")}
         </button>
       </div>
     </>
@@ -128,9 +129,9 @@ export function Done() {
   return (
     <div className={cx("done", s.confirmed && "show")} id="done">
       <div>
-        <Logo className="big" />
-        <h2>{s.t("doneTitle")}</h2>
-        <p>{s.host.inApp ? s.t("doneBodyApp") : s.t("doneBody")}</p>
+        {!s.embedded && <Logo className="big" />}
+        <h2>{s.t("done.title")}</h2>
+        <p>{s.host.inApp ? s.t("done.body_app") : s.t("done.body")}</p>
       </div>
     </div>
   );

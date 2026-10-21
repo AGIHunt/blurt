@@ -1,24 +1,18 @@
-/* browser host: review.py's HTTP API, unchanged (GET /api/items with ETag, POST /api/items {ops},
-   POST /api/confirm {ops}, /files/<rel>). Also what the Blurt app's current review window uses: it loads
-   review.py's page in a WKWebView and injects window.blurtApp; the page then reports "confirmed" through
-   webkit.messageHandlers.blurt (the window closes itself). */
-import type { BlurtHost, OpsResult, PollResult, SessionDoc } from "../host";
-
-interface AppWindow {
-  blurtApp?: unknown;
-  webkit?: { messageHandlers?: { blurt?: { postMessage(m: unknown): unknown } } };
-}
+/* browser host: review.py's HTTP API — GET /api/items (ETag), POST /api/items {ops}, POST /api/confirm {ops},
+   files at /files/<path>: a v2 session-relative path segment by segment, a v3 absolute path as ONE percent-encoded
+   segment (`files/%2FUsers%2Fjohn%2F…`; review.py unquotes it and serves it only from registered stores, session
+   dirs and $BLURT_HOME/handoff). */
+import { isAbs, type BlurtHost, type OpsResult, type PollResult, type ReviewDoc } from "../host";
 
 export const encodeRel = (rel: string) => String(rel).split("/").map(encodeURIComponent).join("/");
+export const filePath = (p: string) => (isAbs(p) ? encodeURIComponent(p) : encodeRel(p));
 
 export function createBrowserHost(opts: { base?: string; win?: Window } = {}): BlurtHost {
-  const win = (opts.win ?? window) as Window & AppWindow;
   // relative to the page, so the API works wherever review.py (or a proxy) serves it
   const base = opts.base ?? "";
-  const inApp = !!win.blurtApp;
 
-  async function json(r: Response): Promise<SessionDoc> {
-    return (await r.json()) as SessionDoc;
+  async function json(r: Response): Promise<ReviewDoc> {
+    return (await r.json()) as ReviewDoc;
   }
   async function post(path: string, body: string): Promise<Response> {
     const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body });
@@ -28,7 +22,7 @@ export function createBrowserHost(opts: { base?: string; win?: Window } = {}): B
 
   return {
     host: "browser",
-    inApp,
+    inApp: false,
     async load() {
       const r = await fetch(base + "api/items");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -43,7 +37,7 @@ export function createBrowserHost(opts: { base?: string; win?: Window } = {}): B
     async sendOps(ops, confirm): Promise<OpsResult> {
       const r = await post(confirm ? "api/confirm" : "api/items", JSON.stringify({ ops }));
       const etag = r.headers.get("ETag") || "";
-      let doc: SessionDoc | undefined;
+      let doc: ReviewDoc | undefined;
       try {
         doc = await json(r);
       } catch {
@@ -56,10 +50,7 @@ export function createBrowserHost(opts: { base?: string; win?: Window } = {}): B
       delete d._video;
       await post(confirm ? "api/confirm" : "api/items", JSON.stringify(d));
     },
-    fileUrl: (rel) => (rel ? base + "files/" + encodeRel(rel) : ""),
-    downloadUrl: (rel) => base + "files/" + encodeRel(rel) + "?download=1",
-    confirmed() {
-      win.webkit?.messageHandlers?.blurt?.postMessage({ type: "confirmed" }); // the app window closes itself
-    },
+    fileUrl: (p) => (p ? base + "files/" + filePath(p) : ""),
+    downloadUrl: (p) => base + "files/" + filePath(p) + "?download=1",
   };
 }

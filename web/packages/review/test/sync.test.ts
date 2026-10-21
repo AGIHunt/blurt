@@ -18,7 +18,8 @@ describe("norm / statusOf", () => {
     expect(n[1].kind).toBe("issue");
     expect(statusOf(n[0])).toBe("drop");
     expect(statusOf({ id: "x", _touched: true })).toBe("keep");
-    expect(statusOf({ id: "x", status: "confirmed" })).toBe("pending");
+    expect(statusOf({ id: "x", status: "confirmed" })).toBe("keep"); // kept before (v3 project lists)
+    expect(statusOf({ id: "x", status: "draft" })).toBe("pending");
   });
 });
 

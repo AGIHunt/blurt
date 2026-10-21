@@ -1,9 +1,17 @@
 /* All review state and actions. React components read it through useStore() and call its methods; every change
-   bumps `version` and notifies subscribers. The logic mirrors the vanilla page it replaces, step for step. */
-import type { BlurtHost, Item, MountOptions, SessionDoc } from "./host";
-import { DICTS, KINDS, TYPES, toLang, type Key, type Lang } from "./i18n";
+   bumps `version` and notifies subscribers.
+
+   Two doc shapes (host.ts): v2 (a session's items.json, ops by display id) and v3 (K1 doc: a session or a project,
+   ops by uid, work state, projects). Everything the page edits is a field diff (sync.ts); the two things that are
+   actions rather than fields — a work-state change (K3) and nothing else — go as explicit ops, sent at once and shown
+   optimistically until the server's answer arrives. */
+import { resolveLang, systemLanguages } from "@blurt/i18n";
+import { workStateOf, type WorkState } from "@blurt/ui";
+import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp, WorkRecord } from "./host";
+import { humanizeKey } from "./fields";
+import { makeI18n, SEVERITIES, TYPES, type I18n } from "./i18n";
 import { imeBusy, isEnter } from "./ime";
-import { canon, clone, diffOps, finalize, mergeInto, norm, rebase, statusOf, type Status } from "./sync";
+import { byId, byUid, canon, clone, diffOps, finalize, mergeInto, norm, rebase, statusOf, type KeyFn, type Status } from "./sync";
 
 export type View = "overview" | "focus" | "list";
 export type Filter = "all" | Status;
@@ -13,6 +21,7 @@ export type SaveState = "" | "saving" | "saved" | "error";
 export interface Media {
   kind: "img" | "wait" | "clip" | "orig";
   src: string;
+  /** the path as the doc has it (absolute on v3) */
   rel?: string;
   label: string;
   cap?: string;
@@ -20,20 +29,14 @@ export interface Media {
   end?: number;
 }
 
-export const SEV = ["high", "medium", "low"] as const;
-/** a title worth saving: not empty, not only whitespace (items.py / review.py refuse anything else) */
+export const SEV = SEVERITIES;
+/** a title worth saving: not empty, not only whitespace (the stores refuse anything else) */
 export const isTitle = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const MEDIA_POLL_PROCESSING = 1500;
-const POLL_IDLE = 2000; // agent writes (set-frames, a chat answer) show up within ~2 s
+const POLL_IDLE = 2000; // agent writes (set-frames, a chat answer, a work state) show up within ~2 s
 const POLL_HIDDEN = 15000;
 const STALL_S = 600;
 
-export const fmt = (s: unknown) => {
-  const v = Math.max(0, Number(s) || 0);
-  const m = Math.floor(v / 60);
-  const r = Math.floor(v % 60);
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-};
 export const kindOf = (i: Item) => i.kind || "issue";
 
 const storage = {
@@ -56,16 +59,19 @@ const storage = {
 export class ReviewStore {
   readonly host: BlurtHost;
   readonly mode: "review" | "item";
+  readonly embedded: boolean;
   itemId: string | null;
 
-  lang: Lang;
+  i18n: I18n;
   version = 0;
   loaded = false;
   loadError: string | null = null;
-  data: SessionDoc = { items: [] };
+  data: ReviewDoc = { items: [] };
   base = new Map<string, Item>();
   etag = "";
   legacy = false;
+  /** ops address items by uid (v3) or display id (v2) */
+  key: KeyFn = byId;
 
   cur = 0;
   mediaSel: string | null = null;
@@ -76,6 +82,11 @@ export class ReviewStore {
   filter: Filter = "all";
   query = "";
   kindF = "";
+  workF: "" | WorkState = "";
+  /** list view: selected item keys */
+  selected = new Set<string>();
+  private anchor: string | null = null;
+  dragging = false;
 
   saveState: SaveState = "";
   confirming = false;
@@ -84,13 +95,13 @@ export class ReviewStore {
   warnedProc = false;
   finishWarn = false;
   modal: null | "help" | "finish" = null;
-  toast: { msg: string; undo: boolean; show: boolean; icon?: "check" | "x" } | null = null;
+  toast: { msg: string; undo: boolean; show: boolean; icon?: "check" | "x" | "copy" | "folder" } | null = null;
   lightbox: string | null = null;
   proc: ProcPhase = "hidden";
 
   /** media sources that arrived with a server update (they fade in) */
   fresh = new Set<string>();
-  /** the last server update: item id → changed keys */
+  /** the last server update: item key → changed keys */
   changed = new Map<string, Set<string>>();
   readonly ar = new Map<string, number>();
 
@@ -107,14 +118,18 @@ export class ReviewStore {
   private lastStalled = false;
   private disposed = false;
   private langPicked: boolean;
+  /** work-state ops not yet answered by the server; their state is shown optimistically */
+  private actionOps: UserOp[] = [];
+  private pendingWork = new Map<string, WorkRecord>();
 
   constructor(host: BlurtHost, opts: MountOptions = {}) {
     this.host = host;
     this.mode = opts.mode === "item" ? "item" : "review";
+    this.embedded = !!opts.embedded;
     this.itemId = opts.itemId ?? null;
-    const picked = storage.get("blurt.lang");
+    const picked = this.embedded ? null : storage.get("blurt.lang");
     this.langPicked = !!picked || !!opts.lang;
-    this.lang = toLang(picked || opts.lang || (typeof navigator !== "undefined" ? navigator.language : "en"));
+    this.i18n = makeI18n(resolveLang(picked || opts.lang, systemLanguages()));
   }
 
   // ---------------------------------------------------------------- plumbing
@@ -127,10 +142,18 @@ export class ReviewStore {
     this.version++;
     for (const f of [...this.listeners]) f();
   }
-  t = (k: Key) => DICTS[this.lang][k] ?? k;
-  kindLabel = (k: string) => KINDS[this.lang][k] || k;
-  get types() {
-    return TYPES[this.lang];
+  get lang() {
+    return this.i18n.lang;
+  }
+  t = (k: string, p?: Record<string, string | number | null | undefined>) => this.i18n.t(k, p);
+  plural = (k: string, n: number, p?: Record<string, string | number | null | undefined>) => this.i18n.plural(k, n, p);
+  kindLabel = (k: string) => (this.i18n.has(`kind.${k}`) ? this.t(`kind.${k}`) : humanizeKey(k));
+  typeLabel = (k: string) => (this.i18n.has(`type.${k}`) ? this.t(`type.${k}`) : humanizeKey(k));
+  workLabel = (s: WorkState) => this.t(`work.${s}`);
+  /** "0:14" / "1:02:05" */
+  clock = (s: unknown) => this.i18n.formatDuration(Number(s) || 0);
+  get types(): readonly string[] {
+    return TYPES;
   }
   private enqueue<T>(f: () => Promise<T>): Promise<T> {
     const p = this.net.then(f);
@@ -143,15 +166,24 @@ export class ReviewStore {
     this.listeners.clear();
   }
 
+  get v3() {
+    return this.key === byUid;
+  }
   get item(): Item | undefined {
     return this.data.items[this.cur];
   }
+  keyOf = (i: Item) => this.key(i);
   get stalled(): boolean {
-    const at = Number(this.data.agent_at);
+    const raw = this.data.agent_at;
+    const at = typeof raw === "string" ? Date.parse(raw) / 1000 : Number(raw);
     return !!this.data.processing && !!at && Date.now() / 1000 - at > STALL_S;
   }
   get hasOverview() {
     return !!(this.data.digest || this.data.title);
+  }
+  /** a session's batch (review / finish) rather than a project's list */
+  get isSession() {
+    return !this.data.scope || "session" in this.data.scope;
   }
   counts() {
     let k = 0, d = 0, p = 0;
@@ -172,15 +204,15 @@ export class ReviewStore {
       kind: "img" as const,
       src: this.host.fileUrl(f.path),
       rel: f.path,
-      label: f.t != null ? fmt(f.t) : `#${k + 1}`,
+      label: f.t != null ? this.clock(f.t) : this.t("media.frame", { n: k + 1 }),
       cap: f.caption,
     }));
-    if (!m.length && this.data.processing) m.push({ kind: "wait", src: "wait:" + i.id, label: "…" });
-    if (i.clip) m.push({ kind: "clip", src: this.host.fileUrl(i.clip), rel: i.clip, label: this.t("clip") });
+    if (!m.length && this.data.processing) m.push({ kind: "wait", src: "wait:" + this.key(i), label: "…" });
+    if (i.clip) m.push({ kind: "clip", src: this.host.fileUrl(i.clip), rel: i.clip, label: this.t("media.clip") });
     if (this.hasVideo(i))
       m.push({
         kind: "orig", src: this.host.fileUrl(String(this.data.source_video)), rel: String(this.data.source_video),
-        label: this.t("orig"), start: i.time!.start, end: i.time!.end,
+        label: this.t("media.recording"), start: i.time!.start, end: i.time!.end,
       });
     return m;
   }
@@ -189,15 +221,105 @@ export class ReviewStore {
     return k >= 0 ? k : 0;
   }
 
+  // ---------------------------------------------------------------- projects and work (v3)
+  get projects(): ProjectRef[] {
+    return this.v3 && Array.isArray(this.data.projects) ? this.data.projects : [];
+  }
+  project(id: string | null | undefined): ProjectRef | undefined {
+    if (!id) return undefined;
+    return this.projects.find((p) => p.id === id) ?? (id === "inbox" ? { id: "inbox", key: "IN", name: this.t("project.inbox") } : undefined);
+  }
+  projectName = (p: ProjectRef | undefined) => (!p ? "" : p.id === "inbox" ? this.t("project.inbox") : p.name);
+  get canMove() {
+    return this.projects.length > 0;
+  }
+  get canWork() {
+    return this.v3;
+  }
+  workOf = (i: Item): WorkState => workStateOf(i);
+
+  /** user decisions on the work state (K3: confirm done, reopen, won't do) */
+  setWork = (items: Item[], state: WorkState, note?: string) => {
+    if (!this.canWork || !items.length) return;
+    const at = new Date().toISOString();
+    for (const i of items) {
+      const k = this.key(i);
+      const w: WorkRecord = { ...(i.work || { state: "todo" }), state, by: "user", at, claim: null };
+      if (state === "todo") Object.assign(w, { to: null, job: null, handoff: null });
+      i.work = w;
+      this.pendingWork.set(k, w);
+      this.actionOps.push(note ? { op: "work", id: k, state, note } : { op: "work", id: k, state });
+    }
+    this.flush();
+  };
+
+  /** move items to a project (K2: the user's choice, never overridden by AI) */
+  moveTo = (items: Item[], projectId: string) => {
+    const moving = items.filter((i) => i.project !== projectId);
+    if (!this.canMove || !moving.length) return;
+    this.snapshot();
+    for (const i of moving) i.project = projectId;
+    this.flush();
+    const name = this.projectName(this.project(projectId));
+    this.showToast(this.plural("project.moved", moving.length, { project: name }), false, "folder");
+  };
+
+  handoff = async (items: Item[], what: "instruction" | "full") => {
+    const h = this.host.handoff;
+    const live = items.filter((i) => i.status !== "deleted");
+    if (!h || !live.length) return;
+    try {
+      const r = await h(live.map((i) => i.uid || i.id), what);
+      this.showToast(this.t(what === "full" ? "handoff.copied.full" : "handoff.copied.instruction", { id: r.id }), false, "copy");
+      this.pollNow();
+    } catch {
+      this.showToast(this.t("handoff.failed"), false, "x");
+    }
+  };
+  dispatch = (items: Item[]) => {
+    const live = items.filter((i) => i.status !== "deleted");
+    if (this.host.dispatch && live.length) this.host.dispatch(live.map((i) => i.uid || i.id));
+  };
+  openSession = (job: string) => this.host.openSession?.(job);
+
+  // ---------------------------------------------------------------- selection (list view)
+  isSelected = (i: Item) => this.selected.has(this.key(i));
+  selectedItems = () => this.data.items.filter((i) => this.selected.has(this.key(i)));
+  /** click: toggle; shift: the range from the last toggled card over the visible cards */
+  toggleSelect = (i: Item, range = false) => {
+    const k = this.key(i);
+    const vis = this.listed().map(({ i }) => this.key(i));
+    if (range && this.anchor && vis.includes(this.anchor)) {
+      const [a, b] = [vis.indexOf(this.anchor), vis.indexOf(k)].sort((x, y) => x - y);
+      for (const x of vis.slice(a, b + 1)) this.selected.add(x);
+    } else if (this.selected.has(k)) this.selected.delete(k);
+    else this.selected.add(k);
+    this.anchor = k;
+    this.emit();
+  };
+  selectAll = () => {
+    for (const { i } of this.listed()) this.selected.add(this.key(i));
+    this.emit();
+  };
+  clearSelection = () => {
+    this.selected.clear();
+    this.anchor = null;
+    this.emit();
+  };
+  setDragging = (on: boolean) => {
+    this.dragging = on;
+    this.emit();
+  };
+
   // ---------------------------------------------------------------- loading and syncing
-  private setTop(doc: SessionDoc) {
+  private setTop(doc: ReviewDoc) {
     for (const k of Object.keys(this.data)) if (k !== "items" && !(k in doc)) delete this.data[k];
     for (const [k, v] of Object.entries(doc)) if (k !== "items") this.data[k] = v;
   }
   private findCur(): number {
     if (this.mode !== "item" || !this.itemId) return -1;
     const want = this.itemId;
-    return this.data.items.findIndex((i) => i.id === want || i.uid === want);
+    return this.data.items.findIndex((i) => i.id === want || i.uid === want || (i.aliases || []).includes(want));
   }
   private markKnown(fresh: boolean) {
     const now: string[] = [];
@@ -220,14 +342,15 @@ export class ReviewStore {
     try {
       const { doc, etag } = await this.host.load();
       this.etag = etag;
+      this.key = Number(doc.schema) >= 3 ? byUid : byId;
       this.legacy = (doc.items || []).some((i) => !i.id); // hand-written file without ids: save it whole, as before
       this.setTop(doc);
       const S = norm(doc.items);
       this.data.items = S.map(clone);
-      this.base = new Map(S.map((i) => [i.id, clone(i)]));
-      if (!this.langPicked && this.data.language) this.lang = toLang(String(this.data.language));
+      this.base = new Map(S.map((i) => [this.key(i), clone(i)]));
+      if (!this.langPicked && this.data.language) this.i18n = makeI18n(resolveLang(String(this.data.language), systemLanguages()));
       if (this.mode === "item") this.cur = Math.max(0, this.findCur());
-      else this.cur = Math.max(0, this.data.items.findIndex((i) => !i._touched));
+      else this.cur = Math.max(0, this.data.items.findIndex((i) => statusOf(i) === "pending"));
       const v = storage.get("blurt.view") as View | null;
       this.view = v === "focus" || v === "list" || v === "overview" ? v : this.data.digest ? "overview" : this.data.items.length > 1 ? "focus" : "list";
       if (this.view === "overview" && !this.hasOverview) this.view = "focus";
@@ -245,21 +368,28 @@ export class ReviewStore {
     }
   }
 
-  private applyServer(doc: SessionDoc) {
-    const cid = this.item?.id;
+  private applyServer(doc: ReviewDoc) {
+    const cid = this.item ? this.key(this.item) : undefined;
     const prevProc = !!this.data.processing;
     const S = norm(doc.items);
-    const res = rebase(this.data.items, this.base, S, false);
+    const res = rebase(this.data.items, this.base, S, false, this.key);
     this.data.items = res.items;
-    this.base = new Map(S.map((i) => [i.id, clone(i)]));
+    this.base = new Map(S.map((i) => [this.key(i), clone(i)]));
     this.setTop(doc);
+    // work states the server hasn't answered yet stay as the user set them
+    for (const i of this.data.items) {
+      const w = this.pendingWork.get(this.key(i));
+      if (w) i.work = w;
+    }
     if (this.mode === "item") {
       const k = this.findCur();
       this.cur = k >= 0 ? k : this.cur;
     } else {
-      const k = this.data.items.findIndex((i) => i.id === cid);
+      const k = this.data.items.findIndex((i) => this.key(i) === cid);
       this.cur = k >= 0 ? k : Math.min(this.cur, Math.max(0, this.data.items.length - 1));
     }
+    const keys = new Set(this.data.items.map(this.key));
+    for (const k of [...this.selected]) if (!keys.has(k)) this.selected.delete(k);
     this.changed = res.changed;
     this.markKnown(true);
     if (prevProc !== !!this.data.processing) this.procChanged();
@@ -286,13 +416,13 @@ export class ReviewStore {
     } else this.proc = "hidden";
   }
 
-  private async accept(r: { etag: string; doc?: SessionDoc }, before: string) {
+  private async accept(r: { etag: string; doc?: ReviewDoc }, before: string) {
     if (r.doc) {
       this.etag = r.etag || this.etag;
       this.applyServer(r.doc);
       return;
     }
-    // the host only acknowledged: fetch the merged file, so base includes what we just wrote
+    // the host only acknowledged: fetch the merged doc, so base includes what we just wrote
     const p = await this.host.poll(before);
     this.etag = p.etag || r.etag || this.etag;
     if (p.doc) this.applyServer(p.doc);
@@ -303,10 +433,22 @@ export class ReviewStore {
       await this.host.saveDoc?.(this.data, false);
       return;
     }
-    const ops = diffOps(this.data.items, this.base);
+    const actions = this.actionOps.splice(0);
+    const ops = [...actions, ...diffOps(this.data.items, this.base, this.key)];
     if (!ops.length) return;
     const before = this.etag;
-    await this.accept(await this.host.sendOps(ops), before);
+    const sent = this.data.items.map(clone);
+    try {
+      const r = await this.host.sendOps(ops);
+      // the server has what we sent: rebase server updates on that, so an item that left the scope (moved to another
+      // project) goes away instead of looking like a local edit
+      this.base = new Map(sent.map((i) => [this.key(i), i]));
+      for (const a of actions) this.pendingWork.delete(a.op === "work" ? a.id : "");
+      await this.accept(r, before);
+    } catch (e) {
+      this.actionOps.unshift(...actions); // retried with the next save
+      throw e;
+    }
   }
 
   private async poll() {
@@ -337,7 +479,8 @@ export class ReviewStore {
     if (this.loaded && !this.legacy) this.enqueue(() => this.poll()).catch(() => {});
   }
 
-  save() {
+  /** autosave: field edits wait 450 ms (typing); `flush` sends now (moves, work states) */
+  save(delay = 450) {
     if (this.confirming) return;
     this.saveState = "saving";
     clearTimeout(this.saveTimer);
@@ -353,13 +496,14 @@ export class ReviewStore {
           this.emit();
         },
       );
-    }, 450);
+    }, delay);
     this.emit();
   }
+  flush = () => this.save(0);
 
   // ---------------------------------------------------------------- user actions
   private snapshot() {
-    this.undoStack.push(JSON.stringify({ items: this.data.items, base: [...this.base.values()], cur: this.cur, cid: this.item?.id }));
+    this.undoStack.push(JSON.stringify({ items: this.data.items, base: [...this.base.values()], cur: this.cur, cid: this.item && this.key(this.item) }));
     if (this.undoStack.length > 80) this.undoStack.shift();
   }
   undo = () => {
@@ -369,14 +513,14 @@ export class ReviewStore {
     // undo the user's own steps only: whatever the agent wrote since stays
     this.data.items = this.legacy
       ? o.items
-      : rebase(o.items, new Map(o.base.map((i) => [i.id, i])), [...this.base.values()].map(clone), true).items;
-    const k = this.data.items.findIndex((i) => i.id === o.cid);
+      : rebase(o.items, new Map(o.base.map((i) => [this.key(i), i])), [...this.base.values()].map(clone), true, this.key).items;
+    const k = this.data.items.findIndex((i) => this.key(i) === o.cid);
     this.cur = this.legacy || k < 0 ? Math.min(o.cur, this.data.items.length - 1) : k;
     this.mediaSel = null;
     this.dir = "down";
     this.slideKey++;
     this.save();
-    this.showToast(this.t("undone"));
+    this.showToast(this.t("toast.undone"));
   };
 
   go = (k: number, d?: "up" | "down") => {
@@ -404,12 +548,25 @@ export class ReviewStore {
       i._dropped = true;
     }
     this.save();
-    this.showToast(`${this.t(kind === "keep" ? "kept1" : "dropped1")} · ${i.id || ""}`, true, kind === "keep" ? "check" : "x");
+    this.showToast(this.t(kind === "keep" ? "toast.kept" : "toast.dropped", { id: i.id || "" }), true, kind === "keep" ? "check" : "x");
     if (this.counts().p === 0 && this.cur === this.data.items.length - 1) {
       setTimeout(() => this.openFinish(), 250);
       return;
     }
     setTimeout(() => this.nextPending(), 90);
+  };
+  /** keep / drop a selection (list view) */
+  decideMany = (items: Item[], kind: "keep" | "drop") => {
+    if (!items.length) return;
+    this.snapshot();
+    for (const i of items) {
+      i._touched = true;
+      i.status = kind === "keep" ? "confirmed" : "deleted";
+      if (kind === "keep") delete i._dropped;
+      else i._dropped = true;
+    }
+    this.save();
+    this.showToast(this.t(kind === "keep" ? "toast.kept" : "toast.dropped", { id: this.i18n.formatList(items.map((i) => i.id)) }), true, kind === "keep" ? "check" : "x");
   };
   setSev = (v: string) => {
     const i = this.item;
@@ -426,7 +583,7 @@ export class ReviewStore {
   cycleType = () => {
     const i = this.item;
     if (!i) return;
-    const ks = Object.keys(this.types);
+    const ks = this.types;
     i.type = ks[(ks.indexOf(String(i.type)) + 1) % ks.length];
     this.save();
   };
@@ -438,16 +595,15 @@ export class ReviewStore {
     this.snapshot();
     const p = this.data.items[j];
     const i = this.data.items[this.cur];
-    mergeInto(p, i);
+    mergeInto(p, i, this.key);
     this.data.items.splice(this.cur, 1);
     this.cur = j;
     this.dir = "down";
     this.slideKey++;
     this.save();
-    this.showToast(`${this.t("merged")} ${p.id || ""}`, true);
+    this.showToast(this.t("toast.merged", { id: p.id || "" }), true);
   };
-  /** a field edit from the inspector (value already parsed) */
-  /** false (nothing changed or sent) for an empty / whitespace-only title — the server refuses those too */
+  /** a field edit from the inspector (value already parsed); false (nothing changed or sent) for an empty title */
   setField = (i: Item, k: string, v: unknown): boolean => {
     if (k === "title" && !isTitle(v)) return false;
     if (k === "source") i.source = { ...(i.source || {}), url: String(v).trim() };
@@ -496,33 +652,40 @@ export class ReviewStore {
     this.kindF = k;
     this.emit();
   };
+  setWorkF = (w: "" | WorkState) => {
+    this.workF = w;
+    this.emit();
+  };
   setQuery = (q: string) => {
     this.query = q;
     this.emit();
   };
-  toggleLang = () => {
-    this.lang = this.lang === "zh" ? "en" : "zh";
+  setLang = (lang: string) => {
+    this.i18n = makeI18n(lang);
     this.langPicked = true;
-    storage.set("blurt.lang", this.lang);
     this.emit();
+  };
+  toggleLang = () => {
+    this.setLang(this.lang === "zh-Hans" ? "en" : "zh-Hans");
+    storage.set("blurt.lang", this.lang);
   };
   openLightbox = (src: string | null) => {
     this.lightbox = src;
     this.emit();
   };
 
-  showToast(msg: string, withUndo = false, icon?: "check" | "x") {
+  showToast(msg: string, withUndo = false, icon?: "check" | "x" | "copy" | "folder") {
     this.toast = { msg, undo: withUndo, show: true, icon };
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {
       if (this.toast) this.toast = { ...this.toast, show: false };
       this.emit();
-    }, 2200);
+    }, 2400);
     this.emit();
   }
   copy = (text: string) => {
     void navigator.clipboard?.writeText(text);
-    this.showToast(`${text} ${this.t("copy")}`);
+    this.showToast(this.t("toast.copied", { text }), false, "copy");
   };
 
   openHelp = () => {
@@ -534,7 +697,7 @@ export class ReviewStore {
     this.emit();
   };
   openFinish = () => {
-    if (this.mode === "item" || this.confirmed) return;
+    if (this.mode === "item" || this.confirmed || !this.isSession) return;
     this.finishWarn = !!this.data.processing && !this.warnedProc; // allowed while frames still come in; say so once
     if (this.finishWarn) this.warnedProc = true;
     this.finishError = false;
@@ -565,7 +728,7 @@ export class ReviewStore {
           await this.host.saveDoc?.({ ...this.data, items: final }, true);
           return;
         }
-        await this.host.sendOps(diffOps(final, this.base), true);
+        await this.host.sendOps([...this.actionOps.splice(0), ...diffOps(final, this.base, this.key)], true);
       });
       this.confirmed = true;
       this.modal = null;
@@ -578,12 +741,6 @@ export class ReviewStore {
       if (body) body.inert = false;
       this.emit();
     }
-  };
-
-  fixWithAgent = () => {
-    const i = this.item;
-    if (!i || !this.host.fixWithAgent) return;
-    this.host.fixWithAgent([i.uid || i.id]);
   };
 
   // ---------------------------------------------------------------- keyboard
@@ -620,13 +777,14 @@ export class ReviewStore {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       if (imeBusy(e)) return;
       e.preventDefault();
-      if (this.mode === "item") this.fixWithAgent();
+      if (this.mode === "item") this.item && this.dispatch([this.item]);
       else this.openFinish();
       return;
     }
     if (e.key === "Escape") {
       if (this.modal) this.closeModal();
       else if (this.lightbox) this.openLightbox(null);
+      else if (this.selected.size && !typing) this.clearSelection();
       else ae?.blur();
       return;
     }
@@ -695,16 +853,17 @@ export class ReviewStore {
         ({ i, s }) =>
           (this.filter === "all" || this.filter === s) &&
           (!this.kindF || kindOf(i) === this.kindF) &&
+          (!this.workF || workStateOf(i) === this.workF) &&
           (!ql ||
-            [i.title, i.module, i.owner, i.id, i.summary, (i.tags || []).join(" ")].join(" ").toLowerCase().includes(ql)),
+            [i.title, i.module, i.owner, i.id, i.summary, (i.tags || []).join(" "), ...(i.aliases || [])].join(" ").toLowerCase().includes(ql)),
       );
   }
 
   /** for tests and hosts: the unsaved local difference */
   pendingOps() {
-    return diffOps(this.data.items, this.base);
+    return [...this.actionOps, ...diffOps(this.data.items, this.base, this.key)];
   }
   isDirty() {
-    return this.data.items.some((i) => canon(i) !== canon(this.base.get(i.id)));
+    return this.actionOps.length > 0 || this.data.items.some((i) => canon(i) !== canon(this.base.get(this.key(i))));
   }
 }
