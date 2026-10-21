@@ -134,6 +134,17 @@ enum SelfTests {
         case "mainjob":                 // mainjob ID: the job's detail
             MainWindowController.shared.selectJob(arg)
             out(["job": arg, "found": JobStore.shared.job(arg) != nil])
+        case "maindispatch":            // ⌘↩ on the selection (the concurrent-edit reminder may come up)
+            MainWindowController.shared.handOffSelection()
+        case "alertbutton":             // alertbutton N: answer the reminder sheet
+            if let a = MainWindowController.shared.openAlert, let n = Int(arg), n < a.buttons.count { a.buttons[n].performClick(nil) }
+            out(["answered": arg])
+        case "mainclose":               // close the main window (then nothing may reopen it by itself)
+            MainWindowController.shared.window?.performClose(nil)
+            out(["visible": MainWindowController.shared.window?.isVisible ?? false])
+        case "badge":                   // the menu-bar count and its tooltip
+            MenuBadge.shared.refresh()
+            out(["count": MenuBadge.shared.count, "tooltip": MenuBadge.shared.tooltip, "title": appDelegate?.statusItem?.button?.title ?? ""])
         case "mainsize":                // mainsize W H: the window's size (screenshots)
             let a = arg.split(separator: " ").compactMap { Double($0) }
             if a.count == 2, let w = MainWindowController.shared.window, let sc = w.screen?.visibleFrame {

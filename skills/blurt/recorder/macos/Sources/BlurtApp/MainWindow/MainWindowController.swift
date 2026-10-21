@@ -37,6 +37,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private var restored = false
     /// The job the detail shows (selected in the jobs section), until another selection replaces it.
     private(set) var shownJob: String?
+    /// The reminder sheet while it is up (tests answer it).
+    var openAlert: NSAlert?
 
     init() {
         sidebar = SidebarController(model: model)
@@ -444,7 +446,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 let dry = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: .auto, dryRun: true)
                 var worktree = WorktreeChoice.auto
                 if dry.warnings.contains(where: { $0.code == "concurrent_edit" }) {
-                    guard let choice = concurrentEditReminder(project: items[0].projectName) else { return }
+                    guard let choice = await concurrentEditReminder(project: items[0].projectName) else { return }
                     worktree = choice
                 }
                 let r = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: worktree, dryRun: false)
@@ -461,15 +463,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// K5: never a block, just a reminder. nil = cancelled.
-    func concurrentEditReminder(project: String) -> WorktreeChoice? {
+    /// K5: never a block, just a reminder (a sheet on the window). nil = cancelled.
+    @MainActor
+    func concurrentEditReminder(project: String) async -> WorktreeChoice? {
         let a = NSAlert()
         a.messageText = T("main.dispatch.concurrent.title")
         a.informativeText = T("main.dispatch.concurrent", project)
+        a.icon = Look.symbol("arrow.triangle.branch", "", size: 32)
         a.addButton(withTitle: T("main.dispatch.use_worktree"))
         a.addButton(withTitle: T("action.continue"))
         a.addButton(withTitle: T("action.cancel"))
-        switch a.runModal() {
+        a.buttons.last?.keyEquivalent = "\u{1b}"
+        guard let w = window, w.isVisible else { return nil }
+        openAlert = a
+        let r: NSApplication.ModalResponse = await withCheckedContinuation { c in a.beginSheetModal(for: w) { c.resume(returning: $0) } }
+        openAlert = nil
+        switch r {
         case .alertFirstButtonReturn: return .on
         case .alertSecondButtonReturn: return .off
         default: return nil

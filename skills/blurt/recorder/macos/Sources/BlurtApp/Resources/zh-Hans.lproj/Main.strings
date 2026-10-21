@@ -97,7 +97,7 @@
 "main.detail.parse_error" = "这一条的文件读不出来";
 
 "main.dispatch.concurrent" = "%@ 里已经有一个会话在直接改文件。同时改同一批文件可能冲突，建议用 worktree 分开。";
-"main.dispatch.concurrent.title" = "已经有会话在改这里的文件";
+"main.dispatch.concurrent.title" = "这次要用 worktree 吗？";
 "main.dispatch.failed" = "没能开始会话";
 "main.dispatch.needs_project" = "先把这些条目移到一个项目里";
 "main.dispatch.needs_project.detail" = "agent 需要在项目文件夹里工作。用「移到项目」之后再开会话。";

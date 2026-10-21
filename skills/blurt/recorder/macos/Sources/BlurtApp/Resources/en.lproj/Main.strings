@@ -97,7 +97,7 @@
 "main.detail.parse_error" = "This item's file can't be read";
 
 "main.dispatch.concurrent" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.";
-"main.dispatch.concurrent.title" = "Another session is changing files here";
+"main.dispatch.concurrent.title" = "Use a worktree for this session?";
 "main.dispatch.failed" = "Couldn't start the session";
 "main.dispatch.needs_project" = "Move these items to a project first";
 "main.dispatch.needs_project.detail" = "An agent needs the project's folder to work in. Use Move to Project, then start the session.";
