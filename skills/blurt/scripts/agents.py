@@ -15,7 +15,12 @@ described (contract C5): the apps and live.py run what this returns instead of b
                                    → {"id","mode","argv","cwd","env","url","events","terminal","clipboard","open_app",
                                       "retry_exit","prompt_file"}
   agents.py install ID [--skill] [--mcp] [--dry-run]   → {"changes": [{action, path|argv, …}], "applied": bool}
-  agents.py prompt fix --items UID … [--repo DIR]      → {"prompt": "…", "repo": "…", "items": [...]}
+  agents.py prompt work --items REF … [--mode session|external] [--worktree on|off] [--branch B] [--handoff H]
+                   [--lang en|zh]   → {"ok","prompt","handoff","path","items"}: a short prompt pointing at the
+                                      items' hand-off note (K6; written unless --handoff names one)
+
+sessions.py builds interactive sessions with session_command() (K5): the agent's interactive.session, its per-session
+hooks (Claude: a --settings file; Codex: -c notify and hooks.*) and the blurt MCP server when it isn't installed.
 
 The registry is agents.json next to this file (also bundled into Blurt.app, which implements the same rules in
 Agents.swift). Config ($BLURT_HOME/config.json → record): agents = ["claude", "codex", …] (order; agents not listed are
@@ -488,43 +493,140 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     return {"changes": changes, "applied": (not dry_run) and ok}
 
 
-FIX_PROMPT = """\
-Fix these items the user reported with Blurt (screen recordings / screenshots they narrated). Work in {repo}.
-
-{items}
-
-For each item:
-1. Read it in full: blurt MCP tool `get_item(uid)` (shows the screenshots), or
-   `uv run {items_py} get <session> <uid>` and open its frame files.
-2. Before you start: `mark_fixed(uid, state="fixing")` (or `uv run {items_py} fix <session> <uid> --state fixing`).
-3. Fix it in the code — the smallest change that does it. Don't commit or push; the user checks the result.
-4. Then `mark_fixed(uid, state="fixed", note="<one line: what you changed, which files>")`. If it shouldn't or can't
-   be fixed, use state="wontfix" with the reason in note.
-Never edit items.json or any file under .blurt/ yourself — only through these tools or items.py.
-End with one short line per item, in the language the item is written in."""
+# ------------------------------------------------------------------ K5: interactive sessions (sessions.py dispatch)
+SESSIONS_PY = SCRIPTS / "sessions.py"
+CLAUDE_HOOKS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd")
+CODEX_HOOKS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd")
 
 
-def fix_prompt(uids: list[str], repo: str | Path | None = None) -> dict:
-    import index
-    index.ensure_index()
-    con = index.connect(readonly=True)
-    try:
-        rows = []
-        for u in uids:
-            r = con.execute("SELECT i.uid, i.item_id, i.kind, i.title, s.dir, w.path AS ws, w.kind AS ws_kind FROM items i "
-                            "JOIN sessions s ON s.id = i.session_id JOIN workspaces w ON w.id = s.workspace_id "
-                            "WHERE i.uid = ?", (u,)).fetchone()
-            if r is None:
-                raise ValueError(f"unknown uid {u} (run index.py scan?)")
-            rows.append(dict(r))
-    finally:
-        con.close()
-    if repo is None:
-        repo = next((r["ws"] for r in rows if r["ws_kind"] == "repo"), None) or os.getcwd()
-    lines = [f"- {r['uid']} · {r['kind']} · {r['title']}  (session {r['dir']}, {r['item_id']})" for r in rows]
-    prompt = FIX_PROMPT.format(repo=Path(repo).expanduser().resolve(), items="\n".join(lines),
-                               items_py=SCRIPTS / "items.py")
-    return {"prompt": prompt, "repo": str(Path(repo).expanduser().resolve()), "items": [r["uid"] for r in rows]}
+def session_spec(defn: dict) -> dict | None:
+    """interactive.session of an agent: how it runs as an interactive session in a tmux window / the app's pty."""
+    sp = (defn.get("interactive") or {}).get("session")
+    return sp if isinstance(sp, dict) else None
+
+
+def waiting_patterns(defn: dict) -> list[str]:
+    return [p for p in (defn.get("interactive") or {}).get("waiting_patterns") or [] if isinstance(p, str)]
+
+
+def _q(s: str) -> str:
+    """Quote a path for the shell an agent runs its hook commands with."""
+    if os.name == "nt":
+        return '"' + s.replace('"', '\\"') + '"'
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+def hook_python() -> str:
+    """The interpreter hooks run with: this one, minus any venv (`uv run --script` puts scripts in a cache env that
+    can disappear; hooks only need the standard library)."""
+    base = getattr(sys, "_base_executable", None)
+    return base if base and os.path.exists(base) else sys.executable
+
+
+def hook_command(agent: str, job: str | None, python: str | None = None) -> str:
+    """The shell command an agent's hooks run. job None = take it from $BLURT_JOB (Codex: its hooks need the
+    user's trust once per distinct command, so the command must not change from one session to the next)."""
+    cmd = f"{_q(python or hook_python())} {_q(str(SESSIONS_PY))} hook"
+    if job:
+        cmd += f" --job {job}"
+    return cmd + f" --agent {agent}"
+
+
+def claude_settings(job: str, python: str | None = None) -> dict:
+    """The --settings file of one Claude Code session: hooks only (--settings adds to the user's settings)."""
+    h = {"type": "command", "command": hook_command("claude", job, python), "timeout": 5}
+    return {"hooks": {ev: [{"matcher": "*", "hooks": [h]}] if ev == "PostToolUse" else [{"hooks": [h]}]
+                      for ev in CLAUDE_HOOKS}}
+
+
+def _toml_str(s: str) -> str:
+    return json.dumps(s, ensure_ascii=False)
+
+
+def codex_hook_args(job: str, python: str | None = None, hooks: bool = True) -> list[str]:
+    """-c overrides for one Codex session: notify (turn finished; carries the job id) and, when `hooks`, the
+    lifecycle hooks (job from $BLURT_JOB, so the command stays the same and the user trusts it once)."""
+    py = python or hook_python()
+    notify = [py, str(SESSIONS_PY), "hook", "--job", job, "--agent", "codex"]
+    out = ["-c", "notify=[" + ", ".join(_toml_str(x) for x in notify) + "]"]
+    if hooks:
+        cmd = _toml_str(hook_command("codex", None, py))
+        for ev in CODEX_HOOKS:
+            out += ["-c", f"hooks.{ev}=[{{hooks=[{{type=\"command\", command={cmd}, timeout=5}}]}}]"]
+    return out
+
+
+def mcp_installed(defn: dict, env: dict | None = None) -> bool | None:
+    """Is the blurt MCP server registered with this agent? None = can't tell (no check command)."""
+    m = defn.get("mcp") or {}
+    bin_ = find_bin(defn, clean_env(env))
+    if not m.get("check") or not bin_:
+        return None
+    code, _ = _run([bin_, *m["check"]], clean_env(env), timeout=20)
+    return code == 0
+
+
+def session_command(agent: str, prompt: str, cwd: str | Path, *, job: str, settings: Path | None = None,
+                    python: str | None = None, mcp: bool | None = None, cfg: dict | None = None,
+                    env: dict | None = None) -> dict:
+    """argv for an interactive session of `agent` (K5). settings = where the Claude --settings file goes (written
+    here); mcp None = add the blurt MCP server only when the user hasn't installed it.
+    → {"argv", "paste": prompt to paste once it's up | None, "hooks": "claude"|"codex"|None, "patterns": [...]}"""
+    defs = definitions(cfg if cfg is not None else config(cwd))
+    d = defs.get(agent)
+    if not d:
+        raise ValueError(f"unknown agent {agent!r} (known: {', '.join(defs)})")
+    sp = session_spec(d)
+    if sp is None:
+        raise ValueError(f"{agent} has no interactive session")
+    bin_ = find_bin(d, clean_env(env))
+    if not bin_:
+        raise ValueError(f"{agent} is not installed")
+    paste = sp.get("prompt") == "paste"
+    argv = [bin_]
+    hooks = sp.get("hooks")
+    if hooks == "claude":
+        if settings is None:
+            raise ValueError("a Claude session needs its settings file path")
+        settings.write_text(json.dumps(claude_settings(job, python), ensure_ascii=False, indent=1) + "\n",
+                            encoding="utf-8")
+        argv += ["--settings", str(settings)]
+    elif hooks == "codex":
+        argv += codex_hook_args(job, python, hooks=sp.get("lifecycle_hooks", True) is not False)
+    want_mcp = (mcp_installed(d, env) is False) if mcp is None else mcp
+    if want_mcp and sp.get("mcp"):
+        mv = {"mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER)),
+              "mcp_config_json": json.dumps({"mcpServers": {"blurt": {
+                  "type": "stdio", "command": "uv", "args": ["run", "-q", "--script", str(MCP_SERVER)]}}})}
+        margs = (d.get("headless_mcp") or {}).get("args", []) if sp["mcp"] == "headless_mcp" else sp["mcp"]
+        argv += _fill(margs, mv)
+    argv += _fill(sp.get("argv", []), {"prompt": prompt, "repo": str(cwd)})
+    return {"argv": argv, "paste": prompt if paste else None, "hooks": hooks, "patterns": waiting_patterns(d)}
+
+
+WORK_PROMPT = {
+    "en": "Read {note} and handle the items in it. {rule} When you finish an item, call the blurt MCP tool "
+          "mark_fixed with its uid (or, without the MCP, run the items.py command the note gives).",
+    "zh": "读 {note}，处理里面的条目。{rule}每做完一条，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
+          "items.py 命令）。",
+}
+
+
+def prompt_work(refs: list[str], mode: str = "session", worktree: bool = False, handoff_id: str | None = None,
+                lang: str | None = None, branch: str | None = None, items: list[dict] | None = None) -> dict:
+    """The short prompt that starts an agent on some items: it points at their hand-off note (K6), written here
+    unless handoff_id names one already."""
+    import handoff
+    lang = handoff.ui_lang(lang)
+    if handoff_id:
+        h = handoff.describe(handoff_id)
+    else:
+        h = handoff.create(refs, lang, to=mode, branch=branch, worktree=worktree, items=items)
+    t = handoff.T[lang]
+    rule = (t["rule_worktree"].format(branch=branch or "") if mode == "session" and worktree
+            else t["rule_direct"] if mode == "session" else t["rule_external"])
+    return {"prompt": WORK_PROMPT[lang].format(note=h["path"], rule=rule), "handoff": h["id"], "path": h["path"],
+            "items": h["items"]}
 
 
 def _emit(obj) -> None:
@@ -572,9 +674,13 @@ def main():
     s.add_argument("--mcp", action="store_true")
     s.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("prompt")
-    s.add_argument("kind", choices=["fix"])
-    s.add_argument("--items", nargs="+", required=True, metavar="UID")
-    s.add_argument("--repo")
+    s.add_argument("kind", choices=["work"])
+    s.add_argument("--items", nargs="+", required=True, metavar="REF")
+    s.add_argument("--mode", choices=["session", "external"], default="session")
+    s.add_argument("--worktree", choices=["on", "off"], default="off")
+    s.add_argument("--branch")
+    s.add_argument("--handoff", help="an existing hand-off note (H-0012) instead of writing one")
+    s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
     a = p.parse_args()
     try:
         if a.cmd == "detect":
@@ -591,10 +697,16 @@ def main():
             _emit(install(a.id, skill=a.skill or both, mcp=a.mcp or both, dry_run=a.dry_run))
             return
         if a.cmd == "prompt":
-            _emit(fix_prompt(a.items, a.repo))
+            _emit({"ok": True, **prompt_work(a.items, a.mode, a.worktree == "on", a.handoff, a.lang, a.branch)})
             return
     except ValueError as e:
         _fail(str(e))
+    except Exception as e:  # noqa: BLE001 — handoff.CliError / jobs.JobError carry a machine code
+        if not hasattr(e, "code"):
+            raise
+        _emit({"ok": False, "error": str(e), "code": e.code})
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
     if a.cmd == "order":
         order = agent_order(config(a.repo))
         print(json.dumps({"order": order}) if a.json else "\n".join(order))

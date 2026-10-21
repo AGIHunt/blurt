@@ -1,0 +1,125 @@
+"""jobs.py (contract K4): the owner writes the JSON, everyone else appends events, every reader folds them the same
+way. Temp BLURT_HOME only.
+
+  uv run --with pytest pytest tests/test_jobs.py -q
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "blurt" / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+import jobs  # noqa: E402
+
+
+@pytest.fixture()
+def home(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLURT_HOME", str(tmp_path))
+    monkeypatch.setenv("BLURT_TMUX_SOCKET", f"blurt-test-p2-jobs-{os.getpid()}")  # never the app's socket
+    return tmp_path
+
+
+def cli(*args, ok=True) -> dict:
+    p = subprocess.run([sys.executable, str(SCRIPTS / "jobs.py"), *map(str, args)], capture_output=True, text=True,
+                       env=os.environ.copy())
+    out = json.loads(p.stdout.strip().splitlines()[-1])
+    assert (p.returncode == 0) == ok, p.stderr
+    return out
+
+
+def test_ids_and_shape(home):
+    j = jobs.create("process", project="p1", session="/s/20261022-101500", owner="app")
+    assert re.fullmatch(r"j-\d{8}-\d{6}-[0-9a-hjkmnp-tv-z]{4}", j["id"])
+    assert [s["id"] for s in j["steps"]] == ["prepare", "transcribe", "write", "frames", "route"]
+    assert all(s["state"] == "pending" for s in j["steps"]) and j["state"] == "running" and j["events_offset"] == 0
+    on_disk = json.loads((home / "jobs" / f"{j['id']}.json").read_text())
+    assert on_disk == j and re.search(r"[+-]\d\d:\d\d$", j["created"])  # ISO 8601 with the offset
+    for t, steps in jobs.STEPS.items():
+        assert [s["id"] for s in jobs.create(t)["steps"]] == steps
+
+
+def test_fold(home):
+    j = jobs.create("agent", items=["u1"], agent={"id": "claude", "status": "running"})
+    jid = j["id"]
+    jobs.append(jid, {"source": "app", "event": "step", "step": {"id": "launch", "state": "running"}})
+    jobs.append(jid, {"source": "app", "event": "step", "step": {"id": "launch", "state": "done"}})
+    jobs.append(jid, {"source": "hook", "event": "Notification", "status": "waiting_input"})
+    jobs.append(jid, {"source": "items", "event": "write", "items": ["u2", "u1"], "progress": 0.5})
+    with open(home / "jobs" / f"{jid}.events.jsonl", "a") as f:
+        f.write('{"t": "2026-10-22T10:00:00+08:00", "status": "exi')  # a line still being written
+    eff = jobs.get(jid)
+    launch = next(s for s in eff["steps"] if s["id"] == "launch")
+    assert launch["state"] == "done" and launch["started"] and launch["ended"]
+    assert eff["agent"]["status"] == "waiting_input" and eff["agent"]["status_source"] == "hook"
+    assert eff["items"] == ["u1", "u2"] and eff["progress"] == 0.5 and eff["state"] == "running"
+    assert json.loads((home / "jobs" / f"{jid}.json").read_text())["agent"]["status"] == "running"  # readers don't write
+    # the owner merges: offset moves past complete lines only, and the result equals the fold
+    merged = jobs.update(jid, lambda job: None)
+    assert merged["agent"]["status"] == "waiting_input"
+    raw = (home / "jobs" / f"{jid}.events.jsonl").read_bytes()
+    assert merged["events_offset"] == raw.rfind(b"\n") + 1
+    jobs.append(jid, {"source": "hook", "event": "SessionEnd", "status": "exited", "state": "done"})
+    eff = jobs.get(jid)
+    assert eff["state"] == "done" and eff["ended"]
+
+
+def test_event_lines_stay_small(home):
+    jid = jobs.create("agent")["id"]
+    ev = jobs.append(jid, {"source": "hook", "event": "Notification", "detail": {"message": "x" * 10000}})
+    line = (home / "jobs" / f"{jid}.events.jsonl").read_bytes().splitlines()[-1]
+    assert len(line) < 4096 and len(ev["detail"]["message"]) == 200
+
+
+def test_cli(home):
+    out = cli("new", "--type", "voice", "--project", "inbox", "--title", "Voice note")
+    jid = out["id"]
+    assert Path(out["path"]).exists()
+    cli("step", jid, "listen", "--state", "done")
+    cli("step", jid, "transcribe", "--state", "running", "--progress", "0.3")
+    cli("event", jid, "--json", '{"event": "x", "items": ["01ABC"]}')
+    got = cli("get", jid)["job"]
+    assert [(s["id"], s["state"]) for s in got["steps"]] == [("listen", "done"), ("transcribe", "running"), ("file", "pending")]
+    assert got["items"] == ["01ABC"] and next(s for s in got["steps"] if s["id"] == "transcribe")["progress"] == 0.3
+    cli("finish", jid, "--state", "failed", "--error-code", "model", "--message", "no model")
+    assert cli("get", jid)["job"]["state"] == "failed"
+    assert [j["id"] for j in cli("list")["jobs"]] == [jid] and cli("list", "--active")["jobs"] == []
+    assert cli("list", "--type", "record")["jobs"] == []
+    assert cli("get", "j-nope", ok=False)["code"] == "no_job"
+    assert cli("step", jid, "x", "--state", "bogus", ok=False)["code"] == "bad_args"
+    assert cli("get", "../etc", ok=False)["code"] == "bad_job"
+
+
+def test_gc(home):
+    old = time.time() - 20 * 86400
+    keep_running = jobs.create("process")["id"]
+    gone = jobs.create("record")["id"]
+    live_agent = jobs.create("agent")["id"]
+    for jid in (gone, live_agent):
+        def end(j):
+            jobs.finish(j, "done")
+            j["ended"] = jobs.now_iso(old)
+        jobs.update(jid, end)
+        for suffix in (".log", ".diff", ".prompt.md"):
+            (home / "jobs" / f"{jid}{suffix}").write_text("x")
+    (home / "handoff").mkdir()
+    (home / "handoff" / "H-0001.md").write_text("kept")
+    orig = jobs.KEEP_LAST
+    jobs.KEEP_LAST = 0
+    try:
+        assert jobs.gc(live_windows={live_agent}) == [gone]  # its window is still open
+        assert jobs.gc() == [live_agent]  # asks sessions.py: no tmux server on this socket, so no window
+    finally:
+        jobs.KEEP_LAST = orig
+    names = sorted(p.name for p in (home / "jobs").iterdir())
+    assert not [n for n in names if n.startswith((gone, live_agent))] and f"{keep_running}.json" in names
+    assert (home / "handoff" / "H-0001.md").exists()
+    jobs.create("record")
+    assert jobs.gc(live_windows=set()) == []  # within the newest 300
