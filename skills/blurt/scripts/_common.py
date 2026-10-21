@@ -256,3 +256,95 @@ def removed_into(data: dict, item_id: str) -> str | None:
 
 def live_items(data: dict, kind: str | None = None) -> list[dict]:
     return [i for i in data.get("items", []) if i.get("status") != "deleted" and (kind is None or i.get("kind") == kind)]
+
+
+# ---------------------------------------------------------------- hotkeys (config record.hotkeys)
+# Same grammar as the macOS app (Hotkeys.swift): "opt+shift+R", "ctrl+alt+F5", "⌥⇧A", "off". Stored canonically as
+# "<ctrl+><opt+><shift+><cmd+>KEY". On Windows/Linux opt = Alt and cmd = the Windows / Super key.
+HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop")
+HOTKEY_DEFAULT_KEYS = {"record": "R", "menu": "B", "pause": "P", "snap": "A", "marker": "M", "pen": "D", "stop": "S"}
+_MOD_ALIASES = {"ctrl": "ctrl", "control": "ctrl", "⌃": "ctrl", "^": "ctrl",
+                "opt": "opt", "option": "opt", "alt": "opt", "⌥": "opt",
+                "shift": "shift", "⇧": "shift",
+                "cmd": "cmd", "command": "cmd", "⌘": "cmd", "win": "cmd", "super": "cmd", "meta": "cmd"}
+_MOD_ORDER = ("ctrl", "opt", "shift", "cmd")
+_NAMED_KEYS = {"space": "Space", "spacebar": "Space", "tab": "Tab", "return": "Return", "enter": "Return",
+               "left": "Left", "right": "Right", "up": "Up", "down": "Down",
+               "←": "Left", "→": "Right", "↑": "Up", "↓": "Down"}
+_PUNCT = set("-=[];',./\\`")
+_OFF = ("off", "none", "disabled", "-", "")
+
+
+def _hotkey_key(tok: str) -> str | None:
+    if len(tok) == 1 and ((tok.isalnum() and tok.isascii()) or tok in _PUNCT):
+        return tok.upper()
+    low = tok.lower()
+    if low in _NAMED_KEYS:
+        return _NAMED_KEYS[low]
+    if low.startswith("f") and low[1:].isdigit() and 1 <= int(low[1:]) <= 20:
+        return "F" + low[1:]
+    return None
+
+
+def parse_hotkey(spec) -> tuple[tuple[str, ...], str] | None:
+    """"opt+shift+R" / "⌥⇧R" / "Alt+Shift+r" → (("opt", "shift"), "R"). None for off / empty / unparseable.
+    Needs ⌃ / ⌥ / ⌘ (shift alone would steal typing) — F-keys may stand alone."""
+    if not isinstance(spec, str) or spec.strip().lower() in _OFF:
+        return None
+    s = spec.strip()
+    mods: set[str] = set()
+    while s and s[0] in "⌃⌥⇧⌘^":  # glyph prefixes: ⌥⇧R
+        mods.add(_MOD_ALIASES[s[0]])
+        s = s[1:]
+    key = None
+    for tok in s.replace(" ", "").split("+"):
+        if not tok:
+            continue
+        mod = _MOD_ALIASES.get(tok.lower())
+        if (mod and len(tok) > 1) or (len(tok) == 1 and tok in "⌃⌥⇧⌘"):
+            mods.add(mod or _MOD_ALIASES[tok])
+        elif key is None and _hotkey_key(tok):
+            key = _hotkey_key(tok)
+        else:
+            return None
+    if key is None:
+        return None
+    if not (mods - {"shift"}) and not (key.startswith("F") and len(key) > 1):
+        return None
+    return tuple(m for m in _MOD_ORDER if m in mods), key
+
+
+def hotkey_spec(hk: tuple[tuple[str, ...], str] | None) -> str:
+    return "+".join([*hk[0], hk[1]]) if hk else "off"
+
+
+def hotkey_label(hk: tuple[tuple[str, ...], str] | None, mac: bool = IS_MAC) -> str:
+    """What to show the user: "⌥⇧R" on macOS, "Alt+Shift+R" elsewhere; "" when off."""
+    if not hk:
+        return ""
+    if mac:
+        glyph = {"ctrl": "⌃", "opt": "⌥", "shift": "⇧", "cmd": "⌘"}
+        keys = {"Left": "←", "Right": "→", "Up": "↑", "Down": "↓", "Return": "↩", "Tab": "⇥"}
+        return "".join(glyph[m] for m in hk[0]) + keys.get(hk[1], hk[1])
+    name = {"ctrl": "Ctrl", "opt": "Alt", "shift": "Shift", "cmd": "Win"}
+    return "+".join([*(name[m] for m in hk[0]), hk[1]])
+
+
+def hotkeys_from_config(cfg: dict | None = None) -> dict[str, tuple[tuple[str, ...], str] | None]:
+    """action → hotkey (None = off). Missing / unparseable entries fall back to the default; the defaults' modifiers
+    can be overridden for tests with BLURT_HOTKEY_MODS (e.g. "ctrl+opt+shift+cmd"), as in the app."""
+    rec = (cfg if cfg is not None else global_config()).get("record", {})
+    user = rec.get("hotkeys") if isinstance(rec.get("hotkeys"), dict) else {}
+    env = os.environ.get("BLURT_HOTKEY_MODS") or ""
+    want = {_MOD_ALIASES.get(t.strip().lower()) for t in env.split("+")}
+    dmods = tuple(m for m in _MOD_ORDER if m in want) or ("opt", "shift")
+    out: dict[str, tuple[tuple[str, ...], str] | None] = {}
+    for a in HOTKEY_ACTIONS:
+        v = user.get(a)
+        if v is False or (isinstance(v, str) and v.strip().lower() in _OFF):
+            out[a] = None
+        elif parse_hotkey(v):
+            out[a] = parse_hotkey(v)
+        else:
+            out[a] = (dmods, HOTKEY_DEFAULT_KEYS[a])
+    return out

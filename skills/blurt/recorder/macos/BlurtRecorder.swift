@@ -5,7 +5,8 @@
 // (pauses, markers, clicks, cursor samples, pen strokes). Built on first use by record.py with `swiftc`.
 // Pen: hold ⌃ and drag to circle / underline / point at things — the ink is in the video and in events.jsonl.
 //
-// Control: HUD buttons, global hotkeys (⌥⇧P pause/resume, ⌥⇧A snap, ⌥⇧M marker (+ snap), ⌥⇧D pen on/off, ⌥⇧S stop),
+// Control: HUD buttons, global hotkeys (defaults ⌥⇧P pause/resume, ⌥⇧A snap, ⌥⇧M marker (+ snap), ⌥⇧D pen on/off,
+// ⌥⇧S stop; configurable, Hotkeys.swift),
 // stdin lines ("pause" | "resume" | "toggle" | "snap" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
 // Snap mode, the perch, eggs and live captions live in Snap.swift, Perch.swift, Eggs.swift, NoteBubble.swift, HUDLive.swift.
 // stdout: one JSON object per line: ready, selected, countdown, recording, paused, resumed, marker, level?, stopped,
@@ -535,8 +536,8 @@ final class CountdownView: NSView {
             .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.white])
         _ = pill(sub.string, font: NSFont.systemFont(ofSize: 13, weight: .medium), fg: .white,
                  bg: NSColor(white: 0.05, alpha: 0.72), at: NSPoint(x: bounds.midX - (sub.size().width + 24) / 2, y: r.minY - 40), pad: 12)
-        let hint = L("⌥⇧P 暂停 / 继续   ·   ⌥⇧S 完成   ·   点一下跳过倒计时",
-                     "⌥⇧P pause / resume   ·   ⌥⇧S finish   ·   click to skip")
+        let hint = [hkHint(.pause, "暂停 / 继续", "pause / resume"), hkHint(.stop, "完成", "finish"),
+                    L("点一下跳过倒计时", "click to skip")].compactMap { $0 }.joined(separator: "   ·   ")
         let hf = NSFont.systemFont(ofSize: 11.5, weight: .medium)
         let hw = NSAttributedString(string: hint, attributes: [.font: hf]).size().width + 24
         _ = pill(hint, font: hf, fg: NSColor(white: 1, alpha: 0.85), bg: NSColor(white: 0.05, alpha: 0.6),
@@ -657,11 +658,11 @@ final class HUD: NSPanel {
         div.layer?.backgroundColor = NSColor(white: 1, alpha: 0.15).cgColor
         fx.addSubview(div)
 
-        pauseBtn = IconButton(symbol: "pause.fill", tip: L("暂停 / 继续（⌥⇧P）", "Pause / resume (⌥⇧P)"), target: self, action: #selector(togglePause))
+        pauseBtn = IconButton(symbol: "pause.fill", tip: L("暂停 / 继续", "Pause / resume") + hkTip(.pause), target: self, action: #selector(togglePause))
         let redo = IconButton(symbol: "arrow.counterclockwise", tip: L("重录或放弃…", "Restart or discard…"), target: self, action: #selector(redoRec))
         penBtn = IconButton(symbol: "scribble.variable", tip: "", target: self, action: #selector(togglePen))
-        penBtn.toolTip = rec.penKey.map { L("画笔：按住 \($0.1) 拖动圈出重点；点这里常开，再点一次或按 Esc 关（⌥⇧D）", "Pen: hold \($0.1) and drag to circle things; click to keep it on, click again or press Esc to stop (⌥⇧D)") }
-            ?? L("画笔：圈出重点；再点一次或按 Esc 关（⌥⇧D）", "Pen: circle things; click again or press Esc to stop (⌥⇧D)")
+        penBtn.toolTip = (rec.penKey.map { L("画笔：按住 \($0.1) 拖动圈出重点；点这里常开，再点一次或按 Esc 关", "Pen: hold \($0.1) and drag to circle things; click to keep it on, click again or press Esc to stop") }
+            ?? L("画笔：圈出重点；再点一次或按 Esc 关", "Pen: circle things; click again or press Esc to stop")) + hkTip(.pen)
         pauseBtn.frame.origin = NSPoint(x: 150, y: 8)
         penBtn.frame.origin = NSPoint(x: 186, y: 8)
         redo.frame.origin = NSPoint(x: 222, y: 8)
@@ -669,7 +670,7 @@ final class HUD: NSPanel {
         fx.addSubview(penBtn)
         fx.addSubview(redo)
         let done = PillButton(L("完成", "Finish"), symbol: "stop.fill", fill: NSColor.systemRed.withAlphaComponent(0.92), target: self, action: #selector(stopRec))
-        done.toolTip = L("结束录制，开始整理（⌥⇧S）", "Stop and process (⌥⇧S)")
+        done.toolTip = L("结束录制，开始整理", "Stop and process") + hkTip(.stop)
         done.frame.origin = NSPoint(x: 260, y: 8)
         fx.addSubview(done)
         let w = done.frame.maxX + 8
@@ -694,7 +695,7 @@ final class HUD: NSPanel {
         time.stringValue = s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
                                      : String(format: "%02d:%02d", s / 60, s % 60)
         status.stringValue = paused ? L("已暂停", "PAUSED") : rec?.penSticky == true ? L("画笔 · Esc 关", "PEN · Esc off") : ""
-        pauseBtn.toolTip = paused ? L("继续录制（⌥⇧P）", "Resume (⌥⇧P)") : L("暂停（⌥⇧P）", "Pause (⌥⇧P)")
+        pauseBtn.toolTip = (paused ? L("继续录制", "Resume") : L("暂停", "Pause")) + hkTip(.pause)
         time.frame.origin.y = paused ? 17 : 14
         dot.layer?.backgroundColor = (paused ? amber : NSColor.systemRed).cgColor
         pauseBtn.symbol = paused ? "play.fill" : "pause.fill"
@@ -1379,19 +1380,19 @@ func installHotkeyHandler() {
     }, 1, &spec, nil, nil)
 }
 
-func registerHotkey(_ k: HK, key: Int, mods: Int) {
-    guard hotkeyRefs[k.rawValue] == nil else { return }
+@discardableResult
+func registerHotkey(_ k: HK, key: Int, mods: Int) -> OSStatus {
+    guard hotkeyRefs[k.rawValue] == nil else { return noErr }
     var ref: EventHotKeyRef?
-    RegisterEventHotKey(UInt32(key), UInt32(mods), EventHotKeyID(signature: OSType(0x626C7274), id: k.rawValue),
-                        GetApplicationEventTarget(), 0, &ref)
+    let st = RegisterEventHotKey(UInt32(key), UInt32(mods), EventHotKeyID(signature: OSType(0x626C7274), id: k.rawValue),
+                                 GetApplicationEventTarget(), 0, &ref)
     if let r = ref { hotkeyRefs[k.rawValue] = r }
+    return st
 }
 
 func unregisterHotkey(_ k: HK) {
     if let r = hotkeyRefs.removeValue(forKey: k.rawValue) { UnregisterEventHotKey(r) }
 }
-
-let optShift = hotkeyMods(ProcessInfo.processInfo.environment["BLURT_HOTKEY_MODS"]) ?? (optionKey | shiftKey)
 
 var signalSources: [DispatchSourceSignal] = []
 
@@ -1555,37 +1556,16 @@ func findExecutable(_ name: String) -> String? {
     return nil
 }
 
-enum AgentLogin { case ok, loggedOut, unknown }
-
-/// Is the agent CLI logged in, in the env it will get? `claude auth status --json` / `codex login status`.
-/// `.unknown` when the installed version can't tell (old CLI, timeout) — then we just try.
-func agentLogin(_ agent: String, bin: String) -> AgentLogin {
-    let args = agent == "codex" ? ["login", "status"] : ["auth", "status", "--json"]
-    let (status, data) = runCapture(bin, args, env: agentEnvironment(), timeout: 15)
-    let out = String(data: data, encoding: .utf8) ?? ""
-    if agent != "codex", let s = out.firstIndex(of: "{"),
-       let j = try? JSONSerialization.jsonObject(with: Data(out[s...].utf8)) as? [String: Any], let li = j["loggedIn"] as? Bool {
-        return li ? .ok : .loggedOut
-    }
-    if looksLoggedOut(out) { return .loggedOut }
-    if agent == "codex", status == 0, out.lowercased().contains("logged in") { return .ok }
-    return .unknown
-}
-
-func looksLoggedOut(_ text: String) -> Bool {
-    let t = text.lowercased()
-    return t.contains("not logged in") || t.contains("please run /login") || t.contains("codex login")
-}
-
-func shell(_ cmd: String, cwd: URL, log: URL, done: @escaping (Int32) -> Void) {
+func shell(_ cmd: String, cwd: URL, log: URL, append: Bool = false, done: @escaping (Int32) -> Void) {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/zsh")
     p.arguments = ["-c", cmd]
     p.environment = agentEnvironment()
     p.standardInput = FileHandle.nullDevice   // codex exec otherwise waits for more prompt on stdin
     p.currentDirectoryURL = cwd
-    FileManager.default.createFile(atPath: log.path, contents: nil)
+    if !append || !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
     let fh = try? FileHandle(forWritingTo: log)
+    fh?.seekToEndOfFile()
     p.standardOutput = fh
     p.standardError = fh
     p.terminationHandler = { pr in DispatchQueue.main.async { done(pr.terminationStatus) } }
@@ -1605,33 +1585,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var processing: [String] = []    // sessions being processed by an agent
     var statusTimer: Timer?
     var lastSession: URL?
-    var agentChecks: [String: (login: AgentLogin, at: Date)] = [:]   // preflight cache, per agent
 
     var resident: Bool { opts.standalone }
-
-    /// Check (off the main thread) whether `agent` is installed and logged in; cached, an OK result for 10 minutes.
-    func preflight(_ agent: String, force: Bool = false, then: ((String?, AgentLogin) -> Void)? = nil) {
-        if !force, let c = agentChecks[agent], c.login == .ok, Date().timeIntervalSince(c.at) < 600 {
-            then?(findExecutable(agent), .ok)
-            return
-        }
-        DispatchQueue.global().async {
-            let bin = findExecutable(agent)
-            let login = bin.map { agentLogin(agent, bin: $0) } ?? .unknown
-            DispatchQueue.main.async {
-                if bin != nil { self.agentChecks[agent] = (login, Date()) }
-                then?(bin, login)
-            }
-        }
-    }
-
-    func notLoggedInMessage(_ agent: String) -> String {
-        agent == "codex"
-            ? L("Codex 没登录，没法后台整理：在终端运行 codex login，然后在菜单「最近的录制」里重新整理",
-                "Codex isn't logged in, so it can't process this: run `codex login` in a terminal, then Recent recordings → Process")
-            : L("Claude Code 没登录，没法后台整理：在终端运行 claude 并 /login，然后在菜单「最近的录制」里重新整理",
-                "Claude Code isn't logged in, so it can't process this: run `claude` in a terminal and /login, then Recent recordings → Process")
-    }
 
     func applicationDidFinishLaunching(_ n: Notification) {
         for sig in [SIGTERM, SIGINT] {
@@ -1646,11 +1601,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         installHotkeyHandler()
         hotkeyHandler = { [weak self] k in self?.hotkey(k) }
-        registerHotkey(.pause, key: kVK_ANSI_P, mods: optShift)
-        registerHotkey(.marker, key: kVK_ANSI_M, mods: optShift)
-        registerHotkey(.stop, key: kVK_ANSI_S, mods: optShift)
-        registerHotkey(.pen, key: kVK_ANSI_D, mods: optShift)
-        registerHotkey(.snap, key: kVK_ANSI_A, mods: optShift)
+        Hotkeys.shared.resident = resident      // record / menu only in the menu-bar app
+        Hotkeys.shared.apply()
         if resident {
             startResident()
             return
@@ -1786,8 +1738,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func startResident() {
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
-        registerHotkey(.toggleRec, key: kVK_ANSI_R, mods: optShift)
-        registerHotkey(.menu, key: kVK_ANSI_B, mods: optShift)
+        writeAppInfo()
+        ReviewHub.shared.listen()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
@@ -1809,16 +1761,42 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            toast(L("口喷鸡已常驻 🐔  ⌥⇧R 开始 / 结束录制 · ⌥⇧B 打开菜单", "blurt is running 🐔  ⌥⇧R start / finish · ⌥⇧B menu"))
+            let r = hkHint(.record, "开始 / 结束录制", "start / finish"), m = hkHint(.menu, "打开菜单", "menu")
+            toast(L("口喷鸡已常驻 🐔  ", "blurt is running 🐔  ") + [r, m].compactMap { $0 }.joined(separator: " · "))
+        } else {
+            Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
         }
-        // `--process <session dir> [--agent claude|codex]`: process an existing recording (also handy for testing)
+        // `--process <session dir> [--agent <id>]`: process an existing recording (also handy for testing);
+        // `--review <url> [--review-session <dir>]`: review.py asked us to show its page (we weren't running)
         let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "--process"), i + 1 < args.count {
-            let agent = args.firstIndex(of: "--agent").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "claude"
-            process(URL(fileURLWithPath: args[i + 1]), with: agent)
+        func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
+        if let p = arg("--process") {
+            process(URL(fileURLWithPath: p), only: arg("--agent"))
+        } else if let r = arg("--review"), let u = URL(string: r) {
+            ReviewHub.shared.open(u, session: arg("--review-session").map { URL(fileURLWithPath: $0) }, title: nil)
         } else if !args.contains("--background") {
             startRecording(useLast: false)
         }
+    }
+
+    /// $BLURT_HOME/app.json: how review.py (run by an agent in a terminal) finds this instance to open its page here.
+    func writeAppInfo() {
+        let info: [String: Any] = ["pid": Int(getpid()), "path": Bundle.main.bundlePath,
+                                   "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""]
+        if let d = try? JSONSerialization.data(withJSONObject: info, options: [.prettyPrinted, .sortedKeys]) {
+            try? FileManager.default.createDirectory(at: blurtHome, withIntermediateDirectories: true)
+            try? d.write(to: blurtHome.appendingPathComponent("app.json"))
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        ReviewHub.shared.quitting = true
+        for p in ReviewHub.shared.procs.values where p.isRunning { p.terminate() }   // our review servers go with us
+        guard resident else { return }
+        Hotkeys.shared.unpublish()
+        let f = blurtHome.appendingPathComponent("app.json")
+        if let d = try? Data(contentsOf: f), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+           o["pid"] as? Int == Int(getpid()) { try? FileManager.default.removeItem(at: f) }
     }
 
     /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥⇧B shows the same menu at the pointer.
@@ -1845,8 +1823,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         lastSession = dir
         busy = true
-        if let mode = recordConfig()["process"] as? String, mode == "claude" || mode == "codex" {
-            preflight(mode, force: true)     // warm the cache while recording; process() re-checks a bad result
+        if (recordConfig()["process"] as? String ?? "off") != "off" {
+            AgentHub.shared.check(AgentHub.shared.order(), force: true) { _ in }   // warm the cache while recording
         }
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
             DispatchQueue.main.async {
@@ -1889,98 +1867,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if mode == "off" {
             toast(L("已保存 \(fmtDur(dur)) 的录屏 · 在菜单里可以拷贝发给同事，或让 agent 处理", "Saved a \(fmtDur(dur)) recording · copy it from the menu or let your agent process it"))
         } else {
-            process(dir, with: mode)
+            process(dir)
         }
         refreshStatus()
     }
 
-    /// Hand the recording to a coding agent in the workspace, headless. It writes the outputs next to the recording
-    /// and opens the review page itself.
-    func process(_ dir: URL, with agentName: String) {
-        let agent = agentName == "codex" ? "codex" : "claude"
-        let name = agent == "codex" ? "Codex" : "Claude Code"
-        processing.append(dir.path)
-        refreshStatus()
-        preflight(agent) { [weak self] bin, login in
-            guard let self = self else { return }
-            guard let bin = bin else {
-                self.processing.removeAll { $0 == dir.path }
-                self.refreshStatus()
-                self.alert(L("没找到 \(name)", "\(name) not found"),
-                           L("口喷鸡要调用命令行里的 `\(agent)`，但在你的 PATH 里没找到。装好 \(name) 命令行后再试，或者在菜单里改成「只保存」。",
-                             "blurt calls the `\(agent)` command line tool, which isn't on your PATH. Install the \(name) CLI, or switch to “Just save”."))
-                return
-            }
-            if login == .loggedOut {
-                self.processing.removeAll { $0 == dir.path }
-                self.refreshStatus()
-                try? (self.notLoggedInMessage(agent) + "\n").write(to: dir.appendingPathComponent("agent.log"), atomically: true, encoding: .utf8)
-                self.toast(self.notLoggedInMessage(agent), seconds: 12)
-                return
-            }
-            self.runAgent(dir, agent: agent, bin: bin)
-        }
-    }
-
-    func runAgent(_ dir: URL, agent: String, bin: String) {
-        let ws = currentWorkspace()
-        let name = agent == "codex" ? "Codex" : "Claude Code"
-        // name the skill's path: the agent's own skill list may lack blurt (installed for one CLI only) or hold another
-        // version than the one this app was built from
-        let skillHint = (readConfig()["skill_dir"] as? String).map { "\n" + L("blurt skill：\($0)/SKILL.md", "The blurt skill: \($0)/SKILL.md") } ?? ""
-        let prompt = (shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
-                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")) + skillHint
-        let cmd: String
-        if agent == "codex" {
-            // the skill needs uv's cache, the models in ~/.blurt and ffmpeg — outside the workspace sandbox
-            cmd = "\(shq(bin)) exec --skip-git-repo-check --sandbox danger-full-access \(shq(prompt))"
-        } else {
-            cmd = "\(shq(bin)) -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
-        }
-        perch.hatch(id: dir.path, kinds: draftKinds(in: dir))
-        // text-first runs: items.json appears long before the agent exits → open the review page right then
-        var reviewOpen = false
-        let watch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
-            guard let self = self, FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path) else { return }
-            t.invalidate()
-            reviewOpen = self.openReview(dir)
-            perch.hatched(id: dir.path, ok: true)
-            if reviewOpen { self.toast(L("条目已就绪，审核页已打开（截图还在补）", "Items are ready — the review page is open (frames still coming)")) }
-        }
-        toast(L("\(name) 正在后台整理…", "\(name) is processing it in the background…"))
-        let log = dir.appendingPathComponent("agent.log")
-        shell(cmd, cwd: ws, log: log) { [weak self] status in
-            guard let self = self else { return }
-            self.processing.removeAll { $0 == dir.path }
-            watch.invalidate()
-            let ok = status == 0 && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path)
-            perch.hatched(id: dir.path, ok: ok)
-            if ok && reviewOpen {
-                self.toast(L("整理完了，审核页里的截图都补齐了", "Done — every frame is on the review page"))
-            } else if ok && self.openReview(dir) {
-                self.toast(L("整理好了，审核页已打开", "Done — the review page is open"))
-            } else if ok {
-                self.toast(L("整理好了（items.json 已生成）", "Done — items.json is ready"))
-            } else if looksLoggedOut(String((try? String(contentsOf: log, encoding: .utf8))?.suffix(4000) ?? "")) {
-                self.agentChecks[agent] = nil
-                self.toast(self.notLoggedInMessage(agent), seconds: 12)
-            } else {
-                self.toast(L("后台整理失败，详见录屏文件夹里的 agent.log", "Processing failed — see agent.log in the recording folder"))
-            }
-            self.refreshStatus()
-        }
-        refreshStatus()
-    }
-
-    /// Open the review page ourselves (the agent has exited; a page it started could die with it).
+    /// In a Blurt window (ReviewWindow.swift), or the browser with review.open_in = "browser".
     @discardableResult
-    func openReview(_ dir: URL) -> Bool {
-        guard let skill = readConfig()["skill_dir"] as? String,
-              FileManager.default.fileExists(atPath: "\(skill)/scripts/review.py"), let uv = findExecutable("uv") else { return false }
-        shell("\(shq(uv)) run -q \(shq("\(skill)/scripts/review.py")) \(shq(dir.path))", cwd: dir,
-              log: dir.appendingPathComponent("review.log")) { _ in }
-        return true
-    }
+    func openReview(_ dir: URL) -> Bool { ReviewHub.shared.openSession(dir) }
 
     func fmtDur(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
@@ -1996,7 +1890,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             b.imagePosition = .imageLeft
             b.attributedTitle = NSAttributedString(string: processing.isEmpty ? "" : " …", attributes: [
                 .font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
-            b.toolTip = processing.isEmpty ? L("口喷鸡 · ⌥⇧R 开始录制 · ⌥⇧B 菜单", "blurt · ⌥⇧R record · ⌥⇧B menu")
+            b.toolTip = processing.isEmpty ? ([L("口喷鸡", "blurt")] + [hkHint(.record, "开始录制", "record"), hkHint(.menu, "菜单", "menu")].compactMap { $0 })
+                                               .joined(separator: " · ")
                                            : L("口喷鸡 · 正在后台整理…", "blurt · processing in the background…")
         }
     }
@@ -2014,6 +1909,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        @discardableResult
         func add(_ title: String, _ sel: Selector?, key: String = "", to m: NSMenu = menu, obj: Any? = nil, on: Bool = false) -> NSMenuItem {
             let it = NSMenuItem(title: title, action: sel, keyEquivalent: key)
             it.target = self
@@ -2023,15 +1919,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return it
         }
         if let r = rec {
-            _ = add(L("完成录制", "Finish recording") + "   ⌥⇧S", #selector(mStop))
-            _ = add((r.isPaused ? L("继续", "Resume") : L("暂停", "Pause")) + "   ⌥⇧P", #selector(mPause))
+            add(L("完成录制", "Finish recording"), #selector(mStop)).showHotkey(.stop)
+            add(r.isPaused ? L("继续", "Resume") : L("暂停", "Pause"), #selector(mPause)).showHotkey(.pause)
             _ = add(L("重新录制", "Restart"), #selector(mRestart))
             _ = add(L("放弃这次录制", "Discard"), #selector(mDiscard))
             addSnapMenuItems(menu, recording: true)
             return
         }
         if busy { _ = add(L("正在选择区域…", "Selecting an area…"), nil); return }
-        _ = add(L("开始录制", "Start recording") + "   ⌥⇧R", #selector(mStart))
+        add(L("开始录制", "Start recording"), #selector(mStart)).showHotkey(.record)
         if lastRegionFromConfig() != nil { _ = add(L("录制上次的区域", "Record the last area"), #selector(mStartLast)) }
         addSnapMenuItems(menu, recording: false)
         menu.addItem(.separator())
@@ -2061,12 +1957,25 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
             let name = d.lastPathComponent
             let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
-            let it = NSMenuItem(title: "\(pretty)  ·  \(dur)\(done ? "  ✓" : "")\(processing.contains(d.path) ? "  …" : "")", action: nil, keyEquivalent: "")
+            let busyHere = processing.contains(d.path)
+            let failed = done || busyHere ? nil : agentFailureNote(d)
+            let it = NSMenuItem(title: "\(pretty)  ·  \(dur)\(done ? "  ✓" : "")\(busyHere ? "  …" : "")\(failed.map { "  ✗ " + $0 } ?? "")",
+                                action: nil, keyEquivalent: "")
             let sub = NSMenu()
-            _ = add(L("拷贝视频（粘贴发给同事）", "Copy video (paste to share)"), #selector(mCopyVideo(_:)), to: sub, obj: d.path)
-            _ = add(L("在访达中显示", "Show in Finder"), #selector(mReveal(_:)), to: sub, obj: d.path)
-            _ = add(L("让 Claude Code 整理", "Process with Claude Code"), #selector(mProcessClaude(_:)), to: sub, obj: d.path)
-            _ = add(L("让 Codex 整理", "Process with Codex"), #selector(mProcessCodex(_:)), to: sub, obj: d.path)
+            if done { add(L("打开审核页", "Open review"), #selector(mOpenReview(_:)), to: sub, obj: d.path) }
+            add(L("拷贝视频（粘贴发给同事）", "Copy video (paste to share)"), #selector(mCopyVideo(_:)), to: sub, obj: d.path)
+            add(L("在访达中显示", "Show in Finder"), #selector(mReveal(_:)), to: sub, obj: d.path)
+            if FileManager.default.fileExists(atPath: d.appendingPathComponent("agent.log").path) {
+                add(L("查看 agent.log", "Show agent.log"), #selector(mAgentLog(_:)), to: sub, obj: d.path)
+            }
+            sub.addItem(.separator())
+            add(done ? L("重新整理", "Process again") : L("整理（自动选 agent）", "Process (pick an agent)"), busyHere ? nil : #selector(mProcessAuto(_:)), to: sub, obj: d.path)
+            for a in AgentHub.shared.order() {
+                let st = AgentHub.shared.cached(a.id)
+                let li = add(L("用 \(a.name) 整理", "Process with \(a.name)") + (st.map { $0.state.usable ? "" : "  ✗ " + $0.why } ?? ""),
+                             busyHere ? nil : #selector(mProcessWith(_:)), to: sub, obj: "\(a.id)\u{1}\(d.path)")
+                li.indentationLevel = 1
+            }
             it.submenu = sub
             rMenu.addItem(it)
         }
@@ -2077,11 +1986,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let mode = recordConfig()["process"] as? String ?? "off"
         let pItem = NSMenuItem(title: L("录完自动整理", "After recording"), action: nil, keyEquivalent: "")
         let pMenu = NSMenu()
-        _ = add(L("只保存（手动处理 / 发给别人）", "Just save (process later / share)"), #selector(mProcessMode(_:)), to: pMenu, obj: "off", on: mode == "off")
-        _ = add(L("交给 Claude Code 后台整理", "Process with Claude Code"), #selector(mProcessMode(_:)), to: pMenu, obj: "claude", on: mode == "claude")
-        _ = add(L("交给 Codex 后台整理", "Process with Codex"), #selector(mProcessMode(_:)), to: pMenu, obj: "codex", on: mode == "codex")
+        add(L("只保存（手动处理 / 发给别人）", "Just save (process later / share)"), #selector(mProcessMode(_:)), to: pMenu, obj: "off", on: mode == "off")
+        add(L("交给 agent 后台整理", "Process with an agent in the background"), #selector(mProcessMode(_:)), to: pMenu, obj: "auto", on: mode != "off")
         pItem.submenu = pMenu
         menu.addItem(pItem)
+        addAgentMenu(menu)
+        add(L("审核页在口喷鸡窗口里打开", "Open reviews in a Blurt window"), #selector(mReviewInApp), on: ReviewHub.shared.openInApp)
 
         let cd = recordConfig()["countdown"] as? Int ?? 3
         let cItem = NSMenuItem(title: L("倒计时", "Countdown"), action: nil, keyEquivalent: "")
@@ -2096,6 +2006,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if #available(macOS 13.0, *) {
             _ = add(L("开机时启动", "Open at login"), #selector(mLogin), on: SMAppService.mainApp.status == .enabled)
         }
+        add(L("快捷键…", "Shortcuts…"), #selector(mShortcuts), key: ",")
         menu.addItem(.separator())
         _ = add(L("使用说明 / GitHub", "Help / GitHub"), #selector(mHelp))
         _ = add(L("退出口喷鸡", "Quit blurt"), #selector(mQuit), key: "q")
@@ -2140,9 +2051,28 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pb.writeObjects(isShotsSession(d) ? shots as [NSURL] : [d.appendingPathComponent("recording.mp4") as NSURL])
         toast(L("已拷贝，去飞书 / 微信 / Slack 里直接粘贴", "Copied — paste it into Slack, Feishu, email…"))
     }
-    @objc func mProcessClaude(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p), with: "claude") } }
-    @objc func mProcessCodex(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p), with: "codex") } }
+    @objc func mProcessAuto(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p)) } }
+    @objc func mProcessWith(_ it: NSMenuItem) {
+        guard let v = it.representedObject as? String, let sep = v.firstIndex(of: "\u{1}") else { return }
+        process(URL(fileURLWithPath: String(v[v.index(after: sep)...])), only: String(v[..<sep]))
+    }
+    @objc func mOpenReview(_ it: NSMenuItem) {
+        guard let p = it.representedObject as? String else { return }
+        if !openReview(URL(fileURLWithPath: p)) { alert(L("打不开审核页", "Can't open the review"), L("需要 uv 和 blurt skill（运行一次 record.py build）。", "Needs uv and the blurt skill (run record.py build once).")) }
+    }
+    @objc func mAgentLog(_ it: NSMenuItem) {
+        guard let p = it.representedObject as? String else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: p).appendingPathComponent("agent.log"))
+    }
     @objc func mProcessMode(_ it: NSMenuItem) { setRecordConfig("process", it.representedObject as? String) }
+    @objc func mReviewInApp() {
+        var r = readConfig()["review"] as? [String: Any] ?? [:]
+        r["open_in"] = ReviewHub.shared.openInApp ? "browser" : "app"
+        var cfg = readConfig()
+        cfg["review"] = r
+        if let d = try? JSONSerialization.data(withJSONObject: cfg, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: configURL) }
+    }
+    @objc func mShortcuts() { HotkeySettings.shared.show() }
     @objc func mCountdown(_ it: NSMenuItem) { setRecordConfig("countdown", it.representedObject as? Int) }
     @objc func mSystemAudio() { setRecordConfig("system_audio", !(recordConfig()["system_audio"] as? Bool ?? false)) }
     @objc func mLogin() {
@@ -2156,22 +2086,35 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // tiny, non-blocking toast under the menu bar (no notification permission needed)
     var toastWin: NSWindow?
+    /// Several lines ("\n") are fine: the first is the headline, the rest a quieter detail.
     func toast(_ text: String, seconds: Double = 4.5) {
+        let seconds = max(seconds, Double(ProcessInfo.processInfo.environment["BLURT_TOAST_MIN_SECONDS"] ?? "") ?? 0)   // tests: time to screenshot
         toastWin?.orderOut(nil)
+        emit(["event": "toast", "text": text])
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let w = NSAttributedString(string: text, attributes: [.font: f]).size().width + 36
+        let lines = text.components(separatedBy: "\n")
+        let body = NSMutableAttributedString(string: lines[0], attributes: [.font: f, .foregroundColor: NSColor.white])
+        if lines.count > 1 {
+            let para = NSMutableParagraphStyle()
+            para.paragraphSpacingBefore = 3
+            body.append(NSAttributedString(string: "\n" + lines.dropFirst().joined(separator: "\n"), attributes: [
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor(white: 1, alpha: 0.78), .paragraphStyle: para]))
+        }
+        let maxW: CGFloat = 560
+        let fit = body.boundingRect(with: NSSize(width: maxW, height: 1000), options: [.usesLineFragmentOrigin, .usesFontLeading])
+        let w = ceil(fit.width) + 36, h = ceil(fit.height) + 22
         let screen = NSScreen.main?.visibleFrame ?? .zero
-        let frame = NSRect(x: screen.maxX - w - 16, y: screen.maxY - 56, width: w, height: 40)
+        let frame = NSRect(x: screen.maxX - w - 16, y: screen.maxY - h - 16, width: w, height: h)
         let v = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
         v.material = .hudWindow
         v.state = .active
         v.appearance = NSAppearance(named: .vibrantDark)
         v.wantsLayer = true
         v.layer?.cornerRadius = 12
-        let label = NSTextField(labelWithString: text)
-        label.font = f
-        label.textColor = .white
-        label.frame = NSRect(x: 18, y: 11, width: w - 30, height: 18)
+        let label = NSTextField(labelWithAttributedString: body)
+        label.maximumNumberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.frame = NSRect(x: 18, y: 11, width: w - 30, height: ceil(fit.height))
         v.addSubview(label)
         let win = overlayWindow(frame, view: v)
         win.level = .statusBar

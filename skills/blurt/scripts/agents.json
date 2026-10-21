@@ -1,0 +1,70 @@
+{
+  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation.",
+  "agents": [
+    {
+      "id": "claude", "name": "Claude Code", "bins": ["claude"], "verified": "run",
+      "status": {"args": ["auth", "status", "--json"], "json_key": "loggedIn", "logged_out": ["not logged in", "please run /login"]},
+      "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+      "fix": {"zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal and /login"},
+      "install": {"zh": "curl -fsSL https://claude.ai/install.sh | bash", "en": "curl -fsSL https://claude.ai/install.sh | bash"},
+      "drafts": true
+    },
+    {
+      "id": "codex", "name": "Codex", "bins": ["codex"], "verified": "run",
+      "status": {"args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"], "env_any": ["OPENAI_API_KEY"]},
+      "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],
+      "fix": {"zh": "在终端运行 codex login", "en": "run `codex login` in a terminal"},
+      "install": {"zh": "npm i -g @openai/codex", "en": "npm i -g @openai/codex"},
+      "drafts": true
+    },
+    {
+      "id": "kimi", "name": "Kimi Code", "bins": ["kimi"], "verified": "cli",
+      "status": {"args": ["provider", "list"], "creds_json": {"path": "~/.kimi-code/credentials/kimi-code.json", "keys": ["access_token", "refresh_token"]},
+                 "configured_if": "models=[1-9]", "otherwise": "logged_out"},
+      "run": ["-p", "{prompt}"],
+      "fix": {"zh": "在终端运行 kimi login", "en": "run `kimi login` in a terminal"},
+      "install": {"zh": "见 moonshotai.github.io/kimi-code", "en": "see moonshotai.github.io/kimi-code"}
+    },
+    {
+      "id": "opencode", "name": "OpenCode", "bins": ["opencode"], "verified": "cli",
+      "status": {"args": ["auth", "list"], "configured_if": "\\b[1-9]\\d* credentials?\\b",
+                 "env_any": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "ZHIPU_API_KEY"],
+                 "otherwise": "logged_out"},
+      "run": ["run", "{prompt}"],
+      "fix": {"zh": "在终端运行 opencode auth login", "en": "run `opencode auth login` in a terminal"},
+      "install": {"zh": "curl -fsSL https://opencode.ai/install | bash", "en": "curl -fsSL https://opencode.ai/install | bash"}
+    },
+    {
+      "id": "gemini", "name": "Gemini CLI", "bins": ["gemini"], "verified": "docs",
+      "status": {"env_any": ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"], "files_any": ["~/.gemini/oauth_creds.json"],
+                 "otherwise": "logged_out"},
+      "run": ["-p", "{prompt}", "--yolo"],
+      "fix": {"zh": "在终端运行 gemini 登录一次（或设置 GEMINI_API_KEY）", "en": "run `gemini` once in a terminal to sign in (or set GEMINI_API_KEY)"},
+      "install": {"zh": "npm i -g @google/gemini-cli", "en": "npm i -g @google/gemini-cli"}
+    }
+  ],
+  "failures": [
+    {"id": "skill", "short": {"zh": "找不到 skill", "en": "skill not found"},
+     "reason": {"zh": "{name} 找不到 blurt skill：在终端运行 record.py build 重新登记一次", "en": "{name} couldn't find the blurt skill: run record.py build once to register it"},
+     "patterns": ["unknown skill", "skill[^\\n]{0,40}(not found|not available|not installed|doesn't exist|does not exist)", "no such skill",
+                  "SKILL\\.md[^\\n]{0,60}(no such file|not found|does not exist)", "找不到[^\\n]{0,12}skill"]},
+    {"id": "model", "short": {"zh": "模型不可用", "en": "model unavailable"},
+     "reason": {"zh": "{name} 设置的模型不存在或没有权限：检查它的模型设置", "en": "{name}'s model doesn't exist or isn't allowed: check its model setting"},
+     "patterns": ["model[^\\n]{0,60}(not found|does not exist|not available|is not supported|unsupported|not exist)", "(unknown|invalid|unsupported) model",
+                  "model_not_found", "no such model", "^\\s*error: not found\\s*$"]},
+    {"id": "auth", "short": {"zh": "登录失效", "en": "login expired"},
+     "reason": {"zh": "{name} 登录失效了：{fix}", "en": "{name}'s login has expired: {fix}"},
+     "patterns": ["not logged in", "please run /login", "(invalid|expired|revoked)[^\\n]{0,30}(api[ _-]?key|token|grant|credential|session)",
+                  "authorization grant is invalid", "no credential configured", "authentication (failed|error|required)", "unauthori[sz]ed", "\\b401\\b",
+                  "token (has )?expired", "login (required|expired)", "re-?authenticate", "invalid x-api-key"]},
+    {"id": "quota", "short": {"zh": "额度 / 限流", "en": "quota / rate limit"},
+     "reason": {"zh": "{name} 额度用完了或被限流，过一会儿再整理", "en": "{name} hit a rate limit or ran out of quota — try again later"},
+     "patterns": ["rate[ _-]?limit", "\\b429\\b", "quota", "usage limit", "credit balance is too low", "insufficient[_ ]quota",
+                  "too many requests", "out of credits", "limit reached", "overloaded", "\\b529\\b"]},
+    {"id": "network", "short": {"zh": "网络", "en": "network"},
+     "reason": {"zh": "连不上 {name} 的服务：检查网络 / 代理后再整理", "en": "couldn't reach {name}'s servers: check the network / proxy and try again"},
+     "patterns": ["enotfound", "econnrefused", "econnreset", "etimedout", "getaddrinfo", "network (error|is unreachable)",
+                  "connection (error|refused|reset|timed out|closed)", "could not resolve host", "fetch failed", "unable to connect",
+                  "stream disconnected", "certificate verify failed", "(ssl|tls) (error|handshake)"]}
+  ]
+}

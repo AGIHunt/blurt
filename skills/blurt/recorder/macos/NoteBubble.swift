@@ -638,9 +638,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         case .listen:
             field.placeholderString = listening ? L("在听… 说完停一下就好 · 直接打字也行", "Listening… just pause when you're done · or type")
                                                 : L("写一句备注（可选）", "Add a note (optional)")
-            if typed { status.stringValue = L("⏎ 保存 · Esc 跳过 · ⌥⇧A 下一张", "⏎ save · Esc skip · ⌥⇧A next shot") }
+            let next = hkHint(.snap, "下一张", "next shot").map { " · " + $0 } ?? ""
+            if typed { status.stringValue = L("⏎ 保存 · Esc 跳过", "⏎ save · Esc skip") + next }
             else if listening && speechStarted { status.stringValue = "● " + fmt(voice?.elapsed ?? 0) + L("  在听，停一下就保存 · ⏎ 现在保存", "  listening — pause to save · ⏎ save now") }
-            else if listening { status.stringValue = L("Esc 跳过 · ⌥⇧A 下一张", "Esc skip · ⌥⇧A next shot") }
+            else if listening { status.stringValue = L("Esc 跳过", "Esc skip") + next }
             else { status.stringValue = L("麦克风不可用 · ⏎ 保存 · Esc 跳过", "Mic unavailable · ⏎ save · Esc skip") }
         case .edit:
             field.placeholderString = L("写一句备注", "Write a note")

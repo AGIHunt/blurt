@@ -155,8 +155,8 @@ final class HUDLive {
         self.done = done
         snapBtn = SnapButton {}
         snapBtn.onClick = { [weak self] in self?.snapClicked() }
-        snapBtn.toolTip = L("截图（⌥⇧A）：这一刻、这个画面，全分辨率。截过之后点这里给截图补一句（会自动暂停）",
-                            "Snap (⌥⇧A): this exact moment, full resolution. After a snap, click to add a note (pauses meanwhile)")
+        snapBtn.toolTip = L("截图\(hkTip(.snap))：这一刻、这个画面，全分辨率。截过之后点这里给截图补一句（会自动暂停）",
+                            "Snap\(hkTip(.snap)): this exact moment, full resolution. After a snap, click to add a note (pauses meanwhile)")
         (fx as? NSVisualEffectView)?.maskImage = roundedMask(24)
         hud.hasShadow = true
         fx.addSubview(snapBtn)
