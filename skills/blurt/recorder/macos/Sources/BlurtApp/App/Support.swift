@@ -1,4 +1,5 @@
 import AppKit
+import BlurtCore
 import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
@@ -56,25 +57,14 @@ struct Options {
 // MARK: - Config shared with record.py (~/.blurt/config.json)
 
 // BLURT_HOME (as in record.py) relocates config/build state; tests use it to stay out of the user's real setup.
-let blurtHome = ProcessInfo.processInfo.environment["BLURT_HOME"].map { URL(fileURLWithPath: $0) }
-    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".blurt")
-let configURL = blurtHome.appendingPathComponent("config.json")
+let blurtHome = BlurtPaths.home
+let configURL = BlurtPaths.config
 
-func readConfig() -> [String: Any] {
-    guard let d = try? Data(contentsOf: configURL), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
-    return o
-}
+func readConfig() -> [String: Any] { Config.shared.all }
 
-func recordConfig() -> [String: Any] { readConfig()["record"] as? [String: Any] ?? [:] }
+func recordConfig() -> [String: Any] { Config.shared.record }
 
-func setRecordConfig(_ key: String, _ value: Any?) {
-    var cfg = readConfig()
-    var rec = cfg["record"] as? [String: Any] ?? [:]
-    rec[key] = value
-    cfg["record"] = rec
-    try? FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    if let d = try? JSONSerialization.data(withJSONObject: cfg, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: configURL) }
-}
+func setRecordConfig(_ key: String, _ value: Any?) { Config.shared.set("record." + key, value) }
 
 func saveLastRegion(_ r: CGRect) { setRecordConfig("last_region", [Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)]) }
 

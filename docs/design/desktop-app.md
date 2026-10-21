@@ -529,7 +529,17 @@ agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --re
   → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
      "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
      "terminal": bool, "clipboard": null|"…", "open_app": null|"…", "retry_exit": null|n, "prompt_file": null|"…"}
-     headless：argv = bin + run + events.args（--no-events 不加）；prompt 永远是单独一个 argv 元素，不经过 shell。
+     headless：argv = bin + run + headless_mcp.args（--no-mcp 不加）+ events.args（--no-events 不加）；prompt 永远是单独一个
+     argv 元素，不经过 shell。
+     **headless_mcp**（codex，实测）：`codex exec` 的审批策略是 never，没批准过的 MCP 调用一律失败（"MCP tool call requires
+     approval, but approval policy is never"）。所以 headless 命令带上整个 blurt 服务：`-c mcp_servers.blurt.command="uv"`、
+     `…args=["run","-q","--script","<mcp_server.py>"]`、`…env_vars=["BLURT_HOME","BLURT_WORKSPACE","BLURT_AGENT",
+     "BLURT_RUN_ID"]`（codex 给 MCP 服务的环境很干净，不转发的话 run_id 和改过位置的 BLURT_HOME 到不了服务）、
+     `…default_tools_approval_mode="approve"`（可选值 auto|prompt|writes|approve）。必须给全：只对没注册的服务给一个
+     `-c mcp_servers.blurt.<key>`，codex 会直接报 "invalid transport" 起不来。这样不管用户装没装 MCP，后台修复都能用。
+     claude 的 `run` 在 `--allowedTools` 里加了 `mcp__blurt`（-p 模式下没放行的工具会被拒；未实跑 ⚠）。
+     **应用要用 `command` 的 argv**：Agents.swift 现在直接拿 `run` 拼命令，拿不到 headless_mcp，要么改成调 `agents.py command`，
+     要么照同样规则把 headless_mcp.args（替换 `{mcp_server_json}`）追加上。
      interactive：url（提示词超过 max_prompt 时写进 $BLURT_HOME/prompts/*.md，q 改成「Read <file> and do what it says.」）；
      或 terminal: true + argv（在用户的终端里跑）；paste_prompt / copy_prompt → clipboard；zcode 还给 open_app。
      --var run_id=R → env BLURT_RUN_ID（items.py fix 和 mark_fixed 的默认值）。出错：{"ok": false, "error"}，退出码 1。
@@ -623,41 +633,113 @@ export interface BlurtHost {
 ### C7 · Swift 模块边界（`skills/blurt/recorder/macos/Package.swift`，只用 Command Line Tools 就能 `swift build`）
 
 ```
-Sources/BlurtCapture/   (library)  现有 Recorder, Picker*, HUD, HUDLive, InkView, Snap*, Perch, NoteBubble, Eggs, LiveAudio
-Sources/BlurtCore/      (library)
-   Paths.swift      public enum BlurtPaths { static var home, indexDB, skillDir, scripts: URL }
-   Config.swift     public final class Config { static let shared; subscript(key: String) -> Any?; func set(_:_:) }   // ~/.blurt/config.json
-   Script.swift     public final class ScriptRunner { static let shared
+Sources/BlurtCore/      (library; everything the app uses from it is public — app files `import BlurtCore`)
+   Paths.swift      public enum BlurtPaths { static var home, config, indexDB, workspace, skillDir, scripts: URL }
+   Config.swift     public final class Config { static let shared; subscript(key: String) -> Any? { get set }   // dotted keys: "record.hotkeys"
+                      func set(_ key: String, _ value: Any?); var all, record: [String: Any] }                // ~/.blurt/config.json, read fresh each time
+                    public enum BlurtLocale { static var lang }                                               // the app sets it from --lang
+   Script.swift     public enum ShellEnv { static func agentEnvironment() -> [String: String]; findExecutable(_:); runCapture(…)
+                      isAgentSessionVar(_:)  // strips agent-session vars, keeps CODEX_HOME / CLAUDE_CONFIG_DIR / KIMI_CODE_HOME / *_HOME / *_CONFIG_DIR
+                      static let inherited, loginShell; static let path }
+                    public final class ScriptRunner { static let shared
                       func run(_ script: String, _ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60) async throws -> Data
-                      func spawn(_ script: String, _ args: [String], onLine: @escaping (String) -> Void) throws -> Process
-                      var uvAvailable: Bool { get } }                         // uv + agentEnvironment()（WP4）
+                      func json(_ script: String, _ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60) async throws -> [String: Any]
+                      func spawn(_ script: String, _ args: [String], onLine: @escaping (String) -> Void) throws -> Process   // lines on main
+                      var uvAvailable: Bool; var uvPath: String? }                // PATH (login shell), then ~/.blurt/bin/uv
+                    public enum ScriptError { uvMissing, scriptMissing(String), failed(status:stdout:stderr:), timeout(TimeInterval) }
+                    // script = a name in <skill>/scripts ("items.py") or an absolute path; runs `uv run -q <script> …`
    Hotkeys.swift    public final class HotkeyCenter { static let shared
-                      enum Action: String, CaseIterable { case toggleRecord, snap, pause, finish, pen, marker, openMenu, openMain }
-                      func binding(_ a: Action) -> KeyCombo?
-                      func set(_ c: KeyCombo?, for a: Action) -> HotkeyResult   // .ok | .duplicate(Action) | .system(String) | .taken
-                      var onFire: ((Action) -> Void)? }                       // config key record.shortcuts {action: "alt+shift+r"}（WP4）
+                      enum Action: String, CaseIterable {       // raw values = config keys of record.hotkeys (shared with _common.py)
+                        case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main" }
+                      func binding(_ a: Action) -> KeyCombo?; func state(_ a: Action) -> HotkeyResult
+                      func set(_ c: KeyCombo?, for a: Action) -> HotkeyResult  // saves, re-registers at once, returns the new state
+                      func restoreDefaults(); var conflicts: [Action]; var disabled: Set<Action>; var resident: Bool
+                      var onFire: ((Action) -> Void)?; var onChange: (() -> Void)?
+                      func registerRaw(_ id: UInt32, code: Int, mods: Int) -> OSStatus; var onRaw  // the app's fixed keys (ids < 100) }
+                    public enum HotkeyResult { ok, off, notHere, duplicate(Action), failed(Int32), taken(pid_t), system }
+                    public struct KeyCombo { mods, key, code; static func parse(String) -> KeyCombo?; spec ("opt+shift+R"); label ("⌥⇧R") }
+                    // config: record.hotkeys {"record": "opt+shift+R", "snap": "off", …}; .taken = another running Blurt published
+                    // those keys in ~/Library/Caches/dev.blurt.recorder/hotkeys/<pid>.json
    Index/           public final class IndexReader { init(url: URL = BlurtPaths.indexDB) throws
                       func workspaces() throws -> [WorkspaceRow]; func sessions(_ q: SessionQuery) throws -> [SessionRow]
                       func items(_ q: ItemQuery) throws -> [ItemRow]; func count(_ q: ItemQuery) throws -> Int }
                     public final class IndexWatcher { init(roots: [URL]); var onChange: (([URL]) -> Void)? }   // FSEvents（WP5）
-   Agents/          public struct AgentStatus: Decodable; public final class Agents {
-                      func detect() async -> [AgentStatus]
-                      func run(_ id: String, prompt: String, repo: URL) throws -> AgentRun        // headless, stream-json lines
-                      func openInteractive(_ id: String, prompt: String, repo: URL) throws }       // (WP6)
-Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged)
-   App/ (WP4)  AppDelegate, StatusMenu, AppEnvironment { static var mainWindow: MainWindowHosting?; static var settings: SettingsHosting? }
+   Agents/ (WP6)    C5 rows: AgentStatus (= one `agents.py detect` row), AgentDetect, AgentCommand, InstallPlan / InstallChange, FixPrompt
+                    public final class SkillCLI { static let shared            // plain calls go through ScriptRunner; --with / extra env /
+                      func run(_ script:, _ args:, stdin:, with packages: [String], env:, timeout:) async throws -> CLIResult   // separate
+                      func spawn(_ script:, _ args:, with:, env:, onLine: (String, Bool) -> Void, onExit: (Int32) -> Void) }    // stderr
+                    public final class Agents { static let shared
+                      func detect(login: Bool = true, repo: URL? = nil) async throws -> AgentDetect
+                      func detectAll(login:) async throws -> AgentDetect        // every registry id, configured order first
+                      var order: [String]?                                      // record.agents
+                      func command(_ id:, mode: "headless"|"interactive", prompt:, repo:, vars:, events:) async throws -> AgentCommand
+                      func install(_ id:, skill:, mcp:, dryRun: Bool) async throws -> InstallPlan   // full login env, never scrubbed
+                      func fixPrompt(_ uids: [String], repo: URL? = nil) async throws -> FixPrompt
+                      func run(_ id:, prompt:, repo:, items:, runID:) async throws -> AgentRun       // headless; parses the event stream
+                      func interactive(_ id:, prompt:, repo:) async throws -> AgentCommand }        // the app opens url / Terminal / clipboard
+                    public final class AgentRun { id, agent, items, repo, lines, costUSD, exitStatus; onLine, onProgress, onExit; cancel() }
+Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged; one module)
+   Capture/    Recorder, Picker, HUD, HUDLive, InkView, Snap, Perch, Rope, NoteBubble, Eggs, LiveAudio   (the existing capture code)
+   App/ (WP4)  AppDelegate (the App class + status menu), AppEnvironment, AgentHub, Hotkeys (glue), HotkeySettings,
+               ReviewWindow, SnapApp, Shell, Workspaces, Support, CarbonHotkeys, SelfTest, Updater
    MainWindow/, WebHost/ (WP5)     Settings/, Onboarding/, System/ (WP6)
+   main.swift  launch code; `blurt-recorder --selftest [SESSION]` = GUI-less BlurtCore checks (JSON, exit 0 = pass)
 ```
 
+- **BlurtCapture 不是单独的模块**，是 `BlurtApp` 里的 `Capture/` 目录（WP4 实施时改）。现有采集代码和应用代码共用一批全局量
+  （`opts`、`L()`、`perch`、`snapper`、`App` 类的扩展），拆成库要给几千行代码补 `public`、再解开循环依赖，单进程应用得不到好处。
+  需要的话以后再拆，届时只是把 `Capture/` 移成一个 target。
+- 应用内沿用旧名字：`HotAction = HotkeyCenter.Action`、`Shortcut = KeyCombo`、`HotState = HotkeyResult`、`Hotkeys = HotkeyCenter`。
+- 配置键沿用现有的 `record.hotkeys`（不是 `record.shortcuts`）；`openMain` 默认不绑定，主窗口注册之前不注册、也不在快捷键窗口里出现。
+- `AppEnvironment`：`mainWindow: MainWindowHosting?`、`settings: SettingsHosting?`、`fixWithAgent: (([String]) -> Void)?`、
+  `openURL: ((URL) -> Bool)?`。WP5 在 `MainWindow/MainWindowModule.swift` 的 `install()` 里设置，WP6 在 `Settings/SettingsModule.swift`
+  的 `install()` 里设置（也在这里设 `NSApp.servicesProvider`）；菜单栏应用启动时调用这两个 `install()`。
+  对应的菜单项（打开口喷鸡、设置…）只在钩子存在时出现；「快捷键…」在 `settings` 存在时打开 `show(pane: "shortcuts")`。
+  `blurt://`、`blurt-app://` 先交给 `openURL`，返回 false 时外壳自己处理 `record`、`snap`。
 - `MainWindowHosting`：`show()`、`reveal(uid:)`、`reveal(session:)`。
-- `SettingsHosting`：`show(pane:)`。
-- Info.plist 由 WP4 维护，第一批提交就要带上 `CFBundleURLTypes`（`blurt`、`blurt-app`）、`NSServices`（"Add to Blurt"）、
-  `SUFeedURL`、`SUPublicEDKey`。WP6 只写这些声明背后的实现代码。
+- `SettingsHosting`：`show(pane: String?)`。
+- Info.plist 是文件 `recorder/macos/Info.plist`，由 WP4 维护，`record.py build` 拷进包里；已带 `CFBundleURLTypes`（`blurt`、`blurt-app`）、
+  `NSServices`（"Add to Blurt"，`NSMessage` = `addToBlurt`）、`SUFeedURL`、`SUPublicEDKey`（仓库里为空，由 `release-mac.sh` 写入；
+  为空时应用不启动 Sparkle）。WP6 只写这些声明背后的实现代码。
+- 构建：`record.py build` = `swift build -c release --product blurt-recorder`（scratch 在 `$BLURT_HOME/build/swiftpm`），
+  `BLURT_UNIVERSAL=1` 时 arm64 和 x86_64 各 `--triple` 构建一次再 `lipo`；然后组装 bundle、ad-hoc 签名。
+- Sparkle（2.10.0，校验和固定）只进发布构建：`BLURT_SPARKLE=1` 时链接，`record.py build` 把 `Sparkle.framework` 放进
+  `Contents/Frameworks` 并删掉非沙盒应用用不到的头文件和 XPC 服务。skill 用户本地构建不带 Sparkle、不需要联网，由 skill 自己更新；
+  本地构建也不会覆盖或另装一份已安装的发布版（带 Sparkle 的那个自己更新）。体积：通用 + Sparkle 5.49 MB，本地 arm64 1.7 MB。
+- 发布脚本在仓库根目录 `scripts/release-mac.sh`（不在 `skills/blurt/scripts/`，不随 skill 分发）：签名（Developer ID + hardened
+  runtime）、DMG、公证和 staple、Sparkle zip 和 `appcast.xml`；钥匙串里没有 Developer ID 证书时自动 dry run（ad-hoc 签名、一次性 EdDSA 密钥）。
 - 外部 URL：
   - `blurt://item/<uid>`
   - `blurt://session/<abs-path-encoded>`
   - `blurt://record`
   - `blurt://snap`
+  - `blurt://settings[/<pane>]`（pane：`general`、`shortcuts`、`speech`、`agents`、`export`、`privacy`、`storage`）、`blurt://onboarding`（WP6 加）
+
+细则（WP6 实现时补充，以代码为准）：
+- **URL 安全**：任何网页都能打开 `blurt://`，所以 URL 只做「打开、定位」，不启动 agent，不写数据。`item` / `session` 先交给
+  `mainWindow`（`show()` 后 `reveal(uid:)` / `reveal(session:)`），没有主窗口时打开该会话的审核窗口。
+- **Agent 运行记录**：每次后台运行写 `$BLURT_HOME/runs/<run_id>.json`
+  `{id, agent, repo, items: [uid], state: running|done|failed|cancelled, started, ended?, exit?, cost_usd?, summary?, log}`，
+  原始事件流在同目录的 `<run_id>.log`。主窗口的「Agent 运行」读这些文件。开始前应用先对每个条目执行
+  `items.py fix SESSION UID --state fixing --agent ID --run-id R`，agent 自己收尾时（mark_fixed）沿用这个 run_id（C1 规则）。
+- **「修好了」**：应用用 FSEvents 监听所有工作区的会话目录，任何来源把某个条目的 `fix.state` 改成 `fixed`（应用拉起的 agent、
+  终端里的交互式会话、同事同步过来的文件）都会触发啄虫动画和系统通知；第一次看到的文件只记基线，不补放旧的。
+- **Spotlight**：domain `dev.blurt.items`，`uniqueIdentifier` = uid，内容来自 `index.db`；选中结果 = `blurt://item/<uid>`。
+  测试用 `BLURT_SPOTLIGHT_DOMAIN` 换 domain，跑完删掉。
+- **Services「Add to Blurt」**：当前工作区里每天一个收件箱会话 `<sessions>/<yyyyMMdd-HHmmss>-shots/`，`meta.json`
+  `{"mode": "shots", "source": "service"}`；`items.json` 先写一个空的（items.py 要求文件存在），每条笔记用 `items.py add`
+  加成 `kind: note`、`tags: ["inbox"]`、`source.app`，图片放 `frames/<id>-<n>.png` 再 `items.py set-frames`。
+- **WP6 用到的配置键**（都在 `$BLURT_HOME/config.json`）：`lang`（和 record.py 共用）、`app.onboarded`、`app.settings_pane`、
+  `app.asked_screen`、`fix.agent`、`fix.mode`（background | interactive）、`spotlight`（false = 关）、`privacy.local_asr`
+  （只能选本地识别）、`privacy.keep_live_audio`（默认 false：转写完成、录屏文件在、10 分钟没写入后删 `live/audio.pcm`）、
+  `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
+  导出默认去向：项目写 `<repo>/.blurt/config.json` → `export`，默认工作区写全局 `export`。
+- **index.db 只读打开的坑**（C3 的读者都要注意）：WAL 库在最后一个连接关闭后 SQLite 会删掉 `-wal` / `-shm`，这时
+  `?mode=ro` 打开会在 prepare 时报 `SQLITE_CANTOPEN`。读者先试 `mode=ro`，失败就用 READWRITE（不带 CREATE）加
+  `PRAGMA query_only = 1` 重开——只会重建 `-shm`，不写数据（WP5 的 IndexReader 和 WP6 的 IndexLookup 都这样做）。
+- **测试钩子**：`BLURT_TEST_COMMANDS=1` 时 `dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]` 通知通道（见 `System/SelfTests.swift`）；
+  `BLURT_NO_ONBOARDING` 不弹引导；`BLURT_AGENT_HOME` 让 `agents.py install` 在临时 HOME 里装；`BLURT_HOME` 非默认时从不请求通知权限
+  （bundle id 和正式版共用）。
 
 ### C8 · Tauri（Windows/Linux）命令和录制引擎
 
@@ -702,6 +784,53 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
     `blurt://picked`（选区，窗口内 CSS 像素）、`blurt://hit-rects`（鸡舍可点区域，其余部分鼠标穿透）、
     `blurt://perch`（Rust→鸡舍：set/add/remove/show/hide/busy）、`blurt://note-done`、`blurt://ready`；
   - Linux X11 没有排除截屏的办法，所以 HUD 放在录制区域外面，放不下才贴着区域底边放在里面。
+
+细则（WP7 实现时补充，以 `apps/desktop/src-tauri/src/lib.rs` 为准）：
+- **参数名**：Rust 用 snake_case，JS `invoke` 用 camelCase（Tauri 默认），例如 `fix_with_agent(session, item_ids)` →
+  `invoke('fix_with_agent', {session, itemIds})`。对象参数里的字段保持 C3 的写法（`q.fix_state`）。
+- **`ItemQuery`** = `{query?, kind?: [], status?: [], fix_state?: [], severity?: [], workspace?: id|path, session?: id|dir,
+  has_code_refs?: bool, sort?: "updated"|"created"|"t_start", limit=50, offset=0}`，查询规则照搬 C3 细则。
+  返回 `{total, items, missing}`，`missing: true` 表示还没有 `index.db`（不是错误）。
+  ItemRow 在 C3 的 12 个字段之外还带 `workspace_id, created, session_title, quote, tags, owner, module, t_start,
+  frame_count, has_code_refs, user_edited, exported`。
+- **`index_sessions(q?)`**：`q = {workspace?, state?: "unprocessed"|"processing"|"unreviewed"|"reviewed"|"inbox", limit, offset}`，
+  `inbox` = 没整理、整理中或没审核；行 = `sessions` 表全部列 + `workspace_name, workspace_path, fixed_count`。
+  `index_workspaces()` 的行 = `workspaces` 表 + `sessions, open_items`（open 的定义同 C4）。
+- **review**：`review_load(session) → {doc, etag, session}`；`review_poll(session, etag) → {etag}`（没变）或 `{doc, etag}`；
+  `review_ops(session, ops, confirm?) → items.py user-ops 的那行 JSON（{ok, etag}）`。ETag 与 `_common.file_etag` 相同。
+  文件走 asset protocol（`convertFileSrc`）；应用把每个工作区的 sessions 目录和打开过的会话目录动态加进 asset scope。
+- **agent**：`agents_detect() → agents.py detect 的输出`；`agent_run(id, prompt, repo) → run_id`（`r-YYYYMMDD-HHMMSS-xxxx`，
+  提示词写进 `$BLURT_HOME/prompts/<run_id>.md`，用 `agents.py command … --prompt-file … --var run_id=…` 拿 argv，
+  注入 `BLURT_AGENT` / `BLURT_RUN_ID`）。事件：`agent://started {run_id, agent}`、`agent://line {run_id, line, stream}`、
+  `agent://exit {run_id, code, state}`；结束时发系统通知。补充命令：`agent_runs() → [AgentRun]`（最近 400 行日志、
+  `total_cost_usd`）、`agent_stop(run_id)`、`agent_prompt(uids)`、
+  `fix_with_agent(session, item_ids, agent?) → {run_id, agent, repo}`（会话必须在仓库工作区里；先 `items.py fix --state fixing`，
+  agent 不给时用 detect 的 `pick`）、`process_session(session, agent?)`（提示词和 macOS 的 AgentHub / Snap 同一句）。
+- **设置**：`settings_get() → {config, hotkeys: [HotkeyRow], hotkey_mode, wayland, export_targets, config_path}`；
+  `settings_set(patch)` 按 `update_global_config` 的规则合并（顶层对象只合并一层），值为 `null` 删除该键。
+- **快捷键**：配置沿用 `record.hotkeys`（不是 C7 写的 `record.shortcuts`，以现有代码为准），语法同 `_common.parse_hotkey`。
+  常驻注册 `record` / `menu` / `snap`，其余录制中才注册。
+  `HotkeyRow = {action, spec, label, default, active, result, of?, name?, hint?}`，
+  `result = ok | off | idle（录制时生效）| duplicate（of）| system（name）| taken | unsupported（pen）| invalid | portal | pending | manual`。
+  `shortcut_set(action, combo) → {result: ok|duplicate|system|taken|invalid, action?, name?, spec, label, hint?, row?}`，
+  有冲突时不保存。Wayland：先用 GlobalShortcuts 门户（`hotkey_mode = portal`），没有门户时 `manual`，
+  提示用户在系统设置里绑定命令 `blurt blurt://record`（单实例把 URL 转给正在运行的应用）。事件 `hotkeys://changed [HotkeyRow]`。
+- **其它命令**：`app_status()`、`index_summary() → {missing, items, sessions, inbox, fixing}`、`index_item(uid)`、
+  `index_rescan()`、`asr_models()`（`transcribe.py models`）、`open_path(path)`、`update_check()`、
+  `capture_start(opts?: {session?, region?: [x,y,w,h], pick=true}) → session dir`（阻塞到开始录或取消，选区在 worker 线程里）、
+  `capture_control("pause"|"resume"|"stop"|"snap"|"marker"|"discard")`、`capture_state()`。
+  `open_external` 只放行 `http(s) vscode cursor zed claude-cli file` 这几种 scheme。
+- **事件**：`index://changed {sessions}`（watcher 防抖 300 ms 后执行 `index.py update` 再发）、`index://status {scanning, error?}`、
+  `capture://status`（状态行 + `session`，外加 `picking` / `cancelled`）、`nav {item: uid}|{session: dir}`（deep link）、
+  `perch://action`。
+- **deep link**：C7 的四个之外，`blurt://open|pause|stop|marker` 也认（给 Wayland 的系统快捷键用）。
+- **配置键（新增）**：`record.last_region_px`（上次选区，物理像素）、`record.mic`（`false`/`"off"` = 不录麦克风，或设备名）、
+  `app.editor`（`vscode`|`cursor`|`zed`，打开 code_refs 用）、`app.disable_dmabuf`（Linux：关 WebKit DMA-BUF 渲染；
+  不设时检测到 NVIDIA 驱动就关）。
+- **环境变量**：`BLURT_HOME`、`BLURT_WORKSPACE`、`HOME` 同 Python 侧；`BLURT_SCRIPTS`（脚本目录，默认依次找打包的
+  `resources/scripts`、仓库、`~/.claude/skills/blurt/scripts`）；测试用：`BLURT_START_VIEW`、`BLURT_QUIT_ON_CLOSE`、
+  `BLURT_LANG`、`BLURT_NO_SCAN`、`BLURT_NO_LOGIN_SHELL`、`BLURT_HOTKEY_MODS`、`BLURT_DISABLE_DMABUF`。
+- **bundle id**：Tauri 应用用 `dev.blurt.desktop`（Windows/Linux 专用，和 macOS 的 `dev.blurt.recorder` 分开，以免在 Mac 上冒烟时冲突）。
 
 ---
 
