@@ -98,8 +98,13 @@
 草稿模型：默认使用当前 agent 的 CLI 跑小模型（`claude -p --model claude-haiku-5-5`，或 `codex exec` 的对应命令）。配置项 `record.live_drafts: true|false`。
 触发条件：新说了 ≥60 秒且有 ≥3 秒停顿，或者距上次已 3 分钟。单次超时 60 秒，失败就跳过，**绝不阻塞录制**。
 
-审核页：轮询 `items.json`，只有 agent 写的字段（`frames`、`clip`、`code_refs`、`source` 和新增的条目）会实时更新进来。用户改过的字段以用户为准。
-还没补上的帧显示加载占位。agent 改条目只能用 `items.py patch`（带锁、原子写入），不能整份覆盖 `items.json`。
+审核页：`items.json` 顶层 `"processing": true` 期间每 1.5 秒轮询一次（带 ETag，没变化就是 304），之后每 5 秒一次。
+agent 写的字段（`frames`、`clip`、`code_refs`、`source`、`digest` 和新增的条目）实时更新进来，正在编辑的输入框不动、不跳滚动。
+页面保存的是「用户改了哪些字段」的补丁，不是整份列表，服务端在锁内合并；用户改过的字段记在条目的 `_user` 里，agent 不会覆盖（除非 `--force`）。
+用户丢弃的条目保持丢弃，并掉的条目记在顶层 `_removed`，agent 再写它会被跳过（帧会补到并入的那条上）。
+还没补上的帧显示加载占位，新帧淡入；顶栏显示「整理中… 已出 N 条，截图补充中」，`items.py done` 后消失。处理中也可以点「完成审核」，只提醒一次。
+agent 改条目只能用 `items.py`（patch / set-frames / add / done，带锁、原子写入），不能整份覆盖 `items.json`。
+锁：每个 session 一个 `.items.lock`（macOS/Linux `flock`，Windows `msvcrt.locking`），review.py 和 items.py 共用。
 
 ## 平台
 
