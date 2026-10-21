@@ -1,4 +1,5 @@
 import { Egg } from "./icons";
+import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 import { Logo, isMacLike } from "./TopBar";
 
@@ -7,6 +8,7 @@ export function Toast() {
   const t = s.toast;
   return (
     <div className={cx("toast", t?.show && "show")} id="toast" role="status">
+      {t?.icon && <Icon name={t.icon} size={15} className={"ti ti-" + t.icon} />}
       <span id="toastMsg">{t?.msg}</span>
       {t?.undo && (
         <button id="toastUndo" onClick={s.undo}>

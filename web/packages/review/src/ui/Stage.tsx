@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DragRect } from "../host";
 import { fmt, kindOf, type Media, type ReviewStore } from "../store";
 import { statusOf } from "../sync";
-import { Egg, IDownload, IEye, IFolder, IX, ICheck } from "./icons";
+import { Egg } from "./icons";
+import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 
 function guessAR(s: ReviewStore) {
@@ -105,21 +106,21 @@ function Caption({ m }: { m: Media | undefined }) {
       {m.cap ? <span className="ct">{m.cap}</span> : null}
       {h.downloadUrl ? (
         <a className="dl" href={h.downloadUrl(rel)} download title={s.t("download")} aria-label={s.t("download")}>
-          <IDownload />
+          <Icon name="download" />
         </a>
       ) : h.download ? (
         <button className="dl" onClick={() => h.download!(rel)} title={s.t("download")} aria-label={s.t("download")}>
-          <IDownload />
+          <Icon name="download" />
         </button>
       ) : null}
       {h.quickLook && (
         <button className="dl" onClick={() => h.quickLook!(rel)} title={s.t("quickLook")} aria-label={s.t("quickLook")}>
-          <IEye />
+          <Icon name="eye" />
         </button>
       )}
       {h.reveal && (
         <button className="dl" onClick={() => h.reveal!(rel)} title={s.t(h.host === "macos" ? "reveal" : "revealWin")} aria-label={s.t("reveal")}>
-          <IFolder />
+          <Icon name="folder" />
         </button>
       )}
     </div>
@@ -195,7 +196,7 @@ export function Slide() {
                   </button>
                 ) : (
                   <button key={m.src + m.kind} className={cx("th vid", n === k && "on")} data-m={n} onClick={() => s.selectMedia(m.src)}>
-                    <span className="ic">{m.kind === "clip" ? "▶" : "◉"}</span>
+                    <Icon name={m.kind === "clip" ? "film" : "video"} className="ic" />
                     {m.label}
                   </button>
                 ),
@@ -240,20 +241,22 @@ export function Stage() {
       {s.mode === "review" && (
         <div className="actions">
           <button className={cx("act drop", st === "drop" && "on")} id="dropBtn" onClick={() => s.decide("drop")}>
-            <IX size={16} />
+            <Icon name="x" size={16} />
             <span>{s.t("drop")}</span>
             <kbd>X</kbd>
           </button>
           <button className="act ghost" id="mergeBtn" onClick={s.mergePrev}>
+            <Icon name="merge" size={16} />
             <span>{s.t("merge")}</span>
             <kbd>M</kbd>
           </button>
           <button className="act ghost" id="undoBtn" onClick={s.undo}>
+            <Icon name="undo" size={16} />
             <span>{s.t("undo")}</span>
             <kbd>Z</kbd>
           </button>
           <button className={cx("act keep", st === "keep" && "on")} id="keepBtn" onClick={() => s.decide("keep")}>
-            <ICheck size={17} />
+            <Icon name="check" size={17} />
             <span>{s.t("keep")}</span>
             <kbd>A</kbd>
           </button>

@@ -229,8 +229,13 @@ body {
   color: var(--mute);
 }
 .qd {
-  font-style: normal;
-  color: var(--amber);
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9px;
+  background: var(--amber);
+  vertical-align: 1px;
+  margin-right: 2px;
 }
 
 .stage {
@@ -467,7 +472,8 @@ body {
 }
 .th.vid .ic {
   color: var(--accent);
-  font-size: 11px;
+  width: 15px;
+  height: 15px;
 }
 .actions {
   position: absolute;
@@ -635,9 +641,8 @@ body {
   white-space: nowrap;
 }
 .chip .ico {
-  width: 12px;
-  height: 12px;
-  stroke-width: 3;
+  width: 13px;
+  height: 13px;
 }
 .chip.st-keep {
   background: var(--keep);
@@ -748,6 +753,9 @@ button.chip:hover {
 .fixlog a {
   font-weight: 600;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .fixlog .fxt {
   margin-left: auto;
@@ -781,21 +789,14 @@ button.chip:hover {
   color: var(--mute);
   margin: 0 0 1px;
 }
-.f label::after {
-  content: "";
+.f label .pen {
   width: 11px;
   height: 11px;
-  background: currentColor;
   opacity: 0;
   transition: opacity 0.15s;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z'/%3E%3C/svg%3E") center/contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z'/%3E%3C/svg%3E") center/contain no-repeat;
 }
-.fixlog label::after {
-  display: none;
-}
-.f:hover label::after,
-.f:focus-within label::after {
+.f:hover label .pen,
+.f:focus-within label .pen {
   opacity: 0.7;
 }
 .f input,
@@ -858,14 +859,13 @@ button.chip:hover {
   color: var(--ink-2);
   font-size: 13.5px;
 }
-.quote::before {
-  content: "“";
+.quote .qmark {
   position: absolute;
   left: 0;
-  top: -1px;
-  font: 700 30px/1 Georgia, serif;
+  top: 3px;
+  width: 16px;
+  height: 16px;
   color: var(--accent);
-  opacity: 0.85;
 }
 .quote .meta {
   display: flex;
@@ -895,6 +895,10 @@ button.chip:hover {
   padding: 12px 14px;
   border-radius: var(--r);
   background: var(--ask);
+}
+.ask .h .ico {
+  width: 14px;
+  height: 14px;
 }
 .ask .h {
   font-size: 12px;
@@ -1051,18 +1055,31 @@ button.chip:hover {
   max-width: 1280px;
   flex-wrap: wrap;
 }
-.search {
+.search-wrap {
   flex: 1;
   max-width: 360px;
   min-width: 180px;
+  position: relative;
+  display: flex;
+}
+.search-wrap .sicon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  margin-top: -8px;
+  width: 16px;
+  height: 16px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.search {
+  flex: 1;
+  width: 100%;
   height: calc(var(--ctl-h) + 6px);
   border-radius: var(--r-sm);
   border: 1px solid var(--ctl-border);
   background-color: var(--ctl-bg);
   padding: 0 12px 0 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b8b94' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m14 14-3.5-3.5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: 11px center;
 }
 [data-platform="mac"][data-theme="light"] .search {
   border-color: var(--line-2);
@@ -1206,6 +1223,18 @@ button.chip:hover {
   opacity: 1;
   transform: translate(-50%, 0);
   pointer-events: auto;
+}
+.toast .ti-check {
+  color: var(--keep);
+}
+.toast .ti-x {
+  color: var(--drop);
+}
+[data-theme="dark"] .toast .ti-check {
+  color: var(--keep-ink);
+}
+[data-theme="dark"] .toast .ti-x {
+  color: var(--drop-ink);
 }
 .toast button {
   color: var(--accent);
@@ -1398,9 +1427,8 @@ button.chip:hover {
   color: var(--keep-ink);
 }
 .proc.fin .ico {
-  width: 13px;
-  height: 13px;
-  stroke-width: 3;
+  width: 14px;
+  height: 14px;
 }
 .proc.out {
   opacity: 0;

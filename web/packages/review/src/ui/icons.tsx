@@ -93,22 +93,3 @@ export function Egg({ kind, className }: { kind: string; className?: string }) {
     </svg>
   );
 }
-
-const P = (d: string, w = 2.4) => (props: { size?: number }) => (
-  <svg className="ico" viewBox="0 0 24 24" style={{ strokeWidth: w, width: props.size, height: props.size }} aria-hidden="true">
-    <path d={d} />
-  </svg>
-);
-export const ICheck = P("M20 6 9 17l-5-5");
-export const IX = P("M18 6 6 18M6 6l12 12");
-export const IUp = P("m6 15 6-6 6 6");
-export const IDown = P("m6 9 6 6 6-6");
-export const IDownload = P("M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14", 2.2);
-export const IFolder = P("M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z", 2);
-export const IEye = P("M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z", 2);
-export const IWand = P("M15 4V2m0 13v-2m-6-4H7m14 0h-2m-1.8 4.2L16 14m0-8 1.2-1.2M4 20 14 10", 2);
-export const ICode = P("m8 7-5 5 5 5m8-10 5 5-5 5", 2.2);
-export const IMoon = P("M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z", 2);
-export const IKeys = P("M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Zm3 4h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10", 2);
-export const ILang = P("m5 8 6 6m-7 0 6-6 2-3M2 5h12M7 2h1m14 20-5-10-5 10m2-4h6", 2);
-export const ILink = P("M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1m2 5a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1", 2);

@@ -1,5 +1,6 @@
 import { fmt, kindOf, SEV, type Filter } from "../store";
-import { Egg, ICheck, IX } from "./icons";
+import { Egg } from "./icons";
+import { Icon } from "./Icon";
 import { cx, mdLite, useStore } from "./ctx";
 import type { Item } from "../host";
 
@@ -10,7 +11,10 @@ export function ListView() {
   return (
     <main id="listView" className="list scroll">
       <div className="toolbar">
-        <input className="search" id="search" placeholder={s.t("search")} value={s.query} onChange={(e) => s.setQuery(e.target.value)} />
+        <label className="search-wrap">
+          <Icon name="search" className="sicon" />
+          <input className="search" id="search" placeholder={s.t("search")} value={s.query} onChange={(e) => s.setQuery(e.target.value)} />
+        </label>
         <div className="seg" id="filters">
           {fs.map(([k, l]) => (
             <button key={k} className={cx(s.filter === k && "on")} data-f={k} onClick={() => s.setFilter(k)}>
@@ -69,7 +73,7 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
     <article className={cx("card", st, ch?.has("*") && "fresh")} data-k={k} onClick={() => s.openItem(k)}>
       <div className={cx("img", !img && "none", wait && "shim", fresh && "fresh")} style={img ? { backgroundImage: `url("${src}")` } : undefined}>
         {img ? null : wait ? <Egg kind={kd} /> : s.t("noMedia")}
-        {st !== "pending" && <div className={"stamp " + st}>{st === "keep" ? <ICheck /> : <IX />}</div>}
+        {st !== "pending" && <div className={"stamp " + st}><Icon name={st === "keep" ? "check" : "x"} /></div>}
       </div>
       <div className="body">
         <div className="h">
