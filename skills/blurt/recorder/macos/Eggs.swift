@@ -385,7 +385,7 @@ final class NestView: NSView {
     }
 
     private func relayout(animated: Bool, dropped: CALayer? = nil) {
-        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduce = reduceMotion
         CATransaction.begin()
         CATransaction.setDisableActions(!animated)
         for (i, e) in eggs.enumerated() {

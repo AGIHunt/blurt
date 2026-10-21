@@ -362,7 +362,7 @@ func shutterFlash(_ r: NSRect) {
     let a = CAKeyframeAnimation(keyPath: "opacity")
     a.values = [0, 0.85, 0]
     a.keyTimes = [0, 0.18, 1]
-    a.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.2 : 0.32
+    a.duration = reduceMotion ? 0.2 : 0.32
     CATransaction.begin()
     CATransaction.setCompletionBlock { w.orderOut(nil) }
     l.add(a, forKey: "flash")
@@ -403,7 +403,7 @@ func borderFlash(around r: NSRect) {
 /// mid-flight, picks up the card's tilt, a frame appears around the photo on the way).
 func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval = 0.65, tilt: CGFloat = 0,
               polaroid: Bool = true, shrinkAway: Bool = false, done: @escaping () -> Void) {
-    let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    let reduce = reduceMotion
     let screen = NSScreen.screens.first(where: { $0.frame.intersects(to) }) ?? NSScreen.screens[0]
     let span = screen.frame.union(from.intersection(screen.frame).isEmpty ? screen.frame : from)
     let w = chromeWindow(span)

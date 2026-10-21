@@ -417,7 +417,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         if m == .listen { startListening() }
         if m != .recording { perch.hold(true) }
         // let the card land on the perch first, then unfold the bubble under it
-        let delay = m == .listen && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.55 : 0.0
+        let delay = m == .listen && !reduceMotion ? 0.55 : 0.0
         let work = DispatchWorkItem { [weak self] in self?.present() }
         showWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -561,7 +561,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func present() {
         guard let p = panel, isOpen else { return }
         position()
-        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduce = reduceMotion
         if !p.isVisible {
             p.alphaValue = 0
             p.orderFrontRegardless()

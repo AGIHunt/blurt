@@ -50,7 +50,10 @@ struct Spring {
     mutating func snap() { value = target; velocity = 0 }
 }
 
-var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+/// System "Reduce motion" (BLURT_REDUCE_MOTION=1 forces it, for tests).
+var reduceMotion: Bool {
+    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || ProcessInfo.processInfo.environment["BLURT_REDUCE_MOTION"] == "1"
+}
 var isDarkMode: Bool { NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 
 // MARK: - Vector art: chicken-foot clip, rod
@@ -441,9 +444,10 @@ final class Perch: NSObject {
         let ps = NSMutableParagraphStyle()
         ps.minimumLineHeight = 17
         ps.maximumLineHeight = 17          // hand-lettered CJK faces have very tall line boxes
-        ps.lineBreakMode = .byTruncatingTail
+        let font = captionFont(12.5, for: text)
+        text = fitted(text, font: font, width: c.caption.bounds.width - 2)
         c.caption.string = NSAttributedString(string: text, attributes: [
-            .font: captionFont(12.5, for: text), .paragraphStyle: ps,
+            .font: font, .paragraphStyle: ps,
             // a polaroid stays a (slightly dimmed) paper card in dark mode too, so its ink stays dark
             .foregroundColor: (s.text ?? "").isEmpty ? NSColor(white: 0, alpha: dark ? 0.45 : 0.38)
                                                     : NSColor(calibratedRed: 0.17, green: 0.15, blue: 0.13, alpha: 1),
@@ -454,6 +458,15 @@ final class Perch: NSObject {
         c.badge.string = NSAttributedString(string: marks, attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .bold),
                                                                          .foregroundColor: accent])
         c.photo.contents = s.markedThumb ?? s.thumb
+    }
+
+    /// CATextLayer's own truncation is unreliable with attributed strings: cut to fit, with an ellipsis.
+    private func fitted(_ text: String, font: NSFont, width: CGFloat) -> String {
+        let w = { (s: String) in (s as NSString).size(withAttributes: [.font: font]).width }
+        guard w(text) > width else { return text }
+        var chars = Array(text)
+        while !chars.isEmpty && w(String(chars) + "…") > width { chars.removeLast() }
+        return String(chars).trimmingCharacters(in: .whitespaces) + "…"
     }
 
     private func fmtClock(_ t: Double) -> String { String(format: "%d:%02d", Int(t) / 60, Int(t) % 60) }
@@ -1089,7 +1102,8 @@ final class Perch: NSObject {
 
     private func positionNoteTip(_ now: CFTimeInterval) {
         guard let c = hoverCard, !c.dragging, c.shot.hasNote, now - hoverSince > 0.35, !NoteBubble.shared.isOpen else {
-            if !noteTip.isHidden && (hoverCard == nil || hoverCard?.shot.hasNote == false) { noteTip.isHidden = true }
+            if !noteTip.isHidden && (hoverCard == nil || hoverCard?.shot.hasNote == false || hoverCard?.dragging == true
+                                     || draggingCard != nil || NoteBubble.shared.isOpen) { noteTip.isHidden = true }
             return
         }
         if noteTip.isHidden || noteTipFor !== c { buildNoteTip(c) }
