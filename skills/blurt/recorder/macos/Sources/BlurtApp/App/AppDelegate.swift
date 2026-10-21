@@ -1,4 +1,5 @@
 import AppKit
+import BlurtCore
 import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
@@ -30,12 +31,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             s.resume()
             signalSources.append(s)
         }
+        BlurtLocale.lang = opts.lang
+        if resident { AppEnvironment.installModules() }
         installHotkeyHandler()
         hotkeyHandler = { [weak self] k in self?.hotkey(k) }
         Hotkeys.shared.resident = resident      // record / menu only in the menu-bar app
+        Hotkeys.shared.disabled = AppEnvironment.mainWindow == nil ? [.openMain] : []
         Hotkeys.shared.apply()
         if resident {
-            AppEnvironment.installModules()
             startResident()
             return
         }
@@ -171,6 +174,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
         writeAppInfo()
+        Updater.shared.start()
         ReviewHub.shared.listen()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
@@ -193,7 +197,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            let r = hkHint(.record, "开始 / 结束录制", "start / finish"), m = hkHint(.menu, "打开菜单", "menu")
+            let r = hkHint(.toggleRecord, "开始 / 结束录制", "start / finish"), m = hkHint(.openMenu, "打开菜单", "menu")
             toast(L("口喷鸡已常驻 🐔  ", "blurt is running 🐔  ") + [r, m].compactMap { $0 }.joined(separator: " · "))
         } else {
             Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
@@ -335,7 +339,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             b.imagePosition = .imageLeft
             b.attributedTitle = NSAttributedString(string: processing.isEmpty ? "" : " …", attributes: [
                 .font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
-            b.toolTip = processing.isEmpty ? ([L("口喷鸡", "blurt")] + [hkHint(.record, "开始录制", "record"), hkHint(.menu, "菜单", "menu")].compactMap { $0 })
+            b.toolTip = processing.isEmpty ? ([L("口喷鸡", "blurt")] + [hkHint(.toggleRecord, "开始录制", "record"), hkHint(.openMenu, "菜单", "menu")].compactMap { $0 })
                                                .joined(separator: " · ")
                                            : L("口喷鸡 · 正在后台整理…", "blurt · processing in the background…")
         }
@@ -364,7 +368,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return it
         }
         if let r = rec {
-            add(L("完成录制", "Finish recording"), #selector(mStop)).showHotkey(.stop)
+            add(L("完成录制", "Finish recording"), #selector(mStop)).showHotkey(.finish)
             add(r.isPaused ? L("继续", "Resume") : L("暂停", "Pause"), #selector(mPause)).showHotkey(.pause)
             _ = add(L("重新录制", "Restart"), #selector(mRestart))
             _ = add(L("放弃这次录制", "Discard"), #selector(mDiscard))
@@ -372,12 +376,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if busy { _ = add(L("正在选择区域…", "Selecting an area…"), nil); return }
-        add(L("开始录制", "Start recording"), #selector(mStart)).showHotkey(.record)
+        add(L("开始录制", "Start recording"), #selector(mStart)).showHotkey(.toggleRecord)
         if lastRegionFromConfig() != nil { _ = add(L("录制上次的区域", "Record the last area"), #selector(mStartLast)) }
         addSnapMenuItems(menu, recording: false)
         menu.addItem(.separator())
         if AppEnvironment.mainWindow != nil {
-            _ = add(L("打开口喷鸡", "Open Blurt"), #selector(mOpenMain))
+            add(L("打开口喷鸡", "Open Blurt"), #selector(mOpenMain)).showHotkey(.openMain)
             menu.addItem(.separator())
         }
 
@@ -458,6 +462,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add(L("快捷键…", "Shortcuts…"), #selector(mShortcuts), key: AppEnvironment.settings == nil ? "," : "")
         if AppEnvironment.settings != nil { add(L("设置…", "Settings…"), #selector(mSettings), key: ",") }
         menu.addItem(.separator())
+        if Updater.shared.available {
+            let u = add(L("检查更新…", "Check for Updates…"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
+            u.target = Updater.shared
+        }
         _ = add(L("使用说明 / GitHub", "Help / GitHub"), #selector(mHelp))
         _ = add(L("退出口喷鸡", "Quit blurt"), #selector(mQuit), key: "q")
     }
@@ -524,7 +532,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cfg["review"] = r
         if let d = try? JSONSerialization.data(withJSONObject: cfg, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: configURL) }
     }
-    @objc func mShortcuts() { HotkeySettings.shared.show() }
+    @objc func mShortcuts() { if let s = AppEnvironment.settings { s.show(pane: "shortcuts") } else { HotkeySettings.shared.show() } }
     @objc func mCountdown(_ it: NSMenuItem) { setRecordConfig("countdown", it.representedObject as? Int) }
     @objc func mSystemAudio() { setRecordConfig("system_audio", !(recordConfig()["system_audio"] as? Bool ?? false)) }
     @objc func mLogin() {

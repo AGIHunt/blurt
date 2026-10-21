@@ -54,3 +54,10 @@ public final class Config {
     /// config["record"] as a dictionary ([:] when absent)
     public var record: [String: Any] { all["record"] as? [String: Any] ?? [:] }
 }
+
+/// UI language for strings BlurtCore produces (hotkey titles, conflict texts). The app sets it at launch (--lang).
+public enum BlurtLocale {
+    public static var lang = (Locale.preferredLanguages.first ?? "en").hasPrefix("zh") ? "zh" : "en"
+}
+
+func L(_ zh: String, _ en: String) -> String { BlurtLocale.lang == "zh" ? zh : en }

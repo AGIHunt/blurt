@@ -1,7 +1,7 @@
 export type Lang = "en" | "zh";
 
 const en = {
-  focus: "Focus", list: "List", keep: "Keep", drop: "Drop", merge: "Merge ↑", undo: "Undo", finish: "Finish review",
+  focus: "Focus", list: "List", keep: "Keep", drop: "Drop", merge: "Merge up", undo: "Undo", finish: "Finish review",
   pending: "to review", kept: "kept", dropped: "dropped",
   module: "Module", owner: "Owner", actual: "Actual", expected: "Expected", steps: "Steps to reproduce",
   code: "Suspected code", quote: "They said",
@@ -16,7 +16,7 @@ const en = {
   doneBodyApp: "Your agent picks it up from here.", download: "Download", reviewTitle: "blurt review",
   k_next: "Next / previous", k_keep: "Keep and go next", k_drop: "Drop and go next", k_undo: "Undo",
   k_merge: "Merge into previous", k_sev: "Severity high / medium / low", k_media: "Previous / next frame",
-  k_play: "Play clip or recording", k_edit: "Edit title", k_ov: "Overview", k_view: "Focus ⇄ list",
+  k_play: "Play clip or recording", k_edit: "Edit title", k_ov: "Overview", k_view: "Focus / list",
   k_finish: "Finish review", k_help: "This panel", k_fix: "Fix with agent",
   overview: "Overview", allKinds: "All kinds", summary: "The idea", summaryNote: "Summary", why: "Why",
   inspired_by: "Inspired by", next_steps: "Next steps", open_questions: "Still open", details: "Details", due: "Due",
@@ -47,7 +47,7 @@ const zh: Dict = {
   download: "下载", reviewTitle: "口喷鸡审核",
   k_next: "下一条 / 上一条", k_keep: "保留并下一条", k_drop: "丢弃并下一条", k_undo: "撤销", k_merge: "并入上一条",
   k_sev: "严重程度 高 / 中 / 低", k_media: "上一张 / 下一张图", k_play: "播放片段或原录屏", k_edit: "编辑标题",
-  k_ov: "总览", k_view: "专注 ⇄ 列表", k_finish: "完成审核", k_help: "显示本面板", k_fix: "交给 agent 修",
+  k_ov: "总览", k_view: "专注 / 列表", k_finish: "完成审核", k_help: "显示本面板", k_fix: "交给 agent 修",
   overview: "总览", allKinds: "全部类型", summary: "想法", summaryNote: "概述", why: "为什么", inspired_by: "灵感来源",
   next_steps: "下一步", open_questions: "待想清楚", details: "详情", due: "截止", tags: "标签", source: "来源链接",
   items: "条", working: "整理中… 已出 {n} 条，截图补充中", stalled: "已出 {n} 条 · 整理好像停了",

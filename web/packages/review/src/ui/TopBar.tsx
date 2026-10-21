@@ -1,4 +1,5 @@
-import { Egg, ICheck, IKeys, ILang, IMoon } from "./icons";
+import { Egg } from "./icons";
+import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 
 export function Logo({ className }: { className?: string }) {
@@ -18,7 +19,7 @@ function Proc() {
   if (s.proc === "fin" || s.proc === "out")
     return (
       <span className={cx("proc fin", s.proc === "out" && "out")} id="proc">
-        <ICheck />
+        <Icon name="check" />
         <span>{s.t("finished")}</span>
       </span>
     );
@@ -96,15 +97,15 @@ export function TopBar({ onTheme }: { onTheme: () => void }) {
       </div>
       {!inApp && (
         <button className="icon-btn" id="themeBtn" title={s.t("theme")} aria-label={s.t("theme")} onClick={onTheme}>
-          <IMoon size={17} />
+          <Icon name="moon" size={17} />
         </button>
       )}
       <button className="lang-btn" id="langBtn" title="中文 / English" onClick={s.toggleLang}>
-        <ILang size={16} />
+        <Icon name="languages" size={16} />
         <span id="langLbl">{s.t("langName")}</span>
       </button>
       <button className="icon-btn" id="helpBtn" title={s.t("shortcuts")} aria-label={s.t("shortcuts")} onClick={s.openHelp}>
-        <IKeys size={17} />
+        <Icon name="keyboard" size={17} />
       </button>
       <button className="btn primary" id="finishBtn" onClick={s.openFinish}>
         {s.t("finish")} <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>

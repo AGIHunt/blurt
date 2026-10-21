@@ -37,7 +37,7 @@ final class CountdownView: NSView {
             .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.white])
         _ = pill(sub.string, font: NSFont.systemFont(ofSize: 13, weight: .medium), fg: .white,
                  bg: NSColor(white: 0.05, alpha: 0.72), at: NSPoint(x: bounds.midX - (sub.size().width + 24) / 2, y: r.minY - 40), pad: 12)
-        let hint = [hkHint(.pause, "暂停 / 继续", "pause / resume"), hkHint(.stop, "完成", "finish"),
+        let hint = [hkHint(.pause, "暂停 / 继续", "pause / resume"), hkHint(.finish, "完成", "finish"),
                     L("点一下跳过倒计时", "click to skip")].compactMap { $0 }.joined(separator: "   ·   ")
         let hf = NSFont.systemFont(ofSize: 11.5, weight: .medium)
         let hw = NSAttributedString(string: hint, attributes: [.font: hf]).size().width + 24
@@ -171,7 +171,7 @@ final class HUD: NSPanel {
         fx.addSubview(penBtn)
         fx.addSubview(redo)
         let done = PillButton(L("完成", "Finish"), symbol: "stop.fill", fill: NSColor.systemRed.withAlphaComponent(0.92), target: self, action: #selector(stopRec))
-        done.toolTip = L("结束录制，开始整理", "Stop and process") + hkTip(.stop)
+        done.toolTip = L("结束录制，开始整理", "Stop and process") + hkTip(.finish)
         done.frame.origin = NSPoint(x: 260, y: 8)
         fx.addSubview(done)
         let w = done.frame.maxX + 8

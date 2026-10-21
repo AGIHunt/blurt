@@ -27,7 +27,7 @@ export function Queue() {
               </div>
               {ask && (
                 <div className="q">
-                  <i className="qd">●</i> {s.t("ask")}
+                  <span className="qd" /> {s.t("ask")}
                 </div>
               )}
             </div>

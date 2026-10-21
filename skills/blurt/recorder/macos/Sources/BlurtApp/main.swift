@@ -22,6 +22,8 @@ import ServiceManagement
 
 var opts = Options.parse()
 
+if CommandLine.arguments.dropFirst().first == "--selftest" { runSelfTest(Array(CommandLine.arguments.dropFirst(2))) }
+
 // A second copy of the app (double-click while it's running) just asks the running one to start recording.
 // Only for plain launches — `--process`, `--background` etc. are explicit instructions for this process.
 let plainLaunch = !CommandLine.arguments.dropFirst().contains { $0.hasPrefix("--") && !$0.hasPrefix("--lang") }

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Blurt",
+  "mainBinaryName": "blurt",
+  "version": "0.6.0",
+  "identifier": "dev.blurt.desktop",
+  "build": {
+    "beforeDevCommand": {
+      "script": "pnpm --filter @blurt/desktop dev",
+      "cwd": "../../../web"
+    },
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": {
+      "script": "pnpm --filter @blurt/overlays build && pnpm --filter @blurt/desktop build",
+      "cwd": "../../../web"
+    },
+    "frontendDist": "../../../web/apps/desktop/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Blurt",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 880,
+        "minHeight": 520,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$HOME/Blurt/**", "$HOME/.blurt/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "deb", "rpm", "appimage", "app"],
+    "category": "Productivity",
+    "shortDescription": "Screen + voice → issues, ideas, notes",
+    "longDescription": "Record your screen while you talk; Blurt turns it into bug reports, ideas, notes and todos, lets you review them, and hands them to a coding agent to fix.",
+    "homepage": "https://blurt.agihunt.info",
+    "copyright": "MIT",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../../skills/blurt/scripts/*.py": "scripts/",
+      "../../../skills/blurt/scripts/agents.json": "scripts/agents.json",
+      "../../../skills/blurt/scripts/review.html": "scripts/review.html"
+    },
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "SimpChinese"],
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"],
+        "recommends": ["ffmpeg"]
+      },
+      "rpm": {
+        "depends": ["webkit2gtk4.1", "gtk3"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["blurt"]
+      }
+    },
+    "updater": {
+      "endpoints": ["https://blurt.agihunt.info/updates/desktop/{{target}}-{{arch}}.json"],
+      "pubkey": "",
+      "windows": { "installMode": "passive" }
+    }
+  }
+}
