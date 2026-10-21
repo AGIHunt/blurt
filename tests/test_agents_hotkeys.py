@@ -30,7 +30,8 @@ def cfg(**rec):
 class Order(unittest.TestCase):
     def test_default_is_the_registry_order(self):
         self.assertEqual(agents.agent_order(cfg())[:2], ["claude", "codex"])
-        self.assertEqual(agents.agent_order(cfg()), [d["id"] for d in agents.registry()["agents"]])
+        self.assertEqual(agents.agent_order(cfg()), [d["id"] for d in agents.registry()["agents"]
+                                                     if d.get("headless", True) is not False])  # not zcode
 
     def test_legacy_process_goes_first(self):
         self.assertEqual(agents.agent_order(cfg(process="codex"))[:2], ["codex", "claude"])

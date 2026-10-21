@@ -13,7 +13,8 @@ import ServiceManagement
 func runCapture(_ exe: String, _ args: [String], env: [String: String]? = nil, timeout: Double) -> (status: Int32?, out: Data) {
     ShellEnv.runCapture(exe, args, env: env, timeout: timeout)
 }
-func isAgentSessionVar(_ k: String) -> Bool { ShellEnv.isAgentSessionVar(k) }
+func isAgentSessionVar(_ k: String) -> Bool { ShellEnv.isAgentSessionVar(k) }   // keeps userAgentConfigVars
+var userAgentConfigVars: Set<String> { ShellEnv.userConfigVars }
 var inheritedEnv: [String: String] { ShellEnv.inherited }
 var loginShellEnv: [String: String] { ShellEnv.loginShell }
 var userPATH: String { ShellEnv.path }

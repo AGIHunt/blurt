@@ -160,8 +160,9 @@ def db_path() -> Path:
 
 
 def default_workspace() -> Path:
-    """The Blurt app's own workspace: ~/Blurt, whose sessions live in ~/Blurt/recordings (record.py inbox_dir)."""
-    return Path.home() / "Blurt"
+    """The Blurt app's own workspace: ~/Blurt (or $BLURT_WORKSPACE, as the app and record.py honour), whose sessions
+    live in <workspace>/recordings (record.py inbox_dir)."""
+    return Path(os.environ.get("BLURT_WORKSPACE") or Path.home() / "Blurt")
 
 
 def real(p: Path | str) -> Path:
