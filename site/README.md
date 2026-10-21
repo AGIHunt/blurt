@@ -33,7 +33,7 @@ CSS `:has()`, so it works with JS off (macOS is the default). `main.js` picks th
 `navigator.userAgentData.platform` / the user agent; phones and iPads get "blurt runs on your computer" and still
 see the switch. Only macOS has a download (`Blurt-macOS.zip` from CI); Windows and Linux show the skill command and
 their dependencies. The snap demo's perch is a rope simulated as a damped string (constants at the top of the perch
-block in `main.js`); retune its look with `--rope`, `--rope-edge`, `--rope-twist` and `--rope-shadow` on `.desk`.
+block in `main.js`); retune its look with `--rope`, `--rope-edge`, `--rope-twist`, `--rope-shine` and `--rope-shadow` on `.desk` (numbers match the app's `Rope.swift`).
 
 Copy rule: say how things work and how long they take now, with measured numbers; don't advertise a release's
 before/after. Comparisons with doing it by hand are fine when there's a real session behind them.
