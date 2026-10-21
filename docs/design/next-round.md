@@ -407,6 +407,32 @@ open_items, unassigned}`（open = 未删除且 work_state ∈ todo / handed_off 
 `get_item` 的 item 带 `path`、`project`；`mark_fixed(uid, state)` 映射：`fixing` → `in_progress`，`fixed` → `to_verify`（claim fixed），
 `wontfix` → `to_verify`（claim wontfix），`reopened` → `todo`；`job` 取 `$BLURT_JOB`。工具描述里写明「agent 说修好了只到待验证，用户确认才算完成」。
 
+**细则（P1）**（实现：`scripts/store.py`、`items.py`、`index.py`、`review.py`、`mcp_server.py`）：
+- **错误码**（`code`）：items.py `bad_args` `not_found` `no_project` `protected`（PROTECTED 字段）`user_only`（agent 不带 `--force` 改
+  status 为非 draft）`bad_value` `bad_transition` `deleted`（丢弃的条目不能交出 / 开始）`merged`（get 一条被并掉的）`taken`（add 的 id / uid 已占用）
+  `unparseable` `bad_json`（items.json / batch.json 解析不了，文件原样留着）`locked`（退出码 3）。
+- **front-matter 引号**：除了契约的正则规则，数字开头且含 `:` 或 `-` 的字符串（日期、时间、`1:20`）也加引号，任何 YAML 读出来都还是字符串
+  （和上面示例里 `created` 带引号一致）。块状列表只认 `key:` 后紧跟的 `  - 标量` 行。
+- **正文转义**：字段文本里行首的 `## `（代码块外）写入时多加一个 `\`，读回时去掉；没闭合的 ``` 写入时补齐，免得吞掉后面的小节。列表项的续行
+  缩进 = 该项标记的宽度，读回时只去掉这部分缩进。截图 alt 里的 `[` `]` 换成 `(` `)`。
+- **assets 文件名**：`<n>[.marked].<ext>`（n 取目录里没用过的最小正整数，不复用）、片段 `clip[-n].<ext>`；同卷硬链接、跨卷复制。源文件不存在的
+  帧保留为原来的绝对路径（不丢信息，下次 `set-frames` 修正）。条目换项目时 `assets/<uid>/` 整个搬走，帧的相对路径不变。
+- **ingest 的归属顺序**：shots.jsonl 里该截图的归属行（`assigned_by` → `project_by`）> 条目自带的 `project`（agent 提议，见 K2 细则）>
+  items.json 的 `project` / batch.project / `meta.json.project` / `$BLURT_PROJECT` / 会话所在的项目 store > inbox。项目 id、key、slug、名字都认，
+  不认识的当没写。已 ingest 过的会话再出现 items.json：按草稿号对上已有条目，当 agent 的 patch 处理（保留 `_user`，不改 status），新的追加。
+- **user-ops**：`remove` = status deleted + `merged_into`（into 的 uid，没有 into 为 null）+ `_user.status`，并从 `batch.items` 拿掉、记进
+  `batch.removed`；`add` 遇到已存在的 uid / id 就是撤销合并（字段照 op 恢复、`merged_into` 清空、放回 `after` 后面），否则新建。`merged_from`
+  里的 id / 草稿号存成 uid。页面把 doc 给的绝对帧路径原样发回时，store 里的路径转回相对路径。未知 id 忽略（同 v2）。
+- **doc** 多两个键：`project`（batch.project）和每条的 `store`。review.py 不再接受整份文档的 POST（400，v0.5 的旧页面）；`/files/` 同时认
+  `/files/%2FUsers%2F…` 和 `/files//Users/…`（页面把 `files/` 和绝对路径直接拼起来），会话相对路径照旧；确认后的摘要多 `items: [{id, uid, path}]`，
+  `file` 是 batch.json。
+- **index**：多一个索引 `items_session ON items(session_id)`；解析不了的文件也有一行（`parse_error`，没有 uid 时 uid =
+  `"X" + sha1(path)[:25]`，item_id = 文件名）；同一项目两个文件同一个 id（手工复制）时后来的 item_id 加 `~<uid 后 4 位>`。`index.py update` 也收会话里的
+  `items.json` / `batch.json` / `shots.jsonl` / `meta.json`（= 它的会话）；search 多 `--sort title`。还没迁移的 v1/v2 会话，条目行挂在它将来所在的项目
+  （store）下；`--root` 发现的未登记项目 `registered = 0`，key 用 store.json 的或默认规则算出的。
+- **MCP**：`list_projects.unassigned` = inbox 行是它的条目数，项目行是 AI 建议归它、还在 inbox 里的条目数；`mark_fixed` 返回
+  `{ok, uid, id, work, next}`；碰到还在 v0.6 会话里的条目（索引里 path 带 `#`）先 `items.py migrate` 那个会话。
+
 ### K2 · 项目 = 打开的文件夹
 
 **注册表** `$BLURT_HOME/projects.json`（**不放 config.json**：config.json 有 Swift、Rust、Python 三个写入方各自整份写，项目列表放进去会互相覆盖；
@@ -463,6 +489,19 @@ route 由 `items.py ingest` 在 auto 模式下调用（后台、写 K4 的 route
 **捕获时的归属**：current = 项目 X → 会话写进 X 的 store、条目 `project_by: capture`；current = auto → 会话写进 inbox store，
 录屏整理完按条 route；截图和语音变成卡片等用户分（K7）。录屏中途在刘海岛上换项目 → 更新该会话 `meta.json.project` 和 `batch.project`。
 
+**细则（P1）**：
+- **key 默认值**：按 `-_ .` 和驼峰切词时只留 ASCII 字母数字；开头不能是数字（去掉前导数字，不够 2 位就取名字里前 3 个拉丁字母，`3d-viewer` → `DVI`）；
+  加数字后超过 5 位就截断。`opened` / `last_used` 精确到毫秒（最近列表靠它排序）。`projects.json` 多一个 `_migrated: true`（`migrate` 只在第一次把
+  `record.workspace` 设为 current，之后用户改回 auto 不再被覆盖）。
+- **错误码**：`not_found` `not_a_folder` `reserved`（Blurt 自己的文件夹）`bad_key` `key_taken` `key_in_use` `bad_field` `no_project` `locked`。
+- **inbox 的名字**按 config `lang`（auto 跟随系统首选语言）给 Unassigned / 待分配。
+- **agent 提议归属**（SKILL.md §3）：auto 模式下 agent 可以在 items.json 的每条里写 `project`（id 或 key）、`project_confidence`、`project_reason`；
+  ≥ 阈值直接归过去（`project_by: ai`，记 `project_confidence`），< 阈值留在 inbox 并写 `suggested_project`（不再后台 route）；都没写的才后台 route。
+- **route 的小模型**：`$BLURT_ROUTE_CMD`（从 stdin 读提示词、stdout 输出答案，测试和其它 agent 用）；否则按 `record.live_drafts_agent` → `record.agents`
+  顺序找第一个装了的 claude / codex，`agents.py command <id> headless`（不带事件流和 MCP），claude 加 `--model <record.live_drafts_model>`；
+  cwd = `$BLURT_HOME/tmp`，60 秒超时。一次调用给所有条目，答案里取第一个 JSON；失败时条目留在 inbox，reason 写原因。
+- `items.py move --by ai` 和 route 都跳过 `_user.project`；`move --by user` 记 `_user.project`、清掉 `suggested_project`；AI 移动时多写 `project_reason`。
+
 ### K3 · 状态：审核 + 处理
 
 审核（`status`，只有用户改；agent 写条目时只能写 draft）：`draft` 待审 → `confirmed` 保留 / `deleted` 丢弃（可以来回改）。
@@ -497,6 +536,13 @@ v2 映射（读旧文件、`items.py fix`、`mark_fixed`）：`fixing → in_pro
 （claim wontfix；旧文件里 `agent: human` 的 wontfix 直接映射成 wontfix），`reopened → todo`；没有 fix → todo。
 
 显示：K8 的状态圆环。会话里的条目在列表里额外显示会话状态（K5）。
+
+**细则（P1）**：
+- 表里没写、但实现允许的：agent 可以从 todo 直接到 in_progress / to_verify（用户在对话里让它修，没经过交出）；agent 可以从 in_progress /
+  to_verify 回到 todo（收回自己的说法，`mark_fixed(reopened)`）；app 同 agent，另加 todo → handed_off。`items.py work` 的 `--by` 默认 agent；
+  `--to` 不写时 user 交出 = external、app 交出 = session。`items.py fix` 没有 agent（没给、也没有 `$BLURT_AGENT`）时算用户自己的决定（wontfix 直接是 wontfix）。
+- 状态变化时 agent / job / to / handoff 从上一状态（handed_off / in_progress / to_verify）带过来；commit / pr 进入 in_progress 时清空，其后保留。
+- `work` 一律写齐 11 个键（WORK_KEYS 的顺序）；没有 work 键 = todo。v2 迁移时 `fix.run_id` → `work.job`（有 run_id 时 `to: session`）。
 
 ### K4 · 任务（jobs）
 
