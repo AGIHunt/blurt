@@ -1,54 +1,65 @@
-"""Regression tests for the review handler's serialized writes and final snapshot."""
+"""The review handler serialises its writes: confirm waits for an autosave in flight, late writes are refused, a
+failed confirm can be retried, and the server only exits after the final write."""
+from __future__ import annotations
+
 import io
 import json
 import sys
-import tempfile
 import threading
-import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/blurt/scripts"))
-import review
-from _common import load_session, save_session
+sys.path.insert(0, str(Path(__file__).parent))
+from test_store import TmpCase, ok  # noqa: E402
+
+import items  # noqa: E402
+import review  # noqa: E402
 
 
-class ReviewPersistence(unittest.TestCase):
+class ReviewPersistence(TmpCase):
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.session = Path(tmp.name)
+        super().setUp()
+        self.session = self.e.ws / "inbox" / "sessions" / "20261022-101500"
+        self.session.mkdir(parents=True)
+        (self.session / "items.json").write_text(json.dumps({"items": [{"id": "I-001", "kind": "note", "title": "draft"}]}))
+        ok("items.py", "ingest", self.session, env=self.e.env())
         self.done = threading.Event()
         self.handler = review.make_handler(self.session, self.done)
 
     def post(self, path, data, send=None):
         request = self.handler.__new__(self.handler)
         body = json.dumps(data).encode()
-        request.path, request.headers = path, {"Content-Length": str(len(body))}
+        request.path, request.command, request.headers = path, "POST", {"Content-Length": str(len(body))}
         request.rfile, request._send = io.BytesIO(body), Mock(side_effect=send)
         request.do_POST()
         return request._send.call_args.args[0]
 
+    def title(self) -> str:
+        return ok("items.py", "get", "IN-1", env=self.e.env())["item"]["title"]
+
+    def batch(self) -> dict:
+        return json.loads((self.session / "batch.json").read_text())
+
     def test_confirm_serializes_with_autosave_and_rejects_late_writes(self):
         saving, release, confirming, final_write = (threading.Event() for _ in range(4))
-        original, final = {"items": [{"title": "draft"}]}, {"items": [{"title": "final"}]}
+        original = items.save_batch
 
-        def slow_save(session, data):
-            if not data.get("reviewed"):
+        def slow_save(session, b):
+            if not b.get("reviewed"):
                 saving.set()
                 if not release.wait(5):
                     raise TimeoutError("autosave was not released")
             else:
                 final_write.set()
-            save_session(session, data)
+            original(session, b)
 
         def confirm():
             confirming.set()
-            return self.post("/api/confirm", final)
+            return self.post("/api/confirm", {"ops": [{"op": "set", "id": "I-001", "set": {"title": "final"}}]})
 
-        with patch.object(review, "save_session", side_effect=slow_save), ThreadPoolExecutor(2) as pool:
-            autosave = pool.submit(self.post, "/api/items", original)
+        with patch.object(items, "save_batch", side_effect=slow_save), ThreadPoolExecutor(2) as pool:
+            autosave = pool.submit(self.post, "/api/items", {"ops": [{"op": "set", "id": "I-001", "set": {"title": "x"}}]})
             try:
                 self.assertTrue(saving.wait(5))
                 confirmation = pool.submit(confirm)
@@ -57,24 +68,33 @@ class ReviewPersistence(unittest.TestCase):
             finally:
                 release.set()
             self.assertEqual((autosave.result(5), confirmation.result(5)), (200, 200))
-        self.assertEqual(self.post("/api/items", original), 409)
-        self.assertEqual(load_session(self.session), {**final, "reviewed": True})
+        self.assertEqual(self.post("/api/items", {"ops": []}), 409)
+        self.assertEqual(self.title(), "final")
+        self.assertTrue(self.batch()["reviewed"])
         self.assertTrue(self.done.is_set())
 
     def test_failed_confirm_can_retry_and_exit_waits_for_response(self):
-        original = {"items": [{"title": "keep this"}]}
-        save_session(self.session, original)
-        with patch.object(review, "save_session", side_effect=OSError("disk full")):
-            self.assertEqual(self.post("/api/confirm", {"items": []}), 500)
-        self.assertEqual(load_session(self.session), original)
+        with patch.object(items, "save_batch", side_effect=OSError("disk full")):
+            self.assertEqual(self.post("/api/confirm", {"ops": []}), 500)
+        self.assertFalse(self.batch()["reviewed"])
         self.assertFalse(self.done.is_set())
 
         def disconnected(*_):
             self.assertFalse(self.done.is_set())
-            self.assertEqual(self.post("/api/items", {"items": []}), 409)
+            self.assertEqual(self.post("/api/items", {"ops": []}), 409)
             raise BrokenPipeError("tab disconnected after the final write")
 
         with self.assertRaises(BrokenPipeError):
-            self.post("/api/confirm", original, send=disconnected)
+            self.post("/api/confirm", {"ops": []}, send=disconnected)
         self.assertTrue(self.done.is_set())
-        self.assertEqual(load_session(self.session), {**original, "reviewed": True})
+        self.assertTrue(self.batch()["reviewed"])
+
+    def test_whole_documents_are_refused(self):
+        """v0.5 pages posted the whole items.json; v3 takes the user's edits only (the agent's writes survive)."""
+        self.assertEqual(self.post("/api/items", {"items": [{"id": "I-001", "title": "clobber"}]}), 400)
+        self.assertEqual(self.title(), "draft")
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main()
