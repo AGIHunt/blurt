@@ -611,7 +611,6 @@ def native_binary(build: bool = True) -> Path | None:
         prune_sparkle(dest)
     shutil.copy(INFO_PLIST, APP_BUNDLE / "Contents" / "Info.plist")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
-    make_menu_icon(APP_BUNDLE / "Contents" / "Resources")
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
     stamp.write_text(digest)          # before signing: the signature seals Resources/
@@ -687,14 +686,6 @@ def sign_app(bundle: Path) -> None:
     the Screen Recording / Microphone grant across rebuilds and updates instead of silently revoking it."""
     run(["codesign", "--force", "--sign", "-", "--identifier", "dev.blurt.recorder",
          "-r=designated => identifier \"dev.blurt.recorder\"", str(bundle)], check=False)
-
-
-def make_menu_icon(res: Path) -> None:
-    """Menu-bar icon: a monochrome template (macOS tints it for light / dark menu bars)."""
-    for name in ("MenuIconTemplate.png", "MenuIconTemplate@2x.png"):
-        src = ICON.parent / name
-        if src.exists():
-            shutil.copy(src, res / name)
 
 
 def make_icns(dest: Path) -> None:
