@@ -49,8 +49,16 @@ what happens:
   **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
   fades after 3 s; ✎ on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D / ✎ turns it off); click **完成** — no need to send another chat message.
+- **⌥⇧A snaps** (Windows/Linux Alt+Shift+A, 📸 on the bar; ⌥⇧M too): a full-resolution still of the area right
+  now, no pause → `shots/`. Best evidence there is — mention it in one line.
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
-the chat you can also `record.py stop | pause | resume | restart`.
+the chat you can also `record.py stop | pause | resume | restart | snap`.
+
+**Snap mode** (macOS app, not recording): ⌥⇧A → drag an area, let go = shot; it hangs on the perch at the top of the
+screen and a bubble takes a spoken (or typed) note; ⌃-drag on it circles things. "🐔 整理 N 张" hands the batch
+(`<ts>-shots/`, `meta.json` `"mode": "shots"`, no video) to the agent. Suggest it for "one screen + one sentence"
+feedback (a wrong label, a layout glitch): faster to give and to process. Video is for flows, animations, timing and
+long rambles — anything where what happened *between* screens matters.
 
 **Waiting on a background step** (here and in §5): if your harness wakes you when a background task finishes (Claude
 Code), end your turn — you'll be notified. If it doesn't (Codex), a finished turn can't be resumed by the child
@@ -140,6 +148,11 @@ top-down — the user reviews from the top — and write each item as soon as it
   2. `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h`; `--ring cursor|click` when the user
      pointed at / clicked it. Tiny detail → second frame with `--crop`.
   3. **Look at every annotated frame before using it.** Box not on the point → fix and re-grab.
+- **Shots** (`shots.jsonl`; later lines per `n` win; skip `"deleted": true`): the shot *is* the frame — use
+  `shots/NNN.marked.png` when it exists (the user's ink is already on it, add no box), else `NNN.png`; no picking.
+  Its note is `text` / `said` (voice) — plus, for a snap while recording, what was said around its `t`. `frames.py
+  grab|grid shots/NNN.png` work on stills (`--crop stroke` = around their ink; `--ring cursor` for snaps while
+  recording); `frames.py marks <video or session>` lists every snap.
 - Animations / flows / timing: `frames.py clip --from --to -o <session>/clips/<id>.mp4` (< 20 MB) → `patch --set clip=…`.
 - Same pass, via `items.py patch`: `source` (URL / product read off the frame), `code_refs` (issues, inside a repo:
   grep the visible text / route / component → likely `path:line`s), the `digest`, a better `confidence`.
