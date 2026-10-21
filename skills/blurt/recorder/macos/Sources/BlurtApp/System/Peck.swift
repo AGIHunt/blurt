@@ -92,7 +92,11 @@ enum ChickenArt {
 
         // ground shadow (shrinks while the hen is in the air)
         let sh = 1 - hop / 18
-        radial(ctx, [c(0x000000, 0.16), c(0x000000, 0)], at: CGPoint(x: 58, y: 14), to: CGPoint(x: 58, y: 14), r1: 30 * sh)
+        ctx.saveGState()
+        ctx.translateBy(x: 58, y: 14)
+        ctx.scaleBy(x: 1, y: 0.22)
+        radial(ctx, [c(0x000000, 0.2), c(0x000000, 0)], at: .zero, to: .zero, r1: 26 * sh)
+        ctx.restoreGState()
 
         ctx.translateBy(x: 0, y: hop)
         // squash and stretch around the feet
@@ -145,21 +149,28 @@ enum ChickenArt {
         body.addCurve(to: CGPoint(x: 72, y: 76), control1: CGPoint(x: 89, y: 66), control2: CGPoint(x: 80, y: 74))
         body.addCurve(to: CGPoint(x: 26, y: 58), control1: CGPoint(x: 56, y: 80), control2: CGPoint(x: 30, y: 74))
         body.closeSubpath()
+        // neck and head (nodding swings them down and forward)
+        let headC = CGPoint(x: 82 + nod * 5, y: 84 - nod * 9)
+        let headTurn = -nod * 0.5 + tilt * 1.5
+        let neck = CGMutablePath()
+        neck.move(to: CGPoint(x: 64, y: 70))
+        neck.addQuadCurve(to: CGPoint(x: headC.x - 10, y: headC.y + 3), control: CGPoint(x: 68, y: headC.y - 3))
+        neck.addLine(to: CGPoint(x: headC.x + 10, y: headC.y - 6))
+        neck.addQuadCurve(to: CGPoint(x: 90, y: 52), control: CGPoint(x: 94, y: 68))
+        neck.closeSubpath()
+        var headT = CGAffineTransform(translationX: headC.x, y: headC.y).rotated(by: headTurn)
+        let headP = CGPath(ellipseIn: CGRect(x: -12.5, y: -12, width: 25, height: 24), transform: &headT)
+        // one silhouette: outline everything first, then fill on top, so only the outer contour shows
+        for p in [body as CGPath, neck, headP] { ctx.addPath(p) }
+        ctx.setStrokeColor(rim)
+        ctx.setLineWidth(2.2)
+        ctx.strokePath()
         fill(ctx, body, {
             radial(ctx, [featherLight, featherMid, featherShade], [0, 0.55, 1], at: CGPoint(x: 66, y: 62), to: CGPoint(x: 56, y: 50), r1: 44)
             // breast sheen
             radial(ctx, [c(0xFFFFFF, 0.65), c(0xFFFFFF, 0)], at: CGPoint(x: 78, y: 58), to: CGPoint(x: 78, y: 58), r1: 14)
-        })
-
-        // neck and head (nodding swings them down and forward)
-        let headC = CGPoint(x: 82 + nod * 5, y: 84 - nod * 9)
-        let neck = CGMutablePath()
-        neck.move(to: CGPoint(x: 66, y: 72))
-        neck.addQuadCurve(to: CGPoint(x: headC.x - 9, y: headC.y + 4), control: CGPoint(x: 70, y: headC.y - 2))
-        neck.addLine(to: CGPoint(x: headC.x + 9, y: headC.y - 6))
-        neck.addQuadCurve(to: CGPoint(x: 86, y: 60), control: CGPoint(x: 90, y: 70))
-        neck.closeSubpath()
-        fill(ctx, neck, { radial(ctx, [featherLight, featherMid], at: CGPoint(x: 80, y: 74), to: CGPoint(x: 80, y: 70), r1: 18) }, stroke: nil)
+        }, stroke: nil)
+        fill(ctx, neck, { radial(ctx, [featherLight, featherMid], at: CGPoint(x: 80, y: 74), to: CGPoint(x: 80, y: 66), r1: 20) }, stroke: nil)
 
         // wing: three overlapping scalloped feathers, lifting for "ta-da" / joy
         ctx.saveGState()
@@ -185,17 +196,34 @@ enum ChickenArt {
         // head
         ctx.saveGState()
         ctx.translateBy(x: headC.x, y: headC.y)
-        ctx.rotate(by: -nod * 0.5 + tilt * 1.5)
+        ctx.rotate(by: headTurn)
         // comb: three lobes, back to front
         let comb3 = CGMutablePath()
         for (dx, dy, r) in [(CGFloat(-8), CGFloat(11), CGFloat(5.2)), (-1.5, 14, 6), (5.5, 12, 5)] {
             comb3.addEllipse(in: CGRect(x: dx - r, y: dy - r, width: r * 2, height: r * 2.15))
         }
         fill(ctx, comb3, { grad(ctx, [combLight, comb, combDark], from: CGPoint(x: -4, y: 20), to: CGPoint(x: 0, y: 6)) }, stroke: c(0x8F2420, 0.5), width: 0.9)
-        let headP = CGPath(ellipseIn: CGRect(x: -12.5, y: -12, width: 25, height: 24), transform: nil)
-        fill(ctx, headP, {
+        // the head's fill (its outline is part of the silhouette above; the comb peeks out behind it)
+        ctx.saveGState()
+        ctx.addPath(CGPath(ellipseIn: CGRect(x: -12.5, y: -12, width: 25, height: 24), transform: nil))
+        ctx.setStrokeColor(rim)
+        ctx.setLineWidth(2.2)
+        ctx.strokePath()
+        ctx.restoreGState()
+        fill(ctx, CGPath(ellipseIn: CGRect(x: -12.5, y: -12, width: 25, height: 24), transform: nil), {
             radial(ctx, [featherLight, featherMid, featherShade], [0, 0.6, 1], at: CGPoint(x: -3, y: 5), to: CGPoint(x: 0, y: 0), r1: 16)
-        })
+        }, stroke: nil)
+        // where the neck joins: fill over the head's outline on that side so the silhouette stays continuous
+        ctx.saveGState()
+        ctx.rotate(by: -headTurn)
+        ctx.translateBy(x: -headC.x, y: -headC.y)
+        fill(ctx, neck, { radial(ctx, [featherLight, featherMid], at: CGPoint(x: 80, y: 74), to: CGPoint(x: 80, y: 66), r1: 20) }, stroke: nil)
+        ctx.restoreGState()
+        ctx.addPath(CGPath(ellipseIn: CGRect(x: -11.4, y: -10.9, width: 22.8, height: 21.8), transform: nil))
+        ctx.saveGState()
+        ctx.clip()
+        radial(ctx, [featherLight, featherMid, featherShade], [0, 0.6, 1], at: CGPoint(x: -3, y: 5), to: CGPoint(x: 0, y: 0), r1: 16)
+        ctx.restoreGState()
         // wattle
         let wattle = CGMutablePath()
         wattle.move(to: CGPoint(x: 8, y: -4))

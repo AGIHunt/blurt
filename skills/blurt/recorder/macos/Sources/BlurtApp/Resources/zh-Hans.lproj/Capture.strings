@@ -28,7 +28,7 @@
 "capture.countdown.ready" = "准备，开喷";
 "capture.countdown.skip" = "点一下跳过倒计时";
 "capture.drawer.auto_sub" = "每次捕获自动分到合适的项目";
-"capture.drawer.drop_title" = "放到项目上";
+"capture.drawer.drop_title" = "放到";
 "capture.drawer.inbox_sub" = "先收着，稍后再分";
 "capture.drawer.more" = "更多…";
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";

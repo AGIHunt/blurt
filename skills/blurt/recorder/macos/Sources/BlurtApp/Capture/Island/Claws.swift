@@ -33,6 +33,9 @@ final class ClawCard {
     let close = CALayer()
     let copied = CATextLayer()
     var size: CGSize
+    /// where the claw grips the top edge, from the card's left: the middle of a picture; a voice card's waveform disc
+    /// (its words stay clear of the toes)
+    let gripX: CGFloat
     var x: Spring
     var grip: Spring                // y of the card's top edge (the claw's reach), panel coordinates (y down)
     var theta: CGFloat = 0, omega: CGFloat = 0     // swing, degrees
@@ -52,6 +55,7 @@ final class ClawCard {
     init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
         shot = s
         size = s.kind == .voice ? Claws.voiceSize : Claws.shotSize
+        gripX = s.kind == .voice ? 22 : size.width / 2
         self.x = Spring(x, response: 0.5, damping: 0.82)
         grip = Spring(-Claws.shotSize.height - 40, response: 0.55, damping: 0.72)
         self.tilt = tilt
@@ -281,10 +285,10 @@ final class Claws: NSObject {
         c.leg.addSublayer(c.scutes)
         stage.insertSublayer(c.leg, below: stack)
         c.root.bounds = CGRect(x: 0, y: 0, width: w, height: h)
-        c.root.anchorPoint = CGPoint(x: 0.5, y: 0)
+        c.root.anchorPoint = CGPoint(x: c.gripX / w, y: 0)
         c.root.opacity = 0
         let fs = ClawArt.footSize, k = ClawArt.knuckle
-        c.hind.frame = CGRect(x: w / 2 - k.x, y: -k.y - 3, width: fs.width, height: fs.height)
+        c.hind.frame = CGRect(x: c.gripX - k.x, y: -k.y - 3, width: fs.width, height: fs.height)
         c.front.frame = c.hind.frame
         c.card.frame = CGRect(x: 0, y: 0, width: w, height: h)
         c.card.cornerRadius = s.kind == .voice ? 12 : 7
@@ -442,11 +446,11 @@ final class Claws: NSObject {
 
     /// A capture is complete: its claw reaches down and catches it as it flies up from `from` (a screen rect).
     func catchCapture(_ s: Shot, from: NSRect?) {
-        guard !cards.contains(where: { $0.shot === s }) else { return }
         let target = island.screen ?? from.flatMap { r in NSScreen.screens.first { $0.frame.intersects(r) } } ?? NSScreen.main ?? NSScreen.screens[0]
         if panel == nil || screen != target { ensurePanel(on: target) }
-        let c = makeCard(s, x: anchor.x)
-        cards.append(c)
+        // the batch's change callback may have hung it already (quietly): catch that card
+        let c = cards.first { $0.shot === s } ?? makeCard(s, x: anchor.x)
+        if !cards.contains(where: { $0 === c }) { cards.append(c) }
         layout()
         if let i = cards.firstIndex(where: { $0 === c }) { c.x.value = targets().xs[i]; c.x.snap() }
         show(peek: 3.2)
@@ -462,7 +466,7 @@ final class Claws: NSObject {
         c.open = 1
         c.openTarget = 1
         c.grip.value = -c.size.height - 30
-        c.reach = (CACurrentMediaTime(), c.grip.value, restY)
+        c.reach = (CACurrentMediaTime() + 0.15, c.grip.value, restY)   // reaches the catch point as the capture arrives
         let img = s.kind == .voice ? Claws.voiceSnapshot(c) : (s.markedThumb ?? s.thumb)
         if let f = from, let img = img {
             flyImage(img, from: f, to: screenRect(of: c, at: restY), springy: true, cornerRadius: c.card.cornerRadius) { [weak self] in
@@ -478,7 +482,7 @@ final class Claws: NSObject {
         c.flying = false
         c.opacity = 1
         c.openTarget = 0
-        c.omega += 70            // the catch sets it swinging
+        c.omega += 30            // the catch sets it swinging
         wake()
     }
 
@@ -562,6 +566,9 @@ final class Claws: NSObject {
         return NSRect(x: p.frame.minX + c.x.target - c.size.width / 2, y: p.frame.maxY - y - c.size.height, width: c.size.width, height: c.size.height)
     }
 
+    /// The cards' swing right now (degrees; tests check Reduce Motion keeps them still).
+    var swing: [CGFloat] { cards.map(\.theta) }
+
     /// Where every card is, for tests (global top-left points).
     func cardRects() -> [(Shot, CGRect)] { cards.compactMap { c in screenRect(of: c.shot).map { (c.shot, toCG($0)) } } }
 
@@ -644,7 +651,8 @@ final class Claws: NSObject {
     private func place(_ c: ClawCard, now: CFTimeInterval) {
         let y = c.grip.value
         let swing = reduceMotion ? 0 : c.theta + c.tilt * (1 - c.lift.value)
-        c.root.position = CGPoint(x: c.x.value, y: y)
+        let gx = c.x.value - c.size.width / 2 + c.gripX
+        c.root.position = CGPoint(x: gx, y: y)
         var t = CATransform3DMakeRotation(swing * .pi / 180, 0, 0, 1)
         let sc = 1 + 0.04 * c.lift.value
         t = CATransform3DScale(t, sc, sc, 1)
@@ -653,7 +661,7 @@ final class Claws: NSObject {
         // the leg: from the top of the screen down to the knuckle (just above the card's edge)
         let legH = max(0, y - ClawArt.knuckle.y + 3)
         c.leg.bounds = CGRect(x: 0, y: 0, width: ClawArt.legWidth, height: legH)
-        c.leg.position = CGPoint(x: c.x.value, y: 0)
+        c.leg.position = CGPoint(x: gx, y: 0)
         c.scutes.instanceCount = max(0, Int(legH / 6.5))
         c.scutes.frame = c.leg.bounds
         c.leg.opacity = legH > 0.5 ? 1 : 0

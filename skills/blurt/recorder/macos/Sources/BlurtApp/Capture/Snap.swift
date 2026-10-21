@@ -518,7 +518,7 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
         let p = finished ? 1 : k
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        card.position = CGPoint(x: a.midX + (b.midX - a.midX) * p, y: a.midY + (b.midY - a.midY) * p + sin(.pi * min(1, p)) * 30)
+        card.position = CGPoint(x: a.midX + (b.midX - a.midX) * p, y: a.midY + (b.midY - a.midY) * p + sin(.pi * min(1, p)) * (springy ? 14 : 30))
         card.bounds.size = CGSize(width: max(1, a.width + (b.width - a.width) * p), height: max(1, a.height + (b.height - a.height) * p))
         photo.frame = card.bounds
         photo.cornerRadius = cornerRadius * min(1, max(0, p))

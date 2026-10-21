@@ -101,7 +101,11 @@ final class EarSlot {
         content = c
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for l in [icon, label, dot, bars, eggTop, eggBottom] { l.isHidden = true }
+        for l in [icon, label, dot, bars, eggTop, eggBottom] {
+            l.isHidden = true
+            l.opacity = 1
+            l.setAffineTransform(.identity)
+        }
         var x: CGFloat = 0
         func text(_ s: String, color: NSColor = NSColor(white: 1, alpha: 0.92)) {
             let a = NSAttributedString(string: s, attributes: [.font: EarSlot.font, .foregroundColor: color])

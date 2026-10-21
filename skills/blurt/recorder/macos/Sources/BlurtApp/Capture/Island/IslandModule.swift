@@ -23,6 +23,15 @@ enum LegacyProcess {
         j.setCaptures(captures ?? [])
         j.step("prepare", .running)
         jobs[session.path] = j
+        // tests: BLURT_TEST_PROCESS=done|failed plays the job out in ~4 s instead of starting a real agent
+        if let outcome = ProcessInfo.processInfo.environment["BLURT_TEST_PROCESS"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { j.step("prepare", .done); j.step("write", .running, progress: 0.4) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                j.setItems((captures ?? [0]).map { "test-\($0)" })
+                finished(session.path, ok: outcome == "done")
+            }
+            return
+        }
         ShotBatch.load(session)?.writeMeta(state: "processing")
         (NSApp.delegate as? App)?.process(session)
     }

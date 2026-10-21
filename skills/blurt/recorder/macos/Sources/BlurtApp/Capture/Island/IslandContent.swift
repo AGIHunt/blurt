@@ -646,9 +646,9 @@ final class IslandContent: NSView {
         let tw = ceil((t.text as NSString).size(withAttributes: [.font: f]).width)
         var x: CGFloat = 18
         if let art = t.art {
-            art.frame = NSRect(x: 12, y: top + 2, width: 42, height: 42)
+            art.frame = NSRect(x: 10, y: top - 2, width: 50, height: 50)
             addSubview(art)
-            x = 60
+            x = 64
         }
         var right: CGFloat = 18
         var btn: IslandButton?

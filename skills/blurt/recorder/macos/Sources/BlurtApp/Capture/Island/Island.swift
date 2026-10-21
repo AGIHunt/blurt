@@ -286,6 +286,7 @@ final class Island: NSObject, IslandHosting {
         let now = CACurrentMediaTime()
         poll(now)
         tickToasts(now)
+        if isRecording || VoiceInput.shared.active { updateEars() }      // the time, the level, the waveform
         let t = target()
         w.target = t.w; h.target = t.h; r.target = t.r
         vis.target = capsuleVisible ? 1 : 0

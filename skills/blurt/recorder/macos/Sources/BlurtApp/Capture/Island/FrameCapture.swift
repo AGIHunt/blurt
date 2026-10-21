@@ -13,6 +13,7 @@ final class FrameCapture {
     private var n = 0
     private var timer: Timer?
     static let scale: CGFloat = 2
+    private static let io = DispatchQueue(label: "blurt.framecapture", qos: .utility)
 
     /// `framerec DIR SECS X,Y,W,H [BACKDROP.png|-] [fps] [cursor]`
     static func start(_ arg: String) {
@@ -32,7 +33,9 @@ final class FrameCapture {
     private init(dir: URL, rect: CGRect, backdrop: CGImage?, secs: Double, cursor: Bool) {
         self.dir = dir
         self.rect = rect
-        self.backdrop = backdrop
+        // crop the backdrop (the main screen at 2x) to the rect once, not every frame
+        let s = FrameCapture.scale
+        self.backdrop = backdrop.flatMap { $0.cropping(to: CGRect(x: rect.minX * s, y: rect.minY * s, width: rect.width * s, height: rect.height * s)) }
         self.cursor = cursor
         until = CACurrentMediaTime() + secs
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -58,11 +61,7 @@ final class FrameCapture {
         guard let ctx = CGContext(data: nil, width: W, height: H, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
         let ns = toNS(rect)
-        if let b = backdrop {
-            // the backdrop is the main screen at 2x, y-up: put the crop's corner at the origin
-            let sh = NSScreen.screens[0].frame.height
-            ctx.draw(b, in: CGRect(x: -ns.minX * s, y: -ns.minY * s, width: CGFloat(b.width), height: CGFloat(b.height) * (sh * s) / CGFloat(b.height)))
-        }
+        if let b = backdrop { ctx.draw(b, in: CGRect(x: 0, y: 0, width: W, height: H)) }
         let order = NSApp.orderedWindows
         let wins = NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0.01 && $0.frame.intersects(ns) }
             .sorted { a, b in
@@ -85,8 +84,8 @@ final class FrameCapture {
         if cursor { drawCursor(ctx, ns) }
         guard let img = ctx.makeImage() else { return }
         n += 1
-        let rep = NSBitmapImageRep(cgImage: img)
-        try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(String(format: "frame-%05d.png", n)))
+        let u = dir.appendingPathComponent(String(format: "frame-%05d.png", n))
+        FrameCapture.io.async { try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: u) }
     }
 
     private func drawCursor(_ ctx: CGContext, _ ns: NSRect) {

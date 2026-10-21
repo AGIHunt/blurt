@@ -40,15 +40,16 @@ extension App {
         switch parts.first ?? "" {
         case "snap": hotkey(.snap)                     // = ⌥⇧A: a still of the take while recording, else snap mode
         case "record": startRecording(useLast: true)   // = menu "录制上次的区域" (record.last_region), no picker
-        case "snapregion":                              // snapregion x,y,w,h [PNG]: PNG stands in for the screen (BLURT_TEST_STILL)
+        case "snapregion":                              // snapregion x,y,w,h [PNG] [quiet]: PNG stands in for the screen; quiet = no note
             let a = arg.split(separator: " ").map(String.init)
             if a.count > 1 { setenv("BLURT_TEST_STILL", a[1], 1) }
             let p = (a.first ?? "").split(separator: ",").compactMap { Double($0) }
             guard p.count == 4 else { return }
             snapper.rememberFrontApp()
-            snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]))
+            snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), withNote: !a.contains("quiet"))
         case "cards":
             if arg == "show" { claws.show(peek: 8) }
+            emit(["event": "swing", "degrees": claws.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
             for (s, r) in claws.cardRects() { emit(["event": "card", "n": s.n, "session": s.batch?.dir.path ?? "", "rect": [r.minX, r.minY, r.width, r.height]]) }
             if let r = NoteBubble.shared.canvasScreenRect { let c = toCG(r); emit(["event": "canvas", "rect": [c.minX, c.minY, c.width, c.height]]) }
@@ -69,6 +70,20 @@ extension App {
             let a = arg.split(separator: " ").map(String.init)
             if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) { snapper.assign(s, to: a[1]) }
         case "framerec": FrameCapture.start(arg)      // framerec DIR SECS X,Y,W,H [BACKDROP|-] [FPS] [cursor]
+        case "henframes":                               // henframes DIR pleased|delighted|neutral [dark]
+            let a = arg.split(separator: " ").map(String.init)
+            guard let d = a.first else { return }
+            let n = PeckCard.renderFrames(to: URL(fileURLWithPath: d), scale: 3, dark: a.contains("dark"), mood: HenMood(rawValue: a.count > 1 ? a[1] : "") ?? .pleased)
+            emit(["event": "henframes", "frames": n])
+        case "fakerecording":                           // fakerecording [stop]: the island's recording state without a capture stream
+            if arg == "stop" { rec = nil; island.recordingStopping(); return }
+            let r = Recorder(region: CGRect(x: 360, y: 260, width: 900, height: 560))
+            rec = r
+            r.sessionStart = hostNow()
+            opts.out = snapper.openBatch(for: ProjectStore.shared.inbox).dir.deletingLastPathComponent().appendingPathComponent("fake-rec/recording.mp4").path
+            try? FileManager.default.createDirectory(at: URL(fileURLWithPath: opts.out).deletingLastPathComponent(), withIntermediateDirectories: true)
+            r.snaps = RecordingSnaps(rec: r, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
+            island.recordingStarted(r, on: NSScreen.main)
         case "aisort": snapper.aiSort()
         case "deleteall": snapper.deleteAllCards()
         case "project":

@@ -28,7 +28,7 @@
 "capture.countdown.ready" = "Get ready";
 "capture.countdown.skip" = "click to skip";
 "capture.drawer.auto_sub" = "Each capture goes to the project it fits";
-"capture.drawer.drop_title" = "DROP ON A PROJECT";
+"capture.drawer.drop_title" = "MOVE TO";
 "capture.drawer.inbox_sub" = "Keep it, sort it later";
 "capture.drawer.more" = "More…";
 "capture.drawer.no_projects" = "No projects yet — open a folder and it becomes one.";

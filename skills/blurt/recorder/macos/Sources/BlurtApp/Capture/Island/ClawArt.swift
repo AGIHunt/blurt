@@ -16,15 +16,18 @@ enum ClawArt {
     static let nail = CGColor(srgbRed: 0.29, green: 0.204, blue: 0.125, alpha: 1)        // #4A3420
     static let nailShine = CGColor(srgbRed: 1, green: 0.95, blue: 0.85, alpha: 0.55)
 
-    /// The foot's box (pt) and where its knuckle (the leg's end) sits in it, y down.
-    static let footSize = CGSize(width: 40, height: 30)
-    static let knuckle = CGPoint(x: 20, y: 7)
+    /// The foot's drawing box, how big it is drawn, and where its knuckle (the leg's end) sits — y down, in points.
+    static let artSize = CGSize(width: 40, height: 30)
+    static let footScale: CGFloat = 1.35
+    static let footSize = CGSize(width: artSize.width * footScale, height: artSize.height * footScale)
+    static let knuckle = CGPoint(x: 20 * footScale, y: 7 * footScale)
+    private static let artKnuckle = CGPoint(x: 20, y: 7)
     /// The leg's width.
     static let legWidth: CGFloat = 6
 
     /// The front toes (over the card) at `open` 0…1, y-down coordinates in the foot box.
     static func drawFront(_ ctx: CGContext, open: CGFloat) {
-        let k = knuckle
+        let k = artKnuckle
         // each toe: an angle from straight down (rad), a length, a curl; opening swings them out and up
         let toes: [(a: CGFloat, len: CGFloat, w: CGFloat)] = [(-0.55, 15, 4.2), (0.0, 17, 4.6), (0.55, 15, 4.2)]
         for (i, t) in toes.enumerated() {
@@ -47,7 +50,7 @@ enum ClawArt {
 
     /// The hind toe (behind the card): a short spur pointing back-up.
     static func drawHind(_ ctx: CGContext, open: CGFloat) {
-        toe(ctx, from: CGPoint(x: knuckle.x, y: knuckle.y + 1), angle: .pi - 0.25 - open * 0.5, length: 8, width: 3.6, curl: 0.2, shade: 0.8)
+        toe(ctx, from: CGPoint(x: artKnuckle.x, y: artKnuckle.y + 1), angle: .pi - 0.25 - open * 0.5, length: 8, width: 3.6, curl: 0.2, shade: 0.8)
     }
 
     /// One toe: two tapered phalanges along a gentle curve, a nail at the tip.
@@ -116,7 +119,7 @@ enum ClawArt {
         let o = CGFloat(i) / CGFloat(openings - 1)
         let img = renderImage(footSize) { ctx in
             ctx.translateBy(x: 0, y: footSize.height)
-            ctx.scaleBy(x: 1, y: -1)                      // draw y down
+            ctx.scaleBy(x: footScale, y: -footScale)      // draw y down, in the art's 40 × 30 box
             ctx.setLineCap(.round)
             ctx.setLineJoin(.round)
             if front { drawFront(ctx, open: o) } else { drawHind(ctx, open: o) }
