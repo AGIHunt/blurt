@@ -25,45 +25,10 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import IS_LINUX, die, find_item, items_lock, load_session, save_session  # noqa: E402
+from _common import (IS_LINUX, SERVER_KEYS, apply_user_ops, die, find_item, items_lock,  # noqa: E402,F401
+                     load_session, save_session)
 
 HTML = Path(__file__).with_name("review.html")
-SERVER_KEYS = {"id", "_user"}
-
-
-def apply_user_ops(data: dict, ops: list[dict]) -> None:
-    """The page sends what the user changed, not the whole list, so the agent's concurrent writes survive.
-    Each field the user sets is recorded in the item's _user (field -> epoch); items.py won't overwrite those."""
-    now = round(time.time(), 1)
-    items = data.setdefault("items", [])
-    removed = data.setdefault("_removed", {})
-    for op in ops:
-        kind, iid = op.get("op"), op.get("id") or (op.get("item") or {}).get("id")
-        item = find_item(data, iid) if iid else None
-        if kind == "set" and item is not None:
-            user = item.setdefault("_user", {})
-            for k, v in (op.get("set") or {}).items():
-                if k not in SERVER_KEYS:
-                    item[k] = v
-                    if not k.startswith("_"):
-                        user[k] = now
-            for k in op.get("unset") or []:
-                if k not in SERVER_KEYS:
-                    item.pop(k, None)
-                    if not k.startswith("_"):
-                        user[k] = now
-        elif kind == "remove" and item is not None:  # merged into another item by the user
-            items.remove(item)
-            removed[iid] = op.get("into") or ""
-        elif kind == "add" and iid and item is None:  # e.g. undoing a merge brings the item back
-            new = dict(op["item"])
-            new.setdefault("_user", {})
-            removed.pop(iid, None)
-            after = op.get("after")
-            pos = next((k + 1 for k, i in enumerate(items) if i.get("id") == after), 0 if after is None else len(items))
-            items.insert(pos, new)
-    if not removed:
-        data.pop("_removed", None)
 
 
 def etag(raw: bytes) -> str:

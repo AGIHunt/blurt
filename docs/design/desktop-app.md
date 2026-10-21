@@ -316,6 +316,18 @@ Windows/Linux: Blurt（Tauri 2）
 
 `status` 仍然只有 `draft | confirmed | deleted`。「修复」状态单独放在 `fix.state`，不和审核状态混在一起。
 
+细则（WP1 实现时补充）：
+- **uid 落盘**：除 `user-ops` 外，`items.py` 的每次写入都会先给没有 uid 的条目写上 legacy uid（紧跟在 `id` 后面），
+  并把 `"schema": 2` 放在文件第一个键；`add` 分配新的 ULID。legacy uid 以 `L` 开头，`L` 不在 Crockford 字母表里，
+  所以和 ULID 不会撞。公式中的会话目录名 = `Path(session).resolve().name`。
+- **`fix` 对象**总是带齐 7 个键：`state, agent, run_id, commit, pr, note, at`（`at` 为 epoch 秒，保留 1 位小数）。
+- **`fix_history`**：只有 state 变化时，才把当前的 `fix` 追加进去；state 不变的再次调用只更新当前 `fix`（比如补上
+  commit 或 pr），已有的字段保留。
+- **agent / run_id 的取值顺序**：命令行参数 → 环境变量 `$BLURT_AGENT` / `$BLURT_RUN_ID`（应用拉起 agent 时注入）
+  → 上一个 `fix` 是 `fixing` 时沿用它的值（同一次运行收尾）→ `"human"` / `null`。commit、pr、note 在 state 变化时不沿用。
+- 共享实现在 `scripts/_common.py`：`new_ulid()`、`legacy_uid(session_name, item_id)`、`item_uid(session, item)`、
+  `FIX_STATES`、`file_etag(raw)`、`apply_user_ops(data, ops)`。
+
 ### C2 · items.py CLI v2
 
 每次调用输出一行 JSON；退出码 0 表示成功，1 表示参数或数据错误，3 表示等锁超时。
@@ -342,6 +354,26 @@ After every successful write: best-effort `index.py update SESSION` in-process (
 failures are ignored (the app's watcher catches up).
 ```
 
+细则（WP1 实现时补充，以下以代码为准）：
+- **输出**：成功时每个结果都多带一个 `"ok": true`（`get`、`list` 还会带 `"session": "<abs dir>"`，`add` 还会带 `"uid"`）。
+  失败时 stdout 仍然是一行 `{"ok": false, "error": "…"}`，同时把错误信息写到 stderr；参数错误也返回 1（不是 argparse 默认的 2）。
+  等锁超时返回 3，等待时长由 `$BLURT_LOCK_TIMEOUT` 控制，默认 15 秒。
+- **ID**：可以是条目号、文件里的 uid，或者算出来的 legacy uid。被用户合并掉的条目也能用 legacy uid 定位，这时
+  `patch` / `set-frames` / `fix` 返回 `"skipped"`，`get` 以 1 退出。`add --after` 也接受 uid。
+- **`get` / `list`**：只读，不加锁；返回的每个条目都带 `uid`，文件里没有就现算 legacy uid，不写盘。
+- **`list` 筛选**：`--kind`、`--status`、`--fix-state` 都可以重复给。不带 `--status` 时不返回 `deleted` 的条目。
+  `--fix-state none` 表示从没交给 agent 的条目。
+- **`fix`**：`patch` 不能改 `uid`、`fix`、`fix_history`、`schema`，改 fix 只能走 `items.py fix`；fix 的规则见 C1 细则。
+- **`user-ops`**：
+  - `--json` 也接受审核页 POST 的请求体 `{"ops": […]}`；只带 `--confirm`、不给 ops 也合法。
+  - 不写 `agent_at`、`schema`、uid，所以写出的文件和 `review.py` 逐字节一致。
+  - 返回的 `etag` 和 `GET /api/items` 的 ETag 同一算法（`file_etag`）。
+  - 格式不对的 op 整批拒绝（返回 1），文件保持不动。
+- **`ensure-uids`**：不写 `agent_at`；没有需要补的 uid、`schema` 也已经是 2 时，不重写文件。
+- **重建索引**：写入成功后调用 `index.update_sessions([Path(session).resolve()])`（C3），stdout 被吞掉，Exception 和 SystemExit 都忽略。
+  `$BLURT_HOME/index.db` 还不存在（没有人读索引）或设置了 `BLURT_NO_INDEX` 时跳过。
+- `agent_at` 只由 `patch`、`set-frames`、`add`、`done`、`fix` 写入。
+
 ### C3 · index.db 和 index.py
 
 - schema：`docs/contracts/index-schema.sql`（本次已提交，在 SQLite 3.50 上验证过：建表正常，中文 trigram 搜索能命中）。
@@ -358,6 +390,8 @@ index.py search [QUERY] [--kind K]… [--status S]… [--fix-state F]… [--work
                 primary_frame, updated, snippet}
      QUERY ≥ 3 chars: FTS5 MATCH (trigram); 1–2 chars: LIKE fallback; empty: filters only.
 index.py backlog REPO                          writes REPO/.blurt/BACKLOG.md → {"path": "...", "items": n}
+In-process API (items.py uses it after each write; importing index has no side effects):
+  index.update_sessions([session_dir, …]) -> {"updated": n, "ms": n}   raises on failure; honours $BLURT_HOME at call time
 ```
 
 各宿主都要按同一种方式查询，SQL 模板写在 `index.py` 的 docstring 里，这里是关键部分：
