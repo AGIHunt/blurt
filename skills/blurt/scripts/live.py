@@ -732,7 +732,7 @@ def cmd_run(a) -> int:
         return 0
     run.backend, run.name, run.workers = backend, name, workers
     run.drafter = Drafter(live)
-    log(f"live: {name}, drafts {run.drafter.state}{' via ' + run.drafter.agents[0][0] if run.drafter.agents else ''}")
+    log(f"live: {name}, drafts {run.drafter.state}")
     try:
         return run.run()
     except Exception as e:

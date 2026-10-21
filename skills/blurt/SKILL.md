@@ -70,6 +70,12 @@ if available), then one review per session (or merge into one session dir if the
 ## 2. Transcribe
 
 `transcribe.py run <session>/recording.mp4` → `transcript.json` + `transcript.txt` (`[mm:ss.s-mm:ss.s] text`).
+Recordings made with Blurt are usually transcribed *while* they record (`live/`): then it returns at once with
+`"live": true` — same text as a whole-file run; `--force` redoes it (e.g. with a `--prompt` glossary). A shots
+session (`meta.json` `"mode": "shots"`): `transcribe.py run <session>` turns each voice note into `"said"` in
+`shots.jsonl`. `live/drafts.jsonl` (if present; later lines per `id` win, `drop` removes) is a small model's rough
+outline made during the recording: a starting point for §3, not authoritative — check every item against the
+transcript.
 Recorded with system audio (`record.py start --system-audio`, or the app's menu toggle — calls, product demos),
 the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lines are the user. Speaker bleed can
 repeat a system line on the mic.
