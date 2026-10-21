@@ -529,8 +529,10 @@ def remember_skill_dir() -> None:
 
 def ensure_app_installed(force: bool = False) -> Path | None:
     """Keep a double-clickable recorder where people look for apps — done automatically on first use / update.
-    Opt out with ~/.blurt/config.json → {"record": {"install_app": false}}."""
-    if global_config().get("record", {}).get("install_app") is False:
+    Opt out with ~/.blurt/config.json → {"record": {"install_app": false}}. With a non-default BLURT_HOME (tests, CI)
+    nothing is installed unless that config says {"install_app": true} — a test build must never replace the real app."""
+    setting = global_config().get("record", {}).get("install_app")
+    if setting is False or (setting is not True and "BLURT_HOME" in os.environ):
         return None
     try:
         if IS_MAC:
