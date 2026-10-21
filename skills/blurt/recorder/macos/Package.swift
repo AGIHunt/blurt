@@ -25,6 +25,8 @@ var targets: [Target] = [
         path: "Sources/BlurtApp",
         linkerSettings: sparkle ? [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])] : []),
 ]
+// WP5: IndexReader tests + the 20k-row perf budget (`swift test`; needs Xcode's XCTest, `swift build` ignores it)
+targets.append(.testTarget(name: "BlurtCoreTests", dependencies: ["BlurtCore"], path: "Tests/BlurtCoreTests"))
 if sparkle {
     targets.append(.binaryTarget(
         name: "Sparkle",
