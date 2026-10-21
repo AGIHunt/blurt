@@ -43,7 +43,9 @@ def text(v) -> str:
         return "\n".join(f"{n}. {x}" if not isinstance(x, dict) else json.dumps(x, ensure_ascii=False) for n, x in enumerate(v, 1))
     if isinstance(v, dict):
         if "start" in v and "end" in v:
-            return f"{fmt_ts(v['start'])}–{fmt_ts(v['end'])}"
+            if v["start"] is None:  # shots sessions: no recording time
+                return ""
+            return f"{fmt_ts(v['start'])}–{fmt_ts(v['end'] if v['end'] is not None else v['start'])}"
         return " · ".join(f"{k}: {x}" for k, x in v.items() if x)
     return "" if v is None else str(v)
 

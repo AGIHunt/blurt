@@ -279,7 +279,8 @@ def text_value(issue: dict, key: str) -> str:
     if key == "steps":
         return "\n".join(f"{n}. {s}" for n, s in enumerate(v or [], 1))
     if key == "time":
-        return f"{fmt_ts(v.get('start', 0))}–{fmt_ts(v.get('end', 0))}" if v else ""
+        # shots sessions have no recording: time.start / end are null
+        return f"{fmt_ts(v['start'])}–{fmt_ts(v.get('end') or v['start'])}" if v and v.get("start") is not None else ""
     if isinstance(v, list):
         return "\n".join(map(str, v))
     return "" if v is None else str(v)
