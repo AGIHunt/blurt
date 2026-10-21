@@ -190,7 +190,7 @@ export function SettingsView({ status, onToast, onLang }: { status: AppStatus; o
                       {t(a.login === 'ok' ? 'settings.agents.ready' : a.installed ? 'settings.agents.logged_out' : 'settings.agents.not_installed')}
                       {a.version ? ` · ${a.version}` : ''}
                     </td>
-                    <td className="dim small">{(a.session ?? !!a.interactive) && a.installed ? t('settings.agents.sessions') : ''}</td>
+                    <td className="dim small">{(a.session ?? a.headless) && a.installed ? t('settings.agents.sessions') : ''}</td>
                     <td className="dim small">{a.login === 'ok' ? '' : a.fix}</td>
                     <td>
                       <button className="link" aria-label={t('settings.agents.up')} onClick={() => moveAgent(a.id, -1)} disabled={i === 0}><Icon name="chevron-up" size={14} /></button>

@@ -881,6 +881,19 @@ function apply(op: IslandOp) {
 await host.on<IslandOp>(EV.island, apply);
 render();
 reportHits(true);
+// scripted smoke runs read what the island shows (apps/desktop: BLURT_TEST_EVAL)
+(window as unknown as { __island: () => unknown }).__island = () => ({
+  open: island.classList.contains('open'),
+  shown: island.classList.contains('shown'),
+  drawer,
+  recording: S.recording,
+  hatching: S.hatching,
+  toReview: S.toReview,
+  project: S.project?.name ?? null,
+  cards: live.filter((l) => l.phase === 'hang' || l.phase === 'fly').map((l) => ({ n: l.card.n, kind: l.card.kind, text: l.card.text })),
+  pill: pill.innerText,
+  toast,
+});
 
 await ready(host, 'island', (push) => {
   // ?demo=1 idle, expanded · ?demo=rec recording · ?demo=voice · ?demo=drop a card being filed · ?demo=switch

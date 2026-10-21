@@ -32,7 +32,7 @@ export function DispatchSheet({
   useEffect(() => {
     api.detect().then(
       (d) => {
-        const ok = d.agents.filter((a) => a.installed && (a.session ?? !!a.interactive));
+        const ok = d.agents.filter((a) => a.installed && (a.session ?? a.headless));
         setAgents(ok);
         const pick = project?.default_agent && ok.some((a) => a.id === project.default_agent) ? project.default_agent : d.pick && ok.some((a) => a.id === d.pick) ? d.pick : ok[0]?.id;
         setAgent(pick ?? '');

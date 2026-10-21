@@ -3,18 +3,19 @@
 //
 //   BLURT_APP=apps/desktop/src-tauri/target/release/blurt node apps/desktop/e2e/run.mjs
 //
-// It lays out the fixture sessions and builds index.db (scripts/fixture_index.py), starts the app on them, and checks:
-// the items table shows the fixture index → search (trigram) narrows it → opening an item shows its detail → editing
-// the title saves through items.py user-ops → items.json has the new title and a _user stamp → the index finds it.
+// It opens a fixture project (scripts/fixture_index.py: projects.py add → items.py migrate → index.py scan), starts the
+// app on it and checks: the project's items are listed from index.db v2 → search (trigram) narrows them → an item opens
+// in the review component (protocol v3) → editing its title saves through items_ops (items.py user-ops) → the item's
+// Markdown file has the new title → the index finds it → the inbox and the agent sessions views render.
 // Selectors: the shell's data-testid attributes, and the review canvas's own markup (textarea.title).
 
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { Builder, By, Capabilities, Key, until } from 'selenium-webdriver';
+import { Builder, By, Capabilities, Key } from 'selenium-webdriver';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(process.env.BLURT_APP ?? join(here, '../src-tauri/target/release/blurt'));
@@ -29,7 +30,16 @@ const fx = JSON.parse(
 );
 console.log('fixture:', fx.scan);
 
-const env = { ...process.env, HOME: fx.home, BLURT_HOME: fx.blurt_home, BLURT_WORKSPACE: fx.workspace, BLURT_QUIT_ON_CLOSE: '1', BLURT_LANG: 'en' };
+const env = {
+  ...process.env,
+  HOME: fx.home,
+  BLURT_HOME: fx.blurt_home,
+  BLURT_WORKSPACE: fx.workspace,
+  BLURT_QUIT_ON_CLOSE: '1',
+  BLURT_NO_ISLAND: '1',
+  BLURT_LANG: 'en',
+  BLURT_START_VIEW: `project:${fx.project}`,
+};
 const driverBin = process.env.TAURI_DRIVER ?? 'tauri-driver';
 const driver = spawn(driverBin, [], { env, stdio: ['ignore', 'inherit', 'inherit'] });
 await new Promise((r) => setTimeout(r, 1500));
@@ -47,7 +57,7 @@ async function rows() {
   return wd.findElements(By.css('[data-testid="item-row"]'));
 }
 
-async function waitFor(fn, what, ms = 15000) {
+async function waitFor(fn, what, ms = 20000) {
   const t0 = Date.now();
   let last;
   while (Date.now() - t0 < ms) {
@@ -62,20 +72,24 @@ async function waitFor(fn, what, ms = 15000) {
   throw new Error(`timed out waiting for ${what} (last: ${last})`);
 }
 
+function mdWithTitle(title) {
+  const dir = join(fx.repo, '.blurt', 'items');
+  return readdirSync(dir).some((f) => f.endsWith('.md') && readFileSync(join(dir, f), 'utf-8').includes(title));
+}
+
 let failed = false;
 try {
-  // 1. the fixture index is listed (deleted items hidden)
-  await waitFor(async () => (await rows()).length >= 5, 'the items table');
-  const total = await wd.findElement(By.css('[data-testid="total"]')).getText();
-  console.log('items:', total);
-  await shot('1-main');
+  // 1. the project's items, from index.db v2
+  await waitFor(async () => (await rows()).length >= 4, 'the items table');
+  console.log('items:', await wd.findElement(By.css('[data-testid="total"]')).getText());
+  await shot('1-project');
 
   // 2. search: ≥ 3 chars → FTS5 trigram
   const search = await wd.findElement(By.css('[data-testid="search"]'));
   await search.sendKeys('头像上');
   await waitFor(async () => (await rows()).length === 1, 'one search hit');
 
-  // 3. open it: the review component (WP3, mode=item) shows the item; its title is a one-line textarea.title
+  // 3. open it: the review component (mode=item, scope = the project) shows it; its title is a textarea.title
   await (await rows())[0].click();
   const TITLE = '.review-pane textarea.title';
   const title = await waitFor(async () => {
@@ -84,18 +98,12 @@ try {
   }, 'the item detail');
   await shot('2-item');
 
-  // 4. edit the title (Enter commits) → saved through review_ops → items.py user-ops
+  // 4. edit the title (Enter commits) → items_ops → items.py user-ops → the item's Markdown file
   const NEW = '头像上传返回 500（e2e）';
   await title.click();
   await title.sendKeys(Key.chord(Key.CONTROL, 'a'), NEW, Key.ENTER);
-
-  const file = join(fx.repo, '.blurt/sessions/20261021-101500/items.json');
-  const item = await waitFor(() => {
-    const doc = JSON.parse(readFileSync(file, 'utf-8'));
-    return doc.items.find((i) => i.title === NEW);
-  }, 'items.json to have the new title');
-  assert.equal(typeof item._user?.title, 'number', '_user.title stamped');
-  console.log('items.json updated:', item.id, item.title, item._user);
+  await waitFor(() => mdWithTitle(NEW), 'the Markdown file to have the new title');
+  console.log('item file updated');
 
   // 5. the index follows (items.py re-indexes in-process; the watcher emits index://changed)
   await search.sendKeys(Key.chord(Key.CONTROL, 'a'), 'e2e');
@@ -104,6 +112,13 @@ try {
     return r.length === 1 && (await r[0].getText()).includes('e2e');
   }, 'the renamed item in search');
   await shot('3-edited');
+
+  // 6. the inbox and the agent sessions render
+  await (await wd.findElement(By.css('[data-testid="nav-inbox"]'))).click();
+  await waitFor(async () => (await wd.findElements(By.css('[data-testid="inbox"], [data-testid="inbox-empty"]'))).length > 0, 'the inbox');
+  await (await wd.findElement(By.css('[data-testid="nav-sessions"]'))).click();
+  await waitFor(async () => (await wd.getPageSource()).includes('Agent'), 'the sessions view');
+  await shot('4-sessions');
   console.log('e2e: ok');
 } catch (e) {
   failed = true;

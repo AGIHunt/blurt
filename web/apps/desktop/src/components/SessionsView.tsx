@@ -28,6 +28,10 @@ export function SessionsView({ job, onPick, projects, onToast }: {
   const [ended, setEnded] = useState<Record<string, number>>({});
   const [diff, setDiff] = useState<Diff | null>(null);
   const [confirm, setConfirm] = useState(false);
+  const [names, setNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    api.detect().then((d) => setNames(Object.fromEntries(d.agents.map((a) => [a.id, a.name]))), () => {});
+  }, []);
 
   const load = () =>
     api.sessions(true).then(
@@ -85,7 +89,7 @@ export function SessionsView({ job, onPick, projects, onToast }: {
           <button key={s.job} className={`srow ${s.job === job ? 'sel' : ''}`} onClick={() => onPick(s.job)} data-testid="session-row">
             <i className={`sdot s-${s.status}`} aria-hidden="true" />
             <span className="txt">
-              <span className="nm">{agentName(s.agent)}<span className="ids">{s.items.join(', ')}</span></span>
+              <span className="nm">{names[s.agent] ?? agentName(s.agent)}<span className="ids">{s.window ?? ""}</span></span>
               <span className="sub">{t(`session.${s.status}`)} · {pname(s.project)}</span>
             </span>
           </button>
@@ -97,7 +101,7 @@ export function SessionsView({ job, onPick, projects, onToast }: {
             <header className="session-bar">
               <div className="txt">
                 <div className="nm">
-                  {agentName(cur.agent)} <span className="ids">{cur.items.join(', ')}</span>
+                  {names[cur.agent] ?? agentName(cur.agent)} <span className="ids">{cur.window ?? ""}</span>
                   <span className={`schip s-${cur.status}`}>{t(`session.${cur.status}`)}</span>
                 </div>
                 <div className="sub">

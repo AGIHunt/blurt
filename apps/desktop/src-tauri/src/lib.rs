@@ -28,7 +28,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent, Wry};
+use tauri::{AppHandle, Emitter, Listener, Manager, RunEvent, WindowEvent, Wry};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::ShortcutState;
@@ -529,6 +529,38 @@ fn linux_graphics_workarounds() {
     }
 }
 
+/// Tests only: `BLURT_TEST_EVAL=<file>` — whenever the file changes, its first line names a window (`main`,
+/// `blurt-overlay-island`, …) and the rest is JavaScript evaluated there. Scripted smoke runs drive the UI through
+/// the DOM this way, without touching the real mouse or keyboard.
+fn test_channel(app: &AppHandle) {
+    let Some(file) = std::env::var_os("BLURT_TEST_EVAL").map(std::path::PathBuf::from) else { return };
+    // what a script reports back (`emit('blurt://test-result', …)` from any page) lands in <file>.out, one JSON per line
+    let out = file.with_extension("out");
+    app.listen_any("blurt://test-result", move |e| {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&out) {
+            use std::io::Write as _;
+            let _ = writeln!(f, "{}", e.payload());
+        }
+    });
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut seen = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+        loop {
+            std::thread::sleep(Duration::from_millis(300));
+            let m = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+            if m.is_none() || m == seen {
+                continue;
+            }
+            seen = m;
+            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let (label, js) = text.split_once('\n').unwrap_or((text.as_str(), ""));
+            if let Some(w) = app.get_webview_window(label.trim()) {
+                let _ = w.eval(js);
+            }
+        }
+    });
+}
+
 pub fn run() {
     linux_graphics_workarounds();
     let app = tauri::Builder::default()
@@ -597,6 +629,7 @@ pub fn run() {
             }
             sessions::start_monitor(&handle);
             island::init(&handle);
+            test_channel(&handle);
             Ok(())
         })
         .on_window_event(|w, ev| {

@@ -222,21 +222,23 @@ impl Capture {
         opts.env.push(("BLURT_JOB".into(), job.id.clone().into()));
         let sdir = scripts::s(&session);
         let (app_ev, app_done, sdir2) = (app.clone(), app.clone(), sdir.clone());
-        let handle = blurt_capture::record(&opts, move |e| on_status(&app_ev, e), move |res| finished(&app_done, &sdir2, res)).map_err(|e| {
-            job.finish("failed", Some(("io", &e.to_string())));
-            e.to_string()
-        })?;
-        *self.handle.lock().unwrap() = Some(handle);
+        // the take exists before the recorder does: its first status line ("started") must find it
         *self.take.lock().unwrap() = Some(Take {
             session: session.clone(),
             project,
-            job,
+            job: job.clone(),
             elapsed: 0.0,
             since: None,
             paused: false,
             shots: 0,
             note_pending: false,
         });
+        let handle = blurt_capture::record(&opts, move |e| on_status(&app_ev, e), move |res| finished(&app_done, &sdir2, res)).map_err(|e| {
+            *self.take.lock().unwrap() = None;
+            job.finish("failed", Some(("io", &e.to_string())));
+            e.to_string()
+        })?;
+        *self.handle.lock().unwrap() = Some(handle);
         island::keep_clear_of(app, region);
         crate::on_recording(app, true);
         let _ = app.emit("capture://status", json!({"ev": "started", "session": sdir}));

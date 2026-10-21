@@ -3,10 +3,10 @@ they draw, and stay above a normal window opened after them.
 
   python3 crates/blurt-capture/ci/check_overlays.py DEMO_BINARY OUT_DIR
 
-Runs `DEMO overlays` (HUD, perch with cards, note bubble at their app positions), then opens a blue full-screen
-Tk window, takes a root screenshot (ImageMagick `import`) and checks:
-  • on top: the middle of the HUD pill / note bubble / perch rod is drawn (not blue);
-  • transparent: corners of the HUD window and empty perch area show the blue window underneath;
+Runs `DEMO overlays` (the island open with three cards held by the claw, the note bubble, at their app positions), then
+opens a blue full-screen Tk window, takes a root screenshot (ImageMagick `import`) and checks:
+  • on top: the island's panel at the top centre and the middle of the note bubble are drawn (not blue);
+  • transparent: the island window's empty corners show the blue window underneath;
   • _NET_WM_STATE has ABOVE (and SKIP_TASKBAR) on every overlay window.
 Without a compositor the transparent parts are black, so this also fails if transparency is lost.
 """
@@ -73,23 +73,19 @@ def main() -> int:
         mid = px(x + ww / 2, y + hh / 2)
         corner = px(x + 2, y + 2)
         print(label, (x, y, ww, hh), "middle", mid, "corner", corner)
-        if label.endswith("hud"):
-            if is_blue(mid):
-                problems.append(f"{label}: not above the blue window (middle is blue)")
-            if not is_blue(corner):
-                problems.append(f"{label}: corner not transparent ({corner})")
-        if label.endswith("perch"):
-            rod = px(x + ww / 2, y + 12 * (hh / 230))
-            empty = px(x + ww * 0.5, y + hh - 8)
-            print(label, "rod", rod, "empty", empty)
-            if is_blue(rod):
-                problems.append(f"{label}: rod not drawn above the blue window")
-            if not is_blue(empty):
-                problems.append(f"{label}: empty area not transparent ({empty})")
+        if label.endswith("island"):
+            panel = px(x + ww / 2, y + 24)
+            empty = [px(x + 6, y + hh - 6), px(x + ww - 6, y + hh - 6), px(x + 6, y + 6)]
+            print(label, "panel", panel, "empty", empty)
+            if is_blue(panel):
+                problems.append(f"{label}: the island isn't drawn above the blue window")
+            for e in empty:
+                if not is_blue(e):
+                    problems.append(f"{label}: empty area not transparent ({e})")
         if label.endswith("note") and is_blue(mid):
             problems.append(f"{label}: bubble not drawn above the blue window")
-    if len(states) < 3:
-        problems.append(f"expected 3 overlay windows titled Blurt, found {len(states)}")
+    if len(states) < 2:
+        problems.append(f"expected 2 overlay windows titled Blurt, found {len(states)}")
     for wid, s in states.items():
         print("xprop", wid, s)
         if "_NET_WM_STATE_ABOVE" not in s:
