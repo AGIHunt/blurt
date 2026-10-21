@@ -90,7 +90,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         grid.columnSpacing = 10
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
-        grid.column(at: 1).width = 320
+        grid.column(at: 1).width = 340
         for r in [2, 4, 7] { grid.row(at: r).topPadding = -4 }
 
         let cancel = NSButton(title: T("action.cancel"), target: self, action: #selector(cancelTapped))
@@ -110,6 +110,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 18, right: 22)
         buttons.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
         path.widthAnchor.constraint(lessThanOrEqualTo: grid.widthAnchor).isActive = true
+        stack.widthAnchor.constraint(equalToConstant: 520).isActive = true
         path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         panel.contentView = stack
