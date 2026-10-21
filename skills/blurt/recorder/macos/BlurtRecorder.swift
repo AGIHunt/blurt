@@ -5,8 +5,9 @@
 // (pauses, markers, clicks, cursor samples, pen strokes). Built on first use by record.py with `swiftc`.
 // Pen: hold ⌃ and drag to circle / underline / point at things — the ink is in the video and in events.jsonl.
 //
-// Control: HUD buttons, global hotkeys (⌥⇧P pause/resume, ⌥⇧M marker, ⌥⇧D pen on/off, ⌥⇧S stop), stdin lines
-// ("pause" | "resume" | "toggle" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
+// Control: HUD buttons, global hotkeys (⌥⇧P pause/resume, ⌥⇧A snap, ⌥⇧M marker (+ snap), ⌥⇧D pen on/off, ⌥⇧S stop),
+// stdin lines ("pause" | "resume" | "toggle" | "snap" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
+// Snap mode, the perch, eggs and live captions live in Snap.swift, Perch.swift, Eggs.swift, NoteBubble.swift, HUDLive.swift.
 // stdout: one JSON object per line: ready, selected, countdown, recording, paused, resumed, marker, level?, stopped,
 // cancelled, error.
 
@@ -147,6 +148,7 @@ final class PickerController {
     var snapped = false             // selection came from clicking a window (or F / last area): drag = draw new
     var hovered: NSRect?
     var onDone: ((CGRect?) -> Void)?
+    var snapMode = false            // ⌥⇧A: release (or click a window / F / L) captures right away
     let toolbar = PickerToolbar()
     var toolbarHost: NSView?
 
@@ -214,10 +216,11 @@ final class PickerController {
         selection = screenFrame(containing: NSEvent.mouseLocation)
         snapped = true
         refresh()
+        if snapMode { finish(true) }
     }
 
     func useLast() {
-        if let l = opts.lastRegion { selection = toNS(l); snapped = true; refresh() }
+        if let l = opts.lastRegion { selection = toNS(l); snapped = true; refresh(); if snapMode { finish(true) } }
     }
 }
 
@@ -290,13 +293,16 @@ final class PickerView: NSView {
             b.setLineDash([10, 6], count: 2, phase: 0)
             b.stroke()
             let f = NSFont.systemFont(ofSize: 12, weight: .semibold)
-            _ = pill(L("单击选中这个窗口 · 或直接拖拽框选", "Click to pick this window · or drag to draw"), font: f, fg: .white,
+            _ = pill(c.snapMode ? L("单击截这个窗口 · 或直接拖拽框选", "Click to snap this window · or drag an area")
+                                : L("单击选中这个窗口 · 或直接拖拽框选", "Click to pick this window · or drag to draw"), font: f, fg: .white,
                      bg: accent.withAlphaComponent(0.92), at: NSPoint(x: h.minX + 10, y: max(10, h.maxY - 34)))
         }
 
         // hint on every screen, top centre
-        let hint = L("拖拽框选录制区域 · 单击选中窗口 · F 全屏 · ⏎ 开始 · Esc 取消",
-                     "Drag to select an area · Click a window · F full screen · ⏎ start · Esc cancel")
+        let hint = c.snapMode ? L("📸 拖拽框选，松手即截 · 单击截窗口 · F 全屏 · L 上次区域 · Esc 取消",
+                                 "📸 Drag an area, release to snap · Click a window · F full screen · L last area · Esc cancel")
+                              : L("拖拽框选录制区域 · 单击选中窗口 · F 全屏 · ⏎ 开始 · Esc 取消",
+                                  "Drag to select an area · Click a window · F full screen · ⏎ start · Esc cancel")
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let w = NSAttributedString(string: hint, attributes: [.font: f]).size().width + 28
         _ = pill(hint, font: f, fg: .white, bg: NSColor(white: 0.06, alpha: 0.78),
@@ -387,6 +393,7 @@ final class PickerView: NSView {
         if let s = c.selection, s.width < 16 || s.height < 16 { c.selection = nil }
         mode = .none
         c.refresh()
+        if c.snapMode, c.selection != nil { c.finish(true) }   // like ⌘⇧4: letting go takes the shot
     }
 
     override func keyDown(with e: NSEvent) {
@@ -476,8 +483,9 @@ final class PickerToolbar: NSVisualEffectView {
                                       fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(last)))
         }
         buttons.append(PillButton(L("取消", "Cancel"), fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(cancel)))
-        buttons.append(PillButton(L("开始录制", "Start recording"), symbol: "record.circle.fill", fill: accent,
-                                  target: self, action: #selector(start)))
+        let snap = controller?.snapMode == true
+        buttons.append(PillButton(snap ? L("截图", "Snap") : L("开始录制", "Start recording"), symbol: snap ? "camera.fill" : "record.circle.fill",
+                                  fill: accent, target: self, action: #selector(start)))
         var x: CGFloat = 6
         for b in buttons {
             b.setFrameOrigin(NSPoint(x: x, y: 6))
@@ -587,6 +595,7 @@ final class HUD: NSPanel {
     let meter = LevelView(frame: NSRect(x: 0, y: 0, width: 26, height: 20))
     var pauseBtn: IconButton!
     var penBtn: IconButton!
+    var live: HUDLive?               // 📸, the egg nest, live caption (HUDLive.swift)
     weak var rec: Recorder?
 
     init(rec: Recorder) {
@@ -663,6 +672,8 @@ final class HUD: NSPanel {
         let w = done.frame.maxX + 8
         setContentSize(NSSize(width: w, height: 48))
         fx.frame.size.width = w
+        fx.autoresizingMask = [.width]
+        live = HUDLive(hud: self, rec: rec, fx: fx, pen: penBtn, redo: redo, done: done)
     }
 
     func place(near region: CGRect) {
@@ -906,6 +917,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         default: return (.maskControl, "⌃")
         }
     }()
+    var snaps: RecordingSnaps?       // ⌥⇧A stills (Snap.swift)
+    var lastFrame: CVImageBuffer?     // latest video frame (capture queue): a snap's fallback
     var frames = 0
     var audioBuffers = 0
     var systemBuffers = 0
@@ -1076,6 +1089,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         ip.orderFrontRegardless()                 // below the border and the HUD
         inkWin = ip
         inkView = iv
+        snaps = RecordingSnaps(rec: self, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
         inkTicker = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.syncInk() }
         RunLoop.main.add(inkTicker!, forMode: .common)
         border = overlayWindow(r.insetBy(dx: -4, dy: -4), view: borderView)
@@ -1148,11 +1162,16 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         hud?.orderFrontRegardless()
     }
 
+    /// ⌥⇧M: still logged as a marker, and now also a snap of this exact moment. Silent — the mic is recording.
     func marker() {
         log("marker")
         emit(["event": "marker", "t": elapsed()])
-        NSSound(named: "Tink")?.play()
+        snap(via: "marker")
     }
+
+    func snap(via: String) { snaps?.snap(via: via) }
+
+    func latestFrame() -> CVImageBuffer? { q.sync { lastFrame } }
 
     func adjusted(_ sb: CMSampleBuffer) -> CMSampleBuffer? {
         if offset == .zero { return sb }
@@ -1214,6 +1233,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         }
         if isPaused { return }
         guard let s = adjusted(sb), vIn.isReadyForMoreMediaData else { return }
+        lastFrame = CMSampleBufferGetImageBuffer(sb)
         if vIn.append(s) {
             frames += 1
             lastVideo = CMSampleBufferGetPresentationTimeStamp(s)
@@ -1275,6 +1295,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         cursorTicker?.invalidate()
         inkTicker?.invalidate()
         inkWin?.orderOut(nil)
+        hud?.live?.stop()
         if let m = clickMonitor { NSEvent.removeMonitor(m) }
         log("stop")
         try? events?.close()
@@ -1323,7 +1344,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
 // MARK: - Hotkeys (Carbon: work without Accessibility permission, even when we're not the active app)
 
-enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, pickEnter = 10, pickEsc = 11, pickFull = 12 }
+enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11, pickFull = 12 }
 var hotkeyHandler: ((HK) -> Void)?
 var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
 
@@ -1350,7 +1371,7 @@ func unregisterHotkey(_ k: HK) {
     if let r = hotkeyRefs.removeValue(forKey: k.rawValue) { UnregisterEventHotKey(r) }
 }
 
-let optShift = optionKey | shiftKey
+let optShift = hotkeyMods(ProcessInfo.processInfo.environment["BLURT_HOTKEY_MODS"]) ?? (optionKey | shiftKey)
 
 var signalSources: [DispatchSourceSignal] = []
 
@@ -1413,7 +1434,7 @@ func recentSessions(limit: Int = 8) -> [URL] {
     for ws in Set([defaultWorkspace] + knownWorkspaces() + [currentWorkspace()]) {
         let root = sessionsRoot(for: ws)
         let items = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
-        dirs += items.filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("recording.mp4").path) }
+        dirs += items.filter { FileManager.default.fileExists(atPath: $0.appendingPathComponent("recording.mp4").path) || isShotsSession($0) }
     }
     return Array(dirs.sorted { $0.lastPathComponent > $1.lastPathComponent }.prefix(limit))
 }
@@ -1502,6 +1523,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerHotkey(.marker, key: kVK_ANSI_M, mods: optShift)
         registerHotkey(.stop, key: kVK_ANSI_S, mods: optShift)
         registerHotkey(.pen, key: kVK_ANSI_D, mods: optShift)
+        registerHotkey(.snap, key: kVK_ANSI_A, mods: optShift)
         if resident {
             startResident()
             return
@@ -1531,6 +1553,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .stop: command("stop")
         case .pen: command("pen")
         case .penEsc: if rec?.penSticky == true { command("pen") }
+        case .snap: if let r = rec { r.snap(via: "hotkey") } else if resident { snapper.hotkey() }
         case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
         case .menu: popMenu()
         case .pickEnter: picker?.finish(true)
@@ -1549,6 +1572,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "resume": if rec?.isPaused == true { rec?.togglePause() }
         case "toggle": rec?.togglePause()
         case "marker": rec?.marker()
+        case "snap": if let r = rec { r.snap(via: "command") } else if resident { snapper.hotkey() }
+        case "notes": rec?.hud?.live?.openNotes()
         case "pen": rec?.togglePen()
         default: break
         }
@@ -1650,6 +1675,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self = self, !self.busy else { return }
             self.startRecording(useLast: false)
         }
+        startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
             toast(L("口喷鸡已常驻 🐔  ⌥⇧R 开始 / 结束录制 · ⌥⇧B 打开菜单", "blurt is running 🐔  ⌥⇧R start / finish · ⌥⇧B menu"))
@@ -1678,6 +1704,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func startRecording(useLast: Bool) {
+        if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         guard !busy else { return }
         let dir = newSessionDir()
         opts.out = dir.appendingPathComponent("recording.mp4").path
@@ -1743,7 +1770,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     "blurt calls the `\(agent == "codex" ? "codex" : "claude")` command line tool, which isn't on your PATH. Install the \(name) CLI, or switch to “Just save”."))
             return
         }
-        let prompt = L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
+        let prompt = shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（App 会在你结束后自己打开）；写好 items.json 后用两三句话总结。",
                        "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it when you finish); write items.json, then summarise in 2–3 sentences.")
         let cmd: String
         if agent == "codex" {
@@ -1753,11 +1780,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             cmd = "\(shq(bin)) -p \(shq(prompt)) --permission-mode acceptEdits --allowedTools Bash Read Write Edit Glob Grep"
         }
         processing.append(dir.path)
+        perch.hatch(id: dir.path, kinds: draftKinds(in: dir))
         toast(L("\(name) 正在后台整理…", "\(name) is processing it in the background…"))
         shell(cmd, cwd: ws, log: dir.appendingPathComponent("agent.log")) { [weak self] status in
             guard let self = self else { return }
             self.processing.removeAll { $0 == dir.path }
             let ok = status == 0 && FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path)
+            perch.hatched(id: dir.path, ok: ok)
             if ok && self.openReview(dir) {
                 self.toast(L("整理好了，审核页已打开", "Done — the review page is open"))
             } else if ok {
@@ -1825,11 +1854,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             _ = add((r.isPaused ? L("继续", "Resume") : L("暂停", "Pause")) + "   ⌥⇧P", #selector(mPause))
             _ = add(L("重新录制", "Restart"), #selector(mRestart))
             _ = add(L("放弃这次录制", "Discard"), #selector(mDiscard))
+            addSnapMenuItems(menu, recording: true)
             return
         }
         if busy { _ = add(L("正在选择区域…", "Selecting an area…"), nil); return }
         _ = add(L("开始录制", "Start recording") + "   ⌥⇧R", #selector(mStart))
         if lastRegionFromConfig() != nil { _ = add(L("录制上次的区域", "Record the last area"), #selector(mStartLast)) }
+        addSnapMenuItems(menu, recording: false)
         menu.addItem(.separator())
 
         let ws = currentWorkspace()
@@ -1853,7 +1884,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if recents.isEmpty { _ = add(L("还没有录制", "No recordings yet"), nil, to: rMenu) }
         for d in recents {
             let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("meta.json")))) as? [String: Any]
-            let dur = fmtDur(meta?["duration"] as? Double ?? 0)
+            let dur = isShotsSession(d) ? "📸 \(meta?["shots"] as? Int ?? 0)" : fmtDur(meta?["duration"] as? Double ?? 0)
             let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
             let name = d.lastPathComponent
             let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
@@ -1923,13 +1954,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mOpenWorkspace() { NSWorkspace.shared.open(currentWorkspace()) }
     @objc func mReveal(_ it: NSMenuItem) {
         guard let p = it.representedObject as? String else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p).appendingPathComponent("recording.mp4")])
+        let d = URL(fileURLWithPath: p)
+        NSWorkspace.shared.activateFileViewerSelecting([isShotsSession(d) ? d : d.appendingPathComponent("recording.mp4")])
     }
     @objc func mCopyVideo(_ it: NSMenuItem) {
         guard let p = it.representedObject as? String else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.writeObjects([URL(fileURLWithPath: p).appendingPathComponent("recording.mp4") as NSURL])
+        let d = URL(fileURLWithPath: p)
+        let shots = ((try? FileManager.default.contentsOfDirectory(at: d.appendingPathComponent("shots"), includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "png" && !$0.lastPathComponent.contains(".marked.") }.sorted { $0.path < $1.path }
+        pb.writeObjects(isShotsSession(d) ? shots as [NSURL] : [d.appendingPathComponent("recording.mp4") as NSURL])
         toast(L("已拷贝，去飞书 / 微信 / Slack 里直接粘贴", "Copied — paste it into Slack, Feishu, email…"))
     }
     @objc func mProcessClaude(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p), with: "claude") } }
