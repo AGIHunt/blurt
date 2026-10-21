@@ -34,6 +34,7 @@ struct Options {
     var mic = true
     var micName: String? = nil
     var systemAudio = false        // second audio track: what the Mac plays (meeting voices, demo sound), macOS 13+
+    var live = true                // mic also → <session>/live/audio.pcm for live.py (LiveAudio.swift); --no-live
 
     static func parse() -> Options {
         var o = Options()
@@ -56,6 +57,7 @@ struct Options {
             case "--no-mic": o.mic = false
             case "--mic": o.micName = it.next()
             case "--system-audio": o.systemAudio = true
+            case "--no-live": o.live = false
             default: break
             }
         }
@@ -897,6 +899,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var micLevel: Float = 0
     var captureSession: AVCaptureSession?
     var events: FileHandle?
+    var live: LiveAudio?              // live/audio.pcm sidecar (capture queue only)
     var hud: HUD!
     var border: NSWindow?
     var borderView = BorderView()
@@ -1042,6 +1045,9 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         if let e = opts.events {
             FileManager.default.createFile(atPath: e, contents: nil)
             events = FileHandle(forWritingAtPath: e)
+        }
+        if opts.mic && liveAudioWanted() {
+            live = LiveAudio(dir: URL(fileURLWithPath: opts.out).deletingLastPathComponent().appendingPathComponent("live"))
         }
         emit(["event": "configured", "width": W, "height": H, "display": Int(display.displayID),
               "region": [clipped.minX, clipped.minY, clipped.width, clipped.height], "mic": opts.mic ? (scMic ? "screencapturekit" : "avcapture") : "none", "system_audio": sys])
@@ -1244,7 +1250,9 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         micLevel = rms(sb)
         guard started, !isPaused, let a = aIn else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sb)
-        guard CMTimeCompare(pts, sessionStart) >= 0, let s = adjusted(sb), a.isReadyForMoreMediaData else { return }
+        guard CMTimeCompare(pts, sessionStart) >= 0, let s = adjusted(sb) else { return }
+        live?.append(s, at: CMTimeGetSeconds(CMTimeSubtract(CMSampleBufferGetPresentationTimeStamp(s), sessionStart)))
+        guard a.isReadyForMoreMediaData else { return }
         if a.append(s) { audioBuffers += 1 }
     }
 
@@ -1304,6 +1312,11 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         captureSession?.stopRunning()
         let finish = {
             self.q.async {
+                // the pcm is complete now: live.py can finish the transcript while the mp4 is still being written
+                if discard || !self.started { self.live?.discard() } else {
+                    self.live?.finish(duration: CMTimeGetSeconds(CMTimeSubtract(endAt, self.sessionStart)))
+                }
+                self.live = nil
                 guard self.started else {
                     DispatchQueue.main.async {
                         if restart { emit(["event": "restarting"]); self.onRestart?(); return }
@@ -1721,7 +1734,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription])
                 return
             }
-            self.countdown(opts.countdown, over: region) { r.start() }
+            self.countdown(opts.countdown, over: region) {
+                r.start()
+                if self.resident, let dir = self.lastSession { launchLive(dir) }
+            }
         }
     }
 
@@ -1843,6 +1859,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         busy = false
         picker = nil
         guard let dir = lastSession else { return }
+        cleanupLive(dir)
         if code != 0 {
             try? FileManager.default.removeItem(at: dir)       // cancelled / failed take: leave no empty folder
             if event["event"] as? String == "error" {

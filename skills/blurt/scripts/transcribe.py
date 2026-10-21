@@ -7,6 +7,10 @@ chunk keeps its offset in the original video, so any backend (even ones without 
 
   transcribe.py setup  --backend sensevoice          download models for a local backend
   transcribe.py run    <video|audio> [--out DIR]     transcribe; writes transcript.json + transcript.txt
+                                                     instant when live.py already transcribed the recording
+                                                     while it was made (<session>/live/); --force redoes it
+  transcribe.py run    <session dir>                 a shots session (snap mode): transcribe each voice note
+                                                     shots/NNN.wav into its shots.jsonl record ("said")
   transcribe.py backends                             list backends and whether they are ready
 
 Backends
@@ -37,8 +41,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (MODELS_DIR, die, ffmpeg_bin, fmt_ts, global_config, save_json, update_global_config,  # noqa: E402
-                     use_system_certs)
+from _common import (MODELS_DIR, die, ffmpeg_bin, fmt_ts, global_config, load_json, probe_duration,  # noqa: E402
+                     save_json, update_global_config, use_system_certs)
 
 use_system_certs()
 
@@ -66,6 +70,8 @@ def download(rel: str) -> Path:
     dest = MODELS_DIR / rel
     if dest.exists() and dest.stat().st_size > 0:
         return dest
+    if os.environ.get("BLURT_NO_DOWNLOAD"):  # live.py: never start a 240 MB download in the middle of a recording
+        die(f"{rel} is not downloaded")
     dest.parent.mkdir(parents=True, exist_ok=True)
     urls = MODEL_FILES[rel]
     if os.environ.get("BLURT_HF_MIRROR"):  # force the China-friendly mirror first
@@ -107,7 +113,8 @@ def load_audio(path: Path, track: int = 0) -> np.ndarray:
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768
 
 
-def vad_segments(samples: np.ndarray, max_speech: float = 25) -> list[tuple[float, float]]:
+def make_vad(max_speech: float = 25):
+    """Silero VAD as used everywhere (whole-file runs and live.py's streaming run share these settings)."""
     import sherpa_onnx
     cfg = sherpa_onnx.VadModelConfig()
     cfg.silero_vad.model = str(download("silero_vad.onnx"))
@@ -116,8 +123,16 @@ def vad_segments(samples: np.ndarray, max_speech: float = 25) -> list[tuple[floa
     cfg.silero_vad.min_speech_duration = 0.25
     cfg.silero_vad.max_speech_duration = max_speech
     cfg.sample_rate = SR
-    vad = sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60)
-    win = cfg.silero_vad.window_size
+    return sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60), cfg.silero_vad.window_size
+
+
+def pad_segment(s: float, e: float, dur: float = float("inf")) -> tuple[float, float]:
+    """Pad a little so words at the edges are not clipped."""
+    return max(0.0, s - 0.15), min(dur, e + 0.2)
+
+
+def vad_segments(samples: np.ndarray, max_speech: float = 25) -> list[tuple[float, float]]:
+    vad, win = make_vad(max_speech)
     segs = []
 
     def drain():
@@ -131,9 +146,8 @@ def vad_segments(samples: np.ndarray, max_speech: float = 25) -> list[tuple[floa
         drain()
     vad.flush()
     drain()
-    # pad a little so words at the edges are not clipped
     dur = len(samples) / SR
-    return [(max(0.0, s - 0.15), min(dur, e + 0.2)) for s, e in segs]
+    return [pad_segment(s, e, dur) for s, e in segs]
 
 
 def group_chunks(segs: list[tuple[float, float]], max_len: float, max_gap: float = 1.0) -> list[tuple[float, float]]:
@@ -167,7 +181,7 @@ class SenseVoice:
         import sherpa_onnx
         self.rec = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=str(download("sensevoice/model.int8.onnx")), tokens=str(download("sensevoice/tokens.txt")),
-            num_threads=min(8, os.cpu_count() or 4), use_itn=True, language=args.language or "auto")
+            num_threads=getattr(args, "threads", None) or min(8, os.cpu_count() or 4), use_itn=True, language=args.language or "auto")
 
     def transcribe(self, x):
         st = self.rec.create_stream()
@@ -297,57 +311,66 @@ BACKENDS = {"sensevoice": SenseVoice, "mlx-whisper": MlxWhisper, "faster-whisper
 LOCAL = {"sensevoice", "mlx-whisper", "faster-whisper"}
 
 
-# ------------------------------------------------------------------ commands
-def cmd_run(a):
-    src = Path(a.input)
-    if not src.exists():
-        die(f"{src} not found")
-    out = Path(a.out or src.parent)
+# ------------------------------------------------------------------ shared pipeline (also used by live.py)
+EXTRA_PACKAGES = {"mlx-whisper": "mlx_whisper", "faster-whisper": "faster_whisper"}  # needs `uv run --with <name>`
+API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
+
+
+def resolve_backend(a) -> str:
+    """Backend from --backend or the configured one; fills a.model / a.language / a.prompt from config."""
     cfg = global_config().get("asr", {})
-    name = a.backend or cfg.get("backend") or "sensevoice"
-    a.model = a.model or (cfg.get("model") if name == cfg.get("backend") else None)
-    a.language = a.language or cfg.get("language")
+    name = getattr(a, "backend", None) or cfg.get("backend") or "sensevoice"
+    a.model = getattr(a, "model", None) or (cfg.get("model") if name == cfg.get("backend") else None)
+    a.language = getattr(a, "language", None) or cfg.get("language")
+    a.prompt = getattr(a, "prompt", None)
     if name not in BACKENDS:
         die(f"unknown backend {name}; choose from {list(BACKENDS)}")
+    return name
 
-    t0 = time.time()
-    backend = BACKENDS[name](a)
-    workers = 1 if name in LOCAL else a.concurrency
-    # Blurt's native recorder writes the mic as track 0 and, with --system-audio, what the Mac played as track 1.
-    # Transcribing them apart labels who spoke: the user ("mic") or the call / demo ("system").
-    n_tracks = max(1, audio_tracks(src))
-    duration = speech = blank = 0.0
-    results = []
-    for track in range(min(n_tracks, 2)):
-        samples = load_audio(src, track)
-        duration = max(duration, len(samples) / SR)
-        segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
-        chunks = group_chunks(segs, backend.max_chunk)
-        label = ("mic", "system")[track] if n_tracks > 1 else None
-        sp = sum(e - s for s, e in chunks)
-        print(f"audio {fmt_ts(len(samples) / SR)}{f' ({label})' if label else ''}, speech {fmt_ts(sp)} "
-              f"in {len(chunks)} chunks → {name}", file=sys.stderr, flush=True)
 
-        def work(ch, samples=samples):
-            s, e = ch
-            return [(s + rs, s + min(re_, e - s), t) for rs, re_, t in backend.transcribe(samples[int(s * SR):int(e * SR)])]
+def backend_ready(name: str) -> str | None:
+    """None when `name` can run right now without downloading anything or asking for a key, else why not."""
+    have = lambda rel: (MODELS_DIR / rel).exists()  # noqa: E731
+    if name not in BACKENDS:
+        return f"unknown backend {name}"
+    if not have("silero_vad.onnx"):
+        return "VAD model not downloaded (transcribe.py setup)"
+    if name == "sensevoice" and not (have("sensevoice/model.int8.onnx") and have("sensevoice/tokens.txt")):
+        return "SenseVoice model not downloaded (transcribe.py setup)"
+    if name in API_KEYS and not any(os.environ.get(k) for k in API_KEYS[name]):
+        return f"no API key in the environment ({' / '.join(API_KEYS[name])})"
+    return None
 
-        with ThreadPoolExecutor(workers) as pool:
-            for i, ((s, e), r) in enumerate(zip(chunks, pool.map(work, chunks))):
-                results.extend((s_, e_, t, label) for s_, e_, t in r)
-                if track == 0 and not any(ch.isalnum() for *_, t in r for ch in t):
-                    blank += e - s
-                if (i + 1) % 20 == 0:
-                    print(f"  {i + 1}/{len(chunks)} chunks", file=sys.stderr, flush=True)
-        if track == 0:
-            speech = sp
 
-    results.sort(key=lambda r: r[0])
+def model_label(name: str, backend, a) -> str | None:
+    if name == "sensevoice":
+        return "sense-voice-small-int8"
+    m = getattr(backend, "model", None)
+    return m if isinstance(m, str) else getattr(backend, "repo", None) or a.model
+
+
+def decode_slice(backend, x: np.ndarray, s: float, e: float) -> list[tuple[float, float, str]]:
+    """Transcribe x (= the samples of chunk s..e seconds) → segments on the original timeline."""
+    return [(s + rs, s + min(re_, e - s), t) for rs, re_, t in backend.transcribe(x)]
+
+
+def decode_chunk(backend, samples: np.ndarray, s: float, e: float) -> list[tuple[float, float, str]]:
+    return decode_slice(backend, samples[int(s * SR):int(e * SR)], s, e)
+
+
+def is_blank(results) -> bool:
+    return not any(ch.isalnum() for *_, t in results for ch in t)
+
+
+def build_transcript(source: str, name: str, backend, a, duration: float, speech: float, blank: float,
+                     results: list, elapsed: float) -> dict:
+    """results: [(start, end, text, speaker|None)] → the transcript.json document."""
+    results = sorted(results, key=lambda r: r[0])
     segments = [{"start": round(s, 2), "end": round(e, 2), "text": t, **({"speaker": lb} if lb else {})}
                 for s, e, t, lb in results if t]
-    data = {"source": src.name, "backend": name, "model": getattr(backend, "model", None) if name != "sensevoice" else "sense-voice-small-int8",
+    data = {"source": source, "backend": name, "model": model_label(name, backend, a),
             "duration": round(duration, 2), "speech_seconds": round(speech, 2),
-            "elapsed_seconds": round(time.time() - t0, 1), "segments": segments}
+            "elapsed_seconds": round(elapsed, 1), "segments": segments}
     # SenseVoice knows only zh/en/ja/ko/yue; other languages (German…) mostly come back as "." tagged <|en|>, so
     # the language tag can't catch it. Supported speech that VAD kept practically never decodes to nothing.
     # Mic track only: system audio may be music or effects.
@@ -355,14 +378,186 @@ def cmd_run(a):
         data["warning"] = (f"{blank:.0f}s of {speech:.0f}s of speech decoded to nothing: the language is probably "
                            "not zh/en/ja/ko/yue, which is all SenseVoice supports. Re-run with a Whisper or cloud "
                            "backend (see reference/asr.md) and pass --language.")
-        print("warning: " + data["warning"], file=sys.stderr, flush=True)
+    return data
+
+
+def write_transcript(out: Path, data: dict) -> list[str]:
     save_json(out / "transcript.json", data)
     lines = [f"[{fmt_ts(s['start'])}-{fmt_ts(s['end'])}] {'(system) ' if s.get('speaker') == 'system' else ''}{s['text']}"
-             for s in segments]
+             for s in data["segments"]]
     (out / "transcript.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in data.items() if k != "segments"} | {"segments": len(segments),
-                                                                              "files": [str(out / "transcript.json"), str(out / "transcript.txt")]},
+    return [str(out / "transcript.json"), str(out / "transcript.txt")]
+
+
+def print_summary(data: dict, files: list[str], **extra) -> None:
+    print(json.dumps({k: v for k, v in data.items() if k != "segments"} | {"segments": len(data["segments"]),
+                                                                              "files": files} | extra,
                      ensure_ascii=False, indent=2))
+
+
+def transcribe_track(samples: np.ndarray, backend, name: str, workers: int, label: str | None = None,
+                     quiet: bool = False):
+    """VAD → chunks → backend. Returns ([(start, end, text, label)], speech seconds, seconds that decoded to nothing)."""
+    segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
+    chunks = group_chunks(segs, backend.max_chunk)
+    sp = sum(e - s for s, e in chunks)
+    if not quiet:
+        print(f"audio {fmt_ts(len(samples) / SR)}{f' ({label})' if label else ''}, speech {fmt_ts(sp)} "
+              f"in {len(chunks)} chunks → {name}", file=sys.stderr, flush=True)
+    results, blank = [], 0.0
+    with ThreadPoolExecutor(workers) as pool:
+        decoded = pool.map(lambda ch: decode_chunk(backend, samples, *ch), chunks)
+        for i, ((s, e), r) in enumerate(zip(chunks, decoded)):
+            results.extend((s_, e_, t, label) for s_, e_, t in r)
+            if is_blank(r):
+                blank += e - s
+            if (i + 1) % 20 == 0 and not quiet:
+                print(f"  {i + 1}/{len(chunks)} chunks", file=sys.stderr, flush=True)
+    return results, sp, blank
+
+
+# ------------------------------------------------------------------ reuse live.py's transcript (docs/design/snap-and-live.md)
+def live_transcript(src: Path, out: Path, a, explicit: dict, wait: float = 180) -> dict | None:
+    """The transcript live.py finished during this very recording (same session, same length), else None.
+    If live.py is still draining after the stop, wait for it — its status.json stays fresh while it works."""
+    if getattr(a, "force", False) or out.resolve() != src.parent.resolve():
+        return None
+    live = src.parent / "live"
+    deadline = time.time() + wait
+    while True:
+        st = load_json(live / "status.json") or {}
+        if st.get("asr") == "done":
+            break
+        fresh = time.time() - float(st.get("updated") or 0) < 15
+        if st.get("asr") != "running" or not (live / "stop").exists() or not fresh or time.time() > deadline:
+            return None
+        time.sleep(0.5)
+    try:
+        data = load_json(out / "transcript.json")
+    except (ValueError, OSError):
+        return None
+    if not isinstance(data, dict) or data.get("source") != src.name or not isinstance(data.get("segments"), list):
+        return None
+    if explicit.get("backend") and explicit["backend"] != data.get("backend"):
+        return None  # explicitly asked for another backend / model
+    if explicit.get("model") and explicit["model"] != data.get("model"):
+        return None
+    if explicit.get("prompt") and data.get("backend") != "sensevoice":
+        return None  # a glossary helps Whisper / API backends (live.py has none): redo with it
+    try:
+        dur = probe_duration(src)
+    except Exception:
+        return None
+    if abs(dur - float(data.get("duration") or 0)) > max(2.0, 0.02 * dur):
+        return None  # another take (restart) or a cut-short live run
+    return data
+
+
+# ------------------------------------------------------------------ shots (snap mode): voice notes → "said"
+def read_shots(session: Path) -> dict:
+    """shots.jsonl → {n: merged record}; later lines win."""
+    latest: dict = {}
+    log = session / "shots.jsonl"
+    if log.exists():
+        for line in log.read_text(encoding="utf-8").splitlines():
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(rec, dict) and rec.get("n") is not None:
+                latest[rec["n"]] = {**latest.get(rec["n"], {}), **rec}
+    return latest
+
+
+def shot_voice(session: Path, n, rec: dict) -> Path | None:
+    voice = rec.get("voice")
+    if isinstance(voice, str) and voice:
+        p = session / voice
+        if not p.exists() and (session / "shots" / Path(voice).name).exists():
+            p = session / "shots" / Path(voice).name
+        return p if p.exists() else None
+    if voice is False:
+        return None
+    try:
+        p = session / "shots" / f"{int(n):03d}.wav"
+    except (TypeError, ValueError):
+        return None
+    return p if p.exists() else None
+
+
+def transcribe_shots(session: Path, a) -> None:
+    latest = read_shots(session)
+    todo = [(n, rec, wav) for n, rec in latest.items()
+            if (wav := shot_voice(session, n, rec)) and (a.force or "said" not in rec)]
+    name = resolve_backend(a)
+    t0 = time.time()
+    done = []
+    if todo:
+        backend = BACKENDS[name](a)
+        workers = 1 if name in LOCAL else a.concurrency
+        for n, rec, wav in todo:
+            results, _, _ = transcribe_track(load_audio(wav), backend, name, workers, quiet=True)
+            said = " ".join(t for _s, _e, t, _lb in sorted(results, key=lambda r: r[0]) if t).strip()
+            # an update line with the same n (full record + "said"); later lines win — docs/design/snap-and-live.md
+            with open(session / "shots.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({**rec, "said": said}, ensure_ascii=False) + "\n")
+            done.append({"n": n, "said": said})
+    print(json.dumps({"session": str(session), "mode": "shots", "shots": len(latest), "transcribed": len(done),
+                      "backend": name, "elapsed_seconds": round(time.time() - t0, 1), "said": done},
+                     ensure_ascii=False, indent=2))
+
+
+# ------------------------------------------------------------------ commands
+def cmd_run(a):
+    src = Path(a.input)
+    if not src.exists():
+        die(f"{src} not found")
+    if src.is_dir():  # a session dir: a shots session, or the recording inside it
+        meta = load_json(src / "meta.json", {}) or {}
+        recs = sorted(src.glob("recording.*"))
+        if meta.get("mode") == "shots" or (not recs and (src / "shots.jsonl").exists()):
+            return transcribe_shots(src, a)
+        if not recs:
+            die(f"no recording.* in {src}")
+        src = recs[0]
+    out = Path(a.out or src.parent)
+    explicit = {"backend": a.backend, "model": a.model, "prompt": a.prompt}
+    name = resolve_backend(a)
+
+    data = live_transcript(src, out, a, explicit)
+    n_tracks = max(1, audio_tracks(src))
+    if data is not None and (n_tracks == 1 or any(s.get("speaker") == "system" for s in data["segments"])):
+        files = [str(out / "transcript.json"), str(out / "transcript.txt")]
+        if not (out / "transcript.txt").exists():
+            files = write_transcript(out, data)
+        print("transcript was already made during the recording (live/); --force redoes it", file=sys.stderr, flush=True)
+        return print_summary(data, files, live=True)
+
+    t0 = time.time()
+    backend = BACKENDS[name](a)
+    workers = 1 if name in LOCAL else a.concurrency
+    # Blurt's native recorder writes the mic as track 0 and, with --system-audio, what the Mac played as track 1.
+    # Transcribing them apart labels who spoke: the user ("mic") or the call / demo ("system").
+    duration = speech = blank = 0.0
+    results = []
+    for track in range(min(n_tracks, 2)):
+        label = ("mic", "system")[track] if n_tracks > 1 else None
+        if track == 0 and data is not None:  # live.py already did the mic; only the system track is left
+            results += [(s["start"], s["end"], s["text"], label) for s in data["segments"]]
+            duration, speech = float(data["duration"]), float(data["speech_seconds"])
+            print("mic track: reusing the live transcript", file=sys.stderr, flush=True)
+            continue
+        samples = load_audio(src, track)
+        duration = max(duration, len(samples) / SR)
+        r, sp, bl = transcribe_track(samples, backend, name, workers, label)
+        results += r
+        if track == 0:
+            speech, blank = sp, bl
+
+    data = build_transcript(src.name, name, backend, a, duration, speech, blank, results, time.time() - t0)
+    if data.get("warning"):
+        print("warning: " + data["warning"], file=sys.stderr, flush=True)
+    print_summary(data, write_transcript(out, data))
 
 
 def cmd_setup(a):
@@ -403,6 +598,7 @@ def main():
     r.add_argument("--language", help="e.g. zh, en; default auto-detect")
     r.add_argument("--prompt", help="glossary / context: product & module names, jargon (Whisper/API backends)")
     r.add_argument("--concurrency", type=int, default=4)
+    r.add_argument("--force", action="store_true", help="transcribe again even if live.py already did")
     s = sub.add_parser("setup")
     s.add_argument("--backend", choices=list(BACKENDS), default="sensevoice")
     s.add_argument("--model")

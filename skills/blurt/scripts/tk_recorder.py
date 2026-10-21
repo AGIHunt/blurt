@@ -223,6 +223,7 @@ class TkRecorder:
         self.seg_started = None
         self.events = []
         self.result = None
+        self.live_audio = False          # record.py: also write live/audio.pcm for live.py
 
     def t(self, a, b):
         return a if zh(self.lang) else b
@@ -304,7 +305,8 @@ class TkRecorder:
         self.show_chrome()
         if self.mic:
             from record import MicRecorder
-            self.audio = MicRecorder(self.mic, self.session / "audio.wav", gate=lambda: not self.paused)
+            self.audio = MicRecorder(self.mic, self.session / "audio.wav", gate=lambda: not self.paused,
+                                     live=self.session / "live" if self.live_audio else None)
             self.audio.start()
         self.start_segment()
         self.on_event({"event": "recording"})
@@ -358,6 +360,7 @@ class TkRecorder:
     def tick(self, gen=0):
         if self.result or gen != getattr(self, "gen", 0):
             return
+        self.resolve_live_leads()
         s = int(self.elapsed())
         self.clock.config(text=f"{s // 60:02d}:{s % 60:02d}" if s < 3600 else f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}")
         self.dot.config(fg=AMBER if self.paused else ("#ff3b30" if int(time.time() * 2) % 2 else "#7a1f1a"))
@@ -398,8 +401,32 @@ class TkRecorder:
         seg = {"video": out, "log": log, "fh": fh, "audio_from": self.audio.frames if self.audio else 0,
                "wall_start": time.time()}
         seg["proc"] = subprocess.Popen(self.video_cmd(out), stdin=subprocess.PIPE, stdout=fh, stderr=fh)
+        if self.audio and self.audio.live:
+            seg["live"] = self.audio.live.segment(seg["audio_from"])
         self.segments.append(seg)
         self.seg_started = time.time()
+
+    def resolve_live_leads(self):
+        """live/audio.pcm drops the same lead per segment as finalize() does, once ffmpeg logged its first frame."""
+        live = self.audio.live if self.audio else None
+        if not live:
+            return
+        from record import first_frame_wall
+        for i, seg in enumerate(self.segments):
+            j = seg.get("live")
+            if j is None or live.lead_known(j):
+                continue
+            v0 = first_frame_wall(seg["log"])
+            aw = self.audio.first_wall if i == 0 else seg["wall_start"]
+            if v0 and aw:
+                live.set_lead(j, v0 - aw)
+
+    def end_live(self, discard: bool):
+        live = self.audio.live if self.audio else None
+        if live:
+            if not discard:
+                self.resolve_live_leads()
+            live.discard() if discard else live.finish()
 
     def end_segment(self):
         seg = self.segments[-1]
@@ -465,6 +492,7 @@ class TkRecorder:
             self.end_segment()
         if self.audio:
             self.audio.stop()
+            self.end_live(discard=True)
         for w in [self.hud, *self.borders]:
             w.destroy()
         for seg in self.segments:
@@ -489,6 +517,7 @@ class TkRecorder:
             self.end_segment()
         if self.audio:
             self.audio.stop()
+            self.end_live(discard)
         for w in [self.hud, *self.borders]:
             w.destroy()
         self.result = {"event": "cancelled", "reason": "discarded"} if discard else self.finalize()
