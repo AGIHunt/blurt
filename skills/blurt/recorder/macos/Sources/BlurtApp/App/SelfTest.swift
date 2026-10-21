@@ -35,6 +35,13 @@ func runSelfTest(_ args: [String]) -> Never {
     check("config_prunes", cfg.all.isEmpty)
     try? FileManager.default.removeItem(at: cfg.url)
 
+    // blurt:// routes (C7 + blurt://open, which the Tauri app and the docs use for the main window)
+    check("url_routes", URLRouter.route(URL(string: "blurt://open")!) == .open
+          && URLRouter.route(URL(string: "blurt://item/01ABC")!) == .item("01ABC")
+          && URLRouter.route(URL(string: "blurt://settings/agents")!) == .settings("agents")
+          && URLRouter.route(URL(string: "blurt://record")!) == .shell("record")
+          && URLRouter.route(URL(string: "blurt://nope")!) == .unknown)
+
     // ScriptRunner
     let r = ScriptRunner.shared
     check("uv", r.uvAvailable, r.uvPath ?? "missing")
