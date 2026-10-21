@@ -1,7 +1,7 @@
 {
   "name": "@blurt/desktop",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "Blurt main window for the Windows/Linux Tauri app (apps/desktop/src-tauri). Opens in a plain browser with mock data for UI work.",
   "scripts": {
@@ -11,10 +11,13 @@
     "test": "tsc --noEmit && vitest run"
   },
   "dependencies": {
+    "@blurt/i18n": "workspace:*",
     "@blurt/icons": "workspace:*",
     "@blurt/review": "workspace:*",
     "@blurt/ui": "workspace:*",
     "@tauri-apps/api": "2.12.4",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "react": "19.2.0",
     "react-dom": "19.2.0"
   },

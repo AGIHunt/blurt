@@ -1,5 +1,5 @@
 //! Running the skill's Python CLIs (`uv run --script <scripts>/<name> …`). They print one JSON line per call (C2/C3/C5);
-//! `run` returns the last JSON line of stdout. All writes to items.json go through here (`items.py …`).
+//! `run` returns the last JSON line of stdout; a failure's message ends with the CLI's machine code as ` [code]`.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -100,7 +100,9 @@ impl Runner {
             .as_ref()
             .and_then(|v| v.get("error").and_then(Value::as_str).map(str::to_owned))
             .unwrap_or_else(|| tail(&errs, 600));
-        Err(ScriptError { code, message: format!("{script} {}: {message}", args.first().map_or("", |s| s.as_str())), stdout: out, stderr: errs })
+        // the CLI's machine code (contract: `code`) rides at the end, in brackets: the UI words it in its language
+        let machine = last.as_ref().and_then(|v| v.get("code").and_then(Value::as_str)).map(|c| format!(" [{c}]")).unwrap_or_default();
+        Err(ScriptError { code, message: format!("{script} {}: {message}{machine}", args.first().map_or("", |s| s.as_str())), stdout: out, stderr: errs })
     }
 }
 
@@ -110,24 +112,29 @@ fn tail(s: &str, n: usize) -> String {
     t[start..].to_string()
 }
 
-/// Wait with a deadline, reading both pipes on threads so a chatty child can't block on a full pipe.
+/// Wait with a deadline, reading both pipes on threads so a chatty child can't block on a full pipe. A daemon the
+/// child started (the tmux server) may inherit the pipes and keep them open: once the child has exited we wait for
+/// the rest of its output only briefly.
 fn wait(mut child: Child, timeout: Duration) -> Result<(Option<i32>, String, String), String> {
-    let mut so = child.stdout.take();
-    let mut se = child.stderr.take();
-    let t1 = std::thread::spawn(move || {
-        let mut b = Vec::new();
-        if let Some(s) = so.as_mut() {
-            let _ = s.read_to_end(&mut b);
-        }
-        String::from_utf8_lossy(&b).into_owned()
-    });
-    let t2 = std::thread::spawn(move || {
-        let mut b = Vec::new();
-        if let Some(s) = se.as_mut() {
-            let _ = s.read_to_end(&mut b);
-        }
-        String::from_utf8_lossy(&b).into_owned()
-    });
+    fn pump(stream: Option<impl Read + Send + 'static>) -> std::sync::mpsc::Receiver<String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut b = Vec::new();
+            if let Some(mut s) = stream {
+                let mut chunk = [0u8; 8192];
+                loop {
+                    match s.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => b.extend_from_slice(&chunk[..n]),
+                    }
+                    let _ = tx.send(String::from_utf8_lossy(&b).into_owned()); // what we have so far
+                }
+            }
+            let _ = tx.send(String::from_utf8_lossy(&b).into_owned());
+        });
+        rx
+    }
+    let (so, se) = (pump(child.stdout.take()), pump(child.stderr.take()));
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -141,7 +148,15 @@ fn wait(mut child: Child, timeout: Duration) -> Result<(Option<i32>, String, Str
             Err(e) => return Err(e.to_string()),
         }
     };
-    Ok((status.code(), t1.join().unwrap_or_default(), t2.join().unwrap_or_default()))
+    let drain = |rx: std::sync::mpsc::Receiver<String>| {
+        let mut last = String::new();
+        let until = Instant::now() + Duration::from_secs(2);
+        while let Ok(v) = rx.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            last = v;
+        }
+        last
+    };
+    Ok((status.code(), drain(so), drain(se)))
 }
 
 /// A Command for argv with the user's environment (login-shell PATH) and, on Windows, no console window.
@@ -203,6 +218,29 @@ fn login_shell_path() -> Option<String> {
         .ok()?;
     let (code, out, _) = wait(child, Duration::from_secs(4)).ok()?;
     (code == Some(0) && !out.trim().is_empty()).then(|| out.trim().to_string())
+}
+
+/// A long-lived helper (`uv run … sessions.py monitor`): in a process group of its own, so [`kill_tree`] also ends
+/// the Python that `uv run` starts under it.
+pub fn daemon_command(argv: &[String]) -> Command {
+    let mut c = command(argv);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        c.process_group(0);
+    }
+    c
+}
+
+/// End a [`daemon_command`] child and everything it started.
+pub fn kill_tree(child: &mut Child) {
+    let pid = child.id().to_string();
+    #[cfg(unix)]
+    let _ = Command::new("kill").args(["-TERM", "--", &format!("-{pid}")]).stderr(Stdio::null()).status();
+    #[cfg(windows)]
+    let _ = command(&["taskkill".into(), "/T".into(), "/F".into(), "/PID".into(), pid]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 pub fn s(p: &Path) -> String {

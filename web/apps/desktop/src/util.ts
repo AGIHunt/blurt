@@ -1,27 +1,3 @@
-let lang: 'zh' | 'en' = typeof navigator !== 'undefined' && navigator.language?.startsWith('zh') ? 'zh' : 'en';
-export const setLang = (l: 'zh' | 'en') => (lang = l);
-export const getLang = () => lang;
-/** t('中文', 'English') */
-export const t = (zh: string, en: string) => (lang === 'zh' ? zh : en);
-
-export function ago(epoch: number | null | undefined, now = Date.now() / 1000): string {
-  if (!epoch) return '';
-  const d = Math.max(0, now - epoch);
-  if (d < 60) return t('刚刚', 'now');
-  if (d < 3600) return `${Math.floor(d / 60)}${t('分钟', 'm')}`;
-  if (d < 86400) return `${Math.floor(d / 3600)}${t('小时', 'h')}`;
-  if (d < 86400 * 30) return `${Math.floor(d / 86400)}${t('天', 'd')}`;
-  return new Date(epoch * 1000).toLocaleDateString();
-}
-
-/** Session state as an egg (§2.1): icon names of ./icons (→ @blurt/icons). */
-export function egg(s: { processed: number; processing: number; reviewed: number }): { icon: string; label: string; cls: string } {
-  if (!s.processed) return { icon: 'egg', label: t('待整理', 'to process'), cls: 'egg-ic' };
-  if (s.processing) return { icon: 'egg', label: t('整理中', 'processing'), cls: 'egg-ic wobble' };
-  if (!s.reviewed) return { icon: 'chick', label: t('待审核', 'to review'), cls: 'egg-ic' };
-  return { icon: 'chicken', label: t('已审核', 'reviewed'), cls: 'egg-ic is-done' };
-}
-
 /** A keydown → the config grammar ("ctrl+opt+shift+cmd+KEY"), or null while only modifiers are down. */
 export function comboFromEvent(e: { ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean; code: string; key: string }): string | null {
   const c = e.code;
@@ -61,5 +37,21 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
 
 export function inField(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
-  return !!el?.closest?.('input, textarea, select, [contenteditable="true"]');
+  return !!el?.closest?.('input, textarea, select, [contenteditable="true"], .xterm');
+}
+
+/** Selection with Shift-ranges over the list order. */
+export function nextSelection(order: string[], cur: Set<string>, anchor: string | null, uid: string, how: 'one' | 'toggle' | 'range'): Set<string> {
+  if (how === 'one') return new Set([uid]);
+  if (how === 'toggle') {
+    const s = new Set(cur);
+    if (s.has(uid)) s.delete(uid);
+    else s.add(uid);
+    return s;
+  }
+  const a = anchor ? order.indexOf(anchor) : -1;
+  const b = order.indexOf(uid);
+  if (a < 0 || b < 0) return new Set([uid]);
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  return new Set(order.slice(lo, hi + 1));
 }

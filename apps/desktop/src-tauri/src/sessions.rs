@@ -68,8 +68,18 @@ pub fn dispatch(app: &AppHandle, runner: &Runner, o: &DispatchOpts) -> Result<Va
             let env = l.get("env").and_then(Value::as_object).cloned().unwrap_or_default();
             let cwd = l["cwd"].as_str().map(PathBuf::from);
             let job = l["job"].as_str().map(str::to_owned);
-            if let Err(e) = pty::spawn(app, &argv, &env, cwd, job, true, 120, 32) {
-                eprintln!("blurt: app runner: {e}");
+            match pty::spawn(app, &argv, &env, cwd, job, true, 120, 32) {
+                // agents that can't take the prompt as an argument get it pasted once they are up (P2: `paste`)
+                Ok(id) => {
+                    if let Some(text) = l["paste"].as_str().filter(|t| !t.is_empty()).map(str::to_owned) {
+                        let app = app.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_secs(3));
+                            let _ = pty::write(&app, id, &format!("\x1b[200~{text}\x1b[201~\r"));
+                        });
+                    }
+                }
+                Err(e) => eprintln!("blurt: app runner: {e}"),
             }
         }
     }
@@ -139,7 +149,7 @@ pub fn start_monitor(app: &AppHandle) {
         return;
     }
     let Ok(argv) = runner.argv("sessions.py", &["monitor".into()]) else { return };
-    let mut c = scripts::command(&argv);
+    let mut c = scripts::daemon_command(&argv);
     c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     match c.spawn() {
         Ok(child) => *app.state::<Monitor>().0.lock().unwrap() = Some(child),
@@ -149,8 +159,7 @@ pub fn start_monitor(app: &AppHandle) {
 
 pub fn stop_monitor(app: &AppHandle) {
     if let Some(mut c) = app.state::<Monitor>().0.lock().unwrap().take() {
-        let _ = c.kill();
-        let _ = c.wait();
+        scripts::kill_tree(&mut c);
     }
 }
 
