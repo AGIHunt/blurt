@@ -86,7 +86,6 @@ kbd{font:600 10.5px/1 var(--mono);padding:3px 5px;border-radius:5px;background:v
 .qi .ki{margin-right:6px;color:var(--mute)}
 .qi.cur .ki{color:var(--ink-2)}
 .qd{font-style:normal;color:var(--amber)}
-.kic{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
 
 .stage{position:relative;overflow:hidden;display:flex;flex-direction:column;border-radius:18px 18px 0 0;background:var(--bg-2)}
 .slide{position:absolute;inset:0;display:flex;flex-direction:column;padding:20px 22px 88px;will-change:transform,opacity}
@@ -245,9 +244,77 @@ html:not([data-theme=light]) .card:hover .img{filter:none}
 @media (max-width:1000px){.brand small,.counts,.saved,#langBtn,#helpBtn{display:none}}
 @media (max-width:860px){body{overflow:auto}.focus{display:flex;flex-direction:column;height:auto}.stage{height:64vh;flex:none}.side{overflow:visible}.progress .bar{width:90px}.act kbd,.act.ghost{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- kind eggs, progressive loading ---------- */
+:root{--shine:rgba(255,255,255,.07);--wait:var(--panel)}
+:root[data-theme=light]{--shine:rgba(255,255,255,.85);--wait:#e6e4df}
+.egg{width:14px;height:14px;flex:none;vertical-align:-2px;overflow:visible}
+.chip .egg{width:15px;height:15px;margin-left:-2px}
+.qi .ki .egg{width:13px;height:13px;vertical-align:-1.5px}
+.proc{display:flex;align-items:center;gap:7px;height:28px;padding:0 11px 0 9px;border-radius:99px;background:var(--panel-2);color:var(--mute);font-size:12.5px;white-space:nowrap;transition:opacity .45s}
+.proc b{font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.proc .egg{width:14px;height:14px;transform-origin:50% 88%;animation:wobble 1.8s ease-in-out infinite}
+.proc.stalled .egg{animation:none;opacity:.6}
+.proc.fin{color:var(--keep)}.proc.fin .ico{width:13px;height:13px;stroke-width:3}
+.proc.out{opacity:0}
+@media (max-width:1320px){.proc:not(.stalled) .long{display:none}}
+html:not([data-theme=light]) .proc{background:var(--hover)}
+@keyframes wobble{0%,55%,100%{transform:rotate(0)}12%{transform:rotate(-10deg)}26%{transform:rotate(8deg)}40%{transform:rotate(-4deg)}}
+.shim{position:relative;overflow:hidden}
+.shim::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(100deg,transparent 20%,var(--shine) 50%,transparent 80%);animation:shimmer 1.5s ease-in-out infinite}
+@keyframes shimmer{to{transform:translateX(100%)}}
+.shot.wait{background:var(--wait);box-shadow:0 0 0 1px var(--ring);display:grid;place-items:center}
+.wait-in{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--faint);font-size:13px}
+.wait-in .egg{width:30px;height:30px;transform-origin:50% 88%;animation:wobble 1.8s ease-in-out infinite;opacity:.9}
+.th.shim{background:var(--wait)}
+.shot.fresh{transition:opacity .6s ease-out}
+.fresh:not(.shot){animation:fresh .6s cubic-bezier(.2,.8,.2,1)}
+@keyframes fresh{from{opacity:0;transform:scale(.97)}}
+.card .img.shim{background:var(--wait);font-size:0}
+.card .img.shim .egg{width:24px;height:24px;opacity:.85}
+.modal .warn{display:flex;gap:9px;align-items:flex-start;margin:-4px 0 14px;padding:10px 12px;border-radius:10px;background:var(--amber-soft);color:var(--ink-2);font-size:13px}
+.modal .warn .egg{margin-top:2px}
 </style>
 </head>
 <body>
+<!-- kind eggs (16×16): issue = speckled with a tiny bug, idea = golden, note = white, task = brown with a check, custom = pastel (currentColor) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <path id="egg-o" d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z"/>
+  <radialGradient id="eg-gloss" cx=".34" cy=".26" r=".62"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".45" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+  <radialGradient id="eg-issue" cx=".4" cy=".34" r=".78"><stop offset="0" stop-color="#fbf4e6"/><stop offset=".7" stop-color="#ead7b5"/><stop offset="1" stop-color="#c9ad80"/></radialGradient>
+  <radialGradient id="eg-idea" cx=".4" cy=".32" r=".8"><stop offset="0" stop-color="#fff1a8"/><stop offset=".5" stop-color="#f4c22e"/><stop offset="1" stop-color="#bf830a"/></radialGradient>
+  <radialGradient id="eg-note" cx=".4" cy=".32" r=".82"><stop offset="0" stop-color="#fff"/><stop offset=".72" stop-color="#f2efe9"/><stop offset="1" stop-color="#d6d0c4"/></radialGradient>
+  <radialGradient id="eg-task" cx=".4" cy=".32" r=".82"><stop offset="0" stop-color="#e9b783"/><stop offset=".6" stop-color="#c3824a"/><stop offset="1" stop-color="#8e5427"/></radialGradient>
+  <radialGradient id="eg-shade" cx=".5" cy=".42" r=".62"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></radialGradient>
+  <symbol id="egg-issue" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-issue)" stroke="#7a5c38" stroke-opacity=".5" stroke-width=".7"/>
+    <g fill="#9a7650"><circle cx="5.5" cy="6.6" r=".5"/><circle cx="7.3" cy="3.9" r=".35"/><circle cx="10.5" cy="5.6" r=".4"/><circle cx="5" cy="10.4" r=".42"/><circle cx="11.5" cy="8.4" r=".3"/><circle cx="6.6" cy="13" r=".3"/></g>
+    <g fill="#33261d" stroke="#33261d" stroke-width=".6" stroke-linecap="round" transform="translate(9.4 11) scale(.72) translate(-8.8 -10.6)">
+      <path d="M7.55 9.7 6.3 9.15M7.4 10.9H6.05M7.6 12.05l-1.05.75M10.05 9.7l1.25-.55M10.2 10.9h1.35M10 12.05l1.05.75M8.35 7.6l-.55-.85M9.25 7.6l.55-.85" fill="none"/>
+      <ellipse cx="8.8" cy="10.85" rx="1.55" ry="1.9" stroke="none"/><circle cx="8.8" cy="8.55" r=".85" stroke="none"/>
+    </g>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+  </symbol>
+  <symbol id="egg-idea" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-idea)" stroke="#8a5d05" stroke-opacity=".55" stroke-width=".7"/>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+    <path d="M10.4 4.1l.32.9.9.32-.9.32-.32.9-.32-.9-.9-.32.9-.32z" fill="#fff"/>
+  </symbol>
+  <symbol id="egg-note" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-note)" stroke="#6f695e" stroke-opacity=".75" stroke-width=".75"/>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+  </symbol>
+  <symbol id="egg-task" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="url(#eg-task)" stroke="#5e3615" stroke-opacity=".55" stroke-width=".7"/>
+    <use href="#egg-o" fill="url(#eg-gloss)" opacity=".7"/>
+    <path d="M5.5 9.6l1.75 1.75 3.3-3.6" fill="none" stroke="#fff" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="egg-custom" viewBox="0 0 16 16">
+    <use href="#egg-o" fill="currentColor"/>
+    <use href="#egg-o" fill="url(#eg-shade)" stroke="#000" stroke-opacity=".22" stroke-width=".7"/>
+    <use href="#egg-o" fill="url(#eg-gloss)"/>
+  </symbol>
+</defs></svg>
 <header class="top">
   <div class="brand"><img class="logo" src="/icon.png" alt="">blurt<small id="sessionName"></small></div>
   <div class="progress">
@@ -255,6 +322,7 @@ html:not([data-theme=light]) .card:hover .img{filter:none}
     <div class="counts" id="counts"></div>
   </div>
   <div class="sp"></div>
+  <span class="proc" id="proc" hidden></span>
   <span class="saved" id="saved"></span>
   <div class="seg" role="tablist">
     <button id="vOverview" data-i18n="overview" hidden></button>
@@ -311,7 +379,9 @@ const T = {
     k_ov:"Overview",k_view:"Focus ⇄ list",k_finish:"Finish review",k_help:"This panel",types:{bug:"Bug",ui:"UI",ux:"UX",copy:"Copy",perf:"Perf"},
     overview:"Overview",kinds:{issue:"Issue",idea:"Idea",note:"Note",task:"Task"},allKinds:"All kinds",
     summary:"The idea",summaryNote:"Summary",why:"Why",inspired_by:"Inspired by",next_steps:"Next steps",open_questions:"Still open",
-    details:"Details",due:"Due",tags:"Tags",source:"Source (URL)",items:"items",confirmTitle2:"Hand this back to your agent?"},
+    details:"Details",due:"Due",tags:"Tags",source:"Source (URL)",items:"items",confirmTitle2:"Hand this back to your agent?",
+    working:"Working… {n} items so far, adding screenshots",stalled:"{n} items · your agent seems to have stopped",finished:"Screenshots are in",
+    waitShot:"Adding screenshot…",stillProc:"Screenshots are still coming in. You can hand it back now — your agent finishes them in the background."},
   zh:{focus:"专注",list:"列表",keep:"保留",drop:"丢弃",merge:"并入上一条",undo:"撤销",finish:"完成审核",pending:"待审",kept:"保留",dropped:"丢弃",
     module:"所属模块",owner:"负责人",actual:"实际效果",expected:"预期效果",steps:"复现步骤",code:"疑似代码位置",quote:"你当时说",
     playOrig:"回到录屏这一刻",answer:"在这里回答…",ask:"需要你确认",sevHigh:"严重",sevMedium:"一般",sevLow:"轻微",
@@ -325,7 +395,9 @@ const T = {
     k_ov:"总览",k_view:"专注 ⇄ 列表",k_finish:"完成审核",k_help:"显示本面板",types:{bug:"Bug",ui:"界面",ux:"体验",copy:"文案",perf:"性能"},
     overview:"总览",kinds:{issue:"问题",idea:"想法",note:"笔记",task:"待办"},allKinds:"全部类型",
     summary:"想法",summaryNote:"概述",why:"为什么",inspired_by:"灵感来源",next_steps:"下一步",open_questions:"待想清楚",
-    details:"详情",due:"截止",tags:"标签",source:"来源链接",items:"条",confirmTitle2:"把整理结果交回 agent？"}
+    details:"详情",due:"截止",tags:"标签",source:"来源链接",items:"条",confirmTitle2:"把整理结果交回 agent？",
+    working:"整理中… 已出 {n} 条，截图补充中",stalled:"已出 {n} 条 · 整理好像停了",finished:"截图都补齐了",
+    waitShot:"截图补充中…",stillProc:"截图还在补充中。现在交回也可以，agent 会在后台补齐。"}
 };
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let lang=(store.get("blurt.lang")||navigator.language||"en").startsWith("zh")?"zh":"en";
@@ -335,13 +407,19 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const file=p=>p?"/files/"+String(p).split("/").map(encodeURIComponent).join("/"):"";
 const fmt=s=>{s=Math.max(0,+s||0);const m=Math.floor(s/60),r=Math.floor(s%60);return `${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`};
 const SEV=["high","medium","low"];
-const KIND_ICON={issue:'<svg class="kic" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.6 5.4a2.4 2.4 0 0 1 4.8 0"/><rect x="4.6" y="5.4" width="6.8" height="7.6" rx="3.4"/><path d="M8 7.6v5.2M2.6 8.6h2M11.4 8.6h2M3.2 12.2l1.5-1M12.8 12.2l-1.5-1M3.6 4.8l1.3 1M12.4 4.8l-1.3 1"/></svg>',idea:'<svg class="kic" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 12.6h3.6M6.7 14.4h2.6M8 1.6a4.4 4.4 0 0 0-2.5 8c.4.3.6.7.6 1.1v.6h3.8v-.6c0-.4.2-.8.6-1.1A4.4 4.4 0 0 0 8 1.6z"/></svg>',note:'<svg class="kic" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1.6"/><path d="M5.6 5.4h4.8M5.6 8h4.8M5.6 10.6h2.8"/></svg>',task:'<svg class="kic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.2"/><path d="M5.4 8.2l1.8 1.8 3.4-3.7"/></svg>'};
+// kind badges: one egg per kind (the same shapes the menu-bar app draws); custom lenses get a pastel egg
+const EGGS=new Set(["issue","idea","note","task"]);
+function egg(k){
+  if(EGGS.has(k))return `<svg class="egg" viewBox="0 0 16 16" aria-hidden="true"><use href="#egg-${k}"/></svg>`;
+  let h=0;for(const c of String(k))h=(h*31+c.charCodeAt(0))%360;
+  return `<svg class="egg" viewBox="0 0 16 16" aria-hidden="true" style="color:hsl(${h} 62% 80%)"><use href="#egg-custom"/></svg>`;
+}
 const ICO={check:'<svg class="ico" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',x:'<svg class="ico" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>'};
 const AR=new Map(); // media src -> aspect ratio, so re-renders do not flash
 const kindOf=i=>i.kind||"issue";
 const kindLabel=k=>T[lang].kinds[k]||k;
-const kindIcon=k=>KIND_ICON[k]||KIND_ICON.note;
-const RESERVED=new Set(["id","kind","title","quote","time","frames","clip","source","tags","confidence","questions","answer","status","exported","merged_from","_touched","_dropped","severity","type"]);
+const kindIcon=k=>egg(k);
+const RESERVED=new Set(["id","kind","title","quote","time","frames","clip","source","tags","confidence","questions","answer","status","exported","merged_from","_touched","_dropped","_user","severity","type"]);
 function mdLite(src){ // tiny markdown: headings, lists, bold, code, links
   const lines=String(src||"").split("\n");let out="",inList=false;
   const inline=x=>esc(x).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`([^`]+)`/g,"<code>$1</code>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2" target="_blank">$1</a>');
@@ -352,46 +430,136 @@ function mdLite(src){ // tiny markdown: headings, lists, bold, code, links
   return out+(inList?"</ul>":"")}
 
 let loaded=false,kindF="",data={items:[]},cur=0,media=0,view="focus",filter="all",query="",undo=[],saveTimer=null,dir="up";
-let saving=Promise.resolve(),confirming=false;
-const live=()=>data.items.filter(i=>i.status!=="deleted"||i._dropped);
-const statusOf=i=>i.status==="deleted"?"drop":i.status==="confirmed"&&i._touched?"keep":i._touched?"keep":"pending";
+let confirming=false,confirmed=false,legacy=false,etag=null,base=new Map(),net=Promise.resolve();
+let warnedProc=false,stageStale=false,sideStale=false,wasProcessing=false,procTimer=null,shownSrc=null;
+const knownSrc=new Set();
+const MEDIA_KEYS=new Set(["frames","clip","time"]);
+const statusOf=i=>i.status==="deleted"?"drop":i._touched?"keep":"pending";
+
+/* ---------- sync with items.json ----------
+   The agent keeps writing (frames, clips, new items) while the user reviews. The page never posts the whole list:
+   it diffs its copy against the last server state it saw (base) and sends only what the user changed; the server
+   merges that into the file under a lock. Server updates are merged the other way round, field by field: a field
+   the user changed here and hasn't saved yet keeps the user's value. Network calls run one at a time, in order. */
+const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
+const canon=v=>JSON.stringify(v,(k,x)=>x&&typeof x==="object"&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,kk)=>(o[kk]=x[kk],o),{}):x);
+const shown=i=>!(i.status==="deleted"&&!i._dropped); // dropped before this review: hidden
+const norm=items=>(items||[]).filter(shown).map(i=>i.kind?i:{...i,kind:"issue"});
+function enqueue(f){const p=net.then(f);net=p.catch(()=>{});return p}
+function setTop(doc){for(const k of Object.keys(data))if(k!=="items"&&!(k in doc))delete data[k];for(const [k,v] of Object.entries(doc))if(k!=="items")data[k]=v}
+function rebase(L,B,S,undoing){ // three-way merge: local items L, the base they were edited from B (id->item), server S
+  const Smap=new Map(S.map(i=>[i.id,i])),Lids=new Set(L.map(i=>i.id)),changed=new Map(),out=[];let structural=false;
+  for(const l of L){
+    const s=Smap.get(l.id),b=B.get(l.id);
+    if(!s){if(!undoing&&b&&canon(l)===canon(b)){structural=true;continue}out.push(l);continue}
+    const ch=new Set();
+    for(const k of new Set([...Object.keys(s),...Object.keys(b||{}),...Object.keys(l)])){
+      if(k==="id")continue;
+      const bv=canon(b?.[k]);if(canon(s[k])===bv)continue;   // the server didn't change it
+      if(k!=="_user"){
+        if(canon(l[k])!==bv)continue;                         // changed here too: the user's version wins
+        if(undoing&&(k.startsWith("_")||s._user?.[k]!=null))continue; // the user's own saved change: undo restores it
+      }
+      if(s[k]===undefined)delete l[k];else l[k]=clone(s[k]);
+      ch.add(k);
+    }
+    if(ch.size)changed.set(l.id,ch);
+    out.push(l);
+  }
+  S.forEach((s,n)=>{ // new from the agent; an id in B but not in L was removed here, and stays removed
+    if(Lids.has(s.id)||B.has(s.id))return;
+    let pos=0;for(let m=n-1;m>=0;m--){const k=out.findIndex(x=>x.id===S[m].id);if(k>=0){pos=k+1;break}}
+    out.splice(pos,0,clone(s));changed.set(s.id,new Set(["*"]));structural=true;
+  });
+  return {items:out,changed,structural};
+}
+function diffOps(items){
+  const ops=[],ids=new Set(items.map(i=>i.id));
+  items.forEach((i,k)=>{const b=base.get(i.id);
+    if(!b){const it=clone(i);delete it._user;ops.push({op:"add",item:it,after:k?items[k-1].id:null});return}
+    const set={},unset=[];
+    for(const key of new Set([...Object.keys(i),...Object.keys(b)])){if(key==="id"||key==="_user")continue;
+      if(canon(i[key])!==canon(b[key]))i[key]===undefined?unset.push(key):set[key]=i[key]}
+    if(unset.length||Object.keys(set).length)ops.push({op:"set",id:i.id,set,unset});
+  });
+  for(const id of base.keys())if(!ids.has(id))ops.push({op:"remove",id,into:items.find(x=>(x.merged_from||[]).includes(id))?.id||""});
+  return ops;
+}
+async function post(path,body){
+  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body});
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+async function accept(r){etag=r.headers.get("ETag")||etag;applyServer(await r.json())}
+function applyServer(doc){
+  const cid=data.items[cur]?.id,prevProc=!!data.processing;
+  const S=norm(doc.items);
+  const res=rebase(data.items,base,S,false);
+  data.items=res.items;base=new Map(S.map(i=>[i.id,clone(i)]));
+  const top=["title","digest","processing","_video"].some(k=>canon(doc[k])!==canon(data[k]));
+  setTop(doc);
+  const k=data.items.findIndex(i=>i.id===cid);cur=k>=0?k:Math.min(cur,Math.max(0,data.items.length-1));
+  if(loaded&&(res.changed.size||res.structural||top))refresh(res,cid,prevProc!==!!data.processing||top);
+  else if(loaded)renderProc();
+}
+async function sync(){
+  if(legacy){const d={...data};delete d._video;await post("/api/items",JSON.stringify(d));return}
+  const ops=diffOps(data.items);if(!ops.length)return;
+  await accept(await post("/api/items",JSON.stringify({ops})));
+}
+async function poll(){
+  if(confirming||confirmed)return;
+  const r=await fetch("/api/items",{headers:etag?{"If-None-Match":etag}:{}});
+  if(r.status===304)return renderProc(); // nothing new (it may have stalled, though)
+  if(r.ok&&!confirming)await accept(r);
+}
+function schedulePoll(){ // fast while the agent is still writing; slow afterwards (it may still apply a chat answer)
+  if(legacy||confirmed)return;
+  setTimeout(async()=>{await enqueue(poll).catch(()=>{});if(stageStale&&!playing())refreshStage();schedulePoll()},
+    data.processing?1500:document.hidden?15000:5000);
+}
+const stalled=()=>!!data.processing&&data.agent_at&&Date.now()/1000-data.agent_at>600;
 
 async function load(){
-  data=await (await fetch("/api/items")).json();
-  data.items=data.items||[];
-  data.items.forEach(i=>{if(!i.kind)i.kind="issue"});
-  // anything already deleted before this review is hidden; reviewer decisions are tracked with _touched/_dropped
-  data.items=data.items.filter(i=>!(i.status==="deleted"&&!i._dropped));
+  const r=await fetch("/api/items");const doc=await r.json();etag=r.headers.get("ETag");
+  legacy=(doc.items||[]).some(i=>!i.id); // hand-written file without ids: save it whole, as before
+  setTop(doc);
+  const S=norm(doc.items);data.items=S.map(clone);base=new Map(S.map(i=>[i.id,clone(i)]));
   if(!store.get("blurt.lang")&&data.language)lang=String(data.language).startsWith("zh")?"zh":"en";
   const th=store.get("blurt.theme");if(th)document.documentElement.dataset.theme=th;
   $("#sessionName").textContent=data.session?"· "+data.session:"";
   cur=Math.max(0,data.items.findIndex(i=>!i._touched));
-  if(cur<0)cur=0;
   view=store.get("blurt.view")||(data.digest?"overview":data.items.length>1?"focus":"list");
   if(view==="overview"&&!data.digest&&!data.title)view="focus";
-  render(true);loaded=true;
-}
-async function post(path,body){
-  const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body});
-  if(!response.ok)throw new Error(`HTTP ${response.status}`);
+  render(true);loaded=true;schedulePoll();
 }
 const saveError=()=>lang==="zh"?"保存失败，请重试。":"Could not save. Please retry.";
 function save(){
   if(confirming)return;
   $("#saved").textContent=t("saving");clearTimeout(saveTimer);
-  saveTimer=setTimeout(()=>{
-    const body=JSON.stringify(data);
-    // Keep every started save in the promise chain so confirmation waits for all of them.
-    saving=saving.then(async()=>{
-      try{await post("/api/items",body);$("#saved").textContent=t("saved")}
-      catch{$("#saved").textContent=saveError()}
-    });
-  },450);
+  // every save joins the queue, so confirmation waits for all of them
+  saveTimer=setTimeout(()=>enqueue(sync).then(()=>{$("#saved").textContent=t("saved")},()=>{$("#saved").textContent=saveError()}),450);
 }
-function snapshot(){undo.push(JSON.stringify({items:data.items,cur}));if(undo.length>80)undo.shift()}
-function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);data.items=o.items;cur=o.cur;media=0;dir="down";save();render(true);toast(t("undone"))}
+function snapshot(){undo.push(JSON.stringify({items:data.items,base:[...base.values()],cur,cid:data.items[cur]?.id}));if(undo.length>80)undo.shift()}
+function doUndo(){const s=undo.pop();if(!s)return;const o=JSON.parse(s);
+  // undo the user's own steps only: whatever the agent wrote since stays
+  data.items=legacy?o.items:rebase(o.items,new Map(o.base.map(i=>[i.id,i])),[...base.values()].map(clone),true).items;
+  const k=data.items.findIndex(i=>i.id===o.cid);cur=legacy||k<0?Math.min(o.cur,data.items.length-1):k;
+  media=0;dir="down";save();render(true);toast(t("undone"))}
 
 function counts(){let k=0,d=0,p=0;data.items.forEach(i=>{const s=statusOf(i);s==="keep"?k++:s==="drop"?d++:p++});return{k,d,p,n:data.items.length}}
+function renderProc(){
+  const el=$("#proc");
+  if(data.processing){
+    clearTimeout(procTimer);procTimer=null;wasProcessing=true;el.hidden=false;el.className="proc"+(stalled()?" stalled":"");
+    const n=data.items.length,f=data.items.filter(i=>(i.frames||[]).length).length;
+    el.title=t(stalled()?"stalled":"working").replace("{n}",n);
+    el.innerHTML=`${egg("note")}<span><span class="long">${esc(el.title)}</span>${stalled()?"":` <b>${f}/${n}</b>`}</span>`;
+  }else if(wasProcessing){
+    wasProcessing=false;el.className="proc fin";el.innerHTML=`${ICO.check}<span>${esc(t("finished"))}</span>`;
+    procTimer=setTimeout(()=>{el.classList.add("out");procTimer=setTimeout(()=>{el.hidden=true;procTimer=null},450)},2600);
+  }else if(!procTimer)el.hidden=true;
+}
 function renderTop(){
   const c=counts();
   $("#counts").innerHTML=`<span><span class="dot" style="background:var(--line-2)"></span><b>${c.p}</b> ${t("pending")}</span><span><span class="dot" style="background:var(--keep)"></span><b>${c.k}</b> ${t("kept")}</span><span><span class="dot" style="background:var(--drop)"></span><b>${c.d}</b> ${t("dropped")}</span>`;
@@ -403,44 +571,89 @@ function renderTop(){
   $("#focusView").hidden=view!=="focus";$("#listView").hidden=view!=="list";$("#overviewView").hidden=view!=="overview";
   document.documentElement.lang=lang==="zh"?"zh-CN":"en";
   $("#langLbl").textContent=lang==="zh"?"中文":"English";
+  renderProc();
 }
 function render(anim){renderTop();view==="focus"?renderFocus(anim):view==="list"?renderList():renderOverview()}
+// a server update arrived: touch only what changed, never the field being typed in, never the scroll position
+function refresh(res,cid,topChanged){
+  renderTop();
+  if(view==="list")return renderList(res.changed);
+  if(view==="overview")return renderOverview();
+  const i=data.items[cur];
+  if(!i||i.id!==cid)return renderFocus(false);
+  renderQueue(false);
+  const ch=res.changed.get(i.id)||new Set();
+  if(topChanged||[...ch].some(k=>MEDIA_KEYS.has(k)))refreshStage();
+  if([...ch].some(k=>k!=="_user"&&k!=="frames"&&k!=="clip"))refreshSide();
+}
 function renderOverview(){
   const ks={};data.items.forEach(i=>{const k=kindOf(i);(ks[k]=ks[k]||[]).push(i)});
-  $("#overviewView").innerHTML=`<article class="ov">
+  const el=$("#overviewView"),st=el.scrollTop;
+  el.innerHTML=`<article class="ov">
     ${data.title?`<h1>${esc(data.title)}</h1>`:""}
     <div class="ov-kinds">${Object.entries(ks).map(([k,v])=>`<span class="chip">${kindIcon(k)} ${esc(kindLabel(k))} · ${v.length}</span>`).join("")}</div>
     ${data.digest?`<div class="md">${mdLite(data.digest)}</div>`:""}
     ${Object.entries(ks).map(([k,v])=>`<h3>${kindIcon(k)} ${esc(kindLabel(k))}</h3><div class="ov-list">${v.map(i=>`<button data-k="${data.items.indexOf(i)}"><span>${esc(i.id||"")}</span>${esc(i.title)}</button>`).join("")}</div>`).join("")}
   </article>`;
-  $("#overviewView").querySelectorAll("[data-k]").forEach(b=>b.onclick=()=>{cur=+b.dataset.k;media=0;setView("focus")});
+  el.scrollTop=st;
+  el.querySelectorAll("[data-k]").forEach(b=>b.onclick=()=>{cur=+b.dataset.k;media=0;setView("focus")});
 }
 
 /* ---------- focus ---------- */
 function mediaItems(i){
   const m=(i.frames||[]).map((f,k)=>({kind:"img",src:file(f.path),label:f.t!=null?fmt(f.t):`#${k+1}`,cap:f.caption}));
+  if(!m.length&&data.processing)m.push({kind:"wait",src:"wait:"+i.id,label:"…"});
   if(i.clip)m.push({kind:"clip",src:file(i.clip),label:t("clip")});
-  if(data.source_video&&i.time)m.push({kind:"orig",src:file(data.source_video),label:t("orig"),start:i.time.start,end:i.time.end});
+  if(data._video!==false&&data.source_video&&i.time&&i.time.start!=null)m.push({kind:"orig",src:file(data.source_video),label:t("orig"),start:i.time.start,end:i.time.end});
   return m;
 }
-function renderFocus(anim){
+const hasVideo=i=>data._video!==false&&data.source_video&&i.time&&i.time.start!=null;
+function renderFocus(anim){renderQueue(true);renderStage(anim,false);renderSide()}
+function renderQueue(scroll){
   const q=$("#queue");
-  q.innerHTML=data.items.map((i,k)=>{const s=statusOf(i);return `<div class="qi ${s} ${k===cur?"cur":""}" data-k="${k}"><span class="n">${String(k+1).padStart(2,"0")}</span><div style="flex:1;min-width:0"><div class="t"><span class="ki">${kindIcon(kindOf(i))}</span>${esc(i.title)}</div>${(i.questions||[]).length&&!i.answer?`<div class="q"><i class="qd">●</i> ${t("ask")}</div>`:""}</div><span class="st"></span></div>`}).join("");
-  q.querySelector(".cur")?.scrollIntoView({block:"nearest"});
-  const i=data.items[cur];
+  q.innerHTML=data.items.map((i,k)=>{const s=statusOf(i);return `<div class="qi ${s} ${k===cur?"cur":""}" data-k="${k}"><span class="n">${String(k+1).padStart(2,"0")}</span><div style="flex:1;min-width:0"><div class="t"><span class="ki">${kindIcon(kindOf(i))}</span><span class="tt">${esc(i.title)}</span></div>${(i.questions||[]).length&&!i.answer?`<div class="q"><i class="qd">●</i> ${t("ask")}</div>`:""}</div><span class="st"></span></div>`}).join("");
+  if(scroll)q.querySelector(".cur")?.scrollIntoView({block:"nearest"});
+}
+const playing=()=>{const v=$("#mediaBox video");return !!v&&!v.paused&&!v.ended};
+function refreshStage(){ // new frames for the item on screen: keep the selection, fade the new ones in
+  if(playing()){stageStale=true;return}
+  stageStale=false;renderStage(false,true);
+}
+function renderStage(anim,fresh){
   const stage=$("#stage");stage.querySelector(".slide")?.remove();
-  const side=$("#side");
-  if(!i){side.innerHTML="";return}
-  const items=mediaItems(i);media=Math.min(media,Math.max(0,items.length-1));
-  const s=statusOf(i);
+  const i=data.items[cur];if(!i)return;
+  const items=mediaItems(i);
+  if(fresh){const k=items.findIndex(m=>m.src===shownSrc);media=k>=0?k:0}
+  media=Math.min(media,Math.max(0,items.length-1));
+  const isNew=m=>fresh&&m.kind==="img"&&!knownSrc.has(m.src);
   const slide=document.createElement("div");slide.className="slide"+(anim?(dir==="up"?" in-up":" in-down"):"");
   slide.innerHTML=`<div class="media${items.length<2?"":" has-strip"}"><div class="frame"><div id="mediaBox"></div><div class="cap" id="mediaCap"></div>
-    ${items.length<2?"":`<div class="strip scroll">${items.map((m,k)=>m.kind==="img"?`<button class="th ${k===media?"on":""}" data-m="${k}"><img src="${m.src}" alt=""><span class="lbl">${esc(m.label)}</span></button>`
+    ${items.length<2?"":`<div class="strip scroll">${items.map((m,k)=>m.kind==="img"?`<button class="th ${k===media?"on":""}${isNew(m)?" fresh":""}" data-m="${k}"><img src="${m.src}" alt=""><span class="lbl">${esc(m.label)}</span></button>`
+      :m.kind==="wait"?`<button class="th shim ${k===media?"on":""}" data-m="${k}"><span class="lbl">…</span></button>`
       :`<button class="th vid ${k===media?"on":""}" data-m="${k}"><span class="ic">${m.kind==="clip"?"▶":"◉"}</span>${esc(m.label)}</button>`).join("")}</div>`}</div></div>`;
   stage.prepend(slide);
-  showMedia(items,s);
-  slide.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{media=+b.dataset.m;renderFocus(false)});
-
+  showMedia(items,isNew(items[media]||{}));
+  items.forEach(m=>m.kind==="img"&&knownSrc.add(m.src));
+  slide.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{media=+b.dataset.m;renderStage(false,false)});
+}
+function fieldValue(i,el){const k=el.dataset.k;
+  if(el.dataset.src)return i.source?.url||"";
+  if(el.dataset.tags)return (i.tags||[]).join(", ");
+  if(el.dataset.list)return (i[k]||[]).map((x,n)=>k==="steps"?`${n+1}. ${x}`:`- ${x}`).join("\n");
+  return i[k]??""}
+function refreshSide(){
+  const side=$("#side");
+  if(side.contains(document.activeElement)){ // typing: update the other fields in place, the rest on blur
+    const i=data.items[cur];
+    side.querySelectorAll("[data-k]").forEach(el=>{if(el===document.activeElement)return;const v=fieldValue(i,el);if(el.value!==v){el.value=v;if(el.tagName==="TEXTAREA")autosize(el)}});
+    sideStale=true;return}
+  const st=side.scrollTop;renderSide();side.scrollTop=st;
+}
+function renderSide(){
+  sideStale=false;
+  const side=$("#side"),i=data.items[cur];
+  if(!i){side.innerHTML="";return}
+  const s=statusOf(i);
   const sev=SEV.includes(i.severity)?i.severity:"medium";
   const types=T[lang].types,kind=kindOf(i);
   const F=(k,label,type="area",cls="")=>{const v=i[k];
@@ -456,11 +669,11 @@ function renderFocus(anim){
   }else if(kind==="task"){
     body=F("details",t("details"))+`<div class="grid2">${F("owner",t("owner"),"text")}${F("due",t("due"),"text")}</div>`;
   }else{
-    body=F("summary",kind==="note"?t("summaryNote"):t("summaryNote"),"area","big")+(i.details!==undefined||kind==="note"?F("details",t("details")):"");
+    body=F("summary",t("summaryNote"),"area","big")+(i.details!==undefined||kind==="note"?F("details",t("details")):"");
   }
   // anything else the lens added: shown generically so custom lenses just work
-  const shown=new Set(["module","owner","actual","expected","steps","code_refs","summary","why","inspired_by","next_steps","open_questions","details","due"]);
-  for(const [k,v] of Object.entries(i)){if(RESERVED.has(k)||shown.has(k)||k.startsWith("_"))continue;
+  const shownF=new Set(["module","owner","actual","expected","steps","code_refs","summary","why","inspired_by","next_steps","open_questions","details","due"]);
+  for(const [k,v] of Object.entries(i)){if(RESERVED.has(k)||shownF.has(k)||k.startsWith("_"))continue;
     if(typeof v==="string")body+=F(k,k.replace(/_/g," "));else if(Array.isArray(v)&&v.every(x=>typeof x==="string"))body+=F(k,k.replace(/_/g," "),"list")}
   body+=`<div class="grid2">${`<div class="f"><label>${t("tags")}</label><input data-k="tags" data-tags="1" placeholder="—" value="${esc((i.tags||[]).join(", "))}"></div>`}${`<div class="f"><label>${t("source")}</label><input data-k="source" data-src="1" placeholder="—" value="${esc(i.source?.url||"")}"></div>`}</div>`;
   side.innerHTML=`
@@ -474,7 +687,7 @@ function renderFocus(anim){
       ${i.confidence==="low"?`<span class="chip" style="color:var(--amber)">?</span>`:""}
     </div>
     ${(i.questions||[]).length?`<div class="ask"><div class="h">● ${t("ask")}</div>${i.questions.map(q=>`<div class="qq">${esc(q)}</div>`).join("")}<input data-k="answer" placeholder="${t("answer")}" value="${esc(i.answer||"")}"></div>`:""}
-    ${i.quote?`<div class="quote">${esc(i.quote)}<div class="meta">${i.time?`${fmt(i.time.start)} – ${fmt(i.time.end)}`:""}${data.source_video&&i.time?`<button class="linkbtn" id="origBtn">▶ ${t("playOrig")} <kbd>O</kbd></button>`:""}</div></div>`:""}
+    ${i.quote?`<div class="quote">${esc(i.quote)}<div class="meta">${i.time&&i.time.start!=null?`${fmt(i.time.start)} – ${fmt(i.time.end)}`:""}${hasVideo(i)?`<button class="linkbtn" id="origBtn">▶ ${t("playOrig")} <kbd>O</kbd></button>`:""}</div></div>`:""}
     <div class="fields">${body}</div>`;
   side.querySelectorAll("textarea").forEach(autosize);
   side.querySelectorAll("[data-k]").forEach(el=>el.addEventListener("input",()=>{
@@ -482,7 +695,9 @@ function renderFocus(anim){
     if(el.dataset.list)v=v.split("\n").map(x=>x.replace(/^\s*(\d+[.)、]|[-*•])\s*/,"").trim()).filter(Boolean);
     if(el.dataset.tags)v=v.split(/[,，]/).map(x=>x.trim()).filter(Boolean);
     if(el.dataset.src){i.source={...(i.source||{}),url:v.trim()};save();return}
-    i[k]=v;if(el.tagName==="TEXTAREA")autosize(el);if(k==="title")q.querySelector(".cur .t").textContent=el.value;save();
+    i[k]=v;if(el.tagName==="TEXTAREA")autosize(el);
+    if(k==="title"){const tt=$("#queue .cur .tt");if(tt)tt.textContent=el.value}
+    save();
   }));
   side.querySelectorAll("[data-nav]").forEach(b=>b.onclick=()=>+b.dataset.nav<0?go(cur-1,"down"):go(cur+1,"up"));
   $("#keepBtn").classList.toggle("on",s==="keep");$("#dropBtn").classList.toggle("on",s==="drop");
@@ -491,21 +706,26 @@ function renderFocus(anim){
   $("#origBtn")?.addEventListener("click",playOrig);
   side.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(b.dataset.copy);toast(`${b.dataset.copy} ${t("copy")}`)});
 }
-function showMedia(items,s){
+function guessAR(){for(const r of AR.values())if(r>0)return r;return 1.6}
+function showMedia(items,fresh){
   const box=$("#mediaBox");if(!box)return;
-  const m=items[media];
-  $("#mediaCap").innerHTML=!m?"":`<span class="tm">${esc(m.label)}${m.kind==="orig"&&m.start!=null?` · ${fmt(m.start)}`:""}</span>${m.cap?`<span class="ct">${esc(m.cap)}</span>`:""}`;
+  const m=items[media];shownSrc=m?.src||null;
+  $("#mediaCap").innerHTML=!m||m.kind==="wait"?"":`<span class="tm">${esc(m.label)}${m.kind==="orig"&&m.start!=null?` · ${fmt(m.start)}`:""}</span>${m.cap?`<span class="ct">${esc(m.cap)}</span>`:""}`;
   if(!m){box.innerHTML=`<div class="shot none ready">${t("noMedia")}</div>`;return}
+  if(m.kind==="wait"){const i=data.items[cur];
+    box.innerHTML=`<div class="shot wait ready${stalled()?"":" shim"}" style="--ar:${guessAR()}"><div class="wait-in">${egg(kindOf(i))}<span>${esc(stalled()?t("noMedia"):t("waitShot"))}</span></div></div>`;return}
   const ar=AR.get(m.src);
-  box.innerHTML=`<div class="shot${ar?" ready":""}" style="--ar:${ar||1.6}">${m.kind==="img"?`<img src="${m.src}" alt="">`:`<video src="${m.src}" controls playsinline preload="metadata"></video>`}</div>`;
+  box.innerHTML=`<div class="shot${ar?" ready":""}${fresh?" fresh":""}" style="--ar:${ar||guessAR()}">${m.kind==="img"?`<img src="${m.src}" alt="">`:`<video src="${m.src}" controls playsinline preload="metadata"></video>`}</div>`;
   const shot=box.firstChild,el=shot.firstChild;
-  const fit=r=>{if(r>0){shot.style.setProperty("--ar",r);AR.set(m.src,r)}shot.classList.add("ready")};
+  if(fresh)shot.classList.remove("ready");
+  const fit=r=>{if(r>0){shot.style.setProperty("--ar",r);AR.set(m.src,r)}requestAnimationFrame(()=>shot.classList.add("ready"))};
   if(m.kind==="img"){
     el.onclick=()=>{$("#lightbox img").src=m.src;$("#lightbox").classList.add("show")};
     if(el.complete&&el.naturalWidth)fit(el.naturalWidth/el.naturalHeight);else{el.onload=()=>fit(el.naturalWidth/el.naturalHeight);el.onerror=()=>fit(0)}
     return;
   }
   el.addEventListener("loadedmetadata",()=>fit(el.videoWidth/el.videoHeight),{once:true});el.addEventListener("error",()=>fit(0),{once:true});
+  el.addEventListener("pause",()=>{if(stageStale)setTimeout(refreshStage,300)});
   if(m.kind==="orig"){el.addEventListener("loadedmetadata",()=>{el.currentTime=Math.max(0,m.start-1.5)},{once:true});
     el.addEventListener("timeupdate",()=>{if(el.currentTime>m.end+2&&!el.dataset.freed){el.pause();el.dataset.freed=1}})}
 }
@@ -535,12 +755,12 @@ function mergePrev(){
   if(i.time&&p.time)p.time={start:Math.min(p.time.start,i.time.start),end:Math.max(p.time.end,i.time.end)};
   data.items.splice(cur,1);cur=j;save();toast(`${t("merged")} ${p.id||""}`,true);render(true);
 }
-function playOrig(){const items=mediaItems(data.items[cur]);const k=items.findIndex(m=>m.kind==="orig");if(k<0)return;media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}
+function playOrig(){const items=mediaItems(data.items[cur]);const k=items.findIndex(m=>m.kind==="orig");if(k<0)return;media=k;renderStage(false,false);setTimeout(()=>$("#mediaBox video")?.play(),60)}
 function togglePlay(){const v=$("#mediaBox video");if(v){v.paused?v.play():v.pause();return}
-  const items=mediaItems(data.items[cur]);const k=items.findIndex(m=>m.kind!=="img");if(k>=0){media=k;renderFocus(false);setTimeout(()=>$("#mediaBox video")?.play(),60)}}
+  const items=mediaItems(data.items[cur]);const k=items.findIndex(m=>m.kind==="clip"||m.kind==="orig");if(k>=0){media=k;renderStage(false,false);setTimeout(()=>$("#mediaBox video")?.play(),60)}}
 
 /* ---------- list ---------- */
-function renderList(){
+function renderList(changed){
   const fs=[["all",t("all")],["pending",t("filterPending")],["keep",t("filterKept")],["drop",t("filterDropped")]];
   $("#filters").innerHTML=fs.map(([k,l])=>`<button class="${filter===k?"on":""}" data-f="${k}">${l}</button>`).join("");
   $("#filters").querySelectorAll("button").forEach(b=>b.onclick=()=>{filter=b.dataset.f;renderList()});
@@ -553,11 +773,12 @@ function renderList(){
   $("#cards").innerHTML=data.items.map((i,k)=>({i,k,s:statusOf(i)})).filter(({i,s})=>(filter==="all"||filter===s)&&(!kindF||kindOf(i)===kindF)&&
     (!ql||[i.title,i.module,i.owner,i.id,i.summary,(i.tags||[]).join(" ")].join(" ").toLowerCase().includes(ql))).map(({i,k,s})=>{
     const img=(i.frames||[])[0];const sev=SEV.includes(i.severity)?i.severity:"medium";
-    const kd=kindOf(i);
+    const kd=kindOf(i),ch=changed?.get(i.id),fresh=img&&ch&&(ch.has("frames")||ch.has("*"));
     const meta=[kd==="issue"?`<span class="sev sev-${sev}">${t("sev"+sev[0].toUpperCase()+sev.slice(1))}</span>`:"",
       esc(i.module||""),i.owner?"@"+esc(i.owner):"",esc(types[i.type]||i.type||"")].filter(Boolean);
-    return `<article class="card ${s}" data-k="${k}"><div class="img${img?"":" none"}" style="${img?`background-image:url('${file(img.path)}')`:""}">${img?"":t("noMedia")}${s!=="pending"?`<div class="stamp ${s}">${s==="keep"?ICO.check:ICO.x}</div>`:""}</div>
-      <div class="body"><div class="h">${kindIcon(kd)}<span>${esc(i.id||"")}</span><span style="margin-left:auto">${i.time?fmt(i.time.start):""}</span></div><div class="tt">${esc(i.title)}</div>
+    const wait=!img&&data.processing&&!stalled();
+    return `<article class="card ${s}${ch?.has("*")?" fresh":""}" data-k="${k}"><div class="img${img?"":wait?" none shim":" none"}${fresh?" fresh":""}" style="${img?`background-image:url('${file(img.path)}')`:""}">${img?"":wait?egg(kd):t("noMedia")}${s!=="pending"?`<div class="stamp ${s}">${s==="keep"?ICO.check:ICO.x}</div>`:""}</div>
+      <div class="body"><div class="h">${kindIcon(kd)}<span>${esc(i.id||"")}</span><span style="margin-left:auto">${i.time&&i.time.start!=null?fmt(i.time.start):""}</span></div><div class="tt">${esc(i.title)}</div>
       <div class="mm">${meta.map(x=>x.startsWith("<span")?x:`<span>${x}</span>`).join("")}</div></div></article>`}).join("");
   $("#cards").querySelectorAll(".card").forEach(c=>c.onclick=()=>{cur=+c.dataset.k;media=0;setView("focus")});
 }
@@ -577,7 +798,9 @@ function openHelp(){
 }
 function openFinish(){
   const c=counts();
+  const warn=data.processing&&!warnedProc;if(warn)warnedProc=true; // allowed while frames still come in; say so once
   modal(`<h3>${t("confirmTitle")}</h3><p>${t("confirmBody").replace("{k}",c.k).replace("{d}",c.d).replace("{p}",c.p)}</p>
+    ${warn?`<div class="warn">${egg("note")}<span>${esc(t("stillProc"))}</span></div>`:""}
     <div class="sum"><div><b style="color:var(--keep)">${c.k}</b>${t("kept")}</div><div><b style="color:var(--drop)">${c.d}</b>${t("dropped")}</div><div><b>${c.p}</b>${t("pending")}</div></div>
     <div class="row">${c.p?`<button class="btn" id="mRest">${t("reviewRest")}</button>`:`<button class="btn" id="mCancel">${t("cancel")}</button>`}
     <button class="btn primary" id="mOk">${c.p?t("pendingAs"):t("confirm")}</button></div>`);
@@ -589,11 +812,13 @@ async function finish(){
   if(confirming)return;
   confirming=true;clearTimeout(saveTimer);document.body.inert=true;
   try{
-    await saving;
-    const final=JSON.parse(JSON.stringify(data));
-    final.items.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
-    await post("/api/confirm",JSON.stringify(final));
-    closeModal();$("#done").classList.add("show");
+    await enqueue(async()=>{ // after every save already queued
+      const final=data.items.map(clone);
+      final.forEach(i=>{if(i.status!=="deleted")i.status="confirmed";delete i._touched;delete i._dropped});
+      if(legacy){const d={...data,items:final};delete d._video;await post("/api/confirm",JSON.stringify(d));return}
+      await post("/api/confirm",JSON.stringify({ops:diffOps(final)}));
+    });
+    confirmed=true;closeModal();$("#done").classList.add("show");
   }catch{confirming=false;$("#modal p").textContent=saveError()}
   finally{document.body.inert=false}
 }
@@ -606,6 +831,9 @@ $("#modalBg").onclick=e=>{if(e.target.id==="modalBg")closeModal()};
 $("#lightbox").onclick=()=>$("#lightbox").classList.remove("show");
 $("#queue").onclick=e=>{const q=e.target.closest(".qi");if(q)go(+q.dataset.k)};
 $("#search").oninput=e=>{query=e.target.value;renderList()};
+$("#side").addEventListener("focusout",e=>{if(!sideStale||$("#side").contains(e.relatedTarget))return;
+  setTimeout(()=>{if(sideStale&&!$("#side").contains(document.activeElement))refreshSide()},0)});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&loaded)enqueue(poll).catch(()=>{})});
 $("#themeBtn").onclick=()=>{const r=document.documentElement,n=r.dataset.theme==="light"?"dark":"light";r.dataset.theme=n;store.set("blurt.theme",n)};
 $("#langBtn").onclick=()=>{lang=lang==="zh"?"en":"zh";store.set("blurt.lang",lang);render(false)};
 let wheelLock=0;
@@ -629,7 +857,7 @@ document.addEventListener("keydown",e=>{
   const map={j:()=>go(cur+1,"up"),ArrowDown:()=>go(cur+1,"up"),k:()=>go(cur-1,"down"),ArrowUp:()=>go(cur-1,"down"),
     a:()=>decide("keep"),Enter:()=>decide("keep"),x:()=>decide("drop"),Backspace:()=>decide("drop"),Delete:()=>decide("drop"),
     z:doUndo,u:doUndo,m:mergePrev,"1":()=>setSev("high"),"2":()=>setSev("medium"),"3":()=>setSev("low"),
-    ArrowLeft:()=>{if(media>0){media--;renderFocus(false)}},ArrowRight:()=>{if(media<items.length-1){media++;renderFocus(false)}},
+    ArrowLeft:()=>{if(media>0){media--;renderStage(false,false)}},ArrowRight:()=>{if(media<items.length-1){media++;renderStage(false,false)}},
     " ":togglePlay,o:playOrig,e:()=>{const ta=$(".title");ta?.focus();ta?.select()}};
   const f=map[k]||map[k.toLowerCase?.()];
   if(f){e.preventDefault();f()}
