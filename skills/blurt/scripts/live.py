@@ -20,7 +20,8 @@ returns instantly). Chunks are cut exactly where a whole-file run cuts them, so 
 Drafts: every ≥60 s of new speech (at a ≥3 s pause) or 3 min, a small model (claude -p --model claude-haiku-5-5, or
 codex exec) gets the transcript so far + the current drafts and returns add/update/drop ops → live/drafts.jsonl.
 A starting outline only. Config ($BLURT_HOME/config.json → record): live (default true), live_drafts (default true when
-an agent CLI is installed), live_drafts_agent ("claude" | "codex"), live_drafts_model. Env BLURT_LIVE_DRAFTS_CMD = a
+an agent CLI is installed), live_drafts_agent ("claude" | "codex"; else the first logged-in one in record.agents — the
+order the app processes recordings with, see agents.py), live_drafts_model. Env BLURT_LIVE_DRAFTS_CMD = a
 command that reads the prompt on stdin and prints the JSON answer (tests / other agents).
 
 Files in <session>/live/: audio.pcm, stop (recorder) · transcript.jsonl, drafts.jsonl, status.json,
@@ -334,9 +335,14 @@ class Drafter:
 
     @staticmethod
     def _agents(cfg) -> list[tuple[str, str]]:
-        order = [cfg.get("live_drafts_agent"), cfg.get("process"), "claude", "codex"]
+        """Installed draft-capable CLIs in the order the app processes recordings with (record.agents, agents.py),
+        live_drafts_agent first. Login is checked later (_check_logins), so the first logged-in one wins."""
+        from agents import agent_order, definitions
+        full = {"record": cfg}
+        defs = definitions(full)
+        order = [cfg.get("live_drafts_agent"), *agent_order(full)]
         out = []
-        for name in dict.fromkeys(n for n in order if n in ("claude", "codex")):
+        for name in dict.fromkeys(n for n in order if n in ("claude", "codex") and defs.get(n, {}).get("drafts")):
             path = shutil.which(name)
             if path:
                 out.append((name, path))

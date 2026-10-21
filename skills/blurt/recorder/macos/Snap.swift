@@ -646,12 +646,11 @@ final class Snapper {
         NoteBubble.shared.commit()
         b.sync {
             b.writeMeta(state: "processing")
-            let mode = recordConfig()["process"] as? String ?? "off"
             let kinds = Array(repeating: "note", count: min(5, b.live.count))
             perch.gather(into: kinds)
             self.batch = nil
             perch.batch = nil
-            app.process(b.dir, with: mode == "codex" ? "codex" : "claude")
+            app.process(b.dir)
         }
     }
 

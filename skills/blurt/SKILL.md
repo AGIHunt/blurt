@@ -46,7 +46,9 @@ what happens:
 - a dimmed overlay: drag to draw the area (or click a window, F = full screen) → **开始录制** / Enter. Only that area
   is recorded — tabs, bookmarks and other windows stay private;
 - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
-  **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift). The bar is never in the recording;
+  **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift; these are the defaults — the user may have changed
+  them in the app's Shortcuts… window / config `record.hotkeys`, and the countdown shows the real ones). The bar is
+  never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
   fades after 3 s; ✎ on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D / ✎ turns it off); click **完成** — no need to send another chat message.
 - **⌥⇧A snaps** (Windows/Linux Alt+Shift+A, 📸 on the bar; ⌥⇧M too): a full-resolution still of the area right
@@ -121,7 +123,8 @@ Principles — judgement, not rules:
   ideas, how they connect, suggested next step) becomes the page's Overview — it can follow in §4.
 
 Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
-picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). **Right away** start `review.py <session>` **in the background** (opens the browser, exits when the user
+picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). **Right away** start `review.py <session>` **in the background** (on macOS it opens in a Blurt app window when the app is
+installed, else the browser; exits when the user
 finishes; prints `REVIEW <url>` — give the user that URL if no browser can open where you run: SSH, container) and
 tell the user in one short message:
 - ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
@@ -169,7 +172,8 @@ items have `status: "deleted"`, answers are in `answer`, merged items are gone o
 target's `merged_from`; `_user` lists fields the user edited) and continue with §6. If they reply in chat instead,
 apply it with `items.py … --force` and close the page (`pkill -f "review.py <session>"`).
 
-**Unattended runs** (started by the Blurt app via `claude -p` / `codex exec` — env `BLURT_APP=1` — or any other
+**Unattended runs** (started by the Blurt app via the first usable agent CLI — `claude -p`, `codex exec`,
+`kimi -p`, `opencode run`, `gemini -p` (scripts/agents.json) — env `BLURT_APP=1` — or any other
 non-interactive mode): don't ask anything; do §2–§4 the same way (text first with `processing`, frames via
 `items.py`, `done`), then finish with a 2–3 sentence summary. With `BLURT_APP=1` don't start the review page — the
 app opens it; otherwise start it detached right after §3 (`nohup uv run …/review.py <session> >/dev/null 2>&1 &`).

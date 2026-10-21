@@ -7,6 +7,9 @@ current video segment and drops audio; segments are aligned by wall clock and jo
 The control bar is excluded from capture on Windows 10 2004+ (SetWindowDisplayAffinity) and always sits outside
 the recorded region when there is room.
 
+Hotkeys (Windows): config record.hotkeys, same as the macOS app — {"pause": "alt+shift+P", "snap": "alt+shift+A",
+"marker": "alt+shift+M", "stop": "alt+shift+S"} are the defaults; "off" disables one.
+
 Snap (📸 on the bar, Alt+Shift+A, or `record.py snap`; the marker hotkey Alt+Shift+M snaps too): one full-resolution
 ffmpeg frame of the region → <session>/shots/NNN.png + a line in shots.jsonl (t = video time) + a "snap" event.
 """
@@ -23,7 +26,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import IS_LINUX, IS_MAC, IS_WIN, ffmpeg_bin, fix_tcl_env, run  # noqa: E402
+from _common import (IS_LINUX, IS_MAC, IS_WIN, ffmpeg_bin, fix_tcl_env, hotkey_label,  # noqa: E402
+                     hotkeys_from_config, run)
 
 ACCENT = "#ff5c3d"
 AMBER = "#ffc23d"
@@ -211,6 +215,26 @@ class Picker:
 
 
 # ------------------------------------------------------------------ snaps
+_WIN_VK = {"Space": 0x20, "Tab": 0x09, "Return": 0x0D, "Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28,
+           "-": 0xBD, "=": 0xBB, "[": 0xDB, "]": 0xDD, ";": 0xBA, "'": 0xDE, ",": 0xBC, ".": 0xBE, "/": 0xBF,
+           "\\": 0xDC, "`": 0xC0}
+
+
+def win_hotkey(hk) -> tuple[int, int] | None:
+    """(("opt", "shift"), "P") → (MOD_ALT | MOD_SHIFT, VK_P) for RegisterHotKey; None when off."""
+    if not hk:
+        return None
+    mods = sum({"opt": 0x1, "ctrl": 0x2, "shift": 0x4, "cmd": 0x8}[m] for m in hk[0])
+    key = hk[1]
+    if len(key) == 1 and key.isalnum():
+        vk = ord(key.upper())
+    elif key.startswith("F") and key[1:].isdigit():
+        vk = 0x6F + int(key[1:])
+    else:
+        vk = _WIN_VK.get(key)
+    return (mods, vk) if vk else None
+
+
 def snap_cmd(ff: str, region: list[int], out: Path) -> list[str]:
     """ffmpeg command for a single full-resolution frame of the region (same grabbers as the video)."""
     x, y, w, h = region
@@ -320,8 +344,10 @@ class TkRecorder:
         lbl = tk.Label(cw, text=str(n), fg="white", bg=BG, font=("Segoe UI", 64, "bold"))
         lbl.pack(expand=True, fill="both")
         tk.Label(cw, text=self.t("准备，开喷", "Get ready"), fg=MUTED, bg=BG, font=("Segoe UI", 10)).pack()
-        hint = self.t("Alt+Shift+P 暂停/继续 · Alt+Shift+A 截图 · Alt+Shift+S 完成 · 点一下跳过",
-                      "Alt+Shift+P pause · Alt+Shift+A snap · Alt+Shift+S finish · click to skip")
+        hk = {a: hotkey_label(k, mac=False) for a, k in hotkeys_from_config().items()}
+        parts = [f"{hk[a]} {self.t(zh_, en)}" for a, zh_, en in (("pause", "暂停/继续", "pause"), ("snap", "截图", "snap"),
+                                                                 ("stop", "完成", "finish")) if hk[a]]
+        hint = " · ".join(parts + [self.t("点一下跳过", "click to skip")])
         tk.Label(cw, text=hint if IS_WIN else self.t("点一下跳过", "click to skip"), fg=MUTED, bg=BG,
                  font=("Segoe UI", 8), wraplength=size + 120).pack(pady=(2, 10))
 
@@ -674,18 +700,25 @@ class TkRecorder:
         if not IS_WIN:
             return
         q: queue.Queue = queue.Queue()
+        hotkeys = hotkeys_from_config()
 
         def loop():
             import ctypes
             from ctypes import wintypes
             user32 = ctypes.windll.user32
-            MOD = 0x0001 | 0x0004 | 0x4000  # ALT | SHIFT | NOREPEAT
-            for i, vk in enumerate((0x50, 0x4D, 0x53, 0x41), 1):  # P, M, S, A
-                user32.RegisterHotKey(None, i, MOD, vk)
+            ids = {}
+            for i, (action, cmd) in enumerate((("pause", "toggle"), ("marker", "marker"), ("stop", "stop"),
+                                                ("snap", "snap")), 1):
+                reg = win_hotkey(hotkeys.get(action))
+                if reg and user32.RegisterHotKey(None, i, reg[0] | 0x4000, reg[1]):  # | MOD_NOREPEAT
+                    ids[i] = cmd
+                elif reg:  # another app owns it: say so once, keep going
+                    print(f"hotkey {hotkey_label(hotkeys[action], mac=False)} ({action}) is taken by another app",
+                          file=sys.stderr, flush=True)
             msg = wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
                 if msg.message == 0x0312:  # WM_HOTKEY
-                    q.put({1: "toggle", 2: "marker", 3: "stop", 4: "snap"}.get(msg.wParam))
+                    q.put(ids.get(msg.wParam))
 
         threading.Thread(target=loop, daemon=True).start()
 
