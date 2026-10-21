@@ -135,9 +135,20 @@ def test_command_headless(env, tmp_path):
     assert out["argv"][0].endswith("/codex") and out["argv"][1] == "exec"
     assert "fix it; rm -rf / 'quoted'" in out["argv"]  # one argv element, never a shell string
     assert out["argv"][-1] == "--json" and out["events"] == "codex-jsonl"
+    # the blurt MCP server rides along, fully defined (-c on an unregistered server breaks codex) and pre-approved
+    sets = [out["argv"][i + 1] for i, a in enumerate(out["argv"]) if a == "-c"]
+    assert 'mcp_servers.blurt.default_tools_approval_mode="approve"' in sets
+    assert 'mcp_servers.blurt.command="uv"' in sets and any(str(agents.MCP_SERVER) in x for x in sets)
+    assert any(x.startswith("mcp_servers.blurt.env_vars=") and "BLURT_HOME" in x and "BLURT_RUN_ID" in x for x in sets)
+    import tomllib
+    for x in sets:  # each -c value is valid TOML
+        tomllib.loads(x)
+    no_mcp = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path, "--no-mcp")
+    assert "-c" not in no_mcp["argv"]
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {"BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1"}
     c = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path)
     assert c["argv"][1:3] == ["-p", "p"] and c["argv"][-3:] == ["--output-format", "stream-json", "--verbose"]
+    assert "mcp__blurt" in c["argv"]  # allowed in -p mode
     plain = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path, "--no-events")
     assert plain["events"] is None and "--output-format" not in plain["argv"]
     k = cli("command", "kimi", "headless", "--prompt", "p", "--repo", tmp_path)
