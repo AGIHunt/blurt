@@ -21,6 +21,8 @@ export interface Media {
 }
 
 export const SEV = ["high", "medium", "low"] as const;
+/** a title worth saving: not empty, not only whitespace (items.py / review.py refuse anything else) */
+export const isTitle = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const MEDIA_POLL_PROCESSING = 1500;
 const POLL_IDLE = 2000; // agent writes (set-frames, a chat answer) show up within ~2 s
 const POLL_HIDDEN = 15000;
@@ -445,10 +447,13 @@ export class ReviewStore {
     this.showToast(`${this.t("merged")} ${p.id || ""}`, true);
   };
   /** a field edit from the inspector (value already parsed) */
-  setField = (i: Item, k: string, v: unknown) => {
+  /** false (nothing changed or sent) for an empty / whitespace-only title — the server refuses those too */
+  setField = (i: Item, k: string, v: unknown): boolean => {
+    if (k === "title" && !isTitle(v)) return false;
     if (k === "source") i.source = { ...(i.source || {}), url: String(v).trim() };
     else i[k] = v;
     this.save();
+    return true;
   };
   selectMedia = (src: string | null) => {
     this.mediaSel = src;

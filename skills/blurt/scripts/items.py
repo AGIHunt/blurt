@@ -38,8 +38,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (BLURT_HOME, FIX_STATES, apply_user_ops, file_etag, find_item, item_uid,  # noqa: E402
-                     items_lock, legacy_uid, load_session, new_ulid, removed_into, save_session, session_name)
+from _common import (BLURT_HOME, FIX_STATES, InvalidEdit, apply_user_ops, check_item_fields, file_etag,  # noqa: E402
+                     find_item, item_uid, items_lock, legacy_uid, load_session, new_ulid, removed_into, save_session, session_name)
 
 PROTECTED = {"id", "uid", "_user", "_removed", "fix", "fix_history", "schema"}
 SCHEMA = 2
@@ -184,6 +184,10 @@ def patch(data: dict, item_id: str, sets: dict, unsets: list[str], force: bool) 
     item = find_item(data, item_id)
     if item is None:
         return skipped(data, item_id)
+    try:
+        check_item_fields(sets, unsets, f"{item_id}: ")
+    except InvalidEdit as e:
+        fail(str(e))
     out = {"ok": True, "id": item_id, **apply_fields(item, sets, unsets, force)}
     if item.get("status") == "deleted":
         out["note"] = "the user dropped this item — no need to spend more work on it"
@@ -318,7 +322,10 @@ def parse_ops(raw: str) -> list[dict]:
 
 
 def user_ops(data: dict, ops: list[dict], confirm: bool) -> dict:
-    apply_user_ops(data, ops)
+    try:
+        apply_user_ops(data, ops)
+    except InvalidEdit as e:
+        fail(str(e))
     if confirm:
         data["reviewed"] = True
     return {"ok": True, "_etag": True}

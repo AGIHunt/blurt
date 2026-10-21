@@ -29,7 +29,7 @@ const en = {
   fix_fixing: "Fixing…", fix_fixed: "Fixed", fix_wontfix: "Won't fix", fix_reopened: "Reopened", fixHistory: "Fix history",
   fixWithAgent: "Fix with agent", reveal: "Show in Finder", revealWin: "Show in folder", quickLook: "Quick Look",
   openCode: "Open in editor", noItem: "This item is no longer in the session.", byAgent: "by {a}",
-  prev: "Previous", next: "Next", close: "Close", ok: "OK",
+  prev: "Previous", next: "Next", close: "Close", ok: "OK", titleEmpty: "A title can't be empty — kept the previous one",
 };
 type Dict = typeof en;
 
@@ -56,7 +56,7 @@ const zh: Dict = {
   fix_fixing: "修复中…", fix_fixed: "已修", fix_wontfix: "不修", fix_reopened: "重新打开", fixHistory: "修复记录",
   fixWithAgent: "交给 agent 修", reveal: "在访达中显示", revealWin: "在文件夹中显示", quickLook: "快速查看",
   openCode: "在编辑器中打开", noItem: "这条已经不在本次会话里了。", byAgent: "由 {a}",
-  prev: "上一条", next: "下一条", close: "关闭", ok: "好",
+  prev: "上一条", next: "下一条", close: "关闭", ok: "好", titleEmpty: "标题不能为空，已恢复原标题",
 };
 
 export const KINDS: Record<Lang, Record<string, string>> = {
