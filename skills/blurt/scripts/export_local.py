@@ -35,7 +35,7 @@ KINDS = {"zh": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "
          "en": {"issue": "Issues", "idea": "Ideas", "note": "Notes", "task": "Tasks"}}
 KIND_ORDER = ["issue", "idea", "task", "note"]
 COMMON = ["id", "title", "time", "quote", "frames", "clip", "source", "tags", "questions", "answer"]
-SKIP = {"kind", "status", "exported", "confidence", "merged_from", "_touched", "_dropped"}
+SKIP = {"kind", "status", "exported", "confidence", "merged_from", "_touched", "_dropped", "_user"}
 
 
 def text(v) -> str:
