@@ -11,11 +11,17 @@
   frames.py grid  VIDEO --at T -o x.jpg          frame with a labelled 0–1 coordinate grid + where the cursor / clicks
                                                 were (from events.jsonl) — read positions off this, don't guess
   frames.py pointer VIDEO --at T                 cursor position and nearby clicks / pen strokes at T (JSON)
-  frames.py marks VIDEO                          everything the user drew with the pen (⌃-drag) and every marker: when,
-                                                where (box), what shapes, what was being said, and the time to grab
+  frames.py marks VIDEO|SESSION                  everything the user drew with the pen (⌃-drag), every marker and every
+                                                snap (shots.jsonl): when, where (box), what shapes, what was said, the
+                                                time to grab / the shot's file
   frames.py grab  VIDEO --at T -o x.jpg [--box x,y,w,h|stroke] [--ring cursor|click|x,y] [--crop x,y,w,h|stroke]
                                                 full-res frame with red box / ring, optional crop
   frames.py clip  VIDEO --from S --to E -o x.mp4   small shareable clip (with audio)
+
+Stills: grab / grid / sheet also take an image (PNG/JPG — e.g. a shot from <session>/shots/) instead of a video; --at
+is then not needed. For a shot, `--box stroke` / `--crop stroke` use the ink the user drew on it (shots.jsonl strokes),
+and a snap taken while recording gets the cursor / clicks at its moment from events.jsonl.
+  frames.py sheet shots/001.png shots/002.png -o x.jpg     contact sheet of stills, labelled with each shot's note
 
 Coordinates for --box/--crop/--ring are fractions (0-1) of the frame, so they work at any resolution. The native
 recorder logs the cursor and clicks in events.jsonl (same fractions): when the user pointed at or clicked the thing,
@@ -115,9 +121,94 @@ def grab(video: Path, t: float, max_w: int | None = None) -> Image.Image:
     return Image.open(BytesIO(raw)).convert("RGB")
 
 
+# ------------------------------------------------------------------ stills (snap mode)
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+
+
+def is_image(p: Path) -> bool:
+    return p.suffix.lower() in IMAGE_EXT
+
+
+def session_of(p: Path) -> Path:
+    """The session dir for a video, a shot (<session>/shots/NNN.png) or a session dir itself."""
+    if p.is_dir():
+        return p
+    return p.parent.parent if p.parent.name == "shots" else p.parent
+
+
+def load_shots(session: Path) -> dict[int, dict]:
+    """shots.jsonl → {n: shot}; later lines for the same n win (field by field)."""
+    f = session / "shots.jsonl"
+    out: dict[int, dict] = {}
+    if not f.exists():
+        return out
+    for line in f.read_text(encoding="utf-8").splitlines():
+        try:
+            o = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(o.get("n"), int):
+            out[o["n"]] = {**out.get(o["n"], {}), **o}
+    return out
+
+
+def shot_for(img: Path) -> dict | None:
+    """The shots.jsonl entry an image belongs to (NNN.png or NNN.marked.png), if any."""
+    stem = img.name.split(".")[0]
+    if not stem.isdigit():
+        return None
+    return load_shots(session_of(img)).get(int(stem))
+
+
+def load_still(img: Path, max_w: int | None = None) -> Image.Image:
+    im = Image.open(img).convert("RGB")
+    if max_w and im.width > max_w:
+        im = im.resize((max_w, round(im.height * max_w / im.width)), Image.LANCZOS)
+    return im
+
+
+def recording_of(img: Path) -> Path | None:
+    v = session_of(img) / "recording.mp4"
+    return v if v.exists() else None
+
+
+def _strokes_box(strokes: list, pad: float, least: float = 0.0) -> str:
+    """x,y,w,h around a shot's ink (normalized point lists), grown by pad × its size and to `least` per side."""
+    pts = [q for st in strokes for q in st]
+    if not pts:
+        die("this shot has no ink (shots.jsonl strokes is empty) — give x,y,w,h instead")
+    xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+    x, y, bw, bh = min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+    w, h = max(bw * (1 + 2 * pad), least, 0.02), max(bh * (1 + 2 * pad), least, 0.02)
+    x0, y0 = min(max(0, x + bw / 2 - w / 2), 1 - min(w, 1)), min(max(0, y + bh / 2 - h / 2), 1 - min(h, 1))
+    return f"{x0},{y0},{min(w, 1)},{min(h, 1)}"
+
+
+def still_sheet(images: list[Path], out: Path, cols: int = 3, cell_w: int = 640) -> list[dict]:
+    """Contact sheet of stills, each labelled with its file name and the shot's note (text / said)."""
+    imgs = [load_still(p, cell_w) for p in images]
+    ch = max(i.height for i in imgs)
+    rows = (len(imgs) + cols - 1) // cols
+    cols = min(cols, len(imgs))
+    sheet = Image.new("RGB", (cols * cell_w + (cols + 1) * 8, rows * (ch + 30) + 8), "#222")
+    d, f = ImageDraw.Draw(sheet), _font(20)
+    labels = []
+    for k, (im, p) in enumerate(zip(imgs, images)):
+        x, y = 8 + (k % cols) * (cell_w + 8), 8 + (k // cols) * (ch + 30)
+        sheet.paste(im, (x, y + 26))
+        sh = shot_for(p) or {}
+        note = (sh.get("text") or sh.get("said") or "").replace("\n", " ")
+        label = f"#{k + 1}  {p.name}" + (f"  {note[:48]}" if note else "")
+        d.text((x + 2, y + 2), label, fill="#ffd54a", font=_font(20, cjk=not label.isascii()))
+        labels.append({"label": f"#{k + 1}", "file": str(p), "n": sh.get("n"), "note": note or None})
+    out.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out, quality=85)
+    return labels
+
+
 # ------------------------------------------------------------------ pointer (events.jsonl from the recorder)
 def load_events(video: Path) -> list[dict]:
-    f = video.parent / "events.jsonl"
+    f = session_of(video) / "events.jsonl"
     if not f.exists():
         return []
     out = []
@@ -185,22 +276,40 @@ def _union(boxes: list[list[float]]) -> list[float]:
 
 
 def marks(video: Path) -> dict:
-    """Pen marks (strokes drawn in one go) + markers, each with the words spoken around it (transcript.json next to
-    the video, if present)."""
-    tr = video.parent / "transcript.json"
+    """Pen marks (strokes drawn in one go) + markers + snaps, each with the words spoken around it (transcript.json
+    next to the video, if present). `video` may also be a session dir (a shots session has no video)."""
+    session = session_of(video)
+    if video.is_dir() and (video / "recording.mp4").exists():
+        video = video / "recording.mp4"
+    tr = session / "transcript.json"
     segs = json.loads(tr.read_text(encoding="utf-8")).get("segments", []) if tr.exists() else []
 
     def said(a: float, b: float) -> str:
         return " ".join(s["text"] for s in segs if s["end"] >= a - 1.5 and s["start"] <= b + 2.5)
 
+    shots = load_shots(session)
+
+    def snap(sh: dict, t) -> dict:
+        o = {"n": sh.get("n"), "t": None if t is None else round(t, 2), "file": sh.get("file"),
+             "marked": sh.get("marked"), "text": sh.get("text"), "said_note": sh.get("said"),
+             "has_voice": bool(sh.get("voice")), "ink": len(sh.get("strokes") or [])}
+        if t is not None:
+            o["said"] = said(t, t)
+        return o
+
+    if video.is_dir():   # a shots session: no video, no events — just the shots
+        return {"marks": [], "markers": [], "snaps": [snap(sh, sh.get("t")) for n, sh in sorted(shots.items()) if not sh.get("deleted")]}
     groups: dict[int, list[dict]] = {}
     for s in strokes(video):
         groups.setdefault(s["mark"], []).append(s)
     out = [{"mark": m, "t0": g[0]["t0"], "t": g[-1]["t"], "frame_t": g[-1]["frame_t"], "box": _union([s["box"] for s in g]),
             "strokes": [{"shape": s["shape"], "box": s["box"], "from": s["from"], "to": s["to"]} for s in g],
             "said": said(g[0]["t0"], g[-1]["t"])} for m, g in groups.items()]
-    mk = [{"t": round(e["t"], 2), "said": said(e["t"], e["t"])} for e in load_events(video) if e.get("type") == "marker"]
-    return {"marks": out, "markers": mk}
+    ev = load_events(video)
+    mk = [{"t": round(e["t"], 2), "said": said(e["t"], e["t"])} for e in ev if e.get("type") == "marker"]
+    sn = [snap({**shots.get(e.get("n"), {}), "n": e.get("n"), "file": shots.get(e.get("n"), {}).get("file", e.get("file"))}, e["t"])
+          for e in ev if e.get("type") == "snap" and not shots.get(e.get("n"), {}).get("deleted")]
+    return {"marks": out, "markers": mk, "snaps": sn}
 
 
 def _stroke_box(video: Path, t: float, pad: float, least: float = 0.0) -> str:
@@ -235,7 +344,7 @@ def draw_ring(im: Image.Image, x: float, y: float, r_frac: float = 0.028) -> Non
     d.ellipse([cx - r, cy - r, cx + r, cy + r], outline="#ff2d2d", width=w)
 
 
-def grid_image(im: Image.Image, video: Path, t: float) -> dict:
+def grid_image(im: Image.Image, video: Path | None, t: float | None, info: dict | None = None) -> dict:
     """Overlay a 0–1 grid (minor 0.05, labelled 0.1) and pointer markers so positions can be read, not guessed."""
     base = im.convert("RGBA")
     ov = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -257,7 +366,9 @@ def grid_image(im: Image.Image, video: Path, t: float) -> dict:
             for pos in ((3, y + 2), (W - f.size * 1.5, y + 2)):
                 d.rectangle([pos[0] - 1, pos[1], pos[0] + f.size * 1.3, pos[1] + f.size + 2], fill=(0, 0, 0, 170))
                 d.text(pos, lbl, fill=(255, 255, 255, 255), font=f)
-    info = pointer_at(video, t)
+    if info is None:
+        info = pointer_at(video, t) if video is not None and t is not None else {"t": t, "has_events": False, "cursor": None,
+                                                                                  "clicks": [], "strokes": []}
     r = max(10, W // 120)
     for c in info["clicks"]:
         cx, cy = c["x"] * W, c["y"] * H
@@ -276,7 +387,16 @@ def grid_image(im: Image.Image, video: Path, t: float) -> dict:
     return info
 
 
-def _font(size: int):
+def _font(size: int, cjk: bool = False):
+    if cjk:   # notes are often Chinese / Japanese: Arial has no glyphs for them
+        for name in ("/System/Library/Fonts/PingFang.ttc", "/System/Library/Fonts/STHeiti Medium.ttc",
+                     "/System/Library/Fonts/Hiragino Sans GB.ttc", "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
+                     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                     "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"):
+            try:
+                return ImageFont.truetype(name, size)
+            except Exception:
+                continue
     for name in ("Arial.ttf", "DejaVuSans.ttf", "arial.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf",
                  "C:/Windows/Fonts/arial.ttf"):
         try:
@@ -317,7 +437,7 @@ def main():
     sc.add_argument("--force", action="store_true")
     for name in ("candidates", "sheet"):
         c = sub.add_parser(name)
-        c.add_argument("video")
+        c.add_argument("video", nargs="+" if name == "sheet" else None, help="a video — or, for sheet, one or more images")
         c.add_argument("--from", dest="start", type=float)
         c.add_argument("--to", dest="end", type=float)
         c.add_argument("--at", type=float, nargs="+")
@@ -326,16 +446,16 @@ def main():
             c.add_argument("-o", "--out", required=True)
             c.add_argument("--cols", type=int, default=3)
     gr = sub.add_parser("grid")
-    gr.add_argument("video")
-    gr.add_argument("--at", type=float, required=True)
+    gr.add_argument("video", help="video or image")
+    gr.add_argument("--at", type=float, help="seconds (videos)")
     gr.add_argument("-o", "--out", required=True)
     gr.add_argument("--crop", help="x,y,w,h: zoom into part of the frame (grid labels stay in full-frame fractions)")
     po = sub.add_parser("pointer")
     po.add_argument("video")
     po.add_argument("--at", type=float, required=True)
     g = sub.add_parser("grab")
-    g.add_argument("video")
-    g.add_argument("--at", type=float, required=True)
+    g.add_argument("video", help="video or image")
+    g.add_argument("--at", type=float, help="seconds (videos)")
     g.add_argument("-o", "--out", required=True)
     g.add_argument("--box", action="append", help="x,y,w,h (fractions or px) to outline in red; repeatable; "
                                                   "'stroke' = the pen stroke nearest to --at")
@@ -352,9 +472,21 @@ def main():
     cl.add_argument("-o", "--out", required=True)
     cl.add_argument("--max-width", type=int, default=1280)
     a = p.parse_args()
-    video = Path(a.video)
-    if not video.exists():
-        die(f"{video} not found")
+    paths = [Path(v) for v in (a.video if isinstance(a.video, list) else [a.video])]
+    for v in paths:
+        if not v.exists():
+            die(f"{v} not found")
+    video = paths[0]
+    still = is_image(video)
+    if still and a.cmd not in ("grab", "grid", "sheet"):
+        die(f"{a.cmd} needs a video; for a still use grab / grid / sheet")
+    if a.cmd in ("grab", "grid") and not still and a.at is None:
+        die("--at is required for a video")
+    if still and a.cmd in ("grab", "grid"):
+        shot = shot_for(video) or {}
+        rec, st = recording_of(video), shot.get("t")
+        a.at = st if a.at is None else a.at        # a snap taken while recording: its moment in the video
+        pinfo = pointer_at(rec, st) if rec is not None and st is not None else None
 
     if a.cmd == "scan":
         s = scan(video, a.force)
@@ -362,6 +494,9 @@ def main():
         busy = [round(float(t), 1) for t, c in zip(s["times"], ch) if c > 0.02]
         print(json.dumps({"index": str(scan_path(video)), "samples": int(len(ch)), "fps": SCAN_FPS,
                           "significant_changes_at": busy[:300]}))
+    elif a.cmd == "sheet" and still:
+        labels = still_sheet(paths, Path(a.out), a.cols)
+        print(json.dumps({"sheet": a.out, "labels": labels}, ensure_ascii=False))
     elif a.cmd in ("candidates", "sheet"):
         if a.at:
             times = a.at
@@ -379,8 +514,9 @@ def main():
     elif a.cmd == "marks":
         print(json.dumps(marks(video), ensure_ascii=False))
     elif a.cmd == "grid":
-        im = grab(video, a.at, 1920)
-        info = grid_image(im, video, a.at)
+        im = load_still(video, 1920) if still else grab(video, a.at, 1920)
+        info = grid_image(im, None, a.at, pinfo or {"t": a.at, "has_events": False, "cursor": None, "clicks": [], "strokes": []}) \
+            if still else grid_image(im, video, a.at)
         if a.crop:
             x0, y0, x1, y1 = _frac_box(a.crop, im.width, im.height)
             im = im.crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1)))
@@ -388,15 +524,29 @@ def main():
         im.save(a.out, quality=88)
         print(json.dumps({"grid": a.out, **info}))
     elif a.cmd == "grab":
-        im = grab(video, a.at, a.max_width)
+        im = load_still(video, a.max_width) if still else grab(video, a.at, a.max_width)
         d = ImageDraw.Draw(im)
+
+        def stroke_box(pad, least=0.0):
+            return _strokes_box(shot.get("strokes") or [], pad, least) if still else _stroke_box(video, a.at, pad, least)
+
+        def point(spec):
+            if still and spec in ("cursor", "click"):
+                if not pinfo:
+                    die(f"no {spec} for this still (only snaps taken while recording have events) — use x,y")
+                if spec == "cursor" and pinfo["cursor"]:
+                    return pinfo["cursor"]["x"], pinfo["cursor"]["y"]
+                if spec == "click" and pinfo["clicks"]:
+                    return pinfo["clicks"][0]["x"], pinfo["clicks"][0]["y"]
+                die(f"no {spec} recorded near this snap — use x,y")
+            return _point(spec, video, a.at)
         for b in a.box or []:
-            x0, y0, x1, y1 = _frac_box(_stroke_box(video, a.at, 0.15) if b == "stroke" else b, im.width, im.height)
+            x0, y0, x1, y1 = _frac_box(stroke_box(0.15) if b == "stroke" else b, im.width, im.height)
             d.rounded_rectangle([x0, y0, x1, y1], radius=6, outline="#ff2d2d", width=max(3, im.width // 400))
         for r in a.ring or []:
-            draw_ring(im, *_point(r, video, a.at))
+            draw_ring(im, *point(r))
         if a.crop:
-            x0, y0, x1, y1 = _frac_box(_stroke_box(video, a.at, 0.5, 0.45) if a.crop == "stroke" else a.crop, im.width, im.height)
+            x0, y0, x1, y1 = _frac_box(stroke_box(0.5, 0.45) if a.crop == "stroke" else a.crop, im.width, im.height)
             im = im.crop((max(0, x0), max(0, y0), min(im.width, x1), min(im.height, y1)))
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         im.save(a.out, quality=90)

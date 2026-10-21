@@ -52,13 +52,18 @@ The first run picks a speech model for your machine and installs the **Blurt** m
 1. **Draw the area** to record: drag a region, click a window, or go full screen. Tabs, bookmarks and everything
    else stay out of the video.
 2. **3-2-1**, then talk. A tiny floating bar shows time and mic level, with ⏸ pause, ↺ redo and **Finish**. The bar
-   itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧S` finish (Windows: `Alt+Shift+P` / `Alt+Shift+S`).
+   itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧A` snap, `⌥⇧S` finish (Windows: `Alt+Shift+P` / `A` / `S`).
    When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
    your agent sees exactly what you meant. To keep the pen on, click ✎ on the bar or press `⌥⇧D`; while it's on,
    clicks draw instead of reaching your app, and **`Esc`**, `⌥⇧D` or ✎ again turns it off.
 3. Click **Finish** and get back to work. Your agent transcribes locally, writes the items, and opens the review page.
 4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".
+
+**Snap mode:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go: the shot
+hangs on a little perch at the top of the screen, and you just say what's wrong (or type it, or circle it with `⌃`).
+Click **🐔 Process** when you've collected a few. Snapping during a recording (`⌥⇧A`, or 📸 on the bar) grabs a
+full-resolution still of that exact moment without pausing. Use video for flows, animations and timing.
 
 **Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
 finishes it; `⌥⇧B` opens the menu. Recordings go to a workspace: `~/Blurt` by default, or a project you bind, so

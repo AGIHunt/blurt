@@ -1,4 +1,4 @@
-"""Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / marker / discard / stop).
+"""Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / snap / discard / stop).
 
 Used on Windows (primary), Linux/X11, and on macOS when the native Swift recorder can't be built. Video is captured
 with ffmpeg (Windows: gdigrab region; Linux: x11grab region; macOS: avfoundation + crop), audio with PortAudio (MicRecorder). Pause stops the
@@ -6,6 +6,9 @@ current video segment and drops audio; segments are aligned by wall clock and jo
 
 The control bar is excluded from capture on Windows 10 2004+ (SetWindowDisplayAffinity) and always sits outside
 the recorded region when there is room.
+
+Snap (📸 on the bar, Alt+Shift+A, or `record.py snap`; the marker hotkey Alt+Shift+M snaps too): one full-resolution
+ffmpeg frame of the region → <session>/shots/NNN.png + a line in shots.jsonl (t = video time) + a "snap" event.
 """
 from __future__ import annotations
 
@@ -207,6 +210,47 @@ class Picker:
             self.done(None)
 
 
+# ------------------------------------------------------------------ snaps
+def snap_cmd(ff: str, region: list[int], out: Path) -> list[str]:
+    """ffmpeg command for a single full-resolution frame of the region (same grabbers as the video)."""
+    x, y, w, h = region
+    cmd = [ff, "-hide_banner", "-loglevel", "error", "-y"]
+    if os.environ.get("BLURT_FAKE_SCREEN"):
+        cmd += ["-f", "lavfi", "-i", f"testsrc2=s={w}x{h}:r=1"]
+    elif IS_WIN:
+        cmd += ["-f", "gdigrab", "-draw_mouse", "1", "-offset_x", str(x), "-offset_y", str(y), "-video_size", f"{w}x{h}",
+                "-i", "desktop"]
+    elif IS_LINUX:
+        cmd += ["-f", "x11grab", "-draw_mouse", "1", "-video_size", f"{w}x{h}", "-i", f"{os.environ.get('DISPLAY', ':0')}+{x},{y}"]
+    else:
+        from record import list_screens
+        sf = mac_backing_scale()
+        cmd += ["-f", "avfoundation", "-capture_cursor", "1", "-i", f"{list_screens()[0]['index']}:none",
+                "-vf", f"crop={int(w * sf)}:{int(h * sf)}:{int(x * sf)}:{int(y * sf)}"]
+    return cmd + ["-frames:v", "1", "-update", "1", str(out)]
+
+
+def shot_line(n: int, t: float | None, region: list[int], wall: float | None = None) -> dict:
+    """One shots.jsonl line (docs/design/snap-and-live.md): later lines for the same n win."""
+    return {"n": n, "file": f"shots/{n:03d}.png", "marked": None, "t": None if t is None else round(t, 3),
+            "wall": round(wall if wall is not None else time.time(), 3), "region": list(region), "voice": None,
+            "text": None, "strokes": []}
+
+
+def capture_shot(session: Path, region: list[int], n: int, t: float | None, wall: float | None = None) -> dict | None:
+    """Grab the frame and append its line to shots.jsonl. Returns the line, or None if ffmpeg failed."""
+    shots = session / "shots"
+    shots.mkdir(parents=True, exist_ok=True)
+    out = shots / f"{n:03d}.png"
+    r = subprocess.run(snap_cmd(ffmpeg_bin(), region, out), stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+    if r.returncode or not out.exists():
+        return None
+    line = shot_line(n, t, region, wall)
+    with open(session / "shots.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+    return line
+
+
 # ------------------------------------------------------------------ recorder
 class TkRecorder:
     def __init__(self, session: Path, mic: dict | None, fps: int, max_width: int, lang: str, countdown: int,
@@ -224,6 +268,7 @@ class TkRecorder:
         self.events = []
         self.result = None
         self.live_audio = False          # record.py: also write live/audio.pcm for live.py
+        self.shots = 0
 
     def t(self, a, b):
         return a if zh(self.lang) else b
@@ -275,7 +320,8 @@ class TkRecorder:
         lbl = tk.Label(cw, text=str(n), fg="white", bg=BG, font=("Segoe UI", 64, "bold"))
         lbl.pack(expand=True, fill="both")
         tk.Label(cw, text=self.t("准备，开喷", "Get ready"), fg=MUTED, bg=BG, font=("Segoe UI", 10)).pack()
-        hint = self.t("Alt+Shift+P 暂停/继续 · Alt+Shift+S 完成 · 点一下跳过", "Alt+Shift+P pause · Alt+Shift+S finish · click to skip")
+        hint = self.t("Alt+Shift+P 暂停/继续 · Alt+Shift+A 截图 · Alt+Shift+S 完成 · 点一下跳过",
+                      "Alt+Shift+P pause · Alt+Shift+A snap · Alt+Shift+S finish · click to skip")
         tk.Label(cw, text=hint if IS_WIN else self.t("点一下跳过", "click to skip"), fg=MUTED, bg=BG,
                  font=("Segoe UI", 8), wraplength=size + 120).pack(pady=(2, 10))
 
@@ -342,6 +388,9 @@ class TkRecorder:
                                                       cursor="hand2")
         self.pause_btn = mk("⏸", self.toggle_pause, "pause")
         self.pause_btn.pack(side="left", padx=2)
+        self.snap_btn = mk("📸", lambda: self.snap("hud"), "snap")
+        self.snap_btn.config(width=0, padx=6)
+        self.snap_btn.pack(side="left", padx=2)
         mk("↺", self.redo, "restart").pack(side="left", padx=2)
         done = mk("■ " + self.t("完成", "Finish"), self.stop, "stop", "#e0342b")
         done.config(width=0, padx=10)
@@ -465,10 +514,37 @@ class TkRecorder:
             self.pause_btn.config(text="▶")
             self.on_event({"event": "paused", "t": round(self.elapsed(), 2)})
 
+    def snap(self, via: str = "hotkey"):
+        """A full-resolution still of the region at this instant, without pausing (ffmpeg runs off the UI thread)."""
+        if not self.segments or self.result:
+            return
+        self.shots += 1
+        n, t, wall = self.shots, round(self.elapsed(), 3), time.time()
+        self.log("snap", n=n, file=f"shots/{n:03d}.png", via=via)
+        self.on_event({"event": "snap", "n": n, "t": t})
+        for b in self.borders:           # flash the border (it is outside the region)
+            b.configure(bg="white")
+        self.root.after(220, lambda: [b.configure(bg=AMBER if self.paused else ACCENT) for b in self.borders if b.winfo_exists()])
+
+        def work():
+            line = capture_shot(self.session, self.region, n, t, wall)
+            def done():
+                if line and not self.result and self.snap_btn.winfo_exists():
+                    self.snap_btn.config(text=f"📸 {n}")
+                if not line:
+                    self.on_event({"event": "error", "code": "snap", "message": f"could not capture shot {n}"})
+            try:
+                self.root.after(0, done)
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
+
     def marker(self):
+        """Still logged as a marker, and a snap of this moment (as in the macOS app)."""
         if self.segments and not self.paused:
             self.log("marker")
             self.on_event({"event": "marker", "t": round(self.elapsed(), 2)})
+            self.snap("marker")
 
     def redo(self):
         """Restart (same area, fresh take) / keep recording / discard — one button, one question."""
@@ -591,6 +667,8 @@ class TkRecorder:
             self.toggle_pause()
         elif c == "marker":
             self.marker()
+        elif c == "snap":
+            self.snap("command")
 
     def start_hotkeys(self):
         if not IS_WIN:
@@ -602,12 +680,12 @@ class TkRecorder:
             from ctypes import wintypes
             user32 = ctypes.windll.user32
             MOD = 0x0001 | 0x0004 | 0x4000  # ALT | SHIFT | NOREPEAT
-            for i, vk in enumerate((0x50, 0x4D, 0x53), 1):  # P, M, S
+            for i, vk in enumerate((0x50, 0x4D, 0x53, 0x41), 1):  # P, M, S, A
                 user32.RegisterHotKey(None, i, MOD, vk)
             msg = wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
                 if msg.message == 0x0312:  # WM_HOTKEY
-                    q.put({1: "toggle", 2: "marker", 3: "stop"}.get(msg.wParam))
+                    q.put({1: "toggle", 2: "marker", 3: "stop", 4: "snap"}.get(msg.wParam))
 
         threading.Thread(target=loop, daemon=True).start()
 
