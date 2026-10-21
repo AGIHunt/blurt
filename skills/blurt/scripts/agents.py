@@ -63,10 +63,11 @@ def definitions(cfg: dict | None = None) -> dict[str, dict]:
 
 def agent_order(cfg: dict | None = None) -> list[str]:
     """The order agents are tried in. record.agents if set (unknown ids dropped, duplicates removed); otherwise the
-    registry order, with a legacy record.process = "claude" | "codex" moved to the front."""
+    registry order, with a legacy record.process = "claude" | "codex" moved to the front. App-only agents
+    ("headless": false, e.g. zcode) are never in it — same rule as AgentHub.order() in Agents.swift."""
     cfg = cfg if cfg is not None else global_config()
     rec = cfg.get("record", {})
-    defs = definitions(cfg)
+    defs = {k: d for k, d in definitions(cfg).items() if d.get("headless", True) is not False}
     want = rec.get("agents")
     if isinstance(want, str):
         want = [w.strip() for w in want.split(",")]
@@ -292,7 +293,8 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
     order = agent_order(cfg)
     env = clean_env(env)
     rows = []
-    for i in ids or order:
+    # app-only agents (headless: false) follow the order, so a UI can still offer "copy the prompt" for them
+    for i in ids or order + [k for k in defs if k not in order and not is_headless(defs[k])]:
         d = defs.get(i)
         if not d:
             continue
