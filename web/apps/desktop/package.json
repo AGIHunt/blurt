@@ -1,0 +1,28 @@
+{
+  "name": "@blurt/desktop",
+  "private": true,
+  "version": "0.6.0",
+  "type": "module",
+  "description": "Blurt main window for the Windows/Linux Tauri app (apps/desktop/src-tauri). Opens in a plain browser with mock data for UI work.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "tsc --noEmit && vitest run"
+  },
+  "dependencies": {
+    "@blurt/review": "workspace:*",
+    "@blurt/ui": "workspace:*",
+    "@tauri-apps/api": "2.12.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}
