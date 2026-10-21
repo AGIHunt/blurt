@@ -42,7 +42,8 @@ Unknown fields are fine — the review page shows any extra string / list fields
 
 Every item must have a `kind` and an `id`.
 
-**Who writes what.** You write the file once (§3: text, `"processing": true`, no frames). After `review.py` has
+**Who writes what.** You write the file once (§3: text, `"processing": true`, no picked frames — a snap's
+`shots/<NNN>.png` is already its item's first frame). After `review.py` has
 started, the user edits it too: change it only with `items.py` (locked, atomic, keeps the user's fields). Shots
 sessions have no `source_video`; their frames point at `shots/<NNN>.png` with `"t": null`.
 
