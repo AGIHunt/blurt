@@ -195,3 +195,31 @@ ideas → an ideas board / doc; notes → Markdown; tasks → the user's todo to
 Confirm destination and count before creating anything remotely; report links afterwards. Then offer the natural
 next step — for issues "want me to start fixing these?" (you have `code_refs`), for ideas "want a quick prototype /
 spec of the top one?".
+
+## 7. Fix items (and say so)
+
+When the user asks you to fix items — "fix these", the Blurt app's "Let Claude fix it", a prompt from
+`agents.py prompt fix` — for each item:
+1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <session> <id|uid>` and open the
+   frame files. Look at the frames; they are the evidence.
+2. `items.py fix <session> <id|uid> --state fixing` (MCP: `mark_fixed(uid, state="fixing")`) before you start —
+   the app shows the chick working on it.
+3. Fix it, smallest change that does it. Don't commit or push unless the user asks; they check the result.
+4. `items.py fix … --state fixed --note "<one line: what changed, which files>"` (`--commit SHA` / `--pr URL` if
+   there is one); can't or shouldn't fix → `--state wontfix --note "<why>"`. The user reopens with `reopened`.
+`--agent` / `--run-id` default to `$BLURT_AGENT` / `$BLURT_RUN_ID` (set by the app). Never set `fix` with
+`patch`, and never edit items.json yourself.
+
+## 8. Across recordings: index and MCP
+
+All sessions on this machine (`~/Blurt/recordings` and every repo's `.blurt/sessions`) are indexed in
+`~/.blurt/index.db` (`index.py`; items.py keeps it fresh). To find things across recordings:
+`index.py search "<words>" [--kind issue] [--fix-state none] [--workspace <repo>]` → items with uid, session dir,
+title, status, fix state (Chinese works; 1–2 character words too). `index.py backlog <repo>` writes
+`.blurt/BACKLOG.md` with the open items.
+
+The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_server.py`, stdio): `list_projects`,
+`list_sessions`, `search_items`, `get_item` (returns the screenshots as images), `get_transcript`, `update_item`
+(= `items.py patch`, keeps the user's edits), `mark_fixed` (= `items.py fix`). The plugin registers it for Claude
+Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first shows what changes).
+Prefer the tools when they are there; they write through items.py like everything else.

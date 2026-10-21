@@ -1,0 +1,148 @@
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 14px;
+  border-radius: 20px;
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  white-space: nowrap;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fg3);
+}
+.hud[data-state='recording'] .dot {
+  background: var(--rec);
+  animation: blink 1s steps(2, jump-none) infinite;
+}
+.hud[data-state='paused'] .dot {
+  background: var(--amber);
+}
+@keyframes blink {
+  50% {
+    background: #7a1f1a;
+  }
+}
+.time {
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.hud[data-state='paused'] .time {
+  color: var(--amber);
+}
+.meter {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+}
+.meter i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--fg3);
+  opacity: 0.35;
+  transition: opacity 80ms;
+}
+.meter i:nth-child(1) { height: 4px; }
+.meter i:nth-child(2) { height: 6px; }
+.meter i:nth-child(3) { height: 9px; }
+.meter i:nth-child(4) { height: 11px; }
+.meter i:nth-child(5) { height: 14px; }
+.meter i.on {
+  opacity: 1;
+  background: #34c759;
+}
+.hud.no-mic .meter {
+  display: none;
+}
+.sep {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 2px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  border-radius: 15px;
+  color: var(--fg2);
+}
+.btn:hover {
+  background: var(--s3);
+  color: var(--fg);
+}
+.btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+.btn .i-play,
+.hud[data-state='paused'] .btn .i-pause {
+  display: none;
+}
+.hud[data-state='paused'] .btn .i-play {
+  display: inline;
+}
+.btn.stop {
+  background: var(--accent);
+  color: #1e1e1e;
+  font-weight: 600;
+  padding: 0 11px 0 9px;
+}
+.btn.stop:hover {
+  background: #ff9378;
+  color: #1e1e1e;
+}
+.btn.discard.armed {
+  background: var(--rec);
+  color: white;
+}
+.count:empty {
+  display: none;
+}
+.count {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+.btn.snap.flash {
+  background: white;
+  color: #1e1e1e;
+}
+.msg {
+  display: none;
+  color: var(--fg2);
+  padding-right: 8px;
+}
+.hud[data-state='starting'] .btn,
+.hud[data-state='saving'] .btn,
+.hud[data-state='done'] .btn,
+.hud[data-state='error'] .btn {
+  display: none;
+}
+.hud[data-state='starting'] .msg,
+.hud[data-state='saving'] .msg,
+.hud[data-state='done'] .msg,
+.hud[data-state='error'] .msg {
+  display: inline;
+}
+.hud[data-state='error'] .msg {
+  color: #ff8a80;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
