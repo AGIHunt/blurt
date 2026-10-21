@@ -1,40 +1,31 @@
 import AppKit
+import BlurtCore
 import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
 import ScreenCaptureKit
 import ServiceManagement
 
-// MARK: - Hotkeys (Carbon: work without Accessibility permission, even when we're not the active app)
+// MARK: - Hotkeys (Carbon via BlurtCore.HotkeyCenter: work without Accessibility permission, even when we're not the
+// active app). Configurable actions arrive through HotkeyCenter.onFire; the fixed keys below (Esc for the pen, ↩ / Esc / F
+// in the picker) through onRaw.
 
 enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11, pickFull = 12 }
 var hotkeyHandler: ((HK) -> Void)?
-var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
 
 func installHotkeyHandler() {
-    var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-    InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
-        var id = EventHotKeyID()
-        GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
-                          MemoryLayout<EventHotKeyID>.size, nil, &id)
-        if let k = HK(rawValue: id.id) { hotkeyHandler?(k) }
-        return noErr
-    }, 1, &spec, nil, nil)
+    let c = HotkeyCenter.shared
+    c.installHandler()
+    c.onRaw = { id in if let k = HK(rawValue: id) { hotkeyHandler?(k) } }
+    c.onFire = { a in
+        if let k = a.hk { hotkeyHandler?(k) } else if a == .openMain { AppEnvironment.mainWindow?.show() }
+    }
 }
 
 @discardableResult
-func registerHotkey(_ k: HK, key: Int, mods: Int) -> OSStatus {
-    guard hotkeyRefs[k.rawValue] == nil else { return noErr }
-    var ref: EventHotKeyRef?
-    let st = RegisterEventHotKey(UInt32(key), UInt32(mods), EventHotKeyID(signature: OSType(0x626C7274), id: k.rawValue),
-                                 GetApplicationEventTarget(), 0, &ref)
-    if let r = ref { hotkeyRefs[k.rawValue] = r }
-    return st
-}
+func registerHotkey(_ k: HK, key: Int, mods: Int) -> OSStatus { HotkeyCenter.shared.registerRaw(k.rawValue, code: key, mods: mods) }
 
-func unregisterHotkey(_ k: HK) {
-    if let r = hotkeyRefs.removeValue(forKey: k.rawValue) { UnregisterEventHotKey(r) }
-}
+func unregisterHotkey(_ k: HK) { HotkeyCenter.shared.unregisterRaw(k.rawValue) }
 
 var signalSources: [DispatchSourceSignal] = []
 

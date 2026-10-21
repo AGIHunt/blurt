@@ -521,23 +521,6 @@ final class RecordingSnaps {
 
 // MARK: - Standalone snaps (menu-bar app, not recording)
 
-/// Fixed hotkey modifiers can be overridden for tests (BLURT_HOTKEY_MODS=ctrl+opt+shift+cmd) so a test build never
-/// fights the user's running Blurt for ⌥⇧ shortcuts.
-func hotkeyMods(_ spec: String?) -> Int? {
-    guard let spec = spec, !spec.isEmpty else { return nil }
-    var m = 0
-    for p in spec.lowercased().split(separator: "+") {
-        switch p {
-        case "ctrl", "control": m |= controlKey
-        case "opt", "option", "alt": m |= optionKey
-        case "shift": m |= shiftKey
-        case "cmd", "command": m |= cmdKey
-        default: break
-        }
-    }
-    return m
-}
-
 func isShotsSession(_ dir: URL) -> Bool {
     dir.lastPathComponent.hasSuffix("-shots") || FileManager.default.fileExists(atPath: dir.appendingPathComponent("shots.jsonl").path)
         && !FileManager.default.fileExists(atPath: dir.appendingPathComponent("recording.mp4").path)
