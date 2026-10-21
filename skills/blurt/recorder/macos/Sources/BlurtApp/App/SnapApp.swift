@@ -6,6 +6,7 @@
 
 import AppKit
 import Carbon.HIToolbox
+import BlurtCore
 
 var testMenu: NSMenu?
 
@@ -86,6 +87,11 @@ extension App {
                                         isARepeat: false, keyCode: UInt16(code)) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + (parts[0] == "rkey" ? 0.6 : 0)) { NSApp.postEvent(e, atStart: false) }
             }
+        case "sethotkey":                               // sethotkey ACTION SPEC|off: HotkeyCenter.set, emits the result
+            let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard a.count == 2, let act = HotAction(rawValue: a[0]) else { return }
+            let r = Hotkeys.shared.set(Shortcut.isOff(a[1]) ? nil : Shortcut.parse(a[1]), for: act)
+            emit(["event": "sethotkey", "action": act.rawValue, "keys": Hotkeys.shared.binding(act)?.spec ?? "off", "result": "\(r)"])
         case "hotkeys":                                 // dump the state, for scripted checks
             emit(["event": "hotkeys", "keys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
                   "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.states[$0].map { "\($0)" } ?? "") })])

@@ -149,7 +149,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             f.translatesAutoresizingMaskIntoConstraints = false
             f.widthAnchor.constraint(equalToConstant: 150).isActive = true
             f.heightAnchor.constraint(equalToConstant: 26).isActive = true
-            f.onSet = { [weak self] s in Hotkeys.shared.set(a, s); self?.refresh() }
+            f.onSet = { [weak self] s in Hotkeys.shared.set(s, for: a); self?.refresh() }
             fields[a] = f
             let clear = NSButton(image: NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: L("关闭", "Off")) ?? NSImage(),
                                  target: self, action: #selector(clear(_:)))
@@ -170,10 +170,10 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         }
 
         stack.addArrangedSubview(header(L("随时可用", "ANYTIME")))
-        for a in [HotAction.record, .snap, .menu] { stack.addArrangedSubview(row(a)) }
+        for a in [HotAction.toggleRecord, .snap, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]) { stack.addArrangedSubview(row(a)) }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(header(L("录制中", "WHILE RECORDING")))
-        for a in [HotAction.pause, .marker, .pen, .stop] { stack.addArrangedSubview(row(a)) }
+        for a in [HotAction.pause, .marker, .pen, .finish] { stack.addArrangedSubview(row(a)) }
 
         // the pen's hold-to-draw modifier (record.draw_key)
         let dTitle = NSTextField(labelWithString: L("按住画图", "Hold to draw"))
@@ -253,7 +253,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             } else if st == .off {
                 n.stringValue = ""
             } else {
-                n.stringValue = a.defaultShortcut == hk.shortcut(a) ? "" : L("已自定义", "custom")
+                n.stringValue = a.defaultCombo == hk.shortcut(a) ? "" : L("已自定义", "custom")
                 n.textColor = .tertiaryLabelColor
             }
             n.toolTip = n.stringValue
@@ -265,7 +265,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
     @objc func clear(_ b: NSButton) {
         guard let id = b.identifier?.rawValue, let a = HotAction(rawValue: id) else { return }
         ShortcutField.active?.stop()
-        Hotkeys.shared.set(a, nil)
+        Hotkeys.shared.set(nil, for: a)
         refresh()
     }
     @objc func restore() {
