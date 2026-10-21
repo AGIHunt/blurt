@@ -662,8 +662,22 @@ Sources/BlurtCore/      (library; everything the app uses from it is public — 
                     // those keys in ~/Library/Caches/dev.blurt.recorder/hotkeys/<pid>.json
    Index/           public final class IndexReader { init(url: URL = BlurtPaths.indexDB) throws
                       func workspaces() throws -> [WorkspaceRow]; func sessions(_ q: SessionQuery) throws -> [SessionRow]
-                      func items(_ q: ItemQuery) throws -> [ItemRow]; func count(_ q: ItemQuery) throws -> Int }
-                    public final class IndexWatcher { init(roots: [URL]); var onChange: (([URL]) -> Void)? }   // FSEvents（WP5）
+                      func items(_ q: ItemQuery) throws -> [ItemRow]; func count(_ q: ItemQuery) throws -> Int
+                      func uids(_ q: ItemQuery) throws -> [String]                 // every match in display order (limit 0 = all)
+                      func items(uids: [String], terms: [String] = []) throws -> [ItemRow]   // rows a screenful at a time
+                      func item(uid: String) throws -> ItemRow?; func session(id: String) throws -> SessionRow?
+                      func counts() throws -> IndexCounts                          // sidebar badges in one query
+                      var dataVersion: Int                                         // PRAGMA data_version: poll it to reload
+                      func lastFullScan() -> Double? }
+                    // query rules = index.py search (C3 细则); opens ?mode=ro, and when index.py removed -wal/-shm on close,
+                    // falls back to READWRITE (no CREATE) + PRAGMA query_only = 1 (recreates the -shm, never writes data)
+                    // SessionQuery.state adds "inbox" (= processed 0 OR processing 1 OR reviewed 0); ItemQuery.sort adds
+                    // title | kind | status | fix with `ascending`; ItemRow adds quote, sessionTitle, workspaceName, created,
+                    // frameCount, hasCodeRefs, tStart; SessionRow adds duration, shotCount, author, workspaceName, state
+                    public final class IndexWatcher { init(roots: [URL]); var onChange: (([URL]) -> Void)?; start(); stop() }
+                    // FSEvents（WP5）; roots = session containers (~/Blurt/recordings, <repo>/.blurt/sessions); reports the session
+                    // dirs whose items.json / meta.json / shots.jsonl / recording.mp4 changed (or that appeared / vanished), 300 ms
+                    // debounce, on main; the app then runs `index.py update <dirs>`
    Agents/ (WP6)    C5 rows: AgentStatus (= one `agents.py detect` row), AgentDetect, AgentCommand, InstallPlan / InstallChange, FixPrompt
                     public final class SkillCLI { static let shared            // plain calls go through ScriptRunner; --with / extra env /
                       func run(_ script:, _ args:, stdin:, with packages: [String], env:, timeout:) async throws -> CLIResult   // separate
