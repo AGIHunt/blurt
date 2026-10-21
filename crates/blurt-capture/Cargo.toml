@@ -1,0 +1,28 @@
+[package]
+name = "blurt-capture"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+description = "Blurt on Windows/Linux: drives record.py's ffmpeg engine (--status-jsonl) and opens the transparent overlay windows (region picker, HUD, perch, note bubble)"
+
+# Standalone crate (no [workspace] here on purpose: the Tauri app adds it as a path dependency).
+#   cargo test                          engine + region + status (needs python3/uv + ffmpeg for the record.py test)
+#   cargo check --no-default-features   without Tauri (cross-checks for Linux need no GTK sysroot)
+
+[features]
+default = ["overlay"]
+# Overlay windows (needs Tauri 2; on Linux the webkit2gtk-4.1 / gtk3 dev packages)
+overlay = ["dep:tauri"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.12", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tempfile = "3"
