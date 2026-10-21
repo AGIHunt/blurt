@@ -10,7 +10,7 @@ the recorded region when there is room.
 Hotkeys (Windows): config record.hotkeys, same as the macOS app — {"pause": "alt+shift+P", "snap": "alt+shift+A",
 "marker": "alt+shift+M", "stop": "alt+shift+S"} are the defaults; "off" disables one.
 
-Snap (📸 on the bar, Alt+Shift+A, or `record.py snap`; the marker hotkey Alt+Shift+M snaps too): one full-resolution
+Snap (the snap button on the bar, Alt+Shift+A, or `record.py snap`; the marker hotkey Alt+Shift+M snaps too): one full-resolution
 ffmpeg frame of the region → <session>/shots/NNN.png + a line in shots.jsonl (t = video time) + a "snap" event.
 """
 from __future__ import annotations
@@ -77,6 +77,31 @@ def mac_backing_scale() -> float:
     except Exception:
         pass
     return 1.0
+
+
+ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
+_ICONS: dict = {}
+
+
+def tk_icon(widget, name: str):
+    """A light 16 pt glyph of the blurt icon family as a Tk PhotoImage (Tk 8.6 reads PNG; never emoji as icons).
+
+    assets/icons/NAME.png, @1.5x and @2x are rendered from assets/icons/*.svg by assets/icons/tools/build.py; the
+    density follows Tk's scaling (pixels per point: 1.33 at 96 dpi). None if the file can't be read (then the caller's
+    text label is all there is)."""
+    import tkinter as tk
+    try:
+        ratio = float(widget.tk.call("tk", "scaling")) / (96 / 72)
+    except Exception:
+        ratio = 1.0
+    suffix = "" if ratio < 1.25 or IS_MAC else "@1.5x" if ratio < 1.75 else "@2x"
+    key = (str(widget.winfo_toplevel()), name, suffix)
+    if key not in _ICONS:
+        try:
+            _ICONS[key] = tk.PhotoImage(master=widget, file=str(ICON_DIR / f"{name}{suffix}.png"))
+        except Exception:
+            _ICONS[key] = None
+    return _ICONS[key]
 
 
 def virtual_screen(root) -> tuple[int, int, int, int]:
@@ -197,7 +222,9 @@ class Picker:
         if self.last:
             mk(self.t("上次区域", "Last area"), self.use_last).pack(side="left", padx=3)
         mk(self.t("取消", "Cancel"), lambda: self.finish(False)).pack(side="left", padx=3)
-        mk("● " + self.t("开始录制", "Start recording"), lambda: self.finish(True), ACCENT).pack(side="left", padx=3)
+        start = mk(self.t("开始录制", "Start recording"), lambda: self.finish(True), ACCENT)
+        start.config(image=tk_icon(f, "record-fill") or "", compound="left")
+        start.pack(side="left", padx=3)
         f.update_idletasks()
         x, y, w, h = self.sel
         fx = max(8, min(x + w // 2 - f.winfo_reqwidth() // 2, self.vw - f.winfo_reqwidth() - 8))
@@ -404,22 +431,26 @@ class TkRecorder:
         hud.configure(bg=BG)
         row = tk.Frame(hud, bg=BG, padx=10, pady=6)
         row.pack()
-        self.dot = tk.Label(row, text="●", fg="#ff3b30", bg=BG, font=("Segoe UI", 12))
+        self.dot = tk.Canvas(row, width=12, height=12, bg=BG, highlightthickness=0)   # the recording light
+        self.dot_id = self.dot.create_oval(1, 1, 11, 11, fill="#ff3b30", outline="")
         self.dot.pack(side="left")
         self.clock = tk.Label(row, text="00:00", fg=FG, bg=BG, font=("Consolas" if IS_WIN else "Menlo", 13, "bold"), width=6)
         self.clock.pack(side="left", padx=(4, 8))
-        mk = lambda txt, cmd, tip, bg=BG2: tk.Button(row, text=txt, command=cmd, bg=bg, fg="white", activebackground=bg,  # noqa: E731
-                                                      activeforeground="white", relief="flat", bd=0, width=3,
-                                                      font=("Segoe UI Symbol" if IS_WIN else "Helvetica", 11, "bold"),
-                                                      cursor="hand2")
-        self.pause_btn = mk("⏸", self.toggle_pause, "pause")
+        # icon buttons: PNG glyphs of the blurt icon family (assets/icons), with a text fallback if a PNG is missing
+        self.icons = {n: tk_icon(row, n) for n in ("pause-fill", "play-fill", "snap", "restart", "stop-fill")}
+
+        def mk(icon, cmd, fallback, text="", bg=BG2):
+            img = self.icons.get(icon)
+            return tk.Button(row, image=img or "", text=text if img else (text or fallback), compound="left",
+                             command=cmd, bg=bg, fg="white", activebackground=bg, activeforeground="white", relief="flat",
+                             bd=0, padx=7, pady=5, font=("Segoe UI" if IS_WIN else "Helvetica", 10, "bold"), cursor="hand2")
+        self.pause_btn = mk("pause-fill", self.toggle_pause, self.t("暂停", "Pause"))
         self.pause_btn.pack(side="left", padx=2)
-        self.snap_btn = mk("📸", lambda: self.snap("hud"), "snap")
-        self.snap_btn.config(width=0, padx=6)
+        self.snap_btn = mk("snap", lambda: self.snap("hud"), self.t("截图", "Snap"))
         self.snap_btn.pack(side="left", padx=2)
-        mk("↺", self.redo, "restart").pack(side="left", padx=2)
-        done = mk("■ " + self.t("完成", "Finish"), self.stop, "stop", "#e0342b")
-        done.config(width=0, padx=10)
+        mk("restart", self.redo, self.t("重录", "Redo")).pack(side="left", padx=2)
+        done = mk("stop-fill", self.stop, "", " " + self.t("完成", "Finish"), "#e0342b")
+        done.config(padx=10)
         done.pack(side="left", padx=(4, 0))
         # drag to move
         row.bind("<ButtonPress-1>", lambda e: setattr(self, "_drag", (e.x_root - hud.winfo_x(), e.y_root - hud.winfo_y())))
@@ -438,7 +469,7 @@ class TkRecorder:
         self.resolve_live_leads()
         s = int(self.elapsed())
         self.clock.config(text=f"{s // 60:02d}:{s % 60:02d}" if s < 3600 else f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}")
-        self.dot.config(fg=AMBER if self.paused else ("#ff3b30" if int(time.time() * 2) % 2 else "#7a1f1a"))
+        self.dot.itemconfig(self.dot_id, fill=AMBER if self.paused else ("#ff3b30" if int(time.time() * 2) % 2 else "#7a1f1a"))
         self.root.after(250, self.tick, gen)
 
     # --- capture
@@ -524,6 +555,10 @@ class TkRecorder:
         self.seg_started = None
 
     # --- controls
+    def set_icon(self, btn, icon: str, fallback: str):
+        img = self.icons.get(icon)
+        btn.config(image=img or "", text="" if img else fallback)
+
     def toggle_pause(self):
         if not self.segments or self.result:
             return
@@ -531,13 +566,13 @@ class TkRecorder:
             self.paused = False
             self.start_segment()
             self.log("resume")
-            self.pause_btn.config(text="⏸")
+            self.set_icon(self.pause_btn, "pause-fill", self.t("暂停", "Pause"))
             self.on_event({"event": "resumed", "t": round(self.elapsed(), 2)})
         else:
             self.log("pause")
             self.end_segment()
             self.paused = True
-            self.pause_btn.config(text="▶")
+            self.set_icon(self.pause_btn, "play-fill", self.t("继续", "Resume"))
             self.on_event({"event": "paused", "t": round(self.elapsed(), 2)})
 
     def snap(self, via: str = "hotkey"):
@@ -556,7 +591,7 @@ class TkRecorder:
             line = capture_shot(self.session, self.region, n, t, wall)
             def done():
                 if line and not self.result and self.snap_btn.winfo_exists():
-                    self.snap_btn.config(text=f"📸 {n}")
+                    self.snap_btn.config(text=f" {n}")
                 if not line:
                     self.on_event({"event": "error", "code": "snap", "message": f"could not capture shot {n}"})
             try:

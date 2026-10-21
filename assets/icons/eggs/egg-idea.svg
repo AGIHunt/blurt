@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>Idea egg — golden, with a sparkle</title>
+<defs><radialGradient id="eg-gloss-idea" cx=".34" cy=".26" r=".62"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".45" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><radialGradient id="eg-idea" cx=".4" cy=".32" r=".8"><stop offset="0" stop-color="#fff1a8"/><stop offset=".5" stop-color="#f4c22e"/><stop offset="1" stop-color="#bf830a"/></radialGradient></defs>
+<path d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z" fill="url(#eg-idea)" stroke="#8a5d05" stroke-opacity=".55" stroke-width=".7"/>
+<path d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z" fill="url(#eg-gloss-idea)"/>
+<path d="M10.4 4.1l.32.9.9.32-.9.32-.32.9-.32-.9-.9-.32.9-.32z" fill="#fff"/>
+</svg>

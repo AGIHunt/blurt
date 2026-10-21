@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>Perch — the rope the shots hang on</title>
+  <path d="M3.2 5.2c5.9 3.4 11.7 3.4 17.6 0"/>
+  <circle cx="2.6" cy="4.8" r="1.25" fill="currentColor" stroke="none"/>
+  <circle cx="21.4" cy="4.8" r="1.25" fill="currentColor" stroke="none"/>
+  <rect x="4.9" y="9.9" width="5.8" height="7.6" rx="1.4" transform="rotate(-6 7.8 9.9)"/>
+  <rect x="13.3" y="9.9" width="5.8" height="7.6" rx="1.4" transform="rotate(5 16.2 9.9)"/>
+  <rect x="7.1" y="6.9" width="1.5" height="3.5" rx=".75" fill="currentColor" stroke="none" transform="rotate(-6 7.8 8.6)"/>
+  <rect x="15.5" y="6.9" width="1.5" height="3.5" rx=".75" fill="currentColor" stroke="none" transform="rotate(5 16.2 8.6)"/>
+</svg>

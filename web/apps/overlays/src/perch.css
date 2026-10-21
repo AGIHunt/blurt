@@ -74,9 +74,8 @@
   border-radius: 50%;
   background: var(--s2);
   color: var(--fg);
-  font-size: 12px;
-  line-height: 20px;
-  text-align: center;
+  display: grid;
+  place-items: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   opacity: 0;
   transition: opacity 120ms;
@@ -104,6 +103,9 @@
   display: none;
 }
 .end button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   height: 28px;
   padding: 0 11px;
   border-radius: var(--radius);
