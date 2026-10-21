@@ -4,6 +4,7 @@
 // The window is click-through except over what is drawn: the page reports those rects (EV.hitRects).
 import { EV, connect, params, ready, reduceMotion, t, type Card, type CssRect, type PerchOp } from './host';
 import { Pendulum, Spring } from './spring';
+import { iconSvg } from '@blurt/icons/core';
 
 const host = await connect('perch');
 const root = document.querySelector<HTMLElement>('.perch')!;
@@ -13,6 +14,8 @@ const nest = end.querySelector<HTMLElement>('.nest')!;
 const processBtn = end.querySelector<HTMLElement>('[data-a=process]')!;
 const clearBtn = end.querySelector<HTMLElement>('[data-a=clear]')!;
 clearBtn.textContent = t('清空', 'Clear');
+processBtn.innerHTML = iconSvg('chicken', { size: 16 }) + '<span></span>'; // 整理 = the chicken, never an emoji
+const processLabel = processBtn.querySelector('span')!;
 
 const CARD_W = 132;
 const GAP = 14;
@@ -50,7 +53,7 @@ function cap(c: Card) {
 function makeCard(card: Card): Live {
   const el = document.createElement('div');
   el.className = 'card';
-  el.innerHTML = `${FOOT}<div class="photo"><img alt="" draggable="false"><div class="cap"></div></div><button class="x" title="${t('移除', 'Remove')}">×</button>`;
+  el.innerHTML = `${FOOT}<div class="photo"><img alt="" draggable="false"><div class="cap"></div></div><button class="x" title="${t('移除', 'Remove')}">${iconSvg('x', { size: 12 })}</button>`;
   el.querySelector('img')!.src = card.src;
   const capEl = el.querySelector<HTMLElement>('.cap')!;
   capEl.textContent = cap(card);
@@ -86,7 +89,7 @@ function layout() {
   const n = hanging.length;
   processBtn.hidden = n === 0 || busy;
   clearBtn.hidden = n === 0 || busy;
-  processBtn.textContent = t(`🐔 整理 ${n} 张`, `🐔 Sort ${n} shot${n === 1 ? '' : 's'}`);
+  processLabel.textContent = t(`整理 ${n} 张`, `Sort ${n} shot${n === 1 ? '' : 's'}`);
   nest.hidden = !busy;
   end.hidden = processBtn.hidden && clearBtn.hidden && nest.hidden;
 }

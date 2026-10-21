@@ -529,7 +529,17 @@ agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --re
   → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
      "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
      "terminal": bool, "clipboard": null|"…", "open_app": null|"…", "retry_exit": null|n, "prompt_file": null|"…"}
-     headless：argv = bin + run + events.args（--no-events 不加）；prompt 永远是单独一个 argv 元素，不经过 shell。
+     headless：argv = bin + run + headless_mcp.args（--no-mcp 不加）+ events.args（--no-events 不加）；prompt 永远是单独一个
+     argv 元素，不经过 shell。
+     **headless_mcp**（codex，实测）：`codex exec` 的审批策略是 never，没批准过的 MCP 调用一律失败（"MCP tool call requires
+     approval, but approval policy is never"）。所以 headless 命令带上整个 blurt 服务：`-c mcp_servers.blurt.command="uv"`、
+     `…args=["run","-q","--script","<mcp_server.py>"]`、`…env_vars=["BLURT_HOME","BLURT_WORKSPACE","BLURT_AGENT",
+     "BLURT_RUN_ID"]`（codex 给 MCP 服务的环境很干净，不转发的话 run_id 和改过位置的 BLURT_HOME 到不了服务）、
+     `…default_tools_approval_mode="approve"`（可选值 auto|prompt|writes|approve）。必须给全：只对没注册的服务给一个
+     `-c mcp_servers.blurt.<key>`，codex 会直接报 "invalid transport" 起不来。这样不管用户装没装 MCP，后台修复都能用。
+     claude 的 `run` 在 `--allowedTools` 里加了 `mcp__blurt`（-p 模式下没放行的工具会被拒；未实跑 ⚠）。
+     **应用要用 `command` 的 argv**：Agents.swift 现在直接拿 `run` 拼命令，拿不到 headless_mcp，要么改成调 `agents.py command`，
+     要么照同样规则把 headless_mcp.args（替换 `{mcp_server_json}`）追加上。
      interactive：url（提示词超过 max_prompt 时写进 $BLURT_HOME/prompts/*.md，q 改成「Read <file> and do what it says.」）；
      或 terminal: true + argv（在用户的终端里跑）；paste_prompt / copy_prompt → clipboard；zcode 还给 open_app。
      --var run_id=R → env BLURT_RUN_ID（items.py fix 和 mark_fixed 的默认值）。出错：{"ok": false, "error"}，退出码 1。
@@ -654,10 +664,20 @@ Sources/BlurtCore/      (library; everything the app uses from it is public — 
                       func workspaces() throws -> [WorkspaceRow]; func sessions(_ q: SessionQuery) throws -> [SessionRow]
                       func items(_ q: ItemQuery) throws -> [ItemRow]; func count(_ q: ItemQuery) throws -> Int }
                     public final class IndexWatcher { init(roots: [URL]); var onChange: (([URL]) -> Void)? }   // FSEvents（WP5）
-   Agents/          public struct AgentStatus: Decodable; public final class Agents {
-                      func detect() async -> [AgentStatus]
-                      func run(_ id: String, prompt: String, repo: URL) throws -> AgentRun        // headless, stream-json lines
-                      func openInteractive(_ id: String, prompt: String, repo: URL) throws }       // (WP6)
+   Agents/ (WP6)    C5 rows: AgentStatus (= one `agents.py detect` row), AgentDetect, AgentCommand, InstallPlan / InstallChange, FixPrompt
+                    public final class SkillCLI { static let shared            // plain calls go through ScriptRunner; --with / extra env /
+                      func run(_ script:, _ args:, stdin:, with packages: [String], env:, timeout:) async throws -> CLIResult   // separate
+                      func spawn(_ script:, _ args:, with:, env:, onLine: (String, Bool) -> Void, onExit: (Int32) -> Void) }    // stderr
+                    public final class Agents { static let shared
+                      func detect(login: Bool = true, repo: URL? = nil) async throws -> AgentDetect
+                      func detectAll(login:) async throws -> AgentDetect        // every registry id, configured order first
+                      var order: [String]?                                      // record.agents
+                      func command(_ id:, mode: "headless"|"interactive", prompt:, repo:, vars:, events:) async throws -> AgentCommand
+                      func install(_ id:, skill:, mcp:, dryRun: Bool) async throws -> InstallPlan   // full login env, never scrubbed
+                      func fixPrompt(_ uids: [String], repo: URL? = nil) async throws -> FixPrompt
+                      func run(_ id:, prompt:, repo:, items:, runID:) async throws -> AgentRun       // headless; parses the event stream
+                      func interactive(_ id:, prompt:, repo:) async throws -> AgentCommand }        // the app opens url / Terminal / clipboard
+                    public final class AgentRun { id, agent, items, repo, lines, costUSD, exitStatus; onLine, onProgress, onExit; cancel() }
 Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged; one module)
    Capture/    Recorder, Picker, HUD, HUDLive, InkView, Snap, Perch, Rope, NoteBubble, Eggs, LiveAudio   (the existing capture code)
    App/ (WP4)  AppDelegate (the App class + status menu), AppEnvironment, AgentHub, Hotkeys (glue), HotkeySettings,
@@ -693,6 +713,33 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   - `blurt://session/<abs-path-encoded>`
   - `blurt://record`
   - `blurt://snap`
+  - `blurt://settings[/<pane>]`（pane：`general`、`shortcuts`、`speech`、`agents`、`export`、`privacy`、`storage`）、`blurt://onboarding`（WP6 加）
+
+细则（WP6 实现时补充，以代码为准）：
+- **URL 安全**：任何网页都能打开 `blurt://`，所以 URL 只做「打开、定位」，不启动 agent，不写数据。`item` / `session` 先交给
+  `mainWindow`（`show()` 后 `reveal(uid:)` / `reveal(session:)`），没有主窗口时打开该会话的审核窗口。
+- **Agent 运行记录**：每次后台运行写 `$BLURT_HOME/runs/<run_id>.json`
+  `{id, agent, repo, items: [uid], state: running|done|failed|cancelled, started, ended?, exit?, cost_usd?, summary?, log}`，
+  原始事件流在同目录的 `<run_id>.log`。主窗口的「Agent 运行」读这些文件。开始前应用先对每个条目执行
+  `items.py fix SESSION UID --state fixing --agent ID --run-id R`，agent 自己收尾时（mark_fixed）沿用这个 run_id（C1 规则）。
+- **「修好了」**：应用用 FSEvents 监听所有工作区的会话目录，任何来源把某个条目的 `fix.state` 改成 `fixed`（应用拉起的 agent、
+  终端里的交互式会话、同事同步过来的文件）都会触发啄虫动画和系统通知；第一次看到的文件只记基线，不补放旧的。
+- **Spotlight**：domain `dev.blurt.items`，`uniqueIdentifier` = uid，内容来自 `index.db`；选中结果 = `blurt://item/<uid>`。
+  测试用 `BLURT_SPOTLIGHT_DOMAIN` 换 domain，跑完删掉。
+- **Services「Add to Blurt」**：当前工作区里每天一个收件箱会话 `<sessions>/<yyyyMMdd-HHmmss>-shots/`，`meta.json`
+  `{"mode": "shots", "source": "service"}`；`items.json` 先写一个空的（items.py 要求文件存在），每条笔记用 `items.py add`
+  加成 `kind: note`、`tags: ["inbox"]`、`source.app`，图片放 `frames/<id>-<n>.png` 再 `items.py set-frames`。
+- **WP6 用到的配置键**（都在 `$BLURT_HOME/config.json`）：`lang`（和 record.py 共用）、`app.onboarded`、`app.settings_pane`、
+  `app.asked_screen`、`fix.agent`、`fix.mode`（background | interactive）、`spotlight`（false = 关）、`privacy.local_asr`
+  （只能选本地识别）、`privacy.keep_live_audio`（默认 false：转写完成、录屏文件在、10 分钟没写入后删 `live/audio.pcm`）、
+  `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
+  导出默认去向：项目写 `<repo>/.blurt/config.json` → `export`，默认工作区写全局 `export`。
+- **index.db 只读打开的坑**（C3 的读者都要注意）：WAL 库在最后一个连接关闭后 SQLite 会删掉 `-wal` / `-shm`，这时
+  `?mode=ro` 打开会在 prepare 时报 `SQLITE_CANTOPEN`。读者先试 `mode=ro`，失败就用 READWRITE（不带 CREATE）加
+  `PRAGMA query_only = 1` 重开——只会重建 `-shm`，不写数据（WP5 的 IndexReader 和 WP6 的 IndexLookup 都这样做）。
+- **测试钩子**：`BLURT_TEST_COMMANDS=1` 时 `dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]` 通知通道（见 `System/SelfTests.swift`）；
+  `BLURT_NO_ONBOARDING` 不弹引导；`BLURT_AGENT_HOME` 让 `agents.py install` 在临时 HOME 里装；`BLURT_HOME` 非默认时从不请求通知权限
+  （bundle id 和正式版共用）。
 
 ### C8 · Tauri（Windows/Linux）命令和录制引擎
 

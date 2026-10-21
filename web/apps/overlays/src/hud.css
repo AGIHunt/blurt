@@ -89,7 +89,7 @@ body {
 .btn svg {
   width: 16px;
   height: 16px;
-  fill: currentColor;
+  flex: none;
 }
 .btn .i-play,
 .hud[data-state='paused'] .btn .i-pause {

@@ -1,9 +1,18 @@
 // The recording HUD: timer, mic meter, pause / snap / finish / discard. State comes only from C8 status lines.
 import { HudModel, fmtTime, meterBars } from './clock';
 import { EV, connect, params, ready, t, type StatusLine } from './host';
+import { iconSvg } from '@blurt/icons/core';
 
 const host = await connect('hud');
 const el = document.querySelector<HTMLElement>('.hud')!;
+// icons: the blurt family (assets/icons), never emoji / text glyphs
+for (const [sel, svg] of [
+  ['[data-a=pause]', iconSvg('pause-fill', { className: 'i-pause' }) + iconSvg('play-fill', { className: 'i-play' })],
+  ['[data-a=snap]', iconSvg('snap')],
+  ['[data-a=stop]', iconSvg('stop-fill')],
+  ['[data-a=discard]', iconSvg('x')],
+] as const)
+  el.querySelector(sel)!.insertAdjacentHTML('afterbegin', svg);
 const time = el.querySelector<HTMLElement>('.time')!;
 const bars = [...el.querySelectorAll<HTMLElement>('.meter i')];
 const count = el.querySelector<HTMLElement>('.count')!;
