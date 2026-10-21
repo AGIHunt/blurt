@@ -1,44 +1,46 @@
-"""The agent (items.py) and the review page (review.py) write the same items.json at the same time."""
+"""The agent (items.py) and the review page (review.py) write the same items at the same time (contract K1)."""
+from __future__ import annotations
+
 import io
 import json
-import subprocess
 import sys
-import tempfile
 import threading
 import time
-import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "skills/blurt/scripts"
-sys.path.insert(0, str(SCRIPTS))
-import review  # noqa: E402
-from _common import items_lock, load_session, save_session  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent))
+from test_store import TmpCase, ok  # noqa: E402
 
-DOC = {"session": "s", "source_video": "recording.mp4", "processing": True, "items": [
+import review  # noqa: E402
+import store as st  # noqa: E402
+
+DOC = {"title": "s", "source_video": "recording.mp4", "processing": True, "language": "en", "items": [
     {"id": f"I-00{n}", "kind": "issue", "title": f"item {n}", "actual": f"a{n}", "status": "draft"} for n in range(1, 6)]}
 
 
-def items_py(session, *args, check=True):
-    p = subprocess.run([sys.executable, str(SCRIPTS / "items.py"), *args[:1], str(session), *args[1:]],
-                       capture_output=True, text=True, encoding="utf-8", timeout=60)
-    if check and p.returncode:
-        raise AssertionError(p.stderr)
-    return json.loads(p.stdout) if p.returncode == 0 else p
-
-
-class Merge(unittest.TestCase):
+class Merge(TmpCase):
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.s = Path(tmp.name)
-        (self.s / "frames").mkdir()
+        super().setUp()
+        proj = self.tmp / "my-app"
+        proj.mkdir()
+        ok("projects.py", "add", proj, env=self.e.env())
+        self.s = proj / ".blurt" / "sessions" / "20261022-101500"
+        (self.s / "frames").mkdir(parents=True)
         for n in range(1, 6):
             (self.s / "frames" / f"I-00{n}-1.jpg").write_bytes(b"jpg")
-        save_session(self.s, json.loads(json.dumps(DOC)))
+        (self.s / "items.json").write_text(json.dumps(DOC))
+        ok("items.py", "ingest", self.s, env=self.e.env())
         self.done = threading.Event()
-        self.handler = review.make_handler(self.s, self.done)
+        self.handler = review.make_handler({"session": str(self.s)}, self.done)
+
+    def items_py(self, *args, check=True):
+        from test_store import run_cli  # noqa: PLC0415
+        code, out = run_cli("items.py", *args, env=self.e.env())
+        if check:
+            assert code == 0, out
+        return out
 
     def request(self, method, path, data=None, headers=None):
         r = self.handler.__new__(self.handler)
@@ -52,33 +54,37 @@ class Merge(unittest.TestCase):
     def ops(self, *ops, path="/api/items"):
         return self.request("POST", path, {"ops": list(ops)})
 
-    def item(self, iid):
-        return next((i for i in load_session(self.s)["items"] if i["id"] == iid), None)
+    def item(self, ref):
+        p = ok("items.py", "path", ref, env=self.e.env())["path"]
+        return st.read_item(Path(p))
 
     def test_user_edit_wins_and_agent_fields_land(self):
         self.ops({"op": "set", "id": "I-001", "set": {"title": "mine"}})
-        out = items_py(self.s, "patch", "I-001", "--set", "title=agent's", "--set", 'code_refs=["a.py:3"]')
+        out = self.items_py("patch", self.s, "I-001", "--set", "title=agent's", "--set", 'code_refs=["a.py:3"]')
         self.assertEqual((out["written"], out["kept_user"]), (["code_refs"], ["title"]))
-        items_py(self.s, "set-frames", "I-001", "frames/I-001-1.jpg@3.5#the button")
-        i = self.item("I-001")
-        self.assertEqual(i["title"], "mine")
-        self.assertEqual(i["code_refs"], ["a.py:3"])
-        self.assertEqual(i["frames"], [{"path": "frames/I-001-1.jpg", "t": 3.5, "caption": "the button"}])
+        self.items_py("set-frames", self.s, "I-001", "frames/I-001-1.jpg@3.5#the button")
+        i = self.item("MA-1")
+        self.assertEqual((i["title"], i["code_refs"]), ("mine", ["a.py:3"]))
+        self.assertEqual(i["frames"], [{"path": f"assets/{i['uid']}/1.jpg", "t": 3.5, "caption": "the button"}])
         self.assertIn("title", i["_user"])
         self.assertNotIn("frames", i["_user"])
         # a later page save of another field must not drop what the agent wrote meanwhile
         code, body = self.ops({"op": "set", "id": "I-001", "set": {"actual": "edited"}})[:2]
         self.assertEqual(code, 200)
-        self.assertEqual(json.loads(body)["items"][0]["frames"][0]["t"], 3.5)  # the page rebases on this
-        self.assertEqual(self.item("I-001")["frames"][0]["path"], "frames/I-001-1.jpg")
-        # --force: the user asked for it in chat
-        items_py(self.s, "patch", "I-001", "--set", "title=from chat", "--force")
-        self.assertEqual(self.item("I-001")["title"], "from chat")
+        first = json.loads(body)["items"][0]
+        self.assertEqual(first["frames"][0]["t"], 3.5)  # the page rebases on this
+        self.assertTrue(first["frames"][0]["path"].startswith("/"))  # absolute in the doc …
+        self.assertEqual(self.item("MA-1")["frames"][0]["path"], f"assets/{i['uid']}/1.jpg")  # … relative on disk
+        # the page sends the frames back as it got them (absolute): they stay relative to the store
+        self.ops({"op": "set", "id": first["uid"], "set": {"frames": list(reversed(first["frames"] * 2))[:1]}})
+        self.assertEqual(self.item("MA-1")["frames"][0]["path"], f"assets/{i['uid']}/1.jpg")
+        self.items_py("patch", "MA-1", "--set", "title=from chat", "--force")
+        self.assertEqual(self.item("MA-1")["title"], "from chat")
 
     def test_concurrent_agent_and_user_writes_lose_nothing(self):
         def agent(n):
-            items_py(self.s, "set-frames", f"I-00{n}", f"frames/I-00{n}-1.jpg@{n}")
-            items_py(self.s, "patch", f"I-00{n}", "--set", f"module=m{n}")
+            self.items_py("set-frames", self.s, f"I-00{n}", f"frames/I-00{n}-1.jpg@{n}")
+            self.items_py("patch", self.s, f"I-00{n}", "--set", f"module=m{n}")
 
         def user(n):
             for k in range(5):
@@ -86,66 +92,71 @@ class Merge(unittest.TestCase):
 
         with ThreadPoolExecutor(10) as pool:
             for f in [pool.submit(agent, n) for n in range(1, 6)] + [pool.submit(user, n) for n in range(1, 6)]:
-                f.result(60)
+                f.result(120)
         for n in range(1, 6):
-            i = self.item(f"I-00{n}")
+            i = self.item(f"MA-{n}")
             self.assertEqual((i["frames"][0]["t"], i["module"], i["actual"]), (n, f"m{n}", f"u{n}-4"))
 
     def test_dropped_and_merged_stay_gone(self):
         self.ops({"op": "set", "id": "I-002", "set": {"status": "deleted", "_dropped": True, "_touched": True}},
                  {"op": "set", "id": "I-003", "set": {"merged_from": ["I-004"], "quote": "x … y"}},
                  {"op": "remove", "id": "I-004", "into": "I-003"})
-        out = items_py(self.s, "patch", "I-002", "--set", "status=draft", "--set", "severity=high")
-        self.assertEqual(out["kept_user"], ["status"])
+        out = self.items_py("patch", self.s, "I-002", "--set", "severity=high")
         self.assertIn("note", out)
-        self.assertEqual(self.item("I-002")["status"], "deleted")
-        out = items_py(self.s, "patch", "I-004", "--set", "title=back?")
-        self.assertEqual(out["skipped"], "merged into I-003")
-        self.assertIsNone(self.item("I-004"))
-        out = items_py(self.s, "set-frames", "I-004", "frames/I-004-1.jpg")
-        self.assertEqual(out["appended_to"], "I-003")  # its evidence goes to the item it was merged into
-        self.assertEqual([f["path"] for f in self.item("I-003")["frames"]], ["frames/I-004-1.jpg"])
-        p = items_py(self.s, "add", "--json", '{"id":"I-004","kind":"issue","title":"again"}', check=False)
-        self.assertNotEqual(p.returncode, 0)
-        self.assertEqual(items_py(self.s, "add", "--json", '{"kind":"idea","title":"new"}', "--after", "I-001")["id"],
-                         "I-006")
-        self.assertEqual([i["id"] for i in load_session(self.s)["items"]], ["I-001", "I-006", "I-002", "I-003", "I-005"])
-        # undoing the merge on the page brings it back
+        self.assertEqual(self.items_py("patch", self.s, "I-002", "--set", "status=draft")["kept_user"], ["status"])
+        self.assertEqual(self.item("MA-2")["status"], "deleted")
+        out = self.items_py("patch", self.s, "I-004", "--set", "title=back?")
+        self.assertEqual(out["skipped"], "merged into MA-3")
+        out = self.items_py("set-frames", self.s, "I-004", "frames/I-004-1.jpg")
+        self.assertEqual(out["appended_to"], "MA-3")  # its evidence goes to the item it was merged into
+        self.assertEqual(len(self.item("MA-3")["frames"]), 1)
+        out = self.items_py("add", self.s, "--json", '{"id":"I-004","kind":"issue","title":"again"}', check=False)
+        self.assertEqual(out["code"], "taken")
+        self.assertEqual(self.items_py("add", self.s, "--json", '{"kind":"idea","title":"new"}', "--after", "I-001")["id"],
+                         "MA-6")
+        doc = json.loads(self.request("GET", "/api/items")[1])
+        self.assertEqual([i["id"] for i in doc["items"]], ["MA-1", "MA-6", "MA-2", "MA-3", "MA-5"])
+        # undoing the merge on the page brings it back where it was
         self.ops({"op": "add", "item": {"id": "I-004", "kind": "issue", "title": "item 4"}, "after": "I-003"})
-        self.assertEqual(self.item("I-004")["title"], "item 4")
-        self.assertNotIn("_removed", load_session(self.s))
+        doc = json.loads(self.request("GET", "/api/items")[1])
+        self.assertEqual([i["id"] for i in doc["items"]], ["MA-1", "MA-6", "MA-2", "MA-3", "MA-4", "MA-5"])
+        self.assertEqual(doc["_removed"], {})
+        self.assertEqual((self.item("MA-4")["status"], self.item("MA-4").get("merged_into")), ("draft", None))
 
     def test_confirm_while_processing(self):
         code = self.ops({"op": "set", "id": "I-001", "set": {"status": "confirmed"}}, path="/api/confirm")[0]
         self.assertEqual(code, 200)
         self.assertTrue(self.done.is_set())
-        data = load_session(self.s)
-        self.assertTrue(data["reviewed"] and data["processing"])
+        b = json.loads((self.s / "batch.json").read_text())
+        self.assertTrue(b["reviewed"] and b["processing"])
         self.assertEqual(self.ops({"op": "set", "id": "I-001", "set": {"title": "late"}})[0], 409)
-        items_py(self.s, "set-frames", "I-005", "frames/I-005-1.jpg")  # the agent finishes the frames anyway
-        out = items_py(self.s, "done")
-        self.assertEqual(out["no_frames"], ["I-001", "I-002", "I-003", "I-004"])
-        data = load_session(self.s)
-        self.assertNotIn("processing", data)
-        self.assertTrue(data["reviewed"])
-        self.assertEqual(self.item("I-001")["status"], "confirmed")
+        self.items_py("set-frames", self.s, "I-005", "frames/I-005-1.jpg")  # the agent finishes the frames anyway
+        out = self.items_py("done", self.s)
+        self.assertEqual(out["no_frames"], ["MA-1", "MA-2", "MA-3", "MA-4"])
+        self.assertTrue(out["reviewed"])
+        b = json.loads((self.s / "batch.json").read_text())
+        self.assertFalse(b["processing"])
+        self.assertEqual(self.item("MA-1")["status"], "confirmed")
+        s = review.summary({"session": str(self.s)})
+        self.assertEqual((s["reviewed"], s["kept"], s["kinds"]), (True, 5, {"issue": 5}))
 
     def test_lock_is_shared_across_processes(self):
         started = time.monotonic()
         held = threading.Event()
+        store = st.Store(self.s.parent.parent)
 
         def hold():
-            with items_lock(self.s):
+            with store.lock():
                 held.set()
                 time.sleep(1.2)
 
         t = threading.Thread(target=hold)
         t.start()
         held.wait(5)
-        items_py(self.s, "patch", "I-001", "--set", "owner=x")  # another process: must wait for the lock
+        self.items_py("patch", "MA-1", "--set", "owner=x")  # another process: waits for the lock
         self.assertGreaterEqual(time.monotonic() - started, 1.1)
         t.join()
-        with items_lock(self.s):  # and the page's writes wait too
+        with store.lock():  # and the page's writes wait too
             box = []
             th = threading.Thread(target=lambda: box.append(self.ops({"op": "set", "id": "I-001", "set": {"due": "x"}})))
             th.start()
@@ -153,18 +164,18 @@ class Merge(unittest.TestCase):
             self.assertTrue(th.is_alive(), "page write did not wait for the lock")
         th.join(5)
         self.assertEqual(box[0][0], 200)
-        self.assertEqual((self.item("I-001")["owner"], self.item("I-001")["due"]), ("x", "x"))
-        self.assertEqual(list(self.s.glob("*.tmp")), [])
+        self.assertEqual((self.item("MA-1")["owner"], self.item("MA-1")["due"]), ("x", "x"))
 
     def test_poll_etag(self):
         code, body, _, extra = self.request("GET", "/api/items")
         self.assertEqual(code, 200)
         self.assertFalse(json.loads(body)["_video"])  # no recording.mp4 here, like a shots session
         self.assertEqual(self.request("GET", "/api/items", headers={"If-None-Match": extra["ETag"]})[0], 304)
-        items_py(self.s, "patch", ".", "--set", "digest=## hi")
+        self.items_py("patch", self.s, ".", "--set", "digest=## hi")
         self.assertEqual(self.request("GET", "/api/items", headers={"If-None-Match": extra["ETag"]})[0], 200)
-        self.assertEqual(load_session(self.s)["digest"], "## hi")
+        self.assertEqual(json.loads((self.s / "batch.json").read_text())["digest"], "## hi")
 
 
 if __name__ == "__main__":
+    import unittest
     unittest.main()

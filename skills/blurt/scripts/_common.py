@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -101,8 +102,12 @@ def save_json(path: Path, data) -> None:
             time.sleep(0.05)
 
 
+def _config_path() -> Path:
+    return Path(os.environ["BLURT_HOME"]) / "config.json" if os.environ.get("BLURT_HOME") else GLOBAL_CONFIG
+
+
 def global_config() -> dict:
-    return load_json(GLOBAL_CONFIG, {}) or {}
+    return load_json(_config_path(), {}) or {}
 
 
 def update_global_config(patch: dict) -> dict:
@@ -112,7 +117,7 @@ def update_global_config(patch: dict) -> dict:
             cfg[k].update(v)
         else:
             cfg[k] = v
-    save_json(GLOBAL_CONFIG, cfg)
+    save_json(_config_path(), cfg)
     return cfg
 
 
@@ -190,24 +195,67 @@ def fix_tcl_env() -> None:
         return
 
 
-# ------------------------------------------------------------------ session output: items.json
-def load_session(session: Path) -> dict | None:
-    return load_json(Path(session) / "items.json")
+# ------------------------------------------------------------------ where things live (read at call time: tests and
+# the apps point BLURT_HOME / BLURT_WORKSPACE elsewhere after import)
+def blurt_home() -> Path:
+    return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
 
 
-def save_session(session: Path, data: dict) -> None:
-    save_json(Path(session) / "items.json", data)
+def blurt_workspace() -> Path:
+    """The Blurt app's own folder (~/Blurt): the inbox store lives in it, and v0.6 recordings in recordings/."""
+    return Path(os.environ.get("BLURT_WORKSPACE") or Path.home() / "Blurt")
 
 
-# items.json has two writers once the review page is open: the agent (items.py) and the page (review.py). Every
-# write is read-modify-write under one lock file per session, shared across processes and threads.
+def real(p: Path | str) -> Path:
+    return Path(os.path.realpath(os.path.expanduser(str(p))))
+
+
+# ------------------------------------------------------------------ time (contract: ISO 8601 with offset on disk)
+def now_iso(t: float | None = None, timespec: str = "seconds") -> str:
+    return datetime.fromtimestamp(time.time() if t is None else t).astimezone().isoformat(timespec=timespec)
+
+
+def to_epoch(v) -> float | None:
+    """ISO 8601 (any offset, or Z) or epoch seconds → epoch seconds; None when it is neither."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str) and v:
+        try:
+            d = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return (d if d.tzinfo else d.astimezone()).timestamp()
+    return None
+
+
+# ------------------------------------------------------------------ locks
+# One lock file per thing that has several writers (a store, a session's batch, projects.json), shared across
+# processes (flock / msvcrt) and threads. Re-entrant within a thread, so a write that holds a store's lock can call
+# helpers that take it again.
 _THREAD_LOCKS: dict[str, threading.Lock] = {}
+_HELD = threading.local()
 
 
 @contextmanager
-def items_lock(session: Path, timeout: float = 15.0):
-    path = Path(session) / ".items.lock"
-    tl = _THREAD_LOCKS.setdefault(str(path.resolve()), threading.Lock())
+def file_lock(path: Path, timeout: float | None = None):
+    path = Path(path)
+    if timeout is None:
+        timeout = float(os.environ.get("BLURT_LOCK_TIMEOUT") or 15)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    key = str(path.resolve())
+    held = getattr(_HELD, "paths", None)
+    if held is None:
+        held = _HELD.paths = {}
+    if held.get(key):
+        held[key] += 1
+        try:
+            yield
+        finally:
+            held[key] -= 1
+        return
+    tl = _THREAD_LOCKS.setdefault(key, threading.Lock())
     if not tl.acquire(timeout=timeout):
         raise TimeoutError(f"{path} is locked")
     try:
@@ -228,9 +276,11 @@ def items_lock(session: Path, timeout: float = 15.0):
                     if time.monotonic() > deadline:
                         raise TimeoutError(f"{path} is locked by another process")
                     time.sleep(0.02)
+            held[key] = 1
             try:
                 yield
             finally:
+                held.pop(key, None)
                 if IS_WIN:
                     import msvcrt
                     fh.seek(0)
@@ -244,24 +294,28 @@ def items_lock(session: Path, timeout: float = 15.0):
         tl.release()
 
 
-def find_item(data: dict, item_id: str) -> dict | None:
-    return next((i for i in data.get("items", []) if i.get("id") == item_id), None)
+def items_lock(session: Path, timeout: float | None = None):
+    """A session's batch (batch.json, and a pending items.json): everything that reads-modifies-writes them."""
+    return file_lock(Path(session) / ".items.lock", timeout)
 
 
-def removed_into(data: dict, item_id: str) -> str | None:
-    """Where an item the user merged away went ("" = removed without a target), else None."""
-    gone = data.get("_removed") or {}
-    if item_id in gone:
-        return gone[item_id] or ""
-    return next((i.get("id") for i in data.get("items", []) if item_id in (i.get("merged_from") or [])), None)
+def write_text_atomic(path: Path, text: str) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    for attempt in range(20):  # Windows: replace fails while a reader has the target open
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.05)
 
 
-def live_items(data: dict, kind: str | None = None) -> list[dict]:
-    return [i for i in data.get("items", []) if i.get("status") != "deleted" and (kind is None or i.get("kind") == kind)]
-
-
-# ------------------------------------------------------------------ items.json v2: uid, fix (contract C1)
-FIX_STATES = ("fixing", "fixed", "wontfix", "reopened")
+# ------------------------------------------------------------------ identities (contract C1, unchanged in v3)
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 
@@ -277,21 +331,18 @@ def legacy_uid(session_name: str, item_id: str) -> str:
     return "L" + hashlib.sha1(f"{session_name}/{item_id}".encode("utf-8")).hexdigest()[:25]
 
 
-def session_name(session: Path) -> str:
-    return Path(session).resolve().name
-
-
 def item_uid(session: Path, item: dict) -> str:
-    return item.get("uid") or legacy_uid(session_name(session), item.get("id") or "")
+    return item.get("uid") or legacy_uid(Path(session).resolve().name, item.get("id") or "")
 
 
 def file_etag(raw: bytes) -> str:
-    """Same value as review.py's ETag for GET /api/items: sha1 of the file bytes, 16 hex chars, quoted."""
+    """sha1 of the bytes, 16 hex chars, quoted (HTTP ETag)."""
     return '"' + hashlib.sha1(raw).hexdigest()[:16] + '"'
 
 
-# ------------------------------------------------------------------ the user's edits (review page, apps)
-SERVER_KEYS = {"id", "uid", "_user", "fix", "fix_history", "schema"}  # set only by the server / `items.py fix`, never by a page
+def project_id(path: Path | str) -> str:
+    """K2: sha1(realpath(path)).hex[:12] — the same formula as the v1 index's workspace id."""
+    return hashlib.sha1(str(real(path)).encode("utf-8")).hexdigest()[:12]
 
 
 class InvalidEdit(ValueError):
@@ -310,53 +361,82 @@ def check_item_fields(sets: dict, unsets=(), where: str = "") -> None:
             raise InvalidEdit(f"{where}{k} can't be empty: keep the previous {k} or type a new one")
 
 
-def apply_user_ops(data: dict, ops: list[dict]) -> None:
-    """The page sends what the user changed, not the whole list, so the agent's concurrent writes survive.
-    Each field the user sets is recorded in the item's _user (field -> epoch); items.py won't overwrite those.
-    One implementation for review.py (POST /api/items) and `items.py user-ops` (the desktop apps).
-    All ops are checked first (check_item_fields): an invalid one raises InvalidEdit and nothing is applied."""
-    for n, op in enumerate(ops):
-        if op.get("op") == "set":
-            check_item_fields(op.get("set") or {}, op.get("unset") or [], f"ops[{n}] ({op.get('id')}): ")
-        elif op.get("op") == "add" and isinstance(op.get("item"), dict) and "title" in op["item"]:
-            check_item_fields({"title": op["item"]["title"]}, (), f"ops[{n}] ({op['item'].get('id')}): ")
-    now = round(time.time(), 1)
-    items = data.setdefault("items", [])
-    removed = data.setdefault("_removed", {})
-    for op in ops:
-        kind, iid = op.get("op"), op.get("id") or (op.get("item") or {}).get("id")
-        item = find_item(data, iid) if iid else None
-        if kind == "set" and item is not None:
-            user = item.setdefault("_user", {})
-            for k, v in (op.get("set") or {}).items():
-                if k not in SERVER_KEYS:
-                    item[k] = v
-                    if not k.startswith("_"):
-                        user[k] = now
-            for k in op.get("unset") or []:
-                if k not in SERVER_KEYS:
-                    item.pop(k, None)
-                    if not k.startswith("_"):
-                        user[k] = now
-        elif kind == "remove" and item is not None:  # merged into another item by the user
-            items.remove(item)
-            removed[iid] = op.get("into") or ""
-        elif kind == "add" and iid and item is None:  # e.g. undoing a merge brings the item back
-            new = dict(op["item"])
-            new.setdefault("_user", {})
-            removed.pop(iid, None)
-            after = op.get("after")
-            pos = next((k + 1 for k, i in enumerate(items) if i.get("id") == after), 0 if after is None else len(items))
-            items.insert(pos, new)
-    if not removed:
-        data.pop("_removed", None)
+# ------------------------------------------------------------------ K3: review status + work state
+REVIEW_STATES = ("draft", "confirmed", "deleted")
+WORK_STATES = ("todo", "handed_off", "in_progress", "to_verify", "done", "wontfix")
+WORK_KEYS = ("state", "to", "agent", "job", "handoff", "claim", "note", "commit", "pr", "at", "by")
+WORK_BY = ("user", "agent", "app")
+OPEN_WORK = ("todo", "handed_off", "in_progress")  # MCP list_projects open_items, the backlog
+FIX_STATES = ("fixing", "fixed", "wontfix", "reopened")  # v2 (items.py fix, mark_fixed)
+FIX_TO_WORK = {"fixing": ("in_progress", None), "fixed": ("to_verify", "fixed"), "wontfix": ("to_verify", "wontfix"),
+               "reopened": ("todo", None)}
+# Who may move an item from → to (K3's table). The user may do anything; done and wontfix are theirs alone. An agent
+# may also start on an item nobody handed off (the user asked in chat).
+_AGENT_MOVES = {("todo", "in_progress"), ("handed_off", "in_progress"), ("in_progress", "in_progress"),
+                ("to_verify", "in_progress"), ("todo", "to_verify"), ("handed_off", "to_verify"),
+                ("in_progress", "to_verify"), ("to_verify", "to_verify"),
+                ("in_progress", "todo"), ("to_verify", "todo")}  # an agent may take back its own claim (reopened)
+_APP_MOVES = _AGENT_MOVES | {("todo", "handed_off"), ("handed_off", "handed_off")}
+
+
+def work_state(item: dict) -> str:
+    w = item.get("work")
+    return w.get("state") if isinstance(w, dict) and w.get("state") in WORK_STATES else "todo"
+
+
+def may_move(cur: str, new: str, by: str) -> bool:
+    if by == "user":
+        return True
+    return (cur, new) in (_APP_MOVES if by == "app" else _AGENT_MOVES)
+
+
+def work_from_fix(fix: dict) -> dict:
+    """A v2 `fix` record → a v3 `work` object (K3 mapping). An old human wontfix is a decision, not a claim."""
+    state, claim = FIX_TO_WORK.get(fix.get("state"), ("todo", None))
+    agent = fix.get("agent") or None
+    if fix.get("state") == "wontfix" and agent in (None, "human"):
+        state, claim = "wontfix", None
+    at = fix.get("at")
+    return {"state": state, "to": "session" if fix.get("run_id") else None, "agent": agent,
+            "job": fix.get("run_id") or None, "handoff": None, "claim": claim, "note": fix.get("note") or "",
+            "commit": fix.get("commit") or None, "pr": fix.get("pr") or None,
+            "at": now_iso(at) if isinstance(at, (int, float)) else (at or None),
+            "by": "user" if agent in (None, "human") else "agent"}
+
+
+def fix_alias_states(fix_states) -> list[str]:
+    """index / list filters: the v2 --fix-state values as work states (none = todo)."""
+    m = {"fixing": ["in_progress"], "fixed": ["to_verify", "done"], "wontfix": ["wontfix"], "reopened": ["todo"],
+         "none": ["todo"]}
+    return list(dict.fromkeys(s for f in fix_states or [] for s in m.get(f, [])))
+
+
+def append_job_event(job: str | None, event: dict) -> None:
+    """K4: anyone but a job's owner reports progress by appending one line to jobs/<id>.events.jsonl (O_APPEND,
+    one write < 4 KB). Best effort: a missing job or a read-only home never fails the caller."""
+    if not job or not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", job):
+        return
+    path = blurt_home() / "jobs" / f"{job}.events.jsonl"
+    if not (path.parent / f"{job}.json").exists():
+        return
+    line = json.dumps({"t": now_iso(), "source": "items", **event}, ensure_ascii=False) + "\n"
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, line.encode("utf-8")[:4000])
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------- hotkeys (config record.hotkeys)
 # Same grammar as the macOS app (Hotkeys.swift): "opt+shift+R", "ctrl+alt+F5", "⌥⇧A", "off". Stored canonically as
 # "<ctrl+><opt+><shift+><cmd+>KEY". On Windows/Linux opt = Alt and cmd = the Windows / Super key.
-HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop")
-HOTKEY_DEFAULT_KEYS = {"record": "R", "menu": "B", "pause": "P", "snap": "A", "marker": "M", "pen": "D", "stop": "S"}
+# voice / project: K7 (voice input, project switcher) — same names in HotkeyCenter.Action (Swift) and the Tauri app
+HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project")
+HOTKEY_DEFAULT_KEYS = {"record": "R", "menu": "B", "pause": "P", "snap": "A", "marker": "M", "pen": "D", "stop": "S",
+                       "voice": "V", "project": "O"}
 _MOD_ALIASES = {"ctrl": "ctrl", "control": "ctrl", "⌃": "ctrl", "^": "ctrl",
                 "opt": "opt", "option": "opt", "alt": "opt", "⌥": "opt",
                 "shift": "shift", "⇧": "shift",
