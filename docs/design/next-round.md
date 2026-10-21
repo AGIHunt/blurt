@@ -641,6 +641,32 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
 - **嵌入终端**：macOS SwiftTerm（P3，源码 vendored，见「所有权」），Tauri xterm.js（P8）。终端里执行 `attach-cmd` 的 argv。
   关掉应用会话照常在跑；再打开时主窗口的会话列表来自 `sessions.py list` 和任务文件。
 
+**细则（P3，macOS）**：
+- **SwiftTerm**：`mac/Vendor/SwiftTerm` 是 v1.20.0 的源码（去掉 iOS、文档和 Metal shader；Metal 渲染器上游默认关、我们不开），
+  `SwiftTermBuildInfo.swift` 手写替代上游的构建插件，所以只有 Command Line Tools、离线也能 `swift build`。
+  `Package.swift` 的 BlurtApp target `exclude: ["Resources"]`：`.lproj` 表由 `record.py build` 拷进包，不走 SwiftPM 资源。
+  `record.py` 的 `swift_sources()`（P4）应把 `Vendor/**` 也算进哈希，否则升级 SwiftTerm 不会触发重建。
+- **嵌入点**：`AppEnvironment.terminal.makePane()` 返回一个完整的会话面板（左边按项目分组的会话列表 + 右边标题栏和终端），
+  `attach(job:)` 选中会话，`attach(nil)` = 这个面板上次看的那个（`$BLURT_HOME/ui/terminal.json`），否则「等你回答」的、否则最新的。
+  P4 在主窗口里放它即可；面板自己能收起列表。没有主窗口实现 `reveal(job:)` 时，独立的「会话」窗口（`SessionsWindowController`）兜底。
+- **每个终端一个 tmux 客户端**：执行 `attach-cmd` 的 argv（环境补 UTF-8 locale、`TERM=xterm-256color`、`COLORTERM=truecolor`），
+  两个面板看同一项目的两个窗口互不影响。窗口被 merge / discard / `stop --kill` 关掉后，分组视图会话会滑到组里的别的窗口，
+  所以面板看到任务 `finish.action ∈ {merge, discard}` 或 `cancelled` 时主动断开、显示结果。
+- **attach-cmd 的 tmux 目标写法**（给 P2）：`set-option -t =<view>` 在 tmux 3.6 上报 `no such session`，整串命令就此中止，
+  `select-window` 不执行（结果是两个面板都停在窗口 0、`destroy-unattached` 也没设上，视图会话越积越多）。要写成 `-t =<view>:`
+  （带冒号）；`select-window -t =<view>:@N` 本身没问题。P3 的测试用的是改过这一处的 sessions.py 副本。
+- **会话状态提醒**由 P3 的 `Terminal/SessionNotifier.swift` 发（type agent 的任务）；P4 的 `JobNotifier` 只管其它类型，避免重复。
+  通知 `userInfo` 带 `job`（或 `uid`），点击 = `AppEnvironment.mainWindow.reveal(job:)`。没有别的 delegate 时 SessionNotifier 当
+  `UNUserNotificationCenter` 的 delegate；谁接管 delegate 都要按 `job` / `uid` 路由。测试构建（非默认 `BLURT_HOME`）不发系统通知，
+  只在 stdout 打 `session_notify`。
+- **app runner**：`dispatch` 返回 `launch` 时由 `AppRunner` 在应用自己的 pty 里跑，面板借用它的视图；退出时调 `sessions.py event`。
+  标题栏写明「退出口喷鸡会结束这个会话」。终端输出兜底（`waiting_patterns`）这一轮没做，只有 hook 的 agent 状态完整。
+- **FixWatcher**：监听每个 store 的 `items/*.md`，front-matter 的 `work.state` 变成 `to_verify` 时啄一下（`FixRunner.announceFixed`）。
+  路径一律 `realpath`（FSEvents 给 `/private/tmp`，URL 给 `/tmp`）。
+- **G0 之外的公开 API**：`AgentInfo` 多了 `tmuxSocket statusSource statusMessage baseBranch finishAction finishResult`，
+  `Job` 多了 `updated raw`，`DispatchResult` 多了 `launch rows`，`AppLaunch`、`SessionsError(code, message)`、`SessionsDoctor`，
+  `JobStore.addObserver(_:) / removeObserver(_:)`（onChange 只有一个，多处要跟随任务时用它）、`JobFiles`（路径、`newID`、`appendEvent`）。
+
 ### K6 · 交给外部 agent：交接单
 
 - 文件 `$BLURT_HOME/handoff/<H-id>.md`，id = `H-` + 4 位以上数字，全局递增（`handoff/.seq`，锁内读写）。派发到会话（K5）也写一份，
