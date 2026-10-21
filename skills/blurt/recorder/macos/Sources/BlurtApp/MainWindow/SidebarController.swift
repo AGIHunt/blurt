@@ -1,5 +1,7 @@
-// The source list: Inbox and All Items, smart filters, projects (workspaces), recent sessions (recordings and snap
-// batches, each with its state egg). Vibrancy comes from NSSplitViewItem(sidebarWithViewController:).
+// The source list: the places (Inbox, In Progress, Unassigned, All Items) and the projects — the folders opened in
+// Blurt, most recently used first — with an "Open Folder…" button at the bottom. Folders dropped anywhere on the
+// sidebar open as projects; items dragged onto a project (or Unassigned) move there. Vibrancy comes from
+// NSSplitViewItem(sidebarWithViewController:).
 import AppKit
 import BlurtCore
 
@@ -7,23 +9,33 @@ final class SidebarNode: NSObject {
     let title: String
     let scope: Scope?            // nil = a group header
     let symbol: String?
-    var image: NSImage?
     var count: Int?
     var children: [SidebarNode] = []
     var accessibility: String?
+    var dimmed = false
+    var detail: String?          // the project key, quiet
+    /// counts of what needs you are tinted (attention), plain counts aren't
+    var alert = false
 
-    init(_ title: String, scope: Scope?, symbol: String? = nil, image: NSImage? = nil, count: Int? = nil, children: [SidebarNode] = []) {
-        self.title = title; self.scope = scope; self.symbol = symbol; self.image = image; self.count = count; self.children = children
+    init(_ title: String, scope: Scope?, symbol: String? = nil, count: Int? = nil, children: [SidebarNode] = []) {
+        self.title = title; self.scope = scope; self.symbol = symbol; self.count = count; self.children = children
     }
     var isGroup: Bool { scope == nil }
+}
+
+protocol SidebarActions: AnyObject {
+    func sidebarSelected(_ s: Scope)
+    func sidebarMenu(_ s: Scope) -> NSMenu?
+    func openFolder()
+    func openFolders(_ urls: [URL])
+    func move(uids: [String], to project: String)
 }
 
 final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     let model: MainModel
     let outline = NSOutlineView()
     var roots: [SidebarNode] = []
-    var onSelect: ((Scope) -> Void)?
-    var menuProvider: ((Scope) -> NSMenu?)?
+    weak var actions: SidebarActions?
     private var reloading = false
 
     init(model: MainModel) {
@@ -49,43 +61,63 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.dataSource = self
         outline.delegate = self
         outline.backgroundColor = .clear
-        outline.setAccessibilityLabel(L("侧栏", "Sidebar"))
+        outline.setAccessibilityLabel(T("main.sidebar.label"))
         outline.menu = NSMenu()
         outline.menu?.delegate = self
+        outline.registerForDraggedTypes([.fileURL, .blurtItems])
+        outline.setDraggingSourceOperationMask(.every, forLocal: false)
         scroll.documentView = outline
-        view = scroll
+
+        let open = NSButton(title: T("project.open_folder"), image: Look.symbol("folder.badge.plus", "", size: 13) ?? NSImage(),
+                            target: self, action: #selector(openTapped))
+        open.bezelStyle = .recessed
+        open.isBordered = false
+        open.imagePosition = .imageLeading
+        open.contentTintColor = .secondaryLabelColor
+        open.font = .systemFont(ofSize: 12)
+        open.toolTip = T("main.sidebar.open_folder.tip")
+        let root = NSView()
+        for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
+            open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
+        ])
+        view = root
         view.frame = NSRect(x: 0, y: 0, width: 220, height: 600)
     }
 
+    @objc func openTapped() { actions?.openFolder() }
+
     func rebuild() {
         let c = model.counts
+        func place(_ t: String, _ s: Scope, _ sym: String, _ n: Int?, alert: Bool = false, ax: String? = nil) -> SidebarNode {
+            let node = SidebarNode(t, scope: s, symbol: sym, count: n)
+            node.alert = alert
+            node.accessibility = ax
+            return node
+        }
         let top = [
-            SidebarNode(L("收件箱", "Inbox"), scope: .inbox, symbol: "tray", count: c.inbox),
-            SidebarNode(L("全部条目", "All Items"), scope: .all, symbol: "square.stack", count: c.all),
+            place(T("main.place.inbox"), .inbox, "tray", c.attention, alert: true, ax: T("main.sidebar.inbox.ax")),
+            place(T("main.place.progress"), .inProgress, "circle.dashed", c.active + c.toVerify, ax: T("main.sidebar.progress.ax")),
+            place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
+            place(T("main.place.all"), .all, "square.stack", c.all),
         ]
-        top[0].accessibility = L("收件箱：待整理和待审核的录制", "Inbox: recordings to process or review")
-        let smart = SidebarNode(L("智能筛选", "Smart Filters"), scope: nil, children: [
-            SidebarNode(L("待修问题", "Open Issues"), scope: .smart(.openIssues), image: BrandIcon.image(.bug, size: 16), count: c.openIssues),
-            SidebarNode(L("想法", "Ideas"), scope: .smart(.ideas), symbol: "lightbulb", count: c.ideas),
-            SidebarNode(L("Agent 修复中", "Agent Fixing"), scope: .smart(.fixing), image: BrandIcon.image(.agentRun, size: 16), count: c.fixing),
-            SidebarNode(L("已修复", "Fixed"), scope: .smart(.fixed), symbol: "checkmark.seal", count: c.fixed),
-        ])
-        let projects = SidebarNode(L("项目", "Projects"), scope: nil, children: model.workspaces.map { w in
-            let n = SidebarNode(w.name, scope: .workspace(w.id), symbol: w.kind == "default" ? "house" : "folder", count: w.openItems)
-            n.accessibility = "\(w.name), \((w.path as NSString).abbreviatingWithTildeInPath)"
-            return n
-        })
-        var sessionNodes = [SidebarNode(L("全部会话", "All Sessions"), scope: .sessions, symbol: "clock", count: c.sessions)]
-        sessionNodes += model.recentSessions.map { s in
-            let n = SidebarNode(MainModel.title(of: s), scope: .session(s.id), symbol: s.mode == "shots" ? "camera.viewfinder" : "video",
-                                count: s.itemCount > 0 ? s.itemCount : nil)
-            n.image = BrandIcon.sessionImage(s, size: 17)
-            n.accessibility = "\(MainModel.title(of: s)), \(s.mode == "shots" ? L("截图批次", "snap batch") : L("录屏", "recording")), \(Look.sessionStateName(s.state))"
+        let projectNodes = model.projects.map { p -> SidebarNode in
+            let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
+                                count: p.attention > 0 ? p.attention : nil)
+            n.alert = p.attention > 0
+            n.detail = p.key
+            n.dimmed = !p.registered || !p.exists
+            let path = (p.path.path as NSString).abbreviatingWithTildeInPath
+            n.accessibility = [p.name, path, !p.exists ? T("main.sidebar.missing") : nil, !p.registered ? T("main.sidebar.not_opened") : nil]
+                .compactMap { $0 }.joined(separator: ", ")
             return n
         }
-        let sessions = SidebarNode(L("最近会话", "Recent Sessions"), scope: nil, children: sessionNodes)
+        let projects = SidebarNode(T("main.sidebar.projects"), scope: nil, children: projectNodes)
         let selected = selectedScope
-        roots = top + [smart] + (projects.children.isEmpty ? [] : [projects]) + [sessions]
+        roots = top + [projects]
         reloading = true
         outline.reloadData()
         for r in roots where r.isGroup { outline.expandItem(r) }
@@ -100,14 +132,12 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             for n in nodes { if n.scope == scope { return n }; if let f = find(n.children) { return f } }
             return nil
         }
+        let was = reloading
+        reloading = true
+        defer { reloading = was }
         guard let n = find(roots) else { outline.deselectAll(nil); return }
         let row = outline.row(forItem: n)
-        if row >= 0, outline.selectedRow != row {
-            let was = reloading
-            reloading = true
-            outline.selectRowIndexes([row], byExtendingSelection: false)
-            reloading = was
-        }
+        if row >= 0, outline.selectedRow != row { outline.selectRowIndexes([row], byExtendingSelection: false) }
     }
 
     // MARK: data source
@@ -149,7 +179,50 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !reloading, let s = selectedScope else { return }
-        onSelect?(s)
+        actions?.sidebarSelected(s)
+    }
+
+    // MARK: drops: folders open as projects, items move
+
+    func outlineView(_ o: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        let pb = info.draggingPasteboard
+        if pb.types?.contains(.blurtItems) == true {
+            guard let n = item as? SidebarNode, index == NSOutlineViewDropOnItemIndex, let s = n.scope else { return [] }
+            switch s {
+            case .project(let p) where model.project(id: p)?.registered == true: return .move
+            case .unassigned: return .move
+            default: return []
+            }
+        }
+        if !folders(pb).isEmpty {
+            o.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)     // the whole list highlights
+            return .link
+        }
+        return []
+    }
+
+    func outlineView(_ o: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        let pb = info.draggingPasteboard
+        if let items = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !items.isEmpty {
+            guard let s = (item as? SidebarNode)?.scope else { return false }
+            switch s {
+            case .project(let p): actions?.move(uids: items, to: p)
+            case .unassigned: actions?.move(uids: items, to: "inbox")
+            default: return false
+            }
+            return true
+        }
+        let dirs = folders(pb)
+        guard !dirs.isEmpty else { return false }
+        actions?.openFolders(dirs)
+        return true
+    }
+
+    func folders(_ pb: NSPasteboard) -> [URL] {
+        ((pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []).filter {
+            var dir: ObjCBool = false
+            return FileManager.default.fileExists(atPath: $0.path, isDirectory: &dir) && dir.boolValue
+        }
     }
 }
 
@@ -157,7 +230,7 @@ extension SidebarController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         guard outline.clickedRow >= 0, let n = outline.item(atRow: outline.clickedRow) as? SidebarNode, let s = n.scope,
-              let m = menuProvider?(s) else { return }
+              let m = actions?.sidebarMenu(s) else { return }
         for it in m.items { m.removeItem(it); menu.addItem(it) }
     }
 }
@@ -165,16 +238,19 @@ extension SidebarController: NSMenuDelegate {
 final class SourceCell: NSTableCellView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
+    let key = NSTextField(labelWithString: "")
     let badge = NSTextField(labelWithString: "")
 
     init(id: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
         identifier = id
-        for v in [icon, title, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        for v in [icon, title, key, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        badge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        badge.textColor = .secondaryLabelColor
+        key.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        key.textColor = .tertiaryLabelColor
+        key.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        badge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         badge.alignment = .right
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         imageView = icon
@@ -185,7 +261,9 @@ final class SourceCell: NSTableCellView {
             icon.widthAnchor.constraint(equalToConstant: 18),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
-            badge.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 6),
+            key.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 5),
+            key.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
+            badge.leadingAnchor.constraint(greaterThanOrEqualTo: key.trailingAnchor, constant: 6),
             badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             badge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -194,14 +272,14 @@ final class SourceCell: NSTableCellView {
 
     func set(_ n: SidebarNode) {
         title.stringValue = n.title
-        if let img = n.image {
-            icon.image = img
-            icon.contentTintColor = nil
-        } else {
-            icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
-            icon.contentTintColor = n.scope == .inbox ? Look.brand : nil
-        }
-        badge.stringValue = n.count.map { $0 > 0 ? NumberFormatter.localizedString(from: $0 as NSNumber, number: .decimal) : "" } ?? ""
+        title.textColor = n.dimmed ? .secondaryLabelColor : .labelColor
+        key.stringValue = n.detail ?? ""
+        key.isHidden = n.detail == nil
+        icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
+        icon.contentTintColor = n.dimmed ? .tertiaryLabelColor : nil
+        icon.alphaValue = 1
+        badge.stringValue = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
+        badge.textColor = n.alert ? Look.brand : .secondaryLabelColor
         setAccessibilityLabel([n.accessibility ?? n.title, badge.stringValue.isEmpty ? nil : badge.stringValue].compactMap { $0 }.joined(separator: ", "))
     }
 }

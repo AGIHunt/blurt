@@ -7,8 +7,9 @@ import BlurtCore
 
 enum SettingsModule {
     static func install() {
-        // config `lang` (Settings → General) wins over the system language, unless --lang was given
-        if !CommandLine.arguments.contains("--lang"), let l = Config.shared["lang"] as? String, ["zh", "en"].contains(l) { opts.lang = l; BlurtLocale.lang = l }
+        // K10: config `lang` (Settings → General: auto | en | zh-Hans) decides, unless --lang was given; the strings not
+        // moved to the tables yet (L(zh, en)) follow the same choice
+        if !CommandLine.arguments.contains("--lang") { opts.lang = Loc.isChinese ? "zh" : "en"; BlurtLocale.lang = opts.lang }
 
         AppEnvironment.settings = SettingsController.shared
         AppEnvironment.openURL = { URLRouter.handle($0) }

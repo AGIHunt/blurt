@@ -1,28 +1,34 @@
-// The main window's way to the skill's Python CLIs (items.py user-ops, index.py scan / update — contracts C2, C3).
-// BlurtCore's ScriptRunner is the long-term home (WP4); until it is implemented this falls back to `uv run` with the
-// login-shell environment the rest of the app uses (agentEnvironment()). All writes to items.json go through here.
+// The main window's way to the skill's Python CLIs — every write goes through them (K1: only items.py writes items;
+// K2: only projects.py writes projects.json; K6: handoff.py writes hand-off sheets). Runs on ScriptRunner (uv, the
+// login-shell environment); results come back on the main queue. A failing CLI answers {"ok": false, "code": …};
+// the UI localises `code` (K10) and only logs `error`.
 import AppKit
 import BlurtCore
 
 enum Scripts {
-    /// <skill>/scripts: config skill_dir (record.py writes it on every run), else BlurtPaths' default.
-    static var dir: URL {
-        if let s = readConfig()["skill_dir"] as? String, !s.isEmpty { return URL(fileURLWithPath: s).appendingPathComponent("scripts") }
-        return BlurtPaths.scripts
-    }
-
+    static var dir: URL { BlurtPaths.scripts }
     static func url(_ name: String) -> URL { dir.appendingPathComponent(name) }
     static func has(_ name: String) -> Bool { FileManager.default.fileExists(atPath: url(name).path) }
-
-    static var uv: String? {
-        findExecutable("uv") ?? [blurtHome.appendingPathComponent("bin/uv").path].first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
     /// Writes are possible: the scripts are there and uv can run them.
-    static var canWrite: Bool { has("items.py") && uv != nil }
+    static var canWrite: Bool { has("items.py") && ScriptRunner.shared.uvAvailable }
 
     struct Failure: Error, CustomStringConvertible {
+        let code: String
         let message: String
         var description: String { message }
+        /// What to tell the user: the code's own sentence when there is one, else a general one.
+        var localized: String {
+            let k = "main.error.\(code)"
+            return T(k) == k ? T("main.error.generic") : T(k)
+        }
+    }
+
+    /// The last JSON object a CLI printed.
+    static func json(_ d: Data) -> [String: Any]? {
+        for l in String(decoding: d, as: UTF8.self).split(separator: "\n").reversed() {
+            if let o = try? JSONSerialization.jsonObject(with: Data(l.utf8)) as? [String: Any] { return o }
+        }
+        return nil
     }
 
     /// Runs `script args…` off the main thread; `done` gets stdout (or the error) on the main queue.
@@ -30,85 +36,65 @@ enum Scripts {
                     done: @escaping (Result<Data, Error>) -> Void) {
         Task.detached {
             let r: Result<Data, Error>
-            do {
-                r = .success(try await ScriptRunner.shared.run(script, args, stdin: stdin, timeout: timeout))
-            } catch ScriptError.notImplemented {
-                r = fallback(script, args, stdin: stdin, timeout: timeout)
-            } catch {
-                r = .failure(error)
-            }
+            do { r = .success(try await ScriptRunner.shared.run(script, args, stdin: stdin, timeout: timeout)) } catch { r = .failure(error) }
             await MainActor.run { done(r) }
         }
     }
 
-    /// The last JSON line a C2/C3 CLI printed.
-    static func json(_ d: Data) -> [String: Any]? {
-        let lines = String(decoding: d, as: UTF8.self).split(separator: "\n")
-        for l in lines.reversed() {
-            if let o = try? JSONSerialization.jsonObject(with: Data(l.utf8)) as? [String: Any] { return o }
-        }
-        return nil
-    }
-
-    private static func fallback(_ script: String, _ args: [String], stdin: Data?, timeout: TimeInterval) -> Result<Data, Error> {
-        let path = script.hasPrefix("/") ? script : url(script).path
-        guard FileManager.default.fileExists(atPath: path) else { return .failure(Failure(message: "\(script) not found in \(dir.path)")) }
-        guard let uv = uv else { return .failure(Failure(message: "uv not found")) }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: uv)
-        p.arguments = ["run", "-q", path] + args
-        var env = agentEnvironment()
-        env["BLURT_HOME"] = blurtHome.path
-        p.environment = env
-        let out = Pipe(), err = Pipe(), inp = Pipe()
-        p.standardOutput = out
-        p.standardError = err
-        p.standardInput = stdin == nil ? FileHandle.nullDevice : inp
-        do { try p.run() } catch { return .failure(error) }
-        if let s = stdin {
-            DispatchQueue.global().async {
-                inp.fileHandleForWriting.write(s)
-                try? inp.fileHandleForWriting.close()
+    /// run() for the {"ok": …} CLIs: the decoded object, or a Failure carrying the CLI's code.
+    static func call(_ script: String, _ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60,
+                     done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        run(script, args, stdin: stdin, timeout: timeout) { r in
+            switch r {
+            case .success(let d):
+                guard let o = json(d), o["ok"] as? Bool == true else {
+                    let o = json(d) ?? [:]
+                    return done(.failure(Failure(code: o["code"] as? String ?? "failed", message: o["error"] as? String ?? "\(script) failed")))
+                }
+                done(.success(o))
+            case .failure(ScriptError.failed(_, let out, let err)):
+                let o = json(out) ?? [:]
+                done(.failure(Failure(code: o["code"] as? String ?? "failed", message: o["error"] as? String ?? err)))
+            case .failure(ScriptError.scriptMissing(let p)):
+                done(.failure(Failure(code: "no_scripts", message: p)))
+            case .failure(ScriptError.uvMissing):
+                done(.failure(Failure(code: "no_uv", message: "uv not found")))
+            case .failure(let e):
+                done(.failure(Failure(code: "failed", message: "\(e)")))
             }
         }
-        var o = Data(), e = Data()
-        let g = DispatchGroup()
-        g.enter(); DispatchQueue.global().async { o = out.fileHandleForReading.readDataToEndOfFile(); g.leave() }
-        g.enter(); DispatchQueue.global().async { e = err.fileHandleForReading.readDataToEndOfFile(); g.leave() }
-        if g.wait(timeout: .now() + timeout) == .timedOut {
-            p.terminate()
-            return .failure(ScriptError.timeout(timeout))
-        }
-        p.waitUntilExit()
-        if p.terminationStatus != 0 {
-            let msg = (json(o)?["error"] as? String) ?? String(decoding: e, as: UTF8.self)
-            return .failure(Failure(message: msg.isEmpty ? "\(script) exited \(p.terminationStatus)" : msg))
-        }
-        return .success(o)
     }
 
     // MARK: the writes the main window makes
 
-    /// items.py user-ops (C2): the same function review.py's POST /api/items runs. `done` gets the new etag.
-    static func userOps(_ session: URL, _ ops: [[String: Any]], confirm: Bool = false,
-                        done: @escaping (Result<String, Error>) -> Void) {
+    /// items.py user-ops (the review component's ops, by uid). `scope` = [SESSION] | ["--project", P].
+    static func userOps(_ scope: [String], _ ops: [[String: Any]], confirm: Bool = false,
+                        done: @escaping (Result<[String: Any], Failure>) -> Void) {
         guard let body = try? JSONSerialization.data(withJSONObject: ["ops": ops]) else { return }
-        run("items.py", ["user-ops", session.path, "--stdin"] + (confirm ? ["--confirm"] : []), stdin: body, timeout: 30) { r in
-            done(r.flatMap { d in
-                guard let o = json(d), o["ok"] as? Bool == true else {
-                    return .failure(Failure(message: (json(d)?["error"] as? String) ?? "items.py user-ops failed"))
-                }
-                return .success(o["etag"] as? String ?? "")
-            })
-        }
+        call("items.py", ["user-ops"] + scope + ["--stdin"] + (confirm ? ["--confirm"] : []), stdin: body, timeout: 30, done: done)
     }
 
-    /// Debounced, coalescing `index.py update <dirs>` for the FSEvents watcher.
+    /// items.py work REF… --state S --by user (K3: only the user marks done).
+    static func work(_ uids: [String], _ state: String, note: String? = nil, done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("items.py", ["work"] + uids + ["--state", state, "--by", "user"] + (note.map { ["--note", $0] } ?? []), timeout: 30, done: done)
+    }
+
+    /// items.py move REF… --project P|inbox --by user (the AI never moves them back).
+    static func move(_ uids: [String], to project: String, done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("items.py", ["move"] + uids + ["--project", project, "--by", "user"], timeout: 30, done: done)
+    }
+
+    /// handoff.py create --items … --mark: the hand-off sheet, marked handed_off(external) — called when the user copies.
+    static func handoff(_ uids: [String], done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("handoff.py", ["create", "--items"] + uids + ["--lang", Loc.isChinese ? "zh" : "en", "--to", "external", "--mark"], timeout: 30, done: done)
+    }
+
+    /// Debounced, coalescing `index.py update <paths>` for the FSEvents watcher.
     static var pendingUpdate = Set<String>()
     static var updating = false
-    static func indexUpdate(_ dirs: [URL], done: (() -> Void)? = nil) {
+    static func indexUpdate(_ paths: [URL], done: (() -> Void)? = nil) {
         guard has("index.py") else { return }
-        pendingUpdate.formUnion(dirs.map(\.path))
+        pendingUpdate.formUnion(paths.map(\.path))
         guard !updating, !pendingUpdate.isEmpty else { return }
         let batch = pendingUpdate.sorted()
         pendingUpdate.removeAll()
@@ -121,8 +107,6 @@ enum Scripts {
     }
 
     static func indexScan(done: @escaping (Result<[String: Any], Error>) -> Void) {
-        run("index.py", ["scan"], timeout: 300) { r in
-            done(r.map { json($0) ?? [:] })
-        }
+        run("index.py", ["scan"], timeout: 300) { r in done(r.map { json($0) ?? [:] }) }
     }
 }

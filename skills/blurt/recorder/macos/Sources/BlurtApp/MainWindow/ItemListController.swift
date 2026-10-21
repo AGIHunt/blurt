@@ -417,6 +417,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: "tray.full", title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"),
                        buttons: [(T("main.empty.scan"), 1)])
             return
+        case .outdated:
+            empty.show(symbol: "arrow.triangle.2.circlepath", title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"),
+                       buttons: [(T("main.empty.rebuild"), 1)])
+            return
         case .failed(let e):
             empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: e, buttons: [(T("action.retry"), 1)])
             return

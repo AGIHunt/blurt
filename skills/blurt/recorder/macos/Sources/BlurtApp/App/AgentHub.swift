@@ -9,6 +9,7 @@
 // BLURT_AGENT_PATH (tests): directories searched for agent CLIs before the user's PATH.
 
 import AppKit
+import BlurtCore
 
 struct AgentDef {
     let id: String
@@ -290,12 +291,19 @@ func agentFailureNote(_ dir: URL) -> String? {
 }
 
 extension App {
-    /// Hand the recording to a coding agent in the workspace, headless. `only`: that agent, no fallback (the user picked
-    /// it in the menu). The agent writes the outputs next to the recording; the app opens the review page.
-    func process(_ dir: URL, only: String? = nil) {
+    /// Organise a capture session with a coding agent, headless, as a process job (K4) the main window, the island
+    /// and the menu bar follow. `captures`: only these shots.jsonl entries (nil = the whole session); `project`: file
+    /// the items there (nil = the session's own project, or the AI routes each item). `only`: that agent, no fallback.
+    /// Nothing opens when it finishes — JobNotifier says so quietly (K4 notification rules).
+    func process(_ dir: URL, only: String? = nil, captures: [Int]? = nil, project: String? = nil) {
         guard !processing.contains(dir.path) else { return }
         processing.append(dir.path)
         refreshStatus()
+        let store = ProjectStore.shared
+        let pid = project ?? store.project(containing: dir).map(\.id)
+        let job = JobWriter(type: .process, project: pid, session: dir)
+        if let c = captures { job.setCaptures(c) }
+        job.step("prepare", .running)
         let hub = AgentHub.shared
         hub.reload()
         let order = only.flatMap { hub.def($0) }.map { [$0] } ?? hub.order()
@@ -304,107 +312,97 @@ extension App {
             guard let self = self else { return }
             let skipped = Array(statuses.prefix { !$0.state.usable })
             let queue = statuses.filter { $0.state.usable }
-            guard !queue.isEmpty else { return self.noAgent(dir, statuses) }
+            guard !queue.isEmpty else { return self.noAgent(dir, statuses, job: job) }
             if !skipped.isEmpty {
-                appendLog(log, "── blurt \(nowStamp()) · " + skipped.map { "\($0.def.name)：\($0.why)" }.joined(separator: " · ") + "\n")
+                appendLog(log, "── blurt \(nowStamp()) · " + skipped.map { "\($0.def.name): \($0.why)" }.joined(separator: " · ") + "\n")
             }
-            self.attempt(dir, queue: queue, skipped: skipped.map { ($0.def, $0.def.name + $0.shortWhy) })
+            job.step("prepare", .done)
+            self.attempt(dir, queue: queue, skipped: skipped.map { ($0.def, $0.def.name + $0.shortWhy) }, job: job, captures: captures,
+                         project: project)
         }
     }
 
-    func noAgent(_ dir: URL, _ statuses: [AgentStatus]) {
+    func noAgent(_ dir: URL, _ statuses: [AgentStatus], job: JobWriter) {
         processing.removeAll { $0 == dir.path }
         refreshStatus()
-        let lines = statuses.map { "\($0.def.name)：\($0.why)" }
-        appendLog(dir.appendingPathComponent("agent.log"), "── blurt \(nowStamp()) · " + L("没有能用的 agent，没整理：", "no usable agent, not processed:") + "\n"
+        let lines = statuses.map { "\($0.def.name): \($0.why)" }
+        appendLog(dir.appendingPathComponent("agent.log"), "── blurt \(nowStamp()) · no usable agent, not processed:\n"
                   + lines.map { "   " + $0 }.joined(separator: "\n") + "\n")
         updateMeta(dir) { m in
-            m["agent"] = ["result": "none", "short": L("没有能用的 agent", "no usable agent"), "at": nowStamp(),
+            m["agent"] = ["result": "none", "short": T("app.agent.none_short"), "at": nowStamp(),
                           "agents": statuses.map { ["id": $0.def.id, "state": $0.state.rawValue, "why": $0.why] }]
         }
+        job.finish(.failed, error: JobError(code: "auth", message: lines.joined(separator: "; "), hintKey: "main.job.hint.no_agent"))
         perch.hatched(id: dir.path, ok: false)
-        // installed-but-unusable first, then everything not installed on one line
-        let notInstalled = statuses.filter { $0.state == .notInstalled }
-        var shown = statuses.filter { $0.state != .notInstalled }.map { "\($0.def.name)：\($0.why)" }
-        if notInstalled.count > 1 && !shown.isEmpty {
-            shown.append(notInstalled.map(\.def.name).joined(separator: " / ") + L("：没安装", ": not installed"))
-        } else {
-            shown += notInstalled.map { "\($0.def.name)：\($0.why)" }
-        }
-        toast(L("没法后台整理，没有能用的 agent：", "Can't process this — no usable agent:") + "\n" + shown.joined(separator: "\n")
-              + "\n" + L("弄好后在菜单「最近的录制」里重新整理", "Fix one, then Recent recordings → Process"), seconds: 16)
+    }
+
+    /// The agent's instructions for an unattended run (English: agents read it, the user never does).
+    func processPrompt(_ dir: URL, captures: [Int]?) -> String {
+        let what = isShotsSession(dir)
+            ? "Use the blurt skill to process this batch of captures: \(dir.path)\nIt is a shots session (no video): each shot "
+              + "anchors one item and is that item's primary frame; voice notes are transcribed first; .marked.png files carry the user's ink."
+            : "Use the blurt skill to process this recording: \(dir.path)"
+        let only = captures.map { "\nOnly these captures (shots.jsonl n): " + $0.map(String.init).joined(separator: ", ") + "." } ?? ""
+        let skill = (readConfig()["skill_dir"] as? String).map { "\nThe blurt skill: \($0)/SKILL.md" } ?? ""
+        return what + only + "\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the "
+            + "review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences." + skill
     }
 
     /// Run queue[0]; on a failure another agent wouldn't share (login, quota, model), move on to the next.
-    func attempt(_ dir: URL, queue: [AgentStatus], skipped: [(AgentDef, String)]) {
-        guard let a = queue.first, let bin = a.bin else { return noAgent(dir, queue) }
-        let ws = currentWorkspace()
-        // name the skill's path: the agent's own skill list may lack blurt (installed for one CLI only) or hold another
-        // version than the one this app was built from
-        let skillHint = (readConfig()["skill_dir"] as? String).map { "\n" + L("blurt skill：\($0)/SKILL.md", "The blurt skill: \($0)/SKILL.md") } ?? ""
-        let prompt = (shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
-                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")) + skillHint
-        let cmd = a.def.command(bin: bin, prompt: prompt)
+    func attempt(_ dir: URL, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter, captures: [Int]?, project: String?) {
+        guard let a = queue.first, let bin = a.bin else { return noAgent(dir, queue, job: job) }
+        let cwd = ProjectStore.shared.project(containing: dir).flatMap { $0.isInbox ? nil : $0.path } ?? defaultWorkspace
+        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures))
         let log = dir.appendingPathComponent("agent.log")
-        let fromWhy = skipped.map(\.1)
-        appendLog(log, "── blurt \(nowStamp()) · " + L("用 \(a.def.name) 整理", "processing with \(a.def.name)") + " (\(bin))"
-                  + (fromWhy.isEmpty ? "" : " · " + L("跳过：", "skipped: ") + fromWhy.joined(separator: "; ")) + "\n")
+        appendLog(log, "── blurt \(nowStamp()) · processing with \(a.def.name) (\(bin))"
+                  + (skipped.isEmpty ? "" : " · skipped: " + skipped.map(\.1).joined(separator: "; ")) + " · job \(job.id)\n")
         let started = (try? FileManager.default.attributesOfItem(atPath: log.path)[.size] as? Int) ?? 0
         updateMeta(dir) { m in
-            var rec: [String: Any] = ["id": a.def.id, "name": a.def.name, "result": "running", "at": nowStamp()]
+            var rec: [String: Any] = ["id": a.def.id, "name": a.def.name, "result": "running", "at": nowStamp(), "job": job.id]
             if !skipped.isEmpty { rec["fallback_from"] = skipped.map { ["id": $0.0.id, "why": $0.1] } }
             m["agent"] = rec
         }
-        if skipped.isEmpty {
-            toast(L("\(a.def.name) 正在后台整理…", "\(a.def.name) is processing it in the background…"))
-        } else {
-            toast(L("\(skipped[0].1)，这次用 \(a.def.name) 整理", "\(skipped[0].1) — processing with \(a.def.name) this time"), seconds: 7)
-        }
+        job.step("transcribe", .running)
         perch.hatch(id: dir.path, kinds: draftKinds(in: dir))
-        // text-first runs: items.json appears long before the agent exits → open the review page right then
-        var reviewOpen = false
-        let watch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
-            guard let self = self, FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path) else { return }
-            t.invalidate()
-            reviewOpen = self.openReview(dir)
-            perch.hatched(id: dir.path, ok: true)
-            if reviewOpen { self.toast(L("条目已就绪，审核页已打开（截图还在补）", "Items are ready — the review page is open (frames still coming)")) }
-        }
         refreshStatus()
-        shell(cmd, cwd: ws, log: log, append: true) { [weak self] status in
+        var env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]
+        if let p = project { env["BLURT_PROJECT"] = p }
+        shell(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
             guard let self = self else { return }
-            watch.invalidate()
-            let hasItems = FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path)
-            let ok = status == 0 && hasItems
-            if ok || (hasItems && reviewOpen) {
+            // items.py ingest turns items.json into Markdown (renaming it) and writes batch.json
+            let fm = FileManager.default
+            let hasItems = ["batch.json", "items.json", "items.ingested.json"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
+            if hasItems {
                 self.processing.removeAll { $0 == dir.path }
                 perch.hatched(id: dir.path, ok: true)
                 updateMeta(dir) { m in m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(["result": "ok", "done_at": nowStamp()]) { _, n in n } }
-                appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) " + L("完成", "done") + (ok ? "" : " (exit \(status))") + "\n")
-                if reviewOpen { self.toast(L("整理完了，审核页里的截图都补齐了", "Done — every frame is on the review page")) }
-                else if self.openReview(dir) { self.toast(L("整理好了，审核页已打开", "Done — the review page is open")) }
-                else { self.toast(L("整理好了（items.json 已生成）", "Done — items.json is ready")) }
+                appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) done" + (status == 0 ? "" : " (exit \(status))") + "\n")
+                for s in ["transcribe", "write", "frames"] { job.step(s, .done) }
+                job.finish(.done)
+                Scripts.indexUpdate([dir])
                 self.refreshStatus()
                 return
             }
             let tail = (try? Data(contentsOf: log)).map { d in String(decoding: d.dropFirst(min(started, d.count)), as: UTF8.self) } ?? ""
             let f = AgentHub.shared.classify(tail)
-            let reason = f?.reasonText(a.def) ?? L("\(a.def.name) 没整理完（退出码 \(status)）", "\(a.def.name) didn't finish (exit \(status))")
-            appendLog(log, "── blurt \(nowStamp()) · " + L("失败", "failed") + "：\(reason)\n")
+            let reason = f?.reasonText(a.def) ?? T("app.agent.unfinished", a.def.name, Int(status))
+            appendLog(log, "── blurt \(nowStamp()) · failed: \(reason)\n")
             if f?.id == "auth" { AgentHub.shared.invalidate(a.def.id, as: .loggedOut) }
             let next = Array(queue.dropFirst())
-            if !hasItems, ["auth", "quota", "model"].contains(f?.id ?? ""), !next.isEmpty {
-                self.attempt(dir, queue: next, skipped: skipped + [(a.def, "\(a.def.name) " + (f?.shortText ?? ""))])
+            if ["auth", "quota", "model"].contains(f?.id ?? ""), !next.isEmpty {
+                self.attempt(dir, queue: next, skipped: skipped + [(a.def, "\(a.def.name) " + (f?.shortText ?? ""))], job: job,
+                             captures: captures, project: project)
                 return
             }
             self.processing.removeAll { $0 == dir.path }
             perch.hatched(id: dir.path, ok: false)
             updateMeta(dir) { m in
                 m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(
-                    ["result": "failed", "class": f?.id ?? "unknown", "short": f?.shortText ?? L("失败", "failed"), "reason": reason,
+                    ["result": "failed", "class": f?.id ?? "unknown", "short": f?.shortText ?? T("job.state.failed"), "reason": reason,
                      "exit": Int(status), "done_at": nowStamp()]) { _, n in n }
             }
-            self.toast(L("后台整理失败：", "Processing failed: ") + reason + "\n" + L("详见录屏文件夹里的 agent.log", "Details: agent.log in the recording's folder"), seconds: 12)
+            let code = ["auth", "quota", "network", "model"].contains(f?.id ?? "") ? f!.id : "unknown"
+            job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil))
             self.refreshStatus()
         }
     }

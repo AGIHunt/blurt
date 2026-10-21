@@ -141,6 +141,15 @@ public extension Loc {
         return f.string(from: n as NSNumber) ?? "\(n)"
     }
 
+    /// 0.4 → "40%" / "40%"
+    static func percent(_ x: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = locale
+        f.numberStyle = .percent
+        f.maximumFractionDigits = 0
+        return f.string(from: x as NSNumber) ?? "\(Int(x * 100))%"
+    }
+
     /// A list of names joined the way the language does it ("A, B and C" / "A、B 和 C").
     static func list(_ items: [String]) -> String {
         let f = ListFormatter()

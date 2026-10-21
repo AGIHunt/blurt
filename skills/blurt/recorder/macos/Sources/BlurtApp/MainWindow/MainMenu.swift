@@ -1,74 +1,91 @@
 // The menu bar while the main window is open (the app is a regular app then: Dock, ⌘Tab, menus), the keyboard
-// shortcuts sheet (?), and opening code / folders in the user's editor.
+// shortcuts panel (?), and opening code / folders in the user's editor.
 import AppKit
 import BlurtCore
 
 enum MainMenu {
     static func build() -> NSMenu {
-        let main = ReviewHub.mainMenu()          // Blurt / Edit / View / Window, shared with review windows
+        let main = NSMenu()
         let c = MainWindowController.shared
-        func item(_ t: String, _ sel: Selector, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command, obj: Any? = nil) -> NSMenuItem {
+        func item(_ t: String, _ sel: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command, obj: Any? = nil,
+                  target: AnyObject? = c) -> NSMenuItem {
             let i = NSMenuItem(title: t, action: sel, keyEquivalent: key)
             i.keyEquivalentModifierMask = mods
-            i.target = c
+            i.target = target
             i.representedObject = obj
             return i
         }
-        func menu(_ title: String, _ items: [NSMenuItem], at index: Int) {
+        func menu(_ title: String, _ items: [NSMenuItem]) -> NSMenu {
             let m = NSMenu(title: title)
             items.forEach(m.addItem)
             let it = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             it.submenu = m
-            main.insertItem(it, at: min(index, main.items.count))
+            main.addItem(it)
+            return m
         }
-        if let app = main.items.first?.submenu {
-            if AppEnvironment.settings != nil {
-                let s = NSMenuItem(title: L("设置…", "Settings…"), action: #selector(MainWindowController.mSettings), keyEquivalent: ",")
-                s.target = c
-                app.insertItem(s, at: 0)
-                app.insertItem(.separator(), at: 1)
-            }
+        var app = [NSMenuItem]()
+        if AppEnvironment.settings != nil { app += [item(T("menu.settings"), #selector(MainWindowController.mSettings), ","), .separator()] }
+        app += [item(T("menu.hide"), #selector(NSApplication.hide(_:)), "h", target: nil), .separator(),
+                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "", target: nil)]   // no ⌘Q: it's the resident app
+        _ = menu("Blurt", app)
+
+        let recent = NSMenu()
+        for p in ProjectStore.shared.projects.prefix(10) {
+            let i = item(p.name, #selector(MainWindowController.mGoProject(_:)), obj: p.id)
+            i.image = Look.symbol("folder", p.name)
+            i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
+            recent.addItem(i)
         }
-        let file = [item(L("录制", "Record"), #selector(MainWindowController.record)),
-                    item(L("截图", "Snap"), #selector(MainWindowController.snap)),
-                    .separator(),
-                    item(L("重新扫描录制", "Rescan Recordings"), #selector(MainWindowController.mRescan)),
-                    .separator(),
-                    item(L("关闭窗口", "Close Window"), #selector(NSWindow.performClose(_:)), "w")]
-        file.forEach { if $0.action == #selector(MainWindowController.record) { $0.showHotkey(.toggleRecord) } else if $0.action == #selector(MainWindowController.snap) { $0.showHotkey(.snap) } }
-        file.last?.target = nil
-        menu(L("文件", "File"), file, at: 1)
-        let go = [item(L("命令面板…", "Command Palette…"), #selector(MainWindowController.showPalette), "k"),
-                  item(L("搜索", "Find"), #selector(MainWindowController.mFind), "f"),
-                  .separator(),
-                  item(L("收件箱", "Inbox"), #selector(MainWindowController.mGo(_:)), "1", obj: "inbox"),
-                  item(L("全部条目", "All Items"), #selector(MainWindowController.mGo(_:)), "2", obj: "all"),
-                  item(L("待修问题", "Open Issues"), #selector(MainWindowController.mGo(_:)), "3", obj: "smart:openIssues"),
-                  item(L("想法", "Ideas"), #selector(MainWindowController.mGo(_:)), "4", obj: "smart:ideas"),
-                  item(L("Agent 修复中", "Agent Fixing"), #selector(MainWindowController.mGo(_:)), "5", obj: "smart:fixing"),
-                  item(L("已修复", "Fixed"), #selector(MainWindowController.mGo(_:)), "6", obj: "smart:fixed"),
-                  item(L("全部会话", "All Sessions"), #selector(MainWindowController.mGo(_:)), "7", obj: "sessions"),
-                  .separator(),
-                  item(L("显示 / 隐藏侧栏", "Toggle Sidebar"), #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control])]
-        go.last?.target = nil
-        menu(L("前往", "Go"), go, at: 4)
-        let it = [item(L("让 Agent 修", "Let Agent Fix"), #selector(MainWindowController.mFix), "\r"),
-                  item(L("预览主帧", "Quick Look"), #selector(MainWindowController.mQuickLook), "y"),
-                  item(L("审核模式", "Review Mode"), #selector(MainWindowController.mReview)),
-                  .separator(),
-                  item(L("改标题…", "Rename…"), #selector(MainWindowController.mRename)),
-                  item(L("标为已确认", "Mark Confirmed"), #selector(MainWindowController.mSetStatus(_:)), obj: "confirmed"),
-                  item(L("标为待审", "Mark Draft"), #selector(MainWindowController.mSetStatus(_:)), obj: "draft"),
-                  item(L("丢弃", "Drop"), #selector(MainWindowController.mSetStatus(_:)), "\u{8}", obj: "deleted"),
-                  .separator(),
-                  item(L("在访达中显示", "Reveal in Finder"), #selector(MainWindowController.mReveal), "r", [.command, .shift]),
-                  item(L("拷贝路径", "Copy Path"), #selector(MainWindowController.mCopyPath), "c", [.command, .option]),
-                  item(L("拷贝链接", "Copy Link"), #selector(MainWindowController.mCopyLink))]
-        menu(L("条目", "Item"), it, at: 5)
-        let help = [item(L("键盘快捷键", "Keyboard Shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),
-                    item(L("口喷鸡主页", "Blurt Website"), #selector(MainWindowController.mHelp))]
-        menu(L("帮助", "Help"), help, at: main.items.count)
-        NSApp.helpMenu = main.items.last?.submenu
+        let recentItem = NSMenuItem(title: T("menu.open_recent"), action: nil, keyEquivalent: "")
+        recentItem.submenu = recent
+        recentItem.isEnabled = !recent.items.isEmpty
+        let rec = item(T("main.action.record"), #selector(MainWindowController.record))
+        rec.showHotkey(.toggleRecord)
+        let sn = item(T("main.action.snap"), #selector(MainWindowController.snap))
+        sn.showHotkey(.snap)
+        _ = menu(T("menu.file"), [item(T("project.open_folder"), #selector(MainWindowController.openFolder), "o"), recentItem, .separator(),
+                                  rec, sn, .separator(),
+                                  item(T("menu.rescan"), #selector(MainWindowController.mRescan)), .separator(),
+                                  item(T("menu.close"), #selector(NSWindow.performClose(_:)), "w", target: nil)])
+        _ = menu(T("menu.edit"), [item(T("menu.undo"), Selector(("undo:")), "z", target: nil),
+                                  item(T("menu.redo"), Selector(("redo:")), "z", [.command, .shift], target: nil), .separator(),
+                                  item(T("menu.cut"), #selector(NSText.cut(_:)), "x", target: nil), item(T("menu.copy"), #selector(NSText.copy(_:)), "c", target: nil),
+                                  item(T("menu.paste"), #selector(NSText.paste(_:)), "v", target: nil),
+                                  item(T("menu.select_all"), #selector(NSText.selectAll(_:)), "a", target: nil)])
+        var go = [item(T("menu.palette"), #selector(MainWindowController.showPalette), "k"),
+                  item(T("menu.find"), #selector(MainWindowController.mFind), "f"), .separator(),
+                  item(T("main.place.inbox"), #selector(MainWindowController.mGo(_:)), "1", obj: "inbox"),
+                  item(T("main.place.progress"), #selector(MainWindowController.mGo(_:)), "2", obj: "progress"),
+                  item(T("project.inbox"), #selector(MainWindowController.mGo(_:)), "3", obj: "unassigned"),
+                  item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all")]
+        for (k, p) in c.model.projects.prefix(5).enumerated() where p.registered {
+            go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
+        }
+        go += [.separator(), item(T("menu.toggle_sidebar"), #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control], target: nil)]
+        _ = menu(T("menu.go"), go)
+        let move = NSMenuItem(title: T("main.menu.move_to"), action: nil, keyEquivalent: "")
+        move.submenu = c.moveMenu()
+        _ = menu(T("menu.item"), [item(T("main.menu.start_session"), #selector(MainWindowController.mHandOff), "\r"),
+                                  item(T("handoff.copy_instruction"), #selector(MainWindowController.mCopyInstruction), "c", [.command, .shift]),
+                                  item(T("handoff.copy_full"), #selector(MainWindowController.mCopyFull)), .separator(),
+                                  item(T("work.confirm_done"), #selector(MainWindowController.mWork(_:)), obj: "done"),
+                                  item(T("work.reopen"), #selector(MainWindowController.mWork(_:)), obj: "todo"),
+                                  item(T("work.wontfix"), #selector(MainWindowController.mWork(_:)), obj: "wontfix"), .separator(),
+                                  move,
+                                  item(T("main.menu.rename"), #selector(MainWindowController.mRename)),
+                                  item(T("review.confirmed"), #selector(MainWindowController.mSetStatus(_:)), obj: "confirmed"),
+                                  item(T("review.draft"), #selector(MainWindowController.mSetStatus(_:)), obj: "draft"),
+                                  item(T("review.deleted"), #selector(MainWindowController.mSetStatus(_:)), "\u{8}", obj: "deleted"), .separator(),
+                                  item(T("main.menu.quick_look"), #selector(MainWindowController.mQuickLook), "y"),
+                                  item(T("action.reveal_in_finder"), #selector(MainWindowController.mReveal), "r", [.command, .shift]),
+                                  item(T("action.copy_path"), #selector(MainWindowController.mCopyPath), "c", [.command, .option]),
+                                  item(T("main.menu.copy_link"), #selector(MainWindowController.mCopyLink))])
+        _ = menu(T("menu.window"), [item(T("menu.minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil),
+                                    item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil)])
+        let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),
+                                         item(T("menu.website"), #selector(MainWindowController.mHelp))])
+        NSApp.helpMenu = help
+        NSApp.windowsMenu = main.items.first { $0.title == T("menu.window") }?.submenu
         return main
     }
 }
@@ -78,6 +95,7 @@ extension MainWindowController {
     @objc func mRescan() { model.scan() }
     @objc func mFind() { focusSearch() }
     @objc func mGo(_ i: NSMenuItem) { (i.representedObject as? String).flatMap(Scope.init(key:)).map(go) }
+    @objc func mGoProject(_ i: NSMenuItem) { (i.representedObject as? String).map { reveal(project: $0) } }
     @objc func mShortcuts() { showShortcuts() }
     @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
 }
@@ -90,17 +108,18 @@ func menuHeader(_ title: String) -> NSMenuItem {
     return i
 }
 
-/// "?" — the keyboard map (§2.5)
+/// "?" — the keyboard map
 enum ShortcutsSheet {
     static func show(on window: NSWindow?) {
         let rows: [(String, String)] = [
-            ("⌘K", L("命令面板", "Command palette")), ("/  ⌘F", L("搜索", "Search")),
-            ("J / K  ↓ / ↑", L("下一条 / 上一条", "Next / previous")), ("↩", L("打开（进入详情）", "Open (focus the detail)")),
-            ("⌘↩", L("交给 agent 修", "Let the agent fix it")), ("E", L("改标题", "Rename")),
-            ("1 2 3 4", L("改类型：问题 想法 笔记 任务", "Kind: issue idea note task")), ("S", L("切换 待审 / 已确认", "Toggle draft / confirmed")),
-            ("⌫", L("丢弃", "Drop")), ("R", L("审核模式", "Review mode")), (L("空格", "Space"), "Quick Look"),
-            ("⌘1 … ⌘7", L("收件箱、全部条目、智能筛选、会话", "Inbox, All Items, smart filters, sessions")),
-            ("⇧⌘R  ⌥⌘C", L("在访达中显示 · 拷贝路径", "Reveal in Finder · copy path")), ("?", L("这张表", "This sheet")),
+            ("⌘K", T("main.keys.palette")), ("/  ⌘F", T("main.keys.search")), ("⌘O", T("project.open_folder")),
+            ("J / K  ↓ / ↑", T("main.keys.next")), ("↩", T("main.keys.open")),
+            ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("handoff.copy_instruction")),
+            ("D", T("work.confirm_done")), ("R", T("work.reopen")), ("E", T("main.menu.rename")),
+            ("1 2 3 4", T("main.keys.kind")), ("S", T("main.keys.keep")), ("⌫", T("review.deleted")),
+            (T("main.keys.space"), "Quick Look"),
+            ("⌘1 … ⌘4", T("main.keys.places")), ("⌘5 … ⌘9", T("main.keys.projects")),
+            ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")), ("?", T("main.keys.this")),
         ]
         let grid = NSGridView(views: rows.map { k, v in
             let a = NSTextField(labelWithString: k)
@@ -117,7 +136,7 @@ enum ShortcutsSheet {
         // a floating panel, not a sheet: it never blocks the window (or quitting); ? or Esc closes it
         if let p = panel, p.isVisible { p.orderOut(nil); return }
         let p = ShortcutsPanel(contentRect: .zero, styleMask: [.titled, .closable, .utilityWindow, .hudWindow], backing: .buffered, defer: false)
-        p.title = L("键盘快捷键", "Keyboard Shortcuts")
+        p.title = T("menu.shortcuts")
         p.isFloatingPanel = true
         p.hidesOnDeactivate = true
         p.isReleasedWhenClosed = false
@@ -160,26 +179,13 @@ enum Editor {
         return installed.first { $0.scheme == want || $0.name.lowercased() == want } ?? installed.first
     }
 
-    /// code_refs of one item ("src/a.ts:42", or {path, line})
-    static func codeRefs(_ it: ItemRow) -> [String] {
-        guard it.hasCodeRefs,
-              let doc = (try? JSONSerialization.jsonObject(with: Data(contentsOf: it.sessionURL.appendingPathComponent("items.json")))) as? [String: Any],
-              let item = (doc["items"] as? [[String: Any]])?.first(where: { $0["id"] as? String == it.itemID }) else { return [] }
-        return (item["code_refs"] as? [Any] ?? []).compactMap { r in
-            if let s = r as? String { return s }
-            if let d = r as? [String: Any], let p = (d["path"] ?? d["file"]) as? String {
-                return (d["line"] as? Int).map { "\(p):\($0)" } ?? p
-            }
-            return nil
-        }
-    }
-
-    static func open(ref: String, repo: URL?, session: URL) {
+    /// "src/a.ts:42" relative to the project folder (or the session), or absolute.
+    static func open(ref: String, repo: URL?, session: URL?) {
         var path = ref, line: Int?
         let parts = ref.split(separator: ":")
         if parts.count >= 2, let l = Int(parts[1]) { path = String(parts[0]); line = l }
         let candidates = path.hasPrefix("/") ? [URL(fileURLWithPath: path)]
-            : [repo?.appendingPathComponent(path), session.appendingPathComponent(path)].compactMap { $0 }
+            : [repo?.appendingPathComponent(path), session?.appendingPathComponent(path)].compactMap { $0 }
         guard let f = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) ?? candidates.first else { return }
         open(file: f, line: line)
     }

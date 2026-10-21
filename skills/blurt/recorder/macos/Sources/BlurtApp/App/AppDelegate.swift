@@ -32,6 +32,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             signalSources.append(s)
         }
         BlurtLocale.lang = opts.lang
+        if CommandLine.arguments.contains("--lang") { Loc.setting = opts.lang }
         if resident { AppEnvironment.installModules() }
         installHotkeyHandler()
         hotkeyHandler = { [weak self] k in self?.hotkey(k) }
@@ -175,7 +176,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
         writeAppInfo()
         Updater.shared.start()
-        ReviewHub.shared.listen()
+        ProjectStore.shared.watch()
+        JobStore.shared.start()
+        JobNotifier.shared.start()
+        Housekeeping.atLaunch()
+        AppEnvironment.process = { [weak self] session, captures, project in self?.process(session, captures: captures, project: project) }
+        listenForReviews()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
         menu.delegate = self
@@ -197,25 +203,35 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            let r = hkHint(.toggleRecord, "开始 / 结束录制", "start / finish"), m = hkHint(.openMenu, "打开菜单", "menu")
-            toast(L("口喷鸡已常驻  ", "blurt is running  ") + [r, m].compactMap { $0 }.joined(separator: " · "), icon: .chicken)
+            toast(T("app.toast.welcome", hk(.toggleRecord), hk(.openMenu)), icon: .chicken)
         } else {
             Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
         }
         // `--process <session dir> [--agent <id>]`: process an existing recording (also handy for testing);
-        // `--review <url> [--review-session <dir>]`: review.py asked us to show its page (we weren't running)
+        // `--review <url> --review-session <dir>`: review.py asked for its batch (we weren't running) → the main window
         let args = CommandLine.arguments
         func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         if let p = arg("--process") {
             process(URL(fileURLWithPath: p), only: arg("--agent"))
-        } else if let r = arg("--review"), let u = URL(string: r) {
-            ReviewHub.shared.open(u, session: arg("--review-session").map { URL(fileURLWithPath: $0) }, title: nil)
+        } else if let s = arg("--review-session") {
+            AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: s))
         } else if !args.contains("--background") {
             startRecording(useLast: false)
         }
     }
 
-    /// $BLURT_HOME/app.json: how review.py (run by an agent in a terminal) finds this instance to open its page here.
+    /// review.py started by an agent in a terminal asks for its batch (dev.blurt.recorder.review {url, session, home}):
+    /// the user asked for that review, so the batch opens in the main window — the only window that ever shows one.
+    func listenForReviews() {
+        DistributedNotificationCenter.default().addObserver(forName: .init("dev.blurt.recorder.review"), object: nil, queue: .main) { n in
+            guard let info = n.userInfo, let s = info["session"] as? String else { return }
+            if let home = info["home"] as? String, !home.isEmpty,
+               URL(fileURLWithPath: home).standardizedFileURL.path != blurtHome.standardizedFileURL.path { return }
+            AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: s))
+        }
+    }
+
+    /// $BLURT_HOME/app.json: how review.py (run by an agent in a terminal) finds this instance.
     func writeAppInfo() {
         let info: [String: Any] = ["pid": Int(getpid()), "path": Bundle.main.bundlePath,
                                    "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""]
@@ -226,9 +242,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        ReviewHub.shared.quitting = true
-        for p in ReviewHub.shared.procs.values where p.isRunning { p.terminate() }   // our review servers go with us
         guard resident else { return }
+        Housekeeping.atQuit()
         Hotkeys.shared.unpublish()
         let f = blurtHome.appendingPathComponent("app.json")
         if let d = try? Data(contentsOf: f), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
@@ -243,9 +258,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         m.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
-    /// blurt:// / blurt-app:// (Info.plist CFBundleURLTypes). WP6 handles them via AppEnvironment.openURL; until then
-    /// the shell understands blurt://record and blurt://snap.
+    /// blurt:// / blurt-app:// (Info.plist CFBundleURLTypes) via AppEnvironment.openURL; the shell itself understands
+    /// blurt://record and blurt://snap. Folders (dropped on the Dock icon, "Open With") open as projects.
     func application(_ application: NSApplication, open urls: [URL]) {
+        let folders = urls.filter { u in
+            var dir: ObjCBool = false
+            return u.isFileURL && FileManager.default.fileExists(atPath: u.path, isDirectory: &dir) && dir.boolValue
+        }
+        if !folders.isEmpty, resident {
+            AppEnvironment.mainWindow?.show()
+            MainWindowController.shared.openFolders(folders)
+        }
         for u in urls where u.scheme == "blurt" || u.scheme == "blurt-app" {
             if AppEnvironment.openURL?(u) == true { continue }
             switch u.host {
@@ -272,7 +295,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         lastSession = dir
         busy = true
-        if (recordConfig()["process"] as? String ?? "off") != "off" {
+        if autoProcess {
             AgentHub.shared.check(AgentHub.shared.order(), force: true) { _ in }   // warm the cache while recording
         }
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
@@ -288,6 +311,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// K7: a recording is organised as soon as it ends (record.process "off" = just keep the video).
+    var autoProcess: Bool { (recordConfig()["process"] as? String ?? "auto") != "off" }
+
     func takeEnded(_ code: Int32, _ event: [String: Any]) {
         rec = nil
         busy = false
@@ -297,53 +323,51 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if code != 0 {
             try? FileManager.default.removeItem(at: dir)       // cancelled / failed take: leave no empty folder
             if event["event"] as? String == "error" {
-                alert(L("录制失败", "Recording failed"), event["message"] as? String ?? "")
+                alert(T("app.record.failed"), event["message"] as? String ?? "")
             }
             refreshStatus()
             return
         }
         let dur = event["duration"] as? Double ?? 0
+        let project = ProjectStore.shared.current
         let meta: [String: Any] = [
             "engine": "native-app", "duration": dur, "video": "recording.mp4", "region": event["region"] ?? [],
             "started_at": ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -dur)),
             "author": recordConfig()["author"] as? String ?? NSFullUserName(),
+            "project": project?.id as Any? ?? NSNull(),
             "workspace": currentWorkspace().path,
         ]
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
-        let mode = recordConfig()["process"] as? String ?? "off"
-        if mode == "off" {
-            toast(L("已保存 \(fmtDur(dur)) 的录屏 · 在菜单里可以拷贝发给同事，或让 agent 处理", "Saved a \(fmtDur(dur)) recording · copy it from the menu or let your agent process it"))
+        if autoProcess {
+            process(dir, project: project?.id)
         } else {
-            process(dir)
+            toast(T("app.toast.saved", Loc.duration(dur)))
         }
         refreshStatus()
     }
 
-    /// In a Blurt window (ReviewWindow.swift), or the browser with review.open_in = "browser".
-    @discardableResult
-    func openReview(_ dir: URL) -> Bool { ReviewHub.shared.openSession(dir) }
-
-    func fmtDur(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
-
     func refreshStatus() {
         guard let b = statusItem?.button else { return }
         if let r = rec, r.sessionStart.isValid {
-            let s = Int(r.elapsed())
+            let s = r.elapsed()
             b.image = (r.isPaused ? BlurtIcon.pauseFill : BlurtIcon.recordFill).image(size: 11, color: r.isPaused ? amber : .systemRed)
             b.imagePosition = .imageLeft
-            b.attributedTitle = NSAttributedString(string: " " + String(format: "%02d:%02d", s / 60, s % 60), attributes: [
+            b.attributedTitle = NSAttributedString(string: " " + Loc.duration(s), attributes: [
                 .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
-        } else {
-            b.image = menuIcon
-            b.imagePosition = .imageLeft
-            b.attributedTitle = NSAttributedString(string: processing.isEmpty ? "" : " …", attributes: [
-                .font: NSFont.systemFont(ofSize: 12, weight: .semibold)])
-            b.toolTip = processing.isEmpty ? ([L("口喷鸡", "blurt")] + [hkHint(.toggleRecord, "开始录制", "record"), hkHint(.openMenu, "菜单", "menu")].compactMap { $0 })
-                                               .joined(separator: " · ")
-                                           : L("口喷鸡 · 正在后台整理…", "blurt · processing in the background…")
+            return
         }
+        b.image = menuIcon
+        b.imagePosition = .imageLeft
+        let badge = MenuBadge.shared
+        // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing
+        b.attributedTitle = badge.count > 0
+            ? NSAttributedString(string: " " + Loc.number(badge.count), attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                                                                                       .foregroundColor: badge.urgent ? StatusRing.attention : NSColor.labelColor])
+            : NSAttributedString(string: "")
+        b.toolTip = badge.tooltip
+        b.setAccessibilityLabel(badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name"))
     }
 
     /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray), drawn at 18 pt as a monochrome
@@ -354,7 +378,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static func makeMenuIcon() -> NSImage {
         let img = BlurtIcon.blurt.image(size: 18)
         img.isTemplate = true
-        img.accessibilityDescription = L("口喷鸡", "blurt")
+        img.accessibilityDescription = T("app.name")
         return img
     }
 
@@ -370,124 +394,88 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return it
         }
         if let r = rec {
-            add(L("完成录制", "Finish recording"), #selector(mStop)).showHotkey(.finish)
-            add(r.isPaused ? L("继续", "Resume") : L("暂停", "Pause"), #selector(mPause)).showHotkey(.pause)
-            _ = add(L("重新录制", "Restart"), #selector(mRestart))
-            _ = add(L("放弃这次录制", "Discard"), #selector(mDiscard))
+            add(T("app.menu.finish"), #selector(mStop)).showHotkey(.finish)
+            add(r.isPaused ? T("app.menu.resume") : T("app.menu.pause"), #selector(mPause)).showHotkey(.pause)
+            _ = add(T("app.menu.restart"), #selector(mRestart))
+            _ = add(T("app.menu.discard"), #selector(mDiscard))
             addSnapMenuItems(menu, recording: true)
             return
         }
-        if busy { _ = add(L("正在选择区域…", "Selecting an area…"), nil); return }
-        add(L("开始录制", "Start recording"), #selector(mStart)).showHotkey(.toggleRecord)
-        if lastRegionFromConfig() != nil { _ = add(L("录制上次的区域", "Record the last area"), #selector(mStartLast)) }
+        if busy { _ = add(T("app.menu.selecting"), nil); return }
+        add(T("app.menu.record"), #selector(mStart)).showHotkey(.toggleRecord)
+        if lastRegionFromConfig() != nil { _ = add(T("app.menu.record_last"), #selector(mStartLast)) }
         addSnapMenuItems(menu, recording: false)
         menu.addItem(.separator())
+
+        // what waits for you, and what is running — each opens the main window there (nothing opens by itself)
         if AppEnvironment.mainWindow != nil {
-            add(L("打开口喷鸡", "Open Blurt"), #selector(mOpenMain)).showHotkey(.openMain)
+            add(T("app.menu.open"), #selector(mOpenMain)).showHotkey(.openMain)
+            let badge = MenuBadge.shared
+            if badge.review > 0 {
+                let i = add(TP("app.menu.to_review", badge.review), #selector(mOpenInbox))
+                i.image = Look.symbol("tray", "", size: 13)
+                i.indentationLevel = 1
+            }
+            if badge.verify > 0 {
+                let i = add(TP("app.menu.to_verify", badge.verify), #selector(mOpenInbox))
+                i.image = Look.ring("to_verify", size: 13)
+                i.indentationLevel = 1
+            }
+            for j in JobStore.shared.active.prefix(5) {
+                let i = add("\(JobLook.title(j))  ·  \(JobLook.status(j))", #selector(mOpenJob(_:)), obj: j.id)
+                i.image = Look.symbol(j.agent?.status == .waitingInput ? "exclamationmark.bubble" : JobLook.symbol(j), "", size: 13)
+                i.indentationLevel = 1
+            }
             menu.addItem(.separator())
         }
 
-        let ws = currentWorkspace()
-        let wsItem = NSMenuItem(title: L("工作区：", "Workspace: ") + ws.lastPathComponent, action: nil, keyEquivalent: "")
-        let wsMenu = NSMenu()
-        _ = add(L("默认（~/Blurt）", "Default (~/Blurt)"), #selector(mWorkspace(_:)), to: wsMenu, obj: defaultWorkspace.path,
-                on: ws.standardizedFileURL == defaultWorkspace.standardizedFileURL)
-        for w in knownWorkspaces() where w.standardizedFileURL != defaultWorkspace.standardizedFileURL {
-            _ = add(w.lastPathComponent + "  ·  " + (w.path as NSString).abbreviatingWithTildeInPath, #selector(mWorkspace(_:)), to: wsMenu,
-                    obj: w.path, on: w.standardizedFileURL == ws.standardizedFileURL)
-        }
-        wsMenu.addItem(.separator())
-        _ = add(L("绑定一个项目文件夹…", "Bind a project folder…"), #selector(mChooseWorkspace), to: wsMenu)
-        _ = add(L("在访达中打开工作区", "Open workspace in Finder"), #selector(mOpenWorkspace), to: wsMenu)
-        wsItem.submenu = wsMenu
-        menu.addItem(wsItem)
-
-        let recents = recentSessions()
-        let rItem = NSMenuItem(title: L("最近的录制", "Recent recordings"), action: nil, keyEquivalent: "")
-        let rMenu = NSMenu()
-        if recents.isEmpty { _ = add(L("还没有录制", "No recordings yet"), nil, to: rMenu) }
-        for d in recents {
-            let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("meta.json")))) as? [String: Any]
-            let shots = isShotsSession(d)
-            let nShots = meta?["shots"] as? Int ?? 0
-            let dur = shots ? L("\(nShots) 张", nShots == 1 ? "1 shot" : "\(nShots) shots") : fmtDur(meta?["duration"] as? Double ?? 0)
-            let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
-            let name = d.lastPathComponent
-            let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
-            let busyHere = processing.contains(d.path)
-            let failed = done || busyHere ? nil : agentFailureNote(d)
-            let it = NSMenuItem(title: "\(pretty)  ·  \(dur)", action: nil, keyEquivalent: "")
-            // done → check, busy → …, failed → x + why (icons, never ✓ / ✗ glyphs); snap or video in front
-            let mf = NSFont.menuFont(ofSize: 0)
-            let at = NSMutableAttributedString(string: it.title, attributes: [.font: mf])
-            if done { at.append(NSAttributedString(string: "  ", attributes: [.font: mf])); at.append(BlurtIcon.check.attributed(font: mf, color: .secondaryLabelColor, preferSymbol: true)) }
-            if busyHere { at.append(NSAttributedString(string: "  …", attributes: [.font: mf])) }
-            if let f = failed { at.append(NSAttributedString(string: "  ", attributes: [.font: mf])); at.append(BlurtIcon.x.label(f, font: mf, color: .labelColor, iconColor: .systemRed, preferSymbol: true)) }
-            it.attributedTitle = at
-            it.image = shots ? BlurtIcon.snap.image(size: 16) : BlurtIcon.video.symbolImage(pointSize: 13)
-            let sub = NSMenu()
-            if done { add(L("打开审核页", "Open review"), #selector(mOpenReview(_:)), to: sub, obj: d.path) }
-            add(L("拷贝视频（粘贴发给同事）", "Copy video (paste to share)"), #selector(mCopyVideo(_:)), to: sub, obj: d.path)
-            add(L("在访达中显示", "Show in Finder"), #selector(mReveal(_:)), to: sub, obj: d.path)
-            if FileManager.default.fileExists(atPath: d.appendingPathComponent("agent.log").path) {
-                add(L("查看 agent.log", "Show agent.log"), #selector(mAgentLog(_:)), to: sub, obj: d.path)
-            }
-            sub.addItem(.separator())
-            add(done ? L("重新整理", "Process again") : L("整理（自动选 agent）", "Process (pick an agent)"), busyHere ? nil : #selector(mProcessAuto(_:)), to: sub, obj: d.path)
-            for a in AgentHub.shared.order() {
-                let st = AgentHub.shared.cached(a.id)
-                let li = add(L("用 \(a.name) 整理", "Process with \(a.name)"),
-                             busyHere ? nil : #selector(mProcessWith(_:)), to: sub, obj: "\(a.id)\u{1}\(d.path)")
-                if let st = st, !st.state.usable {
-                    let mf = NSFont.menuFont(ofSize: 0)
-                    let at = NSMutableAttributedString(string: li.title + "  ", attributes: [.font: mf])
-                    at.append(BlurtIcon.x.label(st.why, font: mf, color: .secondaryLabelColor, iconColor: .systemRed, preferSymbol: true))
-                    li.attributedTitle = at
-                }
-                li.indentationLevel = 1
-            }
-            it.submenu = sub
-            rMenu.addItem(it)
-        }
-        rItem.submenu = rMenu
-        menu.addItem(rItem)
-        menu.addItem(.separator())
-
-        let mode = recordConfig()["process"] as? String ?? "off"
-        let pItem = NSMenuItem(title: L("录完自动整理", "After recording"), action: nil, keyEquivalent: "")
+        // the current project (K2): where new captures go
+        let store = ProjectStore.shared
+        let pItem = NSMenuItem(title: T("app.menu.project", store.current?.name ?? T("project.auto")), action: nil, keyEquivalent: "")
         let pMenu = NSMenu()
-        add(L("只保存（手动处理 / 发给别人）", "Just save (process later / share)"), #selector(mProcessMode(_:)), to: pMenu, obj: "off", on: mode == "off")
-        add(L("交给 agent 后台整理", "Process with an agent in the background"), #selector(mProcessMode(_:)), to: pMenu, obj: "auto", on: mode != "off")
+        let auto = add(T("project.auto"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
+        auto.toolTip = T("app.menu.project.auto_tip")
+        if !store.projects.isEmpty { pMenu.addItem(.separator()) }
+        for p in store.projects.prefix(12) {
+            let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
+            i.image = Look.symbol(p.exists ? "folder" : "questionmark.folder", "", size: 13)
+            i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
+        }
+        pMenu.addItem(.separator())
+        _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)
         pItem.submenu = pMenu
         menu.addItem(pItem)
+
+        let pm = NSMenuItem(title: T("app.menu.after_recording"), action: nil, keyEquivalent: "")
+        let pmMenu = NSMenu()
+        add(T("app.menu.after.organise"), #selector(mProcessMode(_:)), to: pmMenu, obj: "auto", on: autoProcess)
+        add(T("app.menu.after.keep"), #selector(mProcessMode(_:)), to: pmMenu, obj: "off", on: !autoProcess)
+        pm.submenu = pmMenu
+        menu.addItem(pm)
         addAgentMenu(menu)
-        add(L("审核页在口喷鸡窗口里打开", "Open reviews in a Blurt window"), #selector(mReviewInApp), on: ReviewHub.shared.openInApp)
 
         let cd = recordConfig()["countdown"] as? Int ?? 3
-        let cItem = NSMenuItem(title: L("倒计时", "Countdown"), action: nil, keyEquivalent: "")
+        let cItem = NSMenuItem(title: T("app.menu.countdown"), action: nil, keyEquivalent: "")
         let cMenu = NSMenu()
-        for n in [0, 3, 5] { _ = add(n == 0 ? L("不倒计时", "None") : L("\(n) 秒", "\(n) s"), #selector(mCountdown(_:)), to: cMenu, obj: n, on: cd == n) }
+        for n in [0, 3, 5] { _ = add(n == 0 ? T("app.menu.countdown.none") : T("app.menu.countdown.seconds", n), #selector(mCountdown(_:)), to: cMenu, obj: n, on: cd == n) }
         cItem.submenu = cMenu
         menu.addItem(cItem)
-        if #available(macOS 13.0, *) {
-            _ = add(L("同时录系统声音（会议、演示）", "Also record system audio (calls, demos)"), #selector(mSystemAudio),
-                    on: recordConfig()["system_audio"] as? Bool ?? false)
-        }
-        if #available(macOS 13.0, *) {
-            _ = add(L("开机时启动", "Open at login"), #selector(mLogin), on: SMAppService.mainApp.status == .enabled)
-        }
-        add(L("快捷键…", "Shortcuts…"), #selector(mShortcuts), key: AppEnvironment.settings == nil ? "," : "")
-        if AppEnvironment.settings != nil { add(L("设置…", "Settings…"), #selector(mSettings), key: ",") }
+        _ = add(T("app.menu.system_audio"), #selector(mSystemAudio), on: recordConfig()["system_audio"] as? Bool ?? false)
+        _ = add(T("app.menu.login"), #selector(mLogin), on: SMAppService.mainApp.status == .enabled)
+        add(T("app.menu.shortcuts"), #selector(mShortcuts), key: AppEnvironment.settings == nil ? "," : "")
+        if AppEnvironment.settings != nil { add(T("menu.settings"), #selector(mSettings), key: ",") }
         menu.addItem(.separator())
         if Updater.shared.available {
-            let u = add(L("检查更新…", "Check for Updates…"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
+            let u = add(T("app.menu.updates"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
             u.target = Updater.shared
         }
-        _ = add(L("使用说明 / GitHub", "Help / GitHub"), #selector(mHelp))
-        _ = add(L("退出口喷鸡", "Quit blurt"), #selector(mQuit), key: "q")
+        _ = add(T("app.menu.help"), #selector(mHelp))
+        _ = add(T("app.menu.quit"), #selector(mQuit), key: "q")
     }
 
     @objc func mOpenMain() { AppEnvironment.mainWindow?.show() }
+    @objc func mOpenInbox() { AppEnvironment.mainWindow?.showInbox() }
+    @objc func mOpenJob(_ it: NSMenuItem) { (it.representedObject as? String).map { AppEnvironment.mainWindow?.reveal(job: $0) } }
     @objc func mSettings() { AppEnvironment.settings?.show(pane: nil) }
     @objc func mStart() { startRecording(useLast: false) }
     @objc func mStartLast() { startRecording(useLast: true) }
@@ -495,68 +483,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mPause() { command("toggle") }
     @objc func mRestart() { command("restart") }
     @objc func mDiscard() { command("discard") }
-    @objc func mWorkspace(_ it: NSMenuItem) {
-        guard let p = it.representedObject as? String else { return }
-        setRecordConfig("workspace", p == defaultWorkspace.path ? nil : p)
+    @objc func mUseProject(_ it: NSMenuItem) {
+        let id = it.representedObject as? String
+        Task { @MainActor in
+            do { try await ProjectStore.shared.use(id) }
+            catch { self.toast(T("main.error.generic")) }
+        }
     }
-    @objc func mChooseWorkspace() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = L("绑定", "Bind")
-        panel.message = L("录屏会保存到这个项目的 .blurt/sessions 里，agent 可以直接结合代码处理", "Recordings go to <project>/.blurt/sessions so your agent can process them with the code")
-        activateApp()
-        guard panel.runModal() == .OK, let u = panel.url else { return }
-        var list = recordConfig()["workspaces"] as? [String] ?? []
-        if !list.contains(u.path) { list.insert(u.path, at: 0) }
-        setRecordConfig("workspaces", Array(list.prefix(8)))
-        setRecordConfig("workspace", u.path)
-    }
-    @objc func mOpenWorkspace() { NSWorkspace.shared.open(currentWorkspace()) }
-    @objc func mReveal(_ it: NSMenuItem) {
-        guard let p = it.representedObject as? String else { return }
-        let d = URL(fileURLWithPath: p)
-        NSWorkspace.shared.activateFileViewerSelecting([isShotsSession(d) ? d : d.appendingPathComponent("recording.mp4")])
-    }
-    @objc func mCopyVideo(_ it: NSMenuItem) {
-        guard let p = it.representedObject as? String else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        let d = URL(fileURLWithPath: p)
-        let shots = ((try? FileManager.default.contentsOfDirectory(at: d.appendingPathComponent("shots"), includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.pathExtension == "png" && !$0.lastPathComponent.contains(".marked.") }.sorted { $0.path < $1.path }
-        pb.writeObjects(isShotsSession(d) ? shots as [NSURL] : [d.appendingPathComponent("recording.mp4") as NSURL])
-        toast(L("已拷贝，去飞书 / 微信 / Slack 里直接粘贴", "Copied — paste it into Slack, Feishu, email…"))
-    }
-    @objc func mProcessAuto(_ it: NSMenuItem) { if let p = it.representedObject as? String { process(URL(fileURLWithPath: p)) } }
-    @objc func mProcessWith(_ it: NSMenuItem) {
-        guard let v = it.representedObject as? String, let sep = v.firstIndex(of: "\u{1}") else { return }
-        process(URL(fileURLWithPath: String(v[v.index(after: sep)...])), only: String(v[..<sep]))
-    }
-    @objc func mOpenReview(_ it: NSMenuItem) {
-        guard let p = it.representedObject as? String else { return }
-        if !openReview(URL(fileURLWithPath: p)) { alert(L("打不开审核页", "Can't open the review"), L("需要 uv 和 blurt skill（运行一次 record.py build）。", "Needs uv and the blurt skill (run record.py build once).")) }
-    }
-    @objc func mAgentLog(_ it: NSMenuItem) {
-        guard let p = it.representedObject as? String else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: p).appendingPathComponent("agent.log"))
+    @objc func mOpenFolder() {
+        if let mw = AppEnvironment.mainWindow { mw.show(); MainWindowController.shared.openFolder() }
     }
     @objc func mProcessMode(_ it: NSMenuItem) { setRecordConfig("process", it.representedObject as? String) }
-    @objc func mReviewInApp() {
-        var r = readConfig()["review"] as? [String: Any] ?? [:]
-        r["open_in"] = ReviewHub.shared.openInApp ? "browser" : "app"
-        var cfg = readConfig()
-        cfg["review"] = r
-        if let d = try? JSONSerialization.data(withJSONObject: cfg, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: configURL) }
-    }
     @objc func mShortcuts() { if let s = AppEnvironment.settings { s.show(pane: "shortcuts") } else { HotkeySettings.shared.show() } }
     @objc func mCountdown(_ it: NSMenuItem) { setRecordConfig("countdown", it.representedObject as? Int) }
     @objc func mSystemAudio() { setRecordConfig("system_audio", !(recordConfig()["system_audio"] as? Bool ?? false)) }
     @objc func mLogin() {
-        guard #available(macOS 13.0, *) else { return }
         do {
             if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() }
-        } catch { alert(L("设置失败", "Couldn't change it"), error.localizedDescription) }
+        } catch { alert(T("app.login.failed"), error.localizedDescription) }
     }
     @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
     @objc func mQuit() { NSApp.terminate(nil) }
@@ -605,20 +549,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func permissionHelp() {
         let a = NSAlert()
-        a.messageText = L("需要「录屏」权限", "Screen Recording permission needed")
-        a.informativeText = L("""
-            在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开口喷鸡（macOS 只在启动时读取权限）。
-
-            如果列表里已经是打开的：选中「Blurt」点下面的「−」删掉，再重新打开口喷鸡授权一次（旧版本留下的授权对新版本无效）。
-            """, """
-            Turn on “Blurt” in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen blurt \
-            (macOS reads the permission at launch).
-
-            Already on? Select “Blurt”, remove it with “−”, reopen blurt and allow it again (a grant from an older build doesn't carry over).
-            """)
-        a.addButton(withTitle: L("打开系统设置", "Open System Settings"))
-        a.addButton(withTitle: L("退出口喷鸡", "Quit blurt"))
-        a.addButton(withTitle: L("稍后", "Later"))
+        a.messageText = T("app.permission.title")
+        a.informativeText = T("app.permission.detail")
+        a.addButton(withTitle: T("app.permission.open_settings"))
+        a.addButton(withTitle: T("app.menu.quit"))
+        a.addButton(withTitle: T("app.permission.later"))
         activateApp()
         switch a.runModal() {
         case .alertFirstButtonReturn:

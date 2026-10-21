@@ -21,11 +21,12 @@ var userPATH: String { ShellEnv.path }
 func agentEnvironment() -> [String: String] { ShellEnv.agentEnvironment() }
 func findExecutable(_ name: String) -> String? { ShellEnv.findExecutable(name) }
 
-func shell(_ cmd: String, cwd: URL, log: URL, append: Bool = false, done: @escaping (Int32) -> Void) {
+/// `cmd` in zsh, in the agent environment plus `env`, output appended to `log`.
+func shell(_ cmd: String, cwd: URL, log: URL, append: Bool = false, env: [String: String] = [:], done: @escaping (Int32) -> Void) {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/zsh")
     p.arguments = ["-c", cmd]
-    p.environment = agentEnvironment()
+    p.environment = agentEnvironment().merging(env) { _, mine in mine }
     p.standardInput = FileHandle.nullDevice   // codex exec otherwise waits for more prompt on stdin
     p.currentDirectoryURL = cwd
     if !append || !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
