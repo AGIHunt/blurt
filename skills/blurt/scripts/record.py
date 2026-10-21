@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["sounddevice"]
+# dependencies = ["sounddevice", "numpy"]
 # ///
 """Screen + microphone recorder (macOS, Windows, Linux/X11) with a proper recording UI.
 
@@ -117,13 +117,20 @@ def pick_mic(wanted: str | None) -> dict | None:
 # ---------------------------------------------------------------- audio (tk / ffmpeg engines)
 class MicRecorder:
     """Streams the mic to WAV via PortAudio (ffmpeg's own mic capture drops ~10% of samples on macOS).
-    `gate()` False ⇒ samples are dropped (pause). Records the wall-clock time of the first sample."""
+    `gate()` False ⇒ samples are dropped (pause). Records the wall-clock time of the first sample.
+    `live`: also feed <session>/live/audio.pcm for live.py (LivePcm; the caller registers video segments)."""
 
-    def __init__(self, mic: dict, path: Path, gate=None):
+    def __init__(self, mic: dict, path: Path, gate=None, live: Path | None = None):
         import sounddevice as sd
         self.path, self.q, self.first_wall, self.overflows, self.frames = path, queue.Queue(), None, 0, 0
         self.gate = gate or (lambda: True)
         self.sr = mic.get("samplerate") or AUDIO_SR
+        self.live = None
+        if live is not None:
+            try:
+                self.live = LivePcm(live, self.sr)
+            except Exception as e:  # never block a recording on the sidecar
+                print(f"(no live audio: {e})", file=sys.stderr)
         self.stream = sd.RawInputStream(samplerate=self.sr, channels=1, dtype="int16", device=mic["index"],
                                         callback=self._cb)
         self.writer = threading.Thread(target=self._write, daemon=True)
@@ -144,6 +151,12 @@ class MicRecorder:
             while (chunk := self.q.get()) is not None:
                 w.writeframes(chunk)
                 self.frames += len(chunk) // 2
+                if self.live:
+                    try:
+                        self.live.feed(chunk)
+                    except Exception as e:
+                        print(f"(live audio stopped: {e})", file=sys.stderr)
+                        self.live = None
 
     def start(self):
         self.writer.start()
@@ -154,6 +167,204 @@ class MicRecorder:
         self.stream.close()
         self.q.put(None)
         self.writer.join()
+
+
+# ---------------------------------------------------------------- live audio sidecar (tk / ffmpeg engines)
+class Resampler:
+    """Streaming windowed-sinc (Kaiser) resampler for int16 mono, any rate → 16 kHz, with anti-alias low-pass."""
+
+    def __init__(self, in_sr: int, out_sr: int = 16000, half_taps: int = 16):
+        import numpy as np
+        self.np, self.in_sr, self.out_sr = np, in_sr, out_sr
+        self.step = in_sr / out_sr                       # input samples per output sample
+        self.fc = min(1.0, out_sr / in_sr) * 0.94        # cutoff, as a fraction of the input Nyquist
+        self.W = int(np.ceil(half_taps / self.fc))       # kernel half-width in input samples
+        self.buf = np.zeros(self.W, np.float32)          # leading zeros = history before the first sample
+        self.base = -self.W                              # input index of buf[0]
+        self.n = 0                                       # next output sample
+
+    def _kernel(self, d):
+        np = self.np
+        r = np.clip(d / self.W, -1.0, 1.0)
+        return self.fc * np.sinc(self.fc * d) * np.i0(8.0 * np.sqrt(1.0 - r * r)) / np.i0(8.0)
+
+    def feed(self, pcm: bytes, final: bool = False) -> bytes:
+        np = self.np
+        x = np.frombuffer(pcm[:len(pcm) // 2 * 2], dtype=np.int16).astype(np.float32)
+        if self.in_sr == self.out_sr:
+            return pcm[:len(pcm) // 2 * 2]
+        if final:
+            x = np.concatenate([x, np.zeros(self.W + 1, np.float32)])
+        self.buf = np.concatenate([self.buf, x])
+        end = self.base + len(self.buf)                  # first input index we don't have
+        last = int(np.floor((end - self.W - 1) / self.step))
+        if final:
+            last = int(np.floor((end - self.W - 2) / self.step))
+        if last < self.n:
+            return b""
+        P = np.arange(self.n, last + 1) * self.step      # output positions on the input timeline
+        k0 = np.floor(P).astype(int)
+        taps = np.arange(-self.W + 1, self.W + 1)
+        idx = k0[:, None] + taps[None, :]
+        y = (self.buf[idx - self.base] * self._kernel(P[:, None] - idx)).sum(axis=1)
+        self.n = last + 1
+        keep = int(np.floor(self.n * self.step)) - self.W - 1   # drop history no future output needs
+        if keep > self.base:
+            self.buf = self.buf[keep - self.base:]
+            self.base = keep
+        return np.clip(np.round(y), -32768, 32767).astype(np.int16).tobytes()
+
+
+class LivePcm:
+    """Writes <session>/live/audio.pcm (16 kHz mono s16le) for live.py while the WAV is being recorded.
+
+    The mp4's audio is cut per video segment: each segment's first `lead` seconds (mic opened before ffmpeg's first
+    frame) are dropped, or silence is added when the video started first (see TkRecorder.finalize / mux). The same is
+    done here, so byte offset / 32000 == video time. A segment's samples are held until its lead is known (ffmpeg log),
+    at most HOLD seconds."""
+
+    HOLD = 4.0
+
+    def __init__(self, live_dir: Path, in_sr: int):
+        self.dir, self.sr = Path(live_dir), in_sr
+        self.dir.mkdir(parents=True, exist_ok=True)
+        (self.dir / "stop").unlink(missing_ok=True)
+        self.fh = open(self.dir / "audio.pcm", "wb")
+        self.rs = Resampler(in_sr)
+        self.lock = threading.Lock()
+        self.segments: list[dict] = []   # {"start": frame, "lead": s | None, "added": wall}
+        self.frame = 0                   # gated frames received
+        self.held = bytearray()          # frames not yet released, starting at self.held_at
+        self.held_at = 0
+        self.closed = False
+        self.flushed = 0.0
+
+    def segment(self, start_frame: int) -> int:
+        """A video segment starts at this frame of the gated audio stream (MicRecorder.frames)."""
+        with self.lock:
+            self.segments.append({"start": start_frame, "lead": None, "added": time.time(), "begun": False, "skip": 0})
+            return len(self.segments) - 1
+
+    def set_lead(self, i: int, lead: float) -> None:
+        with self.lock:
+            if 0 <= i < len(self.segments) and self.segments[i]["lead"] is None:
+                self.segments[i]["lead"] = float(lead)
+        self.feed(b"")
+
+    def lead_known(self, i: int) -> bool:
+        return self.segments[i]["lead"] is not None
+
+    def _release(self, final: bool) -> bytes:
+        out = bytearray()
+        while True:
+            n = len(self.held) // 2
+            pos = self.held_at
+            if not self.segments:
+                if final:
+                    self.held.clear()
+                return bytes(out)
+            if pos < self.segments[0]["start"]:  # before the first segment: not in the video (as in finalize)
+                d = min(n, self.segments[0]["start"] - pos)
+                if d == 0:
+                    return bytes(out)
+                del self.held[:d * 2]
+                self.held_at += d
+                continue
+            k = max(j for j, s in enumerate(self.segments) if s["start"] <= pos)
+            seg = self.segments[k]
+            nxt = self.segments[k + 1]["start"] if k + 1 < len(self.segments) else None
+            if seg["lead"] is None:
+                if not final and time.time() - seg["added"] < self.HOLD:
+                    return bytes(out)
+                seg["lead"] = 0.0
+            if not seg["begun"]:
+                seg["begun"] = True
+                seg["skip"] = int(round(max(0.0, seg["lead"]) * self.sr))
+                if seg["lead"] < 0:
+                    out += b"\0\0" * int(round(-seg["lead"] * self.sr))
+            avail = n if nxt is None else min(n, nxt - pos)
+            if avail <= 0:
+                return bytes(out)
+            if seg["skip"]:
+                d = min(seg["skip"], avail)
+                seg["skip"] -= d
+            else:
+                d = avail
+                out += self.held[:d * 2]
+            del self.held[:d * 2]
+            self.held_at += d
+
+    def feed(self, chunk: bytes, final: bool = False) -> None:
+        with self.lock:
+            if self.closed:
+                return
+            self.held += chunk
+            self.frame += len(chunk) // 2
+            out = self._release(final)
+            data = self.rs.feed(out, final=final) if out or final else b""
+            if data:
+                self.fh.write(data)
+            if final or time.time() - self.flushed > 0.1:  # ≈100 ms, like the native recorder
+                self.fh.flush()
+                self.flushed = time.time()
+
+    def finish(self) -> None:
+        """All audio is in (MicRecorder.stop joined its writer): release the rest, then create live/stop."""
+        self.feed(b"", final=True)
+        with self.lock:
+            self.closed = True
+            self.fh.close()
+        (self.dir / "stop").touch()
+
+    def discard(self) -> None:
+        with self.lock:
+            self.closed = True
+            self.fh.close()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+LIVE: dict = {}  # {"proc": the live.py process of the current take}
+
+
+def live_enabled(cfg: dict | None = None) -> bool:
+    return (cfg if cfg is not None else global_config().get("record", {})).get("live") is not False \
+        and (Path(__file__).parent / "live.py").exists() and shutil.which("uv") is not None
+
+
+def start_live(session: Path) -> subprocess.Popen | None:
+    """Run live.py for this take in the background (transcript + drafts while recording). Never fails the recording."""
+    if not live_enabled():
+        return None
+    live = session / "live"
+    try:
+        live.mkdir(parents=True, exist_ok=True)
+        log = open(live / "live.log", "a", encoding="utf-8")
+        kw = {"creationflags": 0x00000200 | 0x08000000} if IS_WIN else {"start_new_session": True}  # own group, no window
+        return subprocess.Popen([shutil.which("uv"), "run", "-q", str(Path(__file__).parent / "live.py"), "run",
+                                 str(session), "--watch-pid", str(os.getpid())],
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=log, **kw)
+    except Exception as e:
+        print(f"(live transcript not started: {e})", file=sys.stderr)
+        return None
+
+
+def end_live(proc: subprocess.Popen | None, session: Path, stopped: bool, wait: float = 10) -> None:
+    """After the take: let live.py finish the transcript (briefly — transcribe.py waits longer if needed), or, for a
+    cancelled take, stop it and remove live/."""
+    live = session / "live"
+    if not stopped:
+        if proc and proc.poll() is None:
+            proc.terminate()
+        shutil.rmtree(live, ignore_errors=True)
+        return
+    if proc is None:
+        shutil.rmtree(live, ignore_errors=True)  # no live run: the sidecar is just litter
+        return
+    t0 = time.time()
+    while proc.poll() is None and time.time() - t0 < wait:
+        if (load_json(live / "status.json", {}) or {}).get("asr") in ("done", "off", "error"):
+            break
+        time.sleep(0.2)
 
 
 # ---------------------------------------------------------------- video helpers (tk / ffmpeg engines)
@@ -472,6 +683,7 @@ def cmd_start(a) -> None:
     save_json(STATE_FILE, {"pid": os.getpid(), "session": str(session), "engine": engine, "started_at": started})
     meta = {"started_at": started, "engine": engine}
     out(f"SESSION {session}  engine={engine}")
+    LIVE.clear()
     try:
         if engine == "native":
             result = run_native(session, a, cfg, last, region, cmd_file)
@@ -484,6 +696,7 @@ def cmd_start(a) -> None:
         cmd_file.unlink(missing_ok=True)
 
     ev = result.get("event")
+    end_live(LIVE.get("proc"), session, stopped=ev == "stopped")
     if ev == "cancelled":
         out(f"CANCELLED {result.get('reason', 'by user')} — nothing was recorded")
         sys.exit(2)
@@ -519,6 +732,9 @@ def run_native(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
         args += ["--mic", str(a.mic or cfg.get("mic"))]
     if a.system_audio or cfg.get("system_audio"):
         args += ["--system-audio"]
+    use_live = not a.no_mic and live_enabled(cfg)
+    if not use_live:
+        args += ["--no-live"]
     p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8")
     final: dict = {}
     selected = None
@@ -533,6 +749,8 @@ def run_native(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
                 continue
             if e.get("event") == "configured":
                 selected = e.get("region")
+            if e.get("event") == "recording" and use_live and "proc" not in LIVE:
+                LIVE["proc"] = start_live(session)
             if e.get("event") in ("stopped", "cancelled", "error"):
                 final = e
             if e.get("event") not in ("configured",):
@@ -567,8 +785,13 @@ def run_native(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
 def run_tk(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
     from tk_recorder import TkRecorder
     mic = None if a.no_mic else pick_mic(a.mic or cfg.get("mic"))
+    def on_event(e):
+        out(e)
+        if e.get("event") == "recording" and rec.live_audio and "proc" not in LIVE:
+            LIVE["proc"] = start_live(session)
     rec = TkRecorder(session, mic, a.fps or cfg.get("fps", 30), a.max_width or cfg.get("max_width", 2560), lang(),
-                     a.countdown if a.countdown is not None else cfg.get("countdown", 3), last, region, cmd_file, out)
+                     a.countdown if a.countdown is not None else cfg.get("countdown", 3), last, region, cmd_file, on_event)
+    rec.live_audio = bool(mic) and live_enabled(cfg)
     result = rec.run()
     if result.get("event") == "stopped" and rec.region:
         result["region"] = rec.region
@@ -578,14 +801,18 @@ def run_tk(session: Path, a, cfg, last, region, cmd_file: Path) -> dict:
 def run_headless(session: Path, a, cfg, cmd_file: Path) -> dict:
     mic = None if a.no_mic else pick_mic(a.mic or cfg.get("mic"))
     raw, wav, log_path = session / "video.mkv", session / "audio.wav", session / "ffmpeg.log"
-    audio = MicRecorder(mic, wav) if mic else None
+    audio = MicRecorder(mic, wav, live=session / "live" if live_enabled(cfg) else None) if mic else None
     if audio:
+        if audio.live:
+            audio.live.segment(0)
         audio.start()
     log = open(log_path, "w", encoding="utf-8")
     p = subprocess.Popen(headless_video_cmd(raw, a.screen, a.fps or cfg.get("fps", 30), a.max_width or cfg.get("max_width", 1920)),
                          stdin=subprocess.PIPE, stdout=log, stderr=log)
     chime("start")
     out({"event": "recording", "engine": "ffmpeg"})
+    if audio and audio.live:
+        LIVE["proc"] = start_live(session)
     t0 = time.time()
     signal.signal(signal.SIGINT, lambda *_: cmd_file.write_text("stop"))
     discard = False
@@ -595,6 +822,10 @@ def run_headless(session: Path, a, cfg, cmd_file: Path) -> dict:
         if "stop" in cmds or "discard" in cmds or (a.max_minutes and time.time() - t0 > a.max_minutes * 60):
             discard = "discard" in cmds
             break
+        if audio and audio.live and not audio.live.lead_known(0) and audio.first_wall:
+            v0 = first_frame_wall(log_path)  # mux() shifts the audio by the same amount
+            if v0:
+                audio.live.set_lead(0, v0 - audio.first_wall)
         time.sleep(0.3)
     if p.poll() is None:
         try:
@@ -605,6 +836,8 @@ def run_headless(session: Path, a, cfg, cmd_file: Path) -> dict:
             p.terminate()
     if audio:
         audio.stop()
+        if audio.live:
+            audio.live.discard() if discard else audio.live.finish()
     log.close()
     chime("stop")
     if discard:
@@ -652,13 +885,24 @@ def cmd_devices(_a) -> None:
 def cmd_inbox(_a) -> None:
     """Recordings made with the standalone app (or --inbox) and whether they've been turned into issues yet."""
     rows = []
-    dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists()]
+    def is_shots(d: Path) -> bool:  # snap mode: screenshots + voice notes, no video
+        return (load_json(d / "meta.json", {}) or {}).get("mode") == "shots"
+
+    dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists() or is_shots(d)]
     for d in sorted(dirs, key=lambda x: x.name, reverse=True):
         meta = load_json(d / "meta.json", {}) or {}
         out = load_json(d / "items.json")
-        rows.append({"session": str(d), "duration": meta.get("duration") or round(probe_duration(d / "recording.mp4"), 1),
-                     "author": meta.get("author"), "processed": out is not None,
-                     "reviewed": bool((out or {}).get("reviewed"))})
+        # items.json with "processing": true is a first draft whose frames are still being filled in (review.py
+        # shows it early) — not processed yet
+        processing = bool((out or {}).get("processing"))
+        row = {"session": str(d), "author": meta.get("author"), "processed": out is not None and not processing,
+               "processing": processing, "reviewed": bool((out or {}).get("reviewed"))}
+        if is_shots(d):
+            row = {"session": str(d), "mode": "shots", "shots": len(list((d / "shots").glob("[0-9]*.png")))
+                   - len(list((d / "shots").glob("*.marked.png"))), **{k: v for k, v in row.items() if k != "session"}}
+        else:
+            row["duration"] = meta.get("duration") or round(probe_duration(d / "recording.mp4"), 1)
+        rows.append(row)
     print(json.dumps({"roots": [str(r) for r in recording_roots()], "recordings": rows}, ensure_ascii=False, indent=2))
 
 
