@@ -154,8 +154,8 @@ final class Claws: NSObject {
         let f = NSRect(x: s.frame.minX, y: s.frame.maxY - Claws.panelH, width: s.frame.width, height: Claws.panelH)
         if panel == nil {
             let p = ClawPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+            p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
             p.level = .statusBar
-            p.isFloatingPanel = true
             p.hidesOnDeactivate = false
             p.isOpaque = false
             p.backgroundColor = .clear

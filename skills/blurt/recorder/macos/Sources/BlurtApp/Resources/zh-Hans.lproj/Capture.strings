@@ -114,6 +114,7 @@
 "capture.rec.finish" = "完成";
 "capture.rec.finish_tip" = "结束录制并整理";
 "capture.rec.keep" = "继续录";
+"capture.rec.mic_level" = "麦克风音量";
 "capture.rec.pause" = "暂停";
 "capture.rec.paused" = "已暂停";
 "capture.rec.pen_hint" = "按住 %@ 拖动即可画笔";

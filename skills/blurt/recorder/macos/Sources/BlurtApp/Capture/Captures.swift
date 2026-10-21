@@ -11,6 +11,13 @@ import AppKit
 import BlurtCore
 import Carbon.HIToolbox
 
+/// One spelling for a folder however it was reached (/tmp vs /private/tmp, symlinks): realpath when it exists.
+func canonicalPath(_ u: URL) -> String {
+    guard let r = realpath(u.path, nil) else { return u.standardizedFileURL.path }
+    defer { free(r) }
+    return String(cString: r)
+}
+
 func isShotsSession(_ dir: URL) -> Bool {
     dir.lastPathComponent.hasSuffix("-shots") || FileManager.default.fileExists(atPath: dir.appendingPathComponent("shots.jsonl").path)
         && !FileManager.default.fileExists(atPath: dir.appendingPathComponent("recording.mp4").path)
@@ -25,7 +32,7 @@ func shotsPrompt(_ dir: URL) -> String? {
 final class Snapper {
     var prevApp: NSRunningApplication?
     var app: App? { NSApp.delegate as? App }
-    private var open: [String: ShotBatch] = [:]          // store path → its collecting -shots batch
+    private var open: [String: ShotBatch] = [:]          // project id → its store's collecting -shots batch
     private(set) var cardBatches: [ShotBatch] = []       // inbox batches with cards still hanging
     private var queued: [String: (batch: ShotBatch, project: String, ns: [Int], timer: Timer)] = [:]
     private var collectTimer: Timer?
@@ -88,12 +95,12 @@ final class Snapper {
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
     func openBatch(for p: Project) -> ShotBatch {
-        let key = p.store.standardizedFileURL.path
+        let key = p.id
         if let b = open[key] { return b }
         let root = p.store.appendingPathComponent("sessions")
         let recent = ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])) ?? [])
             .filter { $0.lastPathComponent.hasSuffix("-shots") }.sorted { $0.lastPathComponent > $1.lastPathComponent }
-        if let d = recent.first, let b = cardBatches.first(where: { $0.dir == d }) ?? ShotBatch.load(d),
+        if let d = recent.first, let b = cardBatches.first(where: { canonicalPath($0.dir) == canonicalPath(d) }) ?? ShotBatch.load(d),
            (b.meta["state"] as? String ?? "collecting") == "collecting", b.meta["source"] == nil,
            Date().timeIntervalSince1970 - (b.shots.first?.wall ?? Date().timeIntervalSince1970) < 12 * 3600 {
             return adopt(b, key: key, project: p)

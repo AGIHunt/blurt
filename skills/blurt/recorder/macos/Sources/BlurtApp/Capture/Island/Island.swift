@@ -29,6 +29,8 @@ final class IslandPanel: NSPanel {
     override func constrainFrameRect(_ r: NSRect, to screen: NSScreen?) -> NSRect { r }
 }
 
+final class FlippedView: NSView { override var isFlipped: Bool { true } }
+
 final class IslandView: NSView {
     weak var island: Island?
     override var isFlipped: Bool { true }
@@ -69,7 +71,7 @@ final class Island: NSObject, IslandHosting {
     private let ears = CALayer()
     private let left = EarSlot(), right = EarSlot()
     let content = IslandContent()
-    private let contentMask = CAShapeLayer()
+    private let clip = FlippedView()
     private var driver: MotionDriver?
 
     private var w = Spring(200, response: 0.42, damping: 0.78)
@@ -86,6 +88,7 @@ final class Island: NSObject, IslandHosting {
     private var awaySince: CFTimeInterval?
     private var hotSince: CFTimeInterval?
     private var revealed = false                 // capsule screens: brought out by the hot zone
+    private var sticky = false
     private(set) var open = false
     private var confirmingDiscard = false
     private var dragActive = false
@@ -174,8 +177,8 @@ final class Island: NSObject, IslandHosting {
                        width: Island.panelSize.width, height: Island.panelSize.height)
         if panel == nil {
             let p = IslandPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+            p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
             p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
-            p.isFloatingPanel = true
             p.hidesOnDeactivate = false
             p.isOpaque = false
             p.backgroundColor = .clear
@@ -226,12 +229,18 @@ final class Island: NSObject, IslandHosting {
         root.addSublayer(ears)
         content.island = self
         content.wantsLayer = true
-        content.layer?.mask = contentMask
-        content.alphaValue = 0
-        view.addSubview(content)
+        clip.wantsLayer = true
+        clip.layer?.masksToBounds = true
+        clip.alphaValue = 0
+        clip.addSubview(content)
+        view.addSubview(clip)
     }
 
     func orderFront() { panel?.orderFrontRegardless() }
+
+    /// The ears row (the notch's height, or the capsule's) and the notch's width in it (0 without a notch).
+    var rowHeight: CGFloat { geo.row }
+    var notchGap: CGFloat { geo.notch ? geo.notchW : 0 }
 
     // MARK: what the island should look like now
 
@@ -245,13 +254,12 @@ final class Island: NSObject, IslandHosting {
         let e = earsWanted
         let anyEar = e.left || e.right
         if open || drawer != nil {
-            let hh = min(Island.maxH, geo.row + content.fittingHeight)
-            return (content.preferredWidth, hh, 22)
+            return (content.preferredWidth, min(Island.maxH, content.fittingHeight), 22)
         }
         if let t = toastNow {
             _ = t
             let tw = min(Island.openW, max(geo.notch ? geo.notchW + 2 * Island.earW : 260, content.toastWidth))
-            return (tw, geo.row + 46, 20)
+            return (tw, content.fittingHeight, 20)
         }
         if geo.notch {
             return (geo.notchW + (anyEar ? 2 * Island.earW : 0), geo.notchH, 10)
@@ -309,15 +317,19 @@ final class Island: NSObject, IslandHosting {
             ears.transform = CATransform3DIdentity
         }
         layoutEars(rect, now: now)
-        ears.opacity = shape.opacity
-        // the open content: pinned to the top of the shape, revealed as it grows, clipped to it
+        // the open content: from the top of the shape (home and the drawer use the ears row, beside the notch),
+        // revealed as it grows, clipped to it — only the bottom corners round
         let cw = content.preferredWidth
-        content.frame = NSRect(x: geo.cx - cw / 2, y: geo.top + geo.row, width: cw, height: max(0, Island.maxH))
-        let grown = (h.value - geo.row) / max(1, content.fittingHeight)
+        clip.frame = NSRect(x: rect.minX, y: geo.top, width: rect.width, height: rect.height)
+        clip.layer?.cornerRadius = min(r.value, rect.height / 2)
+        clip.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        content.frame = NSRect(x: geo.cx - cw / 2 - rect.minX, y: 0, width: cw, height: Island.maxH)
+        let grown = (h.value - geo.row) / max(1, content.fittingHeight - geo.row)
         let showing = open || drawer != nil || toastNow != nil
-        content.alphaValue = showing ? max(0, min(1, (grown - 0.55) / 0.35)) * CGFloat(shape.opacity) : 0
-        let local = CGRect(x: rect.minX - content.frame.minX, y: rect.minY - content.frame.minY, width: rect.width, height: rect.height)
-        contentMask.path = Island.path(local, radius: r.value, shoulders: false)
+        let reveal = showing ? max(0, min(1, (grown - 0.55) / 0.35)) : 0
+        clip.alphaValue = reveal * CGFloat(shape.opacity)
+        // the ears make way for the open content when it uses their row
+        ears.opacity = shape.opacity * Float(content.usesRow && showing ? 1 - reveal : 1)
         CATransaction.commit()
         content.tick(now)
         claws.islandMoved()
@@ -426,11 +438,13 @@ final class Island: NSObject, IslandHosting {
         }
         if inside && !busyElsewhere {
             awaySince = nil
+            sticky = false                    // the pointer has arrived: from now on, leaving closes it
             hoverSince = hoverSince ?? now
             if !open, drawer == nil, now - hoverSince! >= 0.15 { setOpen(true) }
         } else {
             hoverSince = nil
-            let pinned = drawer == .switcher || confirmingDiscard || dragActive || NoteBubble.shared.isOpen && isRecording
+            let pinned = sticky || drawer == .switcher || confirmingDiscard || dragActive || VoiceInput.shared.active
+                || NoteBubble.shared.isOpen && isRecording
             if (open || revealed) && !pinned {
                 awaySince = awaySince ?? now
                 if now - awaySince! >= 0.4 {
@@ -445,7 +459,9 @@ final class Island: NSObject, IslandHosting {
         if p.ignoresMouseEvents == interactive { p.ignoresMouseEvents = !interactive }
     }
 
-    func setOpen(_ on: Bool) {
+    /// `sticky`: opened by a key or a command, not by hovering — it stays until the pointer has come and gone (or Esc).
+    func setOpen(_ on: Bool, sticky: Bool = false) {
+        self.sticky = on && sticky
         guard on != open else { return }
         open = on
         if !on {
@@ -623,7 +639,7 @@ final class Island: NSObject, IslandHosting {
         for j in changed where j.type == .process {
             guard let s = j.session else { continue }
             let h = hatches.first { $0.job == j.id }
-                ?? hatches.first { $0.job == nil && $0.session.standardizedFileURL == s.standardizedFileURL
+                ?? hatches.first { $0.job == nil && canonicalPath($0.session) == canonicalPath(s)
                     && (j.captures.isEmpty || !Set(j.captures).isDisjoint(with: $0.captures)) }
             guard let hatch = h else { continue }
             hatch.job = j.id

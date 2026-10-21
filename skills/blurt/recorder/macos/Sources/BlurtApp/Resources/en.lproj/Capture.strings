@@ -114,6 +114,7 @@
 "capture.rec.finish" = "Finish";
 "capture.rec.finish_tip" = "Stop and process";
 "capture.rec.keep" = "Keep Recording";
+"capture.rec.mic_level" = "Microphone level";
 "capture.rec.pause" = "Pause";
 "capture.rec.paused" = "Paused";
 "capture.rec.pen_hint" = "Hold %@ and drag to draw";

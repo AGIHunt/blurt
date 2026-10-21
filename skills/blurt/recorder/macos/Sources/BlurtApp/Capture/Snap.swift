@@ -72,6 +72,11 @@ func backingScale(forDisplay id: CGDirectDisplayID) -> CGFloat {
 /// A full-resolution still of `rect` (global top-left points), without any of our own windows except `keep`
 /// (the pen's ink is part of what the user means, so a snap while recording keeps it).
 func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], completion: @escaping (CGImage?, CGFloat) -> Void) {
+    // tests: BLURT_TEST_STILL=<png> stands in for the screen (no Screen Recording grant, nothing private captured)
+    if let p = ProcessInfo.processInfo.environment["BLURT_TEST_STILL"], let img = loadCGImage(URL(fileURLWithPath: p)) {
+        DispatchQueue.main.async { completion(img, 2) }
+        return
+    }
     SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, _ in
         guard let content = content else { DispatchQueue.main.async { completion(nil, 2) }; return }
         let c = CGPoint(x: rect.midX, y: rect.midY)
@@ -456,10 +461,10 @@ func borderFlash(around r: NSRect) {
 /// Flies an image from one global rect to another along a gentle arc (lifts ~30 pt mid-flight, picks up a tilt).
 /// `springy`: the progress follows a spring (response 0.55 s, damping 0.72 — K7's fly-up), so it lands with a little
 /// overshoot, as if caught; else ease-in-out over `duration`. The corners round to `cornerRadius` on the way.
+/// Driven frame by frame on the display (model values, like the island and the claws), so it can be recorded.
 func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval = 0.65, tilt: CGFloat = 0,
               polaroid: Bool = false, shrinkAway: Bool = false, springy: Bool = false, cornerRadius: CGFloat = 0,
               done: @escaping () -> Void) {
-    let reduce = reduceMotion
     let screen = NSScreen.screens.first(where: { $0.frame.intersects(to) }) ?? NSScreen.screens[0]
     let span = screen.frame.union(from.intersection(screen.frame).isEmpty ? screen.frame : from)
     let w = chromeWindow(span)
@@ -475,7 +480,6 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
     card.shadowOffset = CGSize(width: 0, height: -5)
     let photo = CALayer()                // the picture, clipped to the corners
     photo.frame = card.bounds
-    photo.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
     photo.contents = img
     photo.contentsGravity = .resizeAspectFill
     photo.masksToBounds = true
@@ -483,7 +487,7 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
     card.addSublayer(photo)
     root.addSublayer(card)
     w.orderFrontRegardless()
-    if reduce {
+    if reduceMotion {
         CATransaction.begin()
         CATransaction.setCompletionBlock { w.orderOut(nil); done() }
         let f = CABasicAnimation(keyPath: "opacity")
@@ -493,57 +497,50 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
         CATransaction.commit()
         return
     }
-    // the progress curve: a sampled spring, or ease-in-out
-    var ks: [CGFloat] = []
-    var total = duration
-    if springy {
-        var s = Spring(0, response: 0.55, damping: 0.72)
-        s.target = 1
-        let dt: CGFloat = 1.0 / 60
-        var t: CGFloat = 0
-        repeat { ks.append(s.step(dt)); t += dt } while t < 2 && !(t > 0.3 && s.resting)
-        total = CFTimeInterval(t)
-    } else {
-        ks = (0...40).map { i in Ease.inOutCubic(CGFloat(i) / 40) }
+    var spring = Spring(0, response: 0.55, damping: 0.72)
+    spring.target = 1
+    let t0 = CACurrentMediaTime()
+    var last = t0
+    let driver = MotionDriver(view: w.contentView!)
+    driver.tick = { dt in
+        let now = CACurrentMediaTime()
+        let k: CGFloat
+        var finished = false
+        if springy {
+            k = spring.step(CGFloat(now - last))
+            finished = now - t0 > 0.3 && spring.resting || now - t0 > 2
+        } else {
+            let u = CGFloat((now - t0) / duration)
+            k = Ease.inOutCubic(u)
+            finished = u >= 1
+        }
+        last = now
+        let p = finished ? 1 : k
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        card.position = CGPoint(x: a.midX + (b.midX - a.midX) * p, y: a.midY + (b.midY - a.midY) * p + sin(.pi * min(1, p)) * 30)
+        card.bounds.size = CGSize(width: max(1, a.width + (b.width - a.width) * p), height: max(1, a.height + (b.height - a.height) * p))
+        photo.frame = card.bounds
+        photo.cornerRadius = cornerRadius * min(1, max(0, p))
+        photo.borderWidth = polaroid ? 3 * min(1, max(0, p)) : 0
+        card.setAffineTransform(CGAffineTransform(rotationAngle: -tilt * .pi / 180 * min(1, max(0, p))))
+        if shrinkAway { card.opacity = Float(p < 0.75 ? 1 : max(0, (1 - p) / 0.25)) }
+        CATransaction.commit()
+        if finished {
+            DispatchQueue.main.async {
+                done()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { w.orderOut(nil); driver.stop() }
+            }
+            return false
+        }
+        return true
     }
-    var pos: [NSValue] = [], size: [NSValue] = []
-    for k in ks {
-        let x = a.midX + (b.midX - a.midX) * k
-        let y = a.midY + (b.midY - a.midY) * k + sin(.pi * min(1, k)) * 30
-        pos.append(NSValue(point: NSPoint(x: x, y: y)))
-        size.append(NSValue(size: NSSize(width: max(1, a.width + (b.width - a.width) * k), height: max(1, a.height + (b.height - a.height) * k))))
-    }
-    let pa = CAKeyframeAnimation(keyPath: "position"); pa.values = pos
-    let sa = CAKeyframeAnimation(keyPath: "bounds.size"); sa.values = size
-    let ra = CABasicAnimation(keyPath: "transform.rotation.z"); ra.fromValue = 0; ra.toValue = -tilt * .pi / 180
-    ra.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-    let g = CAAnimationGroup()
-    g.animations = [pa, sa, ra]
-    if shrinkAway {
-        let op = CAKeyframeAnimation(keyPath: "opacity"); op.values = [1, 1, 0]; op.keyTimes = [0, 0.75, 1]
-        g.animations?.append(op)
-    }
-    g.duration = total
-    g.fillMode = .forwards
-    g.isRemovedOnCompletion = false
-    let pg = CAAnimationGroup()          // the picture follows the size, and rounds its corners on the way
-    let ps = CAKeyframeAnimation(keyPath: "bounds.size"); ps.values = size
-    let pp = CAKeyframeAnimation(keyPath: "position"); pp.values = size.map { NSValue(point: NSPoint(x: $0.sizeValue.width / 2, y: $0.sizeValue.height / 2)) }
-    let cr = CABasicAnimation(keyPath: "cornerRadius"); cr.fromValue = 0; cr.toValue = cornerRadius
-    let bw = CABasicAnimation(keyPath: "borderWidth"); bw.fromValue = 0; bw.toValue = polaroid ? 3 : 0
-    pg.animations = [ps, pp, cr, bw]
-    pg.duration = total
-    pg.fillMode = .forwards
-    pg.isRemovedOnCompletion = false
-    CATransaction.begin()
-    CATransaction.setCompletionBlock {
-        done()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { w.orderOut(nil) }
-    }
-    card.add(g, forKey: "fly")
-    photo.add(pg, forKey: "fly")
-    CATransaction.commit()
+    flights.append(driver)
+    driver.wake()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { flights.removeAll { $0 === driver } }
 }
+/// Flights in the air (each keeps its own display link alive).
+private var flights: [MotionDriver] = []
 
 // MARK: - Snaps while recording
 

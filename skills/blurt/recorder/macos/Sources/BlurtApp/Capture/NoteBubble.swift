@@ -435,8 +435,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         guard panel == nil else { return }
         let p = NotePanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.nonactivatingPanel, .borderless],
                           backing: .buffered, defer: false)
-        p.level = .statusBar
-        p.isFloatingPanel = true
+        p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
+        p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         p.hidesOnDeactivate = false
         p.isOpaque = false
         p.backgroundColor = .clear

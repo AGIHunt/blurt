@@ -154,7 +154,7 @@ final class IslandRow: NSView {
             right -= 10
         }
         if let a = accessory {
-            let f = accessoryIsKey ? NSFont.monospacedSystemFont(ofSize: 10.5, weight: .semibold) : NSFont.systemFont(ofSize: 11.5)
+            let f = accessoryIsKey ? NSFont.systemFont(ofSize: 10.5, weight: .semibold) : NSFont.systemFont(ofSize: 11.5)
             let s = NSAttributedString(string: a, attributes: [.font: f, .foregroundColor: ink2])
             let sz = s.size()
             if accessoryIsKey {
@@ -254,6 +254,13 @@ final class IslandContent: NSView {
 
     // MARK: build
 
+    /// Home and the drawer put their first row beside the notch (in the ears row); the others start under it.
+    private(set) var usesRow = false
+
+    /// The ears row: its height, and the room on each side of the notch (the whole width without one).
+    private var row: CGFloat { island?.rowHeight ?? 30 }
+    private func side(_ w: CGFloat) -> CGFloat { island.map { $0.notchGap > 0 ? (w - $0.notchGap) / 2 : w / 2 } ?? w / 2 }
+
     func rebuild() {
         subviews.forEach { $0.removeFromSuperview() }
         rows = []
@@ -261,15 +268,18 @@ final class IslandContent: NSView {
         guard let i = island else { return }
         let w = preferredWidth
         var y: CGFloat = 0
+        usesRow = false
         if let d = i.drawer {
+            usesRow = true
             y = buildDrawer(d, w)
         } else if !i.open, let t = i.currentToast {
-            y = buildToast(t, w)
+            y = buildToast(t, w, top: row)
         } else if i.isRecording {
-            y = buildRecording(w)
+            y = buildRecording(w, top: row)
         } else if VoiceInput.shared.active {
-            y = buildVoice(w)
+            y = buildVoice(w, top: row)
         } else {
+            usesRow = true
             y = buildHome(w)
         }
         fittingHeight = y
@@ -285,22 +295,23 @@ final class IslandContent: NSView {
         let name = p?.name ?? Loc.t("project.auto")
         let b = IslandButton(symbol: p == nil ? "sparkles" : "folder.fill", title: name,
                              tip: tip("capture.island.switch_project", .project)) { [weak self] in self?.island?.showSwitcher() }
-        b.fill = NSColor(white: 1, alpha: 0.08)
+        b.fill = NSColor(white: 1, alpha: 0.1)
         b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", name))
-        let maxW = small ? 180 : w - 170
-        b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 14), height: 28))
+        let maxW = small ? 180 : max(110, side(w) - 22)
+        b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 14), height: 26))
         let chev = NSImageView(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .bold).applying(.init(paletteColors: [ink2])))!)
-        chev.frame = NSRect(x: b.frame.width - 18, y: 9, width: 10, height: 10)
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [ink2])))!)
+        chev.frame = NSRect(x: b.frame.width - 18, y: 8, width: 10, height: 10)
         b.addSubview(chev)
         return b
     }
 
     private func buildHome(_ w: CGFloat) -> CGFloat {
         guard let i = island else { return 0 }
-        var y: CGFloat = 8
+        // the ears row: the project on the left of the notch, record / snap / voice on its right
+        let rowY = (row - 26) / 2
         let c = chip(w)
-        place(c, x: 12, y: y + 2)
+        place(c, x: 12, y: rowY)
         let buttons: [(String, String, HotAction, () -> Void)] = [
             ("record.circle", "capture.island.record", .toggleRecord, { (NSApp.delegate as? App)?.startRecording(useLast: false) }),
             ("camera.viewfinder", "capture.island.snap", .snap, { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } }),
@@ -309,11 +320,12 @@ final class IslandContent: NSView {
         var bx = w - 12
         for (sym, key, act, f) in buttons.reversed() {
             let b = IslandButton(symbol: sym, tip: tip(key, act)) { [weak i] in i?.setOpen(false); f() }
-            bx -= 30
-            place(b, x: bx, y: y + 1)
-            bx -= 8
+            b.setFrameSize(NSSize(width: 26, height: 26))
+            bx -= 26
+            place(b, x: bx, y: rowY)
+            bx -= 6
         }
-        y += 40
+        var y = row + 4
         let jobs = i.activeJobs
         if !jobs.isEmpty { y += 4 }
         for j in jobs {
@@ -367,6 +379,15 @@ final class IslandContent: NSView {
             }
             y += 36
         }
+        if jobs.isEmpty && i.sessionsNeedingYou.isEmpty && review == 0 && cards == 0 {
+            // nothing going on: what the keys do
+            let hint = [hkHint(.snap, "capture.island.snap"), hkHint(.voice, "capture.island.voice"), hkHint(.project, "capture.island.switch_project")]
+                .compactMap { $0 }.joined(separator: "   ·   ")
+            let l = label(hint, size: 11.5, color: ink3)
+            l.alignment = .center
+            place(l, x: 16, y: y + 2, w: w - 32)
+            y += 22
+        }
         return y + 8
     }
 
@@ -388,9 +409,9 @@ final class IslandContent: NSView {
 
     // MARK: recording
 
-    private func buildRecording(_ w: CGFloat) -> CGFloat {
+    private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
-        var y: CGFloat = 8
+        var y: CGFloat = top + 6
         if i.isConfirmingDiscard {
             let q = label(Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .medium)
             place(q, x: 18, y: y + 7)
@@ -421,13 +442,12 @@ final class IslandContent: NSView {
         let fin = IslandButton(symbol: "stop.fill", title: Loc.t("capture.rec.finish", table: "Capture"), tip: tip("capture.rec.finish_tip", .finish),
                                fill: NSColor.systemRed.withAlphaComponent(0.92)) { rec.stop() }
         place(fin, x: w - 14 - fin.frame.width, y: y + 4)
-        let lv = Bars(frame: NSRect(x: fin.frame.minX - 46, y: y + 8, width: 30, height: 20))
+        let lv = Bars(frame: NSRect(x: 136, y: y + 8, width: 30, height: 20))
         lv.bar = 3; lv.gap = 3
+        lv.setAccessibilityElement(true)
+        lv.setAccessibilityLabel(Loc.t("capture.rec.mic_level", table: "Capture"))
         addSubview(lv)
         level = lv
-        let t = label(Island.clock(rec.elapsed()), size: 20, weight: .semibold, color: paused ? amber : ink, mono: true)
-        place(t, x: 136, y: y + 4)
-        time = t
         y += 42
         var hint = Loc.t("capture.rec.paused", table: "Capture")
         if !paused {
@@ -446,19 +466,15 @@ final class IslandContent: NSView {
 
     // MARK: voice input
 
-    private func buildVoice(_ w: CGFloat) -> CGFloat {
+    private func buildVoice(_ w: CGFloat, top: CGFloat) -> CGFloat {
         let v = VoiceInput.shared
-        var y: CGFloat = 10
-        let wv = Bars(frame: NSRect(x: 18, y: y, width: w - 100, height: 34))
+        var y: CGFloat = top + 8
+        let wv = Bars(frame: NSRect(x: 18, y: y, width: w - 36, height: 34))
         wv.color = accent
         wv.bar = 3; wv.gap = 2.5
         addSubview(wv)
         wave = wv
-        let t = label(Island.clock(v.elapsed), size: 15, weight: .semibold, color: ink, mono: true)
-        place(t, x: w - 18 - 54, y: y + 7, w: 54)
-        t.alignment = .right
-        time = t
-        y += 42
+        y += 44
         let words = v.liveText
         let tx = label(words ?? Loc.t(v.holding ? "capture.voice.hold_hint" : "capture.voice.hint", table: "Capture"), size: 12.5,
                        color: words == nil ? ink2 : ink)
@@ -477,19 +493,20 @@ final class IslandContent: NSView {
     // MARK: the drawer
 
     private func buildDrawer(_ d: Island.Drawer, _ w: CGFloat) -> CGFloat {
-        var y: CGFloat = 6
         let store = ProjectStore.shared
         func ic(_ s: String, _ c: NSColor = ink2) -> NSImage? {
             NSImage(systemSymbolName: s, accessibilityDescription: nil)?
                 .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12.5, weight: .medium).applying(.init(paletteColors: [c])))
         }
+        // the ears row: what this is on the left of the notch, the filter typed so far on its right
         let head = label(Loc.t(d == .drop ? "capture.drawer.drop_title" : "capture.drawer.switch_title", table: "Capture"), size: 11, weight: .semibold, color: ink3)
-        place(head, x: 20, y: y + 2)
+        place(head, x: 20, y: (row - head.frame.height) / 2, w: min(head.frame.width, side(w) - 26))
         if !query.isEmpty {
-            let q = label("\u{201C}\(query)\u{201D}", size: 11, weight: .medium, color: accent)
-            place(q, x: head.frame.maxX + 8, y: y + 2)
+            let q = label("\u{201C}\(query)\u{201D}", size: 12, weight: .medium, color: accent)
+            q.alignment = .right
+            place(q, x: w - 20 - min(q.frame.width, side(w) - 26), y: (row - q.frame.height) / 2, w: min(q.frame.width, side(w) - 26))
         }
-        y += 22
+        var y = row + 4
         func add(_ r: IslandRow, _ t: Target) {
             r.target = t
             let idx = rows.count
@@ -538,7 +555,7 @@ final class IslandContent: NSView {
                           subtitle: Loc.plural("capture.drawer.ai_sub", table: "Capture", count: island?.cardCount ?? 0), height: 44), .aiSort)
         }
         if d == .switcher { select(rows.firstIndex { $0.checked } ?? 0) }
-        return min(Island.maxH - (island.map { _ in 40 } ?? 0), y + 8)
+        return y + 8
     }
 
     private func select(_ i: Int?) {
@@ -624,12 +641,12 @@ final class IslandContent: NSView {
 
     // MARK: toast
 
-    private func buildToast(_ t: Island.Toast, _ w: CGFloat) -> CGFloat {
+    private func buildToast(_ t: Island.Toast, _ w: CGFloat, top: CGFloat) -> CGFloat {
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let tw = ceil((t.text as NSString).size(withAttributes: [.font: f]).width)
         var x: CGFloat = 18
         if let art = t.art {
-            art.frame = NSRect(x: 12, y: 2, width: 42, height: 42)
+            art.frame = NSRect(x: 12, y: top + 2, width: 42, height: 42)
             addSubview(art)
             x = 60
         }
@@ -644,9 +661,9 @@ final class IslandContent: NSView {
         }
         toastWidth = min(Island.openW, max(240, x + tw + right))
         let l = label(t.text, size: 13, weight: .medium)
-        place(l, x: x, y: 13, w: min(tw + 2, toastWidth - x - right))
-        if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: 9) }
-        return 46
+        place(l, x: x, y: top + 13, w: min(tw + 2, toastWidth - x - right))
+        if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: top + 9) }
+        return top + 46
     }
 
     // MARK: live values
