@@ -194,10 +194,11 @@ final class MainModel {
             uids = []; sessions = []
         }
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
-        if ProcessInfo.processInfo.environment["BLURT_PERF"] != nil {
-            NSLog("blurt main window: reload %@ → %d rows in %.1f ms", scope.key, rowCount, lastReloadMS)
-        }
         onReload?()
+        if ProcessInfo.processInfo.environment["BLURT_PERF"] != nil {    // query, then query + table reload + detail
+            let total = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            NSLog("blurt main window: reload %@ “%@” → %d rows: query %.1f ms, on screen %.1f ms", scope.key, text, rowCount, lastReloadMS, total)
+        }
     }
 
     func item(at row: Int) -> ItemRow? {

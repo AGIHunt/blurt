@@ -414,8 +414,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         } else if model.counts.all == 0 && model.counts.sessions == 0 {
             empty.show(symbol: nil, image: BrandIcon.kind("idea", size: 44),
                        title: L("还什么都没有", "Nothing here yet"),
-                       message: L("边用你的产品边说出想法和 bug：录一段屏（\(hint(.record))），或者截几张图（\(hint(.snap))）。",
-                                  "Talk through your product while you use it: record your screen (\(hint(.record))) or snap a few shots (\(hint(.snap)))."),
+                       message: L("边用你的产品边说出想法和 bug：录一段屏（\(hint(.toggleRecord))），或者截几张图（\(hint(.snap))）。",
+                                  "Talk through your product while you use it: record your screen (\(hint(.toggleRecord))) or snap a few shots (\(hint(.snap)))."),
                        buttons: [(L("录制", "Record"), 3), (L("截图", "Snap"), 4)])
         } else {
             empty.show(symbol: "tray", title: L("这里是空的", "Nothing here"), message: "")
@@ -450,6 +450,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             let c = make("egg") { EggCell() }
             c.egg.image = BrandIcon.kind(it.kind, variant: it.uid, size: 23)
             c.egg.alphaValue = it.status == "deleted" ? 0.4 : 1
+            c.setAccessibilityLabel(Look.kindName(it.kind))
             c.spinner.stopAnimation(nil)
             c.egg.isHidden = false
             return c
@@ -462,16 +463,19 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             let hasHit = !plain.isEmpty && !model.text.trimmingCharacters(in: .whitespaces).isEmpty && !it.title.contains(plain)
             let sub = hasHit ? it.snippet! : [session, it.itemID, it.quote.isEmpty ? nil : "“\(it.quote)”"].compactMap { $0 }.joined(separator: " · ")
             c.set(title: it.title, struck: it.status == "deleted" || it.fixState == "fixed", sub: sub, highlight: hasHit)
+            c.setAccessibilityLabel((it.title.isEmpty ? L("无标题", "untitled") : it.title) + ", " + c.sub.stringValue)
             return c
         case "status":
             let c = make("pill") { PillCell() }
             c.pill.text = Look.statusName(it.status)
+            c.setAccessibilityLabel(L("状态：", "Status: ") + Look.statusName(it.status))
             c.pill.color = it.status == "confirmed" ? .systemGreen : it.status == "deleted" ? .systemRed : .secondaryLabelColor
             return c
         case "fix":
             let c = make("icontext") { IconTextCell() }
             c.set(Look.fixName(it.fixState) ?? "—", symbol: Look.fixSymbol(it.fixState),
                   color: it.fixState == nil ? .tertiaryLabelColor : .secondaryLabelColor)
+            c.setAccessibilityLabel(L("修复：", "Fix: ") + (Look.fixName(it.fixState) ?? L("没交给 agent", "not sent")))
             return c
         case "project":
             let c = make("icontext") { IconTextCell() }
@@ -500,10 +504,12 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                                            : L("录屏", "Recording") + (s.duration.map { " · " + String(format: "%d:%02d", Int($0) / 60, Int($0) % 60) } ?? "")]
             parts.append(URL(fileURLWithPath: s.dir).lastPathComponent)
             c.set(title: MainModel.title(of: s), struck: false, sub: parts.joined(separator: " · "), highlight: false)
+            c.setAccessibilityLabel(MainModel.title(of: s) + ", " + parts.joined(separator: ", "))
             return c
         case "status":
             let c = make("pill") { PillCell() }
             c.pill.text = Look.sessionStateName(s.state)
+            c.setAccessibilityLabel(Look.sessionStateName(s.state))
             c.pill.color = s.state == "unprocessed" ? Look.brand : s.state == "processing" ? .systemOrange : s.state == "unreviewed" ? .systemBlue : .systemGreen
             return c
         case "fix":
@@ -611,8 +617,5 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
 /// Row view: VoiceOver reads the whole row as one sentence (kind, title, status, fix, project, time).
 final class ItemRowView: NSTableRowView {
-    var label = ""
-    override func isAccessibilityElement() -> Bool { true }
-    override func accessibilityRole() -> NSAccessibility.Role? { .row }
-    override func accessibilityLabel() -> String? { label }
+    var label = "" { didSet { setAccessibilityLabel(label) } }
 }

@@ -255,6 +255,7 @@ final class IconTextCell: NSTableCellView {
 
     func set(_ text: String, symbol: (String, NSColor)? = nil, color: NSColor = .secondaryLabelColor) {
         label.stringValue = text
+        setAccessibilityLabel(text)
         label.textColor = color
         if let (name, tint) = symbol {
             icon.image = Look.symbol(name, text, size: 12)

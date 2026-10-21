@@ -502,7 +502,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         switch id {
         case Self.recordID:
-            let i = button(L("录制", "Record"), "record.circle", #selector(record), tip: L("录制屏幕和讲解 ", "Record your screen and voice ") + hk(.record))
+            let i = button(L("录制", "Record"), "record.circle", #selector(record), tip: L("录制屏幕和讲解 ", "Record your screen and voice ") + hk(.toggleRecord))
             return i
         case Self.snapID:
             return button(L("截图", "Snap"), "camera.viewfinder", #selector(snap), tip: L("截一张图，随口说两句 ", "Snap a shot and say a word ") + hk(.snap))

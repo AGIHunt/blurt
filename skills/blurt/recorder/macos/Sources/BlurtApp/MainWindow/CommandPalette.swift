@@ -128,7 +128,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         }
         let hasItems = !c.list.selectedItems.isEmpty
         var out = [
-            e(L("录制", "Record"), "record.circle", hk(.record)) { c.record() },
+            e(L("录制", "Record"), "record.circle", hk(.toggleRecord)) { c.record() },
             e(L("截图", "Snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
             b(L("让 Agent 修选中的条目", "Let Agent Fix Selection"), .peck, "⌘↩", enabled: hasItems && AppEnvironment.fixWithAgent != nil) { c.fixSelection() },
             e(L("预览主帧", "Quick Look"), "eye", L("空格", "Space"), enabled: hasItems) { c.list.toggleQuickLook() },

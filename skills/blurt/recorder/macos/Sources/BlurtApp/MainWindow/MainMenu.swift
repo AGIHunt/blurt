@@ -35,7 +35,7 @@ enum MainMenu {
                     item(L("重新扫描录制", "Rescan Recordings"), #selector(MainWindowController.mRescan)),
                     .separator(),
                     item(L("关闭窗口", "Close Window"), #selector(NSWindow.performClose(_:)), "w")]
-        file.forEach { if $0.action == #selector(MainWindowController.record) { $0.showHotkey(.record) } else if $0.action == #selector(MainWindowController.snap) { $0.showHotkey(.snap) } }
+        file.forEach { if $0.action == #selector(MainWindowController.record) { $0.showHotkey(.toggleRecord) } else if $0.action == #selector(MainWindowController.snap) { $0.showHotkey(.snap) } }
         file.last?.target = nil
         menu(L("文件", "File"), file, at: 1)
         let go = [item(L("命令面板…", "Command Palette…"), #selector(MainWindowController.showPalette), "k"),
