@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 // One page per overlay window → dist/overlays/<name>.html. crates/blurt-capture loads
 // WebviewUrl::App("overlays/<name>.html"), so the Tauri app's frontendDist must contain that folder (copy
 // dist/overlays into it, or point frontendDist at dist/ as crates/blurt-capture/demo does).
-const pages = ['index', 'picker', 'hud', 'perch', 'note'];
+const pages = ['index', 'picker', 'island', 'note'];
 
 export default defineConfig({
   base: './',

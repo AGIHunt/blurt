@@ -28,6 +28,9 @@ body {
   transform: translateX(-50%) rotate(45deg);
   box-shadow: -1px -1px 0 0 var(--line);
 }
+.bubble.no-shot .shot {
+  display: none;
+}
 @keyframes pop {
   from {
     transform: scale(0.92) translateY(-6px);

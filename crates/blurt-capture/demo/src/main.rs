@@ -172,7 +172,7 @@ fn record(app: AppHandle<Wry>) {
 }
 
 fn pick(app: AppHandle<Wry>) {
-    let r = overlay::pick_region(&app, &OverlayConfig::default(), None).ok().flatten();
+    let r = overlay::pick_region(&app, &OverlayConfig::default(), None, overlay::Purpose::Record).ok().flatten();
     emit_line(json!({"picked": r.map(|r| r.to_string())}));
     app.exit(0);
 }

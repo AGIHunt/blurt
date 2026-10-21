@@ -75,3 +75,14 @@ body.has-sel .hint {
 .bar button.primary:hover {
   background: #ff9378;
 }
+.bar button.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.bar button kbd {
+  font: 600 11px/1 var(--font);
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.14);
+}

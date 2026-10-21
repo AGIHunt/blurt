@@ -259,12 +259,20 @@ fn listen_from<R: Runtime>(
 
 // ------------------------------------------------------------------------------------------------ picker
 
+/// What the chosen area is for: the picker words its button after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    Record,
+    Screenshot,
+}
+
 /// Lets the user choose the area on the monitor under the pointer (drag; click = whole screen; Esc cancels).
 /// Returns physical px of the desktop, even-sized; `None` when cancelled. Blocks: not on the main thread.
-pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Option<Region>) -> tauri::Result<Option<Region>> {
+pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Option<Region>, purpose: Purpose) -> tauri::Result<Option<Region>> {
     let Some(mon) = monitor_at_cursor(app) else { return Ok(None) };
     let (mr, scale) = (monitor_region(&mon), mon.scale_factor());
     let mut params = BTreeMap::new();
+    params.insert("purpose", if purpose == Purpose::Record { "record" } else { "screenshot" }.to_string());
     if let Some(l) = last.and_then(|l| l.intersect(&mr)) {
         let css = |v: i32| format!("{:.0}", v as f64 / scale);
         params.insert("last", [css(l.x - mr.x), css(l.y - mr.y), css(l.w as i32), css(l.h as i32)].join(","));

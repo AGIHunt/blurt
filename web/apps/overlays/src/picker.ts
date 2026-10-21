@@ -11,11 +11,13 @@ const hint = document.querySelector<HTMLElement>('.hint')!;
 const last = parseRect(params.get('last'));
 const btn = (a: string) => bar.querySelector<HTMLElement>(`[data-a=${a}]`)!;
 
-hint.textContent = t('拖动选择录制区域 · 单击 = 全屏 · Esc 取消', 'Drag to choose the area · click = full screen · Esc cancels');
-btn('ok').textContent = t('开始录制 ⏎', 'Record ⏎');
-btn('cancel').textContent = t('取消', 'Cancel');
-btn('full').textContent = t('全屏', 'Full screen');
-btn('last').textContent = t('上次区域', 'Last area');
+const purpose = params.get('purpose') === 'screenshot' ? 'screenshot' : 'record';
+hint.textContent = t(`picker.hint.${purpose}`);
+btn('ok').innerHTML = `<span></span><kbd>↩</kbd>`;
+btn('ok').querySelector('span')!.textContent = t(`picker.ok.${purpose}`);
+btn('cancel').textContent = t('picker.cancel');
+btn('full').textContent = t('picker.full');
+btn('last').textContent = t('picker.last');
 btn('last').hidden = !last;
 
 const bounds = () => ({ w: innerWidth, h: innerHeight });

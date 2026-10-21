@@ -24,16 +24,26 @@
         background: transparent;
         color-scheme: normal;
       }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
     </style>
   </head>
   <body>
-    <h2>HUD</h2>
-    <iframe src="./hud.html?demo=1" width="420" height="56" allowtransparency="true"></iframe>
-    <iframe src="./hud.html?demo=paused&amp;lang=zh" width="420" height="56" allowtransparency="true"></iframe>
-    <h2>Perch</h2>
-    <iframe src="./perch.html?demo=1" width="900" height="200" allowtransparency="true"></iframe>
+    <h2>Island — open, a project current, organizing, an agent waiting</h2>
+    <iframe src="./island.html?demo=1" width="1000" height="330" allowtransparency="true"></iframe>
+    <h2>Island — auto: captures held by the claw</h2>
+    <iframe src="./island.html?demo=auto&amp;lang=zh-Hans" width="1000" height="330" allowtransparency="true"></iframe>
+    <h2>Island — recording · voice note · dropping a card</h2>
+    <div class="row">
+      <iframe src="./island.html?demo=rec" width="640" height="160" allowtransparency="true"></iframe>
+      <iframe src="./island.html?demo=voice&amp;lang=zh-Hans" width="640" height="160" allowtransparency="true"></iframe>
+    </div>
+    <iframe src="./island.html?demo=drop" width="1000" height="420" allowtransparency="true"></iframe>
     <h2>Note bubble</h2>
-    <iframe src="./note.html?demo=1&amp;n=3" width="420" height="340" allowtransparency="true"></iframe>
+    <iframe src="./note.html?demo=1&amp;n=3" width="440" height="360" allowtransparency="true"></iframe>
     <h2>Region picker</h2>
     <iframe src="./picker.html?demo=1&amp;last=40,40,300,200" width="900" height="420" allowtransparency="true"></iframe>
   </body>

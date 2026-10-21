@@ -193,7 +193,7 @@ impl Capture {
         let cfg = overlay_config();
         let region = if pick && region.is_none() {
             let _ = app.emit("capture://status", json!({"ev": "picking"}));
-            match overlay::pick_region(app, &cfg, last_region()).map_err(|e| e.to_string())? {
+            match overlay::pick_region(app, &cfg, last_region(), overlay::Purpose::Record).map_err(|e| e.to_string())? {
                 Some(r) => {
                     let _ = settings::merge(json!({"record": {"last_region_px": [r.x, r.y, r.w, r.h]}}));
                     Some(r)
@@ -409,7 +409,7 @@ fn snap_area(app: &AppHandle) {
         return;
     }
     let cfg = overlay_config();
-    let picked = overlay::pick_region(app, &cfg, last_region());
+    let picked = overlay::pick_region(app, &cfg, last_region(), overlay::Purpose::Screenshot);
     let region = match picked {
         Ok(Some(r)) => r,
         _ => {

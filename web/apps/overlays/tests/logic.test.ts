@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { HudModel, fmtTime, meterBars } from '../src/clock';
+import { checkCatalogs, createI18n } from '@blurt/i18n';
+import { meterBars } from '../src/clock';
+import EN from '../src/locales/en.json';
+import ZH from '../src/locales/zh-Hans.json';
 import { clampRect, isClick, moveRect, parseRect, rectFrom, sizeLabel, toolbarPos } from '../src/geom';
 import { EnterGuard } from '../src/ime';
 import { Pendulum, Spring } from '../src/spring';
@@ -34,35 +37,23 @@ describe('geom', () => {
   });
 });
 
-describe('HUD model follows the C8 lines', () => {
-  it('times recording, pause and resume', () => {
-    const m = new HudModel();
-    m.apply({ ev: 'started', t0: 1 }, 0);
-    expect(m.state).toBe('recording');
-    expect(m.elapsed(2500)).toBeCloseTo(2.5);
-    m.apply({ ev: 'paused', t: 2.4 }, 2500);
-    expect(m.elapsed(9000)).toBeCloseTo(2.4);
-    m.apply({ ev: 'resumed', t: 2.4 }, 9000);
-    expect(m.elapsed(10000)).toBeCloseTo(3.4);
-    m.apply({ ev: 'snap', n: 2, file: 'shots/002.png' }, 10000);
-    m.apply({ ev: 'error', msg: 'could not capture shot 3', code: 'snap' }, 10000);
-    expect([m.shots, m.state]).toEqual([2, 'recording']);
-    m.stopping();
-    expect(m.state).toBe('saving');
-    m.apply({ ev: 'stopped', video: 'recording.mp4' }, 11000);
-    expect(m.state).toBe('done');
-  });
-  it('a fatal error shows', () => {
-    const m = new HudModel();
-    m.apply({ ev: 'error', msg: 'no screen' }, 0);
-    expect([m.state, m.error]).toEqual(['error', 'no screen']);
-  });
-  it('formats time and meter', () => {
-    expect(fmtTime(83.9)).toBe('01:23');
-    expect(fmtTime(3725)).toBe('1:02:05');
+describe('island', () => {
+  it('meters the mic level', () => {
     expect(meterBars(0)).toBe(0);
     expect(meterBars(0.003)).toBe(0); // ≈ −50 dB
     expect(meterBars(0.3)).toBe(5);
+    expect(meterBars(0.3, 12)).toBe(12);
+  });
+  it('en and zh-Hans catalogs match (K10)', () => {
+    expect(checkCatalogs(EN, ZH)).toEqual([]);
+    for (const k of Object.keys(EN)) expect(EN[k as keyof typeof EN].trim(), k).not.toBe('');
+  });
+  it('every job type and step the island names has words', () => {
+    const i = createI18n({ en: EN, 'zh-Hans': ZH }, 'zh-Hans');
+    for (const k of ['job.type.process', 'job.step.write', 'session.waiting_input', 'project.ai_sort', 'project.open_folder'])
+      expect(i.has(k), k).toBe(true);
+    expect(i.plural('island.open_inbox', 5)).toBe('5 条待审');
+    expect(createI18n({ en: EN }, 'en').plural('island.open_inbox', 1)).toBe('1 item to review');
   });
 });
 
