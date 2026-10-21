@@ -449,9 +449,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                 empty.show(symbol: "circle.dashed", title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
             case .unassigned:
                 empty.show(symbol: "tray", title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
-            case .project:
+            case .project(let p):
+                let current = ProjectStore.shared.currentID == p
                 empty.show(symbol: "folder", title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
-                           buttons: [(T("main.action.record"), 3), (T("main.action.snap"), 4)])
+                           buttons: current ? [(T("main.action.record"), 3), (T("main.action.snap"), 4)]
+                                            : [(T("main.project.use"), 6), (T("main.action.record"), 3)])
             default:
                 empty.show(symbol: "waveform.and.mic", title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
                            buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])

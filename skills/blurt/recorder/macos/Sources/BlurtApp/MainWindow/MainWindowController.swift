@@ -98,7 +98,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 self.list.table.selectRowIndexes([0], byExtendingSelection: false)
             }
         }
-        ProjectStore.shared.onChange = { [weak self] in self?.model.reloadSidebar(); self?.updateTitle() }
+        ProjectStore.shared.onChange = { [weak self] in self?.model.reloadSidebar(); self?.updateTitle(); self?.list.updateEmpty() }
         NotificationCenter.default.addObserver(forName: .blurtJobsChanged, object: nil, queue: .main) { [weak self] n in
             self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
         }
@@ -336,6 +336,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case 3: record()
         case 4: snap()
         case 5: openFolder()
+        case 6: if case .project(let p) = model.scope { useProject(p) }
         default: break
         }
     }
