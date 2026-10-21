@@ -5,9 +5,8 @@
 //   Agents.shared.command(id, mode, …)     → agents.py command: argv | url | terminal | clipboard
 //   Agents.shared.install(id, dryRun:)     → agents.py install [--dry-run] (always with the caller's full environment:
 //                                            CODEX_HOME / CLAUDE_CONFIG_DIR / KIMI_CODE_HOME decide which config is written)
-//   Agents.shared.fixPrompt(uids)          → agents.py prompt fix
-//   Agents.shared.run(id, prompt:, repo:)  → a headless AgentRun: progress lines parsed from the agent's event stream,
-//                                            $BLURT_HOME/runs/<run id>.json + .log
+// Handing items to an agent is an interactive tmux session now (BlurtCore/Sessions, sessions.py — K5); the background
+// `-p` fix runs are gone. Headless commands remain for processing recordings (AgentHub) and the Settings test run.
 // The app sets `SkillCLI.shared.environment` (its agentEnvironment()) at launch.
 import Foundation
 
@@ -259,18 +258,6 @@ public struct InstallChange: Decodable, Hashable {
 
     enum CodingKeys: String, CodingKey { case action, path, target, argv, key, ok, error, output, how, what, pointsTo = "points_to" }
 
-    /// One line for the confirmation sheet.
-    public var summary: String {
-        switch action {
-        case "symlink": return "link \(path ?? "") → \(target ?? "")"
-        case "exists": return "already there: " + (path ?? argv?.joined(separator: " ") ?? "")
-        case "conflict": return "\(path ?? "") is another skill (\(pointsTo ?? "?")) — left alone"
-        case "run": return "run: " + (argv ?? []).joined(separator: " ")
-        case "json_merge": return "add \((key ?? []).joined(separator: ".")) to \(path ?? "")"
-        case "manual": return "by hand (\(what ?? "")): \(how ?? "")"
-        default: return "\(action): \(error ?? path ?? "")"
-        }
-    }
     public var changesSomething: Bool { action == "symlink" || action == "run" || action == "json_merge" }
 }
 
@@ -279,87 +266,18 @@ public struct InstallPlan: Decodable {
     public var applied: Bool
 }
 
-public struct FixPrompt: Decodable {
-    public var prompt: String
-    public var repo: String
-    public var items: [String]
-}
-
 public enum AgentError: Error, CustomStringConvertible {
     case script(String)                   // the CLI said {"ok": false, "error": …}
     case unknownAgent(String)
-    case noHeadless(String)
     public var description: String {
         switch self {
         case .script(let s): return s
         case .unknownAgent(let s): return "unknown agent \(s)"
-        case .noHeadless(let s): return "\(s) has no headless mode"
         }
     }
 }
 
-// MARK: - A headless run
-
-/// A headless agent run: progress lines parsed from its event stream, exit status at the end. The record lives in
-/// $BLURT_HOME/runs/<id>.json (state, agent, repo, items, started, ended, exit, cost_usd, summary) with the raw stream
-/// in <id>.log — the main window's "Agent runs" list reads these.
-public final class AgentRun {
-    public let id: String             // r-YYYYMMDD-HHMMSS-xxxx (also $BLURT_RUN_ID for the agent)
-    public let agent: String
-    public let items: [String]
-    public let repo: URL
-    public var process: Process?
-    public var format: String?
-    public private(set) var lines: [ProgressLine] = []  // human-readable progress
-    public private(set) var costUSD: Double?
-    public private(set) var finalText: String?
-    public fileprivate(set) var exitStatus: Int32?
-    public let started = Date()
-    public var onLine: ((String) -> Void)?              // raw stream line
-    public var onProgress: ((ProgressLine) -> Void)?    // parsed, human-readable
-    public var onExit: ((Int32) -> Void)?
-
-    public init(id: String = AgentRun.newID(), agent: String, items: [String] = [], repo: URL, process: Process? = nil) {
-        self.id = id; self.agent = agent; self.items = items; self.repo = repo; self.process = process
-    }
-
-    public static func newID() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd-HHmmss"
-        let chars = Array("abcdefghijklmnopqrstuvwxyz0123456789")
-        return "r-\(f.string(from: Date()))-" + String((0..<4).map { _ in chars.randomElement()! })
-    }
-
-    public static var dir: URL { BlurtPaths.home.appendingPathComponent("runs") }
-    public var recordURL: URL { AgentRun.dir.appendingPathComponent("\(id).json") }
-    public var logURL: URL { AgentRun.dir.appendingPathComponent("\(id).log") }
-    public var isRunning: Bool { process?.isRunning == true }
-
-    public func cancel() { process?.terminate() }
-
-    func handle(_ raw: String) {
-        onLine?(raw)
-        if let fh = try? FileHandle(forWritingTo: logURL) { fh.seekToEndOfFile(); fh.write(Data((raw + "\n").utf8)); try? fh.close() }
-        let ev = AgentEvents.parse(raw, format: format)
-        if let c = ev.cost { costUSD = c }
-        if let t = ev.final { finalText = t }
-        if let s = ev.line {
-            lines.append(s)
-            onProgress?(s)
-        }
-    }
-
-    func writeRecord(state: String) {
-        var o: [String: Any] = ["id": id, "agent": agent, "repo": repo.path, "items": items, "state": state,
-                                "started": started.timeIntervalSince1970, "log": logURL.path]
-        if let s = exitStatus { o["exit"] = Int(s); o["ended"] = Date().timeIntervalSince1970 }
-        if let c = costUSD { o["cost_usd"] = c }
-        if let t = finalText { o["summary"] = String(t.prefix(2000)) }
-        if let d = try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: recordURL, options: .atomic) }
-    }
-}
-
-/// One human-readable progress line of a run; the UI picks the symbol from `kind` (no glyphs in the text).
+/// One human-readable progress line of a headless agent run; the UI picks the symbol from `kind` (no glyphs in the text).
 public struct ProgressLine: Hashable {
     public enum Kind: String { case say, tool, edit, done, error, log }
     public var kind: Kind
@@ -367,87 +285,13 @@ public struct ProgressLine: Hashable {
     public init(_ kind: Kind, _ text: String) { self.kind = kind; self.text = text }
 }
 
-/// Turns one line of an agent's machine-readable output into something a person can follow.
-public enum AgentEvents {
-    public struct Event { public var line: ProgressLine?; public var cost: Double?; public var final: String? }
-
-    public static func parse(_ line: String, format: String?) -> Event {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.hasPrefix("{"), let o = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [String: Any] else {
-            return Event(line: trimmed.isEmpty ? nil : ProgressLine(.log, String(trimmed.prefix(300))), cost: nil, final: nil)
-        }
-        let type = o["type"] as? String ?? ""
-        // Claude Code stream-json
-        if type == "assistant", let msg = o["message"] as? [String: Any], let content = msg["content"] as? [[String: Any]] {
-            var says: [String] = [], tools: [String] = []
-            for c in content {
-                if c["type"] as? String == "text", let t = c["text"] as? String { says.append(t) }
-                if c["type"] as? String == "tool_use" { tools.append(toolLine(c["name"] as? String ?? "tool", c["input"] as? [String: Any] ?? [:])) }
-            }
-            if !tools.isEmpty { return Event(line: ProgressLine(.tool, oneLine(tools.joined(separator: " · "))), cost: nil, final: nil) }
-            return Event(line: says.isEmpty ? nil : ProgressLine(.say, oneLine(says.joined(separator: " "))), cost: nil, final: nil)
-        }
-        if type == "result" {
-            let t = o["result"] as? String
-            let failed = o["is_error"] as? Bool == true
-            return Event(line: t.map { ProgressLine(failed ? .error : .done, oneLine($0)) }, cost: o["total_cost_usd"] as? Double, final: t)
-        }
-        if type == "system" { return Event(line: nil, cost: nil, final: nil) }
-        // Codex exec --json: {"type":"item.started|item.completed","item":{"type":"agent_message|command_execution|mcp_tool_call|file_change|reasoning",…}}
-        if let item = o["item"] as? [String: Any] {
-            let it = item["type"] as? String ?? ""
-            let done = type.hasSuffix("completed")
-            let err = (item["error"] as? [String: Any])?["message"] as? String
-            switch it {
-            case "agent_message":
-                let t = item["text"] as? String ?? ""
-                return Event(line: done && !t.isEmpty ? ProgressLine(.say, oneLine(t)) : nil, cost: nil, final: done ? t : nil)
-            case "command_execution":
-                return Event(line: done ? nil : ProgressLine(.tool, "$ " + oneLine(item["command"] as? String ?? "")), cost: nil, final: nil)
-            case "mcp_tool_call":
-                let name = [item["server"] as? String, item["tool"] as? String].compactMap { $0 }.joined(separator: ".")
-                if done, let e = err { return Event(line: ProgressLine(.error, name + ": " + oneLine(e)), cost: nil, final: nil) }
-                return Event(line: done ? nil : ProgressLine(.tool, name), cost: nil, final: nil)
-            case "file_change":
-                let files = (item["changes"] as? [[String: Any]] ?? []).compactMap { $0["path"] as? String }
-                    .map { ($0 as NSString).lastPathComponent }
-                return Event(line: done ? ProgressLine(.edit, files.joined(separator: ", ")) : nil, cost: nil, final: nil)
-            default:
-                return Event(line: nil, cost: nil, final: nil)
-            }
-        }
-        if type == "turn.failed" || type == "error" {
-            let m = (o["error"] as? [String: Any])?["message"] as? String ?? o["message"] as? String ?? "error"
-            return Event(line: ProgressLine(.error, oneLine(m)), cost: nil, final: nil)
-        }
-        // Kimi / OpenCode / others: best effort
-        for k in ["text", "content", "message"] {
-            if let t = o[k] as? String, !t.isEmpty { return Event(line: ProgressLine(.say, oneLine(t)), cost: nil, final: nil) }
-        }
-        return Event(line: nil, cost: nil, final: nil)
-    }
-
-    static func toolLine(_ name: String, _ input: [String: Any]) -> String {
-        if let c = input["command"] as? String { return "\(name): \(oneLine(c))" }
-        if let p = input["file_path"] as? String { return "\(name) \((p as NSString).lastPathComponent)" }
-        if let u = input["uid"] as? String { return "\(name) \(u.prefix(10))" }
-        return name
-    }
-
-    static func oneLine(_ s: String) -> String {
-        let l = s.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
-        return l.count > 220 ? String(l.prefix(219)) + "…" : l
-    }
-}
-
-
 // MARK: - Agents
 
 public final class Agents {
     public static let shared = Agents()
     public init() {}
 
-    var lang: String { BlurtLocale.lang }
+    var lang: String { Loc.language.hasPrefix("zh") ? "zh" : "en" }
 
     /// Every agent in the configured order (+ the ones not in it), with installed / login / why / fix.
     public func detect(login: Bool = true, repo: URL? = nil) async throws -> AgentDetect {
@@ -541,50 +385,5 @@ public final class Agents {
         let r = try await cli.run("agents.py", args, env: ["BLURT_INSTALL": "1"], timeout: 120)
         guard let plan = r.decode(InstallPlan.self) else { throw AgentError.script(r.errorText) }
         return plan
-    }
-
-    /// The fix prompt for these items (agents.py prompt fix — one place for its wording) and the repo to run in.
-    public func fixPrompt(_ uids: [String], repo: URL? = nil) async throws -> FixPrompt {
-        var args = ["prompt", "fix", "--items"] + uids
-        if let r = repo { args += ["--repo", r.path] }
-        let r = try await SkillCLI.shared.run("agents.py", args, timeout: 60)
-        guard r.ok, let p = r.decode(FixPrompt.self) else { throw AgentError.script(r.errorText) }
-        return p
-    }
-
-    /// Start a headless run. The agent gets $BLURT_AGENT / $BLURT_RUN_ID (agents.py command's env), so its
-    /// mark_fixed / items.py fix calls are attributed to this run.
-    public func run(_ id: String, prompt: String, repo: URL, items: [String] = [], runID: String = AgentRun.newID()) async throws -> AgentRun {
-        let cmd = try await command(id, mode: "headless", prompt: prompt, repo: repo, vars: ["run_id": runID])
-        guard let argv = cmd.argv, let exe = argv.first else { throw AgentError.noHeadless(id) }
-        let run = AgentRun(id: runID, agent: id, items: items, repo: URL(fileURLWithPath: cmd.cwd.isEmpty ? repo.path : cmd.cwd))
-        run.format = cmd.events
-        try FileManager.default.createDirectory(at: AgentRun.dir, withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: run.logURL.path, contents: nil)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = Array(argv.dropFirst())
-        p.currentDirectoryURL = run.repo
-        p.environment = SkillCLI.shared.environment().merging(cmd.env) { _, new in new }
-        p.standardInput = FileHandle.nullDevice         // codex exec otherwise waits for more prompt on stdin
-        streamLines(p) { [weak run] line, _ in run?.handle(line) }
-        p.terminationHandler = { [weak run] pr in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                guard let run = run else { return }
-                run.exitStatus = pr.terminationStatus
-                run.writeRecord(state: pr.terminationStatus == 0 ? "done" : (pr.terminationReason == .uncaughtSignal ? "cancelled" : "failed"))
-                run.onExit?(pr.terminationStatus)
-            }
-        }
-        run.process = p
-        try p.run()
-        run.writeRecord(state: "running")
-        return run
-    }
-
-    /// What to do for an interactive fix (open a url, a terminal command, the clipboard, an app). The app performs
-    /// it (AppKit) — see System/FixRunner.swift.
-    public func interactive(_ id: String, prompt: String, repo: URL) async throws -> AgentCommand {
-        try await command(id, mode: "interactive", prompt: prompt, repo: repo)
     }
 }
