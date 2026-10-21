@@ -1,13 +1,13 @@
 //! Test harness for blurt-capture (CI under xvfb, local smoke tests). Prints JSON lines on stdout.
 //!
-//!   blurt-capture-demo overlays [--box x,y,w,h] [--seconds 20]
-//!       HUD (fed demo status lines), perch with two cards, note bubble. Without --box they are placed as in the
-//!       app (HUD bottom-centre, perch at the top, note under it); with --box all three go inside that physical
-//!       rect; --backdrop puts an opaque orange always-on-top window of ours under them first (a screenshot of the
-//!       box then holds only our pixels). Prints {"windows": {label: [x,y,w,h]}}.
+//!   blurt-capture-demo overlays [--box x,y,w,h] [--seconds 20] [--backdrop]
+//!       the island (expanded, with a project, an active job and three cards held by the claw) and a note bubble.
+//!       Without --box they are placed as in the app (island along the top, note under it); with --box both go
+//!       inside that physical rect; --backdrop puts an opaque orange always-on-top window of ours under them first
+//!       (a screenshot of the box then holds only our pixels). Prints {"windows": {label: [x,y,w,h]}}.
 //!   blurt-capture-demo record --record-py PATH --session DIR [--region x,y,w,h] [--seconds 5] [--fake]
-//!       a real take through overlay::record (HUD + perch): snap after 1.5 s, stop after --seconds.
-//!       Prints {"final": <status line>, "cards": [...]}; exit 0 when the take was kept.
+//!       a real take through engine::record with the island showing it: snap after 1.5 s, stop after --seconds.
+//!       Prints {"final": <status line>, "snaps": n}; exit 0 when the take was kept.
 //!   blurt-capture-demo pick       the region picker; prints {"picked": "x,y,w,h" | null}
 
 use blurt_capture::overlay::{self, Card, Kind, OverlayConfig};
@@ -15,9 +15,11 @@ use blurt_capture::{CaptureOptions, Launcher, Mic, Region, StatusEvent};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, Wry};
+use tauri::{AppHandle, Manager, Wry};
 
 fn arg(name: &str) -> Option<String> {
     let a: Vec<String> = std::env::args().collect();
@@ -40,7 +42,7 @@ fn svg_card(n: u32, hue: u32, text: Option<&str>) -> Card {
         .bytes()
         .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") })
         .collect();
-    Card { n, src: format!("data:image/svg+xml,{enc}"), text: text.map(str::to_string), file: None }
+    Card { n, src: format!("data:image/svg+xml,{enc}"), text: text.map(str::to_string), file: None, kind: "shot".into(), session: None }
 }
 
 fn rect_of(app: &AppHandle<Wry>, k: Kind) -> Option<[i64; 4]> {
@@ -50,11 +52,25 @@ fn rect_of(app: &AppHandle<Wry>, k: Kind) -> Option<[i64; 4]> {
     Some([p.x as i64, p.y as i64, s.width as i64, s.height as i64])
 }
 
+/// What the app sends the island at rest (the island page's `IslandState`).
+fn demo_state(recording: bool) -> serde_json::Value {
+    let t0 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() - 74.0;
+    json!({"op": "state", "state": {
+        "project": {"id": "p1", "name": "bug-agent", "key": "BA"},
+        "projects": [{"id": "p1", "name": "bug-agent", "key": "BA"}, {"id": "p2", "name": "airank", "key": "AIR"}],
+        "toReview": 5,
+        "recording": if recording { json!({"t0": t0, "paused": false, "shots": 2}) } else { json!(null) },
+        "jobs": [{"id": "j1", "type": "process", "title": "Pricing page walkthrough", "step": "write", "progress": 0.6}],
+        "sessions": [{"job": "j2", "agent": "Claude Code", "status": "waiting_input", "items": ["BA-12"]}],
+        "hotkeys": {"record": "Alt+Shift+R", "snap": "Alt+Shift+A", "voice": "Alt+Shift+V", "project": "Alt+Shift+O"},
+        "expanded": !recording,
+    }})
+}
+
 fn overlays(app: AppHandle<Wry>) {
     let cfg = OverlayConfig::default();
     let secs: u64 = arg("--seconds").and_then(|s| s.parse().ok()).unwrap_or(20);
     let boxed: Option<Region> = arg("--box").and_then(|s| s.parse().ok());
-    let _perch_keep;
     if let (Some(b), true) = (boxed, flag("--backdrop")) {
         // an opaque always-on-top window of ours under the overlays: a screenshot of the box shows only our pixels
         let s = app.primary_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(1.0);
@@ -72,59 +88,34 @@ fn overlays(app: AppHandle<Wry>) {
         let _ = w.set_position(tauri::PhysicalPosition::new(b.x, b.y));
         thread::sleep(Duration::from_millis(500));
     }
+    let island = overlay::island(&app, &cfg).expect("island");
+    let card = svg_card(3, 140, Some("search here"));
     if let Some(b) = boxed {
-        // everything inside the box: perch along its top, HUD at its bottom, note in the middle
+        // everything inside the box: the island along its top, the note in its lower half
         let s = app.primary_monitor().ok().flatten().map(|m| m.scale_factor()).unwrap_or(1.0);
         let px = |v: f64| (v * s).round() as u32;
-        let open = |k: Kind, r: Region, p: BTreeMap<&str, String>| overlay::open(&app, k, &cfg, r, p).unwrap();
-        open(Kind::Perch, Region::new(b.x, b.y, b.w, px(230.0)), BTreeMap::new());
-        let mut hp = BTreeMap::new();
-        hp.insert("mic", "1".to_string());
-        let hud = (px(420.0), px(56.0));
-        open(Kind::Hud, Region::new(b.right() - hud.0 as i32 - px(16.0) as i32, b.bottom() - hud.1 as i32 - px(16.0) as i32, hud.0, hud.1), hp);
+        let w = island.window();
+        let _ = w.set_position(tauri::PhysicalPosition::new(b.x, b.y));
+        let _ = w.set_size(tauri::PhysicalSize::new(b.w, px(overlay::ISLAND_H).min(b.h)));
         let mut np = BTreeMap::new();
         np.insert("n", "2".to_string());
         np.insert("text", "demo note".to_string());
         np.insert("src", svg_card(2, 25, None).src);
-        open(Kind::Note, Region::new(b.x + px(16.0) as i32, b.y + px(200.0) as i32, px(440.0), px(360.0)), np);
-        thread::sleep(Duration::from_millis(1500));
-        let cards = vec![svg_card(1, 210, Some("Save button too faint")), svg_card(2, 25, None), svg_card(3, 140, Some("search here"))];
-        let _ = app.emit_to(Kind::Perch.label(), overlay::ev::PERCH, json!({"op": "set", "cards": cards}));
-        let _ = app.emit_to(Kind::Perch.label(), overlay::ev::PERCH, json!({"op": "show", "hold": 0}));
-        _perch_keep = None;
+        overlay::open(&app, Kind::Note, &cfg, Region::new(b.x + px(16.0) as i32, b.bottom() - px(376.0) as i32, px(440.0), px(360.0)), np).expect("note");
     } else {
-        let perch = overlay::perch(&app, &cfg).expect("perch");
-        overlay::hud(&app, &cfg, None, true).expect("hud");
-        let card = svg_card(3, 140, Some("search here"));
         overlay::note(&app, &cfg, &card, None, |t| emit_line(json!({"note": t}))).expect("note");
-        thread::sleep(Duration::from_millis(1500));
-        perch.add(svg_card(1, 210, Some("Save button too faint")));
-        perch.add(svg_card(2, 25, None));
-        perch.add(card);
-        perch.show(0);
-        _perch_keep = Some(perch);
     }
-    let hud = Kind::Hud.label();
-    let t0 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
-    let _ = app.emit_to(hud, overlay::ev::STATUS, json!({"ev": "started", "t0": t0}));
-    let _ = app.emit_to(hud, overlay::ev::STATUS, json!({"ev": "snap", "n": 3, "file": "shots/003.png"}));
-    let app2 = app.clone();
-    thread::spawn(move || {
-        for k in 0.. {
-            let rms = 0.02 + 0.1 * ((k as f64) / 3.0).sin().abs();
-            if app2.emit_to(hud, overlay::ev::STATUS, json!({"ev": "level", "rms": rms})).is_err() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-    });
-    thread::sleep(Duration::from_millis(1500)); // let the drop / swing settle
-    let windows: serde_json::Map<String, serde_json::Value> = [Kind::Hud, Kind::Perch, Kind::Note]
+    thread::sleep(Duration::from_millis(1500));
+    island.send(demo_state(false));
+    island.send(json!({"op": "cards", "cards": [svg_card(1, 210, Some("Save button too faint")), svg_card(2, 25, None), card]}));
+    thread::sleep(Duration::from_millis(2000)); // let the cards fly up and the swing settle
+    let windows: serde_json::Map<String, serde_json::Value> = [Kind::Island, Kind::Note]
         .into_iter()
         .filter_map(|k| rect_of(&app, k).map(|r| (k.label().to_string(), json!(r))))
         .collect();
     emit_line(json!({"windows": windows}));
     thread::sleep(Duration::from_secs(secs));
+    drop(island);
     app.exit(0);
 }
 
@@ -143,16 +134,27 @@ fn record(app: AppHandle<Wry>) {
     if flag("--fake") {
         opts.env.push(("BLURT_FAKE_SCREEN".into(), "1".into()));
     }
-    let cfg = OverlayConfig::default();
-    let perch = overlay::perch(&app, &cfg).expect("perch");
+    let island = overlay::island(&app, &OverlayConfig::default()).expect("island");
+    island.send(demo_state(true));
+    let snaps = Arc::new(AtomicU32::new(0));
     let (tx, rx) = std::sync::mpsc::channel();
-    let handle = overlay::record(&app, &cfg, opts, Some(perch.clone()), move |r| {
-        let _ = tx.send(r);
-    })
+    let (i2, s2) = (island.clone(), snaps.clone());
+    let handle = blurt_capture::record(
+        &opts,
+        move |e| {
+            if let StatusEvent::Snap { .. } = e {
+                s2.fetch_add(1, Ordering::SeqCst);
+            }
+            i2.send(json!({"op": "status", "line": e.to_json()}));
+        },
+        move |r| {
+            let _ = tx.send(r);
+        },
+    )
     .expect("start");
     thread::sleep(Duration::from_millis(1500));
-    if let Some(r) = rect_of(&app, Kind::Hud) {
-        emit_line(json!({"windows": {Kind::Hud.label(): r}}));
+    if let Some(r) = rect_of(&app, Kind::Island) {
+        emit_line(json!({"windows": {Kind::Island.label(): r}}));
     }
     let _ = handle.lock().unwrap().snap();
     thread::sleep(Duration::from_secs_f64((secs - 1.5).max(1.0)));
@@ -164,7 +166,7 @@ fn record(app: AppHandle<Wry>) {
         Ok(Err(e)) => json!({"error": e.to_string(), "stderr": handle.lock().unwrap().stderr_tail()}),
         Err(_) => json!({"error": "timeout"}),
     };
-    emit_line(json!({"final": fin, "cards": perch.cards()}));
+    emit_line(json!({"final": fin, "snaps": snaps.load(Ordering::SeqCst)}));
     thread::sleep(Duration::from_millis(500));
     app.exit(if ok { 0 } else { 1 });
 }

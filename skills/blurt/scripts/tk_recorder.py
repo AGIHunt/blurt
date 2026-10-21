@@ -1,4 +1,19 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["sounddevice", "numpy"]
+# ///
 """Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / snap / discard / stop).
+
+Also the Windows / Linux desktop app's capture helpers outside a recording (v0.7 contract K7), run as a script:
+
+  tk_recorder.py shot SESSION --region x,y,w,h [--project ID|inbox]
+      one frame of the region → SESSION/shots/NNN.png + its shots.jsonl line → {"ok", "n", "file", "line"}
+  tk_recorder.py voice SESSION [--project ID|inbox] [--max 120] [--silence-ms 1500] [--hold]
+      a voice note → SESSION/shots/NNN.wav + a `type: voice` line. Prints JSON lines: {"ev": "started", "n"},
+      {"ev": "level", "rms"} (~20 Hz), then {"ev": "done", "n", "file", "duration"} or {"ev": "cancelled"}.
+      Ends after --silence-ms of quiet once speech was heard (not with --hold), at --max seconds, or when stdin says
+      "stop" / "cancel" (EOF = stop). BLURT_TEST_MIC_WAV=<wav> stands in for the microphone (tests).
+  `--project` omitted = a card (K7: not in a project yet).
 
 Used on Windows (primary), Linux/X11, and on macOS when the native Swift recorder can't be built. Video is captured
 with ffmpeg (Windows: gdigrab region; Linux: x11grab region; macOS: avfoundation + crop), audio with PortAudio (MicRecorder). Pause stops the
@@ -765,3 +780,181 @@ class TkRecorder:
             if not self.result:
                 self.root.after(150, drain)
         self.root.after(150, drain)
+
+
+# ------------------------------------------------------------------ desktop app helpers (K7, run as a script)
+def next_shot_n(session: Path) -> int:
+    """The next free `n` of a shots batch: past every shots.jsonl line and every file already in shots/."""
+    top = 0
+    try:
+        for raw in (session / "shots.jsonl").read_text(encoding="utf-8").splitlines():
+            try:
+                top = max(top, int(json.loads(raw).get("n") or 0))
+            except (ValueError, AttributeError):
+                continue
+    except OSError:
+        pass
+    for f in (session / "shots").glob("[0-9][0-9][0-9]*"):
+        m = re.match(r"(\d+)", f.name)
+        if m:
+            top = max(top, int(m.group(1)))
+    return top + 1
+
+
+def _append_line(session: Path, line: dict) -> None:
+    with open(session / "shots.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+
+def _owner_fields(project: str | None) -> dict:
+    # K7: "project": id | "inbox" | null (null = a card, not filed yet)
+    return {"project": project, "assigned_by": "capture"} if project else {"project": None}
+
+
+def cli_shot(session: Path, region: list[int], project: str | None) -> dict:
+    session.mkdir(parents=True, exist_ok=True)
+    (session / "shots").mkdir(exist_ok=True)
+    n = next_shot_n(session)
+    out = session / "shots" / f"{n:03d}.png"
+    r = subprocess.run(snap_cmd(ffmpeg_bin(), region, out), stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+    if r.returncode or not out.exists():
+        return {"ok": False, "error": (r.stderr or b"").decode("utf-8", "replace")[-300:] or "no frame", "code": "snap"}
+    line = {**shot_line(n, None, region), "type": "shot", **_owner_fields(project)}
+    _append_line(session, line)
+    return {"ok": True, "n": n, "file": line["file"], "line": line}
+
+
+def _wav_rms(chunk: bytes) -> float:
+    import array
+    a = array.array("h", chunk[: len(chunk) // 2 * 2])
+    if not a:
+        return 0.0
+    return (sum(v * v for v in a) / len(a)) ** 0.5 / 32768.0
+
+
+def cli_voice(session: Path, project: str | None, max_s: float, silence_ms: int, hold: bool) -> int:
+    """Records until silence / --max / "stop" on stdin; one JSON line per event on stdout."""
+    import wave
+
+    def say(**kw):
+        print(json.dumps(kw, ensure_ascii=False), flush=True)
+
+    session.mkdir(parents=True, exist_ok=True)
+    (session / "shots").mkdir(exist_ok=True)
+    n = next_shot_n(session)
+    wav = session / "shots" / f"{n:03d}.wav"
+    cmd: dict = {"v": None}
+
+    def stdin_reader():
+        for raw in sys.stdin:
+            word = raw.strip().lower()
+            if word in ("stop", "cancel"):
+                cmd["v"] = word
+                return
+        cmd["v"] = cmd["v"] or "stop"
+
+    threading.Thread(target=stdin_reader, daemon=True).start()
+    test = os.environ.get("BLURT_TEST_MIC_WAV")
+    chunks: queue.Queue = queue.Queue()
+    stream = None
+    if test:  # tests: the file plays in real time, in 50 ms chunks, then silence
+        src = wave.open(test, "rb")
+        sr = src.getframerate()
+        if src.getnchannels() != 1 or src.getsampwidth() != 2:
+            say(ev="error", code="voice", msg="BLURT_TEST_MIC_WAV must be 16-bit mono")
+            return 1
+
+        def feed():
+            step = sr // 20
+            while True:
+                data = src.readframes(step)
+                chunks.put(data if data else b"\0\0" * step)
+                time.sleep(0.05)
+
+        threading.Thread(target=feed, daemon=True).start()
+    else:
+        from record import pick_mic  # sounddevice; PortAudio (Linux: libportaudio2)
+        import sounddevice as sd
+        mic = pick_mic(None)
+        if mic is None:
+            say(ev="error", code="mic", msg="no microphone")
+            return 1
+        sr = int(mic.get("samplerate") or 48000)
+        stream = sd.RawInputStream(samplerate=sr, channels=1, dtype="int16", device=mic["index"],
+                                   blocksize=sr // 20, callback=lambda data, *_: chunks.put(bytes(data)))
+        stream.start()
+    say(ev="started", n=n)
+    out = wave.open(str(wav), "wb")
+    out.setnchannels(1)
+    out.setsampwidth(2)
+    out.setframerate(sr)
+    t0, heard, quiet_since, frames = time.time(), False, None, 0
+    ended = "stop"
+    try:
+        while True:
+            if cmd["v"]:
+                ended = cmd["v"]
+                break
+            try:
+                data = chunks.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            out.writeframes(data)
+            frames += len(data) // 2
+            rms = _wav_rms(data)
+            say(ev="level", rms=round(rms, 4))
+            now = time.time()
+            if rms > 0.02:
+                heard, quiet_since = True, None
+            elif heard and not hold:
+                quiet_since = quiet_since or now
+                if (now - quiet_since) * 1000 >= silence_ms:
+                    break
+            if now - t0 >= max_s:
+                break
+    finally:
+        if stream is not None:
+            stream.stop()
+            stream.close()
+        out.close()
+    if ended == "cancel" or frames == 0:
+        wav.unlink(missing_ok=True)
+        say(ev="cancelled")
+        return 0
+    line = {"n": n, "type": "voice", "file": None, "marked": None, "t": None, "wall": round(t0, 3), "region": None,
+            "voice": f"shots/{n:03d}.wav", "text": None, "said": None, "strokes": [], **_owner_fields(project)}
+    _append_line(session, line)
+    say(ev="done", n=n, file=line["voice"], duration=round(frames / sr, 2))
+    return 0
+
+
+def main() -> int:
+    import argparse
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("shot", help="one frame of a region into a shots batch")
+    s.add_argument("session")
+    s.add_argument("--region", required=True)
+    s.add_argument("--project")
+    v = sub.add_parser("voice", help="a voice note into a shots batch")
+    v.add_argument("session")
+    v.add_argument("--project")
+    v.add_argument("--max", type=float, default=120.0)
+    v.add_argument("--silence-ms", type=int, default=1500)
+    v.add_argument("--hold", action="store_true", help="push-to-talk: no silence end, wait for stop")
+    a = p.parse_args()
+    if a.cmd == "shot":
+        try:
+            region = [int(float(x)) for x in a.region.split(",")]
+            assert len(region) == 4 and region[2] > 0 and region[3] > 0
+        except (ValueError, AssertionError):
+            print(json.dumps({"ok": False, "error": "--region is x,y,w,h", "code": "bad_args"}))
+            return 1
+        r = cli_shot(Path(a.session), region, a.project)
+        print(json.dumps(r, ensure_ascii=False))
+        return 0 if r["ok"] else 1
+    return cli_voice(Path(a.session), a.project, a.max, a.silence_ms, a.hold)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

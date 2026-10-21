@@ -1,15 +1,19 @@
-//! Read-only access to `$BLURT_HOME/index.db` (contract C3). index.py is the only writer; we open with
-//! `SQLITE_OPEN_READ_ONLY` per query (cheap, and a rebuilt file is picked up at once).
+//! Read-only access to `$BLURT_HOME/index.db`, schema v2 (contract K1 "index.db schema v2"). index.py is the only
+//! writer; we open with `SQLITE_OPEN_READ_ONLY` per query (cheap, and a rebuilt file is picked up at once). A db of
+//! another schema version reads as missing: the startup scan rebuilds it.
 //!
-//! Search follows index.py's docstring so every host returns the same rows: the query is split on whitespace, every
-//! term must match; a term of ≥ 3 characters goes to FTS5 (trigram) as a quoted phrase, a shorter one becomes
-//! `(title LIKE OR quote LIKE OR body LIKE)`. Status defaults to "everything but deleted"; fix_state "none" = NULL.
+//! Search follows C3 so every host returns the same rows: the query is split on whitespace, every term must match;
+//! a term of ≥ 3 characters goes to FTS5 (trigram) as a quoted phrase, a shorter one becomes
+//! `(title LIKE OR quote LIKE OR body LIKE)`. Status defaults to "everything but deleted".
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, OpenFlags, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+pub const SCHEMA: &str = "2";
 
 #[derive(Debug, Default, Deserialize, Clone)]
 #[serde(default)]
@@ -17,14 +21,16 @@ pub struct ItemQuery {
     pub query: Option<String>,
     pub kind: Vec<String>,
     pub status: Vec<String>,
-    pub fix_state: Vec<String>,
+    /// work.state (K3): todo | handed_off | in_progress | to_verify | done | wontfix
+    pub work: Vec<String>,
     pub severity: Vec<String>,
-    /// workspace id, or its path
-    pub workspace: Option<String>,
+    /// project id, its path, or "inbox"
+    pub project: Option<String>,
     /// session id, or its dir
     pub session: Option<String>,
+    pub source_type: Vec<String>,
     pub has_code_refs: Option<bool>,
-    /// "updated" (default) | "created" | "t_start"
+    /// "updated" (default) | "created" | "t_start" | "title"
     pub sort: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -33,18 +39,17 @@ pub struct ItemQuery {
 #[derive(Debug, Default, Deserialize, Clone)]
 #[serde(default)]
 pub struct SessionQuery {
-    pub workspace: Option<String>,
-    /// "unprocessed" | "processing" | "unreviewed" | "reviewed" | "inbox" (= not processed, processing or unreviewed)
+    pub project: Option<String>,
+    /// "to_review" (sorted, not reviewed) | "processing" | "unprocessed" | "reviewed"
     pub state: Option<String>,
     pub limit: Option<i64>,
-    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ItemPage {
     pub total: i64,
     pub items: Vec<Value>,
-    /// true when index.db doesn't exist yet (the UI says "building the index…" / "install uv")
+    /// true when index.db doesn't exist (yet) or is another schema (the UI says "building the index…")
     pub missing: bool,
 }
 
@@ -53,10 +58,7 @@ pub struct Index {
 }
 
 fn open(path: &Path) -> rusqlite::Result<Connection> {
-    let c = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI,
-    )?;
+    let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI)?;
     c.busy_timeout(std::time::Duration::from_millis(2000))?;
     Ok(c)
 }
@@ -109,7 +111,7 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
     let fts: Vec<String> = terms.iter().filter(|t| t.chars().count() >= 3).map(|t| format!("\"{}\"", t.replace('"', "\"\""))).collect();
     let short: Vec<&str> = terms.iter().copied().filter(|t| t.chars().count() < 3).collect();
     let mut args: Vec<SqlValue> = Vec::new();
-    let mut from = String::from("items i JOIN sessions s ON s.id = i.session_id");
+    let mut from = String::from("items i JOIN projects p ON p.id = i.project_id LEFT JOIN sessions s ON s.id = i.session_id");
     let mut wh: Vec<String> = Vec::new();
     if !fts.is_empty() {
         from.push_str(" JOIN items_fts f ON f.rowid = i.rowid");
@@ -127,27 +129,18 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
     if !q.severity.is_empty() {
         wh.push(in_list("i.severity", &q.severity, &mut args));
     }
-    if !q.fix_state.is_empty() {
-        let named: Vec<String> = q.fix_state.iter().filter(|f| f.as_str() != "none").cloned().collect();
-        let mut ors = Vec::new();
-        if q.fix_state.iter().any(|f| f == "none") {
-            ors.push("i.fix_state IS NULL".to_string());
-        }
-        if !named.is_empty() {
-            ors.push(in_list("i.fix_state", &named, &mut args));
-        }
-        wh.push(format!("({})", ors.join(" OR ")));
+    if !q.work.is_empty() {
+        wh.push(in_list("i.work_state", &q.work, &mut args));
     }
-    if let Some(w) = q.workspace.as_deref().filter(|w| !w.is_empty()) {
-        if is_path(w) {
-            wh.push("s.workspace_id = (SELECT id FROM workspaces WHERE path = ?)".into());
-        } else {
-            wh.push("s.workspace_id = ?".into());
-        }
-        args.push(SqlValue::Text(w.into()));
+    if !q.source_type.is_empty() {
+        wh.push(in_list("i.source_type", &q.source_type, &mut args));
+    }
+    if let Some(pr) = q.project.as_deref().filter(|w| !w.is_empty()) {
+        wh.push(if is_path(pr) { "p.path = ?" } else { "i.project_id = ?" }.into());
+        args.push(SqlValue::Text(pr.into()));
     }
     if let Some(sess) = q.session.as_deref().filter(|s| !s.is_empty()) {
-        wh.push(if is_path(sess) { "s.dir = ?" } else { "s.id = ?" }.into());
+        wh.push(if is_path(sess) { "s.dir = ?" } else { "i.session_id = ?" }.into());
         args.push(SqlValue::Text(sess.into()));
     }
     if let Some(b) = q.has_code_refs {
@@ -163,135 +156,129 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
     (format!("FROM {from} WHERE {}", wh.join(" AND ")), args, !fts.is_empty())
 }
 
-const ITEM_COLS: &str = "i.uid, i.session_id, s.dir AS session_dir, i.item_id, i.kind, i.title, i.status, i.fix_state, \
-     i.severity, i.primary_frame, i.updated, s.workspace_id, s.created, s.title AS session_title, i.quote, i.tags, \
-     i.owner, i.module, i.t_start, i.frame_count, i.has_code_refs, i.user_edited, i.exported";
+/// ItemRow v2 (K1) plus what the list shows besides (quote, frames, the project's routing).
+const ITEM_COLS: &str = "i.uid, i.project_id, p.name AS project_name, p.key AS project_key, i.session_id, s.dir AS session_dir, \
+     i.path, i.item_id, i.kind, i.title, i.status, i.work_state, i.work_to, i.work_agent, i.severity, i.primary_frame, \
+     i.created, i.updated, i.suggested_project, i.suggested_confidence, i.project_by, i.quote, i.t_start, i.frame_count, \
+     i.source_type, i.has_code_refs, i.parse_error";
 
 impl Index {
     pub fn new(path: PathBuf) -> Self {
         Index { path }
     }
 
-    pub fn exists(&self) -> bool {
+    /// The file exists and is schema v2.
+    pub fn ready(&self) -> bool {
         self.path.is_file()
+            && open(&self.path)
+                .and_then(|c| c.query_row("SELECT value FROM meta WHERE key = 'schema_version'", [], |r| r.get::<_, String>(0)))
+                .is_ok_and(|v| v == SCHEMA)
     }
 
     fn conn(&self) -> Result<Connection, String> {
         open(&self.path).map_err(|e| format!("index.db: {e}"))
     }
 
+    fn rows(&self, sql: &str, args: &[SqlValue]) -> Result<Vec<Value>, String> {
+        let c = self.conn()?;
+        let mut st = c.prepare(sql).map_err(|e| format!("{e}: {sql}"))?;
+        let rows = st.query_map(params_from_iter(args.iter()), row_json).and_then(|r| r.collect::<Result<Vec<_>, _>>()).map_err(|e| e.to_string());
+        rows
+    }
+
     pub fn items(&self, q: &ItemQuery) -> Result<ItemPage, String> {
-        if !self.exists() {
+        if !self.ready() {
             return Ok(ItemPage { total: 0, items: vec![], missing: true });
         }
-        let c = self.conn()?;
         let (wh, args, fts) = build_where(q);
         let order = match q.sort.as_deref() {
-            Some("created") => "s.created DESC, i.t_start",
-            Some("t_start") => "i.t_start, s.created DESC",
+            Some("created") => "i.created DESC",
+            Some("t_start") => "s.created DESC, i.t_start",
+            Some("title") => "i.title COLLATE NOCASE",
             _ => "i.updated DESC",
         };
         let snippet = if fts { "snippet(items_fts, -1, '[', ']', '…', 12)" } else { "NULL" };
         let limit = q.limit.unwrap_or(50).clamp(1, 5000);
         let offset = q.offset.unwrap_or(0).max(0);
-        let sql = format!("SELECT {ITEM_COLS}, {snippet} AS snippet {wh} ORDER BY {order} LIMIT {limit} OFFSET {offset}");
-        let mut st = c.prepare(&sql).map_err(|e| format!("{e}: {sql}"))?;
-        let items = st
-            .query_map(params_from_iter(args.iter()), row_json)
-            .and_then(|r| r.collect::<Result<Vec<_>, _>>())
-            .map_err(|e| e.to_string())?;
-        let total: i64 = c
+        let items = self.rows(&format!("SELECT {ITEM_COLS}, {snippet} AS snippet {wh} ORDER BY {order} LIMIT {limit} OFFSET {offset}"), &args)?;
+        let total: i64 = self
+            .conn()?
             .query_row(&format!("SELECT COUNT(*) {wh}"), params_from_iter(args.iter()), |r| r.get(0))
             .map_err(|e| e.to_string())?;
         Ok(ItemPage { total, items, missing: false })
     }
 
     pub fn item(&self, uid: &str) -> Result<Option<Value>, String> {
-        if !self.exists() {
+        if !self.ready() {
             return Ok(None);
         }
-        let c = self.conn()?;
-        let sql = format!("SELECT {ITEM_COLS}, NULL AS snippet FROM items i JOIN sessions s ON s.id = i.session_id WHERE i.uid = ?1");
-        match c.query_row(&sql, [uid], row_json) {
-            Ok(v) => Ok(Some(v)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.to_string()),
-        }
+        let sql = format!(
+            "SELECT {ITEM_COLS}, NULL AS snippet FROM items i JOIN projects p ON p.id = i.project_id \
+             LEFT JOIN sessions s ON s.id = i.session_id WHERE i.uid = ?1"
+        );
+        Ok(self.rows(&sql, &[SqlValue::Text(uid.into())])?.into_iter().next())
     }
 
+    /// Capture sessions ("batches") with their project and how many of their items wait for review.
     pub fn sessions(&self, q: &SessionQuery) -> Result<Vec<Value>, String> {
-        if !self.exists() {
+        if !self.ready() {
             return Ok(vec![]);
         }
-        let c = self.conn()?;
-        let mut wh = vec!["1 = 1".to_string()];
+        let mut wh = vec!["s.legacy = 0".to_string()];
         let mut args: Vec<SqlValue> = vec![];
-        if let Some(w) = q.workspace.as_deref().filter(|w| !w.is_empty()) {
-            wh.push(if is_path(w) { "s.workspace_id = (SELECT id FROM workspaces WHERE path = ?)" } else { "s.workspace_id = ?" }.into());
-            args.push(SqlValue::Text(w.into()));
+        if let Some(pr) = q.project.as_deref().filter(|w| !w.is_empty()) {
+            wh.push(if is_path(pr) { "p.path = ?" } else { "s.project_id = ?" }.into());
+            args.push(SqlValue::Text(pr.into()));
         }
         match q.state.as_deref() {
-            Some("unprocessed") => wh.push("s.processed = 0".into()),
+            Some("to_review") => wh.push("s.processed = 1 AND s.processing = 0 AND s.reviewed = 0 AND s.item_count > 0".into()),
             Some("processing") => wh.push("s.processing = 1".into()),
-            Some("unreviewed") => wh.push("s.processed = 1 AND s.processing = 0 AND s.reviewed = 0".into()),
+            Some("unprocessed") => wh.push("s.processed = 0 AND s.processing = 0".into()),
             Some("reviewed") => wh.push("s.reviewed = 1".into()),
-            Some("inbox") => wh.push("(s.processed = 0 OR s.processing = 1 OR s.reviewed = 0)".into()),
             _ => {}
         }
         let limit = q.limit.unwrap_or(200).clamp(1, 5000);
-        let offset = q.offset.unwrap_or(0).max(0);
         let sql = format!(
-            "SELECT s.*, w.name AS workspace_name, w.path AS workspace_path, \
-             (SELECT COUNT(*) FROM items i WHERE i.session_id = s.id AND i.fix_state = 'fixed') AS fixed_count \
-             FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE {} ORDER BY s.created DESC LIMIT {limit} OFFSET {offset}",
+            "SELECT s.*, p.name AS project_name, p.key AS project_key, p.path AS project_path, \
+             (SELECT COUNT(*) FROM items i WHERE i.session_id = s.id AND i.status = 'draft') AS draft_count \
+             FROM sessions s JOIN projects p ON p.id = s.project_id WHERE {} ORDER BY s.created DESC LIMIT {limit}",
             wh.join(" AND ")
         );
-        let mut st = c.prepare(&sql).map_err(|e| e.to_string())?;
-        let rows = st
-            .query_map(params_from_iter(args.iter()), row_json)
-            .and_then(|r| r.collect::<Result<Vec<_>, _>>())
-            .map_err(|e| e.to_string())?;
-        Ok(rows)
+        self.rows(&sql, &args)
     }
 
-    pub fn workspaces(&self) -> Result<Vec<Value>, String> {
-        if !self.exists() {
-            return Ok(vec![]);
+    /// project id → {items, open_items, to_review, to_verify} over items that aren't deleted.
+    pub fn project_counts(&self) -> Result<HashMap<String, Value>, String> {
+        if !self.ready() {
+            return Ok(HashMap::new());
         }
-        let c = self.conn()?;
-        let sql = "SELECT w.*, \
-            (SELECT COUNT(*) FROM sessions s WHERE s.workspace_id = w.id) AS sessions, \
-            (SELECT COUNT(*) FROM items i JOIN sessions s ON s.id = i.session_id WHERE s.workspace_id = w.id \
-               AND i.status != 'deleted' AND (i.fix_state IS NULL OR i.fix_state IN ('fixing', 'reopened'))) AS open_items \
-            FROM workspaces w ORDER BY (w.kind = 'default') DESC, w.name COLLATE NOCASE";
-        let mut st = c.prepare(sql).map_err(|e| e.to_string())?;
-        let rows = st.query_map([], row_json).and_then(|r| r.collect::<Result<Vec<_>, _>>()).map_err(|e| e.to_string())?;
-        Ok(rows)
+        let rows = self.rows(
+            "SELECT project_id AS id, COUNT(*) AS items, \
+               SUM(work_state IN ('todo', 'handed_off', 'in_progress')) AS open_items, \
+               SUM(status = 'draft') AS to_review, SUM(work_state = 'to_verify') AS to_verify \
+             FROM items WHERE status != 'deleted' GROUP BY project_id",
+            &[],
+        )?;
+        Ok(rows.into_iter().filter_map(|r| Some((r.get("id")?.as_str()?.to_string(), r))).collect())
     }
 
-    /// Sidebar badges: all items, inbox sessions, items an agent is working on.
+    /// Sidebar / island / tray badges.
     pub fn summary(&self) -> Result<Value, String> {
-        if !self.exists() {
-            return Ok(json!({"missing": true, "items": 0, "inbox": 0, "fixing": 0, "sessions": 0}));
+        if !self.ready() {
+            return Ok(json!({"missing": true, "items": 0, "to_review": 0, "unassigned": 0, "in_progress": 0, "to_verify": 0, "batches": 0}));
         }
         let c = self.conn()?;
         let n = |sql: &str| -> Result<i64, String> { c.query_row(sql, [], |r| r.get(0)).map_err(|e| e.to_string()) };
+        let live = "FROM items WHERE status != 'deleted'";
         Ok(json!({
             "missing": false,
-            "items": n("SELECT COUNT(*) FROM items WHERE status != 'deleted'")?,
-            "sessions": n("SELECT COUNT(*) FROM sessions")?,
-            "inbox": n("SELECT COUNT(*) FROM sessions WHERE processed = 0 OR processing = 1 OR reviewed = 0")?,
-            "fixing": n("SELECT COUNT(*) FROM items WHERE fix_state = 'fixing'")?,
+            "items": n(&format!("SELECT COUNT(*) {live}"))?,
+            "to_review": n(&format!("SELECT COUNT(*) {live} AND status = 'draft'"))?,
+            "unassigned": n(&format!("SELECT COUNT(*) {live} AND project_id = 'inbox'"))?,
+            "in_progress": n(&format!("SELECT COUNT(*) {live} AND work_state IN ('handed_off', 'in_progress')"))?,
+            "to_verify": n(&format!("SELECT COUNT(*) {live} AND work_state = 'to_verify'"))?,
+            "batches": n("SELECT COUNT(*) FROM sessions WHERE legacy = 0 AND processed = 1 AND processing = 0 AND reviewed = 0 AND item_count > 0")?,
         }))
-    }
-
-    /// Dirs to watch / allow in the asset scope: every workspace's sessions root.
-    pub fn workspace_paths(&self) -> Vec<PathBuf> {
-        self.workspaces()
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|w| w.get("path").and_then(Value::as_str).map(PathBuf::from))
-            .collect()
     }
 }
 
@@ -299,28 +286,28 @@ impl Index {
 mod tests {
     use super::*;
 
-    const SCHEMA: &str = include_str!("../../../../docs/contracts/index-schema.sql");
+    const SCHEMA_SQL: &str = include_str!("../tests/index-v2.sql");
 
     fn fixture() -> (tempfile::TempDir, Index) {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("index.db");
         let c = Connection::open(&p).unwrap();
-        c.execute_batch(SCHEMA).unwrap();
+        c.execute_batch(SCHEMA_SQL).unwrap();
         c.execute_batch(
-            "INSERT INTO workspaces VALUES ('w1', '/r/my-saas', 'my-saas', 'repo', 1);
-             INSERT INTO workspaces VALUES ('w0', '/h/Blurt', 'Blurt', 'default', 1);
-             INSERT INTO sessions (id, workspace_id, dir, mode, title, created, item_count, processed, reviewed, indexed_at)
-               VALUES ('w1:s1', 'w1', '/r/my-saas/.blurt/sessions/s1', 'video', '登录页走查', 100, 3, 1, 0, 1);
-             INSERT INTO sessions (id, workspace_id, dir, mode, title, created, item_count, processed, reviewed, indexed_at)
-               VALUES ('w0:s2', 'w0', '/h/Blurt/recordings/s2', 'shots', 'shots', 200, 1, 1, 1, 1);
-             INSERT INTO items (uid, session_id, item_id, kind, title, quote, body, status, fix_state, updated)
-               VALUES ('u1', 'w1:s1', 'I-001', 'issue', '登录按钮点击无响应', '这个登录按钮点了没反应', '', 'draft', NULL, 10);
-             INSERT INTO items (uid, session_id, item_id, kind, title, quote, body, status, fix_state, updated)
-               VALUES ('u2', 'w1:s1', 'I-002', 'issue', '头像上传 500', '', 'POST /api/avatar 返回 500', 'confirmed', 'fixed', 30);
-             INSERT INTO items (uid, session_id, item_id, kind, title, quote, body, status, fix_state, updated)
-               VALUES ('u3', 'w1:s1', 'I-003', 'idea', '学 Linear 的空状态', '', '', 'deleted', NULL, 20);
-             INSERT INTO items (uid, session_id, item_id, kind, title, quote, body, status, fix_state, updated)
-               VALUES ('u4', 'w0:s2', 'I-001', 'note', '50% 的 under_score', '', '', 'draft', 'fixing', 40);",
+            "INSERT INTO projects VALUES ('p1', '/r/my-saas', '/r/my-saas/.blurt', 'my-saas', 'MS', 'my-saas', 'repo', 1, 1);
+             INSERT INTO projects VALUES ('inbox', '/h/Blurt/inbox', '/h/Blurt/inbox', 'Unassigned', 'IN', 'inbox', 'inbox', 1, 1);
+             INSERT INTO sessions (id, project_id, dir, mode, title, created, item_count, processed, reviewed, indexed_at)
+               VALUES ('p1:s1', 'p1', '/r/my-saas/.blurt/sessions/s1', 'video', '登录页走查', 100, 3, 1, 0, 1);
+             INSERT INTO sessions (id, project_id, dir, mode, title, created, item_count, processed, reviewed, indexed_at)
+               VALUES ('inbox:s2', 'inbox', '/h/Blurt/inbox/sessions/s2-shots', 'shots', 'shots', 200, 1, 1, 1, 1);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, work_state, created, updated)
+               VALUES ('u1', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-1.md', 'MS-1', 'issue', '登录按钮点击无响应', '这个登录按钮点了没反应', '', 'draft', 'todo', 1, 10);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, work_state, work_agent, created, updated)
+               VALUES ('u2', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-2.md', 'MS-2', 'issue', '头像上传 500', '', 'POST /api/avatar 返回 500', 'confirmed', 'to_verify', 'claude', 2, 30);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, created, updated)
+               VALUES ('u3', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-3.md', 'MS-3', 'idea', '学 Linear 的空状态', '', '', 'deleted', 3, 20);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, work_state, created, updated)
+               VALUES ('u4', 'inbox', 'inbox:s2', '/h/Blurt/inbox/items/IN-1.md', 'IN-1', 'note', '50% 的 under_score', '', '', 'draft', 'in_progress', 4, 40);",
         )
         .unwrap();
         drop(c);
@@ -337,16 +324,17 @@ mod tests {
         let all = ix.items(&ItemQuery::default()).unwrap();
         assert_eq!(all.total, 3); // deleted hidden
         assert_eq!(uids(&all), ["u4", "u2", "u1"]); // updated DESC
-        assert_eq!(all.items[0]["session_dir"], "/h/Blurt/recordings/s2");
+        assert_eq!(all.items[0]["project_key"], "IN");
+        assert_eq!(all.items[0]["session_dir"], "/h/Blurt/inbox/sessions/s2-shots");
         let q = ItemQuery { status: vec!["deleted".into()], ..Default::default() };
         assert_eq!(uids(&ix.items(&q).unwrap()), ["u3"]);
-        let q = ItemQuery { fix_state: vec!["none".into()], ..Default::default() };
-        assert_eq!(uids(&ix.items(&q).unwrap()), ["u1"]);
-        let q = ItemQuery { fix_state: vec!["none".into(), "fixed".into()], kind: vec!["issue".into()], ..Default::default() };
+        let q = ItemQuery { work: vec!["todo".into(), "to_verify".into()], kind: vec!["issue".into()], ..Default::default() };
         assert_eq!(uids(&ix.items(&q).unwrap()), ["u2", "u1"]);
-        let q = ItemQuery { workspace: Some("/h/Blurt".into()), ..Default::default() };
+        let q = ItemQuery { project: Some("inbox".into()), ..Default::default() };
         assert_eq!(uids(&ix.items(&q).unwrap()), ["u4"]);
-        let q = ItemQuery { session: Some("w1:s1".into()), limit: Some(1), offset: Some(1), ..Default::default() };
+        let q = ItemQuery { project: Some("/r/my-saas".into()), sort: Some("created".into()), ..Default::default() };
+        assert_eq!(uids(&ix.items(&q).unwrap()), ["u2", "u1"]);
+        let q = ItemQuery { session: Some("p1:s1".into()), limit: Some(1), offset: Some(1), ..Default::default() };
         let p = ix.items(&q).unwrap();
         assert_eq!((p.total, uids(&p)), (2, vec!["u1".to_string()]));
     }
@@ -360,32 +348,33 @@ mod tests {
         assert!(p.items[0]["snippet"].as_str().unwrap().contains("[登录按]"));
         assert_eq!(uids(&ix.items(&q("登录")).unwrap()), ["u1"]); // 2 chars: LIKE
         assert_eq!(uids(&ix.items(&q("avatar")).unwrap()), ["u2"]); // body
-        assert_eq!(uids(&ix.items(&q("登录 按钮")).unwrap()), ["u1"]); // AND of two short terms
-        assert_eq!(uids(&ix.items(&q("登录按 avatar")).unwrap()), Vec::<String>::new());
+        assert_eq!(uids(&ix.items(&q("登录 按钮")).unwrap()), ["u1"]);
         assert_eq!(uids(&ix.items(&q("%")).unwrap()), ["u4"]); // escaped
-        assert_eq!(uids(&ix.items(&q("_")).unwrap()), ["u4"]);
         assert_eq!(uids(&ix.items(&q("\"quoted")).unwrap()), Vec::<String>::new()); // no FTS syntax error
     }
 
     #[test]
-    fn sessions_workspaces_summary() {
+    fn sessions_counts_summary() {
         let (_d, ix) = fixture();
-        let ws = ix.workspaces().unwrap();
-        assert_eq!(ws[0]["kind"], "default");
-        assert_eq!(ws[1]["open_items"], 1); // u1 open, u2 fixed, u3 deleted
-        let inbox = ix.sessions(&SessionQuery { state: Some("inbox".into()), ..Default::default() }).unwrap();
-        assert_eq!(inbox.len(), 1);
-        assert_eq!(inbox[0]["workspace_name"], "my-saas");
-        let s = ix.summary().unwrap();
-        assert_eq!((s["items"].as_i64(), s["inbox"].as_i64(), s["fixing"].as_i64()), (Some(3), Some(1), Some(1)));
-        assert_eq!(ix.item("u2").unwrap().unwrap()["item_id"], "I-002");
+        let s = ix.sessions(&SessionQuery { state: Some("to_review".into()), ..Default::default() }).unwrap();
+        assert_eq!(s.len(), 1);
+        assert_eq!((s[0]["project_name"].as_str(), s[0]["draft_count"].as_i64()), (Some("my-saas"), Some(1)));
+        let c = ix.project_counts().unwrap();
+        assert_eq!((c["p1"]["open_items"].as_i64(), c["p1"]["to_review"].as_i64(), c["p1"]["to_verify"].as_i64()), (Some(1), Some(1), Some(1)));
+        let sm = ix.summary().unwrap();
+        assert_eq!((sm["items"].as_i64(), sm["to_review"].as_i64(), sm["unassigned"].as_i64()), (Some(3), Some(2), Some(1)));
+        assert_eq!((sm["in_progress"].as_i64(), sm["to_verify"].as_i64(), sm["batches"].as_i64()), (Some(1), Some(1), Some(1)));
+        assert_eq!(ix.item("u2").unwrap().unwrap()["work_agent"], "claude");
         assert!(ix.item("nope").unwrap().is_none());
     }
 
     #[test]
-    fn missing_db_is_not_an_error() {
+    fn missing_or_old_db_reads_as_missing() {
         let ix = Index::new(PathBuf::from("/nonexistent/index.db"));
         assert!(ix.items(&ItemQuery::default()).unwrap().missing);
-        assert!(ix.sessions(&SessionQuery::default()).unwrap().is_empty());
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("index.db");
+        Connection::open(&p).unwrap().execute_batch("CREATE TABLE meta (key TEXT, value TEXT); INSERT INTO meta VALUES ('schema_version', '1');").unwrap();
+        assert!(Index::new(p).items(&ItemQuery::default()).unwrap().missing);
     }
 }

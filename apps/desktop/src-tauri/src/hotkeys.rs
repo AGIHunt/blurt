@@ -18,9 +18,10 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 
 use crate::settings;
 
-pub const ACTIONS: [&str; 7] = ["record", "menu", "pause", "snap", "marker", "pen", "stop"];
+/// `_common.HOTKEY_ACTIONS` (K7 adds `voice` — a voice note — and `project` — the project switcher).
+pub const ACTIONS: [&str; 9] = ["record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project"];
 /// Registered whenever the app runs; the others only while recording (they'd steal keys from other apps otherwise).
-pub const RESIDENT: [&str; 3] = ["record", "menu", "snap"];
+pub const RESIDENT: [&str; 5] = ["record", "menu", "snap", "voice", "project"];
 
 fn default_key(a: &str) -> &'static str {
     match a {
@@ -30,6 +31,8 @@ fn default_key(a: &str) -> &'static str {
         "snap" => "A",
         "marker" => "M",
         "pen" => "D",
+        "voice" => "V",
+        "project" => "O",
         _ => "S",
     }
 }
@@ -436,22 +439,25 @@ pub fn set(app: &AppHandle, action: &str, combo: &str) -> Value {
     let mut out = json!({"result": "ok", "spec": spec, "label": parsed.as_ref().map(Combo::label).unwrap_or_default()});
     if is_wayland() {
         out["result"] = json!("ok");
-        out["hint"] = json!(wayland_hint(action));
+        out["hint_url"] = json!(wayland_url(action));
     }
     out["row"] = row;
     out
 }
 
-pub fn wayland_hint(action: &str) -> String {
-    let url = match action {
+/// Wayland without the portal: the deep link a system shortcut can run instead (`blurt <url>`); the settings page
+/// words the hint in the UI language.
+pub fn wayland_url(action: &str) -> &'static str {
+    match action {
         "menu" => "blurt://open",
         "snap" => "blurt://snap",
         "pause" => "blurt://pause",
         "stop" => "blurt://stop",
         "marker" => "blurt://marker",
+        "voice" => "blurt://voice",
+        "project" => "blurt://project",
         _ => "blurt://record",
-    };
-    format!("Wayland: change it in Settings → Keyboard → Shortcuts (Blurt), or add a custom shortcut with the command `blurt {url}`")
+    }
 }
 
 pub fn fire(app: &AppHandle, action: &str) {
@@ -473,6 +479,8 @@ mod portal {
             "pause" => "Pause / resume",
             "marker" => "Marker",
             "stop" => "Finish recording",
+            "voice" => "Voice note",
+            "project" => "Switch project",
             _ => "Pen",
         }
     }
@@ -523,7 +531,7 @@ mod portal {
                 for (a, r) in st.iter_mut() {
                     if r["result"] == "pending" {
                         r["result"] = json!("manual");
-                        r["hint"] = json!(wayland_hint(a));
+                        r["hint_url"] = json!(wayland_url(a));
                     }
                 }
                 drop(st);

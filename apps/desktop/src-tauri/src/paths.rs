@@ -1,6 +1,7 @@
-//! Where things live. Same rules as `_common.py` / the macOS app: `$BLURT_HOME` (default `~/.blurt`) holds
-//! `config.json` and `index.db`; `$BLURT_WORKSPACE` (default `~/Blurt`) is the default workspace whose sessions are in
-//! `recordings/`; a repo workspace keeps its sessions in `<repo>/.blurt/sessions`.
+//! Where things live (v0.7 contract K1 / K2 / K4 / K6), the same rules as `_common.py` and the macOS app:
+//! `$BLURT_HOME` (default `~/.blurt`) holds `config.json`, `projects.json`, `index.db`, `jobs/` and `handoff/`; every
+//! project folder keeps its items and sessions in a store, `<project>/.blurt/`; unassigned captures live in the inbox
+//! store, `$BLURT_WORKSPACE/inbox/` (default `~/Blurt/inbox/`).
 
 use std::path::{Path, PathBuf};
 
@@ -27,6 +28,19 @@ pub fn config_file() -> PathBuf {
     blurt_home().join("config.json")
 }
 
+/// The project registry (K2), written only by `projects.py`.
+pub fn projects_file() -> PathBuf {
+    blurt_home().join("projects.json")
+}
+
+pub fn jobs_dir() -> PathBuf {
+    blurt_home().join("jobs")
+}
+
+pub fn handoff_dir() -> PathBuf {
+    blurt_home().join("handoff")
+}
+
 pub fn default_workspace() -> PathBuf {
     std::env::var_os("BLURT_WORKSPACE")
         .filter(|h| !h.is_empty())
@@ -34,30 +48,38 @@ pub fn default_workspace() -> PathBuf {
         .unwrap_or_else(|| home().join("Blurt"))
 }
 
-/// The directory that holds a workspace's session dirs.
-pub fn sessions_root(workspace: &Path) -> PathBuf {
-    if workspace == default_workspace() {
-        workspace.join("recordings")
-    } else {
-        workspace.join(".blurt").join("sessions")
-    }
+/// The store of unassigned items (K1): `$BLURT_WORKSPACE/inbox`.
+pub fn inbox_store() -> PathBuf {
+    default_workspace().join("inbox")
 }
 
-/// `<repo>/.blurt/sessions/<ts>` → `<repo>`; `~/Blurt/recordings/<ts>` → None (not a repo: nothing to fix in).
-pub fn repo_of_session(session: &Path) -> Option<PathBuf> {
-    let sessions = session.parent()?;
-    let dot = sessions.parent()?;
-    if sessions.file_name()? == "sessions" && dot.file_name()? == ".blurt" {
-        return dot.parent().map(Path::to_path_buf);
+/// Sessions recorded before v0.7; `items.py migrate --all` (run at startup) moves their items into the inbox store.
+pub fn legacy_recordings() -> PathBuf {
+    default_workspace().join("recordings")
+}
+
+/// A project's store: `<project>/.blurt`; the inbox store is its own folder.
+pub fn store_of(project_path: &Path) -> PathBuf {
+    if project_path == inbox_store() {
+        return project_path.to_path_buf();
     }
-    None
+    project_path.join(".blurt")
+}
+
+/// `<store>/sessions/<ts>` → `<store>`.
+pub fn store_of_session(session: &Path) -> Option<PathBuf> {
+    let sessions = session.parent()?;
+    if sessions.file_name()? != "sessions" {
+        return None;
+    }
+    sessions.parent().map(Path::to_path_buf)
 }
 
 fn first_existing(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     cands.into_iter().find(|p| p.exists())
 }
 
-/// The skill's scripts (items.py, index.py, agents.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
+/// The skill's scripts (items.py, projects.py, sessions.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
 /// the repo checkout (dev builds) → the installed skill.
 pub fn scripts_dir(app: &AppHandle) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = Vec::new();
@@ -116,10 +138,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn repo_of_session_works() {
+    fn stores() {
         let s = Path::new("/r/my-saas/.blurt/sessions/20261021-101500");
-        assert_eq!(repo_of_session(s), Some(PathBuf::from("/r/my-saas")));
-        assert_eq!(repo_of_session(Path::new("/h/Blurt/recordings/20261021-101500")), None);
+        assert_eq!(store_of_session(s), Some(PathBuf::from("/r/my-saas/.blurt")));
+        assert_eq!(store_of_session(Path::new("/h/Blurt/inbox/sessions/x")), Some(PathBuf::from("/h/Blurt/inbox")));
+        assert_eq!(store_of_session(Path::new("/h/Blurt/recordings/x")), None);
+        assert_eq!(store_of(Path::new("/r/my-saas")), PathBuf::from("/r/my-saas/.blurt"));
     }
 
     #[test]

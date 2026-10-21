@@ -1,14 +1,16 @@
-//! Overlay windows (Tauri 2) drawn by `web/apps/overlays`: region picker, recording HUD, perch (鸡舍), note bubble.
+//! Overlay windows (Tauri 2) drawn by `web/apps/overlays`: the region picker, the island (the top-centre pill of
+//! v0.7 contract K7 with the claw-held cards under it) and the note bubble.
 //!
 //! Every overlay is transparent, undecorated, always on top, on all workspaces, out of the taskbar and
 //! content-protected — Windows: `WDA_EXCLUDEFROMCAPTURE` (tao), so gdigrab / the recording never sees it; Linux X11
-//! has no equivalent, so the HUD is placed outside the recorded area. The HUD and the perch never take focus
-//! (Windows `WS_EX_NOACTIVATE`, GTK `accept-focus = false`); the picker and the note bubble do (keyboard).
+//! has no equivalent, so the host moves the island out of the recorded area ([`Island::place`]). The island never
+//! takes focus (Windows `WS_EX_NOACTIVATE`, GTK `accept-focus = false`) except while its project switcher wants the
+//! keyboard ([`Island::set_keyboard`]); the picker and the note bubble do.
 //!
-//! # What the host app provides (WP7)
+//! # What the host app provides
 //! * the overlay pages at `<frontendDist>/overlays/*.html` (build `web/apps/overlays`; [`OverlayConfig::base`]);
 //! * a capability that lets windows `blurt-overlay-*` use `core:default` (events), and the asset protocol
-//!   (`app.security.assetProtocol.enable` with the sessions in its scope) for shot thumbnails;
+//!   (`app.security.assetProtocol.enable` with the stores in its scope) for card thumbnails;
 //! * on macOS only (smoke tests): `macOSPrivateApi` for transparency.
 //!
 //! Call these from async commands or other threads, never the main thread: [`pick_region`] blocks until the user
@@ -17,20 +19,17 @@
 //! # Events (the overlay host protocol; `web/apps/overlays/src/host.ts` has the same names)
 //! | event | direction | payload |
 //! |---|---|---|
-//! | `blurt://status` | Rust → HUD | a C8 status line as-is |
-//! | `blurt://action` | overlay → Rust | `{label, action, n?}` (HUD: pause/resume/snap/stop/discard; perch: copy/remove/process/clear/note) |
+//! | `blurt://island` | Rust → island | an island op (`state`, `cards`, `card`, `pull`, `toast`, `switcher`, `peek`, `level`) |
+//! | `blurt://action` | overlay → Rust | `{label, action, …}` (island: record / snap / voice / pause / … / `card.assign` …) |
 //! | `blurt://picked` | picker → Rust | `{label, rect: {x,y,w,h} \| null}` in the window's CSS px |
-//! | `blurt://hit-rects` | perch → Rust | `{label, rects: [{x,y,w,h}]}` where it takes the mouse |
-//! | `blurt://perch` | Rust → perch | `{op: set\|add\|remove\|show\|hide\|busy, …}` |
+//! | `blurt://hit-rects` | island → Rust | `{label, rects: [{x,y,w,h}]}` where it takes the mouse |
 //! | `blurt://note-done` | note → Rust | `{label, n, text \| null}` |
 //! | `blurt://ready` | overlay → Rust | `{label, kind}` once it listens |
 //!
-//! Initial parameters (`lang`, `platform`, `n`, `src`, `text`, `last`, `mic`) reach a page through an
-//! initialization script (`window.__BLURT_OVERLAY_PARAMS__`), the same keys as the browser preview's query string.
+//! Initial parameters (`lang`, `platform`, `n`, `src`, `text`, `last`) reach a page through an initialization script
+//! (`window.__BLURT_OVERLAY_PARAMS__`), the same keys as the browser preview's query string.
 
-use crate::engine::{self, CaptureError, CaptureHandle, CaptureOptions, Mic};
 use crate::region::{CssRect, Region};
-use crate::status::StatusEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -45,11 +44,10 @@ use tauri::{
 };
 
 pub mod ev {
-    pub const STATUS: &str = "blurt://status";
+    pub const ISLAND: &str = "blurt://island";
     pub const ACTION: &str = "blurt://action";
     pub const PICKED: &str = "blurt://picked";
     pub const HIT_RECTS: &str = "blurt://hit-rects";
-    pub const PERCH: &str = "blurt://perch";
     pub const NOTE_DONE: &str = "blurt://note-done";
     pub const READY: &str = "blurt://ready";
 }
@@ -57,8 +55,7 @@ pub mod ev {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Picker,
-    Hud,
-    Perch,
+    Island,
     Note,
 }
 
@@ -66,8 +63,7 @@ impl Kind {
     pub fn page(self) -> &'static str {
         match self {
             Kind::Picker => "picker.html",
-            Kind::Hud => "hud.html",
-            Kind::Perch => "perch.html",
+            Kind::Island => "island.html",
             Kind::Note => "note.html",
         }
     }
@@ -76,8 +72,7 @@ impl Kind {
     pub fn label(self) -> &'static str {
         match self {
             Kind::Picker => "blurt-overlay-picker",
-            Kind::Hud => "blurt-overlay-hud",
-            Kind::Perch => "blurt-overlay-perch",
+            Kind::Island => "blurt-overlay-island",
             Kind::Note => "blurt-overlay-note",
         }
     }
@@ -91,7 +86,7 @@ impl Kind {
 pub struct OverlayConfig {
     /// Path of the overlay pages inside the app's frontendDist (default `overlays/`).
     pub base: String,
-    /// `zh` / `en`; default: the page follows the system language.
+    /// `en` / `zh-Hans`; default: the page follows the system language.
     pub lang: Option<String>,
     /// `win` / `gnome` token set; default: from the user agent.
     pub platform: Option<String>,
@@ -111,22 +106,44 @@ impl Default for OverlayConfig {
     }
 }
 
-/// A shot hanging on the perch / shown in the note bubble.
+/// A capture held by the claw under the island (K7: a snap with its note, or a voice note, not yet in a project).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Card {
+    /// `n` in the batch's shots.jsonl
     pub n: u32,
-    /// Loadable URL (see [`file_src`]).
+    /// Loadable URL of the thumbnail (see [`file_src`]); empty for a voice note.
     pub src: String,
     #[serde(default)]
     pub text: Option<String>,
     /// Session-relative file (`shots/003.png`).
     #[serde(default)]
     pub file: Option<String>,
+    /// `shot` | `voice`
+    #[serde(default = "shot")]
+    pub kind: String,
+    /// The batch (session dir) it belongs to.
+    #[serde(default)]
+    pub session: Option<String>,
+}
+
+fn shot() -> String {
+    "shot".into()
 }
 
 impl Card {
     pub fn from_shot(session: &Path, n: u32, file: &str, text: Option<String>) -> Self {
-        Card { n, src: file_src(&session.join(file)), text, file: Some(file.to_string()) }
+        Card {
+            n,
+            src: file_src(&session.join(file)),
+            text,
+            file: Some(file.to_string()),
+            kind: shot(),
+            session: Some(session.to_string_lossy().into_owned()),
+        }
+    }
+
+    pub fn voice(session: &Path, n: u32, text: Option<String>) -> Self {
+        Card { n, src: String::new(), text, file: None, kind: "voice".into(), session: Some(session.to_string_lossy().into_owned()) }
     }
 }
 
@@ -250,10 +267,7 @@ pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Op
     let mut params = BTreeMap::new();
     if let Some(l) = last.and_then(|l| l.intersect(&mr)) {
         let css = |v: i32| format!("{:.0}", v as f64 / scale);
-        params.insert(
-            "last",
-            [css(l.x - mr.x), css(l.y - mr.y), css(l.w as i32), css(l.h as i32)].join(","),
-        );
+        params.insert("last", [css(l.x - mr.x), css(l.y - mr.y), css(l.w as i32), css(l.h as i32)].join(","));
     }
     let (tx, rx) = mpsc::channel::<Option<CssRect>>();
     let tx2 = tx.clone();
@@ -284,49 +298,40 @@ pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Op
         .filter(|r| !r.is_empty()))
 }
 
-// ------------------------------------------------------------------------------------------------ HUD
+// ------------------------------------------------------------------------------------------------ island
 
-const HUD_SIZE: (f64, f64) = (420.0, 56.0); // logical px
+/// The island window: the full width of the monitor's work area along its top, this tall (logical px) — room for
+/// the expanded island (≤ 420), the cards hanging under it and their swing. Click-through except over what is drawn.
+pub const ISLAND_H: f64 = 600.0;
+/// K7: on a screen without a notch the pill hides when idle; the pointer resting 250 ms in the top-middle 320×8 zone
+/// brings it out.
+const PEEK: (f64, f64, Duration) = (320.0, 8.0, Duration::from_millis(250));
+/// Ops the page needs again after a reload (sent on `ready`).
+const STICKY: [&str; 2] = ["state", "cards"];
 
-/// The recording bar, placed outside `region` when the monitor has room (else inside along its bottom edge).
-pub fn hud<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, region: Option<Region>, mic: bool) -> tauri::Result<WebviewWindow<R>> {
-    let mon = region.as_ref().and_then(|r| monitor_containing(app, r)).or_else(|| monitor_at_cursor(app));
-    let (mr, scale) = mon.as_ref().map(|m| (monitor_region(m), m.scale_factor())).unwrap_or((Region::new(0, 0, 1920, 1080), 1.0));
-    let size = ((HUD_SIZE.0 * scale).round() as u32, (HUD_SIZE.1 * scale).round() as u32);
-    let area = region.unwrap_or(mr);
-    let (x, y) = area.place_outside(size, &mr, (8.0 * scale) as i32);
-    let mut params = BTreeMap::new();
-    params.insert("mic", if mic { "1" } else { "0" }.to_string());
-    open(app, Kind::Hud, cfg, Region::new(x, y, size.0, size.1), params)
-}
-
-// ------------------------------------------------------------------------------------------------ perch
-
-const PERCH_H: f64 = 230.0; // logical px
-const PEEK: (f64, f64, Duration) = (200.0, 4.0, Duration::from_millis(250)); // top-middle zone that reveals it
-
-/// The perch window: full monitor width at the top, click-through except over what it draws.
-pub struct Perch<R: Runtime> {
+pub struct Island<R: Runtime> {
     app: AppHandle<R>,
     window: WebviewWindow<R>,
-    cards: Arc<Mutex<Vec<Card>>>,
-    listeners: Vec<EventId>,
+    sticky: Arc<Mutex<BTreeMap<String, Value>>>,
+    listeners: Mutex<Vec<EventId>>,
     alive: Arc<AtomicBool>,
+    at: Arc<Mutex<(Region, f64)>>,
 }
 
-pub fn perch<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Result<Arc<Perch<R>>> {
-    let mon = monitor_at_cursor(app);
-    let (wa, scale) = mon
-        .as_ref()
-        .map(|m| {
-            let a = m.work_area();
-            (Region::new(a.position.x, a.position.y, a.size.width, a.size.height), m.scale_factor())
-        })
-        .unwrap_or((Region::new(0, 0, 1920, 1080), 1.0));
-    let at = Region::new(wa.x, wa.y, wa.w, (PERCH_H * scale).round() as u32);
+fn island_rect(m: Option<&Monitor>) -> (Region, f64) {
+    m.map(|m| {
+        let a = m.work_area();
+        let s = m.scale_factor();
+        (Region::new(a.position.x, a.position.y, a.size.width, (ISLAND_H * s).round() as u32), s)
+    })
+    .unwrap_or((Region::new(0, 0, 1920, ISLAND_H as u32), 1.0))
+}
+
+pub fn island<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Result<Arc<Island<R>>> {
+    let (at, scale) = island_rect(monitor_at_cursor(app).as_ref());
     let rects: Arc<Mutex<Vec<CssRect>>> = Arc::default();
-    let cards: Arc<Mutex<Vec<Card>>> = Arc::default();
-    let label = Kind::Perch.label();
+    let sticky: Arc<Mutex<BTreeMap<String, Value>>> = Arc::default();
+    let label = Kind::Island.label();
     let mut listeners = Vec::new();
     let r2 = rects.clone();
     listeners.push(listen_from(app, ev::HIT_RECTS, label, move |v| {
@@ -334,16 +339,13 @@ pub fn perch<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Resu
             *r2.lock().unwrap() = r;
         }
     }));
-    let (app2, c2) = (app.clone(), cards.clone());
+    let (app2, s2) = (app.clone(), sticky.clone());
     listeners.push(listen_from(app, ev::READY, label, move |_| {
-        let cards = c2.lock().unwrap().clone();
-        let show = !cards.is_empty();
-        let _ = app2.emit_to(label, ev::PERCH, json!({"op": "set", "cards": cards}));
-        if show {
-            let _ = app2.emit_to(label, ev::PERCH, json!({"op": "show", "hold": 3000}));
+        for op in s2.lock().unwrap().values() {
+            let _ = app2.emit_to(label, ev::ISLAND, op.clone());
         }
     }));
-    let window = open(app, Kind::Perch, cfg, at, BTreeMap::new())?;
+    let window = open(app, Kind::Island, cfg, at, BTreeMap::new())?;
     let _ = window.set_ignore_cursor_events(true);
     let alive = Arc::new(AtomicBool::new(true));
     let a2 = alive.clone();
@@ -352,18 +354,18 @@ pub fn perch<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Resu
             a2.store(false, Ordering::SeqCst);
         }
     });
-    spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at, scale);
-    Ok(Arc::new(Perch { app: app.clone(), window, cards, listeners, alive }))
+    let at = Arc::new(Mutex::new((at, scale)));
+    spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at.clone());
+    Ok(Arc::new(Island { app: app.clone(), window, sticky, listeners: Mutex::new(listeners), alive, at }))
 }
 
-/// ~30 Hz: take the mouse only over the drawn rects; a pointer resting in the top-middle zone reveals the perch.
+/// ~30 Hz: take the mouse only over the drawn rects; a pointer resting in the top-middle zone reveals the island.
 fn spawn_hit_tester<R: Runtime>(
     app: AppHandle<R>,
     w: WebviewWindow<R>,
     rects: Arc<Mutex<Vec<CssRect>>>,
     alive: Arc<AtomicBool>,
-    at: Region,
-    scale: f64,
+    at: Arc<Mutex<(Region, f64)>>,
 ) {
     thread::spawn(move || {
         let mut ignoring = true;
@@ -371,7 +373,8 @@ fn spawn_hit_tester<R: Runtime>(
         while alive.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(33));
             let Ok(p) = app.cursor_position() else { continue };
-            let origin = w.inner_position().map(|o| (o.x, o.y)).unwrap_or((at.x, at.y));
+            let (region, scale) = *at.lock().unwrap();
+            let origin = w.inner_position().map(|o| (o.x, o.y)).unwrap_or((region.x, region.y));
             let s = w.scale_factor().unwrap_or(scale);
             let (cx, cy) = ((p.x - origin.0 as f64) / s, (p.y - origin.1 as f64) / s);
             let over = rects.lock().unwrap().iter().any(|r| cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h);
@@ -379,12 +382,12 @@ fn spawn_hit_tester<R: Runtime>(
                 ignoring = !over;
                 let _ = w.set_ignore_cursor_events(ignoring);
             }
-            let mid = at.w as f64 / s / 2.0;
+            let mid = region.w as f64 / s / 2.0;
             let in_peek = (cx - mid).abs() < PEEK.0 / 2.0 && (0.0..PEEK.1).contains(&cy);
             match (in_peek, peek_since) {
                 (true, None) => peek_since = Some(Instant::now()),
                 (true, Some(t)) if t.elapsed() >= PEEK.2 => {
-                    let _ = app.emit_to(Kind::Perch.label(), ev::PERCH, json!({"op": "show", "hold": 3000}));
+                    let _ = app.emit_to(Kind::Island.label(), ev::ISLAND, json!({"op": "peek"}));
                     peek_since = Some(Instant::now() + Duration::from_secs(3600)); // once per visit
                 }
                 (false, _) => peek_since = None,
@@ -394,60 +397,69 @@ fn spawn_hit_tester<R: Runtime>(
     });
 }
 
-impl<R: Runtime> Perch<R> {
+impl<R: Runtime> Island<R> {
     pub fn window(&self) -> &WebviewWindow<R> {
         &self.window
     }
 
-    fn op(&self, v: Value) {
-        let _ = self.app.emit_to(Kind::Perch.label(), ev::PERCH, v);
+    pub fn alive(&self) -> bool {
+        self.alive.load(Ordering::SeqCst)
     }
 
-    /// Hangs a shot (or updates its note) and shows the perch for 3 s.
-    pub fn add(&self, card: Card) {
-        {
-            let mut c = self.cards.lock().unwrap();
-            c.retain(|x| x.n != card.n);
-            c.push(card.clone());
+    /// Sends one op to the page; `state` and `cards` are also kept for a page that (re)loads later.
+    pub fn send(&self, op: Value) {
+        if let Some(name) = op.get("op").and_then(Value::as_str).filter(|n| STICKY.contains(n)) {
+            self.sticky.lock().unwrap().insert(name.to_string(), op.clone());
         }
-        self.op(json!({"op": "add", "card": card}));
+        let _ = self.app.emit_to(Kind::Island.label(), ev::ISLAND, op);
     }
 
-    pub fn remove(&self, n: u32) {
-        self.cards.lock().unwrap().retain(|x| x.n != n);
-        self.op(json!({"op": "remove", "n": n}));
+    /// Island actions: `{action, …}` as the page sent them (the label is checked already).
+    pub fn on_action(&self, f: impl Fn(Value) + Send + 'static) {
+        let id = listen_from(&self.app, ev::ACTION, Kind::Island.label(), f);
+        self.listeners.lock().unwrap().push(id);
     }
 
-    pub fn cards(&self) -> Vec<Card> {
-        self.cards.lock().unwrap().clone()
+    /// The project switcher takes the keyboard (↑↓ ↩ Esc, typing filters); otherwise the island never takes focus.
+    pub fn set_keyboard(&self, on: bool) {
+        let _ = self.window.set_focusable(on);
+        if on {
+            let _ = self.window.set_ignore_cursor_events(false);
+            let _ = self.window.set_focus();
+        }
     }
 
-    /// `hold_ms` = 0: stays until [`Perch::hide`].
-    pub fn show(&self, hold_ms: u32) {
-        self.op(json!({"op": "show", "hold": hold_ms}));
+    /// Move to the monitor under the pointer when it is another one (K7: the island shows where you are).
+    pub fn follow_cursor(&self) {
+        let (at, scale) = island_rect(monitor_at_cursor(&self.app).as_ref());
+        let mut cur = self.at.lock().unwrap();
+        if cur.0 != at {
+            *cur = (at, scale);
+            let _ = self.window.set_position(PhysicalPosition::new(at.x, at.y));
+            let _ = self.window.set_size(PhysicalSize::new(at.w, at.h));
+        }
     }
 
-    pub fn hide(&self) {
-        self.op(json!({"op": "hide"}));
+    /// Put the window's top edge at `y` (physical px) on its monitor — Linux keeps it out of a recorded area this
+    /// way, as X11 has no capture exclusion. `None` = back at the top of the work area.
+    pub fn place(&self, y: Option<i32>) {
+        let (mut at, scale) = island_rect(monitor_at_cursor(&self.app).as_ref());
+        if let Some(y) = y {
+            at.y = y;
+        }
+        *self.at.lock().unwrap() = (at, scale);
+        let _ = self.window.set_position(PhysicalPosition::new(at.x, at.y));
     }
 
-    /// The nest of wobbling eggs while an agent processes the batch.
-    pub fn busy(&self, on: bool, label: Option<&str>) {
-        self.op(json!({"op": "busy", "on": on, "label": label}));
-    }
-
-    /// Perch actions (`copy` / `remove` / `process` / `clear` / `note`, with `n` where it applies).
-    pub fn on_action(&self, f: impl Fn(&str, Option<u32>) + Send + 'static) -> EventId {
-        listen_from(&self.app, ev::ACTION, Kind::Perch.label(), move |v| {
-            let n = v.get("n").and_then(Value::as_u64).map(|n| n as u32);
-            f(v["action"].as_str().unwrap_or(""), n)
-        })
+    /// The island's area on the desktop (physical px).
+    pub fn rect(&self) -> Region {
+        self.at.lock().unwrap().0
     }
 }
 
-impl<R: Runtime> Drop for Perch<R> {
+impl<R: Runtime> Drop for Island<R> {
     fn drop(&mut self) {
-        for id in self.listeners.drain(..) {
+        for id in self.listeners.lock().unwrap().drain(..) {
             self.app.unlisten(id);
         }
         self.alive.store(false, Ordering::SeqCst);
@@ -459,8 +471,8 @@ impl<R: Runtime> Drop for Perch<R> {
 
 const NOTE_SIZE: (f64, f64) = (440.0, 360.0);
 
-/// The note bubble for a shot, centred under `near` (e.g. the card on the perch) or near the top of the screen.
-/// `on_done` gets the text, or `None` when skipped / closed.
+/// The note bubble for a capture, centred under `near` or under the island. `on_done` gets the text, or `None` when
+/// skipped / closed.
 pub fn note<R: Runtime>(
     app: &AppHandle<R>,
     cfg: &OverlayConfig,
@@ -471,7 +483,7 @@ pub fn note<R: Runtime>(
     let mon = monitor_at_cursor(app);
     let (mr, scale) = mon.as_ref().map(|m| (monitor_region(m), m.scale_factor())).unwrap_or((Region::new(0, 0, 1920, 1080), 1.0));
     let size = ((NOTE_SIZE.0 * scale).round() as u32, (NOTE_SIZE.1 * scale).round() as u32);
-    let anchor = near.unwrap_or(Region::new(mr.x + mr.w as i32 / 2 - 1, mr.y + (PERCH_H * scale) as i32, 2, 2));
+    let anchor = near.unwrap_or(Region::new(mr.x + mr.w as i32 / 2 - 1, mr.y + (56.0 * scale) as i32, 2, 2));
     let (x, y) = anchor.place_outside(size, &mr, 0);
     let mut params = BTreeMap::new();
     params.insert("n", card.n.to_string());
@@ -507,76 +519,6 @@ pub fn note<R: Runtime>(
     Ok(w)
 }
 
-// ------------------------------------------------------------------------------------------------ a take
-
-/// A take with its HUD: status lines go to the HUD (and snaps onto the perch, if given), HUD buttons control the
-/// recorder, the HUD closes after the final line, then `on_done` gets that line.
-pub fn record<R: Runtime>(
-    app: &AppHandle<R>,
-    cfg: &OverlayConfig,
-    opts: CaptureOptions,
-    perch: Option<Arc<Perch<R>>>,
-    on_done: impl FnOnce(Result<StatusEvent, CaptureError>) + Send + 'static,
-) -> Result<Arc<Mutex<CaptureHandle>>, CaptureError> {
-    let hud_label = Kind::Hud.label();
-    std::fs::create_dir_all(&opts.session)?;
-    let session = std::fs::canonicalize(&opts.session)?;
-    // lines that arrive before the HUD page listens are replayed when it says ready
-    let seen: Arc<Mutex<Vec<Value>>> = Arc::default();
-    let (app1, seen1) = (app.clone(), seen.clone());
-    let ready_id = listen_from(app, ev::READY, hud_label, move |_| {
-        for v in seen1.lock().unwrap().iter() {
-            let _ = app1.emit_to(hud_label, ev::STATUS, v.clone());
-        }
-    });
-    let fail = |e: CaptureError| {
-        app.unlisten(ready_id);
-        if let Some(w) = app.get_webview_window(hud_label) {
-            let _ = w.destroy();
-        }
-        e
-    };
-    hud(app, cfg, opts.region, opts.mic != Mic::None).map_err(|e| fail(CaptureError::Recorder(format!("HUD: {e}"))))?;
-    let app2 = app.clone();
-    let handle = engine::start(&opts, move |e| {
-        let v = e.to_json();
-        if !matches!(e, StatusEvent::Level { .. }) {
-            seen.lock().unwrap().push(v.clone());
-        }
-        let _ = app2.emit_to(hud_label, ev::STATUS, v);
-        if let (StatusEvent::Snap { n, file, .. }, Some(p)) = (e, perch.as_ref()) {
-            p.add(Card::from_shot(&session, *n, file, None));
-        }
-    })
-    .map_err(fail)?;
-    let handle = Arc::new(Mutex::new(handle));
-    let h2 = handle.clone();
-    let id = listen_from(app, ev::ACTION, hud_label, move |v| {
-        let action = v["action"].as_str().unwrap_or("");
-        if matches!(action, "pause" | "resume" | "snap" | "stop" | "discard" | "marker") {
-            let _ = h2.lock().unwrap().send(action);
-        }
-    });
-    let (h3, app3) = (handle.clone(), app.clone());
-    thread::spawn(move || {
-        loop {
-            if h3.lock().unwrap().is_finished() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-        let result = h3.lock().unwrap().wait(Duration::from_secs(5));
-        app3.unlisten(id);
-        app3.unlisten(ready_id);
-        thread::sleep(Duration::from_millis(700)); // let "Saved" show
-        if let Some(w) = app3.get_webview_window(hud_label) {
-            let _ = w.destroy();
-        }
-        on_done(result);
-    });
-    Ok(handle)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,8 +532,17 @@ mod tests {
 
     #[test]
     fn labels_are_blurt_overlay_star() {
-        for k in [Kind::Picker, Kind::Hud, Kind::Perch, Kind::Note] {
+        for k in [Kind::Picker, Kind::Island, Kind::Note] {
             assert!(k.label().starts_with("blurt-overlay-"));
         }
+    }
+
+    #[test]
+    fn cards() {
+        let c = Card::from_shot(Path::new("/s"), 3, "shots/003.png", Some("hi".into()));
+        assert_eq!((c.kind.as_str(), c.session.as_deref()), ("shot", Some("/s")));
+        let v: Card = serde_json::from_value(json!({"n": 1, "src": ""})).unwrap();
+        assert_eq!(v.kind, "shot");
+        assert_eq!(Card::voice(Path::new("/s"), 4, None).kind, "voice");
     }
 }
