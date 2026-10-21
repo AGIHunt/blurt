@@ -137,7 +137,7 @@ final class PerchCard {
     let frame = CALayer()         // the polaroid
     let photo = CALayer()
     let caption = CATextLayer()
-    let badge = CATextLayer()     // 🎙 / ✎ indicators
+    let badge = CALayer()         // mic (voice note) / ink (drawn on) icons, right-aligned under the photo
     let close = CALayer()
     let copied = CATextLayer()
     var x: Spring
@@ -213,6 +213,22 @@ final class Perch: NSObject {
     private let hint = CATextLayer()
     private let processBtn = CALayer(), clearBtn = CALayer()
     private let processText = CATextLayer(), clearText = CATextLayer()
+    private let processIcon = BlurtIcon.chicken.makeLayer(size: 15, color: NSColor.white.cgColor)   // 整理 = the chicken
+    static let processIconW: CGFloat = 18
+
+    /// The card's indicator icons, right-aligned in a 26 × 12 pt image.
+    static func badgeImage(_ icons: [BlurtIcon], color: CGColor) -> CGImage? {
+        guard !icons.isEmpty else { return nil }
+        let s: CGFloat = 2, side: CGFloat = 12, gap: CGFloat = 2, w: CGFloat = 26
+        guard let ctx = CGContext(data: nil, width: Int(w * s), height: Int(side * s), bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        for (i, ic) in icons.reversed().enumerated() {
+            let x = (w - side - CGFloat(i) * (side + gap)) * s
+            ic.draw(in: ctx, rect: CGRect(x: x, y: 0, width: side * s, height: side * s), color: color)
+        }
+        return ctx.makeImage()
+    }
     private let pileBadge = CATextLayer()
     private let noteTip = CALayer(), noteText = CATextLayer(), notePlay = CATextLayer(), noteWave = CAShapeLayer()
     private var cards: [PerchCard] = []
@@ -295,6 +311,7 @@ final class Perch: NSObject {
         root.addSublayer(strip)
         strip.addSublayer(rope.layer)
         strip.addSublayer(cardsLayer)
+        processBtn.addSublayer(processIcon)
         for (b, t) in [(processBtn, processText), (clearBtn, clearText)] {
             t.contentsScale = 2
             t.alignmentMode = .center
@@ -413,7 +430,7 @@ final class Perch: NSObject {
         let dark = isDarkMode
         let s = c.shot
         var text = (s.text ?? "").replacingOccurrences(of: "\n", with: " ")
-        if text.isEmpty, s.voice != nil { text = L("🎙 语音备注", "🎙 voice note") }
+        if text.isEmpty, s.voice != nil { text = L("语音备注", "voice note") }
         if text.isEmpty { text = s.t.map { L("录制中 \(fmtClock($0))", "at \(fmtClock($0))") } ?? timeLabel(s.wall) }
         let ps = NSMutableParagraphStyle()
         ps.minimumLineHeight = 17
@@ -426,11 +443,8 @@ final class Perch: NSObject {
             .foregroundColor: (s.text ?? "").isEmpty ? NSColor(white: 0, alpha: dark ? 0.45 : 0.38)
                                                     : NSColor(calibratedRed: 0.17, green: 0.15, blue: 0.13, alpha: 1),
         ])
-        var marks = ""
-        if s.voice != nil, !(s.text ?? "").isEmpty { marks += "🎙" }
-        if s.marked != nil { marks += "✎" }
-        c.badge.string = NSAttributedString(string: marks, attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .bold),
-                                                                         .foregroundColor: accent])
+        let marks: [BlurtIcon] = (s.voice != nil ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
+        c.badge.contents = Perch.badgeImage(marks, color: accent.cgColor)
         c.photo.contents = s.markedThumb ?? s.thumb
     }
 
@@ -475,9 +489,9 @@ final class Perch: NSObject {
         c.caption.contentsScale = 2
         c.caption.truncationMode = .end
         c.caption.isWrapped = false
-        c.badge.frame = CGRect(x: Perch.cardW - Perch.padSide - 22, y: Perch.padTop + c.photoSize.height + 7, width: 22, height: 14)
+        c.badge.frame = CGRect(x: Perch.cardW - Perch.padSide - 26, y: Perch.padTop + c.photoSize.height + 7, width: 26, height: 12)
         c.badge.contentsScale = 2
-        c.badge.alignmentMode = .right
+        c.badge.contentsGravity = .resizeAspect
         c.frame.addSublayer(c.photo)
         c.frame.addSublayer(c.caption)
         c.frame.addSublayer(c.badge)
@@ -503,8 +517,13 @@ final class Perch: NSObject {
         c.copied.alignmentMode = .center
         c.copied.cornerRadius = 10
         c.copied.backgroundColor = NSColor(white: 0.1, alpha: 0.85).cgColor
-        c.copied.string = NSAttributedString(string: L("✓ 已复制", "✓ Copied"), attributes: [
-            .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: NSColor.white])
+        let cf = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        let cs = NSAttributedString(string: "\u{2003}" + L("已复制", "Copied"), attributes: [.font: cf, .foregroundColor: NSColor.white])
+        c.copied.string = cs       // the em space holds the check icon (CATextLayer can't draw attachments)
+        let em = NSAttributedString(string: "\u{2003}", attributes: [.font: cf]).size().width
+        let check = BlurtIcon.check.makeLayer(size: 11, color: NSColor.white.cgColor)
+        check.position = CGPoint(x: (76 - cs.size().width) / 2 + em / 2, y: 10)
+        c.copied.addSublayer(check)
         c.copied.opacity = 0
         c.frame.addSublayer(c.copied)
         // the clip: a chicken foot from the rod gripping the card's top edge
@@ -568,12 +587,12 @@ final class Perch: NSObject {
         CATransaction.setDisableActions(true)
         let dark = isDarkMode
         let pf = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-        let ps = NSAttributedString(string: L("🐔 整理 \(n) 张", "🐔 Process \(n)"), attributes: [.font: pf, .foregroundColor: NSColor.white])
+        let ps = NSAttributedString(string: L("整理 \(n) 张", "Process \(n)"), attributes: [.font: pf, .foregroundColor: NSColor.white])
         let cs = NSAttributedString(string: L("清空", "Clear"), attributes: [
             .font: pf, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.85) : NSColor(white: 0, alpha: 0.7)])
         processText.string = ps
         clearText.string = cs
-        let pw = ps.size().width + 26
+        let pw = ps.size().width + 26 + Perch.processIconW      // the chicken (整理) sits in front of the label
         let cw = cs.size().width + 24
         let y = Perch.cardTop + 4
         processBtn.frame = CGRect(x: width - 40 - pw, y: y, width: pw, height: 26)
@@ -591,8 +610,10 @@ final class Perch: NSObject {
         }
         for (b, t, a) in [(processBtn, processText, ps), (clearBtn, clearText, cs)] {
             let th = ceil(a.size().height)
-            t.frame = CGRect(x: 0, y: (b.bounds.height - th) / 2, width: b.bounds.width, height: th)
+            let inset = b === processBtn ? Perch.processIconW : 0
+            t.frame = CGRect(x: inset, y: (b.bounds.height - th) / 2, width: b.bounds.width - inset, height: th)
         }
+        processIcon.frame = CGRect(x: 11, y: (processBtn.bounds.height - 15) / 2, width: 15, height: 15)
         let pile = pileCount
         pileBadge.isHidden = pile == 0
         pileBadge.string = "+\(pile)"
@@ -866,7 +887,7 @@ final class Perch: NSObject {
             let dots = String(repeating: "·", count: 1 + Int(now * 2.5) % 3)
             let text: String
             switch h.state {
-            case 1: text = L("孵出来了 🐣", "Hatched 🐣")
+            case 1: text = L("孵出来了", "Hatched")
             case 2: text = L("整理失败 · 详见 agent.log", "Failed · see agent.log")
             default: text = L("孵化中 ", "Hatching ") + dots
             }
@@ -1268,8 +1289,11 @@ final class Perch: NSObject {
         if hasVoice {
             let y = 12 + th + (th > 0 ? 8 : 0)
             notePlay.frame = CGRect(x: 12, y: y, width: 22, height: 22)
-            notePlay.string = NSAttributedString(string: "▶", attributes: [.font: NSFont.systemFont(ofSize: 10, weight: .bold),
-                                                                           .foregroundColor: NSColor.white])
+            if notePlay.sublayers == nil {          // a play icon, not a ▶ glyph
+                let play = BlurtIcon.playFill.makeLayer(size: 11, color: NSColor.white.cgColor)
+                play.position = CGPoint(x: 11.8, y: 11)
+                notePlay.addSublayer(play)
+            }
             let wave = waveform(c.shot)
             let p = CGMutablePath()
             let x0: CGFloat = 42, ww = w - x0 - 14

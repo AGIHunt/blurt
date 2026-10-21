@@ -238,9 +238,8 @@ final class PeckCard: NSObject {
         let headText = NSTextField(labelWithString: L("修好了", "Fixed"))
         headText.font = .systemFont(ofSize: 13, weight: .semibold)
         headText.textColor = .systemGreen
-        let check = NSImageView(image: NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil) ?? NSImage())
+        let check = NSImageView(image: brandNSImage(.peck, size: 16))
         check.contentTintColor = .systemGreen
-        check.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
         let head = NSStackView(views: [check, headText])
         head.spacing = 4
         let title = NSTextField(wrappingLabelWithString: job.title)

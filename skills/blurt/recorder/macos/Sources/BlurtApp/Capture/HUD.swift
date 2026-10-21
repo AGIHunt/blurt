@@ -100,7 +100,7 @@ final class HUD: NSPanel {
     let meter = LevelView(frame: NSRect(x: 0, y: 0, width: 26, height: 20))
     var pauseBtn: IconButton!
     var penBtn: IconButton!
-    var live: HUDLive?               // 📸, the egg nest, live caption (HUDLive.swift)
+    var live: HUDLive?               // snap count, the egg nest, live caption (HUDLive.swift)
     weak var rec: Recorder?
 
     init(rec: Recorder) {

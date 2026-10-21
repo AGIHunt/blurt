@@ -373,6 +373,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private var canvas = InkCanvas(frame: .zero)
     private var field = NSTextField()
     private var status = NSTextField(labelWithString: "")
+    /// "● 0:04 在听…": a red recording dot (BlurtIcon.recordFill) + the status text.
+    private func recLabel(_ text: String) -> NSAttributedString {
+        BlurtIcon.recordFill.label(text, font: status.font ?? .systemFont(ofSize: 11, weight: .medium), color: .secondaryLabelColor,
+                                   iconColor: .systemRed)
+    }
     private var bars = LevelBars(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
     private var icon = NSImageView()
     private var undoBtn: SymbolButton!
@@ -640,13 +645,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                                                 : L("写一句备注（可选）", "Add a note (optional)")
             let next = hkHint(.snap, "下一张", "next shot").map { " · " + $0 } ?? ""
             if typed { status.stringValue = L("⏎ 保存 · Esc 跳过", "⏎ save · Esc skip") + next }
-            else if listening && speechStarted { status.stringValue = "● " + fmt(voice?.elapsed ?? 0) + L("  在听，停一下就保存 · ⏎ 现在保存", "  listening — pause to save · ⏎ save now") }
+            else if listening && speechStarted {
+                status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + L("  在听，停一下就保存 · ⏎ 现在保存", "  listening — pause to save · ⏎ save now"))
+            }
             else if listening { status.stringValue = L("Esc 跳过", "Esc skip") + next }
             else { status.stringValue = L("麦克风不可用 · ⏎ 保存 · Esc 跳过", "Mic unavailable · ⏎ save · Esc skip") }
         case .edit:
             field.placeholderString = L("写一句备注", "Write a note")
-            status.stringValue = listening ? "● " + fmt(voice?.elapsed ?? 0) + L("  在录新的语音…", "  recording a new voice note…")
-                                           : L("⏎ 保存 · Esc 取消", "⏎ save · Esc cancel")
+            if listening { status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + L("  在录新的语音…", "  recording a new voice note…")) }
+            else { status.stringValue = L("⏎ 保存 · Esc 取消", "⏎ save · Esc cancel") }
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
             field.placeholderString = L("给这张图补一句（可选）", "Add a line about this shot (optional)")
@@ -774,7 +781,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             cb?()
         }
         if flash, let p = p {
-            status.stringValue = L("✓ 已记下", "✓ Saved")
+            status.attributedStringValue = BlurtIcon.check.label(L("已记下", "Saved"), font: status.font ?? .systemFont(ofSize: 11, weight: .medium),
+                                                                 color: .systemGreen, preferSymbol: true)
             status.textColor = .systemGreen
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                 self.status.textColor = .secondaryLabelColor

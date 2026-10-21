@@ -1,17 +1,26 @@
 // Every icon WP6 draws goes through here: SF Symbols for generic things (in the system's colours), the brand ones
-// (bug, chicken) from vector art. No emoji or text glyphs as icons. When the BlurtIcon set lands
-// (Icons/BlurtIcon.swift), `.bug` / `.chicken` switch to it here and nowhere else.
+// (bug, chicken, peck) from the blurt icon family (Icons/BlurtIcon.swift, assets/icons/*.svg). No emoji or text glyphs.
 import AppKit
 import SwiftUI
 import BlurtCore
 
 enum UIIcon {
-    case ok, failed, warning, tool, edit, say, log, bug, chicken
+    case ok, failed, warning, tool, edit, say, log, bug, chicken, peck
+
+    /// The brand glyph for .bug / .chicken / .peck (template: tints with the foreground style).
+    var brand: BlurtIcon? {
+        switch self {
+        case .bug: return .bug
+        case .chicken: return .chicken
+        case .peck: return .peck
+        default: return nil
+        }
+    }
 
     @ViewBuilder
     var view: some View {
         switch self {
-        case .bug, .chicken: Image(nsImage: brandImage(self, size: 22))
+        case .bug, .chicken, .peck: brandImage(self, size: 22).foregroundStyle(color)
         default: Image(systemName: symbol).foregroundStyle(color)
         }
     }
@@ -27,6 +36,7 @@ enum UIIcon {
         case .log: return "text.alignleft"
         case .bug: return "ladybug"
         case .chicken: return "bird"
+        case .peck: return "checkmark.circle"
         }
     }
 
@@ -37,6 +47,7 @@ enum UIIcon {
         case .warning: return .orange
         case .tool, .log: return .secondary
         case .edit: return .accentColor
+        case .peck: return .green
         default: return .primary
         }
     }
@@ -53,18 +64,12 @@ enum UIIcon {
     }
 }
 
-/// Brand art as an NSImage (vector drawing at the screen's scale): the eggs' beetle, and the peck scene's hen at rest.
-func brandImage(_ i: UIIcon, size: CGFloat) -> NSImage {
-    let img = NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-        switch i {
-        case .bug: drawBug(ctx, at: CGPoint(x: r.midX, y: r.midY - r.height * 0.06), size: r.width * 0.95)
-        default:
-            ctx.scaleBy(x: r.width / 110, y: r.height / 110)
-            PeckArt.draw(ctx, t: 0)
-        }
-        return true
-    }
-    img.accessibilityDescription = i == .bug ? "bug" : "chicken"
-    return img
+/// A brand glyph as a SwiftUI template image (size in points).
+func brandImage(_ i: UIIcon, size: CGFloat) -> Image {
+    (i.brand ?? .chicken).swiftUIImage(size: size)
+}
+
+/// The same glyph for AppKit (template NSImage; set contentTintColor on the NSImageView).
+func brandNSImage(_ i: UIIcon, size: CGFloat) -> NSImage {
+    (i.brand ?? .chicken).image(size: size)
 }

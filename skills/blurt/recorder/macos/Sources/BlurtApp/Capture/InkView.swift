@@ -133,7 +133,7 @@ final class InkView: NSView {
         }
         fade = work
         DispatchQueue.main.asyncAfter(deadline: .now() + InkView.visible, execute: work)
-        rec?.hud?.orderFrontRegardless()          // keep ✎ and Done clickable when the HUD sits inside the region
+        rec?.hud?.orderFrontRegardless()          // keep the pen and Done clickable when the HUD sits inside the region
         rec?.syncInk()
     }
 }

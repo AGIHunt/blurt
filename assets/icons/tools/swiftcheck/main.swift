@@ -23,6 +23,38 @@ for app in ["aqua", "darkAqua"] {
         }
     }
 }
+// inline icons in text (menus, toasts, status lines): one strip per appearance
+for app in ["aqua", "darkAqua"] {
+    let f = NSFont.menuFont(ofSize: 0), s = NSFont.systemFont(ofSize: 11, weight: .medium)
+    func plain(_ t: String, _ font: NSFont = f, _ c: NSColor = .labelColor) -> NSAttributedString {
+        NSAttributedString(string: t, attributes: [.font: font, .foregroundColor: c])
+    }
+    let lines: [NSAttributedString] = [
+        plain("1. ") + BlurtIcon.check.attributed(font: f, color: .systemGreen, preferSymbol: true) + plain("  Codex"),
+        plain("2. ") + BlurtIcon.x.attributed(font: f, color: .systemRed, preferSymbol: true) + plain("  Claude Code"),
+        plain("10/21 09:30  ·  2:12  ") + BlurtIcon.check.attributed(font: f, color: .secondaryLabelColor, preferSymbol: true),
+        plain("Process with Kimi  ") + BlurtIcon.x.label("not logged in", font: f, color: .secondaryLabelColor, iconColor: .systemRed, preferSymbol: true),
+        BlurtIcon.recordFill.label("0:04  listening — pause to save", font: s, color: .secondaryLabelColor, iconColor: .systemRed),
+        BlurtIcon.check.label("Saved", font: s, color: .systemGreen, preferSymbol: true),
+        BlurtIcon.warning.label("⌥⇧A is taken by another app", font: s, color: .systemOrange, preferSymbol: true),
+        BlurtIcon.chicken.label("blurt is running", font: .systemFont(ofSize: 13, weight: .medium)),
+        BlurtIcon.snap.label("Drag an area, release to snap", font: .systemFont(ofSize: 13, weight: .medium)),
+    ]
+    let W = 420, H = lines.count * 26 + 12
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: W * 2, pixelsHigh: H * 2, bitsPerSample: 8, samplesPerPixel: 4,
+                               hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    rep.size = NSSize(width: W, height: H)
+    NSAppearance(named: app == "aqua" ? .aqua : .darkAqua)!.performAsCurrentDrawingAppearance {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        (app == "aqua" ? NSColor(white: 0.97, alpha: 1) : NSColor(white: 0.16, alpha: 1)).setFill()
+        NSRect(x: 0, y: 0, width: W, height: H).fill()
+        for (i, l) in lines.enumerated() { l.draw(at: NSPoint(x: 12, y: H - 30 - i * 26)) }
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    try! rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("text-\(app).png"))
+}
+
 precondition(BlurtIcon.chicken.image(size: 16).isTemplate)
 precondition(BlurtIcon(named: "close") == .x && BlurtIcon(named: "process") == .chicken)
 let s = BlurtIcon.chicken.label("整理 3 张", font: .systemFont(ofSize: 13), color: .white)

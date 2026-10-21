@@ -198,7 +198,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
             let r = hkHint(.toggleRecord, "开始 / 结束录制", "start / finish"), m = hkHint(.openMenu, "打开菜单", "menu")
-            toast(L("口喷鸡已常驻 🐔  ", "blurt is running 🐔  ") + [r, m].compactMap { $0 }.joined(separator: " · "))
+            toast(L("口喷鸡已常驻  ", "blurt is running  ") + [r, m].compactMap { $0 }.joined(separator: " · "), icon: .chicken)
         } else {
             Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
         }
@@ -331,8 +331,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let b = statusItem?.button else { return }
         if let r = rec, r.sessionStart.isValid {
             let s = Int(r.elapsed())
-            b.image = nil
-            b.attributedTitle = NSAttributedString(string: (r.isPaused ? "❚❚ " : "● ") + String(format: "%02d:%02d", s / 60, s % 60), attributes: [
+            b.image = (r.isPaused ? BlurtIcon.pauseFill : BlurtIcon.recordFill).image(size: 11, color: r.isPaused ? amber : .systemRed)
+            b.imagePosition = .imageLeft
+            b.attributedTitle = NSAttributedString(string: " " + String(format: "%02d:%02d", s / 60, s % 60), attributes: [
                 .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
         } else {
             b.image = menuIcon
@@ -406,14 +407,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if recents.isEmpty { _ = add(L("还没有录制", "No recordings yet"), nil, to: rMenu) }
         for d in recents {
             let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: d.appendingPathComponent("meta.json")))) as? [String: Any]
-            let dur = isShotsSession(d) ? "📸 \(meta?["shots"] as? Int ?? 0)" : fmtDur(meta?["duration"] as? Double ?? 0)
+            let shots = isShotsSession(d)
+            let nShots = meta?["shots"] as? Int ?? 0
+            let dur = shots ? L("\(nShots) 张", nShots == 1 ? "1 shot" : "\(nShots) shots") : fmtDur(meta?["duration"] as? Double ?? 0)
             let done = FileManager.default.fileExists(atPath: d.appendingPathComponent("items.json").path)
             let name = d.lastPathComponent
             let pretty = name.count >= 15 ? "\(name.dropFirst(4).prefix(2))/\(name.dropFirst(6).prefix(2)) \(name.dropFirst(9).prefix(2)):\(name.dropFirst(11).prefix(2))" : name
             let busyHere = processing.contains(d.path)
             let failed = done || busyHere ? nil : agentFailureNote(d)
-            let it = NSMenuItem(title: "\(pretty)  ·  \(dur)\(done ? "  ✓" : "")\(busyHere ? "  …" : "")\(failed.map { "  ✗ " + $0 } ?? "")",
-                                action: nil, keyEquivalent: "")
+            let it = NSMenuItem(title: "\(pretty)  ·  \(dur)", action: nil, keyEquivalent: "")
+            // done → check, busy → …, failed → x + why (icons, never ✓ / ✗ glyphs); snap or video in front
+            let mf = NSFont.menuFont(ofSize: 0)
+            let at = NSMutableAttributedString(string: it.title, attributes: [.font: mf])
+            if done { at.append(NSAttributedString(string: "  ", attributes: [.font: mf])); at.append(BlurtIcon.check.attributed(font: mf, color: .secondaryLabelColor, preferSymbol: true)) }
+            if busyHere { at.append(NSAttributedString(string: "  …", attributes: [.font: mf])) }
+            if let f = failed { at.append(NSAttributedString(string: "  ", attributes: [.font: mf])); at.append(BlurtIcon.x.label(f, font: mf, color: .labelColor, iconColor: .systemRed, preferSymbol: true)) }
+            it.attributedTitle = at
+            it.image = shots ? BlurtIcon.snap.image(size: 16) : BlurtIcon.video.symbolImage(pointSize: 13)
             let sub = NSMenu()
             if done { add(L("打开审核页", "Open review"), #selector(mOpenReview(_:)), to: sub, obj: d.path) }
             add(L("拷贝视频（粘贴发给同事）", "Copy video (paste to share)"), #selector(mCopyVideo(_:)), to: sub, obj: d.path)
@@ -425,8 +435,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             add(done ? L("重新整理", "Process again") : L("整理（自动选 agent）", "Process (pick an agent)"), busyHere ? nil : #selector(mProcessAuto(_:)), to: sub, obj: d.path)
             for a in AgentHub.shared.order() {
                 let st = AgentHub.shared.cached(a.id)
-                let li = add(L("用 \(a.name) 整理", "Process with \(a.name)") + (st.map { $0.state.usable ? "" : "  ✗ " + $0.why } ?? ""),
+                let li = add(L("用 \(a.name) 整理", "Process with \(a.name)"),
                              busyHere ? nil : #selector(mProcessWith(_:)), to: sub, obj: "\(a.id)\u{1}\(d.path)")
+                if let st = st, !st.state.usable {
+                    let mf = NSFont.menuFont(ofSize: 0)
+                    let at = NSMutableAttributedString(string: li.title + "  ", attributes: [.font: mf])
+                    at.append(BlurtIcon.x.label(st.why, font: mf, color: .secondaryLabelColor, iconColor: .systemRed, preferSymbol: true))
+                    li.attributedTitle = at
+                }
                 li.indentationLevel = 1
             }
             it.submenu = sub
@@ -547,13 +563,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // tiny, non-blocking toast under the menu bar (no notification permission needed)
     var toastWin: NSWindow?
     /// Several lines ("\n") are fine: the first is the headline, the rest a quieter detail.
-    func toast(_ text: String, seconds: Double = 4.5) {
+    func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil) {
         let seconds = max(seconds, Double(ProcessInfo.processInfo.environment["BLURT_TOAST_MIN_SECONDS"] ?? "") ?? 0)   // tests: time to screenshot
         toastWin?.orderOut(nil)
         emit(["event": "toast", "text": text])
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let lines = text.components(separatedBy: "\n")
-        let body = NSMutableAttributedString(string: lines[0], attributes: [.font: f, .foregroundColor: NSColor.white])
+        let body = NSMutableAttributedString(attributedString: icon.map { $0.label(lines[0], font: f, color: .white) }
+                                             ?? NSAttributedString(string: lines[0], attributes: [.font: f, .foregroundColor: NSColor.white]))
         if lines.count > 1 {
             let para = NSMutableParagraphStyle()
             para.paragraphSpacingBefore = 3
