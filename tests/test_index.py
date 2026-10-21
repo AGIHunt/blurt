@@ -238,6 +238,15 @@ def test_legacy_uid_matches_items_py(env):
     assert cli("search", "登录按")["items"][0]["uid"] == want
 
 
+def test_update_workspace_without_sessions_is_a_noop(env):
+    """The plugin's SessionEnd hook passes any project root: nothing to index → no index.db appears."""
+    plain = env["tmp"] / "plain-project"
+    (plain / "src").mkdir(parents=True)
+    (plain / "src" / "meta.json").write_text("{}")  # looks like a session marker; must not be indexed
+    assert cli("update", "--workspace", plain)["updated"] == 0
+    assert not index.db_path().exists()
+
+
 def test_path():
     assert cli("path")["db"].endswith("index.db")
 

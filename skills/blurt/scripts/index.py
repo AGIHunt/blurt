@@ -471,7 +471,8 @@ def update_sessions(dirs, force: bool = True) -> dict:
 
 def update_workspace(ws: Path) -> dict:
     ws_, kind, container = _root_workspace(ws)
-    if not container.is_dir():
+    # only a real sessions dir (the hook passes any project root: no .blurt/sessions → nothing to do, no db created)
+    if not container.is_dir() or container == real(ws) and kind == "repo":
         return {"updated": 0, "ms": 0.0}
     dirs = [d for d in container.iterdir() if is_session(d)]
     con = connect()
