@@ -19,7 +19,7 @@ extension HotkeyCenter.Action {
         case .marker: return .marker
         case .pen: return .pen
         case .finish: return .stop
-        case .openMain: return nil
+        case .openMain, .voice, .project: return nil
         }
     }
 }
