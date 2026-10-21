@@ -315,6 +315,7 @@ export class ReviewStore {
   };
   setDragging = (on: boolean) => {
     this.dragging = on;
+    if (on && this.toast) this.toast = { ...this.toast, show: false }; // the drop zone takes the bottom of the window
     this.emit();
   };
 
