@@ -109,6 +109,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
     var fields: [HotAction: ShortcutField] = [:]
     var notes: [HotAction: NSTextField] = [:]
     var drawPopup: NSPopUpButton?
+    weak var content: NSView?
 
     func show() {
         if window == nil { build() }
@@ -125,7 +126,17 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.sharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly
+        let content = makeContent()
+        w.contentView = content
+        w.setContentSize(content.fittingSize)
+        window = w
+    }
 
+    /// The whole Shortcuts UI (rows, the pen's hold key, restore) as a view another window can host — Settings →
+    /// Shortcuts (WP6). The latest content made is the one fields / refresh() drive.
+    func makeContent() -> NSView {
+        fields = [:]
+        notes = [:]
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -227,14 +238,14 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor), stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             stack.topAnchor.constraint(equalTo: content.topAnchor), stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
-        w.contentView = content
-        w.setContentSize(content.fittingSize)
-        window = w
+        self.content = content
         Hotkeys.shared.onChange = { [weak self] in self?.refresh() }
+        refresh()
+        return content
     }
 
     func refresh() {
-        guard window != nil else { return }
+        guard content != nil else { return }
         let hk = Hotkeys.shared
         for a in HotAction.allCases {
             let st = hk.states[a] ?? .ok
