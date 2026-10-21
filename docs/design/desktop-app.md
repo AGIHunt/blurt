@@ -506,7 +506,7 @@ Swift、Rust、live.py 不各自拼命令。
 的绝对路径）、`--var k=v` 给的任意 `{k}`。
 
 **顺序**（app-ux 已实现，WP2 沿用）：`record.agents` 是**排他**列表——只用列出的 id，按列出的顺序，未知 id 忽略，全部无效时退回默认；
-没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。
+没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。`"headless": false` 的条目（zcode）永远不进 order（默认顺序和 `record.agents` 都一样，Python `agent_order()` 和 Swift `AgentHub.order()` 同一规则）。
 读 `$BLURT_HOME/config.json`；Python 侧带 `--repo` 时，`<repo>/.blurt/config.json` 里的 `record.agents` / `record.process` 优先，
 `agent_defs` 合并（应用没有项目上下文时不用管）。
 
@@ -524,7 +524,7 @@ agents.py detect [--repo DIR] [--ids a,b] [--no-login] [--no-version] [--lang zh
                  installed: bool, version: str|null,
                  login: "ok"|"logged_out"|"unknown"|"n/a",          // ready→ok，configured/unknown→unknown，not_installed→n/a
                  headless: bool, interactive: "url"|"terminal"|"copy"|null}]}
-     agents 按 order 排；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
+     agents 按 order 排，后面再跟上 order 之外的 app-only 条目（不带 --ids 时，供「复制提示词」用）；pick = order 里第一个 headless 且 ready 的，没有就第一个 configured，再没有就第一个 unknown，否则 null。
 agents.py command ID headless|interactive (--prompt TEXT | --prompt-file F) --repo DIR [--var k=v …] [--no-events]
   → {"id", "mode", "argv": [abs bin, …]|null, "cwd": "<abs repo>", "env": {"BLURT_AGENT": id, "BLURT_RUN_ID"?: run_id},
      "url": null|"…", "events": "claude-stream-json"|"codex-jsonl"|"kimi-stream-json"|"opencode-json"|null,
@@ -587,6 +587,39 @@ export interface BlurtHost {
 
 组件里的所有回车处理都必须先判断 `e.isComposing || e.keyCode === 229`，并在 `compositionend` 之后 50 ms 内忽略回车 [S39]。
 
+细则（WP3 实现时补充，以 `web/packages/review/src/host.ts` 为准）：
+- **接口补充**（都是可选项，不影响已有宿主）：
+  - `sendOps` 返回值可以带 `doc`（写入后合并好的文件，`review.py` 本来就返回）。不带时，组件会用写入**前**的 etag 调一次
+    `poll` 取回合并结果再 rebase，所以原生宿主只回 `{ok, etag}` 即可（`items.py user-ops` 的输出）。
+  - `download?(rel)`：把会话文件存到「下载」；`confirmed?()`：审核已确认，宿主可以关窗；
+    `inApp?: boolean`：在应用窗口里（主题跟随系统、不显示主题按钮和会话名）。
+  - 只给 browser 用：`saveDoc?(doc, confirm)`（没有 id 的手写 items.json 整份保存，和旧页面一样）、`downloadUrl?(rel)`（`?download=1`）。
+  - `load` / `poll` 返回的 doc 要像 `review.py` 一样带 `_video`（`source_video` 文件是否存在；截图会话为 false）。etag 用 `file_etag`。
+- **挂载**：`mountReview(el, host, opts)` 返回 `{setItem(id), setTheme(t), setPlatform(p), unmount()}`；单文件页面里挂在
+  `window.blurtReview` 上。宿主也可以随时调 `window.__blurtSetAccent('#rrggbb' | null)`、`window.__blurtSetTheme('auto'|'light'|'dark')`。
+  - URL 参数：`mode=review|item`、`item=<id|uid>`、`platform=mac|win|gnome`、`theme=auto|light|dark`、`lang=en|zh`、
+    `host=browser|macos|tauri`（一般自动识别：`blurt-app:` → macos，有 Tauri IPC → tauri，其余 → browser）、`session=<abs>`（tauri）。
+  - item 模式：`itemId` 可以是条目号或 uid；没有队列和保留/丢弃栏，键位只剩 ← → / Space / O / E / 1 2 3 / ⌘↩（= `fixWithAgent`）。
+- **产物**：三个宿主用同一个单文件 `skills/blurt/scripts/review.html`（≈280 KB）。macOS 应用把它打包成 `blurt-app://ui/index.html`，
+  旁边放 `ui/icon.png`（页面用相对路径 `icon.png`）。
+- **macos 细节**（参考实现和验收：`web/packages/review/e2e/wkwebview/Harness.swift`，`pnpm -C web/packages/review test:wkwebview`
+  在真实 WKWebView 里跑 17 项检查）：
+  - document-start 注入 `window.blurtHostInfo = {host: "macos", methods: ["reveal","quickLook","openCode","fixWithAgent","registerDragRects","download"], accent: "#rrggbb"}`；
+    `methods` 只列原生真正实现了的可选方法（组件据此显示按钮），`accent` 是 `NSColor.controlAccentColor`，只用于焦点环和选区，不替代品牌橙。
+  - 请求：`load {}` → `{doc, etag}`；`poll {etag}` → `{etag}` 或 `{doc, etag}`；`sendOps {ops, confirm}` → `{ok, etag}`
+    （`items.py user-ops SESSION --stdin [--confirm]`，stdin 是 `{"ops": [...]}`）。回复：`window.__blurtReply(id, result, null)`，失败时 `(id, null, "message")`。
+  - `id: 0` 是通知，不回复：`reveal {rel}`、`quickLook {rel}`、`openCode {ref}`、`fixWithAgent {itemIds}`（uid 优先）、
+    `registerDragRects {rects: [{rel, x, y, w, h}]}`（视口内的 CSS px，帧和缩略图；卸载时发空数组）、`download {rel}`、`confirmed {}`。
+  - macOS 26 的 WebKit 对普通 `WKScriptMessageHandler` 的 `postMessage` 也返回一个 resolve 成 undefined 的 Promise；组件两种都认：
+    Promise 给了值就用（`WKScriptMessageHandlerWithReply`），否则等 `__blurtReply`。
+  - `blurt-app://session/<rel>` 必须支持 `Range`（206 + `Content-Range` + `Accept-Ranges`），否则 `<video>` 播不了片段和原录屏
+    （已实测）；要拒绝 `..` 跳出会话目录。
+- **当前的审核窗口**（`ReviewWindow.swift`，WKWebView 打开 `review.py` 的 http 页）**不需要改**：页面走 browser 宿主，识别
+  `window.blurtApp`，确认后照旧发 `{type: "confirmed"}`，标题照旧走 `document.title`（已在本机构建的 Blurt.app 里用真实按键验证）。
+  可选：在它的 document-start 脚本里加 `window.blurtHostInfo = {accent: "#rrggbb"}`（不带 `host`），就能用上系统强调色。
+- **tauri**：`fileUrl` 用 `convertFileSrc(<session>/<rel>, 'asset')`，所以 shell 要把会话目录加进 asset 协议的 scope；
+  `reveal` 传 `{path: <绝对路径>}`；`fix_with_agent` 传 `{session, itemIds}`。
+
 ### C7 · Swift 模块边界（`skills/blurt/recorder/macos/Package.swift`，只用 Command Line Tools 就能 `swift build`）
 
 ```
@@ -641,14 +674,34 @@ reveal(path) / open_external(url)
 录制（WP8 的 `crates/blurt-capture` 加 `record.py` 的 ffmpeg 引擎）：
 
 ```
-record.py start --engine ffmpeg --session DIR --region x,y,w,h [--screen N] [--mic M|--no-mic] --status-jsonl
-   stdout JSON lines: {"ev":"started","t0":…} {"ev":"level","rms":0.12} {"ev":"paused"} {"ev":"resumed"}
-                      {"ev":"snap","n":3,"file":"shots/003.png"} {"ev":"stopped","video":"recording.mp4"} {"ev":"error","msg":…}
+record.py start --engine ffmpeg --session DIR [--region=x,y,w,h] [--screen N] [--mic M|--no-mic] --status-jsonl
+   stdout JSON lines: {"ev":"started","t0":…} {"ev":"level","rms":0.12} {"ev":"paused","t":…} {"ev":"resumed","t":…}
+                      {"ev":"snap","n":3,"file":"shots/003.png","t":…} {"ev":"stopped","video":"recording.mp4","duration":…,"shots":…}
+                      {"ev":"discarded"} {"ev":"error","msg":…,"code":…}
    control: existing `record.py stop|pause|resume|snap|discard` (cmd file), unchanged
    writes the same files as today (recording.mp4, events.jsonl, meta.json, live/audio.pcm, shots.jsonl)
-Rust: blurt_capture::{pick_region(app) -> Region, start(opts) -> CaptureHandle, handle.pause/resume/stop/snap,
-      overlay::{hud, perch, note}: create transparent, always-on-top, non-focusable, content-protected windows}
+Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.pause/resume/snap/stop/discard/wait,
+      overlay::pick_region(app, cfg, last) -> Option<Region>,
+      overlay::{hud, perch, note, record}: transparent, always-on-top, non-focusable, content-protected windows}
 ```
+
+- **状态行**：
+  - 有 `--status-jsonl` 时 stdout 只有状态行，其余输出（`SESSION`、`DONE`、日志）都走 stderr；
+  - 流一定以 `stopped`、`discarded`、`error` 三者之一结束，之后进程退出（退出码 0 / 2 / 非 0）；
+  - `t` 是视频时间（秒），`t0` 是第一帧的墙钟时间；`level` 只在有麦克风时出现，约 10 Hz；
+  - `{"ev":"error","code":"snap"}` 只表示这一张没截到，录制继续，不是结束行；
+  - 字段只加不减，Rust 端遇到不认识的 `ev` 原样转给 HUD。
+- **`--status-jsonl` 只配 `--engine ffmpeg`**，别的引擎直接报错。ffmpeg 引擎不支持 `restart`（先 `discard` 再重新 `start`）。
+- **`--region` 的坐标**：Windows/Linux 是虚拟桌面的物理像素（gdigrab、x11grab 直接用），macOS 是主屏的点；
+  宽高向下取偶数；x 可能为负，所以写成 `--region=x,y,w,h`。不给 `--region` 就录整个屏幕。
+- **录制中截图**：Windows/Linux 另起一个 ffmpeg 抓一帧全分辨率（gdigrab、x11grab 可以和录像同时打开）；
+  macOS 的 avfoundation 不能同时打开同一块屏幕（第二个会卡住），改用系统的 `screencapture`。暂停时也能截。
+- **浮层窗口**（`blurt-overlay-picker|hud|perch|note`，页面在 `<frontendDist>/overlays/*.html`，由 `web/apps/overlays` 构建）：
+  - 宿主应用（WP7）要给 `blurt-overlay-*` 窗口 `core:default` 权限，并打开 asset protocol（截图缩略图用）；
+  - 页面和 Rust 之间只走事件：`blurt://status`（Rust→HUD，原样的状态行）、`blurt://action`（浮层→Rust，按钮）、
+    `blurt://picked`（选区，窗口内 CSS 像素）、`blurt://hit-rects`（鸡舍可点区域，其余部分鼠标穿透）、
+    `blurt://perch`（Rust→鸡舍：set/add/remove/show/hide/busy）、`blurt://note-done`、`blurt://ready`；
+  - Linux X11 没有排除截屏的办法，所以 HUD 放在录制区域外面，放不下才贴着区域底边放在里面。
 
 ---
 

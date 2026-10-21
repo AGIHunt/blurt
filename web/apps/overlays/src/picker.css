@@ -1,0 +1,77 @@
+body {
+  cursor: crosshair;
+}
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+}
+body.has-sel .mask {
+  display: none; /* the selection's shadow dims everything else */
+}
+.sel {
+  position: fixed;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.38);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  cursor: move;
+}
+.sel .size {
+  position: absolute;
+  left: 0;
+  top: -26px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--glass);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--fg);
+}
+.hint {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--fg2);
+  pointer-events: none;
+  white-space: nowrap;
+}
+body.has-sel .hint {
+  display: none;
+}
+.bar {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px var(--line), 0 6px 24px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+.bar[hidden],
+.sel[hidden] {
+  display: none;
+}
+.bar button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  color: var(--fg2);
+}
+.bar button:hover {
+  background: var(--s3);
+  color: var(--fg);
+}
+.bar button.primary {
+  background: var(--accent);
+  color: #1e1e1e;
+  font-weight: 600;
+}
+.bar button.primary:hover {
+  background: #ff9378;
+}

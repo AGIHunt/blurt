@@ -30,7 +30,10 @@ struct AgentDef {
         run = o["run"] as? [String] ?? ["{prompt}"]
         fix = o["fix"] as? [String: String] ?? [:]
         install = o["install"] as? [String: String] ?? [:]
+        headless = o["headless"] as? Bool ?? true
     }
+    /// false = an app / interactive-only entry (WP2's zcode): never in the background chain or its menus.
+    let headless: Bool
     var fixText: String { fix[opts.lang] ?? fix["en"] ?? "" }
     var installText: String { install[opts.lang] ?? install["en"] ?? "" }
 
@@ -142,9 +145,9 @@ final class AgentHub {
         var want: [String] = rec["agents"] as? [String] ?? []
         if let s = rec["agents"] as? String { want = s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } }
         var seen = Set<String>()
-        let listed = want.compactMap { id -> AgentDef? in seen.insert(id).inserted ? def(id) : nil }
+        let listed = want.compactMap { id -> AgentDef? in seen.insert(id).inserted ? def(id) : nil }.filter(\.headless)
         if !listed.isEmpty { return listed }
-        var all = defs
+        var all = defs.filter(\.headless)
         if let legacy = rec["process"] as? String, let i = all.firstIndex(where: { $0.id == legacy }) { all.insert(all.remove(at: i), at: 0) }
         return all
     }
