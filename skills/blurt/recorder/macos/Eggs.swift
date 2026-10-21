@@ -15,6 +15,11 @@ enum EggKind: String, CaseIterable {
     case issue, idea, note, task, custom
 
     init(_ s: String?) { self = EggKind(rawValue: (s ?? "").lowercased()) ?? ((s ?? "").isEmpty ? .note : .custom) }
+
+    /// Seed for eggImage: custom lenses take their hue from the lens name (same hash as the review page).
+    static func seed(_ name: String?, id: String) -> UInt64 {
+        EggKind(name) == .custom ? customEggHue(name ?? "") : stableSeed(id)
+    }
 }
 
 /// Small deterministic PRNG so an egg's speckles don't change between redraws.
@@ -57,19 +62,34 @@ func eggPath(in r: CGRect) -> CGPath {
 
 struct EggPalette { let light: CGColor; let base: CGColor; let dark: CGColor; let rim: CGColor }
 
+private func hex(_ v: UInt32, _ a: CGFloat = 1) -> CGColor {
+    rgb(CGFloat(v >> 16 & 0xFF) / 255, CGFloat(v >> 8 & 0xFF) / 255, CGFloat(v & 0xFF) / 255, a)
+}
+
+/// The review page's hue for a custom lens: h = (h*31 + charCode) % 360, shown as hsl(h 62% 80%) — keep in sync
+/// with egg() in scripts/review.html.
+func customEggHue(_ name: String) -> UInt64 {
+    var h: UInt64 = 0
+    for c in name.utf16 { h = (h * 31 + UInt64(c)) % 360 }
+    return h
+}
+
+private func hsl(_ h: CGFloat, _ s: CGFloat, _ l: CGFloat, _ a: CGFloat = 1) -> CGColor {
+    let c = (1 - abs(2 * l - 1)) * s, hp = h / 60, x = c * (1 - abs(hp.truncatingRemainder(dividingBy: 2) - 1)), m = l - c / 2
+    let (r, g, b): (CGFloat, CGFloat, CGFloat) = hp < 1 ? (c, x, 0) : hp < 2 ? (x, c, 0) : hp < 3 ? (0, c, x) : hp < 4 ? (0, x, c) : hp < 5 ? (x, 0, c) : (c, 0, x)
+    return rgb(r + m, g + m, b + m, a)
+}
+
+/// Same stops as the review page's SVG sprite (eg-issue / eg-idea / eg-note / eg-task), so both read as one set.
 func eggPalette(_ kind: EggKind, seed: UInt64) -> EggPalette {
     switch kind {
-    case .issue: return EggPalette(light: rgb(1.0, 0.97, 0.90), base: rgb(0.94, 0.86, 0.73), dark: rgb(0.74, 0.62, 0.47), rim: rgb(0.45, 0.34, 0.22, 0.35))
-    case .idea: return EggPalette(light: rgb(1.0, 0.95, 0.62), base: rgb(0.98, 0.78, 0.25), dark: rgb(0.78, 0.50, 0.06), rim: rgb(0.55, 0.33, 0.0, 0.45))
-    case .note: return EggPalette(light: rgb(1, 1, 1), base: rgb(0.96, 0.96, 0.95), dark: rgb(0.78, 0.78, 0.80), rim: rgb(0.35, 0.35, 0.40, 0.28))
-    case .task: return EggPalette(light: rgb(0.93, 0.74, 0.55), base: rgb(0.78, 0.53, 0.33), dark: rgb(0.52, 0.31, 0.17), rim: rgb(0.30, 0.16, 0.06, 0.45))
+    case .issue: return EggPalette(light: hex(0xfbf4e6), base: hex(0xead7b5), dark: hex(0xc9ad80), rim: hex(0x7a5c38, 0.5))
+    case .idea: return EggPalette(light: hex(0xfff1a8), base: hex(0xf4c22e), dark: hex(0xbf830a), rim: hex(0x8a5d05, 0.55))
+    case .note: return EggPalette(light: hex(0xffffff), base: hex(0xf2efe9), dark: hex(0xd6d0c4), rim: hex(0x6f695e, 0.75))
+    case .task: return EggPalette(light: hex(0xe9b783), base: hex(0xc3824a), dark: hex(0x8e5427), rim: hex(0x5e3615, 0.55))
     case .custom:
-        var g = SeededRandom(seed)
-        let h = g.next()
-        let c = { (s: CGFloat, b: CGFloat, a: CGFloat) -> CGColor in
-            NSColor(calibratedHue: h, saturation: s, brightness: b, alpha: a).usingColorSpace(.sRGB)!.cgColor
-        }
-        return EggPalette(light: c(0.12, 1.0, 1), base: c(0.30, 0.97, 1), dark: c(0.42, 0.80, 1), rim: c(0.6, 0.45, 0.35))
+        let h = CGFloat(seed % 360)
+        return EggPalette(light: hsl(h, 0.62, 0.90), base: hsl(h, 0.62, 0.80), dark: hsl(h, 0.45, 0.66), rim: rgb(0, 0, 0, 0.22))
     }
 }
 
@@ -97,26 +117,14 @@ func drawEgg(_ ctx: CGContext, in r: CGRect, kind: EggKind, seed: UInt64 = 7, sh
     var rnd = SeededRandom(seed)
     switch kind {
     case .issue:   // speckles
-        for _ in 0..<Int(18 + rnd.next() * 10) {
+        for _ in 0..<Int(10 + rnd.next() * 6) {
             let rr = body.width * rnd.range(0.018, 0.05)
             let p = CGPoint(x: rnd.range(body.minX, body.maxX), y: rnd.range(body.minY, body.maxY))
-            ctx.setFillColor(rgb(0.42 + rnd.range(-0.06, 0.06), 0.27, 0.14, rnd.range(0.35, 0.75)))
+            ctx.setFillColor(hex(0x9a7650, rnd.range(0.55, 0.95)))
             ctx.addEllipse(in: CGRect(x: p.x - rr, y: p.y - rr * rnd.range(0.7, 1), width: rr * 2, height: rr * 2 * rnd.range(0.7, 1)))
             ctx.fillPath()
         }
-    case .task:    // a pale band around the middle, with a check
-        let bandY = body.minY + body.height * 0.40, bandH = body.height * 0.17
-        ctx.setFillColor(rgb(0.98, 0.90, 0.76, 0.85))
-        ctx.fill(CGRect(x: body.minX, y: bandY, width: body.width, height: bandH))
-        ctx.setStrokeColor(rgb(0.42, 0.24, 0.10, 0.95))
-        ctx.setLineWidth(max(1, body.width * 0.075))
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        let cy = bandY + bandH / 2
-        ctx.move(to: CGPoint(x: body.midX - body.width * 0.13, y: cy + bandH * 0.02))
-        ctx.addLine(to: CGPoint(x: body.midX - body.width * 0.03, y: cy - bandH * 0.32))
-        ctx.addLine(to: CGPoint(x: body.midX + body.width * 0.16, y: cy + bandH * 0.40))
-        ctx.strokePath()
+    case .task: break      // the white check goes on top, after the shading
     case .idea:    // a faint second sheen
         if let g = CGGradient(colorsSpace: space, colors: [rgb(1, 1, 0.85, 0.0), rgb(1, 1, 0.85, 0.35), rgb(1, 1, 0.85, 0)] as CFArray,
                               locations: [0, 0.5, 1]) {
@@ -157,16 +165,29 @@ func drawEgg(_ ctx: CGContext, in r: CGRect, kind: EggKind, seed: UInt64 = 7, sh
     ctx.setLineWidth(max(0.5, r.width * 0.022))
     ctx.strokePath()
     ctx.restoreGState()
-    if kind == .issue { drawBug(ctx, at: CGPoint(x: body.minX + body.width * 0.66, y: body.minY + body.height * 0.34), size: body.width * 0.30) }
-    if kind == .idea { drawSparkle(ctx, at: CGPoint(x: body.maxX - body.width * 0.02, y: body.maxY - body.height * 0.12), size: body.width * 0.26) }
+    if kind == .issue { drawBug(ctx, at: CGPoint(x: body.minX + body.width * 0.62, y: body.minY + body.height * 0.30), size: body.width * 0.36) }
+    if kind == .idea { drawSparkle(ctx, at: CGPoint(x: body.minX + body.width * 0.74, y: body.minY + body.height * 0.72), size: body.width * 0.26) }
+    if kind == .task {   // a white check, as on the review page
+        ctx.saveGState()
+        ctx.setStrokeColor(rgb(1, 1, 1))
+        ctx.setLineWidth(max(1.2, body.width * 1.55 / 10.1))
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        // the sprite's 16×16 coordinates (egg spans x 2.95…13.05, y 1.1…14.9, y down) mapped onto this egg
+        let P = { (x: CGFloat, y: CGFloat) in
+            CGPoint(x: body.minX + (x - 2.95) / 10.1 * body.width, y: body.maxY - (y - 1.1) / 13.8 * body.height)
+        }
+        ctx.move(to: P(5.5, 9.6)); ctx.addLine(to: P(7.25, 11.35)); ctx.addLine(to: P(10.55, 7.75))
+        ctx.strokePath()
+        ctx.restoreGState()
+    }
 }
 
 /// A tiny beetle (not scary: round, glossy, short legs).
 func drawBug(_ ctx: CGContext, at c: CGPoint, size s: CGFloat) {
     ctx.saveGState()
     ctx.translateBy(x: c.x, y: c.y)
-    ctx.rotate(by: -0.5)
-    ctx.setStrokeColor(rgb(0.13, 0.11, 0.10, 0.95))
+    ctx.setStrokeColor(hex(0x33261d))
     ctx.setLineWidth(max(0.6, s * 0.07))
     ctx.setLineCap(.round)
     for i in -1...1 {                      // legs
@@ -177,20 +198,12 @@ func drawBug(_ ctx: CGContext, at c: CGPoint, size s: CGFloat) {
     ctx.move(to: CGPoint(x: -s * 0.06, y: s * 0.36)); ctx.addLine(to: CGPoint(x: -s * 0.16, y: s * 0.52))   // antennae
     ctx.move(to: CGPoint(x: s * 0.06, y: s * 0.36)); ctx.addLine(to: CGPoint(x: s * 0.16, y: s * 0.52))
     ctx.strokePath()
-    ctx.setFillColor(rgb(0.16, 0.13, 0.12))
-    ctx.fillEllipse(in: CGRect(x: -s * 0.13, y: s * 0.20, width: s * 0.26, height: s * 0.20))           // head
-    ctx.setFillColor(rgb(0.86, 0.22, 0.16))
+    ctx.setFillColor(hex(0x33261d))
+    ctx.fillEllipse(in: CGRect(x: -s * 0.14, y: s * 0.20, width: s * 0.28, height: s * 0.28))           // head
+    ctx.setFillColor(hex(0x33261d))
     ctx.fillEllipse(in: CGRect(x: -s * 0.25, y: -s * 0.30, width: s * 0.50, height: s * 0.58))         // shell
-    ctx.setStrokeColor(rgb(0.16, 0.10, 0.10, 0.9))
-    ctx.setLineWidth(max(0.5, s * 0.045))
-    ctx.move(to: CGPoint(x: 0, y: -s * 0.29)); ctx.addLine(to: CGPoint(x: 0, y: s * 0.27))
-    ctx.strokePath()
-    ctx.setFillColor(rgb(0.16, 0.10, 0.10, 0.9))
-    for (x, y) in [(-0.12, 0.05), (0.12, 0.05), (-0.10, -0.15), (0.11, -0.16)] as [(CGFloat, CGFloat)] {
-        ctx.fillEllipse(in: CGRect(x: x * s - s * 0.045, y: y * s - s * 0.045, width: s * 0.09, height: s * 0.09))
-    }
-    ctx.setFillColor(rgb(1, 1, 1, 0.55))
-    ctx.fillEllipse(in: CGRect(x: -s * 0.17, y: s * 0.06, width: s * 0.10, height: s * 0.08))
+    ctx.setFillColor(rgb(1, 1, 1, 0.28))
+    ctx.fillEllipse(in: CGRect(x: -s * 0.15, y: s * 0.04, width: s * 0.10, height: s * 0.10))
     ctx.restoreGState()
 }
 
@@ -202,9 +215,9 @@ func drawSparkle(_ ctx: CGContext, at c: CGPoint, size s: CGFloat) {
     p.addQuadCurve(to: CGPoint(x: c.x - s / 2, y: c.y), control: c)
     p.addQuadCurve(to: CGPoint(x: c.x, y: c.y + s / 2), control: c)
     ctx.saveGState()
-    ctx.setShadow(offset: .zero, blur: s * 0.4, color: rgb(1, 0.9, 0.4, 0.9))
+    ctx.setShadow(offset: .zero, blur: s * 0.25, color: rgb(1, 1, 1, 0.8))
     ctx.addPath(p)
-    ctx.setFillColor(rgb(1, 1, 0.92, 1))
+    ctx.setFillColor(rgb(1, 1, 1, 1))
     ctx.fillPath()
     ctx.restoreGState()
 }
@@ -347,11 +360,12 @@ final class NestView: NSView {
         return CGPoint(x: x0 + CGFloat(j) * step, y: nestRect.minY + 9 + eggSize.height / 2 + (j % 2 == 0 ? 0 : 1.5))
     }
 
-    func add(id: String, kind: EggKind, animated: Bool = true) {
+    func add(id: String, kindName: String?, animated: Bool = true) {
         guard !eggs.contains(where: { $0.id == id }) else { return }
+        let kind = EggKind(kindName)
         let l = CALayer()
         l.bounds = CGRect(origin: .zero, size: eggSize)
-        l.contents = eggImage(kind, size: eggSize, seed: stableSeed(id), shadow: false)
+        l.contents = eggImage(kind, size: eggSize, seed: EggKind.seed(kindName, id: id), shadow: false)
         l.contentsGravity = .resizeAspect
         eggLayer.addSublayer(l)
         eggs.append(Egg(id: id, layer: l, kind: kind))
@@ -455,7 +469,7 @@ final class DraftsWatcher {
     private let tail: JSONLTail
     private(set) var current: [String: [String: Any]] = [:]
     private(set) var order: [String] = []
-    var onAdd: ((String, EggKind) -> Void)?
+    var onAdd: ((String, String?) -> Void)?
     var onDrop: ((String) -> Void)?
 
     init(session: URL) { tail = JSONLTail(session.appendingPathComponent("live/drafts.jsonl")) }
@@ -469,18 +483,18 @@ final class DraftsWatcher {
             } else if current[id] == nil {
                 current[id] = o
                 order.append(id)
-                onAdd?(id, EggKind(o["kind"] as? String))
+                onAdd?(id, o["kind"] as? String)
             } else {
                 current[id] = (current[id] ?? [:]).merging(o) { $1 }
             }
         }
     }
 
-    var kinds: [EggKind] { order.compactMap { current[$0] }.map { EggKind($0["kind"] as? String) } }
+    var kinds: [String] { order.compactMap { current[$0] }.map { $0["kind"] as? String ?? "note" } }
 }
 
 /// Every kind's drafts from a finished / running session (for the hatching nest on the perch).
-func draftKinds(in session: URL) -> [EggKind] {
+func draftKinds(in session: URL) -> [String] {
     let w = DraftsWatcher(session: session)
     w.poll()
     return w.kinds

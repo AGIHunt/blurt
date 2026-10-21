@@ -45,6 +45,12 @@ extension App {
             let a = arg.split(separator: " ").map(String.init)
             if let id = a.first { perch.hatched(id: id, ok: a.last == "ok") }
         case "notes": rec?.hud?.live?.openNotes()
+        case "gather": perch.gather(into: ["note", "note", "note"])
+        case "cards":   // where things are, in global top-left points, so a test can point the mouse at them
+            for s in snapper.batch?.live ?? [] {
+                if let r = perch.cardScreenRect(s) { let c = toCG(r); emit(["event": "card", "n": s.n, "rect": [c.minX, c.minY, c.width, c.height]]) }
+            }
+            if let r = NoteBubble.shared.canvasScreenRect { let c = toCG(r); emit(["event": "canvas", "rect": [c.minX, c.minY, c.width, c.height]]) }
         default: command(cmd)
         }
     }

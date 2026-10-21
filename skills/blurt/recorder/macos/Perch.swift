@@ -669,7 +669,7 @@ final class Perch: NSObject {
     }
 
     /// "整理": the cards fly into a nest that starts hatching.
-    func gather(into kinds: [EggKind]) {
+    func gather(into kinds: [String]) {
         let id = "gather-\(Date().timeIntervalSince1970)"
         hatch(id: id, kinds: kinds, reveal: false)
         pendingGatherID = id
@@ -738,7 +738,7 @@ final class Perch: NSObject {
 
     // MARK: hatching
 
-    func hatch(id: String, kinds: [EggKind], reveal: Bool = true) {
+    func hatch(id: String, kinds: [String], reveal: Bool = true) {
         if panel == nil { ensurePanel(on: screenWithPointer()) }
         if let g = pendingGatherID, let i = hatches.firstIndex(where: { $0.id == g }) {
             // the gathered batch's nest becomes this session's nest
@@ -747,7 +747,7 @@ final class Perch: NSObject {
             return
         }
         guard !hatches.contains(where: { $0.id == id }) else { return }
-        let ks = kinds.isEmpty ? [.issue, .idea, .note] : Array(kinds.prefix(5))
+        let ks = kinds.isEmpty ? ["issue", "idea", "note"] : Array(kinds.prefix(5))
         let nest = CALayer()
         let nestSize = CGSize(width: 96, height: 48)
         let eggSize = CGSize(width: 22, height: 29)
@@ -770,7 +770,7 @@ final class Perch: NSObject {
             e.bounds = CGRect(origin: .zero, size: eggSize)
             e.anchorPoint = CGPoint(x: 0.5, y: 0.9)
             e.position = CGPoint(x: 60 - CGFloat(ks.count - 1) * step / 2 + CGFloat(i) * step, y: 22 + nestSize.height * 0.52)
-            e.contents = eggImage(k, size: eggSize, seed: UInt64(i * 31 + 7), shadow: false)
+            e.contents = eggImage(EggKind(k), size: eggSize, seed: EggKind.seed(k, id: "\(id)-\(i)"), shadow: false)
             nest.addSublayer(e)
             eggs.append(e)
         }

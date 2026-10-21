@@ -647,7 +647,7 @@ final class Snapper {
         b.sync {
             b.writeMeta(state: "processing")
             let mode = recordConfig()["process"] as? String ?? "off"
-            let kinds = Array(repeating: EggKind.note, count: min(5, b.live.count))
+            let kinds = Array(repeating: "note", count: min(5, b.live.count))
             perch.gather(into: kinds)
             self.batch = nil
             perch.batch = nil

@@ -396,6 +396,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     var isOpen: Bool { shot != nil }
 
+    var canvasScreenRect: NSRect? {
+        guard let p = panel, p.isVisible else { return nil }
+        return p.convertToScreen(canvas.convert(canvas.bounds, to: nil))
+    }
+
     // MARK: open
 
     func begin(_ s: Shot, mode m: Mode, anchor a: (() -> NSRect?)? = nil) {
@@ -514,7 +519,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         icon.frame = NSRect(x: pad + 2, y: rowY + 1, width: 22, height: 20)
         bars.frame = NSRect(x: pad, y: rowY, width: 26, height: 22)
         field.frame = NSRect(x: pad + 34, y: rowY + 1, width: width - pad * 2 - 34 - 6, height: fieldH)
-        status.frame = NSRect(x: pad + 34, y: rowY + fieldH + 4, width: width - pad * 2 - 34 - 90, height: 15)
+        let buttons: CGFloat = mode == .recording && recordingShots.count > 1 ? 56 : mode == .edit ? 56 : 0
+        status.frame = NSRect(x: pad + 34, y: rowY + fieldH + 4, width: width - pad * 2 - 34 - buttons, height: 15)
         var bx = width - pad - 26
         for b in [nextBtn, prevBtn, micBtn, playBtn] { b?.isHidden = true }
         if mode == .recording, recordingShots.count > 1 {
@@ -640,7 +646,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
             field.placeholderString = L("给这张图补一句（可选）", "Add a line about this shot (optional)")
-            status.stringValue = L("录制已暂停 · ⏎ 保存并继续 · Esc 继续", "Recording paused · ⏎ save & resume · Esc resume")
+            status.stringValue = L("已暂停 · ⏎ 保存并继续 · Esc 继续", "Paused · ⏎ save & resume · Esc resume")
                 + (recordingShots.count > 1 ? "  ·  \(i)/\(recordingShots.count)" : "")
         }
     }

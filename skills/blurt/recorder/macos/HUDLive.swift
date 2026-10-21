@@ -88,7 +88,8 @@ final class CaptionPanel {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         label.stringValue = t
-        let w = min(max(hud.width, 220), 520, ceil(label.intrinsicContentSize.width) + 28)
+        let tw = ceil((t as NSString).size(withAttributes: [.font: label.font!]).width)
+        let w = min(max(160, tw + 36), 520)
         let below = hud.midY <= region.midY        // HUD under the area (or in its lower half): caption further down
         var f = NSRect(x: hud.midX - w / 2, y: below ? hud.minY - 6 - 28 : hud.maxY + 6, width: w, height: 28)
         if let s = NSScreen.screens.first(where: { $0.frame.intersects(hud) })?.visibleFrame {
@@ -151,6 +152,7 @@ final class HUDLive {
         drafts = d
         transcript = JSONLTail(session.appendingPathComponent("live/transcript.jsonl"))
         rec.snaps?.onLanded = { [weak self] s in self?.shotLanded(s) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak hud] in hud?.invalidateShadow() }  // after the rounded mask is drawn
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.poll() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -177,15 +179,16 @@ final class HUDLive {
         f.origin.x = mid - w / 2
         hud.contentView?.frame.size.width = w
         hud.setFrame(f, display: true, animate: hud.isVisible && !reduceMotion)
+        hud.invalidateShadow()
     }
 
-    private func eggAdded(_ id: String, _ kind: EggKind) {
+    private func eggAdded(_ id: String, _ kind: String?) {
         if !nestShown {
             nestShown = true
             nest.isHidden = false
             relayout()
         }
-        nest.add(id: id, kind: kind)
+        nest.add(id: id, kindName: kind)
     }
 
     private func poll() {
