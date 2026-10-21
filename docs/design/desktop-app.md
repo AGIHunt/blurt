@@ -590,19 +590,33 @@ export interface BlurtHost {
 ### C7 · Swift 模块边界（`skills/blurt/recorder/macos/Package.swift`，只用 Command Line Tools 就能 `swift build`）
 
 ```
-Sources/BlurtCapture/   (library)  现有 Recorder, Picker*, HUD, HUDLive, InkView, Snap*, Perch, NoteBubble, Eggs, LiveAudio
-Sources/BlurtCore/      (library)
-   Paths.swift      public enum BlurtPaths { static var home, indexDB, skillDir, scripts: URL }
-   Config.swift     public final class Config { static let shared; subscript(key: String) -> Any?; func set(_:_:) }   // ~/.blurt/config.json
-   Script.swift     public final class ScriptRunner { static let shared
+Sources/BlurtCore/      (library; everything the app uses from it is public — app files `import BlurtCore`)
+   Paths.swift      public enum BlurtPaths { static var home, config, indexDB, workspace, skillDir, scripts: URL }
+   Config.swift     public final class Config { static let shared; subscript(key: String) -> Any? { get set }   // dotted keys: "record.hotkeys"
+                      func set(_ key: String, _ value: Any?); var all, record: [String: Any] }                // ~/.blurt/config.json, read fresh each time
+                    public enum BlurtLocale { static var lang }                                               // the app sets it from --lang
+   Script.swift     public enum ShellEnv { static func agentEnvironment() -> [String: String]; findExecutable(_:); runCapture(…)
+                      isAgentSessionVar(_:)  // strips agent-session vars, keeps CODEX_HOME / CLAUDE_CONFIG_DIR / KIMI_CODE_HOME / *_HOME / *_CONFIG_DIR
+                      static let inherited, loginShell; static let path }
+                    public final class ScriptRunner { static let shared
                       func run(_ script: String, _ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60) async throws -> Data
-                      func spawn(_ script: String, _ args: [String], onLine: @escaping (String) -> Void) throws -> Process
-                      var uvAvailable: Bool { get } }                         // uv + agentEnvironment()（WP4）
+                      func json(_ script: String, _ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60) async throws -> [String: Any]
+                      func spawn(_ script: String, _ args: [String], onLine: @escaping (String) -> Void) throws -> Process   // lines on main
+                      var uvAvailable: Bool; var uvPath: String? }                // PATH (login shell), then ~/.blurt/bin/uv
+                    public enum ScriptError { uvMissing, scriptMissing(String), failed(status:stdout:stderr:), timeout(TimeInterval) }
+                    // script = a name in <skill>/scripts ("items.py") or an absolute path; runs `uv run -q <script> …`
    Hotkeys.swift    public final class HotkeyCenter { static let shared
-                      enum Action: String, CaseIterable { case toggleRecord, snap, pause, finish, pen, marker, openMenu, openMain }
-                      func binding(_ a: Action) -> KeyCombo?
-                      func set(_ c: KeyCombo?, for a: Action) -> HotkeyResult   // .ok | .duplicate(Action) | .system(String) | .taken
-                      var onFire: ((Action) -> Void)? }                       // config key record.shortcuts {action: "alt+shift+r"}（WP4）
+                      enum Action: String, CaseIterable {       // raw values = config keys of record.hotkeys (shared with _common.py)
+                        case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main" }
+                      func binding(_ a: Action) -> KeyCombo?; func state(_ a: Action) -> HotkeyResult
+                      func set(_ c: KeyCombo?, for a: Action) -> HotkeyResult  // saves, re-registers at once, returns the new state
+                      func restoreDefaults(); var conflicts: [Action]; var disabled: Set<Action>; var resident: Bool
+                      var onFire: ((Action) -> Void)?; var onChange: (() -> Void)?
+                      func registerRaw(_ id: UInt32, code: Int, mods: Int) -> OSStatus; var onRaw  // the app's fixed keys (ids < 100) }
+                    public enum HotkeyResult { ok, off, notHere, duplicate(Action), failed(Int32), taken(pid_t), system }
+                    public struct KeyCombo { mods, key, code; static func parse(String) -> KeyCombo?; spec ("opt+shift+R"); label ("⌥⇧R") }
+                    // config: record.hotkeys {"record": "opt+shift+R", "snap": "off", …}; .taken = another running Blurt published
+                    // those keys in ~/Library/Caches/dev.blurt.recorder/hotkeys/<pid>.json
    Index/           public final class IndexReader { init(url: URL = BlurtPaths.indexDB) throws
                       func workspaces() throws -> [WorkspaceRow]; func sessions(_ q: SessionQuery) throws -> [SessionRow]
                       func items(_ q: ItemQuery) throws -> [ItemRow]; func count(_ q: ItemQuery) throws -> Int }
@@ -611,15 +625,31 @@ Sources/BlurtCore/      (library)
                       func detect() async -> [AgentStatus]
                       func run(_ id: String, prompt: String, repo: URL) throws -> AgentRun        // headless, stream-json lines
                       func openInteractive(_ id: String, prompt: String, repo: URL) throws }       // (WP6)
-Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged)
-   App/ (WP4)  AppDelegate, StatusMenu, AppEnvironment { static var mainWindow: MainWindowHosting?; static var settings: SettingsHosting? }
+Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.recorder, unchanged; one module)
+   Capture/    Recorder, Picker, HUD, HUDLive, InkView, Snap, Perch, Rope, NoteBubble, Eggs, LiveAudio   (the existing capture code)
+   App/ (WP4)  AppDelegate (the App class + status menu), AppEnvironment, AgentHub, Hotkeys (glue), HotkeySettings,
+               ReviewWindow, SnapApp, Shell, Workspaces, Support, CarbonHotkeys, SelfTest, Updater
    MainWindow/, WebHost/ (WP5)     Settings/, Onboarding/, System/ (WP6)
+   main.swift  launch code; `blurt-recorder --selftest [SESSION]` = GUI-less BlurtCore checks (JSON, exit 0 = pass)
 ```
 
+- **BlurtCapture 不是单独的模块**，是 `BlurtApp` 里的 `Capture/` 目录（WP4 实施时改）。现有采集代码和应用代码共用一批全局量
+  （`opts`、`L()`、`perch`、`snapper`、`App` 类的扩展），拆成库要给几千行代码补 `public`、再解开循环依赖，单进程应用得不到好处。
+  需要的话以后再拆，届时只是把 `Capture/` 移成一个 target。
+- 应用内沿用旧名字：`HotAction = HotkeyCenter.Action`、`Shortcut = KeyCombo`、`HotState = HotkeyResult`、`Hotkeys = HotkeyCenter`。
+- 配置键沿用现有的 `record.hotkeys`（不是 `record.shortcuts`）；`openMain` 默认不绑定，主窗口注册之前不注册、也不在快捷键窗口里出现。
+- `AppEnvironment`：`mainWindow: MainWindowHosting?`、`settings: SettingsHosting?`、`fixWithAgent: (([String]) -> Void)?`、
+  `openURL: ((URL) -> Bool)?`。WP5 在 `MainWindow/MainWindowModule.swift` 的 `install()` 里设置，WP6 在 `Settings/SettingsModule.swift`
+  的 `install()` 里设置（也在这里设 `NSApp.servicesProvider`）；菜单栏应用启动时调用这两个 `install()`。
+  对应的菜单项（打开口喷鸡、设置…）只在钩子存在时出现；「快捷键…」在 `settings` 存在时打开 `show(pane: "shortcuts")`。
+  `blurt://`、`blurt-app://` 先交给 `openURL`，返回 false 时外壳自己处理 `record`、`snap`。
 - `MainWindowHosting`：`show()`、`reveal(uid:)`、`reveal(session:)`。
-- `SettingsHosting`：`show(pane:)`。
-- Info.plist 由 WP4 维护，第一批提交就要带上 `CFBundleURLTypes`（`blurt`、`blurt-app`）、`NSServices`（"Add to Blurt"）、
-  `SUFeedURL`、`SUPublicEDKey`。WP6 只写这些声明背后的实现代码。
+- `SettingsHosting`：`show(pane: String?)`。
+- Info.plist 是文件 `recorder/macos/Info.plist`，由 WP4 维护，`record.py build` 拷进包里；已带 `CFBundleURLTypes`（`blurt`、`blurt-app`）、
+  `NSServices`（"Add to Blurt"，`NSMessage` = `addToBlurt`）、`SUFeedURL`、`SUPublicEDKey`（仓库里为空，由 `release-mac.sh` 写入；
+  为空时应用不启动 Sparkle）。WP6 只写这些声明背后的实现代码。
+- 构建：`record.py build` = `swift build -c release --product blurt-recorder`（scratch 在 `$BLURT_HOME/build/swiftpm`），
+  `BLURT_UNIVERSAL=1` 时 arm64 和 x86_64 各 `--triple` 构建一次再 `lipo`；然后组装 bundle、ad-hoc 签名。
 - 外部 URL：
   - `blurt://item/<uid>`
   - `blurt://session/<abs-path-encoded>`
