@@ -183,11 +183,17 @@ _SESSION_NAMES = {"AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH",
                   "DISABLE_MICROCOMPACT", "BLURT_APP"}
 
 
+# Where the user keeps an agent's config — their setting, not a session leak: never dropped.
+_USER_CONFIG_VARS = {"CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIMI_CODE_HOME"}
+
+
 def clean_env(env: dict | None = None) -> dict:
     """This environment minus what an agent session exports to its children (same list as the app's
-    isAgentSessionVar and doctor.py). The app passes its login-shell env already; from a terminal this is enough."""
+    isAgentSessionVar and doctor.py), keeping config locations (CODEX_HOME, CLAUDE_CONFIG_DIR). For probes only;
+    install() runs with the caller's environment untouched."""
     env = dict(os.environ if env is None else env)
-    return {k: v for k, v in env.items() if not (k.startswith(_SESSION_PREFIXES) or k in _SESSION_NAMES)}
+    return {k: v for k, v in env.items()
+            if k in _USER_CONFIG_VARS or not (k.startswith(_SESSION_PREFIXES) or k in _SESSION_NAMES)}
 
 
 def config(repo: str | Path | None = None) -> dict:
@@ -393,7 +399,7 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     d = defs.get(agent)
     if not d:
         raise ValueError(f"unknown agent {agent!r}")
-    env = clean_env(env)
+    env = dict(os.environ if env is None else env)  # CODEX_HOME & co. decide which config gets written
     vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT)}
     changes, ok = [], True
     if skill:
