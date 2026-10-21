@@ -1,0 +1,83 @@
+/* Common — 各平台共用的词（docs/design/next-round.md K10）。拥有者：P4。
+   键和占位符与 en.lproj/Common.strings 一致（tests/test_l10n.py）。 */
+
+/* 条目种类 */
+"kind.issue" = "问题";
+"kind.idea" = "想法";
+"kind.note" = "笔记";
+"kind.task" = "任务";
+
+/* 审核状态 */
+"review.draft" = "待审";
+"review.confirmed" = "保留";
+"review.deleted" = "丢弃";
+
+/* 处理状态 */
+"work.todo" = "待处理";
+"work.handed_off" = "已交出";
+"work.handed_off.session" = "已交给 %@";
+"work.handed_off.external" = "已复制给外部 agent";
+"work.in_progress" = "进行中";
+"work.to_verify" = "待验证";
+"work.done" = "已完成";
+"work.wontfix" = "不处理";
+"work.confirm_done" = "确认完成";
+"work.reopen" = "重新打开";
+
+/* agent 会话状态 */
+"session.running" = "运行中";
+"session.waiting_input" = "等你回答";
+"session.turn_done" = "本轮完成";
+"session.exited" = "已退出";
+"session.error" = "出错";
+
+/* 项目 */
+"project.auto" = "自动";
+"project.inbox" = "待分配";
+"project.ai_sort" = "交给 AI 分";
+"project.open_folder" = "打开文件夹…";
+
+/* 交给外部 agent */
+"handoff.copy_instruction" = "复制指令";
+"handoff.copy_full" = "复制全文";
+
+/* 任务类型 */
+"job.type.record" = "录屏";
+"job.type.snap" = "截图";
+"job.type.voice" = "语音输入";
+"job.type.process" = "整理";
+"job.type.route" = "分到项目";
+"job.type.agent" = "agent 会话";
+
+/* 任务步骤 */
+"job.step.capture" = "采集";
+"job.step.finalize" = "保存";
+"job.step.listen" = "收音";
+"job.step.transcribe" = "转写";
+"job.step.file" = "归档";
+"job.step.prepare" = "准备";
+"job.step.write" = "写条目";
+"job.step.frames" = "挑截图";
+"job.step.route" = "分到项目";
+"job.step.launch" = "启动";
+"job.step.work" = "处理中";
+"job.step.finish" = "收尾";
+
+/* 任务状态 */
+"job.state.queued" = "排队中";
+"job.state.running" = "进行中";
+"job.state.done" = "已完成";
+"job.state.failed" = "失败";
+"job.state.cancelled" = "已取消";
+
+/* 时间 */
+"time.just_now" = "刚刚";
+
+/* 通用按钮 */
+"action.ok" = "好";
+"action.cancel" = "取消";
+"action.save" = "保存";
+"action.continue" = "继续";
+"action.retry" = "重试";
+"action.reveal_in_finder" = "在访达中显示";
+"action.copy_path" = "拷贝路径";
