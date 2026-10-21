@@ -164,7 +164,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func updateTitle() {
         window?.title = model.scopeTitle
         let n = NumberFormatter.localizedString(from: model.rowCount as NSNumber, number: .decimal)
-        window?.subtitle = model.indexState != .ready ? "" : model.scope.listsSessions ? L("\(n) 个会话", "\(n) sessions") : L("\(n) 条", "\(n) items")
+        window?.subtitle = model.indexState != .ready ? "" : model.scope.listsSessions ? L("\(n) 个会话", model.rowCount == 1 ? "1 session" : "\(n) sessions")
+            : L("\(n) 条", model.rowCount == 1 ? "1 item" : "\(n) items")
     }
 
     // MARK: ItemListActions

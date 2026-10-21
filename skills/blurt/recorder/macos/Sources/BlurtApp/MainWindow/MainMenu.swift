@@ -114,12 +114,35 @@ enum ShortcutsSheet {
         grid.rowSpacing = 7
         grid.columnSpacing = 16
         grid.column(at: 0).xPlacement = .trailing
-        let a = NSAlert()
-        a.messageText = L("键盘快捷键", "Keyboard Shortcuts")
-        a.accessoryView = grid
-        grid.frame.size = grid.fittingSize
-        a.addButton(withTitle: L("好", "OK"))
-        if let w = window { a.beginSheetModal(for: w) } else { a.runModal() }
+        // a floating panel, not a sheet: it never blocks the window (or quitting); ? or Esc closes it
+        if let p = panel, p.isVisible { p.orderOut(nil); return }
+        let p = ShortcutsPanel(contentRect: .zero, styleMask: [.titled, .closable, .utilityWindow, .hudWindow], backing: .buffered, defer: false)
+        p.title = L("键盘快捷键", "Keyboard Shortcuts")
+        p.isFloatingPanel = true
+        p.hidesOnDeactivate = true
+        p.isReleasedWhenClosed = false
+        let box = NSView()
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(grid)
+        NSLayoutConstraint.activate([grid.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 20),
+                                     grid.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -20),
+                                     grid.topAnchor.constraint(equalTo: box.topAnchor, constant: 16),
+                                     grid.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -18)])
+        p.contentView = box
+        p.setContentSize(box.fittingSize)
+        if let w = window {
+            p.setFrameOrigin(NSPoint(x: w.frame.midX - p.frame.width / 2, y: w.frame.midY - p.frame.height / 2))
+        } else { p.center() }
+        p.makeKeyAndOrderFront(nil)
+        panel = p
+    }
+    static var panel: NSPanel?
+}
+
+final class ShortcutsPanel: NSPanel {
+    override func cancelOperation(_ sender: Any?) { orderOut(nil) }
+    override func keyDown(with e: NSEvent) {
+        if e.charactersIgnoringModifiers == "?" { orderOut(nil) } else { super.keyDown(with: e) }
     }
 }
 
