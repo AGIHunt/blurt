@@ -1,5 +1,5 @@
 {
-  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation.",
+  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation.",
   "agents": [
     {
       "id": "claude", "name": "Claude Code", "bins": ["claude"], "verified": "run",
@@ -19,7 +19,8 @@
     },
     {
       "id": "kimi", "name": "Kimi Code", "bins": ["kimi"], "verified": "cli",
-      "status": {"args": ["provider", "list"], "configured_if": "models=[1-9]", "otherwise": "logged_out"},
+      "status": {"args": ["provider", "list"], "creds_json": {"path": "~/.kimi-code/credentials/kimi-code.json", "keys": ["access_token", "refresh_token"]},
+                 "configured_if": "models=[1-9]", "otherwise": "logged_out"},
       "run": ["-p", "{prompt}"],
       "fix": {"zh": "在终端运行 kimi login", "en": "run `kimi login` in a terminal"},
       "install": {"zh": "见 moonshotai.github.io/kimi-code", "en": "see moonshotai.github.io/kimi-code"}
@@ -54,7 +55,7 @@
     {"id": "auth", "short": {"zh": "登录失效", "en": "login expired"},
      "reason": {"zh": "{name} 登录失效了：{fix}", "en": "{name}'s login has expired: {fix}"},
      "patterns": ["not logged in", "please run /login", "(invalid|expired|revoked)[^\\n]{0,30}(api[ _-]?key|token|grant|credential|session)",
-                  "authorization grant is invalid", "authentication (failed|error|required)", "unauthori[sz]ed", "\\b401\\b",
+                  "authorization grant is invalid", "no credential configured", "authentication (failed|error|required)", "unauthori[sz]ed", "\\b401\\b",
                   "token (has )?expired", "login (required|expired)", "re-?authenticate", "invalid x-api-key"]},
     {"id": "quota", "short": {"zh": "额度 / 限流", "en": "quota / rate limit"},
      "reason": {"zh": "{name} 额度用完了或被限流，过一会儿再整理", "en": "{name} hit a rate limit or ran out of quota — try again later"},

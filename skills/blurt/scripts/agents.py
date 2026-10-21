@@ -79,6 +79,16 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
                 return "ready" if obj[key] else "logged_out"
         except ValueError:
             pass
+    home = home or Path.home()
+    cj = st.get("creds_json")
+    if isinstance(cj, dict) and cj.get("path"):
+        f = home / cj["path"][2:] if cj["path"].startswith("~/") else Path(cj["path"])
+        try:
+            creds = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(creds, dict) and not any(creds.get(k) for k in cj.get("keys", [])):
+                return "logged_out"  # e.g. kimi: provider listed, tokens empty → `kimi -p` fails "no credential configured"
+        except (OSError, ValueError):
+            pass
     if any(s in low for s in st.get("logged_out", [])):
         return "logged_out"
     if code == 0 and any(s in low for s in st.get("ok_if", [])):
@@ -88,7 +98,6 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
     env = os.environ if env is None else env
     if any(env.get(k) for k in st.get("env_any", [])):
         return "configured"
-    home = home or Path.home()
     if any((home / f[2:] if f.startswith("~/") else Path(f)).exists() for f in st.get("files_any", [])):
         return "configured"
     if st.get("otherwise") == "logged_out" and (code is not None or "args" not in st):
