@@ -41,7 +41,7 @@ import jobs  # noqa: E402
 MIN_TMUX = (3, 2)
 EXIT_DEP = 4
 IDLE_TURN_DONE = 8.0
-TTY_BOTTOM = 5  # waiting_patterns are looked for in the last non-empty lines of the window
+TTY_BOTTOM = 6  # waiting_patterns are looked for in the last non-empty lines of the window
 LIVE = ("running", "waiting_input", "turn_done")
 STATUS_STATE = {"exited": "done", "error": "failed"}
 TERMINALS = ("terminal", "iterm", "ghostty", "wezterm", "kitty", "gnome-terminal", "konsole", "wt")
@@ -199,7 +199,10 @@ def repo_root(path: Path) -> Path | None:
 def ascii_slug(text: str, n: int = 24) -> str:
     s = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
-    return s[:n].rstrip("-")
+    if len(s) <= n:
+        return s
+    cut = s[:n + 1].rsplit("-", 1)[0]  # whole words when there's a break in the second half
+    return (cut if len(cut) > n // 2 else s[:n]).rstrip("-")
 
 
 def window_name(ids: list[str]) -> str:

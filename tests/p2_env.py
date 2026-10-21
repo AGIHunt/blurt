@@ -107,7 +107,7 @@ time.sleep(1.5)
 print("Allow this? [y/n]", flush=True)
 input()
 print("ok, working", flush=True)
-for i in range(3):
+for i in range(8):
     time.sleep(0.5)
     print("step", i, flush=True)
 input()

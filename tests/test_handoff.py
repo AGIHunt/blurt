@@ -41,7 +41,7 @@ def test_note_and_instruction_en(p2):
     assert json.loads(re.search(r"^project: (.*)$", fm, re.M).group(1)) == {"id": proj["id"], "name": proj["name"],
                                                                               "path": proj["path"]}
     assert f"# 2 items for {proj['name']}" in text and f"Project folder: {proj['path']}" in text
-    assert "`mark_fixed`" in text and "items.py work <uid> --state to_verify --claim fixed" in text
+    assert "`mark_fixed`" in text and "items.py' work <uid> --state to_verify --claim fixed" in text
     assert "Don't push" in text
     assert f"## 1. {a['id']} · Login button 0" in text and "uid " + a["uid"] + " · issue · high · module auth" in text
     assert "**They said**\n> I click login and nothing happens" in text and "1. Open the page\n2. Click Login" in text
@@ -106,3 +106,16 @@ def test_errors(p2):
     assert p2.run("handoff.py", "get", "H-9999", ok=False)["code"] == "no_handoff"
     assert p2.run("handoff.py", "get", "../x", ok=False)["code"] == "bad_args"
     assert p2.run("handoff.py", "create", "--items", "x", "--to", "session", "--mark", ok=False)["code"] == "bad_args"
+
+
+def test_prompt_work_points_at_the_note(p2):
+    proj = p2.project(p2.repo())
+    it = p2.item(proj["id"])
+    out = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--worktree", "on", "--branch", "blurt/x-1",
+                 "--lang", "en")
+    assert out["prompt"].startswith(f"Read {out['path']} and handle the items in it.") and "blurt/x-1" in out["prompt"]
+    assert "commit your work there" in out["prompt"] and "mark_fixed" in out["prompt"]
+    note = Path(out["path"]).read_text()
+    assert "to: session" in note and 'branch: "blurt/x-1"' in note and "uv run" not in note  # no sandbox prompt for uv
+    zh = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--handoff", out["handoff"], "--lang", "zh")
+    assert zh["handoff"] == out["handoff"] and zh["prompt"].startswith(f"读 {out['path']}，") and "不要提交" in zh["prompt"]

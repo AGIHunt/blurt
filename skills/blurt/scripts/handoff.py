@@ -121,7 +121,7 @@ T = {
         "folder": "Project folder: {path}",
         "mcp": "When you finish an item, call the blurt MCP tool `mark_fixed` with its uid (state \"fixed\" or "
                "\"wontfix\", plus a short note).",
-        "nomcp": "Without the MCP: `uv run --script {items_py} work <uid> --state to_verify --claim fixed --note \"…\"`.",
+        "nomcp": "Without the MCP: `{items_cmd} work <uid> --state to_verify --claim fixed --note \"…\"`.",
         "verify": "The user confirms each item before it counts as done.",
         "rule_worktree": "Don't push. You're on your own branch, {branch}, in a separate worktree: commit your work "
                          "there.",
@@ -143,7 +143,7 @@ T = {
         "title_one": "{project} · {id}", "title_many": "{project} 的 {n} 个条目", "title_bare": "{n} 个条目",
         "folder": "项目文件夹：{path}",
         "mcp": "每做完一条，用它的 uid 调用 blurt MCP 工具 `mark_fixed`（state 填 \"fixed\" 或 \"wontfix\"，附一句说明）。",
-        "nomcp": "没有 MCP 时：`uv run --script {items_py} work <uid> --state to_verify --claim fixed --note \"…\"`。",
+        "nomcp": "没有 MCP 时：`{items_cmd} work <uid> --state to_verify --claim fixed --note \"…\"`。",
         "verify": "每一条都要用户确认后才算完成。",
         "rule_worktree": "不要推送。你在单独的 worktree 和自己的分支 {branch} 上，改完在这个分支上提交。",
         "rule_direct": "不要推送，也不要提交：你直接在项目文件夹里改，用户会先看改动。",
@@ -272,10 +272,17 @@ def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: s
     intro = []
     if same and proj.get("id") != "inbox" and proj.get("path"):
         intro.append(t["folder"].format(path=proj["path"]))
-    intro += [t["mcp"], t["nomcp"].format(items_py=SCRIPTS / "items.py"), t["verify"], rule]
+    intro += [t["mcp"], t["nomcp"].format(items_cmd=items_command()), t["verify"], rule]
     body = [f"# {title}", "\n".join(intro)] + [render_item(n, it, lang, show_project=not same)
                                                 for n, it in enumerate(items, 1)]
     return "\n".join(fm) + "\n" + "\n\n".join(body) + "\n"
+
+
+def items_command() -> str:
+    """How an agent runs items.py without the MCP server: this interpreter (outside any venv), not `uv run` — a
+    sandboxed agent (Codex) has to ask before it may touch uv's cache."""
+    import agents
+    return f"{agents._q(agents.hook_python())} {agents._q(str(ITEMS_PY))}"
 
 
 def handoff_dir() -> Path:

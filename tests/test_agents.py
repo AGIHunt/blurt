@@ -228,7 +228,7 @@ def test_session_command(env, tmp_path):
     import tomllib
     st = tmp_path / "j-1.claude-settings.json"
     c = agents.session_command("claude", "Read H-0001.md", tmp_path, job="j-1", settings=st, mcp=False)
-    assert c["argv"][0].endswith("/claude") and c["argv"][1:] == ["--settings", str(st), "Read H-0001.md"]
+    assert c["argv"][0].endswith("/claude") and c["argv"][1:] == ["--settings", str(st), "--", "Read H-0001.md"]
     assert c["hooks"] == "claude" and c["paste"] is None
     hooks = json.loads(st.read_text())["hooks"]
     assert list(hooks) == list(agents.CLAUDE_HOOKS) and hooks["PostToolUse"][0]["matcher"] == "*"
@@ -239,6 +239,7 @@ def test_session_command(env, tmp_path):
     c = agents.session_command("claude", "p", tmp_path, job="j-1", settings=st)
     i = c["argv"].index("--mcp-config")
     assert json.loads(c["argv"][i + 1])["mcpServers"]["blurt"]["args"][-1] == str(agents.MCP_SERVER)
+    assert c["argv"][-2:] == ["--", "p"]  # --mcp-config takes several values: the prompt must not become one
     x = agents.session_command("codex", "p", tmp_path, job="j-2", mcp=True)
     sets = [x["argv"][i + 1] for i, a in enumerate(x["argv"]) if a == "-c"]
     for v in sets:
