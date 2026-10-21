@@ -1,8 +1,10 @@
 """Shared helpers for blurt scripts (stdlib only)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import secrets
 import platform
 import shutil
 import subprocess
@@ -256,3 +258,73 @@ def removed_into(data: dict, item_id: str) -> str | None:
 
 def live_items(data: dict, kind: str | None = None) -> list[dict]:
     return [i for i in data.get("items", []) if i.get("status") != "deleted" and (kind is None or i.get("kind") == kind)]
+
+
+# ------------------------------------------------------------------ items.json v2: uid, fix (contract C1)
+FIX_STATES = ("fixing", "fixed", "wontfix", "reopened")
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def new_ulid(now: float | None = None) -> str:
+    """26-char ULID: 48-bit ms timestamp + 80 random bits, Crockford base32 (sorts by creation time)."""
+    n = (int((time.time() if now is None else now) * 1000) & (2**48 - 1)) << 80 | secrets.randbits(80)
+    return "".join(_CROCKFORD[(n >> (5 * k)) & 31] for k in range(25, -1, -1))
+
+
+def legacy_uid(session_name: str, item_id: str) -> str:
+    """uid of an item written before v2 (no "uid" field): "L" + sha1("<session dir name>/<id>").hex[:25].
+    26 chars like a ULID, and "L" is not in Crockford's alphabet, so the two never collide."""
+    return "L" + hashlib.sha1(f"{session_name}/{item_id}".encode("utf-8")).hexdigest()[:25]
+
+
+def session_name(session: Path) -> str:
+    return Path(session).resolve().name
+
+
+def item_uid(session: Path, item: dict) -> str:
+    return item.get("uid") or legacy_uid(session_name(session), item.get("id") or "")
+
+
+def file_etag(raw: bytes) -> str:
+    """Same value as review.py's ETag for GET /api/items: sha1 of the file bytes, 16 hex chars, quoted."""
+    return '"' + hashlib.sha1(raw).hexdigest()[:16] + '"'
+
+
+# ------------------------------------------------------------------ the user's edits (review page, apps)
+SERVER_KEYS = {"id", "_user"}
+
+
+def apply_user_ops(data: dict, ops: list[dict]) -> None:
+    """The page sends what the user changed, not the whole list, so the agent's concurrent writes survive.
+    Each field the user sets is recorded in the item's _user (field -> epoch); items.py won't overwrite those.
+    One implementation for review.py (POST /api/items) and `items.py user-ops` (the desktop apps)."""
+    now = round(time.time(), 1)
+    items = data.setdefault("items", [])
+    removed = data.setdefault("_removed", {})
+    for op in ops:
+        kind, iid = op.get("op"), op.get("id") or (op.get("item") or {}).get("id")
+        item = find_item(data, iid) if iid else None
+        if kind == "set" and item is not None:
+            user = item.setdefault("_user", {})
+            for k, v in (op.get("set") or {}).items():
+                if k not in SERVER_KEYS:
+                    item[k] = v
+                    if not k.startswith("_"):
+                        user[k] = now
+            for k in op.get("unset") or []:
+                if k not in SERVER_KEYS:
+                    item.pop(k, None)
+                    if not k.startswith("_"):
+                        user[k] = now
+        elif kind == "remove" and item is not None:  # merged into another item by the user
+            items.remove(item)
+            removed[iid] = op.get("into") or ""
+        elif kind == "add" and iid and item is None:  # e.g. undoing a merge brings the item back
+            new = dict(op["item"])
+            new.setdefault("_user", {})
+            removed.pop(iid, None)
+            after = op.get("after")
+            pos = next((k + 1 for k, i in enumerate(items) if i.get("id") == after), 0 if after is None else len(items))
+            items.insert(pos, new)
+    if not removed:
+        data.pop("_removed", None)

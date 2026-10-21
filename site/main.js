@@ -447,7 +447,7 @@
        as a pendulum around that tilt. Hanging one adds its load and a downward tug, tossing one drops the load (the rope
        springs up and overshoots), hovering one lifts it a little and holds it still while its neighbours make room. */
     const perch = $(".perch", desk), rope = $(".rope", perch), ropeLines = $$("path", rope), pegs = $$(".peg", rope);
-    const RN = 20, RY0 = 9, RT = 4450, RC = 5, RW = 580, RP = 4450; // RT: fundamental ≈ 0.6 s; RW: ~6.5 px rest sag; RP: ~+5 px for one card mid-rope
+    const RN = 20, RY0 = 9, RT = 4450, RC = 5, RW = 892, RP = 4450; // RT: fundamental ≈ 0.6 s; RW: ~10 px rest sag (matches the app's Rope.swift); RP: ~+5 px for one card mid-rope
     const rpY = new Float64Array(RN + 1), rpV = new Float64Array(RN + 1), load = new Float64Array(RN + 1);
     let rx0 = 12, rx1 = 300, swingQ = 0, last = 0, liveUntil = 0;
     const cardX = (s) => s.el.offsetLeft + s.el.offsetWidth / 2;
@@ -460,7 +460,7 @@
       load.fill(0);
       hung.forEach((s) => {
         s.cx = cardX(s);
-        const u = node(s.cx), i = Math.min(RN - 1, Math.floor(u)), f = u - i, P = (s.hold ? -0.15 : 1) * RP / m;
+        const u = node(s.cx), i = Math.min(RN - 1, Math.floor(u)), f = u - i, P = (s.hold ? 0 : 1) * RP / m;  // a lifted card stops weighing, as in the app
         load[i] += P * (1 - f); load[i + 1] += P * f;
       });
     }

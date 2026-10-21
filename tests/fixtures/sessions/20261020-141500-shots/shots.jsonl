@@ -1,0 +1,7 @@
+{"n": 1, "file": "shots/001.png", "marked": null, "t": null, "wall": 1792476920.0, "region": [0, 0, 480, 300], "voice": null, "text": null, "strokes": []}
+{"n": 1, "file": "shots/001.png", "marked": null, "t": null, "wall": 1792476920.0, "region": [0, 0, 480, 300], "voice": null, "text": "设置页的分组标题太小", "strokes": []}
+{"n": 2, "file": "shots/002.png", "marked": null, "t": null, "wall": 1792476940.0, "region": [0, 0, 480, 300], "voice": "shots/002.wav", "text": null, "strokes": []}
+{"n": 2, "file": "shots/002.png", "marked": "shots/002.marked.png", "t": null, "wall": 1792476940.0, "region": [0, 0, 480, 300], "voice": "shots/002.wav", "text": null, "strokes": [[[0.31, 0.5], [0.69, 0.5], [0.69, 0.77], [0.31, 0.77]]]}
+{"n": 2, "file": "shots/002.png", "marked": "shots/002.marked.png", "t": null, "wall": 1792476940.0, "region": [0, 0, 480, 300], "voice": "shots/002.wav", "text": null, "strokes": [[[0.31, 0.5], [0.69, 0.5], [0.69, 0.77], [0.31, 0.77]]], "said": "保存按钮颜色太浅，看不出能点"}
+{"n": 3, "file": "shots/003.png", "marked": null, "t": null, "wall": 1792476960.0, "region": [0, 0, 480, 300], "voice": null, "text": null, "strokes": []}
+{"n": 3, "file": "shots/003.png", "marked": null, "t": null, "wall": 1792476960.0, "region": [0, 0, 480, 300], "voice": null, "text": null, "strokes": [], "deleted": true}

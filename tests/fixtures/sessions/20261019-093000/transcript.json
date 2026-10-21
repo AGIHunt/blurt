@@ -1,0 +1,23 @@
+{
+  "source": "recording.mp4",
+  "backend": "fixture",
+  "model": "none",
+  "duration": 4.0,
+  "segments": [
+    {
+      "start": 0.2,
+      "end": 1.6,
+      "text": "这个登录按钮点了之后没有任何反应。"
+    },
+    {
+      "start": 1.8,
+      "end": 2.9,
+      "text": "价格页在手机上会溢出。"
+    },
+    {
+      "start": 3.0,
+      "end": 3.9,
+      "text": "空状态可以学一下 Linear。"
+    }
+  ]
+}

@@ -1,18 +1,22 @@
-// The Perch (鸡舍): a slim wooden rod just under the menu bar; every shot hangs from it like a polaroid, held by a
-// chicken-foot clip (docs/design/snap-and-live.md §3).
+// The Perch (鸡舍): a twine rope just under the menu bar, knotted to a peg at each end; every shot hangs from it like a
+// polaroid, held by a chicken-foot clip (docs/design/snap-and-live.md §3). The rope is a small physical simulation
+// (Rope.swift): it sags under the cards, each card sits on the curve and tilts with its slope, and it bounces when a
+// card is hung, taken, lifted, gathered, or when the strip slides down.
 //
 //  • hidden by default; slides down for 3 s when a shot arrives, when the pointer rests ~250 ms in the top-middle of
 //    the screen (the notch, on notched Macs), or from the menu; tucks away 400 ms after the pointer leaves.
-//  • cards land with a damped pendulum swing; hovering lifts a card and stops it, its neighbours make room; a breeze
-//    now and then; × drops a card with gravity; reduce motion = fades.
+//  • cards land with a damped pendulum swing around the rope's local slope; hovering lifts a card (and the rope with
+//    it) and stops it, its neighbours make room; a breeze now and then; × drops a card with gravity; reduce motion =
+//    fades and a still, sagging rope.
 //  • click = copy (the inked version if any) · drag = the file (+ the note as text) into any app · double-click =
 //    edit the note · hover = the note, ▶ plays the voice.
 //  • right end: "🐔 整理 N 张" / "清空". While an agent processes a batch or a recording, a nest of wobbling eggs
 //    hangs here ("孵化中…") until the review page is up.
 // Window: a non-activating panel on all spaces, never captured (sharingType none), mouse-transparent except over
-// what it draws, on the screen with the pointer.
+// what it draws, on the screen with the pointer. Animation runs on the display link (up to 120 Hz) only while
+// something moves; settled, a slow timer just watches the pointer.
 //
-// Motion constants follow tendedero.app's published line.js (spring response/damping, pendulum k = 46, c = 2.6).
+// Motion constants follow tendedero.app's published line.js (spring response/damping, pendulum k = 46; damping 3.4 here, c = 2.6 there).
 
 import AppKit
 import AVFoundation
@@ -56,7 +60,7 @@ var reduceMotion: Bool {
 }
 var isDarkMode: Bool { NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 
-// MARK: - Vector art: chicken-foot clip, rod
+// MARK: - Vector art: chicken-foot clip
 
 /// A chicken foot gripping the top edge of a card (y-up drawing; the leg goes up to the rod).
 func drawFoot(_ ctx: CGContext, in r: CGRect) {
@@ -124,58 +128,6 @@ func drawFoot(_ ctx: CGContext, in r: CGRect) {
     ctx.restoreGState()
 }
 
-func drawRod(_ ctx: CGContext, in r: CGRect, dark: Bool) {
-    let space = CGColorSpace(name: CGColorSpace.sRGB)!
-    let cols = dark ? [CGColor(srgbRed: 0.72, green: 0.52, blue: 0.32, alpha: 1), CGColor(srgbRed: 0.52, green: 0.35, blue: 0.19, alpha: 1),
-                       CGColor(srgbRed: 0.33, green: 0.21, blue: 0.10, alpha: 1)]
-                    : [CGColor(srgbRed: 0.90, green: 0.72, blue: 0.50, alpha: 1), CGColor(srgbRed: 0.72, green: 0.52, blue: 0.31, alpha: 1),
-                       CGColor(srgbRed: 0.50, green: 0.33, blue: 0.17, alpha: 1)]
-    let body = r.insetBy(dx: r.height, dy: 0)
-    ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -1.5), blur: 3, color: CGColor(gray: 0, alpha: dark ? 0.5 : 0.25))
-    let p = CGPath(roundedRect: body, cornerWidth: r.height / 2, cornerHeight: r.height / 2, transform: nil)
-    ctx.addPath(p)
-    ctx.setFillColor(cols[1])
-    ctx.fillPath()
-    ctx.restoreGState()
-    ctx.saveGState()
-    ctx.addPath(p)
-    ctx.clip()
-    if let g = CGGradient(colorsSpace: space, colors: cols as CFArray, locations: [0, 0.5, 1]) {
-        ctx.drawLinearGradient(g, start: CGPoint(x: 0, y: body.maxY), end: CGPoint(x: 0, y: body.minY), options: [])
-    }
-    // grain
-    var g = SeededRandom(11)
-    ctx.setStrokeColor(CGColor(srgbRed: 0.35, green: 0.22, blue: 0.10, alpha: 0.18))
-    ctx.setLineWidth(0.6)
-    var x = body.minX
-    while x < body.maxX {
-        let len = g.range(30, 120)
-        let y = body.minY + body.height * g.range(0.25, 0.75)
-        ctx.move(to: CGPoint(x: x, y: y)); ctx.addLine(to: CGPoint(x: x + len, y: y + g.range(-0.6, 0.6)))
-        x += len * g.range(0.4, 0.9)
-    }
-    ctx.strokePath()
-    ctx.restoreGState()
-    // end knobs
-    for cxk in [r.minX + r.height, r.maxX - r.height] {
-        let k = CGRect(x: cxk - r.height * 0.95, y: r.midY - r.height * 0.95, width: r.height * 1.9, height: r.height * 1.9)
-        ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -1), blur: 2, color: CGColor(gray: 0, alpha: 0.3))
-        ctx.setFillColor(cols[2])
-        ctx.fillEllipse(in: k)
-        ctx.restoreGState()
-        if let gr = CGGradient(colorsSpace: space, colors: [cols[0], cols[2]] as CFArray, locations: [0, 1]) {
-            ctx.saveGState()
-            ctx.addEllipse(in: k.insetBy(dx: 0.6, dy: 0.6))
-            ctx.clip()
-            ctx.drawRadialGradient(gr, startCenter: CGPoint(x: k.midX - k.width * 0.2, y: k.midY + k.height * 0.2), startRadius: 0,
-                                   endCenter: CGPoint(x: k.midX, y: k.midY), endRadius: k.width * 0.6, options: [.drawsAfterEndLocation])
-            ctx.restoreGState()
-        }
-    }
-}
-
 // MARK: - Cards
 
 final class PerchCard {
@@ -191,7 +143,8 @@ final class PerchCard {
     var x: Spring
     var drop = Spring(0, response: 0.42, damping: 0.72)
     var lift = Spring(0, response: 0.28, damping: 0.72)
-    var theta: CGFloat = 0, omega: CGFloat = 0
+    var theta: CGFloat = 0, omega: CGFloat = 0     // swing, degrees, absolute (rests at slopeFollow × the rope's slope)
+    var landed = true                              // false while dropping onto the rope (no weight on it yet)
     var nudge: (from: CGFloat, to: CGFloat, start: CFTimeInterval)?
     let tilt: CGFloat
     var flying = false
@@ -203,6 +156,7 @@ final class PerchCard {
     var piled = false
     // leaving the perch: a gravity fall, or flying into the hatching nest
     var leaving: (start: CFTimeInterval, gather: CGPoint?)?
+    var leaveFrom = CGPoint.zero
 
     init(_ s: Shot, x: CGFloat) {
         shot = s
@@ -239,7 +193,10 @@ final class PerchView: NSView, NSDraggingSource {
 
 final class Perch: NSObject {
     // geometry (points, y down from the panel top, which sits just under the menu bar)
-    static let rodY: CGFloat = 9, rodH: CGFloat = 5
+    static let rodY: CGFloat = 9               // the rope's anchors (the pegs)
+    static let ropeInset: CGFloat = 16         // pegs from the screen edges
+    static let slopeFollow: CGFloat = 0.85     // how much a card tilts with the rope under its clip
+    static let hangKick: CGFloat = 300         // px/s pushed into the rope where a card lands
     static let cardTop: CGFloat = 20           // polaroid top, from the rod's pivot
     static let cardW: CGFloat = 150, padSide: CGFloat = 7, padTop: CGFloat = 7, padBottom: CGFloat = 28
     static let photoMaxH: CGFloat = 100
@@ -251,7 +208,7 @@ final class Perch: NSObject {
     private var panel: PerchPanel?
     private var view: PerchView!
     private let strip = CALayer()
-    private let rod = CALayer()
+    private let rope = Rope()
     private let cardsLayer = CALayer()
     private let hint = CATextLayer()
     private let processBtn = CALayer(), clearBtn = CALayer()
@@ -272,8 +229,6 @@ final class Perch: NSObject {
     private var holds = 0
     private var hotSince: CFTimeInterval?
     private var awaySince: CFTimeInterval?
-    private var timer: Timer?
-    private var fast = false
     private var last = CACurrentMediaTime()
     private var nextGust = CACurrentMediaTime() + 9
     private var hoverCard: PerchCard?
@@ -327,8 +282,10 @@ final class Perch: NSObject {
         view.frame = NSRect(origin: .zero, size: f.size)
         strip.frame = view.bounds
         cardsLayer.frame = view.bounds
-        drawRodLayer()
+        layoutRope()
         layout(instant: true)
+        syncLoads()
+        rope.snapToRest()
     }
 
     private func buildLayers() {
@@ -336,7 +293,7 @@ final class Perch: NSObject {
         root.masksToBounds = true
         strip.masksToBounds = false
         root.addSublayer(strip)
-        strip.addSublayer(rod)
+        strip.addSublayer(rope.layer)
         strip.addSublayer(cardsLayer)
         for (b, t) in [(processBtn, processText), (clearBtn, clearText)] {
             t.contentsScale = 2
@@ -387,9 +344,9 @@ final class Perch: NSObject {
     private func restyle() {
         guard view != nil else { return }
         let dark = isDarkMode
-        drawRodLayer()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        rope.restyle(dark: dark)
         for c in cards { style(c) }
         hint.foregroundColor = (dark ? NSColor(white: 1, alpha: 0.8) : NSColor(white: 0, alpha: 0.6)).cgColor
         noteTip.backgroundColor = (dark ? NSColor(calibratedWhite: 0.18, alpha: 0.97) : NSColor(calibratedWhite: 1, alpha: 0.98)).cgColor
@@ -401,12 +358,29 @@ final class Perch: NSObject {
         refreshControls()
     }
 
-    private func drawRodLayer() {
+    private func layoutRope() {
         guard view != nil else { return }
-        let r = CGRect(x: 18, y: Perch.rodY - Perch.rodH / 2 - 3, width: width - 36, height: Perch.rodH + 6)
-        rod.frame = r
-        let dark = isDarkMode
-        rod.contents = renderImage(r.size) { drawRod($0, in: CGRect(x: 0, y: 3, width: r.width, height: Perch.rodH), dark: dark) }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        rope.layer.frame = view.bounds
+        rope.setSpan(from: Perch.ropeInset, to: width - Perch.ropeInset, y: Perch.rodY)
+        rope.draw()
+        CATransaction.commit()
+    }
+
+    /// What hangs on the rope and how heavily: cards (a lifted one no longer weighs, so the rope rises there; one dragged
+    /// away barely weighs), the pile at the left end, the hatching nests.
+    private func syncLoads() {
+        var l: [(x: CGFloat, w: CGFloat)] = []
+        for c in cards where c.landed && !c.flying {
+            var w: CGFloat = c.piled ? 0.5 : 1
+            if c.dragging { w = 0.3 } else { w *= 1 - max(0, min(1, c.lift.value)) }
+            l.append((c.x.value, w))
+        }
+        let now = CACurrentMediaTime()
+        for c in leaving where c.landed { if let lv = c.leaving, now < lv.start { l.append((c.x.value, 1)) } }   // gathering, not yet gone
+        for h in hatches { l.append((h.layer.position.x, 1.6)) }
+        rope.loads = l
     }
 
     private static let footImage: CGImage? = renderImage(CGSize(width: 18, height: 30)) {
@@ -581,7 +555,7 @@ final class Perch: NSObject {
         }
         hint.isHidden = !(cards.isEmpty && hatches.isEmpty)
         hint.string = L("⌥⇧A 截一张图，它会挂在这里", "⌥⇧A takes a shot — it hangs here")
-        hint.frame = CGRect(x: width / 2 - 200, y: Perch.cardTop + 14, width: 400, height: 20)
+        hint.frame = CGRect(x: width / 2 - 200, y: rope.restY(at: width / 2) + Perch.cardTop + 6, width: 400, height: 20)
         refreshControls()
         wake()
     }
@@ -621,7 +595,7 @@ final class Perch: NSObject {
         let pile = pileCount
         pileBadge.isHidden = pile == 0
         pileBadge.string = "+\(pile)"
-        pileBadge.frame = CGRect(x: 70 + Perch.cardW - 18, y: Perch.cardTop - 6, width: 30, height: 18)
+        pileBadge.frame = CGRect(x: 70 + Perch.cardW - 18, y: rope.restY(at: 70 + Perch.cardW / 2) + Perch.cardTop - 12, width: 30, height: 18)
         CATransaction.commit()
     }
 
@@ -634,23 +608,40 @@ final class Perch: NSObject {
         cardsLayer.addSublayer(c.root)
         layout()
         if let i = cards.firstIndex(where: { $0 === c }) { c.x.value = targets()[i]; c.x.snap() }
+        c.theta = Perch.slopeFollow * slopeDeg(c.x.value)
+        if quiet {
+            c.opacity = 1
+            syncLoads()
+            rope.snapToRest()
+            c.theta = Perch.slopeFollow * slopeDeg(c.x.value, rest: true)
+            place(c, now: CACurrentMediaTime())
+            return
+        }
+        // the flight / drop aims at where the rope will rest once this card weighs on it
+        c.landed = false
+        syncLoads()
+        c.landed = true
         place(c, now: CACurrentMediaTime())
-        if quiet { c.opacity = 1; return }
+        c.landed = false
         show(peek: 3)
         if let f = from, !reduceMotion, let img = s.thumb, let to = cardScreenRect(s) {
             c.flying = true
             c.opacity = 0
-            flyImage(img, from: f, to: to, tilt: c.tilt) { [weak self] in
+            flyImage(img, from: f, to: to, tilt: c.tilt + c.theta) { [weak self] in
+                guard let self = self else { return }
                 c.flying = false
                 c.opacity = 1
-                self?.startNudge(c, 2.2)
-                self?.wake()
+                self.land(c, kick: Perch.hangKick)
+                self.startNudge(c, 2.2)
             }
+        } else if reduceMotion {
+            c.opacity = 0
+            c.landed = true
         } else {
-            c.opacity = reduceMotion ? 0 : 1
-            c.drop.value = reduceMotion ? 0 : -46
+            c.opacity = 1
+            c.drop.value = -46
             c.drop.target = 0
-            c.theta = reduceMotion ? 0 : 16
+            c.theta += 16
         }
         wake()
     }
@@ -670,6 +661,7 @@ final class Perch: NSObject {
         if hoverCard === c { hoverCard = nil; noteTip.isHidden = true }
         if fall && revealed && !reduceMotion {
             c.leaving = (CACurrentMediaTime(), nil)
+            c.leaveFrom = .zero
             leaving.append(c)
         } else {
             CATransaction.begin()
@@ -699,7 +691,8 @@ final class Perch: NSObject {
         hoverCard = nil
         noteTip.isHidden = true
         for (i, c) in all.enumerated() {
-            c.leaving = (CACurrentMediaTime() + 0.05 * Double(i), nest)
+            c.leaving = (CACurrentMediaTime() + 0.08 * Double(i), nest)
+            c.leaveFrom = .zero
             leaving.append(c)
         }
         layout()
@@ -711,7 +704,7 @@ final class Perch: NSObject {
         guard let p = panel, let i = cards.firstIndex(where: { $0.shot === s }) else { return nil }
         let c = cards[i]
         let x = c.x.target
-        let local = NSRect(x: x - Perch.cardW / 2, y: Perch.rodY + Perch.cardTop, width: Perch.cardW,
+        let local = NSRect(x: x - Perch.cardW / 2, y: rope.restY(at: x) + Perch.cardTop, width: Perch.cardW,
                            height: Perch.padTop + c.photoSize.height + Perch.padBottom)
         return NSRect(x: p.frame.minX + local.minX, y: p.frame.maxY - local.maxY, width: local.width, height: local.height)
     }
@@ -804,6 +797,7 @@ final class Perch: NSObject {
         strip.addSublayer(nest)
         hatches.append((id, nest, eggs, label, 0, CACurrentMediaTime()))
         layoutHatches()
+        rope.impulse(at: nest.position.x, Perch.hangKick, spread: 120)
         if reveal { show(peek: 3) }
         wake()
     }
@@ -856,16 +850,17 @@ final class Perch: NSObject {
         for h in hatches.reversed() {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            h.layer.position = CGPoint(x: x, y: Perch.rodY - 2)
+            h.layer.position = CGPoint(x: x, y: rope.y(at: x) - 2)
             CATransaction.commit()
             x -= 130
         }
     }
 
     private func tickHatches(_ now: CFTimeInterval) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
         for h in hatches {
+            let x = h.layer.position.x
+            h.layer.position = CGPoint(x: x, y: rope.y(at: x) - 2)
+            h.layer.setAffineTransform(CGAffineTransform(rotationAngle: reduceMotion ? 0 : atan(rope.slope(at: x)) * Perch.slopeFollow))
             let t = now - h.since
             let dots = String(repeating: "·", count: 1 + Int(now * 2.5) % 3)
             let text: String
@@ -874,9 +869,11 @@ final class Perch: NSObject {
             case 2: text = L("整理失败 · 详见 agent.log", "Failed · see agent.log")
             default: text = L("孵化中 ", "Hatching ") + dots
             }
-            h.label.string = NSAttributedString(string: text, attributes: [
-                .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
-                .foregroundColor: h.state == 2 ? amber : (isDarkMode ? NSColor(white: 1, alpha: 0.85) : NSColor(white: 0, alpha: 0.6))])
+            if (h.label.string as? NSAttributedString)?.string != text {
+                h.label.string = NSAttributedString(string: text, attributes: [
+                    .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
+                    .foregroundColor: h.state == 2 ? amber : (isDarkMode ? NSColor(white: 1, alpha: 0.85) : NSColor(white: 0, alpha: 0.6))])
+            }
             guard h.state == 0, !reduceMotion else { continue }
             for (j, e) in h.eggs.enumerated() {
                 // wobble in little bursts, each egg on its own beat — "something is going on in there"
@@ -886,22 +883,94 @@ final class Perch: NSObject {
                 e.setAffineTransform(CGAffineTransform(rotationAngle: a))
             }
         }
-        CATransaction.commit()
     }
 
     // MARK: animation loop
+    //
+    // Fast: a display link (CADisplayLink on macOS 14+, up to 120 Hz; a 60 Hz timer before) while anything moves.
+    // When everything has settled for a few frames it stops; a slow timer then only polls the pointer (hover, the
+    // hot zone) and the next breeze, and any event calls wake() to start the display link again.
+
+    private var link: AnyObject?
+    private var slowTimer: Timer?
+    private var stillFrames = 0
+    private var stripY: CGFloat = -1e6
+    private var stripVel: CGFloat = 0
+
+    private var visible: Bool { revealed || tuck != nil || !leaving.isEmpty }
 
     private func wake() {
-        let wantFast = revealed || tuck != nil || !leaving.isEmpty
-        if timer != nil && fast == wantFast { return }
-        timer?.invalidate()
-        timer = nil
-        guard hasContent || revealed || tuck != nil || !leaving.isEmpty else { return }
-        fast = wantFast
+        stillFrames = 0
+        if visible { startLink() } else { goIdle() }
+    }
+
+    private func startLink() {
+        guard link == nil, let v = view else { return }
+        slowTimer?.invalidate()
+        slowTimer = nil
         last = CACurrentMediaTime()
-        let t = Timer(timeInterval: wantFast ? 1.0 / 60 : 1.0 / 12, repeats: true) { [weak self] _ in self?.frame() }
+        stats = (0, 0, 0, 0, 0, 0, last, [:])
+        if #available(macOS 14.0, *) {
+            let l = v.displayLink(target: self, selector: #selector(linkFired(_:)))
+            l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+            l.add(to: .main, forMode: .common)
+            link = l
+        } else {
+            let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.frame() }
+            RunLoop.main.add(t, forMode: .common)
+            link = t
+        }
+    }
+
+    @objc private func linkFired(_ l: AnyObject) {
+        let t0 = CACurrentMediaTime()
+        if #available(macOS 14.0, *), let l = l as? CADisplayLink { stats.interval = l.targetTimestamp - l.timestamp }
+        if stats.lastFire > 0 {
+            let gap = t0 - stats.lastFire
+            stats.maxGap = max(stats.maxGap, gap)
+            if stats.interval > 0, gap > stats.interval * 1.5 { stats.late += 1 }
+        }
+        stats.lastFire = t0
+        frame()
+        stats.frames += 1
+        stats.maxWork = max(stats.maxWork, CACurrentMediaTime() - t0)
+    }
+
+    /// BLURT_PERCH_FPS=1 (tests): one line per burst of animation — frames, late frames, the longest frame's work.
+    private var stats = (frames: 0, late: 0, maxGap: 0.0, maxWork: 0.0, lastFire: 0.0, interval: 0.0, start: 0.0, why: [String: Int]())
+    private func reportFrames() {
+        defer { stats = (0, 0, 0, 0, 0, 0, CACurrentMediaTime(), [:]) }
+        guard ProcessInfo.processInfo.environment["BLURT_PERCH_FPS"] == "1", stats.frames > 0 else { return }
+        emit(["event": "perch_frames", "frames": stats.frames, "secs": CACurrentMediaTime() - stats.start,
+              "late": stats.late, "max_gap_ms": stats.maxGap * 1000, "max_work_ms": stats.maxWork * 1000,
+              "interval_ms": stats.interval * 1000, "busy_with": stats.why])
+    }
+
+    private func stopLink() {
+        if link != nil { reportFrames() }
+        if #available(macOS 14.0, *), let l = link as? CADisplayLink { l.invalidate() }
+        (link as? Timer)?.invalidate()
+        link = nil
+    }
+
+    /// Nothing moves: drop to a slow pointer poll (or nothing at all, with nothing to show).
+    private func goIdle() {
+        stopLink()
+        let rate: Double = revealed ? 1.0 / 20 : 1.0 / 12
+        if let t = slowTimer, t.isValid, t.timeInterval == rate { return }
+        slowTimer?.invalidate()
+        slowTimer = nil
+        guard hasContent || revealed else { return }
+        let t = Timer(timeInterval: rate, repeats: true) { [weak self] _ in self?.idleTick() }
+        t.tolerance = rate / 2
         RunLoop.main.add(t, forMode: .common)
-        timer = t
+        slowTimer = t
+    }
+
+    private func idleTick() {
+        let now = CACurrentMediaTime()
+        poll(now)
+        if revealed, now > nextGust { wake() }
     }
 
     private func frame() {
@@ -909,7 +978,7 @@ final class Perch: NSObject {
         let dt = CGFloat(min(0.05, now - last))
         last = now
         poll(now)
-        if !(revealed || tuck != nil || !leaving.isEmpty) { wake(); return }
+        guard visible else { goIdle(); return }
         let hidden = -(maxBottom() + 24)
         var y: CGFloat
         if let tk = tuck {
@@ -930,18 +999,31 @@ final class Perch: NSObject {
             fade = max(0, min(1, fade))
             y = revealed || fade > 0 ? 0 : hidden
         } else { fade = 1 }
+        // the strip's own acceleration shakes the rope: it lags as the strip slides down, then settles
+        var accel: CGFloat = 0
+        if dt > 0.001 {
+            let vel = stripY > -1e5 ? (y - stripY) / dt : 0
+            accel = (vel - stripVel) / dt
+            stripVel = vel
+        }
+        stripY = y
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         strip.setAffineTransform(CGAffineTransform(translationX: 0, y: y))
         strip.opacity = Float(fade)
         if now > nextGust {
             nextGust = now + Double.random(in: 7...16)
-            if revealed, draggingCard == nil {
+            if revealed, draggingCard == nil, !cards.isEmpty, !reduceMotion {
+                rope.impulse(at: CGFloat.random(in: width * 0.25...width * 0.75), CGFloat.random(in: -45...45), spread: width * 0.2)
                 for c in cards where !c.hovered { let d = CGFloat.random(in: 1.6...3.4); let c2 = c
                     DispatchQueue.main.asyncAfter(deadline: .now() + Double.random(in: 0...0.35)) { self.startNudge(c2, d) } }
             }
         }
         for c in cards { step(c, dt, now) }
+        syncLoads()
+        rope.step(dt, frameAccel: accel)
+        rope.draw()
+        for c in cards { place(c, now: now) }
         for c in leaving { stepLeaving(c, now) }
         leaving.removeAll { c in
             guard let l = c.leaving, now - l.start > 0.6 else { return false }
@@ -951,22 +1033,59 @@ final class Perch: NSObject {
         tickHatches(now)
         positionNoteTip(now)
         CATransaction.commit()
-        if tuck == nil && !revealed && leaving.isEmpty { panel?.orderOut(nil); wake() }
+        if tuck == nil && !revealed && leaving.isEmpty { panel?.orderOut(nil); stripY = -1e6; stripVel = 0; goIdle(); return }
+        let why = moving(now)
+        if stats.frames % 60 == 59 { stats.why[why ?? "-", default: 0] += 1 }
+        if why != nil { stillFrames = 0 } else {
+            stillFrames += 1
+            if stillFrames >= 3 { goIdle() }
+        }
+    }
+
+    /// What is still animating (or about to change on its own), nil when everything has settled.
+    private func moving(_ now: CFTimeInterval) -> String? {
+        if tuck != nil { return "tuck" }
+        if !leaving.isEmpty { return "leaving" }
+        if !rope.settled { return "rope" }
+        if !reduceMotion && !reveal.resting { return "reveal" }
+        if reduceMotion && fade < 1 && revealed { return "fade" }
+        if hatches.contains(where: { $0.state == 0 }) { return "hatching" }
+        if let h = hoverCard, h.shot.hasNote, noteTip.isHidden, now - hoverSince < 0.6 { return "note tip" }
+        for c in cards {
+            if c.flying || !c.landed { return "landing" }
+            if c.nudge != nil || c.opacity < 1 || now < c.copiedUntil + 0.1 { return "card" }
+            if !c.x.resting || !c.drop.resting || !c.lift.resting { return "card spring" }
+            if abs(c.theta - Perch.slopeFollow * slopeDeg(c.x.value)) > 0.15 || abs(c.omega) > 0.5 { return "swing" }
+        }
+        return nil
     }
 
     private func maxBottom() -> CGFloat {
         let cb = cards.map { $0.height }.max() ?? 60
         let hb: CGFloat = hatches.isEmpty ? 0 : 26 + 48 + 40
-        return Perch.rodY + max(cb, hb, 50) + 40
+        return Perch.rodY + rope.maxSag + max(cb, hb, 50) + 40
+    }
+
+    /// The rope's slope at x, in degrees (now, or once it has come to rest).
+    private func slopeDeg(_ x: CGFloat, rest: Bool = false) -> CGFloat {
+        let s = rest ? (rope.restY(at: x + 1) - rope.restY(at: x - 1)) / 2 : rope.slope(at: x)
+        return atan(s) * 180 / .pi
+    }
+
+    /// A card arrives on the rope: from now on it weighs on it, and its momentum pushes the rope down there.
+    private func land(_ c: PerchCard, kick: CGFloat) {
+        c.landed = true
+        rope.impulse(at: c.x.value, kick, spread: 120)
+        wake()
     }
 
     private func place(_ c: PerchCard, now: CFTimeInterval) {
-        let swing = reduceMotion ? 0 : c.theta
+        let swing = reduceMotion ? Perch.slopeFollow * slopeDeg(c.x.value) : c.theta
         let scale = 1 + 0.05 * c.lift.value
         var t = CATransform3DMakeTranslation(0, c.drop.value - 3 * c.lift.value, 0)
         t = CATransform3DRotate(t, (swing + c.tilt * (1 - c.lift.value)) * .pi / 180, 0, 0, 1)
         t = CATransform3DScale(t, scale, scale, 1)
-        c.root.position = CGPoint(x: c.x.value, y: Perch.rodY)
+        c.root.position = CGPoint(x: c.x.value, y: rope.y(at: c.x.value))
         c.root.transform = t
         c.root.opacity = Float(c.flying ? 0 : (c.dragging ? 0.45 : c.opacity))
         c.frame.shadowRadius = 6 + 6 * c.lift.value
@@ -976,42 +1095,58 @@ final class Perch: NSObject {
     }
 
     private func step(_ c: PerchCard, _ dt: CGFloat, _ now: CFTimeInterval) {
+        // the swing rests at the rope's slope under the clip, so when the rope moves the card lags and swings
+        let rest = Perch.slopeFollow * slopeDeg(c.x.value)
         if let n = c.nudge {
             let k = CGFloat(min(1, (now - n.start) / 0.3))
-            c.theta = n.from + (n.to - n.from) * (1 - pow(1 - k, 3))
+            c.theta = rest + n.from + (n.to - n.from) * (1 - pow(1 - k, 3))
             c.omega = 0
             if k >= 1 { c.nudge = nil }
         } else {
-            var rest = dt
-            let damp: CGFloat = c.hovered ? 16 : 2.6     // hovered: lifted and still
-            while rest > 0 {
-                let h = min(rest, 1.0 / 240)
-                let a = -46 * c.theta - damp * c.omega
+            var left = dt
+            let damp: CGFloat = c.hovered ? 16 : 3.4     // hovered: lifted and still
+            while left > 0 {
+                let h = min(left, 1.0 / 240)
+                let a = -46 * (c.theta - rest) - damp * c.omega
                 c.omega += a * h
                 c.theta += c.omega * h
-                rest -= h
+                left -= h
             }
         }
         _ = c.x.step(dt)
-        _ = c.drop.step(dt)
+        if !c.landed && !c.flying {
+            let v = c.drop.velocity
+            _ = c.drop.step(dt)
+            if c.drop.value >= 0 {          // reached the rope: it takes the weight and the momentum
+                c.drop.snap()
+                land(c, kick: min(Perch.hangKick, max(120, v * 0.6)))
+            }
+        } else { _ = c.drop.step(dt) }
         c.lift.target = c.hovered && !c.dragging ? 1 : 0
         _ = c.lift.step(dt)
         if !c.flying { c.opacity = min(1, c.opacity + dt * 6) }
-        if reduceMotion { c.x.snap(); c.drop.snap(); c.lift.snap() }
-        place(c, now: now)
+        if reduceMotion { c.x.snap(); c.drop.snap(); c.lift.snap(); c.theta = rest; c.omega = 0; c.landed = true }
     }
 
     private func stepLeaving(_ c: PerchCard, _ now: CFTimeInterval) {
         guard let l = c.leaving else { return }
+        if now < l.start {                 // waiting its turn (gathering): still hanging on the rope
+            c.root.position = CGPoint(x: c.x.value, y: rope.y(at: c.x.value))
+            return
+        }
+        if c.leaveFrom == .zero {
+            c.leaveFrom = c.root.position
+            if l.gather == nil { rope.impulse(at: c.x.value, 70, spread: 90) }    // yanked off: a tug, then it springs up
+        }
         let raw = CGFloat(max(0, min(1, (now - l.start) / 0.55)))
         if let g = l.gather {
             // into the nest: shrink along an arc and vanish
             let k = raw < 0.5 ? 4 * raw * raw * raw : 1 - pow(-2 * raw + 2, 3) / 2
-            let x = c.x.value + (g.x - c.x.value) * k
-            let y = Perch.rodY + (g.y - 30 - Perch.rodY) * k - sin(.pi * k) * 20
+            let x = c.leaveFrom.x + (g.x - c.leaveFrom.x) * k
+            let y = c.leaveFrom.y + (g.y - 30 - c.leaveFrom.y) * k - sin(.pi * k) * 20
             c.root.position = CGPoint(x: x, y: y)
             let s = 1 - 0.85 * k
-            c.root.transform = CATransform3DScale(CATransform3DMakeRotation((c.tilt + 30 * k) * .pi / 180, 0, 0, 1), s, s, 1)
+            c.root.transform = CATransform3DScale(CATransform3DMakeRotation((c.tilt + c.theta + 30 * k) * .pi / 180, 0, 0, 1), s, s, 1)
             c.root.opacity = Float(1 - k * k)
         } else {
             // gravity
@@ -1026,7 +1161,7 @@ final class Perch: NSObject {
 
     func startNudge(_ c: PerchCard, _ deg: CGFloat) {
         guard !reduceMotion else { return }
-        c.nudge = (c.theta, deg, CACurrentMediaTime())
+        c.nudge = (c.theta - Perch.slopeFollow * slopeDeg(c.x.value), deg, CACurrentMediaTime())
         wake()
     }
 
@@ -1088,7 +1223,7 @@ final class Perch: NSObject {
 
     private func card(at p: NSPoint) -> PerchCard? {
         for c in cards.reversed() where !c.flying {
-            let r = CGRect(x: c.x.value - Perch.cardW / 2, y: Perch.rodY + Perch.cardTop - 2, width: Perch.cardW,
+            let r = CGRect(x: c.x.value - Perch.cardW / 2, y: rope.y(at: c.x.value) + Perch.cardTop - 2, width: Perch.cardW,
                            height: Perch.padTop + c.photoSize.height + Perch.padBottom + 2).insetBy(dx: -3, dy: -3)
             if r.contains(p) { return c }
         }
@@ -1109,7 +1244,7 @@ final class Perch: NSObject {
         if noteTip.isHidden || noteTipFor !== c { buildNoteTip(c) }
         noteTip.isHidden = false
         let w = noteTip.bounds.width
-        let top = Perch.rodY + Perch.cardTop + (Perch.padTop + c.photoSize.height + Perch.padBottom) * 1.05 + 10
+        let top = rope.y(at: c.x.value) + Perch.cardTop + (Perch.padTop + c.photoSize.height + Perch.padBottom) * 1.05 + 10
         noteTip.position = CGPoint(x: min(max(c.x.value, w / 2 + 12), width - w / 2 - 12), y: top + noteTip.bounds.height / 2)
     }
     private weak var noteTipFor: PerchCard?
@@ -1175,7 +1310,7 @@ final class Perch: NSObject {
         let c = card(at: p)
         down = (p, c, e, false)
         if let c = c {
-            let local = CGPoint(x: p.x - (c.x.value - Perch.cardW / 2), y: p.y - Perch.rodY - Perch.cardTop)
+            let local = CGPoint(x: p.x - (c.x.value - Perch.cardW / 2), y: p.y - rope.y(at: c.x.value) - Perch.cardTop)
             if c.hovered, !c.piled, local.x < 18, local.y < 18 {      // ×
                 down = nil
                 snapper.delete(c.shot)
@@ -1241,12 +1376,13 @@ final class Perch: NSObject {
         let size = CGSize(width: Perch.cardW, height: Perch.padTop + c.photoSize.height + Perch.padBottom)
         let img = NSImage(size: size)
         if let rep = cardSnapshot(c) { img.addRepresentation(rep) }
-        let origin = NSPoint(x: c.x.value - size.width / 2, y: Perch.rodY + Perch.cardTop)
+        let origin = NSPoint(x: c.x.value - size.width / 2, y: rope.y(at: c.x.value) + Perch.cardTop)
         di.setDraggingFrame(NSRect(origin: origin, size: size), contents: img)
         c.dragging = true
         draggingCard = c
-        // pulling it off the clip sets it swinging
+        // pulling it off the clip sets it swinging and tugs the rope down before it springs back up
         c.omega += CGFloat((p.x - (down?.p.x ?? p.x)) * 6)
+        rope.impulse(at: c.x.value, 90 + max(0, p.y - (down?.p.y ?? p.y)) * 4, spread: 90)
         let session = v.beginDraggingSession(with: [di], event: event, source: v)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
@@ -1258,6 +1394,7 @@ final class Perch: NSObject {
         c.dragging = false
         draggingCard = nil
         down = nil
+        rope.impulse(at: c.x.value, operation.isEmpty ? 110 : 50, spread: 90)   // back on the clip: its weight drops in
         startNudge(c, operation.isEmpty ? 4 : 2)
     }
 
