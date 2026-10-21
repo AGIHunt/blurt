@@ -93,10 +93,33 @@ enum SelfTests {
             let uids = (a.first ?? "").split(separator: ",").map(String.init)
             if a.count >= 3 { FixRunner.shared.start(uids, autostart: (a[1], a[2] != "it")) } else { FixRunner.shared.start(uids) }
             out(["uids": uids])
-        case "peck": PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: L("由 codex 修复", "by codex"), uid: "test")
+        case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: L("由 codex 修复", "by codex"), uid: "test")
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.dropFirst().first == "dark")])
+        case "install":                 // install ID: the dry-run preview (sheet in Settings → Agents); install-apply: confirm it
+            SettingsController.shared.show(pane: "agents")
+            Task { @MainActor in
+                await AgentsModel.shared.load(login: false)
+                if let a = AgentsModel.shared.rows.first(where: { $0.id == arg }) { await AgentsModel.shared.preview(a) }
+                out(["previewed": AgentsModel.shared.plan != nil, "env_home": Agents.shared.installEnvironment()["HOME"] ?? "",
+                     "codex_home": Agents.shared.installEnvironment()["CODEX_HOME"] ?? ""])
+            }
+        case "install-apply":
+            Task { @MainActor in
+                await AgentsModel.shared.apply()
+                out(["applied": AgentsModel.shared.plan?.plan.applied ?? false,
+                     "changes": AgentsModel.shared.plan?.plan.changes.map(\.summary) ?? []])
+            }
+        case "bench":                   // bench BACKEND: Settings → Speech → Benchmark
+            SettingsController.shared.show(pane: "speech")
+            Task { @MainActor in
+                let sm = SpeechModel.shared
+                await sm.load()
+                guard let m = sm.models.first(where: { $0.backend == arg }) else { out(["error": "no model \(arg)"]); return }
+                await sm.runBench(m)
+                out(["backend": arg, "installed": m.installed, "rtf": sm.bench[arg]?.rtf ?? -1, "error": sm.bench[arg]?.error ?? NSNull()])
+            }
         case "perms":
             let p = Permissions()
             out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue])

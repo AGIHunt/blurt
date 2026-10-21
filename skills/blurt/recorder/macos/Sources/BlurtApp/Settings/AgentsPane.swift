@@ -212,6 +212,10 @@ struct AgentsPane: View {
                     else { Text(a.fix).font(.caption).textSelection(.enabled) }
                 }.padding(.leading, ordered ? 44 : 17)
             }
+            if a.id == "codex" && a.installed {
+                Text(L("Codex 会把它处理过的项目记为受信任（写在它自己的配置里）。", "Codex marks the projects it works in as trusted (in its own config)."))
+                    .font(.caption).foregroundStyle(.tertiary).padding(.leading, ordered ? 44 : 17)
+            }
             if let t = m.tests[a.id] {
                 Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                     .font(.caption).foregroundStyle(t.ok ? .green : .red).padding(.leading, ordered ? 44 : 17)

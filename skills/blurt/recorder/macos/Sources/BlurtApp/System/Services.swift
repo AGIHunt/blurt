@@ -124,6 +124,6 @@ final class ServiceProvider: NSObject {
 
     func register() {
         NSApp.servicesProvider = self
-        NSUpdateDynamicServices()
+        NSRegisterServicesProvider(self, "Blurt")     // = Info.plist NSPortName (the executable is "blurt-recorder")
     }
 }

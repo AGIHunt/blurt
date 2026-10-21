@@ -189,7 +189,12 @@ enum ProjectConfig {
 
 func isDefaultWorkspace(_ u: URL) -> Bool { u.standardizedFileURL == defaultWorkspace.standardizedFileURL }
 
-func byteString(_ n: Int64) -> String { ByteCountFormatter.string(fromByteCount: n, countStyle: .file) }
+func byteString(_ n: Int64) -> String {
+    let f = ByteCountFormatter()
+    f.countStyle = .file
+    f.allowsNonnumericFormatting = false      // "0 KB", not "Zero KB"
+    return f.string(fromByteCount: n)
+}
 
 /// Size of a file or a folder (recursively), on a background queue please.
 func diskSize(_ u: URL) -> Int64 {

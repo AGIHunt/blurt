@@ -204,6 +204,7 @@ final class PeckCard: NSObject {
     private var busy = false
     private var timer: Timer?
     private var clickUID: String?
+    var leadIn: Double = 0.15          // card visible → pecking starts (tests record the screen: longer)
 
     func play(title: String, detail: String, uid: String) {
         queue.append((title, detail, uid))
@@ -242,10 +243,11 @@ final class PeckCard: NSObject {
         check.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
         let head = NSStackView(views: [check, headText])
         head.spacing = 4
-        let title = NSTextField(labelWithString: job.title)
+        let title = NSTextField(wrappingLabelWithString: job.title)
         title.font = .systemFont(ofSize: 13, weight: .medium)
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 2
+        title.preferredMaxLayoutWidth = w - 126
         title.cell?.wraps = true
         let detail = NSTextField(labelWithString: job.detail)
         detail.font = .systemFont(ofSize: 11)
@@ -267,7 +269,7 @@ final class PeckCard: NSObject {
         let cg = toCG(frame)
         emit(["event": "peck", "uid": job.uid, "title": job.title, "frame": [Int(cg.minX), Int(cg.minY), Int(cg.width), Int(cg.height)]])
         NSAnimationContext.runAnimationGroup { $0.duration = 0.18; p.animator().alphaValue = 1 }
-        let t0 = CACurrentMediaTime() + 0.15
+        let t0 = CACurrentMediaTime() + leadIn
         timer = Timer.scheduledTimer(withTimeInterval: 1 / 60, repeats: true) { [weak self] tm in
             guard let self = self else { tm.invalidate(); return }
             let t = CACurrentMediaTime() - t0
