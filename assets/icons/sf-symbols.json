@@ -1,49 +1,150 @@
 {
   "_": "macOS mapping. generic: SF Symbol candidates, best first (the first one this macOS has wins; macOS 13 is the floor, newer names come first with an older fallback after them; none available → our own vector). brand: always our vector; `nearest` is only the closest SF Symbol, for reference. aliases: other names that resolve to the same icon on every platform.",
   "generic": {
-    "check": ["checkmark"],
-    "x": ["xmark"],
-    "chevron-up": ["chevron.up"],
-    "chevron-down": ["chevron.down"],
-    "chevron-left": ["chevron.left"],
-    "chevron-right": ["chevron.right"],
-    "plus": ["plus"],
-    "more": ["ellipsis"],
-    "download": ["arrow.down.to.line"],
-    "folder": ["folder"],
-    "reveal": ["folder"],
-    "external-link": ["arrow.up.forward.square", "arrow.up.right.square"],
-    "eye": ["eye"],
-    "wand": ["wand.and.stars"],
-    "code": ["chevron.left.forwardslash.chevron.right"],
-    "copy": ["doc.on.doc"],
-    "moon": ["moon"],
-    "sun": ["sun.max"],
-    "keyboard": ["keyboard"],
-    "languages": ["globe"],
-    "play": ["play"],
-    "play-fill": ["play.fill"],
-    "pause": ["pause"],
-    "pause-fill": ["pause.fill"],
-    "stop": ["stop"],
-    "stop-fill": ["stop.fill"],
-    "record": ["record.circle"],
-    "record-fill": ["circle.fill"],
-    "restart": ["arrow.counterclockwise"],
-    "undo": ["arrow.uturn.backward"],
-    "camera": ["camera"],
-    "film": ["film"],
-    "video": ["video"],
-    "help-circle": ["questionmark.circle"],
-    "info": ["info.circle"],
-    "warning": ["exclamationmark.triangle"],
-    "quote": ["quote.opening", "quote.bubble"],
-    "merge": ["arrow.triangle.merge"],
-    "pencil": ["pencil"],
-    "search": ["magnifyingglass"],
-    "settings": ["gearshape"],
-    "trash": ["trash"],
-    "git-commit": ["circle.and.line.horizontal", "smallcircle.filled.circle"]
+    "check": [
+      "checkmark"
+    ],
+    "x": [
+      "xmark"
+    ],
+    "chevron-up": [
+      "chevron.up"
+    ],
+    "chevron-down": [
+      "chevron.down"
+    ],
+    "chevron-left": [
+      "chevron.left"
+    ],
+    "chevron-right": [
+      "chevron.right"
+    ],
+    "plus": [
+      "plus"
+    ],
+    "more": [
+      "ellipsis"
+    ],
+    "download": [
+      "arrow.down.to.line"
+    ],
+    "folder": [
+      "folder"
+    ],
+    "reveal": [
+      "folder"
+    ],
+    "external-link": [
+      "arrow.up.forward.square",
+      "arrow.up.right.square"
+    ],
+    "eye": [
+      "eye"
+    ],
+    "wand": [
+      "wand.and.stars"
+    ],
+    "code": [
+      "chevron.left.forwardslash.chevron.right"
+    ],
+    "copy": [
+      "doc.on.doc"
+    ],
+    "moon": [
+      "moon"
+    ],
+    "sun": [
+      "sun.max"
+    ],
+    "keyboard": [
+      "keyboard"
+    ],
+    "languages": [
+      "globe"
+    ],
+    "play": [
+      "play"
+    ],
+    "play-fill": [
+      "play.fill"
+    ],
+    "pause": [
+      "pause"
+    ],
+    "pause-fill": [
+      "pause.fill"
+    ],
+    "stop": [
+      "stop"
+    ],
+    "stop-fill": [
+      "stop.fill"
+    ],
+    "record": [
+      "record.circle"
+    ],
+    "record-fill": [
+      "circle.fill"
+    ],
+    "restart": [
+      "arrow.counterclockwise"
+    ],
+    "undo": [
+      "arrow.uturn.backward"
+    ],
+    "camera": [
+      "camera"
+    ],
+    "film": [
+      "film"
+    ],
+    "video": [
+      "video"
+    ],
+    "help-circle": [
+      "questionmark.circle"
+    ],
+    "info": [
+      "info.circle"
+    ],
+    "warning": [
+      "exclamationmark.triangle"
+    ],
+    "quote": [
+      "quote.opening",
+      "quote.bubble"
+    ],
+    "merge": [
+      "arrow.triangle.merge"
+    ],
+    "pencil": [
+      "pencil"
+    ],
+    "search": [
+      "magnifyingglass"
+    ],
+    "settings": [
+      "gearshape"
+    ],
+    "trash": [
+      "trash"
+    ],
+    "git-commit": [
+      "circle.and.line.horizontal",
+      "smallcircle.filled.circle"
+    ],
+    "inbox": [
+      "tray"
+    ],
+    "list": [
+      "list.bullet"
+    ],
+    "home": [
+      "house"
+    ],
+    "arrow-left": [
+      "arrow.left"
+    ]
   },
   "nearest": {
     "chicken": "bird",

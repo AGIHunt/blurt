@@ -101,12 +101,21 @@ func hostNow() -> CMTime { CMClockGetTime(CMClockGetHostTimeClock()) }
 let accent = NSColor(calibratedRed: 1.0, green: 0.36, blue: 0.24, alpha: 1)   // coral
 let amber = NSColor(calibratedRed: 1.0, green: 0.76, blue: 0.24, alpha: 1)
 
-func pill(_ text: String, font: NSFont, fg: NSColor, bg: NSColor, at p: NSPoint, pad: CGFloat = 8) -> NSRect {
+func pill(_ text: String, font: NSFont, fg: NSColor, bg: NSColor, at p: NSPoint, pad: CGFloat = 8, icon: BlurtIcon? = nil) -> NSRect {
     let s = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: fg])
     let sz = s.size()
-    let r = NSRect(x: p.x, y: p.y, width: sz.width + pad * 2, height: sz.height + pad)
+    let iw = icon == nil ? 0 : pillIconWidth(font)
+    let r = NSRect(x: p.x, y: p.y, width: sz.width + pad * 2 + iw, height: sz.height + pad)
     bg.setFill()
     NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
-    s.draw(at: NSPoint(x: r.minX + pad, y: r.minY + pad / 2))
+    if let icon = icon {     // a brand icon in front of the text (never an emoji)
+        let side = (font.pointSize * 1.2).rounded()
+        icon.image(size: side, color: fg).draw(in: NSRect(x: r.minX + pad, y: r.midY - side / 2, width: side, height: side),
+                                               from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
+    s.draw(at: NSPoint(x: r.minX + pad + iw, y: r.minY + pad / 2))
     return r
 }
+
+/// Room an icon takes in a pill: the icon (1.2 × the font size) and a gap.
+func pillIconWidth(_ font: NSFont) -> CGFloat { (font.pointSize * 1.2).rounded() + 6 }

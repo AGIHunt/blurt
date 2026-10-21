@@ -1,5 +1,5 @@
 """The blurt icon family: assets/icons/*.svg is the source; Swift / web / Tk outputs are generated and must be in sync,
-and the UI files that already moved off emoji must stay off them."""
+and no UI source uses emoji or text glyphs as icons (assets/icons/tools/check_glyphs.py)."""
 from __future__ import annotations
 
 import re
@@ -11,9 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "assets/icons/tools"))
 import iconlib  # noqa: E402
 
-# Emoji / pictographs and the glyphs that used to stand in for icons (✓ ✗ ✎ ● ▶ ⏸ ■ ↺ …). Arrows and key legends
-# (→ ⌘ ⇧ ⏎) are text and stay.
-BAD = re.compile("[\U0001F000-\U0001FAFF☀-➿⭐⭕⏩-⏺■-◿↺↻✕✖]")
+from check_glyphs import ALLOWED, BAD  # noqa: E402  (emoji / glyph icons; key legends and arrows are fine)
 
 
 def test_outputs_are_generated_from_the_svgs():
@@ -41,7 +39,7 @@ def test_path_parser_expands_everything_to_absolute_cubics():
 
 def test_tk_recorder_uses_png_icons_not_emoji():
     src = (ROOT / "skills/blurt/scripts/tk_recorder.py").read_text()
-    assert not BAD.findall(src)
+    assert not [c for c in BAD.findall(src) if c not in ALLOWED]
     used = set(re.findall(r'tk_icon\([^,]+, "([a-z0-9-]+)"\)', src)) | set(re.findall(r'"((?:pause|play|stop)-fill|snap|restart)"', src))
     assert used
     for n in used:
@@ -49,13 +47,17 @@ def test_tk_recorder_uses_png_icons_not_emoji():
             assert (ROOT / f"skills/blurt/assets/icons/{n}{sfx}.png").exists(), n + sfx
 
 
-def test_overlays_have_no_glyph_icons():
-    hits = []
-    for f in sorted((ROOT / "web/apps/overlays").rglob("*")):
-        if "node_modules" in f.parts or "dist" in f.parts or f.suffix not in (".ts", ".html", ".css"):
-            continue
-        for n, line in enumerate(f.read_text().splitlines(), 1):
-            code = re.sub(r"//.*$|/\*.*?\*/", "", line)
-            if BAD.search(code):
-                hits.append(f"{f.relative_to(ROOT)}:{n}: {line.strip()}")
-    assert hits == []
+def test_no_emoji_or_glyph_icons_in_ui_source():
+    """Swift (mac app), TS/TSX/CSS/HTML (web), Rust (tray), Tk: icons come from the family or SF Symbols, never 🐔 ✓ ● ▶."""
+    import check_glyphs
+    assert check_glyphs.scan() == []
+
+
+def test_glyph_check_catches_what_it_should():
+    import check_glyphs
+    for bad in ("🐔 整理", "✓ Saved", "● 00:12", "❚❚", "▶", "⚠︎ conflict", "📸 3", "✎", "🐣", "✗ failed", "↺"):
+        assert [c for c in check_glyphs.BAD.findall(bad) if c not in check_glyphs.ALLOWED], bad
+    for ok in ("⌘K", "⏎ save · Esc skip", "← →", "1280 × 720", "整理中…", "“quote”", "⇧⌥A"):
+        assert not [c for c in check_glyphs.BAD.findall(ok) if c not in check_glyphs.ALLOWED], ok
+    assert check_glyphs.strip_comments('let x = 1  // 🐔 is fine in a comment', ".swift").strip() == "let x = 1"
+    assert "https://x" in check_glyphs.strip_comments('let u = "https://x"', ".swift")

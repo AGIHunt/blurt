@@ -171,14 +171,15 @@ final class PickerView: NSView {
         }
 
         // hint on every screen, top centre
-        let hint = c.snapMode ? L("📸 拖拽框选，松手即截 · 单击截窗口 · F 全屏 · L 上次区域 · Esc 取消",
-                                 "📸 Drag an area, release to snap · Click a window · F full screen · L last area · Esc cancel")
+        let hint = c.snapMode ? L("拖拽框选，松手即截 · 单击截窗口 · F 全屏 · L 上次区域 · Esc 取消",
+                                 "Drag an area, release to snap · Click a window · F full screen · L last area · Esc cancel")
                               : L("拖拽框选录制区域 · 单击选中窗口 · F 全屏 · ⏎ 开始 · Esc 取消",
                                   "Drag to select an area · Click a window · F full screen · ⏎ start · Esc cancel")
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let w = NSAttributedString(string: hint, attributes: [.font: f]).size().width + 28
+        let icon: BlurtIcon? = c.snapMode ? .snap : nil
+        let w = NSAttributedString(string: hint, attributes: [.font: f]).size().width + 28 + (icon == nil ? 0 : pillIconWidth(f))
         _ = pill(hint, font: f, fg: .white, bg: NSColor(white: 0.06, alpha: 0.78),
-                 at: NSPoint(x: bounds.midX - w / 2, y: bounds.height - 64), pad: 14)
+                 at: NSPoint(x: bounds.midX - w / 2, y: bounds.height - 64), pad: 14, icon: icon)
     }
 
     override func mouseMoved(with e: NSEvent) {

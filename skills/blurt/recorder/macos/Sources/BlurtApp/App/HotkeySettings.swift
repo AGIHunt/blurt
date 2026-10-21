@@ -256,7 +256,8 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
                 n.stringValue = L("配置里的「\(bad)」看不懂，用了默认", "Couldn't read “\(bad)” in the config — using the default")
                 n.textColor = .systemOrange
             } else if st.isConflict {
-                n.stringValue = "⚠︎ " + st.text
+                n.attributedStringValue = BlurtIcon.warning.label(st.text, font: n.font ?? .systemFont(ofSize: 11), color: .systemOrange,
+                                                                  preferSymbol: true)
                 n.textColor = .systemOrange
             } else if st == .notHere {
                 n.stringValue = L("菜单栏 App 里生效", "used by the menu-bar app")

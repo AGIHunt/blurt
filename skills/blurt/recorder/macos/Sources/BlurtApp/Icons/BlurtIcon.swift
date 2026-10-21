@@ -211,9 +211,10 @@ extension NSAttributedString {
 }
 
 extension BlurtIcon {
-    /// Icon + text with the same font and color, a thin space between: the usual "🐔 整理 3 张" replacement.
-    func label(_ text: String, font: NSFont, color: NSColor? = nil, preferSymbol: Bool = false) -> NSAttributedString {
-        let m = NSMutableAttributedString(attributedString: attributed(font: font, color: color, preferSymbol: preferSymbol))
+    /// Icon + text in one font, a thin space between: the usual "🐔 整理 3 张" replacement. `iconColor` defaults to `color`.
+    func label(_ text: String, font: NSFont, color: NSColor? = nil, iconColor: NSColor? = nil,
+               preferSymbol: Bool = false) -> NSAttributedString {
+        let m = NSMutableAttributedString(attributedString: attributed(font: font, color: iconColor ?? color, preferSymbol: preferSymbol))
         m.append(NSAttributedString(string: "\u{2009}" + text, attributes: [.font: font, .foregroundColor: color ?? NSColor.labelColor]))
         return m
     }

@@ -66,7 +66,8 @@ struct AgentStatus {
     let state: AgentState
     let at: Date
 
-    var mark: String { state == .checking ? "…" : state.usable ? "✓" : "✗" }
+    /// ✓ / ✗ in menus and lists: check (green) or x (red); nil while checking (shown as "…").
+    var markIcon: BlurtIcon? { state == .checking ? nil : state.usable ? .check : .x }
     /// "没登录 — 在终端运行 codex login"
     var why: String {
         switch state {
@@ -446,9 +447,15 @@ extension App {
 
     func setAgentRow(_ it: NSMenuItem, index: Int, status: AgentStatus?) {
         guard let d = AgentHub.shared.def(it.representedObject as? String ?? "") else { return }
-        let mark = status?.mark ?? "…"
         let why = status?.why ?? L("检查中…", "checking…")
-        let s = NSMutableAttributedString(string: "\(index + 1). \(mark)  \(d.name)", attributes: [.font: NSFont.menuFont(ofSize: 0)])
+        let mf = NSFont.menuFont(ofSize: 0)
+        let s = NSMutableAttributedString(string: "\(index + 1). ", attributes: [.font: mf])
+        if let ic = status?.markIcon {
+            s.append(ic.attributed(font: mf, color: ic == .check ? .systemGreen : .systemRed, preferSymbol: true))
+        } else {
+            s.append(NSAttributedString(string: "…", attributes: [.font: mf]))
+        }
+        s.append(NSAttributedString(string: "  \(d.name)", attributes: [.font: mf]))
         s.append(NSAttributedString(string: "   " + why, attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]))
         it.attributedTitle = s
     }

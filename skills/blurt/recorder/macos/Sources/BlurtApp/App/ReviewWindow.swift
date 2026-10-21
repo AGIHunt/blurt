@@ -360,7 +360,7 @@ final class ReviewWindow: NSWindowController, NSWindowDelegate, WKNavigationDele
         let msg = L("审核页连不上了（review.py 已经退出？）", "The review page can't be reached (did review.py exit?)")
         web.loadHTMLString("""
             <html><body style="font:14px -apple-system;color:#8d8d93;background:transparent;display:grid;place-items:center;height:90vh;text-align:center">
-            <div><div style="font-size:34px">🐔</div><p>\(msg)</p><p style="font-size:12px">\(error.localizedDescription)</p></div></body></html>
+            <div><div style="color:#8d8d93">\(BlurtIcon.chicken.svg(size: 34))</div><p>\(msg)</p><p style="font-size:12px">\(error.localizedDescription)</p></div></body></html>
             """, baseURL: nil)
     }
 }
