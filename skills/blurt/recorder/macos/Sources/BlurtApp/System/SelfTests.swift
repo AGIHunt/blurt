@@ -93,7 +93,7 @@ enum SelfTests {
             let uids = (a.first ?? "").split(separator: ",").map(String.init)
             if a.count >= 3 { FixRunner.shared.start(uids, autostart: (a[1], a[2] != "it")) } else { FixRunner.shared.start(uids) }
             out(["uids": uids])
-        case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: L("由 codex 修复", "by codex"), uid: "test")
+        case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: T("main.misc.by_codex"), uid: "test")
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.dropFirst().first == "dark")])

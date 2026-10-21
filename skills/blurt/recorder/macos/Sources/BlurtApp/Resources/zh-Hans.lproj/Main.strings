@@ -1,7 +1,22 @@
 /* Main — 主窗口、菜单栏菜单、通知（docs/design/next-round.md K10）。拥有者：P4。
    键和占位符与另一种语言一致（tests/test_l10n.py）。 */
 
+"app.agent.agent" = "整理用的 agent";
+"app.agent.can_be_used" = " 用不了";
+"app.agent.check_again" = "重新检查登录状态";
+"app.agent.checking" = "检查中…";
+"app.agent.click_try_first" = "点一下设为首选";
+"app.agent.configured_can_verify_advance" = "已配置（无法预先验证）";
+"app.agent.failed" = "失败";
+"app.agent.isn_installed" = " 没安装";
+"app.agent.isn_logged" = " 没登录";
+"app.agent.logged" = "已登录";
+"app.agent.login_unknown_will_just" = "登录状态未知，会直接试";
 "app.agent.none_short" = "没有能用的 agent";
+"app.agent.none_usable" = "：没有能用的";
+"app.agent.not_installed" = "没安装";
+"app.agent.not_logged" = "没登录";
+"app.agent.tried_this_order_first" = "按顺序试，第一个能用的来整理";
 "app.agent.unfinished" = "%@ 没整理完（退出码 %ld）";
 
 "app.login.failed" = "没能修改「登录时打开」";
@@ -185,6 +200,14 @@
 "main.menu.review" = "审核";
 "main.menu.review_batch" = "审核整批捕获";
 "main.menu.start_session" = "开 agent 会话处理";
+
+"main.misc.by_codex" = "由 codex 修复";
+"main.misc.drag_finder_terminal" = "拖到访达或终端";
+"main.misc.fixed" = " · 已修";
+"main.misc.idea" = "想法";
+"main.misc.issue" = "问题";
+"main.misc.note" = "笔记";
+"main.misc.task" = "待办";
 
 "main.move.failed" = "没能移动条目";
 

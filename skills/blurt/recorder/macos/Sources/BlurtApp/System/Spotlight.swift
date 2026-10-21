@@ -57,7 +57,7 @@ final class Spotlight {
         let kind = kindLabel(r.kind)
         let ws = (r.workspacePath as NSString).lastPathComponent
         var desc = [kind, ws].joined(separator: " · ")
-        if r.fixState == "fixed" { desc += L(" · 已修", " · fixed") }
+        if r.fixState == "fixed" { desc += T("main.misc.fixed") }
         if !r.quote.isEmpty { desc += "\n“\(r.quote)”" }
         a.contentDescription = desc
         a.textContent = r.quote
@@ -73,10 +73,10 @@ final class Spotlight {
 
     static func kindLabel(_ k: String) -> String {
         switch k {
-        case "issue": return L("问题", "Issue")
-        case "idea": return L("想法", "Idea")
-        case "note": return L("笔记", "Note")
-        case "task": return L("待办", "Task")
+        case "issue": return T("main.misc.issue")
+        case "idea": return T("main.misc.idea")
+        case "note": return T("main.misc.note")
+        case "task": return T("main.misc.task")
         default: return k
         }
     }

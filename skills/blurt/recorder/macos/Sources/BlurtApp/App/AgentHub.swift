@@ -72,20 +72,20 @@ struct AgentStatus {
     /// "没登录 — 在终端运行 codex login"
     var why: String {
         switch state {
-        case .ready: return L("已登录", "logged in")
-        case .configured: return L("已配置（无法预先验证）", "configured (can't verify in advance)")
-        case .unknown: return L("登录状态未知，会直接试", "login unknown — will just try")
-        case .loggedOut: return L("没登录", "not logged in") + (def.fixText.isEmpty ? "" : " — " + def.fixText)
-        case .notInstalled: return L("没安装", "not installed") + (def.installText.isEmpty ? "" : " — " + def.installText)
-        case .checking: return L("检查中…", "checking…")
+        case .ready: return T("app.agent.logged")
+        case .configured: return T("app.agent.configured_can_verify_advance")
+        case .unknown: return T("app.agent.login_unknown_will_just")
+        case .loggedOut: return T("app.agent.not_logged") + (def.fixText.isEmpty ? "" : " — " + def.fixText)
+        case .notInstalled: return T("app.agent.not_installed") + (def.installText.isEmpty ? "" : " — " + def.installText)
+        case .checking: return T("app.agent.checking")
         }
     }
     /// For "Claude Code 没登录，这次用 Codex 整理"
     var shortWhy: String {
         switch state {
-        case .loggedOut: return L(" 没登录", " isn't logged in")
-        case .notInstalled: return L(" 没安装", " isn't installed")
-        default: return L(" 用不了", " can't be used")
+        case .loggedOut: return T("app.agent.isn_logged")
+        case .notInstalled: return T("app.agent.isn_installed")
+        default: return T("app.agent.can_be_used")
         }
     }
 }
@@ -287,7 +287,7 @@ func nowStamp() -> String {
 func agentFailureNote(_ dir: URL) -> String? {
     let meta = (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any]
     guard let a = meta?["agent"] as? [String: Any], let r = a["result"] as? String, r != "ok", r != "running" else { return nil }
-    return a["short"] as? String ?? L("失败", "failed")
+    return a["short"] as? String ?? T("app.agent.failed")
 }
 
 extension App {
@@ -414,9 +414,9 @@ extension App {
         hub.reload()
         let order = hub.order()
         let first = order.first(where: { hub.cached($0.id)?.state.usable ?? true })
-        let item = NSMenuItem(title: L("整理用的 agent", "Agent") + (first.map { "：\($0.name)" } ?? ""), action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: T("app.agent.agent") + (first.map { "：\($0.name)" } ?? ""), action: nil, keyEquivalent: "")
         let sub = NSMenu()
-        let head = NSMenuItem(title: L("按顺序试，第一个能用的来整理", "Tried in this order; the first usable one runs"), action: nil, keyEquivalent: "")
+        let head = NSMenuItem(title: T("app.agent.tried_this_order_first"), action: nil, keyEquivalent: "")
         head.isEnabled = false
         sub.addItem(head)
         var rows: [String: NSMenuItem] = [:]
@@ -424,13 +424,13 @@ extension App {
             let it = NSMenuItem(title: "", action: #selector(mPreferAgent(_:)), keyEquivalent: "")
             it.target = self
             it.representedObject = d.id
-            it.toolTip = i == 0 ? nil : L("点一下设为首选", "Click to try it first")
+            it.toolTip = i == 0 ? nil : T("app.agent.click_try_first")
             setAgentRow(it, index: i, status: hub.cached(d.id))
             rows[d.id] = it
             sub.addItem(it)
         }
         sub.addItem(.separator())
-        let recheck = NSMenuItem(title: L("重新检查登录状态", "Check again"), action: #selector(mRecheckAgents), keyEquivalent: "")
+        let recheck = NSMenuItem(title: T("app.agent.check_again"), action: #selector(mRecheckAgents), keyEquivalent: "")
         recheck.target = self
         sub.addItem(recheck)
         item.submenu = sub
@@ -439,13 +439,13 @@ extension App {
         hub.check(order) { statuses in
             for (i, s) in statuses.enumerated() { if let it = rows[s.def.id] { self.setAgentRow(it, index: i, status: s) } }
             let f = statuses.first { $0.state.usable }
-            item.title = L("整理用的 agent", "Agent") + (f.map { "：\($0.def.name)" } ?? L("：没有能用的", ": none usable"))
+            item.title = T("app.agent.agent") + (f.map { "：\($0.def.name)" } ?? T("app.agent.none_usable"))
         }
     }
 
     func setAgentRow(_ it: NSMenuItem, index: Int, status: AgentStatus?) {
         guard let d = AgentHub.shared.def(it.representedObject as? String ?? "") else { return }
-        let why = status?.why ?? L("检查中…", "checking…")
+        let why = status?.why ?? T("app.agent.checking")
         let mf = NSFont.menuFont(ofSize: 0)
         let s = NSMutableAttributedString(string: "\(index + 1). ", attributes: [.font: mf])
         if let ic = status?.markIcon {

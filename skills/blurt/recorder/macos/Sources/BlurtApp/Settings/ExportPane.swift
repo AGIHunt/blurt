@@ -48,7 +48,7 @@ final class ExportModel: ObservableObject {
     func chooseOut() {
         let p = NSOpenPanel()
         p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
-        p.prompt = L("选择", "Choose")
+        p.prompt = T("settings.export.choose")
         guard p.runModal() == .OK, let u = p.url else { return }
         outDir = u.path
         set("out", u.path)
@@ -61,43 +61,43 @@ struct ExportPane: View {
     var body: some View {
         PaneFrame {
             Section {
-                Picker(L("确认后的条目导出到", "Send confirmed items to"), selection: Binding(get: { m.target }, set: { m.setTarget($0) })) {
-                    Text(L("每次问我", "Ask each time")).tag("ask")
-                    Text(L("飞书多维表格", "Feishu / Lark Bitable")).tag("feishu")
+                Picker(T("settings.export.send_confirmed_items"), selection: Binding(get: { m.target }, set: { m.setTarget($0) })) {
+                    Text(T("settings.export.ask_each_time")).tag("ask")
+                    Text(T("settings.export.feishu_lark_bitable")).tag("feishu")
                     Text("GitHub Issues").tag("github")
                     Text("Markdown + CSV").tag("local")
                 }
                 if m.target == "feishu" {
-                    TextField(L("表格链接", "Table URL"), text: $m.url, prompt: Text("https://….feishu.cn/base/…?table=…"))
+                    TextField(T("settings.export.table_url"), text: $m.url, prompt: Text("https://….feishu.cn/base/…?table=…"))
                         .onSubmit { m.commitURL() }
-                    Hint(L("在浏览器里打开那张表，复制地址栏。列按含义自动对应，缺的列会自动建。", "Open the table in the browser and copy the address. Columns are matched by meaning; missing ones are created."))
+                    Hint(T("settings.export.open_table_browser_copy"))
                 }
                 if m.target == "local" {
                     HStack {
-                        Text(L("保存到", "Save to"))
+                        Text(T("settings.export.save"))
                         Spacer()
-                        Text(m.outDir.isEmpty ? L("会话文件夹里", "the session's folder") : (m.outDir as NSString).abbreviatingWithTildeInPath).foregroundStyle(.secondary)
-                        Button(L("选择…", "Choose…")) { m.chooseOut() }
+                        Text(m.outDir.isEmpty ? T("settings.export.session_folder") : (m.outDir as NSString).abbreviatingWithTildeInPath).foregroundStyle(.secondary)
+                        Button(T("settings.export.choose_2")) { m.chooseOut() }
                     }
                 }
-                Hint(m.isProject ? L("这是 \(m.ws.lastPathComponent) 的设置（.blurt/config.json），团队共用。", "For \(m.ws.lastPathComponent) (.blurt/config.json), shared with your team.")
-                                 : L("这是默认工作区 ~/Blurt 的设置。", "For the default workspace ~/Blurt."))
-            } header: { Text(L("默认去向", "Default destination")) }
+                Hint(m.isProject ? T("settings.export.blurt_config_json_shared", "\(m.ws.lastPathComponent)")
+                                 : T("settings.export.default_workspace_blurt"))
+            } header: { Text(T("settings.export.default_destination")) }
 
             Section {
-                tool(L("飞书：lark-cli", "Feishu: lark-cli"), ok: m.lark != nil,
-                     detail: m.lark.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? L("没装 — 用自己的身份导出，不用建应用", "not installed — exports as you, no app needed"),
+                tool(T("settings.export.feishu_lark_cli"), ok: m.lark != nil,
+                     detail: m.lark.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? T("settings.export.not_installed_exports_as"),
                      fix: m.lark == nil ? "npx @larksuite/cli@latest install" : nil)
-                tool(L("飞书：自建应用", "Feishu: a self-built app"), ok: m.feishuApp,
-                     detail: m.feishuApp ? L("FEISHU_APP_ID 已设置", "FEISHU_APP_ID is set") : L("可选；没装 lark-cli 时用", "optional; used without lark-cli"), fix: nil)
+                tool(T("settings.export.feishu_self_built_app"), ok: m.feishuApp,
+                     detail: m.feishuApp ? T("settings.export.feishu_app_id_set") : T("settings.export.optional_used_without_lark"), fix: nil)
                 tool("GitHub: gh", ok: m.gh != nil && m.ghAuthed == true,
-                     detail: m.gh == nil ? L("没装", "not installed") : (m.ghAuthed == true ? L("已登录", "logged in") : L("没登录", "not logged in")),
+                     detail: m.gh == nil ? T("settings.export.not_installed") : (m.ghAuthed == true ? T("settings.export.logged") : T("settings.export.not_logged")),
                      fix: m.gh == nil ? "brew install gh" : (m.ghAuthed == false ? "gh auth login" : nil))
-                tool("Markdown + CSV", ok: true, detail: L("不需要任何工具", "nothing to install"), fix: nil)
+                tool("Markdown + CSV", ok: true, detail: T("settings.export.nothing_install"), fix: nil)
             } header: {
-                HStack { Text(L("导出工具", "Exporters")); Spacer(); if m.checking { ProgressView().controlSize(.mini) } }
+                HStack { Text(T("settings.export.exporters")); Spacer(); if m.checking { ProgressView().controlSize(.mini) } }
             } footer: {
-                Text(L("导出由 agent 或审核页完成；重复导出不会建重复的记录。", "Exports run from the review page or your agent; re-exporting never creates duplicates."))
+                Text(T("settings.export.exports_run_from_review"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

@@ -1,7 +1,22 @@
 /* Main — the main window, the menu bar menu, notifications (docs/design/next-round.md K10). Owner: P4.
    Same keys and placeholders in the other language (tests/test_l10n.py). */
 
+"app.agent.agent" = "Agent";
+"app.agent.can_be_used" = " can't be used";
+"app.agent.check_again" = "Check again";
+"app.agent.checking" = "checking…";
+"app.agent.click_try_first" = "Click to try it first";
+"app.agent.configured_can_verify_advance" = "configured (can't verify in advance)";
+"app.agent.failed" = "failed";
+"app.agent.isn_installed" = " isn't installed";
+"app.agent.isn_logged" = " isn't logged in";
+"app.agent.logged" = "logged in";
+"app.agent.login_unknown_will_just" = "login unknown — will just try";
 "app.agent.none_short" = "No agent available";
+"app.agent.none_usable" = ": none usable";
+"app.agent.not_installed" = "not installed";
+"app.agent.not_logged" = "not logged in";
+"app.agent.tried_this_order_first" = "Tried in this order; the first usable one runs";
 "app.agent.unfinished" = "%@ stopped before it finished (exit %ld)";
 
 "app.login.failed" = "Couldn't change Open at Login";
@@ -185,6 +200,14 @@
 "main.menu.review" = "Review";
 "main.menu.review_batch" = "Review the Whole Capture";
 "main.menu.start_session" = "Start Agent Session";
+
+"main.misc.by_codex" = "by codex";
+"main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
+"main.misc.fixed" = " · fixed";
+"main.misc.idea" = "Idea";
+"main.misc.issue" = "Issue";
+"main.misc.note" = "Note";
+"main.misc.task" = "Task";
 
 "main.move.failed" = "Couldn't move the items";
 

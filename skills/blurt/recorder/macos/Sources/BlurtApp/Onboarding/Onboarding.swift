@@ -75,8 +75,8 @@ struct OnboardingView: View {
             HStack(spacing: 14) {
                 if let icon = NSApp.applicationIconImage { Image(nsImage: icon).resizable().frame(width: 52, height: 52) }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(L("欢迎使用口喷鸡", "Welcome to Blurt")).font(.title2.weight(.semibold))
-                    Text(L("四步准备好：边说边录，交给 agent 去修。", "Four quick steps: talk while you record, let your agent fix it."))
+                    Text(T("onboarding.welcome_blurt")).font(.title2.weight(.semibold))
+                    Text(T("onboarding.four_quick_steps_talk"))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -102,10 +102,10 @@ struct OnboardingView: View {
 
             Divider()
             HStack {
-                Button(L("跳过设置", "Skip setup")) { m.finish() }.buttonStyle(.link)
+                Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link)
                 Spacer()
-                if m.step > 0 { Button(L("上一步", "Back")) { m.step -= 1 } }
-                Button(m.step == m.steps - 1 ? L("完成", "Done") : L("下一步", "Next")) {
+                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
+                Button(m.step == m.steps - 1 ? T("onboarding.done") : T("onboarding.next")) {
                     if m.step == m.steps - 1 { m.finish() } else { m.step += 1 }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -119,47 +119,44 @@ struct OnboardingView: View {
 
     func title(_ n: Int, _ t: String, _ sub: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(L("第 \(n) 步 · ", "Step \(n) · ") + t).font(.headline)
+            Text(T("onboarding.step", "\(n)") + t).font(.headline)
             Text(sub).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(.bottom, 10)
     }
 
     var permissions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(1, L("权限", "Permissions"), L("口喷鸡录的是你选的区域，录完的文件只存在你的 Mac 上。状态会实时更新。",
-                                              "Blurt records the area you pick; files stay on your Mac. The status below updates live."))
+            title(1, T("onboarding.permissions"), T("onboarding.blurt_records_area_you"))
             GroupBox { VStack(spacing: 12) { PermissionRows(p: perms) }.padding(6) }
         }
     }
 
     var python: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(2, L("Python 环境（uv）", "Python (uv)"), L("整理、搜索、语音识别是随 skill 发布的 Python 脚本，用 uv 运行，不需要你装 Python。",
-                                                          "Processing, search and speech recognition are Python scripts that ship with the skill; uv runs them — no Python setup needed."))
+            title(2, T("onboarding.python_uv"), T("onboarding.processing_search_speech_recognition"))
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         StatusDot(tone: m.uv != nil ? .good : .warn)
-                        Text(m.uv.map { L("已找到 uv：", "uv found: ") + ($0 as NSString).abbreviatingWithTildeInPath } ?? L("没找到 uv", "uv not found"))
+                        Text(m.uv.map { T("onboarding.uv_found") + ($0 as NSString).abbreviatingWithTildeInPath } ?? T("onboarding.uv_not_found"))
                         Spacer()
                     }
                     if m.uv == nil {
-                        Text(L("经你同意后，口喷鸡会用 uv 官方安装脚本把它装到 ~/.blurt/bin（不改你的 shell 配置）：",
-                               "With your OK, Blurt runs uv's official installer into ~/.blurt/bin (your shell config is not touched):"))
+                        Text(T("onboarding.your_ok_blurt_runs"))
                             .font(.callout).foregroundStyle(.secondary)
                         CommandText(text: OnboardingModel.uvInstallCommand)
                         HStack {
-                            Button(L("安装 uv", "Install uv")) { m.installUV() }.disabled(m.installingUV)
+                            Button(T("onboarding.install_uv")) { m.installUV() }.disabled(m.installingUV)
                             if m.installingUV { ProgressView().controlSize(.small) }
                         }
                         if !m.uvLog.isEmpty { Text(m.uvLog.suffix(3).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary) }
                     } else {
                         HStack {
                             switch m.warm {
-                            case nil: Button(L("预装依赖", "Warm up dependencies")) { m.warmUp() }
-                                      Text(L("提前下载脚本要用的包，第一次整理就不用等", "Fetches the scripts' packages now so the first run doesn't wait")).font(.caption).foregroundStyle(.secondary)
-                            case "running"?: ProgressView().controlSize(.small); Text(L("正在准备…（第一次约一分钟）", "Preparing… (about a minute the first time)")).foregroundStyle(.secondary)
-                            case "done"?: Label(L("依赖已就绪，索引已建好", "Dependencies ready, index built"), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            case nil: Button(T("onboarding.warm_up_dependencies")) { m.warmUp() }
+                                      Text(T("onboarding.fetches_scripts_packages_now")).font(.caption).foregroundStyle(.secondary)
+                            case "running"?: ProgressView().controlSize(.small); Text(T("onboarding.preparing_about_minute_first")).foregroundStyle(.secondary)
+                            case "done"?: Label(T("onboarding.dependencies_ready_index_built"), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             case let e?: Label(e, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(3)
                             }
                         }
@@ -173,12 +170,11 @@ struct OnboardingView: View {
 
     var model: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(3, L("语音模型", "Speech model"), L("在本机把你说的话转成文字，不上传。推荐的模型支持中、英、日、韩、粤语。",
-                                                 "Turns your narration into text on this Mac — nothing is uploaded. The recommended model covers Chinese, English, Japanese, Korean and Cantonese."))
+            title(3, T("onboarding.speech_model"), T("onboarding.turns_your_narration_into"))
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
                     if m.uv == nil {
-                        Text(L("需要先装好 uv（上一步）。", "Needs uv first (previous step).")).foregroundStyle(.secondary)
+                        Text(T("onboarding.needs_uv_first_previous")).foregroundStyle(.secondary)
                     } else if let r = recommended {
                         HStack {
                             StatusDot(tone: r.installed ? .good : .warn)
@@ -187,32 +183,31 @@ struct OnboardingView: View {
                                 Text("\(Int(r.sizeMB)) MB · " + r.languages.joined(separator: " ")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if r.installed { Label(L("已下载", "Downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
-                            else if speech.download[r.backend] == nil { Button(L("下载", "Download")) { speech.startDownload(r) } }
+                            if r.installed { Label(T("onboarding.downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
+                            else if speech.download[r.backend] == nil { Button(T("onboarding.download")) { speech.startDownload(r) } }
                         }
                         if let d = speech.download[r.backend] {
                             ProgressView(value: min(d.done, max(d.total, 1)), total: max(d.total, 1)) { Text(d.text).font(.caption) }
                         }
-                        Toggle(L("下载走国内镜像（hf-mirror.com）", "Download via hf-mirror.com (mainland China)"),
+                        Toggle(T("onboarding.download_via_hf_mirror"),
                                isOn: Binding(get: { speech.mirror }, set: { speech.setMirror($0) }))
                     } else {
-                        HStack { ProgressView().controlSize(.small); Text(L("读取模型…", "Reading models…")).foregroundStyle(.secondary) }
+                        HStack { ProgressView().controlSize(.small); Text(T("onboarding.reading_models")).foregroundStyle(.secondary) }
                     }
                     if let e = speech.error { Text(e).font(.caption).foregroundStyle(.orange) }
                 }.padding(6)
             }
-            Hint(L("也可以以后在 设置 → 语音 里换模型或用云端识别。", "You can switch models or use cloud recognition later in Settings → Speech."))
+            Hint(T("onboarding.you_can_switch_models"))
         }
         .task { if m.uv != nil { await speech.load() } }
     }
 
     var agentsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(4, L("Coding agent", "Coding agent"), L("口喷鸡把录屏交给你已经在用的 agent 整理和修 bug。装上 blurt skill 和 MCP，它就能读条目、修完回写状态。",
-                                                       "Blurt hands recordings to the agent you already use. With the blurt skill + MCP installed it can read items and report fixes back."))
+            title(4, T("onboarding.coding_agent"), T("onboarding.blurt_hands_recordings_agent"))
             GroupBox {
                 VStack(alignment: .leading, spacing: 8) {
-                    if agents.loading && agents.rows.isEmpty { HStack { ProgressView().controlSize(.small); Text(L("检查已安装的 agent…", "Looking for agents…")).foregroundStyle(.secondary) } }
+                    if agents.loading && agents.rows.isEmpty { HStack { ProgressView().controlSize(.small); Text(T("onboarding.looking_agents")).foregroundStyle(.secondary) } }
                     ForEach(agents.rows.filter { $0.installed }) { a in
                         HStack {
                             StatusDot(tone: a.state == "ready" ? .good : a.state == "logged_out" ? .bad : .warn)
@@ -222,12 +217,11 @@ struct OnboardingView: View {
                             }
                             Spacer()
                             if agents.installing == a.id { ProgressView().controlSize(.small) }
-                            else { Button(L("安装 skill + MCP…", "Install skill + MCP…")) { Task { await agents.preview(a) } } }
+                            else { Button(T("onboarding.install_skill_mcp")) { Task { await agents.preview(a) } } }
                         }
                     }
                     if !agents.loading && agents.rows.filter(\.installed).isEmpty {
-                        Text(L("没找到 Claude Code、Codex、Kimi Code 等。装一个后在 设置 → Agent 里接入。",
-                               "No Claude Code, Codex, Kimi Code… found. Install one, then connect it in Settings → Agents.")).foregroundStyle(.secondary)
+                        Text(T("onboarding.no_claude_code_codex")).foregroundStyle(.secondary)
                     }
                 }.padding(6)
             }
@@ -262,7 +256,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
                          backing: .buffered, defer: false)
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
-        w.title = L("设置口喷鸡", "Set up Blurt")
+        w.title = T("onboarding.set_up_blurt")
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.sharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly

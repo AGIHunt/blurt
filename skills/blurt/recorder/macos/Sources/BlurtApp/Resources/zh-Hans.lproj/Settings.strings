@@ -1,6 +1,96 @@
 /* Settings — 设置窗口和设置助手（K10）。拥有者：P4。
    键和占位符与另一种语言一致（tests/test_l10n.py）。 */
 
+"onboarding.back" = "上一步";
+
+"onboarding.blurt_hands_recordings_agent" = "口喷鸡把录屏交给你已经在用的 agent 整理和修 bug。装上 blurt skill 和 MCP，它就能读条目、修完回写状态。";
+
+"onboarding.blurt_records_area_you" = "口喷鸡录的是你选的区域，录完的文件只存在你的 Mac 上。状态会实时更新。";
+
+"onboarding.coding_agent" = "Coding agent";
+
+"onboarding.dependencies_ready_index_built" = "依赖已就绪，索引已建好";
+
+"onboarding.done" = "完成";
+
+"onboarding.download" = "下载";
+
+"onboarding.download_via_hf_mirror" = "下载走国内镜像（hf-mirror.com）";
+
+"onboarding.downloaded" = "已下载";
+
+"onboarding.fetches_scripts_packages_now" = "提前下载脚本要用的包，第一次整理就不用等";
+
+"onboarding.four_quick_steps_talk" = "四步准备好：边说边录，交给 agent 去修。";
+
+"onboarding.install_skill_mcp" = "安装 skill + MCP…";
+
+"onboarding.install_uv" = "安装 uv";
+
+"onboarding.looking_agents" = "检查已安装的 agent…";
+
+"onboarding.needs_uv_first_previous" = "需要先装好 uv（上一步）。";
+
+"onboarding.next" = "下一步";
+
+"onboarding.no_claude_code_codex" = "没找到 Claude Code、Codex、Kimi Code 等。装一个后在 设置 → Agent 里接入。";
+
+"onboarding.permissions" = "权限";
+
+"onboarding.preparing_about_minute_first" = "正在准备…（第一次约一分钟）";
+
+"onboarding.processing_search_speech_recognition" = "整理、搜索、语音识别是随 skill 发布的 Python 脚本，用 uv 运行，不需要你装 Python。";
+
+"onboarding.python_uv" = "Python 环境（uv）";
+
+"onboarding.reading_models" = "读取模型…";
+
+"onboarding.set_up_blurt" = "设置口喷鸡";
+
+"onboarding.skip_setup" = "跳过设置";
+
+"onboarding.speech_model" = "语音模型";
+
+"onboarding.step" = "第 %@ 步 · ";
+
+"onboarding.turns_your_narration_into" = "在本机把你说的话转成文字，不上传。推荐的模型支持中、英、日、韩、粤语。";
+
+"onboarding.uv_found" = "已找到 uv：";
+
+"onboarding.uv_not_found" = "没找到 uv";
+
+"onboarding.warm_up_dependencies" = "预装依赖";
+
+"onboarding.welcome_blurt" = "欢迎使用口喷鸡";
+
+"onboarding.you_can_switch_models" = "也可以以后在 设置 → 语音 里换模型或用云端识别。";
+
+"onboarding.your_ok_blurt_runs" = "经你同意后，口喷鸡会用 uv 官方安装脚本把它装到 ~/.blurt/bin（不改你的 shell 配置）：";
+
+"settings.export.ask_each_time" = "每次问我";
+"settings.export.blurt_config_json_shared" = "这是 %@ 的设置（.blurt/config.json），团队共用。";
+"settings.export.choose" = "选择";
+"settings.export.choose_2" = "选择…";
+"settings.export.default_destination" = "默认去向";
+"settings.export.default_workspace_blurt" = "这是默认工作区 ~/Blurt 的设置。";
+"settings.export.exporters" = "导出工具";
+"settings.export.exports_run_from_review" = "导出由 agent 或审核页完成；重复导出不会建重复的记录。";
+"settings.export.feishu_app_id_set" = "FEISHU_APP_ID 已设置";
+"settings.export.feishu_lark_bitable" = "飞书多维表格";
+"settings.export.feishu_lark_cli" = "飞书：lark-cli";
+"settings.export.feishu_self_built_app" = "飞书：自建应用";
+"settings.export.logged" = "已登录";
+"settings.export.not_installed" = "没装";
+"settings.export.not_installed_exports_as" = "没装 — 用自己的身份导出，不用建应用";
+"settings.export.not_logged" = "没登录";
+"settings.export.nothing_install" = "不需要任何工具";
+"settings.export.open_table_browser_copy" = "在浏览器里打开那张表，复制地址栏。列按含义自动对应，缺的列会自动建。";
+"settings.export.optional_used_without_lark" = "可选；没装 lark-cli 时用";
+"settings.export.save" = "保存到";
+"settings.export.send_confirmed_items" = "确认后的条目导出到";
+"settings.export.session_folder" = "会话文件夹里";
+"settings.export.table_url" = "表格链接";
+
 "settings.general.after_recording" = "录完之后";
 "settings.general.app" = "应用";
 "settings.general.assistant" = "重新运行设置助手…";
@@ -15,3 +105,49 @@
 "settings.general.recording" = "录制";
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
 "settings.general.spotlight" = "在 Spotlight 里搜得到条目";
+
+"settings.kit.accessibility" = "辅助功能";
+"settings.kit.agents" = "Agent";
+"settings.kit.allow" = "允许…";
+"settings.kit.allowed" = "已允许";
+"settings.kit.conflicts_are_checked_three" = "冲突分三层检查：口喷鸡自己的快捷键重复、和 macOS 系统快捷键冲突、向系统注册失败（被别的 App 或另一个口喷鸡占用）。改动立即生效，并写进 ~/.blurt/config.json。";
+"settings.kit.copy" = "拷贝";
+"settings.kit.export" = "导出";
+"settings.kit.general" = "通用";
+"settings.kit.hold_pen_reads_modifier" = "按住 ⌃ 画笔需要（全局读取修饰键）";
+"settings.kit.microphone" = "麦克风";
+"settings.kit.needed_record_snap" = "录屏和截图都需要";
+"settings.kit.not_allowed" = "未允许";
+"settings.kit.not_set" = "未设置";
+"settings.kit.privacy" = "隐私";
+"settings.kit.screen_recording" = "屏幕录制";
+"settings.kit.shortcuts" = "快捷键";
+"settings.kit.speech" = "语音";
+"settings.kit.storage" = "存储";
+"settings.kit.system_settings" = "系统设置…";
+"settings.kit.your_narration_recording_works" = "录你的讲解；不开也能录屏，只是没声音";
+
+"settings.privacy.agent_runs" = "Agent 运行记录";
+"settings.privacy.audio_never_goes_cloud" = "打开后录音不会发给任何云端识别服务。整理和修复由你选的 agent 完成，它们按各自的方式处理数据。";
+"settings.privacy.benchmark_samples" = "测速样本";
+"settings.privacy.blurt_own_files" = "口喷鸡自己的文件";
+"settings.privacy.build_cache" = "构建缓存";
+"settings.privacy.cancel" = "取消";
+"settings.privacy.clean_up" = "清理";
+"settings.privacy.data" = "数据";
+"settings.privacy.deleted_by_default_once" = "默认在转写完成后删除：录屏文件里已经有同样的声音。";
+"settings.privacy.freed" = "释放了 ";
+"settings.privacy.index_can_be_deleted" = "索引删了也不丢数据，随时能重建；语音模型在「语音」里管理。";
+"settings.privacy.items_appear_spotlight" = "条目出现在 Spotlight 里";
+"settings.privacy.keep_raw_live_caption" = "保留实时转写的原始音频（live/audio.pcm）";
+"settings.privacy.local_speech_recognition_only" = "只用本地语音识别";
+"settings.privacy.macos_applies_screen_recording" = "录屏权限改了之后，macOS 要重新打开口喷鸡才生效。";
+"settings.privacy.move_trash" = "移到废纸篓";
+"settings.privacy.move_trash_2" = "移到废纸篓？";
+"settings.privacy.permissions_live" = "权限（实时）";
+"settings.privacy.prompts" = "提示词";
+"settings.privacy.raw_live_caption_audio" = "实时转写的原始音频";
+"settings.privacy.recordings_screenshots" = "录屏和截图";
+"settings.privacy.recordings_screenshots_items_stay" = "录屏、截图、条目都只存在你的 Mac 上（~/Blurt 或项目的 .blurt/），口喷鸡不上传任何东西。";
+"settings.privacy.search_index" = "搜索索引";
+"settings.privacy.speech_models" = "语音模型";
