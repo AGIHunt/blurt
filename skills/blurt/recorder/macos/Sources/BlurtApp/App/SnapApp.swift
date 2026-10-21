@@ -87,9 +87,9 @@ extension App {
                                         isARepeat: false, keyCode: UInt16(code)) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + (parts[0] == "rkey" ? 0.6 : 0)) { NSApp.postEvent(e, atStart: false) }
             }
-        case "checkupdates":                            // = menu "Check for Updates…" (Sparkle builds with a key)
+        case "checkupdates":                            // [probe]: = menu "Check for Updates…"; probe = no UI, emits update_probe
             emit(["event": "updater", "available": Updater.shared.available, "can_check": Updater.shared.canCheck])
-            Updater.shared.checkForUpdates(nil)
+            if arg == "probe" { Updater.shared.probe() } else if arg == "silent" { Updater.shared.silentUpdate() } else { Updater.shared.checkForUpdates(nil) }
         case "sethotkey":                             // sethotkey ACTION SPEC|off: HotkeyCenter.set, emits the result
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             guard a.count == 2, let act = HotAction(rawValue: a[0]) else { return }
