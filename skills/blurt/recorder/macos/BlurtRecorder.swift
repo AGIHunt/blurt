@@ -899,6 +899,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var discard = false
     var micLevel: Float = 0
     var captureSession: AVCaptureSession?
+    var testMic: TestMic?             // BLURT_TEST_MIC_WAV (tests): a file instead of the microphone
     var events: FileHandle?
     var live: LiveAudio?              // live/audio.pcm sidecar (capture queue only)
     var hud: HUD!
@@ -982,7 +983,10 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         cfg.showsCursor = true
         cfg.queueDepth = 8
         var scMic = false
-        if opts.mic, #available(macOS 15.0, *) {
+        if opts.mic, let wav = TestMic.wanted {   // tests: a file instead of the microphone
+            testMic = TestMic(url: wav)
+            if testMic == nil { emit(["event": "error", "code": "test_mic", "message": "can't read \(wav.path)"]) }
+        } else if opts.mic, #available(macOS 15.0, *) {
             cfg.captureMicrophone = true
             if let name = opts.micName,
                let dev = audioInputDevices()
@@ -1042,7 +1046,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: q)
         }
         stream = s
-        if opts.mic && !scMic { try setupLegacyMic() }
+        if opts.mic && !scMic && TestMic.wanted == nil { try setupLegacyMic() }
         if let e = opts.events {
             FileManager.default.createFile(atPath: e, contents: nil)
             events = FileHandle(forWritingAtPath: e)
@@ -1051,7 +1055,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             live = LiveAudio(dir: URL(fileURLWithPath: opts.out).deletingLastPathComponent().appendingPathComponent("live"))
         }
         emit(["event": "configured", "width": W, "height": H, "display": Int(display.displayID),
-              "region": [clipped.minX, clipped.minY, clipped.width, clipped.height], "mic": opts.mic ? (scMic ? "screencapturekit" : "avcapture") : "none", "system_audio": sys])
+              "region": [clipped.minX, clipped.minY, clipped.width, clipped.height], "mic": opts.mic ? (testMic != nil ? "test-file" : scMic ? "screencapturekit" : "avcapture") : "none", "system_audio": sys])
     }
 
     func setupLegacyMic() throws {
@@ -1075,6 +1079,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             }
         }
         captureSession?.startRunning()
+        testMic?.start(self)
         DispatchQueue.main.async { self.showChrome() }
     }
 
@@ -1311,6 +1316,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         hud?.orderOut(nil)
         border?.orderOut(nil)
         captureSession?.stopRunning()
+        testMic?.stop()
         let finish = {
             self.q.async {
                 // the pcm is complete now: live.py can finish the transcript while the mp4 is still being written
@@ -1919,8 +1925,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func runAgent(_ dir: URL, agent: String, bin: String) {
         let ws = currentWorkspace()
         let name = agent == "codex" ? "Codex" : "Claude Code"
-        let prompt = shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
-                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")
+        // name the skill's path: the agent's own skill list may lack blurt (installed for one CLI only) or hold another
+        // version than the one this app was built from
+        let skillHint = (readConfig()["skill_dir"] as? String).map { "\n" + L("blurt skill：\($0)/SKILL.md", "The blurt skill: \($0)/SKILL.md") } ?? ""
+        let prompt = (shotsPrompt(dir) ?? L("用 blurt skill 处理这段录屏：\(dir.path)\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页（items.json 一出现 App 就会打开它）；写好 items.json 后用两三句话总结。",
+                       "Use the blurt skill to process this recording: \(dir.path)\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page (the app opens it as soon as items.json appears); write items.json, then summarise in 2–3 sentences.")) + skillHint
         let cmd: String
         if agent == "codex" {
             // the skill needs uv's cache, the models in ~/.blurt and ffmpeg — outside the workspace sandbox

@@ -1,6 +1,6 @@
 // Menu-bar app glue for snap mode: menu items, start-up, and (BLURT_TEST_COMMANDS=1 only) a distributed-notification
 // command channel so scripted UI tests can drive the app without global hotkeys:
-//   dev.blurt.recorder.command  userInfo {"cmd": "snap" | "snapregion x,y,w,h" | "perch" | "hide" | "process" |
+//   dev.blurt.recorder.command  userInfo {"cmd": "record" | "snap" |"snapregion x,y,w,h" | "perch" | "hide" | "process" |
 //                                         "commit" | "cancel" | "edit N" | "hatch DIR" | "hatched DIR ok|fail" | "stop"}
 
 import AppKit
@@ -26,7 +26,8 @@ extension App {
         let arg = parts.count > 1 ? parts[1] : ""
         emit(["event": "test_command", "cmd": cmd])
         switch parts.first ?? "" {
-        case "snap": snapper.hotkey()
+        case "snap": hotkey(.snap)                     // = ⌥⇧A: a still of the take while recording, else snap mode
+        case "record": startRecording(useLast: true)   // = menu "录制上次的区域" (record.last_region), no picker
         case "snapregion":
             let p = arg.split(separator: ",").compactMap { Double($0) }
             guard p.count == 4 else { return }

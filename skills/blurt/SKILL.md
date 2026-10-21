@@ -121,7 +121,7 @@ Principles — judgement, not rules:
   ideas, how they connect, suggested next step) becomes the page's Overview — it can follow in §4.
 
 Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
-frames yet. **Right away** start `review.py <session>` **in the background** (opens the browser, exits when the user
+picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). **Right away** start `review.py <session>` **in the background** (opens the browser, exits when the user
 finishes; prints `REVIEW <url>` — give the user that URL if no browser can open where you run: SSH, container) and
 tell the user in one short message:
 - ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
