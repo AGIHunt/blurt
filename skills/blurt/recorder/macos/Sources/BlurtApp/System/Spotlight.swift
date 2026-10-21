@@ -86,9 +86,30 @@ final class Spotlight {
         let esc = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let q = CSSearchQuery(queryString: "title == \"*\(esc)*\"cd", attributes: ["title"])
         var found: [String] = []
-        q.foundItemsHandler = { items in found += items.map(\.uniqueIdentifier) }
-        q.completionHandler = { _ in DispatchQueue.main.async { completion(found) } }
+        q.foundItemsHandler = { items in found += Spotlight.ours(items.map { ($0.uniqueIdentifier, $0.domainIdentifier) }) }
+        q.completionHandler = { _ in
+            var seen = Set<String>()
+            let unique = found.filter { seen.insert($0).inserted }
+            DispatchQueue.main.async { completion(unique) }
+        }
         q.start()
+    }
+
+    /// The query also sees what macOS indexes for the app on its own (window restoration / user activities — an entry
+    /// whose identifier is a window number): keep only our items — an item uid, in our domain when one is given.
+    static func ours(_ hits: [(id: String, domain: String?)]) -> [String] {
+        hits.filter { ($0.domain == nil || $0.domain == domain) && isItemUID($0.id) }.map(\.id)
+    }
+
+    /// An item uid (contract C1): a 26-char Crockford ULID, or a legacy "L" + 25 hex digits.
+    static func isItemUID(_ s: String) -> Bool {
+        let u = Array(s.utf8)
+        guard u.count == 26 else { return false }
+        if u[0] == UInt8(ascii: "L") {
+            return u.dropFirst().allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
+        }
+        let crockford = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ".utf8)
+        return u.allSatisfy { crockford.contains($0) }
     }
 }
 
