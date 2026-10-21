@@ -49,6 +49,22 @@ class Layout(unittest.TestCase):
                        'L("截图 \\(s.n)"', "override func accessibilityPerformPress()"]:
             self.assertIn(needle, src)
 
+    def test_no_review_window_and_nothing_opens_by_itself(self):
+        # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
+        src = MAC / "Sources" / "BlurtApp"
+        self.assertFalse((src / "App" / "ReviewWindow.swift").exists())
+        code = {f: f.read_text() for f in src.rglob("*.swift")}
+        for f, t in code.items():
+            self.assertNotIn("ReviewHub", t, f.name)
+            self.assertNotIn("openReview(", t, f.name)
+        for name in ["App/AgentHub.swift", "System/JobNotifier.swift"]:
+            t = (src / name).read_text()
+            for opener in [".show()", "showInbox()", "reveal(session:", "NSWorkspace.shared.open("]:
+                # only inside a closure the user triggers (the island line's action, a notification click)
+                for line in t.splitlines():
+                    if opener in line:
+                        self.assertTrue("{" in line or "action" in line or "didReceive" in line, f"{name}: {line.strip()}")
+
     def test_build_inputs(self):
         sys.path.insert(0, str(SCRIPTS))
         import record
