@@ -2,6 +2,7 @@ import { fmt, kindOf, SEV, type Filter } from "../store";
 import { Egg } from "./icons";
 import { Icon } from "./Icon";
 import { cx, mdLite, useStore } from "./ctx";
+import { FixMark, fixClass } from "./Queue";
 import type { Item } from "../host";
 
 export function ListView() {
@@ -70,7 +71,7 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
     ) : null,
   ].filter(Boolean);
   return (
-    <article className={cx("card", st, ch?.has("*") && "fresh")} data-k={k} onClick={() => s.openItem(k)}>
+    <article className={cx("card", st, ch?.has("*") && "fresh", fixClass(i))} data-k={k} onClick={() => s.openItem(k)}>
       <div className={cx("img", !img && "none", wait && "shim", fresh && "fresh")} style={img ? { backgroundImage: `url("${src}")` } : undefined}>
         {img ? null : wait ? <Egg kind={kd} /> : s.t("noMedia")}
         {st !== "pending" && <div className={"stamp " + st}><Icon name={st === "keep" ? "check" : "x"} /></div>}
@@ -81,7 +82,10 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
           <span>{i.id || ""}</span>
           <span style={{ marginLeft: "auto" }}>{i.time && i.time.start != null ? fmt(i.time.start) : ""}</span>
         </div>
-        <div className="tt">{i.title}</div>
+        <div className="tt">
+          {i.title}
+          <FixMark i={i} />
+        </div>
         <div className="mm">{meta}</div>
       </div>
     </article>
@@ -111,9 +115,12 @@ export function Overview() {
             </h3>
             <div className="ov-list">
               {v.map((i) => (
-                <button key={i.id} data-k={s.data.items.indexOf(i)} onClick={() => s.openItem(s.data.items.indexOf(i))}>
+                <button key={i.id} className={fixClass(i) || undefined} data-k={s.data.items.indexOf(i)} onClick={() => s.openItem(s.data.items.indexOf(i))}>
                   <span>{i.id || ""}</span>
-                  {i.title}
+                  <span className="tt">
+                    {i.title}
+                    <FixMark i={i} />
+                  </span>
                 </button>
               ))}
             </div>
