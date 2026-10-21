@@ -65,7 +65,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         ]
         top[0].accessibility = L("收件箱：待整理和待审核的录制", "Inbox: recordings to process or review")
         let smart = SidebarNode(L("智能筛选", "Smart Filters"), scope: nil, children: [
-            SidebarNode(L("待修问题", "Open Issues"), scope: .smart(.openIssues), symbol: "ladybug", count: c.openIssues),
+            SidebarNode(L("待修问题", "Open Issues"), scope: .smart(.openIssues), image: BrandIcon.image(.bug, size: 16), count: c.openIssues),
             SidebarNode(L("想法", "Ideas"), scope: .smart(.ideas), symbol: "lightbulb", count: c.ideas),
             SidebarNode(L("Agent 修复中", "Agent Fixing"), scope: .smart(.fixing), symbol: "hammer", count: c.fixing),
             SidebarNode(L("已修复", "Fixed"), scope: .smart(.fixed), symbol: "checkmark.seal", count: c.fixed),
@@ -79,7 +79,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         sessionNodes += model.recentSessions.map { s in
             let n = SidebarNode(MainModel.title(of: s), scope: .session(s.id), symbol: s.mode == "shots" ? "camera.viewfinder" : "video",
                                 count: s.itemCount > 0 ? s.itemCount : nil)
-            n.image = Look.sessionEgg(s, size: NSSize(width: 13, height: 17))
+            n.image = BrandIcon.sessionImage(s, size: 17)
             n.accessibility = "\(MainModel.title(of: s)), \(s.mode == "shots" ? L("截图批次", "snap batch") : L("录屏", "recording")), \(Look.sessionStateName(s.state))"
             return n
         }

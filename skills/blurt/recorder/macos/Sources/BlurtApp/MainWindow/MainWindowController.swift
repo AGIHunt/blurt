@@ -279,7 +279,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let s = list.selectedSessions
             if s.count == 1, let one = s.first {
                 if one.processed { _ = add(L("打开会话的条目", "Show Items"), #selector(mShowSessionItems), "square.stack") }
-                else { _ = add(L("交给 Agent 整理", "Process with Agent"), #selector(mProcess), "wand.and.stars") }
+                else { _ = add(L("交给 Agent 整理", "Process with Agent"), #selector(mProcess)).image = BrandIcon.image(.chicken, size: 15) }
                 if one.processed { _ = add(L("审核模式", "Review Mode"), #selector(mReview), "rectangle.stack", key: "r", mods: []) }
                 m.addItem(.separator())
             }
@@ -289,7 +289,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         let items = list.selectedItems
         let fix = add(items.count > 1 ? L("让 Agent 修这 \(items.count) 条", "Let Agent Fix \(items.count) Items") : L("让 Agent 修", "Let Agent Fix"),
-                      #selector(mFix), "wand.and.stars", key: "\r")
+                      #selector(mFix), key: "\r")
+        fix.image = BrandIcon.image(.peck, size: 15)
         fix.isEnabled = AppEnvironment.fixWithAgent != nil
         if AppEnvironment.fixWithAgent == nil { fix.toolTip = L("在设置里配好 agent 后可用", "Available once an agent is set up in Settings") }
         _ = add(L("预览主帧", "Quick Look"), #selector(mQuickLook), "eye", key: " ", mods: [])
@@ -301,7 +302,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             i.keyEquivalentModifierMask = []
             i.representedObject = key
             i.target = self
-            i.image = Look.egg(kind: key, variant: "menu", size: NSSize(width: 12, height: 15))
+            i.image = BrandIcon.kind(key, variant: "menu", size: 15)
             i.state = items.allSatisfy { $0.kind == key } ? .on : .off
             km.addItem(i)
         }
@@ -426,7 +427,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func reveal(file: URL) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
     func quickLook(files: [URL]) { list.toggleQuickLook(files) }
     func canFix() -> Bool { AppEnvironment.fixWithAgent != nil }
-    func webWrote() { Scripts.indexUpdate(detail.currentItem.map { [$0.sessionURL] } ?? detail.currentSession.map { [$0.url] } ?? []) }
+    func webWrote(_ session: URL) { Scripts.indexUpdate([session]) }
 
     func openCode(_ ref: String, session: URL) {
         let ws = model.workspace(ofSession: list.selectedItems.first?.sessionID ?? "").map { URL(fileURLWithPath: $0.path) }
@@ -506,7 +507,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case Self.snapID:
             return button(L("截图", "Snap"), "camera.viewfinder", #selector(snap), tip: L("截一张图，随口说两句 ", "Snap a shot and say a word ") + hk(.snap))
         case Self.fixID:
-            return button(L("让 Agent 修", "Let Agent Fix"), "wand.and.stars", #selector(toolbarFix), tip: L("把选中的条目交给 coding agent（⌘↩）", "Hand the selected items to your coding agent (⌘↩)"))
+            let i = button(L("让 Agent 修", "Let Agent Fix"), "wand.and.stars", #selector(toolbarFix), tip: L("把选中的条目交给 coding agent（⌘↩）", "Hand the selected items to your coding agent (⌘↩)"))
+            i.image = BrandIcon.image(.peck, size: 19)
+            return i
         case Self.filterID:
             let i = NSMenuToolbarItem(itemIdentifier: id)
             i.label = L("筛选", "Filter")
@@ -652,7 +655,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         model.kinds = Set(s?.kinds ?? [])
         model.status = s?.status
         model.fix = s?.fix
-        model.text = s?.text ?? ""
+        model.text = ""          // like Finder and Mail: a new window starts without the last search
         model.sort = s?.sort ?? "updated"
         model.ascending = s?.ascending ?? false
         searchItem?.searchField.stringValue = model.text

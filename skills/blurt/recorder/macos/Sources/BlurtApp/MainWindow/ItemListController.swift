@@ -117,8 +117,8 @@ final class EmptyStateView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(symbol: String?, egg: NSImage? = nil, title t: String, message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
-        icon.image = egg ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+    func show(symbol: String?, image: NSImage? = nil, title t: String, message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
+        icon.image = image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         icon.isHidden = icon.image == nil || busy
         busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
         title.stringValue = t
@@ -157,7 +157,7 @@ final class FilterBar: NSView {
         kinds.segmentStyle = .rounded
         kinds.controlSize = .small
         for (k, key) in Self.kindKeys.enumerated() {
-            kinds.setImage(Look.egg(kind: key, variant: "bar", size: NSSize(width: 11, height: 14)), forSegment: k)
+            kinds.setImage(BrandIcon.kind(key, variant: "bar", size: 14), forSegment: k)
             kinds.setLabel(Look.kindName(key), forSegment: k)
             kinds.setImageScaling(.scaleProportionallyDown, forSegment: k)
             kinds.setToolTip(L("只看", "Only ") + Look.kindName(key) + " (\(k + 1))", forSegment: k)
@@ -385,7 +385,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                                   "Install or update the skill (npx skills add AGIHunt/blurt), then reopen this window."))
             return
         case .missing:
-            empty.show(symbol: nil, egg: Look.egg(kind: "note", size: NSSize(width: 34, height: 44)),
+            empty.show(symbol: nil, image: BrandIcon.image(.egg, size: 44),
                        title: L("还没有索引", "No index yet"),
                        message: L("Blurt 会扫描 ~/Blurt 和绑定的项目里的录屏、截图批次，建一份本地搜索索引。不会上传任何东西。",
                                   "Blurt scans the recordings and snap batches in ~/Blurt and your bound projects into a local search index. Nothing is uploaded."),
@@ -408,11 +408,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: "line.3.horizontal.decrease.circle", title: L("没有符合筛选的条目", "Nothing matches these filters"),
                        message: "", buttons: [(L("清除筛选", "Clear Filters"), 2)])
         } else if model.scope == .inbox {
-            empty.show(symbol: nil, egg: Look.egg(kind: "task", size: NSSize(width: 34, height: 44)),
+            empty.show(symbol: nil, image: BrandIcon.image(.nest, size: 44),
                        title: L("收件箱清空了", "Inbox zero"),
                        message: L("所有录屏和截图批次都整理、审核完了。", "Every recording and snap batch is processed and reviewed."))
         } else if model.counts.all == 0 && model.counts.sessions == 0 {
-            empty.show(symbol: nil, egg: Look.egg(kind: "idea", size: NSSize(width: 34, height: 44)),
+            empty.show(symbol: nil, image: BrandIcon.kind("idea", size: 44),
                        title: L("还什么都没有", "Nothing here yet"),
                        message: L("边用你的产品边说出想法和 bug：录一段屏（\(hint(.record))），或者截几张图（\(hint(.snap))）。",
                                   "Talk through your product while you use it: record your screen (\(hint(.record))) or snap a few shots (\(hint(.snap)))."),
@@ -448,7 +448,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         switch col {
         case "egg":
             let c = make("egg") { EggCell() }
-            c.egg.image = Look.egg(kind: it.kind, variant: it.uid)
+            c.egg.image = BrandIcon.kind(it.kind, variant: it.uid, size: 23)
             c.egg.alphaValue = it.status == "deleted" ? 0.4 : 1
             c.spinner.stopAnimation(nil)
             c.egg.isHidden = false
@@ -490,7 +490,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         switch col {
         case "egg":
             let c = make("egg") { EggCell() }
-            c.egg.image = Look.sessionEgg(s)
+            c.egg.image = BrandIcon.sessionImage(s, size: 23)
             c.egg.alphaValue = 1
             if s.processing { c.spinner.startAnimation(nil); c.egg.isHidden = true } else { c.spinner.stopAnimation(nil); c.egg.isHidden = false }
             return c

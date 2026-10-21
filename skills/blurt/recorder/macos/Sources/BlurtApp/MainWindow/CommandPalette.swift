@@ -123,11 +123,14 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         func e(_ t: String, _ sym: String, _ keys: String = "", enabled: Bool = true, detail: String = "", _ run: @escaping () -> Void) -> Entry {
             Entry(title: t, detail: detail, image: Look.symbol(sym, t, size: 14), keys: keys, enabled: enabled, run: run)
         }
+        func b(_ t: String, _ icon: BrandIcon.Name, _ keys: String = "", enabled: Bool = true, _ run: @escaping () -> Void) -> Entry {
+            Entry(title: t, detail: "", image: BrandIcon.image(icon, size: 16), keys: keys, enabled: enabled, run: run)
+        }
         let hasItems = !c.list.selectedItems.isEmpty
         var out = [
             e(L("录制", "Record"), "record.circle", hk(.record)) { c.record() },
             e(L("截图", "Snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
-            e(L("让 Agent 修选中的条目", "Let Agent Fix Selection"), "wand.and.stars", "⌘↩", enabled: hasItems && AppEnvironment.fixWithAgent != nil) { c.fixSelection() },
+            b(L("让 Agent 修选中的条目", "Let Agent Fix Selection"), .peck, "⌘↩", enabled: hasItems && AppEnvironment.fixWithAgent != nil) { c.fixSelection() },
             e(L("预览主帧", "Quick Look"), "eye", L("空格", "Space"), enabled: hasItems) { c.list.toggleQuickLook() },
             e(L("审核模式", "Review Mode"), "rectangle.stack", "R", enabled: hasItems) { c.reviewMode() },
             e(L("在访达中显示", "Reveal in Finder"), "folder", "⇧⌘R", enabled: hasItems || !c.list.selectedSessions.isEmpty) { c.mReveal() },
@@ -137,7 +140,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(L("丢弃", "Drop"), "trash", "⌫", enabled: hasItems) { c.setStatus("deleted") },
             e(L("收件箱", "Go to Inbox"), "tray", "⌘1") { c.go(.inbox) },
             e(L("全部条目", "Go to All Items"), "square.stack", "⌘2") { c.go(.all) },
-            e(L("待修问题", "Go to Open Issues"), "ladybug", "⌘3") { c.go(.smart(.openIssues)) },
+            b(L("待修问题", "Go to Open Issues"), .bug, "⌘3") { c.go(.smart(.openIssues)) },
             e(L("想法", "Go to Ideas"), "lightbulb", "⌘4") { c.go(.smart(.ideas)) },
             e(L("Agent 修复中", "Go to Agent Fixing"), "hammer", "⌘5") { c.go(.smart(.fixing)) },
             e(L("已修复", "Go to Fixed"), "checkmark.seal", "⌘6") { c.go(.smart(.fixed)) },
@@ -147,7 +150,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(L("键盘快捷键", "Keyboard Shortcuts"), "keyboard", "?") { c.showShortcuts() },
         ]
         for k in FilterBar.kindKeys {
-            out.append(Entry(title: L("只看", "Show Only ") + Look.kindName(k), detail: "", image: Look.egg(kind: k, variant: "p", size: NSSize(width: 13, height: 17)),
+            out.append(Entry(title: L("只看", "Show Only ") + Look.kindName(k), detail: "", image: BrandIcon.kind(k, variant: "p", size: 17),
                              keys: "", enabled: true) { c.model.kinds = [k]; c.model.reload() })
         }
         if AppEnvironment.settings != nil { out.append(e(L("设置…", "Settings…"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
@@ -181,7 +184,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                 Entry(title: it.title.isEmpty ? it.itemID : it.title,
                       detail: [Look.kindName(it.kind), it.workspaceName, it.snippet.map { $0.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "") }]
                         .compactMap { $0 }.joined(separator: " · "),
-                      image: Look.egg(kind: it.kind, variant: it.uid, size: NSSize(width: 13, height: 17)), keys: "", enabled: true) { [weak self] in
+                      image: BrandIcon.kind(it.kind, variant: it.uid, size: 17), keys: "", enabled: true) { [weak self] in
                     self?.controller.reveal(uid: it.uid)
                 }
             }

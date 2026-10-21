@@ -27,6 +27,12 @@ final class DragOverlay: NSView, NSDraggingSource, NSViewToolTipOwner {
         toolTip = nil
         removeAllToolTips()
         for (r, _) in regions { addToolTip(r, owner: self, userData: nil) }
+        if ProcessInfo.processInfo.environment["BLURT_PERF"] != nil, let w = window {    // for the drag-out test
+            for (r, f) in regions {
+                let g = toCG(w.convertToScreen(convert(r, to: nil)))
+                NSLog("blurt drag rect %@ at %d %d %d %d", f.lastPathComponent, Int(g.minX), Int(g.minY), Int(g.width), Int(g.height))
+            }
+        }
     }
 
     override func resetCursorRects() {
@@ -45,7 +51,11 @@ final class DragOverlay: NSView, NSDraggingSource, NSViewToolTipOwner {
         return region(at: p) == nil ? nil : self
     }
 
+    static let debug = ProcessInfo.processInfo.environment["BLURT_PERF"] != nil
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }   // drag straight out of an inactive window
+
     override func mouseDown(with e: NSEvent) {
+        if Self.debug { NSLog("blurt drag: mouseDown") }
         down = e
         dragging = false
     }
@@ -55,6 +65,7 @@ final class DragOverlay: NSView, NSDraggingSource, NSViewToolTipOwner {
         let a = d.locationInWindow, b = e.locationInWindow
         guard hypot(b.x - a.x, b.y - a.y) > 4, let file = region(at: convert(a, from: nil)) else { return }
         dragging = true
+        if Self.debug { NSLog("blurt drag: begin %@", file.path) }
         let item = NSDraggingItem(pasteboardWriter: file as NSURL)
         let p = convert(a, from: nil)
         let img = NSImage(contentsOf: file) ?? NSWorkspace.shared.icon(forFile: file.path)
@@ -75,6 +86,10 @@ final class DragOverlay: NSView, NSDraggingSource, NSViewToolTipOwner {
     override func rightMouseUp(with e: NSEvent) { web?.rightMouseUp(with: e) }
     override func otherMouseDown(with e: NSEvent) { web?.otherMouseDown(with: e) }
     override func magnify(with e: NSEvent) { web?.magnify(with: e) }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        if Self.debug { NSLog("blurt drag: ended op=%lu", operation.rawValue) }
+    }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         context == .outsideApplication ? [.copy, .generic] : .copy
