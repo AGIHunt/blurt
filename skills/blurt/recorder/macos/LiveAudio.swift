@@ -133,3 +133,68 @@ func cleanupLive(_ session: URL) {
     }
     liveLaunched.remove(session.path)
 }
+
+/// Tests only — BLURT_TEST_MIC_WAV=<audio file> stands in for the microphone: the file plays in real time as 20 ms
+/// buffers stamped with the host clock (like a real mic's) into Recorder.handleAudio, i.e. the same path to the mp4
+/// audio track, the level meter and live/audio.pcm. It advances only while recording and unpaused (nobody talks
+/// into a paused take), then sends silence. No microphone is opened.
+final class TestMic {
+    static let step = 960                     // 20 ms at 48 kHz
+    static var wanted: URL? { ProcessInfo.processInfo.environment["BLURT_TEST_MIC_WAV"].map { URL(fileURLWithPath: $0) } }
+    let fmt = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48000, channels: 1, interleaved: true)!
+    private var samples: [Int16] = []
+    private var pos = 0
+    private var next: CMTime?
+    private var timer: DispatchSourceTimer?
+
+    init?(url: URL) {
+        guard let f = try? AVAudioFile(forReading: url), let conv = AVAudioConverter(from: f.processingFormat, to: fmt),
+              let all = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)) else { return nil }
+        try? f.read(into: all)
+        let cap = AVAudioFrameCount(Double(all.frameLength) * 48000 / f.processingFormat.sampleRate) + 256
+        guard let out = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: cap) else { return nil }
+        var fed = false
+        conv.convert(to: out, error: nil) { _, st in
+            if fed { st.pointee = .endOfStream; return nil }
+            fed = true; st.pointee = .haveData; return all
+        }
+        samples = Array(UnsafeBufferPointer(start: out.int16ChannelData![0], count: Int(out.frameLength)))
+    }
+
+    func start(_ rec: Recorder) {
+        let t = DispatchSource.makeTimerSource(queue: rec.q)
+        let dt = CMTime(value: CMTimeValue(TestMic.step), timescale: 48000)
+        t.schedule(deadline: .now(), repeating: .milliseconds(10))
+        t.setEventHandler { [weak self, weak rec] in
+            guard let self = self, let rec = rec, rec.started, !rec.stopping else { return }
+            let now = hostNow()
+            var n = self.next ?? CMTimeSubtract(now, dt)
+            while CMTimeCompare(CMTimeAdd(n, dt), now) <= 0 {
+                if !rec.isPaused, let sb = self.buffer(at: n) { rec.handleAudio(sb) }
+                n = CMTimeAdd(n, dt)
+            }
+            self.next = n
+        }
+        t.resume()
+        timer = t
+    }
+
+    func stop() { timer?.cancel(); timer = nil }
+
+    private func buffer(at pts: CMTime) -> CMSampleBuffer? {
+        let count = TestMic.step
+        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 48000), presentationTimeStamp: pts, decodeTimeStamp: .invalid)
+        var sb: CMSampleBuffer?
+        guard CMSampleBufferCreate(allocator: nil, dataBuffer: nil, dataReady: false, makeDataReadyCallback: nil, refcon: nil,
+                                   formatDescription: fmt.formatDescription, sampleCount: count, sampleTimingEntryCount: 1,
+                                   sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sb) == noErr,
+              let s = sb, let pcm = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(count)) else { return nil }
+        pcm.frameLength = AVAudioFrameCount(count)
+        let dst = pcm.int16ChannelData![0]
+        for i in 0..<count { dst[i] = pos + i < samples.count ? samples[pos + i] : 0 }
+        pos += count
+        guard CMSampleBufferSetDataBufferFromAudioBufferList(s, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil, flags: 0,
+                                                             bufferList: pcm.audioBufferList) == noErr else { return nil }
+        return s
+    }
+}
