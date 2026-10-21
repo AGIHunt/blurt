@@ -97,7 +97,10 @@ def test_every_agent_has_the_c5_fields():
 def test_detect_matches_fake_clis(env):
     out = cli("detect")
     rows = {r["id"]: r for r in out["agents"]}
-    assert out["order"] == agents.agent_order({}) and [r["id"] for r in out["agents"]] == out["order"]
+    ids = [r["id"] for r in out["agents"]]
+    assert out["order"] == agents.agent_order({}) and ids[:len(out["order"])] == out["order"]
+    assert "zcode" not in out["order"] and ids[-1] == "zcode"  # app-only: listed after the order, never picked
+    assert agents.agent_order({"record": {"agents": ["zcode", "codex"]}}) == ["codex"]
     assert rows["claude"]["login"] == "logged_out" and rows["claude"]["state"] == "logged_out"
     assert rows["claude"]["version"] == "2.1.259 (Claude Code)"
     assert rows["codex"]["login"] == "ok" and rows["codex"]["state"] == "ready"
