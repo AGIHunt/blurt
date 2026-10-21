@@ -291,7 +291,7 @@ def file_etag(raw: bytes) -> str:
 
 
 # ------------------------------------------------------------------ the user's edits (review page, apps)
-SERVER_KEYS = {"id", "_user"}
+SERVER_KEYS = {"id", "uid", "_user", "fix", "fix_history", "schema"}  # set only by the server / `items.py fix`, never by a page
 
 
 def apply_user_ops(data: dict, ops: list[dict]) -> None:
