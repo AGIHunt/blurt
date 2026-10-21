@@ -66,6 +66,12 @@
   --sev-high: #e5502f;
   --sev-medium: #b7791f;
   --sev-low: #4a6fd0;
+  /* K8: kind icons (≥ 3:1 on every surface) and the work-state ring's "to verify" */
+  --kind-issue: #d93d42;
+  --kind-idea: #a8710a;
+  --kind-note: #3e63dd;
+  --kind-task: #218358;
+  --warn: #b86e00;
   --media: #0b0b0c;
   --scrim: rgba(0, 0, 0, 0.42);
   --lightbox: rgba(0, 0, 0, 0.9);
@@ -87,6 +93,11 @@
   --sev-high: #ff7a5c;
   --sev-medium: #e3b261;
   --sev-low: #9fb6f2;
+  --kind-issue: #ff6b6b;
+  --kind-idea: #ffc53d;
+  --kind-note: #8da4ef;
+  --kind-task: #3dd68c;
+  --warn: #f5a524;
   --media: #0e0e0e;
   --scrim: rgba(0, 0, 0, 0.55);
   --lightbox: rgba(8, 8, 8, 0.94);

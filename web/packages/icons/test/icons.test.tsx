@@ -10,10 +10,16 @@ const REVIEW = ["check", "x", "chevron-up", "chevron-down", "download", "folder"
   "search", "git-commit"];
 // Brand glyphs the apps use in place of emoji.
 const BRAND = ["chicken", "blurt", "egg", "egg-fill", "hatch", "hatched", "nest", "perch", "claw", "peck", "bug", "spark",
-  "note", "task", "mic", "waveform", "snap", "snap-to-perch", "agent", "agent-run", "mcp", "ink"];
+  "document", "checklist", "lightbulb", "tag", "mic", "waveform", "snap", "snap-to-perch", "agent", "agent-run", "mcp", "ink"];
 
 it("has every name the review canvas and the apps use", () => {
   for (const n of [...REVIEW, ...BRAND]) expect(ICON_NAMES).toContain(n);
+});
+
+it("has the K8 kind icons and the v0.7 set; kind names resolve to them", () => {
+  for (const n of ["bug", "lightbulb", "document", "checklist", "tag", "terminal", "folder-plus", "git-branch",
+    "git-pull-request", "send", "bell"]) expect(ICON_NAMES).toContain(n);
+  expect([resolveIcon("issue"), resolveIcon("idea"), resolveIcon("note"), resolveIcon("task")]).toEqual(["bug", "lightbulb", "document", "checklist"]);
 });
 
 it("aliases resolve to real icons", () => {

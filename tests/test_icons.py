@@ -24,8 +24,8 @@ def test_icons_follow_the_grid():
     assert len(icons) >= 60
     assert [e for ic in icons for e in iconlib.lint(ic)] == []
     names = {i.name for i in icons}
-    for brand in ("chicken", "blurt", "egg", "hatch", "hatched", "nest", "perch", "claw", "peck", "bug", "spark", "note",
-                  "task", "mic", "waveform", "snap", "snap-to-perch", "agent", "agent-run", "mcp"):
+    for brand in ("chicken", "blurt", "egg", "hatch", "hatched", "nest", "perch", "claw", "peck", "bug", "spark", "document",
+                  "checklist", "mic", "waveform", "snap", "snap-to-perch", "agent", "agent-run", "mcp"):
         assert brand in names
 
 
