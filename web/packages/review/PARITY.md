@@ -13,11 +13,11 @@ macos host), `app:` = checked by hand in Blurt.app's review window (WKWebView ov
 | 3 | Top bar: logo, session name, keep/drop progress bar, counts, processing pill, save state, Overview/Focus/List, theme, language, shortcuts, Finish ⌘⏎ | same; session name + theme hidden in the app | e2e, app |
 | 4 | Default view: overview when there is a digest, focus when >1 item, else list; remembered in `blurt.view` | same | e2e "J/K … G and V" |
 | 5 | Overview: title, kind counts, digest (mini markdown), items by kind → focus | same | e2e (V) |
-| 6 | Focus queue: number, kind egg, title, "needs input" dot, keep/drop dot, current row, scroll into view | same | e2e |
+| 6 | Focus queue: number, kind egg, title, "needs input" dot, keep/drop dot, current row, scroll into view | v3: draft dot, kind icon, title + id, work ring (K8) | e2e |
 | 7 | Stage: frame hugging its aspect ratio, AR cache (no flash), strip of frames / clip / recording, caption with time + caption + ⤓ download (`?download=1`), lightbox | same; + Quick Look / reveal when the host has them; 1px inner stroke | e2e "media", wk |
 | 8 | Recording: seek to start − 1.5 s, pause after end + 2 s; O / ▶ jumps there; Space plays | same | e2e "media" |
 | 9 | Slide-in animation up/down on navigation; wheel and swipe on the stage move between items | same | manual (app), code port |
-| 10 | Inspector: id, merged_from, n / N, ↑↓; auto-sizing title; status / kind / severity (cycles) / type (cycles) / low-confidence chips; questions + answer; quote with time | same; + fix chip | e2e |
+| 10 | Inspector: id, merged_from, n / N, ↑↓; auto-sizing title; status / kind / severity (cycles) / type (cycles) / low-confidence chips; questions + answer; quote with time | same; + work panel (K3) | e2e |
 | 11 | Fields per kind (issue / idea / task / note), generic fields for custom lenses, tags (`,` `，`), source URL; lists parse `1.` / `-` | same; uid / fix / fix_history / schema never shown as fields (the old page showed `uid`) | e2e "autosave", "NEW: v2 fields" |
 | 12 | Code refs: click copies | same; opens in the editor when the host has `openCode` | manual |
 | 13 | Autosave 450 ms, "Saving… / Saved / could not save", only diffs sent as user-ops, `_user` recorded by the server | same | e2e "autosave", unit store |
@@ -35,5 +35,6 @@ macos host), `app:` = checked by hand in Blurt.app's review window (WKWebView ov
 | 25 | Items dropped before this review are hidden | same | unit sync |
 | 26 | Narrow windows: queue hides < 1180 px, compact top bar < 1000 px, single column < 860 px; reduced motion | same | manual |
 | — | NEW: IME Enter guard (keyCode 229 / isComposing / 50 ms after compositionend); Enter commits the title and single-line fields without also keeping the item | | e2e "NEW: an IME's Enter", unit ime, wk, app |
-| — | NEW: item mode (`mode=item`, by id or uid, `setItem`), host adapters (browser / macos / tauri), drag rects, Quick Look / reveal / openCode / fixWithAgent / download affordances, fix chip + history, platform tokens mac / win / gnome × light / dark, system accent | | e2e, unit hosts, wk |
+| — | NEW: item mode (`mode=item`, by uid, id or alias, `setItem`), host adapters (browser / macos / tauri, protocol v3 with scopes), drag rects, Quick Look / reveal / openCode / dispatch / handoff / openSession / download affordances, work state + history, platform tokens mac / win / gnome × light / dark, system accent | | e2e, unit hosts, wk |
 | — | NEW (UI rule): no emoji or glyph icons (the old page used ✓ ✕ ● ▶ ◉ ⧉ “ ⇄ as icons). Every icon goes through `<Icon name>` (`src/ui/Icon.tsx`: 24 grid, 1.75 stroke, round caps); it becomes a re-export of `@blurt/icons` once that package lands. `<kbd>` key legends (⌘ ⏎ ← → ↑ ↓ ⌫) stay as text | | unit "no-glyph-icons" (source + built page) |
+| — | NEW (v0.7): v3 docs (K1) — ops by uid, project picker and batch move / drag onto a project (K2), work state with mark done / reopen / won't do (K3), handoff copy (K6), provenance, kind icons and rings instead of eggs (K8), en / zh-Hans catalogs and locale formatting (K10), embedded mode | | e2e `v3.spec.ts` (against `e2e/v3server.ts`), unit `v3.test.tsx` |

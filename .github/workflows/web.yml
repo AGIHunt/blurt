@@ -1,8 +1,9 @@
 name: web
 
 # The review canvas (web/packages/review → skills/blurt/scripts/review.html), the design tokens (web/packages/ui) and
-# the overlay pages (web/apps/overlays): unit tests, build + size budget, Playwright (Chromium + WebKit) against
-# review.py on the fixture sessions, and on macOS the canvas in a real WKWebView with the C6 macos host.
+# the overlay pages (web/apps/overlays), @blurt/i18n: unit tests, build + size budget, Playwright (Chromium + WebKit)
+# against review.py on the fixture sessions (v2) and the v3 doc server (e2e/v3server.ts), and on macOS the canvas in a
+# real WKWebView with the macos host.
 on:
   push:
     branches: [main]
