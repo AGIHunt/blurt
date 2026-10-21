@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { FixRecord, Item } from "../host";
+import { fieldLabel } from "../fields";
 import { isEnter } from "../ime";
 import { fmt, kindOf, SEV } from "../store";
 import { statusOf } from "../sync";
@@ -185,8 +186,8 @@ export function Inspector() {
   // anything else the lens added: shown generically so custom lenses just work
   for (const [k, v] of Object.entries(i)) {
     if (RESERVED.has(k) || SHOWN.has(k) || k.startsWith("_")) continue;
-    if (typeof v === "string") body.push(F(k, k.replace(/_/g, " ")));
-    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) body.push(F(k, k.replace(/_/g, " "), "list"));
+    if (typeof v === "string") body.push(F(k, fieldLabel(k, s.lang)));
+    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) body.push(F(k, fieldLabel(k, s.lang), "list"));
   }
   body.push(
     <div className="grid2" key="ts">
