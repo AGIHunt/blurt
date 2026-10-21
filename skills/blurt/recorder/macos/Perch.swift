@@ -554,7 +554,8 @@ final class Perch: NSObject {
             c.root.zPosition = c.piled ? CGFloat(i) : 100 + CGFloat(i)
         }
         hint.isHidden = !(cards.isEmpty && hatches.isEmpty)
-        hint.string = L("⌥⇧A 截一张图，它会挂在这里", "⌥⇧A takes a shot — it hangs here")
+        hint.string = hkHint(.snap, "截一张图，它会挂在这里", "takes a shot — it hangs here")
+            ?? L("从菜单截一张图，它会挂在这里", "Take a shot from the menu — it hangs here")
         hint.frame = CGRect(x: width / 2 - 200, y: rope.restY(at: width / 2) + Perch.cardTop + 6, width: 400, height: 20)
         refreshControls()
         wake()

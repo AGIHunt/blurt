@@ -51,6 +51,7 @@ VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", 
 AUDIO_SR = 48000
 SWIFT_DIR = Path(__file__).resolve().parent.parent / "recorder" / "macos"
 SWIFT_SRC = SWIFT_DIR / "BlurtRecorder.swift"  # entry point (top-level code); other *.swift files are compiled with it
+AGENTS_JSON = Path(__file__).with_name("agents.json")  # bundled into the app (Agents.swift)
 
 
 def out(obj: dict | str) -> None:
@@ -459,6 +460,7 @@ INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
 <key>LSUIElement</key><true/>
 <key>NSMicrophoneUsageDescription</key><string>Blurt records your voice while you narrate feedback.</string>
 <key>NSScreenCaptureUsageDescription</key><string>Blurt records the screen area you select.</string>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 """
 
@@ -472,6 +474,8 @@ def native_binary(build: bool = True) -> Path | None:
     h = hashlib.sha256(SWIFT_SRC.read_bytes() + INFO_PLIST.encode())
     for p in others:
         h.update(p.name.encode() + p.read_bytes())
+    if AGENTS_JSON.exists():
+        h.update(AGENTS_JSON.read_bytes())
     digest = h.hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"
@@ -516,6 +520,8 @@ def native_binary(build: bool = True) -> Path | None:
     (APP_BUNDLE / "Contents" / "Info.plist").write_text(INFO_PLIST, encoding="utf-8")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     make_menu_icon(APP_BUNDLE / "Contents" / "Resources")
+    if AGENTS_JSON.exists():
+        shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
     stamp.write_text(digest)          # before signing: the signature seals Resources/
     sign_app(APP_BUNDLE)
     ensure_app_installed(force=True)

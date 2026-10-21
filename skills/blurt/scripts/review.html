@@ -5,30 +5,39 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>blurt · Review</title>
 <link rel="icon" href="/icon.png">
+<script>/* theme before first paint: the user's pick (browser only), else the system's; the Blurt app window always follows macOS */
+(function(){var app=!!window.blurtApp,s=null;try{s=localStorage.getItem("blurt.theme")}catch(e){}
+var m=matchMedia("(prefers-color-scheme: dark)");function set(){document.documentElement.dataset.theme=(!app&&s)||(m.matches?"dark":"light")}
+set();(m.addEventListener?m.addEventListener("change",function(){if(app||!s)set()}):m.addListener(function(){if(app||!s)set()}));
+window.__theme=function(n){s=n;try{localStorage.setItem("blurt.theme",n)}catch(e){}set()}})();</script>
 <style>
 /* Both themes share one layout: the screenshot is the frame (it hugs its own aspect ratio on a mid-tone tray, never
    letterboxed in black), the inspector is a document whose fields only show a box on hover/focus, and colour is spent
    only on the pen coral and the keep/drop/ask states. The tray sits between page and screenshot in brightness: darker
    than the page in light, lighter in dark, so a (usually light) screenshot keeps a clean edge without glaring. */
+/* dark: warm neutral greys (a hint of brown, never blue), elevation by tone rather than outlines —
+   page 1a1918 < tray 211f1e < panel 272523 < raised 2e2c2a < popover 33312e; hairlines at 7–12 %;
+   secondary text ≥ 6:1 on the page; the coral a little softer and the greens/reds a little lighter than in light */
 :root{
-  --bg:#131314; --bg-2:#1c1c1e; --panel:#202022; --panel-2:#2a2a2d; --hover:rgba(255,255,255,.045);
-  --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12); --ring:rgba(255,255,255,.08);
-  --ink:#ececee; --ink-2:#c2c2c6; --mute:#8d8d93; --faint:#636369;
-  --accent:#ff6447; --accent-ink:#fff; --accent-soft:rgba(255,100,71,.14);
-  --keep:#1f8a5a; --keep-soft:rgba(60,190,130,.12); --drop:#e5565f; --drop-soft:rgba(229,86,95,.13);
-  --amber:#e0a84e; --amber-soft:rgba(224,168,78,.08);
-  --sev-high:#ff6447; --sev-medium:#e0a84e; --sev-low:#86a8f5;
-  --media:#000; --glow:transparent; --chip:#2a2a2d; --ask:color-mix(in srgb,var(--amber) 10%,var(--panel));
-  --shadow:0 18px 40px -24px rgba(0,0,0,.9); --r:14px; --r-sm:9px;
+  --bg:#1a1918; --bg-2:#211f1e; --panel:#272523; --panel-2:#2e2c2a; --raise:#33312e; --hover:rgba(255,244,230,.05);
+  --line:rgba(255,240,225,.07); --line-2:rgba(255,240,225,.115); --ring:rgba(255,240,225,.075);
+  --ink:#ece8e3; --ink-2:#cdc7bf; --mute:#a39d94; --faint:#77716a;
+  --accent:#f0735a; --accent-ink:#fff; --accent-soft:rgba(240,115,90,.15);
+  --keep:#2f9468; --keep-soft:rgba(78,190,140,.13); --drop:#e06a62; --drop-soft:rgba(224,106,98,.14);
+  --amber:#ddac5c; --amber-soft:rgba(221,172,92,.09);
+  --sev-high:#f0735a; --sev-medium:#ddac5c; --sev-low:#97aee6;
+  --media:#100f0e; --glow:transparent; --chip:#2e2c2a; --ask:color-mix(in srgb,var(--amber) 8%,var(--panel));
+  --shadow:0 18px 44px -26px rgba(0,0,0,.85),0 2px 6px -3px rgba(0,0,0,.35); --r:14px; --r-sm:9px;
   --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   color-scheme:dark;
 }
 :root[data-theme=light]{
-  --bg:#f5f4f1; --bg-2:#ebebea; --panel:#ffffff; --panel-2:#f3f2ee; --hover:rgba(20,20,30,.04);
+  --bg:#f5f4f1; --bg-2:#ebebea; --panel:#ffffff; --panel-2:#f3f2ee; --raise:#ffffff; --hover:rgba(20,20,30,.04);
   --line:rgba(20,20,30,.08); --line-2:rgba(20,20,30,.14); --ring:rgba(20,20,30,.1);
   --ink:#18181b; --ink-2:#3f3f46; --mute:#71717a; --faint:#a1a1aa;
   --accent-soft:rgba(255,92,61,.1); --keep:#16a36a; --keep-soft:rgba(22,163,106,.1); --drop:#dc3c42; --drop-soft:rgba(220,60,66,.08);
   --amber:#b7791f; --amber-soft:rgba(234,170,40,.14);
+  --accent:#ff6447; --sev-high:#ff6447; --sev-medium:#e0a84e; --sev-low:#86a8f5;
   --media:#050506; --chip:rgba(20,20,30,.06); --ask:var(--amber-soft); --shadow:0 20px 50px -24px rgba(20,20,40,.3);
   color-scheme:light;
 }
@@ -213,7 +222,7 @@ button.chip:hover{color:var(--ink)}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;z-index:40}
 .modal-bg.show{display:grid;animation:fade .18s}
 @keyframes fade{from{opacity:0}}
-.modal{width:min(520px,92vw);background:var(--panel);border-radius:18px;padding:22px;box-shadow:0 0 0 1px var(--line),var(--shadow)}
+.modal{width:min(520px,92vw);background:var(--raise);border-radius:18px;padding:22px;box-shadow:0 0 0 1px var(--line),var(--shadow)}
 .modal h3{margin:0 0 6px;font-size:18px}
 .modal p{margin:0 0 16px;color:var(--mute)}
 .modal .row{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
@@ -230,13 +239,35 @@ button.chip:hover{color:var(--ink)}
 .done .big{width:88px;height:88px;margin:0 auto}
 .done h2{margin:10px 0 6px;font-size:24px}
 .done p{color:var(--mute)}
+.in-app #themeBtn,.in-app #sessionName{display:none}
+.in-app .top{height:50px}
+.in-app .focus,.in-app .list{height:calc(100vh - 50px)}
+.cap .dl{flex:none;align-self:center;width:24px;height:24px;margin-left:-4px;border-radius:7px;display:grid;place-items:center;color:var(--faint);text-decoration:none}
+.cap .dl:hover{background:var(--hover);color:var(--ink)}
+.cap .dl svg{width:14px;height:14px}
 
 /* ---------- dark: tone instead of outlines on the small controls ---------- */
+html:not([data-theme=light]) .toast{background:var(--raise);color:var(--ink);box-shadow:0 0 0 1px var(--line-2),0 18px 40px -18px rgba(0,0,0,.8)}
+html:not([data-theme=light]) .modal-bg{background:rgba(8,7,6,.62);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+html:not([data-theme=light]) .modal .keys div,html:not([data-theme=light]) .modal .sum div{background:var(--panel-2)}
+html:not([data-theme=light]) .qi.cur{box-shadow:none;background:var(--panel)}
+html:not([data-theme=light]) .shot{box-shadow:0 0 0 1px var(--ring),0 24px 50px -30px rgba(0,0,0,.9)}
+html:not([data-theme=light]) .act{background:var(--panel-2);box-shadow:none}
+html:not([data-theme=light]) .act:hover{background:var(--raise)}
+html:not([data-theme=light]) .act.keep{background:var(--keep)}
+html:not([data-theme=light]) .act.keep.on{background:var(--keep-soft);color:#5fc999}
+html:not([data-theme=light]) .chip.st-keep{background:var(--keep-soft);color:#5fc999}
+html:not([data-theme=light]) .chip.st-drop{background:var(--drop-soft);color:#ef8a83}
+html:not([data-theme=light]) .stamp.keep{background:#2b7d59}
+html:not([data-theme=light]) .ask input{background:rgba(255,244,230,.05)}
+html:not([data-theme=light]) .lightbox{background:rgba(10,9,8,.94)}
+html:not([data-theme=light]) .egg{filter:drop-shadow(0 1px 1.2px rgba(0,0,0,.5)) saturate(.92) brightness(.93)}
+html:not([data-theme=light]) .ov .md{box-shadow:0 0 0 1px var(--line)}
 html:not([data-theme=light]) .seg{background:var(--hover);border-color:transparent}
 html:not([data-theme=light]) .seg button.on{background:var(--panel-2);box-shadow:none}
 html:not([data-theme=light]) kbd{background:rgba(255,255,255,.07);border-color:transparent}
 html:not([data-theme=light]) .btn:not(.primary){background:var(--panel-2);border-color:transparent}
-html:not([data-theme=light]) .btn:not(.primary):hover{background:#333336}
+html:not([data-theme=light]) .btn:not(.primary):hover{background:var(--raise)}
 html:not([data-theme=light]) .search{border-color:transparent}
 html:not([data-theme=light]) .card .img{filter:brightness(.88);transition:filter .15s}
 html:not([data-theme=light]) .card:hover .img{filter:none}
@@ -246,7 +277,7 @@ html:not([data-theme=light]) .card:hover .img{filter:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* ---------- kind eggs, progressive loading ---------- */
-:root{--shine:rgba(255,255,255,.07);--wait:var(--panel)}
+:root{--shine:rgba(255,246,232,.055);--wait:#252321}
 :root[data-theme=light]{--shine:rgba(255,255,255,.85);--wait:#e6e4df}
 .egg{width:14px;height:14px;flex:none;vertical-align:-2px;overflow:visible}
 .chip .egg{width:15px;height:15px;margin-left:-2px}
@@ -373,7 +404,8 @@ const T = {
     undone:"Undone",copy:"copied",all:"All",filterPending:"To review",filterKept:"Kept",filterDropped:"Dropped",search:"Search title, module, tags…",
     keysTitle:"Keyboard shortcuts",confirmTitle:"Hand this back to your agent?",confirmBody:"{k} kept · {d} dropped · {p} not reviewed yet.",
     pendingAs:"Treat unreviewed as kept",reviewRest:"Review the rest",confirm:"Confirm & continue",cancel:"Cancel",
-    doneTitle:"All set — back to your agent",doneBody:"You can close this tab. Your agent picks it up from here.",
+    doneTitle:"All set — back to your agent",doneBody:"You can close this tab. Your agent picks it up from here.",doneBodyApp:"Your agent picks it up from here.",
+    download:"Download",reviewTitle:"blurt review",
     k_next:"Next / previous",k_keep:"Keep and go next",k_drop:"Drop and go next",k_undo:"Undo",k_merge:"Merge into previous",
     k_sev:"Severity high / medium / low",k_media:"Previous / next frame",k_play:"Play clip or recording",k_edit:"Edit title",
     k_ov:"Overview",k_view:"Focus ⇄ list",k_finish:"Finish review",k_help:"This panel",types:{bug:"Bug",ui:"UI",ux:"UX",copy:"Copy",perf:"Perf"},
@@ -389,7 +421,8 @@ const T = {
     undone:"已撤销",copy:"已复制",all:"全部",filterPending:"待审",filterKept:"保留",filterDropped:"丢弃",search:"搜索标题、模块、标签…",
     keysTitle:"快捷键",confirmTitle:"把整理结果交回 agent？",confirmBody:"保留 {k} 条 · 丢弃 {d} 条 · 还有 {p} 条没看。",
     pendingAs:"没看的也保留",reviewRest:"继续审",confirm:"确认并继续",cancel:"取消",
-    doneTitle:"搞定，交回给 agent 了",doneBody:"可以关掉这个页面了，agent 会接着处理。",
+    doneTitle:"搞定，交回给 agent 了",doneBody:"可以关掉这个页面了，agent 会接着处理。",doneBodyApp:"agent 会接着处理。",
+    download:"下载",reviewTitle:"口喷鸡审核",
     k_next:"下一条 / 上一条",k_keep:"保留并下一条",k_drop:"丢弃并下一条",k_undo:"撤销",k_merge:"并入上一条",
     k_sev:"严重程度 高 / 中 / 低",k_media:"上一张 / 下一张图",k_play:"播放片段或原录屏",k_edit:"编辑标题",
     k_ov:"总览",k_view:"专注 ⇄ 列表",k_finish:"完成审核",k_help:"显示本面板",types:{bug:"Bug",ui:"界面",ux:"体验",copy:"文案",perf:"性能"},
@@ -526,7 +559,6 @@ async function load(){
   setTop(doc);
   const S=norm(doc.items);data.items=S.map(clone);base=new Map(S.map(i=>[i.id,clone(i)]));
   if(!store.get("blurt.lang")&&data.language)lang=String(data.language).startsWith("zh")?"zh":"en";
-  const th=store.get("blurt.theme");if(th)document.documentElement.dataset.theme=th;
   $("#sessionName").textContent=data.session?"· "+data.session:"";
   cur=Math.max(0,data.items.findIndex(i=>!i._touched));
   view=store.get("blurt.view")||(data.digest?"overview":data.items.length>1?"focus":"list");
@@ -570,6 +602,8 @@ function renderTop(){
   $("#vOverview").classList.toggle("on",view==="overview");$("#vOverview").hidden=!(data.digest||data.title);
   $("#focusView").hidden=view!=="focus";$("#listView").hidden=view!=="list";$("#overviewView").hidden=view!=="overview";
   document.documentElement.lang=lang==="zh"?"zh-CN":"en";
+  const title=`${data.title||data.session||"blurt"} · ${t("reviewTitle")}`;if(document.title!==title)document.title=title;
+  if(window.blurtApp)$("#done p").textContent=t("doneBodyApp");
   $("#langLbl").textContent=lang==="zh"?"中文":"English";
   renderProc();
 }
@@ -710,7 +744,8 @@ function guessAR(){for(const r of AR.values())if(r>0)return r;return 1.6}
 function showMedia(items,fresh){
   const box=$("#mediaBox");if(!box)return;
   const m=items[media];shownSrc=m?.src||null;
-  $("#mediaCap").innerHTML=!m||m.kind==="wait"?"":`<span class="tm">${esc(m.label)}${m.kind==="orig"&&m.start!=null?` · ${fmt(m.start)}`:""}</span>${m.cap?`<span class="ct">${esc(m.cap)}</span>`:""}`;
+  $("#mediaCap").innerHTML=!m||m.kind==="wait"?"":`<span class="tm">${esc(m.label)}${m.kind==="orig"&&m.start!=null?` · ${fmt(m.start)}`:""}</span>${m.cap?`<span class="ct">${esc(m.cap)}</span>`:""}`
+    +`<a class="dl" href="${m.src}?download=1" download title="${esc(t("download"))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg></a>`;
   if(!m){box.innerHTML=`<div class="shot none ready">${t("noMedia")}</div>`;return}
   if(m.kind==="wait"){const i=data.items[cur];
     box.innerHTML=`<div class="shot wait ready${stalled()?"":" shim"}" style="--ar:${guessAR()}"><div class="wait-in">${egg(kindOf(i))}<span>${esc(stalled()?t("noMedia"):t("waitShot"))}</span></div></div>`;return}
@@ -819,6 +854,7 @@ async function finish(){
       await post("/api/confirm",JSON.stringify({ops:diffOps(final)}));
     });
     confirmed=true;closeModal();$("#done").classList.add("show");
+    window.webkit?.messageHandlers?.blurt?.postMessage({type:"confirmed"}); // the app window closes itself
   }catch{confirming=false;$("#modal p").textContent=saveError()}
   finally{document.body.inert=false}
 }
@@ -834,7 +870,7 @@ $("#search").oninput=e=>{query=e.target.value;renderList()};
 $("#side").addEventListener("focusout",e=>{if(!sideStale||$("#side").contains(e.relatedTarget))return;
   setTimeout(()=>{if(sideStale&&!$("#side").contains(document.activeElement))refreshSide()},0)});
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&loaded)enqueue(poll).catch(()=>{})});
-$("#themeBtn").onclick=()=>{const r=document.documentElement,n=r.dataset.theme==="light"?"dark":"light";r.dataset.theme=n;store.set("blurt.theme",n)};
+$("#themeBtn").onclick=()=>window.__theme(document.documentElement.dataset.theme==="light"?"dark":"light");
 $("#langBtn").onclick=()=>{lang=lang==="zh"?"en":"zh";store.set("blurt.lang",lang);render(false)};
 let wheelLock=0;
 $("#stage").addEventListener("wheel",e=>{if(e.target.closest("video,.strip"))return;if(Math.abs(e.deltaY)<18||Date.now()<wheelLock)return;

@@ -62,7 +62,8 @@ npx skills add AGIHunt/blurt
 
 **常驻后台**：Blurt App 待在菜单栏里，在任何地方按 `⌥⇧R` 开始录制，再按一次结束，`⌥⇧B` 打开菜单。
 录屏会存进工作区，默认是 `~/Blurt`，也可以绑定到某个项目，这样 agent 能结合代码来处理。打开「录完自动整理 →
-Claude Code / Codex」后，每段录屏都会在后台自动整理，好了审核页会自己弹出来。
+交给 agent 后台整理」后，每段录屏都会在后台自动整理（默认用 Claude Code；没装或没登录就依次换 Codex、Kimi Code、
+OpenCode、Gemini CLI），好了审核页会在口喷鸡自己的窗口里打开。所有快捷键都能在菜单「快捷键…」（`⌘,`）里改。
 
 ## 一个人用，团队也能用
 
@@ -105,6 +106,31 @@ Claude Code / Codex」后，每段录屏都会在后台自动整理，好了审�
 Windows 上由 agent 启动录制器，录过一次后开始菜单里就有 **Blurt**；Linux 需要 X11 桌面。托盘 App、画笔和系统声音
 目前只有 macOS。准备工作（`doctor.py` 会告诉你缺什么）：Windows `winget install astral-sh.uv` 和 `winget install Gyan.FFmpeg`；
 Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk`，再装 [uv](https://docs.astral.sh/uv/)。
+
+**录屏交给哪个 agent 整理？** 菜单「整理用的 agent」里第一个装好并登录了的：默认顺序是 Claude Code、Codex、
+Kimi Code、OpenCode、Gemini CLI。菜单里能看到每个的状态和修好它的命令，点一下就设为首选。换了 agent 会提示一句
+（「Claude Code 没登录，这次用 Codex 整理」）；整理失败时会说清原因（登录失效、额度 / 限流、网络、模型不可用、
+找不到 skill），详情在录屏文件夹的 `agent.log` 里。也可以写在 `~/.blurt/config.json`：
+
+```json
+{"record": {"process": "auto", "agents": ["codex", "claude"]},
+ "review": {"open_in": "app"}}
+```
+
+`agents` 是要用的 agent 和顺序（不写就是全部）；`review.open_in` 是 `"app"`（口喷鸡窗口，macOS 默认）或
+`"browser"`。`uv run skills/blurt/scripts/agents.py status` 会打印同样的检查结果。
+
+**快捷键能改吗？** macOS 上在菜单「快捷键…」里点一下再按新的组合键，⌫ 关掉，也能恢复默认；被占用时会直接标出来
+（两个功能用了同一组键、被别的 App 占了、和系统快捷键冲突）。悬浮条和菜单里的提示都会跟着变。同样的配置写在
+`~/.blurt/config.json` 里，Windows 上也生效（暂停、截图、标记、完成）：
+
+```json
+{"record": {"hotkeys": {"record": "ctrl+opt+R", "snap": "opt+shift+A", "pause": "off"},
+            "draw_key": "control"}}
+```
+
+功能名：`record`、`menu`、`snap`、`pause`、`marker`、`pen`、`stop`。修饰键 `ctrl`、`opt`/`alt`、`shift`、
+`cmd`/`win`；按键 A–Z、0–9、F1–F20、`Space`、方向键、标点。`draw_key`（按住画图）：`control`、`option`、`fn`、`off`。
 
 **不做前端能用吗？** 能。只要问题能在屏幕上看到，或者能用手机拍下来，就能喷，见上面「不只是网页」。
 

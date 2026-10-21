@@ -69,8 +69,10 @@ full-resolution still of that exact moment without pausing. Use video for flows,
 
 **Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
 finishes it; `⌥⇧B` opens the menu. Recordings go to a workspace: `~/Blurt` by default, or a project you bind, so
-your agent can process them with the code. Turn on *After recording → Claude Code / Codex* and every recording gets
-processed in the background, with the review page popping up when it's ready.
+your agent can process them with the code. Turn on *After recording → Process with an agent* and every recording
+gets processed in the background (Claude Code first; if it isn't installed or logged in, Codex, then Kimi Code,
+OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready. Every shortcut can be
+changed in *Shortcuts…* (`⌘,` in the menu).
 
 ## Solo or team
 
@@ -122,6 +124,34 @@ the first recording there's a **Blurt** entry in the Start menu. Linux needs an 
 system audio are macOS-only for now. Setup (`doctor.py` tells you what's missing): Windows
 `winget install astral-sh.uv` and `winget install Gyan.FFmpeg`; Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk`, plus
 [uv](https://docs.astral.sh/uv/).
+
+**Which agent processes my recordings?** The first one in *menu → Agent* that is installed and logged in: by default
+Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. The menu shows each one's state and the command that fixes
+it; click one to try it first. When Blurt falls back it says so ("Claude Code isn't logged in — processing with Codex
+this time"), and if a run fails the toast names the reason (login expired, quota / rate limit, network, model, skill
+not found); details are in `agent.log` next to the recording. In `~/.blurt/config.json`:
+
+```json
+{"record": {"process": "auto", "agents": ["codex", "claude"]},
+ "review": {"open_in": "app"}}
+```
+
+`agents` lists the ones to use, in order (leave it out for all of them); `review.open_in` is `"app"` (a Blurt window,
+the default on macOS) or `"browser"`. `uv run skills/blurt/scripts/agents.py status` prints the same check.
+
+**Can I change the shortcuts?** On macOS: *menu → Shortcuts…* records a new combination per action, turns one off
+(⌫), restores the defaults, and warns when a shortcut is already taken (two actions on the same keys, another app,
+a macOS system shortcut). The hints on the bar and in the menu follow your keys. The same setting in
+`~/.blurt/config.json` also works on Windows (pause, snap, marker, finish):
+
+```json
+{"record": {"hotkeys": {"record": "ctrl+opt+R", "snap": "opt+shift+A", "pause": "off"},
+            "draw_key": "control"}}
+```
+
+Actions: `record`, `menu`, `snap`, `pause`, `marker`, `pen`, `stop`. Modifiers `ctrl`, `opt`/`alt`, `shift`,
+`cmd`/`win`; keys A–Z, 0–9, F1–F20, `Space`, arrows, punctuation. `draw_key` (hold to draw): `control`, `option`,
+`fn` or `off`.
 
 **I don't do frontend. Is it for me?** Yes, if you can see the problem on screen or film it with a phone. See
 *Not just web apps* above.

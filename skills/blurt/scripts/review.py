@@ -1,10 +1,14 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Local review page for a session's items.json. Blocks until the user clicks "Confirm" in the browser
+"""Local review page for a session's items.json. Blocks until the user clicks "Confirm" on the page
 (or Ctrl+C), then exits — run it in the background and continue when it finishes.
 
-  review.py SESSION_DIR [--port 0] [--no-open]
+  review.py SESSION_DIR [--port 0] [--open app|browser|none] [--no-open]
+
+Where the page opens (--open, else config review.open_in, else "app" on macOS / "browser" elsewhere): "app" = a window
+of the Blurt menu-bar app when it is installed (asked via a distributed notification if it is running, launched with
+--background otherwise), falling back to the browser if no app window has loaded the page within a few seconds.
 
 Start it as soon as items.json has text (frames can follow): while items.json has "processing": true the page
 polls and shows new frames / items as items.py writes them; the user's edits always win (see items.py).
@@ -16,16 +20,18 @@ import hashlib
 import json
 import mimetypes
 import os
+import subprocess
 import sys
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (IS_LINUX, SERVER_KEYS, apply_user_ops, die, find_item, items_lock,  # noqa: E402,F401
+from _common import (BLURT_HOME, IS_LINUX, IS_MAC, SERVER_KEYS, apply_user_ops, die, find_item,  # noqa: E402,F401
+                     global_config, items_lock, load_json,
                      load_session, save_session)
 
 HTML = Path(__file__).with_name("review.html")
@@ -35,7 +41,7 @@ def etag(raw: bytes) -> str:
     return '"' + hashlib.sha1(raw).hexdigest()[:16] + '"'
 
 
-def make_handler(session: Path, done: threading.Event):
+def make_handler(session: Path, done: threading.Event, app_seen: threading.Event | None = None):
     write_lock = threading.Lock()
     confirmed = False
 
@@ -58,8 +64,11 @@ def make_handler(session: Path, done: threading.Event):
                     pass
 
         def do_GET(self):
-            path = unquote(urlparse(self.path).path)
+            u = urlparse(self.path)
+            path = unquote(u.path)
             if path in ("/", "/index.html"):
+                if app_seen is not None and parse_qs(u.query).get("in") == ["app"]:
+                    app_seen.set()  # the Blurt app's window has the page: no browser needed
                 return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
             if path in ("/icon.png", "/favicon.ico"):
                 icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
@@ -67,7 +76,7 @@ def make_handler(session: Path, done: threading.Event):
             if path == "/api/items":
                 return self._items()
             if path.startswith("/files/"):
-                return self._file(path[len("/files/"):])
+                return self._file(path[len("/files/"):], download=parse_qs(u.query).get("download") == ["1"])
             self._send(404, b"not found", "text/plain")
 
         do_HEAD = do_GET
@@ -85,12 +94,15 @@ def make_handler(session: Path, done: threading.Event):
             data["_video"] = bool(video) and (session / video).is_file()  # shots sessions have no recording
             return self._send(200, json.dumps(data, ensure_ascii=False).encode(), "application/json", {"ETag": tag})
 
-        def _file(self, rel: str):
+        def _file(self, rel: str, download: bool = False):
             f = (session / rel).resolve()
             if session.resolve() not in f.parents or not f.is_file():
                 return self._send(404, b"not found", "text/plain")
             size = f.stat().st_size
             ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+            if download:  # the page's ⤓ button: save it, with a name that says which session it came from
+                name = f"{session.name}-{f.name}".replace('"', "")
+                return self._send(200, f.read_bytes(), ctype, {"Content-Disposition": f'attachment; filename="{name}"'})
             rng = self.headers.get("Range")
             if rng and rng.startswith("bytes="):  # video seeking needs range requests
                 a, _, b = rng[6:].partition("-")
@@ -139,23 +151,82 @@ def make_handler(session: Path, done: threading.Event):
     return H
 
 
+def open_mode(arg: str | None, cfg: dict | None = None) -> str:
+    """--open, else config review.open_in, else the app on macOS and the browser elsewhere."""
+    if arg:
+        return arg
+    want = ((cfg if cfg is not None else global_config()).get("review") or {}).get("open_in")
+    if want in ("app", "browser", "none"):
+        return "browser" if want == "app" and not IS_MAC else want
+    return "app" if IS_MAC else "browser"
+
+
+def _pid_alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def app_candidates(info: dict) -> list[Path]:
+    """Blurt.app bundles that would read this BLURT_HOME: the one that last ran, the built one, the installed one."""
+    out = [Path(info["path"])] if info.get("path") else []
+    out.append(BLURT_HOME / "Blurt.app")
+    if "BLURT_HOME" not in os.environ:
+        out.append(Path.home() / "Applications" / "Blurt.app")
+    return [p for p in dict.fromkeys(out) if (p / "Contents" / "MacOS" / "blurt-recorder").exists()]
+
+
+def ask_app(url: str, session: Path, title: str) -> str | None:
+    """Ask the Blurt app to show the page: "running" (posted to it), "launched", or None (no app)."""
+    info = load_json(BLURT_HOME / "app.json", {}) or {}
+    if _pid_alive(info.get("pid")):
+        js = ('function run(a){ObjC.import("Foundation");var d=$.NSDictionary.dictionaryWithObjectsForKeys('
+              '$([a[0],a[1],a[2],a[3]]),$(["url","session","title","home"]));'
+              '$.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately('
+              '"dev.blurt.recorder.review",$(),d,true);return "ok"}')
+        r = subprocess.run(["osascript", "-l", "JavaScript", "-e", js, url, str(session.resolve()), title, str(BLURT_HOME)],
+                           capture_output=True, text=True, timeout=15)
+        if r.returncode == 0:
+            return "running"
+    for app in app_candidates(info):
+        env = [] if "BLURT_HOME" not in os.environ else ["--env", f"BLURT_HOME={BLURT_HOME}"]
+        if os.environ.get("BLURT_WORKSPACE"):
+            env += ["--env", f"BLURT_WORKSPACE={os.environ['BLURT_WORKSPACE']}"]
+        r = subprocess.run(["open", "-n", "-g", "-a", str(app), *env, "--args", "--background", "--review", url,
+                            "--review-session", str(session.resolve())], capture_output=True, text=True, timeout=20)
+        if r.returncode == 0:
+            return "launched"
+    return None
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("session")
     p.add_argument("--port", type=int, default=0)
-    p.add_argument("--no-open", action="store_true")
+    p.add_argument("--open", choices=("app", "browser", "none"), help="where to show the page (default: config review.open_in)")
+    p.add_argument("--no-open", action="store_true", help="= --open none")
     a = p.parse_args()
     session = Path(a.session)
     if load_session(session) is None:
         die(f"{session}: no items.json yet")
-    done = threading.Event()
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(session, done))
+    done, app_seen = threading.Event(), threading.Event()
+    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(session, done, app_seen))
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print(f"REVIEW {url}", flush=True)
+    mode = "none" if a.no_open else open_mode(a.open)
+    if mode == "app":
+        how = ask_app(url, session, (load_session(session) or {}).get("title") or session.name)
+        if how and app_seen.wait(6 if how == "running" else 20):
+            print("(opened in a Blurt window)", file=sys.stderr, flush=True)
+        else:
+            print("(no Blurt app window — opening the browser)", file=sys.stderr, flush=True)
+            mode = "browser"
     # Linux without a display (SSH, container): webbrowser would fall back to a console browser and block
     has_gui = not IS_LINUX or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    if not a.no_open and has_gui:
+    if mode == "browser" and has_gui:
         webbrowser.open(url)
     try:
         done.wait()
