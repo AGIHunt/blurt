@@ -27,7 +27,7 @@ your agent does the rest:
 
 | | |
 |---|---|
-| 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. This is the fastest way to push AI to the finish line. |
+| 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. That's how you push AI to the finish line. |
 | 💡 **Capture ideas while browsing** | "I like how this site does onboarding… and this pricing page…" You get an idea board: each idea, why you had it, where it came from, the next step, plus a one-page digest. |
 | 📐 **Browse, then get the spec** | Building a landing page or a store? Tour a few dozen reference sites, circle what you like and say why. Your agent turns it into a requirements doc and a design doc, each requirement next to the frame you circled, ready to build from. |
 | 🤝 **Hand off from anyone** | PMs, designers, ops, clients: anyone can record with the Blurt app, no repo needed, and send the video. The developer's agent processes it with the code at hand. |
@@ -56,7 +56,9 @@ The first run picks a speech model for your machine and installs the **Blurt** m
    When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
    your agent sees exactly what you meant. To keep the pen on, click ✎ on the bar or press `⌥⇧D`; while it's on,
    clicks draw instead of reaching your app, and **`Esc`**, `⌥⇧D` or ✎ again turns it off.
-3. Click **Finish** and get back to work. Your agent transcribes locally, writes the items, and opens the review page.
+3. Click **Finish** and get back to work. Speech is transcribed locally while you talk, so the transcript is done when
+   you stop; your agent writes the items as text and the review page opens in about a minute, with frames and code
+   pointers streaming in while you review.
 4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".
 
@@ -100,14 +102,19 @@ reads the text, and it looks at a few frames only for the moments that become it
 more; silence and clicking around cost nothing. Quality follows the model: use one with
 vision, the stronger the better. Three real sessions (Claude Code, Opus 5.5, a production web app):
 
-| recording | speech | items | transcription (local) | recording → review page | new input / output tokens | at API prices |
-|---|---|---|---|---|---|---|
-| 7.0 min | 2.8 min | 9 | 4 s | ~4 min | ~142k / ~19k | ~$2 |
-| 14.3 min | 12.3 min | 23 | 12 s | ~7 min | ~138k / ~27k | ~$2.6 |
-| 20.0 min | 17.7 min | 34 | 15 s | ~6 min | ~122k / ~27k | ~$2.1 |
+| recording | speech | items | transcription (local) | new input / output tokens | at API prices |
+|---|---|---|---|---|---|
+| 7.0 min | 2.8 min | 9 | 4 s | ~142k / ~19k | ~$2 |
+| 14.3 min | 12.3 min | 23 | 12 s | ~138k / ~27k | ~$2.6 |
+| 20.0 min | 17.7 min | 34 | 15 s | ~122k / ~27k | ~$2.1 |
 
 <sub>Plus cache reads of the ongoing conversation (~3–5M tokens, 1/20 of the input price, included above), which depend
-on how long your chat already is.</sub>
+on how long your chat already is. The live drafts written while you record use a small model (Claude Haiku or Codex's
+small one) and aren't in the table.</sub>
+
+**How long until I can review?** About a minute after you click Finish; frames stream in while you review. Measured: a
+111-second recording (Codex) opened for review after 74 s, with every frame in by 115 s; a real 5-minute, 12-item
+session opened in 51 s.
 
 **Does it run on Windows and Linux?** Yes. Recording, local transcription, frames, the review page and exports are
 tested step by step on Windows and Linux, and CI runs on both. On Windows your agent starts the recorder, and after

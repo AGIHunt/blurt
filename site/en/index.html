@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>blurt — Show it. Say it. Your AI gets it.</title>
-<meta name="description" content="Record your screen and think out loud, or snap one screenshot and say one sentence. Your coding agent turns it into bug tickets, idea boards and todos. Open source, speech recognition runs locally.">
+<meta name="description" content="Record your screen and think out loud, or snap one screenshot and say one sentence. Your coding agent turns it into bug tickets, idea boards and todos. Open source, speech recognition runs locally; works on macOS, Windows and Linux.">
 <link rel="canonical" href="https://blurt.agihunt.info/en/">
 <link rel="alternate" hreflang="zh" href="https://blurt.agihunt.info/">
 <link rel="alternate" hreflang="en" href="https://blurt.agihunt.info/en/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="blurt — Show it. Say it. Your AI gets it.">
-<meta property="og:description" content="Record your screen, think out loud. Your coding agent turns it into bug tickets, idea boards and todos.">
+<meta property="og:description" content="Record your screen, think out loud. Your coding agent turns it into bug tickets, idea boards and todos. macOS, Windows and Linux.">
 <meta property="og:url" content="https://blurt.agihunt.info/en/">
 <meta property="og:image" content="https://blurt.agihunt.info/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -20,8 +20,8 @@
 <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt: blurt facts for AI agents">
 <link rel="icon" href="../assets/favicon.png">
 <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
-<link rel="preload" href="../fonts/serif-900.woff2?v=0.5.0" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../style.css?v=0.5.0">
+<link rel="preload" href="../fonts/serif-900.woff2?v=0.6.0" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../style.css?v=0.6.0">
 <script>document.documentElement.classList.replace("no-js", "js")</script>
 </head>
 <body>
@@ -136,20 +136,22 @@
 
   <div class="doors-row">
     <p class="pen-hint" data-touch="Tap the pen in the bar to draw on this page" data-on="Pen is on: drag to draw, tap the pen button again or press Esc to stop"><kbd>⌃</kbd><span>Hold it and move to draw on this page</span></p>
-    <div class="doors">
-      <div class="door">
-        <a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip" data-other="View on GitHub">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0l-4.5-4.5M12 14.5l4.5-4.5M4.5 19.5h15"/></svg>
-          <span>Download for Mac</span><small>free</small>
-        </a>
-        <p class="fine">The recorder anyone can use · macOS 13 or later<br>Right-click → Open the first time</p>
+    <div class="get" id="get" data-os="mac">
+      <div class="os-bar">
+        <p class="os-said" aria-live="polite">Your computer</p>
+        <fieldset class="os-seg"><legend class="vh">Your computer</legend><input type="radio" name="os-hero" id="os-hero-mac" value="mac" checked><label for="os-hero-mac">macOS</label><input type="radio" name="os-hero" id="os-hero-win" value="win"><label for="os-hero-win">Windows</label><input type="radio" name="os-hero" id="os-hero-linux" value="linux"><label for="os-hero-linux">Linux</label></fieldset>
       </div>
-      <div class="door">
-        <div class="cmd">
-          <code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code>
-          <button type="button" class="copy" data-done="Copied">Copy</button>
-        </div>
-        <p class="fine">Adds the skill to Claude Code, Codex and other agents<br>then tell it “start blurt”</p>
+      <div class="doors os-mac">
+        <div class="door"><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0l-4.5-4.5M12 14.5l4.5-4.5M4.5 19.5h15"/></svg><span>Download for Mac</span><small>free</small></a><p class="fine">The recorder anyone can use · macOS 13 or later, Apple silicon and Intel<br>Right-click → Open the first time</p></div>
+        <div class="door"><div class="cmd"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Adds the skill to Claude Code, Codex and other agents<br>then tell it “start blurt”</p></div>
+      </div>
+      <div class="doors os-win">
+        <div class="door"><div class="cmd"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">&gt;</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">There's no Windows installer: add the skill, then tell your agent “start blurt”<br>After the first recording, “Blurt” is in the Start menu</p></div>
+        <div class="door"><div class="cmd multi"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">&gt;</span><span class="cmd-t">winget install astral-sh.uv</span></code><code><span class="prompt" aria-hidden="true">&gt;</span><span class="cmd-t">winget install Gyan.FFmpeg</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Install uv and ffmpeg first. Your agent checks with doctor.py and asks before installing anything<br>The tray app, the pen and standalone snaps are macOS-only for now</p></div>
+      </div>
+      <div class="doors os-linux">
+        <div class="door"><div class="cmd"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Add the skill, then tell your agent “start blurt”<br>Needs an X11 desktop; Wayland isn't supported yet</p></div>
+        <div class="door"><div class="cmd multi"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">sudo apt install ffmpeg libportaudio2 python3-tk</span></code><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">curl -LsSf https://astral.sh/uv/install.sh | sh</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Dependencies on Ubuntu / Debian, plus uv. Your agent checks with doctor.py first<br>The tray app, the pen and standalone snaps are macOS-only for now</p></div>
       </div>
     </div>
   </div>
@@ -200,9 +202,9 @@
 </section>
 
 <section class="ledger" aria-labelledby="ledger-t">
-  <h2 id="ledger-t" class="vh">Two days before, thirty minutes now</h2>
+  <h2 id="ledger-t" class="vh">Two days by hand, thirty minutes blurting</h2>
   <div class="row then">
-    <span class="tc" data-t="31"><time>00:31</time><b>Before</b></span>
+    <span class="tc" data-t="31"><time>00:31</time><b>By hand</b></span>
     <div class="row-body">
       <div class="head">
         <p class="amount">2 days</p>
@@ -216,7 +218,7 @@
     </div>
   </div>
   <div class="row now">
-    <span class="tc" data-t="38"><time>00:38</time><b>Now</b></span>
+    <span class="tc" data-t="38"><time>00:38</time><b>Blurting</b></span>
     <div class="row-body">
       <div class="head">
         <p class="amount hot">30 min</p>
@@ -285,10 +287,13 @@
         <h3>Click Finish, review in a minute</h3>
         <p>Speech is transcribed locally while you record, so the transcript is ready the moment you stop. Your agent writes the items as text first and the review page opens in about a minute. Frames and the code behind each item follow in the background and stream into the page while you review.</p>
       </div>
-      <figure class="wait" aria-label="From Finish to the review page: about 4.5 minutes (median) before, about 1 minute now">
-        <div class="w-row old"><span class="w-l">before</span><span class="w-bar"><i></i></span><span class="w-v">~4.5 min</span></div>
-        <div class="w-row new"><span class="w-l">now</span><span class="w-bar"><i></i><em>frames stream in</em></span><span class="w-v">~1 min</span></div>
-        <figcaption>Finish → review page open. “Before” is the median of 10 real recordings.</figcaption>
+      <figure class="after">
+        <ol class="tl">
+          <li class="t0"><time>0 s</time><b>The transcript is done</b><span>transcribed locally while you talk</span></li>
+          <li class="t1"><time>~1 min</time><b>The review page opens</b><span>text items first, start triaging</span></li>
+          <li class="t2"><time>then</time><b>Frames stream in</b><span>frames, boxes and code pointers fill in while you review</span></li>
+        </ol>
+        <figcaption>After you click Finish. Measured: a 111-second recording (Codex) opened for review after 74 s, with every frame in by 115 s; a real 5-minute, 12-item session opened in 51 s.</figcaption>
       </figure>
     </div>
   </div>
@@ -376,7 +381,7 @@
       <div class="mb" aria-hidden="true"><b>Orbit</b><span>File</span><span>Edit</span><span>View</span><i class="mb-r"><svg class="egg" viewBox="0 0 16 16"><use href="#egg-note"/></svg>10:24</i></div>
       <button type="button" class="snap-btn" data-touch="Snap"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 7.5V4.8c0-.7.6-1.3 1.3-1.3h2.7M12.5 3.5h2.7c.7 0 1.3.6 1.3 1.3v2.7M16.5 12.5v2.7c0 .7-.6 1.3-1.3 1.3h-2.7M7.5 16.5H4.8c-.7 0-1.3-.6-1.3-1.3v-2.7"/></svg><span>Snap</span><kbd>⌥⇧A</kbd></button>
       <div class="perch" aria-label="Perch">
-        <i class="rod" aria-hidden="true"></i>
+        <svg class="rope" aria-hidden="true"><path class="rope-sh"/><path class="rope-edge"/><path class="rope-body"/><path class="rope-twist"/><circle class="peg"/><circle class="peg"/></svg>
         <ol class="hang"></ol>
         <p class="perch-r"><span class="hatching" aria-hidden="true">hatching…</span><button type="button" class="hatch" disabled>🐔 Sort <b>0</b></button></p>
       </div>
@@ -500,8 +505,8 @@
       <div class="qa-text">
         <h3>Does it burn a lot of tokens?</h3>
         <p>The video is never fed to the model. Speech is transcribed locally, for free; the agent reads the text and looks at a few frames only for the moments that become items. So a longer recording barely costs more: 7 minutes and 9 items, or 20 minutes and 34, both came to about $2.</p>
-        <p class="note">Plus cache reads of the ongoing conversation, about 3–5M tokens at 1/20 of the input price, included in the prices on the right.</p>
-        <p class="note">These three ran the old flow, where the review page waited for everything. Now it opens in about a minute and the frames follow.</p>
+        <p class="qa-note">Plus cache reads of the ongoing conversation, about 3–5M tokens at 1/20 of the input price, included in the prices on the right.</p>
+        <p class="qa-note">The live drafts written while you record use a small model (Claude Haiku, or Codex's small model) and aren't in this table.</p>
       </div>
       <table class="receipt">
         <caption>Real sessions: Claude Code, Opus 5.5, a production web app</caption>
@@ -511,7 +516,6 @@
           <tr><th>speech</th><td>2.8 min</td><td>12.3 min</td><td>17.7 min</td></tr>
           <tr><th>items</th><td>9</td><td>23</td><td>34</td></tr>
           <tr><th>transcription (local)</th><td>4 s</td><td>12 s</td><td>15 s</td></tr>
-          <tr><th>to review page (old flow)</th><td>~4 min</td><td>~7 min</td><td>~6 min</td></tr>
           <tr><th>new input tokens</th><td>~142k</td><td>~138k</td><td>~122k</td></tr>
           <tr><th>output tokens</th><td>~19k</td><td>~27k</td><td>~27k</td></tr>
         </tbody>
@@ -528,7 +532,7 @@
     </div>
     <div class="qa">
       <h3>Does it run on Windows and Linux?</h3>
-      <p>Yes. Recording, local transcription, frames, the review page and exports are tested step by step on Windows and Linux. On Windows your agent starts the recorder, and after the first recording there's a “Blurt” entry in the Start menu; Alt+Shift+P pauses, Alt+Shift+S finishes. Linux needs an X11 desktop. The tray app, the pen, standalone snaps and the perch are macOS-only for now, so there's no separate download: install the skill and go.</p>
+      <p>Yes. Recording, local transcription, frames, the review page and exports are tested step by step on Windows and Linux. On Windows your agent starts the recorder, and after the first recording there's a “Blurt” entry in the Start menu; Alt+Shift+P pauses, Alt+Shift+S finishes. Linux needs an X11 desktop. The tray app, the pen, standalone snaps and the perch are macOS-only for now. There's no installer for Windows or Linux: add the skill and go. <a class="u" href="#get">Pick your system</a> to see the dependencies.</p>
     </div>
   </div>
 </section>
@@ -546,18 +550,22 @@
     </span>
     <h2 id="closing-t">Next time you have something to say, just <span class="ring" data-mark="end">blurt<svg viewBox="0 0 300 160" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M60 30 C120 6 230 10 272 40 C300 62 290 112 240 132 C180 156 80 150 36 122 C4 100 10 58 48 36 C80 18 120 14 168 16"/></svg></span>.</h2>
   </div>
-  <div class="doors">
-    <div class="door">
-      <a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip" data-other="View on GitHub">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0l-4.5-4.5M12 14.5l4.5-4.5M4.5 19.5h15"/></svg>
-        <span>Download for Mac</span><small>free</small>
-      </a>
+  <div class="get" data-os="mac">
+    <div class="os-bar">
+      <p class="os-said" aria-live="polite">Your computer</p>
+      <fieldset class="os-seg"><legend class="vh">Your computer</legend><input type="radio" name="os-end" id="os-end-mac" value="mac" checked><label for="os-end-mac">macOS</label><input type="radio" name="os-end" id="os-end-win" value="win"><label for="os-end-win">Windows</label><input type="radio" name="os-end" id="os-end-linux" value="linux"><label for="os-end-linux">Linux</label></fieldset>
     </div>
-    <div class="door">
-      <div class="cmd">
-        <code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code>
-        <button type="button" class="copy" data-done="Copied">Copy</button>
-      </div>
+    <div class="doors os-mac">
+      <div class="door"><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt-macOS.zip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11m0 0l-4.5-4.5M12 14.5l4.5-4.5M4.5 19.5h15"/></svg><span>Download for Mac</span><small>free</small></a><p class="fine">The recorder anyone can use · macOS 13 or later, Apple silicon and Intel<br>Right-click → Open the first time</p></div>
+      <div class="door"><div class="cmd"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Adds the skill to Claude Code, Codex and other agents<br>then tell it “start blurt”</p></div>
+    </div>
+    <div class="doors os-win">
+      <div class="door"><div class="cmd"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">&gt;</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">There's no Windows installer: add the skill, then tell your agent “start blurt”<br>After the first recording, “Blurt” is in the Start menu</p></div>
+      <div class="door"><div class="cmd multi"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">&gt;</span><span class="cmd-t">winget install astral-sh.uv</span></code><code><span class="prompt" aria-hidden="true">&gt;</span><span class="cmd-t">winget install Gyan.FFmpeg</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Install uv and ffmpeg first. Your agent checks with doctor.py and asks before installing anything<br>The tray app, the pen and standalone snaps are macOS-only for now</p></div>
+    </div>
+    <div class="doors os-linux">
+      <div class="door"><div class="cmd"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">npx skills add AGIHunt/blurt</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Add the skill, then tell your agent “start blurt”<br>Needs an X11 desktop; Wayland isn't supported yet</p></div>
+      <div class="door"><div class="cmd multi"><div class="cmd-lines"><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">sudo apt install ffmpeg libportaudio2 python3-tk</span></code><code><span class="prompt" aria-hidden="true">$</span><span class="cmd-t">curl -LsSf https://astral.sh/uv/install.sh | sh</span></code></div><button type="button" class="copy" data-done="Copied">Copy</button></div><p class="fine">Dependencies on Ubuntu / Debian, plus uv. Your agent checks with doctor.py first<br>The tray app, the pen and standalone snaps are macOS-only for now</p></div>
     </div>
   </div>
 </section>
@@ -573,6 +581,6 @@
 </footer>
 
 <svg class="ink-layer" aria-hidden="true"></svg>
-<script src="../main.js?v=0.5.0"></script>
+<script src="../main.js?v=0.6.0"></script>
 </body>
 </html>
