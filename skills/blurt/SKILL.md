@@ -79,10 +79,15 @@ the user drew with the pen — when, where (box), what was being said — plus �
 A `warning` in the output, or a transcript that reads as nonsense (SenseVoice turns unsupported languages such as
 French into fake English), means the language needs another backend: set it up (`reference/asr.md`) and re-run.
 
-## 3. Understand → items
+## 3. Understand → items (text first), open the review page
 
-Read the whole transcript first, glance at a few frames, then write `<session>/items.json`
-(schema: `reference/schema.md`). Decide **per item** what it is — the recording decides, not a mode switch:
+The user is waiting from the moment they stop. Write the items as text, open the page, then add frames while they
+read (§4) — don't make them wait for screenshots.
+
+Read the whole transcript. `live/drafts.jsonl` (items drafted during the recording; last line per `id` wins, `op: drop`
+= gone) is your outline if it exists: check each draft against the transcript, merge / split / drop freely. Look at
+frames now only when the words alone can't tell what an item is about. Decide **per item** what it is — the
+recording decides, not a mode switch:
 
 | kind | when | lens |
 |---|---|---|
@@ -93,20 +98,34 @@ Read the whole transcript first, glance at a few frames, then write `<session>/i
 | custom | a lens in `.blurt/lenses/` or `~/.blurt/lenses/` fits, or the user asked for it | that file |
 
 Principles — judgement, not rules:
-- A pen mark is the user saying "this, exactly": it anchors an item's time and subject. What they circled outranks
-  your reading of a vague sentence — but a mark is not an item by itself, and items without marks are normal.
+- A pen mark or a snap (screenshot in `shots.jsonl`) is the user saying "this, exactly": it anchors an item's time
+  and subject. What they marked outranks your reading of a vague sentence — but a mark is not an item by itself,
+  and items without marks are normal. A snap's image is its item's first frame: put it in `frames` right away.
 - One item = one thing. People jump around, revisit, correct themselves ("不对，是…"), or say two things in one
   sentence: merge revisits, drop retracted remarks, split compounds. Pure narration is not an item.
 - Fix ASR errors from context (repo vocabulary, what's on screen). Keep `quote` close to what was said.
 - Don't invent. When unsure, write your best guess, set `confidence: "low"`, add a short `questions` entry.
-- Read URLs / product names off the frames into `source`.
-- `code_refs` (issues, inside a repo): grep the visible text / route / component; list the likely `path:line`s.
-- Give the session a `title`. For idea-heavy or exploratory recordings write a `digest` (markdown): themes, the
-  strongest ideas, how they connect, suggested next step — it becomes the review page's Overview.
+- Give the session a `title`. For idea-heavy or exploratory recordings a `digest` (markdown: themes, the strongest
+  ideas, how they connect, suggested next step) becomes the page's Overview — it can follow in §4.
 
-## 4. Evidence: frames & clips
+Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
+frames yet. **Right away** start `review.py <session>` **in the background** (opens the browser, exits when the user
+finishes; prints `REVIEW <url>` — give the user that URL if no browser can open where you run: SSH, container) and
+tell the user in one short message:
+- ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
+  items, open questions; screenshots are still filling in;
+- two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
+  fields editable in place; **G** list view; **V** overview; "完成审核" hands it back.
 
-Pick 1–3 frames per item that show *the point* (the bug itself, the part of the page that inspired the idea):
+From here on the user edits the same file: change items **only** with `items.py` (`patch`, `set-frames`, `add`,
+`done`; `--help`). It keeps fields the user edited and items they dropped or merged stay gone — never rewrite
+`items.json` yourself.
+
+## 4. Evidence: frames & clips (while the user reviews)
+
+Pick 1–3 frames per item that show *the point* (the bug itself, the part of the page that inspired the idea). Work
+top-down — the user reviews from the top — and write each item as soon as its frames are good:
+`items.py set-frames <session> <id> frames/<id>-1.jpg@T#caption …`.
 - `frames.py sheet <video> --from S --to E -o <session>/sheets/<id>.jpg` → ~6 diverse settled candidates with
   timestamps in one image; `--at t1 t2 …` for specific moments ("这里 / this / look"). Speech often trails the action.
 - The user drew on it (`marks`)? Their ink is in the video: `frames.py grab --at <frame_t>` and the frame is already
@@ -117,27 +136,27 @@ Pick 1–3 frames per item that show *the point* (the bug itself, the part of th
   2. `frames.py grab <video> --at T -o <session>/frames/<id>-1.jpg --box x,y,w,h`; `--ring cursor|click` when the user
      pointed at / clicked it. Tiny detail → second frame with `--crop`.
   3. **Look at every annotated frame before using it.** Box not on the point → fix and re-grab.
-- Animations / flows / timing: `frames.py clip --from --to -o <session>/clips/<id>.mp4` (< 20 MB).
-- Many items (> ~12)? Fan out frame work to subagents in batches if your harness has them.
+- Animations / flows / timing: `frames.py clip --from --to -o <session>/clips/<id>.mp4` (< 20 MB) → `patch --set clip=…`.
+- Same pass, via `items.py patch`: `source` (URL / product read off the frame), `code_refs` (issues, inside a repo:
+  grep the visible text / route / component → likely `path:line`s), the `digest`, a better `confidence`.
+- **Fan out** if your harness has subagents: split the items into 3–4 contiguous batches and run them all at once.
+  Each gets the session dir, the video, its items (id, kind, title, time, quote, the marks / snaps that anchor them),
+  this section, and the rule: write only your items, only with `items.py`. They report nothing back.
+- Then `items.py done <session>` (it lists items still without frames — fine where none would help).
 
 ## 5. Review with the user
 
-Always open the review page — the frames are the point. Run `review.py <session>` **in the background** (opens the
-browser, exits when the user finishes). It prints `REVIEW <url>`: if no browser can open where you run (SSH, container),
-give the user that URL. In the same message:
-- ≤ 5 items: the full numbered list (kind · title · owner/module, plus `questions`); more: a short summary (counts by
-  kind, the headline items, open questions);
-- two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
-  fields editable in place; **G** list view; **V** overview (when there's a digest); "完成审核" hands it back.
-The user may answer in chat or on the page. Wait as in §1 until the review summary prints, then reload `items.json`
-(dropped items have `status: "deleted"`, answers are in `answer`, merged items are gone on purpose and listed in the
-target's `merged_from`) and continue with §6. If they reply in chat
-instead, apply it yourself and close the page (`pkill -f "review.py <session>"`).
+The page has been open since §3. Wait as in §1 until the review summary prints. The user may finish before the
+frames are in (`"processing": true` in the summary): complete §4 anyway, then `done`. Reload `items.json` (dropped
+items have `status: "deleted"`, answers are in `answer`, merged items are gone on purpose — `_removed` and the
+target's `merged_from`; `_user` lists fields the user edited) and continue with §6. If they reply in chat instead,
+apply it with `items.py … --force` and close the page (`pkill -f "review.py <session>"`).
 
 **Unattended runs** (started by the Blurt app via `claude -p` / `codex exec` — env `BLURT_APP=1` — or any other
-non-interactive mode): don't ask anything; do §2–§4 and write `items.json`, then finish with a 2–3 sentence summary.
-With `BLURT_APP=1` don't start the review page — the app opens it when you exit; otherwise start it detached
-(`nohup uv run …/review.py <session> >/dev/null 2>&1 &`). Never export to external systems unattended.
+non-interactive mode): don't ask anything; do §2–§4 the same way (text first with `processing`, frames via
+`items.py`, `done`), then finish with a 2–3 sentence summary. With `BLURT_APP=1` don't start the review page — the
+app opens it; otherwise start it detached right after §3 (`nohup uv run …/review.py <session> >/dev/null 2>&1 &`).
+Never export to external systems unattended.
 
 ## 6. Export / act
 

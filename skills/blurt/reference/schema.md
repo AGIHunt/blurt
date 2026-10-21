@@ -11,6 +11,9 @@ kind-specific fields come from its **lens** (`reference/lenses/<kind>.md`, or a 
   "title": "官网改版的一些想法",             // one line for the whole recording
   "digest": "## 总览\n- …",                // optional markdown overview — write one for exploratory / idea sessions
   "reviewed": false,                      // set true by review.py when the user finishes
+  "processing": true,                     // you're still adding frames etc.; `items.py done` removes it
+  "agent_at": 1792560000.0,               // written by items.py on every change (the page shows a stall after 10 min)
+  "_removed": {"I-004": "I-003"},         // by the page: items the user merged away (→ target id, "" = none)
   "items": [
     {
       "id": "I-001",                      // stable, sequential
@@ -27,6 +30,7 @@ kind-specific fields come from its **lens** (`reference/lenses/<kind>.md`, or a 
       "answer": "",                        // filled in on the review page
       "status": "draft",                  // draft | confirmed | deleted
       "exported": {},                      // written by exporters; prevents duplicates
+      "_user": {"title": 1792560123.4},    // by the page: fields the user edited (→ epoch); items.py won't overwrite them
 
       // + the lens's own fields, e.g. for "issue": module, owner, severity, type, actual, expected, steps, code_refs
     }
@@ -36,7 +40,11 @@ kind-specific fields come from its **lens** (`reference/lenses/<kind>.md`, or a 
 
 Unknown fields are fine — the review page shows any extra string / list fields generically, exporters ignore them.
 
-Every item must have a `kind`.
+Every item must have a `kind` and an `id`.
+
+**Who writes what.** You write the file once (§3: text, `"processing": true`, no frames). After `review.py` has
+started, the user edits it too: change it only with `items.py` (locked, atomic, keeps the user's fields). Shots
+sessions have no `source_video`; their frames point at `shots/<NNN>.png` with `"t": null`.
 
 ## Custom lenses
 
