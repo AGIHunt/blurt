@@ -12,11 +12,11 @@ enum KindStyle {
 
     static func icon(_ kind: String) -> BlurtIcon {
         switch kind {
-        case "issue": return BlurtIcon(named: "bug") ?? .bug
-        case "idea": return BlurtIcon(named: "lightbulb") ?? .spark
-        case "note": return BlurtIcon(named: "document") ?? .note
-        case "task": return BlurtIcon(named: "checklist") ?? .task
-        default: return BlurtIcon(named: "tag") ?? .note
+        case "issue": return .bug
+        case "idea": return .lightbulb
+        case "note": return .document
+        case "task": return .checklist
+        default: return BlurtIcon(named: "tag") ?? .document
         }
     }
 
