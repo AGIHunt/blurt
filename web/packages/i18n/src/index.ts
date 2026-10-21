@@ -147,7 +147,9 @@ export function createI18n(catalogs: Catalogs, lang: Lang | string, opts: I18nOp
     },
     formatNumber: (n, o) => (o ? new Intl.NumberFormat(locale, o) : nf).format(n),
     formatDuration(seconds, style = "clock") {
-      const s = Math.max(0, Math.round(Number(seconds) || 0));
+      // a clock floors like a media player's (0.9 s is still 0:00); words round
+      const raw = Math.max(0, Number(seconds) || 0);
+      const s = style === "clock" ? Math.floor(raw) : Math.round(raw);
       const h = Math.floor(s / 3600);
       const m = Math.floor((s % 3600) / 60);
       const r = s % 60;

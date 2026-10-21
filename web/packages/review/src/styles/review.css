@@ -3,6 +3,9 @@
    document whose fields only show a box on hover/focus, and colour is spent only on coral (primary, selection) and
    the keep / drop / ask states. Surfaces, type, radii and focus come from @blurt/ui tokens. */
 
+:root {
+  --vh: 100vh;
+}
 body {
   overflow: hidden;
 }
@@ -10,10 +13,10 @@ body {
   height: 100%;
 }
 .boot {
-  height: 100vh;
+  height: var(--vh);
 }
 .fail {
-  height: 100vh;
+  height: var(--vh);
   display: grid;
   place-items: center;
   color: var(--mute);
@@ -101,6 +104,15 @@ body {
   margin-right: 5px;
   vertical-align: 1px;
 }
+.dot.pend {
+  background: var(--line-2);
+}
+.dot.keep {
+  background: var(--keep);
+}
+.dot.drop {
+  background: var(--drop);
+}
 .sp {
   flex: 1;
 }
@@ -135,14 +147,14 @@ body {
 }
 .in-app .focus,
 .in-app .list {
-  height: calc(100vh - var(--top-h) + 4px);
+  height: calc(var(--vh) - var(--top-h) + 4px);
 }
 
 /* ---------- focus view ---------- */
 .focus {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr) 396px;
-  height: calc(100vh - var(--top-h));
+  height: calc(var(--vh) - var(--top-h));
 }
 .queue {
   overflow: auto;
@@ -150,14 +162,19 @@ body {
   background: var(--bg);
 }
 .qi {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 6px 15px minmax(0, 1fr) 14px;
+  gap: 8px;
+  align-items: start;
+  padding: 7px 10px 7px 7px;
   border-radius: var(--r-sm);
   cursor: pointer;
   color: var(--ink-2);
   position: relative;
+}
+.qi > .kind-ic,
+.qi > .sring {
+  margin-top: 2px;
 }
 .qi:hover {
   background: var(--hover);
@@ -184,13 +201,8 @@ body {
 [data-platform="gnome"] .qi.cur::before {
   display: none;
 }
-.qi.cur .n {
-  color: var(--accent);
-}
-.qi .n {
-  font: 600 11px/20px var(--mono);
-  color: var(--faint);
-  min-width: 20px;
+.qb {
+  min-width: 0;
 }
 .qi .t {
   font-size: 13px;
@@ -199,34 +211,57 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  flex: 1;
 }
-.qi .st {
-  width: 8px;
-  height: 8px;
-  border-radius: 9px;
-  margin-top: 6px;
-  flex: none;
-  background: var(--line-2);
+.qi.pending .t {
+  font-weight: 600;
+  color: var(--ink);
 }
-.qi.keep .st {
-  background: var(--keep);
+.qm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
 }
-.qi.drop .st {
-  background: var(--drop);
+.qm .n {
+  font: 600 10.5px/16px var(--mono);
+}
+.qi.cur .qm .n {
+  color: var(--accent);
+}
+.qi .q {
+  color: var(--amber);
+  font-weight: 600;
 }
 .qi.drop .t {
   text-decoration: line-through;
   color: var(--faint);
 }
-.qi .q {
-  color: var(--mute);
-  font-size: 11px;
-  margin-top: 5px;
+.qi.drop > .kind-ic,
+.qi.w-done .t,
+.qi.w-wontfix .t {
+  opacity: 0.6;
 }
-.qi .ki {
-  margin-right: 6px;
-  color: var(--mute);
+/* draft = unread: a 6 pt accent dot at the start of the row (K8) */
+.rd {
+  width: 6px;
+  height: 6px;
+  border-radius: 9px;
+  margin-top: 7px;
+  flex: none;
+  background: transparent;
+  display: inline-block;
+}
+.pending > .rd,
+.pending .h > .rd,
+.chip.st-draft .rd {
+  background: var(--accent);
+}
+.chip.st-draft .rd {
+  margin: 0;
 }
 .qd {
   display: inline-block;
@@ -579,6 +614,9 @@ body {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
+.idrow .pick.proj {
+  margin-left: -2px;
+}
 .idrow .nav {
   display: flex;
   gap: 2px;
@@ -667,6 +705,7 @@ button.chip:hover {
   width: 7px;
   height: 7px;
   border-radius: 9px;
+  background: currentColor;
 }
 .chip.sev-high {
   color: var(--sev-high);
@@ -685,73 +724,117 @@ button.chip:hover {
   opacity: 0.8;
 }
 
-/* fix records (items v2) */
-.fx-fixed {
-  --fx: var(--keep-ink);
+.chip.st-draft {
+  color: var(--ink-2);
 }
-.fx-fixing {
-  --fx: var(--amber);
+.chip.low {
+  color: var(--amber);
+  background: var(--amber-soft);
 }
-.fx-wontfix {
-  --fx: var(--faint);
+.chip.kind-chip .kind-ic {
+  margin-left: -2px;
 }
-.fx-reopened {
-  --fx: var(--drop-ink);
+
+/* work state (K3): the ring, what it means, the user's decisions */
+.work {
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  background: var(--panel-2);
 }
-.chip.fix {
-  color: var(--fx);
-  background: color-mix(in srgb, var(--fx) 12%, transparent);
+.work.w-todo {
+  background: transparent;
+  padding: 0 0 2px;
 }
-.fxd {
-  background: var(--fx);
+.work.w-to_verify {
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
 }
-.fxd {
-  width: 7px;
-  height: 7px;
-  border-radius: 9px;
-  flex: none;
+.work.w-done {
+  background: var(--keep-soft);
 }
-.fx-fixing .fxd {
-  animation: pulse 1.6s ease-in-out infinite;
+.work-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 22px;
 }
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
-  }
+.work-s {
+  font-weight: 650;
+  color: var(--ink);
 }
-.fxm {
-  color: var(--fx);
-  font-weight: 600;
-}
-/* the item list (queue rows, list cards): fixed = title struck through + a check, fixing = the agent-run mark,
-   pulsing — the main window's semantics */
-.qi.fx-fixed .tt,
-.card.fx-fixed .tt,
-.ov-list .fx-fixed .tt {
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+.work.w-todo .work-s {
+  font-weight: 500;
   color: var(--mute);
 }
-.fxi {
-  display: inline-block;
-  vertical-align: -2px;
-  margin-left: 5px;
-  color: var(--fx);
-  flex: none;
+.work-m {
+  color: var(--mute);
+  font-size: 12px;
 }
-.fxi-fixing {
-  animation: pulse 1.6s ease-in-out infinite;
+.work-h code {
+  font: 600 11px/1 var(--mono);
+  color: var(--ink-2);
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: var(--panel-2);
 }
-@media (prefers-reduced-motion: reduce) {
-  .fxi-fixing,
-  .fx-fixing .fxd {
-    animation: none;
-  }
+.work-h .linkbtn {
+  margin: -4px 0;
 }
-.fixbtn {
-  margin: -6px 0 18px;
+.work-claim,
+.work-note {
+  margin: 6px 0 0 26px;
+  font-size: 12.5px;
+  color: var(--ink-2);
 }
-.fixlog ol {
+.work-a {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0 26px;
+}
+.work.w-todo .work-a {
+  margin-left: 0;
+}
+.handoff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+.btn.sm {
+  height: calc(var(--ctl-h) - 2px);
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.btn.sm .ico {
+  width: 14px;
+  height: 14px;
+}
+.btn.sm kbd {
+  margin-left: 2px;
+}
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--mute);
+}
+.btn.ghost:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.btn.keep {
+  background: var(--keep);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: none;
+}
+.btn.keep:hover {
+  filter: brightness(1.06);
+}
+.worklog ol {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;
@@ -759,7 +842,7 @@ button.chip:hover {
   flex-direction: column;
   gap: 6px;
 }
-.fixlog li {
+.worklog li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -767,30 +850,179 @@ button.chip:hover {
   font-size: 12.5px;
   color: var(--mute);
 }
-.fixlog .fxs {
-  color: var(--fx);
+.worklog li::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 9px;
+  background: var(--wl, var(--line-2));
+  flex: none;
+}
+.worklog .w-handed_off,
+.worklog .w-in_progress {
+  --wl: var(--accent);
+}
+.worklog .w-to_verify {
+  --wl: var(--warn);
+}
+.worklog .w-done {
+  --wl: var(--keep);
+}
+.worklog .wls {
+  color: var(--ink-2);
   font-weight: 600;
 }
-.fixlog code {
+.worklog code {
   font: 11.5px/1 var(--mono);
   color: var(--ink-2);
 }
-.fixlog a {
+.worklog a {
   font-weight: 600;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
-.fixlog .fxt {
+.worklog .wlt {
   margin-left: auto;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
 }
-.fixlog .fxn {
+.worklog .wln {
   flex-basis: 100%;
   padding-left: 15px;
   color: var(--ink-2);
+}
+
+/* provenance: where it came from, how it got into this project */
+.prov {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.prov h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--mute);
+}
+.prov-t {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+.prov-t .ico {
+  color: var(--mute);
+}
+.prov .mute {
+  color: var(--mute);
+}
+.prov-sug {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+  padding: 7px 8px 7px 10px;
+  border-radius: var(--r);
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+.prov-sug .ico {
+  color: var(--accent);
+}
+.prov-sug .btn {
+  margin-left: auto;
+}
+.prov dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 14px;
+  margin: 10px 0 0;
+}
+.prov dl > div {
+  display: contents;
+}
+.prov dt {
+  color: var(--mute);
+}
+.prov dd {
+  margin: 0;
+  min-width: 0;
+}
+.prov .linkbtn {
+  margin: -4px -8px;
+  font-size: inherit;
+}
+.trunc {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* the project picker: a native select under a quiet label (inspector), or a small button (selection bar) */
+.pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.pick select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.pick-ch {
+  color: var(--faint);
+}
+.pick.proj {
+  font: 600 12px/1 var(--font);
+  color: var(--ink-2);
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  max-width: 190px;
+}
+.pick.proj:hover,
+.pick.proj:focus-within {
+  background: var(--hover);
+  color: var(--ink);
+}
+.pick.proj:focus-within {
+  box-shadow: 0 0 0 2px var(--focus-soft);
+}
+.pick-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#workFilter + .pick-ch {
+  position: absolute;
+  right: 9px;
+  pointer-events: none;
+}
+.toolbar .pick select {
+  position: static;
+  opacity: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: calc(var(--ctl-h) + 2px);
+  padding: 0 28px 0 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ctl-border);
+  background: var(--ctl-bg);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .grid2 {
@@ -883,6 +1115,13 @@ button.chip:hover {
   padding: 2px 0 2px 26px;
   color: var(--ink-2);
   font-size: 13.5px;
+}
+.quote .ql {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--mute);
+  margin-bottom: 1px;
 }
 .quote .qmark {
   position: absolute;
@@ -1068,7 +1307,7 @@ button.chip:hover {
 
 /* ---------- list view ---------- */
 .list {
-  height: calc(100vh - var(--top-h));
+  height: calc(var(--vh) - var(--top-h));
   overflow: auto;
   padding: 18px 24px 60px;
 }
@@ -1218,6 +1457,204 @@ button.chip:hover {
   text-decoration: line-through;
 }
 
+.card .h .sp {
+  flex: 1;
+}
+.card .h .pj,
+.dz .pj {
+  font: 600 10.5px/1 var(--mono);
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: var(--chip);
+  color: var(--mute);
+}
+.card .h .tm {
+  font-variant-numeric: tabular-nums;
+}
+.card .h .rd {
+  margin: 0 -2px 0 0;
+}
+.card .h .kind-ic .ico {
+  width: 14px;
+  height: 14px;
+}
+.card.w-done .tt,
+.card.w-wontfix .tt {
+  color: var(--mute);
+}
+.wk {
+  font-weight: 600;
+  color: var(--accent);
+}
+.wk.w-to_verify {
+  color: var(--amber);
+}
+.wk.w-done {
+  color: var(--keep-ink);
+}
+.wk.w-wontfix {
+  color: var(--faint);
+}
+.empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--faint);
+  padding: 48px 0;
+}
+/* selection: a checkbox on the thumbnail (on hover, or always once something is selected) */
+.pickbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.85);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+.card:hover .pickbox,
+.selecting .pickbox,
+.pickbox:focus-visible {
+  opacity: 1;
+}
+.pickbox.on {
+  background: var(--accent);
+  box-shadow: none;
+  color: var(--accent-ink);
+}
+.card.sel {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+[data-theme="dark"] .card.sel {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.card.sel:hover {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+}
+.selbar {
+  position: sticky;
+  bottom: 18px;
+  z-index: 10;
+  max-width: min(1080px, calc(100% - 8px));
+  margin: 20px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 8px 8px 14px;
+  border-radius: calc(var(--r) + 4px);
+  background: var(--raise);
+  box-shadow: var(--shadow-pop);
+  animation: barIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.selbar .selcount {
+  font-weight: 700;
+  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.selbar .sp {
+  flex: 1;
+}
+@keyframes barIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+/* dragging cards: the projects become drop targets along the bottom */
+.dropzone {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: min(880px, calc(100% - 32px));
+  padding: 12px;
+  border-radius: calc(var(--r) + 6px);
+  background: var(--raise);
+  box-shadow: var(--shadow-pop);
+  animation: barIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dz-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--mute);
+  margin: 0 0 8px 4px;
+}
+.dz-targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.dz {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  background: var(--panel-2);
+  border: 1.5px dashed var(--line-2);
+  font-weight: 600;
+  transition: transform 0.14s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.14s, border-color 0.14s;
+}
+.dz span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dz.over {
+  transform: scale(1.02);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  border-style: solid;
+}
+.dz .ico {
+  color: var(--mute);
+}
+.dz.over .ico {
+  color: var(--accent);
+}
+
+/* ---------- embedded (the app's main window): fills its pane, no chrome of its own ---------- */
+.rv-root {
+  height: 100%;
+}
+.rv-embedded {
+  --vh: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.rv-embedded .top {
+  height: calc(var(--top-h) - 8px);
+  padding-left: 16px;
+  background: transparent;
+}
+.rv-embedded .focus,
+.rv-embedded .list {
+  height: calc(100% - var(--top-h) + 8px);
+}
+.rv-embedded .focus.item-mode {
+  height: 100%;
+}
+.rv-embedded .toast,
+.rv-embedded .modal-bg,
+.rv-embedded .lightbox,
+.rv-embedded .done,
+.rv-embedded .dropzone {
+  position: absolute;
+}
+.rv-embedded .progress {
+  margin-left: 0;
+}
+
 /* ---------- overlays ---------- */
 .toast {
   position: fixed;
@@ -1343,6 +1780,15 @@ button.chip:hover {
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
+.sum b.k {
+  color: var(--keep-ink);
+}
+.sum b.d {
+  color: var(--drop-ink);
+}
+.kor {
+  color: var(--faint);
+}
 .modal .warn {
   display: flex;
   gap: 9px;
@@ -1354,8 +1800,11 @@ button.chip:hover {
   color: var(--ink-2);
   font-size: 13px;
 }
-.modal .warn .egg {
+.modal .warn .ico {
   margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  color: var(--amber);
 }
 .lightbox {
   position: fixed;
@@ -1399,27 +1848,7 @@ button.chip:hover {
   color: var(--mute);
 }
 
-/* ---------- kind eggs, progressive loading ---------- */
-.egg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  vertical-align: -2px;
-  overflow: visible;
-}
-.chip .egg {
-  width: 15px;
-  height: 15px;
-  margin-left: -2px;
-}
-.qi .ki .egg {
-  width: 13px;
-  height: 13px;
-  vertical-align: -1.5px;
-}
-[data-theme="dark"] .egg {
-  filter: drop-shadow(0 1px 1.2px rgba(0, 0, 0, 0.5)) saturate(0.92) brightness(0.93);
-}
+/* ---------- organizing (the hatching egg: brand and motion only, K8), progressive loading ---------- */
 .proc {
   display: flex;
   align-items: center;
@@ -1438,13 +1867,16 @@ button.chip:hover {
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
-.proc .egg {
-  width: 14px;
-  height: 14px;
+.hatching {
   transform-origin: 50% 88%;
   animation: wobble 1.8s ease-in-out infinite;
 }
-.proc.stalled .egg {
+.proc .hatching {
+  width: 15px;
+  height: 15px;
+  color: var(--amber);
+}
+.proc.stalled .hatching {
   animation: none;
   opacity: 0.6;
 }
@@ -1506,12 +1938,10 @@ button.chip:hover {
   color: var(--faint);
   font-size: 13px;
 }
-.wait-in .egg {
+.wait-in .hatching {
   width: 30px;
   height: 30px;
-  transform-origin: 50% 88%;
-  animation: wobble 1.8s ease-in-out infinite;
-  opacity: 0.9;
+  opacity: 0.8;
 }
 .th.shim {
   background: var(--wait);
@@ -1532,15 +1962,15 @@ button.chip:hover {
   background: var(--wait);
   font-size: 0;
 }
-.card .img.shim .egg {
+.card .img.shim .hatching {
   width: 24px;
   height: 24px;
-  opacity: 0.85;
+  color: var(--faint);
 }
 
 /* ---------- item mode (the main window's detail pane): no queue, no triage bar; one column when narrow ---------- */
 .focus.item-mode {
-  height: 100vh;
+  height: var(--vh);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: clamp(280px, 52vh, 620px) auto;
   overflow: auto;
@@ -1568,7 +1998,7 @@ button.chip:hover {
 @media (min-width: 980px) {
   .focus.item-mode {
     grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-rows: 100vh;
+    grid-template-rows: var(--vh);
     overflow: hidden;
   }
   .item-mode .side {

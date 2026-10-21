@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { contrast, detectPlatform, parseColor, PLATFORMS, type Platform } from "./index";
+import { contrast, customKindColor, detectPlatform, parseColor, PLATFORMS, type Platform } from "./index";
 
 const css = readFileSync(new URL("./tokens.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
@@ -58,6 +58,17 @@ describe.each(PLATFORMS.flatMap((p) => (["light", "dark"] as const).map((t) => [
     expect(contrast(k["--accent-ink"], k["--accent"]), "on accent").toBeGreaterThanOrEqual(3);
     expect(contrast("#ffffff", k["--keep"]), "on keep").toBeGreaterThanOrEqual(3);
     expect(contrast(k["--sev-medium"], k["--bg"]), "sev-medium").toBeGreaterThanOrEqual(3);
+  });
+
+  it("K8: kind colours, the ring colours and custom lenses stand out (3:1) on every surface", () => {
+    const surfaces = ["--bg", "--bg-2", "--panel", "--raise"].map((s) => k[s]);
+    const colours = ["--kind-issue", "--kind-idea", "--kind-note", "--kind-task", "--warn", "--keep"].map((c) => [c, k[c]]);
+    for (let h = 0; h < 360; h += 7) colours.push([`custom ${h}`, customKindColor(String.fromCharCode(h), t)]);
+    for (const [name, c] of colours)
+      for (const s of surfaces) expect(contrast(c, s), `${name} on ${s}`).toBeGreaterThanOrEqual(3);
+    // the glyph inside a filled ring
+    expect(contrast(t === "dark" ? "#2a1a00" : "#ffffff", k["--warn"]), "! on warn").toBeGreaterThanOrEqual(3);
+    expect(contrast("#ffffff", k["--keep"]), "check on keep").toBeGreaterThanOrEqual(3);
   });
 
   if (t === "dark") {

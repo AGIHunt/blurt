@@ -2,26 +2,20 @@
 //   todo        empty ring, secondary text colour        handed_off  ring + 4 pt centre dot, accent
 //   in_progress ring + right half filled, accent          to_verify   filled disc with a "!" shape, attention amber
 //   done        filled disc with a check, green           wontfix     ring + a 45° slash, tertiary text colour
-// Drawn, not glyphs: the "!" and the check are paths. The image carries the state's name for VoiceOver.
-//
-// G0 (docs/design/next-round.md "所有权、闸门和合并"): written by P4 so the packages compile against it; P6 owns this
-// file and sets the final drawing.
+// Drawn, not glyphs: the "!" and the check are paths. Same geometry and colours as web/packages/ui (kinds.ts
+// ringShapes, base.css .sring). The image carries the localized state (`work.<state>`) for VoiceOver.
 import AppKit
 import BlurtCore
 
 enum StatusRing {
     static let states = ["todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"]
 
-    static func dyn(_ light: UInt32, _ dark: UInt32) -> NSColor {
-        func c(_ h: UInt32) -> NSColor {
-            NSColor(srgbRed: CGFloat(h >> 16 & 0xff) / 255, green: CGFloat(h >> 8 & 0xff) / 255, blue: CGFloat(h & 0xff) / 255, alpha: 1)
-        }
-        return NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? c(dark) : c(light) }
-    }
-    /// Brand coral (--accent)
-    static let accent = dyn(0xFF5C3D, 0xFF7A5C)
-    static let attention = dyn(0xE5A000, 0xFFC53D)
-    static let keep = dyn(0x218358, 0x3DD68C)
+    /// Brand coral (--accent), attention (--warn), keep (--keep): tokens.css, light / dark
+    static let accent = KindStyle.dynamic(KindStyle.rgb(0xF55B3E), KindStyle.rgb(0xFF7A5C))
+    static let attention = KindStyle.dynamic(KindStyle.rgb(0xB86E00), KindStyle.rgb(0xF5A524))
+    static let keep = KindStyle.dynamic(KindStyle.rgb(0x15965F), KindStyle.rgb(0x2B9466))
+    /// the "!" on the attention disc: white on light amber, deep brown on the dark theme's brighter amber
+    static let attentionGlyph = KindStyle.dynamic(.white, KindStyle.rgb(0x2A1A00))
 
     static func color(_ state: String) -> NSColor {
         switch state {
@@ -33,8 +27,9 @@ enum StatusRing {
         }
     }
 
+    /// A colour (not template) image; dynamic colours resolve when it draws, so light / dark both work.
     static func image(_ state: String, size: CGFloat) -> NSImage {
-        let im = NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
+        let im = NSImage(size: NSSize(width: size, height: size), flipped: true) { r in
             draw(state, in: r)
             return true
         }
@@ -42,53 +37,61 @@ enum StatusRing {
         return im
     }
 
+    /// Draws in a flipped (y-down) rect, exactly the web geometry for `r.width`.
     static func draw(_ state: String, in r: NSRect) {
-        let lw: CGFloat = 1.5
-        let ring = r.insetBy(dx: lw / 2 + 0.5, dy: lw / 2 + 0.5)
-        let c = color(state)
-        c.set()
-        let circle = NSBezierPath(ovalIn: ring)
-        circle.lineWidth = lw
-        let mid = NSPoint(x: r.midX, y: r.midY), rad = ring.width / 2
-        switch state {
-        case "handed_off":
-            circle.stroke()
-            NSBezierPath(ovalIn: NSRect(x: mid.x - 2, y: mid.y - 2, width: 4, height: 4)).fill()
-        case "in_progress":
-            circle.stroke()
-            let half = NSBezierPath()
-            half.move(to: NSPoint(x: mid.x, y: mid.y + rad - lw))
-            half.appendArc(withCenter: mid, radius: rad - lw, startAngle: 90, endAngle: -90, clockwise: true)
-            half.close()
-            half.fill()
-        case "to_verify":
-            NSBezierPath(ovalIn: ring.insetBy(dx: -lw / 2, dy: -lw / 2)).fill()
-            NSColor.white.set()
-            let w = max(1.4, r.width * 0.12), top = r.height * 0.24
-            NSBezierPath(roundedRect: NSRect(x: mid.x - w / 2, y: mid.y - r.height * 0.05, width: w, height: top + r.height * 0.05),
-                         xRadius: w / 2, yRadius: w / 2).fill()
-            NSBezierPath(ovalIn: NSRect(x: mid.x - w * 0.6, y: mid.y - r.height * 0.27, width: w * 1.2, height: w * 1.2)).fill()
-        case "done":
-            NSBezierPath(ovalIn: ring.insetBy(dx: -lw / 2, dy: -lw / 2)).fill()
-            NSColor.white.set()
-            let p = NSBezierPath()
-            p.move(to: NSPoint(x: r.minX + r.width * 0.29, y: r.minY + r.height * 0.5))
-            p.line(to: NSPoint(x: r.minX + r.width * 0.44, y: r.minY + r.height * 0.34))
-            p.line(to: NSPoint(x: r.minX + r.width * 0.72, y: r.minY + r.height * 0.66))
-            p.lineWidth = max(1.4, r.width * 0.11)
+        let size = r.width, c = size / 2, u = size / 14, lw: CGFloat = 1.5
+        let R = c - 0.75 - 0.5
+        let o = NSPoint(x: r.minX, y: r.minY)
+        func pt(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: o.x + x, y: o.y + y) }
+        func disc(_ x: CGFloat, _ y: CGFloat, _ rad: CGFloat) -> NSBezierPath {
+            NSBezierPath(ovalIn: NSRect(x: o.x + x - rad, y: o.y + y - rad, width: rad * 2, height: rad * 2))
+        }
+        func stroke(_ p: NSBezierPath) {
+            p.lineWidth = lw
             p.lineCapStyle = .round
             p.lineJoinStyle = .round
             p.stroke()
-        case "wontfix":
-            circle.stroke()
-            let d = rad * 0.7071
+        }
+        color(state).set()
+        let ring = disc(c, c, R)
+        switch state {
+        case "handed_off":
+            stroke(ring)
+            disc(c, c, 2 * u).fill()
+        case "in_progress":
+            stroke(ring)
+            let ri = R - 1.75 * u
+            let half = NSBezierPath()
+            half.move(to: pt(c, c - ri))
+            // y-down: from the top through the right side to the bottom
+            half.appendArc(withCenter: pt(c, c), radius: ri, startAngle: -90, endAngle: 90, clockwise: false)
+            half.close()
+            half.fill()
+        case "to_verify":
+            disc(c, c, R + 0.75).fill()
+            attentionGlyph.set()
+            let bar = NSBezierPath()
+            bar.move(to: pt(c, c - 3 * u))
+            bar.line(to: pt(c, c + 0.6 * u))
+            stroke(bar)
+            disc(c, c + 2.85 * u, 0.95 * u).fill()
+        case "done":
+            disc(c, c, R + 0.75).fill()
+            NSColor.white.set()
             let p = NSBezierPath()
-            p.move(to: NSPoint(x: mid.x - d, y: mid.y - d))
-            p.line(to: NSPoint(x: mid.x + d, y: mid.y + d))
-            p.lineWidth = lw
-            p.stroke()
+            p.move(to: pt(c - 2.9 * u, c + 0.1 * u))
+            p.line(to: pt(c - 0.9 * u, c + 2 * u))
+            p.line(to: pt(c + 3 * u, c - 2.2 * u))
+            stroke(p)
+        case "wontfix":
+            stroke(ring)
+            let d = R * 0.7071
+            let p = NSBezierPath()
+            p.move(to: pt(c - d, c + d))
+            p.line(to: pt(c + d, c - d))
+            stroke(p)
         default:
-            circle.stroke()
+            stroke(ring)
         }
     }
 }

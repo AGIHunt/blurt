@@ -49,6 +49,6 @@ export function tauriHost(session: string, cb: HostCallbacks = {}, editor = 'vsc
       }),
     reveal: (rel: string) => void api.reveal(joinPath(session, rel)).catch((e) => cb.onError?.(String(e))),
     openCode: repo ? (ref: string) => void api.openExternal(codeUrl(repo, ref, editor)).catch((e) => cb.onError?.(String(e))) : undefined,
-    fixWithAgent: repo && cb.onFixWithAgent ? (ids: string[]) => cb.onFixWithAgent!(session, ids) : undefined,
+    dispatch: repo && cb.onFixWithAgent ? (ids: string[]) => cb.onFixWithAgent!(session, ids) : undefined, // protocol v3 name (P6); P8 moves this to sessions_dispatch
   };
 }
