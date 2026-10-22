@@ -390,6 +390,7 @@ class UserOps(Base):
                     b = self.snapshot()
             self.assertEqual(a, b, confirm)  # byte for byte the same files
             self.assertEqual((out["ok"], out["etag"]), (True, tag))
+            self.assertEqual(doc.pop("_caps", None), ["handoff"])  # review.py's own extra: POST /api/handoff
             self.assertEqual(out["doc"], doc)
             self.reset()
 

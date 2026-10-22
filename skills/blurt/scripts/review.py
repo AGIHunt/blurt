@@ -66,8 +66,9 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
     def current_doc() -> tuple[dict, str]:
         items_mod._NAMES = None  # project names may have changed since the last request
         doc = items_mod.make_doc(scope)
+        tag = items_mod.doc_etag(doc)  # the same ETag as items.py doc / user-ops
         doc["_caps"] = ["handoff"]  # POST /api/handoff (host protocol v3): the page offers the copy buttons
-        return doc, items_mod.doc_etag(doc)
+        return doc, tag
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *_):
