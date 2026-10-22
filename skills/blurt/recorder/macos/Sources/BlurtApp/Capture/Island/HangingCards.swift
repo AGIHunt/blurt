@@ -4,22 +4,31 @@
 //
 //  • a capture flies up while its thread drops out of the island (0.35 s ease-out) and catches it; the card sways on
 //    the thread and settles within about a second.
-//  • the cards hang only while you look: for a few seconds after a capture, while the island is hovered or open, while
-//    the pointer is over them or a note is open. Otherwise the threads reel them back into the island, whose left ear
-//    counts them.
-//  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy ·
-//    double-click = edit the note · drag = the file (+ its note) into any app, or onto a project in the island: the
-//    thread stretches after it, then snaps and springs back up · × = the thread lets go and the card falls.
+//  • the cards hang only while you look: for a few seconds after a capture, while a note is open, and while the pointer
+//    is on the island or on the cards — hovering (or opening) the island drops every card together with the island's
+//    detail, and the island stays open while the pointer is on the cards. About 0.4 s after the pointer has left both,
+//    the threads reel the cards back into the island, whose left ear counts them.
+//  • brought down on purpose — a click on the left ear's count, ⌥⇧H "Show hanging cards" (record.hotkeys "cards"),
+//    the menu, the main window's "Unfiled captures" — they stay (sticky) until the pointer has come to the cards and
+//    gone again, or Esc.
+//    The pointer resting on the ear itself opens the island a little later (0.45 s), so its count can be clicked.
+//  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy (a voice
+//    card: its words; a shot: the image — inked if marked — with its note / words as the same item's text, for apps
+//    that only take text) · right-click: Copy Image / Copy Text (only with text), edit, move, delete · double-click =
+//    edit the note · drag = the file (+ its words) into any app, or onto a project in the island: the thread stretches
+//    after it, then snaps and springs back up · × = the thread lets go and the card falls.
 //  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the thread reels the card up
 //    into the island, which swallows it with a small bump.
 //  • at most 7 cards show, centred on the island, 12 pt apart, tilted ±2° in turn; older ones stack into "+N".
 //  • Reduce Motion: 0.2 s fades, no sway.
 // Window: a non-activating panel on all spaces, never captured, mouse-transparent except over a card; it lives on the
-// island's screen. The display link runs only while something moves.
+// island's screen. The display link runs only while something moves, and stops before the panel is ordered out (an
+// off-screen window's link never fires again: the idle polls that bring the cards back on hover would stop with it).
 
 import AppKit
 import AVFoundation
 import BlurtCore
+import Carbon.HIToolbox
 import QuartzCore
 
 final class HangingCard {
@@ -152,6 +161,13 @@ final class HangingCards: NSObject {
     private var holds = 0
     private var awaySince: CFTimeInterval?
     private var shown = false                      // the cards are down
+    /// Brought down on purpose (the ear's count, ⌥⇧H, the menu, the main window): down until the pointer has been on
+    /// the cards (`visited`) and left them and the island, or Esc.
+    private var sticky = false
+    private var visited = false
+    private var escHeld = false
+    /// The pointer is over a card, the "+N" stack or a card's note (the island stays open meanwhile).
+    private(set) var pointerOver = false
     private var hoverCard: HangingCard?
     private var hoverSince: CFTimeInterval = 0
     private var down: (p: NSPoint, card: HangingCard?, event: NSEvent, dragged: Bool)?
@@ -618,26 +634,76 @@ final class HangingCards: NSObject {
         wake()
     }
 
-    func show(peek: Double = 0) {
+    /// `sticky`: down until the pointer has come and gone (or Esc) — see `reveal()`.
+    func show(peek: Double = 0, sticky: Bool = false) {
         if panel == nil { ensurePanel(on: island.screen ?? NSScreen.main ?? NSScreen.screens[0]) }
         if peek > 0 { peekUntil = max(peekUntil, CACurrentMediaTime() + peek) }
+        if sticky {
+            self.sticky = true
+            visited = false
+            holdEsc(true)
+        }
         awaySince = nil
-        guard !shown else { return }
+        guard !shown else { wake(); return }
         shown = true
+        emit(["event": "cards_shown", "count": cards.count, "sticky": self.sticky, "wall": Date().timeIntervalSince1970])
         panel?.orderFrontRegardless()
         island.orderFront()                 // the island stays above the cards (the threads come out from under it)
         wake()
     }
 
+    /// The pointer arrived on the island (or it opened): every card comes down with its detail. Pushed by the island,
+    /// so it never waits for the cards' own (idle) poll.
+    func islandAttention() {
+        guard !cards.isEmpty else { return }
+        show()
+    }
+
+    /// The ear's count, ⌥⇧H "Show hanging cards", the menu, the main window's "Unfiled captures": every card comes down
+    /// and stays until the pointer has come and gone, or Esc. Nothing hanging: the island says so.
+    func reveal(via: String) {
+        emit(["event": "cards_reveal", "via": via, "count": cards.count])
+        guard !cards.isEmpty else {
+            island.toast(Loc.t("capture.cards.none", table: "Capture"), actionTitle: nil, action: nil)
+            return
+        }
+        if let s = island.screen, s != screen, !shown, dragging == nil { ensurePanel(on: s) }
+        show(sticky: true)
+    }
+
+    /// Esc while they were brought down on purpose: up they go.
+    func dismiss() {
+        sticky = false
+        peekUntil = 0
+        holdEsc(false)
+        island.closeIfSticky()
+        guard holds == 0, dragging == nil, down == nil else { return }
+        retract()
+    }
+
+    /// Esc is ours only while the cards are down on purpose (like voice input's Esc).
+    private func holdEsc(_ on: Bool) {
+        guard on != escHeld else { return }
+        escHeld = on
+        if on { registerHotkey(.cardsEsc, key: kVK_Escape, mods: 0) } else { unregisterHotkey(.cardsEsc) }
+    }
+
     private func retract() {
+        sticky = false
+        holdEsc(false)
         guard shown else { return }
         shown = false
+        pointerOver = false
         hoverCard?.hovered = false
         hoverCard = nil
         tip.isHidden = true
         panel?.ignoresMouseEvents = true
+        emit(["event": "cards_retracted", "count": cards.count, "wall": Date().timeIntervalSince1970])
         wake()
     }
+
+    /// Down right now (tests, the main window).
+    var isShown: Bool { shown }
 
     func screenRect(of s: Shot) -> NSRect? {
         guard let c = cards.first(where: { $0.shot === s }) else { return nil }
@@ -732,7 +798,13 @@ final class HangingCards: NSObject {
         CATransaction.commit()
         if !leaving.isEmpty { moving = true }
         if hoverCard?.shot.hasNote == true || hoverCard?.shot.kind == .voice, tip.isHidden, now - hoverSince < 0.6 { moving = true }
-        if !visible { panel?.orderOut(nil) } else if moving == false, !shown { panel?.orderOut(nil) }
+        if !visible || (!moving && !shown) {
+            // reeled in: out of the way — and the display link stops first (an off-screen window's link never fires
+            // again, so it would never settle into the idle polls that notice the pointer on the island)
+            driver?.rest()
+            panel?.orderOut(nil)
+            return false
+        }
         return moving || shown && (now < peekUntil)
     }
 
@@ -826,18 +898,30 @@ final class HangingCards: NSObject {
 
     private var busy: Bool { holds > 0 || dragging != nil || down != nil || CACurrentMediaTime() < peekUntil }
 
+    /// The island stays open while the pointer is on the cards, or one is pressed or dragged.
+    var holdsIsland: Bool { shown && (pointerOver || down != nil || dragging != nil) }
+
     private func poll(_ now: CFTimeInterval) {
         guard let p = panel else { return }
         let m = NSEvent.mouseLocation
-        let attention = island.wantsCards
+        let onIsland = island.pointerInside
+        let held = island.holdsCards           // open by a key or a command, a drawer, a drag
         if !shown {
-            if attention && !cards.isEmpty { show() }
+            pointerOver = false
+            if (onIsland || held) && !cards.isEmpty { show() }
             return
         }
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
         let over = card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
             || (!tip.isHidden && tip.frame.insetBy(dx: -6, dy: -10).contains(local))
-        if over || busy || attention { awaySince = nil } else {
+        pointerOver = over
+        // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc
+        if sticky {
+            if cards.isEmpty { sticky = false; holdEsc(false) }
+            else if over { visited = true }
+            else if visited && !onIsland { sticky = false; holdEsc(false) }
+        }
+        if over || onIsland || held || busy || sticky { awaySince = nil } else {
             awaySince = awaySince ?? now
             if now - awaySince! >= 0.4 { awaySince = nil; retract(); return }
         }
@@ -867,8 +951,11 @@ final class HangingCards: NSObject {
     private weak var tipFor: HangingCard?
 
     private func positionTip(_ now: CFTimeInterval) {
-        guard let c = hoverCard, !c.dragging, c.shot.hasNote || c.shot.kind == .voice, now - hoverSince > 0.35, !NoteBubble.shared.isOpen else {
-            if !tip.isHidden, hoverCard == nil || dragging != nil || NoteBubble.shared.isOpen { tip.isHidden = true }
+        // (it steps aside while the card says "Copied" — that sits where the note would)
+        let copying = (hoverCard?.copiedUntil ?? 0) > now
+        guard let c = hoverCard, !c.dragging, c.shot.hasNote || c.shot.kind == .voice, now - hoverSince > 0.35, !NoteBubble.shared.isOpen,
+              !copying else {
+            if !tip.isHidden, hoverCard == nil || dragging != nil || NoteBubble.shared.isOpen || copying { tip.isHidden = true }
             return
         }
         if tip.isHidden || tipFor !== c { buildTip(c) }
@@ -938,27 +1025,73 @@ final class HangingCards: NSObject {
         if e.clickCount >= 2 {
             c.copiedUntil = 0
             NoteBubble.shared.begin(c.shot, mode: .edit)
-        } else if c.shot.kind == .shot, let u = c.shot.bestURL {
-            copyImageToPasteboard(u)
-            c.copiedUntil = CACurrentMediaTime() + 1.2
-            c.omega += 30
-            wake()
-        } else if c.shot.kind == .voice, let t = c.shot.words {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(t, forType: .string)
-            c.copiedUntil = CACurrentMediaTime() + 1.2
-            wake()
+        } else {
+            copy(c, .click)
         }
+    }
+
+    // MARK: copy
+
+    enum Copy: String { case click, image, text }
+
+    /// click: a shot's image (inked if marked) with its words as the same pasteboard item's text, a voice card's
+    /// words · image / text: just that (the right-click menu). Shows "Copied" on the card.
+    @discardableResult
+    func copy(_ c: HangingCard, _ what: Copy) -> Bool {
+        let s = c.shot
+        let text = s.copyText
+        let ok: Bool
+        switch what {
+        case .click where s.kind == .shot, .image:
+            ok = s.kind == .shot && s.bestURL.map { copyImageToPasteboard($0, text: what == .click ? text : nil) } ?? false
+        case .click, .text:
+            ok = text.map { t in
+                let pb = capturePasteboard
+                pb.clearContents()
+                return pb.setString(t, forType: .string)
+            } ?? false
+        }
+        guard ok else { return false }
+        c.copiedUntil = CACurrentMediaTime() + 1.2
+        if s.kind == .shot { c.omega += 30 }
+        wake()
+        emit(["event": "card_copied", "n": s.n, "what": what.rawValue,
+              "types": (capturePasteboard.pasteboardItems?.first?.types ?? []).map(\.rawValue)])
+        return true
+    }
+
+    /// The right-click menu's items for a card (tests read the titles).
+    func menuItems(_ c: HangingCard) -> [(String, () -> Void)] {
+        let s = c.shot
+        var items: [(String, () -> Void)] = []
+        if s.kind == .shot, s.bestURL != nil {
+            items.append((Loc.t("capture.card.copy_image", table: "Capture"), { [weak self] in self?.copy(c, .image) }))
+        }
+        if s.copyText != nil {
+            items.append((Loc.t("capture.card.copy_text", table: "Capture"), { [weak self] in self?.copy(c, .text) }))
+        }
+        items.append((Loc.t("capture.card.edit_note", table: "Capture"), { NoteBubble.shared.begin(s, mode: .edit) }))
+        items.append((Loc.t("capture.card.reveal", table: "Capture"), { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } }))
+        return items
+    }
+
+    /// Tests: copy capture N as a click / Copy Image / Copy Text would; the menu's titles for it.
+    func testCopy(n: Int, _ what: Copy) -> Bool { cards.first { $0.shot.n == n }.map { copy($0, what) } ?? false }
+    func testMenu(n: Int) -> [String] { cards.first { $0.shot.n == n }.map { menuItems($0).map(\.0) } ?? [] }
+    /// Tests: what a drag of capture N carries, written to `pb`.
+    func testDrag(n: Int, to pb: NSPasteboard) -> [String] {
+        guard let s = cards.first(where: { $0.shot.n == n })?.shot else { return [] }
+        let item = HangingCards.dragItem(s)
+        pb.clearContents()
+        pb.writeObjects([item])
+        return item.types.map(\.rawValue)
     }
 
     func rightMouseDown(_ e: NSEvent, at p: NSPoint) {
         guard let c = card(at: p), let v = view else { return }
         let m = NSMenu()
         let s = c.shot
-        var items: [(String, () -> Void)] = []
-        if s.kind == .shot { items.append((Loc.t("capture.card.copy_image", table: "Capture"), { if let u = s.bestURL { copyImageToPasteboard(u) } })) }
-        items.append((Loc.t("capture.card.edit_note", table: "Capture"), { NoteBubble.shared.begin(s, mode: .edit) }))
-        items.append((Loc.t("capture.card.reveal", table: "Capture"), { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } }))
+        let items = menuItems(c)
         for (t, f) in items { m.addItem(ClosureMenuItem(t, f)) }
         m.addItem(.separator())
         let move = NSMenuItem(title: Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
@@ -981,11 +1114,7 @@ final class HangingCards: NSObject {
 
     private func startDrag(_ c: HangingCard, event: NSEvent) {
         guard let v = view else { return }
-        let item = NSPasteboardItem()
-        if let u = c.shot.bestURL { item.setString(u.absoluteString, forType: .fileURL) }
-        if let t = c.shot.words { item.setString(t, forType: .string) }
-        if let b = c.shot.batch { item.setString("\(b.dir.path)\n\(c.shot.n)", forType: capturePasteboardType) }
-        let di = NSDraggingItem(pasteboardWriter: item)
+        let di = NSDraggingItem(pasteboardWriter: HangingCards.dragItem(c.shot))
         let img = NSImage(size: c.size)
         if let rep = HangingCards.snapshot(c) { img.addRepresentation(rep) }
         di.setDraggingFrame(NSRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height), contents: img)
@@ -997,6 +1126,16 @@ final class HangingCards: NSObject {
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
         wake()
+    }
+
+    /// What a card carries when dragged out: the file (the inked shot, or the voice note's wav), its words as text, and
+    /// (inside the app) which capture it is — for dropping on a project in the island.
+    static func dragItem(_ s: Shot) -> NSPasteboardItem {
+        let item = NSPasteboardItem()
+        if let u = s.bestURL { item.setString(u.absoluteString, forType: .fileURL) }
+        if let t = s.copyText { item.setString(t, forType: .string) }
+        if let b = s.batch { item.setString("\(b.dir.path)\n\(s.n)", forType: capturePasteboardType) }
+        return item
     }
 
     func dragMoved(to p: NSPoint) {
@@ -1070,11 +1209,7 @@ final class HangingCards: NSObject {
             let e = axCards[key] ?? {
                 let e = LayerAXElement.make(role: .button, layer: c.card, host: v)
                 let s = c.shot
-                e.press = { [weak self] in
-                    if s.kind == .shot, let u = s.bestURL { copyImageToPasteboard(u) }
-                    c.copiedUntil = CACurrentMediaTime() + 1.2
-                    self?.wake()
-                }
+                e.press = { [weak self] in self?.copy(c, .click) }
                 var actions = [NSAccessibilityCustomAction(name: Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit); return true }]
                 for p in ProjectStore.shared.projects.prefix(8) {
                     actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ax_move", table: "Capture", p.name)) { snapper.assign(s, to: p.id); return true })

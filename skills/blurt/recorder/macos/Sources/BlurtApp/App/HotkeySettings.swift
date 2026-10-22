@@ -182,7 +182,9 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         }
 
         stack.addArrangedSubview(header(Loc.t("capture.keys.anytime", table: "Capture")))
-        for a in [HotAction.toggleRecord, .snap, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]) { stack.addArrangedSubview(row(a)) }
+        for a in [HotAction.toggleRecord, .snap, .voice, .project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]) {
+            stack.addArrangedSubview(row(a))
+        }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(header(Loc.t("capture.keys.while_recording", table: "Capture")))
         for a in [HotAction.pause, .marker, .pen, .finish] { stack.addArrangedSubview(row(a)) }

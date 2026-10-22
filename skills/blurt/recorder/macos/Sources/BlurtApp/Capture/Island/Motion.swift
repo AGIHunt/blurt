@@ -54,7 +54,8 @@ enum Ease {
 }
 
 /// Calls `tick(dt)` on the display (up to 120 Hz) while it returns true; then idles at `idleRate` calling `idle()`
-/// (pointer polls), or stops entirely when `idle` is nil. `wake()` restarts the fast loop.
+/// (pointer polls), or stops entirely when `idle` is nil. `wake()` restarts the fast loop — only while the view's window
+/// is on screen (macOS 14+: a view's display link doesn't fire for an ordered-out window; it idles meanwhile).
 final class MotionDriver: NSObject {
     var tick: ((CGFloat) -> Bool)?
     var idle: (() -> Void)?
@@ -69,7 +70,14 @@ final class MotionDriver: NSObject {
 
     func wake() {
         still = 0
+        // A view's display link only fires while its window is on screen. One left running when the window was ordered
+        // out never fires again, so it never settles into the idle polls — and every later wake() found it "running"
+        // and did nothing. (That is how the hanging cards stopped coming back on hover: their poll never ran again.)
+        if link != nil, CACurrentMediaTime() - last > 0.5 { invalidateLink() }
         guard link == nil, let v = view else { return }
+        // ordered out: nothing to draw, and a display link would not fire — keep polling until it is ordered in again
+        // (whoever orders it in wakes us again)
+        if #available(macOS 14.0, *), v.window?.isVisible != true { settle(); return }
         slow?.invalidate()
         slow = nil
         last = CACurrentMediaTime()
@@ -96,10 +104,18 @@ final class MotionDriver: NSObject {
         }
     }
 
-    private func settle() {
+    /// Nothing moves (or the window is about to be ordered out): stop the display link now and go back to the idle
+    /// polls. Call it before ordering the view's window out — an off-screen window's display link stops firing.
+    func rest() { settle() }
+
+    private func invalidateLink() {
         if #available(macOS 14.0, *), let l = link as? CADisplayLink { l.invalidate() }
         (link as? Timer)?.invalidate()
         link = nil
+    }
+
+    private func settle() {
+        invalidateLink()
         guard idle != nil, slow == nil else { return }
         let t = Timer(timeInterval: idleRate, repeats: true) { [weak self] _ in self?.idle?() }
         t.tolerance = idleRate / 2
@@ -108,9 +124,7 @@ final class MotionDriver: NSObject {
     }
 
     func stop() {
-        if #available(macOS 14.0, *), let l = link as? CADisplayLink { l.invalidate() }
-        (link as? Timer)?.invalidate()
-        link = nil
+        invalidateLink()
         slow?.invalidate()
         slow = nil
     }

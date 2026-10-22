@@ -1,5 +1,6 @@
 /* Capture (P5): the island and its hanging cards, voice input, snaps, the picker, shortcuts */
 
+"capture.action.cards" = "显示挂着的卡片";
 "capture.action.main" = "打开口喷鸡窗口";
 "capture.action.marker" = "标记（同时截图）";
 "capture.action.menu" = "打开菜单";
@@ -18,11 +19,13 @@
 "capture.card.ax_voice_n" = "语音 %d";
 "capture.card.copied" = "已拷贝";
 "capture.card.copy_image" = "拷贝图片";
+"capture.card.copy_text" = "拷贝文字";
 "capture.card.delete" = "删除";
 "capture.card.edit_note" = "编辑备注…";
 "capture.card.move_to" = "移到";
 "capture.card.reveal" = "在访达中显示";
 "capture.cards.ax" = "等待归属项目的捕获";
+"capture.cards.none" = "没有还没归属的捕获";
 "capture.countdown.finish" = "完成";
 "capture.countdown.pause" = "暂停 / 继续";
 "capture.countdown.ready" = "准备，开喷";
@@ -78,6 +81,7 @@
 "capture.keys.wont_work" = "快捷键 %@ 用不了";
 "capture.menu.collect" = "收集系统截图（⌘⇧3/4/5）";
 "capture.menu.live_caption" = "实时字幕";
+"capture.menu.show_cards_none" = "显示挂着的卡片";
 "capture.menu.snap" = "截图";
 "capture.menu.switch_project" = "切换项目…";
 "capture.menu.voice" = "语音输入";

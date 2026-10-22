@@ -80,6 +80,8 @@
 "main.banner.suggested" = "看起来属于「%@」（把握 %@）。";
 "main.banner.with_agent" = "已交给 %@ · %@";
 
+"main.captures.show" = "在刘海岛下展开";
+"main.captures.tip" = "挂在刘海岛下、还没分到项目的捕获：点一下全部放下来";
 "main.cmd.copy_full" = "复制全文";
 "main.cmd.copy_instruction" = "复制指令";
 

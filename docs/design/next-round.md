@@ -975,6 +975,11 @@ uid 01JB… · issue · high · module auth
   否则 level 被重置成 `.floating`（v0.6 的鸡舍一直在这个坑里）。
 - **卡片只在你看的时候挂着**：捕获后 3.2 秒、指针在岛上 / 卡片上、岛展开、拖动中、备注打开时爪子放下来；否则 0.4 秒后爪子把卡片拉出屏幕顶，
   左耳显示待分配的卡片数。卡片上沿 = 岛当前底边 + 18 pt（岛展开时卡片跟着下移，腿变长）。
+  （v0.8）指针一到岛上就由岛推给卡片（`hanging.islandAttention()`），不再等卡片自己的轮询；指针在卡片上时岛保持展开。
+  **故意放下来**：点左耳的数字、⌥⇧H「显示挂着的卡片」（`record.hotkeys.cards`）、菜单、主窗口收件箱顶上的「还没归属的捕获 N 条」→
+  卡片一直挂着，直到指针到过卡片再离开，或 Esc。指针停在左耳上时岛 450 ms 才展开，好让数字点得到。
+  坑：卡片面板收起时被 `orderOut`，视图的 display link 在屏幕外不再触发，`MotionDriver` 永远等不到「静止」，空闲轮询也就不跑了——
+  这就是「语音之后卡片收进去就再也拿不回来」。现在 orderOut 前先 `driver.rest()`，`wake()` 遇到窗口不在屏幕上只轮询。
 - **展开后的第一行用刘海两侧**：首页 = 左边当前项目、右边录屏 / 截图 / 语音；抽屉 = 左边标题、右边已输入的过滤词。录屏、语音、提示的内容从刘海下面开始，
   耳朵继续显示时间等。没有别的事时首页多一行快捷键提示。
 - **悬停 vs 按键打开**：悬停打开的离开 400 ms 收起；快捷键 / 命令打开的（`setOpen(_, sticky: true)`）要等指针进来再离开才收，或 Esc。语音输入期间保持展开。
@@ -989,7 +994,8 @@ uid 01JB… · issue · high · module auth
 - **过渡期**：P4 的 AgentHub 还没写 process 任务时，`IslandModule` 装一个 `AppEnvironment.process` 的兜底（`LegacyProcess`：建 process 任务、
   走 v0.6 的 `App.process(dir)`），v0.6 AgentHub 的 `perch.hatch / hatched` 调用落到它上面；AgentHub 换成任务后删掉 `LegacyProcess` 和 `perch`。
 - **测试钩子**（`BLURT_TEST_COMMANDS=1`）：`BLURT_TEST_STILL=<png>` 代替屏幕截图、`BLURT_TEST_PROCESS=done|failed` 代替真正的 agent 整理、
-  `BLURT_TEST_MIC_WAV` / `BLURT_NOTE_WAV` 代替麦克风；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
+  `BLURT_TEST_MIC_WAV` / `BLURT_NOTE_WAV` 代替麦克风、`BLURT_TEST_PASTEBOARD=<名字>` 让卡片拷贝进私有剪贴板、`BLURT_ISLAND_DX=-560`
+  把岛画到刘海左边（指针测试碰不到用户自己的岛）；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
   `framerec`、`mascotframes`、`mascot`、`fakerecording`、`peck`）。
 
 **细则（polish，合并后）**：鸡爪已按「决定」换成细线（macOS `Capture/Island/HangingCards.swift`，`Claws.swift` / `ClawArt.swift` 删除；

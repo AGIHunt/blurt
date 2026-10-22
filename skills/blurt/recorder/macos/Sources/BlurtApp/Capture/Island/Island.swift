@@ -5,10 +5,12 @@
 // top edge, 10 pt bottom corners, with concave shoulders into the screen edge. When there is something to show it grows
 // "ears" (56 pt each side). Without a notch it is a capsule 6 pt under the menu bar (30 high, ≥ 120 wide) that hides
 // when idle and appears after the pointer rests 250 ms in the top-middle 320 × 8 pt. Hovering 150 ms (or a hotkey)
-// opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves.
+// opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves it and
+// the hanging cards (HangingCards.swift), which drop as soon as the pointer arrives. Resting on the cards' count: 450 ms.
 //
 // Collapsed (ears)        left                         right
-//   idle                  cards waiting (n)             hatching egg (the mascot) + n processing, else captures to review (n)
+//   idle                  cards waiting (n) — a click   hatching egg (the mascot) + n processing, else captures to review (n)
+//                         brings them down to stay
 //   recording             red dot (1 Hz breath) + time  snaps (n), else the mic level
 //   voice input           live waveform                 duration
 // Open: IslandContent.swift (home, recording, voice, the project drawer / switcher, one-line toasts).
@@ -38,6 +40,11 @@ final class IslandView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func keyDown(with e: NSEvent) { if island?.key(e) != true { super.keyDown(with: e) } }
     override func mouseDown(with e: NSEvent) { island?.clicked(at: convert(e.locationInWindow, from: nil)) }
+    /// The left ear's count takes its own clicks, even while the open content grows over it.
+    override func hitTest(_ p: NSPoint) -> NSView? {
+        if let i = island, i.earHit(convert(p, from: superview)) { return self }
+        return super.hitTest(p)
+    }
 
     override func draggingEntered(_ s: NSDraggingInfo) -> NSDragOperation { island?.dragOver(convert(s.draggingLocation, from: nil)) ?? [] }
     override func draggingUpdated(_ s: NSDraggingInfo) -> NSDragOperation { island?.dragOver(convert(s.draggingLocation, from: nil)) ?? [] }
@@ -156,8 +163,23 @@ final class Island: NSObject, IslandHosting {
         return NSRect(x: p.frame.minX + geo.cx - w.value / 2, y: p.frame.maxY - geo.top - h.value, width: w.value, height: h.value)
     }
 
-    /// The cards should hang: the island is open or being hovered, or a drag is on.
-    var wantsCards: Bool { open || hoverSince != nil || dragActive || drawer != nil }
+    /// The pointer is on the island: the hanging cards come down with its detail.
+    var pointerInside: Bool { hoverSince != nil }
+    /// The cards stay down whatever the pointer does: the island is open by a key or a command (until the pointer has
+    /// come and gone), a drawer is open, or a card is being dragged.
+    var holdsCards: Bool { (open && sticky) || dragActive || drawer != nil }
+
+    /// The left ear's count of hanging cards, where it is drawn now (panel coordinates) — nil when it isn't showing
+    /// (no cards, recording, voice input, or the open island's content has taken the ears row).
+    private var leftEarRect: CGRect? {
+        guard cardCount > 0, earsWanted.left, !isRecording, !VoiceInput.shared.active,
+              left.layer.opacity > 0.5, ears.opacity > 0.3 else { return nil }
+        if geo.notch { return CGRect(x: geo.cx - geo.notchW / 2 - Island.earW, y: geo.top, width: Island.earW, height: geo.row) }
+        return CGRect(x: geo.cx - w.value / 2, y: geo.top, width: left.width + 28, height: geo.row)
+    }
+
+    /// A click there goes to the island itself (not to the open content growing over it): see clicked(at:).
+    func earHit(_ p: NSPoint) -> Bool { leftEarRect?.contains(p) ?? false }
 
     // MARK: setup
 
@@ -195,6 +217,14 @@ final class Island: NSObject, IslandHosting {
         return NSScreen.screens.first { NSMouseInRect(m, $0.frame, false) }
     }
 
+    /// Scripted pointer tests (test commands only): BLURT_ISLAND_DX=-560 draws the island that far left of the screen's
+    /// middle (same shape), so a test's pointer never touches another Blurt's island at the notch.
+    static let testOffset: CGFloat = {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BLURT_TEST_COMMANDS"] == "1", let dx = env["BLURT_ISLAND_DX"].flatMap(Double.init) else { return 0 }
+        return CGFloat(dx)
+    }()
+
     private func ensurePanel(on s: NSScreen) {
         var g = Geo()
         let menuH = max(s.frame.maxY - s.visibleFrame.maxY, 24)
@@ -210,7 +240,7 @@ final class Island: NSObject, IslandHosting {
             g.row = 30
             g.cx = Island.panelSize.width / 2
         }
-        let f = NSRect(x: s.frame.midX - Island.panelSize.width / 2, y: s.frame.maxY - Island.panelSize.height,
+        let f = NSRect(x: s.frame.midX - Island.panelSize.width / 2 + Island.testOffset, y: s.frame.maxY - Island.panelSize.height,
                        width: Island.panelSize.width, height: Island.panelSize.height)
         if panel == nil {
             let p = IslandPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
@@ -481,13 +511,21 @@ final class Island: NSObject, IslandHosting {
         if inside && !busyElsewhere {
             awaySince = nil
             sticky = false                    // the pointer has arrived: from now on, leaving closes it
-            hoverSince = hoverSince ?? now
-            if !open, drawer == nil, now - hoverSince! >= 0.15 { setOpen(true) }
+            if hoverSince == nil {
+                hoverSince = now
+                hanging.islandAttention()     // the cards come down with the island's detail
+            }
+            // resting on the ear's count opens it a little later, so the count can still be clicked
+            let dwell = earHit(local) ? 0.45 : 0.15
+            if !open, drawer == nil, now - hoverSince! >= dwell { setOpen(true) }
         } else {
             hoverSince = nil
+            // the pointer went down onto the hanging cards: the island stays open over them
             let pinned = sticky || drawer == .switcher || confirmingDiscard || dragActive || VoiceInput.shared.active
-                || NoteBubble.shared.isOpen && isRecording
-            if (open || revealed) && !pinned {
+                || NoteBubble.shared.isOpen && isRecording || hanging.holdsIsland
+            if pinned {
+                awaySince = nil                // (counting starts when it lets go, not from before)
+            } else if open || revealed {
                 awaySince = awaySince ?? now
                 if now - awaySince! >= 0.4 {
                     awaySince = nil
@@ -504,8 +542,10 @@ final class Island: NSObject, IslandHosting {
     /// `sticky`: opened by a key or a command, not by hovering — it stays until the pointer has come and gone (or Esc).
     func setOpen(_ on: Bool, sticky: Bool = false) {
         self.sticky = on && sticky
+        if on { hanging.islandAttention() }    // opening it drops the cards too
         guard on != open else { return }
         open = on
+        emit(["event": "island_open", "open": on, "wall": Date().timeIntervalSince1970])
         if !on {
             confirmingDiscard = false
             if drawer == .switcher { closeSwitcher() }
@@ -516,6 +556,8 @@ final class Island: NSObject, IslandHosting {
     }
 
     func clicked(at p: NSPoint) {
+        // the left ear's count: the cards come down and stay (until the pointer has come and gone, or Esc)
+        if earHit(p) { hanging.reveal(via: "ear"); return }
         // a click on the collapsed island opens it right away
         if !open && drawer == nil { setOpen(true) }
         if let t = toastNow, let a = t.action { toastNow = nil; a(); refresh() }
@@ -610,6 +652,18 @@ final class Island: NSObject, IslandHosting {
         guard n != cardCount else { return }
         cardCount = n
         refresh()
+        NotificationCenter.default.post(name: .blurtCardsChanged, object: nil, userInfo: ["count": n])
+    }
+
+    var hangingCount: Int { cardCount }
+
+    /// Esc for the cards: an island opened by a key or a command goes up with them.
+    func closeIfSticky() { if open && sticky { setOpen(false) } }
+
+    func revealCards() {
+        guard cardCount > 0 else { hanging.reveal(via: "main_window"); return }    // (says there are none)
+        setOpen(true, sticky: true)
+        hanging.reveal(via: "main_window")
     }
 
     /// The island swallows something (a capture pulled in, a dropped card).

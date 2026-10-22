@@ -42,14 +42,26 @@ Items Blurt can't place go to **Unassigned**; move them later by dragging them o
 
 ### 3. Hanging cards
 
-In Auto mode each snap or voice note hangs under the island on a thin thread, like a wind chime. They tuck away when
-you're not looking and come back when you point at the island.
+In Auto mode each snap or voice note hangs under the island on a thin thread, like a wind chime. They tuck away into
+the island when you're not looking (the number left of the notch counts them) and come back when you need them:
+
+- **Point at the island** (or open it): every card drops down with the island's details. They stay while the pointer
+  is on the island or on the cards, and tuck away a moment after it leaves both.
+- **Click the count** left of the notch, press **`⌥⇧H`** (*Show hanging cards*), or use the menu's *Show N Hanging
+  Cards*: the cards come down and stay until you've pointed at them and moved away, or press `Esc`.
+- In the main window, the Inbox shows **Unfiled captures: N** at the top while cards are waiting; click it to bring them
+  all down under the island.
+
+What you can do with a card:
 
 - **Drag a card onto a project** in the island's list to file it there and start processing.
 - Drag it onto **Unassigned** to process it without a project, or choose **Let AI sort** to process all the cards
   and let Blurt file each item where it belongs.
-- Hover to read the note, double-click to edit it, click to copy the image, drag it out to drop the file anywhere,
-  or click × to throw it away.
+- **Click to copy**: a voice note copies its words; a snap copies the image (with your ink, if you drew on it), and its
+  note or spoken words come along as text, so pasting into a text-only field gives you the words. Right-click for
+  *Copy Image* or *Copy Text* on their own.
+- Hover to read the note, double-click to edit it, drag it out to drop the file (and its words) anywhere, or click ×
+  to throw it away.
 
 While Blurt processes captures you see a small egg on the island; when it hatches, the new items are in your inbox.
 
@@ -136,11 +148,18 @@ fits) · `W` won't do · `X` discard · `S` open the menu.
 
 ### 3. 挂着的卡片
 
-自动模式下，每张截图、每段语音用一根细线挂在岛的下方，像风铃。你不看的时候它们会收起来，鼠标移到岛上又会垂下来。
+自动模式下，每张截图、每段语音用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
+
+- **鼠标移到岛上**（或者打开岛）：所有卡片跟着岛的详情一起垂下来。鼠标在岛上或卡片上时一直挂着，离开两者片刻后收起。
+- **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走，或者按 `Esc`。
+- 主窗口的收件箱顶部会显示「**还没归属的捕获 N 条**」，点一下就把它们全部放到岛下面。
+
+卡片能做的事：
 
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
 - 拖到「**待分配**」：先整理，不归项目；或者点「**交给 AI 分**」：把所有卡片一起整理，每一条由口喷鸡归到合适的项目。
-- 悬停看备注，双击改备注，单击复制图片，拖出去就是一个文件，点 × 扔掉。
+- **单击复制**：语音卡片复制说的话；截图复制图片（画过就带笔迹），备注或说的话作为文字一起放进剪贴板，粘到只收文字的地方就是那段话。右键可以单独「拷贝图片」或「拷贝文字」。
+- 悬停看备注，双击改备注，拖出去就是一个文件（带上文字），点 × 扔掉。
 
 整理时岛上会出现一个小蛋；蛋破壳了，新条目就到了收件箱。
 

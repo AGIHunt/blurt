@@ -1,5 +1,6 @@
 /* Capture (P5): the island and its hanging cards, voice input, snaps, the picker, shortcuts */
 
+"capture.action.cards" = "Show hanging cards";
 "capture.action.main" = "Open the Blurt window";
 "capture.action.marker" = "Marker (also snaps)";
 "capture.action.menu" = "Open the menu";
@@ -18,11 +19,13 @@
 "capture.card.ax_voice_n" = "Voice note %d";
 "capture.card.copied" = "Copied";
 "capture.card.copy_image" = "Copy Image";
+"capture.card.copy_text" = "Copy Text";
 "capture.card.delete" = "Delete";
 "capture.card.edit_note" = "Edit Note…";
 "capture.card.move_to" = "Move To";
 "capture.card.reveal" = "Show in Finder";
 "capture.cards.ax" = "Captures waiting for a project";
+"capture.cards.none" = "No unfiled captures";
 "capture.countdown.finish" = "finish";
 "capture.countdown.pause" = "pause / resume";
 "capture.countdown.ready" = "Get ready";
@@ -78,6 +81,7 @@
 "capture.keys.wont_work" = "Shortcut %@ won’t work";
 "capture.menu.collect" = "Collect System Screenshots (⌘⇧3/4/5)";
 "capture.menu.live_caption" = "Live Caption";
+"capture.menu.show_cards_none" = "Show Hanging Cards";
 "capture.menu.snap" = "Snap";
 "capture.menu.switch_project" = "Switch Project…";
 "capture.menu.voice" = "Voice Input";

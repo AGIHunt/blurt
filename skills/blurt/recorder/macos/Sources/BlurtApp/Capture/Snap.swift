@@ -51,14 +51,28 @@ func cgImage(from pb: CVPixelBuffer) -> CGImage? {
 }
 
 /// Puts a picture on the clipboard (PNG + TIFF so every app can paste it).
-func copyImageToPasteboard(_ url: URL) {
-    guard let data = try? Data(contentsOf: url) else { return }
-    let pb = NSPasteboard.general
+/// Where captures are copied to: the general pasteboard. Scripted UI tests (BLURT_TEST_COMMANDS=1) can name a private
+/// one with BLURT_TEST_PASTEBOARD, so a test run never touches the user's clipboard.
+let capturePasteboard: NSPasteboard = {
+    let env = ProcessInfo.processInfo.environment
+    if env["BLURT_TEST_COMMANDS"] == "1", let name = env["BLURT_TEST_PASTEBOARD"], !name.isEmpty {
+        return NSPasteboard(name: NSPasteboard.Name(name))
+    }
+    return .general
+}()
+
+/// The picture as one pasteboard item (PNG + TIFF); `text` (a note, the words said) rides along as the same item's
+/// plain text, so apps that only take text get the words.
+@discardableResult
+func copyImageToPasteboard(_ url: URL, text: String? = nil) -> Bool {
+    guard let data = try? Data(contentsOf: url) else { return false }
+    let pb = capturePasteboard
     pb.clearContents()
     let item = NSPasteboardItem()
     item.setData(data, forType: .png)
     if let tiff = NSImage(data: data)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
-    pb.writeObjects([item])
+    if let t = text, !t.isEmpty { item.setString(t, forType: .string) }
+    return pb.writeObjects([item])
 }
 
 func backingScale(forDisplay id: CGDirectDisplayID) -> CGFloat {
@@ -184,6 +198,14 @@ final class Shot {
     var isCard: Bool { !deleted && project == nil && assignedBy == nil && batch?.inRecording == false }
     /// What the card says: the typed note, else the transcript.
     var words: String? { [text, said].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } }
+    /// What a copy or a drag carries as text: the typed note and the words said, each once (nil when there are none).
+    var copyText: String? {
+        var parts: [String] = []
+        for p in [text, said].compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) }) where !p.isEmpty && !parts.contains(p) {
+            parts.append(p)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
+    }
 
     func image() -> CGImage? { full ?? url.flatMap(loadCGImage) }
 

@@ -22,6 +22,7 @@ extension HotkeyCenter.Action {
         case .openMain: return nil
         case .voice: return .voice
         case .project: return .project
+        case .cards: return .cards
         }
     }
 }

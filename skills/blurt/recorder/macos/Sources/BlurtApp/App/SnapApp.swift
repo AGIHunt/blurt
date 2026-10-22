@@ -2,7 +2,10 @@
 // only) a distributed-notification command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
-//     cards [show|hide]       the cards down / up; every card's rect as "card" events (global top-left points)
+//     cards [show|reveal|dismiss]  the cards down (peek) / down to stay (= ⌥⇧H) / Esc; their state, every card's rect
+//                             as "card" events (global top-left points)
+//     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
+//     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
@@ -53,6 +56,9 @@ extension App {
             snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), withNote: !a.contains("quiet"))
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
+            if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥⇧H / the ear's count / the menu
+            if arg == "dismiss" { hanging.dismiss() }               // = Esc
+            emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])
             emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
             for (s, r) in hanging.cardRects() { emit(["event": "card", "n": s.n, "session": s.batch?.dir.path ?? "", "rect": [r.minX, r.minY, r.width, r.height]]) }
@@ -70,6 +76,21 @@ extension App {
             if arg != "up" { Hotkeys.shared.simulate(.voice, released: false) }
             if arg == "tap" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Hotkeys.shared.simulate(.voice, released: true) } }
             if arg == "up" { Hotkeys.shared.simulate(.voice, released: true) }
+        case "cardcopy":                                // cardcopy N [click|image|text]: = a click / Copy Image / Copy Text
+            let a = arg.split(separator: " ").map(String.init)
+            if let n = Int(a.first ?? "") {
+                let ok = hanging.testCopy(n: n, HangingCards.Copy(rawValue: a.count > 1 ? a[1] : "click") ?? .click)
+                if !ok { emit(["event": "card_copied", "n": n, "what": a.count > 1 ? a[1] : "click", "failed": true]) }
+            }
+        case "cardmenu":                                // cardmenu N: the right-click menu's titles
+            if let n = Int(arg) { emit(["event": "card_menu", "n": n, "items": hanging.testMenu(n: n)]) }
+        case "carddrag":                                // carddrag N PASTEBOARD: what dragging card N out carries
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count == 2, let n = Int(a[0]) {
+                emit(["event": "card_drag", "n": n, "types": hanging.testDrag(n: n, to: NSPasteboard(name: .init(a[1])))])
+            }
+        case "hotkey":                                  // hotkey ACTION: the same path as pressing its keys
+            if let act = HotAction(rawValue: arg) { Hotkeys.shared.simulate(act, released: false) }
         case "assign":
             let a = arg.split(separator: " ").map(String.init)
             if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) { snapper.assign(s, to: a[1]) }
@@ -208,6 +229,9 @@ extension App {
         case .voice: VoiceInput.shared.pressed()
         case .voiceEsc: VoiceInput.shared.cancel()
         case .project: if resident { island.toggleSwitcher() }
+        case .cards: if resident { hanging.reveal(via: "hotkey") }
+        // Esc while the cards are down on purpose (voice input's own Esc wins while it listens)
+        case .cardsEsc: if VoiceInput.shared.active { VoiceInput.shared.cancel() } else { hanging.dismiss() }
         default: break
         }
     }
@@ -230,10 +254,10 @@ extension App {
         item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
         item("capture.menu.switch_project", #selector(mSwitchProject)).showHotkey(.project)
-        if hanging.count > 0 {
-            let it = item("capture.menu.show_cards", #selector(mShowCards))
-            it.title = Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count)
-        }
+        // always there (with its hotkey) so ⌥⇧H can be found; dimmed while nothing hangs
+        let cards = item("capture.menu.show_cards_none", #selector(mShowCards))
+        cards.showHotkey(.cards)
+        if hanging.count > 0 { cards.title = Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count) } else { cards.action = nil }
         item("capture.menu.collect", #selector(mCollect), on: snapper.collecting)
     }
 
@@ -244,7 +268,7 @@ extension App {
     }
     @objc func mVoice() { VoiceInput.shared.toggle() }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
-    @objc func mShowCards() { hanging.show(peek: 6) }
+    @objc func mShowCards() { hanging.reveal(via: "menu") }
     @objc func mCollect() {
         setRecordConfig("collect_system_shots", !snapper.collecting)
         snapper.syncCollector()

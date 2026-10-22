@@ -37,6 +37,16 @@ protocol TerminalHosting: AnyObject {
 protocol IslandHosting: AnyObject {
     func showSwitcher()
     func toast(_ text: String, actionTitle: String?, action: (() -> Void)?)
+    /// Captures hanging under the island, waiting for a project (posts .blurtCardsChanged when it changes).
+    var hangingCount: Int { get }
+    /// Open the island with every hanging card down, until the pointer has come and gone (the main window's
+    /// "Unfiled captures").
+    func revealCards()
+}
+
+extension Notification.Name {
+    /// The number of hanging cards changed (userInfo "count").
+    static let blurtCardsChanged = Notification.Name("dev.blurt.cards-changed")
 }
 
 enum AppEnvironment {

@@ -50,6 +50,22 @@
 			<string>%ld items to verify</string>
 		</dict>
 	</dict>
+	<key>main.captures.unfiled</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Unfiled captures: %ld</string>
+			<key>other</key>
+			<string>Unfiled captures: %ld</string>
+		</dict>
+	</dict>
 	<key>main.detail.multi</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

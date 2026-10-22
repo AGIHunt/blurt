@@ -36,7 +36,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the Waiting Capture</string><key>other</key><string>Show %d Waiting Captures</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the Hanging Card</string><key>other</key><string>Show %d Hanging Cards</string></dict>
   </dict>
   <key>capture.peck.done_many</key>
   <dict>

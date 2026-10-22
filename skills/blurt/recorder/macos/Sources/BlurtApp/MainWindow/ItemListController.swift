@@ -167,6 +167,47 @@ final class EmptyStateView: NSView {
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
 }
 
+/// The inbox's top row while captures hang under the island waiting for a project (K7): "Unfiled captures: 3" — a click
+/// opens the island with every card down (they stay until the pointer has come and gone). Hidden when there are none.
+final class CapturesBanner: NSView {
+    var onClick: (() -> Void)?
+    private let row = JobRow()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.title.font = .systemFont(ofSize: 12, weight: .semibold)
+        row.status.textColor = .controlAccentColor
+        row.bar.isHidden = true
+        row.spinner.isHidden = true
+        row.icon.image = BlurtIcon.snap.image(size: 15)
+        row.icon.contentTintColor = .controlAccentColor
+        row.onClick = { [weak self] in self?.onClick?() }
+        addSubview(row)
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(line)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 6), row.bottomAnchor.constraint(equalTo: line.topAnchor, constant: -6),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10), row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
+            line.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(count: Int) {
+        isHidden = count == 0
+        guard count > 0 else { return }
+        row.title.stringValue = TP("main.captures.unfiled", count)
+        row.status.stringValue = T("main.captures.show")
+        row.setAccessibilityLabel("\(row.title.stringValue), \(row.status.stringValue)")
+        row.toolTip = T("main.captures.tip")
+    }
+}
+
 /// Kind segments and the state filter (the count is the window's subtitle).
 final class FilterBar: NSView {
     let kinds = NSSegmentedControl()
@@ -250,6 +291,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     weak var actions: ItemListActions? { didSet { table.actions = actions } }
     let table = ItemTableView()
     let jobs = JobsSection()
+    let captures = CapturesBanner()
     let bar = FilterBar()
     let empty = EmptyStateView()
     let scroll = NSScrollView()
@@ -311,11 +353,14 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         jobs.onSelect = { [weak self] id in self?.actions?.selectJob(id) }
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
-        let stack = NSStackView(views: [jobs, bar])
+        captures.onClick = { AppEnvironment.island?.revealCards() }
+        NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
+        let stack = NSStackView(views: [captures, jobs, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
+            captures.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -413,6 +458,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         }
         suppressSelection = false
         bar.sync(model)
+        reloadCaptures()
         updateEmpty()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().reloadData() }
         let ids = set.compactMap { id(at: $0) }
@@ -439,6 +485,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
+    /// "Unfiled captures: N" on top of the inbox while cards hang under the island.
+    func reloadCaptures() { captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0) }
 
     func updateEmpty() {
         switch model.indexState {
