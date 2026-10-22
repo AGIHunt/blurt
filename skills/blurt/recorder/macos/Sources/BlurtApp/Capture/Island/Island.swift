@@ -79,6 +79,7 @@ final class Island: NSObject, IslandHosting {
     private var r = Spring(10, response: 0.42, damping: 0.78)
     private var vis = Spring(0, response: 0.3, damping: 1)       // capsule screens: shown or not
     private var bumpStart: CFTimeInterval = 0
+    private var shapeMoving = false
 
     // MARK: state
 
@@ -335,6 +336,10 @@ final class Island: NSObject, IslandHosting {
         content.tick(now)
         hanging.islandMoved()
         let moving = !w.resting || !h.resting || !r.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
+        // While the shape grows, AppKit draws the open content piece by piece as the clip uncovers it; the seams of
+        // those pieces show through translucent fills (the Let AI sort and Finish pills). Once it rests: whole again.
+        if shapeMoving && !moving { content.redrawAll() }
+        shapeMoving = moving
         return moving || left.animating || right.animating || toastNow != nil || isRecording || VoiceInput.shared.active
     }
 

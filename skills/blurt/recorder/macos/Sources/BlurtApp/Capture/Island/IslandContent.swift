@@ -212,6 +212,11 @@ final class Bars: NSView {
 }
 
 final class IslandContent: NSView {
+    /// Every view of the open content redrawn in full (see Island.frame: the pieces drawn while the clip grew).
+    func redrawAll() {
+        func mark(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(mark) }
+        mark(self)
+    }
     weak var island: Island?
     override var isFlipped: Bool { true }
     var query = ""

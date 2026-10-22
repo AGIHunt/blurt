@@ -225,5 +225,15 @@ class TruncatingTextLayers(unittest.TestCase):
         self.assertEqual(bad, [])
 
 
+    def test_island_content_is_redrawn_whole_when_it_rests(self):
+        """The open content is drawn piece by piece while the island's clip grows; translucent pills (Let AI sort,
+        Finish) showed the seams as a staircase of lines until something redrew them. Island.frame redraws it all
+        once the shape rests."""
+        src = (MAC / "Sources" / "BlurtApp" / "Capture" / "Island" / "Island.swift").read_text(encoding="utf-8")
+        self.assertRegex(src, r"if shapeMoving && !moving \{ content\.redrawAll\(\) \}")
+        self.assertIn("func redrawAll()", (MAC / "Sources" / "BlurtApp" / "Capture" / "Island" / "IslandContent.swift")
+                      .read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
