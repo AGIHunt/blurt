@@ -5,10 +5,9 @@
 
 Outputs
   Swift  skills/blurt/recorder/macos/Sources/BlurtApp/Icons/BlurtIconPaths.swift   enum BlurtIcon + CGPath code
-  Web    web/packages/icons/src/generated.ts     icon geometry, names, aliases, kind-egg sprite
-         web/packages/icons/sprite.svg           <symbol id="bi-NAME"> + <symbol id="egg-KIND"> (for single-file pages)
+  Web    web/packages/icons/src/generated.ts     icon geometry, names, aliases
+         web/packages/icons/sprite.svg           <symbol id="bi-NAME"> (for single-file pages)
   Tk     skills/blurt/assets/icons/NAME.png, @1.5x, @2x   16 pt light glyphs for the dark Tk HUD
-         skills/blurt/assets/icons/egg-KIND.png, @1.5x, @2x the kind eggs
   Tray   apps/desktop/src-tauri/icons/tray.svg, tray-black.png, tray-white.png   the Tauri tray icon (the `blurt` glyph,
          64 px; black = macOS template / light panels, white = dark panels)
          (PNGs need rsvg-convert; --check only verifies they exist, and --no-png skips them)
@@ -128,29 +127,11 @@ def ts_str(s: str) -> str:
     return json.dumps(s, ensure_ascii=False)
 
 
-def egg_symbols():
-    """Kind eggs → ([defs…], [<symbol id="egg-KIND">…]) for one shared sprite."""
-    defs, syms = [], []
-    for k, svg in iconlib.egg_svgs().items():
-        svg = re.sub(r"<title>.*?</title>", "", svg, flags=re.S)
-        d = re.search(r"<defs>(.*?)</defs>", svg, re.S)
-        if d:
-            defs.append(d.group(1).strip())
-            svg = svg.replace(d.group(0), "")
-        body = re.sub(r"^\s*<svg[^>]*>|</svg>\s*$", "", svg.strip()).strip()
-        body = re.sub(r">\s+<", "><", body)
-        syms.append(f'<symbol id="egg-{k}" viewBox="0 0 16 16">{body}</symbol>')
-    return defs, syms
-
-
 def gen_sprite(icons) -> str:
-    defs, eggs = egg_symbols()
     out = [f"<!-- {HEADER} -->", SPRITE_OPEN]
-    out += defs
     for ic in icons:
         out.append(f'<symbol id="bi-{ic.name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{iconlib.STROKE}" '
                    f'stroke-linecap="round" stroke-linejoin="round">{iconlib.inner_markup(ic)}</symbol>')
-    out += eggs
     out.append("</defs></svg>")
     return "\n".join(out) + "\n"
 
@@ -178,11 +159,7 @@ def gen_ts(icons) -> str:
     o += ["};", "", "export const TITLES: Record<CanonicalIconName, string> = {"]
     for ic in icons:
         o.append(f"  {ts_str(ic.name)}: {ts_str(ic.title or ic.name)},")
-    defs, eggs = egg_symbols()
-    sprite = "".join([SPRITE_OPEN] + defs + eggs + ["</defs></svg>"])
-    o += ["};", "",
-          "/** Kind eggs (16×16, full colour; egg-custom is tinted with currentColor). One copy of this per page. */",
-          f"export const EGG_SPRITE = {ts_str(sprite)};", ""]
+    o += ["};", ""]
     return "\n".join(o)
 
 
@@ -209,9 +186,6 @@ def pngs(icons, check: bool, stale: list):
     for ic in icons:
         svg = iconlib.normalized_svg(ic, PNG_COLOR)
         want += [(svg, int(PNG_SIZE * d), PNG_DIR / f"{ic.name}{sfx}.png") for d, sfx in densities]
-    for k, svg in iconlib.egg_svgs().items():
-        svg = svg.replace("currentColor", "#cfe3b0")
-        want += [(svg, int(PNG_SIZE * d), PNG_DIR / f"egg-{k}{sfx}.png") for d, sfx in densities]
     if check:
         stale += [str(p.relative_to(REPO)) for _, _, p in want if not p.exists()]
         return

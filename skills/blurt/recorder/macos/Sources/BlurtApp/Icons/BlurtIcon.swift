@@ -1,6 +1,6 @@
 // BlurtIcon — the app's icons, never emoji. Two kinds (docs: assets/icons/REPLACEMENTS.md):
 //
-//   brand    chicken, egg, hatch, nest, perch, claw, peck, bug, spark, note, task, mic, waveform, snap, agent, mcp…
+//   brand    chicken, egg, hatch, peck, bug, spark, note, task, mic, waveform, snap, agent, mcp…
 //            our own vectors (assets/icons/*.svg → BlurtIconPaths.swift, generated) — template-tintable at any size
 //   generic  pause, play, stop, check, x, search, folder, trash…  → the SF Symbol, like every native Mac app
 //            (`symbolImage`), falling back to our vector of the same name when this macOS lacks the symbol
@@ -9,7 +9,6 @@
 //   BlurtIcon.check.symbolImage(pointSize: 13)              SF Symbol "checkmark" (or our check)
 //   BlurtIcon.chicken.attributed(font: f, color: .white)    inline in a label / button title / CATextLayer string
 //   BlurtIcon.mic.cgImage(size: 12, scale: 2, color: c)     for CALayer.contents
-//   BlurtIcon.egg(.idea, size: 14)                          the full-colour kind eggs (drawEgg in Capture/Eggs.swift)
 //   BlurtIcon(named: "close")                               names and aliases as in the web package
 
 import AppKit
@@ -172,20 +171,6 @@ extension BlurtIcon {
         a.bounds = CGRect(x: 0, y: ((font.capHeight - im.size.height) / 2).rounded(), width: im.size.width, height: im.size.height)
         return NSAttributedString(attachment: a)
     }
-
-    /// The full-colour kind egg (issue speckled + bug, idea golden, note white, task brown + check, custom pastel),
-    /// drawn by Capture/Eggs.swift's drawEgg — the same eggs as the web sprite (assets/icons/eggs/*.svg).
-    static func egg(_ kind: EggKind, size: CGFloat = 16, seed: UInt64 = 7, shadow: Bool = false) -> NSImage {
-        let im = NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            // the egg is 10.1 × 13.8 in its 16 grid: keep that aspect, centred
-            let h = r.height * 13.8 / 16, w = h * 10.1 / 13.8
-            drawEgg(ctx, in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h), kind: kind, seed: seed, shadow: shadow)
-            return true
-        }
-        im.accessibilityDescription = "\(kind.rawValue) egg"
-        return im
-    }
 }
 
 extension BlurtIcon {
@@ -193,11 +178,6 @@ extension BlurtIcon {
     /// `Image(systemName: icon.sfSymbols[0])` in SwiftUI; this is for the brand glyphs.
     func swiftUIImage(size: CGFloat = 16) -> Image {
         Image(nsImage: image(size: size)).renderingMode(.template)
-    }
-
-    /// SwiftUI: a kind egg (full colour).
-    static func swiftUIEgg(_ kind: EggKind, size: CGFloat = 16) -> Image {
-        Image(nsImage: egg(kind, size: size))
     }
 }
 

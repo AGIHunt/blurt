@@ -143,7 +143,7 @@ final class EarSlot {
         case .text(let s, _):
             text(s)
         case .egg(let n):
-            eggTop.contents = eggImage(.note, size: CGSize(width: 14, height: 18), seed: 11, shadow: false)
+            eggTop.contents = eggImage(size: CGSize(width: 14, height: 18), shadow: false)
             eggTop.frame = CGRect(x: 0, y: -9, width: 14, height: 18)
             eggTop.anchorPoint = CGPoint(x: 0.5, y: 0.9)
             eggTop.position = CGPoint(x: 7, y: 7)
@@ -266,7 +266,7 @@ final class EarSlot {
                 p.closeSubpath()
                 ctx.addPath(p)
                 ctx.clip()
-                drawEgg(ctx, in: CGRect(origin: .zero, size: size), kind: .note, seed: 11, shadow: false)
+                drawEgg(ctx, in: CGRect(origin: .zero, size: size), shadow: false)
             }
         }
         return (half(true), half(false))

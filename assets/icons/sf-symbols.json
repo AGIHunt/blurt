@@ -202,7 +202,6 @@
     "listening": "waveform",
     "voice": "waveform",
     "screenshot": "snap",
-    "clip": "claw",
     "fixed": "peck",
     "hatching": "hatch",
     "finish": "stop-fill",

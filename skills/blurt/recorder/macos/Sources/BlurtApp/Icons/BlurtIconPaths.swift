@@ -21,7 +21,6 @@ enum BlurtIcon: String, CaseIterable {
     case chevronRight = "chevron-right"
     case chevronUp = "chevron-up"
     case chicken = "chicken"
-    case claw = "claw"
     case code = "code"
     case copy = "copy"
     case document = "document"
@@ -52,12 +51,10 @@ enum BlurtIcon: String, CaseIterable {
     case mic = "mic"
     case moon = "moon"
     case more = "more"
-    case nest = "nest"
     case pause = "pause"
     case pauseFill = "pause-fill"
     case peck = "peck"
     case pencil = "pencil"
-    case perch = "perch"
     case play = "play"
     case playFill = "play-fill"
     case plus = "plus"
@@ -70,7 +67,6 @@ enum BlurtIcon: String, CaseIterable {
     case send = "send"
     case settings = "settings"
     case snap = "snap"
-    case snapToPerch = "snap-to-perch"
     case spark = "spark"
     case stop = "stop"
     case stopFill = "stop-fill"
@@ -91,7 +87,6 @@ extension BlurtIcon {
     static let aliases: [String: BlurtIcon] = [
         "alert": .warning,
         "branch": .gitBranch,
-        "clip": .claw,
         "close": .x,
         "delete": .trash,
         "discard": .x,
@@ -211,7 +206,6 @@ extension BlurtIcon {
         case .chevronRight: return "Chevron right"
         case .chevronUp: return "Chevron up"
         case .chicken: return "Chicken — the blurt mark; also “process / 整理”"
-        case .claw: return "Chicken foot — the clip that holds a shot"
         case .code: return "Code"
         case .copy: return "Copy"
         case .document: return "Document — a note"
@@ -242,12 +236,10 @@ extension BlurtIcon {
         case .mic: return "Microphone"
         case .moon: return "Dark mode"
         case .more: return "More"
-        case .nest: return "Nest — where the eggs gather"
         case .pause: return "Pause"
         case .pauseFill: return "Pause (filled)"
         case .peck: return "Peck — the chicken pecks the bug (fixed)"
         case .pencil: return "Edit"
-        case .perch: return "Perch — a rope between two pegs, a shot clipped to it"
         case .play: return "Play"
         case .playFill: return "Play (filled)"
         case .plus: return "Add"
@@ -260,7 +252,6 @@ extension BlurtIcon {
         case .send: return "Send"
         case .settings: return "Settings"
         case .snap: return "Snap — a screenshot (⌥⇧A)"
-        case .snapToPerch: return "Snap to the perch"
         case .spark: return "Spark — an idea (golden idea)"
         case .stop: return "Stop / finish"
         case .stopFill: return "Stop / finish (filled)"
@@ -294,7 +285,6 @@ extension BlurtIcon {
         case .chevronRight: return "<path d=\"M9 6L15 12L9 18\"/>"
         case .chevronUp: return "<path d=\"M6 15L12 9L18 15\"/>"
         case .chicken: return "<path d=\"M17.3 9.7C16.2 7.4 14.1 6 11.6 6C7.9 6 5 9 5 12.8C5 13.8 5.2 14.8 5.5 15.6L3.6 17.6L6.5 17.9C7.7 19.8 9.7 21 12 21C13.9 21 15.4 20.2 16.4 18.9\"/><path d=\"M7.3 7.7C5.9 6.1 6.8 3.6 9 4.1C9.5 2 12.7 1.9 13.2 4.1C15.4 3.7 16.5 6.1 15.1 7.6\"/><path d=\"M17.3 9.7L21 12.1L17.4 14.4\"/><path d=\"M17.4 14.4C18 15 18.5 15.8 18.5 16.8C18.5 18 17.6 18.9 16.4 18.9\"/><path d=\"M13.8 10.8C13.8 11.463 13.263 12 12.6 12C11.937 12 11.4 11.463 11.4 10.8C11.4 10.137 11.937 9.6 12.6 9.6C13.263 9.6 13.8 10.137 13.8 10.8Z\" fill=\"currentColor\" stroke=\"none\"/>"
-        case .claw: return "<path d=\"M10.8 13.6L5.4 7.4M12 12.8L12 3.2M13.2 13.6L18.6 7.4M12 18.6L12 21.4\"/><path d=\"M14.9 15.6C14.9 17.257 13.602 18.6 12 18.6C10.398 18.6 9.1 17.257 9.1 15.6C9.1 13.943 10.398 12.6 12 12.6C13.602 12.6 14.9 13.943 14.9 15.6Z\" fill=\"currentColor\" stroke=\"none\"/>"
         case .code: return "<path d=\"M8 7L3 12L8 17M16 7L21 12L16 17\"/>"
         case .copy: return "<path d=\"M11 8.5L18 8.5C19.381 8.5 20.5 9.619 20.5 11L20.5 18C20.5 19.381 19.381 20.5 18 20.5L11 20.5C9.619 20.5 8.5 19.381 8.5 18L8.5 11C8.5 9.619 9.619 8.5 11 8.5Z\"/><path d=\"M15.5 8.5L15.5 6C15.5 4.619 14.381 3.5 13 3.5L6 3.5C4.619 3.5 3.5 4.619 3.5 6L3.5 13C3.5 14.381 4.619 15.5 6 15.5L8.5 15.5\"/>"
         case .document: return "<path d=\"M14.5 3L7.5 3C6.119 3 5 4.119 5 5.5L5 18.5C5 19.881 6.119 21 7.5 21L16.5 21C17.881 21 19 19.881 19 18.5L19 7.5Z\"/><path d=\"M14.5 3L14.5 6C14.5 6.828 15.172 7.5 16 7.5L19 7.5\"/><path d=\"M8.5 12.5L15.5 12.5M8.5 16L13 16\"/>"
@@ -325,12 +315,10 @@ extension BlurtIcon {
         case .mic: return "<path d=\"M12 2.8L12 2.8C13.657 2.8 15 4.143 15 5.8L15 11.2C15 12.857 13.657 14.2 12 14.2L12 14.2C10.343 14.2 9 12.857 9 11.2L9 5.8C9 4.143 10.343 2.8 12 2.8Z\"/><path d=\"M5.5 11C5.5 14.59 8.41 17.5 12 17.5C15.59 17.5 18.5 14.59 18.5 11M12 17.5L12 21M8.8 21L15.2 21\"/>"
         case .moon: return "<path d=\"M20.5 14.2C19.266 18.023 15.524 20.46 11.528 20.043C7.532 19.626 4.374 16.468 3.957 12.472C3.54 8.476 5.977 4.734 9.8 3.5C6.845 6.455 6.845 11.245 9.8 14.2C12.755 17.155 17.545 17.155 20.5 14.2Z\"/>"
         case .more: return "<path d=\"M7 12C7 12.828 6.328 13.5 5.5 13.5C4.672 13.5 4 12.828 4 12C4 11.172 4.672 10.5 5.5 10.5C6.328 10.5 7 11.172 7 12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M13.5 12C13.5 12.828 12.828 13.5 12 13.5C11.172 13.5 10.5 12.828 10.5 12C10.5 11.172 11.172 10.5 12 10.5C12.828 10.5 13.5 11.172 13.5 12Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M20 12C20 12.828 19.328 13.5 18.5 13.5C17.672 13.5 17 12.828 17 12C17 11.172 17.672 10.5 18.5 10.5C19.328 10.5 20 11.172 20 12Z\" fill=\"currentColor\" stroke=\"none\"/>"
-        case .nest: return "<path d=\"M6.8 12.8C6.8 9.4 8.1 6.8 9.8 6.8C11.5 6.8 12.8 9.4 12.8 12.8\"/><path d=\"M12.3 8.4C12.8 6.4 13.7 5.3 14.9 5.3C16.7 5.3 17.9 8.2 17.9 12.5\"/><path d=\"M2.8 11.2C3.6 16.9 7.2 20 12 20C16.8 20 20.4 16.9 21.2 11.2C15.6 13.8 8.4 13.8 2.8 11.2Z\"/><path d=\"M5.6 16.6C9.7 18 14.3 18 18.4 16.6M8.6 14.2L10.2 19.6M15.4 14.2L13.8 19.6\"/>"
         case .pause: return "<path d=\"M7.7 5L8.8 5C9.463 5 10 5.537 10 6.2L10 17.8C10 18.463 9.463 19 8.8 19L7.7 19C7.037 19 6.5 18.463 6.5 17.8L6.5 6.2C6.5 5.537 7.037 5 7.7 5Z\"/><path d=\"M15.2 5L16.3 5C16.963 5 17.5 5.537 17.5 6.2L17.5 17.8C17.5 18.463 16.963 19 16.3 19L15.2 19C14.537 19 14 18.463 14 17.8L14 6.2C14 5.537 14.537 5 15.2 5Z\"/>"
         case .pauseFill: return "<path d=\"M7.4 4.5L8.8 4.5C9.573 4.5 10.2 5.127 10.2 5.9L10.2 18.1C10.2 18.873 9.573 19.5 8.8 19.5L7.4 19.5C6.627 19.5 6 18.873 6 18.1L6 5.9C6 5.127 6.627 4.5 7.4 4.5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M15.2 4.5L16.6 4.5C17.373 4.5 18 5.127 18 5.9L18 18.1C18 18.873 17.373 19.5 16.6 19.5L15.2 19.5C14.427 19.5 13.8 18.873 13.8 18.1L13.8 5.9C13.8 5.127 14.427 4.5 15.2 4.5Z\" fill=\"currentColor\" stroke=\"none\"/>"
         case .peck: return "<path d=\"M14.737 10.255C14.61 8.219 13.472 6.551 11.618 5.802C8.873 4.693 5.823 6.049 4.684 8.868C4.385 9.61 4.233 10.412 4.216 11.095L2.207 12.009L4.269 13.101C4.589 14.869 5.713 16.359 7.419 17.048C9.348 17.827 11.311 17.24 12.653 15.625L13.403 13.771\"/><path d=\"M7.919 5.774C7.36 4.168 8.777 2.583 10.259 3.614C11.259 2.206 13.662 3.091 13.374 4.872C15.126 5.235 15.222 7.345 13.734 8.038\"/><path d=\"M14.737 10.255L16.762 13.144L13.403 13.771\"/><path d=\"M11.922 10.067C11.699 10.62 11.069 10.887 10.516 10.664C9.963 10.44 9.696 9.811 9.92 9.258C10.143 8.705 10.773 8.437 11.326 8.661C11.879 8.884 12.146 9.514 11.922 10.067Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M19 14.7C19 15.308 18.508 15.8 17.9 15.8C17.292 15.8 16.8 15.308 16.8 14.7C16.8 14.092 17.292 13.6 17.9 13.6C18.508 13.6 19 14.092 19 14.7Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M20.7 18.1C20.7 19.646 19.67 20.9 18.4 20.9C17.13 20.9 16.1 19.646 16.1 18.1C16.1 16.554 17.13 15.3 18.4 15.3C19.67 15.3 20.7 16.554 20.7 18.1Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M16 17.3L14.7 17.3M16.1 19.6L15 20.4M20.8 17.3L22.1 17.3M20.7 19.6L21.8 20.4\"/>"
         case .pencil: return "<path d=\"M16.4 4C17.366 3.034 18.934 3.034 19.9 4C20.866 4.966 20.866 6.534 19.9 7.5L8 19.4L3.4 20.6L4.6 16Z\"/><path d=\"M14.4 6L17.9 9.5\"/>"
-        case .perch: return "<path d=\"M3.6 5.6C8.8 9.2 15.2 9.2 20.4 5.6\"/><path d=\"M4.25 5C4.25 5.801 3.601 6.45 2.8 6.45C1.999 6.45 1.35 5.801 1.35 5C1.35 4.199 1.999 3.55 2.8 3.55C3.601 3.55 4.25 4.199 4.25 5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M22.65 5C22.65 5.801 22.001 6.45 21.2 6.45C20.399 6.45 19.75 5.801 19.75 5C19.75 4.199 20.399 3.55 21.2 3.55C22.001 3.55 22.65 4.199 22.65 5Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M12 6.9L12 6.9C12.497 6.9 12.9 7.303 12.9 7.8L12.9 10.2C12.9 10.697 12.497 11.1 12 11.1L12 11.1C11.503 11.1 11.1 10.697 11.1 10.2L11.1 7.8C11.1 7.303 11.503 6.9 12 6.9Z\" fill=\"currentColor\" stroke=\"none\"/><path d=\"M8.5 10.5L15.5 10.5C16.605 10.5 17.5 11.395 17.5 12.5L17.5 19C17.5 20.105 16.605 21 15.5 21L8.5 21C7.395 21 6.5 20.105 6.5 19L6.5 12.5C6.5 11.395 7.395 10.5 8.5 10.5Z\"/>"
         case .play: return "<path d=\"M7.5 5.2L7.5 18.8C7.497 19.087 7.649 19.354 7.897 19.498C8.145 19.643 8.451 19.644 8.7 19.5L19.7 12.7C19.955 12.559 20.113 12.291 20.113 12C20.113 11.709 19.955 11.441 19.7 11.3L8.7 4.5C8.451 4.356 8.145 4.357 7.897 4.502C7.649 4.646 7.497 4.913 7.5 5.2Z\"/>"
         case .playFill: return "<path d=\"M7.5 5.2L7.5 18.8C7.497 19.087 7.649 19.354 7.897 19.498C8.145 19.643 8.451 19.644 8.7 19.5L19.7 12.7C19.955 12.559 20.113 12.291 20.113 12C20.113 11.709 19.955 11.441 19.7 11.3L8.7 4.5C8.451 4.356 8.145 4.357 7.897 4.502C7.649 4.646 7.497 4.913 7.5 5.2Z\" fill=\"currentColor\" stroke=\"none\"/>"
         case .plus: return "<path d=\"M12 5L12 19M5 12L19 12\"/>"
@@ -343,7 +331,6 @@ extension BlurtIcon {
         case .send: return "<path d=\"M20.5 3.5L3.6 9.6C3.381 9.695 3.24 9.911 3.24 10.15C3.24 10.389 3.381 10.605 3.6 10.7L10.5 13.5L13.3 20.4C13.395 20.619 13.611 20.76 13.85 20.76C14.089 20.76 14.305 20.619 14.4 20.4Z\"/><path d=\"M20.5 3.5L10.5 13.5\"/>"
         case .settings: return "<path d=\"M4 7L12.5 7M17.5 7L20 7M4 17L6.5 17M11.5 17L20 17\"/><path d=\"M17.5 7C17.5 8.381 16.381 9.5 15 9.5C13.619 9.5 12.5 8.381 12.5 7C12.5 5.619 13.619 4.5 15 4.5C16.381 4.5 17.5 5.619 17.5 7Z\"/><path d=\"M11.5 17C11.5 18.381 10.381 19.5 9 19.5C7.619 19.5 6.5 18.381 6.5 17C6.5 15.619 7.619 14.5 9 14.5C10.381 14.5 11.5 15.619 11.5 17Z\"/>"
         case .snap: return "<path d=\"M3.5 8.5L3.5 6.5C3.5 4.843 4.843 3.5 6.5 3.5L8.5 3.5M15.5 3.5L17.5 3.5C19.157 3.5 20.5 4.843 20.5 6.5L20.5 8.5M20.5 15.5L20.5 17.5C20.5 19.157 19.157 20.5 17.5 20.5L15.5 20.5M8.5 20.5L6.5 20.5C4.843 20.5 3.5 19.157 3.5 17.5L3.5 15.5\"/><path d=\"M15.2 12C15.2 13.767 13.767 15.2 12 15.2C10.233 15.2 8.8 13.767 8.8 12C8.8 10.233 10.233 8.8 12 8.8C13.767 8.8 15.2 10.233 15.2 12Z\"/>"
-        case .snapToPerch: return "<path d=\"M3.6 4.4C8.8 7.4 15.2 7.4 20.4 4.4\"/><path d=\"M12 17.6L12 9.6M9.4 12.2L12 9.6L14.6 12.2\"/><path d=\"M5 15.6L5 14C5 13.172 5.672 12.5 6.5 12.5L8 12.5M16 12.5L17.5 12.5C18.328 12.5 19 13.172 19 14L19 15.6M19 19L19 20.5C19 21.328 18.328 22 17.5 22L16 22M8 22L6.5 22C5.672 22 5 21.328 5 20.5L5 19\"/>"
         case .spark: return "<path d=\"M10.5 5C11.1 9.6 12.4 10.9 17 11.5C12.4 12.1 11.1 13.4 10.5 18C9.9 13.4 8.6 12.1 4 11.5C8.6 10.9 9.9 9.6 10.5 5Z\"/><path d=\"M18.5 2.8L18.5 6.8M16.5 4.8L20.5 4.8\"/>"
         case .stop: return "<path d=\"M8.5 5.5L15.5 5.5C17.157 5.5 18.5 6.843 18.5 8.5L18.5 15.5C18.5 17.157 17.157 18.5 15.5 18.5L8.5 18.5C6.843 18.5 5.5 17.157 5.5 15.5L5.5 8.5C5.5 6.843 6.843 5.5 8.5 5.5Z\"/>"
         case .stopFill: return "<path d=\"M8 5L16 5C17.657 5 19 6.343 19 8L19 16C19 17.657 17.657 19 16 19L8 19C6.343 19 5 17.657 5 16L5 8C5 6.343 6.343 5 8 5Z\" fill=\"currentColor\" stroke=\"none\"/>"
@@ -547,17 +534,6 @@ extension BlurtIcon {
                 BlurtIconLayer(.fill) { p in
                     p.m(13.8, 10.8); p.c(13.8, 11.463, 13.263, 12, 12.6, 12); p.c(11.937, 12, 11.4, 11.463, 11.4, 10.8);
                     p.c(11.4, 10.137, 11.937, 9.6, 12.6, 9.6); p.c(13.263, 9.6, 13.8, 10.137, 13.8, 10.8); p.z()
-                },
-            ]
-        case .claw:
-            return [
-                BlurtIconLayer(.stroke) { p in
-                    p.m(10.8, 13.6); p.l(5.4, 7.4); p.m(12, 12.8); p.l(12, 3.2); p.m(13.2, 13.6); p.l(18.6, 7.4); p.m(12, 18.6);
-                    p.l(12, 21.4)
-                },
-                BlurtIconLayer(.fill) { p in
-                    p.m(14.9, 15.6); p.c(14.9, 17.257, 13.602, 18.6, 12, 18.6); p.c(10.398, 18.6, 9.1, 17.257, 9.1, 15.6);
-                    p.c(9.1, 13.943, 10.398, 12.6, 12, 12.6); p.c(13.602, 12.6, 14.9, 13.943, 14.9, 15.6); p.z()
                 },
             ]
         case .code:
@@ -902,22 +878,6 @@ extension BlurtIcon {
                     p.c(17, 11.172, 17.672, 10.5, 18.5, 10.5); p.c(19.328, 10.5, 20, 11.172, 20, 12); p.z()
                 },
             ]
-        case .nest:
-            return [
-                BlurtIconLayer(.stroke) { p in
-                    p.m(6.8, 12.8); p.c(6.8, 9.4, 8.1, 6.8, 9.8, 6.8); p.c(11.5, 6.8, 12.8, 9.4, 12.8, 12.8)
-                },
-                BlurtIconLayer(.stroke) { p in
-                    p.m(12.3, 8.4); p.c(12.8, 6.4, 13.7, 5.3, 14.9, 5.3); p.c(16.7, 5.3, 17.9, 8.2, 17.9, 12.5)
-                },
-                BlurtIconLayer(.stroke) { p in
-                    p.m(2.8, 11.2); p.c(3.6, 16.9, 7.2, 20, 12, 20); p.c(16.8, 20, 20.4, 16.9, 21.2, 11.2);
-                    p.c(15.6, 13.8, 8.4, 13.8, 2.8, 11.2); p.z()
-                },
-                BlurtIconLayer(.stroke) { p in
-                    p.m(5.6, 16.6); p.c(9.7, 18, 14.3, 18, 18.4, 16.6); p.m(8.6, 14.2); p.l(10.2, 19.6); p.m(15.4, 14.2); p.l(13.8, 19.6)
-                },
-            ]
         case .pause:
             return [
                 BlurtIconLayer(.stroke) { p in
@@ -983,30 +943,6 @@ extension BlurtIcon {
                 },
                 BlurtIconLayer(.stroke) { p in
                     p.m(14.4, 6); p.l(17.9, 9.5)
-                },
-            ]
-        case .perch:
-            return [
-                BlurtIconLayer(.stroke) { p in
-                    p.m(3.6, 5.6); p.c(8.8, 9.2, 15.2, 9.2, 20.4, 5.6)
-                },
-                BlurtIconLayer(.fill) { p in
-                    p.m(4.25, 5); p.c(4.25, 5.801, 3.601, 6.45, 2.8, 6.45); p.c(1.999, 6.45, 1.35, 5.801, 1.35, 5);
-                    p.c(1.35, 4.199, 1.999, 3.55, 2.8, 3.55); p.c(3.601, 3.55, 4.25, 4.199, 4.25, 5); p.z()
-                },
-                BlurtIconLayer(.fill) { p in
-                    p.m(22.65, 5); p.c(22.65, 5.801, 22.001, 6.45, 21.2, 6.45); p.c(20.399, 6.45, 19.75, 5.801, 19.75, 5);
-                    p.c(19.75, 4.199, 20.399, 3.55, 21.2, 3.55); p.c(22.001, 3.55, 22.65, 4.199, 22.65, 5); p.z()
-                },
-                BlurtIconLayer(.fill) { p in
-                    p.m(12, 6.9); p.l(12, 6.9); p.c(12.497, 6.9, 12.9, 7.303, 12.9, 7.8); p.l(12.9, 10.2);
-                    p.c(12.9, 10.697, 12.497, 11.1, 12, 11.1); p.l(12, 11.1); p.c(11.503, 11.1, 11.1, 10.697, 11.1, 10.2); p.l(11.1, 7.8);
-                    p.c(11.1, 7.303, 11.503, 6.9, 12, 6.9); p.z()
-                },
-                BlurtIconLayer(.stroke) { p in
-                    p.m(8.5, 10.5); p.l(15.5, 10.5); p.c(16.605, 10.5, 17.5, 11.395, 17.5, 12.5); p.l(17.5, 19);
-                    p.c(17.5, 20.105, 16.605, 21, 15.5, 21); p.l(8.5, 21); p.c(7.395, 21, 6.5, 20.105, 6.5, 19); p.l(6.5, 12.5);
-                    p.c(6.5, 11.395, 7.395, 10.5, 8.5, 10.5); p.z()
                 },
             ]
         case .play:
@@ -1127,21 +1063,6 @@ extension BlurtIcon {
                 BlurtIconLayer(.stroke) { p in
                     p.m(15.2, 12); p.c(15.2, 13.767, 13.767, 15.2, 12, 15.2); p.c(10.233, 15.2, 8.8, 13.767, 8.8, 12);
                     p.c(8.8, 10.233, 10.233, 8.8, 12, 8.8); p.c(13.767, 8.8, 15.2, 10.233, 15.2, 12); p.z()
-                },
-            ]
-        case .snapToPerch:
-            return [
-                BlurtIconLayer(.stroke) { p in
-                    p.m(3.6, 4.4); p.c(8.8, 7.4, 15.2, 7.4, 20.4, 4.4)
-                },
-                BlurtIconLayer(.stroke) { p in
-                    p.m(12, 17.6); p.l(12, 9.6); p.m(9.4, 12.2); p.l(12, 9.6); p.l(14.6, 12.2)
-                },
-                BlurtIconLayer(.stroke) { p in
-                    p.m(5, 15.6); p.l(5, 14); p.c(5, 13.172, 5.672, 12.5, 6.5, 12.5); p.l(8, 12.5); p.m(16, 12.5); p.l(17.5, 12.5);
-                    p.c(18.328, 12.5, 19, 13.172, 19, 14); p.l(19, 15.6); p.m(19, 19); p.l(19, 20.5);
-                    p.c(19, 21.328, 18.328, 22, 17.5, 22); p.l(16, 22); p.m(8, 22); p.l(6.5, 22); p.c(5.672, 22, 5, 21.328, 5, 20.5);
-                    p.l(5, 19)
                 },
             ]
         case .spark:

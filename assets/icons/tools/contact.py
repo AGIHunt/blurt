@@ -1,5 +1,4 @@
-"""Contact sheet: every icon at 16 / 24 / 48 px (rendered at 2×, as on a Retina screen) on light and dark, plus the
-kind eggs. Dev tool — needs rsvg-convert and Pillow:
+"""Contact sheet: every icon at 16 / 24 / 48 px (rendered at 2×, as on a Retina screen) on light and dark. Dev tool — needs rsvg-convert and Pillow:
 
     uv run -q --with pillow python assets/icons/tools/contact.py OUT.png [--scale 2] [--only a,b] [--big 160]
 
@@ -41,8 +40,7 @@ def sheet(icons, out: Path, scale: int):
     sizes = (16, 24, 48)
     cell_w, cell_h = 150 * scale, 92 * scale
     cols = 6
-    eggs = iconlib.egg_svgs()
-    rows = (len(icons) + cols - 1) // cols + 1
+    rows = (len(icons) + cols - 1) // cols
     W, H = cols * cell_w, rows * cell_h + 40 * scale
     halves = []
     for bg, fg, sub in (LIGHT, DARK):
@@ -60,16 +58,6 @@ def sheet(icons, out: Path, scale: int):
                 x += (s + 12) * scale
             d.text((cx + 12 * scale, cy + 62 * scale), ic.name, fill=fg, font=f)
             d.text((cx + 12 * scale, cy + 76 * scale), ic.group, fill=sub, font=font(9 * scale))
-        cy = ((len(icons) + cols - 1) // cols) * cell_h + 40 * scale
-        x = 12 * scale
-        for k, svg in eggs.items():
-            svg = svg.replace("currentColor", "#cfe3b0")
-            for s in sizes:
-                g = render(svg, s * scale)
-                im.alpha_composite(g, (x, cy + (56 - s) * scale))
-                x += (s + 8) * scale
-            d.text((x - 3 * (8 * scale) - 88 * scale, cy + 62 * scale), f"egg-{k}", fill=fg, font=f)
-            x += 20 * scale
         halves.append(im)
     full = Image.new("RGBA", (W * 2, H))
     full.paste(halves[0], (0, 0))

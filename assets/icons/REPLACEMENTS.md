@@ -18,22 +18,15 @@ Every occurrence is replaced. WP4, WP6 and WP7 had finished, so I edited their f
 | App/AppDelegate.swift · "Process with X" | `  ✗ why` | `attributedTitle`: name + `BlurtIcon.x.label(why, …, iconColor: .systemRed, preferSymbol: true)` |
 | App/AgentHub.swift · agent rows | `var mark: String` (✓ ✗ …) | `var markIcon: BlurtIcon?` (.check green / .x red / nil = "…"), drawn as attachments |
 | App/HotkeySettings.swift · conflict note | `"⚠︎ " + text` | `BlurtIcon.warning.label(text, …, color: .systemOrange, preferSymbol: true)` |
-| App/ReviewWindow.swift · load-failed page | `<div style="font-size:34px">🐔</div>` | `BlurtIcon.chicken.svg(size: 34)` (inline SVG, currentColor) |
 | App/Support.swift · `pill()` | no icon parameter | `pill(…, icon: BlurtIcon?)`; `pillIconWidth(font)` gives the extra width |
 | Capture/Picker.swift · snap hint | `📸 拖拽框选…` | `pill(hint, …, icon: .snap)` |
 | Capture/NoteBubble.swift · status | `"● 0:04 在听…"`, `"✓ 已记下"` | `recLabel()` = `BlurtIcon.recordFill.label(…, iconColor: .systemRed)`; `BlurtIcon.check.label("已记下", color: .systemGreen, preferSymbol: true)` |
-| Capture/Perch.swift · 整理 button | `🐔 整理 N 张` | `processIcon` (= `BlurtIcon.chicken.makeLayer(size: 15, color: white)`) placed before `整理 N 张` |
-| Capture/Perch.swift · card badge | CATextLayer `🎙` / `✎` | CALayer `contents = Perch.badgeImage([.mic, .ink], color: accent)` |
-| Capture/Perch.swift · voice-only caption | `🎙 语音备注` | `语音备注` (the mic badge shows) |
-| Capture/Perch.swift · copied capsule | `✓ 已复制` | em space + `BlurtIcon.check.makeLayer(size: 11)` sublayer |
-| Capture/Perch.swift · hatched label | `孵出来了 🐣` | `孵出来了` (the eggs in the nest hatch) |
-| Capture/Perch.swift · note-tip play | CATextLayer `▶` | `BlurtIcon.playFill.makeLayer(size: 11)` sublayer |
 | Settings/Icons.swift (WP6) | `.bug` = drawBug, `.chicken` = PeckArt | `UIIcon.brand` → `BlurtIcon.bug / .chicken / .peck` (new `.peck`); `brandImage` (SwiftUI) and `brandNSImage` (AppKit) |
 | System/Peck.swift · peck card head | SF `checkmark.circle.fill` | `brandNSImage(.peck, size: 16)`, tinted `.systemGreen` |
 | apps/desktop tray (WP7) | placeholder `tray.svg` (hatching egg) + `scripts/tray_icons.swift` | the `blurt` glyph; `build.py` writes `icons/tray.svg`, `tray-black.png` and `tray-white.png` (64 px) |
 | web/apps/desktop/src/icons.tsx (WP7) | local path set | wraps `@blurt/icons`, keeping the app's names (record → record-fill, items → list, sessions → film, issue → bug, idea → spark, chick → hatched, fixing → wand, fixed → peck, back → arrow-left) |
 | web/apps/overlays | `🐔 整理 N 张`, `×`, inline SVGs | `iconSvg('chicken')` + label, `iconSvg('x')`, HUD buttons `pause-fill / play-fill / snap / stop-fill / x` |
-| web/packages/review | local stand-in `Icon.tsx` and `icons.tsx` | `export { Icon, … } from "@blurt/icons"` and `export { Egg, EggSprite } from "@blurt/icons"` |
+| web/packages/review | local stand-in `Icon.tsx` and `icons.tsx` | `export { Icon, … } from "@blurt/icons"` |
 | scripts/tk_recorder.py | `● ⏸ ▶ 📸 ↺ ■` | PNG glyphs through `tk_icon(widget, name)` (pause-fill, play-fill, snap, restart, stop-fill, record-fill); the recording light is a Canvas oval |
 
 ### WP5 (MainWindow/**, WebHost/**, BlurtCore/Index/**)
@@ -41,7 +34,8 @@ Every occurrence is replaced. WP4, WP6 and WP7 had finished, so I edited their f
 I scanned WP5's code after merging it (71e8340) and found nothing to replace. `MainWindow/BrandIcons.swift` already
 routes brand concepts through `BlurtIcon`, and generic ones use SF Symbols. For new UI, follow the same pattern:
 
-- Kind eggs: `BlurtIcon.egg(EggKind(kind), size:)`. The cell code may keep `eggImage(…)`, which draws the same eggs.
+- Kinds: `KindStyle.icon(kind)` / `KindStyle.color(kind)` and the work state's `StatusRing.image(state, size:)` (K8). Eggs are
+  brand and motion only (the island's hatching egg, `eggImage(size:)` in Capture/Eggs.swift).
 - Session states: to process = `.egg`, hatching = `.hatch`, reviewed = `.hatched`. Fixed = `.peck`, fixing = `.wand` (SF `wand.and.stars`).
 - Never put an emoji or a ✓ / ✗ / ● glyph into a title. Use `icon.label(text, font:, color:)` for NSTextField or
   NSMenuItem.attributedTitle, and `icon.makeLayer(…)` next to a CATextLayer, which can't draw attachments.
@@ -58,19 +52,18 @@ BlurtIcon.snap.menuImage                              // NSMenuItem.image
 BlurtIcon.chicken.label("整理 3 张", font: f, color: .white)          // NSAttributedString: icon + text
 BlurtIcon.x.attributed(font: f, color: .systemRed, preferSymbol: true) // icon only, baseline-aligned
 BlurtIcon.mic.makeLayer(size: 12, color: cg)          // CALayer for layer-built UIs; .cgImage(size:scale:color:)
-BlurtIcon.egg(.idea, size: 14)                        // full-colour kind eggs (drawEgg)
 BlurtIcon.chicken.swiftUIImage(size: 22)              // SwiftUI template Image
 BlurtIcon.chicken.svg(size: 34)                       // inline SVG for HTML the app writes itself
 BlurtIcon(named: "close")                             // names and aliases, the same table as on the web
 ```
 
-**Web** (`@blurt/icons`, `workspace:*`): `import { Icon, Egg, EggSprite, type IconName } from "@blurt/icons"`, then
+**Web** (`@blurt/icons`, `workspace:*`): `import { Icon, type IconName } from "@blurt/icons"`, then
 `<Icon name="chicken" size={16} className="…" title="…"/>`. It always carries the class `ico`. Pages without React use
-`import { iconSvg, useIconSvg, SPRITE, eggSvg, EGG_SPRITE } from "@blurt/icons/core"`. Single-file pages can inline
-`web/packages/icons/sprite.svg`, which holds `<symbol id="bi-NAME">` plus `egg-KIND`.
+`import { iconSvg, useIconSvg, SPRITE } from "@blurt/icons/core"`. Single-file pages can inline
+`web/packages/icons/sprite.svg`, which holds `<symbol id="bi-NAME">`.
 
 **Tk**: `skills/blurt/assets/icons/NAME.png`, `@1.5x` and `@2x` (light `#f4f4f5` glyphs for the dark bar), loaded with
-`tk_icon(widget, name)`. Kind eggs are `egg-KIND.png`.
+`tk_icon(widget, name)`.
 
 ## SF Symbols on macOS (generic icons)
 
@@ -98,8 +91,8 @@ Source: `assets/icons/sf-symbols.json`. The first name this macOS has wins. With
 | trash | trash | git-commit | circle.and.line.horizontal → smallcircle.filled.circle |
 
 Brand icons are always our own vectors on every platform: chicken (= process / 整理), blurt (app mark, tray), egg,
-egg-fill, hatch (processing), hatched (done), nest, perch, claw (chicken-foot clip), peck (fixed), bug (issue), spark
-(idea), note, task, mic, waveform (listening), snap, snap-to-perch, agent, agent-run, mcp (plug), and ink (drawing on
+egg-fill, hatch (processing), hatched (done), peck (fixed), bug (issue), spark (idea), note, task, mic, waveform
+(listening), snap, agent, agent-run, mcp (plug), and ink (drawing on
 screen). The closest SF Symbols are listed under `nearest` in the JSON, for reference only.
 
 ## Regenerating

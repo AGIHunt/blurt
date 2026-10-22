@@ -1,4 +1,4 @@
-// Renders every BlurtIcon (Swift vectors) to PNGs per appearance + the kind eggs + a few SF symbols, offscreen.
+// Renders every BlurtIcon (Swift vectors) to PNGs per appearance + a few SF symbols, offscreen.
 import AppKit
 let out = URL(fileURLWithPath: CommandLine.arguments[1])
 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -17,7 +17,6 @@ for app in ["aqua", "darkAqua"] {
             png(i.image(size: 48, color: app == "aqua" ? .black : .white), px: 96, "\(app)-\(i.rawValue).png")
             png(i.image(size: 48, color: .labelColor), px: 96, "label-\(app)-\(i.rawValue).png")
         }
-        for k in EggKind.allCases { png(BlurtIcon.egg(k, size: 48, seed: 7), px: 96, "\(app)-zegg-\(k.rawValue).png") }
         for i in [BlurtIcon.check, .pause, .search, .trash, .warning, .x, .chicken] {
             png(i.symbolImage(pointSize: 36), px: 96, "\(app)-sf-\(i.rawValue).png")
         }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor) + the kind eggs, generated from assets/icons/*.svg: <Icon name/> and <Egg kind/> for React, iconSvg()/eggSvg()/SPRITE for plain pages.",
+  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor), generated from assets/icons/*.svg: <Icon name/> for React, iconSvg()/SPRITE for plain pages.",
   "exports": {
     ".": "./src/index.tsx",
     "./core": "./src/core.ts",

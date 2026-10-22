@@ -2,15 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { ALIASES, Egg, EggSprite, ICON_NAMES, ICONS, Icon, SPRITE, eggSvg, iconSvg, resolveIcon, useIconSvg } from "../src";
+import { ALIASES, ICON_NAMES, ICONS, Icon, SPRITE, iconSvg, resolveIcon, useIconSvg } from "../src";
 
 // Names the review canvas (web/packages/review) uses.
 const REVIEW = ["check", "x", "chevron-up", "chevron-down", "download", "folder", "eye", "wand", "code", "copy", "moon",
   "keyboard", "languages", "play", "film", "video", "help-circle", "quote", "merge", "undo", "external-link", "pencil",
   "search", "git-commit"];
 // Brand glyphs the apps use in place of emoji.
-const BRAND = ["chicken", "blurt", "egg", "egg-fill", "hatch", "hatched", "nest", "perch", "claw", "peck", "bug", "spark",
-  "document", "checklist", "lightbulb", "tag", "mic", "waveform", "snap", "snap-to-perch", "agent", "agent-run", "mcp", "ink"];
+const BRAND = ["chicken", "blurt", "egg", "egg-fill", "hatch", "hatched", "peck", "bug", "spark",
+  "document", "checklist", "lightbulb", "tag", "mic", "waveform", "snap", "agent", "agent-run", "mcp", "ink"];
 
 it("has every name the review canvas and the apps use", () => {
   for (const n of [...REVIEW, ...BRAND]) expect(ICON_NAMES).toContain(n);
@@ -55,15 +55,7 @@ it("string helpers", () => {
   expect(iconSvg("chicken", { size: 14, title: "Process" })).toMatch(/^<svg class="ico" width="14" height="14" viewBox="0 0 24 24".*<title>Process<\/title><path /);
   expect(useIconSvg("pen")).toContain('href="#bi-pencil"');
   for (const n of ICON_NAMES) expect(SPRITE).toContain(`<symbol id="bi-${n}"`);
-  for (const k of ["issue", "idea", "note", "task", "custom"]) expect(SPRITE).toContain(`<symbol id="egg-${k}"`);
-});
-
-it("eggs: known kinds use their symbol, custom lenses get the shared pastel hue", () => {
-  expect(eggSvg("idea")).toContain('href="#egg-idea"');
-  const c = renderToStaticMarkup(<Egg kind="perf" />);
-  expect(c).toContain('href="#egg-custom"');
-  expect(c).toMatch(/color:hsl\(\d+ 62% 80%\)/);
-  expect(renderToStaticMarkup(<EggSprite />)).toContain('id="eg-idea"');
+  expect(SPRITE).not.toContain('id="egg-');
 });
 
 it("sprite.svg is the generated sprite (kept in sync by build.py)", () => {

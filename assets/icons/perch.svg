@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
-  <title>Perch — a rope between two pegs, a shot clipped to it</title>
-  <path d="M3.6 5.6c5.2 3.6 11.6 3.6 16.8 0"/>
-  <circle cx="2.8" cy="5" r="1.45" fill="currentColor" stroke="none"/>
-  <circle cx="21.2" cy="5" r="1.45" fill="currentColor" stroke="none"/>
-  <rect x="11.1" y="6.9" width="1.8" height="4.2" rx=".9" fill="currentColor" stroke="none"/>
-  <rect x="6.5" y="10.5" width="11" height="10.5" rx="2"/>
-</svg>

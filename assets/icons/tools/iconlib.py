@@ -385,11 +385,3 @@ def inner_markup(icon: Icon, color: str = "currentColor") -> str:
             parts.append(f'<path d="{L.d}"{op}/>')
     return "".join(parts)
 
-
-# Kind eggs: full-colour, 16×16 (the shapes the review page, the site and Eggs.swift share). Kept as-is in
-# assets/icons/eggs/*.svg; the web package ships them as one sprite, Tk gets PNGs, Swift draws them with drawEgg().
-EGG_KINDS = ("issue", "idea", "note", "task", "custom")
-
-
-def egg_svgs() -> dict[str, str]:
-    return {k: (ICONS_DIR / "eggs" / f"egg-{k}.svg").read_text() for k in EGG_KINDS}

@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><title>Note egg — white</title>
-<defs><radialGradient id="eg-gloss-note" cx=".34" cy=".26" r=".62"><stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset=".45" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient><radialGradient id="eg-note" cx=".4" cy=".32" r=".82"><stop offset="0" stop-color="#fff"/><stop offset=".72" stop-color="#f2efe9"/><stop offset="1" stop-color="#d6d0c4"/></radialGradient></defs>
-<path d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z" fill="url(#eg-note)" stroke="#6f695e" stroke-opacity=".75" stroke-width=".75"/>
-<path d="M8 1.1C5.15 1.1 2.95 5.25 2.95 9.2c0 3.3 2.2 5.7 5.05 5.7s5.05-2.4 5.05-5.7C13.05 5.25 10.85 1.1 8 1.1Z" fill="url(#eg-gloss-note)"/>
-</svg>

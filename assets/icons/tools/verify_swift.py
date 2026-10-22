@@ -1,6 +1,6 @@
 """Checks that the Swift icons (BlurtIcon.swift + the generated BlurtIconPaths.swift) draw the same pixels as the SVGs.
 
-Compiles BlurtIcon*.swift + Capture/Eggs.swift with a tiny offscreen driver (tools/swiftcheck/), renders every icon at
+Compiles BlurtIcon*.swift with a tiny offscreen driver (tools/swiftcheck/), renders every icon at
 48 pt @2x in light and dark appearance, renders the normalized SVGs with rsvg-convert, and writes a side-by-side sheet
 plus a per-icon mismatch score. Dev tool (macOS, swiftc, rsvg-convert, Pillow):
 
@@ -27,7 +27,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     exe = out / "render"
     subprocess.run(["swiftc", "-O", "-o", str(exe), str(SRC / "Icons/BlurtIcon.swift"), str(SRC / "Icons/BlurtIconPaths.swift"),
-                    str(SRC / "Capture/Eggs.swift"), str(HERE / "swiftcheck/stub.swift"), str(HERE / "swiftcheck/main.swift")],
+                    str(HERE / "swiftcheck/stub.swift"), str(HERE / "swiftcheck/main.swift")],
                    check=True)
     pngs = out / "swift"
     subprocess.run([str(exe), str(pngs)], check=True)
