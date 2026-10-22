@@ -86,6 +86,7 @@
 "dispatch.worktree.toggle" = "在单独的分支上做";
 "dispatch.worktree.on" = "在项目旁边建一个 git worktree。做完后由你选择合并、开 PR 或丢弃。";
 "dispatch.worktree.on.branch" = "在分支 %@ 上做，worktree 放在项目旁边。做完后由你选择合并、开 PR 或丢弃。";
+"dispatch.worktree.on.parallel" = "每条各在自己的分支上做，worktree 放在项目旁边。哪条做完了，由你选择合并、开 PR 或丢弃。";
 "dispatch.worktree.off" = "直接改 %@ 里的文件，agent 不会提交。";
 "dispatch.project" = "项目";
 "dispatch.pick.empty" = "这个项目里没有待处理的条目。";
