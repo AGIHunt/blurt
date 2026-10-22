@@ -69,10 +69,11 @@
 
 "settings.export.ask_each_time" = "Ask each time";
 "settings.export.blurt_config_json_shared" = "For %@ (.blurt/config.json), shared with your team.";
+"settings.export.checking" = "checking…";
 "settings.export.choose" = "Choose";
 "settings.export.choose_2" = "Choose…";
 "settings.export.default_destination" = "Default destination";
-"settings.export.default_workspace_blurt" = "For the default workspace ~/Blurt.";
+"settings.export.default_workspace_blurt" = "For Unassigned items. Each project keeps its own choice in its .blurt/config.json.";
 "settings.export.exporters" = "Exporters";
 "settings.export.exports_run_from_review" = "Exports run from the review page or your agent; re-exporting never creates duplicates.";
 "settings.export.feishu_app_id_set" = "FEISHU_APP_ID is set";
@@ -116,11 +117,12 @@
 "settings.kit.agents" = "Agents";
 "settings.kit.allow" = "Allow…";
 "settings.kit.allowed" = "Allowed";
-"settings.kit.conflicts_are_checked_three" = "Conflicts are checked on three levels: two Blurt actions on the same keys, a macOS system shortcut, and the system refusing the registration (another app or another Blurt holds it). Changes apply at once and are saved to ~/.blurt/config.json.";
+"settings.kit.conflicts_are_checked_three" = "Blurt tells you when a shortcut clashes with another Blurt action, a macOS shortcut or another app. Changes apply at once.";
 "settings.kit.copy" = "Copy";
 "settings.kit.export" = "Export";
 "settings.kit.general" = "General";
-"settings.kit.hold_pen_reads_modifier" = "For the hold-⌃ pen (reads modifier keys globally)";
+"settings.kit.hold_pen_reads_modifier" = "Pastes dictated text, and lets you hold ⌃ to draw";
+"settings.kit.input_monitoring" = "Input Monitoring";
 "settings.kit.microphone" = "Microphone";
 "settings.kit.needed_record_snap" = "Needed to record and to snap";
 "settings.kit.not_allowed" = "Not allowed";
@@ -150,7 +152,8 @@
 "settings.privacy.macos_applies_screen_recording" = "macOS applies a Screen Recording change after Blurt restarts.";
 "settings.privacy.move_trash" = "Move to Trash";
 "settings.privacy.move_trash_2" = "Move to the Trash?";
-"settings.privacy.permissions_live" = "Permissions (live)";
+"settings.privacy.no_recordings" = "No recordings or screenshots yet";
+"settings.privacy.permissions_live" = "Permissions";
 "settings.privacy.prompts" = "Prompts";
 "settings.privacy.raw_live_caption_audio" = "Raw live-caption audio";
 "settings.privacy.recordings_screenshots" = "Recordings and screenshots";

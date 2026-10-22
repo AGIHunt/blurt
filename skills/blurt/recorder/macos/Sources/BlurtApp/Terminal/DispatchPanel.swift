@@ -261,7 +261,9 @@ struct DispatchView: View {
                         .disabled(m.mode == .parallel)
                     Group {
                         if m.worktreeOn {
-                            if let b = m.branchPreview { Text(TL("dispatch.worktree.on.branch", b)) } else { Text(TL("dispatch.worktree.on")) }
+                            if m.mode == .parallel && m.count > 1 {
+                                Text(TL("dispatch.worktree.on.parallel"))      // a branch each: naming the first one misleads
+                            } else if let b = m.branchPreview { Text(TL("dispatch.worktree.on.branch", b)) } else { Text(TL("dispatch.worktree.on")) }
                         } else {
                             Text(TL("dispatch.worktree.off", m.projectName))
                         }

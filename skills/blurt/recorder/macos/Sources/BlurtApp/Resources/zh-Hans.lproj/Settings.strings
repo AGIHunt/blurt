@@ -7,7 +7,7 @@
 
 "onboarding.blurt_records_area_you" = "口喷鸡录的是你选的区域，录完的文件只存在你的 Mac 上。状态会实时更新。";
 
-"onboarding.coding_agent" = "Coding agent";
+"onboarding.coding_agent" = "写代码的 agent";
 
 "onboarding.dependencies_ready_index_built" = "依赖已就绪，索引已建好";
 
@@ -33,7 +33,7 @@
 
 "onboarding.next" = "下一步";
 
-"onboarding.no_claude_code_codex" = "没找到 Claude Code、Codex、Kimi Code 等。装一个后在 设置 → Agent 里接入。";
+"onboarding.no_claude_code_codex" = "没找到 Claude Code、Codex、Kimi Code 等。装好一个后，在「设置 → Agent」里接入。";
 
 "onboarding.permissions" = "权限";
 
@@ -63,16 +63,17 @@
 
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
 
-"onboarding.you_can_switch_models" = "也可以以后在 设置 → 语音 里换模型或用云端识别。";
+"onboarding.you_can_switch_models" = "以后也可以在「设置 → 语音」里换模型，或者改用云端识别。";
 
 "onboarding.your_ok_blurt_runs" = "经你同意后，口喷鸡会用 uv 官方安装脚本把它装到 ~/.blurt/bin（不改你的 shell 配置）：";
 
 "settings.export.ask_each_time" = "每次问我";
 "settings.export.blurt_config_json_shared" = "这是 %@ 的设置（.blurt/config.json），团队共用。";
+"settings.export.checking" = "正在检查…";
 "settings.export.choose" = "选择";
 "settings.export.choose_2" = "选择…";
 "settings.export.default_destination" = "默认去向";
-"settings.export.default_workspace_blurt" = "这是默认工作区 ~/Blurt 的设置。";
+"settings.export.default_workspace_blurt" = "这是「未归类」条目的设置。每个项目的设置在它自己的 .blurt/config.json 里。";
 "settings.export.exporters" = "导出工具";
 "settings.export.exports_run_from_review" = "导出由 agent 或审核页完成；重复导出不会建重复的记录。";
 "settings.export.feishu_app_id_set" = "FEISHU_APP_ID 已设置";
@@ -116,11 +117,12 @@
 "settings.kit.agents" = "Agent";
 "settings.kit.allow" = "允许…";
 "settings.kit.allowed" = "已允许";
-"settings.kit.conflicts_are_checked_three" = "冲突分三层检查：口喷鸡自己的快捷键重复、和 macOS 系统快捷键冲突、向系统注册失败（被别的 App 或另一个口喷鸡占用）。改动立即生效，并写进 ~/.blurt/config.json。";
+"settings.kit.conflicts_are_checked_three" = "快捷键和口喷鸡自己的其它快捷键、macOS 系统快捷键或别的 App 冲突时，这里会提示。改动立即生效。";
 "settings.kit.copy" = "拷贝";
 "settings.kit.export" = "导出";
 "settings.kit.general" = "通用";
-"settings.kit.hold_pen_reads_modifier" = "按住 ⌃ 画图时要用（需要在全局读取修饰键）";
+"settings.kit.hold_pen_reads_modifier" = "听写时把字粘贴进去；按住 ⌃ 画图也要用";
+"settings.kit.input_monitoring" = "输入监控";
 "settings.kit.microphone" = "麦克风";
 "settings.kit.needed_record_snap" = "录屏和截图都需要";
 "settings.kit.not_allowed" = "未允许";
@@ -150,7 +152,8 @@
 "settings.privacy.macos_applies_screen_recording" = "录屏权限改了之后，macOS 要重新打开口喷鸡才生效。";
 "settings.privacy.move_trash" = "移到废纸篓";
 "settings.privacy.move_trash_2" = "移到废纸篓？";
-"settings.privacy.permissions_live" = "权限（实时）";
+"settings.privacy.no_recordings" = "还没有录屏或截图";
+"settings.privacy.permissions_live" = "权限";
 "settings.privacy.prompts" = "提示词";
 "settings.privacy.raw_live_caption_audio" = "实时转写的原始音频";
 "settings.privacy.recordings_screenshots" = "录屏和截图";

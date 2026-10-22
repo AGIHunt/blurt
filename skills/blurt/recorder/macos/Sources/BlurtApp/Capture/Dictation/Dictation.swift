@@ -63,7 +63,9 @@ final class Dictation {
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: Dictation.retentionDays) }
         apply()
         refreshPolishModel()
-        if Dictation.enabled, !DictationKeys.allowed, Config.shared["app.dictation_prompted"] as? Bool != true {
+        // the setup assistant (first launch) asks for Input Monitoring itself: no toast on top of it — next launch, if still missing
+        let assistantShows = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
+        if Dictation.enabled, !DictationKeys.allowed, !assistantShows, Config.shared["app.dictation_prompted"] as? Bool != true {
             Config.shared.set("app.dictation_prompted", true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 island.toast(Loc.t("dictation.toast.needs_permission", table: "Dictation", Dictation.keyName),

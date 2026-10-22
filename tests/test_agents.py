@@ -113,6 +113,13 @@ def test_detect_matches_fake_clis(env):
     assert [r["id"] for r in fast["agents"]] == ["codex", "claude"] and fast["agents"][0]["version"] is None
 
 
+def test_detect_pick_follows_the_configured_order_not_ids(env):
+    # Settings → Agents asks for every id in registry order; the pick is still the configured order's first usable
+    (env["bh"] / "config.json").write_text(json.dumps({"record": {"agents": ["codex", "claude"]}}))
+    out = cli("detect", "--no-login", "--no-version", "--ids", "claude,codex,kimi")
+    assert [r["id"] for r in out["agents"]] == ["claude", "codex", "kimi"] and out["pick"] == "codex"
+
+
 def test_detect_ignores_agent_session_vars(env, monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_SIMPLE", "1")
     assert "CLAUDE_CODE_SIMPLE" not in agents.clean_env()

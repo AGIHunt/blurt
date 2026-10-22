@@ -109,6 +109,7 @@ struct GeneralPane: View {
                                 Text(p.key).font(.caption.monospaced()).foregroundStyle(.tertiary)
                             }
                             Text((p.path.path as NSString).abbreviatingWithTildeInPath).font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle).help(p.path.path)
                         }
                         Spacer()
                         Button { NSWorkspace.shared.open(p.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
@@ -153,16 +154,13 @@ struct GeneralPane: View {
                 Toggle(T("settings.general.system_audio"), isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
                 Toggle(T("settings.general.collect"), isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
                 Hint(T("settings.general.collect.hint"))
-                HStack {
-                    Spacer()
-                    Button(T("settings.general.assistant")) { Onboarding.shared.show() }
-                }
             } header: { Text(T("settings.general.recording")) }
 
             Section {
                 LabeledContent(T("settings.general.version"), value: Self.version)
                 HStack {
                     Button(T("settings.general.help")) { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
+                    Button(T("settings.general.assistant")) { Onboarding.shared.show() }
                     Spacer()
                     if Updater.shared.available {
                         Button(T("app.menu.updates")) { Updater.shared.checkForUpdates(nil) }.disabled(!Updater.shared.canCheck)

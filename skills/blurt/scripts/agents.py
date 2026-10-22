@@ -322,9 +322,11 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
         r["headless"] = is_headless(d)
         r["interactive"] = interactive_kind(d)
         rows.append(r)
+    # in the configured order, not the rows' (`ids` may list them in another order, e.g. Settings asks in registry order)
+    by_id = {r["id"]: r for r in rows}
     pick = None
     for want in ("ready", "configured", "unknown"):
-        pick = next((r["id"] for r in rows if r["state"] == want and r["headless"] and r["id"] in order), None)
+        pick = next((i for i in order if i in by_id and by_id[i]["state"] == want and by_id[i]["headless"]), None)
         if pick:
             break
     return {"order": order, "pick": pick, "agents": rows}

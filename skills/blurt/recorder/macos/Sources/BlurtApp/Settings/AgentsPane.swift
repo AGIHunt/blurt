@@ -36,8 +36,25 @@ final class AgentsModel: ObservableObject {
         async let doc = try? AgentSessions.shared.doctor()
         do {
             let d = try await Agents.shared.detectAll(login: login)
-            rows = d.agents
-            pick = d.pick
+            var fresh = d.agents
+            if !login {
+                // a quick re-read (after a reorder or a tick) can't tell who is logged in: keep what the last full
+                // check found, or every row turns into "unknown"
+                let known = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+                for i in fresh.indices {
+                    guard let old = known[fresh[i].id], old.installed == fresh[i].installed, old.state != "unknown" else { continue }
+                    fresh[i].state = old.state
+                    fresh[i].why = old.why
+                    fresh[i].fix = old.fix
+                    fresh[i].login = old.login
+                }
+            }
+            rows = fresh
+            // the first usable one in the shown order (the same rule as agents.py detect)
+            let order = d.order
+            pick = ["ready", "configured", "unknown"].lazy.compactMap { want in
+                order.first { id in fresh.contains { $0.id == id && $0.headless && $0.state == want } }
+            }.first ?? d.pick
             enabled = Set(Agents.shared.order ?? d.agents.filter(\.headless).map(\.id))
             if enabled.isEmpty { enabled = Set(d.order) }
             error = nil

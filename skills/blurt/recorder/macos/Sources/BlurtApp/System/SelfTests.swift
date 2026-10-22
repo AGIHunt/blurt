@@ -1,6 +1,6 @@
 // BLURT_TEST_COMMANDS=1 only: scripted checks for WP6, over a distributed notification like the shell's channel —
 //   dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "…"}; every answer is one JSON line on stdout.
-//   settings PANE | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
+//   settings PANE | settingsscroll top|bottom|N | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
 //   route URL                    parse a blurt:// URL (no action)         url URL   handle it like macOS would
 //   mainopen PATH[|PATH…]       open folders as projects (the Open panel's OK)
 //   mainstub                     a stand-in main window that reports reveal(uid:) / reveal(session:) (until WP5 lands)
@@ -40,6 +40,8 @@ enum SelfTests {
         func out(_ o: [String: Any]) { emit(["event": "wp6", "cmd": parts.first ?? ""].merging(o) { _, n in n }) }
         switch parts.first ?? "" {
         case "settings": SettingsController.shared.show(pane: arg.isEmpty ? nil : arg)
+        case "settingsscroll":          // settingsscroll top|bottom|POINTS: scroll the visible pane
+            out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
         case "onboarding": Onboarding.shared.show(step: Int(arg) ?? 0)
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
@@ -114,6 +116,22 @@ enum SelfTests {
                 if let a = AgentsModel.shared.rows.first(where: { $0.id == arg }) { await AgentsModel.shared.preview(a) }
                 out(["previewed": AgentsModel.shared.plan != nil, "env_home": Agents.shared.installEnvironment()["HOME"] ?? "",
                      "codex_home": Agents.shared.installEnvironment()["CODEX_HOME"] ?? ""])
+            }
+        case "agents":                  // agents toggle ID on|off | up ID | processing ID MODEL [EFFORT] | state: Settings → Agents
+            let a = arg.split(separator: " ").map(String.init)
+            Task { @MainActor in
+                let m = AgentsModel.shared
+                if m.rows.isEmpty { await m.load(login: false) }
+                switch a.first ?? "state" {
+                case "toggle" where a.count == 3: m.toggle(a[1], a[2] == "on")
+                case "up" where a.count == 2: m.moveUp(a[1])
+                case "processing" where a.count >= 3: m.setProcessing(a[1], model: a[2], effort: a.count > 3 ? a[3] : nil)
+                default: break
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)      // save() reloads
+                out(["shown": m.headless.map { "\($0.id)\(m.enabled.contains($0.id) ? "" : " (off)")" },
+                     "config": Config.shared["record.agents"] ?? NSNull(),
+                     "processing": Config.shared["record.agent_processing"] ?? NSNull(), "pick": m.pick ?? NSNull()])
             }
         case "install-apply":
             Task { @MainActor in
@@ -285,7 +303,8 @@ enum SelfTests {
             out(["ms": res])
         case "perms":
             let p = Permissions()
-            out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue])
+            out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue,
+                 "input_monitoring": p.inputMonitoring.rawValue])
         default: out(["error": "unknown command"])
         }
     }

@@ -16,11 +16,11 @@
 "app.agent.not_logged" = "not logged in";
 "app.agent.unfinished" = "%@ stopped before it finished (exit %ld)";
 
-"app.menu.after.keep" = "Just Keep the Video";
-"app.menu.after.organize" = "Organize into Items";
+"app.menu.after.keep" = "Just keep the video";
+"app.menu.after.organize" = "Organize into items";
 "app.menu.countdown" = "Countdown";
 "app.menu.countdown.none" = "None";
-"app.menu.countdown.seconds" = "%ld Seconds";
+"app.menu.countdown.seconds" = "%ld seconds";
 "app.menu.discard" = "Discard Recording";
 "app.menu.finish" = "Finish Recording";
 "app.menu.open" = "Open Blurt";
@@ -88,14 +88,14 @@
 "main.detail.none.detail" = "Pick an item on the left · J / K to move, Space to preview";
 "main.detail.parse_error" = "This item’s file can’t be read";
 
-"main.dispatch.concurrent" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.";
-"main.dispatch.concurrent.title" = "Use a worktree for this session?";
+"main.dispatch.concurrent" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a separate branch keeps them apart.";
+"main.dispatch.concurrent.title" = "Work on a separate branch this time?";
 "main.dispatch.failed" = "Couldn’t start the session";
 "main.dispatch.needs_project" = "Move these items to a project first";
 "main.dispatch.needs_project.detail" = "An agent needs the project’s folder to work in. Use Move to Project, then start the session.";
 "main.dispatch.one_project" = "Choose items from one project";
 "main.dispatch.one_project.detail" = "An agent session works in one project folder. Hand these off per project.";
-"main.dispatch.use_worktree" = "Use a Worktree";
+"main.dispatch.use_worktree" = "Use a Separate Branch";
 
 "main.empty.all_filed" = "Everything is filed";
 "main.empty.all_filed.detail" = "Captures without a project wait here until you pick one or auto-sort them.";

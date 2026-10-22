@@ -35,7 +35,7 @@ final class DictationSettings: ObservableObject {
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
     @Published var keepAudio = Dictation.keepAudio
-    @Published var inputMonitoring = DictationKeys.allowed
+    @Published var inputMonitoring = CGPreflightListenEventAccess()
     @Published var accessibility = AXIsProcessTrusted()
     @Published var tap = Dictation.shared.tapInstalled
     @Published var polish: PolishState?
@@ -44,6 +44,7 @@ final class DictationSettings: ObservableObject {
     @Published var historyCount = 0
     private var timer: Timer?
     private var procs: [String: Process] = [:]
+    private var cancelled = Set<String>()
 
     func start() {
         refresh()
@@ -54,7 +55,7 @@ final class DictationSettings: ObservableObject {
     func stop() { timer?.invalidate(); timer = nil }
 
     func refresh() {
-        let im = DictationKeys.allowed, ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
+        let im = CGPreflightListenEventAccess(), ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
         if im != inputMonitoring { inputMonitoring = im }
         if ax != accessibility { accessibility = ax }
         if t != tap { tap = t }
@@ -104,10 +105,14 @@ final class DictationSettings: ObservableObject {
     func install(_ m: PolishModel) {
         guard procs[m.id] == nil else { return }
         failed[m.id] = nil
+        cancelled.remove(m.id)
         download[m.id] = (0, m.sizeMB)
         var env: [String: String] = [:]
         if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
-        procs[m.id] = try? SkillCLI.shared.spawn("polish.py", ["setup", "--model", m.id, "--use"], env: env, onLine: { [weak self] line, _ in
+        // BLURT_TEST_POLISH_SETUP (test builds only): a script that stands in for polish.py and fakes the download
+        let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+            ? ProcessInfo.processInfo.environment["BLURT_TEST_POLISH_SETUP"] ?? "polish.py" : "polish.py"
+        procs[m.id] = try? SkillCLI.shared.spawn(script, ["setup", "--model", m.id, "--use"], env: env, onLine: { [weak self] line, _ in
             let t = line.trimmingCharacters(in: .whitespaces)
             if let r = t.range(of: #"^(\d+)/(\d+) MB"#, options: .regularExpression) {
                 let p = t[r].replacingOccurrences(of: " MB", with: "").split(separator: "/")
@@ -117,14 +122,19 @@ final class DictationSettings: ObservableObject {
             guard let self = self else { return }
             self.procs[m.id] = nil
             self.download[m.id] = nil
-            if st != 0 && st != 15 { self.failed[m.id] = true }
+            if st != 0 && !self.cancelled.contains(m.id) { self.failed[m.id] = true }
+            self.cancelled.remove(m.id)
             emit(["event": "polish_download", "model": m.id, "status": Int(st)])
             Dictation.shared.refreshPolishModel()
             Task { await self.loadModels() }
         })
         if procs[m.id] == nil { download[m.id] = nil; failed[m.id] = true }
     }
-    func cancel(_ m: PolishModel) { procs[m.id]?.terminate() }
+    func cancel(_ m: PolishModel) {
+        guard let p = procs[m.id] else { return }
+        cancelled.insert(m.id)
+        p.terminate()
+    }
 
     func clearHistory() {
         DictationHistory.shared.clear()
@@ -135,6 +145,9 @@ final class DictationSettings: ObservableObject {
 
 struct DictationPane: View {
     static let scrollRequest = Notification.Name("BlurtDictationPaneScroll")
+    /// tests: `dictation polish install ID | cancel ID | use ID | state` — the model rows' buttons, then a
+    /// "polish_settings" event with every row's state
+    static let polishRequest = Notification.Name("BlurtDictationPanePolish")
     @StateObject var m = DictationSettings()
     @State var confirmClear = false
 
@@ -216,6 +229,22 @@ struct DictationPane: View {
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
             if let id = n.object as? String { proxy.scrollTo(id, anchor: .top) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: DictationPane.polishRequest)) { n in
+            let a = (n.object as? String ?? "").split(separator: " ").map(String.init)
+            if a.count == 2, let model = m.polish?.models.first(where: { $0.id == a[1] }) {
+                switch a[0] {
+                case "install": m.install(model)
+                case "cancel": m.cancel(model)
+                case "use": m.choose(model)
+                default: break
+                }
+            }
+            emit(["event": "polish_settings", "selected": m.polish?.selected ?? NSNull(), "polish": m.polishOn,
+                  "models": (m.polish?.models ?? []).map { x -> String in
+                      let d = m.download[x.id].map { " \(Int($0.done))/\(Int($0.total))" } ?? ""
+                      return "\(x.id)\(x.installed ? " installed" : "")\(x.recommended ? " recommended" : "")\(d)\(m.failed[x.id] == true ? " failed" : "")"
+                  }])
+        }
         }
         .onAppear { m.start() }
         .onDisappear { m.stop() }
@@ -280,8 +309,16 @@ struct DictationPane: View {
                             .background(Capsule().fill(Color.accentColor.opacity(0.15))).foregroundStyle(Color.accentColor)
                     }
                 }
-                Text(T(model.family == "qwen" ? "dictation.polish.family.qwen" : "dictation.polish.family.gemma", byteString(Int64(model.sizeMB * 1_048_576))))
-                    .font(.caption).foregroundStyle(.secondary)
+                Group {
+                    if let d = m.download[model.id] {
+                        Text(T("dictation.polish.progress", byteString(Int64(d.done * 1_048_576)), byteString(Int64(max(d.total, model.sizeMB) * 1_048_576))))
+                            .monospacedDigit()
+                    } else {
+                        Text(T("dictation.polish.family.\(model.family == "qwen" ? "qwen" : "gemma")\(model.installed ? ".installed" : "")",
+                               byteString(Int64(model.sizeMB * 1_048_576))))
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             if let d = m.download[model.id] {

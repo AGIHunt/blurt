@@ -55,6 +55,12 @@ final class PrivacyModel: ObservableObject {
     @Published var keepLive = Retention.keepLiveAudio
     @Published var spotlight = Config.shared["spotlight"] as? Bool ?? true
 
+    func reload() {
+        localASR = Config.shared["privacy.local_asr"] as? Bool ?? false
+        keepLive = Retention.keepLiveAudio
+        spotlight = Config.shared["spotlight"] as? Bool ?? true
+    }
+
     func setLocal(_ on: Bool) {
         localASR = on
         Config.shared.set("privacy.local_asr", on ? true : nil)
@@ -94,7 +100,7 @@ struct PrivacyPane: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .onAppear { perms.start() }
+        .onAppear { m.reload(); perms.start() }
         .onDisappear { perms.stop() }
     }
 }
@@ -153,6 +159,7 @@ struct StoragePane: View {
     var body: some View {
         PaneFrame {
             Section {
+                if m.rows.isEmpty && !m.busy { Text(T("settings.privacy.no_recordings")).foregroundStyle(.secondary) }
                 ForEach(m.rows) { r in
                     row(r.name, detail: TP("settings.privacy.sessions", r.count ?? 0) + " · " + (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
                         Button { NSWorkspace.shared.open(r.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)

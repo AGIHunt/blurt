@@ -2,7 +2,7 @@
 
 /* Shared verbs */
 "agents.effort" = "Effort";
-"agents.effort.default" = "Effort: the CLI's setting";
+"agents.effort.default" = "Effort: the CLI’s setting";
 "agents.effort.high" = "High effort";
 "agents.effort.low" = "Low effort";
 "agents.effort.max" = "Maximum effort";
@@ -11,16 +11,16 @@
 "agents.processing" = "Model for organizing";
 "agents.processing.cheapest" = "Cheapest";
 "agents.processing.cheapest_named" = "Cheapest (%@)";
-"agents.processing.default" = "The CLI's setting";
-"agents.processing.default_named" = "The CLI's setting (%@)";
+"agents.processing.default" = "The CLI’s setting";
+"agents.processing.default_named" = "The CLI’s setting (%@)";
 "agents.processing.help" = "Used for organizing recordings and screenshots, auto-sort and AI fill-in. A small model at low effort is plenty and uses far fewer tokens.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";
 
 "dispatch.model" = "Model";
-"dispatch.model.default" = "Default (the CLI's setting)";
-"dispatch.model.default_named" = "Default (the CLI's setting: %@)";
+"dispatch.model.default" = "Default (the CLI’s setting)";
+"dispatch.model.default_named" = "Default (the CLI’s setting: %@)";
 "window.title" = "Sessions";
 "agent.you" = "You";
 "time.now" = "now";
@@ -86,6 +86,7 @@
 "dispatch.worktree.toggle" = "Work on a separate branch";
 "dispatch.worktree.on" = "A git worktree next to the project. When it’s done, you merge it, open a pull request or discard it.";
 "dispatch.worktree.on.branch" = "On branch %@, in a worktree next to the project. When it’s done, you merge it, open a pull request or discard it.";
+"dispatch.worktree.on.parallel" = "Each item gets its own branch, in a worktree next to the project. When one is done, you merge it, open a pull request or discard it.";
 "dispatch.worktree.off" = "Changes go straight into %@. The agent won’t commit.";
 "dispatch.project" = "Project";
 "dispatch.pick.empty" = "Nothing to do in this project.";
@@ -93,8 +94,8 @@
 "dispatch.start" = "Start Session";
 
 /* Dispatch warnings (sessions.py dispatch --dry-run) */
-"warning.concurrent_edit" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.";
-"warning.concurrent_edit.use_worktree" = "Use a worktree";
+"warning.concurrent_edit" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a separate branch keeps them apart.";
+"warning.concurrent_edit.use_worktree" = "Use a Separate Branch";
 "warning.concurrent_edit.continue" = "Continue";
 "warning.no_git" = "This folder isn’t a git repository, so the agents work in it directly.";
 "warning.no_tmux" = "tmux isn’t installed: the session runs inside Blurt and ends when you quit it.";

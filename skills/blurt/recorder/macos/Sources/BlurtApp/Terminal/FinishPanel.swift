@@ -143,13 +143,15 @@ struct FinishView: View {
             HStack {
                 Text(Loc.plural("finish.files", table: "Terminal", count: m.files.count)).font(.callout.weight(.medium))
                 Spacer()
-                Text("+\(m.totals.0)").foregroundStyle(AgentSessionStatus.turnDone.color)
-                Text("−\(m.totals.1)").foregroundStyle(AgentSessionStatus.error.color)
+                Group {
+                    Text("+\(m.totals.0)").foregroundStyle(AgentSessionStatus.turnDone.color)
+                    Text("−\(m.totals.1)").foregroundStyle(AgentSessionStatus.error.color)
+                }
+                .font(.system(size: 12, design: .monospaced))
                 if let p = m.patch {
-                    Button(TL("finish.open_patch")) { NSWorkspace.shared.open(p) }.buttonStyle(.link).padding(.leading, 6)
+                    Button(TL("finish.open_patch")) { NSWorkspace.shared.open(p) }.buttonStyle(.link).font(.callout).padding(.leading, 6)
                 }
             }
-            .font(.system(size: 12, design: .monospaced))
             .padding(.bottom, 8)
             if m.files.isEmpty {
                 Text(TL("finish.no_changes")).font(.callout).foregroundStyle(.secondary).padding(.vertical, 6)

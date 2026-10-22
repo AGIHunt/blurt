@@ -4,10 +4,10 @@
 /* Item kinds */
 "job.title.enrich" = "AI fill-in";
 "job.title.filed" = "Filed from your note";
-"job.usage.cli_default" = "the CLI's default model";
+"job.usage.cli_default" = "the CLI’s default model";
 "job.usage.none" = "No AI · 0 tokens";
 "job.usage.tokens" = "Used about %@ tokens";
-"job.usage.unknown" = "%@ didn't report its token use";
+"job.usage.unknown" = "%@ didn’t report its token use";
 "kind.issue" = "Issue";
 "kind.idea" = "Idea";
 "kind.note" = "Note";
