@@ -695,16 +695,24 @@ def sign_app(bundle: Path) -> None:
 
 
 def make_icns(dest: Path) -> None:
+    """AppIcon.icns from the 1024 master (assets/icon.png); the 16 and 32 px slots take the simplified small-size
+    art (assets/icon-16.png, icon-32.png) like Apple's own small icons. All rendered by assets/brand/build.py."""
     if not ICON.exists():
         return
     iconset = BLURT_HOME / "build" / "AppIcon.iconset"
     shutil.rmtree(iconset, ignore_errors=True)
     iconset.mkdir(parents=True)
-    for size in (16, 32, 64, 128, 256, 512):
-        run(["sips", "-z", str(size), str(size), str(ICON), "--out", str(iconset / f"icon_{size}x{size}.png")], check=False)
-        if size <= 256:
-            run(["sips", "-z", str(size * 2), str(size * 2), str(ICON), "--out", str(iconset / f"icon_{size}x{size}@2x.png")],
-                check=False)
+
+    def slot(px: int, name: str) -> None:
+        small = ICON.with_name(f"icon-{px}.png")
+        if small.exists():
+            shutil.copy(small, iconset / name)
+        else:
+            run(["sips", "-z", str(px), str(px), str(ICON), "--out", str(iconset / name)], check=False)
+
+    for size in (16, 32, 128, 256, 512):
+        slot(size, f"icon_{size}x{size}.png")
+        slot(size * 2, f"icon_{size}x{size}@2x.png")
     run(["iconutil", "-c", "icns", str(iconset), "-o", str(dest)], check=False)
 
 

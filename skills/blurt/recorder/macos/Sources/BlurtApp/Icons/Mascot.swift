@@ -11,7 +11,7 @@
 // One shared 12 fps timer drives every playing layer and stops when none plays. Frames are set as the layer's model
 // `contents` (no CAAnimation), so offscreen renders (FrameCapture, `mascotframes`) see the same frame the screen does.
 // Reduce Motion: the clip's still frame, no movement; a one-shot's completion still runs.
-// The 4A line glyph (BlurtIcon.chicken / .blurt) moves in code instead: see GlyphMotion below.
+// The line glyphs (BlurtIcon.chicken, the menu-bar hen .blurt) move in code instead: see GlyphMotion below.
 import AppKit
 import BlurtCore
 import SwiftUI
@@ -285,15 +285,22 @@ enum GlyphMotion {
         layer.removeAnimation(forKey: "blurt.hop")
     }
 
-    /// For places that can only take an image (the menu-bar button): the glyph drawn tilted by `angle` (radians) and
-    /// lifted by `lift` (fraction of its size), as a template image.
-    static func image(_ icon: BlurtIcon, size: CGFloat, angle: CGFloat = 0, lift: CGFloat = 0, squash: CGFloat = 0) -> NSImage {
+    /// For places that can only take an image (the menu-bar button): the glyph drawn tilted by `angle` (radians,
+    /// positive = counter-clockwise, so a right-facing head lifts its beak) about `pivot` (unit coordinates of the
+    /// image, y up from the bottom), and hopping: lifted by `lift` (fraction of its size) and squashed by `squash`
+    /// about its foot. A template image.
+    static func image(_ icon: BlurtIcon, size: CGFloat, angle: CGFloat = 0, pivot: CGPoint = CGPoint(x: 0.5, y: 0.1),
+                      lift: CGFloat = 0, squash: CGFloat = 0) -> NSImage {
         let img = NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            ctx.translateBy(x: r.midX, y: r.minY + r.height * (0.1 + lift))
-            ctx.rotate(by: -angle)
+            let foot = r.minY + r.height * 0.1
+            ctx.translateBy(x: r.midX, y: foot + r.height * lift)
             ctx.scaleBy(x: 1 + squash, y: 1 - squash)
-            ctx.translateBy(x: -r.midX, y: -(r.minY + r.height * 0.1))
+            ctx.translateBy(x: -r.midX, y: -foot)
+            let p = CGPoint(x: r.minX + r.width * pivot.x, y: r.minY + r.height * pivot.y)
+            ctx.translateBy(x: p.x, y: p.y)
+            ctx.rotate(by: angle)
+            ctx.translateBy(x: -p.x, y: -p.y)
             icon.draw(in: ctx, rect: r, color: NSColor.black.cgColor)
             return true
         }
