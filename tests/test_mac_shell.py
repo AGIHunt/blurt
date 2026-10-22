@@ -40,10 +40,10 @@ class Layout(unittest.TestCase):
         self.assertIn("SUPublicEDKey", p)
         self.assertTrue(p["CFBundleVersion"])
 
-    def test_claw_cards_are_accessible(self):
-        # The claws (K7, which replaced the perch) draw the cards in CALayers: without these overrides VoiceOver / the AX
-        # tree would see an empty window (live check: the `axcards` test command).
-        src = (MAC / "Sources/BlurtApp/Capture/Island/Claws.swift").read_text()
+    def test_hanging_cards_are_accessible(self):
+        # The hanging cards (K7) are drawn in CALayers: without these overrides VoiceOver / the AX tree would see an
+        # empty window (live check: the `axcards` test command).
+        src = (MAC / "Sources/BlurtApp/Capture/Island/HangingCards.swift").read_text()
         for needle in ["override func accessibilityChildren()", "final class LayerAXElement: NSAccessibilityElement",
                        '"capture.card.ax_shot_n"', "setAccessibilityCustomActions", "override func accessibilityPerformPress()"]:
             self.assertIn(needle, src)
@@ -52,6 +52,10 @@ class Layout(unittest.TestCase):
         # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
         src = MAC / "Sources" / "BlurtApp"
         self.assertFalse((src / "App" / "ReviewWindow.swift").exists())
+        # v0.6 leftovers stay gone: the rope / perch, the per-kind eggs, the chicken-foot claws (threads replaced them)
+        for gone in ["Capture/Rope.swift", "Capture/Perch.swift", "Capture/HUDLive.swift", "Capture/Island/Claws.swift",
+                     "Capture/Island/ClawArt.swift"]:
+            self.assertFalse((src / gone).exists(), gone)
         code = {f: f.read_text() for f in src.rglob("*.swift")}
         for f, t in code.items():
             self.assertNotIn("ReviewHub", t, f.name)

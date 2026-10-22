@@ -1,10 +1,11 @@
 // Captures outside a recording (docs/design/next-round.md K7): ⌥⇧A stills, ⌥⇧V voice inputs, and (optionally) the
 // system's own screenshots. Each one is a line in the current store's open shots batch, <store>/sessions/<ts>-shots/.
 //
-//  • a current project is set → the capture belongs to it (project_by capture): it flies up, a claw catches it and
-//    pulls it into the island, and it is processed — captures within 8 s of each other become one process job.
-//  • current = auto → the capture goes to the inbox store unassigned, and hangs on a claw as a card until the user
-//    drags it onto a project in the island (assign + process), onto "Unassigned", or lets the AI sort every card.
+//  • a current project is set → the capture belongs to it (project_by capture): it flies up, a thread catches it and
+//    reels it into the island, and it is processed — captures within 8 s of each other become one process job.
+//  • current = auto → the capture goes to the inbox store unassigned and hangs from the island on a thread, as a card,
+//    until the user drags it onto a project in the island (assign + process), onto "Unassigned", or lets the AI sort
+//    every card.
 // Processing goes through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 
 import AppKit
@@ -118,7 +119,7 @@ final class Snapper {
     private func adopt(_ b: ShotBatch, key: String, project p: Project) -> ShotBatch {
         open[key] = b
         if p.isInbox, !cardBatches.contains(where: { $0 === b }) { cardBatches.append(b) }
-        b.onChange = { claws.refresh() }
+        b.onChange = { hanging.refresh() }
         return b
     }
 
@@ -141,7 +142,7 @@ final class Snapper {
             let n = b.reserve()
             let shot = b.add(n: n, image: img, scale: scale, region: region, t: nil, project: p.isInbox ? nil : p.id)
             emit(["event": "snap", "n": n, "file": shot.file ?? "", "session": b.dir.path, "project": shot.project ?? NSNull()])
-            claws.catchCapture(shot, from: ns)
+            hanging.catchCapture(shot, from: ns)
             if withNote { NoteBubble.shared.begin(shot, mode: .listen) } else { self.settled(shot); self.restoreFocus() }
         }
     }
@@ -158,7 +159,7 @@ final class Snapper {
     func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?) {
         let s = b.addVoice(n: n, duration: duration, project: project)
         emit(["event": "voice", "n": n, "session": b.dir.path, "duration": duration, "project": project ?? NSNull()])
-        if project == nil { claws.catchCapture(s, from: island.frameOnScreen) } else { settled(s) }
+        if project == nil { hanging.catchCapture(s, from: island.frameOnScreen) } else { settled(s) }
         transcribe(s)
     }
 
@@ -173,7 +174,7 @@ final class Snapper {
                 guard let t = text, !t.isEmpty, !s.deleted else { return }
                 s.said = t
                 s.batch?.save(s)
-                claws.update(s)
+                hanging.update(s)
             }
         }
     }
@@ -183,7 +184,7 @@ final class Snapper {
     /// The note bubble closed (or there was none): a capture with a project is pulled into the island and queued.
     func settled(_ s: Shot) {
         guard !s.deleted, let p = s.project, s.assignedBy == "capture", let b = s.batch else { return }
-        claws.pullIn(s)
+        hanging.pullIn(s)
         queue(b, project: p, n: s.n, after: Snapper.mergeWindow)
     }
 
@@ -192,7 +193,7 @@ final class Snapper {
         guard s.isCard, let b = s.batch else { return }
         b.assign(s, project: project, by: "user")
         emit(["event": "assign", "n": s.n, "session": b.dir.path, "project": project])
-        claws.pullIn(s)
+        hanging.pullIn(s)
         queue(b, project: project, n: s.n, after: 1.2)
     }
 
@@ -207,7 +208,7 @@ final class Snapper {
             b.assign(s, project: nil, by: "ai")
             by[ObjectIdentifier(b), default: (b, [])].1.append(s.n)
         }
-        claws.pullInAll(all)
+        hanging.pullInAll(all)
         for (b, ns) in by.values {
             emit(["event": "ai_sort", "session": b.dir.path, "captures": ns])
             island.expectProcess(session: b.dir, captures: ns)
@@ -217,7 +218,7 @@ final class Snapper {
 
     func delete(_ s: Shot) {
         if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
-        claws.drop(s)
+        hanging.drop(s)
         s.batch?.delete(s)
     }
 
@@ -257,10 +258,10 @@ final class Snapper {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         for d in dirs {
             guard let b = ShotBatch.load(d), b.live.contains(where: \.isCard) else { continue }
-            b.onChange = { claws.refresh() }
+            b.onChange = { hanging.refresh() }
             cardBatches.append(b)
         }
-        claws.refresh(quiet: true)
+        hanging.refresh(quiet: true)
     }
 
     // MARK: the system's own screenshots (⌘⇧3/4/5), optional
@@ -300,7 +301,7 @@ final class Snapper {
             let sz = CGSize(width: CGFloat(img.width) / scale, height: CGFloat(img.height) / scale)
             let shot = b.add(n: n, image: img, scale: scale, region: CGRect(origin: .zero, size: sz), t: nil, project: p.isInbox ? nil : p.id)
             shot.region = []        // unknown: taken by the system
-            claws.catchCapture(shot, from: nil)
+            hanging.catchCapture(shot, from: nil)
             settled(shot)
         }
     }

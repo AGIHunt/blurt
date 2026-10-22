@@ -1,17 +1,19 @@
-// The claws (K7): every capture that has no project yet (auto mode) hangs on a chicken's foot that reaches down from
-// the top edge of the screen, under the island. Replaces the perch and its rope.
+// The hanging cards (K7): every capture that has no project yet (auto mode) hangs from the island on a thin thread,
+// a small clasp in the brand colour where it holds the card. A few cards read like a wind chime: one thread each,
+// lengths a little uneven. Replaces the v0.6 perch and its rope.
 //
-//  • a capture flies up (a spring) while its claw reaches down (0.35 s ease-out, toes open) and closes on it; the card
-//    swings on the claw and settles within about a second.
+//  • a capture flies up while its thread drops out of the island (0.35 s ease-out) and catches it; the card sways on
+//    the thread and settles within about a second.
 //  • the cards hang only while you look: for a few seconds after a capture, while the island is hovered or open, while
-//    the pointer is over them or a note is open. Otherwise the claws pull them up out of sight and the island's left
-//    ear counts them.
-//  • hover lifts a card (its neighbours make room) and shows its note · click = copy · double-click = edit the note ·
-//    drag = the file (+ its note) into any app, or onto a project in the island · × = the claw lets go and it falls.
-//  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the claw pulls the card up into
-//    the island, which swallows it with a small bump.
+//    the pointer is over them or a note is open. Otherwise the threads reel them back into the island, whose left ear
+//    counts them.
+//  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy ·
+//    double-click = edit the note · drag = the file (+ its note) into any app, or onto a project in the island: the
+//    thread stretches after it, then snaps and springs back up · × = the thread lets go and the card falls.
+//  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the thread reels the card up
+//    into the island, which swallows it with a small bump.
 //  • at most 7 cards show, centred on the island, 12 pt apart, tilted ±2° in turn; older ones stack into "+N".
-//  • Reduce Motion: 0.2 s fades, no swing.
+//  • Reduce Motion: 0.2 s fades, no sway.
 // Window: a non-activating panel on all spaces, never captured, mouse-transparent except over a card; it lives on the
 // island's screen. The display link runs only while something moves.
 
@@ -20,12 +22,11 @@ import AVFoundation
 import BlurtCore
 import QuartzCore
 
-final class ClawCard {
+final class HangingCard {
     let shot: Shot
-    let root = CALayer()            // pivot: the grip point (the card's top centre); the card and the toes hang from it
-    let leg: CAGradientLayer
-    let scutes: CAReplicatorLayer
-    let hind = CALayer(), front = CALayer()
+    let root = CALayer()            // pivot: the clasp (the card's top centre); the card hangs from it
+    let thread = CAShapeLayer()     // from inside the island down to the clasp (in the stage: it never rotates)
+    let clasp = CALayer()
     let card = CALayer()            // shadow + shape
     let face = CALayer()            // photo / voice face, clipped
     let title = CATextLayer()       // voice cards: the words
@@ -33,14 +34,14 @@ final class ClawCard {
     let close = CALayer()
     let copied = CATextLayer()
     var size: CGSize
-    /// where the claw grips the top edge, from the card's left: the middle of a picture; a voice card's waveform disc
-    /// (its words stay clear of the toes)
+    /// where the thread holds the top edge, from the card's left: the middle of a picture; above a voice card's
+    /// waveform disc (its words stay clear)
     let gripX: CGFloat
     var x: Spring
-    var grip: Spring                // y of the card's top edge (the claw's reach), panel coordinates (y down)
-    var theta: CGFloat = 0, omega: CGFloat = 0     // swing, degrees
+    var grip: Spring                // y of the card's top edge (the thread's end), panel coordinates (y down)
+    var theta: CGFloat = 0, omega: CGFloat = 0     // sway, degrees
     let tilt: CGFloat
-    var open: CGFloat = 1, openTarget: CGFloat = 0
+    var slack: CGFloat = 0          // this card's extra thread length: the chime's uneven ends
     var opacity: CGFloat = 0
     var lift = Spring(0, response: 0.28, damping: 0.75)
     var hovered = false
@@ -49,51 +50,54 @@ final class ClawCard {
     var copiedUntil: CFTimeInterval = 0
     /// leaving: falling (delete) or pulled into the island
     var leaving: (start: CFTimeInterval, into: CGPoint?, from: CGPoint)?
-    /// the claw reaching down: 0.35 s ease-out from `from` to `to`, starting at `start` (then the spring takes over)
+    /// the thread dropping out of the island: 0.35 s ease-out from `from` to `to`, starting at `start` (then the spring)
     var reach: (start: CFTimeInterval, from: CGFloat, to: CGFloat)?
+    /// how much of the thread shows, from the island down (0…1): it unreels again after a drag comes back
+    var unreel: (start: CFTimeInterval, duration: CFTimeInterval)?
+    /// dragged away: the thread follows the pointer (`end`, panel coordinates) until it snaps at `snapped`
+    var tether: (end: CGPoint, snapped: CFTimeInterval?, from: CGPoint)?
     /// assigned while still in the air: pulled into the island right after the catch
     var pullAfterCatch = false
 
     init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
         shot = s
-        size = s.kind == .voice ? Claws.voiceSize : Claws.shotSize
+        size = s.kind == .voice ? HangingCards.voiceSize : HangingCards.shotSize
         gripX = s.kind == .voice ? 22 : size.width / 2
         self.x = Spring(x, response: 0.5, damping: 0.82)
-        grip = Spring(-Claws.shotSize.height - 40, response: 0.55, damping: 0.72)
+        grip = Spring(-HangingCards.shotSize.height - 40, response: 0.55, damping: 0.72)
         self.tilt = tilt
-        (leg, scutes) = ClawArt.makeLeg()
     }
 }
 
-final class ClawPanel: NSPanel {
+final class CardsPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
     override func constrainFrameRect(_ r: NSRect, to screen: NSScreen?) -> NSRect { r }
 }
 
-final class ClawView: NSView, NSDraggingSource {
-    weak var claws: Claws?
+final class CardsView: NSView, NSDraggingSource {
+    weak var cards: HangingCards?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func mouseDown(with e: NSEvent) { claws?.mouseDown(e, at: convert(e.locationInWindow, from: nil)) }
-    override func mouseDragged(with e: NSEvent) { claws?.mouseDragged(e, at: convert(e.locationInWindow, from: nil)) }
-    override func mouseUp(with e: NSEvent) { claws?.mouseUp(e, at: convert(e.locationInWindow, from: nil)) }
-    override func rightMouseDown(with e: NSEvent) { claws?.rightMouseDown(e, at: convert(e.locationInWindow, from: nil)) }
+    override func mouseDown(with e: NSEvent) { cards?.mouseDown(e, at: convert(e.locationInWindow, from: nil)) }
+    override func mouseDragged(with e: NSEvent) { cards?.mouseDragged(e, at: convert(e.locationInWindow, from: nil)) }
+    override func mouseUp(with e: NSEvent) { cards?.mouseUp(e, at: convert(e.locationInWindow, from: nil)) }
+    override func rightMouseDown(with e: NSEvent) { cards?.rightMouseDown(e, at: convert(e.locationInWindow, from: nil)) }
 
     override func isAccessibilityElement() -> Bool { true }
     override func accessibilityRole() -> NSAccessibility.Role? { .group }
     override func accessibilityLabel() -> String? { Loc.t("capture.cards.ax", table: "Capture") }
-    override func accessibilityChildren() -> [Any]? { claws?.accessibilityElements() ?? [] }
+    override func accessibilityChildren() -> [Any]? { cards?.accessibilityElements() ?? [] }
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
-        (claws?.accessibilityElements() ?? []).reversed().first { $0.accessibilityFrame().contains(point) } ?? self
+        (cards?.accessibilityElements() ?? []).reversed().first { $0.accessibilityFrame().contains(point) } ?? self
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         context == .outsideApplication ? [.copy, .generic] : [.generic, .move]
     }
-    func draggingSession(_ session: NSDraggingSession, movedTo p: NSPoint) { claws?.dragMoved(to: p) }
+    func draggingSession(_ session: NSDraggingSession, movedTo p: NSPoint) { cards?.dragMoved(to: p) }
     func draggingSession(_ session: NSDraggingSession, endedAt p: NSPoint, operation: NSDragOperation) {
-        claws?.dragEnded(at: p, operation: operation)
+        cards?.dragEnded(at: p, operation: operation)
     }
 }
 
@@ -122,20 +126,23 @@ final class LayerAXElement: NSAccessibilityElement {
 /// The pasteboard type a card carries inside the app: "<batch dir>\n<n>".
 let capturePasteboardType = NSPasteboard.PasteboardType("dev.blurt.capture")
 
-final class Claws: NSObject {
+final class HangingCards: NSObject {
     static let shotSize = CGSize(width: 112, height: 84)
     static let voiceSize = CGSize(width: 168, height: 44)
     static let gap: CGFloat = 12
     static let maxShown = 7
-    static let below: CGFloat = 18                 // the cards' top edge under the island
+    static let below: CGFloat = 18                 // the cards' top edge under the island (the shortest thread)
+    /// Extra thread per position, so the ends don't line up like a shelf (a wind chime, not a washing line).
+    static let slacks: [CGFloat] = [0, 9, 3, 12, 5, 10, 2]
+    static let claspSize: CGFloat = 7
     static let panelH: CGFloat = 640
 
-    private var panel: ClawPanel?
-    private var view: ClawView!
+    private var panel: CardsPanel?
+    private var view: CardsView!
     private let stage = CALayer()
-    private var cards: [ClawCard] = []
-    private var leaving: [ClawCard] = []
-    private let stack = CALayer(), stackText = CATextLayer()
+    private var cards: [HangingCard] = []
+    private var leaving: [HangingCard] = []
+    private let stack = CALayer(), stackText = CATextLayer(), stackThread = CAShapeLayer(), stackClasp = CALayer()
     private let tip = CALayer(), tipText = CATextLayer(), tipPlay = CALayer()
     private var driver: MotionDriver?
     private(set) var screen: NSScreen?
@@ -144,22 +151,22 @@ final class Claws: NSObject {
     private var peekUntil: CFTimeInterval = 0
     private var holds = 0
     private var awaySince: CFTimeInterval?
-    private var shown = false                      // the claws are down
-    private var hoverCard: ClawCard?
+    private var shown = false                      // the cards are down
+    private var hoverCard: HangingCard?
     private var hoverSince: CFTimeInterval = 0
-    private var down: (p: NSPoint, card: ClawCard?, event: NSEvent, dragged: Bool)?
-    private(set) var dragging: ClawCard?
+    private var down: (p: NSPoint, card: HangingCard?, event: NSEvent, dragged: Bool)?
+    private(set) var dragging: HangingCard?
     private var player: AVAudioPlayer?
 
     var count: Int { cards.count }
-    private var visible: Bool { shown || !leaving.isEmpty || cards.contains { $0.grip.value > -$0.size.height - 30 } }
+    private var visible: Bool { shown || !leaving.isEmpty || cards.contains { reeled($0) > 0.01 } }
 
     // MARK: window
 
     private func ensurePanel(on s: NSScreen) {
-        let f = NSRect(x: s.frame.minX, y: s.frame.maxY - Claws.panelH, width: s.frame.width, height: Claws.panelH)
+        let f = NSRect(x: s.frame.minX, y: s.frame.maxY - HangingCards.panelH, width: s.frame.width, height: HangingCards.panelH)
         if panel == nil {
-            let p = ClawPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+            let p = CardsPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
             p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
             p.level = .statusBar
             p.hidesOnDeactivate = false
@@ -171,8 +178,8 @@ final class Claws: NSObject {
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
             p.sharingType = chromeSharing
             p.setAccessibilityTitle(Loc.t("capture.cards.ax", table: "Capture"))
-            let v = ClawView(frame: NSRect(origin: .zero, size: f.size))
-            v.claws = self
+            let v = CardsView(frame: NSRect(origin: .zero, size: f.size))
+            v.cards = self
             v.wantsLayer = true
             v.layer?.masksToBounds = true
             v.layer?.addSublayer(stage)
@@ -198,6 +205,10 @@ final class Claws: NSObject {
         stack.shadowRadius = 10
         stack.shadowOffset = CGSize(width: 0, height: 5)
         stack.isHidden = true
+        stackThread.isHidden = true
+        stackClasp.isHidden = true
+        stage.addSublayer(stackThread)
+        stage.addSublayer(stackClasp)
         stackText.contentsScale = 2
         stackText.alignmentMode = .center
         stack.addSublayer(stackText)
@@ -233,20 +244,46 @@ final class Claws: NSObject {
         tip.borderColor = (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.08)).cgColor
         tip.borderWidth = 0.5
         tipPlay.backgroundColor = accent.cgColor
+        styleThread(stackThread, stackClasp)
         CATransaction.commit()
     }
 
     // MARK: building a card
 
-    private func style(_ c: ClawCard) {
+    /// A hairline that reads on any wallpaper (a soft halo of the opposite tone), and a brand-colour clasp ringed in
+    /// the card's own surface colour.
+    private func styleThread(_ t: CAShapeLayer, _ k: CALayer) {
         let dark = isDarkMode
+        t.strokeColor = (dark ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.42)).cgColor
+        t.fillColor = nil
+        t.lineWidth = 1
+        t.lineCap = .round
+        t.shadowColor = (dark ? NSColor.black : NSColor.white).cgColor
+        t.shadowOpacity = dark ? 0.5 : 0.7
+        t.shadowRadius = 1
+        t.shadowOffset = .zero
+        let d = HangingCards.claspSize
+        k.bounds = CGRect(x: 0, y: 0, width: d, height: d)
+        k.cornerRadius = d / 2
+        k.backgroundColor = accent.cgColor
+        k.borderWidth = 1.5
+        k.borderColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 1) : NSColor.white).cgColor
+        k.shadowColor = NSColor.black.cgColor
+        k.shadowOpacity = dark ? 0.45 : 0.22
+        k.shadowRadius = 1.5
+        k.shadowOffset = CGSize(width: 0, height: 0.5)
+    }
+
+    private func style(_ c: HangingCard) {
+        let dark = isDarkMode
+        styleThread(c.thread, c.clasp)
         let s = c.shot
         if s.kind == .voice {
             c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.99)).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.08)).cgColor
             let f = NSFont.systemFont(ofSize: 12.5, weight: .medium)
             let words = s.words
-            let dur = Claws.clock(s.duration ?? 0)
+            let dur = HangingCards.clock(s.duration ?? 0)
             let text = words ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
             c.title.string = NSAttributedString(string: text, attributes: [
                 .font: f, .foregroundColor: words == nil ? NSColor(white: dark ? 1 : 0, alpha: 0.5) : (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1))])
@@ -257,7 +294,7 @@ final class Claws: NSObject {
         }
         c.card.shadowOpacity = dark ? 0.55 : 0.3
         let marks: [BlurtIcon] = (s.kind == .shot && s.voice != nil ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
-        c.badge.contents = marks.isEmpty ? nil : Claws.badgeImage(marks)
+        c.badge.contents = marks.isEmpty ? nil : HangingCards.badgeImage(marks)
         c.badge.isHidden = marks.isEmpty
     }
 
@@ -277,21 +314,17 @@ final class Claws: NSObject {
         }
     }
 
-    private func makeCard(_ s: Shot, x: CGFloat) -> ClawCard {
+    private func makeCard(_ s: Shot, x: CGFloat) -> HangingCard {
         let i = cards.count + leaving.count
-        let c = ClawCard(s, x: x, tilt: i % 2 == 0 ? 2 : -2)
+        let c = HangingCard(s, x: x, tilt: i % 2 == 0 ? 2 : -2)
         let w = c.size.width, h = c.size.height
-        // the leg and its scutes live in the stage (vertical, never rotate); the card + toes hang from root
-        c.leg.anchorPoint = CGPoint(x: 0.5, y: 0)
-        c.scutes.anchorPoint = CGPoint(x: 0.5, y: 0)
-        c.leg.addSublayer(c.scutes)
-        stage.insertSublayer(c.leg, below: stack)
+        // the thread lives in the stage (it never rotates); the card and its clasp hang from root
+        c.grip.target = threadTop
+        c.grip.snap()                        // a new card comes out of the island
+        stage.insertSublayer(c.thread, below: stack)
         c.root.bounds = CGRect(x: 0, y: 0, width: w, height: h)
         c.root.anchorPoint = CGPoint(x: c.gripX / w, y: 0)
         c.root.opacity = 0
-        let fs = ClawArt.footSize, k = ClawArt.knuckle
-        c.hind.frame = CGRect(x: c.gripX - k.x, y: -k.y - 3, width: fs.width, height: fs.height)
-        c.front.frame = c.hind.frame
         c.card.frame = CGRect(x: 0, y: 0, width: w, height: h)
         c.card.cornerRadius = s.kind == .voice ? 12 : 7
         c.card.borderWidth = 0.5
@@ -338,9 +371,9 @@ final class Claws: NSObject {
         let cf = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
         c.copied.string = NSAttributedString(string: Loc.t("capture.card.copied", table: "Capture"), attributes: [.font: cf, .foregroundColor: NSColor.white])
         c.copied.opacity = 0
-        c.root.addSublayer(c.hind)
         c.root.addSublayer(c.card)
-        c.root.addSublayer(c.front)
+        c.clasp.position = CGPoint(x: c.gripX, y: 0.5)
+        c.root.addSublayer(c.clasp)
         c.root.addSublayer(c.close)
         c.root.addSublayer(c.copied)
         stage.insertSublayer(c.root, below: stack)
@@ -350,25 +383,37 @@ final class Claws: NSObject {
 
     // MARK: layout
 
+    /// Where the threads come out (the island's bottom edge, tucked in a little), in panel coordinates.
+    private var threadTop: CGFloat { anchor.y - HangingCards.below - 3 }
+
+    /// A card's resting top edge: the shortest thread plus its slack, shortened while hovered.
+    private func rest(_ c: HangingCard) -> CGFloat { anchor.y + c.slack - 6 * c.lift.value }
+
+    /// 0 = reeled into the island, 1 = hanging at full length (drives the reel-in's scale and fade).
+    private func reeled(_ c: HangingCard) -> CGFloat {
+        let top = threadTop, full = anchor.y + c.slack - top
+        return full > 0 ? min(1, max(0, (c.grip.value - top) / full)) : 1
+    }
+
     /// The island's centre and the cards' top edge, in panel coordinates.
     private var anchor: (x: CGFloat, y: CGFloat) {
         guard let s = screen else { return (width / 2, 60) }
         let f = island.frameOnScreen
-        return (f.midX - s.frame.minX, s.frame.maxY - f.minY + Claws.below)
+        return (f.midX - s.frame.minX, s.frame.maxY - f.minY + HangingCards.below)
     }
 
-    private var pile: Int { max(0, cards.count - Claws.maxShown) }
+    private var pile: Int { max(0, cards.count - HangingCards.maxShown) }
 
     /// Rest x for each card (the piled ones under the stack), and the stack's x.
     private func targets() -> (xs: [CGFloat], stackX: CGFloat?) {
-        let shown = Array(cards.suffix(Claws.maxShown))
+        let shown = Array(cards.suffix(HangingCards.maxShown))
         var widths = shown.map(\.size.width)
         let hasStack = pile > 0
-        if hasStack { widths.insert(Claws.shotSize.width, at: 0) }
-        let total = widths.reduce(0, +) + Claws.gap * CGFloat(max(0, widths.count - 1))
+        if hasStack { widths.insert(HangingCards.shotSize.width, at: 0) }
+        let total = widths.reduce(0, +) + HangingCards.gap * CGFloat(max(0, widths.count - 1))
         var x = anchor.x - total / 2
         var centres: [CGFloat] = []
-        for w in widths { centres.append(x + w / 2); x += w + Claws.gap }
+        for w in widths { centres.append(x + w / 2); x += w + HangingCards.gap }
         let stackX = hasStack ? centres.removeFirst() : nil
         let hi = hoverCard.flatMap { h in shown.firstIndex { $0 === h } }
         var xs: [CGFloat] = []
@@ -393,8 +438,6 @@ final class Claws: NSObject {
             if panel == nil { ensurePanel(on: island.screen ?? NSScreen.main ?? NSScreen.screens[0]) }
             let c = makeCard(s, x: anchor.x)
             c.opacity = 1
-            c.open = 0
-            c.openTarget = 0
             cards.append(c)
         }
         layout(instant: quiet)
@@ -407,14 +450,16 @@ final class Claws: NSObject {
         for (i, c) in cards.enumerated() {
             c.x.target = t.xs[i]
             if instant { c.x.snap() }
+            let j = i - pile
+            c.slack = j >= 0 ? HangingCards.slacks[j % HangingCards.slacks.count] : 0
             c.root.zPosition = CGFloat(i)
-            c.leg.zPosition = CGFloat(i) - 0.5
+            c.thread.zPosition = CGFloat(i) - 0.5
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         stack.isHidden = t.stackX == nil
         if let sx = t.stackX {
-            let sz = Claws.shotSize
+            let sz = HangingCards.shotSize
             stack.bounds = CGRect(origin: .zero, size: sz)
             stack.position = CGPoint(x: sx, y: 0)
             stack.anchorPoint = CGPoint(x: 0.5, y: 0)
@@ -422,24 +467,25 @@ final class Claws: NSObject {
             stackText.string = NSAttributedString(string: "+\(pile)", attributes: [.font: f, .foregroundColor: isDarkMode ? NSColor.white : NSColor(white: 0.1, alpha: 1)])
             stackText.frame = CGRect(x: 0, y: (sz.height - 24) / 2, width: sz.width, height: 24)
         }
+        stackThread.isHidden = stack.isHidden
+        stackClasp.isHidden = stack.isHidden
         CATransaction.commit()
         wake()
     }
 
-    private func remove(_ c: ClawCard, fall: Bool) {
+    private func remove(_ c: HangingCard, fall: Bool) {
         guard let i = cards.firstIndex(where: { $0 === c }) else { return }
         cards.remove(at: i)
         if hoverCard === c { hoverCard = nil; tip.isHidden = true }
         if fall, visible, !reduceMotion {
             c.leaving = (CACurrentMediaTime(), nil, c.root.position)
-            c.openTarget = 1
             leaving.append(c)
         } else {
             CATransaction.begin()
             CATransaction.setAnimationDuration(0.2)
-            CATransaction.setCompletionBlock { c.root.removeFromSuperlayer(); c.leg.removeFromSuperlayer() }
+            CATransaction.setCompletionBlock { c.root.removeFromSuperlayer(); c.thread.removeFromSuperlayer() }
             c.root.opacity = 0
-            c.leg.opacity = 0
+            c.thread.opacity = 0
             CATransaction.commit()
         }
         layout()
@@ -448,7 +494,7 @@ final class Claws: NSObject {
 
     // MARK: arrivals and departures
 
-    /// A capture is complete: its claw reaches down and catches it as it flies up from `from` (a screen rect).
+    /// A capture is complete: a thread drops out of the island and catches it as it flies up from `from` (a screen rect).
     func catchCapture(_ s: Shot, from: NSRect?) {
         let target = island.screen ?? from.flatMap { r in NSScreen.screens.first { $0.frame.intersects(r) } } ?? NSScreen.main ?? NSScreen.screens[0]
         if panel == nil || screen != target { ensurePanel(on: target) }
@@ -459,19 +505,16 @@ final class Claws: NSObject {
         if let i = cards.firstIndex(where: { $0 === c }) { c.x.value = targets().xs[i]; c.x.snap() }
         show(peek: 3.2)
         island.cardsChanged(cards.filter { $0.shot.isCard }.count)
-        let restY = anchor.y
+        let restY = rest(c)
         if reduceMotion {
-            c.grip.value = restY; c.grip.snap()
-            c.open = 0; c.openTarget = 0
+            c.grip.target = restY; c.grip.snap()
             fadeIn(c)
             return
         }
         c.flying = true
-        c.open = 1
-        c.openTarget = 1
-        c.grip.value = -c.size.height - 30
+        c.grip.value = threadTop
         c.reach = (CACurrentMediaTime() + 0.15, c.grip.value, restY)   // reaches the catch point as the capture arrives
-        let img = s.kind == .voice ? Claws.voiceSnapshot(c) : (s.markedThumb ?? s.thumb)
+        let img = s.kind == .voice ? HangingCards.voiceSnapshot(c) : (s.markedThumb ?? s.thumb)
         if let f = from, let img = img {
             flyImage(img, from: f, to: screenRect(of: c, at: restY), springy: true, cornerRadius: c.card.cornerRadius) { [weak self] in
                 self?.caught(c)
@@ -482,18 +525,31 @@ final class Claws: NSObject {
         wake()
     }
 
-    private func caught(_ c: ClawCard) {
+    private func caught(_ c: HangingCard) {
         c.flying = false
         c.opacity = 1
-        c.openTarget = 0
-        c.omega += 30            // the catch sets it swinging
+        c.omega += 30            // the catch sets it swaying
+        popClasp(c)
         wake()
         if c.pullAfterCatch {    // a capture with a project: caught, a beat, then up into the island
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.pullIn(c.shot) }
         }
     }
 
-    private func fadeIn(_ c: ClawCard) {
+    /// The clasp closing on the card: a small overshoot.
+    private func popClasp(_ c: HangingCard) {
+        guard !reduceMotion else { return }
+        let a = CASpringAnimation(keyPath: "transform.scale")
+        a.fromValue = 0.4
+        a.toValue = 1
+        a.mass = 1
+        a.stiffness = 420
+        a.damping = 16
+        a.duration = a.settlingDuration
+        c.clasp.add(a, forKey: "pop")
+    }
+
+    private func fadeIn(_ c: HangingCard) {
         c.opacity = 1
         c.root.opacity = 0
         let a = CABasicAnimation(keyPath: "opacity")
@@ -502,14 +558,14 @@ final class Claws: NSObject {
         wake()
     }
 
-    /// Assigned: the claw pulls the card up into the island (0.45 s ease-in, shrinking to 0.2), which bumps.
+    /// Assigned: the thread reels the card up into the island (0.45 s ease-in, shrinking to 0.2), which bumps.
     func pullIn(_ s: Shot) {
         guard let c = cards.first(where: { $0.shot === s }) else { island.bump(); return }
         if c.flying { c.pullAfterCatch = true; return }
         if let i = cards.firstIndex(where: { $0 === c }) { cards.remove(at: i) }
         if hoverCard === c { hoverCard = nil; tip.isHidden = true }
         let a = anchor
-        c.leaving = (CACurrentMediaTime(), CGPoint(x: a.x, y: a.y - Claws.below - island.frameOnScreen.height / 2), c.root.position)
+        c.leaving = (CACurrentMediaTime(), CGPoint(x: a.x, y: a.y - HangingCards.below - island.frameOnScreen.height / 2), c.root.position)
         if !c.flying { show(peek: 1.0) }
         leaving.append(c)
         layout()
@@ -521,7 +577,7 @@ final class Claws: NSObject {
         for (i, s) in shots.enumerated() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.07 * Double(i)) { self.pullIn(s) } }
     }
 
-    /// Deleted: the claw lets go and the card falls (0.5 s) — if it is in view; else it just goes.
+    /// Deleted: the thread lets go (and springs back up) and the card falls (0.5 s) — if it is in view; else it just goes.
     func drop(_ s: Shot) {
         guard let c = cards.first(where: { $0.shot === s }) else { return }
         remove(c, fall: true)
@@ -550,7 +606,7 @@ final class Claws: NSObject {
         guard !shown else { return }
         shown = true
         panel?.orderFrontRegardless()
-        island.orderFront()                 // the island stays above the claws
+        island.orderFront()                 // the island stays above the cards (the threads come out from under it)
         wake()
     }
 
@@ -569,12 +625,12 @@ final class Claws: NSObject {
         return screenRect(of: c, at: c.grip.target)
     }
 
-    private func screenRect(of c: ClawCard, at y: CGFloat) -> NSRect {
+    private func screenRect(of c: HangingCard, at y: CGFloat) -> NSRect {
         guard let p = panel else { return .zero }
         return NSRect(x: p.frame.minX + c.x.target - c.size.width / 2, y: p.frame.maxY - y - c.size.height, width: c.size.width, height: c.size.height)
     }
 
-    /// The cards' swing right now (degrees; tests check Reduce Motion keeps them still).
+    /// The cards' sway right now (degrees; tests check Reduce Motion keeps them still).
     var swing: [CGFloat] { cards.map(\.theta) }
 
     /// Where every card is, for tests (global top-left points).
@@ -599,9 +655,9 @@ final class Claws: NSObject {
         CATransaction.setDisableActions(true)
         var moving = false
         for c in cards {
-            // the claw's reach: down to the island when shown, up out of sight when not
-            let rest = a.y - 6 * c.lift.value
-            let hiddenY = -c.size.height - 34
+            // the thread's length: hanging when shown, reeled into the island when not
+            let rest = a.y + c.slack - 6 * c.lift.value
+            let hiddenY = threadTop
             if let r = c.reach {
                 let k = CGFloat(max(0, now - r.start) / 0.35)
                 c.grip.value = r.from + (rest - r.from) * Ease.outCubic(k)
@@ -612,7 +668,7 @@ final class Claws: NSObject {
             } else {
                 c.grip.target = c.dragging ? hiddenY : (shown || c.flying ? rest : hiddenY)
                 if c.grip.target < c.grip.value - 0.5, !c.dragging, !shown {
-                    // pulling up: an ease-in, not a spring (nothing bounces off the top of the screen)
+                    // reeling in: an ease-in, not a spring (nothing bounces into the island)
                     c.grip.value += (c.grip.target - c.grip.value) * min(1, dt * 9)
                     c.grip.velocity = 0
                 } else { _ = c.grip.step(dt) }
@@ -621,7 +677,7 @@ final class Claws: NSObject {
             _ = c.x.step(dt)
             c.lift.target = c.hovered && !c.dragging ? 1 : 0
             _ = c.lift.step(dt)
-            // swing: a damped pendulum around the grip; sideways motion of the claw drives it
+            // sway: a damped pendulum on the thread; sideways motion of the thread drives it
             let restTheta: CGFloat = 0
             let drive = -c.x.velocity * 0.012
             var left = dt
@@ -634,18 +690,23 @@ final class Claws: NSObject {
                 left -= h
             }
             if reduce { c.theta = 0; c.omega = 0; c.x.snap(); c.lift.snap() }
-            c.open += (c.openTarget - c.open) * min(1, dt * (c.openTarget > c.open ? 22 : 14))
-            if abs(c.open - c.openTarget) < 0.02 { c.open = c.openTarget }
             place(c, now: now)
             if !c.x.resting || !c.grip.resting || !c.lift.resting || abs(c.theta) > 0.12 || abs(c.omega) > 0.4
-                || c.open != c.openTarget || c.flying || now < c.copiedUntil + 0.1 { moving = true }
+                || c.unreel != nil || c.tether != nil || c.flying || now < c.copiedUntil + 0.1 { moving = true }
         }
-        stack.position = CGPoint(x: stack.position.x, y: cards.first.map { $0.grip.value } ?? 0)
+        if let first = cards.first, !stack.isHidden {
+            stack.position = CGPoint(x: stack.position.x, y: first.grip.value)
+            let k = reeled(first)
+            stack.opacity = Float(k)
+            drawThread(stackThread, from: CGPoint(x: stack.position.x, y: threadTop), to: CGPoint(x: stack.position.x, y: first.grip.value))
+            stackClasp.position = CGPoint(x: stack.position.x, y: first.grip.value + 0.5)
+            stackClasp.opacity = Float(k)
+        }
         for c in leaving { stepLeaving(c, now) }
         leaving.removeAll { c in
             guard let l = c.leaving, now - l.start > 0.55 else { return false }
             c.root.removeFromSuperlayer()
-            c.leg.removeFromSuperlayer()
+            c.thread.removeFromSuperlayer()
             return true
         }
         positionTip(now)
@@ -656,66 +717,87 @@ final class Claws: NSObject {
         return moving || shown && (now < peekUntil)
     }
 
-    private func place(_ c: ClawCard, now: CFTimeInterval) {
+    private func drawThread(_ t: CAShapeLayer, from a: CGPoint, to b: CGPoint) {
+        let p = CGMutablePath()
+        if hypot(b.x - a.x, b.y - a.y) > 0.5 { p.move(to: a); p.addLine(to: b) }
+        t.path = p
+    }
+
+    private func place(_ c: HangingCard, now: CFTimeInterval) {
         let y = c.grip.value
-        let swing = reduceMotion ? 0 : c.theta + c.tilt * (1 - c.lift.value)
+        let reduce = reduceMotion
+        let swing = reduce ? 0 : c.theta + c.tilt * (1 - c.lift.value)
         let gx = c.x.value - c.size.width / 2 + c.gripX
-        c.root.position = CGPoint(x: gx, y: y)
+        let top = threadTop
+        // a pendulum: the clasp sways on the thread around the point where it comes out of the island
+        let len = max(0, y - top)
+        let th = (reduce ? 0 : c.theta) * .pi / 180
+        let clasp = CGPoint(x: gx + len * sin(th) * 0.6, y: y)
+        c.root.position = clasp
+        // reeled in (hidden): the card shrinks a little and fades as it goes up into the island
+        let k = reeled(c)
         var t = CATransform3DMakeRotation(swing * .pi / 180, 0, 0, 1)
-        let sc = 1 + 0.04 * c.lift.value
+        let sc = (1 + 0.04 * c.lift.value) * (0.7 + 0.3 * k)
         t = CATransform3DScale(t, sc, sc, 1)
         c.root.transform = t
-        c.root.opacity = Float(c.flying ? 0 : (c.dragging ? 0 : c.opacity))
-        // the leg: from the top of the screen down to the knuckle (just above the card's edge)
-        let legH = max(0, y - ClawArt.knuckle.y + 3)
-        c.leg.bounds = CGRect(x: 0, y: 0, width: ClawArt.legWidth, height: legH)
-        c.leg.position = CGPoint(x: gx, y: 0)
-        c.scutes.instanceCount = max(0, Int(legH / 6.5))
-        c.scutes.frame = c.leg.bounds
-        c.leg.opacity = legH > 0.5 ? 1 : 0
-        c.front.contents = ClawArt.foot(front: true, open: c.open)
-        c.hind.contents = ClawArt.foot(front: false, open: c.open)
+        c.root.opacity = Float(c.flying || c.dragging ? 0 : c.opacity * min(1, k * 1.4))
+        // the thread: from inside the island to the clasp — or after the dragged card, springing back once it snapped
+        var end = CGPoint(x: clasp.x, y: y + 0.5)
+        var show: CGFloat = 1
+        if let u = c.unreel {
+            let f = CGFloat((now - u.start) / u.duration)
+            show = Ease.outCubic(f)
+            if f >= 1 { c.unreel = nil }
+        }
+        if let tt = c.tether {
+            if let snapped = tt.snapped {
+                let f = CGFloat((now - snapped) / 0.32)
+                let back = Ease.outBack(f, 1.2)
+                end = CGPoint(x: tt.from.x + (gx - tt.from.x) * back, y: tt.from.y + (top - tt.from.y) * back)
+                if f >= 1 { c.tether = nil; end = CGPoint(x: gx, y: top) }
+            } else {
+                end = tt.end
+            }
+        } else if c.dragging {
+            end = CGPoint(x: gx, y: top)
+        }
+        drawThread(c.thread, from: CGPoint(x: gx, y: top), to: CGPoint(x: gx + (end.x - gx) * show, y: top + (end.y - top) * show))
+        c.clasp.opacity = c.dragging || show < 0.98 ? 0 : 1
         c.card.shadowRadius = 12 + 6 * c.lift.value
         c.card.shadowOffset = CGSize(width: 0, height: 6 + 4 * c.lift.value)
         c.close.opacity = c.hovered && !c.dragging ? 1 : 0
         c.copied.opacity = now < c.copiedUntil ? 1 : 0
     }
 
-    private func stepLeaving(_ c: ClawCard, _ now: CFTimeInterval) {
+    private func stepLeaving(_ c: HangingCard, _ now: CFTimeInterval) {
         guard let l = c.leaving else { return }
         let raw = CGFloat(max(0, min(1, (now - l.start) / (reduceMotion ? 0.2 : (l.into == nil ? 0.5 : 0.45)))))
         if reduceMotion {
             c.root.opacity = Float(1 - raw)
-            c.leg.opacity = Float(1 - raw)
+            c.thread.opacity = Float(1 - raw)
             return
         }
-        c.open += (1 - c.open) * 0.3
-        c.front.contents = ClawArt.foot(front: true, open: c.open)
-        c.hind.contents = ClawArt.foot(front: false, open: c.open)
+        let top = threadTop
         if let g = l.into {
-            // pulled into the island: ease-in towards its centre, shrinking to 0.2
+            // reeled into the island: ease-in towards its centre, shrinking to 0.2; the thread shortens with it
             let k = Ease.inCubic(raw)
             let p = CGPoint(x: l.from.x + (g.x - l.from.x) * k, y: l.from.y + (g.y - l.from.y) * k)
             c.root.position = p
             let s = 1 - 0.8 * k
             c.root.transform = CATransform3DScale(CATransform3DMakeRotation(c.theta * (1 - k) * .pi / 180, 0, 0, 1), s, s, 1)
             c.root.opacity = Float(raw > 0.8 ? (1 - raw) / 0.2 : 1)
-            c.leg.bounds = CGRect(x: 0, y: 0, width: ClawArt.legWidth, height: max(0, p.y - ClawArt.knuckle.y + 3))
-            c.leg.position = CGPoint(x: p.x, y: 0)
-            c.scutes.instanceCount = max(0, Int(c.leg.bounds.height / 6.5))
-            c.scutes.frame = c.leg.bounds
+            drawThread(c.thread, from: CGPoint(x: p.x, y: top), to: CGPoint(x: p.x, y: max(top, p.y)))
         } else {
-            // the claw lets go: gravity, a turn, a fade; the empty claw goes back up
+            // the thread lets go: the card drops with a turn and a fade; the empty thread springs back up
             let e = raw * raw
             let angle = c.tilt + c.theta + (c.tilt >= 0 ? 1 : -1) * 28 * e
             var t = CATransform3DMakeTranslation(0, 560 * e, 0)
             t = CATransform3DRotate(t, angle * .pi / 180, 0, 0, 1)
             c.root.transform = t
             c.root.opacity = Float(1 - raw)
-            let legH = max(0, (l.from.y - ClawArt.knuckle.y + 3) * (1 - Ease.inOutCubic(min(1, raw * 1.6))))
-            c.leg.bounds = CGRect(x: 0, y: 0, width: ClawArt.legWidth, height: legH)
-            c.scutes.instanceCount = max(0, Int(legH / 6.5))
-            c.scutes.frame = c.leg.bounds
+            c.clasp.opacity = 0                 // the clasp stays on the thread
+            let back = Ease.outCubic(min(1, raw * 1.8))
+            drawThread(c.thread, from: CGPoint(x: l.from.x, y: top), to: CGPoint(x: l.from.x, y: l.from.y + (top - l.from.y) * back))
         }
     }
 
@@ -751,8 +833,8 @@ final class Claws: NSObject {
         if p.ignoresMouseEvents == interactive { p.ignoresMouseEvents = !interactive }
     }
 
-    private func card(at p: NSPoint) -> ClawCard? {
-        for c in cards.suffix(Claws.maxShown).reversed() where !c.flying && !c.dragging {
+    private func card(at p: NSPoint) -> HangingCard? {
+        for c in cards.suffix(HangingCards.maxShown).reversed() where !c.flying && !c.dragging {
             let r = CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value - 8, width: c.size.width, height: c.size.height + 8).insetBy(dx: -4, dy: -4)
             if r.contains(p) { return c }
         }
@@ -761,7 +843,7 @@ final class Claws: NSObject {
 
     // MARK: the note under a hovered card
 
-    private weak var tipFor: ClawCard?
+    private weak var tipFor: HangingCard?
 
     private func positionTip(_ now: CFTimeInterval) {
         guard let c = hoverCard, !c.dragging, c.shot.hasNote || c.shot.kind == .voice, now - hoverSince > 0.35, !NoteBubble.shared.isOpen else {
@@ -775,7 +857,7 @@ final class Claws: NSObject {
         tip.position = CGPoint(x: min(max(c.x.value, w / 2 + 12), width - w / 2 - 12), y: top + tip.bounds.height / 2)
     }
 
-    private func buildTip(_ c: ClawCard) {
+    private func buildTip(_ c: HangingCard) {
         tipFor = c
         let w: CGFloat = 260
         let dark = isDarkMode
@@ -874,7 +956,7 @@ final class Claws: NSObject {
         m.popUp(positioning: nil, at: p, in: v)
     }
 
-    private func startDrag(_ c: ClawCard, event: NSEvent) {
+    private func startDrag(_ c: HangingCard, event: NSEvent) {
         guard let v = view else { return }
         let item = NSPasteboardItem()
         if let u = c.shot.bestURL { item.setString(u.absoluteString, forType: .fileURL) }
@@ -882,10 +964,10 @@ final class Claws: NSObject {
         if let b = c.shot.batch { item.setString("\(b.dir.path)\n\(c.shot.n)", forType: capturePasteboardType) }
         let di = NSDraggingItem(pasteboardWriter: item)
         let img = NSImage(size: c.size)
-        if let rep = Claws.snapshot(c) { img.addRepresentation(rep) }
+        if let rep = HangingCards.snapshot(c) { img.addRepresentation(rep) }
         di.setDraggingFrame(NSRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height), contents: img)
-        c.dragging = true
-        c.openTarget = 1                     // the claw lets go and goes back up (0.3 s)
+        c.dragging = true                    // the thread follows the pointer, then snaps (dragMoved)
+        c.tether = (CGPoint(x: c.x.value - c.size.width / 2 + c.gripX, y: c.grip.value), nil, .zero)
         dragging = c
         island.dragBegan()
         let session = v.beginDraggingSession(with: [di], event: event, source: v)
@@ -894,7 +976,21 @@ final class Claws: NSObject {
         wake()
     }
 
-    func dragMoved(to p: NSPoint) { island.dragMoved(to: p) }
+    func dragMoved(to p: NSPoint) {
+        island.dragMoved(to: p)
+        guard let c = dragging, let f = panel?.frame, var t = c.tether, t.snapped == nil else { return }
+        // the drag image's top edge, where the thread still holds it
+        let end = CGPoint(x: p.x - f.minX, y: f.maxY - p.y - c.size.height / 2)
+        let top = CGPoint(x: c.x.value - c.size.width / 2 + c.gripX, y: threadTop)
+        if hypot(end.x - top.x, end.y - top.y) > (anchor.y + c.slack - top.y) + 44 || reduceMotion {
+            t.snapped = CACurrentMediaTime()       // stretched as far as it goes: it snaps and springs back
+            t.from = t.end
+        } else {
+            t.end = end
+        }
+        c.tether = t
+        wake()
+    }
 
     func dragEnded(at p: NSPoint, operation: NSDragOperation) {
         guard let c = dragging else { return }
@@ -906,17 +1002,19 @@ final class Claws: NSObject {
             remove(c, fall: false)
             return
         }
-        // back on the claw: it reaches down again and closes on the card
-        c.reach = (CACurrentMediaTime() + (operation.isEmpty ? 0.25 : 0), c.grip.value, anchor.y)
-        c.openTarget = 0
+        // back where it hung: a new thread drops out of the island and takes it
+        c.tether = nil
+        c.grip.target = rest(c); c.grip.snap()
+        c.unreel = (CACurrentMediaTime() + (operation.isEmpty ? 0.25 : 0), 0.3)
         c.omega += operation.isEmpty ? 60 : 30
+        DispatchQueue.main.asyncAfter(deadline: .now() + (operation.isEmpty ? 0.55 : 0.3)) { [weak self] in self?.popClasp(c) }
         show(peek: 1.5)
         wake()
     }
 
     // MARK: images of a card
 
-    static func snapshot(_ c: ClawCard) -> NSBitmapImageRep? {
+    static func snapshot(_ c: HangingCard) -> NSBitmapImageRep? {
         let size = c.size
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2),
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -934,7 +1032,7 @@ final class Claws: NSObject {
         return rep
     }
 
-    static func voiceSnapshot(_ c: ClawCard) -> CGImage? { snapshot(c)?.cgImage }
+    static func voiceSnapshot(_ c: HangingCard) -> CGImage? { snapshot(c)?.cgImage }
 
     // MARK: accessibility
 
@@ -944,7 +1042,7 @@ final class Claws: NSObject {
         guard let v = view else { return [] }
         var out: [LayerAXElement] = []
         var keep: [ObjectIdentifier: LayerAXElement] = [:]
-        for c in cards.suffix(Claws.maxShown) where !c.flying {
+        for c in cards.suffix(HangingCards.maxShown) where !c.flying {
             let key = ObjectIdentifier(c)
             let e = axCards[key] ?? {
                 let e = LayerAXElement.make(role: .button, layer: c.card, host: v)
@@ -963,7 +1061,7 @@ final class Claws: NSObject {
                 e.setAccessibilityCustomActions(actions)
                 return e
             }()
-            e.setAccessibilityLabel(Claws.cardLabel(c.shot))
+            e.setAccessibilityLabel(HangingCards.cardLabel(c.shot))
             e.setAccessibilityRoleDescription(Loc.t(c.shot.kind == .voice ? "capture.card.ax_voice" : "capture.card.ax_shot", table: "Capture"))
             e.setAccessibilityHelp(Loc.t("capture.card.ax_help", table: "Capture"))
             keep[key] = e
@@ -990,4 +1088,4 @@ final class ClosureMenuItem: NSMenuItem {
     @objc func fire() { fn?() }
 }
 
-let claws = Claws()
+let hanging = HangingCards()

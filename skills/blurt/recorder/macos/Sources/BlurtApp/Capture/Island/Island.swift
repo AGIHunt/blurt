@@ -333,7 +333,7 @@ final class Island: NSObject, IslandHosting {
         ears.opacity = shape.opacity * Float(content.usesRow && showing ? 1 - reveal : 1)
         CATransaction.commit()
         content.tick(now)
-        claws.islandMoved()
+        hanging.islandMoved()
         let moving = !w.resting || !h.resting || !r.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
         return moving || left.animating || right.animating || toastNow != nil || isRecording || VoiceInput.shared.active
     }
@@ -470,7 +470,7 @@ final class Island: NSObject, IslandHosting {
             if drawer == .switcher { closeSwitcher() }
         }
         content.rebuild()
-        claws.islandMoved()
+        hanging.islandMoved()
         wake()
     }
 
@@ -545,7 +545,7 @@ final class Island: NSObject, IslandHosting {
     /// The drag is over: true when the island took the card.
     func dragEnded(at s: NSPoint) -> Bool {
         dragActive = false
-        if !dropped, drawer == .drop, let p = panel, let card = claws.dragging?.shot {
+        if !dropped, drawer == .drop, let p = panel, let card = hanging.dragging?.shot {
             // the drop landed on us without a destination callback (rare): resolve it here
             let local = NSPoint(x: s.x - p.frame.minX, y: p.frame.maxY - s.y)
             if let t = content.highlight(at: view.convert(local, to: content)) { content.perform(t, shot: card); dropped = true }

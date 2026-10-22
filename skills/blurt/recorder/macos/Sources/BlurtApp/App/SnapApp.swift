@@ -2,7 +2,7 @@
 // only) a distributed-notification command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
-//     cards [show|hide]       the claws down / up; every card's rect as "card" events (global top-left points)
+//     cards [show|hide]       the cards down / up; every card's rect as "card" events (global top-left points)
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
@@ -48,10 +48,10 @@ extension App {
             snapper.rememberFrontApp()
             snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), withNote: !a.contains("quiet"))
         case "cards":
-            if arg == "show" { claws.show(peek: 8) }
-            emit(["event": "swing", "degrees": claws.swing.map { Double(($0 * 100).rounded() / 100) }])
+            if arg == "show" { hanging.show(peek: 8) }
+            emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
-            for (s, r) in claws.cardRects() { emit(["event": "card", "n": s.n, "session": s.batch?.dir.path ?? "", "rect": [r.minX, r.minY, r.width, r.height]]) }
+            for (s, r) in hanging.cardRects() { emit(["event": "card", "n": s.n, "session": s.batch?.dir.path ?? "", "rect": [r.minX, r.minY, r.width, r.height]]) }
             if let r = NoteBubble.shared.canvasScreenRect { let c = toCG(r); emit(["event": "canvas", "rect": [c.minX, c.minY, c.width, c.height]]) }
         case "island":
             switch arg {
@@ -61,7 +61,7 @@ extension App {
             default: break
             }
             let f = toCG(island.frameOnScreen)
-            emit(["event": "island", "rect": [f.minX, f.minY, f.width, f.height], "open": island.open, "cards": claws.count])
+            emit(["event": "island", "rect": [f.minX, f.minY, f.width, f.height], "open": island.open, "cards": hanging.count])
         case "voice":
             if arg != "up" { Hotkeys.shared.simulate(.voice, released: false) }
             if arg == "tap" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Hotkeys.shared.simulate(.voice, released: true) } }
@@ -171,7 +171,7 @@ extension App {
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }
         case "toast": toast(arg.replacingOccurrences(of: "\\n", with: "\n"))
         case "axcards":
-            let els = claws.accessibilityElements().map { e -> [String: Any] in
+            let els = hanging.accessibilityElements().map { e -> [String: Any] in
                 let r = toCG(e.accessibilityFrame())
                 return ["role": e.accessibilityRole()?.rawValue ?? "", "label": e.accessibilityLabel() ?? "",
                         "help": e.accessibilityHelp() ?? "", "actions": (e.accessibilityCustomActions() ?? []).map(\.name),
@@ -213,9 +213,9 @@ extension App {
         item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
         item("capture.menu.switch_project", #selector(mSwitchProject)).showHotkey(.project)
-        if claws.count > 0 {
+        if hanging.count > 0 {
             let it = item("capture.menu.show_cards", #selector(mShowCards))
-            it.title = Loc.plural("capture.menu.show_cards", table: "Capture", count: claws.count)
+            it.title = Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count)
         }
         item("capture.menu.collect", #selector(mCollect), on: snapper.collecting)
     }
@@ -227,7 +227,7 @@ extension App {
     }
     @objc func mVoice() { VoiceInput.shared.toggle() }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
-    @objc func mShowCards() { claws.show(peek: 6) }
+    @objc func mShowCards() { hanging.show(peek: 6) }
     @objc func mCollect() {
         setRecordConfig("collect_system_shots", !snapper.collecting)
         snapper.syncCollector()

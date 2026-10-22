@@ -1,5 +1,5 @@
 // Frames of the app's own windows, rendered offscreen (CALayer.render, no screen capture, no Screen Recording grant):
-// the island, the claws, notes, flights — composited in z-order over a backdrop picture, cropped to a rect. For the
+// the island, the hanging cards, notes, flights — composited in z-order over a backdrop picture, cropped to a rect. For the
 // docs / launch GIFs and scripted visual checks (test command `framerec`); never on in normal use.
 import AppKit
 

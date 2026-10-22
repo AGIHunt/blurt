@@ -3,7 +3,7 @@
 //  • while recording, ⌥⇧A: a full-resolution still of the recorded area at that instant → <session>/shots/NNN.png +
 //    shots.jsonl (t = video time) + a "snap" event in events.jsonl. No pause, no prompt; the border flashes and the
 //    thumbnail flies into the island. The island's snap button also pauses and opens the note. ⌥⇧M = marker + snap.
-//  • not recording: see Captures.swift (the area picker, then a card on a claw or straight into the island).
+//  • not recording: see Captures.swift (the area picker, then a hanging card or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
 // {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
@@ -160,7 +160,7 @@ final class Shot {
     var duration: Double?        // voice inputs
     var strokes: [[[Double]]] = []
     var deleted = false
-    /// project id | "inbox" | nil (nil and not assigned = a card waiting on a claw)
+    /// project id | "inbox" | nil (nil and not assigned = a card waiting on a thread)
     var project: String?
     var assignedBy: String?      // capture | user | ai
     var pixelSize: CGSize = .zero
@@ -180,7 +180,7 @@ final class Shot {
     var bestURL: URL? { markedURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } ?? url ?? voiceURL }
     var voiceURL: URL? { voice.flatMap { batch?.dir.appendingPathComponent($0) } }
     var hasNote: Bool { !(text ?? "").isEmpty || voice != nil }
-    /// Waiting on a claw: not assigned to a project, not handed to the AI, not deleted, not part of a recording.
+    /// Waiting on a thread: not assigned to a project, not handed to the AI, not deleted, not part of a recording.
     var isCard: Bool { !deleted && project == nil && assignedBy == nil && batch?.inRecording == false }
     /// What the card says: the typed note, else the transcript.
     var words: String? { [text, said].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } }
@@ -461,7 +461,7 @@ func borderFlash(around r: NSRect) {
 /// Flies an image from one global rect to another along a gentle arc (lifts ~30 pt mid-flight, picks up a tilt).
 /// `springy`: the progress follows a spring (response 0.55 s, damping 0.72 — K7's fly-up), so it lands with a little
 /// overshoot, as if caught; else ease-in-out over `duration`. The corners round to `cornerRadius` on the way.
-/// Driven frame by frame on the display (model values, like the island and the claws), so it can be recorded.
+/// Driven frame by frame on the display (model values, like the island and the cards), so it can be recorded.
 func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval = 0.65, tilt: CGFloat = 0,
               polaroid: Bool = false, shrinkAway: Bool = false, springy: Bool = false, cornerRadius: CGFloat = 0,
               done: @escaping () -> Void) {

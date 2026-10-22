@@ -415,7 +415,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         if isOpen { commit() }
         shot = s
         mode = m
-        anchor = a ?? { claws.screenRect(of: s) ?? island.frameOnScreen }
+        anchor = a ?? { hanging.screenRect(of: s) ?? island.frameOnScreen }
         typed = false
         speechStarted = false
         voiceKept = false
@@ -423,8 +423,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         build()
         load(s)
         if m == .listen { startListening() }
-        if m != .recording { claws.hold(true) }
-        // let the card land on its claw first, then unfold the bubble under it
+        if m != .recording { hanging.hold(true) }
+        // let the card land on its thread first, then unfold the bubble under it
         let delay = m == .listen && !reduceMotion ? 0.55 : 0.0
         let work = DispatchWorkItem { [weak self] in self?.present() }
         showWork = work
@@ -670,7 +670,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func tick() {
         bars.needsDisplay = true
         if voice?.running == true && speechStarted { refreshStatus() }
-        // follow the card if the claws re-lay out (another capture arrived, a neighbour was removed)
+        // follow the card if the cards re-lay out (another capture arrived, a neighbour was removed)
         if let p = panel, p.isVisible, mode != .recording { position() }
     }
 
@@ -774,7 +774,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             // Esc = resume without saving the edit in the field
         }
         shot = nil
-        if mode != .recording { claws.update(s); claws.hold(false); snapper.settled(s) }
+        if mode != .recording { hanging.update(s); hanging.hold(false); snapper.settled(s) }
         let p = panel
         let done = { [weak self] in
             p?.orderOut(nil)

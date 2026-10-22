@@ -1,4 +1,4 @@
-// Motion shared by the island and the claws: a critically-tunable spring (response / damping, as in SwiftUI), the
+// Motion shared by the island and the hanging cards: a critically-tunable spring (response / damping, as in SwiftUI), the
 // system's Reduce Motion, easing curves, and a display-link driver that runs only while something moves.
 import AppKit
 import QuartzCore

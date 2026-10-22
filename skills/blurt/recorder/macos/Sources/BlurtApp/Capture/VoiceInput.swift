@@ -7,7 +7,7 @@
 //  • the wav goes to shots/<NNN>.wav of the current store's open shots batch; `transcribe.py note` (K9) fills `said`.
 //    Pressing starts `transcribe.py serve --preload` (once; it exits by itself when idle), so the model is warm by the
 //    time you stop talking and `note` answers in well under a second.
-//    With a current project it goes straight into the island; in auto mode it drops out of the island onto a claw.
+//    With a current project it goes straight into the island; in auto mode it hangs from the island on a thread.
 //  • while recording it does nothing (the recording already has the mic) and says so.
 // Tests: BLURT_TEST_MIC_WAV (or BLURT_NOTE_WAV) is fed through the same path instead of the microphone.
 
