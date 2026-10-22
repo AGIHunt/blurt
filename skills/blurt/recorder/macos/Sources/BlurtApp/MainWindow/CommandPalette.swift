@@ -39,7 +39,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
-        panel.setAccessibilityLabel(L("命令面板", "Command palette"))
+        panel.setAccessibilityLabel(T("menu.palette"))
 
         let fx = NSVisualEffectView()
         fx.material = .popover
@@ -53,10 +53,10 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 20, weight: .regular)
-        field.placeholderString = L("输入命令、项目或条目…", "Type a command, a project or an item…")
+        field.placeholderString = T("main.palette.placeholder")
         field.delegate = self
         field.cell?.isScrollable = true
-        field.setAccessibilityLabel(L("命令", "Command"))
+        field.setAccessibilityLabel(T("main.palette.field"))
         let sep = NSBox()
         sep.boxType = .separator
 
@@ -123,39 +123,42 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         func e(_ t: String, _ sym: String, _ keys: String = "", enabled: Bool = true, detail: String = "", _ run: @escaping () -> Void) -> Entry {
             Entry(title: t, detail: detail, image: Look.symbol(sym, t, size: 14), keys: keys, enabled: enabled, run: run)
         }
-        func b(_ t: String, _ icon: BrandIcon.Name, _ keys: String = "", enabled: Bool = true, _ run: @escaping () -> Void) -> Entry {
-            Entry(title: t, detail: "", image: BrandIcon.image(icon, size: 16), keys: keys, enabled: enabled, run: run)
-        }
-        let hasItems = !c.list.selectedItems.isEmpty
+        let items = c.list.selectedItems
+        let has = !items.isEmpty
         var out = [
-            e(L("录制", "Record"), "record.circle", hk(.toggleRecord)) { c.record() },
-            b(L("截图", "Snap"), .snap, hk(.snap)) { c.snap() },
-            b(L("让 Agent 修选中的条目", "Let Agent Fix Selection"), .peck, "⌘↩", enabled: hasItems && AppEnvironment.fixWithAgent != nil) { c.fixSelection() },
-            e(L("预览主帧", "Quick Look"), "eye", L("空格", "Space"), enabled: hasItems) { c.list.toggleQuickLook() },
-            e(L("审核模式", "Review Mode"), "rectangle.stack", "R", enabled: hasItems) { c.reviewMode() },
-            e(L("在访达中显示", "Reveal in Finder"), "folder", "⇧⌘R", enabled: hasItems || !c.list.selectedSessions.isEmpty) { c.mReveal() },
-            e(L("拷贝路径", "Copy Path"), "doc.on.doc", "⌥⌘C", enabled: hasItems || !c.list.selectedSessions.isEmpty) { c.copyPaths() },
-            e(L("改标题", "Rename"), "pencil", "E", enabled: hasItems) { c.renameSelection() },
-            e(L("标为已确认", "Mark Confirmed"), "checkmark.circle", enabled: hasItems) { c.setStatus("confirmed") },
-            e(L("丢弃", "Drop"), "trash", "⌫", enabled: hasItems) { c.setStatus("deleted") },
-            e(L("收件箱", "Go to Inbox"), "tray", "⌘1") { c.go(.inbox) },
-            e(L("全部条目", "Go to All Items"), "square.stack", "⌘2") { c.go(.all) },
-            b(L("待修问题", "Go to Open Issues"), .bug, "⌘3") { c.go(.smart(.openIssues)) },
-            e(L("想法", "Go to Ideas"), "lightbulb", "⌘4") { c.go(.smart(.ideas)) },
-            b(L("Agent 修复中", "Go to Agent Fixing"), .agentRun, "⌘5") { c.go(.smart(.fixing)) },
-            e(L("已修复", "Go to Fixed"), "checkmark.seal", "⌘6") { c.go(.smart(.fixed)) },
-            e(L("全部会话", "Go to All Sessions"), "clock", "⌘7") { c.go(.sessions) },
-            e(L("清除筛选", "Clear Filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
-            e(L("重新扫描录制", "Rescan Recordings"), "arrow.clockwise") { c.model.scan() },
-            e(L("键盘快捷键", "Keyboard Shortcuts"), "keyboard", "?") { c.showShortcuts() },
+            e(T("main.action.record"), "record.circle", hk(.toggleRecord)) { c.record() },
+            e(T("main.action.snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
+            e(T("project.open_folder"), "folder.badge.plus", "⌘O") { c.openFolder() },
+            e(T("main.menu.start_session"), "apple.terminal", "⌘↩", enabled: has) { c.handOffSelection() },
+            e(T("main.cmd.copy_instruction"), "doc.on.clipboard", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
+            e(T("main.cmd.copy_full"), "text.alignleft", enabled: has) { c.mCopyFull() },
+            e(T("main.cmd.mark_done"), "checkmark.circle", "D", enabled: items.contains { c.allowed("done", $0) }) { c.setWork("done") },
+            e(T("main.cmd.reopen"), "arrow.uturn.backward.circle", "R", enabled: items.contains { c.allowed("todo", $0) }) { c.setWork("todo") },
+            e(T("main.menu.quick_look"), "eye", T("main.keys.space"), enabled: has) { c.list.toggleQuickLook() },
+            e(T("action.reveal_in_finder"), "folder", "⇧⌘R", enabled: has) { c.mReveal() },
+            e(T("action.copy_path"), "doc.on.doc", "⌥⌘C", enabled: has) { c.copyPaths() },
+            e(T("main.menu.rename"), "pencil", "E", enabled: has) { c.renameSelection() },
+            e(T("review.confirmed"), "checkmark", "S", enabled: has) { c.setStatus("confirmed") },
+            e(T("review.deleted"), "trash", "⌫", enabled: has) { c.setStatus("deleted") },
+            e(T("main.place.inbox"), "tray", "⌘1") { c.go(.inbox) },
+            e(T("main.place.progress"), "circle.dashed", "⌘2") { c.go(.inProgress) },
+            e(T("project.inbox"), "tray.2", "⌘3") { c.go(.unassigned) },
+            e(T("main.place.all"), "square.stack", "⌘4") { c.go(.all) },
+            e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
+            e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
+            e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() },
         ]
-        for k in FilterBar.kindKeys {
-            out.append(Entry(title: L("只看", "Show Only ") + Look.kindName(k), detail: "", image: BrandIcon.kind(k, variant: "p", size: 17),
-                             keys: "", enabled: true) { c.model.kinds = [k]; c.model.reload() })
+        for k in KindStyle.builtIn {
+            out.append(Entry(title: T("main.palette.only_kind", Look.kindName(k)), detail: "", image: Look.kindImage(k), keys: "", enabled: true) {
+                c.model.kinds = [k]; c.model.reload()
+            })
         }
-        if AppEnvironment.settings != nil { out.append(e(L("设置…", "Settings…"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
-        for w in c.model.workspaces {
-            out.append(e(w.name, w.kind == "default" ? "house" : "folder", detail: L("项目 · ", "Project · ") + (w.path as NSString).abbreviatingWithTildeInPath) { c.go(.workspace(w.id)) })
+        if AppEnvironment.settings != nil { out.append(e(T("menu.settings"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
+        for p in c.model.projects where p.registered {
+            out.append(e(p.name, "folder", detail: T("main.palette.project", (p.path.path as NSString).abbreviatingWithTildeInPath)) { c.reveal(project: p.id) })
+            if !items.isEmpty {
+                out.append(e(T("main.palette.move_to", p.name), "arrow.right.doc.on.clipboard") { c.move(uids: items.map(\.uid), to: p.id) })
+            }
         }
         return out
     }
@@ -182,9 +185,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             let rows = (try? r.items(ItemQuery(text: q, limit: 8))) ?? []
             let items = rows.map { it in
                 Entry(title: it.title.isEmpty ? it.itemID : it.title,
-                      detail: [Look.kindName(it.kind), it.workspaceName, it.snippet.map { $0.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "") }]
-                        .compactMap { $0 }.joined(separator: " · "),
-                      image: BrandIcon.kind(it.kind, variant: it.uid, size: 17), keys: "", enabled: true) { [weak self] in
+                      detail: [it.itemID, it.projectName, it.snippet.map { $0.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "") }]
+                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                      image: Look.kindImage(it.kind), keys: "", enabled: true) { [weak self] in
                     self?.controller.reveal(uid: it.uid)
                 }
             }

@@ -1,9 +1,9 @@
 // K10: the app's strings, from per-package tables — Sources/BlurtApp/Resources/{en,zh-Hans}.lproj/<Table>.strings
 // (plurals in the same-named .stringsdict). record.py build copies the .lproj folders into Contents/Resources; a
 // `swift build` binary run from the source tree finds them next to the sources.
-//   Loc.t("main.inbox.title", table: "Main")                     → "Inbox" / "收件箱"
-//   Loc.t("main.items.selected", table: "Main", name)            → %@ / %ld placeholders, String(format:locale:)
-//   Loc.plural("main.items.count", table: "Main", count: n)      → .stringsdict (count is the first argument)
+//   Loc.t("main.place.inbox", table: "Main")                     → "Inbox" / "收件箱"
+//   Loc.t("main.open.failed", table: "Main", name)            → %@ / %ld placeholders, String(format:locale:)
+//   Loc.plural("main.items.count", table: "Main", count: n)       → .stringsdict (count is the first argument)
 // Language: config `lang` = auto (default: the system's first preferred language, zh-* → zh-Hans, anything else → en) |
 // en | zh | zh-Hans; `Loc.setting` (the app's --lang) wins. A key missing from the language falls back to en, then to
 // the key itself, so a gap shows up as "main.inbox.title" rather than an empty label.
@@ -67,7 +67,7 @@ public enum Loc {
         bundle(language).map { $0.localizedString(forKey: key, value: missing, table: table) != missing } ?? false
     }
 
-    static func format(_ fmt: String, _ args: [CVarArg]) -> String {
+    public static func format(_ fmt: String, _ args: [CVarArg]) -> String {
         args.isEmpty && !fmt.contains("%") ? fmt : String(format: fmt, locale: locale, arguments: args)
     }
 
@@ -139,6 +139,15 @@ public extension Loc {
         f.locale = locale
         f.numberStyle = .decimal
         return f.string(from: n as NSNumber) ?? "\(n)"
+    }
+
+    /// 0.4 → "40%" / "40%"
+    static func percent(_ x: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = locale
+        f.numberStyle = .percent
+        f.maximumFractionDigits = 0
+        return f.string(from: x as NSNumber) ?? "\(Int(x * 100))%"
     }
 
     /// A list of names joined the way the language does it ("A, B and C" / "A、B 和 C").

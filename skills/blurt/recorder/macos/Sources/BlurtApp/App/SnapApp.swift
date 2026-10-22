@@ -56,14 +56,14 @@ extension App {
             if let id = a.first { perch.hatched(id: id, ok: a.last == "ok") }
         case "notes": rec?.hud?.live?.openNotes()
         case "shortcuts": HotkeySettings.shared.show()
-        case "raise", "lower":                          // review windows above everything for a screenshot, and back
-            for w in ReviewHub.shared.windows {
-                w.window?.level = parts[0] == "raise" ? .floating : .normal
-                if parts[0] == "raise" { w.window?.orderFrontRegardless() }
+        case "raise", "lower":                          // the main window above everything for a screenshot, and back
+            if let w = MainWindowController.shared.window {
+                w.level = parts[0] == "raise" ? .floating : .normal
+                if parts[0] == "raise" { w.orderFrontRegardless() }
             }
             if parts[0] == "raise" { HotkeySettings.shared.window?.orderFrontRegardless() }
-        case "js":                                      // js CODE: run in the front review window (tests: switch views, open modals)
-            ReviewHub.shared.windows.last?.web.evaluateJavaScript(arg) { r, e in emit(["event": "js", "result": "\(r ?? e ?? "")"]) }
+        case "js":                                      // js CODE: run in the main window's review canvas
+            MainWindowController.shared.detail.web?.evaluateJavaScript(arg) { r, e in emit(["event": "js", "result": "\(r ?? e ?? "")"]) }
         case "webjs":                                   // webjs CODE: run in every blurt-app:// canvas (main window detail)
             func webViews(_ v: NSView) -> [WKWebView] { (v as? WKWebView).map { [$0] } ?? v.subviews.flatMap(webViews) }
             for w in NSApp.windows { for wv in webViews(w.contentView ?? NSView()) where wv.url?.scheme == "blurt-app" {
@@ -73,8 +73,8 @@ extension App {
             HotkeySettings.shared.show()
             if let a = HotAction(rawValue: arg) { HotkeySettings.shared.fields[a]?.start() }
         case "presskey", "rkey":                        // presskey SPEC|esc|delete: a real key event through the app's queue,
-                                                        // to the Shortcuts window (presskey) or the review window (rkey)
-            guard let w = parts[0] == "rkey" ? ReviewHub.shared.windows.last?.window : HotkeySettings.shared.window else { return }
+                                                        // to the Shortcuts window (presskey) or the main window (rkey)
+            guard let w = parts[0] == "rkey" ? MainWindowController.shared.window : HotkeySettings.shared.window else { return }
             if parts[0] == "rkey" {                     // key equivalents need us active with that window key
                 NSApp.activate(ignoringOtherApps: true)
                 w.makeKeyAndOrderFront(nil)
@@ -121,8 +121,8 @@ extension App {
                 RunLoop.main.perform { t.popUp(positioning: nil, at: NSPoint(x: 900, y: 900), in: nil) }
             }
         case "closemenu": testMenu?.cancelTracking()
-        case "review":                                  // review DIR: what the app does once items.json exists
-            openReview(URL(fileURLWithPath: arg))
+        case "review":                                  // review DIR: the batch in the main window
+            AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: arg))
         case "processdir":                              // processdir [AGENT ]DIR
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }

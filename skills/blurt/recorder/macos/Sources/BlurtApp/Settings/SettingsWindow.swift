@@ -10,13 +10,13 @@ enum SettingsPane: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .general: return L("通用", "General")
-        case .shortcuts: return L("快捷键", "Shortcuts")
-        case .speech: return L("语音", "Speech")
-        case .agents: return L("Agent", "Agents")
-        case .export: return L("导出", "Export")
-        case .privacy: return L("隐私", "Privacy")
-        case .storage: return L("存储", "Storage")
+        case .general: return T("settings.kit.general")
+        case .shortcuts: return T("settings.kit.shortcuts")
+        case .speech: return T("settings.kit.speech")
+        case .agents: return T("settings.kit.agents")
+        case .export: return T("settings.kit.export")
+        case .privacy: return T("settings.kit.privacy")
+        case .storage: return T("settings.kit.storage")
         }
     }
     var symbol: String {
@@ -112,9 +112,7 @@ final class ShortcutsPaneController: NSViewController {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 660, height: 560))
         let content = HotkeySettings.shared.makeContent()
         content.translatesAutoresizingMaskIntoConstraints = false
-        let note = NSTextField(wrappingLabelWithString: L(
-            "冲突分三层检查：口喷鸡自己的快捷键重复、和 macOS 系统快捷键冲突、向系统注册失败（被别的 App 或另一个口喷鸡占用）。改动立即生效，并写进 ~/.blurt/config.json。",
-            "Conflicts are checked on three levels: two Blurt actions on the same keys, a macOS system shortcut, and the system refusing the registration (another app or another Blurt holds it). Changes apply at once and are saved to ~/.blurt/config.json."))
+        let note = NSTextField(wrappingLabelWithString: T("settings.kit.conflicts_are_checked_three"))
         note.font = .systemFont(ofSize: 11.5)
         note.textColor = .secondaryLabelColor
         note.translatesAutoresizingMaskIntoConstraints = false

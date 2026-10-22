@@ -93,7 +93,7 @@ enum SelfTests {
             let uids = (a.first ?? "").split(separator: ",").map(String.init)
             if a.count >= 3 { FixRunner.shared.start(uids, autostart: (a[1], a[2] != "it")) } else { FixRunner.shared.start(uids) }
             out(["uids": uids])
-        case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: L("由 codex 修复", "by codex"), uid: "test")
+        case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: T("main.misc.by_codex"), uid: "test")
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.dropFirst().first == "dark")])
@@ -120,6 +120,89 @@ enum SelfTests {
                 await sm.runBench(m)
                 out(["backend": arg, "installed": m.installed, "rtf": sm.bench[arg]?.rtf ?? -1, "error": sm.bench[arg]?.error ?? NSNull()])
             }
+        case "main":                    // main SCOPE (inbox | progress | unassigned | all | project:<id>): go there
+            let c = MainWindowController.shared
+            c.show()
+            if let s = Scope(key: arg) { c.go(s) }
+            out(["scope": c.model.scope.key, "rows": c.model.rowCount, "jobs": c.model.jobs.count, "ms": c.model.lastReloadMS])
+        case "mainsel":                 // mainsel N[,M…]: select those rows of the list
+            let c = MainWindowController.shared
+            let rows = IndexSet(arg.split(separator: ",").compactMap { Int($0) })
+            c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
+            c.window?.makeFirstResponder(c.list.table)
+            out(["selected": c.list.selectedIDs])
+        case "mainjob":                 // mainjob ID: the job's detail
+            MainWindowController.shared.selectJob(arg)
+            out(["job": arg, "found": JobStore.shared.job(arg) != nil])
+        case "maindispatch":            // ⌘↩ on the selection (the concurrent-edit reminder may come up)
+            MainWindowController.shared.handOffSelection()
+        case "alertbutton":             // alertbutton N: answer the reminder sheet
+            if let a = MainWindowController.shared.openAlert, let n = Int(arg), n < a.buttons.count { a.buttons[n].performClick(nil) }
+            out(["answered": arg])
+        case "mainreveal":              // mainreveal UID: what blurt://item/<uid> does in the main window
+            MainWindowController.shared.reveal(uid: arg)
+            out(["scope": MainWindowController.shared.model.scope.key, "selected": MainWindowController.shared.list.selectedIDs])
+        case "mainclose":               // close the main window (then nothing may reopen it by itself)
+            MainWindowController.shared.window?.performClose(nil)
+            out(["visible": MainWindowController.shared.window?.isVisible ?? false])
+        case "badge":                   // the menu-bar count and its tooltip
+            MenuBadge.shared.refresh()
+            out(["count": MenuBadge.shared.count, "tooltip": MenuBadge.shared.tooltip, "title": appDelegate?.statusItem?.button?.title ?? ""])
+        case "mainsize":                // mainsize W H: the window's size (screenshots)
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            if a.count == 2, let w = MainWindowController.shared.window, let sc = w.screen?.visibleFrame {
+                w.setFrame(NSRect(x: sc.midX - a[0] / 2, y: sc.midY - a[1] / 2, width: a[0], height: a[1]), display: true)
+            }
+        case "mainsplit":               // the three columns' frames and the table's columns
+            let c = MainWindowController.shared
+            out(["columns": c.split.splitViewItems.map { "\($0.viewController.view.frame)" },
+                 "table": c.list.table.tableColumns.map { "\($0.identifier.rawValue)=\(Int($0.width))\($0.isHidden ? "h" : "")" }])
+        case "mainviews":               // frames of the detail's views (layout checks)
+            let d = MainWindowController.shared.detail
+            func dump(_ v: NSView, _ depth: Int) -> [String] {
+                guard depth < 4 else { return [] }
+                return ["\(String(repeating: " ", count: depth))\(type(of: v)) \(v.frame) hidden=\(v.isHidden)"] + v.subviews.flatMap { dump($0, depth + 1) }
+            }
+            out(["views": dump(d.jobView, 0)])
+        case "mainsearch":
+            let c = MainWindowController.shared
+            c.searchItem?.searchField.stringValue = arg
+            c.model.text = arg
+            c.model.reload()
+            out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS])
+        case "mainproject":             // mainproject ID: its settings sheet
+            MainWindowController.shared.projectSettings(arg)
+        case "mainwork", "mainmove":    // mainwork STATE / mainmove PROJECT: on the selection
+            let c = MainWindowController.shared
+            if parts[0] == "mainwork" { c.setWork(arg) } else { c.move(uids: c.list.selectedItems.map(\.uid), to: arg) }
+        case "mainhandoff":             // mainhandoff instruction|full: copy for your own agent
+            let c = MainWindowController.shared
+            c.handOff(uids: c.list.selectedItems.map(\.uid), what: arg.isEmpty ? "instruction" : arg) { r in
+                out(["text": r?["text"] ?? NSNull(), "clipboard": NSPasteboard.general.string(forType: .string) ?? ""])
+            }
+        case "mainmenu":                // mainmenu: the context menu of the selection, as titles (enabled ones)
+            let c = MainWindowController.shared
+            let m = c.contextMenu(for: c.list.table.selectedRowIndexes)
+            m?.update()
+            out(["items": m?.items.filter { !$0.isSeparatorItem }.map { "\($0.title)\($0.isEnabled ? "" : " (off)")" } ?? []])
+        case "perfscopes":              // filter / search timings on the current index
+            let c = MainWindowController.shared
+            var res: [String: Double] = [:]
+            for s in ["inbox", "progress", "unassigned", "all"] {
+                c.go(Scope(key: s)!)
+                let t0 = DispatchTime.now().uptimeNanoseconds
+                c.model.reload()
+                res[s] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            }
+            for q in ["login", "按钮", "ui"] {
+                let t0 = DispatchTime.now().uptimeNanoseconds
+                c.model.text = q
+                c.model.reload()
+                res["search:" + q] = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+            }
+            c.model.text = ""
+            c.model.reload()
+            out(["ms": res])
         case "perms":
             let p = Permissions()
             out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue])

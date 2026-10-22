@@ -611,6 +611,8 @@ def native_binary(build: bool = True) -> Path | None:
         prune_sparkle(dest)
     shutil.copy(INFO_PLIST, APP_BUNDLE / "Contents" / "Info.plist")
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
+    for lproj in sorted((SWIFT_DIR / "Sources" / "BlurtApp" / "Resources").glob("*.lproj")):   # K10 string tables
+        shutil.copytree(lproj, APP_BUNDLE / "Contents" / "Resources" / lproj.name, dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
     stamp.write_text(digest)          # before signing: the signature seals Resources/

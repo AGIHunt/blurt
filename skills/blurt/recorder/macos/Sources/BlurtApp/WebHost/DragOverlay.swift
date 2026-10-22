@@ -40,7 +40,7 @@ final class DragOverlay: NSView, NSDraggingSource, NSViewToolTipOwner {
     }
 
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
-        L("拖到访达或终端", "Drag to Finder or a terminal")
+        T("main.misc.drag_finder_terminal")
     }
 
     func region(at p: NSPoint) -> URL? { regions.first { $0.0.contains(p) }?.1 }

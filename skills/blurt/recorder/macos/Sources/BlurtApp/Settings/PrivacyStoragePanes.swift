@@ -78,21 +78,19 @@ struct PrivacyPane: View {
         PaneFrame {
             Section {
                 PermissionRows(p: perms)
-            } header: { Text(L("权限（实时）", "Permissions (live)")) } footer: {
-                Text(L("录屏权限改了之后，macOS 要重新打开口喷鸡才生效。", "macOS applies a Screen Recording change after Blurt restarts."))
+            } header: { Text(T("settings.privacy.permissions_live")) } footer: {
+                Text(T("settings.privacy.macos_applies_screen_recording"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
-                Toggle(L("只用本地语音识别", "Local speech recognition only"), isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }))
-                Hint(L("打开后录音不会发给任何云端识别服务。整理和修复由你选的 agent 完成，它们按各自的方式处理数据。",
-                       "Audio never goes to a cloud recognition service. Processing and fixing are done by the agent you chose, under its own terms."))
-                Toggle(L("保留实时转写的原始音频（live/audio.pcm）", "Keep the raw live-caption audio (live/audio.pcm)"),
+                Toggle(T("settings.privacy.local_speech_recognition_only"), isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }))
+                Hint(T("settings.privacy.audio_never_goes_cloud"))
+                Toggle(T("settings.privacy.keep_raw_live_caption"),
                        isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
-                Hint(L("默认在转写完成后删除：录屏文件里已经有同样的声音。", "Deleted by default once the transcript exists — recording.mp4 has the same audio."))
-                Toggle(L("条目出现在 Spotlight 里", "Items appear in Spotlight"), isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
-            } header: { Text(L("数据", "Data")) } footer: {
-                Text(L("录屏、截图、条目都只存在你的 Mac 上（~/Blurt 或项目的 .blurt/），口喷鸡不上传任何东西。",
-                       "Recordings, screenshots and items stay on your Mac (~/Blurt or the project's .blurt/); Blurt uploads nothing."))
+                Hint(T("settings.privacy.deleted_by_default_once"))
+                Toggle(T("settings.privacy.items_appear_spotlight"), isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
+            } header: { Text(T("settings.privacy.data")) } footer: {
+                Text(T("settings.privacy.recordings_screenshots_items_stay"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -124,9 +122,9 @@ final class StorageModel: ObservableObject {
             }
             let h = BlurtPaths.home
             var app: [Row] = []
-            for (name, rel) in [(L("语音模型", "Speech models"), "models"), (L("搜索索引", "Search index"), "index.db"),
-                                (L("构建缓存", "Build cache"), "build"), (L("Agent 运行记录", "Agent runs"), "runs"),
-                                (L("提示词", "Prompts"), "prompts"), (L("测速样本", "Benchmark samples"), "bench")] {
+            for (name, rel) in [(T("settings.privacy.speech_models"), "models"), (T("settings.privacy.search_index"), "index.db"),
+                                (T("settings.privacy.build_cache"), "build"), (T("settings.privacy.agent_runs"), "runs"),
+                                (T("settings.privacy.prompts"), "prompts"), (T("settings.privacy.benchmark_samples"), "bench")] {
                 let u = h.appendingPathComponent(rel)
                 var b = diskSize(u)
                 if rel == "index.db" { b += diskSize(h.appendingPathComponent("index.db-wal")) + diskSize(h.appendingPathComponent("index.db-shm")) }
@@ -140,7 +138,7 @@ final class StorageModel: ObservableObject {
 
     func dropLive() async {
         let freed = await Task.detached { Retention.dropLiveAudio() }.value
-        message = L("释放了 ", "Freed ") + byteString(freed)
+        message = T("settings.privacy.freed") + byteString(freed)
         await load()
     }
     func trash(_ u: URL) {
@@ -156,38 +154,38 @@ struct StoragePane: View {
         PaneFrame {
             Section {
                 ForEach(m.rows) { r in
-                    row(r.name, detail: L("\(r.count ?? 0) 个会话", "\(r.count ?? 0) sessions") + " · " + (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
+                    row(r.name, detail: TP("settings.privacy.sessions", r.count ?? 0) + " · " + (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
                         Button { NSWorkspace.shared.open(r.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
                     }
                 }
             } header: {
-                HStack { Text(L("录屏和截图", "Recordings and screenshots")); Spacer(); if m.busy { ProgressView().controlSize(.mini) } }
+                HStack { Text(T("settings.privacy.recordings_screenshots")); Spacer(); if m.busy { ProgressView().controlSize(.mini) } }
             }
             Section {
-                row(L("实时转写的原始音频", "Raw live-caption audio"),
-                    detail: L("\(m.liveAudio.count) 个已转写完的录屏里的 live/audio.pcm", "live/audio.pcm in \(m.liveAudio.count) transcribed recordings"),
+                row(T("settings.privacy.raw_live_caption_audio"),
+                    detail: TP("settings.privacy.live_audio", m.liveAudio.count),
                     bytes: m.liveAudio.bytes) {
-                    Button(L("清理", "Clean up")) { Task { await m.dropLive() } }.disabled(m.liveAudio.count == 0)
+                    Button(T("settings.privacy.clean_up")) { Task { await m.dropLive() } }.disabled(m.liveAudio.count == 0)
                 }
                 ForEach(m.app) { r in
                     row(r.name, detail: (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
                         if r.path.lastPathComponent == "build" || r.path.lastPathComponent == "prompts" || r.path.lastPathComponent == "bench" {
-                            Button(L("移到废纸篓", "Move to Trash")) { confirm = r.path }
+                            Button(T("settings.privacy.move_trash")) { confirm = r.path }
                         } else {
                             Button { NSWorkspace.shared.activateFileViewerSelecting([r.path]) } label: { Image(systemName: "magnifyingglass") }.buttonStyle(.borderless)
                         }
                     }
                 }
                 if let msg = m.message { Text(msg).font(.caption).foregroundStyle(.secondary) }
-            } header: { Text(L("口喷鸡自己的文件", "Blurt's own files")) } footer: {
-                Text(L("索引删了也不丢数据，随时能重建；语音模型在「语音」里管理。", "The index can be deleted without losing anything (it is rebuilt); manage speech models under Speech."))
+            } header: { Text(T("settings.privacy.blurt_own_files")) } footer: {
+                Text(T("settings.privacy.index_can_be_deleted"))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
         .task { await m.load() }
-        .alert(L("移到废纸篓？", "Move to the Trash?"), isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
-            Button(L("移到废纸篓", "Move to Trash"), role: .destructive) { if let u = confirm { m.trash(u) }; confirm = nil }
-            Button(L("取消", "Cancel"), role: .cancel) { confirm = nil }
+        .alert(T("settings.privacy.move_trash_2"), isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
+            Button(T("settings.privacy.move_trash"), role: .destructive) { if let u = confirm { m.trash(u) }; confirm = nil }
+            Button(T("settings.privacy.cancel"), role: .cancel) { confirm = nil }
         } message: { Text(confirm?.path ?? "") }
     }
 

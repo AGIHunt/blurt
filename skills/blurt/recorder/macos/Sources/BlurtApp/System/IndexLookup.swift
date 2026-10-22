@@ -1,78 +1,58 @@
-// The few read-only index.db queries the system integrations need (uid → session, Spotlight rows). Opened read-only
-// (C3: only index.py writes it). The main window's IndexReader (WP5) is the general reader; this stays small on purpose.
+// The few index.db lookups the system integrations need (uid → item, Spotlight rows), on a short-lived IndexReader
+// (read-only; only index.py writes the index). The main window keeps its own long-lived reader.
 import Foundation
-import SQLite3
 import BlurtCore
 
 struct IndexedItem {
     var uid: String, itemID: String, kind: String, title: String, quote: String
-    var status: String, fixState: String?, primaryFrame: String?, updated: Double
-    var sessionDir: String, sessionTitle: String?, workspacePath: String, workspaceKind: String
+    var status: String, workState: String, primaryFrame: String?, updated: Double
+    /// the item's .md file
+    var path: String
+    /// "" for an item with no source session
+    var sessionDir: String, sessionTitle: String?
+    /// the project folder (the inbox store for unassigned items), its id and name
+    var workspacePath: String, projectID: String, projectName: String
+
+    /// The v2 fix state, for callers that still speak it (K3's mapping, reversed).
+    var fixState: String? {
+        switch workState {
+        case "handed_off", "in_progress": return "fixing"
+        case "to_verify", "done": return "fixed"
+        case "wontfix": return "wontfix"
+        default: return nil
+        }
+    }
 }
 
 enum IndexLookup {
-    private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    static var available: Bool { FileManager.default.fileExists(atPath: BlurtPaths.indexDB.path) }
 
-    private static func query(_ sql: String, _ args: [String], _ row: (OpaquePointer) -> Void) -> Bool {
-        let path = BlurtPaths.indexDB.path
-        guard FileManager.default.fileExists(atPath: path) else { return false }
-        // A WAL database can't be opened read-only while its -shm file is missing (index.py closed it last, and
-        // SQLite removed -wal/-shm): SQLITE_CANTOPEN. Then open it read-write without CREATE, with query_only on —
-        // that only recreates the -shm; no data is ever written from here.
-        var db: OpaquePointer?
-        var st: OpaquePointer?
-        for flags in [SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, SQLITE_OPEN_READWRITE | SQLITE_OPEN_URI] {
-            guard sqlite3_open_v2(flags & SQLITE_OPEN_READONLY != 0 ? "file:\(path)?mode=ro" : "file:\(path)", &db, flags, nil) == SQLITE_OK else {
-                sqlite3_close(db); db = nil; continue
-            }
-            sqlite3_busy_timeout(db, 2000)
-            if flags & SQLITE_OPEN_READWRITE != 0 { sqlite3_exec(db, "PRAGMA query_only = 1", nil, nil, nil) }
-            if sqlite3_prepare_v2(db, sql, -1, &st, nil) == SQLITE_OK { break }
-            sqlite3_close(db); db = nil; st = nil
-        }
-        guard let db = db, let st = st else { return false }
-        defer { sqlite3_close(db) }
-        defer { sqlite3_finalize(st) }
-        for (i, a) in args.enumerated() { sqlite3_bind_text(st, Int32(i + 1), a, -1, SQLITE_TRANSIENT) }
-        while sqlite3_step(st) == SQLITE_ROW { row(st) }
-        return true
+    private static func reader() -> IndexReader? { try? IndexReader(url: BlurtPaths.indexDB) }
+
+    private static func make(_ r: ItemRow, _ paths: [String: String]) -> IndexedItem {
+        IndexedItem(uid: r.uid, itemID: r.itemID, kind: r.kind, title: r.title, quote: r.quote, status: r.status, workState: r.workState,
+                    primaryFrame: r.primaryFrame, updated: r.updated, path: r.fileURL.path, sessionDir: r.sessionDir ?? "",
+                    sessionTitle: r.sessionTitle, workspacePath: paths[r.projectID] ?? "", projectID: r.projectID, projectName: r.projectName)
     }
 
-    private static func text(_ st: OpaquePointer, _ i: Int32) -> String? {
-        guard let c = sqlite3_column_text(st, i) else { return nil }
-        return String(cString: c)
-    }
-
-    private static let select = """
-        SELECT i.uid, i.item_id, i.kind, i.title, i.quote, i.status, i.fix_state, i.primary_frame, i.updated,
-               s.dir, s.title, w.path, w.kind
-        FROM items i JOIN sessions s ON s.id = i.session_id JOIN workspaces w ON w.id = s.workspace_id
-        """
-
-    private static func row(_ st: OpaquePointer) -> IndexedItem {
-        IndexedItem(uid: text(st, 0) ?? "", itemID: text(st, 1) ?? "", kind: text(st, 2) ?? "note", title: text(st, 3) ?? "",
-                    quote: text(st, 4) ?? "", status: text(st, 5) ?? "draft", fixState: text(st, 6), primaryFrame: text(st, 7),
-                    updated: sqlite3_column_double(st, 8), sessionDir: text(st, 9) ?? "", sessionTitle: text(st, 10),
-                    workspacePath: text(st, 11) ?? "", workspaceKind: text(st, 12) ?? "default")
+    private static func paths(_ r: IndexReader) -> [String: String] {
+        Dictionary(((try? r.projects()) ?? []).map { ($0.id, $0.path) }, uniquingKeysWith: { a, _ in a })
     }
 
     static func item(uid: String) -> IndexedItem? {
-        var out: IndexedItem?
-        _ = query(select + " WHERE i.uid = ?1", [uid]) { out = row($0) }
-        return out
+        guard let r = reader(), let row = (try? r.item(uid: uid)) ?? nil else { return nil }
+        return make(row, paths(r))
     }
 
-    /// Live items (not deleted), newest first.
+    /// Live items (not dropped), newest first.
     static func items(limit: Int = 5000) -> [IndexedItem] {
-        var out: [IndexedItem] = []
-        _ = query(select + " WHERE i.status != 'deleted' ORDER BY i.updated DESC LIMIT \(limit)", []) { out.append(row($0)) }
-        return out
+        guard let r = reader() else { return [] }
+        let p = paths(r)
+        return ((try? r.items(ItemQuery(limit: limit))) ?? []).map { make($0, p) }
     }
-
-    static var available: Bool { FileManager.default.fileExists(atPath: BlurtPaths.indexDB.path) }
 }
 
-/// items.json of a session, read directly (fix state / title of one item) — for when the index has not caught up.
+/// A v2 session's items.json, read directly — only FixWatcher (P3) still needs it, until it follows work states.
 func readItems(_ session: URL) -> [[String: Any]] {
     guard let d = try? Data(contentsOf: session.appendingPathComponent("items.json")),
           let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [] }

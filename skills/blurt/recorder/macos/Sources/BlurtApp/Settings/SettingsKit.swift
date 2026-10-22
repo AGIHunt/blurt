@@ -56,7 +56,7 @@ struct CommandText: View {
                 NSPasteboard.general.setString(text, forType: .string)
             } label: { Image(systemName: "doc.on.doc") }
             .buttonStyle(.borderless)
-            .help(L("拷贝", "Copy"))
+            .help(T("settings.kit.copy"))
         }
         .padding(.horizontal, 7).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
@@ -140,11 +140,11 @@ struct PermissionRows: View {
     @ObservedObject var p: Permissions
 
     var body: some View {
-        row(L("屏幕录制", "Screen Recording"), L("录屏和截图都需要", "Needed to record and to snap"), p.screen,
+        row(T("settings.kit.screen_recording"), T("settings.kit.needed_record_snap"), p.screen,
             action: p.screen == .granted ? nil : { p.requestScreen() }, settings: "Privacy_ScreenCapture")
-        row(L("麦克风", "Microphone"), L("录你的讲解；不开也能录屏，只是没声音", "Your narration; recording works without it, just silent"), p.mic,
+        row(T("settings.kit.microphone"), T("settings.kit.your_narration_recording_works"), p.mic,
             action: p.mic == .notAsked ? { p.requestMic() } : nil, settings: "Privacy_Microphone")
-        row(L("辅助功能", "Accessibility"), L("按住 ⌃ 画笔需要（全局读取修饰键）", "For the hold-⌃ pen (reads modifier keys globally)"), p.accessibility,
+        row(T("settings.kit.accessibility"), T("settings.kit.hold_pen_reads_modifier"), p.accessibility,
             action: p.accessibility == .granted ? nil : { p.requestAccessibility() }, settings: "Privacy_Accessibility")
     }
 
@@ -156,12 +156,12 @@ struct PermissionRows: View {
                 Text(why).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(st == .granted ? L("已允许", "Allowed") : st == .denied ? L("未允许", "Not allowed") : L("未设置", "Not set"))
+            Text(st == .granted ? T("settings.kit.allowed") : st == .denied ? T("settings.kit.not_allowed") : T("settings.kit.not_set"))
                 .foregroundStyle(st == .granted ? .secondary : .primary).font(.callout)
             if let a = action {
-                Button(L("允许…", "Allow…"), action: a)
+                Button(T("settings.kit.allow"), action: a)
             } else if st != .granted {
-                Button(L("系统设置…", "System Settings…")) { Permissions.openPane(settings) }
+                Button(T("settings.kit.system_settings")) { Permissions.openPane(settings) }
             }
         }
         .accessibilityElement(children: .combine)

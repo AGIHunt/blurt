@@ -539,6 +539,7 @@ route 由 `items.py ingest` 在 auto 模式下调用（后台、写 K4 的 route
 | to_verify → done | **只有 user**（审核页或列表上「确认完成」） | |
 | to_verify → todo | user（重新打开，note 写原因） | |
 | 任意 → wontfix | user；agent 只能到 to_verify（claim wontfix） | |
+| handed_off(external) / in_progress → done | user | 复制给外部 agent、那边没接 MCP：只能由你手动标完成（§1.3「之后手动标」），不经过 to_verify |
 | done / wontfix → todo | user（重新打开） | |
 | deleted 的条目 | 不能派发、不能交出；work 保持原样 | |
 
@@ -957,6 +958,16 @@ uid 01JB… · issue · high · module auth
   `project.auto` Auto / 自动，`project.inbox` Unassigned / 待分配，`project.ai_sort` Let AI sort / 交给 AI 分，`project.open_folder` Open Folder… / 打开文件夹…；
   `handoff.copy_instruction` Copy instruction / 复制指令，`handoff.copy_full` Copy full text / 复制全文；
   `job.type.<type>`、`job.step.<id>`（K4 的每个 type 和 step id 都要有）。
+
+细则（P4）：
+- macOS 的表：`Common`（上面的通用键，另有 `job.state.*`、`time.just_now`、`action.*` 几个通用按钮）、`Main`（主窗口、菜单栏菜单、通知：`main.*`、`menu.*`、`app.*`、`notify.*`）、
+  `Settings`（设置窗口和设置助手：`settings.*`、`onboarding.*`）。BlurtApp 里的简写 `T("key", args…)` / `TP("key", n, args…)`（`App/Strings.swift`）
+  按键的第一段选表，其余照 `Loc.t` / `Loc.plural`。占位符用 `%@` / `%ld`，顺序和语言有关时用 `%1$@`。
+- 原生菜单和按钮按 macOS 的大小写习惯（en 用 Title Case：`main.cmd.mark_done` = Mark as Done），状态名等标签用通用键（Mark as done）。
+- 语言：config `lang` = `auto | en | zh-Hans`（`zh` 视为 zh-Hans）；`--lang` 优先（`Loc.setting`）。界面语言变化在重开应用后生效。
+- 表放在 `Sources/BlurtApp/Resources/<lang>.lproj/`，`Package.swift` 把 `Resources` 排除在 SwiftPM 之外，`record.py build` 拷进 `Contents/Resources/`；
+  `swift build` 出来的二进制按源码位置找表（`Loc.searchRoots`），测试可用 `BLURT_L10N_DIR`。
+- `tests/test_l10n.py`：每张表两种语言键完全一致、占位符一致、复数有 other（en 还要 one）、代码里按名字引用的键都在表里、Common 有上面的通用键。
 
 ### 所有权、闸门和合并
 

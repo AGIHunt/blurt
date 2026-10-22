@@ -1,6 +1,6 @@
 // blurt:// URLs (C7), handed over by AppDelegate (AppEnvironment.openURL):
-//   blurt://item/<uid>                     → the item in the main window (WP5), else its session's review window
-//   blurt://session/<abs-path-encoded>     → the session in the main window, else its review window
+//   blurt://item/<uid>                     → the item in the main window, else its file in Finder
+//   blurt://session/<abs-path-encoded>     → the batch in the main window, else its folder in Finder
 //   blurt://settings[/<pane>]              → Settings (general, shortcuts, speech, agents, export, privacy, storage)
 //   blurt://onboarding                     → the setup assistant
 //   blurt://open                           → the main window (same as the menu's "Open Blurt"; the Tauri app has it too)
@@ -52,16 +52,17 @@ enum URLRouter {
         switch r {
         case .item(let uid):
             if let mw = AppEnvironment.mainWindow { mw.show(); mw.reveal(uid: uid); return true }
-            if let it = IndexLookup.item(uid: uid) { return openReview(URL(fileURLWithPath: it.sessionDir)) }
-            appDelegate?.toast(L("找不到这个条目（索引里没有 \(uid.prefix(12))）", "Can't find that item (\(uid.prefix(12)) isn't in the index)"))
+            if let it = IndexLookup.item(uid: uid) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: it.path)]); return true }
+            appDelegate?.toast(T("app.url.no_item", String(uid.prefix(12))))
             return true
         case .session(let dir):
             guard FileManager.default.fileExists(atPath: dir.path) else {
-                appDelegate?.toast(L("会话目录不存在：", "No such session: ") + (dir.path as NSString).abbreviatingWithTildeInPath)
+                appDelegate?.toast(T("app.url.no_session", (dir.path as NSString).abbreviatingWithTildeInPath))
                 return true
             }
             if let mw = AppEnvironment.mainWindow { mw.show(); mw.reveal(session: dir); return true }
-            return openReview(dir)
+            NSWorkspace.shared.activateFileViewerSelecting([dir])
+            return true
         case .settings(let pane):
             AppEnvironment.settings?.show(pane: pane)
             return true
@@ -77,12 +78,6 @@ enum URLRouter {
         }
     }
 
-    @discardableResult
-    static func openReview(_ dir: URL) -> Bool {
-        if FileManager.default.fileExists(atPath: dir.appendingPathComponent("items.json").path), appDelegate?.openReview(dir) == true { return true }
-        NSWorkspace.shared.activateFileViewerSelecting([dir])
-        return true
-    }
 }
 
 var appDelegate: App? { NSApp.delegate as? App }

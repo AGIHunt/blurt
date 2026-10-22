@@ -1,10 +1,10 @@
-// WP5 (mac-main-window) owns MainWindow/ and WebHost/. Called once at launch by the menu-bar app:
-// set AppEnvironment.mainWindow here (the menu then shows "Open Blurt").
+// P4 owns MainWindow/ and WebHost/. Called once at launch by the menu-bar app: sets AppEnvironment.mainWindow
+// (the menu then shows "Open Blurt").
 //
-// At launch: an incremental `index.py scan` in the background when an index exists (a missing index is offered as a
-// first-run scan in the window instead), and the window comes back if it was open when the app quit — only for
-// background launches (login item, `--background`), never on top of a plain launch that starts a recording.
-// BLURT_OPEN_MAIN=1 opens it right away (tests, screenshots).
+// At launch: an incremental `index.py scan` in the background when an index exists (a missing or outdated index is
+// offered as a scan in the window instead), and the window comes back if it was open when the app quit — only for
+// background launches (login item, `--background`), never on top of a plain launch that starts a recording, and
+// never because something finished (K4: nothing opens by itself). BLURT_OPEN_MAIN=1 opens it right away (tests).
 import AppKit
 import BlurtCore
 

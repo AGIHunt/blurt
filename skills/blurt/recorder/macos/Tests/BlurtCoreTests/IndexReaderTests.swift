@@ -1,6 +1,7 @@
-// IndexReader against an index.db built from the C3 DDL (docs/contracts/index-schema.sql) with 20k synthetic items.
-// WP5 acceptance: filter + reload ≤ 100 ms, search ≤ 150 ms on 20k rows. "reload" = what the main window does on a
-// filter change: the ordered uids of every match + the first screenful of rows + the sidebar counts.
+// IndexReader against an index.db with schema v2 (docs/design/next-round.md K1 "index.db schema v2") and 20k synthetic
+// items. P4 acceptance: filter + reload ≤ 100 ms, search ≤ 150 ms on 20k rows. "reload" = what the main window does
+// on a filter change: the ordered uids of every match + the first screenful of rows + the sidebar counts.
+// The DDL is docs/contracts/index-schema.sql when that file is v2 (P1 writes it), else the contract's own copy below.
 // Run: swift test (needs Xcode's XCTest; the Command Line Tools alone can build the app but not run this).
 import Foundation
 import SQLite3
@@ -27,11 +28,41 @@ final class IndexReaderTests: XCTestCase {
         super.tearDown()
     }
 
-    static var schemaURL: URL {
-        // Tests/BlurtCoreTests/<this file> → repo root is 6 levels up (skills/blurt/recorder/macos/Tests/BlurtCoreTests)
+    /// K1's DDL (the parts the reader uses), for when the contract file isn't v2 yet.
+    static let contractDDL = """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, store TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
+          key TEXT NOT NULL, slug TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('inbox', 'folder', 'repo')),
+          registered INTEGER NOT NULL DEFAULT 1, last_seen REAL);
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          dir TEXT NOT NULL UNIQUE, mode TEXT NOT NULL CHECK (mode IN ('video', 'shots', 'voice')), title TEXT, author TEXT,
+          created REAL, duration REAL, shot_count INTEGER NOT NULL DEFAULT 0, card_count INTEGER NOT NULL DEFAULT 0,
+          item_count INTEGER NOT NULL DEFAULT 0, processed INTEGER NOT NULL DEFAULT 0, processing INTEGER NOT NULL DEFAULT 0,
+          reviewed INTEGER NOT NULL DEFAULT 0, legacy INTEGER NOT NULL DEFAULT 0, items_mtime REAL, shots_mtime REAL,
+          indexed_at REAL NOT NULL);
+        CREATE TABLE items (uid TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL, path TEXT NOT NULL UNIQUE, item_id TEXT NOT NULL,
+          kind TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+          tags TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, work_state TEXT NOT NULL DEFAULT 'todo', work_to TEXT,
+          work_agent TEXT, work_job TEXT, work_claim TEXT, severity TEXT, owner TEXT, module TEXT, assignee TEXT, confidence TEXT,
+          source_type TEXT, source_by TEXT, source_app TEXT, source_url TEXT, project_by TEXT, project_confidence REAL,
+          suggested_project TEXT, suggested_confidence REAL, t_start REAL, primary_frame TEXT,
+          frame_count INTEGER NOT NULL DEFAULT 0, has_code_refs INTEGER NOT NULL DEFAULT 0, exported TEXT NOT NULL DEFAULT '{}',
+          user_edited INTEGER NOT NULL DEFAULT 0, parse_error TEXT, created REAL NOT NULL, updated REAL NOT NULL, mtime REAL,
+          UNIQUE (project_id, item_id));
+        CREATE INDEX items_updated ON items(updated DESC);
+        CREATE INDEX items_proj ON items(project_id, status, work_state);
+        CREATE VIRTUAL TABLE items_fts USING fts5(title, quote, body, tags, content='items', content_rowid='rowid', tokenize='trigram');
+        CREATE TRIGGER items_ai AFTER INSERT ON items BEGIN
+          INSERT INTO items_fts(rowid, title, quote, body, tags) VALUES (new.rowid, new.title, new.quote, new.body, new.tags); END;
+        """
+
+    static var ddl: String {
+        // Tests/BlurtCoreTests/<this file> → repo root is 7 levels up
         var u = URL(fileURLWithPath: #filePath)
         for _ in 0..<7 { u.deleteLastPathComponent() }
-        return u.appendingPathComponent("docs/contracts/index-schema.sql")
+        let file = (try? String(contentsOf: u.appendingPathComponent("docs/contracts/index-schema.sql"), encoding: .utf8)) ?? ""
+        return file.contains("work_state") && file.contains("CREATE TABLE projects") ? file : contractDDL
     }
 
     static func exec(_ db: OpaquePointer?, _ sql: String) {
@@ -50,46 +81,45 @@ final class IndexReaderTests: XCTestCase {
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
-        let ddl = (try? String(contentsOf: schemaURL, encoding: .utf8)) ?? ""
-        XCTAssertFalse(ddl.isEmpty, "schema at \(schemaURL.path)")
         exec(db, ddl)
+        exec(db, "INSERT INTO meta(key, value) VALUES ('schema_version', '2') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
         exec(db, "BEGIN")
-        let wss = ["default", "my-saas", "landing", "ios"]
-        for (k, w) in wss.enumerated() {
-            exec(db, "INSERT INTO workspaces VALUES ('w\(k)', '/tmp/ws/\(w)', '\(w)', '\(k == 0 ? "default" : "repo")', \(k))")
+        let projects = [("inbox", "IN", "inbox"), ("p1", "MS", "repo"), ("p2", "LP", "repo"), ("p3", "IOS", "folder")]
+        for (k, p) in projects.enumerated() {
+            exec(db, "INSERT INTO projects VALUES ('\(p.0)', '/tmp/ws/\(p.0)', '/tmp/ws/\(p.0)/.blurt', '\(p.0)', '\(p.1)', '\(p.0)', '\(p.2)', 1, \(k))")
         }
         let perSession = 50, sessions = items / perSession
         for s in 0..<sessions {
-            let st = s % 9 == 0 ? (0, 0, 0) : s % 5 == 0 ? (1, 0, 0) : (1, 0, 1)
+            let p = projects[s % 4].0
             exec(db, """
-                INSERT INTO sessions(id, workspace_id, dir, mode, title, created, item_count, processed, processing, reviewed, indexed_at)
-                VALUES ('w\(s % 4):s\(s)', 'w\(s % 4)', '/tmp/ws/s\(s)', '\(s % 7 == 3 ? "shots" : "video")', 'session \(s)',
-                        \(1_790_000_000 + s * 3600), \(perSession), \(st.0), \(st.1), \(st.2), 0)
+                INSERT INTO sessions(id, project_id, dir, mode, title, created, item_count, processed, processing, reviewed, indexed_at)
+                VALUES ('\(p):s\(s)', '\(p)', '/tmp/ws/\(p)/.blurt/sessions/s\(s)', '\(s % 7 == 3 ? "shots" : "video")', 'session \(s)',
+                        \(1_790_000_000 + s * 3600), \(perSession), 1, 0, \(s % 3 == 0 ? 1 : 0), 0)
                 """)
         }
         var ins: OpaquePointer?
         sqlite3_prepare_v2(db, """
-            INSERT INTO items(uid, session_id, item_id, kind, title, quote, body, tags, status, fix_state, severity, t_start,
-                              primary_frame, frame_count, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+            INSERT INTO items(uid, project_id, session_id, path, item_id, kind, title, quote, body, tags, status, work_state, severity,
+                              t_start, primary_frame, frame_count, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)
             """, -1, &ins, nil)
         let T = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         var rng = UInt64(7)
         func next(_ m: Int) -> Int { rng = rng &* 6364136223846793005 &+ 1442695040888963407; return Int((rng >> 33) % UInt64(m)) }
         let kinds = ["issue", "issue", "issue", "idea", "note", "task"]
-        let fixes: [String?] = [nil, nil, nil, nil, nil, "fixing", "fixed", "fixed", "wontfix", "reopened"]
+        let works = ["todo", "todo", "todo", "todo", "handed_off", "in_progress", "to_verify", "done", "done", "wontfix"]
         for i in 0..<items {
             let s = i / perSession
+            let p = projects[s % 4]
             let title = titles[next(titles.count)] + " \(i)"
-            let vals: [String?] = [String(format: "U%025d", i), "w\(s % 4):s\(s)", String(format: "I-%03d", i % perSession + 1),
-                                   kinds[next(kinds.count)], title, "这里\(title)，你看一下。", "实际：\(title)\n期望：正常",
-                                   "ui", ["draft", "confirmed", "confirmed", "deleted"][next(4) == 3 && next(5) == 0 ? 3 : next(3)],
-                                   fixes[next(fixes.count)], ["high", "medium", "low"][next(3)]]
-            for (k, v) in vals.enumerated() {
-                if let v = v { sqlite3_bind_text(ins, Int32(k + 1), v, -1, T) } else { sqlite3_bind_null(ins, Int32(k + 1)) }
-            }
-            sqlite3_bind_double(ins, 12, Double(i % perSession) * 3)
-            sqlite3_bind_text(ins, 13, "/tmp/ws/s\(s)/frames/I-001-1.jpg", -1, T)
-            sqlite3_bind_double(ins, 14, 1_790_000_000 + Double(i) * 37)
+            let vals: [String] = [String(format: "U%025d", i), p.0, "\(p.0):s\(s)", "/tmp/ws/\(p.0)/.blurt/items/\(p.1)-\(i).md",
+                                  "\(p.1)-\(i + 1)", kinds[next(kinds.count)], title, "这里\(title)，你看一下。", "实际：\(title)\n期望：正常",
+                                  "ui", ["draft", "confirmed", "confirmed", "deleted"][next(4) == 3 && next(5) == 0 ? 3 : next(3)],
+                                  works[next(works.count)], ["high", "medium", "low"][next(3)]]
+            for (k, v) in vals.enumerated() { sqlite3_bind_text(ins, Int32(k + 1), v, -1, T) }
+            sqlite3_bind_double(ins, 14, Double(i % perSession) * 3)
+            sqlite3_bind_text(ins, 15, "/tmp/ws/\(p.0)/.blurt/assets/U\(i)/1.png", -1, T)
+            sqlite3_bind_double(ins, 16, 1_790_000_000 + Double(i) * 30)
+            sqlite3_bind_double(ins, 17, 1_790_000_000 + Double(i) * 37)
             XCTAssertEqual(sqlite3_step(ins), SQLITE_DONE)
             sqlite3_reset(ins)
         }
@@ -116,7 +146,19 @@ final class IndexReaderTests: XCTestCase {
         let uids = try r.uids(q)
         _ = try r.items(uids: Array(uids.prefix(80)), terms: q.terms)
         _ = try r.counts()
+        _ = try r.projects()
         return uids.count
+    }
+
+    func testRefusesAnOlderSchema() throws {
+        let u = Self.dbURL.deletingLastPathComponent().appendingPathComponent("v1.db")
+        var db: OpaquePointer?
+        sqlite3_open(u.path, &db)
+        Self.exec(db, "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '1'); CREATE TABLE items (uid TEXT)")
+        sqlite3_close(db)
+        XCTAssertThrowsError(try IndexReader(url: u)) { e in
+            guard case IndexError.schema("1") = e else { return XCTFail("\(e)") }
+        }
     }
 
     func testCountsAndRows() throws {
@@ -124,16 +166,41 @@ final class IndexReaderTests: XCTestCase {
         let all = try r.count(ItemQuery())
         XCTAssertGreaterThan(all, 15_000)
         XCTAssertEqual(try r.uids(ItemQuery(limit: 0)).count, all)
-        XCTAssertEqual(try r.counts().all, all)
+        let c = try r.counts()
+        XCTAssertEqual(c.all, all)
+        XCTAssertEqual(c.attention, try r.count(ItemQuery(attention: true)))
+        XCTAssertEqual(c.unassigned, try r.count(ItemQuery(project: "inbox")))
+        XCTAssertEqual(c.active, try r.count(ItemQuery(workStates: ["handed_off", "in_progress"])))
         let first = try r.items(ItemQuery(limit: 5))
         XCTAssertEqual(first.count, 5)
         XCTAssertGreaterThanOrEqual(first[0].updated, first[4].updated)
-        XCTAssertEqual(first[0].workspaceName != nil, true)
+        XCTAssertFalse(first[0].projectName.isEmpty)
+        XCTAssertFalse(first[0].projectKey.isEmpty)
+        XCTAssertNotNil(first[0].sessionDir)
         let byUID = try r.items(uids: first.map(\.uid).reversed())
         XCTAssertEqual(byUID.map(\.uid), first.map(\.uid).reversed())
-        XCTAssertEqual(try r.workspaces().count, 4)
-        XCTAssertFalse(try r.sessions(SessionQuery(state: "inbox", limit: 0)).isEmpty)
-        XCTAssertTrue(try r.sessions(SessionQuery(state: "inbox", limit: 0)).allSatisfy { $0.state != "reviewed" })
+        let projects = try r.projects()
+        XCTAssertEqual(projects.count, 4)
+        XCTAssertEqual(projects.first?.id, "inbox")
+        XCTAssertGreaterThan(projects.map(\.openItems).reduce(0, +), 0)
+        XCTAssertFalse(try r.sessions(SessionQuery(project: "p1", limit: 0)).isEmpty)
+        let s = try r.sessions(SessionQuery(limit: 1))[0]
+        XCTAssertEqual(try r.session(dir: s.dir)?.id, s.id)
+    }
+
+    func testPlacesAndFilters() throws {
+        let r = try IndexReader(url: Self.dbURL)
+        XCTAssertTrue(try r.items(ItemQuery(attention: true, limit: 300)).allSatisfy { $0.needsAttention && $0.status != "deleted" })
+        XCTAssertTrue(try r.items(ItemQuery(workStates: ["to_verify"], limit: 100)).allSatisfy { $0.workState == "to_verify" })
+        XCTAssertTrue(try r.items(ItemQuery(project: "p2", limit: 100)).allSatisfy { $0.projectID == "p2" && $0.projectKey == "LP" })
+        XCTAssertTrue(try r.items(ItemQuery(kinds: ["idea"], limit: 50)).allSatisfy { $0.kind == "idea" })
+        XCTAssertTrue(try r.items(ItemQuery(limit: 500)).allSatisfy { $0.status != "deleted" })
+        XCTAssertTrue(try r.items(ItemQuery(statuses: ["deleted"], limit: 50)).allSatisfy { $0.status == "deleted" })
+        // the work sort puts what needs the user first
+        var work = ItemQuery(sort: "work", limit: 3)
+        work.ascending = true
+        let byWork = try r.items(work)
+        XCTAssertTrue(byWork.allSatisfy { $0.workState == "to_verify" })
     }
 
     func testSearchSemantics() throws {
@@ -151,21 +218,18 @@ final class IndexReaderTests: XCTestCase {
         XCTAssertEqual(try r.count(ItemQuery(text: "登录 侧栏")), 0)
         XCTAssertEqual(try r.count(ItemQuery(text: "\"OR\" NEAR(")), 0)
         XCTAssertEqual(try r.count(ItemQuery(text: "100%")), 0)
-        // filters
-        XCTAssertTrue(try r.items(ItemQuery(kinds: ["idea"], limit: 50)).allSatisfy { $0.kind == "idea" })
-        XCTAssertTrue(try r.items(ItemQuery(fixStates: ["none"], limit: 50)).allSatisfy { $0.fixState == nil })
-        XCTAssertTrue(try r.items(ItemQuery(limit: 500)).allSatisfy { $0.status != "deleted" })
-        XCTAssertTrue(try r.items(ItemQuery(statuses: ["deleted"], limit: 50)).allSatisfy { $0.status == "deleted" })
     }
 
     func testPerformanceFilterReload() throws {
         let r = try IndexReader(url: Self.dbURL)
-        let qs = [ItemQuery(), ItemQuery(kinds: ["issue"]), ItemQuery(kinds: ["issue"], fixStates: ["none", "fixing", "reopened"]),
-                  ItemQuery(statuses: ["draft"]), ItemQuery(workspace: "w2"), ItemQuery(sort: "title")]
+        let qs = [ItemQuery(), ItemQuery(attention: true), ItemQuery(workStates: ["handed_off", "in_progress", "to_verify"]),
+                  ItemQuery(project: "inbox"), ItemQuery(project: "p2"), ItemQuery(kinds: ["issue"], statuses: ["draft"]),
+                  ItemQuery(sort: "title"), ItemQuery(sort: "work")]
         for q in qs {
             var count = 0
             let ms = try time { count = try reload(r, q) }
-            print(String(format: "PERF filter+reload %-60@ %6d rows %6.1f ms", "\(q.kinds)\(q.fixStates)\(q.statuses)\(q.workspace ?? "")\(q.sort)", count, ms))
+            print(String(format: "PERF filter+reload %-60@ %6d rows %6.1f ms",
+                         "\(q.kinds)\(q.statuses)\(q.workStates)\(q.attention ? "attention" : "")\(q.project ?? "")\(q.sort)", count, ms))
             XCTAssertLessThanOrEqual(ms, 100, "filter + reload over \(Self.n) rows")
         }
     }
