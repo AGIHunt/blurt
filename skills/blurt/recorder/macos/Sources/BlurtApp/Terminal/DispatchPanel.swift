@@ -147,7 +147,7 @@ final class DispatchModel: ObservableObject {
         do {
             let o = try await ScriptRunner.shared.json("items.py", ["list", "--project", p, "--work", "todo"], timeout: 60)
             candidates = (o["items"] as? [[String: Any]] ?? []).compactMap {
-                guard let uid = $0["uid"] as? String, ($0["status"] as? String) != "deleted" else { return nil }
+                guard let uid = $0["uid"] as? String, ($0["state"] as? String) != "discarded" else { return nil }
                 return DispatchItem(uid: uid, ref: $0["id"] as? String ?? String(uid.prefix(8)), title: $0["title"] as? String ?? "")
             }
             candidatesError = nil

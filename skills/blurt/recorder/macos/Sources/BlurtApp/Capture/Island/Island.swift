@@ -711,7 +711,7 @@ final class Island: NSObject, IslandHosting {
 
     private func refreshReviewCount() {
         DispatchQueue.global(qos: .utility).async {
-            let n = (try? IndexReader().count(ItemQuery(statuses: ["draft"], limit: 0))) ?? 0
+            let n = (try? IndexReader().count(ItemQuery(inbox: true, limit: 0))) ?? 0
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, n != self.reviewCount else { return }
                 self.reviewCount = n
