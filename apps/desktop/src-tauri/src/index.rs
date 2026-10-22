@@ -1,10 +1,11 @@
-//! Read-only access to `$BLURT_HOME/index.db`, schema v2 (contract K1 "index.db schema v2"). index.py is the only
+//! Read-only access to `$BLURT_HOME/index.db`, schema v3 (contract K1; v3 = K3's one `state` column instead of
+//! `status` + `work_state`). index.py is the only
 //! writer; we open with `SQLITE_OPEN_READ_ONLY` per query (cheap, and a rebuilt file is picked up at once). A db of
 //! another schema version reads as missing: the startup scan rebuilds it.
 //!
 //! Search follows C3 so every host returns the same rows: the query is split on whitespace, every term must match;
 //! a term of ≥ 3 characters goes to FTS5 (trigram) as a quoted phrase, a shorter one becomes
-//! `(title LIKE OR quote LIKE OR body LIKE)`. Status defaults to "everything but deleted".
+//! `(title LIKE OR quote LIKE OR body LIKE)`. The state defaults to "everything but discarded".
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,15 +14,40 @@ use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, OpenFlags
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-pub const SCHEMA: &str = "2";
+pub const SCHEMA: &str = "3";
+
+/// K3 (tests/fixtures/lifecycle.json): the eight states and the groups every count uses.
+pub const STATES: [&str; 8] = ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded"];
+/// "Needs you": the inbox, the badges, the island
+pub const INBOX: [&str; 2] = ["new", "to_verify"];
+pub const OPEN: [&str; 4] = ["new", "todo", "handed_off", "in_progress"];
+
+/// The pre-v0.7 filters as states: status draft → new, confirmed → kept (to do … won't do), deleted → discarded;
+/// work todo → new + to do, the other work states as they are.
+fn compat_states(key: &str, v: &str) -> Vec<&'static str> {
+    match (key, v) {
+        ("status", "draft") => vec!["new"],
+        ("status", "confirmed") => vec!["todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"],
+        ("status", "deleted") => vec!["discarded"],
+        ("work", "todo") => vec!["new", "todo"],
+        ("work", w) => STATES.iter().copied().filter(|s| *s == w && *s != "new" && *s != "discarded").collect(),
+        _ => vec![],
+    }
+}
+
+fn sql_set(states: &[&str]) -> String {
+    states.iter().map(|s| format!("'{s}'")).collect::<Vec<_>>().join(", ")
+}
 
 #[derive(Debug, Default, Deserialize, Clone)]
 #[serde(default)]
 pub struct ItemQuery {
     pub query: Option<String>,
     pub kind: Vec<String>,
+    /// K3: new | todo | handed_off | in_progress | to_verify | done | wontfix | discarded (none = all but discarded)
+    pub state: Vec<String>,
+    /// pre-v0.7 names, mapped to states (`compat_states`); several filters narrow each other
     pub status: Vec<String>,
-    /// work.state (K3): todo | handed_off | in_progress | to_verify | done | wontfix
     pub work: Vec<String>,
     pub severity: Vec<String>,
     /// project id, its path, or "inbox"
@@ -118,19 +144,28 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
         wh.push("items_fts MATCH ?".into());
         args.push(SqlValue::Text(fts.join(" AND ")));
     }
-    if q.status.is_empty() {
-        wh.push("i.status != 'deleted'".into());
-    } else {
-        wh.push(in_list("i.status", &q.status, &mut args));
+    // the explicit states, narrowed by the old status / work filters when those are given
+    let mut want: Option<Vec<String>> = (!q.state.is_empty()).then(|| q.state.clone());
+    for (key, vals) in [("status", &q.status), ("work", &q.work)] {
+        if vals.is_empty() {
+            continue;
+        }
+        let these: Vec<String> = vals.iter().flat_map(|v| compat_states(key, v)).map(String::from).collect();
+        want = Some(match want {
+            Some(w) => w.into_iter().filter(|s| these.contains(s)).collect(),
+            None => these,
+        });
+    }
+    match want {
+        None => wh.push("i.state != 'discarded'".into()),
+        Some(w) if w.is_empty() => wh.push("0".into()),
+        Some(w) => wh.push(in_list("i.state", &w, &mut args)),
     }
     if !q.kind.is_empty() {
         wh.push(in_list("i.kind", &q.kind, &mut args));
     }
     if !q.severity.is_empty() {
         wh.push(in_list("i.severity", &q.severity, &mut args));
-    }
-    if !q.work.is_empty() {
-        wh.push(in_list("i.work_state", &q.work, &mut args));
     }
     if !q.source_type.is_empty() {
         wh.push(in_list("i.source_type", &q.source_type, &mut args));
@@ -156,9 +191,9 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
     (format!("FROM {from} WHERE {}", wh.join(" AND ")), args, !fts.is_empty())
 }
 
-/// ItemRow v2 (K1) plus what the list shows besides (quote, frames, the project's routing).
+/// ItemRow v3 (K1) plus what the list shows besides (quote, frames, the project's routing).
 const ITEM_COLS: &str = "i.uid, i.project_id, p.name AS project_name, p.key AS project_key, i.session_id, s.dir AS session_dir, \
-     i.path, i.item_id, i.kind, i.title, i.status, i.work_state, i.work_to, i.work_agent, i.severity, i.primary_frame, \
+     i.path, i.item_id, i.kind, i.title, i.state, i.work_to, i.work_agent, i.severity, i.primary_frame, \
      i.created, i.updated, i.suggested_project, i.suggested_confidence, i.project_by, i.quote, i.t_start, i.frame_count, \
      i.source_type, i.has_code_refs, i.parse_error";
 
@@ -167,7 +202,7 @@ impl Index {
         Index { path }
     }
 
-    /// The file exists and is schema v2.
+    /// The file exists and is schema v3.
     pub fn ready(&self) -> bool {
         self.path.is_file()
             && open(&self.path)
@@ -219,7 +254,7 @@ impl Index {
         Ok(self.rows(&sql, &[SqlValue::Text(uid.into())])?.into_iter().next())
     }
 
-    /// Capture sessions ("batches") with their project and how many of their items wait for review.
+    /// Capture sessions ("batches") with their project and how many of their items are still new.
     pub fn sessions(&self, q: &SessionQuery) -> Result<Vec<Value>, String> {
         if !self.ready() {
             return Ok(vec![]);
@@ -240,43 +275,48 @@ impl Index {
         let limit = q.limit.unwrap_or(200).clamp(1, 5000);
         let sql = format!(
             "SELECT s.*, p.name AS project_name, p.key AS project_key, p.path AS project_path, \
-             (SELECT COUNT(*) FROM items i WHERE i.session_id = s.id AND i.status = 'draft') AS draft_count \
+             (SELECT COUNT(*) FROM items i WHERE i.session_id = s.id AND i.state = 'new') AS new_count \
              FROM sessions s JOIN projects p ON p.id = s.project_id WHERE {} ORDER BY s.created DESC LIMIT {limit}",
             wh.join(" AND ")
         );
         self.rows(&sql, &args)
     }
 
-    /// project id → {items, open_items, to_review, to_verify} over items that aren't deleted.
+    /// project id → {items, open_items, inbox, new, to_verify} over items that aren't discarded (K3 groups).
     pub fn project_counts(&self) -> Result<HashMap<String, Value>, String> {
         if !self.ready() {
             return Ok(HashMap::new());
         }
         let rows = self.rows(
-            "SELECT project_id AS id, COUNT(*) AS items, \
-               SUM(work_state IN ('todo', 'handed_off', 'in_progress')) AS open_items, \
-               SUM(status = 'draft') AS to_review, SUM(work_state = 'to_verify') AS to_verify \
-             FROM items WHERE status != 'deleted' GROUP BY project_id",
+            &format!(
+                "SELECT project_id AS id, COUNT(*) AS items, SUM(state IN ({open})) AS open_items, \
+                   SUM(state IN ({inbox})) AS inbox, SUM(state = 'new') AS new, SUM(state = 'to_verify') AS to_verify \
+                 FROM items WHERE state != 'discarded' GROUP BY project_id",
+                open = sql_set(&OPEN),
+                inbox = sql_set(&INBOX)
+            ),
             &[],
         )?;
         Ok(rows.into_iter().filter_map(|r| Some((r.get("id")?.as_str()?.to_string(), r))).collect())
     }
 
-    /// Sidebar / island / tray badges.
+    /// Sidebar / island / tray badges. `inbox` = "needs you" (new + to verify, K3); `active` = with an agent.
     pub fn summary(&self) -> Result<Value, String> {
         if !self.ready() {
-            return Ok(json!({"missing": true, "items": 0, "to_review": 0, "unassigned": 0, "in_progress": 0, "to_verify": 0, "batches": 0}));
+            return Ok(json!({"missing": true, "items": 0, "inbox": 0, "new": 0, "to_verify": 0, "active": 0, "open": 0, "unassigned": 0, "batches": 0}));
         }
         let c = self.conn()?;
         let n = |sql: &str| -> Result<i64, String> { c.query_row(sql, [], |r| r.get(0)).map_err(|e| e.to_string()) };
-        let live = "FROM items WHERE status != 'deleted'";
+        let live = "FROM items WHERE state != 'discarded'";
         Ok(json!({
             "missing": false,
             "items": n(&format!("SELECT COUNT(*) {live}"))?,
-            "to_review": n(&format!("SELECT COUNT(*) {live} AND status = 'draft'"))?,
+            "inbox": n(&format!("SELECT COUNT(*) {live} AND state IN ({})", sql_set(&INBOX)))?,
+            "new": n(&format!("SELECT COUNT(*) {live} AND state = 'new'"))?,
+            "to_verify": n(&format!("SELECT COUNT(*) {live} AND state = 'to_verify'"))?,
+            "active": n(&format!("SELECT COUNT(*) {live} AND state IN ('handed_off', 'in_progress')"))?,
+            "open": n(&format!("SELECT COUNT(*) {live} AND state IN ({})", sql_set(&OPEN)))?,
             "unassigned": n(&format!("SELECT COUNT(*) {live} AND project_id = 'inbox'"))?,
-            "in_progress": n(&format!("SELECT COUNT(*) {live} AND work_state IN ('handed_off', 'in_progress')"))?,
-            "to_verify": n(&format!("SELECT COUNT(*) {live} AND work_state = 'to_verify'"))?,
             "batches": n("SELECT COUNT(*) FROM sessions WHERE legacy = 0 AND processed = 1 AND processing = 0 AND reviewed = 0 AND item_count > 0")?,
         }))
     }
@@ -286,7 +326,7 @@ impl Index {
 mod tests {
     use super::*;
 
-    const SCHEMA_SQL: &str = include_str!("../tests/index-v2.sql");
+    const SCHEMA_SQL: &str = include_str!("../tests/index-v3.sql");
 
     fn fixture() -> (tempfile::TempDir, Index) {
         let d = tempfile::tempdir().unwrap();
@@ -300,14 +340,16 @@ mod tests {
                VALUES ('p1:s1', 'p1', '/r/my-saas/.blurt/sessions/s1', 'video', '登录页走查', 100, 3, 1, 0, 1);
              INSERT INTO sessions (id, project_id, dir, mode, title, created, item_count, processed, reviewed, indexed_at)
                VALUES ('inbox:s2', 'inbox', '/h/Blurt/inbox/sessions/s2-shots', 'shots', 'shots', 200, 1, 1, 1, 1);
-             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, work_state, created, updated)
-               VALUES ('u1', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-1.md', 'MS-1', 'issue', '登录按钮点击无响应', '这个登录按钮点了没反应', '', 'draft', 'todo', 1, 10);
-             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, work_state, work_agent, created, updated)
-               VALUES ('u2', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-2.md', 'MS-2', 'issue', '头像上传 500', '', 'POST /api/avatar 返回 500', 'confirmed', 'to_verify', 'claude', 2, 30);
-             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, created, updated)
-               VALUES ('u3', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-3.md', 'MS-3', 'idea', '学 Linear 的空状态', '', '', 'deleted', 3, 20);
-             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, status, work_state, created, updated)
-               VALUES ('u4', 'inbox', 'inbox:s2', '/h/Blurt/inbox/items/IN-1.md', 'IN-1', 'note', '50% 的 under_score', '', '', 'draft', 'in_progress', 4, 40);",
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, state, created, updated)
+               VALUES ('u1', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-1.md', 'MS-1', 'issue', '登录按钮点击无响应', '这个登录按钮点了没反应', '', 'new', 1, 10);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, state, work_agent, created, updated)
+               VALUES ('u2', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-2.md', 'MS-2', 'issue', '头像上传 500', '', 'POST /api/avatar 返回 500', 'to_verify', 'claude', 2, 30);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, state, created, updated)
+               VALUES ('u3', 'p1', 'p1:s1', '/r/my-saas/.blurt/items/MS-3.md', 'MS-3', 'idea', '学 Linear 的空状态', '', '', 'discarded', 3, 20);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, state, created, updated)
+               VALUES ('u4', 'inbox', 'inbox:s2', '/h/Blurt/inbox/items/IN-1.md', 'IN-1', 'note', '50% 的 under_score', '', '', 'in_progress', 4, 40);
+             INSERT INTO items (uid, project_id, session_id, path, item_id, kind, title, quote, body, state, created, updated)
+               VALUES ('u5', 'p1', NULL, '/r/my-saas/.blurt/items/MS-4.md', 'MS-4', 'task', '不做了的', '', '', 'wontfix', 5, 5);",
         )
         .unwrap();
         drop(c);
@@ -322,18 +364,28 @@ mod tests {
     fn filters_and_defaults() {
         let (_d, ix) = fixture();
         let all = ix.items(&ItemQuery::default()).unwrap();
-        assert_eq!(all.total, 3); // deleted hidden
-        assert_eq!(uids(&all), ["u4", "u2", "u1"]); // updated DESC
+        assert_eq!(all.total, 4); // discarded hidden
+        assert_eq!(uids(&all), ["u4", "u2", "u1", "u5"]); // updated DESC
+        assert_eq!(all.items[1]["state"], "to_verify");
+        assert!(all.items[1].get("status").is_none() && all.items[1].get("work_state").is_none());
         assert_eq!(all.items[0]["project_key"], "IN");
         assert_eq!(all.items[0]["session_dir"], "/h/Blurt/inbox/sessions/s2-shots");
+        let st = |v: &[&str]| ItemQuery { state: v.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+        assert_eq!(uids(&ix.items(&st(&["discarded"])).unwrap()), ["u3"]);
+        assert_eq!(uids(&ix.items(&st(&["new", "to_verify"])).unwrap()), ["u2", "u1"]); // needs you
+        // the old filters, as states
         let q = ItemQuery { status: vec!["deleted".into()], ..Default::default() };
         assert_eq!(uids(&ix.items(&q).unwrap()), ["u3"]);
+        let q = ItemQuery { status: vec!["confirmed".into()], ..Default::default() };
+        assert_eq!(uids(&ix.items(&q).unwrap()), ["u4", "u2", "u5"]);
         let q = ItemQuery { work: vec!["todo".into(), "to_verify".into()], kind: vec!["issue".into()], ..Default::default() };
         assert_eq!(uids(&ix.items(&q).unwrap()), ["u2", "u1"]);
+        let q = ItemQuery { status: vec!["draft".into()], work: vec!["to_verify".into()], ..Default::default() };
+        assert_eq!(ix.items(&q).unwrap().total, 0); // they narrow each other
         let q = ItemQuery { project: Some("inbox".into()), ..Default::default() };
         assert_eq!(uids(&ix.items(&q).unwrap()), ["u4"]);
         let q = ItemQuery { project: Some("/r/my-saas".into()), sort: Some("created".into()), ..Default::default() };
-        assert_eq!(uids(&ix.items(&q).unwrap()), ["u2", "u1"]);
+        assert_eq!(uids(&ix.items(&q).unwrap()), ["u5", "u2", "u1"]);
         let q = ItemQuery { session: Some("p1:s1".into()), limit: Some(1), offset: Some(1), ..Default::default() };
         let p = ix.items(&q).unwrap();
         assert_eq!((p.total, uids(&p)), (2, vec!["u1".to_string()]));
@@ -358,12 +410,13 @@ mod tests {
         let (_d, ix) = fixture();
         let s = ix.sessions(&SessionQuery { state: Some("to_review".into()), ..Default::default() }).unwrap();
         assert_eq!(s.len(), 1);
-        assert_eq!((s[0]["project_name"].as_str(), s[0]["draft_count"].as_i64()), (Some("my-saas"), Some(1)));
+        assert_eq!((s[0]["project_name"].as_str(), s[0]["new_count"].as_i64()), (Some("my-saas"), Some(1)));
         let c = ix.project_counts().unwrap();
-        assert_eq!((c["p1"]["open_items"].as_i64(), c["p1"]["to_review"].as_i64(), c["p1"]["to_verify"].as_i64()), (Some(1), Some(1), Some(1)));
+        let p1 = &c["p1"];
+        assert_eq!([&p1["items"], &p1["open_items"], &p1["inbox"], &p1["new"], &p1["to_verify"]].map(|v| v.as_i64().unwrap()), [3, 1, 2, 1, 1]);
         let sm = ix.summary().unwrap();
-        assert_eq!((sm["items"].as_i64(), sm["to_review"].as_i64(), sm["unassigned"].as_i64()), (Some(3), Some(2), Some(1)));
-        assert_eq!((sm["in_progress"].as_i64(), sm["to_verify"].as_i64(), sm["batches"].as_i64()), (Some(1), Some(1), Some(1)));
+        let k = |key: &str| sm[key].as_i64().unwrap();
+        assert_eq!(["items", "inbox", "new", "to_verify", "active", "open", "unassigned", "batches"].map(k), [4, 2, 1, 1, 1, 2, 1, 1]);
         assert_eq!(ix.item("u2").unwrap().unwrap()["work_agent"], "claude");
         assert!(ix.item("nope").unwrap().is_none());
     }

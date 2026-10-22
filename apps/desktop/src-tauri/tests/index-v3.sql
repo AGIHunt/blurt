@@ -1,5 +1,5 @@
--- index.db schema v2 as docs/design/next-round.md "v0.7 契约" K1 gives it: the Rust reader's unit tests build their
--- fixture db from this copy (docs/contracts/index-schema.sql is P1's, written by index.py).
+-- index.db schema v3 as docs/design/next-round.md "v0.7 契约" K1 gives it (v3: K3's one `state` column instead of
+-- `status` + `work_state`): the Rust reader's unit tests build their fixture db from this copy (index.py writes the real one).
 PRAGMA foreign_keys = ON;
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE projects (
@@ -32,8 +32,7 @@ CREATE TABLE items (
   item_id TEXT NOT NULL,
   kind TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
   tags TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL,
-  work_state TEXT NOT NULL DEFAULT 'todo',
+  state TEXT NOT NULL CHECK (state IN ('new', 'todo', 'handed_off', 'in_progress', 'to_verify', 'done', 'wontfix', 'discarded')),
   work_to TEXT, work_agent TEXT, work_job TEXT, work_claim TEXT,
   severity TEXT, owner TEXT, module TEXT, assignee TEXT, confidence TEXT,
   source_type TEXT, source_by TEXT, source_app TEXT, source_url TEXT,
@@ -44,7 +43,7 @@ CREATE TABLE items (
   UNIQUE (project_id, item_id)
 );
 CREATE INDEX items_updated ON items(updated DESC);
-CREATE INDEX items_proj ON items(project_id, status, work_state);
+CREATE INDEX items_proj ON items(project_id, state);
 CREATE VIRTUAL TABLE items_fts USING fts5(title, quote, body, tags, content = 'items', content_rowid = 'rowid', tokenize = 'trigram');
 CREATE TRIGGER items_ai AFTER INSERT ON items BEGIN
   INSERT INTO items_fts(rowid, title, quote, body, tags) VALUES (new.rowid, new.title, new.quote, new.body, new.tags);
@@ -56,4 +55,4 @@ CREATE TRIGGER items_au AFTER UPDATE ON items BEGIN
   INSERT INTO items_fts(items_fts, rowid, title, quote, body, tags) VALUES ('delete', old.rowid, old.title, old.quote, old.body, old.tags);
   INSERT INTO items_fts(rowid, title, quote, body, tags) VALUES (new.rowid, new.title, new.quote, new.body, new.tags);
 END;
-INSERT INTO meta(key, value) VALUES ('schema_version', '2');
+INSERT INTO meta(key, value) VALUES ('schema_version', '3');

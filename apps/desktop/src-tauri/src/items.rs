@@ -1,6 +1,7 @@
 //! The review component's host (protocol v3) over `items.py` v3 (contract K1): `doc` builds the document from the
 //! Markdown items of one session or one project, `poll` answers "changed since this etag?", `user-ops` applies the
-//! user's edits. A scope is `{"session": abs}` or `{"project": id | "inbox", "status"?, "work"?, "kind"?}`.
+//! user's edits. A scope is `{"session": abs}` or `{"project": id | "inbox", "state"?, "kind"?}` (K3; the old
+//! `status` / `work` filters still pass through, items.py maps them to states).
 //!
 //! The component polls every couple of seconds. Each poll would start Python, so we answer from a cache instead
 //! while nothing under a store changed: the watcher bumps [`bump`] on every change in a store's `items/` or
@@ -43,14 +44,14 @@ fn scope_key(scope: &Value) -> String {
     serde_json::to_string(scope).unwrap_or_default()
 }
 
-/// `{"session": "/abs"}` → [SESSION]; `{"project": "p", "status": ["draft"], …}` → [--project p --status draft …].
+/// `{"session": "/abs"}` → [SESSION]; `{"project": "p", "state": ["new"], …}` → [--project p --state new …].
 pub fn scope_args(scope: &Value) -> Result<Vec<String>, String> {
     if let Some(s) = scope.get("session").and_then(Value::as_str) {
         return Ok(vec![s.to_string()]);
     }
     let p = scope.get("project").and_then(Value::as_str).ok_or("scope needs a session or a project")?;
     let mut out = vec!["--project".to_string(), p.to_string()];
-    for (key, flag) in [("status", "--status"), ("work", "--work"), ("kind", "--kind")] {
+    for (key, flag) in [("state", "--state"), ("status", "--status"), ("work", "--work"), ("kind", "--kind")] {
         for v in scope.get(key).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
             out.push(flag.into());
             out.push(v.into());
@@ -88,7 +89,7 @@ pub fn poll(runner: &Runner, cache: &DocCache, scope: &Value, etag: &str) -> Res
     })
 }
 
-/// → {ok, etag, doc}; ops as `items.py user-ops` takes them (set / remove / add / work, ids are uids).
+/// → {ok, etag, doc}; ops as `items.py user-ops` takes them (set / remove / add / state, ids are uids).
 pub fn ops(runner: &Runner, cache: &DocCache, scope: &Value, ops: &Value, confirm: bool) -> Result<Value, String> {
     let body = json!({"ops": ops}).to_string();
     let mut args = vec!["user-ops".to_string()];
@@ -105,11 +106,12 @@ pub fn ops(runner: &Runner, cache: &DocCache, scope: &Value, ops: &Value, confir
     Ok(r)
 }
 
-/// `items.py work` for the list's own buttons (confirm done, reopen, won't do) — K3 says only the user sets done.
-pub fn work(runner: &Runner, uids: &[String], state: &str, note: Option<&str>) -> Result<Value, String> {
-    let mut args = vec!["work".to_string()];
+/// `items.py state --action` for the list's own state menu (K3: keep, done, send back, discard, …; only the user
+/// keeps, finishes, drops or restores an item).
+pub fn state(runner: &Runner, uids: &[String], action: &str, note: Option<&str>) -> Result<Value, String> {
+    let mut args = vec!["state".to_string()];
     args.extend(uids.iter().cloned());
-    args.extend(["--state".into(), state.into(), "--by".into(), "user".into()]);
+    args.extend(["--action".into(), action.into(), "--by".into(), "user".into()]);
     if let Some(n) = note.filter(|n| !n.is_empty()) {
         args.extend(["--note".into(), n.into()]);
     }
@@ -135,6 +137,10 @@ mod tests {
     #[test]
     fn scopes() {
         assert_eq!(scope_args(&json!({"session": "/s/x"})).unwrap(), ["/s/x"]);
+        assert_eq!(
+            scope_args(&json!({"project": "p", "state": ["new", "to_verify"], "kind": ["issue"]})).unwrap(),
+            ["--project", "p", "--state", "new", "--state", "to_verify", "--kind", "issue"]
+        );
         assert_eq!(
             scope_args(&json!({"project": "inbox", "status": ["draft"], "work": ["todo", "to_verify"]})).unwrap(),
             ["--project", "inbox", "--status", "draft", "--work", "todo", "--work", "to_verify"]

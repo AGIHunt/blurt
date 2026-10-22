@@ -52,8 +52,8 @@ describe('island', () => {
     const i = createI18n({ en: EN, 'zh-Hans': ZH }, 'zh-Hans');
     for (const k of ['job.type.process', 'job.step.write', 'session.waiting_input', 'project.ai_sort', 'project.open_folder'])
       expect(i.has(k), k).toBe(true);
-    expect(i.plural('island.open_inbox', 5)).toBe('5 条待审');
-    expect(createI18n({ en: EN }, 'en').plural('island.open_inbox', 1)).toBe('1 item to review');
+    expect(i.plural('island.open_inbox', 5)).toBe('5 条需要你看');
+    expect(createI18n({ en: EN }, 'en').plural('island.open_inbox', 1)).toBe('1 item needs you');
   });
 });
 

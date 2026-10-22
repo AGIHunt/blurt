@@ -2,19 +2,20 @@
    bumps `version` and notifies subscribers.
 
    Two doc shapes (host.ts): v2 (a session's items.json, ops by display id) and v3 (K1 doc: a session or a project,
-   ops by uid, work state, projects). Everything the page edits is a field diff (sync.ts); the two things that are
-   actions rather than fields — a work-state change (K3) and nothing else — go as explicit ops, sent at once and shown
-   optimistically until the server's answer arrives. */
+   ops by uid, projects). Everything the page edits is a field diff (sync.ts); the one thing that is an action rather
+   than a field — a state change (K3: keep, done, send back, discard…) — goes as an explicit `state` op, sent at once
+   and shown optimistically until the server's answer arrives. */
 import { resolveLang, systemLanguages } from "@blurt/i18n";
-import { workStateOf, type WorkState } from "@blurt/ui";
-import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp, WorkRecord } from "./host";
+import { actionForKey, canDo, isInbox, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
+import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp } from "./host";
 import { humanizeKey } from "./fields";
 import { makeI18n, SEVERITIES, TYPES, type I18n } from "./i18n";
 import { imeBusy, isEnter } from "./ime";
-import { byId, byUid, canon, clone, diffOps, finalize, mergeInto, norm, rebase, statusOf, type KeyFn, type Status } from "./sync";
+import { byId, byUid, canon, clone, diffOps, mergeInto, norm, rebase, statusOf, type KeyFn } from "./sync";
 
 export type View = "overview" | "focus" | "list";
-export type Filter = "all" | Status;
+/** the list's one state filter: everything but discarded, what needs you, or one state */
+export type StateFilter = "live" | "inbox" | State;
 export type ProcPhase = "hidden" | "working" | "fin" | "out";
 export type SaveState = "" | "saving" | "saved" | "error";
 
@@ -79,10 +80,11 @@ export class ReviewStore {
   /** bumps when the stage should slide in */
   slideKey = 0;
   view: View = "focus";
-  filter: Filter = "all";
+  stateF: StateFilter = "live";
   query = "";
   kindF = "";
-  workF: "" | WorkState = "";
+  /** the current item's state menu is open (S opens it) */
+  menuOpen = false;
   /** list view: selected item keys */
   selected = new Set<string>();
   private anchor: string | null = null;
@@ -118,9 +120,11 @@ export class ReviewStore {
   private lastStalled = false;
   private disposed = false;
   private langPicked: boolean;
-  /** work-state ops not yet answered by the server; their state is shown optimistically */
+  /** state ops not yet answered by the server; their state is shown optimistically */
   private actionOps: UserOp[] = [];
-  private pendingWork = new Map<string, WorkRecord>();
+  private pendingState = new Map<string, Pick<Item, "state" | "restore_to">>();
+  /** items discarded here: they stay in the page (struck through, undoable) when the doc no longer lists them */
+  private discardedHere = new Set<string>();
 
   constructor(host: BlurtHost, opts: MountOptions = {}) {
     this.host = host;
@@ -149,7 +153,7 @@ export class ReviewStore {
   plural = (k: string, n: number, p?: Record<string, string | number | null | undefined>) => this.i18n.plural(k, n, p);
   kindLabel = (k: string) => (this.i18n.has(`kind.${k}`) ? this.t(`kind.${k}`) : humanizeKey(k));
   typeLabel = (k: string) => (this.i18n.has(`type.${k}`) ? this.t(`type.${k}`) : humanizeKey(k));
-  workLabel = (s: WorkState) => this.t(`work.${s}`);
+  stateLabel = (s: State) => this.t(`state.${s}`);
   /** "0:14" / "1:02:05" */
   clock = (s: unknown) => this.i18n.formatDuration(Number(s) || 0);
   get types(): readonly string[] {
@@ -173,8 +177,8 @@ export class ReviewStore {
     return this.data.items[this.cur];
   }
   keyOf = (i: Item) => this.key(i);
-  /** keep / drop / pending (sync.statusOf) for this doc's shape */
-  st = (i: Item) => statusOf(i, this.v3);
+  /** the review's view of the state: pending (new) · drop (discarded) · keep (anything else) */
+  st = (i: Item) => statusOf(i);
   get stalled(): boolean {
     const raw = this.data.agent_at;
     const at = typeof raw === "string" ? Date.parse(raw) / 1000 : Number(raw);
@@ -235,24 +239,58 @@ export class ReviewStore {
   get canMove() {
     return this.projects.length > 0;
   }
-  get canWork() {
-    return this.v3;
+  stateOf = (i: Item): State => stateOf(i);
+  restoreTo = (i: Item): State | undefined => migrate(i).restore_to;
+  /** the menu offers "Hand off…" (dispatch in an app window, a copied instruction where review.py can write one) */
+  get canHandOff() {
+    return !!this.host.dispatch || this.canHandoff;
   }
-  workOf = (i: Item): WorkState => workStateOf(i);
 
-  /** user decisions on the work state (K3: confirm done, reopen, won't do) */
-  setWork = (items: Item[], state: WorkState, note?: string) => {
-    if (!this.canWork || !items.length) return;
-    const at = new Date().toISOString();
-    for (const i of items) {
-      const k = this.key(i);
-      const w: WorkRecord = { ...(i.work || { state: "todo" }), state, by: "user", at, claim: null };
-      if (state === "todo") Object.assign(w, { to: null, job: null, handoff: null });
-      i.work = w;
-      this.pendingWork.set(k, w);
-      this.actionOps.push(note ? { op: "work", id: k, state, note } : { op: "work", id: k, state });
+  /** `restore`: where a discarded item goes back to (default: the state it leaves) */
+  private setLocal(i: Item, to: State, restore: State) {
+    i.state = to;
+    if (to === "discarded") i.restore_to = restore;
+    else delete i.restore_to;
+    const k = this.key(i);
+    this.pendingState.set(k, { state: i.state, restore_to: i.restore_to });
+    if (to === "discarded") this.discardedHere.add(k);
+    else this.discardedHere.delete(k);
+  }
+
+  /** The user's state change (K3): optimistic here, one `state` op per item, undoable. Hand off opens the host's
+      panel (or copies an instruction) instead — the host writes that state. Items the action doesn't apply to are
+      left alone. Returns how many items changed. */
+  act = (items: Item[], action: Action, opts: { toast?: boolean } = {}): number => {
+    if (action === "hand_off") {
+      const ok = items.filter((i) => canDo("hand_off", this.stateOf(i)));
+      if (this.host.dispatch) this.dispatch(ok);
+      else void this.handoff(ok, "instruction");
+      return 0;
+    }
+    const moves = items.map((i) => ({ i, from: this.stateOf(i), to: targetOf(action, i) })).filter((m): m is { i: Item; from: State; to: State } => !!m.to);
+    if (!moves.length) return 0;
+    this.snapshot();
+    for (const { i, from, to } of moves) {
+      this.setLocal(i, to, from);
+      if (!this.legacy) this.actionOps.push({ op: "state", id: this.key(i), action });
     }
     this.flush();
+    if (opts.toast !== false) {
+      const to = moves[0].to;
+      const ids = this.i18n.formatList(moves.map((m) => m.i.id || ""));
+      this.showToast(this.t("toast.state", { state: this.stateLabel(to), id: ids }), true, to === "discarded" ? "x" : to === "todo" || to === "done" ? "check" : undefined);
+    }
+    return moves.length;
+  };
+  /** the current item, by shortcut (A D R W X, or the menu) */
+  actOnCurrent = (action: Action) => {
+    const i = this.item;
+    if (i) this.act([i], action);
+  };
+  setMenuOpen = (open: boolean) => {
+    if (this.menuOpen === open) return;
+    this.menuOpen = open;
+    this.emit();
   };
 
   /** move items to a project (K2: the user's choice, never overridden by AI) */
@@ -273,7 +311,7 @@ export class ReviewStore {
   }
   handoff = async (items: Item[], what: "instruction" | "full") => {
     const h = this.canHandoff ? this.host.handoff : undefined;
-    const live = items.filter((i) => i.status !== "deleted");
+    const live = items.filter((i) => this.stateOf(i) !== "discarded");
     if (!h || !live.length) return;
     try {
       const r = await h(live.map((i) => i.uid || i.id), what);
@@ -284,7 +322,7 @@ export class ReviewStore {
     }
   };
   dispatch = (items: Item[]) => {
-    const live = items.filter((i) => i.status !== "deleted");
+    const live = items.filter((i) => this.stateOf(i) !== "discarded");
     if (this.host.dispatch && live.length) this.host.dispatch(live.map((i) => i.uid || i.id));
   };
   openSession = (job: string) => this.host.openSession?.(job);
@@ -380,14 +418,21 @@ export class ReviewStore {
     const cid = this.item ? this.key(this.item) : undefined;
     const prevProc = !!this.data.processing;
     const S = norm(doc.items);
-    const res = rebase(this.data.items, this.base, S, false, this.key);
+    // what the user discarded here stays on the page (struck through, undoable) even when the doc leaves it out
+    const keep = (k: string) => this.discardedHere.has(k);
+    const res = rebase(this.data.items, this.base, S, false, this.key, keep);
     this.data.items = res.items;
     this.base = new Map(S.map((i) => [this.key(i), clone(i)]));
-    this.setTop(doc);
-    // work states the server hasn't answered yet stay as the user set them
     for (const i of this.data.items) {
-      const w = this.pendingWork.get(this.key(i));
-      if (w) i.work = w;
+      const k = this.key(i);
+      if (!this.base.has(k) && keep(k)) this.base.set(k, clone(i)); // not a new item to add
+      // states the server hasn't answered yet stay as the user set them
+      const p = this.pendingState.get(k);
+      if (p) {
+        i.state = p.state;
+        if (p.restore_to) i.restore_to = p.restore_to;
+        else delete i.restore_to;
+      }
     }
     if (this.mode === "item") {
       const k = this.findCur();
@@ -451,7 +496,8 @@ export class ReviewStore {
       // the server has what we sent: rebase server updates on that, so an item that left the scope (moved to another
       // project) goes away instead of looking like a local edit
       this.base = new Map(sent.map((i) => [this.key(i), i]));
-      for (const a of actions) this.pendingWork.delete(a.op === "work" ? a.id : "");
+      for (const a of actions)
+        if (a.op === "state" && !this.actionOps.some((b) => b.op === "state" && b.id === a.id)) this.pendingState.delete(a.id);
       await this.accept(r, before);
     } catch (e) {
       this.actionOps.unshift(...actions); // retried with the next save
@@ -518,13 +564,29 @@ export class ReviewStore {
     const s = this.undoStack.pop();
     if (!s) return;
     const o = JSON.parse(s) as { items: Item[]; base: Item[]; cur: number; cid?: string };
+    const now = new Map(this.data.items.map((i) => [this.key(i), this.stateOf(i)]));
+    const was = new Map(o.items.map((i) => [this.key(i), migrate(i)])); // before the rebase writes the server's into them
     // undo the user's own steps only: whatever the agent wrote since stays
     this.data.items = this.legacy
       ? o.items
       : rebase(o.items, new Map(o.base.map((i) => [this.key(i), i])), [...this.base.values()].map(clone), true, this.key).items;
+    // a state the user changed goes back explicitly (the server owns `state`): {op: "state", state, undo: true}.
+    // Items no longer on the page (merged away) come back through the merge's own undo (`add`).
+    for (const i of this.data.items) {
+      const k = this.key(i);
+      const { state, restore_to } = was.get(k) ?? {};
+      if (state && now.has(k) && state !== now.get(k)) {
+        this.setLocal(i, state, restore_to ?? "new");
+        if (!this.legacy) this.actionOps.push({ op: "state", id: k, state, undo: true });
+        continue;
+      }
+      const p = this.pendingState.get(k); // unanswered: still as the user set it
+      if (p) Object.assign(i, p);
+    }
     const k = this.data.items.findIndex((i) => this.key(i) === o.cid);
     this.cur = this.legacy || k < 0 ? Math.min(o.cur, this.data.items.length - 1) : k;
     this.mediaSel = null;
+    this.menuOpen = false;
     this.dir = "down";
     this.slideKey++;
     this.save();
@@ -536,6 +598,7 @@ export class ReviewStore {
     this.dir = d || (k > this.cur ? "up" : "down");
     this.cur = k;
     this.mediaSel = null;
+    this.menuOpen = false;
     this.slideKey++;
     this.emit();
   };
@@ -543,38 +606,19 @@ export class ReviewStore {
     const n = this.data.items.findIndex((i, k) => k > this.cur && this.st(i) === "pending");
     this.go(n >= 0 ? n : Math.min(this.cur + 1, this.data.items.length - 1), "up");
   };
-  decide = (kind: "keep" | "drop") => {
+  /** review mode: keep (new → to do) or discard the current item, then go on to the next new one. Keep on an item
+      that is already past new just moves on. */
+  decide = (kind: "keep" | "discard") => {
     const i = this.item;
     if (!i) return;
-    this.snapshot();
-    i._touched = true;
-    if (kind === "keep") {
-      i.status = "confirmed";
-      delete i._dropped;
-    } else {
-      i.status = "deleted";
-      i._dropped = true;
-    }
-    this.save();
-    this.showToast(this.t(kind === "keep" ? "toast.kept" : "toast.dropped", { id: i.id || "" }), true, kind === "keep" ? "check" : "x");
+    const s = this.stateOf(i);
+    if (s === "discarded") return; // R restores it
+    if (kind === "discard" || s === "new") this.act([i], kind);
     if (this.counts().p === 0 && this.cur === this.data.items.length - 1) {
       setTimeout(() => this.openFinish(), 250);
       return;
     }
     setTimeout(() => this.nextPending(), 90);
-  };
-  /** keep / drop a selection (list view) */
-  decideMany = (items: Item[], kind: "keep" | "drop") => {
-    if (!items.length) return;
-    this.snapshot();
-    for (const i of items) {
-      i._touched = true;
-      i.status = kind === "keep" ? "confirmed" : "deleted";
-      if (kind === "keep") delete i._dropped;
-      else i._dropped = true;
-    }
-    this.save();
-    this.showToast(this.t(kind === "keep" ? "toast.kept" : "toast.dropped", { id: this.i18n.formatList(items.map((i) => i.id)) }), true, kind === "keep" ? "check" : "x");
   };
   setSev = (v: string) => {
     const i = this.item;
@@ -636,6 +680,7 @@ export class ReviewStore {
     if (k >= 0) {
       this.cur = k;
       this.mediaSel = null;
+      this.menuOpen = false;
       this.slideKey++;
     }
     this.emit();
@@ -650,18 +695,15 @@ export class ReviewStore {
   openItem = (k: number) => {
     this.cur = k;
     this.mediaSel = null;
+    this.menuOpen = false;
     this.setView("focus");
   };
-  setFilter = (f: Filter) => {
-    this.filter = f;
+  setStateF = (f: StateFilter) => {
+    this.stateF = f;
     this.emit();
   };
   setKindF = (k: string) => {
     this.kindF = k;
-    this.emit();
-  };
-  setWorkF = (w: "" | WorkState) => {
-    this.workF = w;
     this.emit();
   };
   setQuery = (q: string) => {
@@ -730,13 +772,18 @@ export class ReviewStore {
     this.emit();
     try {
       await this.enqueue(async () => {
-        // after every save already queued; whatever was typed and not yet saved goes with the confirmation
-        const final = finalize(this.data.items);
+        // after every save already queued; whatever was typed and not yet saved goes with the confirmation, and what
+        // is still new is kept (finishing = "keep the rest")
+        const rest = this.data.items.filter((i) => this.stateOf(i) === "new");
         if (this.legacy) {
-          await this.host.saveDoc?.({ ...this.data, items: final }, true);
+          const items = this.data.items.map(clone);
+          for (const i of items) if (this.stateOf(i) === "new") i.state = "todo";
+          await this.host.saveDoc?.({ ...this.data, items }, true);
           return;
         }
-        await this.host.sendOps([...this.actionOps.splice(0), ...diffOps(final, this.base, this.key)], true);
+        const keeps: UserOp[] = rest.map((i) => ({ op: "state", id: this.key(i), action: "keep" }));
+        await this.host.sendOps([...this.actionOps.splice(0), ...keeps, ...diffOps(this.data.items, this.base, this.key)], true);
+        for (const i of rest) i.state = "todo";
       });
       this.confirmed = true;
       this.modal = null;
@@ -785,7 +832,7 @@ export class ReviewStore {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       if (imeBusy(e)) return;
       e.preventDefault();
-      if (this.mode === "item") this.item && this.dispatch([this.item]);
+      if (this.mode === "item") this.item && this.act([this.item], "hand_off");
       else this.openFinish();
       return;
     }
@@ -814,6 +861,7 @@ export class ReviewStore {
       " ": this.togglePlay,
       o: this.playOrig,
       e: this.editTitle,
+      s: () => this.item && this.setMenuOpen(true),
       "1": () => this.setSev("high"),
       "2": () => this.setSev("medium"),
       "3": () => this.setSev("low"),
@@ -823,18 +871,21 @@ export class ReviewStore {
             ArrowDown: () => this.go(this.cur + 1, "up"),
             k: () => this.go(this.cur - 1, "down"),
             ArrowUp: () => this.go(this.cur - 1, "down"),
+            // the review's own keep / discard go on to the next new item
             a: () => this.decide("keep"),
             Enter: () => this.decide("keep"),
-            x: () => this.decide("drop"),
-            Backspace: () => this.decide("drop"),
-            Delete: () => this.decide("drop"),
+            x: () => this.decide("discard"),
+            Backspace: () => this.decide("discard"),
+            Delete: () => this.decide("discard"),
             z: this.undo,
             u: this.undo,
             m: this.mergePrev,
           }
         : {}),
     };
-    const f = map[k] || map[k.toLowerCase?.()];
+    // the rest of K3's keys (D done, R back, W won't do; A and X in item mode): whatever is valid for the state
+    const action = this.item ? actionForKey(this.stateOf(this.item), k) : null;
+    const f = map[k] || map[k.toLowerCase?.()] || (action && action !== "hand_off" ? () => this.actOnCurrent(action) : undefined);
     if (f) {
       e.preventDefault();
       f();
@@ -855,13 +906,14 @@ export class ReviewStore {
   /** list view: the visible cards */
   listed() {
     const ql = this.query.toLowerCase();
+    const f = this.stateF;
+    const want = (s: State) => (f === "live" ? s !== "discarded" : f === "inbox" ? isInbox(s) : s === f);
     return this.data.items
       .map((i, k) => ({ i, k, s: this.st(i) }))
       .filter(
-        ({ i, s }) =>
-          (this.filter === "all" || this.filter === s) &&
+        ({ i }) =>
+          want(this.stateOf(i)) &&
           (!this.kindF || kindOf(i) === this.kindF) &&
-          (!this.workF || workStateOf(i) === this.workF) &&
           (!ql ||
             [i.title, i.module, i.owner, i.id, i.summary, (i.tags || []).join(" "), ...(i.aliases || [])].join(" ").toLowerCase().includes(ql)),
       );

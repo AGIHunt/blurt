@@ -37,7 +37,10 @@ export async function startReview(fixture = "20261021-101500"): Promise<Session>
     cpSync(SCRIPTS, scripts, { recursive: true, filter: (p) => !p.includes("__pycache__") });
     copyFileSync(resolve(process.env.REVIEW_HTML), join(scripts, "review.html"));
   }
-  const env = { ...process.env, BLURT_HOME: join(root, "home"), BLURT_NO_INDEX: "1", PYTHONDONTWRITEBYTECODE: "1" };
+  // every Blurt folder in the scratch root: a session outside any project is filed into the inbox store, which
+  // would otherwise be the user's own ~/Blurt/inbox
+  const env = { ...process.env, BLURT_HOME: join(root, "home"), BLURT_WORKSPACE: join(root, "Blurt"), BLURT_NO_INDEX: "1",
+    BLURT_NO_ROUTE: "1", PYTHONDONTWRITEBYTECODE: "1" };
   const proc = spawn(PY, [join(scripts, "review.py"), dir, "--open", "none"], { env, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   const exited = new Promise<string>((res) => proc.on("exit", () => res(out)));
@@ -53,7 +56,16 @@ export async function startReview(fixture = "20261021-101500"): Promise<Session>
     });
     proc.stderr!.on("data", (b: Buffer) => (out += b.toString()));
   });
-  const items = () => JSON.parse(readFileSync(join(dir, "items.json"), "utf8"));
+  // review.py ingests the fixture's items.json into Markdown items (K1): read them back the way hosts do, by the
+  // agent's draft id (I-001 → source.local_id) or the item id
+  const items = () => {
+    const r = spawnSync(PY, [join(scripts, "items.py"), "doc", dir, "--state", "new", "--state", "todo", "--state",
+      "handed_off", "--state", "in_progress", "--state", "to_verify", "--state", "done", "--state", "wontfix",
+      "--state", "discarded"], { env, encoding: "utf8" });
+    const doc = JSON.parse(r.stdout).doc;
+    const batch = JSON.parse(readFileSync(join(dir, "batch.json"), "utf8"));
+    return { ...doc, reviewed: batch.reviewed };
+  };
   return {
     url,
     dir,
@@ -61,7 +73,8 @@ export async function startReview(fixture = "20261021-101500"): Promise<Session>
     proc,
     exited,
     items,
-    item: (id) => items().items.find((i: { id: string }) => i.id === id),
+    item: (id) =>
+      items().items.find((i: { id: string; source?: { local_id?: string } }) => i.source?.local_id === id || i.id === id),
     run: (script, ...args) => {
       const r = spawnSync(PY, [join(scripts, script), ...args], { env, encoding: "utf8" });
       return { code: r.status, out: r.stdout, err: r.stderr };

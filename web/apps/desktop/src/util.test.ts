@@ -3,7 +3,7 @@ import { checkCatalogs, createI18n } from '@blurt/i18n';
 import { comboFromEvent, comboLabel, nextSelection } from './util';
 import { codeUrl } from './host';
 import { isImeKey, _setCompositionEnd } from './ime';
-import { CATALOGS, errText, setLang } from './i18n';
+import { CATALOGS, errText, needsYou, setLang } from './i18n';
 
 const ev = (code: string, mods: Partial<Record<'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey', boolean>> = {}) => ({
   ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, key: '', code, ...mods,
@@ -81,7 +81,17 @@ describe('catalogs (K10)', () => {
     const en = createI18n(CATALOGS, 'en');
     expect(en.plural('list.count', 1)).toBe('1 item');
     expect(en.plural('list.count', 1200)).toBe('1,200 items');
-    expect(en.t('work.to_verify')).toBe('To verify');
+    expect(en.t('state.to_verify')).toBe('To verify');
+    expect(en.t('inbox.empty.title')).toBe('Nothing needs you right now'); // the common words, not a copy
+  });
+  it('the inbox line counts what needs you (K3: new + to verify)', () => {
+    setLang('en');
+    expect(needsYou(3, 2)).toBe('Needs you: 3 new · 2 to verify');
+    expect(needsYou(1, 0)).toBe('Needs you: 1 new');
+    expect(needsYou(0, 0)).toBe('');
+    setLang('zh-Hans');
+    expect(needsYou(3, 2)).toBe('需要你看的：3 条新的 · 2 条待验证');
+    setLang('en');
     expect(createI18n(CATALOGS, 'zh-Hans').t('project.open_folder')).toBe('打开文件夹…');
   });
 });

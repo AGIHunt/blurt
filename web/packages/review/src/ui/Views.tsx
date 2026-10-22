@@ -1,17 +1,18 @@
-import { WORK_STATES, type WorkState } from "@blurt/ui";
+import { STATES, targetOf, type Action } from "@blurt/ui";
 import { KindIcon } from "@blurt/ui/react";
 import { useState } from "react";
 import type { Item } from "../host";
-import { kindOf, SEV, type Filter } from "../store";
+import { kindOf, SEV, type StateFilter } from "../store";
 import { Icon } from "./Icon";
 import { cx, mdLite, useStore } from "./ctx";
-import { WorkRing, workText } from "./Queue";
+import { StateControl, StateRing, stateText } from "./Queue";
 
 export function ListView() {
   const s = useStore();
-  const fs: [Filter, string][] = [["all", s.t("filter.all")], ["pending", s.t("filter.pending")], ["keep", s.t("filter.kept")], ["drop", s.t("filter.dropped")]];
   const kinds = [...new Set(s.data.items.map(kindOf))];
-  const works = WORK_STATES.filter((w) => s.data.items.some((i) => s.workOf(i) === w));
+  // All (but discarded) · Needs you · each state the doc has · Discarded
+  const present = STATES.filter((st) => s.data.items.some((i) => s.stateOf(i) === st));
+  const opts: [StateFilter, string][] = [["live", s.t("filter.live")], ["inbox", s.t("filter.inbox")], ...present.map((st) => [st, s.stateLabel(st)] as [StateFilter, string])];
   const rows = s.listed();
   return (
     <main id="listView" className={cx("list scroll", s.selected.size > 0 && "selecting")}>
@@ -20,13 +21,16 @@ export function ListView() {
           <Icon name="search" className="sicon" />
           <input className="search" id="search" placeholder={s.t("list.search")} value={s.query} onChange={(e) => s.setQuery(e.target.value)} />
         </label>
-        <div className="seg" id="filters">
-          {fs.map(([k, l]) => (
-            <button key={k} className={cx(s.filter === k && "on")} data-f={k} onClick={() => s.setFilter(k)}>
-              {l}
-            </button>
-          ))}
-        </div>
+        <label className="pick" title={s.t("filter.state")}>
+          <select id="stateFilter" value={s.stateF} aria-label={s.t("filter.state")} onChange={(e) => s.setStateF(e.target.value as StateFilter)}>
+            {opts.map(([k, l]) => (
+              <option key={k} value={k}>
+                {l}
+              </option>
+            ))}
+          </select>
+          <Icon name="chevron-down" size={13} className="pick-ch" />
+        </label>
         {kinds.length >= 2 && (
           <div className="seg" id="kindFilter">
             <button className={cx(s.kindF === "" && "on")} data-kf="" onClick={() => s.setKindF("")}>
@@ -39,19 +43,6 @@ export function ListView() {
               </button>
             ))}
           </div>
-        )}
-        {works.length >= 2 && (
-          <label className="pick" title={s.t("filter.work")}>
-            <select id="workFilter" value={s.workF} aria-label={s.t("filter.work")} onChange={(e) => s.setWorkF(e.target.value as "" | WorkState)}>
-              <option value="">{s.t("filter.any_status")}</option>
-              {works.map((w) => (
-                <option key={w} value={w}>
-                  {s.workLabel(w)}
-                </option>
-              ))}
-            </select>
-            <Icon name="chevron-down" size={13} className="pick-ch" />
-          </label>
         )}
       </div>
       <div className="cards" id="cards">
@@ -76,7 +67,7 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
   const fresh = !!img && s.fresh.has(src);
   const wait = !img && !!s.data.processing && !s.stalled;
   const sel = s.isSelected(i);
-  const w = s.workOf(i);
+  const w = s.stateOf(i);
   const meta = [
     kd === "issue" ? (
       <span key="sev" className={"sev sev-" + sev}>
@@ -86,15 +77,15 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
     i.module ? <span key="m">{String(i.module)}</span> : null,
     i.owner ? <span key="o">@{String(i.owner)}</span> : null,
     i.type ? <span key="t">{s.typeLabel(String(i.type))}</span> : null,
-    w !== "todo" ? (
-      <span key="w" className={"wk w-" + w}>
-        {workText(s, i)}
+    w !== "todo" && w !== "new" ? (
+      <span key="w" className={"wk s-" + w}>
+        {stateText(s, i)}
       </span>
     ) : null,
   ].filter(Boolean);
   return (
     <article
-      className={cx("card", st, sel && "sel", ch?.has("*") && "fresh", "w-" + w)}
+      className={cx("card", st, sel && "sel", ch?.has("*") && "fresh", "s-" + w)}
       data-k={k}
       draggable={s.canMove}
       onDragStart={(e) => {
@@ -114,7 +105,6 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
     >
       <div className={cx("img", !img && "none", wait && "shim", fresh && "fresh")} style={img ? { backgroundImage: `url("${src}")` } : undefined}>
         {img ? null : wait ? <Icon name="hatch" className="hatching" /> : s.t("media.none")}
-        {st !== "pending" && <div className={"stamp " + st}><Icon name={st === "keep" ? "check" : "x"} /></div>}
         <button
           className={cx("pickbox", sel && "on")}
           role="checkbox"
@@ -130,12 +120,11 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
       </div>
       <div className="body">
         <div className="h">
-          <span className="rd" />
           <KindIcon kind={kd} size={14} title={s.kindLabel(kd)} />
           <span>{i.id || ""}</span>
           <span className="sp" />
           {i.time && i.time.start != null ? <span className="tm">{s.clock(i.time.start)}</span> : null}
-          <WorkRing i={i} />
+          <StateControl i={i} variant="ring" />
         </div>
         <div className="tt">{i.title}</div>
         <div className="mm">{meta}</div>
@@ -149,16 +138,26 @@ function SelectionBar() {
   const s = useStore();
   const items = s.selectedItems();
   if (!items.length) return null;
-  const live = items.filter((i) => i.status !== "deleted");
+  const live = items.filter((i) => s.stateOf(i) !== "discarded");
+  const can = (a: Action) => items.some((i) => targetOf(a, i));
   return (
     <div className="selbar" role="toolbar" aria-label={s.plural("select.count", items.length)}>
       <span className="selcount">{s.plural("select.count", items.length)}</span>
-      <button className="btn sm" id="selKeep" onClick={() => s.decideMany(items, "keep")}>
-        <Icon name="check" size={14} /> {s.t("action.keep")}
-      </button>
-      <button className="btn sm" id="selDrop" onClick={() => s.decideMany(items, "drop")}>
-        <Icon name="x" size={14} /> {s.t("action.drop")}
-      </button>
+      {can("keep") && (
+        <button className="btn sm" id="selKeep" onClick={() => s.act(items, "keep")}>
+          <Icon name="check" size={14} /> {s.t("action.keep")}
+        </button>
+      )}
+      {can("discard") && (
+        <button className="btn sm" id="selDrop" onClick={() => s.act(items, "discard")}>
+          <Icon name="x" size={14} /> {s.t("action.discard")}
+        </button>
+      )}
+      {can("restore") && (
+        <button className="btn sm" id="selRestore" onClick={() => s.act(items, "restore")}>
+          <Icon name="restart" size={14} /> {s.t("action.restore")}
+        </button>
+      )}
       {s.canMove && <MovePicker items={items} id="selMove" />}
       {s.canHandoff && live.length > 0 && (
         <button className="btn sm" id="selCopy" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff(live, "instruction")}>
@@ -274,10 +273,10 @@ export function Overview() {
             </h3>
             <div className="ov-list">
               {v.map((i) => (
-                <button key={s.keyOf(i)} className={cx(s.st(i), "w-" + s.workOf(i))} data-k={s.data.items.indexOf(i)} onClick={() => s.openItem(s.data.items.indexOf(i))}>
+                <button key={s.keyOf(i)} className={cx(s.st(i), "s-" + s.stateOf(i))} data-k={s.data.items.indexOf(i)} onClick={() => s.openItem(s.data.items.indexOf(i))}>
                   <span>{i.id || ""}</span>
                   <span className="tt">{i.title}</span>
-                  <WorkRing i={i} />
+                  <StateRing i={i} />
                 </button>
               ))}
             </div>

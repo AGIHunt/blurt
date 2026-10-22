@@ -237,11 +237,19 @@ export function Stage() {
       <Slide />
       {s.mode === "review" && (
         <div className="actions">
-          <button className={cx("act drop", st === "drop" && "on")} id="dropBtn" onClick={() => s.decide("drop")}>
-            <Icon name="x" size={16} />
-            <span>{s.t("action.drop")}</span>
-            <kbd>X</kbd>
-          </button>
+          {st === "drop" ? (
+            <button className="act drop on" id="dropBtn" onClick={() => s.actOnCurrent("restore")}>
+              <Icon name="restart" size={16} />
+              <span>{s.t("action.restore")}</span>
+              <kbd>R</kbd>
+            </button>
+          ) : (
+            <button className="act drop" id="dropBtn" onClick={() => s.decide("discard")}>
+              <Icon name="x" size={16} />
+              <span>{s.t("action.discard")}</span>
+              <kbd>X</kbd>
+            </button>
+          )}
           <button className="act ghost" id="mergeBtn" onClick={s.mergePrev}>
             <Icon name="merge" size={16} />
             <span>{s.t("action.merge")}</span>

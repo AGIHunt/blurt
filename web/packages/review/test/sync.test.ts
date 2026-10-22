@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Item } from "../src/host";
-import { canon, clone, diffOps, finalize, mergeInto, norm, rebase, statusOf } from "../src/sync";
+import { canon, clone, diffOps, mergeInto, norm, rebase, statusOf } from "../src/sync";
 
 const it2 = (id: string, extra: Partial<Item> = {}): Item => ({ id, kind: "issue", title: id, status: "draft", ...extra });
 const B = (items: Item[]) => new Map(items.map((i) => [i.id, clone(i)]));
@@ -12,15 +12,29 @@ describe("canon", () => {
 });
 
 describe("norm / statusOf", () => {
-  it("hides items dropped before this review, defaults kind", () => {
-    const n = norm([it2("I-1", { status: "deleted" }), it2("I-2", { status: "deleted", _dropped: true }), { id: "I-3" }]);
-    expect(n.map((i) => i.id)).toEqual(["I-2", "I-3"]);
+  it("defaults kind; the review's view of the K3 state: new = to review, discarded = dropped, the rest kept", () => {
+    const n = norm([it2("I-1", { status: "deleted" }), { id: "I-3" }]);
+    expect(n.map((i) => i.id)).toEqual(["I-1", "I-3"]);
     expect(n[1].kind).toBe("issue");
-    expect(statusOf(n[0])).toBe("drop");
-    expect(statusOf({ id: "x", _touched: true })).toBe("keep");
-    expect(statusOf({ id: "x", status: "confirmed" })).toBe("pending"); // v2: what this review decided
-    expect(statusOf({ id: "x", status: "confirmed" }, true)).toBe("keep"); // v3: persistent
+    expect(statusOf(n[0])).toBe("drop"); // an old file's deleted = discarded
+    expect(statusOf({ id: "x", state: "new" })).toBe("pending");
+    expect(statusOf({ id: "x", state: "discarded", restore_to: "todo" })).toBe("drop");
+    for (const st of ["todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"] as const) expect(statusOf({ id: "x", state: st })).toBe("keep");
+    expect(statusOf({ id: "x", status: "confirmed" })).toBe("keep");
     expect(statusOf({ id: "x", status: "draft" })).toBe("pending");
+    expect(statusOf({ id: "x", status: "draft", work: { state: "wontfix" } })).toBe("keep"); // won't do leaves the inbox
+  });
+  it("never sends the state or the old status as field edits (state goes as its own op)", () => {
+    const base = [it2("I-1")];
+    const local = clone(base);
+    Object.assign(local[0], { state: "todo", status: "confirmed", _touched: true, title: "t2" });
+    expect(diffOps(local, B(base))).toEqual([{ op: "set", id: "I-1", set: { title: "t2" }, unset: [] }]);
+  });
+  it("keeps an item the server no longer lists when asked (discarded on this page)", () => {
+    const base = [it2("I-1"), it2("I-2", { state: "discarded" })];
+    const r = rebase(clone(base), B(base), [it2("I-1")], false, undefined, (k) => k === "I-2");
+    expect(r.items.map((i) => i.id)).toEqual(["I-1", "I-2"]);
+    expect(rebase(clone(base), B(base), [it2("I-1")], false).items.map((i) => i.id)).toEqual(["I-1"]);
   });
 });
 
@@ -103,10 +117,4 @@ describe("mergeInto", () => {
     expect(p.fix).toEqual({ state: "fixed" });
     expect(p.fix_history).toBeUndefined();
   });
-});
-
-it("finalize keeps everything not dropped and strips bookkeeping", () => {
-  const f = finalize([it2("I-1", { _touched: true }), it2("I-2", { status: "deleted", _dropped: true, _touched: true }), it2("I-3")]);
-  expect(f.map((i) => i.status)).toEqual(["confirmed", "deleted", "confirmed"]);
-  expect(f.every((i) => !("_touched" in i) && !("_dropped" in i))).toBe(true);
 });

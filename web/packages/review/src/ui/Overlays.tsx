@@ -21,11 +21,14 @@ export function Toast() {
 function Keys() {
   const s = useStore();
   const mod = isMacLike() ? "⌘⏎" : "Ctrl+⏎";
+  // the K3 state keys work on the item in front of you, in both modes
+  const states: [string, string][] = [["D", "keys.done"], ["R", "keys.back"], ["W", "keys.wontfix"], ["S", "keys.state"]];
   const rows: [string, string][] =
     s.mode === "item"
-      ? [["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["1 2 3", "keys.severity"],
-         ...(s.host.dispatch ? [[mod, "keys.dispatch"] as [string, string]] : []), ["?", "keys.help"]]
-      : [["↓ ↑ / J K", "keys.next"], ["A / ⏎", "keys.keep"], ["X / ⌫", "keys.drop"], ["Z", "keys.undo"], ["M", "keys.merge"],
+      ? [["A", "keys.keep_item"], ["X / ⌫", "keys.discard_item"], ...states,
+         ...(s.canHandOff ? [[mod, "keys.hand_off"] as [string, string]] : []),
+         ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["1 2 3", "keys.severity"], ["?", "keys.help"]]
+      : [["↓ ↑ / J K", "keys.next"], ["A / ⏎", "keys.keep"], ["X / ⌫", "keys.discard"], ...states, ["Z", "keys.undo"], ["M", "keys.merge"],
          ["1 2 3", "keys.severity"], ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["G", "keys.view"],
          ["V", "keys.overview"], ...(s.isSession ? [[mod, "keys.finish"] as [string, string]] : []), ["?", "keys.help"]];
   return (

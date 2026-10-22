@@ -1,21 +1,54 @@
-import { KindIcon, StatusRing } from "@blurt/ui/react";
+import type { Action } from "@blurt/ui";
+import { KindIcon, StatePill, StatusRing } from "@blurt/ui/react";
 import { useLayoutEffect, useRef } from "react";
 import type { Item } from "../host";
 import { kindOf, type ReviewStore } from "../store";
 import { cx, useStore } from "./ctx";
+import { isMacLike } from "./TopBar";
 
-/** The work ring with its localized name; "handed off" says to whom (K10 work.handed_off.session / .external). */
-export function WorkRing({ i, size = 14 }: { i: Item; size?: number }) {
-  const s = useStore();
-  const w = s.workOf(i);
-  return <StatusRing state={w} size={size} label={workText(s, i)} />;
+/** The state's name; "handed off" says to whom (K10 state.handed_off.session / .external). */
+export function stateText(s: ReviewStore, i: Item): string {
+  const st = s.stateOf(i);
+  if (st === "handed_off" && i.work?.to === "session") return s.t("state.handed_off.session", { agent: agentName(i.work.agent) });
+  if (st === "handed_off" && i.work?.to === "external") return s.t("state.handed_off.external");
+  return s.stateLabel(st);
 }
 
-export function workText(s: ReviewStore, i: Item): string {
-  const w = s.workOf(i);
-  if (w === "handed_off" && i.work?.to === "session") return s.t("work.handed_off.session", { agent: agentName(i.work.agent) });
-  if (w === "handed_off" && i.work?.to === "external") return s.t("work.handed_off.external");
-  return s.workLabel(w);
+/** The state ring with its localized name (not clickable). */
+export function StateRing({ i, size = 14 }: { i: Item; size?: number }) {
+  const s = useStore();
+  return <StatusRing state={s.stateOf(i)} size={size} label={stateText(s, i)} />;
+}
+
+/** The state you can change: a pill (detail) or the bare ring (cards) opening the K3 action menu. `shortcuts`: the
+    menu shows the keys (only where they work — the focused item). */
+export function StateControl({ i, variant = "pill", id, shortcuts = false, controlled = false }: {
+  i: Item;
+  variant?: "pill" | "ring";
+  id?: string;
+  shortcuts?: boolean;
+  /** the S key opens this one (the current item's) */
+  controlled?: boolean;
+}) {
+  const s = useStore();
+  // ⌘⏎ finishes the review in review mode; it hands off only in item mode
+  const keys = shortcuts && ((a: Action) => a !== "hand_off" || s.mode === "item");
+  return (
+    <StatePill
+      id={id}
+      state={s.stateOf(i)}
+      label={stateText(s, i)}
+      t={s.t}
+      variant={variant}
+      size={variant === "pill" ? 16 : 14}
+      onPick={(a) => s.act([i], a)}
+      canHandOff={s.canHandOff}
+      restoreTo={s.restoreTo(i)}
+      keys={keys}
+      mac={isMacLike()}
+      {...(controlled ? { open: s.menuOpen, onOpenChange: s.setMenuOpen } : {})}
+    />
+  );
 }
 
 const AGENTS: Record<string, string> = { claude: "Claude Code", codex: "Codex", human: "" };
@@ -30,12 +63,10 @@ export function Queue() {
   return (
     <nav className="queue scroll" id="queue" ref={ref} aria-label={s.t("view.list")}>
       {s.data.items.map((i, k) => {
-        const st = s.st(i);
         const ask = (i.questions || []).length > 0 && !i.answer;
         const kd = kindOf(i);
         return (
-          <div key={s.keyOf(i)} className={cx("qi", st, k === s.cur && "cur", "w-" + s.workOf(i))} data-k={k} onClick={() => s.go(k)} aria-current={k === s.cur ? "true" : undefined}>
-            <span className="rd" title={st === "pending" ? s.t("review.draft") : undefined} />
+          <div key={s.keyOf(i)} className={cx("qi", s.st(i), k === s.cur && "cur", "s-" + s.stateOf(i))} data-k={k} onClick={() => s.go(k)} aria-current={k === s.cur ? "true" : undefined}>
             <KindIcon kind={kd} size={15} title={s.kindLabel(kd)} />
             <div className="qb">
               <div className="t">
@@ -50,7 +81,7 @@ export function Queue() {
                 )}
               </div>
             </div>
-            <WorkRing i={i} />
+            <StateRing i={i} />
           </div>
         );
       })}

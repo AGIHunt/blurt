@@ -3,7 +3,7 @@
    Catalogs are flat JSON: dotted lower-case keys → messages with {name} placeholders. Plurals use CLDR category
    suffixes: `items.count_one`, `items.count_other` (plus _zero / _two / _few / _many where a language needs them;
    `_other` is always required). zh-Hans only needs `_other`. Every package keeps its own `src/locales/{en,zh-Hans}.json`;
-   the words every platform shares (kind / review / work / session / project / handoff / job) live in `src/common/` and
+   the words every platform shares (kind / state / action / inbox / session / project / handoff / job) live in `src/common/` and
    are merged under each package's catalog. Missing keys fall back to English, then to the key itself. */
 import COMMON_EN from "./common/en.json";
 import COMMON_ZH from "./common/zh-Hans.json";

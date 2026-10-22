@@ -3,7 +3,7 @@
 
 import { invoke as tauriInvoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen as tauriListen } from '@tauri-apps/api/event';
-import type { WorkState } from '@blurt/ui';
+import type { Action, State } from '@blurt/ui';
 import { mockInvoke, mockListen } from './mock';
 
 export const inTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -34,7 +34,7 @@ export function fileSrc(abs: string | null | undefined): string {
 
 // ---- rows
 
-/** ItemRow v2 (K1) + what the list shows besides. Times are epoch seconds. */
+/** ItemRow v3 (K1; one K3 `state`) + what the list shows besides. Times are epoch seconds. */
 export interface ItemRow {
   uid: string;
   project_id: string;
@@ -46,8 +46,7 @@ export interface ItemRow {
   item_id: string;
   kind: string;
   title: string;
-  status: 'draft' | 'confirmed' | 'deleted';
-  work_state: WorkState;
+  state: State;
   work_to: 'session' | 'external' | null;
   work_agent: string | null;
   severity: string | null;
@@ -65,8 +64,8 @@ export interface ItemRow {
 export interface ItemQuery {
   query?: string;
   kind?: string[];
-  status?: string[];
-  work?: string[];
+  /** K3 states; none = everything but discarded */
+  state?: State[];
   severity?: string[];
   /** project id, its path, or "inbox" */
   project?: string;
@@ -90,10 +89,12 @@ export interface ProjectRow {
   worktree?: boolean;
   pinned?: boolean;
   last_used?: string;
-  open_items: number;
-  to_review: number;
-  to_verify: number;
+  /** K3 counts over items that aren't discarded: open = new … in progress; inbox = new + to verify */
   items: number;
+  open_items: number;
+  inbox: number;
+  new: number;
+  to_verify: number;
 }
 
 export interface ProjectList {
@@ -116,19 +117,23 @@ export interface BatchRow {
   duration: number | null;
   shot_count: number;
   item_count: number;
-  draft_count: number;
+  /** its items still new */
+  new_count: number;
   processed: number;
   processing: number;
   reviewed: number;
 }
 
+/** index_summary (K3 groups): inbox = "needs you" = new + to verify; active = handed off + in progress. */
 export interface Summary {
   missing: boolean;
   items: number;
-  to_review: number;
-  unassigned: number;
-  in_progress: number;
+  inbox: number;
+  new: number;
   to_verify: number;
+  active: number;
+  open: number;
+  unassigned: number;
   batches: number;
 }
 
@@ -296,7 +301,8 @@ export const api = {
   useProject: (id: string) => invoke('projects_use', { id }),
   setProject: (id: string, patch: Record<string, unknown>) => invoke('projects_set', { id, patch }),
   openFolder: () => invoke<void>('projects_open_folder', { makeCurrent: false }),
-  work: (uids: string[], work: WorkState, note?: string) => invoke('items_work', { uids, work, note }),
+  /** the user's K3 action on items (keep, done, send back, discard, …); hand off goes through dispatch / handoff */
+  state: (uids: string[], action: Action, note?: string) => invoke('items_state', { uids, action, note }),
   move: (uids: string[], project: string) => invoke('items_move', { uids, project }),
   jobs: (active = false) => invoke<Job[]>('jobs_list', { active }),
   detect: () => invoke<Detect>('agents_detect'),
