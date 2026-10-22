@@ -130,6 +130,8 @@
 "main.error.deleted" = "It’s in Discarded. Restore it first.";
 "main.error.cant_edit" = "Can’t edit right now";
 "main.error.generic" = "Something went wrong. The details are in the log.";
+"main.error.bad_key" = "2–5 letters or digits, starting with a letter (IN is taken).";
+"main.error.key_in_use" = "The key can’t change once the project has items.";
 "main.error.key_taken" = "Another project already uses that key.";
 "main.error.needs_project" = "Move the items to a project first.";
 "main.error.no_scripts" = "This needs the blurt skill’s scripts and uv. Run record.py build once, or reinstall the skill.";
@@ -198,7 +200,7 @@
 "main.menu.quick_look" = "Quick Look";
 "main.menu.rename" = "Rename…";
 "main.menu.review_batch" = "Review the Whole Capture";
-"main.menu.start_session" = "Start Agent Session";
+"main.menu.start_session" = "Start in Blurt";
 
 "main.misc.by_codex" = "by codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
@@ -234,6 +236,7 @@
 "main.project.key" = "Key";
 "main.project.key.invalid" = "2–5 letters or digits, starting with a letter (IN is taken).";
 "main.project.key.note" = "Items are numbered %1$@-1, %1$@-2…";
+"main.project.key.locked" = "Items are already numbered %1$@-1, %1$@-2…, so the key stays.";
 "main.project.name" = "Name";
 "main.project.open_as" = "Open as Project";
 "main.project.remove" = "Remove from Blurt…";
@@ -262,6 +265,11 @@
 "main.sidebar.inbox.ax" = "Inbox: new items and items to verify";
 "main.sidebar.label" = "Sidebar";
 "main.sidebar.missing" = "folder not found";
+"main.missing.title" = "This folder can’t be found";
+"main.missing.detail" = "It may have been moved or renamed. These are its items from before.";
+"main.missing.detail_empty" = "It may have been moved or renamed. Locate it and its items come back.";
+"main.missing.locate" = "Locate…";
+"main.missing.locate.message" = "Choose where “%@” is now.";
 "main.sidebar.not_opened" = "not opened as a project";
 "main.sidebar.open_folder.tip" = "Open a folder as a project (⌘O) — or drop folders here";
 "main.sidebar.progress.ax" = "In progress: items with an agent and running jobs";

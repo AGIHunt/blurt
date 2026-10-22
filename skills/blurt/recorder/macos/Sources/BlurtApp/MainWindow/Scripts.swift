@@ -80,6 +80,12 @@ enum Scripts {
         call("items.py", ["state"] + uids + ["--action", action, "--by", "user"] + (note.map { ["--note", $0] } ?? []), timeout: 30, done: done)
     }
 
+    /// items.py state REF… --state S --by user --undo: the user takes back their own last change (⌘Z in the list) —
+    /// any state, and the hand-off record that was there comes back.
+    static func undoState(_ uids: [String], to state: String, done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("items.py", ["state"] + uids + ["--state", state, "--by", "user", "--undo"], timeout: 30, done: done)
+    }
+
     /// items.py move REF… --project P|inbox --by user (the AI never moves them back).
     static func move(_ uids: [String], to project: String, done: @escaping (Result<[String: Any], Failure>) -> Void) {
         call("items.py", ["move"] + uids + ["--project", project, "--by", "user"], timeout: 30, done: done)

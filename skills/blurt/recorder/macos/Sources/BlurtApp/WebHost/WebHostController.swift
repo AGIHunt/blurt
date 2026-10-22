@@ -187,6 +187,19 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     func reload() { if let s = loadedScope { load(s, mode: loadedMode, item: currentItem?.uid) } }
 
+    /// The index has a newer row for the item on show (its state, title, file, project): the banner follows it, and
+    /// an item whose file moved (to another project, a folder renamed on disk) or came back is shown again from there.
+    func refresh(item: ItemRow, projects: [ProjectEntry]) {
+        guard let cur = currentItem, cur.uid == item.uid, cur != item else { return }
+        let wasShown = !web.isHidden
+        if item.fileURL != cur.fileURL || item.projectID != cur.projectID || item.sessionURL != cur.sessionURL
+            || wasShown != FileManager.default.fileExists(atPath: item.fileURL.path) || item.parseError != cur.parseError {
+            return show(item: item, projects: projects)
+        }
+        currentItem = item
+        if wasShown { banner.set(item, suggested: item.suggestedProject.flatMap { s in projects.first { $0.id == s } }) }
+    }
+
     /// Jobs moved on: the line above the item may say something else now.
     func refreshBanner(projects: [ProjectEntry]) {
         guard let it = currentItem, !web.isHidden else { return }

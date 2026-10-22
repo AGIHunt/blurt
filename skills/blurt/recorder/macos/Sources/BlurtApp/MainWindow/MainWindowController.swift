@@ -87,7 +87,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         list.actions = self
         detail.actions = self
         sidebar.actions = self
-        model.onReload = { [weak self] in self?.list.reload(); self?.updateTitle(); self?.scheduleSave() }
+        model.onReload = { [weak self] in
+            guard let self = self else { return }
+            self.list.reload()
+            // the same item still selected, but its row changed under it (a state, a move, a renamed folder)
+            if self.shownJob == nil, self.list.selectedIDs.count == 1, let it = self.list.selectedItems.first {
+                self.detail.refresh(item: it, projects: self.model.projects)
+            }
+            self.updateTitle()
+            self.scheduleSave()
+        }
         model.onSidebar = { [weak self] in self?.sidebar.rebuild(); self?.updateWatcher() }
         model.onJobs = { [weak self] in self?.list.reloadJobs() }
         model.onIndexState = { [weak self] in
@@ -185,6 +194,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         model.reload()
         sidebar.select(s)
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+        list.scrollToStart()
         listSelectionChanged()
     }
 
@@ -278,15 +288,51 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// An action on the items it is valid for (the others are left alone). Hand off opens the dispatch panel; the rest
     /// go to items.py state.
-    func apply(_ action: String, to items: [ItemRow]) {
+    func apply(_ action: String, to items: [ItemRow]) { apply(action, to: items, redoing: false) }
+
+    /// `redoing`: called by ⇧⌘Z — its undo is registered right away, inside the redo (where it belongs), not later.
+    private func apply(_ action: String, to items: [ItemRow], redoing: Bool) {
         let items = StateMenu.valid(action, items)
         guard !items.isEmpty else { NSSound.beep(); return }
         if action == "hand_off" { return dispatch(uids: items.map(\.uid)) }
         guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
+        if redoing { registerStateUndo(action, items) }
         Scripts.state(items.map(\.uid), action: action) { [weak self] r in
             switch r {
-            case .success: self?.wrote(items)
+            case .success:
+                self?.wrote(items)
+                if !redoing { self?.registerStateUndo(action, items) }
             case .failure(let f): self?.alert(T("main.error.save_title"), f.localized)
+            }
+        }
+    }
+
+    /// ⌘Z after a state action (A D R W X ⌫, the ring, the menus): each item back to the state it had, through
+    /// items.py's --undo (the user taking back their own change); ⇧⌘Z does the action again.
+    func registerStateUndo(_ action: String, _ items: [ItemRow]) {
+        guard let um = window?.undoManager else { return }
+        let before = items.map { ($0.uid, $0.state) }
+        um.registerUndo(withTarget: self) { c in c.undoState(action, before) }
+        um.setActionName(StateMenu.title(action))
+    }
+
+    private func undoState(_ action: String, _ before: [(String, String)]) {
+        let uids = before.map(\.0)
+        if let um = window?.undoManager {
+            um.registerUndo(withTarget: self) { c in c.apply(action, to: c.model.items(uids: uids), redoing: true) }   // redo
+            um.setActionName(StateMenu.title(action))
+        }
+        for (state, group) in Dictionary(grouping: before, by: \.1) {
+            let ids = group.map(\.0)
+            Scripts.undoState(ids, to: state) { [weak self] r in
+                guard let self = self else { return }
+                switch r {
+                case .success:
+                    self.wrote(self.model.items(uids: ids))
+                    self.model.reloadAll()                  // back in this list (a discard undone): selected again
+                    if ids.contains(where: { self.model.row(of: $0) != nil }) { self.list.reload(keep: ids) }
+                case .failure(let f): self.alert(T("main.error.save_title"), f.localized)
+                }
             }
         }
     }
@@ -362,14 +408,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case 4: snap()
         case 5: openFolder()
         case 6: if case .project(let p) = model.scope { useProject(p) }
+        case 7: if case .project(let p) = model.scope { locateFolder(p) }
         default: break
         }
+    }
+
+    /// A project whose folder is gone: pick where it is now. Opening it again is the same project (projects.py add
+    /// relocates a store whose registered folder has disappeared), and the index follows.
+    func locateFolder(_ id: String) {
+        guard let p = model.project(id: id) else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = T("main.open.prompt")
+        panel.message = T("main.missing.locate.message", p.name)
+        var up = p.path.deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: up.path), up.path != "/" { up.deleteLastPathComponent() }
+        panel.directoryURL = up
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            guard r == .OK, let u = panel.url else { return }
+            self?.openFolders([u])
+        }
+        if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
     }
 
     func clearFilters() {
         model.kinds = []; model.state = nil; model.text = ""
         searchItem?.searchField.stringValue = ""
         model.reload()
+        list.scrollToStart()
     }
 
     func showShortcuts() { ShortcutsSheet.show(on: window) }
@@ -627,6 +695,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             _ = add(m, T("main.project.open_as"), #selector(mOpenUnregistered(_:)), "folder.badge.plus", obj: p.path)
             return m
         }
+        if !FileManager.default.fileExists(atPath: p.path.path) {
+            _ = add(m, T("main.missing.locate"), #selector(mLocate(_:)), "questionmark.folder", obj: id)
+            m.addItem(.separator())
+        }
         let cur = ProjectStore.shared.currentID == id
         let use = add(m, cur ? T("main.project.use_auto") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
         use.toolTip = T("main.project.use.tip")
@@ -674,6 +746,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func mOpenUnregistered(_ i: NSMenuItem) { (i.representedObject as? URL).map { openFolders([$0]) } }
     @objc func mUseProject(_ i: NSMenuItem) { useProject(i.representedObject as? String) }
     @objc func mProjectSettings(_ i: NSMenuItem) { (i.representedObject as? String).map(projectSettings) }
+    @objc func mLocate(_ i: NSMenuItem) { (i.representedObject as? String).map(locateFolder) }
     @objc func mRemoveProject(_ i: NSMenuItem) { (i.representedObject as? String).map(removeProject) }
 
     /// This item is being validated because its own unmodified key was pressed (key-equivalent matching), not because
@@ -730,7 +803,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func jobAction(_ action: String, job: Job) {
         switch action {
         case "log": NSWorkspace.shared.open(JobFiles.log(job.id))
-        case "retry": if let s = job.session { AppEnvironment.process?(s, job.captures.isEmpty ? nil : job.captures, job.project == "inbox" ? nil : job.project) }
+        case "retry":
+            if let s = job.session { AppEnvironment.process?(s, job.captures.isEmpty ? nil : job.captures, job.project == "inbox" ? nil : job.project) }
+            else if !job.items.isEmpty { (NSApp.delegate as? App)?.enrich(job.items, project: job.project == "inbox" ? nil : job.project) }   // AI fill-in
         case "items":
             if let first = job.items.first { reveal(uid: first) }
         case "external":
@@ -853,6 +928,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         model.text = f.stringValue
         model.reload()
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+        list.scrollToStart()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {

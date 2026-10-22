@@ -208,6 +208,59 @@ final class CapturesBanner: NSView {
     }
 }
 
+/// On top of a project whose folder is gone (moved, renamed, an unplugged disk): what happened, and "Locate…" — the
+/// folder opened again is the same project (projects.py add relocates it). Hidden otherwise.
+final class MissingFolderBanner: NSView {
+    var onLocate: (() -> Void)?
+    private let icon = NSImageView()
+    private let title = NSTextField(labelWithString: "")
+    private let detail = NSTextField(wrappingLabelWithString: "")
+    private let locate = NSButton()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        icon.image = Look.symbol("questionmark.folder", "", size: 15)
+        icon.contentTintColor = .secondaryLabelColor
+        icon.setAccessibilityElement(false)
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.stringValue = T("main.missing.title")
+        detail.font = .systemFont(ofSize: 11)
+        detail.textColor = .secondaryLabelColor
+        detail.stringValue = T("main.missing.detail")
+        detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        locate.title = T("main.missing.locate")
+        locate.bezelStyle = .rounded
+        locate.controlSize = .small
+        locate.target = self
+        locate.action = #selector(tapped)
+        locate.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let text = NSStackView(views: [title, detail])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 1
+        let line = NSBox()
+        line.boxType = .separator
+        for v in [icon, text, locate, line] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        NSLayoutConstraint.activate([
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16), icon.centerYAnchor.constraint(equalTo: text.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 20),
+            text.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+            text.topAnchor.constraint(equalTo: topAnchor, constant: 8), text.bottomAnchor.constraint(equalTo: line.topAnchor, constant: -8),
+            locate.leadingAnchor.constraint(greaterThanOrEqualTo: text.trailingAnchor, constant: 10),
+            locate.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14), locate.centerYAnchor.constraint(equalTo: text.centerYAnchor),
+            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
+            line.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel("\(title.stringValue). \(detail.stringValue)")
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    @objc func tapped() { onLocate?() }
+}
+
 /// Kind segments and the state filter (the count is the window's subtitle).
 final class FilterBar: NSView {
     let kinds = NSSegmentedControl()
@@ -292,6 +345,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let table = ItemTableView()
     let jobs = JobsSection()
     let captures = CapturesBanner()
+    let missing = MissingFolderBanner()
     let bar = FilterBar()
     let empty = EmptyStateView()
     let scroll = NSScrollView()
@@ -346,6 +400,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         header = table.headerView
         table.tableColumns.forEach { $0.resizingMask = $0.identifier.rawValue == "title" ? [.autoresizingMask, .userResizingMask] : .userResizingMask }
         scroll.documentView = table
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(noteTop), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
@@ -354,13 +410,14 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
         captures.onClick = { AppEnvironment.island?.revealCards() }
+        missing.onLocate = { [weak self] in self?.actions?.emptyAction(7) }
         NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
-        let stack = NSStackView(views: [captures, jobs, bar])
+        let stack = NSStackView(views: [captures, missing, jobs, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
-            captures.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            captures.widthAnchor.constraint(equalTo: stack.widthAnchor), missing.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -439,7 +496,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func reload(keep: [String]? = nil) {
         let keepIDs = keep ?? selectionIDs     // captured before the model changed (row numbers mean other rows now)
         let top = table.rows(in: table.visibleRect).location
-        let topID = id(at: top)
+        let topID = topIDSeen                  // likewise: the model's rows are the new ones already
         let firstSelected = table.selectedRowIndexes.first
         suppressSelection = true
         applyLayout()
@@ -459,10 +516,24 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         suppressSelection = false
         bar.sync(model)
         reloadCaptures()
+        reloadMissing()
         updateEmpty()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().reloadData() }
         let ids = set.compactMap { id(at: $0) }
+        noteTop()
         if ids != selectionIDs { selectionIDs = ids; actions?.listSelectionChanged() }
+    }
+
+    /// The item at the top of the visible rows, as of the last scroll: a reload keeps it there (new rows above it
+    /// don't push the list around).
+    private var topIDSeen: String?
+    @objc func noteTop() { topIDSeen = id(at: table.rows(in: table.visibleRect).location) }
+
+    /// A new place, filter, search or sort: the list starts at its top — or at the selection when one is kept.
+    func scrollToStart() {
+        if let r = table.selectedRowIndexes.first, r > 0 { table.scrollRowToVisible(r) }
+        else { table.scroll(NSPoint(x: 0, y: -(table.headerView?.frame.height ?? 0))) }
+        noteTop()
     }
     /// The selected uids, kept up to date on every selection change.
     private(set) var selectionIDs: [String] = []
@@ -482,11 +553,19 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         model.kinds = bar.selectedKinds
         model.state = bar.state.selectedItem?.representedObject as? String
         model.reload()
+        scrollToStart()
     }
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
     /// "Unfiled captures: N" on top of the inbox while cards hang under the island.
     func reloadCaptures() { captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0) }
+
+    /// "Can't find this folder" over a registered project whose folder is gone.
+    func reloadMissing() {
+        guard case .project(let p) = model.scope, let e = model.project(id: p) else { missing.isHidden = true; return }
+        // with no rows the empty state says it (and offers Locate) instead
+        missing.isHidden = !e.registered || model.rowCount == 0 || FileManager.default.fileExists(atPath: e.path.path)
+    }
 
     func updateEmpty() {
         switch model.indexState {
@@ -530,6 +609,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                 empty.show(symbol: nil, mascot: .idle, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
             case .unassigned:
                 empty.show(symbol: nil, mascot: .idle, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
+            case .project(let p) where model.project(id: p).map { $0.registered && !FileManager.default.fileExists(atPath: $0.path.path) } == true:
+                empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"),
+                           buttons: [(T("main.missing.locate"), 7)])
             case .project(let p):
                 let current = ProjectStore.shared.currentID == p
                 empty.show(symbol: nil, mascot: .idle, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
@@ -641,6 +723,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         model.sort = key
         model.ascending = d.ascending
         model.reload()
+        scrollToStart()
     }
 
     /// A row's ring (or the State column): select that row unless it is part of the selection, then its state menu.
@@ -669,14 +752,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         actions?.openSelection()
     }
 
-    // drag rows: the uids (onto a project), the primary frame as a file (Finder makes a copy, Terminal pastes the path)
+    // drag rows: the uids (onto a project), the primary frame (else the item's .md) as a file (Finder makes a copy,
+    // Terminal pastes the path)
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let it = model.item(at: row) else { return nil }
         let pb = NSPasteboardItem()
         pb.setString(it.uid, forType: .blurtItems)
-        if let f = it.primaryFrame, FileManager.default.fileExists(atPath: f) {
-            pb.setString(URL(fileURLWithPath: f).absoluteString, forType: .fileURL)
-        }
+        // no frame (a voice note, a typed one): the item's own .md — like Reveal in Finder and Copy Path
+        let file = it.primaryFrame.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+            ?? (FileManager.default.fileExists(atPath: it.fileURL.path) && !it.legacy ? it.fileURL.path : nil)
+        if let f = file { pb.setString(URL(fileURLWithPath: f).absoluteString, forType: .fileURL) }
         pb.setString(it.title, forType: .string)
         return pb
     }

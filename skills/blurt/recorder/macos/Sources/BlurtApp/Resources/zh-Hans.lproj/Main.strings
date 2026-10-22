@@ -130,6 +130,8 @@
 "main.error.deleted" = "它在已丢弃里，先恢复它。";
 "main.error.cant_edit" = "现在不能修改";
 "main.error.generic" = "出了点问题，详情见日志。";
+"main.error.bad_key" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
+"main.error.key_in_use" = "项目里已经有条目了，前缀不能再改。";
 "main.error.key_taken" = "这个前缀已经被别的项目用了。";
 "main.error.needs_project" = "先把条目移到一个项目里。";
 "main.error.no_scripts" = "需要 blurt skill 的脚本和 uv。运行一次 record.py build，或重新安装 skill。";
@@ -198,7 +200,7 @@
 "main.menu.quick_look" = "快速查看";
 "main.menu.rename" = "改标题…";
 "main.menu.review_batch" = "审核整批捕获";
-"main.menu.start_session" = "开 agent 会话处理";
+"main.menu.start_session" = "在口喷鸡里开始";
 
 "main.misc.by_codex" = "由 codex 修复";
 "main.misc.drag_finder_terminal" = "拖到访达或终端";
@@ -234,6 +236,7 @@
 "main.project.key" = "前缀";
 "main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
 "main.project.key.note" = "条目编号为 %1$@-1、%1$@-2…";
+"main.project.key.locked" = "条目已经编号为 %1$@-1、%1$@-2…，前缀不再改。";
 "main.project.name" = "名称";
 "main.project.open_as" = "作为项目打开";
 "main.project.remove" = "从口喷鸡移除…";
@@ -262,6 +265,11 @@
 "main.sidebar.inbox.ax" = "待处理：新的和待验证的条目";
 "main.sidebar.label" = "侧栏";
 "main.sidebar.missing" = "文件夹不见了";
+"main.missing.title" = "找不到这个文件夹";
+"main.missing.detail" = "可能被移走或改了名。下面是它之前的条目。";
+"main.missing.detail_empty" = "可能被移走或改了名。找到它，条目就会回来。";
+"main.missing.locate" = "找到它…";
+"main.missing.locate.message" = "选择「%@」现在所在的文件夹。";
 "main.sidebar.not_opened" = "还没作为项目打开";
 "main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
 "main.sidebar.progress.ax" = "进行中：交给 agent 的条目和正在运行的任务";
