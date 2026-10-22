@@ -13,6 +13,9 @@ enum JobLook {
         } else {
             what = T("job.type.\(j.type.rawValue)")
         }
+        // AI fill-in: a process job without a capture batch — its own title says what it is ("Organizing · AI
+        // fill-in" said it twice, and wrongly)
+        if j.type == .process, j.session == nil, let t = j.title, !t.isEmpty { return t }
         let detail = j.title ?? j.agent?.windowName.map { $0.replacingOccurrences(of: ",", with: ", ") } ?? j.session.map { sessionLabel($0) }
         return detail.map { "\(what) · \($0)" } ?? what
     }
@@ -272,7 +275,9 @@ final class JobDetailView: NSView {
         if let u = j.usage { parts.append(JobDetailView.usageText(u)) }
         sub.stringValue = parts.joined(separator: "  ·  ")
         steps.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let ids = j.steps.isEmpty ? (jobSteps[j.type] ?? []).map { JobStep(id: $0, state: .pending) } : j.steps
+        var ids = j.steps.isEmpty ? (jobSteps[j.type] ?? []).map { JobStep(id: $0, state: .pending) } : j.steps
+        // AI fill-in has no recording to transcribe, no frames to cut, nothing to file: just prepare and write
+        if j.type == .process, j.session == nil { ids = ids.filter { !["transcribe", "frames", "route"].contains($0.id) } }
         for (k, s) in ids.enumerated() { steps.addArrangedSubview(StepRow(s, last: k == ids.count - 1, failed: j.state == .failed)) }
         if let e = j.error {
             error.stringValue = e.hintKey.map { T($0) } ?? (T("main.job.error.\(e.code)") == "main.job.error.\(e.code)" ? e.message : T("main.job.error.\(e.code)"))
@@ -290,7 +295,7 @@ final class JobDetailView: NSView {
             button(T("main.job.open_terminal_app"), "external")
             if j.isActive { button(T("main.job.stop"), "stop") }
         }
-        if j.state == .failed, j.session != nil, j.type == .process { button(T("action.retry"), "retry") }
+        if j.state == .failed, j.type == .process, j.session != nil || !j.items.isEmpty { button(T("action.retry"), "retry") }
         if FileManager.default.fileExists(atPath: JobFiles.log(j.id).path) { button(T("main.job.show_log"), "log") }
         if !j.items.isEmpty { button(TP("main.job.show_items", j.items.count), "items") }
         buttons.isHidden = buttons.arrangedSubviews.isEmpty
