@@ -235,5 +235,14 @@ class TruncatingTextLayers(unittest.TestCase):
                       .read_text(encoding="utf-8"))
 
 
+    def test_island_toast_is_as_wide_as_its_label(self):
+        """e2e v0.7: the toast measured its string, but an NSTextField needs its cell's inset too — the Claude Code
+        fallback notice ended "…organizing with Codex inste…"."""
+        src = (MAC / "Sources" / "BlurtApp" / "Capture" / "Island" / "IslandContent.swift").read_text(encoding="utf-8")
+        body = src[src.index("private func buildToast"):src.index("// MARK: live values")]
+        self.assertIn("let tw = ceil(l.frame.width)", body)
+        self.assertNotIn("size(withAttributes", body)
+
+
 if __name__ == "__main__":
     unittest.main()
