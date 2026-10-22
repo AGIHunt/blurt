@@ -137,7 +137,12 @@ class Registry(unittest.TestCase):
             self.assertLess(m["size_mb"], 5200, m)
         for tier in ("pro", "standard", "light", "minimal"):
             self.assertIn(reg["defaults"][tier], ids)
-        self.assertEqual(polish.entry(reg["defaults"]["pro"])["family"], "qwen")
+        for m in reg["models"]:                                              # measured on the reference Mac
+            self.assertTrue(m["ram_mb"] > 0 and m["warm_ms"] > 0 and 0 <= m["fallback"] <= 1, m["id"])
+        # the default for each tier fits that tier's polish memory cap (25 % of 8 / 16 / 32 GB; minimal ≈ 8 GB too)
+        cap = {"pro": 8192, "standard": 4096, "light": 2200, "minimal": 2048}
+        for tier, mid in reg["defaults"].items():
+            self.assertLessEqual(polish.entry(mid)["ram_mb"], cap[tier], tier)
 
     def test_lighter_tiers_get_smaller_models(self):
         reg = polish.registry()

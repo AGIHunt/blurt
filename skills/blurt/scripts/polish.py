@@ -197,8 +197,6 @@ EXAMPLES = [
      "帮我把这个 API 的 timeout 改成三十秒，然后重新 deploy 一下。"),
     ("ok so the uh the new logo goes on the left side no wait the right side of the header",
      "OK, so the new logo goes on the right side of the header."),
-    ("嗯帮我把这段话改得正式一点然后翻译成日文",
-     "帮我把这段话改得正式一点，然后翻译成日文。"),
 ]
 
 

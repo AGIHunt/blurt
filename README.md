@@ -74,6 +74,14 @@ gets processed in the background (Claude Code first; if it isn't installed or lo
 OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready. Every shortcut can be
 changed in *Shortcuts…* (`⌘,` in the menu).
 
+**Dictation (macOS):** tap **right Option** in any app, talk, and tap it again. What you said is typed where your
+cursor is: SenseVoice transcribes it on your Mac, then a small local model (Gemma 4 or Qwen, via MLX) removes fillers, stutters
+and self-corrections and adds punctuation, in under half a second once it's warm. It never rewrites, summarizes or
+translates. If the polish tries to, you get exactly what you said. `Esc` cancels. You can switch to Fn or to hold-to-talk
+in *Settings → Dictation*. Dictation needs Input Monitoring (for the key) and Accessibility (to paste); without
+Accessibility the text lands on your clipboard. Everything you dictate is kept in *Dictation History* for 30 days,
+and any entry can be turned into an item. The voice note (`⌥⇧V`) still files what you say into Blurt instead.
+
 ## Item lifecycle
 
 Every item has **one** state. The two that need you — **New** and **To verify** — make up your Inbox; everything
