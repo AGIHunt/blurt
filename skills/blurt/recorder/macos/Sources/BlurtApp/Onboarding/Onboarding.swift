@@ -184,9 +184,9 @@ struct OnboardingView: View {
                             }
                             Spacer()
                             if r.installed { Label(T("onboarding.downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
-                            else if speech.download[r.backend] == nil { Button(T("onboarding.download")) { speech.startDownload(r) } }
+                            else if speech.download[r.id] == nil { Button(T("onboarding.download")) { speech.startDownload(r) } }
                         }
-                        if let d = speech.download[r.backend] {
+                        if let d = speech.download[r.id] {
                             ProgressView(value: min(d.done, max(d.total, 1)), total: max(d.total, 1)) { Text(d.text).font(.caption) }
                         }
                         Toggle(T("onboarding.download_via_hf_mirror"),

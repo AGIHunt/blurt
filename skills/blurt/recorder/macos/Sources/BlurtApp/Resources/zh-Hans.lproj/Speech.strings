@@ -1,0 +1,103 @@
+/* Speech — 设置 → 语音（docs/design/next-round.md K9、K10）。归属：P7。
+   键和占位符与 en.lproj/Speech.strings 一致（tests/test_l10n.py）。 */
+
+/* Sections */
+"speech.section.machine" = "这台 Mac";
+"speech.section.languages" = "你说的语言";
+"speech.section.models" = "模型";
+"speech.section.resources" = "资源占用";
+"speech.section.cloud" = "云端";
+"speech.section.advanced" = "高级";
+"speech.loading" = "正在检查这台 Mac…";
+"speech.error.read" = "读取语音模型失败。请确认已安装 uv（设置 → 通用）。";
+"speech.cancel" = "取消";
+
+/* The machine and its tier */
+"speech.machine.unknown" = "这台电脑";
+"speech.machine.memory" = "%@ 内存";
+"speech.machine.gpu_cores" = "%@ 核 GPU";
+"speech.machine.cpu_cores" = "%@ 核 CPU";
+"speech.machine.battery" = "正在用电池";
+"speech.tier.pro" = "高性能";
+"speech.tier.standard" = "标准";
+"speech.tier.light" = "轻量";
+"speech.tier.minimal" = "基础";
+"speech.tier.pro.help" = "可以从容运行最准确的本地模型，并给其他应用留足余量。";
+"speech.tier.standard.help" = "可以运行准确的本地模型；需要快的场合用更轻的模型。";
+"speech.tier.light.help" = "使用小巧的模型，识别不会拖慢其他应用。";
+"speech.tier.minimal.help" = "这台电脑的本地识别能力有限，用云端服务效果更好。";
+
+/* Automatic choice and the three jobs */
+"speech.auto.title" = "按这台 Mac 自动选择模型";
+"speech.auto.detail" = "按你说的语言，选这台 Mac 能从容运行的最准确的模型，并给其他应用留出余量。";
+"speech.purpose.batch" = "录屏";
+"speech.purpose.batch.detail" = "录完后转写，准确优先。";
+"speech.purpose.live" = "实时字幕";
+"speech.purpose.live.detail" = "边录边转写，停止录制时结果就已就绪。";
+"speech.purpose.note" = "语音备注";
+"speech.purpose.note.detail" = "截图上的短备注和语音输入，速度优先。";
+"speech.suggest.title" = "推荐使用 %@";
+"speech.suggest.for" = "将用于%@。";
+"speech.suggest.better" = "你的语言错误率约从 %@ 降到 %@。";
+"speech.suggest.languages" = "还能听懂%@。";
+"speech.suggest.download" = "下载（%@）";
+
+/* Languages */
+"speech.languages.add" = "添加";
+"speech.languages.remove" = "移除%@";
+"speech.languages.footer" = "选择的模型会听懂这些语言；每句话的语言仍会自动识别。";
+"speech.languages.footer.system" = "取自系统语言设置。选择的模型会听懂这些语言；每句话的语言仍会自动识别。";
+
+/* The comparison */
+"speech.models.footer" = "准确率按你的语言计算。带徽章的数字是在这台 Mac 上实测的，其余来自 Apple M5 Max 上的参考测试，仅供估计。";
+"speech.models.elsewhere" = "部分模型需要其他硬件，未在此列出。";
+"speech.metric.accuracy" = "准确率";
+"speech.metric.speed" = "速度";
+"speech.metric.speed.value" = "实时的 %@ 倍";
+"speech.metric.memory" = "内存";
+"speech.metric.size" = "下载";
+"speech.metric.measured" = "在这台 Mac 上实测";
+"speech.coverage.all" = "能听懂你的所有语言。";
+"speech.coverage.missing" = "听不懂%@。";
+"speech.note.sensevoice" = "体积小，在任何处理器上都很快。";
+"speech.note.whisper_turbo" = "多语种最准确，用 GPU 运行。";
+"speech.note.whisper_turbo_q4" = "准确率几乎不变，体积只有三分之一，适合 8 GB 内存的 Mac。";
+"speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo，用 NVIDIA GPU 运行。";
+"speech.note.qwen3_cpu" = "三十种语言，用处理器运行，任何电脑都能用。";
+"speech.note.cloud" = "在云端运行，使用你自己的密钥。";
+
+/* Actions */
+"speech.download.button" = "下载";
+"speech.download.preparing" = "正在准备…";
+"speech.download.unpacking" = "正在解压…";
+"speech.download.progress" = "%@ / %@";
+"speech.download.stop" = "停止";
+"speech.download.failed" = "下载没有完成。请重试，或在「高级」里打开镜像。";
+"speech.bench.button" = "实测";
+"speech.bench.running" = "正在测量…";
+"speech.bench.help" = "在这台 Mac 上转写几段你的语言的语音样本，测量准确率、速度和内存。";
+"speech.bench.failed" = "无法测量这个模型。";
+"speech.remove.title" = "将这个模型移到废纸篓？";
+"speech.remove.confirm" = "移到废纸篓";
+
+/* Resources */
+"speech.limits.threads" = "处理器线程";
+"speech.limits.threads.detail" = "共 %@ 核，其余留给其他应用。";
+"speech.limits.concurrent" = "同时转写数";
+"speech.limits.concurrent.detail" = "更多录屏会排队等待。";
+"speech.limits.memory" = "GPU 内存";
+"speech.limits.memory.detail" = "语音模型最多使用 %@。";
+"speech.limits.battery" = "用电池时使用更轻的模型";
+"speech.limits.battery.detail" = "没接电源时，录屏改用更小的模型。";
+"speech.limits.footer" = "录屏以低优先级转写，其他应用保持流畅；实时字幕和语音备注以正常优先级运行。";
+
+/* Cloud */
+"speech.cloud.keys" = "口喷鸡不保存云端密钥：在 shell 配置文件（例如 ~/.zshrc）里 export 对应的变量，口喷鸡从那里读取。这里只显示是否已设置。";
+"speech.cloud.set" = "已设置密钥";
+"speech.cloud.not_set" = "未设置密钥";
+"speech.cloud.local_only" = "已打开「只用本地识别」（隐私），不会使用云端服务。";
+
+/* Advanced */
+"speech.advanced.language" = "识别语言";
+"speech.advanced.language.auto" = "自动检测";
+"speech.advanced.mirror" = "从 hf-mirror.com 下载（中国大陆更快）";

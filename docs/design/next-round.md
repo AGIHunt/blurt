@@ -978,14 +978,18 @@ uid 01JB… · issue · high · module auth
   例：这台 M5 Max / 128 GB / 40 核 GPU = pro。
 - **模型注册表** `skills/blurt/scripts/asr_models.json`（P7）：`{"models": [{"id", "backend", "model", "languages": ["zh","en",…] | "multi",
   "size_mb", "ram_mb", "platforms": ["darwin-arm64", …], "requires": ["mlx"|"cuda"|…], "streaming": bool, "tiers": […], "verified": "run|docs"}]}`。
-  第一批固定的 id：`sensevoice-small`（现有，sherpa-onnx int8，zh / en / ja / ko / yue）、`whisper-large-v3-turbo-mlx`（mlx-whisper，多语种）、
-  `whisper-large-v3-turbo-ct2`（faster-whisper int8，CPU / CUDA）、`whisper-small-mlx`（light 档的多语种）。P7 再评估其他候选
-  （比如 Parakeet TDT 0.6B v3 的 MLX 版、Qwen3-ASR、Paraformer），实测过的才加进来，`verified: run`。
+  固定的 id（P7 实测后定稿，见 `docs/design/asr-benchmark.md`）：`sensevoice-small`（sherpa-onnx int8，zh / en / ja / ko / yue）、
+  `whisper-large-v3-turbo-mlx`（mlx-whisper，多语种）、`whisper-large-v3-turbo-q4-mlx`（同一模型的 4-bit 版，light 档的多语种；
+  **替代原定的 `whisper-small-mlx`**：体积相同，small 的中文混出繁体字、错误率 16 %）、`whisper-large-v3-turbo-ct2`（faster-whisper，NVIDIA CUDA；
+  ARM CPU 上 3 线程比实时还慢，不在 macOS 上列出）、`qwen3-asr-0.6b-onnx`（sherpa-onnx int8，30 种语言，任何 CPU）。实测后没收的：
+  Qwen3-ASR 0.6B / 1.7B 的 MLX 版、Parakeet TDT 0.6B v3、Whisper small / medium、distil-whisper、FireRedASR2（理由见基准文档）。
 - **推荐** `transcribe.py recommend [--languages zh,en,ja] [--purpose batch|live|note]` → `{"tier","languages","pick":{"model","backend"},
-  "candidates":[{"id","languages","size_mb","ram_mb","rtf_est","quality_note_key","installed","fits": bool}]}`。规则：
-  语言 = 配置 `asr.languages`（默认：系统首选语言 ∪ {en}）。所需语言都在 SenseVoice 范围内 → live / note 用 SenseVoice（快、占用小）；
-  batch 在 pro / standard 的 Apple Silicon 上用 whisper-large-v3-turbo-mlx，除非语言以中文 / 粤语为主（仍用 SenseVoice）。有 SenseVoice 不覆盖的语言 →
-  pro / standard 用 whisper turbo，light 用 whisper-small，minimal 推荐云端。
+  "candidates":[{"id","languages","size_mb","ram_mb","rtf_est","quality_note_key","installed","fits": bool}]}`。规则（实测后，取代起始规则）：
+  语言 = 配置 `asr.languages`（默认：系统首选语言 ∪ {en}）。Apple Silicon：batch 在 pro / standard 用 whisper turbo（各语种都最准，
+  中文 1.6 % 也好过 SenseVoice 的 3.3 %），light 在 SenseVoice 说得好的语言（zh / en / ja / yue，参考错误率 ≤ 5 %，韩语 10.5 % 不算）上用
+  SenseVoice、其余用 turbo 4-bit；live / note 用 SenseVoice（同样条件），否则同档的多语种模型；**pro 的 live = batch 模型**，录完字幕即最终稿。
+  NVIDIA：batch 用 turbo（CUDA），live / note 同上。只有 CPU：SenseVoice 能覆盖就用它（CPU 上快 10 倍、同样准），否则 Qwen3-ASR 0.6B（CPU）。
+  minimal：SenseVoice 单线程，有它不覆盖的语言时 `cloud_recommended: true`。只考虑峰值内存 ≤ 内存 40 % 的模型。
   `transcribe.py models` 列注册表和已装的；`transcribe.py setup --model ID` 下载；`transcribe.py bench --model ID` 实测 RTF 和峰值内存，
   结果存 `$BLURT_HOME/asr-bench.json`，设置页的对比表用它（没测过的显示估计值）。
 - **自动选择**：配置 `asr.auto`（默认 true）：应用首次启动和硬件变化时按推荐设置 `asr.model`（三个用途各一个：`asr.models = {"batch","live","note"}`），
@@ -996,6 +1000,41 @@ uid 01JB… · issue · high · module auth
 - **语音输入的快路径** `transcribe.py note WAV [--language auto]` → `{"ok","text","language","ms","model"}`；P7 可以加一个常驻的
   `transcribe.py serve`（空闲 5 分钟卸载模型），`note` 有服务就用、没有就进程内跑。
 - **多语种**：默认 `language: auto`；`transcript.json` 的每段带 `language`（后端给得出时）；界面和条目都不能假设只有中英。
+
+**细则（P7）**
+
+- 档位规则按起始规则实现（`tier_for`）。Apple Silicon 的 `perf_cores` = 最快一级（M5 Pro / Max 是 Super 核，这台 6 个），`eff_cores` = 其余各级之和；
+  `probe` 另给 `core_levels`、`fingerprint`（芯片 | 内存 | GPU），`fingerprint` 变了即「硬件变化」。
+- 注册表每个本地模型另有 `name`、`install`（`files` 单文件 / `archive` 解压后只留 `keep` / `hf` 仓库，走 Hugging Face 缓存）、`package`（需要的 Python 包；
+  缺了 `transcribe.py` 自己用 `uv run --with` 重跑，调用方不用管）、`rtf_ref` / `error_ref` / `ram_mb`（参考机实测）、`quality_note_key`（`Speech.strings`）。
+  `default: true` 只标在 `sensevoice-small` 上：引导页下载的是它，更好的模型在设置 → 语音里推荐。
+- **选择顺序**：`--model-id` / `--backend` 显式参数 > `asr.auto: false` 时的 `asr.models[用途]` > 旧键 `asr.backend` / `asr.model` > 自动。
+  `asr.auto` 缺省为 true，但旧配置里写了非 SenseVoice 的 `asr.backend` 视为用户已选（auto 缺省 false）。自动时只用**已安装**的模型：
+  `asr.models[用途]`（`auto --apply` 写的）> 推荐 > 推荐列表里第一个已装且覆盖语言的 > SenseVoice。设置页里手动选某个用途的模型 = `asr.auto: false`
+  并写全三个用途。
+- `transcribe.py auto [--apply]` → `{"ok","auto","tier","languages","models":{用途:id},"recommended":{用途:id},"needs_download":[{"model","size_mb","purposes"}],
+  "hardware_changed"}`；`--apply` 只在 auto 时写 `asr.models` 和 `asr.hardware`（fingerprint）。**给 P4 / P8**：应用启动时跑一次 `auto --apply`；
+  `needs_download` 非空且 `hardware_changed` 时提示一次（显示大小），用户同意后 `setup --model-id ID`，完成后再 `auto --apply`。
+- `transcribe.py models` → `{"ok","models_dir","configured","auto","tier","platform","hardware","limits","languages","languages_set","selected":{用途:id},
+  "recommended":{用途:id},"local_only","models":[注册表字段 + "installed","path"?,"approx","runs_here","fits","purposes","configured","speaks","bench"?]}`。
+  `setup --model-id ID [--use all|batch,live,note]`（`--use` = 手动选中）；旧的 `setup --backend B` 照旧写 `asr.backend`。`bench --model-id ID [--languages …]`
+  用 `say` 生成各语言样本（`asr_models.json` 的 `bench.samples`），给出每种语言的错误率、RTF、峰值内存、CPU 核数、GPU 占用，存 `asr-bench.json` 的
+  `results[id]`。
+- **资源上限的落实**：batch / bench 在 macOS 上用 `taskpolicy -c utility` 重跑自己（钳住进程里所有线程的 QoS；onnxruntime 等自己开的线程不继承
+  `pthread_set_qos_class_self_np`）+ nice 10；Windows 用 BELOW_NORMAL；Linux nice。线程数同时设 BLAS / OpenMP 的环境变量和后端参数。
+  `max_concurrent` 只管 batch 和 bench（录完的整理、截图批次的语音备注）：live 和 note 是用户正在等的，不排队。排队时 stderr 打一行，
+  有 `$BLURT_JOB` 时往该任务的 events 追加 `{"source":"asr","event":"asr.queued","step":{"id":"transcribe","state":"pending"},"detail":{"queued":true}}`，
+  拿到后追加 `asr.started`（step running）。等锁超时退出码 3、`code: lock_timeout`。
+- **MLX 后端**的加载和每次推理都在它自己的一个线程上（MLX 的 stream 按线程，live.py 和 transcribe_track 都在工作线程里调用）。
+- **Whisper 的混合语言**：用户的语言多于一种、而一个块转出的文字明显偏少（< 2.5 音节 / 秒；各语言实测正常 4–7）时，按 VAD 段检测语言，
+  同一语言的连续段分开解码。实测一段英文接中文的 15 秒块原来只剩中文，现在全保留；单语种的准确率和速度不变。Whisper 的中日文 ASCII 逗号等
+  转成全角。
+- **语音输入**：`note` 冷启动 SenseVoice 1–2 秒、Whisper turbo 约 4.6 秒；`serve` 常驻后 0.3 秒 / 0.4–1 秒。**给 P5 / P8**：按下语音输入时就起
+  `transcribe.py serve --preload`（已有服务时立刻返回 `{"already":true}`），说话期间模型已就绪；`note` 自动用它。服务在 `$BLURT_HOME/run/asr-serve.json`
+  （127.0.0.1 端口 + 随机 token），空闲 `--idle` 秒（默认 300）卸载模型，`--exit-after` 秒（默认 1800）无请求退出。
+- 设置 → 语音：这台 Mac（芯片、内存、GPU、档位）、自动选择开关、三个用途各用哪个模型、推荐但未下载的模型（大小、对你的语言错误率的改善）、
+  你说的语言（自称名的标签，可增删）、模型对比（对你的语言的准确率、速度、内存、下载大小；实测的带徽章）、资源占用（线程、同时转写数、
+  GPU 内存比例、用电池时更轻）、云端密钥状态、识别语言、镜像。文案在 `Resources/*.lproj/Speech.strings`。
 
 ### K10 · 本地化
 

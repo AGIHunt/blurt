@@ -1,0 +1,103 @@
+/* Speech — Settings → Speech (docs/design/next-round.md K9, K10). Owner: P7.
+   Same keys and placeholders in zh-Hans.lproj/Speech.strings (tests/test_l10n.py). */
+
+/* Sections */
+"speech.section.machine" = "This Mac";
+"speech.section.languages" = "Languages you speak";
+"speech.section.models" = "Models";
+"speech.section.resources" = "Resources";
+"speech.section.cloud" = "Cloud";
+"speech.section.advanced" = "Advanced";
+"speech.loading" = "Checking this Mac…";
+"speech.error.read" = "Couldn’t read the speech models. Check that uv is installed (Settings → General).";
+"speech.cancel" = "Cancel";
+
+/* The machine and its tier */
+"speech.machine.unknown" = "This computer";
+"speech.machine.memory" = "%@ memory";
+"speech.machine.gpu_cores" = "%@-core GPU";
+"speech.machine.cpu_cores" = "%@ CPU cores";
+"speech.machine.battery" = "On battery";
+"speech.tier.pro" = "High performance";
+"speech.tier.standard" = "Standard";
+"speech.tier.light" = "Light";
+"speech.tier.minimal" = "Basic";
+"speech.tier.pro.help" = "Runs the most accurate local models comfortably, with plenty of headroom for your other apps.";
+"speech.tier.standard.help" = "Runs accurate local models; lighter ones are used where speed matters.";
+"speech.tier.light.help" = "Uses compact models so recognition never slows down your other apps.";
+"speech.tier.minimal.help" = "Local recognition is limited here. A cloud service gives better results.";
+
+/* Automatic choice and the three jobs */
+"speech.auto.title" = "Choose models for this Mac";
+"speech.auto.detail" = "Picks the most accurate model that runs comfortably here for the languages you speak, and keeps headroom for your other apps.";
+"speech.purpose.batch" = "Recordings";
+"speech.purpose.batch.detail" = "Transcribed after you stop. Accuracy first.";
+"speech.purpose.live" = "Live captions";
+"speech.purpose.live.detail" = "While you record, so results are ready the moment you stop.";
+"speech.purpose.note" = "Voice notes";
+"speech.purpose.note.detail" = "Short notes on screenshots and voice input. Speed first.";
+"speech.suggest.title" = "%@ is recommended";
+"speech.suggest.for" = "Would be used for %@.";
+"speech.suggest.better" = "About %@ → %@ errors in your languages.";
+"speech.suggest.languages" = "Also understands %@.";
+"speech.suggest.download" = "Download %@";
+
+/* Languages */
+"speech.languages.add" = "Add";
+"speech.languages.remove" = "Remove %@";
+"speech.languages.footer" = "Models are chosen to understand all of these. The language of each sentence is still detected automatically.";
+"speech.languages.footer.system" = "Taken from your system languages. Models are chosen to understand all of these, and the language of each sentence is still detected automatically.";
+
+/* The comparison */
+"speech.models.footer" = "Accuracy is for your languages. A seal marks numbers measured on this Mac; the others come from a reference test on Apple M5 Max and are estimates.";
+"speech.models.elsewhere" = "Some models aren’t listed because they need different hardware.";
+"speech.metric.accuracy" = "Accuracy";
+"speech.metric.speed" = "Speed";
+"speech.metric.speed.value" = "%@× real time";
+"speech.metric.memory" = "Memory";
+"speech.metric.size" = "Download";
+"speech.metric.measured" = "Measured on this Mac";
+"speech.coverage.all" = "Understands all your languages.";
+"speech.coverage.missing" = "Doesn’t understand %@.";
+"speech.note.sensevoice" = "Small and very fast on any processor.";
+"speech.note.whisper_turbo" = "Most accurate across languages; runs on the GPU.";
+"speech.note.whisper_turbo_q4" = "Nearly the same accuracy at a third of the size. Suits Macs with 8 GB of memory.";
+"speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo on an NVIDIA GPU.";
+"speech.note.qwen3_cpu" = "Thirty languages on the processor, on any computer.";
+"speech.note.cloud" = "Runs in the cloud with your own key.";
+
+/* Actions */
+"speech.download.button" = "Download";
+"speech.download.preparing" = "Preparing…";
+"speech.download.unpacking" = "Unpacking…";
+"speech.download.progress" = "%@ of %@";
+"speech.download.stop" = "Stop";
+"speech.download.failed" = "The download didn’t finish. Try again, or turn on the mirror under Advanced.";
+"speech.bench.button" = "Measure";
+"speech.bench.running" = "Measuring…";
+"speech.bench.help" = "Transcribes short spoken samples in your languages on this Mac and measures accuracy, speed and memory.";
+"speech.bench.failed" = "Couldn’t measure this model.";
+"speech.remove.title" = "Move this model to the Trash?";
+"speech.remove.confirm" = "Move to Trash";
+
+/* Resources */
+"speech.limits.threads" = "Processor threads";
+"speech.limits.threads.detail" = "Of %@ cores. The rest stay free for your other apps.";
+"speech.limits.concurrent" = "Transcriptions at a time";
+"speech.limits.concurrent.detail" = "More recordings wait their turn.";
+"speech.limits.memory" = "GPU memory";
+"speech.limits.memory.detail" = "Up to %@ for speech models.";
+"speech.limits.battery" = "Lighter models on battery";
+"speech.limits.battery.detail" = "Recordings use a smaller model when your Mac isn’t plugged in.";
+"speech.limits.footer" = "Recordings are transcribed at low priority, so your apps stay responsive. Live captions and voice notes run at normal priority.";
+
+/* Cloud */
+"speech.cloud.keys" = "Cloud keys aren’t stored in Blurt. Export the variable in your shell profile (for example ~/.zshrc) and Blurt reads it from there. This list only shows whether each one is set.";
+"speech.cloud.set" = "Key set";
+"speech.cloud.not_set" = "No key";
+"speech.cloud.local_only" = "Local-only recognition is on (Privacy), so cloud services aren’t used.";
+
+/* Advanced */
+"speech.advanced.language" = "Recognition language";
+"speech.advanced.language.auto" = "Detect automatically";
+"speech.advanced.mirror" = "Download from hf-mirror.com (faster in mainland China)";

@@ -551,9 +551,12 @@ class LiveRun:
 
     def read_slice(self, s: float, e: float) -> np.ndarray:
         a, b = int(s * SR), int(e * SR)
-        with open(self.pcm, "rb") as fh:
-            fh.seek(a * 2)
-            raw = fh.read((b - a) * 2)
+        try:
+            with open(self.pcm, "rb") as fh:
+                fh.seek(a * 2)
+                raw = fh.read((b - a) * 2)
+        except FileNotFoundError:  # live/ went away between pull() and here: a restart or a discard
+            raise Discarded()
         return np.frombuffer(raw[:len(raw) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768
 
     def submit(self, chunks) -> None:
@@ -576,7 +579,8 @@ class LiveRun:
             self.decode_seconds += secs
             if is_blank(r):
                 self.blank += e - s
-            lines = [{"start": round(a, 2), "end": round(b, 2), "text": t} for a, b, t in r if t]
+            lines = [{"start": round(a, 2), "end": round(b, 2), "text": t, **({"language": lg[0]} if lg else {})}
+                     for a, b, t, *lg in r if t]
             self.segments += lines
             if lines and self.live.is_dir():
                 with open(self.live / "transcript.jsonl", "a", encoding="utf-8") as fh:
@@ -663,7 +667,7 @@ class LiveRun:
         self.commit(wait=True)
         recs = sorted(self.session.glob("recording.*"))
         source = recs[0].name if recs else "recording.mp4"
-        results = [(s["start"], s["end"], s["text"], None) for s in self.segments]
+        results = [(s["start"], s["end"], s["text"], None, s.get("language")) for s in self.segments]
 
         class A:  # what build_transcript wants to know about the run's options
             model = None
@@ -686,29 +690,25 @@ class LiveRun:
 
 # ------------------------------------------------------------------ commands
 def asr_setup():
-    """(name, backend, workers) for the configured ASR, or (None, reason, 0) when it can't run here right now."""
+    """(name, backend, workers) for the live model (asr.models.live / the recommendation, installed only), or
+    (None, reason, 0) when it can't run here right now. Capped like every ASR run (K9): asr.limits.threads threads
+    (leave CPU to the app being recorded), user-initiated priority, MLX memory cap. A backend whose package is
+    missing re-runs this process under `uv run --with <package>` (transcribe.ensure_package)."""
+    import argparse
     import transcribe as T
 
-    class A:
-        backend = model = language = prompt = None
-        concurrency = 4
-        threads = min(4, os.cpu_count() or 4)  # leave CPU to the app being recorded
-
-    a = A()
-    name = T.resolve_backend(a)
-    why = T.backend_ready(name)
-    if why:
-        return None, why, 0
-    pkg = T.EXTRA_PACKAGES.get(name)
-    if pkg:
-        import importlib.util
-        if importlib.util.find_spec(pkg) is None:
-            uv = shutil.which("uv")
-            if uv and not os.environ.get("BLURT_LIVE_REEXEC"):
-                os.environ["BLURT_LIVE_REEXEC"] = "1"
-                os.execvp(uv, [uv, "run", "-q", "--with", name, __file__, *sys.argv[1:]])
-            return None, f"{name} is not installed (uv run --with {name})", 0
-    return name, T.BACKENDS[name](a), 1 if name in T.LOCAL else a.concurrency
+    a = argparse.Namespace(backend=None, model=None, model_id=None, language=None, prompt=None, concurrency=4,
+                           threads=None)
+    try:
+        name = T.resolve_backend(a, "live")
+        why = T.backend_ready(name, a.model_id)
+        if why:
+            return None, why, 0
+        T.throttle("live")
+        backend = T.make_backend(name, a, "live")
+    except T.Fail as e:
+        return None, f"{e} ({e.code})", 0
+    return name, backend, 1 if name in T.LOCAL else a.concurrency
 
 
 def cmd_run(a) -> int:
@@ -724,8 +724,8 @@ def cmd_run(a) -> int:
         return 0
     try:
         name, backend, workers = asr_setup()
-    except SystemExit as e:  # die() inside a backend (missing key, model) — the recording must not notice
-        name, backend, workers = None, f"ASR setup failed ({e})", 0
+    except (SystemExit, Exception) as e:  # die() / an import error inside a backend — the recording must not notice
+        name, backend, workers = None, f"ASR setup failed ({type(e).__name__}: {e})"[:300], 0
     if name is None:
         # no usable ASR: say so and get out of the way (the audio sidecar isn't needed then)
         run.asr, run.note = "off", str(backend)
