@@ -142,8 +142,8 @@
 "main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
 
 "main.filter.kind" = "按种类筛选";
-"main.filter.live" = "除已丢弃外全部";
-"main.filter.needs_you" = "需要你看的";
+"main.filter.live" = "全部（不含已丢弃）";
+"main.filter.needs_you" = "待处理";
 "main.filter.only_kind" = "只看%@（%ld）";
 
 "main.filter.state" = "按状态筛选";
@@ -183,7 +183,7 @@
 "main.keys.palette" = "命令面板";
 "main.keys.places" = "待处理、进行中、未归类、全部条目";
 "main.keys.projects" = "前五个项目";
-"main.keys.reveal_copy" = "在访达中显示 · 拷贝路径";
+"main.keys.reveal_copy" = "在访达中显示 · 复制路径";
 "main.keys.search" = "搜索";
 "main.keys.space" = "空格";
 "main.keys.state" = "更改状态（打开菜单）";
@@ -192,7 +192,7 @@
 "main.list.label" = "条目";
 
 "main.menu.change_state" = "更改状态…";
-"main.menu.copy_link" = "拷贝链接";
+"main.menu.copy_link" = "复制链接";
 "main.menu.enrich" = "AI 补全";
 "main.menu.kind" = "种类";
 "main.menu.move_to" = "移到项目";
