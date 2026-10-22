@@ -144,7 +144,10 @@ public final class DictationHistory {
         for line in d.split(separator: 0x0A) {
             guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
             switch o["op"] as? String {
-            case "delete": for i in o["ids"] as? [String] ?? [] { byID[i] = nil }
+            case "delete":      // an entry written again later (undo) comes back once, at its own time
+                let gone = Set(o["ids"] as? [String] ?? [])
+                for i in gone { byID[i] = nil }
+                order.removeAll { gone.contains($0) }
             case "clear": byID = [:]; order = []
             case "item":
                 if let i = o["id"] as? String, var e = byID[i] { e.item = o["item"] as? String; e.itemUID = o["uid"] as? String; byID[i] = e }
