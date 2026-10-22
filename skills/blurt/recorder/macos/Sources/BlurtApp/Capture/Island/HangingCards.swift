@@ -655,8 +655,18 @@ final class HangingCards: NSObject {
     /// The pointer arrived on the island (or it opened): every card comes down with its detail. Pushed by the island,
     /// so it never waits for the cards' own (idle) poll.
     func islandAttention() {
-        guard !cards.isEmpty else { return }
+        guard !cards.isEmpty, !island.isRecording else { return }
         show()
+    }
+
+    /// A recording started: the cards go up and stay there (K7: nothing hangs over what you are showing). Only ⌥⇧H
+    /// or the menu brings them down meanwhile.
+    func recordingStarted() {
+        sticky = false
+        peekUntil = 0
+        holdEsc(false)
+        guard holds == 0, dragging == nil, down == nil else { return }
+        retract()
     }
 
     /// The ear's count, ⌥⇧H "Show hanging cards", the menu, the main window's "Unfiled captures": every card comes down
@@ -906,9 +916,10 @@ final class HangingCards: NSObject {
         let m = NSEvent.mouseLocation
         let onIsland = island.pointerInside
         let held = island.holdsCards           // open by a key or a command, a drawer, a drag
+        let recording = island.isRecording     // only brought down on purpose while recording
         if !shown {
             pointerOver = false
-            if (onIsland || held) && !cards.isEmpty { show() }
+            if (onIsland || held) && !cards.isEmpty && !recording { show() }
             return
         }
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
@@ -921,7 +932,7 @@ final class HangingCards: NSObject {
             else if over { visited = true }
             else if visited && !onIsland { sticky = false; holdEsc(false) }
         }
-        if over || onIsland || held || busy || sticky { awaySince = nil } else {
+        if over || busy || sticky || (!recording && (onIsland || held)) { awaySince = nil } else {
             awaySince = awaySince ?? now
             if now - awaySince! >= 0.4 { awaySince = nil; retract(); return }
         }
