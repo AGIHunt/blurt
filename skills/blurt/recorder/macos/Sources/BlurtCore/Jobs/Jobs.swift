@@ -1,13 +1,16 @@
-// K4: everything that is happening — a recording, a snap batch, voice input, processing, routing, an agent session —
-// is a job in $BLURT_HOME/jobs/. <id>.json is written only by the job's owner (atomic replace); anyone else appends
-// one line to <id>.events.jsonl, and every reader folds those events over the json from `events_offset` on (steps by
-// id, status → agent.status, state / progress replace, items union). So a job's state is current even while its owner
-// isn't running.
+// K4 jobs: everything that is happening (a recording, a snap batch, voice, processing, routing, an agent session) is a
+// job in $BLURT_HOME/jobs/:
+//   <id>.json           the job, written only by its owner (atomic replace; under <id>.lock when several processes own it)
+//   <id>.events.jsonl   progress anyone else reports: one appended line each (hooks, items.py, agents)
+// Every reader computes the same *effective state*: the json, then the events from `events_offset` on, in order —
+// steps merge by id, `status` → agent.status / status_at / status_source, `state` and `progress` overwrite, `items`
+// are unioned. Python (jobs.py) and Rust (Tauri) implement the same fold, so the state is current even while the
+// owner isn't running.
 //
-// G0 (docs/design/next-round.md "所有权、闸门和合并"): the shared interface, written by P4 so the packages compile
-// against it; P3 owns this file from here on.
-import CoreServices
+//   JobStore.shared.start()            FSEvents on jobs/ (100 ms debounce) → jobs (newest first), onChange(changed)
+//   JobWriter(type: .record, …)        a job the app owns (record / snap / voice / process)
 import Foundation
+import CoreServices
 
 public enum JobType: String { case record, snap, voice, process, route, agent }
 public enum JobState: String { case queued, running, done, failed, cancelled }
@@ -18,16 +21,15 @@ public struct JobStep {
     public let id: String
     public let state: StepState
     public let progress: Double?
-    public init(id: String, state: StepState, progress: Double? = nil) { self.id = id; self.state = state; self.progress = progress }
 }
 
 public struct JobError {
     public let code: String
     public let message: String
     public let hintKey: String?
-    public init(code: String, message: String, hintKey: String? = nil) { self.code = code; self.message = message; self.hintKey = hintKey }
 }
 
+/// The `agent` object of an agent job (K5).
 public struct AgentInfo {
     public let agent, mode, runner: String
     public let tmuxSession, tmuxWindow, windowName, branch, handoff: String?
@@ -36,6 +38,15 @@ public struct AgentInfo {
     public let status: AgentSessionStatus
     public let statusAt: Date?
     public let exit: Int32?
+    // beyond the G0 signature
+    public let tmuxSocket: String?
+    public let statusSource: String?
+    /// The last hook's message (a permission prompt's question…), from the event that set the status.
+    public let statusMessage: String?
+    public let baseBranch: String?
+    /// The finish action taken (merge | pr | discard | keep), once there is one.
+    public let finishAction: String?
+    public let finishResult: [String: Any]?
 }
 
 public struct Job: Identifiable {
@@ -53,249 +64,353 @@ public struct Job: Identifiable {
     public let started, ended: Date?
     public let error: JobError?
     public let agent: AgentInfo?
+    public let updated: Date?
+
     public var isActive: Bool { state == .queued || state == .running }
-    /// The step running now, else the first one not done yet.
-    public var currentStep: JobStep? { steps.first { $0.state == .running } ?? steps.first { $0.state == .pending } }
+
+    /// The effective state as a dictionary, as jobs.py get prints it.
+    public let raw: [String: Any]
 }
 
-/// The fixed step ids per job type (UI: `job.step.<id>`).
-public let jobSteps: [JobType: [String]] = [
-    .record: ["capture", "finalize"], .snap: ["capture"], .voice: ["listen", "transcribe", "file"],
-    .process: ["prepare", "transcribe", "write", "frames", "route"], .route: ["route"], .agent: ["launch", "work", "finish"],
-]
+// MARK: - The fold (K4)
 
-public enum JobFiles {
-    public static var dir: URL { BlurtPaths.home.appendingPathComponent("jobs") }
-    public static func json(_ id: String) -> URL { dir.appendingPathComponent("\(id).json") }
-    public static func events(_ id: String) -> URL { dir.appendingPathComponent("\(id).events.jsonl") }
-    public static func log(_ id: String) -> URL { dir.appendingPathComponent("\(id).log") }
+public enum JobFold {
+    static let iso: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = .current
+        return f
+    }()
+    static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 
-    static let iso: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; f.timeZone = .current; return f }()
-    static let isoFrac: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }()
     public static func now() -> String { iso.string(from: Date()) }
-    public static func date(_ v: Any?) -> Date? { (v as? String).flatMap { iso.date(from: $0) ?? isoFrac.date(from: $0) } }
-
-    /// j-YYYYMMDD-HHMMSS-xxxx (4 lowercase base32)
-    public static func newID() -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyyMMdd-HHmmss"
-        let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567")
-        return "j-" + f.string(from: Date()) + "-" + String((0..<4).map { _ in alphabet.randomElement()! })
+    public static func date(_ v: Any?) -> Date? {
+        if let s = v as? String { return iso.date(from: s) ?? isoFrac.date(from: s) }
+        if let d = v as? Double { return Date(timeIntervalSince1970: d) }
+        return nil
     }
 
-    /// The effective state of one job: <id>.json with <id>.events.jsonl folded over it (K4).
-    public static func effective(_ id: String) -> [String: Any]? {
-        guard let d = try? Data(contentsOf: json(id)), var o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
-        let offset = (o["events_offset"] as? NSNumber)?.intValue ?? 0
-        guard let ev = try? Data(contentsOf: events(id)), ev.count > offset else { return o }
-        for line in ev.dropFirst(offset).split(separator: 0x0A) {
-            guard let e = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
-            fold(&o, e)
+    /// Apply one events.jsonl line to a job dictionary.
+    public static func apply(_ ev: [String: Any], to job: inout [String: Any]) {
+        if let st = ev["step"] as? [String: Any], let sid = st["id"] as? String {
+            var steps = job["steps"] as? [[String: Any]] ?? []
+            if let i = steps.firstIndex(where: { $0["id"] as? String == sid }) {
+                steps[i].merge(st) { _, new in new }
+            } else {
+                steps.append(st)
+            }
+            job["steps"] = steps
         }
-        return o
+        if let status = ev["status"] as? String {
+            var a = job["agent"] as? [String: Any] ?? [:]
+            a["status"] = status
+            a["status_at"] = ev["t"] ?? NSNull()
+            a["status_source"] = ev["source"] ?? NSNull()
+            // not part of the shared fold: the message shown in a "needs your input" notification
+            a["status_message"] = (ev["detail"] as? [String: Any])?["message"] ?? NSNull()
+            if let code = (ev["detail"] as? [String: Any])?["exit"] { a["exit"] = code }
+            job["agent"] = a
+        }
+        if let s = ev["state"] { job["state"] = s }
+        if let p = ev["progress"] { job["progress"] = p }
+        if let add = ev["items"] as? [String] {
+            var items = job["items"] as? [String] ?? []
+            for u in add where !items.contains(u) { items.append(u) }
+            job["items"] = items
+        }
+        if let t = ev["t"] { job["updated"] = t }
     }
 
-    public static func fold(_ o: inout [String: Any], _ e: [String: Any]) {
-        if let s = e["step"] as? [String: Any], let sid = s["id"] as? String {
-            var steps = o["steps"] as? [[String: Any]] ?? []
-            if let i = steps.firstIndex(where: { $0["id"] as? String == sid }) { steps[i].merge(s) { _, n in n } } else { steps.append(s) }
-            o["steps"] = steps
+    /// The events after `offset` (complete lines only — a writer may be mid-append), and the offset after them.
+    public static func events(_ url: URL, from offset: Int) -> (events: [[String: Any]], end: Int) {
+        guard let fh = try? FileHandle(forReadingFrom: url) else { return ([], offset) }
+        defer { try? fh.close() }
+        let size = (try? fh.seekToEnd()).map(Int.init) ?? 0
+        guard size > offset else { return ([], min(offset, size)) }
+        try? fh.seek(toOffset: UInt64(offset))
+        let data = (try? fh.readToEnd()) ?? Data()
+        guard let lastNL = data.lastIndex(of: 0x0A) else { return ([], offset) }
+        var out: [[String: Any]] = []
+        for line in data[data.startIndex...lastNL].split(separator: 0x0A) where !line.isEmpty {
+            if let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] { out.append(o) }
         }
-        if let st = e["status"] as? String {
-            var a = o["agent"] as? [String: Any] ?? [:]
-            a["status"] = st
-            a["status_at"] = e["t"]
-            a["status_source"] = e["source"]
-            o["agent"] = a
-        }
-        if let st = e["state"] { o["state"] = st }
-        if let p = e["progress"] { o["progress"] = p }
-        if let items = e["items"] as? [String] {
-            var cur = o["items"] as? [String] ?? []
-            for u in items where !cur.contains(u) { cur.append(u) }
-            o["items"] = cur
-        }
-        if let t = e["t"] { o["updated"] = t }
+        return (out, offset + (lastNL - data.startIndex) + 1)
     }
 
-    public static func parse(_ o: [String: Any]) -> Job? {
+    /// json + events → the effective job dictionary.
+    public static func effective(json: [String: Any], events url: URL) -> [String: Any] {
+        var j = json
+        let (evs, _) = events(url, from: j["events_offset"] as? Int ?? 0)
+        for e in evs { apply(e, to: &j) }
+        return j
+    }
+
+    public static func job(_ o: [String: Any]) -> Job? {
         guard let id = o["id"] as? String, let type = JobType(rawValue: o["type"] as? String ?? "") else { return nil }
         let steps = (o["steps"] as? [[String: Any]] ?? []).compactMap { s -> JobStep? in
             guard let sid = s["id"] as? String else { return nil }
-            return JobStep(id: sid, state: StepState(rawValue: s["state"] as? String ?? "") ?? .pending, progress: (s["progress"] as? NSNumber)?.doubleValue)
+            return JobStep(id: sid, state: StepState(rawValue: s["state"] as? String ?? "") ?? .pending, progress: s["progress"] as? Double)
         }
         let err = (o["error"] as? [String: Any]).map {
             JobError(code: $0["code"] as? String ?? "unknown", message: $0["message"] as? String ?? "", hintKey: $0["hint_key"] as? String)
         }
         var agent: AgentInfo?
-        if let a = o["agent"] as? [String: Any], type == .agent {
+        if let a = o["agent"] as? [String: Any] {
             let tmux = a["tmux"] as? [String: Any]
             let wt = a["worktree"] as? [String: Any]
-            agent = AgentInfo(agent: a["id"] as? String ?? "", mode: a["mode"] as? String ?? "together", runner: a["runner"] as? String ?? "tmux",
-                              tmuxSession: tmux?["session"] as? String, tmuxWindow: tmux?["window"] as? String, windowName: tmux?["name"] as? String,
-                              branch: wt?["branch"] as? String, handoff: a["handoff"] as? String,
-                              cwd: URL(fileURLWithPath: a["cwd"] as? String ?? NSHomeDirectory()),
-                              worktree: (wt?["path"] as? String).map { URL(fileURLWithPath: $0) },
-                              status: AgentSessionStatus(rawValue: a["status"] as? String ?? "") ?? .running,
-                              statusAt: date(a["status_at"]), exit: (a["exit"] as? NSNumber)?.int32Value)
+            let fin = a["finish"] as? [String: Any]
+            agent = AgentInfo(
+                agent: a["id"] as? String ?? "", mode: a["mode"] as? String ?? "together", runner: a["runner"] as? String ?? "tmux",
+                tmuxSession: tmux?["session"] as? String, tmuxWindow: tmux?["window"] as? String, windowName: tmux?["name"] as? String,
+                branch: wt?["branch"] as? String, handoff: a["handoff"] as? String,
+                cwd: URL(fileURLWithPath: a["cwd"] as? String ?? NSHomeDirectory()),
+                worktree: (wt?["path"] as? String).map { URL(fileURLWithPath: $0) },
+                status: AgentSessionStatus(rawValue: a["status"] as? String ?? "") ?? .running,
+                statusAt: date(a["status_at"]), exit: (a["exit"] as? NSNumber).map { $0.int32Value },
+                tmuxSocket: tmux?["socket"] as? String, statusSource: a["status_source"] as? String,
+                statusMessage: a["status_message"] as? String, baseBranch: wt?["base"] as? String,
+                finishAction: fin?["action"] as? String, finishResult: fin?["result"] as? [String: Any])
         }
-        return Job(id: id, type: type, state: JobState(rawValue: o["state"] as? String ?? "") ?? .queued, project: o["project"] as? String,
-                   session: (o["session"] as? String).map { URL(fileURLWithPath: $0) }, parent: o["parent"] as? String, title: o["title"] as? String,
-                   items: o["items"] as? [String] ?? [], captures: (o["captures"] as? [NSNumber] ?? []).map(\.intValue), steps: steps,
-                   progress: (o["progress"] as? NSNumber)?.doubleValue, created: date(o["created"]) ?? Date.distantPast,
-                   started: date(o["started"]), ended: date(o["ended"]), error: err, agent: agent)
+        return Job(id: id, type: type, state: JobState(rawValue: o["state"] as? String ?? "") ?? .queued,
+                   project: o["project"] as? String, session: (o["session"] as? String).map { URL(fileURLWithPath: $0) },
+                   parent: o["parent"] as? String, title: o["title"] as? String,
+                   items: o["items"] as? [String] ?? [], captures: (o["captures"] as? [NSNumber] ?? []).map(\.intValue),
+                   steps: steps, progress: o["progress"] as? Double,
+                   created: date(o["created"]) ?? .distantPast, started: date(o["started"]), ended: date(o["ended"]),
+                   error: err, agent: agent, updated: date(o["updated"]), raw: o)
     }
 }
+
+public enum JobFiles {
+    public static var dir: URL { BlurtPaths.home.appendingPathComponent("jobs") }
+    public static func json(_ id: String) -> URL { dir.appendingPathComponent("\(id).json") }
+    public static func events(_ id: String) -> URL { dir.appendingPathComponent("\(id).events.jsonl") }
+    public static func lock(_ id: String) -> URL { dir.appendingPathComponent("\(id).lock") }
+    public static func log(_ id: String) -> URL { dir.appendingPathComponent("\(id).log") }
+
+    /// j-YYYYMMDD-HHMMSS-xxxx (4 lowercase base32 characters)
+    public static func newID(_ now: Date = Date()) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567")
+        return "j-\(f.string(from: now))-" + String((0..<4).map { _ in alphabet.randomElement()! })
+    }
+
+    /// Append one event line (O_APPEND, so concurrent writers never interleave a line).
+    public static func appendEvent(_ id: String, _ event: [String: Any]) {
+        var e = event
+        if e["t"] == nil { e["t"] = JobFold.now() }
+        guard var d = try? JSONSerialization.data(withJSONObject: e, options: [.sortedKeys]) else { return }
+        d.append(0x0A)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fd = open(events(id).path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+        guard fd >= 0 else { return }
+        d.withUnsafeBytes { _ = write(fd, $0.baseAddress, d.count) }
+        close(fd)
+    }
+}
+
+// MARK: - JobStore
 
 public final class JobStore {
     public static let shared = JobStore()
 
-    /// Effective states, newest first (the most recent `limit`).
     public private(set) var jobs: [Job] = []
     public var active: [Job] { jobs.filter(\.isActive) }
-    public func job(_ id: String) -> Job? { jobs.first { $0.id == id } }
-    /// Main thread; the jobs whose effective state changed (new ones included).
+    public func job(_ id: String) -> Job? { byID[id] }
+    /// Main queue; the jobs whose effective state changed (or appeared). A removed job is not reported.
     public var onChange: ((_ changed: [Job]) -> Void)?
-    public var limit = 300
 
+    private var byID: [String: Job] = [:]
+    private var stamps: [String: String] = [:]          // id → "<json mtime>|<json size>|<events size>"
     private var stream: FSEventStreamRef?
-    private var pending: DispatchWorkItem?
-    private var stamps: [String: String] = [:]          // id → json mtime + events size, to tell what changed
+    private var pending = Set<String>()
+    private var flushScheduled = false
+    private var watchedDir: String?
+    private var observers: [UUID: ([Job]) -> Void] = [:]
 
     public init() {}
 
+    /// Several parts of the app follow jobs; each gets the changes after onChange. Returns a token for removeObserver.
+    @discardableResult
+    public func addObserver(_ f: @escaping ([Job]) -> Void) -> UUID {
+        let k = UUID()
+        observers[k] = f
+        return k
+    }
+    public func removeObserver(_ k: UUID) { observers[k] = nil }
+
     public func start() {
         guard stream == nil else { return }
-        try? FileManager.default.createDirectory(at: JobFiles.dir, withIntermediateDirectories: true)
-        reload()
+        let dir = JobFiles.dir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        watchedDir = dir.resolvingSymlinksInPath().path
+        rescan()
         var ctx = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil, copyDescription: nil)
-        let cb: FSEventStreamCallback = { _, info, _, _, _, _ in
+        let cb: FSEventStreamCallback = { _, info, n, paths, _, _ in
             guard let info = info else { return }
-            Unmanaged<JobStore>.fromOpaque(info).takeUnretainedValue().scheduleReload()
+            let me = Unmanaged<JobStore>.fromOpaque(info).takeUnretainedValue()
+            let arr = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
+            me.touched(Array(arr.prefix(n)))
         }
-        let flags = UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer)
-        guard let s = FSEventStreamCreate(nil, cb, &ctx, [JobFiles.dir.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.05, flags) else { return }
+        let flags = UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagNoDefer)
+        guard let s = FSEventStreamCreate(nil, cb, &ctx, [dir.path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.05, flags) else { return }
         FSEventStreamSetDispatchQueue(s, .main)
         FSEventStreamStart(s)
         stream = s
     }
 
     public func stop() {
-        guard let s = stream else { return }
-        FSEventStreamStop(s)
-        FSEventStreamInvalidate(s)
-        FSEventStreamRelease(s)
+        if let s = stream { FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s) }
         stream = nil
     }
 
-    private func scheduleReload() {
-        pending?.cancel()
-        let w = DispatchWorkItem { [weak self] in self?.reload() }
-        pending = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: w)
+    /// Re-read every job (cheap for unchanged ones). Also the fallback when FSEvents reports a dropped / rescanned dir.
+    public func rescan() {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: JobFiles.dir.path)) ?? []
+        let ids = Set(names.compactMap { n -> String? in n.hasSuffix(".json") && n.hasPrefix("j-") ? String(n.dropLast(5)) : nil })
+        for gone in Set(byID.keys).subtracting(ids) { byID[gone] = nil; stamps[gone] = nil }
+        let changed = ids.compactMap { refresh($0) }
+        publish(changed)
     }
 
-    /// Re-reads the jobs directory and folds the events (also what the FSEvents callback does, debounced 100 ms).
-    public func reload() {
-        let fm = FileManager.default
-        let names = (try? fm.contentsOfDirectory(atPath: JobFiles.dir.path)) ?? []
-        let ids = names.filter { $0.hasSuffix(".json") && $0.hasPrefix("j-") }.map { String($0.dropLast(5)) }.sorted(by: >).prefix(limit)
-        var out: [Job] = [], changed: [Job] = []
-        var newStamps: [String: String] = [:]
-        for id in ids {
-            let a = (try? fm.attributesOfItem(atPath: JobFiles.json(id).path)) ?? [:]
-            let b = (try? fm.attributesOfItem(atPath: JobFiles.events(id).path)) ?? [:]
-            let stamp = "\((a[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)/\((b[.size] as? Int) ?? 0)"
-            newStamps[id] = stamp
-            if stamp == stamps[id], let old = jobs.first(where: { $0.id == id }) { out.append(old); continue }
-            guard let o = JobFiles.effective(id), let j = JobFiles.parse(o) else { continue }
-            out.append(j)
-            changed.append(j)
+    private func touched(_ paths: [String]) {
+        for p in paths {
+            let name = (p as NSString).lastPathComponent
+            guard name.hasPrefix("j-"), let dot = name.firstIndex(of: ".") else {
+                if p.hasSuffix("/jobs") || p == watchedDir { pending.insert("*") }
+                continue
+            }
+            pending.insert(String(name[..<dot]))
         }
-        out.sort { $0.created > $1.created }
-        let removed = Set(stamps.keys).subtracting(newStamps.keys)
-        stamps = newStamps
-        jobs = out
-        if !changed.isEmpty || !removed.isEmpty { onChange?(changed) }
+        guard !flushScheduled, !pending.isEmpty else { return }
+        flushScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.flush() }
+    }
+
+    private func flush() {
+        flushScheduled = false
+        let ids = pending
+        pending.removeAll()
+        if ids.contains("*") { rescan(); return }
+        var changed: [Job] = []
+        for id in ids {
+            if FileManager.default.fileExists(atPath: JobFiles.json(id).path) {
+                if let j = refresh(id) { changed.append(j) }
+            } else if byID[id] != nil {
+                byID[id] = nil; stamps[id] = nil
+                rebuildList()
+            }
+        }
+        publish(changed)
+    }
+
+    /// Re-fold one job when its files changed. Returns it when its effective state is new.
+    private func refresh(_ id: String) -> Job? {
+        let fm = FileManager.default
+        let ja = try? fm.attributesOfItem(atPath: JobFiles.json(id).path)
+        let ea = try? fm.attributesOfItem(atPath: JobFiles.events(id).path)
+        let stamp = "\((ja?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)|\(ja?[.size] ?? 0)|\(ea?[.size] ?? 0)"
+        if stamps[id] == stamp { return nil }
+        guard let d = try? Data(contentsOf: JobFiles.json(id)),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }   // mid-write: next event
+        stamps[id] = stamp
+        guard let j = JobFold.job(JobFold.effective(json: o, events: JobFiles.events(id))) else { return nil }
+        byID[id] = j
+        return j
+    }
+
+    private func rebuildList() {
+        jobs = byID.values.sorted { $0.created != $1.created ? $0.created > $1.created : $0.id > $1.id }
+    }
+
+    private func publish(_ changed: [Job]) {
+        guard !changed.isEmpty else { return }
+        rebuildList()
+        onChange?(changed)
+        for f in observers.values { f(changed) }
     }
 }
 
-/// A job the app itself owns (record / snap / voice / process): it writes <id>.json, nobody else does.
+// MARK: - JobWriter
+
+/// A job the app owns (record / snap / voice / process). Every change rewrites <id>.json under its lock, after folding
+/// in whatever others appended to <id>.events.jsonl (so the owner's json never goes back on a reported step).
 public final class JobWriter {
     public let id: String
-    private var o: [String: Any]
-    private let lock = NSLock()
+    private var doc: [String: Any]
+    private let q = DispatchQueue(label: "blurt.jobwriter")
 
     public init(type: JobType, project: String?, session: URL?, parent: String? = nil, title: String? = nil) {
         id = JobFiles.newID()
-        let now = JobFiles.now()
-        o = ["schema": 1, "id": id, "type": type.rawValue, "state": JobState.running.rawValue, "owner": "app",
-             "project": project as Any? ?? NSNull(), "session": session?.path as Any? ?? NSNull(), "parent": parent as Any? ?? NSNull(),
-             "title": title as Any? ?? NSNull(), "items": [String](), "captures": [Int](),
-             "steps": (jobSteps[type] ?? []).map { ["id": $0, "state": StepState.pending.rawValue, "started": NSNull(), "ended": NSNull()] },
-             "progress": NSNull(), "created": now, "started": now, "ended": NSNull(), "updated": now, "events_offset": 0, "error": NSNull()]
-        write()
-    }
-
-    /// Others' events land in events.jsonl; fold them in before every write so nothing they said is lost.
-    private func absorb() {
-        guard let d = try? Data(contentsOf: JobFiles.events(id)) else { return }
-        let offset = (o["events_offset"] as? Int) ?? 0
-        guard d.count > offset else { return }
-        let new = d.dropFirst(offset)
-        guard let last = new.lastIndex(of: 0x0A) else { return }       // only whole lines
-        for line in d[new.startIndex...last].split(separator: 0x0A) {
-            if let e = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] { JobFiles.fold(&o, e) }
+        let now = JobFold.now()
+        let steps: [String]
+        switch type {
+        case .record: steps = ["capture", "finalize"]
+        case .snap: steps = ["capture"]
+        case .voice: steps = ["listen", "transcribe", "file"]
+        case .process: steps = ["prepare", "transcribe", "write", "frames", "route"]
+        case .route: steps = ["route"]
+        case .agent: steps = ["launch", "work", "finish"]
         }
-        o["events_offset"] = last + 1
-    }
-
-    private func write() {
-        o["updated"] = JobFiles.now()
-        try? FileManager.default.createDirectory(at: JobFiles.dir, withIntermediateDirectories: true)
-        if let d = try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys]) {
-            try? d.write(to: JobFiles.json(id), options: .atomic)
-        }
-    }
-
-    private func change(_ f: (inout [String: Any]) -> Void) {
-        lock.lock(); defer { lock.unlock() }
-        absorb()
-        f(&o)
-        write()
+        doc = ["schema": 1, "id": id, "type": type.rawValue, "state": "running", "owner": "app",
+               "project": project ?? NSNull(), "session": session?.path ?? NSNull(), "parent": parent ?? NSNull(),
+               "title": title ?? NSNull(), "items": [String](), "captures": [Int](),
+               "steps": steps.map { ["id": $0, "state": "pending", "started": NSNull(), "ended": NSNull()] as [String: Any] },
+               "progress": NSNull(), "created": now, "started": now, "ended": NSNull(), "updated": now,
+               "events_offset": 0, "error": NSNull()]
+        save()
     }
 
     public func step(_ sid: String, _ state: StepState, progress: Double? = nil) {
-        change { o in
-            var steps = o["steps"] as? [[String: Any]] ?? []
-            var s = steps.first { $0["id"] as? String == sid } ?? ["id": sid]
-            s["state"] = state.rawValue
-            s["progress"] = progress as Any? ?? NSNull()
-            if state == .running, s["started"] == nil || s["started"] is NSNull { s["started"] = JobFiles.now() }
-            if [.done, .failed, .skipped].contains(state) { s["ended"] = JobFiles.now() }
-            if let i = steps.firstIndex(where: { $0["id"] as? String == sid }) { steps[i] = s } else { steps.append(s) }
-            o["steps"] = steps
+        mutate { d in
+            var steps = d["steps"] as? [[String: Any]] ?? []
+            let i = steps.firstIndex { $0["id"] as? String == sid } ?? { steps.append(["id": sid]); return steps.count - 1 }()
+            let prev = steps[i]["state"] as? String
+            steps[i]["state"] = state.rawValue
+            if let p = progress { steps[i]["progress"] = p }
+            if state == .running, prev != "running" { steps[i]["started"] = JobFold.now() }
+            if [.done, .failed, .skipped].contains(state) { steps[i]["ended"] = JobFold.now() }
+            d["steps"] = steps
         }
     }
-    public func setItems(_ uids: [String]) { change { $0["items"] = uids } }
-    public func setCaptures(_ n: [Int]) { change { $0["captures"] = n } }
-    public func setProgress(_ p: Double?) { change { $0["progress"] = p as Any? ?? NSNull() } }
-    public func setTitle(_ t: String?) { change { $0["title"] = t as Any? ?? NSNull() } }
+
+    public func setItems(_ uids: [String]) { mutate { $0["items"] = uids } }
+    public func setCaptures(_ n: [Int]) { mutate { $0["captures"] = n } }
+    public func setProgress(_ p: Double?) { mutate { $0["progress"] = p ?? NSNull() } }
 
     public func finish(_ state: JobState, error: JobError? = nil) {
-        change { o in
-            o["state"] = state.rawValue
-            o["ended"] = JobFiles.now()
-            if let e = error { o["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey as Any? ?? NSNull()] }
-            // whatever was still pending won't happen now
-            o["steps"] = (o["steps"] as? [[String: Any]] ?? []).map { s in
-                var s = s
-                let st = s["state"] as? String
-                if st == "running" { s["state"] = state == .done ? "done" : "failed"; s["ended"] = JobFiles.now() }
-                else if st == "pending" { s["state"] = "skipped" }
-                return s
-            }
+        mutate { d in
+            d["state"] = state.rawValue
+            d["ended"] = JobFold.now()
+            if let e = error { d["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey ?? NSNull()] as [String: Any] }
         }
+    }
+
+    private func mutate(_ f: (inout [String: Any]) -> Void) { q.sync { write(f) } }
+
+    private func save() { q.sync { write { _ in } } }
+
+    /// Under the job's lock: fold in what others reported since our last write, then our change, then replace the file.
+    private func write(_ f: (inout [String: Any]) -> Void) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: JobFiles.dir, withIntermediateDirectories: true)
+        let lfd = open(JobFiles.lock(id).path, O_RDWR | O_CREAT, 0o644)
+        if lfd >= 0 { flock(lfd, LOCK_EX) }
+        defer { if lfd >= 0 { flock(lfd, LOCK_UN); close(lfd) } }
+        let (evs, end) = JobFold.events(JobFiles.events(id), from: doc["events_offset"] as? Int ?? 0)
+        for e in evs { JobFold.apply(e, to: &doc) }
+        doc["events_offset"] = end
+        f(&doc)
+        doc["updated"] = JobFold.now()
+        guard let d = try? JSONSerialization.data(withJSONObject: doc, options: [.prettyPrinted, .sortedKeys]) else { return }
+        let tmp = JobFiles.dir.appendingPathComponent(".\(id).\(getpid()).tmp")
+        guard fm.createFile(atPath: tmp.path, contents: d) else { return }
+        _ = rename(tmp.path, JobFiles.json(id).path)
     }
 }

@@ -13,6 +13,9 @@ let sparkleVersion = "2.10.0"   // ≥ 2.9.2 (CVE-2026-47121)
 let sparkleChecksum = "17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959"
 
 var targets: [Target] = [
+    // SwiftTerm v1.20.0, vendored (Vendor/SwiftTerm/README.md): the embedded terminal for agent sessions. Plain source,
+    // no plugins or resources, so it builds offline with the Command Line Tools.
+    .target(name: "SwiftTerm", path: "Vendor/SwiftTerm/Sources", swiftSettings: [.unsafeFlags(["-suppress-warnings"])]),
     // Config, paths, ScriptRunner (uv + login-shell env), HotkeyCenter, IndexReader (read-only SQLite), Agents.
     // No AppKit UI here — everything public is what BlurtApp (and tests) may use.
     .target(name: "BlurtCore", path: "Sources/BlurtCore"),
@@ -21,9 +24,10 @@ var targets: [Target] = [
     // Onboarding/, System/ (WP6). main.swift = the launch code.
     .executableTarget(
         name: "BlurtApp",
-        dependencies: ["BlurtCore"] + (sparkle ? ["Sparkle"] : []),
+        dependencies: ["BlurtCore", "SwiftTerm"] + (sparkle ? ["Sparkle"] : []),
         path: "Sources/BlurtApp",
-        // K10 string tables: record.py build copies Resources/*.lproj into the .app (no SwiftPM resource bundle)
+        // K10 string tables: record.py build copies Resources/*.lproj into Contents/Resources (Loc finds them there,
+        // or next to the sources for a plain `swift build` run) — not SwiftPM resources.
         exclude: ["Resources"],
         linkerSettings: sparkle ? [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])] : []),
 ]
