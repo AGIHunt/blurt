@@ -366,7 +366,9 @@ def sync(only: list[str] | None = None) -> list[dict]:
                 other = (a.get("tmux") or {}).get("socket") not in (None, socket_name())
                 if a.get("runner") == "tmux" and not other:  # a job on another tmux server isn't ours to judge
                     if w is None:
-                        if active and tmux_info():  # the window was closed
+                        # the window was closed — once there was one: dispatch writes the job before the worktree
+                        # and the window exist (agent.tmux stays null until then)
+                        if active and a.get("tmux") and tmux_info():
                             _set_status(job, "exited", "tmux")
                     elif w["dead"]:
                         if active or a.get("exit") is None:

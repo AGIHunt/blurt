@@ -310,3 +310,17 @@ def test_doctor(p2):
     for opt in ("status off", "mouse on", "history-limit 50000", "remain-on-exit on", "escape-time 10"):
         assert opt in text
     assert p2.tmux("show-options", "-gv", "remain-on-exit").strip() == "on"
+
+
+def test_monitor_leaves_a_job_alone_until_its_window_exists(p2):
+    """e2e v0.7: dispatch writes the job (running) before the worktree and the tmux window exist; the resident monitor
+    saw a running job with no window, called it exited and finished it at once ("Session ended" as it started)."""
+    p2.tmux("new-session", "-d", "-s", "other")  # the server is up, as it is once any session exists
+    code = ("import sys; sys.path.insert(0, %r); import jobs; "
+            "print(jobs.create('agent', project=None, owner='sessions.py', items=[], "
+            "agent={'id': 'codex', 'mode': 'together', 'runner': 'tmux', 'tmux': None, 'status': 'running'})['id'])"
+            % str(SCRIPTS))
+    jid = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=p2.env, check=True).stdout.strip()
+    p2.run("sessions.py", "monitor", "--once")
+    j = p2.job(jid)
+    assert j["state"] == "running" and j["agent"]["status"] == "running"
