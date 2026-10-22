@@ -18,9 +18,12 @@ import Carbon.HIToolbox
 import CoreMedia
 import ScreenCaptureKit
 import ServiceManagement
+import BlurtCore
 
 
 var opts = Options.parse()
+if let l = opts.lang { Loc.setting = l }
+Loc.applyToSystemStrings()
 
 if CommandLine.arguments.dropFirst().first == "--selftest" { runSelfTest(Array(CommandLine.arguments.dropFirst(2))) }
 

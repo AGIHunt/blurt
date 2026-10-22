@@ -22,6 +22,18 @@ public enum Loc {
         return normalize(raw)
     }
 
+    /// An explicit language (--lang, or config `lang` other than auto) also for the system frameworks' own strings — the
+    /// Open panel, the sidebar button, standard menu items, alert buttons — so an English UI on a Chinese Mac (or the
+    /// other way round) isn't half one language. Only for this process (the argument domain; nothing is persisted), and
+    /// before anything has loaded a localized resource. Auto leaves the system's choice alone.
+    public static func applyToSystemStrings() {
+        let raw = setting ?? (Config.shared["lang"] as? String) ?? "auto"
+        guard raw.lowercased() != "auto" else { return }
+        var d = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        d["AppleLanguages"] = [normalize(raw)]
+        UserDefaults.standard.setVolatileDomain(d, forName: UserDefaults.argumentDomain)
+    }
+
     static func normalize(_ raw: String) -> String {
         switch raw.lowercased() {
         case "en", "en-us", "en-gb": return "en"
