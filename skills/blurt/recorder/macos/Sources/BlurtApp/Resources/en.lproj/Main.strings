@@ -179,6 +179,7 @@
 
 "main.keys.back" = "Send back · take back · reopen · restore";
 "main.keys.kind" = "Kind: issue, idea, note, task";
+"main.keys.undo" = "Undo / redo a state, title or kind change";
 "main.keys.next" = "Next / previous";
 "main.keys.open" = "Open (focus the detail)";
 "main.keys.palette" = "Command palette";

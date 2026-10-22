@@ -179,6 +179,7 @@
 
 "main.keys.back" = "退回 · 收回 · 重新打开 · 恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、任务";
+"main.keys.undo" = "撤销 / 重做状态、标题或种类的修改";
 "main.keys.next" = "下一条 / 上一条";
 "main.keys.open" = "打开（进入详情）";
 "main.keys.palette" = "命令面板";
