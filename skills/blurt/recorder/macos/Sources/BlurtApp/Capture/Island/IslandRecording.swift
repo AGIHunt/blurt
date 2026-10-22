@@ -62,6 +62,13 @@ extension Island {
         refresh()
     }
 
+    /// Dictation started, moved on (transcribing, polishing) or ended: the ears follow; the island stays closed.
+    func dictationChanged() {
+        if !started { start() }
+        if Dictation.shared.busy, Dictation.shared.phase == .listening { moveTo(screenUnderPointer) }
+        refresh()
+    }
+
     func projectChanged() {
         ProjectStore.shared.reload()
         // a change in the middle of a take: that session now belongs to the new project (K2)

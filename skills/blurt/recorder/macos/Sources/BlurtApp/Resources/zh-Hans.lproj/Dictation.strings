@@ -1,0 +1,105 @@
+/* 听写（docs/design/dictation.md）：按键、岛上的提示、设置 → 听写、听写历史窗口。 */
+
+/* 按键 */
+"dictation.key.right_option" = "右 Option";
+"dictation.key.fn" = "Fn";
+"dictation.mode.tap" = "按一下开始，再按一下结束";
+"dictation.mode.hold" = "按住说话，松开结束";
+
+/* 岛上的提示 */
+"dictation.toast.needs_permission" = "听写（%@）需要「输入监控」权限";
+"dictation.toast.set_up" = "去设置";
+"dictation.toast.recording_busy" = "正在录屏，麦克风归录屏用，听写暂不可用";
+"dictation.toast.voice_busy" = "语音备注正在听，先结束它";
+"dictation.toast.nothing" = "没听到内容";
+"dictation.toast.copied" = "已复制，可粘贴";
+
+/* 菜单 */
+"dictation.menu.history" = "听写历史…";
+"dictation.menu.history.tip" = "在任意 App 里按一下 %@ 开始听写";
+
+/* 设置 → 听写 */
+"dictation.settings.tab" = "听写";
+"dictation.settings.section" = "听写";
+"dictation.settings.enable" = "在任意 App 里听写";
+"dictation.settings.enable.detail" = "单独按一下 %@，说话，文字就打在光标处。按 Esc 取消。";
+"dictation.settings.key" = "按键";
+"dictation.settings.mode" = "方式";
+"dictation.settings.fn_hint" = "用 Fn 时：在「系统设置 → 键盘」里把「按下 fn 键时」设为「不执行任何操作」。如果 Typeless 也在运行并用 Fn，两边会同时响应，请给其中一个换个键。";
+"dictation.settings.voice_note_hint" = "听写会把字打进当前 App。想把说的话留在口喷鸡里，用语音备注（%@）。";
+"dictation.settings.voice_note_off" = "它的快捷键已关闭";
+
+"dictation.perm.section" = "权限";
+"dictation.perm.input_monitoring" = "输入监控";
+"dictation.perm.input_monitoring.why" = "用来识别单独按下的 %@。口喷鸡只听这一个键，不会记录你打的字。";
+"dictation.perm.accessibility" = "辅助功能";
+"dictation.perm.accessibility.why" = "用来把文字粘贴进当前 App。没有它，文字会复制到剪贴板，由你自己粘贴。";
+"dictation.perm.restart_hint" = "已允许，但还没生效：退出并重新打开一次口喷鸡。";
+
+"dictation.polish.section" = "润色";
+"dictation.polish.title" = "润色";
+"dictation.polish.off" = "关";
+"dictation.polish.light" = "轻度";
+"dictation.polish.detail" = "本机的小模型整理文字：去掉语气词、口吃和说错又改口的部分，加上标点。它不改写、不缩短、不翻译；一旦它这么做，就照你说的原话输入。";
+"dictation.polish.timeout" = "润色最多等";
+"dictation.polish.seconds" = "%@ 秒";
+"dictation.polish.unsupported" = "润色需要 Apple 芯片的 Mac。听写照常输入你说的原话。";
+"dictation.polish.none_installed" = "这台 Mac 上还没有润色模型：安装之前，听写会照你说的原话输入。";
+"dictation.polish.loading" = "正在查找模型…";
+"dictation.polish.recommended" = "推荐";
+"dictation.polish.family.qwen" = "Qwen · 下载 %@";
+"dictation.polish.family.gemma" = "Gemma · 下载 %@";
+"dictation.polish.install" = "安装";
+"dictation.polish.use" = "使用";
+"dictation.polish.failed" = "下载失败";
+"dictation.cancel" = "取消";
+
+"dictation.history.section" = "历史";
+"dictation.history.keep" = "听写记录保留";
+"dictation.history.days" = "%ld 天";
+"dictation.history.keep_audio" = "保留录音";
+"dictation.history.keep_audio.detail" = "关闭时，文字输入完录音就删除。";
+"dictation.history.open" = "打开听写历史…";
+"dictation.history.clear" = "清空历史…";
+"dictation.history.clear.title" = "清空听写历史？";
+"dictation.history.clear.message" = "全部 %ld 条听写和录音都会删除，无法撤销。";
+"dictation.history.clear.confirm" = "清空";
+
+/* 听写历史窗口 */
+"dictation.history.title" = "听写历史";
+"dictation.history.menu" = "听写历史";
+"dictation.history.sidebar" = "听写";
+"dictation.history.sidebar.tip" = "你听写进其它 App 的内容";
+"dictation.history.search" = "搜索听写";
+"dictation.history.clear_search" = "清除搜索";
+"dictation.history.empty.title" = "还没有听写";
+"dictation.history.empty.body" = "在任意 App 里按一下 %@，说话，再按一下：说的话会打在那里，也会留在这里。";
+"dictation.history.no_match" = "没有匹配的听写";
+"dictation.history.today" = "今天";
+"dictation.history.yesterday" = "昨天";
+"dictation.history.seconds" = "%ld 秒";
+"dictation.history.badge.polished" = "已润色";
+"dictation.history.badge.original" = "原文";
+"dictation.history.badge.fell_back" = "按原话";
+"dictation.history.badge.copied" = "已复制";
+"dictation.history.show_raw" = "显示识别原文";
+"dictation.history.show_polished" = "显示润色后的文字";
+"dictation.history.copy" = "复制";
+"dictation.history.copy_raw" = "复制原文";
+"dictation.history.make_item" = "转为条目";
+"dictation.history.item_exists" = "条目 %@";
+"dictation.history.item_made" = "已转为 %@";
+"dictation.history.show" = "查看";
+"dictation.history.delete" = "删除";
+"dictation.history.more" = "更多";
+"dictation.history.reason.timeout" = "润色太慢，已按原话输入";
+"dictation.history.reason.unavailable" = "润色模型还没就绪，已按原话输入";
+"dictation.history.reason.shrunk" = "润色删掉了内容，已按原话输入";
+"dictation.history.reason.grew" = "润色加了内容，已按原话输入";
+"dictation.history.reason.novel" = "润色改了用词，已按原话输入";
+"dictation.history.reason.translated" = "润色换了语言，已按原话输入";
+"dictation.history.reason.answered" = "润色回答了问题而不是整理，已按原话输入";
+"dictation.history.reason.chatty" = "润色多说了话，已按原话输入";
+"dictation.history.reason.correction" = "润色弄丢了改口，已按原话输入";
+"dictation.history.reason.empty" = "润色没有返回内容，已按原话输入";
+"dictation.history.reason.error" = "润色出错，已按原话输入";

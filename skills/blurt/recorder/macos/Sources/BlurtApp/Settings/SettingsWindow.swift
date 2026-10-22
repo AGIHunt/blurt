@@ -6,13 +6,14 @@ import SwiftUI
 import BlurtCore
 
 enum SettingsPane: String, CaseIterable {
-    case general, shortcuts, speech, agents, export, privacy, storage
+    case general, shortcuts, speech, dictation, agents, export, privacy, storage
 
     var title: String {
         switch self {
         case .general: return T("settings.kit.general")
         case .shortcuts: return T("settings.kit.shortcuts")
         case .speech: return T("settings.kit.speech")
+        case .dictation: return T("dictation.settings.tab")
         case .agents: return T("settings.kit.agents")
         case .export: return T("settings.kit.export")
         case .privacy: return T("settings.kit.privacy")
@@ -24,6 +25,7 @@ enum SettingsPane: String, CaseIterable {
         case .general: return "gearshape"
         case .shortcuts: return "keyboard"
         case .speech: return "waveform"
+        case .dictation: return "character.cursor.ibeam"
         case .agents: return "wand.and.stars"
         case .export: return "square.and.arrow.up"
         case .privacy: return "hand.raised"
@@ -38,6 +40,7 @@ enum SettingsPane: String, CaseIterable {
         case .general: vc = NSHostingController(rootView: GeneralPane())
         case .shortcuts: vc = ShortcutsPaneController()
         case .speech: vc = NSHostingController(rootView: SpeechPane())
+        case .dictation: vc = NSHostingController(rootView: DictationPane())
         case .agents: vc = NSHostingController(rootView: AgentsPane())
         case .export: vc = NSHostingController(rootView: ExportPane())
         case .privacy: vc = NSHostingController(rootView: PrivacyPane())

@@ -77,11 +77,22 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         open.font = .systemFont(ofSize: 12)
         open.toolTip = T("main.sidebar.open_folder.tip")
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
+        // Dictation (听写): its history is a window of its own — dictations aren't items until you make them one
+        let dictation = NSButton(title: T("dictation.history.sidebar"), image: BlurtIcon.keyboard.symbolImage(pointSize: 13),
+                                 target: self, action: #selector(dictationTapped))
+        dictation.bezelStyle = .recessed
+        dictation.isBordered = false
+        dictation.imagePosition = .imageLeading
+        dictation.contentTintColor = .secondaryLabelColor
+        dictation.font = .systemFont(ofSize: 12)
+        dictation.toolTip = T("dictation.history.sidebar.tip")
         let root = NSView()
-        for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        for v in [scroll, dictation, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: dictation.topAnchor, constant: -6),
+            dictation.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            dictation.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -4),
             open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
             open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
         ])
@@ -90,6 +101,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     @objc func openTapped() { actions?.openFolder() }
+    @objc func dictationTapped() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
 
     func rebuild() {
         let c = model.counts

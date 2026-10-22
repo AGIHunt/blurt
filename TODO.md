@@ -56,6 +56,25 @@
 - [ ] Rebuild the Kai font subset for the new homepage copy (full source not on the build machine)
 - [ ] `live/audio.pcm` kept after the run (~115 MB/h) — delete after transcript.json once the mp4 is verified
 
+## Dictation (v0.8) — design: docs/design/dictation.md
+
+- [x] macOS: right ⌥ / Fn tap or hold → SenseVoice → local polish (MLX, Qwen) with a content-loss guard → paste into
+      the front app (pasteboard saved and restored) → history (search, raw text, turn into item)
+- [ ] **Windows** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
+      `LCtrl` that AltGr layouts inject, ignore it as a modifier exactly like the macOS state machine — port
+      `DictationTrigger`), insert with `SendInput` Ctrl+V after saving / restoring the clipboard (all formats);
+      UIPI blocks input into elevated windows: detect and fall back to copy. Polish: no MLX — llama.cpp / ONNX Runtime
+      GenAI with the same Qwen models (GGUF / ONNX), same guard, same eval set.
+- [ ] **Linux** (Tauri app): X11 — XRecord / XInput2 for the key, `xdotool key ctrl+v`; Wayland — no global key
+      listening for normal apps: evdev (`/dev/input`, needs the `input` group) or a compositor shortcut that runs
+      `blurt dictate toggle`; insert with `wtype` / `ydotool` (needs uinput) or the clipboard + a toast; terminals
+      want Ctrl+Shift+V. Detect the session type and say what works in Settings.
+- [ ] **Vocabulary / personal dictionary**: words the user teaches (names, product terms, code identifiers) as ASR
+      hotwords (SenseVoice / Whisper prompt) and as a "spell these exactly" list in the polish prompt; learn candidates
+      from edits made right after a paste (and from the history's raw → polished diffs), always opt-in.
+- [ ] Per-app style (code editor: no trailing full stop; chat: casual), voice commands ("new line", "删掉上一句")
+- [ ] Streaming: show the live transcript in the island while talking (live.py's streaming path)
+
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and
       auto red circles, no pixel guessing

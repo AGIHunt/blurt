@@ -87,7 +87,8 @@ enum MainMenu {
                                   item(T("action.copy_path"), #selector(MainWindowController.mCopyPath), "c", [.command, .option]),
                                   item(T("main.menu.copy_link"), #selector(MainWindowController.mCopyLink))])
         _ = menu(T("menu.window"), [item(T("menu.minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil),
-                                    item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil)])
+                                    item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil), .separator(),
+                                    item(T("dictation.history.menu"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option])])
         let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),
                                          item(T("menu.website"), #selector(MainWindowController.mHelp))])
         NSApp.helpMenu = help
@@ -112,6 +113,7 @@ extension MainWindowController {
     @objc func mGo(_ i: NSMenuItem) { (i.representedObject as? String).flatMap(Scope.init(key:)).map(go) }
     @objc func mGoProject(_ i: NSMenuItem) { (i.representedObject as? String).map { reveal(project: $0) } }
     @objc func mShortcuts() { showShortcuts() }
+    @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
 }
 

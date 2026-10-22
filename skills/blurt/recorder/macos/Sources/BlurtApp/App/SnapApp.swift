@@ -16,6 +16,11 @@
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
 //     mascotframes DIR CLIP [dark]  the clip's frames as PNGs, in timeline order
 //     menuicon DIR            renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x
+//     dictation keys SCRIPT   synthetic key events into the dictation trigger, at their script times (no event tap,
+//                             nothing posted to any app): "ropt-down@0 ropt-up@120" — BlurtCore DictationTrigger.parse
+//     dictation toggle|cancel|apply|status · dictation testpad [open|close|text] (our own window with a text view,
+//                             focused: the only place a test pastes into) · dictation history [show|raw ID|item ID|query Q]
+//                             (Capture/Dictation/DictationTestHooks.swift)
 
 import AppKit
 import Carbon.HIToolbox
@@ -216,6 +221,7 @@ extension App {
                         "rect": [r.minX, r.minY, r.width, r.height].map { ($0 * 10).rounded() / 10 }]
             }
             emit(["event": "ax", "elements": els])
+        case "dictation": dictationCommand(arg)
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
             emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])
@@ -228,6 +234,7 @@ extension App {
         switch k {
         case .voice: VoiceInput.shared.pressed()
         case .voiceEsc: VoiceInput.shared.cancel()
+        case .dictationEsc: Dictation.shared.cancel()
         case .project: if resident { island.toggleSwitcher() }
         case .cards: if resident { hanging.reveal(via: "hotkey") }
         // Esc while the cards are down on purpose (voice input's own Esc wins while it listens)
@@ -253,6 +260,10 @@ extension App {
         }
         item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
+        let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
+        dict.target = self
+        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyName) }
+        menu.addItem(dict)
         item("capture.menu.switch_project", #selector(mSwitchProject)).showHotkey(.project)
         // always there (with its hotkey) so ⌥⇧H can be found; dimmed while nothing hangs
         let cards = item("capture.menu.show_cards_none", #selector(mShowCards))
@@ -267,6 +278,7 @@ extension App {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() }
     }
     @objc func mVoice() { VoiceInput.shared.toggle() }
+    @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
     @objc func mShowCards() { hanging.reveal(via: "menu") }
     @objc func mCollect() {
