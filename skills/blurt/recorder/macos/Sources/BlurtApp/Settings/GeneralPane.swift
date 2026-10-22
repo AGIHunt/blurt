@@ -118,7 +118,7 @@ struct GeneralPane: View {
                     Text("English").tag("en")
                     Text("简体中文").tag("zh-Hans")
                 }
-                if m.language != "auto" && m.language != Loc.language {
+                if Loc.normalize(m.language) != Loc.language {   // the running app keeps the language it opened with
                     Hint(T("settings.general.language.restart"))
                 }
                 Toggle(T("settings.general.spotlight"), isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))

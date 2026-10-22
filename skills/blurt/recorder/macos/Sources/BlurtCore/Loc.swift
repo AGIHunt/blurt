@@ -14,13 +14,17 @@ public enum Loc {
     public static let languages = ["en", "zh-Hans"]
 
     /// An explicit choice for this process (the app's --lang), else nil = config `lang`.
-    public static var setting: String? { didSet { cache.removeAll() } }
+    public static var setting: String? { didSet { cache.removeAll(); resolved = nil } }
 
-    /// "en" | "zh-Hans"
+    /// "en" | "zh-Hans" — resolved once per process: changing `lang` in Settings applies the next time Blurt opens,
+    /// so nothing re-rendered in the meantime comes out in the other language (a half-translated window).
     public static var language: String {
-        let raw = setting ?? (Config.shared["lang"] as? String) ?? "auto"
-        return normalize(raw)
+        if let l = resolved { return l }
+        let l = normalize(setting ?? (Config.shared["lang"] as? String) ?? "auto")
+        resolved = l
+        return l
     }
+    private static var resolved: String?
 
     /// An explicit language (--lang, or config `lang` other than auto) also for the system frameworks' own strings — the
     /// Open panel, the sidebar button, standard menu items, alert buttons — so an English UI on a Chinese Mac (or the
@@ -34,7 +38,7 @@ public enum Loc {
         UserDefaults.standard.setVolatileDomain(d, forName: UserDefaults.argumentDomain)
     }
 
-    static func normalize(_ raw: String) -> String {
+    public static func normalize(_ raw: String) -> String {
         switch raw.lowercased() {
         case "en", "en-us", "en-gb": return "en"
         case "zh", "zh-hans", "zh-cn", "zh_cn", "zh-sg": return "zh-Hans"
