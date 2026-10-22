@@ -48,14 +48,22 @@ def hw(os_="darwin", arch="arm64", ram=128.0, gpu=None, perf=6, eff=12, battery=
 
 @contextlib.contextmanager
 def config(cfg: dict):
-    """$BLURT_HOME/config.json = cfg for the block, then put back whatever was there."""
+    """$BLURT_HOME/config.json = cfg for the block, then put back whatever was there.
+    global_config() reads $BLURT_HOME at call time, and a test module collected earlier may have pointed it elsewhere
+    after transcribe was imported: pin it to T.BLURT_HOME for the block so the config written here is the one read."""
     path = T.BLURT_HOME / "config.json"
     old = path.read_bytes() if path.exists() else None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg), encoding="utf-8")
+    old_env = os.environ.get("BLURT_HOME")
+    os.environ["BLURT_HOME"] = str(T.BLURT_HOME)
     try:
         yield
     finally:
+        if old_env is None:
+            os.environ.pop("BLURT_HOME", None)
+        else:
+            os.environ["BLURT_HOME"] = old_env
         if old is None:
             path.unlink(missing_ok=True)
         else:
