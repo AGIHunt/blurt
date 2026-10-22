@@ -481,7 +481,7 @@ final class ItemBanner: NSView {
             if let dir = it.sessionDir, let j = JobStore.shared.active.first(where: { $0.type == .process && $0.session?.path == dir }) {
                 tint = .controlAccentColor
                 icon.image = Look.symbol("wand.and.sparkles", "", size: 13)
-                text.stringValue = T("main.banner.organising", JobLook.status(j))
+                text.stringValue = T("main.banner.organizing", JobLook.status(j))
                 processingJob = j.id
                 button(T("main.banner.show_progress"), "progress", primary: true)
             } else if let s = suggested, it.projectID == "inbox" {

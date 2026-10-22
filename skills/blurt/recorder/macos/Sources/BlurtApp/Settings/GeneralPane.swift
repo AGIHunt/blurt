@@ -126,7 +126,7 @@ struct GeneralPane: View {
 
             Section {
                 Picker(T("settings.general.after_recording"), selection: Binding(get: { m.processMode }, set: { m.setProcess($0) })) {
-                    Text(T("app.menu.after.organise")).tag("auto")
+                    Text(T("app.menu.after.organize")).tag("auto")
                     Text(T("app.menu.after.keep")).tag("off")
                 }
                 Picker(T("app.menu.countdown"), selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) })) {

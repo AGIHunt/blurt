@@ -448,7 +448,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let pm = NSMenuItem(title: T("app.menu.after_recording"), action: nil, keyEquivalent: "")
         let pmMenu = NSMenu()
-        add(T("app.menu.after.organise"), #selector(mProcessMode(_:)), to: pmMenu, obj: "auto", on: autoProcess)
+        add(T("app.menu.after.organize"), #selector(mProcessMode(_:)), to: pmMenu, obj: "auto", on: autoProcess)
         add(T("app.menu.after.keep"), #selector(mProcessMode(_:)), to: pmMenu, obj: "off", on: !autoProcess)
         pm.submenu = pmMenu
         menu.addItem(pm)
