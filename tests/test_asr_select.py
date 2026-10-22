@@ -380,7 +380,8 @@ class Limits(unittest.TestCase):
             import transcribe as T
             print(T.apply_priority("user-initiated"), os.getpriority(os.PRIO_PROCESS, 0))
         """)], capture_output=True, text=True, timeout=60, env={**os.environ, "BLURT_HOME": str(T.BLURT_HOME)})
-        self.assertTrue(p.stdout.strip().endswith(" 0"), p.stdout + p.stderr)
+        # unchanged from what it inherited (a test runner may itself run niced, e.g. in the background)
+        self.assertTrue(p.stdout.strip().endswith(f" {os.getpriority(os.PRIO_PROCESS, 0)}"), p.stdout + p.stderr)
 
     def test_real_thread_cap(self):
         """With the real SenseVoice model (skipped when not downloaded): 1 thread ≈ 1 busy core, 4 threads > 1.5."""
