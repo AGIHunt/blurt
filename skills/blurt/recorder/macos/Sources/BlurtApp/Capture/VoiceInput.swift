@@ -70,6 +70,11 @@ final class VoiceInput {
 
     private func start() {
         guard !active else { return }
+        // one listener at a time: dictation has the microphone (and Esc) until it is done
+        if Dictation.shared.phase == .listening {
+            island.toast(Loc.t("capture.voice.dictation_busy", table: "Capture"), actionTitle: nil, action: nil)
+            return
+        }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         let b = snapper.openBatch(for: snapper.target)
         let k = b.reserve()
@@ -106,7 +111,7 @@ final class VoiceInput {
             guard let self = self, self.voice === v else { return }
             if !ok {
                 self.finish(keep: false)
-                island.toast(Loc.t("capture.voice.no_mic", table: "Capture"), actionTitle: nil, action: nil)
+                NoteVoice.toastUnavailable()
             }
         }
         // held past the threshold: push-to-talk — only letting go ends it

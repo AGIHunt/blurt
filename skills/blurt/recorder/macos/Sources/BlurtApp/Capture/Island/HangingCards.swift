@@ -67,6 +67,8 @@ final class HangingCard {
     var tether: (end: CGPoint, snapped: CFTimeInterval?, from: CGPoint)?
     /// assigned while still in the air: pulled into the island right after the catch
     var pullAfterCatch = false
+    /// behind the "+N" stack: it fades out as it slides under it (a voice card is wider than the stack)
+    var piled = false
 
     init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
         shot = s
@@ -140,6 +142,7 @@ final class HangingCards: NSObject {
     static let voiceSize = CGSize(width: 168, height: 44)
     static let gap: CGFloat = 12
     static let maxShown = 7
+    static let edge: CGFloat = 12                  // the cards keep this far from the screen's edges
     static let below: CGFloat = 18                 // the cards' top edge under the island (the shortest thread)
     /// Extra thread per position, so the ends don't line up like a shelf (a wind chime, not a washing line).
     static let slacks: [CGFloat] = [0, 9, 3, 12, 5, 10, 2]
@@ -229,6 +232,11 @@ final class HangingCards: NSObject {
         stackText.alignmentMode = .center
         stack.addSublayer(stackText)
         stage.addSublayer(stack)
+        // above every card (their zPosition is their index), so the piled ones go under it, not over "+N"
+        stackThread.zPosition = 9_998
+        stack.zPosition = 9_999
+        stackClasp.zPosition = 10_000
+        tip.zPosition = 10_001                        // the hovered card's note goes over its neighbours, never under
         tip.cornerRadius = 10
         tip.shadowOpacity = 0.22
         tip.shadowRadius = 10
@@ -248,8 +256,12 @@ final class HangingCards: NSObject {
 
     @objc private func themeChanged() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.restyle() } }
 
+    private var styledDark = false
+
     private func restyle() {
         let dark = isDarkMode
+        styledDark = dark
+        tipFor = nil                                  // the note's text colour follows on the next hover
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for c in cards { style(c) }
@@ -262,6 +274,7 @@ final class HangingCards: NSObject {
         tipPlay.backgroundColor = accent.cgColor
         styleThread(stackThread, stackClasp)
         CATransaction.commit()
+        if !stack.isHidden { layout() }              // "+N" in the new text colour
     }
 
     // MARK: building a card
@@ -437,16 +450,31 @@ final class HangingCards: NSObject {
         return (f.midX - s.frame.minX, s.frame.maxY - f.minY + HangingCards.below)
     }
 
-    private var pile: Int { max(0, cards.count - HangingCards.maxShown) }
+    private var pile: Int { max(0, cards.count - shownCount) }
+
+    /// How many cards hang side by side: at most 7, and only as many as fit across the screen (with the "+N" stack) —
+    /// seven voice cards are wider than a 1280-point display.
+    private var shownCount: Int {
+        let gap = HangingCards.gap, avail = width - 2 * HangingCards.edge
+        var n = min(cards.count, HangingCards.maxShown)
+        while n > 1 {
+            let row = cards.suffix(n).reduce(0) { $0 + $1.size.width } + gap * CGFloat(n - 1)
+            let stack = cards.count > n ? HangingCards.shotSize.width + gap : 0
+            if row + stack <= avail { break }
+            n -= 1
+        }
+        return n
+    }
 
     /// Rest x for each card (the piled ones under the stack), and the stack's x.
     private func targets() -> (xs: [CGFloat], stackX: CGFloat?) {
-        let shown = Array(cards.suffix(HangingCards.maxShown))
+        let shown = Array(cards.suffix(shownCount))
         var widths = shown.map(\.size.width)
         let hasStack = pile > 0
         if hasStack { widths.insert(HangingCards.shotSize.width, at: 0) }
         let total = widths.reduce(0, +) + HangingCards.gap * CGFloat(max(0, widths.count - 1))
-        var x = anchor.x - total / 2
+        // centred on the island, but never off the screen's edge
+        var x = min(max(anchor.x - total / 2, HangingCards.edge), max(HangingCards.edge, width - HangingCards.edge - total))
         var centres: [CGFloat] = []
         for w in widths { centres.append(x + w / 2); x += w + HangingCards.gap }
         let stackX = hasStack ? centres.removeFirst() : nil
@@ -487,6 +515,7 @@ final class HangingCards: NSObject {
             if instant { c.x.snap() }
             let j = i - pile
             c.slack = j >= 0 ? HangingCards.slacks[j % HangingCards.slacks.count] : 0
+            c.piled = j < 0
             c.root.zPosition = CGFloat(i)
             c.thread.zPosition = CGFloat(i) - 0.5
         }
@@ -646,6 +675,7 @@ final class HangingCards: NSObject {
         awaySince = nil
         guard !shown else { wake(); return }
         shown = true
+        if styledDark != isDarkMode { restyle() }     // the appearance changed while they were up (or before launch)
         emit(["event": "cards_shown", "count": cards.count, "sticky": self.sticky, "wall": Date().timeIntervalSince1970])
         panel?.orderFrontRegardless()
         island.orderFront()                 // the island stays above the cards (the threads come out from under it)
@@ -655,8 +685,18 @@ final class HangingCards: NSObject {
     /// The pointer arrived on the island (or it opened): every card comes down with its detail. Pushed by the island,
     /// so it never waits for the cards' own (idle) poll.
     func islandAttention() {
-        guard !cards.isEmpty else { return }
+        guard !cards.isEmpty, !island.isRecording else { return }
         show()
+    }
+
+    /// A recording started: the cards go up and stay there (K7: nothing hangs over what you are showing). Only ⌥⇧H
+    /// or the menu brings them down meanwhile.
+    func recordingStarted() {
+        sticky = false
+        peekUntil = 0
+        holdEsc(false)
+        guard holds == 0, dragging == nil, down == nil else { return }
+        retract()
     }
 
     /// The ear's count, ⌥⇧H "Show hanging cards", the menu, the main window's "Unfiled captures": every card comes down
@@ -831,7 +871,10 @@ final class HangingCards: NSObject {
         let sc = (1 + 0.04 * c.lift.value) * (0.7 + 0.3 * k)
         t = CATransform3DScale(t, sc, sc, 1)
         c.root.transform = t
-        c.root.opacity = Float(c.flying || c.dragging ? 0 : c.opacity * min(1, k * 1.4))
+        // piled behind the stack: gone once it is under it (only the stack's own thread shows)
+        let under: CGFloat = c.piled && !stack.isHidden ? 1 - min(1, abs(c.x.value - stack.position.x) / 40) : 0
+        c.root.opacity = Float(c.flying || c.dragging ? 0 : c.opacity * min(1, k * 1.4) * (1 - under))
+        c.thread.opacity = Float(1 - under)
         // the thread: from inside the island to the clasp — or after the dragged card, springing back once it snapped
         let tx = threadX(gx)
         var end = CGPoint(x: clasp.x, y: y + 0.5)
@@ -906,13 +949,14 @@ final class HangingCards: NSObject {
         let m = NSEvent.mouseLocation
         let onIsland = island.pointerInside
         let held = island.holdsCards           // open by a key or a command, a drawer, a drag
+        let recording = island.isRecording     // only brought down on purpose while recording
         if !shown {
             pointerOver = false
-            if (onIsland || held) && !cards.isEmpty { show() }
+            if (onIsland || held) && !cards.isEmpty && !recording { show() }
             return
         }
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
-        let over = card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
+        let over = testHover != nil || card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
             || (!tip.isHidden && tip.frame.insetBy(dx: -6, dy: -10).contains(local))
         pointerOver = over
         // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc
@@ -921,11 +965,11 @@ final class HangingCards: NSObject {
             else if over { visited = true }
             else if visited && !onIsland { sticky = false; holdEsc(false) }
         }
-        if over || onIsland || held || busy || sticky { awaySince = nil } else {
+        if over || busy || sticky || (!recording && (onIsland || held)) { awaySince = nil } else {
             awaySince = awaySince ?? now
             if now - awaySince! >= 0.4 { awaySince = nil; retract(); return }
         }
-        let hit = dragging == nil ? card(at: local) : nil
+        let hit = testHover ?? (dragging == nil ? card(at: local) : nil)
         if hit !== hoverCard && down == nil {
             hoverCard?.hovered = false
             hoverCard = hit
@@ -934,12 +978,31 @@ final class HangingCards: NSObject {
             if hit == nil { tip.isHidden = true }
             layout()
         }
-        let interactive = hit != nil || down != nil || (!tip.isHidden && tip.frame.insetBy(dx: -4, dy: -10).contains(local))
+        let interactive = hit != nil || down != nil || onStack(local)
+            || (!tip.isHidden && tip.frame.insetBy(dx: -4, dy: -10).contains(local))
         if p.ignoresMouseEvents == interactive { p.ignoresMouseEvents = !interactive }
     }
 
+    private func onStack(_ p: NSPoint) -> Bool { !stack.isHidden && shown && stack.frame.insetBy(dx: -4, dy: -4).contains(p) }
+
+    /// A click on the "+N" stack: the older cards come forward (the ones showing go behind the stack), so every card
+    /// can be reached; clicking again goes round.
+    func showOlder() {
+        let n = shownCount
+        guard pile > 0, n > 0 else { return }
+        let front = Array(cards.suffix(n))
+        cards.removeLast(n)
+        cards.insert(contentsOf: front, at: 0)
+        hoverCard?.hovered = false
+        hoverCard = nil
+        tip.isHidden = true
+        if !reduceMotion { for c in cards.suffix(shownCount) { c.omega += 18 } }
+        emit(["event": "cards_older", "showing": cards.suffix(shownCount).map(\.shot.n)])
+        layout()
+    }
+
     private func card(at p: NSPoint) -> HangingCard? {
-        for c in cards.suffix(HangingCards.maxShown).reversed() where !c.flying && !c.dragging {
+        for c in cards.suffix(shownCount).reversed() where !c.flying && !c.dragging {
             let r = CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value - 8, width: c.size.width, height: c.size.height + 8).insetBy(dx: -4, dy: -4)
             if r.contains(p) { return c }
         }
@@ -973,7 +1036,10 @@ final class HangingCards: NSObject {
         let tf = NSFont.systemFont(ofSize: 12.5)
         let attr = NSAttributedString(string: text, attributes: [
             .font: tf, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
-        let th = text.isEmpty ? 0 : min(72, ceil(attr.boundingRect(with: NSSize(width: w - 24, height: 200), options: [.usesLineFragmentOrigin]).height) + 2)
+        // at most 4 whole lines: a height between lines left a blank band above the play button once the text was cut
+        let lineH = ceil(NSLayoutManager().defaultLineHeight(for: tf))
+        let measured = ceil(attr.boundingRect(with: NSSize(width: w - 24, height: 400), options: [.usesLineFragmentOrigin]).height)
+        let th = text.isEmpty ? 0 : min(measured, 4 * lineH) + 2
         let hasVoice = c.shot.voiceURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let h = 12 + th + (hasVoice ? (th > 0 ? 8 : 0) + 22 : 0) + 12
         tip.bounds = CGRect(x: 0, y: 0, width: w, height: h)
@@ -1021,6 +1087,7 @@ final class HangingCards: NSObject {
 
     func mouseUp(_ e: NSEvent, at p: NSPoint) {
         defer { down = nil }
+        if let d = down, d.card == nil, !d.dragged, onStack(p), onStack(d.p) { return showOlder() }
         guard let d = down, !d.dragged, let c = d.card, c === card(at: p) else { return }
         if e.clickCount >= 2 {
             c.copiedUntil = 0
@@ -1073,6 +1140,14 @@ final class HangingCards: NSObject {
         items.append((Loc.t("capture.card.edit_note", table: "Capture"), { NoteBubble.shared.begin(s, mode: .edit) }))
         items.append((Loc.t("capture.card.reveal", table: "Capture"), { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } }))
         return items
+    }
+
+    /// Tests: as if the pointer rested on capture N (lifted, its note under it) — nil lets the pointer decide again.
+    private var testHover: HangingCard?
+    func testHover(n: Int?) {
+        testHover = n.flatMap { n in cards.first { $0.shot.n == n } }
+        if testHover != nil { show() }
+        wake()
     }
 
     /// Tests: copy capture N as a click / Copy Image / Copy Text would; the menu's titles for it.
@@ -1204,7 +1279,7 @@ final class HangingCards: NSObject {
         guard let v = view else { return [] }
         var out: [LayerAXElement] = []
         var keep: [ObjectIdentifier: LayerAXElement] = [:]
-        for c in cards.suffix(HangingCards.maxShown) where !c.flying {
+        for c in cards.suffix(shownCount) where !c.flying {
             let key = ObjectIdentifier(c)
             let e = axCards[key] ?? {
                 let e = LayerAXElement.make(role: .button, layer: c.card, host: v)

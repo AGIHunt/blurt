@@ -11,6 +11,7 @@ extension Island {
         let session = URL(fileURLWithPath: opts.out).deletingLastPathComponent()
         watch = RecordingWatch(session: session)
         r.snaps?.onLanded = { [weak self] s in self?.snapLanded(s) }
+        hanging.recordingStarted()
         recordingChanged()
     }
 
@@ -65,7 +66,11 @@ extension Island {
     /// Dictation started, moved on (transcribing, polishing) or ended: the ears follow; the island stays closed.
     func dictationChanged() {
         if !started { start() }
-        if Dictation.shared.busy, Dictation.shared.phase == .listening { moveTo(screenUnderPointer) }
+        if Dictation.shared.busy, Dictation.shared.phase == .listening {
+            moveTo(screenUnderPointer)
+            // the ears say it's listening: an island left open (by a key, or the pointer on it) makes way for them
+            if open, drawer == nil, !isConfirmingDiscard { setOpen(false) }
+        }
         refresh()
     }
 

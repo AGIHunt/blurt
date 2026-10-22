@@ -65,6 +65,8 @@ What you can do with a card:
   *Copy Image* or *Copy Text* on their own.
 - Hover to read the note, double-click to edit it, drag it out to drop the file (and its words) anywhere, or click ×
   to throw it away.
+- Up to seven cards hang side by side; older ones stack up as **+N**. Click the stack to bring them forward.
+- While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.
 
 While Blurt processes captures you see a small egg on the island; when it hatches, the new items are in your inbox.
 
@@ -139,7 +141,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   day, with search. Each row shows what was typed; the eye button shows what the speech model heard. You can copy
   either, delete a row, or **turn it into an item** in the current project (or Unassigned). History is kept for 30
   days (Settings), and the audio is deleted right after transcription unless you choose to keep it.
-- Dictation is off while a screen recording runs, because the recording is using the microphone.
+- Dictation is off while a screen recording runs, because the recording is using the microphone. Dictation and the
+  voice note never listen at the same time: whichever started first keeps the microphone until it's done.
 
 ---
 
@@ -190,6 +193,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
 - **单击复制**：语音卡片复制说的话；截图复制图片（画过就带笔迹），备注或说的话作为文字一起放进剪贴板，粘到只收文字的地方就是那段话。右键可以单独「拷贝图片」或「拷贝文字」。
 - 悬停看备注，双击改备注，拖出去就是一个文件（带上文字），点 × 扔掉。
+- 最多并排挂 7 张，更早的叠成「+N」，点一下就换到前面来。
+- 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。
 
 整理时岛上会出现一个小蛋；蛋破壳了，新条目就出现在「待处理」里。
 
@@ -242,4 +247,4 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
 - **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴。设置页显示两者的状态，并有按钮直达系统设置里对应的位置。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
 - **听写历史**（菜单栏 →「听写历史…」、主窗口侧栏，或 `⌥⌘D`）按天列出所有听写，可以搜索。每行显示打出去的文字，眼睛按钮显示语音模型听到的原文；两者都能复制，也能删除，或者**转为条目**（进当前项目，没有当前项目就进「未归类」）。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
-- 录屏时听写不可用，因为麦克风正被录屏占用。
+- 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。

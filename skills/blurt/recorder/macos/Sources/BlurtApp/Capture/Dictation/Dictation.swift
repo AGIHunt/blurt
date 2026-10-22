@@ -170,7 +170,7 @@ final class Dictation {
             trigger.reset(active: false)
             return island.toast(Loc.t("dictation.toast.recording_busy", table: "Dictation"), actionTitle: nil, action: nil)
         }
-        if VoiceInput.shared.active {
+        if VoiceInput.shared.active || NoteBubble.shared.isListening {     // a voice note, or a snap's spoken note
             trigger.reset(active: false)
             return island.toast(Loc.t("dictation.toast.voice_busy", table: "Dictation"), actionTitle: nil, action: nil)
         }
@@ -211,7 +211,7 @@ final class Dictation {
             if !ok {
                 self.trigger.reset(active: false)
                 self.discard(quietly: true)
-                island.toast(Loc.t("capture.voice.no_mic", table: "Capture"), actionTitle: nil, action: nil)
+                NoteVoice.toastUnavailable()
             }
         }
     }

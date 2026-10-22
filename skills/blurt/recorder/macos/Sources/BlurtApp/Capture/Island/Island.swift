@@ -225,10 +225,17 @@ final class Island: NSObject, IslandHosting {
         return CGFloat(dx)
     }()
 
+    /// Visual checks of the capsule (test commands only): BLURT_ISLAND_NOTCH=0 draws it as on a screen without a notch.
+    static let testNoNotch: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_ISLAND_NOTCH"] == "0"
+    }()
+
     private func ensurePanel(on s: NSScreen) {
         var g = Geo()
         let menuH = max(s.frame.maxY - s.visibleFrame.maxY, 24)
-        if #available(macOS 12.0, *), s.safeAreaInsets.top > 0, let l = s.auxiliaryTopLeftArea, let r = s.auxiliaryTopRightArea {
+        if #available(macOS 12.0, *), !Island.testNoNotch, s.safeAreaInsets.top > 0, let l = s.auxiliaryTopLeftArea,
+           let r = s.auxiliaryTopRightArea {
             g.notch = true
             g.notchW = s.frame.width - l.width - r.width
             g.notchH = s.safeAreaInsets.top
@@ -531,7 +538,7 @@ final class Island: NSObject, IslandHosting {
             }
             // resting on the ear's count opens it a little later, so the count can still be clicked
             let dwell = earHit(local) ? 0.45 : 0.15
-            if !open, drawer == nil, now - hoverSince! >= dwell { setOpen(true) }
+            if !open, drawer == nil, !Dictation.shared.busy, now - hoverSince! >= dwell { setOpen(true) }
         } else {
             hoverSince = nil
             // the pointer went down onto the hanging cards: the island stays open over them

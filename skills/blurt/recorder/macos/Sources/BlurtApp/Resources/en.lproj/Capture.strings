@@ -140,6 +140,9 @@
 "capture.snap.no_permission" = "Couldn’t take the shot — Screen Recording permission needed";
 "capture.undo" = "Undo";
 "capture.voice.card_empty" = "Voice note · %@";
+"capture.voice.dictation_busy" = "Dictation is listening — finish it first";
+"capture.voice.mic_denied" = "Blurt isn’t allowed to use the microphone";
+"capture.voice.mic_settings" = "Open Settings";
 "capture.voice.goes_card" = "Waits on a card until you pick a project";
 "capture.voice.goes_to" = "Goes to %@";
 "capture.voice.hint" = "Listening — pause to finish · Esc to cancel";
