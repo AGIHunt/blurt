@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.90"
 license = "MIT"
 publish = false
-description = "Blurt on Windows/Linux: drives record.py's ffmpeg engine (--status-jsonl) and opens the transparent overlay windows (region picker, HUD, perch, note bubble)"
+description = "Blurt on Windows/Linux: drives record.py's ffmpeg engine (--status-jsonl) and opens the transparent overlay windows (region picker, island, hanging cards, note bubble)"
 
 # Standalone crate (no [workspace] here on purpose: the Tauri app adds it as a path dependency).
 #   cargo test                          engine + region + status (needs python3/uv + ffmpeg for the record.py test)

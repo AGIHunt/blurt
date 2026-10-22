@@ -39,7 +39,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 base64 = "0.22"
 # K5: the embedded terminal — tmux attach-cmd (macOS / Linux) or the app runner in ConPTY (Windows)
 portable-pty = "0.9"
-# WP8: record.py ffmpeg engine + overlay windows (picker, HUD, perch, note)
+# record.py ffmpeg engine + overlay windows (picker, island, cards, note)
 blurt-capture = { path = "../../../crates/blurt-capture" }
 
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -1,4 +1,4 @@
-// Motion, ported from skills/blurt/recorder/macos/Perch.swift (constants after tendedero.app's line.js).
+// Motion: the damped springs of the macOS island and cards (Capture/Island/Motion.swift).
 
 export class Spring {
   value: number;

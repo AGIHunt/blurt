@@ -1,6 +1,6 @@
 // P3 (mac-terminal) owns Terminal/. Called once at launch by AppEnvironment.installModules():
 //   AppEnvironment.terminal  → TerminalHost: panes for the main window (makePane) and the dispatch panel (newSession)
-//   AppEnvironment.dispatch  → the dispatch panel for item uids (replaces fixWithAgent)
+//   AppEnvironment.dispatch  → the dispatch panel for item uids
 // and starts what follows the sessions while the app runs: JobStore (FSEvents on $BLURT_HOME/jobs) and the status
 // notifications. tmux sessions outlive the app; nothing here stops them on quit (app-runner sessions do end).
 import AppKit

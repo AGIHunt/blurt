@@ -14,8 +14,7 @@
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
 //                 sendOps {ops, confirm, scope?} → {ok, etag, doc}   items.py user-ops … --stdin [--confirm]
 //                 handoff {uids, what} → {id, path, text}  handoff.py create --items … --mark (copied to the clipboard)
-//   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids} (fixWithAgent {itemIds} on v2
-//                 pages), openSession {jobId}, registerDragRects {rects}, download {path|rel}, confirmed {}
+//   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {jobId}, registerDragRects {rects}, download {path|rel}, confirmed {}
 import AppKit
 import BlurtCore
 import WebKit
@@ -115,7 +114,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     /// The optional host methods we implement.
     var methods: [String] {
-        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "fixWithAgent", "handoff", "openSession", "fileUrl"]
+        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl"]
     }
 
     private func installHostInfo(_ scope: DocScope) {
@@ -291,8 +290,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         case "openCode":
             if let r = p["ref"] as? String { actions?.openCode(r, item: currentItem) }
             reply(nil, nil)
-        case "dispatch", "fixWithAgent":
-            let ids = (p["uids"] ?? p["itemIds"]) as? [String] ?? []
+        case "dispatch":
+            let ids = p["uids"] as? [String] ?? []
             actions?.dispatch(uids: ids)
             reply(nil, nil)
         case "handoff":

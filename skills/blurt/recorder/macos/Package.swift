@@ -19,9 +19,9 @@ var targets: [Target] = [
     // Config, paths, ScriptRunner (uv + login-shell env), HotkeyCenter, IndexReader (read-only SQLite), Agents.
     // No AppKit UI here — everything public is what BlurtApp (and tests) may use.
     .target(name: "BlurtCore", path: "Sources/BlurtCore"),
-    // The app: Capture/ (recorder, picker, HUD, pen, snap, perch, eggs, note bubble, live audio), App/ (delegate,
-    // status menu, agents hub, review window, shortcuts window, updater), MainWindow/ + WebHost/ (WP5), Settings/,
-    // Onboarding/, System/ (WP6). main.swift = the launch code.
+    // The app: Capture/ (recorder, picker, the island and its hanging cards, pen, snap, voice input, note bubble, live
+    // audio), App/ (delegate, status menu, agents hub, shortcuts window, updater), MainWindow/ + WebHost/ (the main
+    // window and its embedded review), Terminal/ (agent sessions), Settings/, Onboarding/, System/. main.swift = launch.
     .executableTarget(
         name: "BlurtApp",
         dependencies: ["BlurtCore", "SwiftTerm"] + (sparkle ? ["Sparkle"] : []),

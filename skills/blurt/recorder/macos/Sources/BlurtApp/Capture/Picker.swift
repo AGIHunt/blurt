@@ -347,7 +347,7 @@ final class PickerToolbar: NSVisualEffectView {
         layer?.borderWidth = 0.5
         layer?.borderColor = NSColor(white: 1, alpha: 0.14).cgColor
         layer?.masksToBounds = true
-        maskImage = roundedMask(22)     // clips the behind-window blur too (HUDLive.swift)
+        maskImage = roundedMask(22)     // clips the behind-window blur too
         var buttons: [NSButton] = []
         buttons.append(PillButton(Loc.t("capture.picker.full_screen", table: "Capture"), symbol: "arrow.up.left.and.arrow.down.right",
                                   fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(full)))
