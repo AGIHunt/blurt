@@ -1,0 +1,105 @@
+/* Dictation (docs/design/dictation.md): the key, the island's word, Settings → Dictation, the history window. */
+
+/* the key */
+"dictation.key.right_option" = "Right Option";
+"dictation.key.fn" = "Fn";
+"dictation.mode.tap" = "Tap to start, tap to stop";
+"dictation.mode.hold" = "Hold to talk";
+
+/* island toasts */
+"dictation.toast.needs_permission" = "Dictation (%@) needs Input Monitoring";
+"dictation.toast.set_up" = "Set Up";
+"dictation.toast.recording_busy" = "Recording — dictation is off while the recording has the microphone";
+"dictation.toast.voice_busy" = "A voice note is listening — finish it first";
+"dictation.toast.nothing" = "Didn't catch anything";
+"dictation.toast.copied" = "Copied — paste it with Command-V";
+
+/* menus */
+"dictation.menu.history" = "Dictation History…";
+"dictation.menu.history.tip" = "Tap %@ in any app to dictate";
+
+/* Settings → Dictation */
+"dictation.settings.tab" = "Dictation";
+"dictation.settings.section" = "Dictation";
+"dictation.settings.enable" = "Dictate into any app";
+"dictation.settings.enable.detail" = "Press %@ alone, talk, and the words are typed where your cursor is. Esc cancels.";
+"dictation.settings.key" = "Key";
+"dictation.settings.mode" = "How it works";
+"dictation.settings.fn_hint" = "For Fn: in System Settings → Keyboard, set \"Press fn key to\" to \"Do Nothing\". If Typeless is running and also uses Fn, both will react — give one of them another key.";
+"dictation.settings.voice_note_hint" = "Dictation types into the app in front. To keep what you say in Blurt instead, use the voice note (%@).";
+"dictation.settings.voice_note_off" = "its shortcut is off";
+
+"dictation.perm.section" = "Permissions";
+"dictation.perm.input_monitoring" = "Input Monitoring";
+"dictation.perm.input_monitoring.why" = "To notice %@ on its own. Blurt only listens for that key — it never records what you type.";
+"dictation.perm.accessibility" = "Accessibility";
+"dictation.perm.accessibility.why" = "To paste the text into the app you're in. Without it the text is copied and you paste it yourself.";
+"dictation.perm.restart_hint" = "Allowed, but the key isn't picked up yet — quit and reopen Blurt once.";
+
+"dictation.polish.section" = "Polish";
+"dictation.polish.title" = "Polish";
+"dictation.polish.off" = "Off";
+"dictation.polish.light" = "Light";
+"dictation.polish.detail" = "A small model on this Mac tidies the words: fillers, stutters and self-corrections out, punctuation in. It never rewrites, shortens or translates — if it tries, you get exactly what you said.";
+"dictation.polish.timeout" = "Wait for polish at most";
+"dictation.polish.seconds" = "%@ s";
+"dictation.polish.unsupported" = "Polish needs a Mac with Apple silicon. Dictation still types exactly what you said.";
+"dictation.polish.none_installed" = "No polish model on this Mac yet: until you install one, dictation types exactly what you said.";
+"dictation.polish.loading" = "Looking for models…";
+"dictation.polish.recommended" = "Recommended";
+"dictation.polish.family.qwen" = "Qwen · %@ download";
+"dictation.polish.family.gemma" = "Gemma · %@ download";
+"dictation.polish.install" = "Install";
+"dictation.polish.use" = "Use";
+"dictation.polish.failed" = "Download failed";
+"dictation.cancel" = "Cancel";
+
+"dictation.history.section" = "History";
+"dictation.history.keep" = "Keep dictations for";
+"dictation.history.days" = "%ld days";
+"dictation.history.keep_audio" = "Keep the audio";
+"dictation.history.keep_audio.detail" = "Off: the recording is deleted as soon as it is typed.";
+"dictation.history.open" = "Open History…";
+"dictation.history.clear" = "Clear History…";
+"dictation.history.clear.title" = "Clear the dictation history?";
+"dictation.history.clear.message" = "All %ld dictations and their audio are deleted. This can't be undone.";
+"dictation.history.clear.confirm" = "Clear";
+
+/* the history window */
+"dictation.history.title" = "Dictation History";
+"dictation.history.menu" = "Dictation History";
+"dictation.history.sidebar" = "Dictation";
+"dictation.history.sidebar.tip" = "What you dictated into other apps";
+"dictation.history.search" = "Search dictations";
+"dictation.history.clear_search" = "Clear search";
+"dictation.history.empty.title" = "No dictations yet";
+"dictation.history.empty.body" = "Press %@ in any app, talk, and press it again: what you said is typed there, and kept here.";
+"dictation.history.no_match" = "Nothing matches";
+"dictation.history.today" = "Today";
+"dictation.history.yesterday" = "Yesterday";
+"dictation.history.seconds" = "%ld s";
+"dictation.history.badge.polished" = "Polished";
+"dictation.history.badge.original" = "Original";
+"dictation.history.badge.fell_back" = "As spoken";
+"dictation.history.badge.copied" = "Copied";
+"dictation.history.show_raw" = "Show what was heard";
+"dictation.history.show_polished" = "Show the polished text";
+"dictation.history.copy" = "Copy";
+"dictation.history.copy_raw" = "Copy Original";
+"dictation.history.make_item" = "Turn into Item";
+"dictation.history.item_exists" = "Item %@";
+"dictation.history.item_made" = "Added as %@";
+"dictation.history.show" = "Show";
+"dictation.history.delete" = "Delete";
+"dictation.history.more" = "More";
+"dictation.history.reason.timeout" = "Polish took too long — typed as spoken";
+"dictation.history.reason.unavailable" = "The polish model wasn't ready — typed as spoken";
+"dictation.history.reason.shrunk" = "Polish dropped words — typed as spoken";
+"dictation.history.reason.grew" = "Polish added words — typed as spoken";
+"dictation.history.reason.novel" = "Polish changed words — typed as spoken";
+"dictation.history.reason.translated" = "Polish changed the language — typed as spoken";
+"dictation.history.reason.answered" = "Polish answered instead of tidying — typed as spoken";
+"dictation.history.reason.chatty" = "Polish talked back — typed as spoken";
+"dictation.history.reason.correction" = "Polish lost a correction — typed as spoken";
+"dictation.history.reason.empty" = "Polish returned nothing — typed as spoken";
+"dictation.history.reason.error" = "Polish failed — typed as spoken";

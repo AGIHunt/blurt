@@ -282,7 +282,7 @@ final class Island: NSObject, IslandHosting {
     // MARK: what the island should look like now
 
     private var earsWanted: (left: Bool, right: Bool) {
-        if isRecording || VoiceInput.shared.active { return (true, true) }
+        if isRecording || VoiceInput.shared.active || Dictation.shared.busy { return (true, true) }
         return (cardCount > 0, !hatches.isEmpty || reviewCount > 0 || agentAlert != nil)
     }
 
@@ -323,7 +323,7 @@ final class Island: NSObject, IslandHosting {
         let now = CACurrentMediaTime()
         poll(now)
         tickToasts(now)
-        if isRecording || VoiceInput.shared.active { updateEars() }      // the time, the level, the waveform
+        if isRecording || VoiceInput.shared.active || Dictation.shared.busy { updateEars() }   // the time, the level, the wave
         let t = target()
         w.target = t.w; h.target = t.h; r.target = t.r
         vis.target = capsuleVisible ? 1 : 0
@@ -377,6 +377,7 @@ final class Island: NSObject, IslandHosting {
         if shapeMoving && !moving { content.redrawAll() }
         shapeMoving = moving
         return moving || left.animating || right.animating || toastNow != nil || isRecording || VoiceInput.shared.active
+            || Dictation.shared.busy
     }
 
     /// The island's outline: flush top (with small concave shoulders on a notch screen), rounded bottom corners;
@@ -416,6 +417,19 @@ final class Island: NSObject, IslandHosting {
         } else if VoiceInput.shared.active {
             left.set(.wave(VoiceInput.shared.levels))
             right.set(.text(Island.clock(VoiceInput.shared.elapsed), mono: true))
+        } else if Dictation.shared.busy {
+            // dictation never opens the island: ears only, so the app being typed into keeps the whole screen
+            switch Dictation.shared.phase {
+            case .listening:
+                left.set(.dictation(Dictation.shared.levels))
+                right.set(.text(Island.clock(Dictation.shared.elapsed), mono: true))
+            case .polishing:
+                left.set(.glyph(.wand, pulse: true))
+                right.set(.dots)
+            default:
+                left.set(.glyph(.keyboard, pulse: true))
+                right.set(.dots)
+            }
         } else {
             left.set(e.left ? .count(symbol: "rectangle.stack.fill", n: cardCount, tint: nil) : .none)
             let processing = hatches.filter { $0.ended == nil }.reduce(0) { $0 + max(1, $1.captures.count) }
@@ -465,7 +479,7 @@ final class Island: NSObject, IslandHosting {
         let m = NSEvent.mouseLocation
         let busyElsewhere = (NSApp.delegate as? App)?.picker != nil
         // follow the pointer to another screen while nothing is showing
-        if !open && drawer == nil && toastNow == nil && !isRecording && !VoiceInput.shared.active, !dragActive,
+        if !open && drawer == nil && toastNow == nil && !isRecording && !VoiceInput.shared.active && !Dictation.shared.busy, !dragActive,
            let s = pointerScreen(), s != screen {
             ensurePanel(on: s)
             return

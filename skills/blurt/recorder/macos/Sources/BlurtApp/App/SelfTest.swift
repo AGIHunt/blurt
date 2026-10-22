@@ -24,6 +24,33 @@ func runSelfTest(_ args: [String]) -> Never {
     check("env_blurt_app", env["BLURT_APP"] == "1" && env["CLAUDECODE"] == nil)
     if let h = ProcessInfo.processInfo.environment["CODEX_HOME"] { check("env_codex_home_passed", env["CODEX_HOME"] == h) }
 
+    // Dictation: the trigger (right ⌥ alone, never as a modifier) and the history file (Tests/BlurtCoreTests has more)
+    func trig(_ s: String, _ mode: DictationTrigger.Mode = .tap) -> [DictationTrigger.Output] {
+        var t = DictationTrigger(mode: mode)
+        return t.run(s)
+    }
+    check("dictation_trigger", trig("ropt-down@0 ropt-up@120 ropt-down@2000 ropt-up@2100") == [.arm, .start, .stop]
+          && trig("ropt-down@0 key:9@50 ropt-up@100") == [.arm] && trig("shift-down@0 ropt-down@10 ropt-up@80") == []
+          && trig("ropt-down@0 ropt-up@500") == [.arm] && trig("ropt-down@0 ropt-up@100 esc@600") == [.arm, .start, .cancel]
+          && trig("ropt-down@0 tick@260 ropt-up@900", .hold) == [.arm, .start, .stop]
+          && trig("ropt-down@0 tick@260 key:0@500 ropt-up@900", .hold) == [.arm, .start, .cancel])
+    let hist = DictationHistory(url: FileManager.default.temporaryDirectory.appendingPathComponent("blurt-selftest-\(getpid())/history.jsonl"))
+    let old = Date().addingTimeInterval(-40 * 86400)
+    hist.append(DictationEntry(id: "d-old", time: old, app: "Notes", bundle: "com.apple.Notes", duration: 2, raw: "嗯 旧的", polished: nil,
+                               text: "嗯 旧的", model: nil, fellBack: false, reason: nil, insert: "pasted"))
+    hist.append(DictationEntry(id: "d-a", time: Date(), app: "Notes", bundle: nil, duration: 3, raw: "um hello", polished: "Hello.",
+                               text: "Hello.", model: "qwen3.5-2b", fellBack: false, reason: nil, insert: "pasted"))
+    hist.append(DictationEntry(id: "d-b", time: Date(), app: nil, bundle: nil, duration: 1, raw: "bye", polished: nil, text: "bye",
+                               model: nil, fellBack: true, reason: "timeout", insert: "copied"))
+    hist.delete(["d-b"])
+    hist.markItem("d-a", item: "BA-1", uid: "01X")
+    let before = hist.load()
+    let pruned = hist.prune(days: 30)
+    let after = hist.load()
+    check("dictation_history", before.map(\.id) == ["d-a", "d-old"] && before.first?.item == "BA-1" && pruned == 1
+          && after.map(\.id) == ["d-a"] && after.first?.item == "BA-1" && after.first?.polished == "Hello.", after.map(\.id))
+    try? FileManager.default.removeItem(at: hist.url.deletingLastPathComponent())
+
     // KeyCombo / Config
     let kc = KeyCombo.parse("⌥⇧R")
     check("keycombo", kc?.spec == "opt+shift+R" && KeyCombo.parse("ctrl+F5")?.label == "⌃F5" && KeyCombo.parse("shift+A") == nil

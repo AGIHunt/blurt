@@ -73,7 +73,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEnter: picker?.finish(true)
         case .pickEsc: picker?.finish(false)
         case .pickFull: picker?.fullScreen()
-        case .voice, .project, .voiceEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .dictationEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
     }
 
@@ -205,6 +205,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.startRecording(useLast: false)
         }
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
+        Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
             toast(T("app.toast.welcome", hk(.toggleRecord), hk(.openMenu)), icon: .chicken)
