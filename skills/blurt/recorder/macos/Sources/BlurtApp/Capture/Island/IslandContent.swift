@@ -653,8 +653,10 @@ final class IslandContent: NSView {
     // MARK: toast
 
     private func buildToast(_ t: Island.Toast, _ w: CGFloat, top: CGFloat) -> CGFloat {
-        let f = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let tw = ceil((t.text as NSString).size(withAttributes: [.font: f]).width)
+        // the label's own fitted width (its cell has an inset): at the string's measured width the field ended in "…"
+        // (the Claude Code fallback notice read "…organizing with Codex inste…")
+        let l = label(t.text, size: 13, weight: .medium)
+        let tw = ceil(l.frame.width)
         var x: CGFloat = 18
         if let art = t.art {
             art.frame = NSRect(x: 10, y: top - 2, width: 50, height: 50)
@@ -671,8 +673,7 @@ final class IslandContent: NSView {
             right += b.frame.width + 10
         }
         toastWidth = min(Island.openW, max(240, x + tw + right))
-        let l = label(t.text, size: 13, weight: .medium)
-        place(l, x: x, y: top + 13, w: min(tw + 2, toastWidth - x - right))
+        place(l, x: x, y: top + 13, w: min(tw, toastWidth - x - right))
         if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: top + 9) }
         return top + 46
     }
