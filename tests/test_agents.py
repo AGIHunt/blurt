@@ -1,5 +1,5 @@
 """agents.py WP2 commands (contract C5): detect, command, install (--dry-run and real, into temp dirs only),
-prompt fix, repo-level order. Uses fake agent CLIs on PATH — never the real ones, never the user's config.
+repo-level order, and the K5 session commands. Uses fake agent CLIs on PATH — never the real ones, never the user's config.
 
   uv run --with pytest pytest tests/test_agents.py -q
 """
@@ -20,7 +20,6 @@ SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(Path(__file__).parent))
 import agents  # noqa: E402
-from test_index import copy_fixtures  # noqa: E402
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="fake CLIs are sh scripts")
 
@@ -224,14 +223,41 @@ def test_install_never_overwrites_another_skill(env, tmp_path):
     assert link.resolve() == other.resolve()
 
 
-def test_prompt_fix(env, tmp_path):
-    repo = tmp_path / "repo"
-    copy_fixtures(env["home"], repo)
-    subprocess.run([sys.executable, str(SCRIPTS / "index.py"), "scan", "--root", str(repo)], check=True,
-                   capture_output=True, env=os.environ.copy())
-    out = cli("prompt", "fix", "--items", "01KAQ6N2W8C3D4E5F6G7H8J9KN", "01KAQ6N2W8C3D4E5F6G7H8J9KR")
-    assert out["repo"] == str(repo.resolve()) and len(out["items"]) == 2
-    p = out["prompt"]
-    assert "01KAQ6N2W8C3D4E5F6G7H8J9KN" in p and "mark_fixed" in p and "get_item" in p and "Don't commit" in p
-    assert str(SCRIPTS / "items.py") in p
-    assert cli("prompt", "fix", "--items", "nope", ok=False)["ok"] is False
+def test_session_command(env, tmp_path):
+    """K5: interactive sessions get per-session hooks; the blurt MCP server only when it isn't installed."""
+    import tomllib
+    st = tmp_path / "j-1.claude-settings.json"
+    c = agents.session_command("claude", "Read H-0001.md", tmp_path, job="j-1", settings=st, mcp=False)
+    assert c["argv"][0].endswith("/claude") and c["argv"][1:] == ["--settings", str(st), "--", "Read H-0001.md"]
+    assert c["hooks"] == "claude" and c["paste"] is None
+    hooks = json.loads(st.read_text())["hooks"]
+    assert list(hooks) == list(agents.CLAUDE_HOOKS) and hooks["PostToolUse"][0]["matcher"] == "*"
+    cmd = hooks["Stop"][0]["hooks"][0]
+    assert cmd["type"] == "command" and cmd["timeout"] == 5
+    assert cmd["command"].endswith(f"'{agents.SESSIONS_PY}' hook --job j-1 --agent claude")
+    # not installed (the fake's `mcp get blurt` fails) → --mcp-config with the whole server
+    c = agents.session_command("claude", "p", tmp_path, job="j-1", settings=st)
+    i = c["argv"].index("--mcp-config")
+    assert json.loads(c["argv"][i + 1])["mcpServers"]["blurt"]["args"][-1] == str(agents.MCP_SERVER)
+    assert c["argv"][-2:] == ["--", "p"]  # --mcp-config takes several values: the prompt must not become one
+    x = agents.session_command("codex", "p", tmp_path, job="j-2", mcp=True)
+    sets = [x["argv"][i + 1] for i, a in enumerate(x["argv"]) if a == "-c"]
+    for v in sets:
+        tomllib.loads(v)  # every -c value is valid TOML
+    notify = tomllib.loads(sets[0])["notify"]
+    assert notify[1:] == [str(agents.SESSIONS_PY), "hook", "--job", "j-2", "--agent", "codex"]
+    hk = {k: v for v in sets if v.startswith("hooks.") for k, v in tomllib.loads(v)["hooks"].items()}
+    assert list(hk) == list(agents.CODEX_HOOKS)
+    # the same command for every session (Codex asks the user to trust each distinct hook once): job from $BLURT_JOB
+    assert {h["hooks"][0]["command"] for g in hk.values() for h in g} == {agents.hook_command("codex", None)}
+    assert any(v.startswith("mcp_servers.blurt.command") for v in sets) and x["argv"][-1] == "p"
+    assert x["patterns"] and agents.session_command("codex", "p", tmp_path, job="j-3", mcp=False)["argv"].count("-c") == 7
+    k = agents.session_command("kimi", "long prompt", tmp_path, job="j-4", mcp=False)
+    assert k["argv"][1:] == [] and k["paste"] == "long prompt" and k["hooks"] is None
+    for bad in ("zcode", "opencode", "nope"):  # no session / not installed / unknown
+        with pytest.raises(ValueError):
+            agents.session_command(bad, "p", tmp_path, job="j-5")
+
+
+def test_hook_python_is_not_a_cache_venv():
+    assert Path(agents.hook_python()).exists()

@@ -609,6 +609,13 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
   - 失败：岛内一句原因加「重试 / 查看日志」；不在前台时系统通知。
   - 同类通知 10 秒内合并成一条。
 
+**细则（P2）**：
+- `jobs.py step / event / finish` 在命令行上都是**追加事件**（谁都能调）；owner 自己用库函数（`create`、`update`、`absorb`）写 json。
+- 新建任务时 `steps` 按 type 的固定 id 全部列出（`pending`），step 进入 running / 结束时由叠加规则补 `started` / `ended`。
+- `finish` 事件的 `detail.error` 不在共享的叠加规则里：owner 合并事件时才写进 `error`（读者在那之前只看到 state = failed）。
+- 追加时如果文件最后一个字节不是换行（之前的写入方崩在半行），先补一个换行，半行变成一行坏 JSON，读者跳过。
+- `gc` 判断不了哪些 tmux 窗口还在（没有 tmux 之外的错误）时，agent 任务一律保留。
+
 ### K5 · agent 会话（tmux）
 
 - **tmux**：私有 socket `tmux -L $BLURT_TMUX_SOCKET`（默认 `blurt`），绝不碰用户默认的 tmux 服务。服务启动时用 `-f $BLURT_HOME/tmux.conf`
@@ -697,6 +704,38 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
 - **嵌入终端**：macOS SwiftTerm（P3，源码 vendored，见「所有权」），Tauri xterm.js（P8）。终端里执行 `attach-cmd` 的 argv。
   关掉应用会话照常在跑；再打开时主窗口的会话列表来自 `sessions.py list` 和任务文件。
 
+**细则（P2，2026-10-22 用 Codex 0.157 和 Claude Code 2.1.259 实测）**：
+- **Codex 支持按次注入 hooks**：`-c 'hooks.<事件>=[{hooks=[{type="command", command="…", timeout=5}]}]'`，接了 SessionStart、
+  UserPromptSubmit、PostToolUse（→ running）、**PermissionRequest（→ waiting_input）**、Stop（→ turn_done）、SessionEnd（→ exited）。
+  Codex 会让用户**信任一次**这些 hooks（「Hooks need review」），按命令内容记住，所以 hook 命令里**不带任务 id**
+  （`'<python>' '<scripts>/sessions.py' hook --agent codex`，任务取 Codex 传给 hook 的 `$BLURT_JOB`，实测可用），换安装位置才会再问。
+  notify 不需要信任，照旧带 `--job`。用户信任之前（或选了不信任）Codex 的「等你」靠终端兜底（`waiting_patterns` 含 Codex 底部的
+  「enter confirm · esc skip」「Press enter to confirm or esc to cancel」和信任提示本身）。Codex 还会为生成标题等旁支线程发 notify，
+  `thread-id` 和 SessionStart 记下的 `agent_session_id` 不同的忽略。
+- Codex 对 worktree 的「信任这个文件夹」作用在**仓库根**上：信任过项目后，并行派发的每个 worktree 都不再问。
+- **Claude Code 的 `--mcp-config` 吃多个值**，会把后面的提示词当成第二个配置文件：会话命令在提示词前加 `--`
+  （`claude --settings F [--mcp-config J] -- "<提示词>"`）。没登录时交互界面停在登录页、hooks 不触发；`-p` 模式下 SessionStart /
+  UserPromptSubmit / SessionEnd 都经 `sessions.py hook` 实测到达。
+- hook 用的解释器是 dispatch 进程的**基础解释器**（`sys._base_executable`，不用 `uv run` 的缓存 venv，那个会被清掉）。
+- tmux：服务进程用去掉 agent 会话变量的环境启动（同 `agents.clean_env`），保证 UTF-8（没有就设 `LC_CTYPE`），客户端一律 `tmux -u`；
+  tmux.conf 另加 `allow-rename off`、`automatic-rename off`、`renumber-windows off`，窗口名不被 agent 改掉。
+  `list-panes` 的格式用 `|` 分隔（tmux 会把 tab 转义成 `_`）。
+- **attach-cmd**：视图会话由 sessions.py 先建好（`new-session -d -t =blurt-<slug> -s blurt-<slug>~<n>`、选中窗口），返回的 argv 只是
+  `tmux -u -L <socket> -f <conf> attach-session -t =<视图>`，不靠 `;` 串命令（启动器可能改写它）。`destroy-unattached` 在终端
+  **连上之后**由 `client-attached` hook 打开（提前设会让还没人连的视图立刻被销毁）；建好 60 秒还没人连的视图下次调用时清掉。
+- 终端兜底：`waiting_patterns` 只在窗口**最后 6 行非空内容**里找（往上滚走的提示已经答过了）。
+- 全局默认 agent：config `record.default_agent`；都没设时用 `agents.py detect` 里第一个装了、能开会话的（先 ready 再 configured / unknown）。
+- dispatch 的结果里每个 job 多一个 `handoff`；`launch[]` 多 `paste`（`interactive.session.prompt = "paste"` 的 agent，应用起来后粘贴）和
+  `patterns`（应用做终端兜底用）。tmux 下的 paste 由后台的 `sessions.py send --after 3` 完成。条目改状态失败时多一个警告
+  `{"code": "items_not_updated", "items", "message"}`（会话已经起来了）。
+- 错误码：dispatch `needs_project`、`mixed_projects`、`deleted`、`bad_transition`（条目不是 todo / handed_off）、`bad_agent`、`no_agent`、
+  `no_tmux`（退出码 4）、`tmux`、`git`；finish `no_worktree`、`running`（merge 前要先停 agent）、`uncommitted`（worktree 里有没提交的改动，
+  带 `count`）、`wrong_branch`、`dirty`、`nothing`（分支没有新提交）、`conflict`（已 `merge --abort`）、`no_remote`、`push`、`gone`。
+- agent 对象另有（owner 内部用，读者可忽略）：`worktree.repo`（主仓库路径）、`base_sha`（不用 worktree 时派发那一刻的 HEAD，给 diff 用）、
+  `started` / `closed`（条目已经推到 in_progress / to_verify）、`hooks_live`（收到过生命周期 hook）、`items_error`。
+- `stop`：发两次 C-c（间隔 0.4 秒）、最多等 3 秒；任务一律变成 cancelled（即使 agent 自己的 SessionEnd 先到）。`discard` 不改条目状态
+  （in_progress → todo 不在 K3 的表里），由用户在界面上重新打开。merge 成功后也关掉那个窗口。
+
 ### K6 · 交给外部 agent：交接单
 
 - 文件 `$BLURT_HOME/handoff/<H-id>.md`，id = `H-` + 4 位以上数字，全局递增（`handoff/.seq`，锁内读写）。派发到会话（K5）也写一份，
@@ -737,6 +776,14 @@ uid 01JB… · issue · high · module auth
 - **复制全文** = 去掉 front-matter 的正文。
 - CLI：`handoff.py create --items REF … [--lang en|zh] [--to external|session] [--mark]` → `{"ok","id","path","instruction","full","items":[uid]}`；
   `--mark`（UI 在用户点了复制之后调用）把条目设为 `handed_off`、`to: external`、`handoff: H-…`。`handoff.py get H-0012` → 同样的字段。
+
+**细则（P2）**：
+- 交接单里「没有 MCP 时」的命令用 hook 同一个解释器直接跑 items.py（`'<python>' '<scripts>/items.py' work …`），**不用 `uv run`**：
+  Codex 的沙箱里碰 uv 的缓存要用户批准（实测）。
+- 标题：en `BA-12 for bug-agent` / `3 items for bug-agent`；zh `bug-agent · BA-12` / `bug-agent 的 3 个条目`。条目分属多个项目时
+  front-matter 的 `project` 为 null、标题只有数量，每条的元信息行多一个项目名；inbox 的条目不写「项目文件夹」。
+  会话用的交接单 front-matter 多一个 `branch`（用 worktree 时），并带对应的提交规则。每条的元信息行里种类和严重程度按语言本地化。
+- `--mark` 写 `by: user`，`agent` 不填（外部是谁不知道）。图片只列存在的文件；路径里有空格或括号时用 `<…>` 包起来。
 
 ### K7 · 捕获交互：刘海岛、鸡爪卡片、语音、截图
 
