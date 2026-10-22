@@ -1,8 +1,8 @@
-// Read-only view of $BLURT_HOME/index.db, schema v2 (docs/design/next-round.md K1 "index.db schema v2",
+// Read-only view of $BLURT_HOME/index.db, schema v3 (docs/design/next-round.md K1 "index.db", K3's one `state`,
 // docs/contracts/index-schema.sql), through the SQLite3 C API. index.py is the only writer; we open the file with
 // ?mode=ro (WAL), so a scan running next to us never blocks a read. Query rules as index.py search (C3): the query is
 // split on whitespace, every term must match; a term of ≥ 3 characters goes to FTS5 (trigram) as a quoted phrase, a
-// 1–2 character term becomes a LIKE on title / quote / body; no status filter = everything but deleted; every sort
+// 1–2 character term becomes a LIKE on title / quote / body; no state filter = everything but discarded; every sort
 // ends on item_id.
 //
 // For big lists (the main window, 20k+ rows) use uids(_:) — the ordered uids of every match, one cheap column — and
@@ -16,10 +16,10 @@ public struct ProjectRow: Hashable {
     public var id: String, path: String, store: String, name: String, key: String, slug: String
     public var kind: String                      // inbox | folder | repo
     public var registered: Bool
-    /// not deleted and work_state ∈ todo / handed_off / in_progress (MCP list_projects' "open")
+    /// state ∈ Lifecycle.open (MCP list_projects' "open")
     public var openItems = 0
-    /// draft or to_verify: what the user still has to look at
-    public var attention = 0
+    /// new or to_verify (Lifecycle.inbox): what the user still has to look at
+    public var inbox = 0
     public init(id: String, path: String, store: String, name: String, key: String, slug: String, kind: String, registered: Bool = true) {
         self.id = id; self.path = path; self.store = store; self.name = name; self.key = key; self.slug = slug; self.kind = kind
         self.registered = registered
@@ -42,30 +42,32 @@ public struct SessionRow: Hashable {
     public var url: URL { URL(fileURLWithPath: dir) }
 }
 
-/// ItemRow v2 (K1), plus the few columns the native list shows.
+/// ItemRow v3 (K1, K3), plus the few columns the native list shows.
 public struct ItemRow: Hashable {
     public var uid: String, projectID: String, projectName: String, projectKey: String
     public var sessionID: String?, sessionDir: String?, path: String, itemID: String, kind: String, title: String
-    public var status: String, workState: String, workTo: String? = nil, workAgent: String? = nil, workJob: String? = nil
+    /// K3's one state (Lifecycle.states)
+    public var state: String, workTo: String? = nil, workAgent: String? = nil, workJob: String? = nil
     public var severity: String? = nil, primaryFrame: String? = nil, created: Double, updated: Double, snippet: String? = nil
     public var suggestedProject: String? = nil, suggestedConfidence: Double? = nil
     public var quote = "", frameCount = 0, hasCodeRefs = false, tStart: Double? = nil, sourceType: String? = nil
     public var sessionTitle: String? = nil, parseError: String? = nil
 
     public init(uid: String, projectID: String = "inbox", projectName: String = "", projectKey: String = "", sessionID: String? = nil,
-                sessionDir: String? = nil, path: String = "", itemID: String, kind: String, title: String, status: String,
-                workState: String = "todo", created: Double = 0, updated: Double = 0) {
+                sessionDir: String? = nil, path: String = "", itemID: String, kind: String, title: String, state: String = "new",
+                created: Double = 0, updated: Double = 0) {
         self.uid = uid; self.projectID = projectID; self.projectName = projectName; self.projectKey = projectKey
         self.sessionID = sessionID; self.sessionDir = sessionDir; self.path = path; self.itemID = itemID; self.kind = kind
-        self.title = title; self.status = status; self.workState = workState; self.created = created; self.updated = updated
+        self.title = title; self.state = state; self.created = created; self.updated = updated
     }
     public var sessionURL: URL? { sessionDir.map { URL(fileURLWithPath: $0) } }
     /// The item's .md (a legacy row's items.json)
     public var fileURL: URL { URL(fileURLWithPath: path.components(separatedBy: "#").first ?? path) }
     /// A v1/v2 session that hasn't been migrated yet ("<items.json>#<id>"): shown, not editable.
     public var legacy: Bool { path.contains("#") }
-    /// The user has something to do: review it, or verify what an agent did.
-    public var needsAttention: Bool { status == "draft" || workState == "to_verify" }
+    /// Needs you (K3): new, or an agent says it's finished.
+    public var needsYou: Bool { Lifecycle.inbox.contains(state) }
+    public var discarded: Bool { state == "discarded" }
 }
 
 public struct SessionQuery {
@@ -79,24 +81,41 @@ public struct SessionQuery {
 
 public struct ItemQuery: Equatable {
     public var text: String?                          // ≥ 3 chars: FTS5 trigram; 1–2: LIKE; nil/empty: filters only
-    public var kinds: [String] = [], statuses: [String] = [], workStates: [String] = []
-    /// draft or to_verify (and not deleted) — the inbox; combines with the other filters
-    public var attention = false
+    /// K3 states; empty = every state but discarded
+    public var kinds: [String] = [], states: [String] = []
+    /// The old vocabulary, kept for callers that still speak it (Lifecycle.states(fromStatus:) / (fromWork:)); each
+    /// narrows `states` further.
+    public var statuses: [String] = [], workStates: [String] = []
+    /// new or to_verify — the inbox ("Needs you"); combines with the other filters
+    public var inbox = false
     public var project: String?, session: String?
-    public var sort = "updated"                       // updated | created | t_start | title | kind | status | work | project | id
+    public var sort = "updated"                       // updated | created | t_start | title | kind | state | project | id
     public var ascending = false
     public var limit = 50, offset = 0                 // limit 0 = no limit (uids)
-    public init(text: String? = nil, kinds: [String] = [], statuses: [String] = [], workStates: [String] = [], attention: Bool = false,
-                project: String? = nil, session: String? = nil, sort: String = "updated", limit: Int = 50, offset: Int = 0) {
-        self.text = text; self.kinds = kinds; self.statuses = statuses; self.workStates = workStates; self.attention = attention
-        self.project = project; self.session = session; self.sort = sort; self.limit = limit; self.offset = offset
+    public init(text: String? = nil, kinds: [String] = [], states: [String] = [], statuses: [String] = [], workStates: [String] = [],
+                inbox: Bool = false, project: String? = nil, session: String? = nil, sort: String = "updated", limit: Int = 50,
+                offset: Int = 0) {
+        self.text = text; self.kinds = kinds; self.states = states; self.statuses = statuses; self.workStates = workStates
+        self.inbox = inbox; self.project = project; self.session = session; self.sort = sort; self.limit = limit; self.offset = offset
+    }
+    /// The states this query allows, in lifecycle order; nil = every state but discarded.
+    public var allowedStates: [String]? {
+        var allowed: Set<String>?
+        func narrow(_ s: [String]) { allowed = allowed.map { $0.intersection(s) } ?? Set(s) }
+        if !states.isEmpty { narrow(states) }
+        if !statuses.isEmpty { narrow(statuses.flatMap(Lifecycle.states(fromStatus:))) }
+        if !workStates.isEmpty { narrow(workStates.flatMap(Lifecycle.states(fromWork:))) }
+        if inbox { narrow(Array(Lifecycle.inbox)) }
+        return allowed.map { a in Lifecycle.states.filter(a.contains) }
     }
     public var terms: [String] { (text ?? "").split(whereSeparator: { $0.isWhitespace }).map(String.init) }
 }
 
-/// Sidebar badges, one query (everything but dropped items).
+/// Sidebar and menu-bar badges, one query, by K3's groups.
 public struct IndexCounts: Equatable {
-    public var all = 0, attention = 0, draft = 0, toVerify = 0, active = 0, unassigned = 0, done = 0
+    /// all = live (not discarded) items; inbox = new + to_verify ("Needs you"); active = handed_off + in_progress +
+    /// to_verify (the In Progress place); open = new … in_progress; unassigned = live items in the inbox store
+    public var all = 0, inbox = 0, new = 0, toVerify = 0, active = 0, open = 0, unassigned = 0, done = 0, wontfix = 0, discarded = 0
     public init() {}
 }
 
@@ -115,7 +134,7 @@ public enum IndexError: Error, CustomStringConvertible {
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 public final class IndexReader {
-    public static let schemaVersion = "2"
+    public static let schemaVersion = "3"
     public let url: URL
     private var db: OpaquePointer?
     private let lock = NSRecursiveLock()     // one connection, used from the main thread and a loader queue
@@ -167,15 +186,13 @@ public final class IndexReader {
     public func projects() throws -> [ProjectRow] {
         try rows("""
             SELECT p.id, p.path, p.store, p.name, p.key, p.slug, p.kind, p.registered,
-                   (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.status != 'deleted'
-                      AND i.work_state IN ('todo', 'handed_off', 'in_progress')),
-                   (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.status != 'deleted'
-                      AND (i.status = 'draft' OR i.work_state = 'to_verify'))
+                   (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.state IN \(Self.sqlList(Lifecycle.open))),
+                   (SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.state IN \(Self.sqlList(Lifecycle.inbox)))
             FROM projects p ORDER BY p.kind = 'inbox' DESC, p.last_seen DESC, p.name
             """, []) { s in
             var r = ProjectRow(id: s.text(0), path: s.text(1), store: s.text(2), name: s.text(3), key: s.text(4), slug: s.text(5),
                                kind: s.text(6), registered: s.int(7) != 0)
-            r.openItems = s.int(8); r.attention = s.int(9)
+            r.openItems = s.int(8); r.inbox = s.int(9)
             return r
         }
     }
@@ -265,13 +282,14 @@ public final class IndexReader {
     public func counts() throws -> IndexCounts {
         var c = IndexCounts()
         try each("""
-            SELECT COUNT(*), SUM(status = 'draft' OR work_state = 'to_verify'), SUM(status = 'draft'),
-                   SUM(work_state = 'to_verify'), SUM(work_state IN ('handed_off', 'in_progress')),
-                   SUM(project_id = 'inbox'), SUM(work_state = 'done')
-            FROM items WHERE status != 'deleted'
+            SELECT SUM(state != 'discarded'), SUM(state IN \(Self.sqlList(Lifecycle.inbox))), SUM(state = 'new'),
+                   SUM(state = 'to_verify'), SUM(state IN \(Self.sqlList(Lifecycle.active))), SUM(state IN \(Self.sqlList(Lifecycle.open))),
+                   SUM(project_id = 'inbox' AND state != 'discarded'), SUM(state = 'done'), SUM(state = 'wontfix'),
+                   SUM(state = 'discarded')
+            FROM items
             """, []) { s in
-            c.all = s.int(0); c.attention = s.int(1); c.draft = s.int(2); c.toVerify = s.int(3); c.active = s.int(4)
-            c.unassigned = s.int(5); c.done = s.int(6)
+            c.all = s.int(0); c.inbox = s.int(1); c.new = s.int(2); c.toVerify = s.int(3); c.active = s.int(4); c.open = s.int(5)
+            c.unassigned = s.int(6); c.done = s.int(7); c.wontfix = s.int(8); c.discarded = s.int(9)
         }
         return c
     }
@@ -288,21 +306,22 @@ public final class IndexReader {
     static let from = "FROM items i JOIN projects p ON p.id = i.project_id LEFT JOIN sessions s ON s.id = i.session_id"
 
     static let cols = """
-        i.uid, i.project_id, p.name, p.key, i.session_id, s.dir, i.path, i.item_id, i.kind, i.title, i.status, \
-        i.work_state, i.work_to, i.work_agent, i.work_job, i.severity, i.primary_frame, i.created, i.updated, \
+        i.uid, i.project_id, p.name, p.key, i.session_id, s.dir, i.path, i.item_id, i.kind, i.title, i.state, \
+        i.work_to, i.work_agent, i.work_job, i.severity, i.primary_frame, i.created, i.updated, \
         i.suggested_project, i.suggested_confidence, i.quote, i.frame_count, i.has_code_refs, i.t_start, i.source_type, \
         s.title, i.parse_error
         """
 
     static func itemRow(_ s: Stmt) -> ItemRow {
+        let st = s.text(10)
         var r = ItemRow(uid: s.text(0), projectID: s.text(1), projectName: s.text(2), projectKey: s.text(3), sessionID: s.optText(4),
                         sessionDir: s.optText(5), path: s.text(6), itemID: s.text(7), kind: s.text(8), title: s.text(9),
-                        status: s.text(10), workState: s.optText(11) ?? "todo", created: s.double(17), updated: s.double(18))
-        r.workTo = s.optText(12); r.workAgent = s.optText(13); r.workJob = s.optText(14); r.severity = s.optText(15)
-        r.primaryFrame = s.optText(16); r.suggestedProject = s.optText(19); r.suggestedConfidence = s.optDouble(20)
-        r.quote = s.text(21); r.frameCount = s.int(22); r.hasCodeRefs = s.int(23) != 0; r.tStart = s.optDouble(24)
-        r.sourceType = s.optText(25); r.sessionTitle = s.optText(26); r.parseError = s.optText(27)
-        r.snippet = s.optText(28)
+                        state: Lifecycle.isState(st) ? st : "new", created: s.double(16), updated: s.double(17))
+        r.workTo = s.optText(11); r.workAgent = s.optText(12); r.workJob = s.optText(13); r.severity = s.optText(14)
+        r.primaryFrame = s.optText(15); r.suggestedProject = s.optText(18); r.suggestedConfidence = s.optDouble(19)
+        r.quote = s.text(20); r.frameCount = s.int(21); r.hasCodeRefs = s.int(22) != 0; r.tStart = s.optDouble(23)
+        r.sourceType = s.optText(24); r.sessionTitle = s.optText(25); r.parseError = s.optText(26)
+        r.snippet = s.optText(27)
         return r
     }
 
@@ -329,10 +348,12 @@ public final class IndexReader {
             wh.append("\(col) IN (\(Array(repeating: "?", count: v.count).joined(separator: ",")))")
             args += v as [Any]
         }
-        if q.statuses.isEmpty { wh.append("i.status != 'deleted'") } else { list("i.status", q.statuses) }
-        if q.attention { wh.append("(i.status = 'draft' OR i.work_state = 'to_verify')") }
+        if let st = q.allowedStates {
+            if st.isEmpty { wh.append("0") } else { list("i.state", st) }
+        } else {
+            wh.append("i.state != 'discarded'")
+        }
         if !q.kinds.isEmpty { list("i.kind", q.kinds) }
-        if !q.workStates.isEmpty { list("i.work_state", q.workStates) }
         if let p = q.project { wh.append("i.project_id = ?"); args.append(p) }
         if let s = q.session { wh.append("i.session_id = ?"); args.append(s) }
         let join = fts.isEmpty ? "" : "JOIN items_fts f ON f.rowid = i.rowid "
@@ -340,9 +361,14 @@ public final class IndexReader {
                 "WHERE \(wh.joined(separator: " AND "))", args, !fts.isEmpty)
     }
 
-    /// Work states in the order they need the user: to verify first.
-    static let workOrder = "CASE i.work_state WHEN 'to_verify' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'handed_off' THEN 2 " +
-        "WHEN 'todo' THEN 3 WHEN 'done' THEN 4 ELSE 5 END"
+    /// States in lifecycle order (new … discarded).
+    static let stateOrder = "CASE i.state " + Lifecycle.states.enumerated().map { "WHEN '\($0.element)' THEN \($0.offset) " }.joined() +
+        "ELSE \(Lifecycle.states.count) END"
+
+    /// "('a', 'b')" for a fixed set of known words (never user input).
+    static func sqlList<S: Sequence>(_ v: S) -> String where S.Element == String {
+        "(" + v.sorted().map { "'\($0)'" }.joined(separator: ", ") + ")"
+    }
 
     func order(_ q: ItemQuery) -> String {
         let dir = q.ascending ? "ASC" : "DESC"
@@ -351,8 +377,7 @@ public final class IndexReader {
         case "t_start": return "i.t_start, i.created DESC, i.item_id"
         case "title": return "i.title COLLATE NOCASE \(dir), i.updated DESC, i.item_id"
         case "kind": return "i.kind \(dir), i.updated DESC, i.item_id"
-        case "status": return "i.status \(dir), i.updated DESC, i.item_id"
-        case "work": return "\(Self.workOrder) \(dir), i.updated DESC, i.item_id"
+        case "state", "status", "work": return "\(Self.stateOrder) \(dir), i.updated DESC, i.item_id"
         case "project": return "p.name COLLATE NOCASE \(dir), i.updated DESC, i.item_id"
         case "id": return "p.key \(dir), CAST(substr(i.item_id, instr(i.item_id, '-') + 1) AS INTEGER) \(dir), i.item_id"
         default: return "i.updated \(dir), i.item_id"

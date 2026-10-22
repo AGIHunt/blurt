@@ -65,17 +65,23 @@ enum MainMenu {
         _ = menu(T("menu.go"), go)
         let move = NSMenuItem(title: T("main.menu.move_to"), action: nil, keyEquivalent: "")
         move.submenu = c.moveMenu()
+        // K3's actions, enabled per selection (validateMenuItem); the single-key equivalents only show here — the list
+        // handles A D R W X ⌫ S itself, so typing in the search field or the detail never triggers them
+        func state(_ a: String, _ key: String) -> NSMenuItem {
+            let i = item(StateMenu.title(a == "back" ? "send_back" : a), #selector(MainWindowController.mState(_:)), obj: a)
+            i.image = Look.ring(Lifecycle.transitions[a]?.to ?? "todo", size: 14)
+            displayKey(i, key)
+            return i
+        }
+        let changeState = item(T("main.menu.change_state"), #selector(MainWindowController.mStateMenu))
+        displayKey(changeState, "s")
         _ = menu(T("menu.item"), [item(T("main.menu.start_session"), #selector(MainWindowController.mHandOff), "\r"),
                                   item(T("main.cmd.copy_instruction"), #selector(MainWindowController.mCopyInstruction), "c", [.command, .shift]),
                                   item(T("main.cmd.copy_full"), #selector(MainWindowController.mCopyFull)), .separator(),
-                                  item(T("main.cmd.mark_done"), #selector(MainWindowController.mWork(_:)), obj: "done"),
-                                  item(T("main.cmd.reopen"), #selector(MainWindowController.mWork(_:)), obj: "todo"),
-                                  item(T("main.cmd.wontfix"), #selector(MainWindowController.mWork(_:)), obj: "wontfix"), .separator(),
+                                  changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
+                                  state("discard", "\u{8}"), .separator(),
                                   move,
-                                  item(T("main.menu.rename"), #selector(MainWindowController.mRename)),
-                                  item(T("review.confirmed"), #selector(MainWindowController.mSetStatus(_:)), obj: "confirmed"),
-                                  item(T("review.draft"), #selector(MainWindowController.mSetStatus(_:)), obj: "draft"),
-                                  item(T("review.deleted"), #selector(MainWindowController.mSetStatus(_:)), "\u{8}", obj: "deleted"), .separator(),
+                                  item(T("main.menu.rename"), #selector(MainWindowController.mRename)), .separator(),
                                   item(T("main.menu.quick_look"), #selector(MainWindowController.mQuickLook), "y"),
                                   item(T("action.reveal_in_finder"), #selector(MainWindowController.mReveal), "r", [.command, .shift]),
                                   item(T("action.copy_path"), #selector(MainWindowController.mCopyPath), "c", [.command, .option]),
@@ -88,6 +94,15 @@ enum MainMenu {
         NSApp.windowsMenu = main.items.first { $0.title == T("menu.window") }?.submenu
         return main
     }
+}
+
+/// Shows a single-key equivalent next to a menu-bar item without letting the menu bar act on it: a key equivalent
+/// without ⌘ would also fire while typing in the search field or the detail. MainWindowController.validateMenuItem
+/// disables these items while a key press is being matched (isKeyMatch), so the key reaches the list's keyDown —
+/// which handles it there and only there.
+func displayKey(_ i: NSMenuItem, _ key: String) {
+    i.keyEquivalent = key
+    i.keyEquivalentModifierMask = []
 }
 
 extension MainWindowController {
@@ -115,8 +130,9 @@ enum ShortcutsSheet {
             ("⌘K", T("main.keys.palette")), ("/  ⌘F", T("main.keys.search")), ("⌘O", T("project.open_folder")),
             ("J / K  ↓ / ↑", T("main.keys.next")), ("↩", T("main.keys.open")),
             ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("main.cmd.copy_instruction")),
-            ("D", T("main.cmd.mark_done")), ("R", T("main.cmd.reopen")), ("E", T("main.menu.rename")),
-            ("1 2 3 4", T("main.keys.kind")), ("S", T("main.keys.keep")), ("⌫", T("review.deleted")),
+            ("S", T("main.keys.state")), ("A", StateMenu.title("keep")), ("D", StateMenu.title("done")), ("R", T("main.keys.back")),
+            ("W", StateMenu.title("wontfix")), ("X  ⌫", StateMenu.title("discard")),
+            ("E", T("main.menu.rename")), ("1 2 3 4", T("main.keys.kind")),
             (T("main.keys.space"), "Quick Look"),
             ("⌘1 … ⌘4", T("main.keys.places")), ("⌘5 … ⌘9", T("main.keys.projects")),
             ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")), ("?", T("main.keys.this")),

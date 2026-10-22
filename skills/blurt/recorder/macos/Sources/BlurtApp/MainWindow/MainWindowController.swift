@@ -3,8 +3,8 @@
 // restored from $BLURT_HOME/ui/main-window.json (not UserDefaults: test builds share the bundle id with the user's
 // real app and must not disturb its state).
 //
-// Reads come from index.db (MainModel / IndexReader v2), projects.json (ProjectStore) and $BLURT_HOME/jobs
-// (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / work / move, projects.py,
+// Reads come from index.db (MainModel / IndexReader v3), projects.json (ProjectStore) and $BLURT_HOME/jobs
+// (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / state / move, projects.py,
 // handoff.py, sessions.py (AppEnvironment.dispatch, P3). The index follows (items.py updates it in-process, FSEvents
 // + `index.py update` catch everything else) and the model reloads when index.db's data_version moves.
 // This window never opens by itself: no review pops up when processing finishes (K4 notification rules).
@@ -125,9 +125,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard let row = model.itemRow(uid: uid) else { return }
         model.text = ""
         searchItem?.searchField.stringValue = ""
-        model.status = row.status == "deleted" ? "deleted" : nil
+        model.state = row.discarded ? "discarded" : nil
         model.kinds = []
-        model.work = nil
         if model.row(of: uid) == nil {
             model.scope = row.projectID == "inbox" ? .unassigned : .project(row.projectID)
             model.reload()
@@ -206,7 +205,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func updateTitle() {
         window?.title = model.scopeTitle
-        window?.subtitle = model.indexState != .ready ? "" : TP("main.items.count", model.rowCount)
+        window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)
+    }
+
+    /// The inbox's subtitle (K3): "Needs you: 3 new · 2 to verify" — a zero part left out; nothing when both are zero
+    /// (the empty state says it).
+    var needsYou: String {
+        let c = model.counts
+        let parts = [c.new > 0 ? T("main.inbox.new", c.new) : nil, c.toVerify > 0 ? T("main.inbox.verify", c.toVerify) : nil].compactMap { $0 }
+        return parts.isEmpty ? "" : T("main.inbox.needs_you", parts.joined(separator: " · "))
     }
 
     func jobsChanged(_ changed: [Job]) {
@@ -267,20 +274,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func setKind(_ kind: String) { edit(list.selectedItems.filter { $0.kind != kind }, ["kind": kind]) }
 
-    func cycleStatus() {
-        guard let first = list.selectedItems.first else { return }
-        setStatus(first.status == "confirmed" ? "draft" : "confirmed")
-    }
+    // MARK: state (K3)
 
-    func setStatus(_ status: String) { edit(list.selectedItems.filter { $0.status != status }, ["status": status]) }
-
-    func setWork(_ state: String) { setWork(state, uids: list.selectedItems.map(\.uid)) }
-
-    /// K3 from the user's side: Mark as Done (from to verify — or an item you handed out yourself), Reopen, Won't Do.
-    func setWork(_ state: String, uids: [String]) {
-        let items = model.items(uids: uids).filter { allowed(state, $0) }
+    /// An action on the items it is valid for (the others are left alone). Hand off opens the dispatch panel; the rest
+    /// go to items.py state.
+    func apply(_ action: String, to items: [ItemRow]) {
+        let items = StateMenu.valid(action, items)
         guard !items.isEmpty else { NSSound.beep(); return }
-        Scripts.work(items.map(\.uid), state) { [weak self] r in
+        if action == "hand_off" { return dispatch(uids: items.map(\.uid)) }
+        guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
+        Scripts.state(items.map(\.uid), action: action) { [weak self] r in
             switch r {
             case .success: self?.wrote(items)
             case .failure(let f): self?.alert(T("main.error.save_title"), f.localized)
@@ -288,15 +291,36 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    func allowed(_ state: String, _ it: ItemRow) -> Bool {
-        guard it.status != "deleted", !it.legacy, it.workState != state else { return false }
-        switch state {
-        case "done": return it.workState == "to_verify" || (it.workTo == "external" && ["handed_off", "in_progress"].contains(it.workState))
-        case "todo": return ["to_verify", "done", "wontfix"].contains(it.workState)
-        case "wontfix": return true
-        default: return false
+    func applyState(_ action: String, uids: [String]) { apply(action, to: model.items(uids: uids)) }
+
+    /// A list key (A, D, R, W, X / ⌫) on the selection: each item gets what the key means from its own state — R sends
+    /// back what is waiting to be verified and reopens what is done in the same press.
+    func act(key: String) {
+        let byAction = Dictionary(grouping: list.selectedItems.filter { !$0.legacy }) { Lifecycle.action(forKey: key, state: $0.state) ?? "" }
+        let runs = byAction.filter { !$0.key.isEmpty }
+        guard !runs.isEmpty else { NSSound.beep(); return }
+        for a in Lifecycle.actions where runs[a] != nil { apply(a, to: runs[a]!) }
+    }
+
+    /// The state menu of the selection, under a row's ring (S, or a click on the ring).
+    func showStateMenu(row: Int?, from view: NSView?) {
+        let items = list.selectedItems
+        guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
+        let m = StateMenu.menu(for: items, canHandOff: true, selector: #selector(mState(_:)), target: self)
+        guard !m.items.isEmpty else { NSSound.beep(); return }
+        if let v = view ?? row.flatMap(list.ringView(row:)), v.window != nil {
+            m.popUp(positioning: nil, at: NSPoint(x: -4, y: v.isFlipped ? v.bounds.height + 3 : -3), in: v)
+        } else if let r = row ?? list.table.selectedRowIndexes.first {
+            let rect = list.table.rect(ofRow: r)
+            m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.maxY), in: list.table)
         }
     }
+
+    @objc func mState(_ i: NSMenuItem) {
+        guard let a = i.representedObject as? String else { return }
+        if a == "back" { act(key: "r") } else { apply(a, to: list.selectedItems) }
+    }
+    @objc func mStateMenu() { showStateMenu(row: list.table.selectedRowIndexes.first, from: nil) }
 
     /// User edits = items.py user-ops by uid, per project (the same ops the review component sends).
     func edit(_ items: [ItemRow], _ set: [String: Any]) {
@@ -343,7 +367,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func clearFilters() {
-        model.kinds = []; model.status = nil; model.work = nil; model.text = ""
+        model.kinds = []; model.state = nil; model.text = ""
         searchItem?.searchField.stringValue = ""
         model.reload()
     }
@@ -437,7 +461,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// Start an agent session in Blurt: P3's panel (agent, mode, worktree, the concurrent-edit reminder) when it is
     /// installed, else straight to sessions.py with the project's defaults — after the same reminder.
     func dispatch(uids: [String]) {
-        let items = model.items(uids: uids).filter { $0.status != "deleted" && !$0.legacy }
+        let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
         guard !items.isEmpty else { NSSound.beep(); return }
         if Set(items.map(\.projectID)).count > 1 { return alert(T("main.dispatch.one_project"), T("main.dispatch.one_project.detail")) }
         if items.first?.projectID == "inbox" { return alert(T("main.dispatch.needs_project"), T("main.dispatch.needs_project.detail")) }
@@ -490,7 +514,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// Copy instruction / full text for your own agent app (K6). The sheet is written and the items marked handed off
     /// when you copy — that click is the hand-off.
     func handOff(uids: [String], what: String, reply: @escaping ([String: Any]?) -> Void) {
-        let items = model.items(uids: uids).filter { $0.status != "deleted" && !$0.legacy }
+        let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
         guard !items.isEmpty else { NSSound.beep(); return reply(nil) }
         Scripts.handoff(items.map(\.uid)) { [weak self] r in
             switch r {
@@ -519,18 +543,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let m = NSMenu()
         m.autoenablesItems = true
         let n = items.count
+        // what you can do from here (K3); handing off has its own section below
+        let states = StateMenu.actions(for: items, canHandOff: false)
+        if !states.isEmpty, Scripts.canWrite {
+            m.addItem(menuHeader(T("state.menu")))
+            for a in states { m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self)) }
+            m.addItem(.separator())
+        }
         // hand off
         _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
         _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
         _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         m.addItem(.separator())
-        // work state
-        _ = add(m, T("main.cmd.mark_done"), #selector(mWork(_:)), "checkmark.circle", obj: "done", key: "d", mods: [])
-        _ = add(m, T("main.cmd.reopen"), #selector(mWork(_:)), "arrow.uturn.backward.circle", obj: "todo", key: "r", mods: [])
-        _ = add(m, T("main.cmd.wontfix"), #selector(mWork(_:)), "nosign", obj: "wontfix")
-        m.addItem(.separator())
         m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
-        m.addItem(submenu(T("main.menu.review"), "checklist", reviewMenu(items)))
         m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items)))
         if n == 1 { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
         if n == 1, let it = items.first, it.sessionURL != nil {
@@ -579,15 +604,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return m
     }
 
-    func reviewMenu(_ items: [ItemRow]) -> NSMenu {
-        let m = NSMenu()
-        for (s, key) in [("confirmed", "s"), ("draft", ""), ("deleted", "\u{8}")] {
-            let i = add(m, Look.reviewName(s), #selector(mSetStatus(_:)), nil, obj: s, key: key, mods: [])
-            i.state = items.allSatisfy { $0.status == s } ? .on : .off
-        }
-        return m
-    }
-
     func kindMenu(_ items: [ItemRow]) -> NSMenu {
         let m = NSMenu()
         for (k, key) in KindStyle.builtIn.enumerated() {
@@ -619,10 +635,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     @objc func mHandOff() { handOffSelection() }
-    @objc func mWork(_ i: NSMenuItem) { (i.representedObject as? String).map { setWork($0) } }
     @objc func mMove(_ i: NSMenuItem) { (i.representedObject as? String).map { move(uids: list.selectedItems.map(\.uid), to: $0) } }
     @objc func mSetKind(_ i: NSMenuItem) { (i.representedObject as? String).map(setKind) }
-    @objc func mSetStatus(_ i: NSMenuItem) { (i.representedObject as? String).map(setStatus) }
     @objc func mRename() { renameSelection() }
     @objc func mReviewBatch() {
         guard let s = list.selectedItems.first?.sessionURL else { return }
@@ -656,18 +670,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func mProjectSettings(_ i: NSMenuItem) { (i.representedObject as? String).map(projectSettings) }
     @objc func mRemoveProject(_ i: NSMenuItem) { (i.representedObject as? String).map(removeProject) }
 
+    /// This item is being validated because its own unmodified key was pressed (key-equivalent matching), not because
+    /// a menu opened.
+    func isKeyMatch(_ item: NSMenuItem) -> Bool {
+        guard item.keyEquivalentModifierMask.isEmpty, !item.keyEquivalent.isEmpty, let e = NSApp.currentEvent, e.type == .keyDown,
+              e.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
+        if item.keyEquivalent == "\u{8}" { return e.keyCode == 51 || e.keyCode == 117 }
+        return e.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let items = list.selectedItems
+        if item.action == #selector(mState(_:)) || item.action == #selector(mStateMenu), item.menu?.supermenu != nil, isKeyMatch(item) {
+            return false        // a menu-bar item's single key: the list's keyDown handles it there (MainMenu.displayKey)
+        }
         switch item.action {
         case #selector(mHandOff), #selector(mCopyInstruction), #selector(mCopyFull):
-            return Scripts.canWrite && items.contains { $0.status != "deleted" && !$0.legacy }
-        case #selector(mWork(_:)):
-            guard let s = item.representedObject as? String else { return false }
-            return Scripts.canWrite && items.contains { allowed(s, $0) }
+            return Scripts.canWrite && items.contains { !$0.discarded && !$0.legacy }
+        case #selector(mState(_:)):
+            guard Scripts.canWrite, let a = item.representedObject as? String else { return false }
+            if a == "back" {
+                // the menu bar's one "back" entry says what R does for the selection
+                let back = items.filter { !$0.legacy }.compactMap { Lifecycle.backAction($0.state) }
+                item.title = StateMenu.title(Set(back).count == 1 ? back[0] : "send_back")
+                return !back.isEmpty
+            }
+            return !StateMenu.valid(a, items).isEmpty
+        case #selector(mStateMenu):
+            return Scripts.canWrite && !StateMenu.actions(for: items, canHandOff: true).isEmpty
         case #selector(mMove(_:)):
             guard let p = item.representedObject as? String else { return false }
             return Scripts.canWrite && items.contains { $0.projectID != p && !$0.legacy }
-        case #selector(mRename), #selector(mSetKind(_:)), #selector(mSetStatus(_:)):
+        case #selector(mRename), #selector(mSetKind(_:)):
             return Scripts.canWrite && items.contains { !$0.legacy }
         case #selector(mReveal), #selector(mCopyPath), #selector(mCopyLink), #selector(mQuickLook), #selector(mOpenInEditor):
             return !items.isEmpty
@@ -848,7 +882,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     struct State: Codable {
         var frame: String?, sidebar: Double?, detail: Double?, sidebarCollapsed: Bool?
-        var scope: String?, kinds: [String]?, status: String?, work: String?, sort: String?, ascending: Bool?
+        var scope: String?, kinds: [String]?, state: String?, sort: String?, ascending: Bool?
         var selected: [String]?, open: Bool?
     }
     static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
@@ -872,7 +906,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.sidebarCollapsed = items[0].isCollapsed
         s.detail = Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
-        s.kinds = model.kinds.sorted(); s.status = model.status; s.work = model.work
+        s.kinds = model.kinds.sorted(); s.state = model.state
         s.sort = model.sort; s.ascending = model.ascending
         s.selected = list.selectedIDs
         s.open = open
@@ -888,10 +922,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let sc = s?.scope.flatMap(Scope.init(key:)) { model.scope = sc }
         if case .project(let p) = model.scope, ProjectStore.shared.project(id: p) == nil { model.scope = .inbox }
         model.kinds = Set(s?.kinds ?? [])
-        model.status = s?.status
-        model.work = s?.work
+        model.state = s?.state.flatMap { $0 == "inbox" || Lifecycle.isState($0) ? $0 : nil }
         model.text = ""          // like Finder and Mail: a new window starts without the last search
-        model.sort = s?.sort ?? "updated"
+        model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
         model.ascending = s?.ascending ?? false
         searchItem?.searchField.stringValue = model.text
         list.table.sortDescriptors = [NSSortDescriptor(key: model.sort, ascending: model.ascending)]

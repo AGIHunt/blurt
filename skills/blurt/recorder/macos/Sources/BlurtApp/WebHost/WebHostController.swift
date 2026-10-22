@@ -25,7 +25,7 @@ protocol WebHostActions: AnyObject {
     func openCode(_ ref: String, item: ItemRow?)
     func dispatch(uids: [String])
     func handOff(uids: [String], what: String, reply: @escaping ([String: Any]?) -> Void)
-    func setWork(_ state: String, uids: [String])
+    func applyState(_ action: String, uids: [String])
     func move(uids: [String], to project: String)
     func revealJob(_ id: String)
     func jobAction(_ action: String, job: Job)
@@ -219,7 +219,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private func bannerAction(_ a: String) {
         guard let it = currentItem else { return }
         switch a {
-        case "done", "todo", "wontfix": actions?.setWork(a, uids: [it.uid])
+        case "done", "wontfix": actions?.applyState(a, uids: [it.uid])
         case "session": if let j = it.workJob { actions?.revealJob(j) }
         case "progress": if let j = banner.processingJob { actions?.revealJob(j) }
         case "move": if let p = it.suggestedProject { actions?.move(uids: [it.uid], to: p) }
@@ -397,10 +397,10 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { target?.userContentController(c, didReceive: m) }
 }
 
-/// The line above an item that tells you what it is waiting for, with the one or two things you can do about it:
-///   to verify      "Claude Code says it's done. Check it, then mark it done."  [Reopen] [Mark as Done]
+/// The line above an item that tells you what it is waiting for, with the one or two things you can do about it (K3
+/// actions; the detail's state pill has the rest, and its work panel asks about an item waiting to be verified):
 ///   with an agent  "With Claude Code · Needs your input"                         [Open Session]
-///   handed out     "Copied to your agent. Mark it done when it is."              [Mark as Done]
+///   handed out     "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
 ///   suggested      "Looks like it belongs in bug-agent (58%)."                  [Move]
 final class ItemBanner: NSView {
     var onAction: ((String) -> Void)?
@@ -453,29 +453,25 @@ final class ItemBanner: NSView {
             buttons.addArrangedSubview(b)
         }
         processingJob = nil
-        guard let it = it, it.status != "deleted" else { return hide() }
+        guard let it = it, !it.discarded else { return hide() }
         let agent = it.workAgent.flatMap { AgentHub.shared.def($0)?.name } ?? it.workAgent
-        let active = it.workState == "handed_off" || it.workState == "in_progress"
+        let active = it.state == "handed_off" || it.state == "in_progress"
         let inSession = active && (it.workTo == "session" || it.workJob != nil)
-        switch active ? (inSession ? "session" : "external") : it.workState {
+        switch active ? (inSession ? "session" : "external") : it.state {
         case "to_verify":
-            tint = StatusRing.attention
-            icon.image = Look.ring("to_verify", size: 16)
-            text.stringValue = agent.map { T("main.banner.to_verify", $0) } ?? T("main.banner.to_verify.anon")
-            button(T("main.cmd.reopen"), "todo")
-            button(T("main.cmd.mark_done"), "done", primary: true)
+            return hide()       // the detail's own work panel asks (Mark as done / Send back), next to the state pill
         case "session":
             tint = StatusRing.accent
-            icon.image = Look.ring(it.workState, size: 16)
-            let st = it.workJob.flatMap { JobStore.shared.job($0)?.agent?.status }.map { T("session.\($0.rawValue)") } ?? Look.workName(it.workState)
+            icon.image = Look.ring(it.state, size: 16)
+            let st = it.workJob.flatMap { JobStore.shared.job($0)?.agent?.status }.map { T("session.\($0.rawValue)") } ?? Look.stateName(it.state)
             text.stringValue = T("main.banner.with_agent", agent ?? T("main.banner.agent"), st)
             if it.workJob != nil { button(T("main.banner.open_session"), "session", primary: true) }
         case "external":
             tint = StatusRing.accent
-            icon.image = Look.ring(it.workState, size: 16)
+            icon.image = Look.ring(it.state, size: 16)
             text.stringValue = T("main.banner.external")
-            button(T("main.cmd.wontfix"), "wontfix")
-            button(T("main.cmd.mark_done"), "done", primary: true)
+            button(StateMenu.title("wontfix"), "wontfix")
+            button(StateMenu.title("done"), "done", primary: true)
         default:
             // the batch it came from is still being organised: the item fills in as the agent goes
             if let dir = it.sessionDir, let j = JobStore.shared.active.first(where: { $0.type == .process && $0.session?.path == dir }) {

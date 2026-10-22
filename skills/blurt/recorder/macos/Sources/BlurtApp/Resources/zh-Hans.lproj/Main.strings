@@ -69,29 +69,23 @@
 "main.action.snap" = "截图";
 
 "main.banner.agent" = "agent";
-"main.banner.external" = "已复制给你的 agent。做完后在这里确认完成。";
+"main.banner.external" = "已复制给你的 agent。做完后在这里标为完成。";
 "main.banner.move" = "移过去";
 "main.banner.open_session" = "打开会话";
 "main.banner.organizing" = "还在整理 · %@";
 "main.banner.show_progress" = "查看进度";
 "main.banner.suggested" = "看起来属于「%@」（把握 %@）。";
-"main.banner.to_verify" = "%@ 说已经处理好了。检查一下，再确认完成。";
-"main.banner.to_verify.anon" = "agent 说已经处理好了。检查一下，再确认完成。";
 "main.banner.with_agent" = "已交给 %@ · %@";
 
 "main.cmd.copy_full" = "复制全文";
 "main.cmd.copy_instruction" = "复制指令";
-"main.cmd.mark_done" = "确认完成";
-"main.cmd.reopen" = "重新打开";
-"main.cmd.wontfix" = "不处理";
 
 "main.col.id" = "编号";
 "main.col.kind" = "种类";
 "main.col.project" = "项目";
-"main.col.review" = "审核";
+"main.col.state" = "状态";
 "main.col.title" = "标题";
 "main.col.updated" = "更新";
-"main.col.work" = "处理";
 
 "main.detail.gone" = "这一条的文件不见了";
 "main.detail.label" = "条目详情";
@@ -114,11 +108,13 @@
 "main.empty.all_filed.detail" = "还没归属项目的捕获会在这里等你或 AI 分配。";
 "main.empty.clear_all" = "清除搜索和筛选";
 "main.empty.clear_filters" = "清除筛选";
+"main.empty.discarded" = "没有丢弃的条目";
+"main.empty.discarded.detail" = "丢弃的条目会放在这里，随时可以恢复。";
 "main.empty.filters_on" = "筛选条件也还开着。";
 "main.empty.first" = "边用边说";
 "main.empty.first.detail" = "打开一个项目文件夹，然后边说边录屏（%@）或截图（%@）。口喷鸡会把它整理成 agent 能接手的条目。";
-"main.empty.inbox_zero" = "都处理完了";
-"main.empty.inbox_zero.detail" = "没有待审的，也没有等你验证的。";
+"main.empty.inbox_zero" = "现在没有需要你看的";
+"main.empty.inbox_zero.detail" = "新捕获的条目，和 agent 说做好了的条目，会出现在这里。";
 "main.empty.no_index" = "还没有索引";
 "main.empty.no_index.detail" = "口喷鸡会为你的项目和捕获建一份本地搜索索引，不会上传任何东西。";
 "main.empty.no_match" = "没有符合筛选的条目";
@@ -138,6 +134,7 @@
 "main.empty.try_shorter" = "试试更短的词，或换个说法。";
 
 "main.error.bad_transition" = "当前状态下不能这样改。";
+"main.error.deleted" = "它在已丢弃里，先恢复它。";
 "main.error.cant_edit" = "现在不能修改";
 "main.error.generic" = "出了点问题，详情见日志。";
 "main.error.key_taken" = "这个前缀已经被别的项目用了。";
@@ -149,17 +146,19 @@
 "main.error.timeout" = "等太久了，稍后再试。";
 "main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
 
-"main.filter.any_review" = "全部审核状态";
-"main.filter.any_work" = "全部处理状态";
 "main.filter.kind" = "按种类筛选";
+"main.filter.live" = "除已丢弃外全部";
+"main.filter.needs_you" = "需要你看的";
 "main.filter.only_kind" = "只看%@（%ld）";
-"main.filter.review" = "按审核状态筛选";
-"main.filter.work" = "按处理状态筛选";
 
+"main.filter.state" = "按状态筛选";
 "main.handoff.copied" = "指令已复制，粘贴到 Claude Code、Codex 或其它 agent 里";
 "main.handoff.copied_full" = "全文已复制，截图用路径引用";
 "main.handoff.failed" = "没能准备交接内容";
 
+"main.inbox.needs_you" = "需要你看的：%@";
+"main.inbox.new" = "%ld 条新的";
+"main.inbox.verify" = "%ld 条待验证";
 "main.item.untitled" = "无标题";
 
 "main.job.error.auth" = "agent 没有登录。";
@@ -182,7 +181,7 @@
 "main.job.step_state.skipped" = "跳过";
 "main.job.stop" = "停止";
 
-"main.keys.keep" = "保留 / 改回待审";
+"main.keys.back" = "退回 · 收回 · 重新打开 · 恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、任务";
 "main.keys.next" = "下一条 / 上一条";
 "main.keys.open" = "打开（进入详情）";
@@ -192,17 +191,18 @@
 "main.keys.reveal_copy" = "在访达中显示 · 拷贝路径";
 "main.keys.search" = "搜索";
 "main.keys.space" = "空格";
+"main.keys.state" = "更改状态（打开菜单）";
 "main.keys.this" = "这个面板";
 
 "main.list.label" = "条目";
 
+"main.menu.change_state" = "更改状态…";
 "main.menu.copy_link" = "拷贝链接";
 "main.menu.kind" = "种类";
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";
 "main.menu.quick_look" = "快速查看";
 "main.menu.rename" = "改标题…";
-"main.menu.review" = "审核";
 "main.menu.review_batch" = "审核整批捕获";
 "main.menu.start_session" = "开 agent 会话处理";
 
@@ -265,7 +265,7 @@
 "main.session.snaps" = "截图 %@";
 "main.session.voice" = "语音 %@";
 
-"main.sidebar.inbox.ax" = "收件箱：待审和待验证的条目";
+"main.sidebar.inbox.ax" = "收件箱：新的和待验证的条目";
 "main.sidebar.label" = "侧栏";
 "main.sidebar.missing" = "文件夹不见了";
 "main.sidebar.not_opened" = "还没作为项目打开";
@@ -274,6 +274,7 @@
 "main.sidebar.projects" = "项目";
 "main.sidebar.unassigned.ax" = "待分配：还没归到项目的条目";
 
+"main.state.ax" = "状态：%@。点按可更改。";
 "main.toast.download_failed" = "没能保存：%@";
 "main.toast.downloaded" = "已存到「下载」：%@";
 "main.speech.recommended" = "推荐这台 Mac 使用的语音识别模型 · %@";

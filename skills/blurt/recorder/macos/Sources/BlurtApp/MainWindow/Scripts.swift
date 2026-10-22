@@ -74,9 +74,10 @@ enum Scripts {
         call("items.py", ["user-ops"] + scope + ["--stdin"] + (confirm ? ["--confirm"] : []), stdin: body, timeout: 30, done: done)
     }
 
-    /// items.py work REF… --state S --by user (K3: only the user marks done).
-    static func work(_ uids: [String], _ state: String, note: String? = nil, done: @escaping (Result<[String: Any], Failure>) -> Void) {
-        call("items.py", ["work"] + uids + ["--state", state, "--by", "user"] + (note.map { ["--note", $0] } ?? []), timeout: 30, done: done)
+    /// items.py state REF… --action A --by user (K3: keep, done, send_back, take_back, reopen, restore, wontfix, discard —
+    /// only the user does these). → {"ok", "items": [{"uid", "id", "state", "work"}]}; codes bad_transition / deleted.
+    static func state(_ uids: [String], action: String, note: String? = nil, done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("items.py", ["state"] + uids + ["--action", action, "--by", "user"] + (note.map { ["--note", $0] } ?? []), timeout: 30, done: done)
     }
 
     /// items.py move REF… --project P|inbox --by user (the AI never moves them back).

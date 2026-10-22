@@ -22,6 +22,13 @@ enum SelfTests {
             guard let cmd = n.userInfo?["cmd"] as? String else { return }
             MainActor.assumeIsolated { run(cmd) }
         }
+        // a menu that opens (the state menu, a context menu, a popup) runs its own loop, where these commands don't
+        // arrive: it closes by itself after 3 s, time enough for a screenshot
+        NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil) { n in
+            guard let m = n.object as? NSMenu, m.supermenu == nil, m !== NSApp.mainMenu else { return }
+            let t = Timer(timeInterval: 3, repeats: false) { _ in m.cancelTracking() }
+            RunLoop.main.add(t, forMode: .common)
+        }
         emit(["event": "wp6_ready", "channel": channel])
     }
 
@@ -132,6 +139,18 @@ enum SelfTests {
             c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
             c.window?.makeFirstResponder(c.list.table)
             out(["selected": c.list.selectedIDs])
+        case "mainselid":               // mainselid UID[,UID…]: select those items in the current list
+            let c = MainWindowController.shared
+            let rows = IndexSet(arg.split(separator: ",").compactMap { c.model.row(of: String($0)) })
+            c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
+            c.window?.makeFirstResponder(c.list.table)
+            out(["selected": c.list.selectedIDs, "states": c.list.selectedItems.map(\.state)])
+        case "maincounts":              // what the sidebar and the menu-bar badge say
+            let c = MainWindowController.shared
+            MenuBadge.shared.refresh()
+            out(["inbox": c.model.counts.inbox, "new": c.model.counts.new, "to_verify": c.model.counts.toVerify,
+                 "active": c.model.counts.active, "badge": MenuBadge.shared.count, "subtitle": c.window?.subtitle ?? "",
+                 "rows": c.model.rowCount, "projects": c.model.projects.map { "\($0.name)=\($0.inbox)" }])
         case "mainopen":                // mainopen PATH[|PATH…]: what the Open panel's OK / a folder drop does
             MainWindowController.shared.show()
             MainWindowController.shared.openFolders(arg.split(separator: "|").map { URL(fileURLWithPath: String($0)) })
@@ -176,9 +195,63 @@ enum SelfTests {
             out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS])
         case "mainproject":             // mainproject ID: its settings sheet
             MainWindowController.shared.projectSettings(arg)
-        case "mainwork", "mainmove":    // mainwork STATE / mainmove PROJECT: on the selection
+        case "mainstate", "mainmove":   // mainstate ACTION (K3: keep, done, back, …) / mainmove PROJECT: on the selection
             let c = MainWindowController.shared
-            if parts[0] == "mainwork" { c.setWork(arg) } else { c.move(uids: c.list.selectedItems.map(\.uid), to: arg) }
+            if parts[0] == "mainstate" {
+                if arg == "back" { c.act(key: "r") } else { c.apply(arg, to: c.list.selectedItems) }
+            } else { c.move(uids: c.list.selectedItems.map(\.uid), to: arg) }
+        case "mainringclick":           // mainringclick ROW: a click on that row's state ring (selects it, opens the state menu)
+            let c = MainWindowController.shared
+            let b = Int(arg).flatMap { c.list.ringView(row: $0) } as? NSButton
+            out(["found": b != nil])
+            DispatchQueue.main.async { b?.performClick(nil) }
+        case "mainsearchkey", "mainlistkey":   // CHAR typed into the search field / the list, through NSApp (menus first)
+            let c = MainWindowController.shared
+            if parts[0] == "mainsearchkey" { c.focusSearch() } else { c.window?.makeFirstResponder(c.list.table) }
+            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: c.window?.windowNumber ?? 0, context: nil, characters: arg,
+                                        charactersIgnoringModifiers: arg, isARepeat: false, keyCode: 2) {
+                NSApp.sendEvent(e)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                out(["search": c.searchItem?.searchField.stringValue ?? "", "responder": "\(type(of: c.window?.firstResponder as Any))"])
+            }
+        case "mainkey":                 // mainkey CHAR: a key on the list (a d r w x s …), as typed
+            let c = MainWindowController.shared
+            c.window?.makeFirstResponder(c.list.table)
+            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c.window?.windowNumber ?? 0,
+                                        context: nil, characters: arg, charactersIgnoringModifiers: arg, isARepeat: false,
+                                        keyCode: arg == "\u{7f}" ? 51 : 0) {
+                // async: S opens a menu, which runs its own loop until it closes
+                DispatchQueue.main.async { c.list.table.keyDown(with: e) }
+            }
+            out(["key": arg])
+        case "mainfilter":              // mainfilter STATE|inbox|all: the State filter
+            let c = MainWindowController.shared
+            c.model.state = arg == "all" || arg.isEmpty ? nil : arg
+            c.model.reload()
+            out(["state": c.model.state ?? NSNull(), "rows": c.model.rowCount])
+        case "mainpopup":               // mainpopup filter|context: open the State filter / the selection's context menu
+            let c = MainWindowController.shared
+            DispatchQueue.main.async {
+                if arg == "filter" { c.list.bar.state.performClick(nil); return }
+                guard let r = c.list.table.selectedRowIndexes.first, let m = c.contextMenu(for: c.list.table.selectedRowIndexes) else { return }
+                let rect = c.list.table.rect(ofRow: r)
+                m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 160, y: rect.midY), in: c.list.table)
+            }
+        case "mainitemmenu":            // the menu bar's Item menu for the selection: titles, keys, enabled
+            let c = MainWindowController.shared
+            let m = NSApp.mainMenu?.items.first { $0.title == T("menu.item") }?.submenu
+            m?.update()
+            out(["items": m?.items.filter { !$0.isSeparatorItem }.map { "\($0.title) [\($0.keyEquivalent)]\($0.isEnabled ? "" : " (off)")" } ?? [],
+                 "selected": c.list.selectedIDs.count])
+        case "mainstatemenu":           // the state menu of the selection, as titles + subtitles (what the ring offers)
+            let c = MainWindowController.shared
+            let m = StateMenu.menu(for: c.list.selectedItems, canHandOff: true, selector: #selector(MainWindowController.mState(_:)), target: c)
+            out(["items": m.items.filter { !$0.isSeparatorItem }.map { i -> String in
+                if #available(macOS 14.4, *) { return "\(i.title) — \(i.subtitle ?? "")" }
+                return i.title
+            }])
         case "mainhandoff":             // mainhandoff instruction|full: copy for your own agent
             let c = MainWindowController.shared
             c.handOff(uids: c.list.selectedItems.map(\.uid), what: arg.isEmpty ? "instruction" : arg) { r in

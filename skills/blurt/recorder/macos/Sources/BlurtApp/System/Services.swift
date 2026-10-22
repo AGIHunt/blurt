@@ -91,7 +91,7 @@ final class ServiceProvider: NSObject {
 
     static func add(_ note: Note) async throws -> (session: URL, uid: String) {
         let dir = try inboxSession()
-        var item: [String: Any] = ["kind": "note", "title": note.title, "status": "draft"]
+        var item: [String: Any] = ["kind": "note", "title": note.title]       // state: new (K3's default)
         if !note.text.isEmpty { item["quote"] = note.text }
         if let f = note.from { item["source"] = ["app": f] }
         item["tags"] = ["inbox"]

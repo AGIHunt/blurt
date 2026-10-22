@@ -1,11 +1,11 @@
 // What the main window shows: the sidebar place, the filters, the search text — and the matching rows, read straight
-// from index.db (IndexReader v2, read-only) — plus the projects (projects.json, K2) and the running jobs (K4).
+// from index.db (IndexReader v3, read-only) — plus the projects (projects.json, K2) and the running jobs (K4).
 // Reloads are synchronous on the main thread: on 20k items a filter change is ~10 ms and a search ~5–10 ms
 // (Tests/BlurtCoreTests), so there is nothing to gain from going async and a lot of flicker to lose. Rows are fetched
 // a page at a time: the table only ever asks for what is on screen.
 //
 // Places (K2 / K3):
-//   Inbox        what needs you: items to review (draft) and items an agent says are done (to_verify)
+//   Inbox        what needs you: new items and items an agent says are finished (new + to_verify)
 //   In Progress  handed off, in progress, to verify — with the running jobs above the list
 //   Unassigned   items not filed under a project yet (the inbox store)
 //   All Items    everything, as a full table
@@ -64,7 +64,7 @@ enum IndexState: Equatable {
 struct ProjectEntry: Equatable {
     let id: String, name: String, key: String, path: URL
     let registered: Bool, exists: Bool, pinned: Bool
-    var open = 0, attention = 0
+    var open = 0, inbox = 0
 }
 
 final class MainModel {
@@ -73,8 +73,7 @@ final class MainModel {
 
     var scope: Scope = .inbox
     var kinds: Set<String> = []                 // empty = every kind
-    var status: String?                         // nil = all but dropped | draft | confirmed | deleted
-    var work: String?                           // nil = any | todo | handed_off | in_progress | to_verify | done | wontfix
+    var state: String?                          // nil = all but discarded | "inbox" (needs you) | one of Lifecycle.states
     var text = ""
     var sort = "updated"
     var ascending = false
@@ -97,7 +96,7 @@ final class MainModel {
     var onJobs: (() -> Void)?
 
     var rowCount: Int { uids.count }
-    var filtered: Bool { !kinds.isEmpty || status != nil || work != nil || !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    var filtered: Bool { !kinds.isEmpty || state != nil || !text.trimmingCharacters(in: .whitespaces).isEmpty }
 
     init() {
         open()
@@ -168,12 +167,12 @@ final class MainModel {
     // MARK: queries
 
     var query: ItemQuery {
-        var q = ItemQuery(text: text, kinds: kinds.sorted(), statuses: status.map { [$0] } ?? [],
-                          workStates: work.map { [$0] } ?? [], sort: sort, limit: 0)
+        var q = ItemQuery(text: text, kinds: kinds.sorted(), states: state.flatMap { $0 == "inbox" ? nil : [$0] } ?? [],
+                          inbox: state == "inbox", sort: sort, limit: 0)
         q.ascending = ascending
         switch scope {
-        case .inbox: q.attention = true
-        case .inProgress: if work == nil { q.workStates = ["handed_off", "in_progress", "to_verify"] }
+        case .inbox: q.inbox = true
+        case .inProgress: if state == nil { q.states = Lifecycle.states.filter(Lifecycle.active.contains) }
         case .unassigned: q.project = "inbox"
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
@@ -193,16 +192,16 @@ final class MainModel {
         var list = ProjectStore.shared.projects.map { p -> ProjectEntry in
             var e = ProjectEntry(id: p.id, name: p.name, key: p.key, path: p.path, registered: true, exists: p.exists, pinned: p.pinned)
             e.open = byID[p.id]?.openItems ?? 0
-            e.attention = byID[p.id]?.attention ?? 0
+            e.inbox = byID[p.id]?.inbox ?? 0
             return e
         }
         // folders the index found that aren't opened as projects (v0.6 workspaces): listed, dimmed, with their items
         let known = Set(list.map(\.id))
-        for r in byID.values.sorted(by: { $0.name < $1.name }) where !r.isInbox && !known.contains(r.id) && (r.openItems > 0 || r.attention > 0) {
+        for r in byID.values.sorted(by: { $0.name < $1.name }) where !r.isInbox && !known.contains(r.id) && (r.openItems > 0 || r.inbox > 0) {
             var e = ProjectEntry(id: r.id, name: r.name, key: r.key, path: URL(fileURLWithPath: r.path), registered: false,
                                  exists: FileManager.default.fileExists(atPath: r.path), pinned: false)
             e.open = r.openItems
-            e.attention = r.attention
+            e.inbox = r.inbox
             list.append(e)
         }
         projects = list
@@ -240,7 +239,7 @@ final class MainModel {
             let rows = (try? r.items(uids: slice, terms: query.terms)) ?? []
             // a uid can vanish between the two queries (index.py committed): keep the row count stable until the reload
             let byUID = Dictionary(rows.map { ($0.uid, $0) }, uniquingKeysWith: { a, _ in a })
-            pages[p] = slice.map { byUID[$0] ?? ItemRow(uid: $0, itemID: "", kind: "note", title: "…", status: "draft") }
+            pages[p] = slice.map { byUID[$0] ?? ItemRow(uid: $0, itemID: "", kind: "note", title: "…") }
         }
         return pages[p]?[row % pageSize]
     }

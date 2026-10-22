@@ -1,5 +1,5 @@
-// Watches every item store (each project's .blurt/ and the inbox — K1) for item files whose work.state becomes
-// "to_verify" (K3) — whoever wrote it: an agent in a Blurt session (mark_fixed / items.py work), the session monitor
+// Watches every item store (each project's .blurt/ and the inbox — K1) for item files whose state becomes
+// "to_verify" (K3) — whoever wrote it: an agent in a Blurt session (mark_fixed / items.py state), the session monitor
 // when the agent exited, a worktree merge, an agent outside Blurt with the MCP. Then the chicken pecks the item and
 // a notification says so (FixRunner.announceFixed). A file seen for the first time is only a baseline.
 import AppKit
@@ -11,7 +11,7 @@ final class FixWatcher {
 
     private var stream: FSEventStreamRef?
     private var roots: [String] = []
-    private var states: [String: String] = [:]                // item file path → work.state
+    private var states: [String: String] = [:]                // item file path → its K3 state
     private var rootTimer: Timer?
     var onChange: ((URL) -> Void)?                             // a store's items changed
     var onFixed: ((_ uid: String, _ item: [String: Any], _ file: URL) -> Void)?
@@ -47,7 +47,7 @@ final class FixWatcher {
         for r in want {
             for f in (try? FileManager.default.contentsOfDirectory(atPath: r)) ?? [] where f.hasSuffix(".md") {
                 let p = "\(r)/\(f)"
-                if states[p] == nil { states[p] = Self.frontMatter(URL(fileURLWithPath: p)).flatMap(Self.workState) ?? "todo" }
+                if states[p] == nil { states[p] = Self.frontMatter(URL(fileURLWithPath: p)).map(Self.state) ?? "new" }
             }
         }
         guard !want.isEmpty else { return }
@@ -79,7 +79,7 @@ final class FixWatcher {
     func check(_ file: URL) {
         let p = Self.real(file.path)         // FSEvents says /private/tmp where URL APIs say /tmp: one key for both
         guard FileManager.default.fileExists(atPath: p), let fm = Self.frontMatter(file) else { states[p] = nil; return }
-        let now = Self.workState(fm) ?? "todo"
+        let now = Self.state(fm)
         let before = states[p]
         states[p] = now
         guard let b = before, b != "to_verify", now == "to_verify", let uid = fm["uid"] as? String else { return }
@@ -95,7 +95,8 @@ final class FixWatcher {
         return String(cString: d) + "/" + u.lastPathComponent
     }
 
-    static func workState(_ fm: [String: Any]) -> String? { (fm["work"] as? [String: Any])?["state"] as? String }
+    /// The item's state: top-level `state`, else the old two axes (status + work.state / v2 fix) as K3 migrates them.
+    static func state(_ fm: [String: Any]) -> String { Lifecycle.state(of: fm) }
 
     /// The K1 front-matter: one `key: value` per line between the `---` fences; values that look like JSON are JSON.
     static func frontMatter(_ url: URL) -> [String: Any]? {

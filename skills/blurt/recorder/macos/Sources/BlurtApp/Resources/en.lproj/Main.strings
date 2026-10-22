@@ -75,23 +75,17 @@
 "main.banner.organizing" = "Still being organized · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
-"main.banner.to_verify" = "%@ says it’s done. Check it, then mark it done.";
-"main.banner.to_verify.anon" = "The agent says it’s done. Check it, then mark it done.";
 "main.banner.with_agent" = "With %@ · %@";
 
 "main.cmd.copy_full" = "Copy Full Text";
 "main.cmd.copy_instruction" = "Copy Instruction";
-"main.cmd.mark_done" = "Mark as Done";
-"main.cmd.reopen" = "Reopen";
-"main.cmd.wontfix" = "Won’t Do";
 
 "main.col.id" = "ID";
 "main.col.kind" = "Kind";
 "main.col.project" = "Project";
-"main.col.review" = "Review";
+"main.col.state" = "State";
 "main.col.title" = "Title";
 "main.col.updated" = "Updated";
-"main.col.work" = "Status";
 
 "main.detail.gone" = "The item’s file is gone";
 "main.detail.label" = "Item detail";
@@ -114,11 +108,13 @@
 "main.empty.all_filed.detail" = "Captures with no project wait here until you or the AI file them.";
 "main.empty.clear_all" = "Clear Search & Filters";
 "main.empty.clear_filters" = "Clear Filters";
+"main.empty.discarded" = "Nothing discarded";
+"main.empty.discarded.detail" = "Items you discard wait here, and you can restore them.";
 "main.empty.filters_on" = "Filters are on, too.";
 "main.empty.first" = "Talk through your work";
 "main.empty.first.detail" = "Open a project folder, then record your screen (%@) or snap a few shots (%@) while you talk. Blurt turns it into items your agents can work on.";
-"main.empty.inbox_zero" = "All caught up";
-"main.empty.inbox_zero.detail" = "Nothing to review and nothing waiting to be verified.";
+"main.empty.inbox_zero" = "Nothing needs you right now";
+"main.empty.inbox_zero.detail" = "New captures, and items an agent says are finished, show up here.";
 "main.empty.no_index" = "No index yet";
 "main.empty.no_index.detail" = "Blurt builds a local search index of your projects and captures. Nothing leaves this Mac.";
 "main.empty.no_match" = "Nothing matches these filters";
@@ -137,7 +133,8 @@
 "main.empty.scanning" = "Scanning your captures…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
 
-"main.error.bad_transition" = "That status change isn’t possible from here.";
+"main.error.bad_transition" = "That state change isn’t possible from here.";
+"main.error.deleted" = "It’s in Discarded. Restore it first.";
 "main.error.cant_edit" = "Can’t edit right now";
 "main.error.generic" = "Something went wrong. The details are in the log.";
 "main.error.key_taken" = "Another project already uses that key.";
@@ -149,17 +146,19 @@
 "main.error.timeout" = "It took too long. Try again in a moment.";
 "main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
 
-"main.filter.any_review" = "Any Review";
-"main.filter.any_work" = "Any Status";
 "main.filter.kind" = "Filter by kind";
+"main.filter.live" = "All but Discarded";
+"main.filter.needs_you" = "Needs You";
 "main.filter.only_kind" = "Only %@ (%ld)";
-"main.filter.review" = "Filter by review";
-"main.filter.work" = "Filter by status";
 
+"main.filter.state" = "Filter by state";
 "main.handoff.copied" = "Instruction copied — paste it into Claude Code, Codex or any agent";
 "main.handoff.copied_full" = "Full text copied — screenshots are linked by path";
 "main.handoff.failed" = "Couldn’t prepare the hand-off";
 
+"main.inbox.needs_you" = "Needs you: %@";
+"main.inbox.new" = "%ld new";
+"main.inbox.verify" = "%ld to verify";
 "main.item.untitled" = "Untitled";
 
 "main.job.error.auth" = "The agent isn’t logged in.";
@@ -182,7 +181,7 @@
 "main.job.step_state.skipped" = "skipped";
 "main.job.stop" = "Stop";
 
-"main.keys.keep" = "Keep / back to review";
+"main.keys.back" = "Send back · take back · reopen · restore";
 "main.keys.kind" = "Kind: issue, idea, note, task";
 "main.keys.next" = "Next / previous";
 "main.keys.open" = "Open (focus the detail)";
@@ -192,17 +191,18 @@
 "main.keys.reveal_copy" = "Show in Finder · copy path";
 "main.keys.search" = "Search";
 "main.keys.space" = "Space";
+"main.keys.state" = "Change state (the menu)";
 "main.keys.this" = "This panel";
 
 "main.list.label" = "Items";
 
+"main.menu.change_state" = "Change State…";
 "main.menu.copy_link" = "Copy Link";
 "main.menu.kind" = "Kind";
 "main.menu.move_to" = "Move to Project";
 "main.menu.open_in" = "Open in %@";
 "main.menu.quick_look" = "Quick Look";
 "main.menu.rename" = "Rename…";
-"main.menu.review" = "Review";
 "main.menu.review_batch" = "Review the Whole Capture";
 "main.menu.start_session" = "Start Agent Session";
 
@@ -265,7 +265,7 @@
 "main.session.snaps" = "Snaps, %@";
 "main.session.voice" = "Voice note, %@";
 
-"main.sidebar.inbox.ax" = "Inbox: items to review and items to verify";
+"main.sidebar.inbox.ax" = "Inbox: new items and items to verify";
 "main.sidebar.label" = "Sidebar";
 "main.sidebar.missing" = "folder not found";
 "main.sidebar.not_opened" = "not opened as a project";
@@ -274,6 +274,7 @@
 "main.sidebar.projects" = "Projects";
 "main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
 
+"main.state.ax" = "State: %@. Click to change it.";
 "main.toast.download_failed" = "Couldn’t save it: %@";
 "main.toast.downloaded" = "Saved to Downloads: %@";
 "main.speech.recommended" = "Recommended speech model for this Mac · %@";
