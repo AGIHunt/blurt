@@ -3,7 +3,7 @@
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
 //     menudump [FILE]         the ⌥⇧B menu as text rows (also written to FILE), without opening it
-//     cards [show|reveal|dismiss]  the cards down (peek) / down to stay (= ⌥⇧H) / Esc; their state, every card's rect
+//     cards [show|reveal|dismiss|older]  the cards down (peek) / to stay (= ⌥⇧H) / Esc / "+N" clicked; their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
@@ -64,6 +64,7 @@ extension App {
             if arg == "show" { hanging.show(peek: 8) }
             if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥⇧H / the ear's count / the menu
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
+            if arg == "older" { hanging.showOlder() }               // = a click on the "+N" stack
             emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])
             emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
