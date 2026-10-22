@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Blurt design tokens (macOS / Windows / GNOME × light / dark) and the theme/platform helpers shared by the review canvas and the Tauri shell.",
+  "description": "Blurt design tokens (macOS / Windows / GNOME × light / dark), the theme/platform helpers, and the K8 kind icons and work-state ring shared by the review canvas and the Tauri shell.",
   "exports": {
     ".": "./src/index.ts",
+    "./react": "./src/react.tsx",
     "./tokens.css": "./src/tokens.css",
     "./base.css": "./src/base.css"
   },
@@ -13,8 +14,21 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ."
   },
+  "dependencies": {
+    "@blurt/icons": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  },
   "devDependencies": {
     "@types/node": "22.18.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
   }

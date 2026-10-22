@@ -1,22 +1,25 @@
+import { KindIcon, StatusRing } from "@blurt/ui/react";
 import { useLayoutEffect, useRef } from "react";
 import type { Item } from "../host";
-import { kindOf } from "../store";
-import { statusOf } from "../sync";
-import { Egg } from "./icons";
-import { Icon } from "./Icon";
+import { kindOf, type ReviewStore } from "../store";
 import { cx, useStore } from "./ctx";
 
-/** The fix state next to a title, as in the main window: fixed = a check (and the title struck through, via .fx-fixed),
-    fixing = the agent-run mark, pulsing gently. Other states show nothing here (the inspector's chip has them). */
-export function FixMark({ i }: { i: Item }) {
+/** The work ring with its localized name; "handed off" says to whom (K10 work.handed_off.session / .external). */
+export function WorkRing({ i, size = 14 }: { i: Item; size?: number }) {
   const s = useStore();
-  const st = i.fix?.state;
-  if (st !== "fixed" && st !== "fixing") return null;
-  return <Icon name={st === "fixed" ? "check" : "agent-run"} size={13} className={"fxi fxi-" + st} title={s.t(("fix_" + st) as never)} />;
+  const w = s.workOf(i);
+  return <StatusRing state={w} size={size} label={workText(s, i)} />;
 }
 
-/** the row / card class for an item's fix state ("fx-fixed", "fx-fixing"), or nothing */
-export const fixClass = (i: Item) => (i.fix?.state === "fixed" || i.fix?.state === "fixing" ? "fx-" + i.fix.state : null);
+export function workText(s: ReviewStore, i: Item): string {
+  const w = s.workOf(i);
+  if (w === "handed_off" && i.work?.to === "session") return s.t("work.handed_off.session", { agent: agentName(i.work.agent) });
+  if (w === "handed_off" && i.work?.to === "external") return s.t("work.handed_off.external");
+  return s.workLabel(w);
+}
+
+const AGENTS: Record<string, string> = { claude: "Claude Code", codex: "Codex", human: "" };
+export const agentName = (a: string | null | undefined) => (a ? (AGENTS[a] ?? a) : "agent");
 
 export function Queue() {
   const s = useStore();
@@ -25,28 +28,29 @@ export function Queue() {
     ref.current?.querySelector(".qi.cur")?.scrollIntoView({ block: "nearest" });
   }, [s.cur, s.slideKey]);
   return (
-    <nav className="queue scroll" id="queue" ref={ref} aria-label="Items">
+    <nav className="queue scroll" id="queue" ref={ref} aria-label={s.t("view.list")}>
       {s.data.items.map((i, k) => {
-        const st = statusOf(i);
+        const st = s.st(i);
         const ask = (i.questions || []).length > 0 && !i.answer;
+        const kd = kindOf(i);
         return (
-          <div key={i.id} className={cx("qi", st, k === s.cur && "cur", fixClass(i))} data-k={k} onClick={() => s.go(k)} aria-current={k === s.cur ? "true" : undefined}>
-            <span className="n">{String(k + 1).padStart(2, "0")}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <div key={s.keyOf(i)} className={cx("qi", st, k === s.cur && "cur", "w-" + s.workOf(i))} data-k={k} onClick={() => s.go(k)} aria-current={k === s.cur ? "true" : undefined}>
+            <span className="rd" title={st === "pending" ? s.t("review.draft") : undefined} />
+            <KindIcon kind={kd} size={15} title={s.kindLabel(kd)} />
+            <div className="qb">
               <div className="t">
-                <span className="ki">
-                  <Egg kind={kindOf(i)} />
-                </span>
                 <span className="tt">{i.title}</span>
-                <FixMark i={i} />
               </div>
-              {ask && (
-                <div className="q">
-                  <span className="qd" /> {s.t("ask")}
-                </div>
-              )}
+              <div className="qm">
+                <span className="n">{i.id}</span>
+                {ask && (
+                  <span className="q">
+                    <span className="qd" /> {s.t("ask.title")}
+                  </span>
+                )}
+              </div>
             </div>
-            <span className="st" />
+            <WorkRing i={i} />
           </div>
         );
       })}

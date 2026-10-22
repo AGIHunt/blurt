@@ -59,6 +59,7 @@ describe("formatting", () => {
   });
   it("durations: clock and words", () => {
     expect(en.formatDuration(65)).toBe("1:05");
+    expect(en.formatDuration(0.9)).toBe("0:00");
     expect(en.formatDuration(3725)).toBe("1:02:05");
     expect(en.formatDuration(65, "short")).toMatch(/^1 min,? 5 sec$/);
     expect(zh.formatDuration(65, "short")).toMatch(/1\s*分钟\s*5\s*秒/);

@@ -207,3 +207,32 @@ kbd {
   animation: none !important;
   transition: none !important;
 }
+
+/* ---------- K8: kind icons and the work-state ring (@blurt/ui/react, statusRingSvg) ---------- */
+.kind-ic {
+  display: inline-flex;
+  flex: none;
+  line-height: 0;
+  color: var(--kc-light);
+}
+[data-theme="dark"] .kind-ic {
+  color: var(--kc-dark);
+}
+.kind-ic.k-issue { color: var(--kind-issue); }
+.kind-ic.k-idea { color: var(--kind-idea); }
+.kind-ic.k-note { color: var(--kind-note); }
+.kind-ic.k-task { color: var(--kind-task); }
+.sring {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  overflow: visible;
+  --ring-cut: #fff;
+}
+.sring.s-todo { color: var(--mute); }
+.sring.s-handed_off,
+.sring.s-in_progress { color: var(--accent); }
+.sring.s-to_verify { color: var(--warn); }
+.sring.s-done { color: var(--keep); }
+.sring.s-wontfix { color: var(--faint); }
+[data-theme="dark"] .sring.s-to_verify { --ring-cut: #2a1a00; }

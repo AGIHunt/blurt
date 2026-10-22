@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import type { ReviewStore } from "../store";
-import { EggSprite } from "./icons";
 import { Inspector } from "./Inspector";
 import { Done, Lightbox, Modal, Toast } from "./Overlays";
 import { Queue } from "./Queue";
@@ -12,14 +11,15 @@ import { cx, StoreCtx, useStore } from "./ctx";
 function Shell({ onTheme }: { onTheme: () => void }) {
   const s = useStore();
   useEffect(() => {
-    const title = `${s.data.title || s.data.session || "blurt"} · ${s.t("reviewTitle")}`;
-    if (s.loaded && document.title !== title) document.title = title;
-    document.documentElement.lang = s.lang === "zh" ? "zh-CN" : "en";
+    document.documentElement.lang = s.lang === "zh-Hans" ? "zh-Hans" : "en";
+    if (s.embedded || !s.loaded) return;
+    const title = s.t("page.title", { name: String(s.data.title || s.data.session || s.t("page.brand")) });
+    if (document.title !== title) document.title = title;
   });
   if (s.loadError)
     return (
       <div className="fail">
-        <p>{s.loadError}</p>
+        <p>{s.t("load.failed", { error: s.loadError })}</p>
       </div>
     );
   if (!s.loaded) return <div className="boot" aria-busy="true" />;
@@ -33,11 +33,11 @@ function Shell({ onTheme }: { onTheme: () => void }) {
           </main>
         ) : (
           <div className="fail">
-            <p>{s.t("noItem")}</p>
+            <p>{s.t("item.gone")}</p>
           </div>
         )}
         <span className={cx("saved item-saved", s.saveState === "error" && "err")} id="saved" aria-live="polite">
-          {s.saveState === "saving" ? s.t("saving") : s.saveState === "error" ? s.t("saveError") : ""}
+          {s.saveState === "saving" ? s.t("save.saving") : s.saveState === "error" ? s.t("save.error") : ""}
         </span>
         <Toast />
         <Modal />
@@ -79,7 +79,6 @@ export function App({ store, onTheme }: { store: ReviewStore; onTheme: () => voi
   }, [store]);
   return (
     <StoreCtx.Provider value={store}>
-      <EggSprite />
       <Shell onTheme={onTheme} />
     </StoreCtx.Provider>
   );

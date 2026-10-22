@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DragRect } from "../host";
-import { fmt, kindOf, type Media, type ReviewStore } from "../store";
-import { statusOf } from "../sync";
-import { Egg } from "./icons";
+import type { Media, ReviewStore } from "../store";
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
 
@@ -67,11 +65,10 @@ function Shot({ m }: { m: Media }) {
 function MediaBox({ items, k }: { items: Media[]; k: number }) {
   const s = useStore();
   const m = items[k];
-  const i = s.item!;
   if (!m)
     return (
       <div id="mediaBox">
-        <div className="shot none ready">{s.t("noMedia")}</div>
+        <div className="shot none ready">{s.t("media.none")}</div>
       </div>
     );
   if (m.kind === "wait")
@@ -79,8 +76,8 @@ function MediaBox({ items, k }: { items: Media[]; k: number }) {
       <div id="mediaBox">
         <div className={cx("shot wait ready", !s.stalled && "shim")} style={{ ["--ar" as string]: guessAR(s) }}>
           <div className="wait-in">
-            <Egg kind={kindOf(i)} />
-            <span>{s.stalled ? s.t("noMedia") : s.t("waitShot")}</span>
+            <Icon name="hatch" className="hatching" />
+            <span>{s.stalled ? s.t("media.none") : s.t("media.adding")}</span>
           </div>
         </div>
       </div>
@@ -101,25 +98,25 @@ function Caption({ m }: { m: Media | undefined }) {
     <div className="cap" id="mediaCap">
       <span className="tm">
         {m.label}
-        {m.kind === "orig" && m.start != null ? ` · ${fmt(m.start)}` : ""}
+        {m.kind === "orig" && m.start != null ? ` · ${s.clock(m.start)}` : ""}
       </span>
       {m.cap ? <span className="ct">{m.cap}</span> : null}
       {h.downloadUrl ? (
-        <a className="dl" href={h.downloadUrl(rel)} download title={s.t("download")} aria-label={s.t("download")}>
+        <a className="dl" href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
           <Icon name="download" />
         </a>
       ) : h.download ? (
-        <button className="dl" onClick={() => h.download!(rel)} title={s.t("download")} aria-label={s.t("download")}>
+        <button className="dl" onClick={() => h.download!(rel)} title={s.t("media.download")} aria-label={s.t("media.download")}>
           <Icon name="download" />
         </button>
       ) : null}
       {h.quickLook && (
-        <button className="dl" onClick={() => h.quickLook!(rel)} title={s.t("quickLook")} aria-label={s.t("quickLook")}>
+        <button className="dl" onClick={() => h.quickLook!(rel)} title={s.t("media.quick_look")} aria-label={s.t("media.quick_look")}>
           <Icon name="eye" />
         </button>
       )}
       {h.reveal && (
-        <button className="dl" onClick={() => h.reveal!(rel)} title={s.t(h.host === "macos" ? "reveal" : "revealWin")} aria-label={s.t("reveal")}>
+        <button className="dl" onClick={() => h.reveal!(rel)} title={s.t(h.host === "macos" ? "media.reveal_mac" : "media.reveal")} aria-label={s.t(h.host === "macos" ? "media.reveal_mac" : "media.reveal")}>
           <Icon name="folder" />
         </button>
       )}
@@ -177,7 +174,7 @@ export function Slide() {
   useDragRects(ref, [s.cur, k, items.length, s.slideKey]);
   if (!i) return null;
   return (
-    <div ref={ref} key={`${i.id}:${s.slideKey}`} className={cx("slide", anim && (s.dir === "up" ? "in-up" : "in-down"))}>
+    <div ref={ref} key={`${s.keyOf(i)}:${s.slideKey}`} className={cx("slide", anim && (s.dir === "up" ? "in-up" : "in-down"))}>
       <div className={cx("media", items.length >= 2 && "has-strip")}>
         <div className="frame">
           <MediaBox items={items} k={k} />
@@ -213,7 +210,7 @@ export function Stage() {
   const s = useStore();
   const ref = useRef<HTMLElement>(null);
   const i = s.item;
-  const st = i ? statusOf(i) : "pending";
+  const st = i ? s.st(i) : "pending";
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -242,22 +239,22 @@ export function Stage() {
         <div className="actions">
           <button className={cx("act drop", st === "drop" && "on")} id="dropBtn" onClick={() => s.decide("drop")}>
             <Icon name="x" size={16} />
-            <span>{s.t("drop")}</span>
+            <span>{s.t("action.drop")}</span>
             <kbd>X</kbd>
           </button>
           <button className="act ghost" id="mergeBtn" onClick={s.mergePrev}>
             <Icon name="merge" size={16} />
-            <span>{s.t("merge")}</span>
+            <span>{s.t("action.merge")}</span>
             <kbd>M</kbd>
           </button>
           <button className="act ghost" id="undoBtn" onClick={s.undo}>
             <Icon name="undo" size={16} />
-            <span>{s.t("undo")}</span>
+            <span>{s.t("action.undo")}</span>
             <kbd>Z</kbd>
           </button>
           <button className={cx("act keep", st === "keep" && "on")} id="keepBtn" onClick={() => s.decide("keep")}>
             <Icon name="check" size={17} />
-            <span>{s.t("keep")}</span>
+            <span>{s.t("action.keep")}</span>
             <kbd>A</kbd>
           </button>
         </div>

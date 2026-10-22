@@ -18,7 +18,9 @@ describe("norm / statusOf", () => {
     expect(n[1].kind).toBe("issue");
     expect(statusOf(n[0])).toBe("drop");
     expect(statusOf({ id: "x", _touched: true })).toBe("keep");
-    expect(statusOf({ id: "x", status: "confirmed" })).toBe("pending");
+    expect(statusOf({ id: "x", status: "confirmed" })).toBe("pending"); // v2: what this review decided
+    expect(statusOf({ id: "x", status: "confirmed" }, true)).toBe("keep"); // v3: persistent
+    expect(statusOf({ id: "x", status: "draft" })).toBe("pending");
   });
 });
 

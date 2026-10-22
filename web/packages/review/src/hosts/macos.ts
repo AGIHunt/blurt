@@ -1,12 +1,14 @@
-/* macos host (C6): the page is loaded from blurt-app://ui/index.html?session=<abs>&mode=… by a WKURLSchemeHandler,
-   session files come from blurt-app://session/<rel>, and every call goes through one message handler:
+/* macos host (C6, protocol v3): the main window loads blurt-app://ui/index.html?host=macos&… through a
+   WKURLSchemeHandler and every call goes through one message handler:
 
-     JS → native   webkit.messageHandlers.blurt.postMessage({id, method, params})
+     JS → native   webkit.messageHandlers.blurt.postMessage({id, method, params})      id 0 = no reply wanted
      native → JS   window.__blurtReply(id, result, error)       (or: a WKScriptMessageHandlerWithReply's promise)
 
-   method names = BlurtHost method names. The native side may describe itself before the page loads with a
-   document-start user script: window.blurtHostInfo = {host: "macos", methods: ["reveal", …], accent: "#0a84ff"}. */
-import type { BlurtHost, DragRect, LoadResult, OpsResult, PollResult, UserOp } from "../host";
+   load / poll / sendOps carry the scope ({session: abs} | {project: id, …}); files are
+   blurt-app://file/<percent-encoded absolute path> (v3) or blurt-app://session/<rel> (a v2 session). The native side
+   describes itself with a document-start user script:
+     window.blurtHostInfo = {host: "macos", scope: {project: "3f2a…"}, methods: ["reveal", "handoff", …], accent: "#0a84ff"} */
+import { isAbs, type BlurtHost, type DragRect, type HandoffResult, type LoadResult, type OpsResult, type PollResult, type Scope, type UserOp } from "../host";
 import { encodeRel } from "./browser";
 
 interface Handler {
@@ -14,9 +16,11 @@ interface Handler {
 }
 export interface HostInfo {
   host?: string;
-  /** optional methods the native side implements (reveal, quickLook, openCode, fixWithAgent, registerDragRects, download) */
+  /** optional methods the native side implements */
   methods?: string[];
   accent?: string;
+  scope?: Scope;
+  /** v2: the session dir (same as scope {session}) */
   session?: string;
 }
 type W = Window & {
@@ -25,7 +29,17 @@ type W = Window & {
   blurtHostInfo?: HostInfo;
 };
 
-const OPTIONAL = ["reveal", "quickLook", "openCode", "fixWithAgent", "registerDragRects", "download"] as const;
+export const OPTIONAL = ["reveal", "quickLook", "openCode", "dispatch", "handoff", "openSession", "registerDragRects", "download"] as const;
+
+/** the scope from blurtHostInfo, else the page URL (?project= / ?session=) */
+export function scopeFrom(win: Window, info: HostInfo = {}): Scope | undefined {
+  if (info.scope) return info.scope;
+  const q = new URLSearchParams(win.location.search);
+  const project = q.get("project");
+  if (project) return { project };
+  const session = info.session || q.get("session");
+  return session ? { session } : undefined;
+}
 
 export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtHost {
   const handler = win.webkit?.messageHandlers?.blurt;
@@ -88,21 +102,25 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
   };
 
   const info = win.blurtHostInfo || {};
-  const has = new Set(info.methods ?? OPTIONAL);
+  const scope = scopeFrom(win, info);
+  const has = new Set<string>(info.methods ?? OPTIONAL);
   const host: BlurtHost = {
     host: "macos",
     inApp: true,
-    load: () => call<LoadResult>("load"),
-    poll: (etag: string) => call<PollResult>("poll", { etag }),
-    sendOps: (ops: UserOp[], confirm?: boolean) => call<OpsResult>("sendOps", { ops, confirm: !!confirm }),
-    fileUrl: (rel: string) => (rel ? "blurt-app://session/" + encodeRel(rel) : ""),
-    confirmed: () => notify("confirmed", {}),
+    scope,
+    load: () => call<LoadResult>("load", { scope }),
+    poll: (etag: string) => call<PollResult>("poll", { etag, scope }),
+    sendOps: (ops: UserOp[], confirm?: boolean) => call<OpsResult>("sendOps", { ops, confirm: !!confirm, scope }),
+    fileUrl: (p: string) => (!p ? "" : isAbs(p) ? "blurt-app://file/" + encodeURIComponent(p) : "blurt-app://session/" + encodeRel(p)),
+    confirmed: () => notify("confirmed", { scope }),
   };
-  if (has.has("reveal")) host.reveal = (rel) => notify("reveal", { rel });
-  if (has.has("quickLook")) host.quickLook = (rel) => notify("quickLook", { rel });
+  if (has.has("reveal")) host.reveal = (path) => notify("reveal", { path });
+  if (has.has("quickLook")) host.quickLook = (path) => notify("quickLook", { path });
   if (has.has("openCode")) host.openCode = (ref) => notify("openCode", { ref });
-  if (has.has("fixWithAgent")) host.fixWithAgent = (itemIds) => notify("fixWithAgent", { itemIds });
+  if (has.has("dispatch")) host.dispatch = (uids) => notify("dispatch", { uids });
+  if (has.has("handoff")) host.handoff = (uids, what) => call<HandoffResult>("handoff", { uids, what });
+  if (has.has("openSession")) host.openSession = (job) => notify("openSession", { job });
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });
-  if (has.has("download")) host.download = (rel) => notify("download", { rel });
+  if (has.has("download")) host.download = (path) => notify("download", { path });
   return host;
 }

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 import type { BlurtHost, SessionDoc } from "../src/host";
 import { fieldLabel, humanizeKey, normKey } from "../src/fields";
+import { makeI18n } from "../src/i18n";
 import { ReviewStore } from "../src/store";
 import { StoreCtx } from "../src/ui/ctx";
 import { Inspector } from "../src/ui/Inspector";
@@ -19,12 +20,14 @@ describe("labels for fields the agent adds", () => {
     expect(normKey("Root-Cause")).toBe("root_cause");
   });
   it("has zh / en labels for the common ones, whatever the key's case", () => {
-    expect(fieldLabel("author", "zh")).toBe("作者");
-    expect(fieldLabel("suspected_cause", "zh")).toBe("疑似原因");
-    expect(fieldLabel("suspectedCause", "en")).toBe("Suspected cause");
-    expect(fieldLabel("rootCause", "zh")).toBe("根本原因");
-    for (const k of ["repro", "environment", "browser", "url", "version"]) expect(fieldLabel(k, "zh")).toMatch(/[一-鿿]/);
-    expect(fieldLabel("customer_tier", "zh")).toBe("Customer tier"); // unknown: humanised, never the raw key
+    const zh = makeI18n("zh-Hans");
+    const en = makeI18n("en");
+    expect(fieldLabel("author", zh)).toBe("作者");
+    expect(fieldLabel("suspected_cause", zh)).toBe("疑似原因");
+    expect(fieldLabel("suspectedCause", en)).toBe("Suspected cause");
+    expect(fieldLabel("rootCause", zh)).toBe("根本原因");
+    for (const k of ["repro", "environment", "browser", "url", "version"]) expect(fieldLabel(k, zh)).toMatch(/[一-鿿]/);
+    expect(fieldLabel("customer_tier", zh)).toBe("Customer tier"); // unknown: humanised, never the raw key
   });
   it("the inspector shows them instead of raw keys", async () => {
     const doc: SessionDoc = {

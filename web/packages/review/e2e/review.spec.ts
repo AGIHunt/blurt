@@ -249,9 +249,9 @@ test("list view: search, status and kind filters, open a card", async ({ page })
 
 test("media: ← → step through frames, clip and recording; lightbox; O jumps to the recording", async ({ page }) => {
   await ready(page);
-  await expect(page.locator("#mediaCap .tm")).toHaveText("00:00");
+  await expect(page.locator("#mediaCap .tm")).toHaveText(LEGACY ? "00:00" : "0:00");
   await page.keyboard.press("ArrowRight");
-  await expect(page.locator("#mediaCap .tm")).toHaveText("00:01");
+  await expect(page.locator("#mediaCap .tm")).toHaveText(LEGACY ? "00:01" : "0:01");
   await expect(page.locator("#mediaCap .ct")).toHaveText("Network 面板：POST /avatar 500");
   await page.keyboard.press("ArrowRight");
   await expect(page.locator("#mediaBox video")).toHaveCount(1);
@@ -304,15 +304,18 @@ test.describe("v1 session (no uid, one item dropped in this review)", () => {
   });
 });
 
-test("NEW: v2 fields — fix state and history shown, uid never shown as a field", async ({ page }) => {
+test("NEW: v2 fields — fix records shown as work state and history, uid never shown as a field", async ({ page }) => {
   newOnly();
   await ready(page);
-  await expect(page.locator("#fixChip")).toContainText("a1c3e5f");
-  await expect(page.locator(".fixlog li")).toHaveCount(2);
+  // v2 fix records read as K3 work states: fixed → to verify, reopened → to do
+  await expect(page.locator("#workRow .sring")).toHaveClass(/s-to_verify/);
+  await expect(page.locator("#workRow")).toContainText("a1c3e5f");
+  await expect(page.locator(".worklog li")).toHaveCount(2);
   await expect(page.locator('[data-k="uid"]')).toHaveCount(0);
+  await expect(page.locator(".qi .sring")).toHaveCount(5);
   await page.locator(".qi").nth(4).click();
-  await expect(page.locator("#fixChip")).toHaveClass(/fx-reopened/);
-  await expect(page.locator(".fixlog a")).toHaveAttribute("href", "https://github.com/example/app/pull/7");
+  await expect(page.locator("#workRow .sring")).toHaveClass(/s-todo/);
+  await expect(page.locator(".worklog a")).toHaveAttribute("href", "https://github.com/example/app/pull/7");
 });
 
 test.describe("item mode (the main window's detail pane)", () => {
