@@ -132,5 +132,11 @@ impl Drop for Cleanup {
     fn drop(&mut self) {
         blurt_desktop_lib::scripts::kill_tree(&mut self.monitor);
         let _ = Command::new("tmux").args(["-L", &self.socket, "kill-server"]).status();
+        // kill-server leaves the socket file behind
+        let dir = std::env::var("TMUX_TMPDIR").unwrap_or_else(|_| "/tmp".into());
+        let uid = Command::new("id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        if let Ok(uid) = uid {
+            let _ = std::fs::remove_file(std::path::Path::new(&dir).join(format!("tmux-{uid}")).join(&self.socket));
+        }
     }
 }
