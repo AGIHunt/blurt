@@ -33,10 +33,15 @@ final class DictationHistoryModel: ObservableObject {
         return out
     }
 
-    func copy(_ s: String) {
+    /// The row whose copy button just worked: it shows a check for a moment.
+    @Published var copied: String?
+
+    func copy(_ s: String, from id: String? = nil) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
         emit(["event": "dictation_history", "action": "copy"])
+        copied = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in if self?.copied == id { self?.copied = nil } }
     }
 
     func delete(_ e: DictationEntry) {
@@ -112,6 +117,10 @@ final class DictationHistoryWindow: NSObject, NSWindowDelegate {
         guard let m = model else { return }
         let target = id ?? m.entries.first?.id
         if let t = target { if m.showRaw.contains(t) { m.showRaw.remove(t) } else { m.showRaw.insert(t) } }
+    }
+    @MainActor func delete(_ id: String?) {
+        guard let m = model, let e = m.entries.first(where: { $0.id == id }) ?? m.entries.first else { return }
+        m.delete(e)
     }
     @MainActor func makeItem(_ id: String?) {
         guard let m = model, let e = m.entries.first(where: { $0.id == id }) ?? m.entries.first else { return }
@@ -194,7 +203,9 @@ struct DictationHistoryView: View {
                         .help(raw ? T("dictation.history.show_polished") : T("dictation.history.show_raw"))
                         .accessibilityLabel(raw ? T("dictation.history.show_polished") : T("dictation.history.show_raw"))
                 }
-                Button { m.copy(raw ? e.raw : e.text) } label: { glyph(.copy) }
+                Button { m.copy(raw ? e.raw : e.text, from: e.id) } label: {
+                    glyph(m.copied == e.id ? .check : .copy).foregroundStyle(m.copied == e.id ? Color.green : Color.secondary)
+                }
                     .help(T("dictation.history.copy")).accessibilityLabel(T("dictation.history.copy"))
                 Menu {
                     Button(T("dictation.history.copy")) { m.copy(e.text) }

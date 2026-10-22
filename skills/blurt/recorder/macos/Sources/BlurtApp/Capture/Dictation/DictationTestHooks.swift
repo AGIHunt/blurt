@@ -42,6 +42,7 @@ extension App {
                 case "raw": DictationHistoryWindow.shared.toggleRaw(a.count > 1 ? a[1] : nil)
                 case "item": DictationHistoryWindow.shared.makeItem(a.count > 1 ? a[1] : nil)
                 case "query": DictationHistoryWindow.shared.setQuery(a.count > 1 ? a[1] : "")
+                case "delete": DictationHistoryWindow.shared.delete(a.count > 1 ? a[1] : nil)
                 default: DictationHistoryWindow.shared.show()
                 }
             }
