@@ -205,6 +205,19 @@ enum SelfTests {
             if parts[0] == "mainundo" { if um?.canUndo == true { um?.undo() } } else if um?.canRedo == true { um?.redo() }
             out(["can_undo": um?.canUndo ?? false, "can_redo": um?.canRedo ?? false,
                  "undo_title": um?.undoMenuItemTitle ?? "", "redo_title": um?.redoMenuItemTitle ?? ""])
+        case "mainpalette":             // mainpalette [QUERY | down | up | close]: ⌘K, typing, ↓ / ↑ — the rows after it
+            let pal = MainWindowController.shared.palette
+            switch arg {
+            case "down": pal.step(1)
+            case "up": pal.step(-1)
+            case "close": pal.close()
+            default:
+                if !pal.isOpen { pal.open() }
+                pal.field.stringValue = arg
+                pal.refresh()
+            }
+            out(["open": pal.isOpen, "selected": pal.table.selectedRow,
+                 "rows": pal.entries.prefix(12).map { "\($0.title)\($0.enabled ? "" : " (off)")" }, "count": pal.entries.count])
         case "maindrag":                // maindrag ROW: what dragging that row out carries (Finder, Terminal, a project)
             let c = MainWindowController.shared
             let w = Int(arg).flatMap { c.list.tableView(c.list.table, pasteboardWriterForRow: $0) } as? NSPasteboardItem

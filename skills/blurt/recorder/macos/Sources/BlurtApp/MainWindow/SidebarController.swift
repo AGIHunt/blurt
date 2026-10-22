@@ -130,7 +130,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         }
         let projects = SidebarNode(T("main.sidebar.projects"), scope: nil, children: projectNodes)
         let selected = selectedScope
-        roots = top + [projects]
+        roots = top + (projectNodes.isEmpty ? [] : [projects])     // no bare "Projects" header before the first one
         reloading = true
         outline.reloadData()
         for r in roots where r.isGroup { outline.expandItem(r) }
