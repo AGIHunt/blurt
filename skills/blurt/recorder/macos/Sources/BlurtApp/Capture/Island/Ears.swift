@@ -1,5 +1,6 @@
 // What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time, counts
-// with an SF Symbol, the mic level, a voice waveform, the hatching egg that wobbles and cracks open, an alert marker.
+// with an SF Symbol, the mic level, a voice waveform, the hatching egg (the mascot: it wobbles while captures are
+// organised, then cracks and the chick pops out — Icons/Mascot.swift), an alert marker.
 import AppKit
 import BlurtCore
 import QuartzCore
@@ -63,7 +64,10 @@ final class EarSlot {
     private let label = CATextLayer()
     private let dot = CALayer()
     private let bars = CAShapeLayer()
-    private let eggTop = CALayer(), eggBottom = CALayer()
+    private let chick = MascotLayer()
+    /// How long the egg takes to crack and the chick to come out (the `hatching` clip).
+    static var hatchSeconds: Double { MascotLibrary.shared.clip(.hatching)?.duration ?? 1.6 }
+    static let chickSize: CGFloat = 24
     private(set) var content: Content = .none
     private var since = CACurrentMediaTime()
     private var pulseAt: CFTimeInterval = 0
@@ -77,17 +81,17 @@ final class EarSlot {
         bars.fillColor = nil
         bars.lineCap = .round
         bars.lineWidth = 2.2
-        for l in [icon, label, dot, bars, eggTop, eggBottom] { layer.addSublayer(l); l.isHidden = true }
+        for l in [icon, label, dot, bars, chick] { layer.addSublayer(l); l.isHidden = true }
         icon.contentsGravity = .resizeAspect
         icon.contentsScale = 2
-        for e in [eggTop, eggBottom] { e.contentsScale = 2; e.contentsGravity = .resizeAspect }
     }
 
     var animating: Bool {
         switch content {
         case .recording(let p, _): return !p && !reduceMotion
-        case .egg, .wave, .level: return true
-        case .cracking(let s, _, _): return CACurrentMediaTime() - s < 1.0
+        case .wave, .level: return true
+        case .egg: return false            // the mascot runs its own timer
+        case .cracking(let s, _, _): return CACurrentMediaTime() - s < EarSlot.hatchSeconds + 0.3
         case .alert: return CACurrentMediaTime() - pulseAt < 1
         default: return false
         }
@@ -101,10 +105,14 @@ final class EarSlot {
         content = c
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for l in [icon, label, dot, bars, eggTop, eggBottom] {
+        for l in [icon, label, dot, bars] {
             l.isHidden = true
             l.opacity = 1
             l.setAffineTransform(.identity)
+        }
+        switch c {
+        case .egg, .cracking: break
+        default: chick.stop(); chick.isHidden = true; chick.contents = nil
         }
         var x: CGFloat = 0
         func text(_ s: String, color: NSColor = NSColor(white: 1, alpha: 0.92)) {
@@ -143,25 +151,15 @@ final class EarSlot {
         case .text(let s, _):
             text(s)
         case .egg(let n):
-            eggTop.contents = eggImage(size: CGSize(width: 14, height: 18), shadow: false)
-            eggTop.frame = CGRect(x: 0, y: -9, width: 14, height: 18)
-            eggTop.anchorPoint = CGPoint(x: 0.5, y: 0.9)
-            eggTop.position = CGPoint(x: 7, y: 7)
-            eggTop.isHidden = false
-            x = 18
+            placeChick()
+            if chick.clip != .wobble || !chick.isPlaying { chick.play(.wobble) }
+            x = EarSlot.chickSize + 1
             text(Loc.number(n))
         case .cracking(_, let ok, let n):
-            let halves = EarSlot.eggHalves()
-            eggTop.contents = halves.top
-            eggBottom.contents = halves.bottom
-            for e in [eggTop, eggBottom] {
-                e.bounds = CGRect(x: 0, y: 0, width: 14, height: 18)
-                e.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-                e.position = CGPoint(x: 7, y: 0)
-                e.isHidden = false
-                e.opacity = ok ? 1 : 0.5
-            }
-            x = 18
+            placeChick()
+            chick.opacity = ok ? 1 : 0.5
+            if ok { chick.play(.hatching) } else { chick.show(.wobble) }
+            x = EarSlot.chickSize + 1
             text(ok ? "+" + Loc.number(n) : "", color: NSColor(white: 1, alpha: 0.95))
             label.opacity = 0
         case .alert:
@@ -217,25 +215,16 @@ final class EarSlot {
         case .recording(let paused, _):
             // 1 Hz breath, still when paused or with Reduce Motion
             dot.opacity = paused || reduce ? 1 : Float(0.55 + 0.45 * (0.5 + 0.5 * cos(t * 2 * .pi)))
-        case .egg:
-            guard !reduce else { break }
-            // little bursts of wobble, as if something were moving inside
-            let beat = t.truncatingRemainder(dividingBy: 1.6)
-            let env = beat < 0.6 ? sin(.pi * beat / 0.6) : 0
-            eggTop.setAffineTransform(CGAffineTransform(rotationAngle: CGFloat(env * sin(t * 2 * .pi * 3.4) * 0.2)))
         case .cracking(let s, let ok, _):
-            let k = CGFloat(min(1, (now - s) / 0.6))
             if reduce || !ok {
-                eggTop.opacity = Float(1 - k); eggBottom.opacity = Float(1 - k); label.opacity = Float(k)
+                let k = CGFloat(min(1, (now - s) / 0.6))
+                if !ok { chick.opacity = Float(0.5 * (1 - k)) }
+                label.opacity = Float(k)
                 break
             }
-            // 0.6 s: a shiver, then the top half lifts off and tips away, the bottom sinks, the count appears
-            let shiver = k < 0.3 ? sin(Double(k) * 60) * 0.12 * Double(1 - k / 0.3) : 0
-            let open = Ease.outCubic(max(0, (k - 0.3) / 0.7))
-            eggTop.setAffineTransform(CGAffineTransform(translationX: 2 * open, y: -6 * open).rotated(by: CGFloat(shiver) - 0.6 * open))
-            eggBottom.setAffineTransform(CGAffineTransform(translationX: 0, y: 3 * open).rotated(by: CGFloat(shiver)))
-            eggTop.opacity = Float(1 - open)
-            eggBottom.opacity = Float(1 - open)
+            // the egg cracks and the chick pops out (the clip), then the count appears beside it
+            let d = EarSlot.hatchSeconds
+            let open = Ease.outCubic(CGFloat(max(0, ((now - s) - d * 0.6) / (d * 0.4))))
             label.opacity = Float(open)
             label.setAffineTransform(CGAffineTransform(scaleX: 0.7 + 0.3 * Ease.outBack(open), y: 0.7 + 0.3 * Ease.outBack(open)))
         case .alert:
@@ -246,29 +235,10 @@ final class EarSlot {
         }
     }
 
-    /// The egg cut along a zig-zag: two images, top and bottom.
-    static func eggHalves() -> (top: CGImage?, bottom: CGImage?) {
-        let size = CGSize(width: 14, height: 18)
-        func half(_ top: Bool) -> CGImage? {
-            renderImage(size) { ctx in
-                let p = CGMutablePath()
-                let y: CGFloat = 8.5                 // y-up: the crack a little below the middle
-                p.move(to: CGPoint(x: 0, y: top ? size.height : 0))
-                p.addLine(to: CGPoint(x: 0, y: y))
-                var x: CGFloat = 0
-                var up = true
-                while x < size.width {
-                    x = min(size.width, x + 2.4)
-                    p.addLine(to: CGPoint(x: x, y: y + (up ? 1.6 : -1.2)))
-                    up.toggle()
-                }
-                p.addLine(to: CGPoint(x: size.width, y: top ? size.height : 0))
-                p.closeSubpath()
-                ctx.addPath(p)
-                ctx.clip()
-                drawEgg(ctx, in: CGRect(origin: .zero, size: size), shadow: false)
-            }
-        }
-        return (half(true), half(false))
+    private func placeChick() {
+        let z = EarSlot.chickSize
+        chick.frame = CGRect(x: -2, y: -z / 2 - 1, width: z, height: z)
+        chick.isHidden = false
+        chick.opacity = 1
     }
 }

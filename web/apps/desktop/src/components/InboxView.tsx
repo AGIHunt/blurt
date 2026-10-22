@@ -1,6 +1,6 @@
 // The inbox (v0.6 feedback → "收件箱 + 项目"): what waits for review, one card per capture batch, newest first, and a
 // line about items Blurt couldn't place in a project. Nothing here ever opens by itself (K4).
-import { Icon } from '@blurt/icons';
+import { Icon, Mascot } from '@blurt/icons';
 import type { BatchRow, Summary } from '../api';
 import { ago, i18n, plural, t } from '../i18n';
 
@@ -17,7 +17,7 @@ export function InboxView({ batches, summary, onReview, onUnassigned }: {
   if (batches && !batches.length && !toReview && !unassigned) {
     return (
       <div className="hero-empty" data-testid="inbox-empty">
-        <Icon name="hatched" size={30} />
+        <Mascot clip="happy" size={80} />
         <h2>{t('inbox.empty.title')}</h2>
         <p>{t('inbox.empty.body')}</p>
       </div>

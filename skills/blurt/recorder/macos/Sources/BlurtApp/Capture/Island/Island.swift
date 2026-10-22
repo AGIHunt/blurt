@@ -8,7 +8,7 @@
 // opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves.
 //
 // Collapsed (ears)        left                         right
-//   idle                  cards waiting (n)             hatching egg + n processing, else captures to review (n)
+//   idle                  cards waiting (n)             hatching egg (the mascot) + n processing, else captures to review (n)
 //   recording             red dot (1 Hz breath) + time  snaps (n), else the mic level
 //   voice input           live waveform                 duration
 // Open: IslandContent.swift (home, recording, voice, the project drawer / switcher, one-line toasts).
@@ -117,6 +117,7 @@ final class Island: NSObject, IslandHosting {
         var captures: [Int]
         var job: String?
         let since = CACurrentMediaTime()
+        let born = Date()
         var ended: (at: CFTimeInterval, ok: Bool, items: Int)?
         init(session: URL, captures: [Int]) { self.session = session; self.captures = captures }
     }
@@ -143,7 +144,11 @@ final class Island: NSObject, IslandHosting {
         started = true
         ensurePanel(on: screenWithPointer())
         JobStore.shared.start()
-        JobStore.shared.onChange = { [weak self] changed in self?.jobsChanged(changed) }
+        // JobNotifier owns JobStore.onChange (the one listener) and re-posts every change; setting onChange here was
+        // overwritten by it, so the egg never learned its job ended (it wobbled on until the 120 s timeout)
+        NotificationCenter.default.addObserver(forName: .blurtJobsChanged, object: nil, queue: .main) { [weak self] n in
+            self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
+        }
         ProjectStore.shared.onChange = { [weak self] in self?.refresh() }
         refreshReviewCount()
         Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refreshReviewCount() }
@@ -154,9 +159,18 @@ final class Island: NSObject, IslandHosting {
     func moveTo(_ s: NSScreen) { if s != screen { ensurePanel(on: s) } }
     func clearToast() { toastNow = nil }
 
-    private func screenWithPointer() -> NSScreen {
+    private func screenWithPointer() -> NSScreen { pointerScreen() ?? NSScreen.main ?? NSScreen.screens[0] }
+
+    /// The screen under the pointer. Scripted visual checks (test commands only) can pin the island instead:
+    /// BLURT_ISLAND_SCREEN=notch → the screen with a notch (else the first), whatever the pointer does.
+    private func pointerScreen() -> NSScreen? {
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_ISLAND_SCREEN"] == "notch" {
+            if #available(macOS 12.0, *), let n = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) { return n }
+            return NSScreen.screens.first
+        }
         let m = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(m, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens[0]
+        return NSScreen.screens.first { NSMouseInRect(m, $0.frame, false) }
     }
 
     private func ensurePanel(on s: NSScreen) {
@@ -430,7 +444,7 @@ final class Island: NSObject, IslandHosting {
         let busyElsewhere = (NSApp.delegate as? App)?.picker != nil
         // follow the pointer to another screen while nothing is showing
         if !open && drawer == nil && toastNow == nil && !isRecording && !VoiceInput.shared.active, !dragActive,
-           let s = NSScreen.screens.first(where: { NSMouseInRect(m, $0.frame, false) }), s != screen {
+           let s = pointerScreen(), s != screen {
             ensurePanel(on: s)
             return
         }
@@ -646,12 +660,13 @@ final class Island: NSObject, IslandHosting {
             guard let s = j.session else { continue }
             let h = hatches.first { $0.job == j.id }
                 ?? hatches.first { $0.job == nil && canonicalPath($0.session) == canonicalPath(s)
+                    && j.created > $0.born.addingTimeInterval(-2)       // not an older job of the same batch
                     && (j.captures.isEmpty || !Set(j.captures).isDisjoint(with: $0.captures)) }
             guard let hatch = h else { continue }
             hatch.job = j.id
             if !j.isActive, hatch.ended == nil {
                 hatch.ended = (CACurrentMediaTime(), j.state == .done, j.items.count)
-                DispatchQueue.main.asyncAfter(deadline: .now() + (j.state == .done ? 1.6 : 5)) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + (j.state == .done ? EarSlot.hatchSeconds + 1.4 : 5)) { [weak self] in
                     self?.hatches.removeAll { $0 === hatch }
                     self?.refreshReviewCount()
                     self?.refresh()

@@ -90,9 +90,10 @@ final class ItemTableView: NSTableView {
     }
 }
 
-/// Big centred message with an image and up to two buttons.
+/// Big centred message with an image (or the mascot, for the friendly ones) and up to two buttons.
 final class EmptyStateView: NSView {
     let icon = NSImageView()
+    let chick = MascotView(size: 80)
     let title = NSTextField(labelWithString: "")
     let message = NSTextField(wrappingLabelWithString: "")
     let buttons = NSStackView()
@@ -114,10 +115,15 @@ final class EmptyStateView: NSView {
         spinner.isDisplayedWhenStopped = false
         buttons.orientation = .horizontal
         buttons.spacing = 8
-        let stack = NSStackView(views: [icon, spinner, title, message, buttons])
+        let stack = NSStackView(views: [icon, chick, spinner, title, message, buttons])
         stack.orientation = .vertical
         stack.spacing = 8
         stack.setCustomSpacing(14, after: message)
+        stack.setCustomSpacing(2, after: chick)
+        chick.translatesAutoresizingMaskIntoConstraints = false
+        chick.widthAnchor.constraint(equalToConstant: 80).isActive = true
+        chick.heightAnchor.constraint(equalToConstant: 80).isActive = true
+        chick.isHidden = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -126,9 +132,19 @@ final class EmptyStateView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func show(symbol: String?, image: NSImage? = nil, title t: String, message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
-        icon.image = image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+    /// `mascot`: the chick instead of the symbol (a loop keeps playing; a one-shot plays once each time the state appears).
+    func show(symbol: String?, image: NSImage? = nil, mascot: MascotClip? = nil, title t: String, message m: String,
+              buttons bs: [(String, Int)] = [], busy: Bool = false) {
+        icon.image = mascot == nil ? image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) } : nil
         icon.isHidden = icon.image == nil || busy
+        if let c = mascot, !busy {
+            let fresh = chick.isHidden || chick.mascot.clip != c
+            chick.isHidden = false
+            if fresh { chick.play(c) }
+        } else {
+            chick.stop()
+            chick.isHidden = true
+        }
         icon.setAccessibilityElement(false); icon.cell?.setAccessibilityElement(false)      // decoration (an SF Symbol's own name, e.g. "split view", says nothing here)
         busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
         title.stringValue = t
@@ -458,18 +474,18 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         } else {
             switch model.scope {
             case .inbox where model.counts.all > 0:
-                empty.show(symbol: "checkmark.circle", title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
+                empty.show(symbol: nil, mascot: .happy, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
             case .inProgress:
-                empty.show(symbol: "circle.dashed", title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
+                empty.show(symbol: nil, mascot: .idle, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
             case .unassigned:
-                empty.show(symbol: "tray", title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
+                empty.show(symbol: nil, mascot: .idle, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
             case .project(let p):
                 let current = ProjectStore.shared.currentID == p
-                empty.show(symbol: "folder", title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
+                empty.show(symbol: nil, mascot: .idle, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
                            buttons: current ? [(T("main.action.record"), 3), (T("main.action.snap"), 4)]
                                             : [(T("main.project.use"), 6), (T("main.action.record"), 3)])
             default:
-                empty.show(symbol: "waveform.and.mic", title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
+                empty.show(symbol: nil, mascot: .idle, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
                            buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])
             }
         }

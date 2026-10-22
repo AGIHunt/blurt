@@ -59,7 +59,8 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             let n = j.items.isEmpty ? nil : j.items.count
             let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps") : T("notify.done.recording") } ?? T("notify.done.generic")
             let text = n.map { "\(what) · \(TP("app.menu.to_review", $0))" } ?? what
-            quiet(text, action: T("notify.open")) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
+            quiet(text, action: T("notify.open"), art: .happy) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
+            MenuGlyph.shared.hop()
             if !frontmost, ran >= 20, setting("done") { post("done", title: text, body: JobLook.title(j), job: j) }
         case (_, .failed):
             let why = j.error.map { $0.hintKey.map { T($0) } ?? $0.message } ?? ""
@@ -70,8 +71,17 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// The island's quiet line; before the island exists, the same small non-activating toast the app always had.
-    private func quiet(_ text: String, action: String, _ run: @escaping () -> Void) {
-        if let island = AppEnvironment.island {
+    private func quiet(_ text: String, action: String, art: MascotClip? = nil, _ run: @escaping () -> Void) {
+        if AppEnvironment.island != nil, let clip = art {
+            // done: the chick hops beside the line (the mascot, Icons/Mascot.swift)
+            let chick = MascotView(clip: clip, size: 50)
+            chick.show(clip, frame: 0)
+            var t = Island.Toast(text: text, actionTitle: action, action: run)
+            t.art = chick
+            t.seconds = max(2.4, (MascotLibrary.shared.clip(clip)?.duration ?? 1.5) + 0.8)
+            Island.shared.toast(t)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { chick.play(clip) }
+        } else if let island = AppEnvironment.island {
             island.toast(text, actionTitle: action, action: run)
         } else {
             appDelegate?.toast(text, seconds: 2.4)
@@ -110,6 +120,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             n.body = body
             n.userInfo = ["job": job.id]
             n.threadIdentifier = kind
+            if kind == "done" { n.attachments = MascotLibrary.shared.attachment(.happy) }
             c.add(UNNotificationRequest(identifier: "\(kind)-\(job.id)", content: n, trigger: nil))
         }
     }

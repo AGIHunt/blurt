@@ -22,7 +22,7 @@ Every occurrence is replaced. WP4, WP6 and WP7 had finished, so I edited their f
 | Capture/Picker.swift · snap hint | `📸 拖拽框选…` | `pill(hint, …, icon: .snap)` |
 | Capture/NoteBubble.swift · status | `"● 0:04 在听…"`, `"✓ 已记下"` | `recLabel()` = `BlurtIcon.recordFill.label(…, iconColor: .systemRed)`; `BlurtIcon.check.label("已记下", color: .systemGreen, preferSymbol: true)` |
 | Settings/Icons.swift (WP6) | `.bug` = drawBug, `.chicken` = PeckArt | `UIIcon.brand` → `BlurtIcon.bug / .chicken / .peck` (new `.peck`); `brandImage` (SwiftUI) and `brandNSImage` (AppKit) |
-| System/Peck.swift · peck card head | SF `checkmark.circle.fill` | `brandNSImage(.peck, size: 16)`, tinted `.systemGreen` |
+| System/Peck.swift · the completion hen | layered CoreGraphics hen (`ChickenArt` / `HenView`) | the colour mascot: `MascotView` playing `peck` (to verify) or `happy` (done), see “The mascot” below |
 | apps/desktop tray (WP7) | placeholder `tray.svg` (hatching egg) + `scripts/tray_icons.swift` | the `blurt` glyph; `build.py` writes `icons/tray.svg`, `tray-black.png` and `tray-white.png` (64 px) |
 | web/apps/desktop/src/icons.tsx (WP7) | local path set | wraps `@blurt/icons`, keeping the app's names (record → record-fill, items → list, sessions → film, issue → bug, idea → spark, chick → hatched, fixing → wand, fixed → peck, back → arrow-left) |
 | web/apps/overlays | `🐔 整理 N 张`, `×`, inline SVGs | `iconSvg('chicken')` + label, `iconSvg('x')`, HUD buttons `pause-fill / play-fill / snap / stop-fill / x` |
@@ -35,7 +35,7 @@ I scanned WP5's code after merging it (71e8340) and found nothing to replace. `M
 routes brand concepts through `BlurtIcon`, and generic ones use SF Symbols. For new UI, follow the same pattern:
 
 - Kinds: `KindStyle.icon(kind)` / `KindStyle.color(kind)` and the work state's `StatusRing.image(state, size:)` (K8). Eggs are
-  brand and motion only (the island's hatching egg, `eggImage(size:)` in Capture/Eggs.swift).
+  brand and motion only (the island's hatching egg: the mascot's `wobble` / `hatching` clips).
 - Session states: to process = `.egg`, hatching = `.hatch`, reviewed = `.hatched`. Fixed = `.peck`, fixing = `.wand` (SF `wand.and.stars`).
 - Never put an emoji or a ✓ / ✗ / ● glyph into a title. Use `icon.label(text, font:, color:)` for NSTextField or
   NSMenuItem.attributedTitle, and `icon.makeLayer(…)` next to a CATextLayer, which can't draw attachments.
@@ -64,6 +64,28 @@ BlurtIcon(named: "close")                             // names and aliases, the 
 
 **Tk**: `skills/blurt/assets/icons/NAME.png`, `@1.5x` and `@2x` (light `#f4f4f5` glyphs for the dark bar), loaded with
 `tk_icon(widget, name)`.
+
+## The mascot (colour, frame-animated)
+
+Two chicks, one family. The line glyph (`chicken`, `blurt`, `peck`, `hatched`: the 4A design, front-facing round chick)
+is the icon: template-tinted, in menus, the menu bar and small marks. It moves in code only — `GlyphMotion.tilt / hop`
+(Core Animation) and `App/MenuGlyph.swift` (the menu-bar chick tilts while voice input listens, hops when something is
+done); on the web `.ico.tilt` / `.ico.hop` from `@blurt/icons/mascot.css`.
+The colour chick (1A) is for moments: `assets/mascot/` holds one WebP strip per animation (160 px frames) and
+`mascot.json` (clips: idle, listening, thinking, wobble, hatching, happy, peck — timelines at 12 fps). `assets/mascot/tools/
+cut.py` makes the strips from the codex-generated sheets (prompts in `assets/mascot/prompts/`), `build.py` copies them to
+`Resources/Mascot/` (mac) and `web/packages/icons/mascot/` (web, with the CSS keyframes).
+
+```swift
+let v = MascotView(clip: .idle, size: 64); v.play(.happy) { … }   // AppKit; MascotLayer for layer-built UIs
+MascotImage(clip: .hatching, then: .idle, size: 64)                // SwiftUI
+```
+Web: `import "@blurt/icons/mascot.css"` once, then `<Mascot clip="happy" size={80}/>` or `mascotHtml("wobble", { size: 24 })`.
+Reduce Motion / prefers-reduced-motion: the clip's still frame.
+
+Where: island ear while captures are organised (`wobble` → `hatching`), voice input (`listening`), the organised line and
+item done (`happy`), item to verify (`peck`), onboarding header (`hatching` → `idle`, last step `happy`), the main
+window's friendly empty states, notification attachments (still frames).
 
 ## SF Symbols on macOS (generic icons)
 

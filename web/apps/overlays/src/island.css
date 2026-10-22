@@ -169,43 +169,24 @@
 .egg {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   color: #f4e7d0;
 }
-.wobble {
-  display: inline-flex;
-  transform-origin: 50% 85%;
-  animation: wobble 1.6s ease-in-out infinite;
+.egg .mascot {
+  margin: -4px 0 -4px -6px;
 }
-@keyframes wobble {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  20% {
-    transform: rotate(-9deg);
-  }
-  40% {
-    transform: rotate(7deg);
-  }
-  60% {
-    transform: rotate(-4deg);
-  }
-  80% {
-    transform: rotate(2deg);
-  }
+.toast .mascot {
+  margin: -6px -2px -6px -8px;
 }
-.island.hatch .egg {
-  animation: crack 600ms var(--ease);
+.lead .mascot {
+  margin: -4px;
 }
-@keyframes crack {
-  30% {
-    transform: scale(1.25) rotate(-8deg);
-  }
-  60% {
-    transform: scale(0.9);
-    opacity: 0.4;
-  }
+.head.voice .mascot {
+  margin: -6px 0 -6px -6px;
+}
+.ear .ico.tilt {
+  margin-right: 4px;
+  color: #f4e7d0;
 }
 .wave {
   display: inline-flex;

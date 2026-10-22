@@ -189,6 +189,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.autosaveName = "blurt"
         item.isVisible = true
         statusItem = item
+        MenuGlyph.shared.onFrame = { [weak self] img in
+            guard let self = self, self.rec == nil, let b = self.statusItem?.button else { return }
+            b.image = img ?? self.menuIcon
+        }
         refreshStatus()
         statusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.refreshStatus() }
         sessionEnded = { [weak self] code, event in
@@ -358,7 +362,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
             return
         }
-        b.image = menuIcon
+        MenuGlyph.shared.listening = VoiceInput.shared.active
+        b.image = MenuGlyph.shared.current ?? menuIcon
         b.imagePosition = .imageLeft
         let badge = MenuBadge.shared
         // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing

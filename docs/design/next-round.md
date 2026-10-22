@@ -923,7 +923,7 @@ uid 01JB… · issue · high · module auth
   走 v0.6 的 `App.process(dir)`），v0.6 AgentHub 的 `perch.hatch / hatched` 调用落到它上面；AgentHub 换成任务后删掉 `LegacyProcess` 和 `perch`。
 - **测试钩子**（`BLURT_TEST_COMMANDS=1`）：`BLURT_TEST_STILL=<png>` 代替屏幕截图、`BLURT_TEST_PROCESS=done|failed` 代替真正的 agent 整理、
   `BLURT_TEST_MIC_WAV` / `BLURT_NOTE_WAV` 代替麦克风；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
-  `framerec`、`henframes`、`fakerecording`、`peck`）。
+  `framerec`、`mascotframes`、`mascot`、`fakerecording`、`peck`）。
 
 **细则（polish，合并后）**：鸡爪已按「决定」换成细线（macOS `Capture/Island/HangingCards.swift`，`Claws.swift` / `ClawArt.swift` 删除；
 Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出来，1 pt 发丝线（浅色 42% 黑、深色 55% 白，带反色光晕），线头 7 pt 品牌色圆扣
