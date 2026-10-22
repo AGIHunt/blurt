@@ -273,6 +273,8 @@
 
 "main.toast.download_failed" = "Couldn't save it: %@";
 "main.toast.downloaded" = "Saved to Downloads: %@";
+"main.speech.better_model" = "A more accurate speech model suits this Mac · %@";
+"main.speech.better_model.action" = "Review";
 
 "main.toolbar.handoff" = "Hand Off";
 "main.toolbar.handoff.own" = "For your own agent app";

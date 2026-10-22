@@ -2,6 +2,8 @@
 //   projects.py migrate      v0.6 record.workspace(s) → projects.json (K2; idempotent)
 //   items.py migrate --all   v1/v2 sessions (items.json, no batch.json) → Markdown stores (K1; idempotent)
 //   jobs.py gc               jobs that ended 14+ days ago, beyond the last 300 (K4)
+//   transcribe.py auto --apply   speech models for this Mac (K9); after a hardware change that wants a download, one
+//                            quiet line in the island offers Settings → Speech (once: --apply records the hardware)
 // and keeps one `sessions.py monitor` running while it lives (K5: tmux windows → session status; it takes its own lock,
 // so a second copy just exits). Any of them missing (an older skill) is skipped.
 import AppKit
@@ -22,6 +24,24 @@ enum Housekeeping {
                 ProjectStore.shared.reload()
                 Scripts.indexUpdate([ProjectStore.shared.inbox.store])
                 startMonitor()
+            }
+            await speechModels()
+        }
+    }
+
+    /// K9: pick the speech models for this machine. Skipped until onboarding is done (it downloads the first model);
+    /// the hardware is recorded only then, so the first real launch afterwards may suggest a better model.
+    static func speechModels() async {
+        guard !Onboarding.needed, (try? ScriptRunner.shared.scriptURL("transcribe.py")) != nil else { return }
+        guard let r = try? await ScriptRunner.shared.json("transcribe.py", ["auto", "--apply"], timeout: 120),
+              r["ok"] as? Bool == true, r["hardware_changed"] as? Bool == true,
+              let need = r["needs_download"] as? [[String: Any]], !need.isEmpty else { return }
+        let mb = need.compactMap { ($0["size_mb"] as? NSNumber)?.doubleValue }.reduce(0, +)
+        let size = ByteCountFormatter.string(fromByteCount: Int64(mb * 1_000_000), countStyle: .file)
+        await MainActor.run {
+            emit(["event": "asr_suggest", "models": need.compactMap { $0["model"] as? String }, "size_mb": mb])
+            AppEnvironment.island?.toast(T("main.speech.better_model", size), actionTitle: T("main.speech.better_model.action")) {
+                AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
             }
         }
     }

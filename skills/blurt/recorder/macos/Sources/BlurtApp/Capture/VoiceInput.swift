@@ -5,6 +5,8 @@
 //  • hold longer than 0.35 s: push-to-talk — it ends when you let go.
 //  • record.voice.mode: auto (both, default) | toggle | hold.
 //  • the wav goes to shots/<NNN>.wav of the current store's open shots batch; `transcribe.py note` (K9) fills `said`.
+//    Pressing starts `transcribe.py serve --preload` (once; it exits by itself when idle), so the model is warm by the
+//    time you stop talking and `note` answers in well under a second.
 //    With a current project it goes straight into the island; in auto mode it drops out of the island onto a claw.
 //  • while recording it does nothing (the recording already has the mic) and says so.
 // Tests: BLURT_TEST_MIC_WAV (or BLURT_NOTE_WAV) is fed through the same path instead of the microphone.
@@ -96,6 +98,7 @@ final class VoiceInput {
         holding = false
         startedAt = Date()
         active = true
+        Self.warmSpeechModel()
         registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0)
         emit(["event": "voice_start", "n": k, "session": b.dir.path])
         island.voiceChanged()
@@ -115,6 +118,15 @@ final class VoiceInput {
             emit(["event": "voice_hold"])
             island.voiceChanged()
         }
+    }
+
+    private static var server: Process?
+
+    /// K9's voice-note server: answers "already" when one runs (this app's or another), else stays up on its own
+    /// (unloads the model after 5 idle minutes, exits after 30).
+    static func warmSpeechModel() {
+        if let s = server, s.isRunning { return }
+        server = try? ScriptRunner.shared.spawn("transcribe.py", ["serve", "--preload"]) { _ in }
     }
 
     private func finish(keep: Bool, ended: Bool = false) {
