@@ -334,10 +334,6 @@
 
 "menu.zoom" = "缩放";
 
-"notify.agent.turn" = "%@ 本轮完成";
-"notify.agent.turn.body" = "看看结果，或者告诉它下一步。";
-"notify.agent.waiting" = "%@ 在等你回答";
-"notify.agent.waiting.body" = "点一下，到它的终端里回答。";
 
 "notify.done.generic" = "整理好了";
 "notify.done.recording" = "录屏整理好了";

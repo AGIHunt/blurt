@@ -4,8 +4,8 @@
 //     5 to review", click = that batch in the main window. A system notification only when the app isn't frontmost,
 //     the job ran 20 s or more and notify.done is on (default); never a sound.
 //   • Nothing at all while recording (the counts still update).
-//   • An agent session that needs your answer: a notification when the app isn't frontmost (notify.agent, default on);
-//     click = its terminal. "Turn finished" likewise. Failures: a line with the reason, a notification when not frontmost.
+//   • Agent sessions are Terminal/SessionNotifier's (P3): nothing here for type agent, so nothing arrives twice.
+//   • Failures: a line with the reason, a notification when not frontmost.
 //   • The same kind of notification within 10 s collapses into one.
 import AppKit
 import BlurtCore
@@ -52,7 +52,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     func setting(_ key: String) -> Bool { Config.shared["notify.\(key)"] as? Bool ?? true }
 
     private func event(_ j: Job, before: String?) {
-        guard !recording else { return }
+        guard !recording, j.type != .agent else { return }
         let ran = (j.ended ?? Date()).timeIntervalSince(j.started ?? j.created)
         switch (j.type, j.state) {
         case (.process, .done), (.route, .done):
@@ -65,13 +65,6 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             let why = j.error.map { $0.hintKey.map { T($0) } ?? $0.message } ?? ""
             quiet(T("notify.failed", JobLook.title(j)), action: T("notify.show")) { AppEnvironment.mainWindow?.reveal(job: j.id) }
             if !frontmost { post("failed", title: T("notify.failed", JobLook.title(j)), body: why, job: j) }
-        case (.agent, _):
-            guard let a = j.agent, setting("agent"), !frontmost else { return }
-            switch a.status {
-            case .waitingInput: post("agent-wait", title: T("notify.agent.waiting", JobLook.title(j)), body: T("notify.agent.waiting.body"), job: j)
-            case .turnDone: post("agent-turn", title: T("notify.agent.turn", JobLook.title(j)), body: T("notify.agent.turn.body"), job: j)
-            default: break
-            }
         default: break
         }
     }
@@ -121,11 +114,14 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    // a click on one of ours: the job in the main window (its terminal for agent sessions)
+    // a click on a notification (ours, SessionNotifier's or FixRunner's): the job or the item in the main window
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler done: @escaping () -> Void) {
-        if let id = response.notification.request.content.userInfo["job"] as? String {
+        let info = response.notification.request.content.userInfo
+        if let id = info["job"] as? String {
             DispatchQueue.main.async { AppEnvironment.mainWindow?.reveal(job: id) }
+        } else if let uid = info["uid"] as? String {          // FixRunner's "to verify" notifications
+            DispatchQueue.main.async { AppEnvironment.mainWindow?.reveal(uid: uid) }
         }
         done()
     }

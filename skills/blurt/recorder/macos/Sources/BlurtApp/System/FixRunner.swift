@@ -1,6 +1,5 @@
 // "Hand to an agent" used to open a panel that ran the agent in the background (`-p`). That is gone (v0.7, K5): items
 // go to an interactive agent session in tmux through the dispatch panel (Terminal/DispatchPanel.swift). What stays here:
-//   FixRunner.start(uids)          → the dispatch panel (for callers that still use the old name)
 //   FixRunner.announceFixed(…)     → an item reached "to verify": the chicken pecks it, and a notification
 //   enum Notify                    → system notifications (unchanged)
 import AppKit
@@ -9,15 +8,6 @@ import BlurtCore
 
 final class FixRunner {
     static let shared = FixRunner()
-
-    var windowNumber: Int? { MainActor.assumeIsolated { DispatchPanel.windowNumber } }
-
-    /// `autostart` is ignored: a session is always started by the user from the panel.
-    @MainActor
-    func start(_ uids: [String], autostart: (agent: String, background: Bool)? = nil) {
-        guard !uids.isEmpty else { return }
-        DispatchPanel.show(items: uids)
-    }
 
     // MARK: the "to verify" moment
 

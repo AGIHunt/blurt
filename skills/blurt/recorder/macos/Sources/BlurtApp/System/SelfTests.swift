@@ -34,7 +34,7 @@ enum SelfTests {
         case "onboarding": Onboarding.shared.show(step: Int(arg) ?? 0)
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
-            let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber : arg == "fix" ? FixRunner.shared.windowNumber
+            let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber : arg == "fix" || arg == "dispatch" ? MainActor.assumeIsolated { DispatchPanel.windowNumber }
                         : SettingsController.shared.windowNumber
             out(["window": n ?? -1])
         case "route": out(["route": URL(string: arg).map { "\(URLRouter.route($0))" } ?? "bad url"])
@@ -89,9 +89,8 @@ enum SelfTests {
                 }
             }
         case "fix":
-            let a = arg.split(separator: " ").map(String.init)
-            let uids = (a.first ?? "").split(separator: ",").map(String.init)
-            if a.count >= 3 { FixRunner.shared.start(uids, autostart: (a[1], a[2] != "it")) } else { FixRunner.shared.start(uids) }
+            let uids = (arg.split(separator: " ").first ?? "").split(separator: ",").map(String.init)
+            if !uids.isEmpty { MainActor.assumeIsolated { DispatchPanel.show(items: uids) } }
             out(["uids": uids])
         case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: T("main.misc.by_codex"), uid: "test")
         case "peckframes":

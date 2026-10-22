@@ -47,8 +47,6 @@ enum AppEnvironment {
     /// Hand item uids to an agent session in Blurt: P3's dispatch panel (agent, mode, worktree, the concurrent-edit
     /// reminder). nil until the terminal module is installed — the main window then dispatches with the defaults.
     static var dispatch: (([String]) -> Void)?
-    /// v0.6's background "let the agent fix" (FixRunner). Replaced by `dispatch`; goes away when P3 lands.
-    static var fixWithAgent: (([String]) -> Void)?
     /// Process captures: a session dir, which captures (shots.jsonl n; nil = the whole session) and the project to file
     /// them under (nil = let the AI route each item). Set by AgentHub (P4): it creates the process job (K4).
     static var process: ((_ session: URL, _ captures: [Int]?, _ project: String?) -> Void)?

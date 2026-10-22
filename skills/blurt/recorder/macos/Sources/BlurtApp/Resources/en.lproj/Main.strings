@@ -334,10 +334,6 @@
 
 "menu.zoom" = "Zoom";
 
-"notify.agent.turn" = "%@ finished its turn";
-"notify.agent.turn.body" = "Have a look, or tell it what's next.";
-"notify.agent.waiting" = "%@ needs your input";
-"notify.agent.waiting.body" = "Click to answer in its terminal.";
 
 "notify.done.generic" = "Organised";
 "notify.done.recording" = "Recording organised";

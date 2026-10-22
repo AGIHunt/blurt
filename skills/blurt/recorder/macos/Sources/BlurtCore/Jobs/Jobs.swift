@@ -21,13 +21,21 @@ public struct JobStep {
     public let id: String
     public let state: StepState
     public let progress: Double?
+    public init(id: String, state: StepState, progress: Double? = nil) { self.id = id; self.state = state; self.progress = progress }
 }
 
 public struct JobError {
     public let code: String
     public let message: String
     public let hintKey: String?
+    public init(code: String, message: String, hintKey: String? = nil) { self.code = code; self.message = message; self.hintKey = hintKey }
 }
+
+/// The fixed step ids per job type (K4; the UI shows `job.step.<id>`).
+public let jobSteps: [JobType: [String]] = [
+    .record: ["capture", "finalize"], .snap: ["capture"], .voice: ["listen", "transcribe", "file"],
+    .process: ["prepare", "transcribe", "write", "frames", "route"], .route: ["route"], .agent: ["launch", "work", "finish"],
+]
 
 /// The `agent` object of an agent job (K5).
 public struct AgentInfo {
@@ -67,6 +75,8 @@ public struct Job: Identifiable {
     public let updated: Date?
 
     public var isActive: Bool { state == .queued || state == .running }
+    /// The step in progress, else the next one to run.
+    public var currentStep: JobStep? { steps.first { $0.state == .running } ?? steps.first { $0.state == .pending } }
 
     /// The effective state as a dictionary, as jobs.py get prints it.
     public let raw: [String: Any]
@@ -349,15 +359,7 @@ public final class JobWriter {
     public init(type: JobType, project: String?, session: URL?, parent: String? = nil, title: String? = nil) {
         id = JobFiles.newID()
         let now = JobFold.now()
-        let steps: [String]
-        switch type {
-        case .record: steps = ["capture", "finalize"]
-        case .snap: steps = ["capture"]
-        case .voice: steps = ["listen", "transcribe", "file"]
-        case .process: steps = ["prepare", "transcribe", "write", "frames", "route"]
-        case .route: steps = ["route"]
-        case .agent: steps = ["launch", "work", "finish"]
-        }
+        let steps = jobSteps[type] ?? []
         doc = ["schema": 1, "id": id, "type": type.rawValue, "state": "running", "owner": "app",
                "project": project ?? NSNull(), "session": session?.path ?? NSNull(), "parent": parent ?? NSNull(),
                "title": title ?? NSNull(), "items": [String](), "captures": [Int](),

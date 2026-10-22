@@ -454,7 +454,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 let r = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: worktree, dryRun: false)
                 wrote(items)
                 if let j = r.jobs.first {
-                    JobStore.shared.reload()
+                    JobStore.shared.rescan()
                     reveal(job: j)
                 }
             } catch let e as SessionsError {
