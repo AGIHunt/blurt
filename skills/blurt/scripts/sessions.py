@@ -688,10 +688,10 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
             if pl["runner"] == "tmux":
                 _step(j, "work", "running")
         jobs.update(jid, launched)
-        try:  # the items: handed to this session; drafts become kept (the user chose to act on them)
+        try:  # the items: handed to this session; drafts become kept (the user chose to act on them, hence --force)
             drafts = [it["uid"] for it in e["_items"] if it.get("status") == "draft"]
             for u in drafts:
-                handoff.cli(handoff.ITEMS_PY, "patch", u, "--set", "status=confirmed")
+                handoff.cli(handoff.ITEMS_PY, "patch", u, "--set", "status=confirmed", "--force")
             handoff.set_work(e["items"], "handed_off", to="session", agent=pl["agent"], job=jid,
                              handoff=agent_obj["handoff"], by="app")
         except handoff.CliError as err:

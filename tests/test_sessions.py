@@ -138,7 +138,7 @@ def test_refusals(p2):
     inbox_item = p2.run("items.py", "add", "--project", "inbox", "--json", json.dumps({"kind": "issue", "title": "x"}))
     assert dispatch(p2, inbox_item["uid"], agent="claude", ok=False)["code"] == "needs_project"
     it = p2.item(proj["id"])
-    p2.run("items.py", "patch", it["uid"], "--set", "status=deleted")
+    p2.run("items.py", "patch", it["uid"], "--set", "status=deleted", "--force")
     assert dispatch(p2, it["uid"], agent="claude", ok=False)["code"] == "deleted"
     assert dispatch(p2, "nope-1", agent="claude", ok=False)["_exit"] == 1
     plain = p2.tmp / "notes"

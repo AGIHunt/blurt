@@ -1,6 +1,6 @@
 """Shared setup for the session / job / hand-off tests (P2): a private BLURT_HOME, BLURT_WORKSPACE and tmux socket,
-fake agent CLIs on PATH, and the storage CLIs (P1's items.py v3 / projects.py once they exist, else the stand-ins in
-p2_stubs/). Never the user's ~/.blurt, tmux server, or real agents.
+fake agent CLIs on PATH, and the real storage CLIs (items.py / projects.py). Never the user's ~/.blurt, tmux server,
+or real agents.
 
   from p2_env import p2  # the fixture
 """
@@ -19,13 +19,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
-STUBS = Path(__file__).resolve().parent / "p2_stubs"
 TMUX = shutil.which("tmux") or "tmux"
-
-
-def real_storage() -> bool:
-    items = SCRIPTS / "items.py"
-    return (SCRIPTS / "projects.py").exists() and '"work"' in items.read_text(encoding="utf-8")
 
 
 # The fakes fire the same hooks, with the same JSON, as the real CLIs (payloads recorded from Claude Code 2.1 and
@@ -130,16 +124,7 @@ class P2:
         write_bin(self.bin, "claude", FAKE_CLAUDE)
         write_bin(self.bin, "codex", FAKE_CODEX)
         write_bin(self.bin, "plainagent", FAKE_PLAIN)
-        if real_storage():
-            self.scripts = SCRIPTS
-        else:
-            self.scripts = tmp / "scripts"
-            self.scripts.mkdir()
-            for f in SCRIPTS.iterdir():
-                if f.suffix in (".py", ".json"):
-                    shutil.copy2(f, self.scripts / f.name)
-            for f in STUBS.glob("*.py"):
-                shutil.copy2(f, self.scripts / f.name)
+        self.scripts = SCRIPTS
         self.socket = f"blurt-test-p2-{secrets.token_hex(3)}"
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE", "CODEX_", "ANTHROPIC_", "BLURT_"))}
         self.env.update(BLURT_HOME=str(self.home), BLURT_WORKSPACE=str(self.ws), BLURT_TMUX_SOCKET=self.socket,
@@ -184,7 +169,9 @@ class P2:
         return self.run("items.py", "add", "--project", project, "--json", json.dumps(body, ensure_ascii=False))
 
     def get(self, ref: str) -> dict:
-        return self.run("items.py", "get", ref)["item"]
+        item = self.run("items.py", "get", ref)["item"]
+        item.setdefault("work", {"state": "todo"})  # K1: no work key = todo
+        return item
 
     def job(self, jid: str) -> dict:
         return self.run("jobs.py", "get", jid)["job"]
