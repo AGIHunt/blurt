@@ -159,7 +159,7 @@ describe("v3 UI", () => {
     const { el, s, done } = await mount(<Inspector />, { handoff, dispatch, openSession: vi.fn() });
     expect((el.querySelector("#projectPick") as HTMLSelectElement).value).toBe("p-blurt");
     expect(el.querySelector("#workRow .sring.s-to_verify")?.getAttribute("aria-label")).toBe("To verify");
-    expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it's fixed/);
+    expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as done");
     expect(el.querySelector("#workSession")).not.toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);

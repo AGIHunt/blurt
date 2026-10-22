@@ -2,14 +2,14 @@
    Same keys and placeholders in the other language (tests/test_l10n.py). */
 
 "app.agent.agent" = "Agent";
-"app.agent.can_be_used" = " can't be used";
+"app.agent.can_be_used" = " can’t be used";
 "app.agent.check_again" = "Check again";
 "app.agent.checking" = "checking…";
 "app.agent.click_try_first" = "Click to try it first";
-"app.agent.configured_can_verify_advance" = "configured (can't verify in advance)";
+"app.agent.configured_can_verify_advance" = "configured (can’t verify in advance)";
 "app.agent.failed" = "failed";
-"app.agent.isn_installed" = " isn't installed";
-"app.agent.isn_logged" = " isn't logged in";
+"app.agent.isn_installed" = " isn’t installed";
+"app.agent.isn_logged" = " isn’t logged in";
 "app.agent.logged" = "logged in";
 "app.agent.login_unknown_will_just" = "login unknown — will just try";
 "app.agent.none_short" = "No agent available";
@@ -19,7 +19,7 @@
 "app.agent.tried_this_order_first" = "Tried in this order; the first usable one runs";
 "app.agent.unfinished" = "%@ stopped before it finished (exit %ld)";
 
-"app.login.failed" = "Couldn't change Open at Login";
+"app.login.failed" = "Couldn’t change Open at Login";
 
 "app.menu.after.keep" = "Just Keep the Video";
 "app.menu.after.organise" = "Organise into Items";
@@ -47,19 +47,19 @@
 
 "app.name" = "Blurt";
 
-"app.permission.detail" = "Turn on Blurt in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen Blurt — macOS reads the permission at launch.\n\nAlready on? Remove Blurt from the list with −, reopen Blurt and allow it again: a grant from an older build doesn't carry over.";
+"app.permission.detail" = "Turn on Blurt in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen Blurt — macOS reads the permission at launch.\n\nAlready on? Remove Blurt from the list with −, reopen Blurt and allow it again: a grant from an older build doesn’t carry over.";
 "app.permission.later" = "Later";
 "app.permission.open_settings" = "Open System Settings";
 "app.permission.title" = "Blurt needs Screen Recording permission";
 
-"app.record.failed" = "The recording couldn't be saved";
+"app.record.failed" = "The recording couldn’t be saved";
 
 "app.status.ax_count" = "Blurt — %@";
 
 "app.toast.saved" = "Recording saved (%@)\nOrganise it from the main window whenever you like.";
 "app.toast.welcome" = "Blurt is in your menu bar\n%@ starts and finishes a recording · %@ opens this menu";
 
-"app.url.no_item" = "That item isn't in the index (%@)";
+"app.url.no_item" = "That item isn’t in the index (%@)";
 "app.url.no_session" = "That capture is gone: %@";
 
 "main.action.record" = "Record";
@@ -72,15 +72,15 @@
 "main.banner.organising" = "Still being organised · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
-"main.banner.to_verify" = "%@ says it's done. Check it, then mark it done.";
-"main.banner.to_verify.anon" = "The agent says it's done. Check it, then mark it done.";
+"main.banner.to_verify" = "%@ says it’s done. Check it, then mark it done.";
+"main.banner.to_verify.anon" = "The agent says it’s done. Check it, then mark it done.";
 "main.banner.with_agent" = "With %@ · %@";
 
 "main.cmd.copy_full" = "Copy Full Text";
 "main.cmd.copy_instruction" = "Copy Instruction";
 "main.cmd.mark_done" = "Mark as Done";
 "main.cmd.reopen" = "Reopen";
-"main.cmd.wontfix" = "Won't Do";
+"main.cmd.wontfix" = "Won’t Do";
 
 "main.col.id" = "ID";
 "main.col.kind" = "Kind";
@@ -90,19 +90,19 @@
 "main.col.updated" = "Updated";
 "main.col.work" = "Status";
 
-"main.detail.gone" = "The item's file is gone";
+"main.detail.gone" = "The item’s file is gone";
 "main.detail.label" = "Item detail";
 "main.detail.legacy" = "Not converted yet";
-"main.detail.legacy.detail" = "This item comes from an older recording. Blurt converts it in the background; it will open here when that's done.";
+"main.detail.legacy.detail" = "This item comes from an older recording. Blurt converts it in the background; it will open here when that’s done.";
 "main.detail.none" = "Nothing selected";
 "main.detail.none.detail" = "Pick an item on the left · J / K to move, Space to preview";
-"main.detail.parse_error" = "This item's file can't be read";
+"main.detail.parse_error" = "This item’s file can’t be read";
 
 "main.dispatch.concurrent" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.";
 "main.dispatch.concurrent.title" = "Use a worktree for this session?";
-"main.dispatch.failed" = "Couldn't start the session";
+"main.dispatch.failed" = "Couldn’t start the session";
 "main.dispatch.needs_project" = "Move these items to a project first";
-"main.dispatch.needs_project.detail" = "An agent needs the project's folder to work in. Use Move to Project, then start the session.";
+"main.dispatch.needs_project.detail" = "An agent needs the project’s folder to work in. Use Move to Project, then start the session.";
 "main.dispatch.one_project" = "Choose items from one project";
 "main.dispatch.one_project.detail" = "An agent session works in one project folder. Hand these off per project.";
 "main.dispatch.use_worktree" = "Use a Worktree";
@@ -120,10 +120,10 @@
 "main.empty.no_index.detail" = "Blurt builds a local search index of your projects and captures. Nothing leaves this Mac.";
 "main.empty.no_match" = "Nothing matches these filters";
 "main.empty.no_results" = "No results for “%@”";
-"main.empty.no_scripts" = "The blurt skill's scripts are missing";
+"main.empty.no_scripts" = "The blurt skill’s scripts are missing";
 "main.empty.no_scripts.detail" = "Install or update the skill (npx skills add AGIHunt/blurt), then reopen this window.";
 "main.empty.nothing_in_progress" = "Nothing in progress";
-"main.empty.nothing_in_progress.detail" = "Items you hand to an agent show up here until you've checked them.";
+"main.empty.nothing_in_progress.detail" = "Items you hand to an agent show up here until you’ve checked them.";
 "main.empty.outdated" = "The index needs a rebuild";
 "main.empty.outdated.detail" = "This version of Blurt keeps items as Markdown files. Rebuilding takes a moment; nothing is lost.";
 "main.empty.project" = "Nothing in this project yet";
@@ -134,17 +134,17 @@
 "main.empty.scanning" = "Scanning your captures…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
 
-"main.error.bad_transition" = "That status change isn't possible from here.";
-"main.error.cant_edit" = "Can't edit right now";
+"main.error.bad_transition" = "That status change isn’t possible from here.";
+"main.error.cant_edit" = "Can’t edit right now";
 "main.error.generic" = "Something went wrong. The details are in the log.";
 "main.error.key_taken" = "Another project already uses that key.";
 "main.error.needs_project" = "Move the items to a project first.";
-"main.error.no_scripts" = "This needs the blurt skill's scripts and uv. Run record.py build once, or reinstall the skill.";
-"main.error.no_uv" = "uv isn't installed. Blurt's setup assistant can install it.";
-"main.error.not_found" = "Blurt can't find that any more.";
-"main.error.save_title" = "Couldn't save";
+"main.error.no_scripts" = "This needs the blurt skill’s scripts and uv. Run record.py build once, or reinstall the skill.";
+"main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
+"main.error.not_found" = "Blurt can’t find that any more.";
+"main.error.save_title" = "Couldn’t save";
 "main.error.timeout" = "It took too long. Try again in a moment.";
-"main.error.unparseable" = "The item's file has been edited in a way Blurt can't read, so it won't overwrite it.";
+"main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
 
 "main.filter.any_review" = "Any Review";
 "main.filter.any_work" = "Any Status";
@@ -155,19 +155,19 @@
 
 "main.handoff.copied" = "Instruction copied — paste it into Claude Code, Codex or any agent";
 "main.handoff.copied_full" = "Full text copied — screenshots are linked by path";
-"main.handoff.failed" = "Couldn't prepare the hand-off";
+"main.handoff.failed" = "Couldn’t prepare the hand-off";
 
 "main.item.untitled" = "Untitled";
 
-"main.job.error.auth" = "The agent isn't logged in.";
+"main.job.error.auth" = "The agent isn’t logged in.";
 "main.job.error.conflict" = "The changes conflict with yours.";
-"main.job.error.git" = "Git couldn't finish.";
-"main.job.error.model" = "The model isn't available.";
+"main.job.error.git" = "Git couldn’t finish.";
+"main.job.error.model" = "The model isn’t available.";
 "main.job.error.network" = "The network dropped.";
 "main.job.error.quota" = "The agent ran out of quota.";
-"main.job.error.tmux" = "tmux isn't installed — install it with Homebrew (brew install tmux).";
+"main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
 "main.job.hint.no_agent" = "No coding agent is set up. Install or log in to Claude Code or Codex in Settings → Agents.";
-"main.job.no_terminal" = "The terminal isn't available";
+"main.job.no_terminal" = "The terminal isn’t available";
 "main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
 "main.job.open_terminal_app" = "Open in Terminal";
 "main.job.show_log" = "Show Log";
@@ -211,10 +211,10 @@
 "main.misc.note" = "Note";
 "main.misc.task" = "Task";
 
-"main.move.failed" = "Couldn't move the items";
+"main.move.failed" = "Couldn’t move the items";
 
-"main.open.failed" = "Couldn't open “%@”";
-"main.open.message" = "Choose a folder — a code repo or any folder for notes. Blurt keeps its items in the folder's .blurt, which never goes into git.";
+"main.open.failed" = "Couldn’t open “%@”";
+"main.open.message" = "Choose a folder — a code repo or any folder for notes. Blurt keeps its items in the folder’s .blurt, which never goes into git.";
 "main.open.prompt" = "Open";
 
 "main.palette.field" = "Command";
@@ -243,7 +243,7 @@
 "main.project.remove.confirm" = "Remove";
 "main.project.remove.detail" = "The folder and its items stay where they are. Open the folder again to bring it back.";
 "main.project.remove.title" = "Remove “%@” from Blurt?";
-"main.project.save_failed" = "Couldn't save the project";
+"main.project.save_failed" = "Couldn’t save the project";
 "main.project.settings" = "Project Settings…";
 "main.project.settings.title" = "%@ Settings";
 "main.project.use" = "Make Current Project";
@@ -271,7 +271,7 @@
 "main.sidebar.projects" = "Projects";
 "main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
 
-"main.toast.download_failed" = "Couldn't save it: %@";
+"main.toast.download_failed" = "Couldn’t save it: %@";
 "main.toast.downloaded" = "Saved to Downloads: %@";
 "main.speech.recommended" = "Recommended speech model for this Mac · %@";
 "main.speech.recommended.action" = "Review";
@@ -341,7 +341,7 @@
 "notify.done.recording" = "Recording organised";
 "notify.done.snaps" = "Captures organised";
 
-"notify.failed" = "%@ didn't finish";
+"notify.failed" = "%@ didn’t finish";
 
 "notify.open" = "Open";
 

@@ -1,4 +1,4 @@
-/* Capture (P5): the island, claws and cards, voice input, snaps, the picker, shortcuts */
+/* Capture (P5): the island and its hanging cards, voice input, snaps, the picker, shortcuts */
 
 "capture.action.main" = "Open the Blurt window";
 "capture.action.marker" = "Marker (also snaps)";
@@ -107,7 +107,7 @@
 "capture.picker.start" = "Start recording";
 "capture.picker.window_record" = "Click to pick this window · or drag to draw";
 "capture.picker.window_snap" = "Click to snap this window · or drag an area";
-"capture.prompt.shots" = "Use the blurt skill to process this batch of captures: %@\nIt is a shots session (mode: shots, no video). Each line of shots.jsonl is one capture and anchors one item: \"type\": \"shot\" is a screenshot (its primary frame; .marked.png files already carry the user's ink; a .wav is a voice note on it — transcribe it first), \"type\": \"voice\" is a voice input with no image (\"said\" is its transcript when it is already there, else transcribe the wav).\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the review page; write items.json, then summarise in 2–3 sentences.";
+"capture.prompt.shots" = "Use the blurt skill to process this batch of captures: %@\nIt is a shots session (mode: shots, no video). Each line of shots.jsonl is one capture and anchors one item: \"type\": \"shot\" is a screenshot (its primary frame; .marked.png files already carry the user’s ink; a .wav is a voice note on it — transcribe it first), \"type\": \"voice\" is a voice input with no image (\"said\" is its transcript when it is already there, else transcribe the wav).\nThis is an unattended background run started by the Blurt app: don’t ask questions and don’t start the review page; write items.json, then summarise in 2–3 sentences.";
 "capture.rec.discard" = "Discard";
 "capture.rec.discard_q" = "Discard this recording?";
 "capture.rec.discard_tip" = "Discard or restart…";

@@ -20,7 +20,7 @@
 "work.in_progress" = "In progress";
 "work.to_verify" = "To verify";
 "work.done" = "Done";
-"work.wontfix" = "Won't do";
+"work.wontfix" = "Won’t do";
 "work.confirm_done" = "Mark as done";
 "work.reopen" = "Reopen";
 

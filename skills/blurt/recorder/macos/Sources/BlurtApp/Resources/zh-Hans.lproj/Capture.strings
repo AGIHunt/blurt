@@ -1,4 +1,4 @@
-/* Capture (P5): the island, claws and cards, voice input, snaps, the picker, shortcuts */
+/* Capture (P5): the island and its hanging cards, voice input, snaps, the picker, shortcuts */
 
 "capture.action.main" = "打开口喷鸡窗口";
 "capture.action.marker" = "标记（同时截图）";

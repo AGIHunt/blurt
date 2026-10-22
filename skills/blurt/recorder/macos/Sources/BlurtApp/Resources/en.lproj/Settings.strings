@@ -19,7 +19,7 @@
 
 "onboarding.downloaded" = "Downloaded";
 
-"onboarding.fetches_scripts_packages_now" = "Fetches the scripts' packages now so the first run doesn't wait";
+"onboarding.fetches_scripts_packages_now" = "Fetches the scripts' packages now so the first run doesn’t wait";
 
 "onboarding.four_quick_steps_talk" = "Four quick steps: talk while you record, let your agent fix it.";
 
@@ -65,7 +65,7 @@
 
 "onboarding.you_can_switch_models" = "You can switch models or use cloud recognition later in Settings → Speech.";
 
-"onboarding.your_ok_blurt_runs" = "With your OK, Blurt runs uv's official installer into ~/.blurt/bin (your shell config is not touched):";
+"onboarding.your_ok_blurt_runs" = "With your OK, Blurt runs uv’s official installer into ~/.blurt/bin (your shell config is not touched):";
 
 "settings.export.ask_each_time" = "Ask each time";
 "settings.export.blurt_config_json_shared" = "For %@ (.blurt/config.json), shared with your team.";
@@ -88,7 +88,7 @@
 "settings.export.optional_used_without_lark" = "optional; used without lark-cli";
 "settings.export.save" = "Save to";
 "settings.export.send_confirmed_items" = "Send confirmed items to";
-"settings.export.session_folder" = "the session's folder";
+"settings.export.session_folder" = "the session’s folder";
 "settings.export.table_url" = "Table URL";
 
 "settings.general.after_recording" = "After a recording";
@@ -101,7 +101,7 @@
 "settings.general.language.system" = "Same as the system";
 "settings.general.login" = "Open Blurt at login";
 "settings.general.open_unassigned" = "Show Unassigned in Finder";
-"settings.general.projects.hint" = "A project is a folder on this Mac. Its items live in the folder's .blurt, which Blurt keeps out of git for you.";
+"settings.general.projects.hint" = "A project is a folder on this Mac. Its items live in the folder’s .blurt, which Blurt keeps out of git for you.";
 "settings.general.recording" = "Recording";
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.spotlight" = "Show items in Spotlight";
@@ -130,7 +130,7 @@
 "settings.privacy.agent_runs" = "Agent runs";
 "settings.privacy.audio_never_goes_cloud" = "Audio never goes to a cloud recognition service. Processing and fixing are done by the agent you chose, under its own terms.";
 "settings.privacy.benchmark_samples" = "Benchmark samples";
-"settings.privacy.blurt_own_files" = "Blurt's own files";
+"settings.privacy.blurt_own_files" = "Blurt’s own files";
 "settings.privacy.build_cache" = "Build cache";
 "settings.privacy.cancel" = "Cancel";
 "settings.privacy.clean_up" = "Clean up";
@@ -148,6 +148,6 @@
 "settings.privacy.prompts" = "Prompts";
 "settings.privacy.raw_live_caption_audio" = "Raw live-caption audio";
 "settings.privacy.recordings_screenshots" = "Recordings and screenshots";
-"settings.privacy.recordings_screenshots_items_stay" = "Recordings, screenshots and items stay on your Mac (~/Blurt or the project's .blurt/); Blurt uploads nothing.";
+"settings.privacy.recordings_screenshots_items_stay" = "Recordings, screenshots and items stay on your Mac (~/Blurt or the project’s .blurt/); Blurt uploads nothing.";
 "settings.privacy.search_index" = "Search index";
 "settings.privacy.speech_models" = "Speech models";

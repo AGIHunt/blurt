@@ -28,14 +28,14 @@
 
   "save.saving": "Saving…",
   "save.saved": "Saved",
-  "save.error": "Couldn't save. Retrying when you edit again.",
+  "save.error": "Couldn’t save. Retrying when you edit again.",
 
   "toast.kept": "Kept · {id}",
   "toast.dropped": "Dropped · {id}",
   "toast.merged": "Merged into {id}",
   "toast.undone": "Undone",
   "toast.copied": "Copied {text}",
-  "toast.title_empty": "A title can't be empty — kept the previous one",
+  "toast.title_empty": "A title can’t be empty — kept the previous one",
 
   "proc.working_one": "Organizing — {n} item so far, adding screenshots",
   "proc.working_other": "Organizing — {n} items so far, adding screenshots",
@@ -120,7 +120,7 @@
 
   "ask.title": "Needs your input",
   "chip.low_confidence": "Not sure",
-  "chip.low_confidence.hint": "The agent wasn't confident about this one",
+  "chip.low_confidence.hint": "The agent wasn’t confident about this one",
 
   "severity.high": "High",
   "severity.medium": "Medium",
@@ -135,8 +135,8 @@
   "work.by": "by {who}",
   "work.by_you": "by you",
   "work.history": "History",
-  "work.claim.fixed": "The agent says it's fixed — check it, then mark it done.",
-  "work.claim.wontfix": "The agent suggests not doing this — mark it as won't do, or reopen it.",
+  "work.claim.fixed": "The agent says it’s fixed — check it, then mark it done.",
+  "work.claim.wontfix": "The agent suggests not doing this — mark it as won’t do, or reopen it.",
   "work.open_session": "Open session",
   "work.commit": "Commit {sha}",
   "work.pr": "Pull request",
@@ -148,8 +148,8 @@
   "handoff.copy_full.hint": "The whole handoff as Markdown, screenshots by path",
   "handoff.copied.instruction": "Instruction copied · {id}",
   "handoff.copied.full": "Full text copied · {id}",
-  "handoff.failed": "Couldn't create the handoff",
-  "handoff.deleted": "Dropped items can't be handed off",
+  "handoff.failed": "Couldn’t create the handoff",
+  "handoff.deleted": "Dropped items can’t be handed off",
 
   "project.label": "Project",
   "project.move_to": "Move to…",
@@ -223,11 +223,11 @@
   "finish.review_rest": "Review the rest",
   "finish.confirm": "Confirm",
   "finish.still_processing": "Screenshots are still coming in. You can hand it back now — the agent finishes them in the background.",
-  "finish.error": "Couldn't save. Please try again.",
+  "finish.error": "Couldn’t save. Please try again.",
   "done.title": "All set — back to your agent",
   "done.body": "You can close this tab. Your agent picks it up from here.",
   "done.body_app": "Your agent picks it up from here.",
 
-  "item.gone": "This item isn't here any more.",
-  "load.failed": "Couldn't load the items: {error}"
+  "item.gone": "This item isn’t here any more.",
+  "load.failed": "Couldn’t load the items: {error}"
 }
