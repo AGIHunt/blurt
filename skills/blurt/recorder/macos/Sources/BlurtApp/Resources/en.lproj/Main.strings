@@ -164,6 +164,7 @@
 "main.job.error.quota" = "The agent ran out of quota.";
 "main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
 "main.job.hint.no_agent" = "No coding agent is set up. Install or log in to Claude Code or Codex in Settings → Agents.";
+"main.job.hint.interrupted" = "Blurt quit before this finished. Retry to run it again.";
 "main.job.no_terminal" = "The terminal isn’t available";
 "main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
 "main.job.open_terminal_app" = "Open in Terminal";
