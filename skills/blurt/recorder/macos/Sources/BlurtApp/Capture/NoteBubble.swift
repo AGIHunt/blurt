@@ -44,6 +44,27 @@ final class NoteVoice {
 
     init(url: URL) { self.url = url }
 
+    /// Tests (test commands only): BLURT_TEST_MIC_DENIED=1 acts as if microphone access had been turned off.
+    static let testDenied: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_MIC_DENIED"] == "1"
+    }()
+
+    /// Microphone access was turned off for Blurt (System Settings → Privacy & Security → Microphone).
+    static var denied: Bool {
+        testDenied || [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio))
+    }
+
+    /// "The microphone isn't available" in the island — with a way to System Settings when access was turned off.
+    static func toastUnavailable() {
+        guard denied else {
+            return island.toast(Loc.t("capture.voice.no_mic", table: "Capture"), actionTitle: nil, action: nil)
+        }
+        island.toast(Loc.t("capture.voice.mic_denied", table: "Capture"), actionTitle: Loc.t("capture.voice.mic_settings", table: "Capture")) {
+            if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") { NSWorkspace.shared.open(u) }
+        }
+    }
+
     var elapsed: Double { heard }
 
     func start(_ ready: @escaping (Bool) -> Void) {
@@ -52,6 +73,7 @@ final class NoteVoice {
                                        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         started = Date()
+        if NoteVoice.testDenied { ready(false); return }
         if let wav = inject ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"] {
             running = startInjected(URL(fileURLWithPath: wav))
             ready(running)
@@ -406,6 +428,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     var anchor: (() -> NSRect?)?
 
     var isOpen: Bool { shot != nil }
+    /// Its microphone is on (dictation waits for it).
+    var isListening: Bool { voice?.running == true }
 
     var canvasScreenRect: NSRect? {
         guard let p = panel, p.isVisible else { return nil }
@@ -610,6 +634,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func startListening() {
         guard let s = shot, let dir = s.batch?.dir else { return }
+        guard Dictation.shared.phase != .listening else { return refreshStatus() }    // dictation has the mic: type instead
         let rel = "shots/\(ShotBatch.name(s.n)).wav"
         let v = NoteVoice(url: dir.appendingPathComponent(rel))
         v.onLevel = { [weak self] l in self?.bars.level = l }

@@ -139,6 +139,9 @@
 "capture.snap.no_permission" = "截图失败：需要「录屏」权限";
 "capture.undo" = "撤销";
 "capture.voice.card_empty" = "语音 · %@";
+"capture.voice.dictation_busy" = "正在听写，先把这段说完";
+"capture.voice.mic_denied" = "口喷鸡没有麦克风权限";
+"capture.voice.mic_settings" = "去设置";
 "capture.voice.goes_card" = "先挂成卡片，稍后再选项目";
 "capture.voice.goes_to" = "归入 %@";
 "capture.voice.hint" = "在听 · 停顿即结束 · Esc 取消";
