@@ -737,6 +737,19 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
 - `stop`：发两次 C-c（间隔 0.4 秒）、最多等 3 秒；任务一律变成 cancelled（即使 agent 自己的 SessionEnd 先到）。`discard` 不改条目状态
   （in_progress → todo 不在 K3 的表里），由用户在界面上重新打开。merge 成功后也关掉那个窗口。
 
+**细则（整理用模型 / token 用量 / 派发选模型，2026-10-22）**：
+- `agents.json` 每个 agent 多：`models`（`{list: [{id,name,cheap}]}` 固定列表，Claude Code 用别名；或 `{cache, config}` = CLI 自己的模型缓存和配置，
+  Codex 是 `$CODEX_HOME/models_cache.json` 里 `visibility: list` 的，按 priority；描述含 fast / affordable 等的算 cheap）、`model_args`（`{model, effort}` 参数模板）、
+  `processing`（整理默认 `{model: "cheapest", effort: "low"}`）、`usage`（`args` 让 CLI 报用量 + `format`，或 `pattern` 从输出里取数字，Codex `tokens used\n24,953`）。
+  用户设置 `record.agent_processing.<id> = {model: id | "cheapest" | "default", effort}`（设置 → Agent「整理用模型」，默认值不写）。
+- `agents.py models ID` → `{models, cheapest, cli_default, efforts, processing}`（不联网、不花 token）；`agents.py command … headless --processing` 加上整理模型、
+  强度和用量参数（Tauri 整理也带它）；`agents.py usage ID FILE [--offset N]`。macOS 的 AgentHub 按同一规则自己拼（`AgentDef.processingArgs / tokensUsed`）。
+- **K4 任务多一个 `usage`**：`{tokens: n | null, agent, model, effort}`（owner 在 agent 退出后从输出解析写入；直接归档的是 `{tokens: 0, agent: null}`）。
+  主窗口任务详情副标题显示「用了约 5.9万 token · gpt-6-luna」/「未用 AI · 0 token」。
+- `sessions.py dispatch … --model M`：会话命令在提示词前加 agent 的 `model_args.model`（没有的 agent 报错），`agent.model` 记在任务里；`default` / 不写 = CLI 自己的设置。
+  派发面板（macOS `DispatchPanel`、Tauri `DispatchSheet`）在 agent 下多一个模型下拉（「默认（跟随 CLI 设置：…）」+ 该 agent 的模型），按项目 + agent 记住
+  （macOS config `sessions.models.<project>.<agent>`，Tauri localStorage）。
+
 **细则（P3，macOS）**：
 - **SwiftTerm**：`mac/Vendor/SwiftTerm` 是 v1.20.0 的源码（去掉 iOS、文档和 Metal shader；Metal 渲染器上游默认关、我们不开），
   `SwiftTermBuildInfo.swift` 手写替代上游的构建插件，所以只有 Command Line Tools、离线也能 `swift build`。
@@ -931,6 +944,24 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
 不看时卡片沿线收回岛里（缩到 0.7、淡出），不再从屏幕顶边拉走。拖走时线跟着卡片拉长，超出静止长度 44 pt 即断开回弹（outBack 0.32 s）；
 没放到目标上时线重新垂下（0.3 s）接住、圆扣弹出。删除时线松开弹回、卡片掉落。按种类区分的彩蛋（`EggKind`、`assets/icons/eggs/`、
 `<Egg>`）和 perch / claw / nest 图标一并删除；蛋只剩岛上孵化用的那一个。
+
+**细则（省 token，2026-10-22 试用反馈后，优先于上文 K7 的「直接进岛整理」「8 秒合并」）**：agent 只在用户要求时跑，一批一次。
+- **有备注 + 有项目 = 直接成条目，不跑 agent**：截图的备注（打字，或说话后本机 `transcribe.py note` 转写进同一行的 `said`）、语音输入的转写
+  就是条目。`captures.py file SESSION --captures N… [--project P]`（新脚本，经 items.py 的 `add` 写）：title = 备注第一句（≤ 80 字），quote = 备注全文，
+  kind = 本地关键词猜（issue / task / idea，其余 note，中英日西法德），frames = 截图（有墨迹的版本在前），`source.shot` = n，本地 id `C-NNN`（再调一次跳过），
+  条目多一个 `enrich: pending`。应用照样建一个 process 任务（title「按备注直接归档」，`usage = {tokens: 0, agent: null}`），岛上孵化 +1，
+  岛里一句「已归到 ordo-platform · OP-14」（项目 key 徽标、项目色）。
+- **没备注 = 卡片**，即使选了当前项目（截图行改回 `project: null, assigned_by: null`，卡片留在原 store 的批次里；重启时 inbox 和各项目 store 的批次都恢复卡片）。
+  current = auto 时有备注的捕获也是卡片。拖卡片到项目 / 待分配 = 同样用 `captures.py` 直接归档（没备注的标题是「截图 14:32」），不跑 agent。
+- **交给 agent 的只有**：岛上「整理」（有当前项目时：所有卡片整理进它）/「交给 AI 分」（auto：按条分项目）—— 每个批次一次调用；
+  主窗口右键「AI 补全」（`App.enrich(uids)`：一次调用，按 lens 补 kind / 步骤 / code_refs，`items.py patch … --unset enrich`）；录屏结束的整理。
+  它们都用**整理用模型**（K5 细则）。
+- **Esc = 取消**：备注气泡里 Esc（或垃圾桶按钮）丢弃这张截图（文件进废纸篓，追加 `{"n","deleted": true}`），岛上「已丢弃 · 撤销」3 秒；
+  撤销把文件从废纸篓移回、追加 `{"n","deleted": false}`，连同已打的字 / 说的话按正常流程走。⏎（或 ✓ 按钮）= 留下（没备注就成卡片）。语音输入 Esc 照旧取消。
+- **迁移后问一次**：`projects.json` 多 `current_by: "user" | "migrate"`（`projects.py use` 写 user；`migrate` 写 migrate；早先迁移过、没有这个键而 current
+  不是 auto 的也补成 migrate）。应用启动整理完后，`current_by == "migrate"` 时岛上问「截图、语音默认归到 X（沿用旧设置）还是自动分配？」[归 X] [自动分配]，
+  不会自动消失；两个答案都经 `projects.py use` 记成 user。
+- **当前项目一眼可见**：岛上项目按钮 = 项目色的 key 徽标 + 名字（放不下时名字截断，徽标不截）；备注气泡状态行先写「→ 项目名」。
 
 ### K8 · 种类图标和状态圆环
 
