@@ -236,8 +236,8 @@ id: BA-12
 uid: 01JB7ZK3Q4M8W2E5R6T9Y0ABCD
 kind: issue                       # issue | idea | note | task | <自定义 lens>
 title: "登录按钮点击后无响应"
-status: draft                     # 审核：draft（待审）| confirmed（保留）| deleted（丢弃），K3
-work: {"state": "todo", ...}      # 处理状态，K3；没有这个键 = todo
+state: new                        # 唯一的状态（K3 改版）：new | todo | handed_off | in_progress | to_verify | done | wontfix | discarded
+work: {"to": …, "agent": …, ...}  # 最近一次交出 / 处理的细节，K3；没交出过就没有这个键
 project: 3f2a9c1b7e44             # 项目 id（K2），inbox 里的条目是 inbox
 project_by: capture               # capture（捕获时就有当前项目）| ai | user | migrate
 project_confidence: null          # ai 分的置信度 0–1
@@ -258,7 +258,7 @@ frames: [{"path": "assets/01JB…/1.png", "t": 14.2, "caption": "登录按钮是
 clip: assets/01JB…/clip.mp4
 code_refs: ["web/src/Login.tsx:42"]
 exported: {}
-merged_into: null                 # 用户把它并进了哪条（uid）；并掉的条目 status 为 deleted
+merged_into: null                 # 用户把它并进了哪条（uid）；并掉的条目 state 为 discarded
 merged_from: []                   # uid 列表
 aliases: ["IN-3"]                 # 以前的 id（换项目时追加）
 work_history: []
@@ -268,7 +268,7 @@ _user: {"title": 1792560123.4}    # 用户改过的字段 → epoch；agent 写�
 - `source.type`：`recording | snap | voice | url | import | service`；`source.by` 默认本机用户名（`meta.json.author`，没有就是
   `getpass.getuser()`）；`source.role` 这轮总是 null；`source.session` 是原始会话目录的绝对路径（纯手动新建的条目为 null）；
   `source.shot` 是 `shots.jsonl` 里的 `n`；`source.local_id` 是 agent 在会话草稿里给它的号（`I-001`）。
-- v2 的 `fix` / `fix_history` 不再写；读到旧文件时按 K3 的映射转成 `work` / `work_history`。
+- v2 的 `fix` / `fix_history`、早期 v0.7 的 `status` + `work.state` 不再写；读到旧文件时按 K3 的迁移规则换成 `state`（+ `work` / `work_history`）。
 
 **正文**：一组 `## 标题` 小节，没有 H1（标题在 front-matter 里）。写入时按条目的 `language` 选标题文字（`zh*` 用中文，其它用英文），
 读取时两套标题都认（不分大小写、去掉首尾空白）。字段 ↔ 标题：
@@ -316,17 +316,17 @@ ID 可以是草稿号 `I-001`（经 `batch.local`）或 uid。
 ```
 items.py ingest     SESSION                                  → {"ok","items":[{"local","uid","id","path","project"}],"inbox":n}
 items.py add        (SESSION | --project P|inbox) --json '{…}' [--after REF]   → {"ok","id","uid","path"}
-items.py patch      REF | SESSION ID  --set k=V … [--unset k …] [--force]     (同 v2：保留 _user，PROTECTED 多了 work work_history project path)
+items.py patch      REF | SESSION ID  --set k=V … [--unset k …] [--force]     (同 v2：保留 _user，PROTECTED 多了 state restore_to work work_history project path)
 items.py set-frames REF | SESSION ID  PATH[@T][#CAPTION] … [--append]          PATH 相对 SESSION 或绝对；复制进 assets/<uid>/
 items.py done       SESSION                                  batch.processing 去掉
 items.py get        REF | SESSION ID                         → {"ok","item":{…, "path","store","project"},"session":abs|null}
-items.py list       [SESSION] [--project P|inbox] [--kind K]… [--status S]… [--work W]… [--fix-state F]…   → {"ok","items":[…]}
-items.py work       REF … --state todo|handed_off|in_progress|to_verify|done|wontfix
+items.py list       [SESSION] [--project P|inbox] [--kind K]… [--state S]…（旧的 --status / --work / --fix-state 换算成 state）   → {"ok","items":[…]}
+items.py state      REF … (--state S | --action A)（旧名 work，K3）
                     [--to session|external] [--agent A] [--job J] [--handoff H] [--claim fixed|wontfix]
-                    [--commit SHA] [--pr URL] [--note TEXT] [--by user|agent|app]   → {"ok","items":[{"uid","work"}]}
-items.py fix        REF | SESSION ID --state fixing|fixed|wontfix|reopened …    v2 别名，按 K3 映射成 work
+                    [--commit SHA] [--pr URL] [--note TEXT] [--by user|agent|app]   → {"ok","items":[{"uid","id","state","work"}]}
+items.py fix        REF | SESSION ID --state fixing|fixed|wontfix|reopened …    v2 别名，按 K3 映射成 state
 items.py move       REF … --project P|inbox [--by user|ai] [--confidence X] [--reason T]   → {"ok","moved":[{"uid","from","to","id","path"}]}
-items.py doc        SESSION | --project P|inbox [--status S]… [--work W]… [--kind K]…     → {"ok","doc":{…},"etag"}
+items.py doc        SESSION | --project P|inbox [--state S]… [--kind K]…     → {"ok","doc":{…},"etag"}
 items.py poll       (同 doc 的范围) --etag E                  → {"ok","etag"} 或 {"ok","doc","etag"}
 items.py user-ops   SESSION | --project P  (--json OPS | --stdin) [--confirm]  → {"ok","etag","doc"}
 items.py migrate    [--all | SESSION … | --root DIR] [--dry-run]               → {"ok","sessions":n,"items":n,"skipped":[{"dir","why"}]}
@@ -335,7 +335,7 @@ items.py ensure-uids SESSION                                 v2 遗留会话用�
 ```
 
 - 写命令的 agent/job 默认值：`--agent` ← `$BLURT_AGENT`，`--job` ← `$BLURT_JOB`（`$BLURT_RUN_ID` 作为旧别名）。
-- `work` 的合法性见 K3 的迁移表；不合法 → `code: "bad_transition"`。
+- 状态变化的合法性见 K3 的动作表；不合法 → `code: "bad_transition"`。
 - 每次写成功后进程内调 `index.update_paths([...])`（替代 `update_sessions`，失败忽略，规则同 C2）。
 - **doc**（C6 审核组件吃的文档，形状和 v2 的 items.json 一样，组件改动最小）：
   `{"schema": 3, "scope": {"session": abs} | {"project": id, …filters}, "title", "digest", "language", "processing", "reviewed",
@@ -345,10 +345,10 @@ items.py ensure-uids SESSION                                 v2 遗留会话用�
   `etag = file_etag(json.dumps(doc, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode())`。
 - **user-ops**：op 的 `id` 可以是 uid（组件应该一律用 uid，因为换项目会改 id）或 id。op 种类：
   `set` / `remove` / `add`（同 v2）；`set` 里的 `project` 键 = 用户换项目（等同 `move --by user`，记进 `_user.project`，AI 以后不再改它）；
-  新增 `{"op": "work", "id", "state", "note"?}`（用户确认完成 / 重新打开 / 不处理，`by: user`）。返回值总是带合并后的 `doc`。
+  新增 `{"op": "state", "id", "action" | "state", "note"?, "undo"?}`（K3；旧名 `work`）。返回值总是带合并后的 `doc`。
 - **migrate**：v1/v2 会话（有 items.json、没有 batch.json）→ 对应 store：`<repo>/.blurt/sessions/S` → `<repo>/.blurt`；
   `$BLURT_WORKSPACE/recordings/S` → inbox store（会话目录原地不动，`source.session` 指向它）。uid 保留（含 legacy `L…`），按会话里的
-  顺序分配新 id，`fix` → `work`，`_removed` → `batch.removed`（被并掉的条目不生成文件），`project_by: migrate`。
+  顺序分配新 id，`status` + `fix` → `state` + `work`（K3），`_removed` → `batch.removed`（被并掉的条目不生成文件），`project_by: migrate`。
   items.json 改名 `items.v2.json`。幂等：已有 batch.json 的会话跳过。应用每次启动跑一次 `items.py migrate --all`（后台，静默）。
 - **review.py**（P1）：`review.py SESSION` 或 `review.py --project P`；`GET /api/items` 返回 doc（带 ETag）、`POST /api/items {ops}`、
   `POST /api/confirm`；文件走 `GET /files/<百分号编码的绝对路径>`，只放行已登记的 store、会话目录和 `$BLURT_HOME/handoff`；
@@ -388,8 +388,7 @@ CREATE TABLE items (
   item_id TEXT NOT NULL,             -- "BA-12"（legacy："I-001"）
   kind TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
   tags TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL,              -- draft | confirmed | deleted
-  work_state TEXT NOT NULL DEFAULT 'todo',   -- K3
+  state TEXT NOT NULL,               -- K3：new | todo | handed_off | in_progress | to_verify | done | wontfix | discarded（schema v3）
   work_to TEXT, work_agent TEXT, work_job TEXT, work_claim TEXT,
   severity TEXT, owner TEXT, module TEXT, assignee TEXT, confidence TEXT,
   source_type TEXT, source_by TEXT, source_app TEXT, source_url TEXT,
@@ -400,20 +399,20 @@ CREATE TABLE items (
   UNIQUE (project_id, item_id)
 );
 CREATE INDEX items_updated ON items(updated DESC);
-CREATE INDEX items_proj ON items(project_id, status, work_state);
+CREATE INDEX items_proj ON items(project_id, state);
 -- items_fts（title, quote, body, tags；trigram）和三个触发器与 v1 相同
 ```
 
 - `index.py update PATH …` 接受 `.md` 文件、store 目录、会话目录（删掉的路径 → 删行）；`index.py scan` 的范围 = projects.json 里的项目、
   inbox store、`$BLURT_WORKSPACE/recordings`（旧）、`--root`。Python API：`update_paths(paths)`、`scan(roots, full)`、`search(...)`。
-- `index.py search` 的筛选：`--project ID|路径|名字|inbox`（`--workspace` 作为别名保留）、`--work W`（可重复）、`--status`、`--kind`、
+- `index.py search` 的筛选：`--project ID|路径|名字|inbox`（`--workspace` 作为别名保留）、`--state S`（可重复；旧的 `--status` / `--work` 换算成 state）、`--kind`、
   `--session`、`--source-type`、`--fix-state`（旧别名，按 K3 映射）；排序 `updated|created|t_start|title`。
-  **ItemRow v2** = `{uid, project_id, project_name, project_key, session_id, session_dir, path, item_id, kind, title, status, work_state,
+  **ItemRow v2** = `{uid, project_id, project_name, project_key, session_id, session_dir, path, item_id, kind, title, state,
   work_to, work_agent, severity, primary_frame, created, updated, snippet, suggested_project}`。查询词规则同 C3。
 - **监听**：宿主监听每个 store 的 `items/` 和 `sessions/`（FSEvents / notify，防抖 300 ms），变化后 `index.py update <路径>`。
 
 **MCP**（P1，`mcp_server.py`）：7 个工具名和参数不变（不破坏已装好的用户），行为改为：`list_projects` 返回 `{id, name, key, path, kind,
-open_items, unassigned}`（open = 未删除且 work_state ∈ todo / handed_off / in_progress）；`search_items` 加可选 `work_state: [str]`；
+open_items, unassigned}`（open = state ∈ new / todo / handed_off / in_progress）；`search_items` 加可选 `state: [str]`（`work_state` / `status` 照旧能用）；
 `get_item` 的 item 带 `path`、`project`；`mark_fixed(uid, state)` 映射：`fixing` → `in_progress`，`fixed` → `to_verify`（claim fixed），
 `wontfix` → `to_verify`（claim wontfix），`reopened` → `todo`；`job` 取 `$BLURT_JOB`。工具描述里写明「agent 说修好了只到待验证，用户确认才算完成」。
 
@@ -429,8 +428,8 @@ open_items, unassigned}`（open = 未删除且 work_state ∈ todo / handed_off 
   帧保留为原来的绝对路径（不丢信息，下次 `set-frames` 修正）。条目换项目时 `assets/<uid>/` 整个搬走，帧的相对路径不变。
 - **ingest 的归属顺序**：shots.jsonl 里该截图的归属行（`assigned_by` → `project_by`）> 条目自带的 `project`（agent 提议，见 K2 细则）>
   items.json 的 `project` / batch.project / `meta.json.project` / `$BLURT_PROJECT` / 会话所在的项目 store > inbox。项目 id、key、slug、名字都认，
-  不认识的当没写。已 ingest 过的会话再出现 items.json：按草稿号对上已有条目，当 agent 的 patch 处理（保留 `_user`，不改 status），新的追加。
-- **user-ops**：`remove` = status deleted + `merged_into`（into 的 uid，没有 into 为 null）+ `_user.status`，并从 `batch.items` 拿掉、记进
+  不认识的当没写。已 ingest 过的会话再出现 items.json：按草稿号对上已有条目，当 agent 的 patch 处理（保留 `_user`，不改 state），新的追加。
+- **user-ops**：`remove` = state discarded（`restore_to` 记原状态）+ `merged_into`（into 的 uid，没有 into 为 null），并从 `batch.items` 拿掉、记进
   `batch.removed`；`add` 遇到已存在的 uid / id 就是撤销合并（字段照 op 恢复、`merged_into` 清空、放回 `after` 后面），否则新建。`merged_from`
   里的 id / 草稿号存成 uid。页面把 doc 给的绝对帧路径原样发回时，store 里的路径转回相对路径。未知 id 忽略（同 v2）。
 - **doc** 多两个键：`project`（batch.project）和每条的 `store`。review.py 不再接受整份文档的 POST（400，v0.5 的旧页面）；`/files/` 同时认
@@ -441,7 +440,7 @@ open_items, unassigned}`（open = 未删除且 work_state ∈ todo / handed_off 
   `items.json` / `batch.json` / `shots.jsonl` / `meta.json`（= 它的会话）；search 多 `--sort title`。还没迁移的 v1/v2 会话，条目行挂在它将来所在的项目
   （store）下；`--root` 发现的未登记项目 `registered = 0`，key 用 store.json 的或默认规则算出的。
 - **MCP**：`list_projects.unassigned` = inbox 行是它的条目数，项目行是 AI 建议归它、还在 inbox 里的条目数；`mark_fixed` 返回
-  `{ok, uid, id, work, next}`；碰到还在 v0.6 会话里的条目（索引里 path 带 `#`）先 `items.py migrate` 那个会话。
+  `{ok, uid, id, state, work, next}`；碰到还在 v0.6 会话里的条目（索引里 path 带 `#`）先 `items.py migrate` 那个会话。
 
 ### K2 · 项目 = 打开的文件夹
 
@@ -512,48 +511,103 @@ route 由 `items.py ingest` 在 auto 模式下调用（后台、写 K4 的 route
   cwd = `$BLURT_HOME/tmp`，60 秒超时。一次调用给所有条目，答案里取第一个 JSON；失败时条目留在 inbox，reason 写原因。
 - `items.py move --by ai` 和 route 都跳过 `_user.project`；`move --by user` 记 `_user.project`、清掉 `suggested_project`；AI 移动时多写 `project_reason`。
 
-### K3 · 状态：审核 + 处理
+### K3 · 条目状态：一条生命线
 
-审核（`status`，只有用户改；agent 写条目时只能写 draft）：`draft` 待审 → `confirmed` 保留 / `deleted` 丢弃（可以来回改）。
+**2026-10-22 改版**（用户反馈：两条状态轴——审核 draft / confirmed / deleted 和处理 work.state——难懂；「不处理」了的条目还算在收件箱里）。
+现在每条只有**一个**用户看得见的状态 `state`：
 
-处理（`work`，对象，七个键总是写齐）：
-
-```jsonc
-"work": {"state": "in_progress",          // todo | handed_off | in_progress | to_verify | done | wontfix
-         "to": "session",                 // session（口喷鸡会话）| external（复制给外部 agent）| null
-         "agent": "claude",               // agents.json id 或 "human"
-         "job": "j-20261022-101500-ab12", // K4 任务 id（会话派发时）或 null
-         "handoff": "H-0012",             // K6 交接单 id 或 null
-         "claim": null,                   // to_verify 时 agent 的说法：fixed | wontfix
-         "note": "", "commit": null, "pr": null,
-         "at": "…ISO…", "by": "agent"}    // user | agent | app
 ```
-`work_history`：state 变化时把旧的 `work` 追加进去（同 v2 fix_history 的规则：state 不变只更新当前对象）。
+新 New ─要做─▶ 要做 To do ─交出─▶ 已交出 Handed off ─▶ 进行中 In progress ─▶ 待验证 To verify ─标为完成─▶ 完成 Done
+                 ▲   ▲                    │                    │                     │
+                 │   └────────收回────────┴────────────────────┘                     │
+                 └──────────────────────────────退回─────────────────────────────────┘
+不做 Won't do：没结束的状态都能到；完成 / 不做 都能「重新打开」回到要做。
+丢弃 Discard：任何状态都能丢进「已丢弃」（垃圾桶），能恢复到丢弃前的状态。
+```
+
+| `state` | en | zh-Hans | 意思 |
+|---|---|---|---|
+| `new` | New | 新 | 刚捕获 / 整理出来，你还没看过 |
+| `todo` | To do | 要做 | 你留下了，要做 |
+| `handed_off` | Handed off | 已交出 | 交给了 agent（口喷鸡里的会话，或复制给你自己的 agent），还没开始 |
+| `in_progress` | In progress | 进行中 | agent 在做 |
+| `to_verify` | To verify | 待验证 | agent 说做好了（或说不该做），等你确认 |
+| `done` | Done | 完成 | 你确认做好了 |
+| `wontfix` | Won't do | 不做 | 你决定不做（留着记录） |
+| `discarded` | Discarded | 已丢弃 | 丢掉了，在「已丢弃」里，能恢复 |
+
+**分组**（所有界面和计数都按这个，只在这里定义）：
+- **收件箱 = 需要你看的 = `new` + `to_verify`**。侧栏、菜单栏数字、刘海岛、Tauri 应用的数字都是它；标了不做 / 完成 / 丢弃的条目立刻离开收件箱。
+- 未结束（MCP 的 `open_items`、backlog）= `new` `todo` `handed_off` `in_progress`；进行中（侧栏）= `handed_off` `in_progress` `to_verify`；
+  已结束 = `done` `wontfix`；`discarded` 只在「已丢弃」筛选里出现，其它列表和计数都不含它。
+
+**文件**（K1 front-matter）：
+
+```yaml
+state: to_verify                  # 唯一的状态
+restore_to: todo                  # 只在 discarded 时写：恢复回哪个状态
+work: {"to": "session", "agent": "claude", "job": "j-…", "handoff": null, "claim": "fixed",
+       "note": "", "commit": null, "pr": null, "at": "…ISO…", "by": "agent"}   # 最近一次交出 / 处理的细节，没有 state 键
+work_history: [{"state": "in_progress", "to": …}]   # 处理环节的每次变化：追加变化前的 {state, …work}
+```
+`work` 的 10 个键（`WORK_KEYS`）总是写齐：`to` session | external | null；`agent` agents.json 的 id 或 `human`；`job` K4 任务 id；
+`handoff` K6 交接单 id；`claim` 只在 to_verify 时有值：fixed | wontfix；`note` `commit` `pr`；`at` `by`（user | agent | app）。
+keep / discard / restore 只改 `state`（和 `restore_to`），不动 `work`。
+
+**迁移**（读的时候换算，`items.py` 第一次写这个文件时落盘；不需要一次性改写所有文件）。没有 `state` 键（或值不认识）时：
+1. `status: deleted` → `discarded`，`restore_to` = 按 2–3 算出的状态；
+2. 否则处理状态（`work.state`；v2 的 `fix` 先按下面的映射换算）不是 todo → 就是它（所以 draft + wontfix = `wontfix`，离开收件箱）；
+3. 否则 `draft`（或没有 status）→ `new`，`confirmed` → `todo`。
+
+写回时写 `state`，去掉 `status` 和 `work.state`。v2 `fix` 映射不变：`fixing → in_progress`，`fixed → to_verify`（claim fixed），
+`wontfix → to_verify`（claim wontfix；旧文件里 `agent: human` 的 wontfix 是你自己的决定 → `wontfix`），`reopened → todo`。
+v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --json` 里的 `status` / `work` / `fix` 都按同一规则得出 `state`。
+
+**动作**（用户能做的就是这张表；界面上点状态只列当前状态下的这几个动作，标签是动词 + 一句说明，文案键见 K10 的 `action.*`）：
+
+| 动作 | 从 | 到 | 快捷键 | en | zh-Hans |
+|---|---|---|---|---|---|
+| `keep` | new | todo | A（审核模式还有 ↩） | Keep — add it to To do | 要做 — 留下，放进要做 |
+| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off… — start it in Blurt, or copy an instruction | 交给 agent… — 在口喷鸡里开始，或复制指令 |
+| `done` | todo, handed_off, in_progress, to_verify | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
+| `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
+| `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |
+| `wontfix` | new, todo, handed_off, in_progress, to_verify | wontfix | W | Won't do — keep a record, out of your inbox | 不做了 — 留个记录，移出收件箱 |
+| `reopen` | done, wontfix | todo | R | Reopen — back to To do | 重新打开 — 回到要做 |
+| `discard` | 除 discarded 外都可以 | discarded | X、⌫ | Discard — move to Discarded; you can restore it | 丢弃 — 放进已丢弃，可以恢复 |
+| `restore` | discarded | `restore_to`（没有就 new） | R | Restore — put it back where it was | 恢复 — 放回丢弃前的状态 |
+
+- 每个状态最多一个「往回」的动作（send_back / take_back / reopen / restore），所以 R 总是唯一的；`S` 打开当前条目的状态菜单。
+  `hand_off` 只在宿主能派发 / 交接时出现：它打开派发面板或复制指令，状态由 `sessions.py dispatch`（app，to: session）或
+  `handoff.py --mark`（user，to: external）写，不走 state op。
+- 同一张表在三处实现，用同一个夹具 `tests/fixtures/lifecycle.json` 测：Python `_common.LIFECYCLE`、web `@blurt/ui` 的 `lifecycle.ts`、
+  Swift `BlurtCore/Lifecycle.swift`。
+
+**agent 和 app 能做的**（`by: agent` / `app`。它们不能 keep / done / wontfix / discard / restore——留下、完成、不做、丢弃只由你决定）：
 
 | 从 → 到 | 谁 | 什么时候 |
 |---|---|---|
-| todo → handed_off(session) | app（sessions.py dispatch） | 派发到口喷鸡会话；条目是 draft 的同时设为 confirmed |
-| todo → handed_off(external) | user（复制指令 / 复制全文） | K6 |
-| handed_off → in_progress | agent（mark_fixed fixing / items.py work）；app（sessions.py：会话第一次进入 running） | |
-| handed_off / in_progress → to_verify | agent（mark_fixed fixed / wontfix → claim）；app（会话已退出而条目还在 in_progress，claim 为 null）；app（worktree merge / pr 完成） | |
-| to_verify → done | **只有 user**（审核页或列表上「确认完成」） | |
-| to_verify → todo | user（重新打开，note 写原因） | |
-| 任意 → wontfix | user；agent 只能到 to_verify（claim wontfix） | |
-| handed_off(external) / in_progress → done | user | 复制给外部 agent、那边没接 MCP：只能由你手动标完成（§1.3「之后手动标」），不经过 to_verify |
-| done / wontfix → todo | user（重新打开） | |
-| deleted 的条目 | 不能派发、不能交出；work 保持原样 | |
+| new / todo → handed_off | app | `sessions.py dispatch`（handed_off 再派发 = 只更新细节） |
+| new / todo / handed_off / to_verify → in_progress | agent、app | `mark_fixed(fixing)`；会话第一次进入 running |
+| new / todo / handed_off / in_progress / to_verify → to_verify | agent、app | `mark_fixed(fixed / wontfix)` → claim；会话退出时还在 in_progress（claim null）；worktree merge / PR 完成 |
+| in_progress / to_verify → todo | agent、app | 收回自己的说法（`mark_fixed(reopened)`） |
 
-v2 映射（读旧文件、`items.py fix`、`mark_fixed`）：`fixing → in_progress`，`fixed → to_verify`（claim fixed），`wontfix → to_verify`
-（claim wontfix；旧文件里 `agent: human` 的 wontfix 直接映射成 wontfix），`reopened → todo`；没有 fix → todo。
+不合法 → `code: "bad_transition"`；`discarded` 的条目不能交出 / 开始（`code: "deleted"`）。
 
-显示：K8 的状态圆环。会话里的条目在列表里额外显示会话状态（K5）。
+**接口**
+- `items.py state REF … (--state S | --action A) [--to session|external] [--agent A] [--job J] [--handoff H] [--claim fixed|wontfix]
+  [--commit SHA] [--pr URL] [--note TEXT] [--by user|agent|app]` → `{"ok","items":[{"uid","id","state","work"}]}`。
+  `items.py work …` 是它的旧名字（同样的参数）；`--by` 默认 agent；`--to` 不写时 user 交出 = external、app 交出 = session。
+- `items.py list / doc` 的筛选 `--state S`（可重复）；旧的 `--status` / `--work` / `--fix-state` 照旧能用，换算成 state：
+  status `draft → new`、`confirmed →` todo … wontfix、`deleted → discarded`；work `todo →` new + todo，其余同名。不给筛选 = 除 discarded 外全部。
+- `items.py patch --set status=…` 只为旧调用方保留，要 `--force`（用户在对话里要求的）：`confirmed` = keep、`deleted` = discard、`draft` 不变。
+  `state` 不能 patch（`code: "protected"`，用 `items.py state`）。
+- user-ops：`{"op": "state", "id", "action"?: A, "state"?: S, "note"?}`（界面一律发 `action`）；旧的 `{"op": "work", …}` 是别名；
+  `set` 里的 `state` / `status` 键按用户的状态变化处理；`remove` = discard（有 `into` 时记 `merged_into`）；撤销合并的 `add` 回到 `restore_to`。
+- doc 和 `items.py get / list` 的每条带 `state`、`work`、`restore_to`（discarded 时），不再有 `status`。
+- index.db v3：`state` 列取代 `status` + `work_state`（K1）；MCP 见 K1。
 
-**细则（P1）**：
-- 表里没写、但实现允许的：agent 可以从 todo 直接到 in_progress / to_verify（用户在对话里让它修，没经过交出）；agent 可以从 in_progress /
-  to_verify 回到 todo（收回自己的说法，`mark_fixed(reopened)`）；app 同 agent，另加 todo → handed_off。`items.py work` 的 `--by` 默认 agent；
-  `--to` 不写时 user 交出 = external、app 交出 = session。`items.py fix` 没有 agent（没给、也没有 `$BLURT_AGENT`）时算用户自己的决定（wontfix 直接是 wontfix）。
-- 状态变化时 agent / job / to / handoff 从上一状态（handed_off / in_progress / to_verify）带过来；commit / pr 进入 in_progress 时清空，其后保留。
-- `work` 一律写齐 11 个键（WORK_KEYS 的顺序）；没有 work 键 = todo。v2 迁移时 `fix.run_id` → `work.job`（有 run_id 时 `to: session`）。
+显示：K8 的状态圆环，每条一个，可以点：列出上面的动作。
 
 ### K4 · 任务（jobs）
 
@@ -950,16 +1004,20 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
   在这批图标合并之前，其他包用名字查（Swift `BlurtIcon(named:)`、web `<Icon name="…">`），查不到时临时用现有图标，合并后删掉兜底。
 - **状态圆环**（处理状态，列表 14 pt、详情 18 pt，线宽 1.5 pt）：
 
-  | work.state | 画法 | 颜色 |
+  | state（K3） | 画法 | 颜色 |
   |---|---|---|
+  | new | 虚线圆环（8 段） | 品牌强调色 `--accent` |
   | todo | 空心圆环 | 次要文字色 |
   | handed_off | 圆环 + 中心 4 pt 圆点 | 品牌强调色 `--accent` |
   | in_progress | 圆环 + 半圆填充（右半） | `--accent` |
   | to_verify | 圆环 + 实心圆，中间一个小 `!` 形状（图形，不是文字） | 提醒色 `#E5A000` / `#FFC53D` |
   | done | 实心圆 + 勾 | `--keep`（绿） |
   | wontfix | 圆环 + 45° 斜线 | 三级文字色 |
+  | discarded | 圆环 + ×（两条对角线） | 三级文字色 |
 
-  审核状态另显示：draft = 行首 6 pt 的强调色圆点（像未读邮件），deleted = 只在「已丢弃」筛选里出现，标题变淡。
+  **2026-10-22 改版（K3 一条生命线）**：每条只显示**一个**圆环（不再有行首的 draft 圆点和单独的「审核」列）。new 的虚线圆环 = 还没看过；
+  discarded 只在「已丢弃」筛选里出现，标题变淡。圆环可以点：弹出 K3 的动作菜单（只列当前状态能做的，动词 + 一句说明 + 快捷键）。
+  详情 / 检查器里是「状态胶囊」= 圆环 + 状态名 + 下拉箭头，同一个菜单。
   实现：web `StatusRing` 组件（`packages/ui`），Swift `StatusRing.image(_ state: String, size: CGFloat) -> NSImage`（模板化以外的彩色图，带无障碍描述 = `work.<state>` 的文案）。
 - **蛋只用在品牌和动效**（整理中的孵化、破壳、完成时的鸡）。列表、侧栏、详情里不再用种类彩蛋和状态蛋（`EggKind` 只留给动效）。
   「完成提示里的鸡」重画成多层矢量插画，有几种表情，只在条目到「待验证 / 已完成」时出现（P5）。
@@ -972,7 +1030,8 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
   浅色是白、深色是 `#2A1A00`；done 的勾是白。自定义 lens：色相 `h = (h·31 + UTF-16 码元) mod 360`，从 HSL(h, 55%, 42%) / HSL(h, 70%, 68%)
   起每次 2% 变深 / 变浅，直到在 `#EAEAEA` / `#383838` 上 ≥ 3:1。web（`tokens.css`、`ui/src/kinds.ts`）和 Swift（`KindStyle.swift`、
   `StatusRing.swift`）同值同几何，`tests/test_icons.py` 和 ui 的 vitest 校验。
-- **圆环几何**（size × size，线宽 1.5，`u = size / 14`）：环半径 `size/2 − 1.25`；handed_off 中心圆点半径 `2u`；in_progress 右半圆半径
+- **圆环几何**（size × size，线宽 1.5，`u = size / 14`）：new 的虚线 = 环周长 `2πR` 分成 16 等份，画 / 空交替（`dasharray = 2πR/16`），
+  从 12 点方向开始；discarded 的 × = `(c−2.1u, c−2.1u)→(c+2.1u, c+2.1u)` 和 `(c+2.1u, c−2.1u)→(c−2.1u, c+2.1u)`；环半径 `size/2 − 1.25`；handed_off 中心圆点半径 `2u`；in_progress 右半圆半径
   `R − 1.75u`；to_verify / done 实心圆半径 `R + 0.75`；「!」= 竖线 `(c, c−3u)→(c, c+0.6u)` + 圆点 `(c, c+2.85u)` 半径 `0.95u`；勾 =
   `(c−2.9u, c+0.1u)→(c−0.9u, c+2u)→(c+3u, c−2.2u)`；wontfix 斜线是环内 45°。y 向下。
 - **图标**：`note.svg` 改名 `document.svg`，`task.svg` 由 `checklist.svg` 取代；`note`、`task`、`todo`、`idea`、`issue`、`lens` 作为别名
@@ -1089,10 +1148,14 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
 - **校验**：每个平台都有测试检查 en 和 zh-Hans 的键完全一致、占位符一致（Swift 表由 `tests/test_l10n.py` 检查，P4；web 由 P6 的 vitest；Rust 由 P8）。
 - **通用键**（所有平台同名同义，en / zh-Hans）：
   `kind.issue` Issue / 问题，`kind.idea` Idea / 想法，`kind.note` Note / 笔记，`kind.task` Task / 任务；
-  `review.draft` To review / 待审，`review.confirmed` Kept / 保留，`review.deleted` Dropped / 丢弃；
-  `work.todo` To do / 待处理，`work.handed_off` Handed off / 已交出，`work.handed_off.session` With {agent} / 已交给 {agent}，
-  `work.handed_off.external` Copied to your agent / 已复制给外部 agent，`work.in_progress` In progress / 进行中，`work.to_verify` To verify / 待验证，
-  `work.done` Done / 已完成，`work.wontfix` Won't do / 不处理，`work.confirm_done` Mark as done / 确认完成，`work.reopen` Reopen / 重新打开；
+  状态（K3 改版，取代 `review.*` / `work.*`）：`state.new` New / 新，`state.todo` To do / 要做，`state.handed_off` Handed off / 已交出，
+  `state.handed_off.session` With {agent} / 已交给 {agent}，`state.handed_off.external` Copied to your agent / 已复制给你的 agent，
+  `state.in_progress` In progress / 进行中，`state.to_verify` To verify / 待验证，`state.done` Done / 完成，`state.wontfix` Won't do / 不做，
+  `state.discarded` Discarded / 已丢弃，`state.menu` Change state / 更改状态；
+  动作 `action.<keep|hand_off|done|send_back|take_back|reopen|restore|wontfix|discard>` 和 `action.<…>.hint`（+ `action.done.hint_verify`），
+  文字见 K3 的动作表；收件箱 `inbox.needs_you` Needs you: {parts} / 需要你看的：{parts}，`inbox.part.new` {n} new / {n} 条新的，
+  `inbox.part.verify` {n} to verify / {n} 条待验证（部分用 ` · ` 连，0 的不显示），`inbox.empty.title` Nothing needs you right now /
+  现在没有需要你看的，`inbox.empty.body` New captures, and items an agent says are finished, show up here. / 新捕获的条目，和 agent 说做好了的条目，会出现在这里。；
   `session.running` Working / 运行中，`session.waiting_input` Needs your input / 等你回答，`session.turn_done` Turn finished / 本轮完成，
   `session.exited` Exited / 已退出，`session.error` Error / 出错；
   `project.auto` Auto / 自动，`project.inbox` Unassigned / 待分配，`project.ai_sort` Let AI sort / 交给 AI 分，`project.open_folder` Open Folder… / 打开文件夹…；
