@@ -1,5 +1,5 @@
-/* The island (K7) on Windows / Linux: a dark glass pill at the top centre, expanding into a panel; cards held by a
-   claw hang under it. Motion: box changes ride one curve (an expo-out, 380 ms); the cards' springs live in island.ts.
+/* The island (K7) on Windows / Linux: a dark glass pill at the top centre, expanding into a panel; unfiled cards
+   hang under it on threads. Motion: box changes ride one curve (an expo-out, 380 ms); the cards' springs live in island.ts.
    Reduced motion: fades only (theme.css zeroes transitions; island.ts snaps the springs). */
 :root {
   --isl: rgba(18, 18, 20, 0.94);
@@ -649,7 +649,7 @@ button.foot:hover {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
-/* ------------------------------------------------------------ cards and the claw */
+/* ------------------------------------------------------------ cards on their threads */
 .cards {
   position: absolute;
   inset: 0;
@@ -662,46 +662,45 @@ button.foot:hover {
   transform-origin: 50% 0;
   will-change: transform;
 }
+/* the thread: a hairline from under the island to the clasp; a soft halo keeps it legible on any wallpaper */
 .leg {
   position: absolute;
+  z-index: 1; /* the clasp sits on the card's edge */
   left: 50%;
   top: 0;
-  width: 34px;
-  margin-left: -17px;
+  width: 8px;
+  margin-left: -4px;
   transform-origin: 50% 0;
 }
-.leg .stem {
+.leg .thread {
   position: absolute;
   left: 50%;
   top: 0;
-  bottom: 14px;
-  width: 4px;
-  margin-left: -2px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #8a4b0f, #fab03d 45%, #e3952c);
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  background: rgba(0, 0, 0, 0.42);
+  box-shadow: 0 0 1px rgba(255, 255, 255, 0.75);
 }
-.leg .foot {
+.leg .clasp {
   position: absolute;
-  left: 0;
-  bottom: -6px;
-  width: 34px;
-  height: 22px;
+  left: 50%;
+  bottom: -3.5px;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: var(--accent);
+  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.25);
+  transition:
+    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 160ms ease-out;
 }
-.leg .toe {
-  transform-box: fill-box;
-  transition: transform 300ms var(--ease);
-}
-.leg .toe.l {
-  transform-origin: 100% 0;
-}
-.leg .toe.r {
-  transform-origin: 0 0;
-}
-.hang.open .toe.l {
-  transform: rotate(28deg);
-}
-.hang.open .toe.r {
-  transform: rotate(-28deg);
+.hang.open .clasp {
+  transform: scale(0.4);
+  opacity: 0;
 }
 .hang.dragging .leg {
   transition: transform 300ms var(--ease);

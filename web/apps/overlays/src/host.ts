@@ -40,7 +40,7 @@ export type StatusLine =
   | { ev: 'discarded' }
   | { ev: 'error'; msg: string; code?: string };
 
-/** A capture held by the claw (K7): a screenshot with its note, or a voice note — not in a project yet. */
+/** A capture hanging from the island (K7): a screenshot with its note, or a voice note — not in a project yet. */
 export interface Card {
   n: number;
   /** loadable thumbnail URL (asset protocol in Tauri); "" for a voice note */
@@ -99,7 +99,7 @@ export interface IslandState {
 export type IslandOp =
   | { op: 'state'; state: IslandState }
   | { op: 'cards'; cards: Card[] }
-  /** a new capture flies up to the claw; pull = straight on into the island (a project is current) */
+  /** a new capture flies up and a thread catches it; pull = straight on into the island (a project is current) */
   | { op: 'card'; card: Card; pull: boolean }
   | { op: 'toast'; kind: 'sorted' | 'failed' | 'error'; n?: number; job?: string; code?: string; type?: string }
   | { op: 'switcher'; open: boolean }

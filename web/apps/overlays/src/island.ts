@@ -2,8 +2,8 @@
 // component as the macOS notch island, with lighter motion. Collapsed it shows only what is happening (recording
 // time, a voice note, the hatching egg while captures are organized); hovering it (or the hotkeys) opens it: the
 // current project and the switcher, record / screenshot / voice, the jobs under way, the agent sessions that need
-// you, what waits for review. Unfiled captures hang under it as cards, each held by a chicken's claw; drag one onto
-// a project to file it.
+// you, what waits for review. Unfiled captures hang under it as cards, each on a thin thread with a small clasp in the
+// brand colour, the lengths a little uneven like a wind chime; drag one onto a project to file it.
 //
 // The window is the full width of the screen and click-through except over what is drawn (we report those rects).
 // Rust (apps/desktop/src-tauri/src/island.rs) sends `state` / `cards` / … ops and gets actions back.
@@ -42,7 +42,8 @@ const PILL_MIN_W = 120;
 const OPEN_W = 480;
 const MAX_H = 420;
 const CARD_GAP = 14;
-const HANG = 18; // card top edge under the island
+const HANG = 18; // card top edge under the island (the shortest thread)
+const SLACKS = [0, 9, 3, 12, 5, 10, 2]; // extra thread per position: a wind chime, not a shelf
 const SHOT = { w: 112, h: 84 };
 const VOICE = { w: 168, h: 44 };
 const MAX_CARDS = 7;
@@ -468,7 +469,7 @@ function bumpIsland() {
   island.classList.add('bump');
 }
 
-// ------------------------------------------------------------------ cards held by the claw
+// ------------------------------------------------------------------ cards hanging on threads
 type Phase = 'fly' | 'hang' | 'drag' | 'pull' | 'fall';
 interface Live {
   card: Card;
@@ -480,7 +481,8 @@ interface Live {
   x: Spring;
   y: Spring; // offset from the hanging position (fly-in starts below)
   lift: Spring;
-  reach: Spring; // the claw's reach, 0 (up) … 1 (down at the card)
+  reach: Spring; // how far the thread has dropped, 0 (in the island) … 1 (down at the card)
+  slack: number; // this card's extra thread length
   swing: Pendulum;
   tilt: number;
   drag?: { ox: number; oy: number; px: number; py: number; moved: boolean };
@@ -494,12 +496,6 @@ let dragging: Live | null = null;
 const keyOf = (c: Card) => `${c.session ?? ''}#${c.n}`;
 const dims = (c: Card) => (c.kind === 'voice' || !c.src ? VOICE : SHOT);
 
-const CLAW = `<svg class="foot" viewBox="0 0 34 22" aria-hidden="true"><g fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path class="toe l" d="M17 2 7 16" stroke="#733d0a" stroke-width="5"/><path class="toe r" d="M17 2l10 14" stroke="#733d0a" stroke-width="5"/>
-  <path d="M17 2v16" stroke="#733d0a" stroke-width="5"/>
-  <path class="toe l" d="M17 2 7 16" stroke="#fab03d" stroke-width="3.2"/><path class="toe r" d="M17 2l10 14" stroke="#fab03d" stroke-width="3.2"/>
-  <path d="M17 2v16" stroke="#fab03d" stroke-width="3.2"/></g></svg>`;
-
 function faceHtml(c: Card) {
   if (c.kind === 'voice' || !c.src) {
     return `<div class="face voice">${ic('waveform', 16)}<span class="cap">${esc(c.text || t('island.cards.voice'))}</span></div>`;
@@ -512,7 +508,7 @@ function makeCard(card: Card, from: 'fly' | 'still'): Live {
   el.className = 'hang';
   el.style.width = `${dims(card).w}px`;
   el.dataset.kind = card.kind === 'voice' || !card.src ? 'voice' : 'shot';
-  el.innerHTML = `<div class="leg"><i class="stem"></i>${CLAW}</div><div class="card">${faceHtml(card)}
+  el.innerHTML = `<div class="leg"><i class="thread"></i><i class="clasp"></i></div><div class="card">${faceHtml(card)}
     <button class="x" aria-label="${esc(t('island.cards.remove'))}">${ic('x', 11)}</button><span class="flash">${esc(t('island.cards.copied'))}</span></div>`;
   const leg = el.querySelector<HTMLElement>('.leg')!;
   const face = el.querySelector<HTMLElement>('.card')!;
@@ -528,6 +524,7 @@ function makeCard(card: Card, from: 'fly' | 'still'): Live {
     y: new Spring(from === 'fly' ? 150 : 0, 0.55, 0.72),
     lift: new Spring(0, 0.28, 0.75),
     reach: new Spring(from === 'fly' ? 0 : 1, 0.35, 1),
+    slack: 0,
     swing: new Pendulum(46, 6), // K7: settles within 1.2 s
     tilt: 0,
   };
@@ -578,7 +575,7 @@ function addCard(card: Card, pull: boolean) {
 function drop(l: Live, how: 'pull' | 'fall' | 'gone') {
   if (l.phase === 'fall' || l.phase === 'pull') return;
   if (hovered === l) hovered = null;
-  l.el.classList.add('open'); // the claw lets go
+  l.el.classList.add('open'); // the thread lets go
   if (how === 'gone' || reduceMotion()) {
     l.el.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 200 }).finished.then(() => remove(l), () => remove(l));
     if (!l.el.animate) remove(l);
@@ -588,7 +585,7 @@ function drop(l: Live, how: 'pull' | 'fall' | 'gone') {
   }
   if (how === 'fall') {
     l.phase = 'fall';
-    l.fall = { vy: -60, y: l.y.value + l.lift.value, spin: (Math.random() - 0.5) * 2.4, a: l.swing.angle, o: 1 };
+    l.fall = { vy: -60, y: l.y.value + l.lift.value + l.slack, spin: (Math.random() - 0.5) * 2.4, a: l.swing.angle, o: 1 };
   } else {
     l.phase = 'pull';
     l.pullT0 = performance.now();
@@ -622,6 +619,7 @@ function layoutCards() {
     if (l.phase === 'fly' && l.x.value === 0) l.x.value = l.x.target;
     l.lift.target = i === hi ? -6 : 0;
     l.tilt = (i % 2 ? 1 : -1) * 0.035; // ±2°
+    l.slack = SLACKS[i % SLACKS.length];
     x += w + CARD_GAP;
   });
   stack.hidden = extra <= 0;
@@ -662,7 +660,7 @@ function startDrag(l: Live, e: PointerEvent) {
       d.moved = true;
       dragging = l;
       l.phase = 'drag';
-      l.el.classList.add('open', 'dragging'); // the claw opens and pulls back up
+      l.el.classList.add('open', 'dragging'); // the thread lets go and springs back into the island
       drawer = 'drop';
       open = true;
       lastBody = '';
@@ -700,11 +698,11 @@ function startDrag(l: Live, e: PointerEvent) {
       l.phase = 'hang';
       drop(l, 'pull');
     } else {
-      // missed: back to the claw
+      // missed: back where it hung, a thread drops again and takes it
       l.phase = 'hang';
       l.el.classList.remove('open', 'dragging');
       const r = l.face.getBoundingClientRect();
-      l.y.value = r.top - (islandBottom() + HANG);
+      l.y.value = r.top - (islandBottom() + HANG + l.slack);
       l.x.value = r.left + r.width / 2;
       l.reach.value = 0.4;
     }
@@ -745,8 +743,10 @@ function frame(now: number) {
   last = now;
   let moving = now < settleUntil;
   const base = islandBottom() + HANG;
+  const top = islandBottom() - 3; // where the threads come out (tucked under the island's edge)
   for (const l of [...live]) {
     const { w, h } = dims(l.card);
+    l.leg.style.top = `${top}px`;
     if (l.phase === 'fall' && l.fall) {
       const f = l.fall;
       f.vy += 2400 * dt;
@@ -768,13 +768,13 @@ function frame(now: number) {
       const cx = innerWidth / 2;
       const cy = TOP + PILL_H / 2;
       const x0 = l.x.value;
-      const y0 = base + l.y.value;
+      const y0 = base + l.slack + l.y.value;
       const x = x0 + (cx - x0) * e;
       const y = y0 + (cy - h / 2 - y0) * e;
       l.el.style.transform = `translate(${(x - w / 2).toFixed(1)}px, 0)`;
       l.face.style.transform = `translate(0, ${y.toFixed(1)}px) scale(${(1 - 0.8 * e).toFixed(3)})`;
       l.face.style.opacity = String(1 - 0.6 * e);
-      l.leg.style.height = `${Math.max(0, y).toFixed(1)}px`;
+      l.leg.style.height = `${Math.max(0, y - top).toFixed(1)}px`;
       if (k >= 1) {
         remove(l);
         bumpIsland();
@@ -791,14 +791,14 @@ function frame(now: number) {
       continue;
     }
     const x = l.x.step(dt);
-    const y = base + l.y.step(dt) + l.lift.step(dt);
+    const y = base + l.slack + l.y.step(dt) + l.lift.step(dt);
     const reach = l.reach.step(dt);
     if (l.phase === 'fly' && Math.abs(l.y.value) < 2) l.phase = 'hang';
     const a = reduceMotion() ? 0 : l.swing.step(dt, hovered === l) + l.tilt;
     l.el.style.transform = `translate(${(x - w / 2).toFixed(1)}px, 0) rotate(${a.toFixed(4)}rad)`;
     l.face.style.transform = `translate(0, ${y.toFixed(1)}px)`;
     l.face.style.opacity = '1';
-    l.leg.style.height = `${(y + 8).toFixed(1)}px`;
+    l.leg.style.height = `${Math.max(0, y - top).toFixed(1)}px`;
     l.leg.style.transform = `scaleY(${reach.toFixed(3)})`;
     l.el.classList.toggle('open', reach < 0.94);
     if (!(l.x.resting && l.y.resting && l.lift.resting && l.reach.resting && (reduceMotion() || l.swing.resting))) moving = true;
