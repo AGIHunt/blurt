@@ -309,9 +309,16 @@ final class Snapper {
     private func isScreenCapture(_ url: URL) -> Bool {
         if let item = MDItemCreateWithURL(nil, url as CFURL),
            let v = MDItemCopyAttribute(item, "kMDItemIsScreenCapture" as CFString) as? Bool { return v }
+        // Spotlight not indexed yet: the name macOS gives a screenshot in the user's language
         let n = url.lastPathComponent.lowercased()
-        return n.hasPrefix("screenshot") || n.hasPrefix("screen shot") || n.hasPrefix("截屏") || n.hasPrefix("屏幕快照")
+        return Self.screenshotPrefixes.contains { n.hasPrefix($0) }
     }
+
+    private static let screenshotPrefixes = [
+        "screenshot", "screen shot", "截屏", "屏幕快照", "螢幕截圖", "スクリーンショット", "스크린샷", "bildschirmfoto",
+        "capture d’écran", "capture d'écran", "captura de pantalla", "captura de tela", "schermata", "schermafbeelding",
+        "skärmavbild", "skærmbillede", "skjermbilde", "näyttökuva", "zrzut ekranu", "снимок экрана", "ekran resmi",
+    ]
 }
 
 let snapper = Snapper()
