@@ -342,8 +342,11 @@ final class IslandContent: NSView {
         for j in i.sessionsNeedingYou {
             guard let a = j.agent else { continue }
             let st = a.status
-            let r = IslandRow(icon: nil, title: a.windowName ?? j.title ?? Loc.t("job.type.agent"),
-                              subtitle: Loc.t("session.\(st.rawValue)"), height: 40) { [weak i] in
+            // what it is about first ("Sign-in button does nothing"), then which item, its state and the agent
+            let ids = a.windowName?.replacingOccurrences(of: ",", with: ", ")
+            let r = IslandRow(icon: nil, title: j.title ?? ids ?? Loc.t("job.type.agent"),
+                              subtitle: [j.title == nil ? nil : ids, Loc.t("session.\(st.rawValue)"), AgentNames.name(a.agent)]
+                                  .compactMap { $0 }.joined(separator: " · "), height: 40) { [weak i] in
                 i?.setOpen(false)
                 AppEnvironment.mainWindow?.reveal(job: j.id)
             }

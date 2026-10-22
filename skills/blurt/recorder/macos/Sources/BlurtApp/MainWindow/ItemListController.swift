@@ -323,6 +323,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         // only when the layout changes: a column the user resized keeps its width across reloads
         guard appliedLayout != [full, inProject] else { return }
         appliedLayout = [full, inProject]
+        metaWant = full ? 0 : (inProject ? 56 : 132)
         for c in table.tableColumns {
             switch c.identifier.rawValue {
             case "review": c.isHidden = !full; c.width = 76
@@ -343,11 +344,29 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         fitTitle()
     }
 
+    /// The dense list's id column at full width ("AW-2 · Atlas Web"); 0 in the table, where the user sizes it.
+    private var metaWant: CGFloat = 0
+    /// Below this the id column shows the key alone.
+    static let metaWithProject: CGFloat = 110
+
     func fitTitle() {
         guard let title = table.tableColumn(withIdentifier: .init("title")) else { return }
         let others = table.tableColumns.filter { $0 !== title && !$0.isHidden }
         let spacing = table.intercellSpacing.width * CGFloat(others.count + 1) + 24   // + the inset style's margins
-        let w = scroll.contentView.bounds.width - others.reduce(0) { $0 + $1.width } - spacing
+        func room() -> CGFloat { scroll.contentView.bounds.width - others.reduce(0) { $0 + $1.width } - spacing }
+        // a narrow list (a job's detail beside it): the id column gives up the project name before the title is
+        // squeezed, and no column ever ends up past the list's edge
+        if metaWant > 0, let meta = table.tableColumn(withIdentifier: .init("meta")) {
+            let mw = min(metaWant, max(meta.minWidth, room() + meta.width - 200))
+            if abs(meta.width - mw) > 0.5 {
+                let crossed = (meta.width < Self.metaWithProject) != (mw < Self.metaWithProject)
+                meta.width = mw
+                if crossed, let col = table.tableColumns.firstIndex(of: meta) {
+                    table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<table.numberOfRows), columnIndexes: [col])
+                }
+            }
+        }
+        let w = room()
         if abs(title.width - max(title.minWidth, w)) > 0.5 { title.width = max(title.minWidth, w) }
     }
 
@@ -497,7 +516,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "meta":
             let c = make("meta") { MetaCell() }
             let full = model.scope.isTable
-            c.key.stringValue = full || inOwnProject || it.projectID == "inbox" ? it.itemID : "\(it.itemID) · \(it.projectName)"
+            let roomy = (table.tableColumn(withIdentifier: .init("meta"))?.width ?? 0) >= Self.metaWithProject
+            c.key.stringValue = full || inOwnProject || it.projectID == "inbox" || !roomy ? it.itemID : "\(it.itemID) · \(it.projectName)"
+            c.toolTip = it.projectID == "inbox" ? nil : it.projectName
             c.key.alignment = full ? .left : .right
             return c
         case "project":
