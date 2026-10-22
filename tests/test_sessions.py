@@ -341,3 +341,16 @@ def test_codex_tool_questions_show_as_waiting_even_with_hooks(p2):
     p2.wait(lambda: p2.status(jid) == "turn_done", timeout=20, what="Stop")
     p2.type(jid)
     p2.wait(lambda: p2.status(jid) == "exited")
+
+
+def test_resident_monitor_ends_with_its_app(p2):
+    """e2e v0.7: the app's `sessions.py monitor` outlived the app (killed, crashed or relaunched) and kept the lock,
+    so a new app's monitor exited at once and the old code went on judging sessions."""
+    app = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    mon = subprocess.Popen([sys.executable, str(SCRIPTS / "sessions.py"), "monitor", "--interval", "0.2", "--parent",
+                            str(app.pid)], stdout=subprocess.PIPE, text=True, env=p2.env)
+    time.sleep(1.0)
+    assert mon.poll() is None  # the app is there: it keeps watching
+    app.kill(); app.wait()
+    out, _ = mon.communicate(timeout=10)
+    assert json.loads(out.strip().splitlines()[-1])["parent_gone"] == app.pid

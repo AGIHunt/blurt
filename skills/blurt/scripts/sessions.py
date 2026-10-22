@@ -397,15 +397,38 @@ def sync(only: list[str] | None = None) -> list[dict]:
     return changed
 
 
-def monitor(once: bool, interval: float, only: list[str] | None = None) -> dict:
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        import ctypes  # noqa: PLC0415
+        k = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+        k.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def monitor(once: bool, interval: float, only: list[str] | None = None, parent: int | None = None) -> dict:
+    """`parent`: the app's pid — the resident monitor ends with it (a crash, a kill, an update), so it never outlives
+    the app holding the lock with old code."""
     if once:
         return {"ok": True, "changed": [j["id"] for j in sync(only)]}
     run = jobs.home() / "run"
     try:
         with jobs.file_lock(run / "monitor.lock", timeout=0.2):
-            while True:
+            while parent is None or _pid_alive(parent):
                 sync(only)
                 time.sleep(interval)
+            return {"ok": True, "parent_gone": parent}
     except jobs.JobError:
         return {"ok": True, "already_running": True}
 
@@ -1104,6 +1127,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--once", action="store_true")
     s.add_argument("--interval", type=float, default=1.0)
     s.add_argument("--job", action="append")
+    s.add_argument("--parent", type=int, help="exit when this process (the app) is gone")
     sub.add_parser("doctor")
     a = p.parse_args(argv)
     try:
@@ -1124,7 +1148,7 @@ def main(argv: list[str] | None = None) -> None:
         elif a.cmd == "event":
             emit(app_event(a.job, a.event, a.exit))
         elif a.cmd == "monitor":
-            emit(monitor(a.once, a.interval, a.job))
+            emit(monitor(a.once, a.interval, a.job, a.parent))
         elif a.cmd == "doctor":
             emit(doctor())
     except SessionError as e:

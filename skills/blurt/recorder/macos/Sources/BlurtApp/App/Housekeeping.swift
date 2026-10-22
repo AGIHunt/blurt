@@ -48,7 +48,8 @@ enum Housekeeping {
 
     static func startMonitor() {
         guard monitor == nil, (try? ScriptRunner.shared.scriptURL("sessions.py")) != nil else { return }
-        monitor = try? ScriptRunner.shared.spawn("sessions.py", ["monitor"]) { _ in }
+        // --parent: it ends with us, even when we don't get to atQuit (a crash, a kill, an update)
+        monitor = try? ScriptRunner.shared.spawn("sessions.py", ["monitor", "--parent", "\(getpid())"]) { _ in }
     }
 
     static func atQuit() {

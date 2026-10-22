@@ -148,7 +148,9 @@ pub fn start_monitor(app: &AppHandle) {
     if !runner.has("sessions.py") {
         return;
     }
-    let Ok(argv) = runner.argv("sessions.py", &["monitor".into()]) else { return };
+    // --parent: the monitor ends with the app even when stop_monitor never runs (a crash, a kill)
+    let args = ["monitor".to_string(), "--parent".into(), std::process::id().to_string()];
+    let Ok(argv) = runner.argv("sessions.py", &args) else { return };
     let mut c = scripts::daemon_command(&argv);
     c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     match c.spawn() {
