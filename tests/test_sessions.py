@@ -324,3 +324,20 @@ def test_monitor_leaves_a_job_alone_until_its_window_exists(p2):
     p2.run("sessions.py", "monitor", "--once")
     j = p2.job(jid)
     assert j["state"] == "running" and j["agent"]["status"] == "running"
+
+
+def test_codex_tool_questions_show_as_waiting_even_with_hooks(p2):
+    """e2e v0.7: Codex's hooks don't report an MCP tool's elicitation ("Allow Browser use to access …?"); with its hooks
+    live the terminal wasn't looked at, so the session showed Working while it waited for the user."""
+    p2.env["FAKE_ELICIT"] = "1"
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    jid = dispatch(p2, it["uid"], agent="codex")["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "waiting_input", what="PermissionRequest")
+    p2.type(jid)
+    p2.wait(lambda: p2.status(jid) == "waiting_input" and p2.job(jid)["agent"]["status_source"] == "tty",
+            timeout=20, what="the tool's question, from the terminal")
+    p2.type(jid)
+    p2.wait(lambda: p2.status(jid) == "turn_done", timeout=20, what="Stop")
+    p2.type(jid)
+    p2.wait(lambda: p2.status(jid) == "exited")

@@ -320,8 +320,10 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
     a = job["agent"]
     defn = agents.definitions(agents.config(a.get("cwd"))).get(a.get("id")) or {}
     hooks = (agents.session_spec(defn) or {}).get("hooks")
-    if hooks == "claude" or (hooks and a.get("hooks_live")):
+    if hooks == "claude":
         return
+    # Codex's hooks report turns and command approvals, not the questions its tools ask (an MCP tool's "Allow
+    # Browser use to access …?" elicitation): those still come from the terminal while its hooks are live
     patterns = agents.waiting_patterns(defn)
     since = jobs.parse_iso(a.get("status_at")) or 0
     text = ""
@@ -330,6 +332,8 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
         lines = [ln for ln in (p.stdout if p.returncode == 0 else "").splitlines() if ln.strip()]
         text = "\n".join(lines[-TTY_BOTTOM:])  # a prompt that has scrolled up was answered
     hit = any(re.search(pat, text, re.I | re.M) for pat in patterns) if text else False
+    if hit and hooks and a.get("hooks_live") and a.get("status_source") != "tty" and w["activity"] <= since:
+        hit = False  # drawn before the hooks' latest word (an approval they already reported): not a new question
     status = a.get("status")
     if hit:
         if status != "waiting_input":
