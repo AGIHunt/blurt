@@ -554,6 +554,43 @@ def cmd_route(refs: list[str], apply: bool, threshold: float | None, agent: str 
     return {"ok": True, "suggestions": out, "moved": moved}
 
 
+def route_job(refs: list[str], apply: bool, threshold: float | None, agent: str | None, no_llm: bool) -> dict:
+    """cmd_route; with --apply (the background run after ingest) also a K4 route job this process owns, so the
+    island and the main window show the inbox being sorted and what it moved. A preview (no --apply) writes none."""
+    try:
+        import jobs  # noqa: PLC0415
+    except ImportError:
+        jobs = None
+    job = None
+    if apply and jobs is not None:
+        try:
+            job = jobs.create("route", project="inbox", owner="projects.py")
+            jobs.update(job["id"], lambda j: j["steps"][0].update(state="running", started=j["created"]))
+        except Exception:  # noqa: BLE001 — the job is only a report; routing goes on without it
+            job = None
+
+    def close(state: str, uids: list[str], error: dict | None = None) -> None:
+        if job is None:
+            return
+        try:
+            def fn(j):
+                j["items"] = uids
+                j["steps"][0].update(state="done" if state == "done" else "failed", ended=jobs.now_iso())
+                jobs.finish(j, state, error)
+            jobs.update(job["id"], fn)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        out = cmd_route(refs, apply, threshold, agent, no_llm)
+    except Exception as e:
+        close("failed", [], {"code": getattr(e, "code", None) or "unknown", "message": str(e)[:300], "hint_key": None})
+        raise
+    close("done", [x["uid"] for x in out.get("suggestions", [])])
+    if job is not None:
+        out["job"] = job["id"]
+    return out
+
+
 # ------------------------------------------------------------------ CLI
 class Parser(argparse.ArgumentParser):
     def error(self, message):
@@ -608,7 +645,7 @@ def main(argv: list[str] | None = None) -> None:
             e = resolve(a.path)
             out = {"ok": True, "project": row(e) if e else None}
         elif a.cmd == "route":
-            out = cmd_route(a.items, a.apply, a.threshold, a.agent, a.no_llm)
+            out = route_job(a.items, a.apply, a.threshold, a.agent, a.no_llm)
         else:
             out = cmd_migrate()
     except ProjectError as e:

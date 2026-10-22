@@ -218,6 +218,18 @@ class Route(TmpCase):
         self.assertEqual((out["suggestions"][0]["project"], out["moved"]), (self.pd["id"], []))
         self.assertEqual(ok("items.py", "get", v, env=self.e.env())["item"]["project"], "inbox")
 
+    def test_background_route_is_a_job(self):
+        """--apply (the run ingest starts) reports as a K4 route job owned by projects.py; a preview writes none."""
+        u = self.inbox(title="typo", source={"app": "Notion"})
+        out = ok("projects.py", "route", "--items", u, "--no-llm", env=self.e.env())
+        self.assertNotIn("job", out)
+        out = ok("projects.py", "route", "--items", u, "--apply", "--no-llm", env=self.e.env())
+        job = json.loads((self.e.home / "jobs" / f"{out['job']}.json").read_text())
+        self.assertEqual((job["type"], job["owner"], job["state"], job["project"], job["items"]),
+                         ("route", "projects.py", "done", "inbox", [u]))
+        self.assertEqual([(s["id"], s["state"]) for s in job["steps"]], [("route", "done")])
+        self.assertIsNotNone(job["ended"])
+
     def test_model_failure_leaves_items_in_the_inbox(self):
         u = self.inbox(title="vague")
         bad = f"{sys.executable} -c \"import sys; sys.exit(3)\""
