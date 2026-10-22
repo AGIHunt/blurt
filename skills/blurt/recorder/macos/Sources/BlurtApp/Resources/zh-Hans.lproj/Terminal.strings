@@ -92,6 +92,7 @@
 "finish.no_changes" = "这个分支上还没有改动。";
 "finish.help" = "合并会把分支并进项目文件夹里的 %@。只有开 PR 时才会推送。";
 "finish.merge" = "合并";
+"finish.end_and.merge" = "结束会话并合并";
 "finish.merge.help" = "合并进 %@，并删除 worktree";
 "finish.pr" = "开 PR";
 "finish.pr.help" = "推送分支并创建 pull request";
@@ -154,7 +155,7 @@
 "error.no_terminal" = "没有装受支持的终端 App。";
 "error.no_tmux" = "没有安装 tmux 3.2 或更新的版本。";
 "error.gone" = "这个会话的文件夹已经不在了。";
-"error.running" = "agent 还在这个 worktree 里干活，先结束会话再合并。";
+"error.running" = "agent 的会话还开在这个 worktree 里，先结束会话再合并。";
 "error.uncommitted" = "worktree 里有未提交的改动，让 agent 提交或自己提交后再试。";
 "error.nothing" = "这个分支上还没有可以合并的提交。";
 

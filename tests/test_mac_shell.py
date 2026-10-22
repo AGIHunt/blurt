@@ -56,6 +56,14 @@ class Layout(unittest.TestCase):
                        "agentTouched"]:
             self.assertIn(needle, src)
 
+    def test_finish_panel_can_end_the_session_before_merging(self):
+        # e2e v0.7: after a finished turn Codex still sits in its window, so Merge was refused ("running") with only
+        # Close / Try Again, and Try Again just reloaded the diff
+        src = (MAC / "Sources/BlurtApp/Terminal/FinishPanel.swift").read_text()
+        self.assertIn('failedCode == "running"', src)
+        self.assertIn("func endSessionThen(", src)
+        self.assertIn("AgentSessions.shared.stop(job: job, kill: false)", src)
+
     def test_no_review_window_and_nothing_opens_by_itself(self):
         # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
         src = MAC / "Sources" / "BlurtApp"

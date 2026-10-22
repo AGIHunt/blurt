@@ -92,6 +92,7 @@
 "finish.no_changes" = "No changes on this branch yet.";
 "finish.help" = "Merge brings the branch into %@ in your project folder. Nothing is pushed unless you open a pull request.";
 "finish.merge" = "Merge";
+"finish.end_and.merge" = "End Session and Merge";
 "finish.merge.help" = "Merge into %@ and remove the worktree";
 "finish.pr" = "Open Pull Request";
 "finish.pr.help" = "Push the branch and open a pull request";
@@ -154,7 +155,7 @@
 "error.no_terminal" = "None of the supported terminal apps is installed.";
 "error.no_tmux" = "tmux 3.2 or later isn’t installed.";
 "error.gone" = "The session’s folder no longer exists.";
-"error.running" = "The agent is still working in this worktree. End the session first, then merge.";
+"error.running" = "The agent’s session is still open in this worktree. End it first, then merge.";
 "error.uncommitted" = "The worktree has uncommitted changes. Ask the agent to commit them, or commit them yourself, then try again.";
 "error.nothing" = "The branch has no commits to merge yet.";
 

@@ -18,6 +18,8 @@ final class FinishModel: ObservableObject {
     @Published var uncommitted = 0
     @Published var patch: URL?
     @Published var prURL: String?
+    @Published var failedCode: String?          // the sessions.py code of the last failure ("running": end the session)
+    private(set) var lastAction: String?
 
     init(job: String) { self.job = job }
 
@@ -40,12 +42,31 @@ final class FinishModel: ObservableObject {
 
     func run(_ action: String) async {
         phase = .working(action)
+        lastAction = action
+        failedCode = nil
         do {
             let o = try await AgentSessions.shared.finish(job: job, action: action)
             prURL = o["pr"] as? String ?? o["compare"] as? String
             phase = .done(action)
             emit(["event": "session_finish", "job": job, "action": action])
-        } catch { phase = .failed(sessionsErrorText(error)) }
+        } catch {
+            failedCode = (error as? SessionsError)?.code
+            phase = .failed(sessionsErrorText(error))
+        }
+    }
+
+    /// Merge refused because the agent is still in its window (a finished turn still waits for you): end the
+    /// session (Ctrl-C, as Stop does), give the window a moment to close, then do what was asked.
+    func endSessionThen(_ action: String) async {
+        phase = .working(action)
+        try? await AgentSessions.shared.stop(job: job, kill: false)
+        for _ in 0..<10 {
+            await run(action)
+            guard failedCode == "running" else { return }
+            phase = .working(action)
+            try? await Task.sleep(nanoseconds: 600_000_000)
+        }
+        await run(action)
     }
 }
 
@@ -74,8 +95,16 @@ struct FinishView: View {
             case .failed(let why):
                 Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                HStack { Spacer(); Button(TL("common.close"), action: close).keyboardShortcut(.cancelAction)
-                    Button(TL("overlay.retry")) { Task { await m.load() } }.keyboardShortcut(.defaultAction) }
+                HStack {
+                    Spacer()
+                    Button(TL("common.close"), action: close).keyboardShortcut(.cancelAction)
+                    if m.failedCode == "running", let a = m.lastAction {
+                        Button(TL("overlay.retry")) { Task { await m.load() } }
+                        Button(TL("finish.end_and.\(a)")) { Task { await m.endSessionThen(a) } }.keyboardShortcut(.defaultAction)
+                    } else {
+                        Button(TL("overlay.retry")) { Task { await m.load() } }.keyboardShortcut(.defaultAction)
+                    }
+                }
             case .done(let action):
                 Label(TL("finish.done.\(action)"), systemImage: "checkmark.circle").foregroundStyle(AgentSessionStatus.turnDone.color)
                 if let u = m.prURL, let url = URL(string: u) {
