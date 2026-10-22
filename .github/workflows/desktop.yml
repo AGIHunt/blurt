@@ -109,7 +109,7 @@ jobs:
         run: |
           pnpm -C web --filter @blurt/overlays build
           pnpm -C web --filter @blurt/desktop build
-          test -f web/apps/desktop/dist/overlays/hud.html
+          test -f web/apps/desktop/dist/overlays/island.html
 
       - name: Rust lint + tests (index v2, jobs fold, l10n parity, pty, flow, tmux session)
         working-directory: apps/desktop/src-tauri
