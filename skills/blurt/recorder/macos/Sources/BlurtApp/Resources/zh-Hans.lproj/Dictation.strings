@@ -7,6 +7,9 @@
 "dictation.mode.hold" = "按住说话，松开结束";
 
 /* 岛上的提示 */
+"dictation.polish.family.gemma.installed" = "Gemma · 已安装，占用 %@";
+"dictation.polish.family.qwen.installed" = "Qwen · 已安装，占用 %@";
+"dictation.polish.progress" = "正在下载 · %1$@ / %2$@";
 "dictation.toast.needs_permission" = "听写（%@）需要「输入监控」权限";
 "dictation.toast.set_up" = "去设置";
 "dictation.toast.recording_busy" = "正在录屏，麦克风归录屏用，听写暂不可用";

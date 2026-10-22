@@ -35,6 +35,7 @@ extension App {
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)
+        case "polish": NotificationCenter.default.post(name: DictationPane.polishRequest, object: rest)
         case "history":
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
             MainActor.assumeIsolated {

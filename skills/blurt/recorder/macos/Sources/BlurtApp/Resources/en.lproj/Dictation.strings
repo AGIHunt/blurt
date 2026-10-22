@@ -7,6 +7,9 @@
 "dictation.mode.hold" = "Hold to talk";
 
 /* island toasts */
+"dictation.polish.family.gemma.installed" = "Gemma · %@ on this Mac";
+"dictation.polish.family.qwen.installed" = "Qwen · %@ on this Mac";
+"dictation.polish.progress" = "Downloading · %1$@ of %2$@";
 "dictation.toast.needs_permission" = "Dictation (%@) needs Input Monitoring";
 "dictation.toast.set_up" = "Set Up";
 "dictation.toast.recording_busy" = "Recording — dictation is off while the recording has the microphone";

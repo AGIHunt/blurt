@@ -19,6 +19,7 @@
 //     menuicon DIR            renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x
 //     dictation keys SCRIPT   synthetic key events into the dictation trigger, at their script times (no event tap,
 //                             nothing posted to any app): "ropt-down@0 ropt-up@120" — BlurtCore DictationTrigger.parse
+//     dictation polish install|cancel|use ID | state   Settings → Dictation's model rows (open the pane first)
 //     dictation toggle|cancel|apply|status · dictation testpad [open|close|text] (our own window with a text view,
 //                             focused: the only place a test pastes into) · dictation history [show|raw ID|item ID|query Q]
 //                             (Capture/Dictation/DictationTestHooks.swift)
