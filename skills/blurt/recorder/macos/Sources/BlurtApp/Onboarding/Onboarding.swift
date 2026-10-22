@@ -188,9 +188,9 @@ struct OnboardingView: View {
                             }
                             Spacer()
                             if r.installed { Label(L("已下载", "Downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
-                            else if speech.download[r.backend] == nil { Button(L("下载", "Download")) { speech.startDownload(r) } }
+                            else if speech.download[r.id] == nil { Button(L("下载", "Download")) { speech.startDownload(r) } }
                         }
-                        if let d = speech.download[r.backend] {
+                        if let d = speech.download[r.id] {
                             ProgressView(value: min(d.done, max(d.total, 1)), total: max(d.total, 1)) { Text(d.text).font(.caption) }
                         }
                         Toggle(L("下载走国内镜像（hf-mirror.com）", "Download via hf-mirror.com (mainland China)"),

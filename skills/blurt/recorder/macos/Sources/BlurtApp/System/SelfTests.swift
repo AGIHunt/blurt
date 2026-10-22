@@ -111,14 +111,15 @@ enum SelfTests {
                 out(["applied": AgentsModel.shared.plan?.plan.applied ?? false,
                      "changes": AgentsModel.shared.plan?.plan.changes.map(\.summary) ?? []])
             }
-        case "bench":                   // bench BACKEND: Settings → Speech → Benchmark
+        case "bench":                   // bench MODEL-ID|BACKEND: Settings → Speech → Measure
             SettingsController.shared.show(pane: "speech")
             Task { @MainActor in
                 let sm = SpeechModel.shared
                 await sm.load()
-                guard let m = sm.models.first(where: { $0.backend == arg }) else { out(["error": "no model \(arg)"]); return }
+                guard let m = sm.models.first(where: { $0.id == arg || $0.backend == arg }) else { out(["error": "no model \(arg)"]); return }
                 await sm.runBench(m)
-                out(["backend": arg, "installed": m.installed, "rtf": sm.bench[arg]?.rtf ?? -1, "error": sm.bench[arg]?.error ?? NSNull()])
+                out(["backend": m.backend, "model": m.id, "installed": m.installed, "rtf": sm.bench[m.id]?.rtf ?? -1,
+                     "error": sm.bench[m.id]?.error ?? NSNull()])
             }
         case "perms":
             let p = Permissions()
