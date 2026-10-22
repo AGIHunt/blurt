@@ -925,6 +925,13 @@ uid 01JB… · issue · high · module auth
   `BLURT_TEST_MIC_WAV` / `BLURT_NOTE_WAV` 代替麦克风；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
   `framerec`、`henframes`、`fakerecording`、`peck`）。
 
+**细则（polish，合并后）**：鸡爪已按「决定」换成细线（macOS `Capture/Island/HangingCards.swift`，`Claws.swift` / `ClawArt.swift` 删除；
+Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出来，1 pt 发丝线（浅色 42% 黑、深色 55% 白，带反色光晕），线头 7 pt 品牌色圆扣
+（1.5 pt 卡面色描边）；各位置额外线长 `[0, 9, 3, 12, 5, 10, 2]` pt（风铃，不齐）；岛比卡片窄时（无刘海的胶囊）线头收向岛内、呈扇形。
+不看时卡片沿线收回岛里（缩到 0.7、淡出），不再从屏幕顶边拉走。拖走时线跟着卡片拉长，超出静止长度 44 pt 即断开回弹（outBack 0.32 s）；
+没放到目标上时线重新垂下（0.3 s）接住、圆扣弹出。删除时线松开弹回、卡片掉落。按种类区分的彩蛋（`EggKind`、`assets/icons/eggs/`、
+`<Egg>`）和 perch / claw / nest 图标一并删除；蛋只剩岛上孵化用的那一个。
+
 ### K8 · 种类图标和状态圆环
 
 - 种类图标（P6 新增到 `assets/icons/`，所有平台由 `build.py` 生成；macOS 上优先用 SF Symbol）：
