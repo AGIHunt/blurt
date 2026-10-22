@@ -1,38 +1,41 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""The search index over every blurt session: $BLURT_HOME/index.db (SQLite, WAL). This script is its only writer;
-the apps and mcp_server.py open it read-only. The files stay the source of truth — deleting index.db loses nothing,
-`index.py scan` rebuilds it. Contract C3 (docs/design/desktop-app.md §5, schema docs/contracts/index-schema.sql).
+"""The search index over every blurt item: $BLURT_HOME/index.db (SQLite, WAL). This script is its only writer;
+the apps, mcp_server.py and agents.py open it read-only. The files stay the source of truth — deleting index.db loses
+nothing, `index.py scan` rebuilds it. Schema v2: docs/contracts/index-schema.sql (contract K1, next-round.md).
 
-  index.py path                         → {"db": "…/index.db"}
-  index.py scan [--root DIR …] [--full] every recording root (~/Blurt/recordings, record.workspaces, workspaces
-                                        already indexed, --root) → {"workspaces","sessions","items","ms"}
-                                        unchanged sessions are skipped unless --full
-  index.py update SESSION_DIR …         re-index those sessions (a deleted dir → its rows go) → {"updated","ms"}
-  index.py update --workspace DIR       re-index the changed sessions under DIR/.blurt/sessions (no-op without it)
-  index.py search [QUERY] [--kind K]… [--status S]… [--fix-state F]… [--workspace ID|DIR] [--session ID|DIR]
-                  [--sort updated|created|t_start] [--limit 50] [--offset 0]   → {"total": n, "items": [ItemRow]}
-  index.py backlog REPO                 writes REPO/.blurt/BACKLOG.md (open items) → {"path", "items"}
+  index.py path                        → {"db": "…/index.db"}
+  index.py scan [--root DIR …] [--full]   projects.json's projects, the inbox, ~/Blurt/recordings (v0.6), projects
+                                       found earlier, --root → {"projects","sessions","items","ms"}
+                                       (unchanged files are skipped unless --full)
+  index.py update PATH …               re-index .md files, store dirs or session dirs (gone → their rows go)
+  index.py update --workspace DIR      re-index DIR's store (<DIR>/.blurt) if it has one (no-op otherwise)
+  index.py search [QUERY] [--kind K]… [--status S]… [--work W]… [--fix-state F]… [--project ID|DIR|NAME|inbox]
+                  [--session ID|DIR] [--source-type T] [--sort updated|created|t_start|title] [--limit 50]
+                  [--offset 0]          → {"total": n, "items": [ItemRow]}   (--workspace = --project)
+  index.py backlog REPO                writes REPO/.blurt/BACKLOG.md (open items) → {"path", "items"}
 
-Every call prints one JSON line. Python API (items.py / mcp_server.py import it): update_sessions(dirs),
-scan(roots), search(...), legacy_uid(name, id), db_path(), connect(readonly=True).
+Every call prints one JSON line. Python API: update_paths(paths), scan(roots, full), search(...), ensure_index(),
+connect(readonly=True), db_path(), legacy_uid(name, id), read_shots(dir).
 
 Search, for every host (macOS app, Tauri, mcp_server.py) — run the same queries:
   QUERY is split on whitespace; each term must match (AND). A term of ≥ 3 characters goes to FTS5 (trigram,
   so Chinese works without word segmentation) as a quoted phrase ("" doubles a quote); a 1–2 character term
   can't use trigram and becomes `(i.title LIKE ?1 OR i.quote LIKE ?1 OR i.body LIKE ?1)` with ?1 = '%term%'
-  (LIKE escapes % _ \\ with ESCAPE '\\'). Status defaults to "everything but deleted"; --fix-state none = NULL.
+  (LIKE escapes % _ \\ with ESCAPE '\\'). Status defaults to "everything but deleted".
 
-    SELECT i.*, s.dir AS session_dir, snippet(items_fts, -1, '[', ']', '…', 12) AS snippet
-    FROM items i JOIN items_fts f ON f.rowid = i.rowid JOIN sessions s ON s.id = i.session_id
-    WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] [AND (i.title LIKE ?2 OR …)]
-    ORDER BY i.updated DESC LIMIT ?3 OFFSET ?4
+    SELECT i.*, p.name AS project_name, p.key AS project_key, s.dir AS session_dir,
+           snippet(items_fts, -1, '[', ']', '…', 12) AS snippet
+    FROM items i JOIN items_fts f ON f.rowid = i.rowid JOIN projects p ON p.id = i.project_id
+    LEFT JOIN sessions s ON s.id = i.session_id
+    WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] [AND i.work_state IN (…)] …
+    ORDER BY i.updated DESC, i.item_id LIMIT ? OFFSET ?
   -- without any ≥3-char term: same query without the items_fts join (snippet computed by the host, or NULL)
-  -- --sort created: ORDER BY s.created DESC, i.t_start ;  --sort t_start: ORDER BY i.t_start, s.created DESC
+  -- --sort created: i.created DESC ; t_start: i.t_start, i.created DESC ; title: i.title COLLATE NOCASE
 
-ItemRow = {uid, session_id, session_dir, item_id, kind, title, status, fix_state, severity, primary_frame,
-           updated, snippet}.
+ItemRow = {uid, project_id, project_name, project_key, session_id, session_dir, path, item_id, kind, title, status,
+           work_state, work_to, work_agent, severity, primary_frame, created, updated, snippet, suggested_project}.
 """
 from __future__ import annotations
 
@@ -48,79 +51,107 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import load_json  # noqa: E402
+from _common import (OPEN_WORK, blurt_home, blurt_workspace, fix_alias_states, legacy_uid, load_json,  # noqa: E402,F401
+                     project_id, real, to_epoch, work_from_fix, work_state)
+import store as st  # noqa: E402
 
 # Keep byte-identical to docs/contracts/index-schema.sql (tests/test_index.py checks it). The skill ships without docs/.
 SCHEMA = """\
--- blurt index.db — schema v1 (contract C3 in docs/design/desktop-app.md §5)
+-- blurt index.db — schema v2 (contract K1 in docs/design/next-round.md, "index.db schema v2")
 -- Location: $BLURT_HOME/index.db (default ~/.blurt/index.db).
 -- Single writer: skills/blurt/scripts/index.py. Readers (read-only, WAL): macOS app (SQLite3 C API),
--- Tauri app (rusqlite), mcp_server.py. The files (items.json, shots.jsonl, meta.json) stay the source of truth:
--- deleting index.db loses nothing; `index.py scan` rebuilds it.
+-- Tauri app (rusqlite), mcp_server.py, agents.py. The files stay the source of truth (items/*.md in each store,
+-- batch.json / shots.jsonl / meta.json in each session; v1/v2 items.json for sessions not migrated yet): deleting
+-- index.db loses nothing, `index.py scan` rebuilds it. index.py drops and rebuilds a db whose schema_version differs.
 -- Requires SQLite >= 3.34 (FTS5 trigram). macOS 26 ships 3.51; Python 3.12+ from uv ships >= 3.45.
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS meta (
-  key   TEXT PRIMARY KEY,           -- 'schema_version' = '1', 'last_full_scan' = epoch seconds
+  key   TEXT PRIMARY KEY,           -- 'schema_version' = '2', 'last_full_scan' = epoch seconds
   value TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS workspaces (
-  id        TEXT PRIMARY KEY,       -- first 12 hex chars of sha1(realpath(path))
-  path      TEXT NOT NULL UNIQUE,   -- ~/Blurt or the repo root (sessions live in <path>/.blurt/sessions)
-  name      TEXT NOT NULL,          -- basename, or "Blurt" for the default workspace
-  kind      TEXT NOT NULL CHECK (kind IN ('default', 'repo')),
-  last_seen REAL
+CREATE TABLE IF NOT EXISTS projects (
+  id         TEXT PRIMARY KEY,      -- K2 project id (sha1(realpath(folder))[:12]); the inbox is 'inbox'
+  path       TEXT NOT NULL UNIQUE,  -- the project folder (inbox: the inbox store itself)
+  store      TEXT NOT NULL UNIQUE,  -- <path>/.blurt (inbox: same as path)
+  name       TEXT NOT NULL,
+  key        TEXT NOT NULL,         -- item id prefix: "BA" → BA-12; the inbox is IN
+  slug       TEXT NOT NULL,
+  kind       TEXT NOT NULL CHECK (kind IN ('inbox', 'folder', 'repo')),
+  registered INTEGER NOT NULL DEFAULT 1,   -- 0 = found on disk (--root, an old workspace), not in projects.json
+  last_seen  REAL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-  id           TEXT PRIMARY KEY,    -- "<workspace_id>:<session dir name>"
-  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  dir          TEXT NOT NULL UNIQUE,-- absolute path of the session dir
-  mode         TEXT NOT NULL CHECK (mode IN ('video', 'shots')),
-  title        TEXT,
-  author       TEXT,
-  created      REAL,                -- epoch seconds (meta.json, else dir name timestamp)
-  duration     REAL,                -- seconds; NULL for shots sessions
-  shot_count   INTEGER NOT NULL DEFAULT 0,
-  item_count   INTEGER NOT NULL DEFAULT 0,  -- items with status != 'deleted'
-  processed    INTEGER NOT NULL DEFAULT 0,  -- items.json exists
-  processing   INTEGER NOT NULL DEFAULT 0,  -- items.json "processing": true
-  reviewed     INTEGER NOT NULL DEFAULT 0,  -- items.json "reviewed": true
-  items_mtime  REAL,
-  shots_mtime  REAL,
-  indexed_at   REAL NOT NULL
+  id          TEXT PRIMARY KEY,     -- "<project_id>:<session dir name>"
+  project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,  -- the store the session dir is in
+  dir         TEXT NOT NULL UNIQUE, -- absolute path of the session dir
+  mode        TEXT NOT NULL CHECK (mode IN ('video', 'shots', 'voice')),
+  title       TEXT,
+  author      TEXT,
+  created     REAL,                 -- epoch seconds (meta.json, else dir name timestamp)
+  duration    REAL,                 -- seconds; NULL for shots / voice sessions
+  shot_count  INTEGER NOT NULL DEFAULT 0,
+  card_count  INTEGER NOT NULL DEFAULT 0,  -- captures with no project and not processed yet (the cards, K7)
+  item_count  INTEGER NOT NULL DEFAULT 0,  -- items with source.session = dir and status != 'deleted'
+  processed   INTEGER NOT NULL DEFAULT 0,  -- batch.json (or a v1/v2 items.json) exists
+  processing  INTEGER NOT NULL DEFAULT 0,  -- batch "processing": true
+  reviewed    INTEGER NOT NULL DEFAULT 0,  -- batch "reviewed": true
+  legacy      INTEGER NOT NULL DEFAULT 0,  -- a v1/v2 session not migrated yet (items.json, no batch.json): read-only
+  items_mtime REAL,                 -- batch.json (legacy: items.json)
+  shots_mtime REAL,
+  indexed_at  REAL NOT NULL
 );
-CREATE INDEX IF NOT EXISTS sessions_ws_created ON sessions(workspace_id, created DESC);
+CREATE INDEX IF NOT EXISTS sessions_proj_created ON sessions(project_id, created DESC);
 
 CREATE TABLE IF NOT EXISTS items (
-  uid           TEXT PRIMARY KEY,   -- items.json item.uid; legacy items: "L" + sha1("<session dir name>/<item id>")[:25]
-  session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  item_id       TEXT NOT NULL,      -- "I-001"
-  kind          TEXT NOT NULL,      -- issue | idea | note | task | <custom lens>
-  title         TEXT NOT NULL DEFAULT '',
-  quote         TEXT NOT NULL DEFAULT '',
-  body          TEXT NOT NULL DEFAULT '',  -- lens fields flattened: actual, expected, steps, why, next… joined by "\\n"
-  tags          TEXT NOT NULL DEFAULT '',  -- space-joined
-  status        TEXT NOT NULL,      -- draft | confirmed | deleted
-  fix_state     TEXT,               -- NULL | fixing | fixed | wontfix | reopened
-  severity      TEXT,
-  owner         TEXT,
-  module        TEXT,
-  confidence    TEXT,
-  t_start       REAL,
-  primary_frame TEXT,               -- absolute path of frames[0].path, or NULL
-  frame_count   INTEGER NOT NULL DEFAULT 0,
-  has_code_refs INTEGER NOT NULL DEFAULT 0,
-  exported      TEXT NOT NULL DEFAULT '{}',  -- JSON copy of item.exported
-  user_edited   INTEGER NOT NULL DEFAULT 0,  -- item._user non-empty
-  updated       REAL NOT NULL,      -- max(_user values, fix.at, items_mtime)
-  UNIQUE (session_id, item_id)
+  uid                  TEXT PRIMARY KEY,
+  project_id           TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  session_id           TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+  path                 TEXT NOT NULL UNIQUE,   -- the .md (absolute); legacy: "<items.json absolute path>#<id>"
+  item_id              TEXT NOT NULL,          -- "BA-12" (legacy: "I-001")
+  kind                 TEXT NOT NULL,          -- issue | idea | note | task | <custom lens>
+  title                TEXT NOT NULL DEFAULT '',
+  quote                TEXT NOT NULL DEFAULT '',
+  body                 TEXT NOT NULL DEFAULT '',  -- lens fields flattened: actual, expected, steps, why… joined by "\\n"
+  tags                 TEXT NOT NULL DEFAULT '',  -- space-joined
+  status               TEXT NOT NULL,          -- draft | confirmed | deleted
+  work_state           TEXT NOT NULL DEFAULT 'todo',  -- todo | handed_off | in_progress | to_verify | done | wontfix
+  work_to              TEXT,                   -- session | external
+  work_agent           TEXT,
+  work_job             TEXT,
+  work_claim           TEXT,                   -- fixed | wontfix (to_verify only)
+  severity             TEXT,
+  owner                TEXT,
+  module               TEXT,
+  assignee             TEXT,
+  confidence           TEXT,
+  source_type          TEXT,                   -- recording | snap | voice | url | import | service
+  source_by            TEXT,
+  source_app           TEXT,
+  source_url           TEXT,
+  project_by           TEXT,                   -- capture | ai | user | migrate
+  project_confidence   REAL,
+  suggested_project    TEXT,                   -- project id the AI suggested (below the threshold)
+  suggested_confidence REAL,
+  t_start              REAL,
+  primary_frame        TEXT,                   -- absolute path of frames[0].path, or NULL
+  frame_count          INTEGER NOT NULL DEFAULT 0,
+  has_code_refs        INTEGER NOT NULL DEFAULT 0,
+  exported             TEXT NOT NULL DEFAULT '{}',  -- JSON copy of item.exported
+  user_edited          INTEGER NOT NULL DEFAULT 0,  -- item._user non-empty
+  parse_error          TEXT,                   -- the file can't be read back (items.py won't write it)
+  created              REAL NOT NULL,          -- epoch seconds
+  updated              REAL NOT NULL,          -- epoch seconds (front-matter updated, else the file's mtime)
+  mtime                REAL,                   -- the file's mtime when indexed
+  UNIQUE (project_id, item_id)
 );
-CREATE INDEX IF NOT EXISTS items_updated   ON items(updated DESC);
-CREATE INDEX IF NOT EXISTS items_kind_stat ON items(kind, status, fix_state);
+CREATE INDEX IF NOT EXISTS items_updated ON items(updated DESC);
+CREATE INDEX IF NOT EXISTS items_proj    ON items(project_id, status, work_state);
+CREATE INDEX IF NOT EXISTS items_session ON items(session_id);
 
 -- Full text. trigram handles Chinese/Japanese (no word segmentation needed); queries shorter than 3 characters
 -- can't use trigram, so readers fall back to `title LIKE '%q%' OR quote LIKE '%q%' OR body LIKE '%q%'`.
@@ -139,62 +170,28 @@ CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
   INSERT INTO items_fts(rowid, title, quote, body, tags) VALUES (new.rowid, new.title, new.quote, new.body, new.tags);
 END;
 
-INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
 """
+SCHEMA_VERSION = "2"
 
-SESSION_MARKERS = ("meta.json", "items.json", "recording.mp4", "shots.jsonl")
+SESSION_MARKERS = ("meta.json", "items.json", "batch.json", "recording.mp4", "shots.jsonl")
 # Item fields that have their own column (or aren't text): everything else that holds text goes into `body`.
-NOT_BODY = {"id", "uid", "kind", "title", "quote", "tags", "status", "severity", "owner", "module", "confidence",
-            "time", "frames", "clip", "exported", "_user", "fix", "fix_history", "merged_from", "t"}
-ITEM_ROW = ("uid", "session_id", "session_dir", "item_id", "kind", "title", "status", "fix_state", "severity",
-            "primary_frame", "updated", "snippet")
+NOT_BODY = {"schema", "id", "uid", "kind", "title", "quote", "tags", "status", "severity", "owner", "module",
+            "confidence", "time", "frames", "clip", "exported", "_user", "fix", "fix_history", "work", "work_history",
+            "merged_from", "merged_into", "aliases", "t", "project", "project_by", "project_confidence",
+            "suggested_project", "created", "updated", "source", "language", "assignee", "code_refs"}
+ITEM_ROW = ("uid", "project_id", "project_name", "project_key", "session_id", "session_dir", "path", "item_id", "kind",
+            "title", "status", "work_state", "work_to", "work_agent", "severity", "primary_frame", "created", "updated",
+            "snippet", "suggested_project")
 
 
-# ------------------------------------------------------------------ paths and identities
-def blurt_home() -> Path:
-    return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
-
-
+# ------------------------------------------------------------------ paths
 def db_path() -> Path:
     return blurt_home() / "index.db"
 
 
-def default_workspace() -> Path:
-    """The Blurt app's own workspace: ~/Blurt (or $BLURT_WORKSPACE, as the app and record.py honour), whose sessions
-    live in <workspace>/recordings (record.py inbox_dir)."""
-    return Path(os.environ.get("BLURT_WORKSPACE") or Path.home() / "Blurt")
-
-
-def real(p: Path | str) -> Path:
-    return Path(os.path.realpath(os.path.expanduser(str(p))))
-
-
-def workspace_id(path: Path | str) -> str:
-    return hashlib.sha1(str(real(path)).encode("utf-8")).hexdigest()[:12]
-
-
-def legacy_uid(session_name: str, item_id: str) -> str:
-    """C1: the uid of an item written before uids existed (items.py ensure-uids writes the same value)."""
-    return "L" + hashlib.sha1(f"{session_name}/{item_id}".encode("utf-8")).hexdigest()[:25]
-
-
 def item_uid(session_name: str, item: dict) -> str:
     return item.get("uid") or legacy_uid(session_name, str(item.get("id")))
-
-
-def sessions_dir(ws: Path, kind: str) -> Path:
-    return ws / "recordings" if kind == "default" else ws / ".blurt" / "sessions"
-
-
-def workspace_of(session: Path) -> tuple[Path, str]:
-    """(workspace path, kind) for a session dir: ~/Blurt/recordings/<ts> → ~/Blurt; <repo>/.blurt/sessions/<ts> →
-    <repo>; anything else → its parent directory (a loose folder of sessions)."""
-    parent = session.parent
-    if parent == real(default_workspace() / "recordings"):
-        return parent.parent, "default"
-    if parent.name == "sessions" and parent.parent.name == ".blurt":
-        return parent.parent.parent, "repo"
-    return parent, "repo"
 
 
 def is_session(d: Path) -> bool:
@@ -202,12 +199,31 @@ def is_session(d: Path) -> bool:
 
 
 # ------------------------------------------------------------------ db
+def _drop_db(path: Path) -> None:
+    for ext in ("", "-wal", "-shm"):
+        try:
+            Path(str(path) + ext).unlink()
+        except FileNotFoundError:
+            pass
+
+
 def connect(readonly: bool = False, path: Path | None = None) -> sqlite3.Connection:
     path = path or db_path()
     if readonly:
         con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():  # another schema (v1): the index is a cache, rebuild it
+            try:
+                c = sqlite3.connect(path, timeout=10)
+                try:
+                    v = c.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+                finally:
+                    c.close()
+            except sqlite3.DatabaseError:
+                v = None
+            if not v or v[0] != SCHEMA_VERSION:
+                _drop_db(path)
         con = sqlite3.connect(path, timeout=10, isolation_level=None)
         con.execute("PRAGMA busy_timeout = 10000")
         con.executescript(SCHEMA)
@@ -228,7 +244,40 @@ class _Tx:
         self.con.execute("COMMIT" if et is None else "ROLLBACK")
 
 
-# ------------------------------------------------------------------ reading a session
+# ------------------------------------------------------------------ projects
+def _registry() -> dict[str, dict]:
+    import projects  # noqa: PLC0415
+    return {e["id"]: e for e in projects.entries()}
+
+
+def _ensure_project(con, s: st.Store, now: float, reg: dict) -> str:
+    """The projects row of a store (registered or found on disk)."""
+    pid = s.project_id
+    if s.is_inbox:
+        import projects  # noqa: PLC0415
+        e, kind, registered = projects.inbox_entry(), "inbox", 1
+        path = str(s.root)
+    else:
+        path = str(s.project_dir)
+        e = reg.get(pid)
+        registered = int(e is not None)
+        if e is None:
+            import projects  # noqa: PLC0415
+            name = s.project_dir.name or path
+            e = {"name": name, "key": s.meta.get("key") or projects.default_key(name, set()),
+                 "slug": projects.default_slug(name, pid, set())}
+        kind = "repo" if (s.project_dir / ".git").exists() or st.git_toplevel(s.project_dir) else "folder"
+    con.execute("DELETE FROM projects WHERE (path = ? OR store = ?) AND id != ?", (path, str(s.root), pid))
+    con.execute("INSERT INTO projects(id, path, store, name, key, slug, kind, registered, last_seen) "
+                "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET path=excluded.path, store=excluded.store, "
+                "name=excluded.name, key=excluded.key, slug=excluded.slug, kind=excluded.kind, "
+                "registered=excluded.registered, last_seen=excluded.last_seen",
+                (pid, path, str(s.root), e.get("name") or pid, e.get("key") or "P", e.get("slug") or pid, kind,
+                 registered, now))
+    return pid
+
+
+# ------------------------------------------------------------------ reading files
 def _mtime(p: Path) -> float | None:
     try:
         return round(p.stat().st_mtime, 6)
@@ -237,14 +286,9 @@ def _mtime(p: Path) -> float | None:
 
 
 def _epoch(meta: dict, name: str, d: Path) -> float | None:
-    s = meta.get("started_at")
-    if isinstance(s, (int, float)):
-        return float(s)
-    if isinstance(s, str) and s:
-        try:
-            return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
-        except ValueError:
-            pass
+    t = to_epoch(meta.get("started_at"))
+    if t is not None:
+        return t
     m = re.match(r"(\d{8}-\d{6})", name)
     if m:
         try:
@@ -287,214 +331,348 @@ def _text(v) -> str | None:
     return str(v)
 
 
-def item_row(item: dict, session_id: str, d: Path, items_mtime: float) -> dict:
-    frames = [f for f in item.get("frames") or [] if isinstance(f, dict) and f.get("path")]
+def _num(v) -> float | None:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def item_row(item: dict, base: Path, pid: str, session_id: str | None, path: str, mtime: float | None) -> dict:
+    """Columns of an items row. base: what relative frame paths are relative to (the store, or a legacy session)."""
+    frames = [f for f in item.get("frames") or [] if isinstance(f, dict) and isinstance(f.get("path"), str)]
     tags = item.get("tags") or []
-    fix = item.get("fix") if isinstance(item.get("fix"), dict) else {}
+    work = item.get("work") if isinstance(item.get("work"), dict) else \
+        (work_from_fix(item["fix"]) if isinstance(item.get("fix"), dict) else {})
     user = item.get("_user") if isinstance(item.get("_user"), dict) else {}
-    stamps = [v for v in user.values() if isinstance(v, (int, float))]
-    if isinstance(fix.get("at"), (int, float)):
-        stamps.append(fix["at"])
+    src = item.get("source") if isinstance(item.get("source"), dict) else {}
+    sug = item.get("suggested_project") if isinstance(item.get("suggested_project"), dict) else {}
     t = item.get("time")
-    t_start = t.get("start") if isinstance(t, dict) else (t if isinstance(t, (int, float)) else None)
-    if t_start is None and frames and isinstance(frames[0].get("t"), (int, float)):
-        t_start = frames[0]["t"]
+    t_start = t.get("start") if isinstance(t, dict) else _num(t)
+    if t_start is None and frames:
+        t_start = frames[0].get("t")
     body = "\n".join(s for k, v in item.items() if k not in NOT_BODY and not k.startswith("_") for s in _flatten(v))
+    stamps = [x for x in user.values() if isinstance(x, (int, float))]
+    created = to_epoch(item.get("created")) or mtime or time.time()
+    updated = to_epoch(item.get("updated")) or max(stamps + [to_epoch(work.get("at")) or 0, mtime or 0]) or created
+    fp = frames[0]["path"] if frames else None
     return {
-        "uid": item_uid(d.name, item), "session_id": session_id, "item_id": str(item.get("id")),
-        "kind": str(item.get("kind") or "note"), "title": str(item.get("title") or ""),
+        "uid": str(item.get("uid")), "project_id": pid, "session_id": session_id, "path": path,
+        "item_id": str(item.get("id")), "kind": str(item.get("kind") or "note"), "title": str(item.get("title") or ""),
         "quote": str(item.get("quote") or ""), "body": body,
-        "tags": " ".join(tags) if isinstance(tags, list) else str(tags),
-        "status": str(item.get("status") or "draft"), "fix_state": _text(fix.get("state")),
+        "tags": " ".join(map(str, tags)) if isinstance(tags, list) else str(tags),
+        "status": str(item.get("status") or "draft"),
+        "work_state": work.get("state") if work.get("state") in ("todo", "handed_off", "in_progress", "to_verify",
+                                                                  "done", "wontfix") else "todo",
+        "work_to": _text(work.get("to")), "work_agent": _text(work.get("agent")), "work_job": _text(work.get("job")),
+        "work_claim": _text(work.get("claim")),
         "severity": _text(item.get("severity")), "owner": _text(item.get("owner")), "module": _text(item.get("module")),
-        "confidence": _text(item.get("confidence")), "t_start": t_start if isinstance(t_start, (int, float)) else None,
-        "primary_frame": str(real(d / frames[0]["path"])) if frames else None, "frame_count": len(frames),
-        "has_code_refs": int(bool(item.get("code_refs"))),
+        "assignee": _text(item.get("assignee")), "confidence": _text(item.get("confidence")),
+        "source_type": _text(src.get("type")), "source_by": _text(src.get("by")), "source_app": _text(src.get("app")),
+        "source_url": _text(src.get("url")), "project_by": _text(item.get("project_by")),
+        "project_confidence": _num(item.get("project_confidence")), "suggested_project": _text(sug.get("id")),
+        "suggested_confidence": _num(sug.get("confidence")), "t_start": _num(t_start),
+        "primary_frame": (fp if os.path.isabs(fp) else str(real(base / fp))) if fp else None,
+        "frame_count": len(frames), "has_code_refs": int(bool(item.get("code_refs"))),
         "exported": json.dumps(item.get("exported") or {}, ensure_ascii=False, sort_keys=True),
-        "user_edited": int(bool(user)), "updated": max(stamps + [items_mtime or 0.0]),
+        "user_edited": int(bool(user)), "parse_error": None, "created": created, "updated": updated, "mtime": mtime,
     }
 
 
-def _ensure_workspace(con, path: Path, kind: str, now: float) -> str:
-    wid = workspace_id(path)
-    name = "Blurt" if kind == "default" else (path.name or str(path))
-    con.execute("INSERT INTO workspaces(id, path, name, kind, last_seen) VALUES (?,?,?,?,?) "
-                "ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen", (wid, str(path), name, kind, now))
-    return wid
+def _insert_item(con, r: dict) -> bool:
+    other = con.execute("SELECT path FROM items WHERE uid = ?", (r["uid"],)).fetchone()
+    if other and other["path"] != r["path"]:
+        if not Path(other["path"].split("#")[0]).exists():
+            con.execute("DELETE FROM items WHERE uid = ?", (r["uid"],))
+        else:
+            return False  # the same uid twice (a copied folder): the one indexed first keeps it
+    clash = con.execute("SELECT uid FROM items WHERE project_id = ? AND item_id = ? AND uid != ?",
+                        (r["project_id"], r["item_id"], r["uid"])).fetchone()
+    if clash:  # two files claim one id (copied by hand): keep both findable
+        r = {**r, "item_id": f"{r['item_id']}~{r['uid'][-4:]}"}
+    cols = list(r)
+    con.execute(f"INSERT INTO items({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) ON CONFLICT(uid) DO UPDATE "
+                f"SET {', '.join(f'{c}=excluded.{c}' for c in cols if c != 'uid')}", [r[c] for c in cols])
+    return True
 
 
-def _drop_session(con, sid: str) -> None:
-    con.execute("DELETE FROM items WHERE session_id = ?", (sid,))  # explicit: keeps items_fts in step via items_ad
-    con.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+def _session_id_for(con, d, now: float, reg: dict) -> str | None:
+    if not d:
+        return None
+    d = str(real(d))
+    r = con.execute("SELECT id FROM sessions WHERE dir = ?", (d,)).fetchone()
+    if r:
+        return r["id"]
+    if is_session(Path(d)):
+        index_session(con, Path(d), now, reg)
+        r = con.execute("SELECT id FROM sessions WHERE dir = ?", (d,)).fetchone()
+        return r["id"] if r else None
+    return None
 
 
-def index_session(con, d: Path, now: float, force: bool = True) -> dict:
-    """(Re)index one session dir inside the caller's transaction. Returns {"items": n} / {"skipped": True} /
-    {"removed": True}."""
+def index_file(con, p: Path, now: float, reg: dict, s: st.Store | None = None, force: bool = True) -> str:
+    """(Re)index one .md. Returns "skipped" | "indexed" | "removed"."""
+    p = real(p)
+    if not p.is_file():
+        n = con.execute("DELETE FROM items WHERE path = ?", (str(p),)).rowcount
+        return "removed" if n else "skipped"
+    mtime = _mtime(p)
+    if not force:
+        r = con.execute("SELECT mtime FROM items WHERE path = ?", (str(p),)).fetchone()
+        if r and r["mtime"] == mtime:
+            return "skipped"
+    s = s or st.store_of_item(p)
+    pid = _ensure_project(con, s, now, reg)
+    try:
+        item = st.read_item(p)
+    except (st.Unparseable, OSError) as e:
+        h = st.read_header(p)
+        uid = h.get("uid") if isinstance(h.get("uid"), str) else "X" + hashlib.sha1(str(p).encode()).hexdigest()[:25]
+        r = {**item_row({"uid": uid, "id": h.get("id") or p.stem, "title": h.get("title") or p.stem,
+                         "kind": h.get("kind")}, s.root, pid, None, str(p), mtime), "parse_error": str(e)[:300]}
+        _insert_item(con, r)
+        return "indexed"
+    src = item.get("source") if isinstance(item.get("source"), dict) else {}
+    sid = _session_id_for(con, src.get("session"), now, reg)
+    _insert_item(con, item_row(item, s.root, pid, sid, str(p), mtime))
+    return "indexed"
+
+
+def _mode(d: Path, meta: dict) -> str:
+    if meta.get("mode") == "voice" or d.name.endswith("-voice"):
+        return "voice"
+    if meta.get("mode") == "shots" or (not (d / "recording.mp4").exists() and
+                                       ((d / "shots.jsonl").exists() or d.name.endswith("-shots"))):
+        return "shots"
+    return "video"
+
+
+def _session_store(d: Path) -> st.Store:
+    return st.store_of_session(d)
+
+
+def index_session(con, d: Path, now: float, reg: dict, force: bool = True) -> dict:
+    """(Re)index one session dir (and, for a v1/v2 session not migrated yet, its items.json items)."""
     d = real(d)
     row = con.execute("SELECT id, items_mtime, shots_mtime, indexed_at FROM sessions WHERE dir = ?", (str(d),)).fetchone()
     if not is_session(d):
         if row:
-            _drop_session(con, row["id"])
+            con.execute("DELETE FROM items WHERE path LIKE ? ESCAPE '\\'", (_like_prefix(str(d) + os.sep),))
+            con.execute("DELETE FROM sessions WHERE id = ?", (row["id"],))
             return {"removed": True}
         return {"skipped": True}
-    items_mtime, shots_mtime = _mtime(d / "items.json"), _mtime(d / "shots.jsonl")
+    batch_f, legacy_f = d / "batch.json", d / "items.json"
+    legacy = not batch_f.exists() and legacy_f.exists()
+    items_mtime, shots_mtime = _mtime(batch_f if batch_f.exists() else legacy_f), _mtime(d / "shots.jsonl")
     if (not force and row and row["items_mtime"] == items_mtime and row["shots_mtime"] == shots_mtime
             and (_mtime(d / "meta.json") or 0) <= row["indexed_at"]):
         return {"skipped": True}
-    ws, kind = workspace_of(d)
-    wid = _ensure_workspace(con, ws, kind, now)
-    sid = f"{wid}:{d.name}"
+    s = _session_store(d)
+    pid = _ensure_project(con, s, now, reg)
+    sid = f"{pid}:{d.name}"
     meta = load_json(d / "meta.json", {}) or {}
     try:
-        data = load_json(d / "items.json")
+        data = load_json(batch_f) if batch_f.exists() else load_json(legacy_f)
     except ValueError:  # half-written by a non-atomic writer: keep the old rows, the next update catches up
-        return {"skipped": True, "error": "items.json does not parse"}
+        return {"skipped": True, "error": f"{d.name}: does not parse"}
     data = data if isinstance(data, dict) else None
-    items = [i for i in (data or {}).get("items", []) if isinstance(i, dict) and i.get("id")]
     shots = read_shots(d)
-    mode = "shots" if meta.get("mode") == "shots" or (not (d / "recording.mp4").exists() and
-                                                       ((d / "shots.jsonl").exists() or d.name.endswith("-shots"))) else "video"
+    mode = _mode(d, meta)
     shot_count = len(shots) if (d / "shots.jsonl").exists() else \
         len([p for p in (d / "shots").glob("[0-9]*.png") if not p.name.endswith(".marked.png")])
+    cards = sum(1 for o in shots if "project" in o and o.get("project") is None)
     title = (data or {}).get("title") or meta.get("title")
-    if row and row["id"] != sid:  # moved to another workspace id (should not happen; be safe)
-        _drop_session(con, row["id"])
-    con.execute("DELETE FROM items WHERE session_id = ?", (sid,))
+    if row and row["id"] != sid:
+        con.execute("UPDATE items SET session_id = NULL WHERE session_id = ?", (row["id"],))
+        con.execute("DELETE FROM sessions WHERE id = ?", (row["id"],))
     con.execute(
-        "INSERT INTO sessions(id, workspace_id, dir, mode, title, author, created, duration, shot_count, item_count, "
-        "processed, processing, reviewed, items_mtime, shots_mtime, indexed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
-        "ON CONFLICT(id) DO UPDATE SET workspace_id=excluded.workspace_id, dir=excluded.dir, mode=excluded.mode, "
-        "title=excluded.title, author=excluded.author, created=excluded.created, duration=excluded.duration, "
-        "shot_count=excluded.shot_count, item_count=excluded.item_count, processed=excluded.processed, "
-        "processing=excluded.processing, reviewed=excluded.reviewed, items_mtime=excluded.items_mtime, "
-        "shots_mtime=excluded.shots_mtime, indexed_at=excluded.indexed_at",
-        (sid, wid, str(d), mode, title, _text(meta.get("author")), _epoch(meta, d.name, d),
-         None if mode == "shots" else (meta.get("duration") if isinstance(meta.get("duration"), (int, float)) else None),
-         shot_count, sum(1 for i in items if i.get("status") != "deleted"), int(data is not None),
-         int(bool((data or {}).get("processing"))), int(bool((data or {}).get("reviewed"))),
+        "INSERT INTO sessions(id, project_id, dir, mode, title, author, created, duration, shot_count, card_count, "
+        "item_count, processed, processing, reviewed, legacy, items_mtime, shots_mtime, indexed_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id, "
+        "dir=excluded.dir, mode=excluded.mode, title=excluded.title, author=excluded.author, created=excluded.created, "
+        "duration=excluded.duration, shot_count=excluded.shot_count, card_count=excluded.card_count, "
+        "processed=excluded.processed, processing=excluded.processing, reviewed=excluded.reviewed, "
+        "legacy=excluded.legacy, items_mtime=excluded.items_mtime, shots_mtime=excluded.shots_mtime, "
+        "indexed_at=excluded.indexed_at",
+        (sid, pid, str(d), mode, title, _text(meta.get("author")), _epoch(meta, d.name, d),
+         _num(meta.get("duration")) if mode == "video" else None, shot_count, cards, 0, int(data is not None),
+         int(bool((data or {}).get("processing"))), int(bool((data or {}).get("reviewed"))), int(legacy),
          items_mtime, shots_mtime, now))
-    n, dupes = 0, []
-    for it in items:
-        r = item_row(it, sid, d, items_mtime or now)
-        other = con.execute("SELECT session_id FROM items WHERE uid = ?", (r["uid"],)).fetchone()
-        if other:  # same uid in two sessions (a copied session dir): the one indexed first keeps it
-            dupes.append(r["uid"])
-            continue
-        cols = [c for c in r if c != "session_dir"]
-        con.execute(f"INSERT INTO items({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", [r[c] for c in cols])
-        n += 1
-    return {"items": n, **({"duplicate_uids": dupes} if dupes else {})}
+    prefix = str(legacy_f) + "#"
+    con.execute("DELETE FROM items WHERE path LIKE ? ESCAPE '\\'", (_like_prefix(prefix),))
+    n = 0
+    if legacy and data:
+        gone = set((data.get("_removed") or {}))
+        for it in data.get("items") or []:
+            if not isinstance(it, dict) or not it.get("id") or it["id"] in gone:
+                continue
+            it = {**it, "uid": item_uid(d.name, it)}
+            r = item_row(it, d, pid, sid, prefix + str(it["id"]), items_mtime)
+            r["created"] = _epoch(meta, d.name, d) or r["created"]
+            n += int(_insert_item(con, r))
+    _count(con, [sid])
+    return {"items": n}
+
+
+def _like_prefix(s: str) -> str:
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def _count(con, sids=None) -> None:
+    sql = ("UPDATE sessions SET item_count = (SELECT COUNT(*) FROM items i WHERE i.session_id = sessions.id "
+           "AND i.status != 'deleted')")
+    if sids is None:
+        con.execute(sql)
+    else:
+        for sid in sids:
+            con.execute(sql + " WHERE id = ?", (sid,))
+
+
+def index_store(con, s: st.Store, now: float, reg: dict, force: bool = False) -> dict:
+    """Every session and item file of a store; rows of files that went away are dropped."""
+    pid = _ensure_project(con, s, now, reg)
+    sessions = []
+    if s.sessions_dir.is_dir():
+        for d in sorted(s.sessions_dir.iterdir()):
+            if is_session(d):
+                index_session(con, d, now, reg, force=force)
+                sessions.append(str(real(d)))
+    files = s.files()
+    for p in files:
+        index_file(con, p, now, reg, s, force=force)
+    keep = {str(real(p)) for p in files}
+    for r in con.execute("SELECT path FROM items WHERE project_id = ? AND path NOT LIKE '%#%'", (pid,)).fetchall():
+        if r["path"] not in keep and Path(r["path"]).parent == s.items_dir:
+            con.execute("DELETE FROM items WHERE path = ?", (r["path"],))
+    return {"sessions": sessions, "items": len(files)}
 
 
 # ------------------------------------------------------------------ scan / update
-def _config_workspaces() -> list[Path]:
-    cfg = load_json(blurt_home() / "config.json", {}) or {}
-    rec = cfg.get("record") if isinstance(cfg.get("record"), dict) else {}
-    return [Path(os.path.expanduser(w)) for w in rec.get("workspaces") or [] if isinstance(w, str)]
-
-
-def _root_workspace(root: Path) -> tuple[Path, str, Path]:
-    """--root DIR may be a repo (with .blurt/sessions), ~/Blurt, a sessions dir, or a folder of session dirs."""
-    root = real(root)
-    if root == real(default_workspace()):
-        return root, "default", root / "recordings"
-    if (root / ".blurt" / "sessions").is_dir():
-        return root, "repo", root / ".blurt" / "sessions"
-    if root == real(default_workspace() / "recordings"):
-        return root.parent, "default", root
-    if root.name == "sessions" and root.parent.name == ".blurt":
-        return root.parent.parent, "repo", root
-    return root, "repo", root
-
-
-def roots(extra: list[Path] | None = None, con=None) -> list[Path]:
-    """Session containers to scan: ~/Blurt/recordings, record.workspaces, workspaces already in the db, --root."""
-    out = [default_workspace() / "recordings"] + [w / ".blurt" / "sessions" for w in _config_workspaces()]
+def _stores(extra: list[Path] | None, con) -> tuple[list[st.Store], list[Path]]:
+    """Stores to scan, and folders of v0.6 sessions outside any store."""
+    import projects  # noqa: PLC0415
+    stores = [st.inbox_store()] + [projects.store_of(e) for e in projects.entries()]
+    loose = [st.legacy_recordings()]
     if con is not None:
-        for r in con.execute("SELECT path, kind FROM workspaces"):
-            out.append(sessions_dir(Path(r["path"]), r["kind"]))
+        for r in con.execute("SELECT store FROM projects WHERE registered = 0"):
+            stores.append(st.Store(r["store"]))
     for e in extra or []:
-        out.append(_root_workspace(Path(e))[2])
-    seen, res = set(), []
-    for r in out:
-        rr = real(r)
-        if rr not in seen and rr.is_dir():
-            seen.add(rr)
-            res.append(rr)
-    return res
+        e = real(e)
+        if e == real(blurt_workspace()):
+            loose.append(e / "recordings")
+        elif (e / ".blurt").is_dir():
+            stores.append(st.Store(e / ".blurt"))
+        elif (e / "store.json").exists() or e.name == ".blurt":
+            stores.append(st.Store(e))
+        elif e.name == "sessions":
+            stores.append(st.Store(e.parent))
+        else:
+            loose.append(e)
+    out, seen = [], set()
+    for s in stores:
+        if s.root not in seen and (s.root.is_dir()):
+            seen.add(s.root)
+            out.append(s)
+    return out, [p for p in dict.fromkeys(real(x) for x in loose) if p.is_dir()]
 
 
 def scan(extra: list[Path] | None = None, full: bool = False) -> dict:
     t0 = time.perf_counter()
     now = time.time()
     con = connect()
+    reg = _registry()
     try:
-        containers = roots(extra, con)
+        stores, loose = _stores(extra, con)
         found: set[str] = set()
         with _Tx(con):
-            for c in containers:
+            for s in stores:
+                found.update(index_store(con, s, now, reg, force=full)["sessions"])
+            for c in loose:
                 for d in sorted(c.iterdir()):
                     if is_session(d):
                         found.add(str(real(d)))
-                        index_session(con, d, now, force=full)
+                        index_session(con, d, now, reg, force=full)
             for r in con.execute("SELECT id, dir FROM sessions").fetchall():
                 if r["dir"] not in found and not is_session(Path(r["dir"])):
-                    _drop_session(con, r["id"])
-            # workspaces left without sessions drop out of the lists
-            con.execute("DELETE FROM workspaces WHERE id NOT IN (SELECT DISTINCT workspace_id FROM sessions)")
+                    con.execute("DELETE FROM sessions WHERE id = ?", (r["id"],))
+            for r in con.execute("SELECT uid, path FROM items").fetchall():
+                if not Path(r["path"].split("#")[0]).exists():
+                    con.execute("DELETE FROM items WHERE uid = ?", (r["uid"],))
+            # projects found on disk that no longer hold anything drop out of the lists
+            con.execute("DELETE FROM projects WHERE registered = 0 AND id NOT IN (SELECT project_id FROM sessions) "
+                        "AND id NOT IN (SELECT project_id FROM items)")
+            con.execute("DELETE FROM projects WHERE registered = 1 AND id != 'inbox' AND id NOT IN (" +
+                        ",".join("?" * len(reg)) + ")" if reg else
+                        "DELETE FROM projects WHERE registered = 1 AND id != 'inbox'", list(reg))
+            _count(con)
             con.execute("INSERT INTO meta(key, value) VALUES ('last_full_scan', ?) "
                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(round(now, 3)),))
-        counts = {k: con.execute(f"SELECT COUNT(*) FROM {k}").fetchone()[0] for k in ("workspaces", "sessions", "items")}
+        counts = {k: con.execute(f"SELECT COUNT(*) FROM {k}").fetchone()[0] for k in ("projects", "sessions", "items")}
     finally:
         con.close()
     return {**counts, "ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 
-def update_sessions(dirs, force: bool = True) -> dict:
-    """Re-index these session dirs (items.py calls this after every write). Removed dirs lose their rows."""
+def update_paths(paths, force: bool = True) -> dict:
+    """Re-index these paths (items.py calls this after every write): .md files, store dirs, session dirs, a
+    session's items.json / batch.json. Paths that are gone lose their rows."""
     t0 = time.perf_counter()
     now = time.time()
     con = connect()
+    reg = _registry()
     n, extra = 0, {}
     try:
         with _Tx(con):
-            for d in dirs:
-                r = index_session(con, Path(d), now, force=force)
-                n += 0 if r.get("skipped") else 1
-                for k in ("duplicate_uids", "error"):
-                    if r.get(k):
-                        extra.setdefault(k, []).append(r[k] if k == "error" else r[k])
+            for p in paths:
+                p = Path(p)
+                if p.name in ("items.json", "batch.json", "shots.jsonl", "meta.json"):
+                    p = p.parent
+                if p.suffix == ".md":
+                    n += int(index_file(con, p, now, reg) != "skipped")
+                elif (p / "store.json").exists() or (p / "items").is_dir() and not is_session(p):
+                    index_store(con, st.Store(p), now, reg, force=force)
+                    n += 1
+                else:
+                    r = index_session(con, p, now, reg, force=force)
+                    n += 0 if r.get("skipped") else 1
+                    if r.get("error"):
+                        extra.setdefault("error", []).append(r["error"])
     finally:
         con.close()
     return {"updated": n, "ms": round((time.perf_counter() - t0) * 1000, 1), **extra}
 
 
-def update_workspace(ws: Path) -> dict:
-    ws_, kind, container = _root_workspace(ws)
-    # only a real sessions dir (the hook passes any project root: no .blurt/sessions → nothing to do, no db created)
-    if not container.is_dir() or container == real(ws) and kind == "repo":
+def update_sessions(dirs, force: bool = True) -> dict:
+    """v2 name of update_paths (session dirs)."""
+    return update_paths(dirs, force)
+
+
+def update_workspace(folder: Path) -> dict:
+    """A project folder (the plugin's SessionEnd hook passes any project root): re-index its store if it has one;
+    nothing to index → no index.db appears."""
+    s = st.Store(real(folder) / ".blurt") if real(folder).name != ".blurt" else st.Store(folder)
+    if not (s.exists or s.sessions_dir.is_dir()):
         return {"updated": 0, "ms": 0.0}
-    dirs = [d for d in container.iterdir() if is_session(d)]
+    t0 = time.perf_counter()
     con = connect()
-    try:  # sessions of this workspace that were deleted since
-        gone = [r["dir"] for r in con.execute("SELECT dir FROM sessions WHERE workspace_id = ?", (workspace_id(ws_),))
-                if not Path(r["dir"]).exists()]
+    try:
+        with _Tx(con):
+            r = index_store(con, s, time.time(), _registry(), force=False)
     finally:
         con.close()
-    return update_sessions(dirs + [Path(g) for g in gone], force=False)
+    return {"updated": len(r["sessions"]) + r["items"], "ms": round((time.perf_counter() - t0) * 1000, 1)}
 
 
 def ensure_index() -> Path:
-    """For readers: build the index once if it doesn't exist yet. Returns the db path."""
+    """For readers: build the index once if it doesn't exist yet (or has another schema). Returns the db path."""
     p = db_path()
     need = not p.exists()
     if not need:
         try:
             con = connect(readonly=True)
-            need = con.execute("SELECT value FROM meta WHERE key = 'last_full_scan'").fetchone() is None
-            con.close()
-        except sqlite3.Error:
+            try:
+                need = con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] != SCHEMA_VERSION \
+                    or con.execute("SELECT value FROM meta WHERE key = 'last_full_scan'").fetchone() is None
+            finally:
+                con.close()
+        except (sqlite3.Error, TypeError):
             need = True
     if need:
         scan()
@@ -518,24 +696,31 @@ def _snippet(row, terms: list[str], width: int = 40) -> str | None:
     return None
 
 
-def _resolve(con, table: str, value: str) -> str:
-    """A workspace / session given as id or as a directory."""
-    if con.execute(f"SELECT 1 FROM {table} WHERE id = ?", (value,)).fetchone():
+def resolve_project(con, value: str) -> str:
+    """A project given as id, folder, store, name, key or slug ('inbox' included)."""
+    if not value:
+        return value
+    if con.execute("SELECT 1 FROM projects WHERE id = ?", (value,)).fetchone():
         return value
     p = str(real(value))
-    col = "path" if table == "workspaces" else "dir"
-    r = con.execute(f"SELECT id FROM {table} WHERE {col} = ?", (p,)).fetchone()
-    if r:
-        return r["id"]
-    if table == "workspaces":
-        r = con.execute("SELECT id FROM workspaces WHERE name = ?", (value,)).fetchone()
+    for sql, arg in (("SELECT id FROM projects WHERE path = ? OR store = ?", (p, p)),
+                     ("SELECT id FROM projects WHERE name = ? OR key = ? OR slug = ?", (value, value, value))):
+        r = con.execute(sql, arg).fetchone()
         if r:
             return r["id"]
     return value
 
 
-def search(query: str | None = None, kind=None, status=None, fix_state=None, workspace: str | None = None,
-           session: str | None = None, sort: str = "updated", limit: int = 50, offset: int = 0, con=None) -> dict:
+def resolve_session(con, value: str) -> str:
+    if con.execute("SELECT 1 FROM sessions WHERE id = ?", (value,)).fetchone():
+        return value
+    r = con.execute("SELECT id FROM sessions WHERE dir = ?", (str(real(value)),)).fetchone()
+    return r["id"] if r else value
+
+
+def search(query: str | None = None, kind=None, status=None, work=None, project: str | None = None,
+           session: str | None = None, sort: str = "updated", limit: int = 50, offset: int = 0, con=None,
+           fix_state=None, source_type=None) -> dict:
     own = con is None
     con = con or connect(readonly=True)
     try:
@@ -554,29 +739,41 @@ def search(query: str | None = None, kind=None, status=None, fix_state=None, wor
             args += list(status)
         else:
             where.append("i.status != 'deleted'")
-        if kind:
-            where.append(f"i.kind IN ({','.join('?' * len(kind))})")
-            args += list(kind)
-        if fix_state:
-            fs = [f for f in fix_state if f != "none"]
-            parts = ([f"i.fix_state IN ({','.join('?' * len(fs))})"] if fs else []) + \
-                    (["i.fix_state IS NULL"] if "none" in fix_state else [])
-            where.append("(" + " OR ".join(parts) + ")")
-            args += fs
-        if workspace:
-            where.append("s.workspace_id = ?")
-            args.append(_resolve(con, "workspaces", workspace))
+        for col, vals in (("i.kind", kind), ("i.source_type", source_type)):
+            if vals:
+                where.append(f"{col} IN ({','.join('?' * len(vals))})")
+                args += list(vals)
+        works = list(work or [])
+        if fix_state:  # v2 alias: fixed = to_verify (claim fixed) or done, …
+            fs = []
+            for f in fix_state:
+                if f == "fixed":
+                    fs.append("(i.work_state = 'done' OR (i.work_state = 'to_verify' AND i.work_claim = 'fixed'))")
+                elif f == "wontfix":
+                    fs.append("(i.work_state = 'wontfix' OR (i.work_state = 'to_verify' AND i.work_claim = 'wontfix'))")
+                else:
+                    fs += [f"i.work_state = '{s}'" for s in fix_alias_states([f])]
+            if fs:
+                where.append("(" + " OR ".join(fs) + ")")
+        if works:
+            where.append(f"i.work_state IN ({','.join('?' * len(works))})")
+            args += works
+        if project:
+            where.append("i.project_id = ?")
+            args.append(resolve_project(con, project))
         if session:
             where.append("i.session_id = ?")
-            args.append(_resolve(con, "sessions", session))
+            args.append(resolve_session(con, session))
         join = "JOIN items_fts f ON f.rowid = i.rowid " if fts else ""
         snip = "snippet(items_fts, -1, '[', ']', '…', 12)" if fts else "NULL"
-        order = {"updated": "i.updated DESC", "created": "s.created DESC, i.t_start",
-                 "t_start": "i.t_start, s.created DESC"}.get(sort, "i.updated DESC")
-        base = f"FROM items i {join}JOIN sessions s ON s.id = i.session_id WHERE {' AND '.join(where)}"
+        order = {"updated": "i.updated DESC", "created": "i.created DESC", "t_start": "i.t_start, i.created DESC",
+                 "title": "i.title COLLATE NOCASE"}.get(sort, "i.updated DESC")
+        base = (f"FROM items i {join}JOIN projects p ON p.id = i.project_id LEFT JOIN sessions s ON s.id = i.session_id "
+                f"WHERE {' AND '.join(where)}")
         total = con.execute(f"SELECT COUNT(*) {base}", args).fetchone()[0]
-        rows = con.execute(f"SELECT i.*, s.dir AS session_dir, {snip} AS snippet {base} ORDER BY {order}, i.item_id "
-                           f"LIMIT ? OFFSET ?", args + [int(limit), int(offset)]).fetchall()
+        rows = con.execute(f"SELECT i.*, p.name AS project_name, p.key AS project_key, s.dir AS session_dir, "
+                           f"{snip} AS snippet {base} ORDER BY {order}, i.item_id LIMIT ? OFFSET ?",
+                           args + [int(limit), int(offset)]).fetchall()
         out = []
         for r in rows:
             row = {k: r[k] for k in ITEM_ROW}
@@ -592,28 +789,30 @@ def search(query: str | None = None, kind=None, status=None, fix_state=None, wor
 # ------------------------------------------------------------------ backlog
 def backlog(repo: Path) -> dict:
     repo = real(repo)
+    s = st.Store(repo / ".blurt")
     update_workspace(repo)
-    con = connect(readonly=True)
-    try:
-        wid = workspace_id(repo)
-        rows = con.execute(
-            "SELECT i.*, s.dir AS session_dir, s.title AS session_title FROM items i JOIN sessions s ON s.id = i.session_id "
-            "WHERE s.workspace_id = ? AND i.status != 'deleted' AND (i.fix_state IS NULL OR i.fix_state IN "
-            "('fixing', 'reopened')) ORDER BY i.kind, s.created DESC, i.item_id", (wid,)).fetchall()
-    finally:
-        con.close()
+    pid = s.project_id
+    rows = []
+    if db_path().exists():
+        con = connect(readonly=True)
+        try:
+            rows = con.execute(
+                f"SELECT * FROM items WHERE project_id = ? AND status != 'deleted' AND work_state IN "
+                f"({','.join('?' * len(OPEN_WORK))}) ORDER BY kind, created DESC, item_id", (pid, *OPEN_WORK)).fetchall()
+        finally:
+            con.close()
     lines = ["# Blurt backlog", "",
-             f"Open items recorded in this repo ({len(rows)}). Generated by `index.py backlog` — don't edit; change items "
+             f"Open items of this project ({len(rows)}). Generated by `index.py backlog` — don't edit; change items "
              "with `items.py` or the blurt MCP tools.", ""]
     kind = None
     for r in rows:
         if r["kind"] != kind:
             kind = r["kind"]
             lines += ["", f"## {kind}", ""]
-        extra = ", ".join(x for x in (r["severity"], r["fix_state"], r["status"]) if x)
-        rel = os.path.relpath(r["session_dir"], repo)
-        lines.append(f"- **{r['title'] or r['item_id']}** ({extra}) — `{rel}` {r['item_id']} · uid `{r['uid']}`")
-    out = repo / ".blurt" / "BACKLOG.md"
+        extra = ", ".join(x for x in (r["severity"], r["work_state"], r["status"]) if x)
+        rel = os.path.relpath(r["path"].split("#")[0], repo)
+        lines.append(f"- **{r['item_id']} {r['title']}** ({extra}) — `{rel}` · uid `{r['uid']}`")
+    out = s.root / "BACKLOG.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return {"path": str(out), "items": len(rows)}
@@ -626,18 +825,20 @@ def main(argv=None) -> None:
     sub.add_parser("path")
     s = sub.add_parser("scan")
     s.add_argument("--root", action="append", default=[])
-    s.add_argument("--full", action="store_true", help="re-index unchanged sessions too")
+    s.add_argument("--full", action="store_true", help="re-index unchanged files too")
     s = sub.add_parser("update")
-    s.add_argument("sessions", nargs="*")
-    s.add_argument("--workspace", metavar="DIR", help="re-index the changed sessions of this repo / workspace")
+    s.add_argument("paths", nargs="*")
+    s.add_argument("--workspace", metavar="DIR", help="re-index this project folder's store")
     s = sub.add_parser("search")
     s.add_argument("query", nargs="?", default="")
     s.add_argument("--kind", action="append")
     s.add_argument("--status", action="append")
+    s.add_argument("--work", action="append")
     s.add_argument("--fix-state", action="append")
-    s.add_argument("--workspace")
+    s.add_argument("--project", "--workspace", dest="project")
     s.add_argument("--session")
-    s.add_argument("--sort", choices=["updated", "created", "t_start"], default="updated")
+    s.add_argument("--source-type", action="append")
+    s.add_argument("--sort", choices=["updated", "created", "t_start", "title"], default="updated")
     s.add_argument("--limit", type=int, default=50)
     s.add_argument("--offset", type=int, default=0)
     s = sub.add_parser("backlog")
@@ -649,19 +850,20 @@ def main(argv=None) -> None:
         elif a.cmd == "scan":
             out = scan([Path(r) for r in a.root], full=a.full)
         elif a.cmd == "update":
-            if not a.sessions and not a.workspace:
-                p.error("update needs SESSION_DIR … or --workspace DIR")
-            out = update_sessions(a.sessions) if a.sessions else {"updated": 0, "ms": 0.0}
+            if not a.paths and not a.workspace:
+                p.error("update needs PATH … or --workspace DIR")
+            out = update_paths(a.paths) if a.paths else {"updated": 0, "ms": 0.0}
             if a.workspace:
                 w = update_workspace(Path(a.workspace))
                 out = {"updated": out["updated"] + w["updated"], "ms": round(out["ms"] + w["ms"], 1)}
         elif a.cmd == "search":
             ensure_index()
-            out = search(a.query, a.kind, a.status, a.fix_state, a.workspace, a.session, a.sort, a.limit, a.offset)
+            out = search(a.query, a.kind, a.status, a.work, a.project, a.session, a.sort, a.limit, a.offset,
+                         fix_state=a.fix_state, source_type=a.source_type)
         else:
             out = backlog(Path(a.repo))
     except sqlite3.Error as e:
-        print(json.dumps({"ok": False, "error": f"sqlite: {e}"}, ensure_ascii=False), flush=True)
+        print(json.dumps({"ok": False, "error": f"sqlite: {e}", "code": "sqlite"}, ensure_ascii=False), flush=True)
         sys.exit(1)
     print(json.dumps(out, ensure_ascii=False), flush=True)
 

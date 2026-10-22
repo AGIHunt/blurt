@@ -2,7 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["truststore"]
 # ///
-"""Export a session's issues to a Feishu / Lark Bitable (多维表格).
+"""Export a session's (or a project's) issues to a Feishu / Lark Bitable (多维表格).
 
 Two backends, picked automatically (override with --via):
   lark-cli  official CLI, user identity (`lark-cli auth login`); nothing else to configure.      [preferred]
@@ -11,13 +11,15 @@ Two backends, picked automatically (override with --via):
             the app must be added to the base (··· → 更多 → 添加文档应用).
 
   feishu.py fields  URL                                     list columns (plan a mapping)
-  feishu.py export  SESSION_DIR URL [--map JSON] [--dry-run]
+  feishu.py export  SESSION_DIR URL [--map JSON] [--dry-run] [--kind K]
+  feishu.py export  --project P URL …                        every item of a project (P = id, key, name or inbox)
   feishu.py create  "Base name" [--table 问题清单] [--lang zh]  new base + table with default columns; prints URL
 
 URL: https://xxx.feishu.cn/base/<base_token>?table=<table_id>  (wiki-hosted bases: openapi backend)
 --map: JSON file or inline JSON {"<issue key>": "<column>"}; several keys may share a column (joined with labels).
 Issue keys: id title module owner severity type actual expected steps time quote frames clip code_refs questions.
-Missing columns are created (attachment for frames/clip, text otherwise). Issues already exported are skipped.
+Missing columns are created (attachment for frames/clip, text otherwise). Items already exported are skipped
+(item.exported, written through items.py).
 """
 from __future__ import annotations
 
@@ -38,8 +40,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts, global_config, live_items, load_session, save_session, use_system_certs  # noqa: E402
-from export_local import LABELS  # noqa: E402
+from _common import die, fmt_ts, global_config, use_system_certs  # noqa: E402
+from export_local import LABELS, load_doc  # noqa: E402
+import items as items_mod  # noqa: E402
 
 use_system_certs()
 
@@ -293,6 +296,15 @@ def columns_of(mapping: dict) -> dict[str, list[str]]:
     return cols
 
 
+def mark_exported(item: dict, patch: dict) -> None:
+    """Record the export on the item, through items.py (locked; the user may be editing it)."""
+    def fn(it):
+        it["exported"] = {**(it.get("exported") if isinstance(it.get("exported"), dict) else {}), **patch}
+        return {}
+    items_mod.mutate(Path(item["path"]), fn)
+    items_mod.reindex_touched()
+
+
 def pick_backend(via: str | None):
     if via == "openapi" or (via is None and not shutil.which("lark-cli")):
         return OpenAPI()
@@ -308,8 +320,8 @@ def main():
     f = sub.add_parser("fields")
     f.add_argument("url")
     e = sub.add_parser("export")
-    e.add_argument("session")
-    e.add_argument("url")
+    e.add_argument("target", nargs="+", metavar="[SESSION_DIR] URL")
+    e.add_argument("--project")
     e.add_argument("--map", help="JSON file or inline JSON mapping issue keys → column names")
     e.add_argument("--dry-run", action="store_true")
     e.add_argument("--kind", default="issue", help="which items to export: issue (default) | idea | note | task | <lens>")
@@ -328,14 +340,21 @@ def main():
         print(json.dumps({"url": url, "backend": be.name}, ensure_ascii=False))
         return
 
+    if a.cmd == "export":
+        if len(a.target) == 2 and not a.project:
+            a.session, a.url = a.target
+        elif len(a.target) == 1 and a.project:
+            a.session, a.url = None, a.target[0]
+        else:
+            die("export: SESSION_DIR URL, or --project P URL")
     base, table = be.resolve(a.url)
     if a.cmd == "fields":
         print(json.dumps(be.fields(base, table), ensure_ascii=False, indent=2))
         return
 
-    session = Path(a.session)
-    data = load_session(session) or die("no items.json in this session")
-    lang = "zh" if str(data.get("language", "")).startswith("zh") else "en"
+    data, _ = load_doc(a.session, a.project)
+    lang = "zh" if str(data.get("language") or (data["items"][0].get("language") if data["items"] else "")
+                       ).startswith("zh") else "en"
     mapping = default_map(lang, a.kind)
     if a.map:
         mapping = json.loads(Path(a.map).read_text(encoding="utf-8") if Path(a.map).exists() else a.map)
@@ -344,7 +363,8 @@ def main():
     existing = {x["name"]: x["kind"] for x in be.fields(base, table)}
     missing = {col: ("attachment" if set(keys) & ATTACH_KEYS else "text") for col, keys in cols.items()
                if col not in existing}
-    todo = [i for i in live_items(data, a.kind) if not (i.get("exported") or {}).get("feishu_done")]
+    todo = [i for i in data["items"] if i.get("status") != "deleted" and i.get("kind") == a.kind
+            and not (i.get("exported") or {}).get("feishu_done")]
     if a.dry_run:
         print(json.dumps({"backend": be.name, "base": base, "table": table, "will_create_columns": missing,
                           "items": len(todo), "mapping": mapping}, ensure_ascii=False, indent=2))
@@ -358,9 +378,9 @@ def main():
         rec, files = {}, {}
         for col, keys in cols.items():
             if existing.get(col) == "attachment":
-                paths = [session / fr["path"] for fr in i.get("frames", [])] if "frames" in keys else []
+                paths = [Path(fr["path"]) for fr in i.get("frames", [])] if "frames" in keys else []
                 if "clip" in keys and i.get("clip"):
-                    paths.append(session / i["clip"])
+                    paths.append(Path(i["clip"]))
                 if paths := [pth for pth in paths if pth.exists()]:
                     files[col] = paths
                 continue
@@ -372,11 +392,11 @@ def main():
         rid = exp.get("feishu")  # record created on an earlier, interrupted run -> only attach
         if not rid:
             rid = exp["feishu"] = be.create_record(base, table, rec)
-            save_session(session, data)  # save as we go: a rerun never duplicates
+            mark_exported(i, {"feishu": rid})  # save as we go: a rerun never duplicates
         for col, paths in files.items():
             be.attach(base, table, rid, col, paths)
         exp["feishu_done"] = True
-        save_session(session, data)
+        mark_exported(i, {"feishu": rid, "feishu_done": True})
         done += 1
         print(f"  {i.get('id')} → {rid}", file=sys.stderr, flush=True)
     print(json.dumps({"backend": be.name, "exported": done, "created_columns": list(missing), "url": a.url},

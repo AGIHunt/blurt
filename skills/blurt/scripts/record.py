@@ -18,7 +18,7 @@ Engines (auto-selected; override with --engine or ~/.blurt/config.json → recor
                                         run in the background; exits when the user stops (prints DONE …)
   record.py stop | pause | resume | restart | discard | snap   control the active recording from the chat (snap =
                                         a full-resolution still of the area now → shots/)
-  record.py inbox                       recordings made with the Blurt app (~/Blurt, bound projects) + processed?
+  record.py inbox                       recordings in the inbox and every project (projects.json) + processed?
   record.py install-app                 double-clickable recorder: ~/Applications/Blurt.app / Start-menu "Blurt"
   record.py status                      active recording, if any
   record.py devices                     screens / microphones (JSON)
@@ -703,15 +703,18 @@ def make_icns(dest: Path) -> None:
 
 
 def inbox_dir() -> Path:
-    """The default workspace's recordings (the Blurt app and --inbox): ~/Blurt/recordings."""
-    return Path.home() / "Blurt" / "recordings"
+    """Where --inbox recordings go: the inbox store's sessions ($BLURT_WORKSPACE/inbox/sessions, contract K1)."""
+    import store  # noqa: PLC0415
+    return store.inbox_root() / "sessions"
 
 
 def recording_roots() -> list[Path]:
-    """Everywhere recordings may live: the default workspace and projects bound in the app."""
-    roots = [inbox_dir()]
-    for w in global_config().get("record", {}).get("workspaces", []) or []:
-        roots.append(Path(w) / ".blurt" / "sessions")
+    """Everywhere recordings may live: the inbox store, every project's store (projects.json) and v0.6's
+    ~/Blurt/recordings."""
+    import projects  # noqa: PLC0415
+    import store  # noqa: PLC0415
+    roots = [inbox_dir(), *(Path(e["path"]) / ".blurt" / "sessions" for e in projects.entries()),
+             store.legacy_recordings()]
     return [r for r in dict.fromkeys(roots) if r.exists()]
 
 
@@ -1261,8 +1264,8 @@ def cmd_inbox(_a) -> None:
     dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists() or is_shots(d)]
     for d in sorted(dirs, key=lambda x: x.name, reverse=True):
         meta = load_json(d / "meta.json", {}) or {}
-        out = load_json(d / "items.json")
-        # items.json with "processing": true is a first draft whose frames are still being filled in (review.py
+        out = load_json(d / "batch.json") or load_json(d / "items.json")
+        # a batch with "processing": true is a first draft whose frames are still being filled in (review.py
         # shows it early) — not processed yet
         processing = bool((out or {}).get("processing"))
         row = {"session": str(d), "author": meta.get("author"), "processed": out is not None and not processing,
@@ -1370,7 +1373,7 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("start")
     s.add_argument("--session", help="session dir (default: ./.blurt/sessions/<timestamp>)")
-    s.add_argument("--inbox", action="store_true", help="save to the default workspace (~/Blurt/recordings) instead of the project")
+    s.add_argument("--inbox", action="store_true", help="save to the inbox (~/Blurt/inbox/sessions) instead of the project")
     s.add_argument("--engine", choices=["native", "tk", "ffmpeg"])
     s.add_argument("--region", help="x,y,w,h in screen points — skip the picker")
     s.add_argument("--last-region", action="store_true", help="reuse the last area without asking")

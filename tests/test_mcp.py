@@ -1,5 +1,5 @@
-"""mcp_server.py (contract C4) through the official MCP Python client over stdio: all 7 tools, images in get_item,
-writes through items.py. The server runs as agents launch it (`uv run --script mcp_server.py`); the client runs
+"""mcp_server.py (contract C4, v0.7 behaviour in K1) through the official MCP Python client over stdio: all 7 tools,
+images in get_item, writes through items.py, mark_fixed ending at to-verify, v0.6 sessions migrated on first touch. The server runs as agents launch it (`uv run --script mcp_server.py`); the client runs
 in its own `uv run --with mcp` interpreter, so this test needs uv (skipped without it).
 
   uv run --with pytest --with pillow pytest tests/test_mcp.py -q
@@ -80,8 +80,11 @@ def env(tmp_path):
     # uv keeps its cache and Pythons under HOME: point it at the real ones before HOME moves
     for var, cmd in (("UV_CACHE_DIR", ["uv", "cache", "dir"]), ("UV_PYTHON_INSTALL_DIR", ["uv", "python", "dir"])):
         e.setdefault(var, subprocess.run(cmd, capture_output=True, text=True).stdout.strip())
-    e.update(HOME=str(home), BLURT_HOME=str(bh), BLURT_AGENT="claude")
-    e.pop("BLURT_NO_INDEX", None)
+    e.update(HOME=str(home), BLURT_HOME=str(bh), BLURT_WORKSPACE=str(home / "Blurt"), BLURT_AGENT="claude",
+             BLURT_NO_ROUTE="1")
+    for k in ("BLURT_NO_INDEX", "BLURT_JOB", "BLURT_RUN_ID", "BLURT_PROJECT"):
+        e.pop(k, None)
+    (bh / "config.json").write_text('{"record": {"install_app": false}, "lang": "en"}')
     # the index knows the repo (as after the app bound it, or a scan with --root)
     subprocess.run([sys.executable, str(SCRIPTS / "index.py"), "scan", "--root", str(repo)], check=True, env=e,
                    capture_output=True)
@@ -108,6 +111,7 @@ def text_json(res):
 
 
 def test_all_tools_over_stdio(env):
+    """As a user upgrading from v0.6: the index shows the old sessions; touching an item migrates its session."""
     calls = [
         ["projects", "list_projects", {}],
         ["sessions", "list_sessions", {"limit": 10}],
@@ -115,6 +119,7 @@ def test_all_tools_over_stdio(env):
         ["search", "search_items", {"query": "登录按"}],
         ["search_like", "search_items", {"query": "登录", "kind": ["issue"]}],
         ["fixed", "search_items", {"fix_state": ["fixed"]}],
+        ["working", "search_items", {"work_state": ["in_progress"]}],
         ["item", "get_item", {"uid": "$uid"}],
         ["item_noframes", "get_item", {"uid": "$uid", "include_frames": False}],
         ["transcript", "get_transcript", {"session": str(env["repo"] / ".blurt/sessions/20261019-093000")}],
@@ -123,7 +128,9 @@ def test_all_tools_over_stdio(env):
         ["update_user", "update_item", {"uid": "$uid", "set": {"title": "x", "severity": "low"}}],
         ["fixing", "mark_fixed", {"uid": "$uid", "state": "fixing"}],
         ["fix", "mark_fixed", {"uid": "$uid", "state": "fixed", "note": "handler wired up", "commit": "abc1234"}],
-        ["after", "search_items", {"query": "登录按", "fix_state": ["fixed"]}],
+        ["after", "search_items", {"query": "登录按", "work_state": ["to_verify"]}],
+        ["after_v2", "search_items", {"query": "登录按", "fix_state": ["fixed"]}],
+        ["projects_after", "list_projects", {}],
         ["bad_uid", "get_item", {"uid": "nope"}],
         ["bad_state", "mark_fixed", {"uid": "$uid", "state": "done"}],
     ]
@@ -132,26 +139,33 @@ def test_all_tools_over_stdio(env):
     assert set(r["_tools"]) == {"list_projects", "list_sessions", "search_items", "get_item", "get_transcript",
                                 "update_item", "mark_fixed"}
     assert r["_tools"]["update_item"]["params"] == ["set", "uid", "unset"]
+    assert r["_tools"]["mark_fixed"]["params"] == ["agent", "commit", "note", "pr", "state", "uid"]
+    assert "work_state" in r["_tools"]["search_items"]["params"]
     for name in ("update_item", "mark_fixed"):
-        assert "never write items.json" in r["_tools"][name]["description"]
+        assert "never write the item files" in r["_tools"][name]["description"]
+    assert "the user confirms" in r["_tools"]["mark_fixed"]["description"]
 
     projects = text_json(r["projects"])
-    assert {p["kind"] for p in projects} == {"default", "repo"}
-    assert all({"id", "name", "path", "kind", "sessions", "open_items"} <= set(p) for p in projects)
+    assert {p["kind"] for p in projects} == {"inbox", "folder"}
+    assert all({"id", "name", "key", "path", "kind", "open_items", "unassigned"} == set(p) for p in projects)
+    assert next(p for p in projects if p["id"] == "inbox")["unassigned"] == 2
     sessions = text_json(r["sessions"])
-    assert len(sessions) == 3 and {"id", "dir", "mode", "title", "created", "item_count", "processed", "reviewed"} \
-        == set(sessions[0])
+    assert len(sessions) == 3 and {"id", "project_id", "dir", "mode", "title", "created", "item_count", "processed",
+                                   "reviewed"} == set(sessions[0])
     assert all(s["reviewed"] for s in text_json(r["sessions_reviewed"]))
 
     hits = text_json(r["search"])
     assert hits and "登录按钮" in hits[0]["title"]
     assert any("登录按钮" in h["title"] for h in text_json(r["search_like"]))
-    assert all(h["fix_state"] == "fixed" for h in text_json(r["fixed"]))
+    assert [h["work_state"] for h in text_json(r["fixed"])] == ["to_verify"]  # v2's "fixed": an agent's claim
+    assert [h["work_state"] for h in text_json(r["working"])] == ["in_progress"]
 
     item = r["item"]
     assert not item["is_error"]
     doc = json.loads(item["content"][0]["text"])
     assert doc["item"]["uid"] == r["_uid"] and Path(doc["session"]).is_absolute()
+    assert doc["item"]["path"].endswith(".md") and Path(doc["item"]["path"]).is_file()  # migrated on first touch
+    assert doc["item"]["id"].startswith("REP-") and doc["item"]["project"] != "inbox"
     assert all(Path(f["path"]).is_absolute() and Path(f["path"]).exists() for f in doc["item"]["frames"])
     images = [c for c in item["content"] if c["type"] == "image"]
     assert 1 <= len(images) <= 3 and all(c["mimeType"] == "image/jpeg" for c in images)
@@ -169,18 +183,23 @@ def test_all_tools_over_stdio(env):
     kept = text_json(r["update_user"])
     assert kept["ok"] and sorted(kept.get("kept_user")) == ["severity", "title"]  # the user edited it on the review page
 
-    assert text_json(r["fixing"])["fix"]["state"] == "fixing"
+    assert text_json(r["fixing"])["work"]["state"] == "in_progress"
     fx = text_json(r["fix"])
-    assert fx["ok"] and fx["fix"]["state"] == "fixed" and fx["fix"]["agent"] == "claude"
-    assert fx["fix"]["commit"] == "abc1234"
+    assert fx["ok"] and fx["work"]["state"] == "to_verify" and fx["work"]["claim"] == "fixed"  # not done: the user is
+    assert fx["work"]["agent"] == "claude" and fx["work"]["commit"] == "abc1234" and fx["work"]["by"] == "agent"
     assert text_json(r["after"]) and text_json(r["after"])[0]["uid"] == r["_uid"]  # index followed the write
+    assert text_json(r["after_v2"])[0]["uid"] == r["_uid"]
+    repo_row = next(p for p in text_json(r["projects_after"]) if p["kind"] == "folder")
+    assert repo_row["open_items"] == 5  # live items still to do or in progress (not to verify, not wontfix)
     assert r["bad_uid"]["is_error"] and r["bad_state"]["is_error"]
 
-    # the write landed in the file, through items.py (fix_history, schema 2)
-    data = json.loads((env["repo"] / ".blurt/sessions/20261019-093000/items.json").read_text())
-    it = next(i for i in data["items"] if i.get("uid") == r["_uid"])
-    assert it["module"] == "auth/login" and it["title"] != "x" and it["fix"]["state"] == "fixed" and it["fix_history"][-1]["state"] == "fixing"
-    assert data.get("schema") == 2
+    # the write landed in the item's file, through items.py
+    sys.path.insert(0, str(SCRIPTS))
+    import store as st
+    it = st.read_item(Path(doc["item"]["path"]))
+    assert it["module"] == "auth/login" and it["title"] != "x" and it["work"]["state"] == "to_verify"
+    assert it["work_history"][-1]["state"] == "in_progress" and it["schema"] == 3
+    assert (env["repo"] / ".blurt/sessions/20261019-093000/items.v2.json").is_file()
 
 
 def test_builds_index_on_first_use(env):
@@ -188,5 +207,5 @@ def test_builds_index_on_first_use(env):
     for f in env["bh"].glob("index.db*"):
         f.unlink()
     r = run_client(env, [["projects", "list_projects", {}]])
-    assert any(p["kind"] == "default" for p in text_json(r["projects"]))
+    assert any(p["kind"] == "inbox" for p in text_json(r["projects"]))
     assert (env["bh"] / "index.db").exists()

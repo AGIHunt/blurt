@@ -1,10 +1,11 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Export a session to Markdown + CSV (no services needed). Works for any mix of kinds (issue / idea / note / task /
-custom lenses): one Markdown document grouped by kind, one CSV per kind.
+"""Export a session's items (or a project's) to Markdown + CSV (no services needed). Works for any mix of kinds
+(issue / idea / note / task / custom lenses): one Markdown document grouped by kind, one CSV per kind.
 
-  export_local.py SESSION_DIR [--out DIR] [--lang zh|en]
+  export_local.py SESSION_DIR [--out DIR] [--lang zh|en]          default --out: the session dir
+  export_local.py --project P|inbox [--out DIR] [--lang zh|en]    default --out: <store>/exports
 """
 from __future__ import annotations
 
@@ -16,7 +17,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts, live_items, load_session  # noqa: E402
+from _common import die, fmt_ts  # noqa: E402
+import items as items_mod  # noqa: E402
 
 LABELS = {
     "zh": {"id": "编号", "title": "标题", "module": "所属模块", "owner": "负责人", "severity": "严重程度", "type": "类型",
@@ -35,7 +37,9 @@ KINDS = {"zh": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "
          "en": {"issue": "Issues", "idea": "Ideas", "note": "Notes", "task": "Tasks"}}
 KIND_ORDER = ["issue", "idea", "task", "note"]
 COMMON = ["id", "title", "time", "quote", "frames", "clip", "source", "tags", "questions", "answer"]
-SKIP = {"kind", "status", "exported", "confidence", "merged_from", "_touched", "_dropped", "_user"}
+SKIP = {"kind", "status", "exported", "confidence", "merged_from", "merged_into", "_touched", "_dropped", "_user",
+        "schema", "uid", "work", "work_history", "project", "project_by", "project_confidence", "suggested_project",
+        "created", "updated", "aliases", "path", "store", "_project", "language", "assignee"}
 
 
 def text(v) -> str:
@@ -50,20 +54,43 @@ def text(v) -> str:
     return "" if v is None else str(v)
 
 
+def load_doc(session: str | None, project: str | None) -> tuple[dict, Path]:
+    """The items to export (items.py doc: every path absolute) and the default output folder."""
+    try:
+        if session:
+            s = Path(session)
+            if not s.is_dir():
+                die(f"{s}: no such session folder")
+            items_mod.prepare(s)
+            if not (s / "batch.json").is_file():
+                die(f"{s}: no items in this session yet (write items.json first)")
+            doc = items_mod.make_doc({"session": str(s.resolve())})
+            return doc, s
+        if project:
+            pid = items_mod.resolve_project(project)
+            return items_mod.make_doc({"project": pid}), items_mod.store_for_project(pid).root / "exports"
+    except items_mod.ItemsError as e:
+        die(str(e))
+    finally:
+        items_mod.reindex_touched()
+    die("pass SESSION_DIR or --project P")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("session")
+    p.add_argument("session", nargs="?")
+    p.add_argument("--project")
     p.add_argument("--out")
     p.add_argument("--lang")
     a = p.parse_args()
-    session = Path(a.session)
-    data = load_session(session) or die("no items.json in this session")
-    lang = a.lang or ("zh" if str(data.get("language", "")).startswith("zh") else "en")
+    data, default_out = load_doc(a.session, a.project)
+    lang = a.lang or ("zh" if str(data.get("language") or "").startswith("zh") or (
+        not data.get("language") and any(str(i.get("language", "")).startswith("zh") for i in data["items"])) else "en")
     L = LABELS[lang]
-    out = Path(a.out or session)
+    out = Path(a.out or default_out)
     out.mkdir(parents=True, exist_ok=True)
-    rel = lambda p: Path(os.path.relpath(session / p, out)).as_posix()  # noqa: E731
-    items = live_items(data)
+    rel = lambda p: Path(os.path.relpath(p, out)).as_posix()  # noqa: E731  (paths in the doc are absolute)
+    items = [i for i in data["items"] if i.get("status") != "deleted"]
     kinds = sorted({i["kind"] for i in items}, key=lambda k: (KIND_ORDER.index(k) if k in KIND_ORDER else 99, k))
 
     title = data.get("title") or ("录屏整理" if lang == "zh" else "Recording notes")

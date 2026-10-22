@@ -511,9 +511,10 @@ def fix_prompt(uids: list[str], repo: str | Path | None = None) -> dict:
     try:
         rows = []
         for u in uids:
-            r = con.execute("SELECT i.uid, i.item_id, i.kind, i.title, s.dir, w.path AS ws, w.kind AS ws_kind FROM items i "
-                            "JOIN sessions s ON s.id = i.session_id JOIN workspaces w ON w.id = s.workspace_id "
-                            "WHERE i.uid = ?", (u,)).fetchone()
+            r = con.execute("SELECT i.uid, i.item_id, i.kind, i.title, COALESCE(s.dir, i.path) AS dir, p.path AS ws, "
+                            "CASE p.kind WHEN 'inbox' THEN 'default' ELSE 'repo' END AS ws_kind FROM items i "
+                            "JOIN projects p ON p.id = i.project_id LEFT JOIN sessions s ON s.id = i.session_id "
+                            "WHERE i.uid = ?", (u,)).fetchone()  # index schema v2 (P1)
             if r is None:
                 raise ValueError(f"unknown uid {u} (run index.py scan?)")
             rows.append(dict(r))
