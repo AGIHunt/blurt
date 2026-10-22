@@ -76,9 +76,9 @@
 "settings.export.exporters" = "Exporters";
 "settings.export.exports_run_from_review" = "Exports run from the review page or your agent; re-exporting never creates duplicates.";
 "settings.export.feishu_app_id_set" = "FEISHU_APP_ID is set";
-"settings.export.feishu_lark_bitable" = "Feishu / Lark Bitable";
-"settings.export.feishu_lark_cli" = "Feishu: lark-cli";
-"settings.export.feishu_self_built_app" = "Feishu: a self-built app";
+"settings.export.feishu_lark_bitable" = "Lark Base (Feishu Bitable)";
+"settings.export.feishu_lark_cli" = "Lark: lark-cli";
+"settings.export.feishu_self_built_app" = "Lark: a custom app";
 "settings.export.logged" = "logged in";
 "settings.export.not_installed" = "not installed";
 "settings.export.not_installed_exports_as" = "not installed — exports as you, no app needed";
