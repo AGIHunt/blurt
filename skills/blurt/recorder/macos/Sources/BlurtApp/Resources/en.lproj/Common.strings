@@ -57,7 +57,7 @@
 /* Projects */
 "project.auto" = "Auto";
 "project.inbox" = "Unassigned";
-"project.ai_sort" = "Let AI sort";
+"project.ai_sort" = "Auto-sort";
 "project.open_folder" = "Open Folder…";
 
 /* Handing off to an external agent */

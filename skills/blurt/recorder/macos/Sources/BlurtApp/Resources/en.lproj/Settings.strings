@@ -94,7 +94,7 @@
 "settings.general.after_recording" = "After a recording";
 "settings.general.app" = "App";
 "settings.general.assistant" = "Run the Setup Assistant Again…";
-"settings.general.auto" = "Auto — the AI sorts them into projects";
+"settings.general.auto" = "Auto — sorted into projects by content";
 "settings.general.capture_into" = "New captures go to";
 "settings.general.language" = "Language";
 "settings.general.language.restart" = "Takes effect the next time Blurt opens.";
@@ -105,6 +105,12 @@
 "settings.general.recording" = "Recording";
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.spotlight" = "Show items in Spotlight";
+"settings.general.system_audio" = "Also record system audio";
+"settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
+"settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
+"settings.general.about" = "About";
+"settings.general.version" = "Version";
+"settings.general.help" = "Help";
 
 "settings.kit.accessibility" = "Accessibility";
 "settings.kit.agents" = "Agents";

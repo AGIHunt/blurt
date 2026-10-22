@@ -24,7 +24,7 @@ const projects = () => [
   { id: 'p2', name: 'mobile-app', key: 'MA', slug: 'mobile-app', path: `${H}/code/mobile-app`, store: `${H}/code/mobile-app/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-21T17:10:00+02:00', ...counts('p2') },
   { id: 'p3', name: L('Launch notes', '发布笔记'), key: 'LN', slug: 'launch-notes', path: `${H}/Documents/Launch notes`, store: `${H}/Documents/Launch notes/.blurt`, kind: 'folder', exists: true, worktree: false, last_used: '2026-10-20T11:00:00+02:00', ...counts('p3') },
 ];
-const inbox = () => ({ id: 'inbox', name: L('Unassigned', '待分配'), key: 'IN', slug: 'inbox', path: `${H}/Blurt/inbox`, store: `${H}/Blurt/inbox`, kind: 'inbox', exists: true, ...counts('inbox') });
+const inbox = () => ({ id: 'inbox', name: L('Unassigned', '未归类'), key: 'IN', slug: 'inbox', path: `${H}/Blurt/inbox`, store: `${H}/Blurt/inbox`, kind: 'inbox', exists: true, ...counts('inbox') });
 
 const S1 = `${H}/code/storefront/.blurt/sessions/20261022-093000`;
 const S2 = `${H}/Blurt/inbox/sessions/20261022-101500-shots`;

@@ -13,7 +13,7 @@
 "agents.processing.cheapest_named" = "最省（%@）";
 "agents.processing.default" = "跟随 CLI 设置";
 "agents.processing.default_named" = "跟随 CLI 设置（%@）";
-"agents.processing.help" = "录屏整理、整理、交给 AI 分、AI 补全都用它。整理用小模型、低思考强度就够了，省很多 token。";
+"agents.processing.help" = "整理录屏和截图、自动归类、AI 补全都用这个模型。整理用小模型、低思考强度就够了，能省很多 token。";
 "common.cancel" = "取消";
 "common.close" = "关闭";
 "common.done" = "完成";
@@ -29,7 +29,7 @@
 "list.new" = "新建会话…";
 "list.new.help" = "把一个项目里的条目交给 Claude Code 或 Codex，开一个新会话";
 "list.empty.title" = "还没有会话";
-"list.empty.body" = "从收件箱交出去的会话会出现在这里，按项目分组。";
+"list.empty.body" = "交给 agent 的任务会出现在这里，按项目分组。";
 "row.ready_to_review" = "可以查看改动";
 "session.items.more" = "%1$@ 等 %2$ld 条";
 
@@ -98,7 +98,7 @@
 "warning.concurrent_edit.continue" = "继续";
 "warning.no_git" = "这个文件夹不是 git 仓库，agent 会直接在里面改。";
 "warning.no_tmux" = "没有安装 tmux：会话在口喷鸡里运行，退出口喷鸡就会结束。";
-"warning.draft_confirmed" = "其中待审的条目会标为保留。";
+"warning.draft_confirmed" = "其中还没审的条目会标为「要做」。";
 
 /* 收尾面板（worktree 的结果） */
 "finish.title" = "查看改动";

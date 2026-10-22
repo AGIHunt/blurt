@@ -13,7 +13,7 @@
 "agents.processing.cheapest_named" = "Cheapest (%@)";
 "agents.processing.default" = "The CLI's setting";
 "agents.processing.default_named" = "The CLI's setting (%@)";
-"agents.processing.help" = "Recordings, Organize, Let AI sort and AI fill-in run with this. A small model at low effort is plenty for organizing and uses far fewer tokens.";
+"agents.processing.help" = "Used for organizing recordings and screenshots, auto-sort and AI fill-in. A small model at low effort is plenty and uses far fewer tokens.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";
@@ -98,7 +98,7 @@
 "warning.concurrent_edit.continue" = "Continue";
 "warning.no_git" = "This folder isn’t a git repository, so the agents work in it directly.";
 "warning.no_tmux" = "tmux isn’t installed: the session runs inside Blurt and ends when you quit it.";
-"warning.draft_confirmed" = "Items still to review will be marked Kept.";
+"warning.draft_confirmed" = "Items still to review will be marked To do.";
 
 /* Finish panel (worktree results) */
 "finish.title" = "Review Changes";

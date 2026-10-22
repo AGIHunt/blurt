@@ -94,17 +94,23 @@
 "settings.general.after_recording" = "录完之后";
 "settings.general.app" = "应用";
 "settings.general.assistant" = "重新运行设置助手…";
-"settings.general.auto" = "自动：AI 分到各项目";
+"settings.general.auto" = "自动：按内容归到各项目";
 "settings.general.capture_into" = "新的捕获归到";
 "settings.general.language" = "语言";
 "settings.general.language.restart" = "下次打开口喷鸡时生效。";
 "settings.general.language.system" = "跟随系统";
 "settings.general.login" = "登录时打开口喷鸡";
-"settings.general.open_unassigned" = "在访达中显示待分配";
+"settings.general.open_unassigned" = "在访达中显示未归类";
 "settings.general.projects.hint" = "项目就是本机上的一个文件夹。条目放在它的 .blurt 里，口喷鸡会帮你把它排除在 git 之外。";
 "settings.general.recording" = "录制";
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
 "settings.general.spotlight" = "在 Spotlight 里搜得到条目";
+"settings.general.system_audio" = "同时录系统声音";
+"settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
+"settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";
+"settings.general.about" = "关于";
+"settings.general.version" = "版本";
+"settings.general.help" = "帮助";
 
 "settings.kit.accessibility" = "辅助功能";
 "settings.kit.agents" = "Agent";
@@ -114,7 +120,7 @@
 "settings.kit.copy" = "拷贝";
 "settings.kit.export" = "导出";
 "settings.kit.general" = "通用";
-"settings.kit.hold_pen_reads_modifier" = "按住 ⌃ 画笔需要（全局读取修饰键）";
+"settings.kit.hold_pen_reads_modifier" = "按住 ⌃ 画图时要用（需要在全局读取修饰键）";
 "settings.kit.microphone" = "麦克风";
 "settings.kit.needed_record_snap" = "录屏和截图都需要";
 "settings.kit.not_allowed" = "未允许";

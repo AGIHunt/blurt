@@ -1,14 +1,10 @@
 /* Main — 主窗口、菜单栏菜单、通知（docs/design/next-round.md K10）。拥有者：P4。
    键和占位符与另一种语言一致（tests/test_l10n.py）。 */
 
-"app.agent.agent" = "整理用的 agent";
-"app.agent.agent_named" = "整理用的 agent：%@";
 "app.agent.fallback_notice" = "%1$@，改用 %2$@ 整理";
 "app.agent.list_sep" = "、";
 "app.agent.can_be_used" = " 用不了";
-"app.agent.check_again" = "重新检查登录状态";
 "app.agent.checking" = "检查中…";
-"app.agent.click_try_first" = "点一下设为首选";
 "app.agent.configured_can_verify_advance" = "已配置（无法预先验证）";
 "app.agent.failed" = "失败";
 "app.agent.isn_installed" = " 没安装";
@@ -16,28 +12,21 @@
 "app.agent.logged" = "已登录";
 "app.agent.login_unknown_will_just" = "登录状态未知，会直接试";
 "app.agent.none_short" = "没有能用的 agent";
-"app.agent.none_usable" = "：没有能用的";
 "app.agent.not_installed" = "没安装";
 "app.agent.not_logged" = "没登录";
-"app.agent.tried_this_order_first" = "按顺序试，第一个能用的来整理";
 "app.agent.unfinished" = "%@ 没整理完（退出码 %ld）";
-
-"app.login.failed" = "没能修改「登录时打开」";
 
 "app.menu.after.keep" = "只保存视频";
 "app.menu.after.organize" = "整理成条目";
-"app.menu.after_recording" = "录完之后";
 "app.menu.countdown" = "倒计时";
 "app.menu.countdown.none" = "不倒计时";
 "app.menu.countdown.seconds" = "%ld 秒";
 "app.menu.discard" = "放弃这次录制";
 "app.menu.finish" = "完成录制";
-"app.menu.help" = "帮助";
-"app.menu.login" = "登录时打开";
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";
 "app.menu.project" = "当前项目：%@";
-"app.menu.project.auto_tip" = "捕获由 AI 分到对应项目";
+"app.menu.project.auto_tip" = "按内容自动归到对应项目";
 "app.menu.quit" = "退出口喷鸡";
 "app.menu.record" = "开始录制";
 "app.menu.record_last" = "录制上次的区域";
@@ -45,12 +34,11 @@
 "app.menu.resume" = "继续";
 "app.menu.selecting" = "正在选择区域…";
 "app.menu.shortcuts" = "快捷键…";
-"app.menu.system_audio" = "同时录系统声音";
 "app.menu.updates" = "检查更新…";
 
-"app.migrate.ask" = "截图、语音默认归到 %@（沿用旧设置）还是自动分配？";
-"app.migrate.auto" = "自动分配";
-"app.migrate.keep" = "归 %@";
+"app.migrate.ask" = "截图和语音以后还是默认放进 %@（沿用之前的设置），还是按内容自动归类？";
+"app.migrate.auto" = "自动归类";
+"app.migrate.keep" = "放进 %@";
 "app.name" = "口喷鸡";
 
 "app.permission.detail" = "在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开口喷鸡（macOS 只在启动时读取权限）。\n\n如果已经是打开的：选中「Blurt」点「−」删掉，再重新打开口喷鸡授权一次（旧版本的授权对新版本无效）。";
@@ -81,7 +69,7 @@
 "main.banner.with_agent" = "已交给 %@ · %@";
 
 "main.captures.show" = "在刘海岛下展开";
-"main.captures.tip" = "挂在刘海岛下、还没分到项目的捕获：点一下全部放下来";
+"main.captures.tip" = "刘海岛下挂着还没归类的捕获，点一下全部放下来";
 "main.cmd.copy_full" = "复制全文";
 "main.cmd.copy_instruction" = "复制指令";
 
@@ -109,8 +97,8 @@
 "main.dispatch.one_project.detail" = "一个 agent 会话只在一个项目文件夹里工作，请按项目分别交出。";
 "main.dispatch.use_worktree" = "用 worktree";
 
-"main.empty.all_filed" = "都归好项目了";
-"main.empty.all_filed.detail" = "还没归属项目的捕获会在这里等你或 AI 分配。";
+"main.empty.all_filed" = "都已归类";
+"main.empty.all_filed.detail" = "还没归类的捕获会先放在这里，等你选项目或自动归类。";
 "main.empty.clear_all" = "清除搜索和筛选";
 "main.empty.clear_filters" = "清除筛选";
 "main.empty.discarded" = "没有丢弃的条目";
@@ -119,7 +107,7 @@
 "main.empty.first" = "边用边说";
 "main.empty.first.detail" = "打开一个项目文件夹，然后边说边录屏（%@）或截图（%@）。口喷鸡会把它整理成 agent 能接手的条目。";
 "main.empty.inbox_zero" = "现在没有需要你看的";
-"main.empty.inbox_zero.detail" = "新捕获的条目，和 agent 说做好了的条目，会出现在这里。";
+"main.empty.inbox_zero.detail" = "新记下的条目，以及 agent 说已经做好的条目，会出现在这里。";
 "main.empty.no_index" = "还没有索引";
 "main.empty.no_index.detail" = "口喷鸡会为你的项目和捕获建一份本地搜索索引，不会上传任何东西。";
 "main.empty.no_match" = "没有符合筛选的条目";
@@ -191,7 +179,7 @@
 "main.keys.next" = "下一条 / 上一条";
 "main.keys.open" = "打开（进入详情）";
 "main.keys.palette" = "命令面板";
-"main.keys.places" = "收件箱、进行中、待分配、全部条目";
+"main.keys.places" = "待处理、进行中、未归类、全部条目";
 "main.keys.projects" = "前五个项目";
 "main.keys.reveal_copy" = "在访达中显示 · 拷贝路径";
 "main.keys.search" = "搜索";
@@ -233,7 +221,7 @@
 "main.palette.project" = "项目 · %@";
 
 "main.place.all" = "全部条目";
-"main.place.inbox" = "收件箱";
+"main.place.inbox" = "待处理";
 "main.place.progress" = "进行中";
 "main.place.project" = "项目";
 "main.place.session" = "捕获";
@@ -241,7 +229,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "默认";
 "main.project.description" = "描述";
-"main.project.description.note" = "这个项目是做什么的。AI 分项目时会参考它。";
+"main.project.description.note" = "这个项目是做什么的，自动归类时会参考";
 "main.project.description.placeholder" = "例如：官网和注册流程";
 "main.project.key" = "前缀";
 "main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
@@ -257,7 +245,7 @@
 "main.project.settings.title" = "「%@」设置";
 "main.project.use" = "设为当前项目";
 "main.project.use.tip" = "新的录屏、截图和语音都归当前项目";
-"main.project.use_auto" = "取消当前项目（自动）";
+"main.project.use_auto" = "不指定项目（自动归类）";
 "main.project.worktree" = "每次交出都用单独的 worktree";
 "main.project.worktree.no_git" = "不是 git 仓库：agent 直接在文件夹里改。";
 "main.project.worktree.note" = "agent 在你工作区旁边的分支上改，之后由你合并、开 PR 或丢弃。";
@@ -271,14 +259,14 @@
 "main.session.snaps" = "截图 %@";
 "main.session.voice" = "语音 %@";
 
-"main.sidebar.inbox.ax" = "收件箱：新的和待验证的条目";
+"main.sidebar.inbox.ax" = "待处理：新的和待验证的条目";
 "main.sidebar.label" = "侧栏";
 "main.sidebar.missing" = "文件夹不见了";
 "main.sidebar.not_opened" = "还没作为项目打开";
 "main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
 "main.sidebar.progress.ax" = "进行中：交给 agent 的条目和正在运行的任务";
 "main.sidebar.projects" = "项目";
-"main.sidebar.unassigned.ax" = "待分配：还没归到项目的条目";
+"main.sidebar.unassigned.ax" = "未归类：还没归到项目的条目";
 
 "main.state.ax" = "状态：%@。点按可更改。";
 "main.toast.download_failed" = "没能保存：%@";

@@ -2,6 +2,7 @@
 // only) a distributed-notification command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
+//     menudump [FILE]         the ⌥⇧B menu as text rows (also written to FILE), without opening it
 //     cards [show|reveal|dismiss]  the cards down (peek) / down to stay (= ⌥⇧H) / Esc; their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
@@ -192,20 +193,22 @@ extension App {
         case "hotkeys":                                 // dump the state, for scripted checks
             emit(["event": "hotkeys", "keys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
                   "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.states[$0].map { "\($0)" } ?? "") })])
-        case "menu":                                    // menu [agents]: the ⌥⇧B menu, or just its agent submenu
+        case "menu":                                    // menu: the ⌥⇧B menu, popped up
+            let t = NSMenu()
+            menuNeedsUpdate(t)
+            emit(["event": "menu", "items": t.items.count])
+            testMenu = t
+            // not from a GCD block: menu tracking would hold the main queue.
+            // Distributed notifications don't arrive while a menu tracks, so it closes itself after 8 s.
+            let close = Timer(timeInterval: 8, repeats: false) { _ in t.cancelTracking() }
+            RunLoop.main.add(close, forMode: .common)
+            RunLoop.main.perform { t.popUp(positioning: nil, at: NSPoint(x: 900, y: 900), in: nil) }
+        case "menudump":                                // menudump [FILE]: the ⌥⇧B menu's rows as text, without opening it
             let m = NSMenu()
             menuNeedsUpdate(m)
-            let target = arg == "agents" ? m.items.first(where: { $0.submenu?.items.contains { $0.action == #selector(mPreferAgent(_:)) } == true })?.submenu : m
-            emit(["event": "menu", "items": target?.items.count ?? -1])
-            if let t = target {
-                if t !== m { m.removeAllItems() }        // a submenu can't pop up while attached
-                testMenu = t
-                // not from a GCD block: menu tracking would hold the main queue, and the statuses fill in through it.
-                // Distributed notifications don't arrive while a menu tracks, so it closes itself after 8 s.
-                let close = Timer(timeInterval: 8, repeats: false) { _ in t.cancelTracking() }
-                RunLoop.main.add(close, forMode: .common)
-                RunLoop.main.perform { t.popUp(positioning: nil, at: NSPoint(x: 900, y: 900), in: nil) }
-            }
+            let lines = menuDumpLines(m)
+            if !arg.isEmpty { try? (lines.joined(separator: "\n") + "\n").write(toFile: arg, atomically: true, encoding: .utf8) }
+            emit(["event": "menu_dump", "lines": lines])
         case "closemenu": testMenu?.cancelTracking()
         case "review":                                  // review DIR: the batch in the main window
             AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: arg))
@@ -264,12 +267,14 @@ extension App {
         dict.target = self
         if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyName) }
         menu.addItem(dict)
-        item("capture.menu.switch_project", #selector(mSwitchProject)).showHotkey(.project)
-        // always there (with its hotkey) so ⌥⇧H can be found; dimmed while nothing hangs
-        let cards = item("capture.menu.show_cards_none", #selector(mShowCards))
-        cards.showHotkey(.cards)
-        if hanging.count > 0 { cards.title = Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count) } else { cards.action = nil }
-        item("capture.menu.collect", #selector(mCollect), on: snapper.collecting)
+        // only while something hangs (⌥⇧H itself is listed in Settings → Shortcuts)
+        if hanging.count > 0 {
+            let cards = NSMenuItem(title: Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count),
+                                   action: #selector(mShowCards), keyEquivalent: "")
+            cards.target = self
+            cards.showHotkey(.cards)
+            menu.addItem(cards)
+        }
     }
 
     @objc func mSnap() {
@@ -281,11 +286,31 @@ extension App {
     @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
     @objc func mShowCards() { hanging.reveal(via: "menu") }
-    @objc func mCollect() {
-        setRecordConfig("collect_system_shots", !snapper.collecting)
-        snapper.syncCollector()
-    }
     @objc func mLiveCaption() { setRecordConfig("live_caption", !liveCaptionOn) }
+}
+
+/// A menu as text for scripted checks: one row per item, submenus indented, separators as "—", the key equivalent
+/// after a tab, "[on]" for an on state, "(dimmed)" when it has no action, "⌥ alt:" for an Option-key alternate and
+/// " >" after a row with a submenu.
+func menuDumpLines(_ menu: NSMenu, depth: Int = 0) -> [String] {
+    var out: [String] = []
+    let pad = String(repeating: "    ", count: depth)
+    for it in menu.items {
+        if it.isSeparatorItem { out.append(pad + "—"); continue }
+        var key = ""
+        if !it.keyEquivalent.isEmpty {
+            let f = it.keyEquivalentModifierMask
+            key = (f.contains(.control) ? "⌃" : "") + (f.contains(.option) ? "⌥" : "") + (f.contains(.shift) ? "⇧" : "")
+                + (f.contains(.command) ? "⌘" : "") + it.keyEquivalent.uppercased()
+        }
+        let title = it.attributedTitle?.string ?? it.title
+        var row = pad + (it.isAlternate ? "⌥ alt: " : "") + (it.state == .on ? "[on] " : "") + title
+        if it.indentationLevel > 0 { row = pad + String(repeating: "  ", count: it.indentationLevel) + row.dropFirst(pad.count) }
+        if !key.isEmpty { row += "\t" + key }
+        if it.action == nil && it.submenu == nil { row += "  (dimmed)" }
+        if let s = it.submenu { row += "  >"; out.append(row); out += menuDumpLines(s, depth: depth + 1) } else { out.append(row) }
+    }
+    return out
 }
 
 /// The menu-bar icon as macOS would show it, without capturing the real menu bar: the template image tinted like a

@@ -48,7 +48,7 @@ what happens:
   is recorded — tabs, bookmarks and other windows stay private;
 - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
   **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift; these are the defaults — the user may have changed
-  them in the app's Shortcuts… window / config `record.hotkeys`, and the countdown shows the real ones). The bar is
+  them in the app's Settings → Shortcuts / config `record.hotkeys`, and the countdown shows the real ones). The bar is
   never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
   fades after 3 s; the pen button on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D turns it off); click **完成** — no need
@@ -94,7 +94,7 @@ session (`meta.json` `"mode": "shots"`): `transcribe.py run <session>` turns eac
 `shots.jsonl`. `live/drafts.jsonl` (if present; later lines per `id` win, `drop` removes) is a small model's rough
 outline made during the recording: a starting point for §3, not authoritative — check every item against the
 transcript.
-Recorded with system audio (`record.py start --system-audio`, or the app's menu toggle — calls, product demos),
+Recorded with system audio (`record.py start --system-audio`, or the app's Settings → General toggle — calls, product demos),
 the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lines are the user. Speaker bleed can
 repeat a system line on the mic.
 For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.

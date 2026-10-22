@@ -154,7 +154,7 @@
   "project.suggested.hint": "AI suggestion · {pct} sure · {reason}",
   "project.accept": "Move there",
   "project.by.capture": "Captured in this project",
-  "project.by.ai": "Sorted by AI · {pct} sure",
+  "project.by.ai": "Auto-sorted · {pct} sure",
   "project.by.user": "Moved here by you",
   "project.by.migrate": "Brought over from an earlier version",
 

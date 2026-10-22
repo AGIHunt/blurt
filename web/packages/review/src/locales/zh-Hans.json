@@ -152,7 +152,7 @@
   "project.suggested.hint": "AI 建议 · 把握 {pct} · {reason}",
   "project.accept": "移过去",
   "project.by.capture": "捕获时就在这个项目",
-  "project.by.ai": "AI 分的 · 把握 {pct}",
+  "project.by.ai": "自动归类 · 把握 {pct}",
   "project.by.user": "你移过来的",
   "project.by.migrate": "从旧版本迁移过来",
 

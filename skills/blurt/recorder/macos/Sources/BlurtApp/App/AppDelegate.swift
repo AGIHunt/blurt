@@ -4,7 +4,6 @@ import AVFoundation
 import Carbon.HIToolbox
 import CoreMedia
 import ScreenCaptureKit
-import ServiceManagement
 
 // MARK: - App
 
@@ -408,8 +407,19 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if busy { _ = add(T("app.menu.selecting"), nil); return }
-        add(T("app.menu.record"), #selector(mStart)).showHotkey(.toggleRecord)
-        if lastRegionFromConfig() != nil { _ = add(T("app.menu.record_last"), #selector(mStartLast)) }
+        // Kept short, like other menu-bar apps: capture, what waits for you, the current project, Settings, Quit.
+        // After-recording, the agent order, countdown, system audio, open at login, shortcuts and help live in Settings.
+        let record = add(T("app.menu.record"), #selector(mStart))
+        record.showHotkey(.toggleRecord)
+        if lastRegionFromConfig() != nil {
+            // ⌥ turns the row into "Record the Last Area". AppKit only folds an alternate into the row above when both
+            // have the same key equivalent, so it shares the record key and differs in the modifiers (⌥ alone).
+            let last = add(T("app.menu.record_last"), #selector(mStartLast))
+            last.keyEquivalent = record.keyEquivalent
+            if record.keyEquivalent.isEmpty { record.keyEquivalentModifierMask = [] }
+            last.keyEquivalentModifierMask = record.keyEquivalentModifierMask == [.option] ? [.option, .control] : [.option]
+            last.isAlternate = true
+        }
         addSnapMenuItems(menu, recording: false)
         menu.addItem(.separator())
 
@@ -448,34 +458,20 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
         }
         pMenu.addItem(.separator())
+        add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
         _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)
         pItem.submenu = pMenu
         menu.addItem(pItem)
-
-        let pm = NSMenuItem(title: T("app.menu.after_recording"), action: nil, keyEquivalent: "")
-        let pmMenu = NSMenu()
-        add(T("app.menu.after.organize"), #selector(mProcessMode(_:)), to: pmMenu, obj: "auto", on: autoProcess)
-        add(T("app.menu.after.keep"), #selector(mProcessMode(_:)), to: pmMenu, obj: "off", on: !autoProcess)
-        pm.submenu = pmMenu
-        menu.addItem(pm)
-        addAgentMenu(menu)
-
-        let cd = recordConfig()["countdown"] as? Int ?? 3
-        let cItem = NSMenuItem(title: T("app.menu.countdown"), action: nil, keyEquivalent: "")
-        let cMenu = NSMenu()
-        for n in [0, 3, 5] { _ = add(n == 0 ? T("app.menu.countdown.none") : T("app.menu.countdown.seconds", n), #selector(mCountdown(_:)), to: cMenu, obj: n, on: cd == n) }
-        cItem.submenu = cMenu
-        menu.addItem(cItem)
-        _ = add(T("app.menu.system_audio"), #selector(mSystemAudio), on: recordConfig()["system_audio"] as? Bool ?? false)
-        _ = add(T("app.menu.login"), #selector(mLogin), on: SMAppService.mainApp.status == .enabled)
-        add(T("app.menu.shortcuts"), #selector(mShortcuts), key: AppEnvironment.settings == nil ? "," : "")
-        if AppEnvironment.settings != nil { add(T("menu.settings"), #selector(mSettings), key: ",") }
         menu.addItem(.separator())
+
+        // without the Settings window (a stripped-down build) the shortcuts window is the only place left for ⌘,
+        if AppEnvironment.settings != nil { add(T("menu.settings"), #selector(mSettings), key: ",") }
+        else { add(T("app.menu.shortcuts"), #selector(mShortcuts), key: ",") }
         if Updater.shared.available {
             let u = add(T("app.menu.updates"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
             u.target = Updater.shared
         }
-        _ = add(T("app.menu.help"), #selector(mHelp))
+        menu.addItem(.separator())
         _ = add(T("app.menu.quit"), #selector(mQuit), key: "q")
     }
 
@@ -499,16 +495,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mOpenFolder() {
         if let mw = AppEnvironment.mainWindow { mw.show(); MainWindowController.shared.openFolder() }
     }
-    @objc func mProcessMode(_ it: NSMenuItem) { setRecordConfig("process", it.representedObject as? String) }
     @objc func mShortcuts() { if let s = AppEnvironment.settings { s.show(pane: "shortcuts") } else { HotkeySettings.shared.show() } }
-    @objc func mCountdown(_ it: NSMenuItem) { setRecordConfig("countdown", it.representedObject as? Int) }
-    @objc func mSystemAudio() { setRecordConfig("system_audio", !(recordConfig()["system_audio"] as? Bool ?? false)) }
-    @objc func mLogin() {
-        do {
-            if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() }
-        } catch { alert(T("app.login.failed"), error.localizedDescription) }
-    }
-    @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
     @objc func mQuit() { NSApp.terminate(nil) }
 
     // tiny, non-blocking toast under the menu bar (no notification permission needed)

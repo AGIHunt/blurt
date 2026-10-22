@@ -54,7 +54,7 @@
 "capture.island.voice" = "Voice input";
 "capture.keys.anytime" = "ANYTIME";
 "capture.keys.bad_key" = "That key can’t be used";
-"capture.keys.change_it" = " · menu → Shortcuts… to change it";
+"capture.keys.change_it" = " · change it in Settings → Shortcuts";
 "capture.keys.control" = "⌃ Control";
 "capture.keys.custom" = "custom";
 "capture.keys.draw_note" = "hold it and drag to circle things while recording";
@@ -79,9 +79,7 @@
 "capture.keys.while_recording" = "WHILE RECORDING";
 "capture.keys.why" = "%1$@: %2$@";
 "capture.keys.wont_work" = "Shortcut %@ won’t work";
-"capture.menu.collect" = "Collect System Screenshots (⌘⇧3/4/5)";
 "capture.menu.live_caption" = "Live Caption";
-"capture.menu.show_cards_none" = "Show Hanging Cards";
 "capture.menu.snap" = "Snap";
 "capture.menu.switch_project" = "Switch Project…";
 "capture.menu.voice" = "Voice Input";

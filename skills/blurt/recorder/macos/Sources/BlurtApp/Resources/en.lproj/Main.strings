@@ -1,14 +1,10 @@
 /* Main — the main window, the menu bar menu, notifications (docs/design/next-round.md K10). Owner: P4.
    Same keys and placeholders in the other language (tests/test_l10n.py). */
 
-"app.agent.agent" = "Agent";
-"app.agent.agent_named" = "Agent: %@";
 "app.agent.fallback_notice" = "%1$@ — organizing with %2$@ instead";
 "app.agent.list_sep" = ", ";
 "app.agent.can_be_used" = " can’t be used";
-"app.agent.check_again" = "Check again";
 "app.agent.checking" = "checking…";
-"app.agent.click_try_first" = "Click to try it first";
 "app.agent.configured_can_verify_advance" = "configured (can’t verify in advance)";
 "app.agent.failed" = "failed";
 "app.agent.isn_installed" = " isn’t installed";
@@ -16,28 +12,21 @@
 "app.agent.logged" = "logged in";
 "app.agent.login_unknown_will_just" = "login unknown — will just try";
 "app.agent.none_short" = "No agent available";
-"app.agent.none_usable" = ": none usable";
 "app.agent.not_installed" = "not installed";
 "app.agent.not_logged" = "not logged in";
-"app.agent.tried_this_order_first" = "Tried in this order; the first usable one runs";
 "app.agent.unfinished" = "%@ stopped before it finished (exit %ld)";
-
-"app.login.failed" = "Couldn’t change Open at Login";
 
 "app.menu.after.keep" = "Just Keep the Video";
 "app.menu.after.organize" = "Organize into Items";
-"app.menu.after_recording" = "After Recording";
 "app.menu.countdown" = "Countdown";
 "app.menu.countdown.none" = "None";
 "app.menu.countdown.seconds" = "%ld Seconds";
 "app.menu.discard" = "Discard Recording";
 "app.menu.finish" = "Finish Recording";
-"app.menu.help" = "Help";
-"app.menu.login" = "Open at Login";
 "app.menu.open" = "Open Blurt";
 "app.menu.pause" = "Pause";
 "app.menu.project" = "Project: %@";
-"app.menu.project.auto_tip" = "Captures are sorted into projects for you";
+"app.menu.project.auto_tip" = "Each capture goes to the project it’s about";
 "app.menu.quit" = "Quit Blurt";
 "app.menu.record" = "Start Recording";
 "app.menu.record_last" = "Record the Last Area";
@@ -45,11 +34,10 @@
 "app.menu.resume" = "Resume";
 "app.menu.selecting" = "Choosing an area…";
 "app.menu.shortcuts" = "Shortcuts…";
-"app.menu.system_audio" = "Also Record System Audio";
 "app.menu.updates" = "Check for Updates…";
 
 "app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or be sorted automatically?";
-"app.migrate.auto" = "Sort automatically";
+"app.migrate.auto" = "Auto-sort";
 "app.migrate.keep" = "Keep %@";
 "app.name" = "Blurt";
 
@@ -110,7 +98,7 @@
 "main.dispatch.use_worktree" = "Use a Worktree";
 
 "main.empty.all_filed" = "Everything is filed";
-"main.empty.all_filed.detail" = "Captures with no project wait here until you or the AI file them.";
+"main.empty.all_filed.detail" = "Captures without a project wait here until you pick one or auto-sort them.";
 "main.empty.clear_all" = "Clear Search & Filters";
 "main.empty.clear_filters" = "Clear Filters";
 "main.empty.discarded" = "Nothing discarded";
@@ -241,7 +229,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "Default";
 "main.project.description" = "Description";
-"main.project.description.note" = "What the project is. The AI reads it when it sorts captures into projects.";
+"main.project.description.note" = "What this project is about. Auto-sort reads it to decide where captures go.";
 "main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
 "main.project.key" = "Key";
 "main.project.key.invalid" = "2–5 letters or digits, starting with a letter (IN is taken).";

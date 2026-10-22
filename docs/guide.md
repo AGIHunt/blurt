@@ -25,6 +25,9 @@ While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without
 screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. Use a recording for flows, animations and timing;
 use a snap or a voice note for everything that fits in one screen or one sentence.
 
+In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The countdown, system audio and
+what happens after a recording are in *Settings → General*.
+
 Speech is transcribed on your computer. Nothing leaves it unless you choose a cloud speech service.
 
 ### 2. Projects and the current project
@@ -55,8 +58,8 @@ the island when you're not looking (the number left of the notch counts them) an
 What you can do with a card:
 
 - **Drag a card onto a project** in the island's list to file it there and start processing.
-- Drag it onto **Unassigned** to process it without a project, or choose **Let AI sort** to process all the cards
-  and let Blurt file each item where it belongs.
+- Drag it onto **Unassigned** to process it without a project, or choose **Auto-sort** to process all the cards
+  and file each item into the project it is about.
 - **Click to copy**: a voice note copies its words; a snap copies the image (with your ink, if you drew on it), and its
   note or spoken words come along as text, so pasting into a text-only field gives you the words. Right-click for
   *Copy Image* or *Copy Text* on their own.
@@ -158,6 +161,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音。
 
+菜单栏菜单里按住 `⌥`，「开始录制」会变成「录制上次的区域」。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。
+
 语音在你的电脑上转写。除非你选了云端语音服务，内容不会离开这台电脑。
 
 ### 2. 项目和当前项目
@@ -169,7 +174,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **某个项目**：截图和语音直接进这个项目，马上开始整理。
 - **自动**：捕获先挂成卡片（见下），等你决定放哪。
 
-录屏不会挂卡片：结束就开始整理，每一条按内容归到对应的项目。分不出来的进「**待分配**」，之后在侧栏里拖到项目上就行。
+录屏不会挂卡片：结束就开始整理，每一条按内容归到对应的项目。归不了类的进「**未归类**」，之后在侧栏里拖到项目上就行。
 
 ### 3. 挂着的卡片
 
@@ -177,22 +182,22 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 
 - **鼠标移到岛上**（或者打开岛）：所有卡片跟着岛的详情一起垂下来。鼠标在岛上或卡片上时一直挂着，离开两者片刻后收起。
 - **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走，或者按 `Esc`。
-- 主窗口的收件箱顶部会显示「**还没归属的捕获 N 条**」，点一下就把它们全部放到岛下面。
+- 主窗口「待处理」的顶部会显示「**未归类的捕获 N 条**」，点一下就把它们全部放到岛下面。
 
 卡片能做的事：
 
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
-- 拖到「**待分配**」：先整理，不归项目；或者点「**交给 AI 分**」：把所有卡片一起整理，每一条由口喷鸡归到合适的项目。
+- 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
 - **单击复制**：语音卡片复制说的话；截图复制图片（画过就带笔迹），备注或说的话作为文字一起放进剪贴板，粘到只收文字的地方就是那段话。右键可以单独「拷贝图片」或「拷贝文字」。
 - 悬停看备注，双击改备注，拖出去就是一个文件（带上文字），点 × 扔掉。
 
-整理时岛上会出现一个小蛋；蛋破壳了，新条目就到了收件箱。
+整理时岛上会出现一个小蛋；蛋破壳了，新条目就出现在「待处理」里。
 
 ### 4. 审核
 
-主窗口（`⌥⇧B` →「打开口喷鸡」）侧栏最上面是**收件箱**，下面是你的项目。
+主窗口（`⌥⇧B` →「打开口喷鸡」）侧栏最上面是**待处理**，下面是你的项目。
 
-收件箱里是需要你看的，标题会直接告诉你：「需要你看的：3 条新的 · 2 条待验证」。选中一条，右边是它的全部内容——原话、截图、步骤、
+「待处理」里是需要你看的，标题会直接告诉你：「需要你看的：3 条新的 · 2 条待验证」。选中一条，右边是它的全部内容——原话、截图、步骤、
 可能相关的代码——每个字段都能改，边打边保存。刚整理好的一次捕获想快速过一遍，就打开它，用键盘：`J` / `K` 下一条 / 上一条，
 `A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键。
 
@@ -223,7 +228,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **完成**：你确认过了。**不做**：你决定不做（没结束的条目都能标）。两者都能重新打开。
 - **已丢弃**：垃圾桶；「**恢复**」会把条目放回丢弃前的状态。
 
-收件箱 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻离开收件箱。agent 永远不能把条目标为完成——agent 说「修好了」，一律是待验证。
+待处理 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻从待处理里消失。agent 永远不能把条目标为完成——agent 说「修好了」，一律是待验证。
 
 点条目前面的状态圆环就能改状态，菜单里只列现在说得通的几步。列表里的快捷键：`A` 要做 · `D` 标为完成 ·
 `R` 往回（退回、收回、重新打开或恢复，哪个适用就是哪个）· `W` 不做 · `X` 丢弃 · `S` 打开菜单。
@@ -236,5 +241,5 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - 在「设置 → 听写」里可以把按键换成 **Fn**，方式换成**按住说话**：按住约 0.25 秒开始，松开结束，中途按了别的键就取消。用 Fn 时，把「系统设置 → 键盘 → 按下 fn 键时」设为「不执行任何操作」；如果 Typeless 也在用 Fn，两边会冲突。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
 - **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴。设置页显示两者的状态，并有按钮直达系统设置里对应的位置。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
-- **听写历史**（菜单栏 →「听写历史…」、主窗口侧栏，或 `⌥⌘D`）按天列出所有听写，可以搜索。每行显示打出去的文字，眼睛按钮显示语音模型听到的原文；两者都能复制，也能删除，或者**转为条目**（进当前项目，没有当前项目就进待分配）。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
+- **听写历史**（菜单栏 →「听写历史…」、主窗口侧栏，或 `⌥⌘D`）按天列出所有听写，可以搜索。每行显示打出去的文字，眼睛按钮显示语音模型听到的原文；两者都能复制，也能删除，或者**转为条目**（进当前项目，没有当前项目就进「未归类」）。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。

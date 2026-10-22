@@ -88,7 +88,7 @@ fn path_of(p: &Value) -> Option<PathBuf> {
 /// The inbox pseudo-project (K2: not in the registry, fixed id / key, localised name).
 pub fn inbox_row() -> Value {
     json!({"id": "inbox", "key": "IN", "slug": "inbox", "kind": "inbox",
-           "name": if l10n::lang() == "zh-Hans" { "待分配" } else { "Unassigned" },
+           "name": if l10n::lang() == "zh-Hans" { "未归类" } else { "Unassigned" },
            "path": scripts::s(&paths::inbox_store()), "store": scripts::s(&paths::inbox_store()), "exists": true})
 }
 

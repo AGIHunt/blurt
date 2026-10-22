@@ -69,10 +69,10 @@ full-resolution still of that exact moment without pausing. Use video for flows,
 
 **Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
 finishes it; `⌥⇧B` opens the menu. Recordings go to a workspace: `~/Blurt` by default, or a project you bind, so
-your agent can process them with the code. Turn on *After recording → Process with an agent* and every recording
-gets processed in the background (Claude Code first; if it isn't installed or logged in, Codex, then Kimi Code,
-OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready. Every shortcut can be
-changed in *Shortcuts…* (`⌘,` in the menu).
+your agent can process them with the code. With *Settings → General → After a recording* set to *Organize into
+Items*, every recording gets processed in the background (Claude Code first; if it isn't installed or logged in,
+Codex, then Kimi Code, OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready.
+Every shortcut can be changed in *Settings → Shortcuts* (`⌘,` in the menu).
 
 **Dictation (macOS):** tap **right Option** in any app, talk, and tap it again. What you said is typed where your
 cursor is: SenseVoice transcribes it on your Mac, then a small local model (Gemma 4 or Qwen, via MLX) removes fillers, stutters
@@ -161,9 +161,9 @@ system audio are macOS-only for now. Setup (`doctor.py` tells you what's missing
 `winget install astral-sh.uv` and `winget install Gyan.FFmpeg`; Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk`, plus
 [uv](https://docs.astral.sh/uv/).
 
-**Which agent processes my recordings?** The first one in *menu → Agent* that is installed and logged in: by default
-Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. The menu shows each one's state and the command that fixes
-it; click one to try it first. When Blurt falls back it says so ("Claude Code isn't logged in — processing with Codex
+**Which agent processes my recordings?** The first one in *Settings → Agents* that is installed and logged in: by
+default Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. The list shows each one's state and the command that
+fixes it; drag one to the top to try it first. When Blurt falls back it says so ("Claude Code isn't logged in — processing with Codex
 this time"), and if a run fails the toast names the reason (login expired, quota / rate limit, network, model, skill
 not found); details are in `agent.log` next to the recording. In `~/.blurt/config.json`:
 
@@ -175,7 +175,7 @@ not found); details are in `agent.log` next to the recording. In `~/.blurt/confi
 `agents` lists the ones to use, in order (leave it out for all of them); `review.open_in` is `"app"` (a Blurt window,
 the default on macOS) or `"browser"`. `uv run skills/blurt/scripts/agents.py status` prints the same check.
 
-**Can I change the shortcuts?** On macOS: *menu → Shortcuts…* records a new combination per action, turns one off
+**Can I change the shortcuts?** On macOS: *Settings → Shortcuts* records a new combination per action, turns one off
 (⌫), restores the defaults, and warns when a shortcut is already taken (two actions on the same keys, another app,
 a macOS system shortcut). The hints on the bar and in the menu follow your keys. The same setting in
 `~/.blurt/config.json` also works on Windows (pause, snap, marker, finish):

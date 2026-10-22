@@ -1,5 +1,6 @@
 // Settings → General: projects (the folders opened in Blurt, and which one new captures go to), open at login,
-// language, Spotlight, what happens after a recording.
+// language, Spotlight; recording (what happens after one, countdown, system audio, collecting macOS screenshots);
+// about (version, help, updates). The menu-bar menu stays short because these live here.
 import AppKit
 import ServiceManagement
 import SwiftUI
@@ -14,6 +15,8 @@ final class GeneralModel: ObservableObject {
     @Published var language = "auto"
     @Published var processMode = "auto"
     @Published var countdown = 3
+    @Published var systemAudio = false
+    @Published var collect = false
     @Published var spotlight = true
     @Published var error: String?
 
@@ -29,6 +32,8 @@ final class GeneralModel: ObservableObject {
         language = l == "zh" ? "zh-Hans" : (["en", "zh-Hans"].contains(l) ? l : "auto")
         processMode = (recordConfig()["process"] as? String ?? "auto") == "off" ? "off" : "auto"
         countdown = recordConfig()["countdown"] as? Int ?? 3
+        systemAudio = recordConfig()["system_audio"] as? Bool ?? false
+        collect = snapper.collecting
         spotlight = Config.shared["spotlight"] as? Bool ?? true
     }
 
@@ -67,6 +72,12 @@ final class GeneralModel: ObservableObject {
     }
     func setProcess(_ v: String) { setRecordConfig("process", v); processMode = v }
     func setCountdown(_ v: Int) { setRecordConfig("countdown", v); countdown = v }
+    func setSystemAudio(_ v: Bool) { setRecordConfig("system_audio", v); systemAudio = v }
+    func setCollect(_ v: Bool) {
+        setRecordConfig("collect_system_shots", v)
+        snapper.syncCollector()
+        collect = snapper.collecting
+    }
     func setSpotlight(_ v: Bool) {
         Config.shared.set("spotlight", v ? nil : false)
         spotlight = v
@@ -76,6 +87,11 @@ final class GeneralModel: ObservableObject {
 
 struct GeneralPane: View {
     @StateObject var m = GeneralModel()
+
+    static var version: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return v.isEmpty ? "—" : v
+    }
 
     var body: some View {
         PaneFrame {
@@ -134,11 +150,25 @@ struct GeneralPane: View {
                     Text(T("app.menu.countdown.seconds", 3)).tag(3)
                     Text(T("app.menu.countdown.seconds", 5)).tag(5)
                 }
+                Toggle(T("settings.general.system_audio"), isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
+                Toggle(T("settings.general.collect"), isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
+                Hint(T("settings.general.collect.hint"))
                 HStack {
                     Spacer()
                     Button(T("settings.general.assistant")) { Onboarding.shared.show() }
                 }
             } header: { Text(T("settings.general.recording")) }
+
+            Section {
+                LabeledContent(T("settings.general.version"), value: Self.version)
+                HStack {
+                    Button(T("settings.general.help")) { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
+                    Spacer()
+                    if Updater.shared.available {
+                        Button(T("app.menu.updates")) { Updater.shared.checkForUpdates(nil) }.disabled(!Updater.shared.canCheck)
+                    }
+                }
+            } header: { Text(T("settings.general.about")) }
         }
         .onAppear { m.reload() }
     }

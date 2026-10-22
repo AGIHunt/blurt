@@ -51,7 +51,7 @@ KEY_RE = re.compile(r"[A-Z][A-Z0-9]{1,4}")
 SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")
 SETTABLE = {"name", "description", "default_agent", "worktree", "worktree_root", "modules", "hints", "key", "pinned"}
 ROUTE_TIMEOUT = 60
-INBOX_NAMES = {"en": "Unassigned", "zh": "待分配"}
+INBOX_NAMES = {"en": "Unassigned", "zh": "未归类"}
 
 
 class ProjectError(Exception):

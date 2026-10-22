@@ -31,7 +31,7 @@
   "job.type.snap": "截图",
   "job.type.voice": "语音输入",
   "job.type.process": "整理",
-  "job.type.route": "分项目",
+  "job.type.route": "自动归类",
   "job.type.agent": "agent 会话",
   "job.step.capture": "捕获",
   "job.step.finalize": "保存录屏",
@@ -41,7 +41,7 @@
   "job.step.prepare": "准备",
   "job.step.write": "写条目",
   "job.step.frames": "补截图",
-  "job.step.route": "分项目",
+  "job.step.route": "归类",
   "job.step.launch": "启动",
   "job.step.work": "处理中",
   "job.step.finish": "收尾"

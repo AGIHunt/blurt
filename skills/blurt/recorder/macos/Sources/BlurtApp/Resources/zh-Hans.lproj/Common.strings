@@ -41,7 +41,7 @@
 "action.reopen" = "重新打开";
 "action.reopen.hint" = "回到要做";
 "action.wontfix" = "不做了";
-"action.wontfix.hint" = "留个记录，移出收件箱";
+"action.wontfix.hint" = "留个记录，不再出现在待处理";
 "action.discard" = "丢弃";
 "action.discard.hint" = "放进已丢弃，可以恢复";
 "action.restore" = "恢复";
@@ -56,8 +56,8 @@
 
 /* 项目 */
 "project.auto" = "自动";
-"project.inbox" = "待分配";
-"project.ai_sort" = "交给 AI 分";
+"project.inbox" = "未归类";
+"project.ai_sort" = "自动归类";
 "project.open_folder" = "打开文件夹…";
 
 /* 交给外部 agent */
@@ -69,7 +69,7 @@
 "job.type.snap" = "截图";
 "job.type.voice" = "语音输入";
 "job.type.process" = "整理";
-"job.type.route" = "分到项目";
+"job.type.route" = "自动归类";
 "job.type.agent" = "agent 会话";
 
 /* 任务步骤 */
@@ -81,7 +81,7 @@
 "job.step.prepare" = "准备";
 "job.step.write" = "写条目";
 "job.step.frames" = "挑截图";
-"job.step.route" = "分到项目";
+"job.step.route" = "归类";
 "job.step.launch" = "启动";
 "job.step.work" = "处理中";
 "job.step.finish" = "收尾";

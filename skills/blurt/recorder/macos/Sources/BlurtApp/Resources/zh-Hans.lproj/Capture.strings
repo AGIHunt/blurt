@@ -24,16 +24,16 @@
 "capture.card.edit_note" = "编辑备注…";
 "capture.card.move_to" = "移到";
 "capture.card.reveal" = "在访达中显示";
-"capture.cards.ax" = "等待归属项目的捕获";
-"capture.cards.none" = "没有还没归属的捕获";
+"capture.cards.ax" = "还没归类的捕获";
+"capture.cards.none" = "没有未归类的捕获";
 "capture.countdown.finish" = "完成";
 "capture.countdown.pause" = "暂停 / 继续";
 "capture.countdown.ready" = "准备，开喷";
 "capture.countdown.skip" = "点一下跳过倒计时";
 "capture.discarded" = "已丢弃";
-"capture.drawer.auto_sub" = "每次捕获自动分到合适的项目";
+"capture.drawer.auto_sub" = "按内容自动归到对应项目";
 "capture.drawer.drop_title" = "放到";
-"capture.drawer.inbox_sub" = "先收着，稍后再分";
+"capture.drawer.inbox_sub" = "先放着，稍后再选项目";
 "capture.drawer.more" = "更多…";
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";
 "capture.drawer.open_failed" = "没能把这个文件夹打开成项目";
@@ -45,7 +45,7 @@
 "capture.hotkey.tip" = "（%@）";
 "capture.island.ax" = "口喷鸡刘海岛";
 "capture.island.organize" = "整理";
-"capture.island.organize_tip" = "把等着的卡片整理到 %@（一次 AI 调用）";
+"capture.island.organize_tip" = "把挂着的卡片整理到 %@（调用一次 AI）";
 "capture.island.project_ax" = "当前项目：%@";
 "capture.island.record" = "录屏";
 "capture.island.snap" = "截图";
@@ -54,7 +54,7 @@
 "capture.island.voice" = "语音输入";
 "capture.keys.anytime" = "随时可用";
 "capture.keys.bad_key" = "这个键不能用";
-"capture.keys.change_it" = " · 菜单 → 快捷键… 可以换";
+"capture.keys.change_it" = " · 可以在 设置 → 快捷键 里更换";
 "capture.keys.control" = "⌃ Control 键";
 "capture.keys.custom" = "已自定义";
 "capture.keys.draw_note" = "录制时按住它拖动，圈出重点";
@@ -79,9 +79,7 @@
 "capture.keys.while_recording" = "录制中";
 "capture.keys.why" = "%1$@：%2$@";
 "capture.keys.wont_work" = "快捷键 %@ 用不了";
-"capture.menu.collect" = "收集系统截图（⌘⇧3/4/5）";
 "capture.menu.live_caption" = "实时字幕";
-"capture.menu.show_cards_none" = "显示挂着的卡片";
 "capture.menu.snap" = "截图";
 "capture.menu.switch_project" = "切换项目…";
 "capture.menu.voice" = "语音输入";
@@ -132,7 +130,7 @@
 "capture.rec.restart" = "重录";
 "capture.rec.resume" = "继续";
 "capture.rec.snap_note" = "截图并写备注（会暂停）";
-"capture.service.added" = "已加入收件箱：%@";
+"capture.service.added" = "已记下：%@";
 "capture.service.empty" = "没有可以加入的文字或图片";
 "capture.service.failed" = "没加进去：%@";
 "capture.service.image" = "图片";
@@ -141,7 +139,7 @@
 "capture.snap.no_permission" = "截图失败：需要「录屏」权限";
 "capture.undo" = "撤销";
 "capture.voice.card_empty" = "语音 · %@";
-"capture.voice.goes_card" = "先挂成卡片，等你分项目";
+"capture.voice.goes_card" = "先挂成卡片，稍后再选项目";
 "capture.voice.goes_to" = "归入 %@";
 "capture.voice.hint" = "在听 · 停顿即结束 · Esc 取消";
 "capture.voice.hold_hint" = "在听 · 松开即结束";
