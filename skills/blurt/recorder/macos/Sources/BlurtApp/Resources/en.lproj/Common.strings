@@ -45,7 +45,7 @@
 "job.type.record" = "Recording";
 "job.type.snap" = "Snap";
 "job.type.voice" = "Voice note";
-"job.type.process" = "Organising";
+"job.type.process" = "Organizing";
 "job.type.route" = "Sorting into projects";
 "job.type.agent" = "Agent session";
 

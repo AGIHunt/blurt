@@ -2,6 +2,9 @@
    键和占位符与另一种语言一致（tests/test_l10n.py）。 */
 
 "app.agent.agent" = "整理用的 agent";
+"app.agent.agent_named" = "整理用的 agent：%@";
+"app.agent.fallback_notice" = "%1$@，改用 %2$@ 整理";
+"app.agent.list_sep" = "、";
 "app.agent.can_be_used" = " 用不了";
 "app.agent.check_again" = "重新检查登录状态";
 "app.agent.checking" = "检查中…";

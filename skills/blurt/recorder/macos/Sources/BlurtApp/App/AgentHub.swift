@@ -328,12 +328,24 @@ extension App {
             guard !queue.isEmpty else { return self.noAgent(dir, statuses, job: job) }
             if !skipped.isEmpty {
                 appendLog(log, "── blurt \(nowStamp()) · " + skipped.map { "\($0.def.name): \($0.why)" }.joined(separator: " · ") + "\n")
+                self.noteFallback(skipped, using: queue[0])
             }
             job.step("prepare", .done)
             self.attempt(dir, queue: queue, skipped: skipped.map { ($0.def, $0.def.name + $0.shortWhy) }, job: job, captures: captures,
                          project: project)
         }
     }
+
+    /// The first agent in the user's order can't run (not logged in, not installed): say once, on the island, which
+    /// one organises instead — otherwise the switch is only in agent.log. Again only when the reason changes.
+    func noteFallback(_ skipped: [AgentStatus], using: AgentStatus) {
+        let key = skipped.map { "\($0.def.id):\($0.state.rawValue)" }.joined(separator: ",") + ">" + using.def.id
+        guard App.fallbackNoted != key else { return }
+        App.fallbackNoted = key
+        let why = skipped.map { $0.def.name + $0.shortWhy }.joined(separator: T("app.agent.list_sep"))
+        AppEnvironment.island?.toast(T("app.agent.fallback_notice", why, using.def.name), actionTitle: nil, action: nil)
+    }
+    static var fallbackNoted: String?
 
     func noAgent(_ dir: URL, _ statuses: [AgentStatus], job: JobWriter) {
         processing.removeAll { $0 == dir.path }
@@ -388,6 +400,8 @@ extension App {
                 updateMeta(dir) { m in m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(["result": "ok", "done_at": nowStamp()]) { _, n in n } }
                 appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) done" + (status == 0 ? "" : " (exit \(status))") + "\n")
                 for s in ["transcribe", "write", "frames"] { job.step(s, .done) }
+                // a filed capture needs no routing; otherwise ingest has handed the inbox items to their own route job
+                job.step("route", project != nil ? .skipped : .done)
                 job.finish(.done)
                 Scripts.indexUpdate([dir])
                 self.refreshStatus()
@@ -423,7 +437,7 @@ extension App {
         hub.reload()
         let order = hub.order()
         let first = order.first(where: { hub.cached($0.id)?.state.usable ?? true })
-        let item = NSMenuItem(title: T("app.agent.agent") + (first.map { "：\($0.name)" } ?? ""), action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: first.map { T("app.agent.agent_named", $0.name) } ?? T("app.agent.agent"), action: nil, keyEquivalent: "")
         let sub = NSMenu()
         let head = NSMenuItem(title: T("app.agent.tried_this_order_first"), action: nil, keyEquivalent: "")
         head.isEnabled = false
@@ -448,7 +462,7 @@ extension App {
         hub.check(order) { statuses in
             for (i, s) in statuses.enumerated() { if let it = rows[s.def.id] { self.setAgentRow(it, index: i, status: s) } }
             let f = statuses.first { $0.state.usable }
-            item.title = T("app.agent.agent") + (f.map { "：\($0.def.name)" } ?? T("app.agent.none_usable"))
+            item.title = f.map { T("app.agent.agent_named", $0.def.name) } ?? T("app.agent.agent") + T("app.agent.none_usable")
         }
     }
 

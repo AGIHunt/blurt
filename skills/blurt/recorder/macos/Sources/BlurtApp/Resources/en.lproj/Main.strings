@@ -2,6 +2,9 @@
    Same keys and placeholders in the other language (tests/test_l10n.py). */
 
 "app.agent.agent" = "Agent";
+"app.agent.agent_named" = "Agent: %@";
+"app.agent.fallback_notice" = "%1$@ — organizing with %2$@ instead";
+"app.agent.list_sep" = ", ";
 "app.agent.can_be_used" = " can’t be used";
 "app.agent.check_again" = "Check again";
 "app.agent.checking" = "checking…";
@@ -22,7 +25,7 @@
 "app.login.failed" = "Couldn’t change Open at Login";
 
 "app.menu.after.keep" = "Just Keep the Video";
-"app.menu.after.organise" = "Organise into Items";
+"app.menu.after.organize" = "Organize into Items";
 "app.menu.after_recording" = "After Recording";
 "app.menu.countdown" = "Countdown";
 "app.menu.countdown.none" = "None";
@@ -56,7 +59,7 @@
 
 "app.status.ax_count" = "Blurt — %@";
 
-"app.toast.saved" = "Recording saved (%@)\nOrganise it from the main window whenever you like.";
+"app.toast.saved" = "Recording saved (%@)\nOrganize it from the main window whenever you like.";
 "app.toast.welcome" = "Blurt is in your menu bar\n%@ starts and finishes a recording · %@ opens this menu";
 
 "app.url.no_item" = "That item isn’t in the index (%@)";
@@ -69,7 +72,7 @@
 "main.banner.external" = "Copied to your agent. Mark it done when it is.";
 "main.banner.move" = "Move There";
 "main.banner.open_session" = "Open Session";
-"main.banner.organising" = "Still being organised · %@";
+"main.banner.organizing" = "Still being organized · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
 "main.banner.to_verify" = "%@ says it’s done. Check it, then mark it done.";
@@ -337,9 +340,9 @@
 "menu.zoom" = "Zoom";
 
 
-"notify.done.generic" = "Organised";
-"notify.done.recording" = "Recording organised";
-"notify.done.snaps" = "Captures organised";
+"notify.done.generic" = "Organized";
+"notify.done.recording" = "Recording organized";
+"notify.done.snaps" = "Captures organized";
 
 "notify.failed" = "%@ didn’t finish";
 
