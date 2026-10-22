@@ -34,6 +34,7 @@ extension App {
                   "input_monitoring": DictationKeys.allowed, "accessibility": AXIsProcessTrusted(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
+        case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)
         case "history":
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
             MainActor.assumeIsolated {

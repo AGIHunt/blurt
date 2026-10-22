@@ -134,11 +134,12 @@ final class DictationSettings: ObservableObject {
 }
 
 struct DictationPane: View {
+    static let scrollRequest = Notification.Name("BlurtDictationPaneScroll")
     @StateObject var m = DictationSettings()
     @State var confirmClear = false
 
     var body: some View {
-        PaneFrame {
+        ScrollViewReader { proxy in PaneFrame {
             Section {
                 Toggle(isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) })) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -187,6 +188,7 @@ struct DictationPane: View {
                     }
                 }
             } header: { Text(T("dictation.polish.section")) }
+            .id("polish")
 
             Section {
                 Picker(T("dictation.history.keep"), selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
@@ -208,6 +210,12 @@ struct DictationPane: View {
                         .disabled(m.historyCount == 0)
                 }
             } header: { Text(T("dictation.history.section")) }
+            .id("history")
+        }
+        // tests: `dictation settings-scroll polish|history` (a screenshot of the lower sections)
+        .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
+            if let id = n.object as? String { proxy.scrollTo(id, anchor: .top) }
+        }
         }
         .onAppear { m.start() }
         .onDisappear { m.stop() }
@@ -249,7 +257,8 @@ struct DictationPane: View {
             if !p.supported {
                 Hint(T("dictation.polish.unsupported"))
             } else {
-                ForEach(p.models) { model in modelRow(model, selected: p.selected == model.id, state: p) }
+                // recommended first, then installed, then smallest
+                ForEach(p.models.sorted { ($0.recommended ? 0 : 1, $0.installed ? 0 : 1, $0.sizeMB) < ($1.recommended ? 0 : 1, $1.installed ? 0 : 1, $1.sizeMB) }) { model in modelRow(model, selected: p.selected == model.id, state: p) }
                 if p.selected == nil { Hint(T("dictation.polish.none_installed")) }
             }
         } else {
