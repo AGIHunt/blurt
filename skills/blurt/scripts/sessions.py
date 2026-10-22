@@ -363,7 +363,8 @@ def sync(only: list[str] | None = None) -> list[dict]:
                 a = job.setdefault("agent", {})
                 w = wins.get(job["id"]) if a.get("runner") == "tmux" else None
                 active = job.get("state") in ("running", "queued")
-                if a.get("runner") == "tmux":
+                other = (a.get("tmux") or {}).get("socket") not in (None, socket_name())
+                if a.get("runner") == "tmux" and not other:  # a job on another tmux server isn't ours to judge
                     if w is None:
                         if active and tmux_info():  # the window was closed
                             _set_status(job, "exited", "tmux")
