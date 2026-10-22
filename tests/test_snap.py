@@ -162,5 +162,53 @@ class TkShots(unittest.TestCase):
                 self.assertEqual(Image.open(Path(d) / "shots" / "002.png").size, (320, 200))
 
 
+MAC = Path(__file__).resolve().parents[1] / "skills" / "blurt" / "recorder" / "macos"
+RES = MAC / "Sources" / "BlurtApp" / "Resources"
+
+
+def strings_table(p: Path) -> dict:
+    import re
+    return {m.group(1): m.group(2) for m in re.finditer(r'^"((?:[^"\\]|\\.)+)" = "((?:[^"\\]|\\.)*)";$', p.read_text(encoding="utf-8"), re.M)}
+
+
+def placeholders(s: str) -> list:
+    import re
+    return sorted(re.findall(r"%(?:\d+\$)?[@dfs]", s))
+
+
+class CaptureStrings(unittest.TestCase):
+    """K10 for the capture side (P5): the Capture table in en and zh-Hans — same keys, same placeholders, and every
+    capture.* key the Swift code asks for is there."""
+
+    def test_en_and_zh_hans_match(self):
+        en, zh = strings_table(RES / "en.lproj" / "Capture.strings"), strings_table(RES / "zh-Hans.lproj" / "Capture.strings")
+        self.assertTrue(en)
+        self.assertEqual(set(en), set(zh))
+        for k in en:
+            self.assertEqual(placeholders(en[k]), placeholders(zh[k]), k)
+        import plistlib
+        pe = plistlib.loads((RES / "en.lproj" / "Capture.stringsdict").read_bytes())
+        pz = plistlib.loads((RES / "zh-Hans.lproj" / "Capture.stringsdict").read_bytes())
+        self.assertEqual(set(pe), set(pz))
+        for k in pe:
+            self.assertIn("other", pe[k]["n"])
+            self.assertIn("one", pe[k]["n"])
+            self.assertEqual(placeholders(pe[k]["n"]["other"]), placeholders(pz[k]["n"]["other"]), k)
+
+    def test_every_capture_key_in_the_code_exists(self):
+        import re
+        tables = set(strings_table(RES / "en.lproj" / "Capture.strings"))
+        import plistlib
+        tables |= set(plistlib.loads((RES / "en.lproj" / "Capture.stringsdict").read_bytes()))
+        used = set()
+        for f in (MAC / "Sources").rglob("*.swift"):
+            for line in f.read_text(encoding="utf-8").splitlines():
+                if line.lstrip().startswith("//"):
+                    continue
+                used |= set(re.findall(r'"(capture\.[a-z_.]+)"', line))
+        self.assertTrue(used)
+        self.assertEqual(sorted(used - tables), [])
+
+
 if __name__ == "__main__":
     unittest.main()

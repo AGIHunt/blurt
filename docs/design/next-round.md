@@ -870,6 +870,32 @@ uid 01JB… · issue · high · module auth
 
 **主窗口不再自动弹审核**；独立的审核窗口（`ReviewWindow.swift`）删除，审核嵌在主窗口（P4）。
 
+**细则（P5）**：
+- **文件**：`Capture/Island/`：`Island.swift`（窗口、几何、弹簧、悬停、抽屉、提示、孵化）、`IslandContent.swift`（展开后的内容）、
+  `Ears.swift`（耳朵）、`Claws.swift` + `ClawArt.swift`（鸡爪卡片）、`Motion.swift`、`IslandRecording.swift`、`IslandModule.swift`、
+  `FrameCapture.swift`（测试 / 文档用的离屏渲染）；`Capture/Captures.swift`（捕获的去处、批次、分配、合并 8 秒、恢复）、`Capture/VoiceInput.swift`。
+  删除了 `Rope.swift`、`Perch.swift`、`HUD`（`Capture/HUD.swift` → `Chrome.swift` 只留边框、倒计时、字幕）、`HUDLive.swift`、`NestView`。
+- **窗口层级**：卡片面板 `.statusBar`、岛 `.statusBar + 1`（盖住菜单栏和腿）、备注气泡 `.statusBar + 2`。`isFloatingPanel` 要在 `level` 之前设，
+  否则 level 被重置成 `.floating`（v0.6 的鸡舍一直在这个坑里）。
+- **卡片只在你看的时候挂着**：捕获后 3.2 秒、指针在岛上 / 卡片上、岛展开、拖动中、备注打开时爪子放下来；否则 0.4 秒后爪子把卡片拉出屏幕顶，
+  左耳显示待分配的卡片数。卡片上沿 = 岛当前底边 + 18 pt（岛展开时卡片跟着下移，腿变长）。
+- **展开后的第一行用刘海两侧**：首页 = 左边当前项目、右边录屏 / 截图 / 语音；抽屉 = 左边标题、右边已输入的过滤词。录屏、语音、提示的内容从刘海下面开始，
+  耳朵继续显示时间等。没有别的事时首页多一行快捷键提示。
+- **悬停 vs 按键打开**：悬停打开的离开 400 ms 收起；快捷键 / 命令打开的（`setOpen(_, sticky: true)`）要等指针进来再离开才收，或 Esc。语音输入期间保持展开。
+- **voice 行**：`{"n","type":"voice","file":null,"voice":"shots/NNN.wav","said":null|text,"duration":s,"project":…}`；`said` 在
+  `transcribe.py note` 返回后再追加一行写入（没有这个命令时为 null，整理时 agent 转写）。按住手势里静音不结束；没听到语音的不归档。
+- **「交给 AI 分」的标记行**：`{"n","project":null,"assigned_by":"ai"}`（不再是卡片；ingest 按条 route）。`assigned_by` 有值的都不是卡片。
+- **合并**：带项目的捕获 8 秒内合并成一个 `process(session, captures, project)`；拖到项目 / 待分配的卡片 1.2 秒内合并（连续拖几张时一个任务）。
+- **孵化**：`expectProcess(session, captures)` 立刻在右耳放蛋；`JobStore` 里 session 相同（realpath 比较）、captures 有交集的 process 任务接管它，
+  结束时破壳 0.6 s → `+N`（N = 任务的 items 数），1.6 s 后换成待审数。120 秒没有任务接管就静默去掉。
+- **完成的鸡**（`System/Peck.swift`）：`PeckCard.shared.play(title:detail:uid:state:)`，`state` = `to_verify`（pleased）| `done`（delighted）；
+  10 秒内的多条合并成一句（「3 条待验证」），只在岛里显示，不再有右上角的卡片窗口。点 = 打开那一条（多条 = 收件箱）。
+- **过渡期**：P4 的 AgentHub 还没写 process 任务时，`IslandModule` 装一个 `AppEnvironment.process` 的兜底（`LegacyProcess`：建 process 任务、
+  走 v0.6 的 `App.process(dir)`），v0.6 AgentHub 的 `perch.hatch / hatched` 调用落到它上面；AgentHub 换成任务后删掉 `LegacyProcess` 和 `perch`。
+- **测试钩子**（`BLURT_TEST_COMMANDS=1`）：`BLURT_TEST_STILL=<png>` 代替屏幕截图、`BLURT_TEST_PROCESS=done|failed` 代替真正的 agent 整理、
+  `BLURT_TEST_MIC_WAV` / `BLURT_NOTE_WAV` 代替麦克风；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
+  `framerec`、`henframes`、`fakerecording`、`peck`）。
+
 ### K8 · 种类图标和状态圆环
 
 - 种类图标（P6 新增到 `assets/icons/`，所有平台由 `build.py` 生成；macOS 上优先用 SF Symbol）：

@@ -34,7 +34,6 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var testMic: TestMic?             // BLURT_TEST_MIC_WAV (tests): a file instead of the microphone
     var events: FileHandle?
     var live: LiveAudio?              // live/audio.pcm sidecar (capture queue only)
-    var hud: HUD!
     var border: NSWindow?
     var borderView = BorderView()
     var ticker: Timer?
@@ -43,7 +42,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var inkWin: NSPanel?
     var inkView: InkView?
     var inkTicker: Timer?
-    var penSticky = false             // toggled from the HUD / ⌥⇧D
+    var penSticky = false             // toggled with ⌥⇧D
     var inkOn = false
     /// record.draw_key in ~/.blurt/config.json: "control" (default) | "option" | "fn" | "off"
     let penKey: (CGEventFlags, String)? = {
@@ -230,7 +229,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         ip.acceptsMouseMovedEvents = true
         ip.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         ip.contentView = iv
-        ip.orderFrontRegardless()                 // below the border and the HUD
+        ip.orderFrontRegardless()                 // below the border and the island
         inkWin = ip
         inkView = iv
         snaps = RecordingSnaps(rec: self, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
@@ -238,12 +237,9 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         RunLoop.main.add(inkTicker!, forMode: .common)
         border = overlayWindow(r.insetBy(dx: -4, dy: -4), view: borderView)
         border?.orderFrontRegardless()
-        hud = HUD(rec: self)
-        hud.place(near: region)
-        hud.orderFrontRegardless()
+        island.recordingStarted(self, on: NSScreen.screens.first(where: { $0.frame.intersects(r) }))
         ticker = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            self.hud.update(elapsed: self.elapsed(), paused: self.isPaused, level: self.micLevel)
             self.borderView.color = self.isPaused ? amber : accent
         }
         cursorTicker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -303,7 +299,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         guard on != inkOn, inkView?.live == nil else { return }
         inkOn = on
         inkView?.setOn(on)
-        hud?.orderFrontRegardless()
+        island.orderFront()
     }
 
     /// ⌥⇧M: still logged as a marker, and now also a snap of this exact moment. Silent — the mic is recording.
@@ -313,7 +309,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         snap(via: "marker")
     }
 
-    func snap(via: String) { snaps?.snap(via: via) }
+    func snap(via: String, then: ((Shot) -> Void)? = nil) { snaps?.snap(via: via, then: then) }
 
     func latestFrame() -> CVImageBuffer? { q.sync { lastFrame } }
 
@@ -441,11 +437,10 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         cursorTicker?.invalidate()
         inkTicker?.invalidate()
         inkWin?.orderOut(nil)
-        hud?.live?.stop()
+        island.recordingStopping()
         if let m = clickMonitor { NSEvent.removeMonitor(m) }
         log("stop")
         try? events?.close()
-        hud?.orderOut(nil)
         border?.orderOut(nil)
         captureSession?.stopRunning()
         testMic?.stop()

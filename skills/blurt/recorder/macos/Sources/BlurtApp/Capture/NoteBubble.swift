@@ -6,12 +6,13 @@
 //  • the shot is shown enlarged; drag (⌃-drag, as with the recorder's pen — or just drag) to circle things → the
 //    ink is burnt into shots/NNN.marked.png, the original stays as it was.
 //  • ⌥⇧A while it is open saves the note and takes the next shot.
-// The same panel, text-only, is the note popover for snaps taken while recording (opened from the HUD's 📸,
+// The same panel, text-only, is the note popover for snaps taken while recording (the island's snap button,
 // the recording pauses while it is open).
 //
 // Tests: BLURT_NOTE_WAV=<file.wav> feeds that file through the same path instead of the microphone.
 
 import AppKit
+import BlurtCore
 import AVFoundation
 import Carbon.HIToolbox
 
@@ -37,6 +38,8 @@ final class NoteVoice {
     private var floorN = 0
     let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: NoteVoice.rate, channels: 1, interleaved: false)!
     var silenceToEnd = 1.8, noSpeechTimeout = 8.0, maxLength = 60.0
+    /// A wav to play through instead of the microphone (tests); nil = $BLURT_NOTE_WAV, else the mic.
+    var inject: String?
 
     init(url: URL) { self.url = url }
 
@@ -48,7 +51,7 @@ final class NoteVoice {
                                        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         started = Date()
-        if let wav = ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"] {
+        if let wav = inject ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"] {
             running = startInjected(URL(fileURLWithPath: wav))
             ready(running)
             return
@@ -412,7 +415,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         if isOpen { commit() }
         shot = s
         mode = m
-        anchor = a ?? { perch.cardScreenRect(s) }
+        anchor = a ?? { claws.screenRect(of: s) ?? island.frameOnScreen }
         typed = false
         speechStarted = false
         voiceKept = false
@@ -420,8 +423,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         build()
         load(s)
         if m == .listen { startListening() }
-        if m != .recording { perch.hold(true) }
-        // let the card land on the perch first, then unfold the bubble under it
+        if m != .recording { claws.hold(true) }
+        // let the card land on its claw first, then unfold the bubble under it
         let delay = m == .listen && !reduceMotion ? 0.55 : 0.0
         let work = DispatchWorkItem { [weak self] in self?.present() }
         showWork = work
@@ -432,8 +435,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         guard panel == nil else { return }
         let p = NotePanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.nonactivatingPanel, .borderless],
                           backing: .buffered, defer: false)
-        p.level = .statusBar
-        p.isFloatingPanel = true
+        p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
+        p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         p.hidesOnDeactivate = false
         p.isOpaque = false
         p.backgroundColor = .clear
@@ -454,7 +457,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         penHint.layer?.cornerRadius = 9
         penHint.alignment = .center
         root.addSubview(penHint)
-        undoBtn = SymbolButton("arrow.uturn.backward", tip: L("撤销笔迹（⌘Z）", "Undo ink (⌘Z)")) { [weak self] in self?.undoInk() }
+        undoBtn = SymbolButton("arrow.uturn.backward", tip: Loc.t("capture.note.undo", table: "Capture")) { [weak self] in self?.undoInk() }
         root.addSubview(undoBtn)
         icon.imageScaling = .scaleProportionallyDown
         root.addSubview(icon)
@@ -473,10 +476,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingTail
         root.addSubview(status)
-        micBtn = SymbolButton("mic.fill", tip: L("重新录一段语音", "Record a new voice note")) { [weak self] in self?.rerecord() }
-        playBtn = SymbolButton("play.fill", tip: L("播放语音备注", "Play the voice note")) { [weak self] in self?.play() }
-        prevBtn = SymbolButton("chevron.left", tip: L("上一张", "Previous shot")) { [weak self] in self?.step(-1) }
-        nextBtn = SymbolButton("chevron.right", tip: L("下一张", "Next shot")) { [weak self] in self?.step(1) }
+        micBtn = SymbolButton("mic.fill", tip: Loc.t("capture.note.rerecord", table: "Capture")) { [weak self] in self?.rerecord() }
+        playBtn = SymbolButton("play.fill", tip: Loc.t("capture.note.play", table: "Capture")) { [weak self] in self?.play() }
+        prevBtn = SymbolButton("chevron.left", tip: Loc.t("capture.note.prev", table: "Capture")) { [weak self] in self?.step(-1) }
+        nextBtn = SymbolButton("chevron.right", tip: Loc.t("capture.note.next", table: "Capture")) { [weak self] in self?.step(1) }
         [micBtn, playBtn, prevBtn, nextBtn].forEach { root.addSubview($0!) }
         panel = p
     }
@@ -511,7 +514,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         panel?.setContentSize(NSSize(width: width, height: height))
         bg.frame = NSRect(x: 0, y: 0, width: width, height: height)
         canvas.frame = NSRect(x: (width - pv.width) / 2, y: top + pad, width: pv.width, height: pv.height)
-        penHint.stringValue = mode == .recording ? "" : L("  ⌃ 拖动圈画  ", "  ⌃-drag to circle  ")
+        penHint.stringValue = mode == .recording ? "" : "  " + Loc.t("capture.note.pen_hint", table: "Capture") + "  "
         penHint.sizeToFit()
         penHint.frame = NSRect(x: canvas.frame.minX + 8, y: canvas.frame.maxY - 26, width: penHint.frame.width, height: 18)
         penHint.isHidden = mode == .recording || !canvas.strokes.isEmpty
@@ -641,23 +644,23 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         icon.contentTintColor = .secondaryLabelColor
         switch mode {
         case .listen:
-            field.placeholderString = listening ? L("在听… 说完停一下就好 · 直接打字也行", "Listening… just pause when you're done · or type")
-                                                : L("写一句备注（可选）", "Add a note (optional)")
-            let next = hkHint(.snap, "下一张", "next shot").map { " · " + $0 } ?? ""
-            if typed { status.stringValue = L("⏎ 保存 · Esc 跳过", "⏎ save · Esc skip") + next }
+            field.placeholderString = listening ? Loc.t("capture.note.listening", table: "Capture")
+                                                : Loc.t("capture.note.placeholder_optional", table: "Capture")
+            let next = hkHint(.snap, "capture.note.next_hint").map { " · " + $0 } ?? ""
+            if typed { status.stringValue = Loc.t("capture.note.save_skip", table: "Capture") + next }
             else if listening && speechStarted {
-                status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + L("  在听，停一下就保存 · ⏎ 现在保存", "  listening — pause to save · ⏎ save now"))
+                status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + "  " + Loc.t("capture.note.listening_save", table: "Capture"))
             }
-            else if listening { status.stringValue = L("Esc 跳过", "Esc skip") + next }
-            else { status.stringValue = L("麦克风不可用 · ⏎ 保存 · Esc 跳过", "Mic unavailable · ⏎ save · Esc skip") }
+            else if listening { status.stringValue = Loc.t("capture.note.skip", table: "Capture") + next }
+            else { status.stringValue = Loc.t("capture.note.no_mic", table: "Capture") }
         case .edit:
-            field.placeholderString = L("写一句备注", "Write a note")
-            if listening { status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + L("  在录新的语音…", "  recording a new voice note…")) }
-            else { status.stringValue = L("⏎ 保存 · Esc 取消", "⏎ save · Esc cancel") }
+            field.placeholderString = Loc.t("capture.note.placeholder", table: "Capture")
+            if listening { status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + "  " + Loc.t("capture.note.recording_new", table: "Capture")) }
+            else { status.stringValue = Loc.t("capture.note.save_cancel", table: "Capture") }
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
-            field.placeholderString = L("给这张图补一句（可选）", "Add a line about this shot (optional)")
-            status.stringValue = L("已暂停 · ⏎ 保存并继续 · Esc 继续", "Paused · ⏎ save & resume · Esc resume")
+            field.placeholderString = Loc.t("capture.note.placeholder_shot", table: "Capture")
+            status.stringValue = Loc.t("capture.note.paused", table: "Capture")
                 + (recordingShots.count > 1 ? "  ·  \(i)/\(recordingShots.count)" : "")
         }
     }
@@ -667,7 +670,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func tick() {
         bars.needsDisplay = true
         if voice?.running == true && speechStarted { refreshStatus() }
-        // follow the card if the perch re-lays out (another shot arrived, a neighbour was removed)
+        // follow the card if the claws re-lay out (another capture arrived, a neighbour was removed)
         if let p = panel, p.isVisible, mode != .recording { position() }
     }
 
@@ -771,7 +774,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             // Esc = resume without saving the edit in the field
         }
         shot = nil
-        if mode != .recording { perch.update(s); perch.hold(false) }
+        if mode != .recording { claws.update(s); claws.hold(false); snapper.settled(s) }
         let p = panel
         let done = { [weak self] in
             p?.orderOut(nil)
@@ -781,7 +784,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             cb?()
         }
         if flash, let p = p {
-            status.attributedStringValue = BlurtIcon.check.label(L("已记下", "Saved"), font: status.font ?? .systemFont(ofSize: 11, weight: .medium),
+            status.attributedStringValue = BlurtIcon.check.label(Loc.t("capture.note.saved", table: "Capture"), font: status.font ?? .systemFont(ofSize: 11, weight: .medium),
                                                                  color: .systemGreen, preferSymbol: true)
             status.textColor = .systemGreen
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {

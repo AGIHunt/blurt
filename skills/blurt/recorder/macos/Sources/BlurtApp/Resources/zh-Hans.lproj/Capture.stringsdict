@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>capture.card.delete_all</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>删除全部 %d 张卡片</string></dict>
+  </dict>
+  <key>capture.drawer.ai_sub</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>把 %d 张卡片分到合适的项目</string></dict>
+  </dict>
+  <key>capture.island.ai_sort_tip</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>让 AI 把等待中的 %d 张卡片分到合适的项目</string></dict>
+  </dict>
+  <key>capture.island.cards_waiting</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张卡片待分配</string></dict>
+  </dict>
+  <key>capture.island.to_review</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 条待审</string></dict>
+  </dict>
+  <key>capture.menu.show_cards</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>显示 %d 张待分配的卡片</string></dict>
+  </dict>
+  <key>capture.peck.done_many</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 条已完成</string></dict>
+  </dict>
+  <key>capture.peck.verify_many</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 条待验证</string></dict>
+  </dict>
+  <key>capture.rec.spotted</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已识别 %d 条</string></dict>
+  </dict>
+</dict>
+</plist>

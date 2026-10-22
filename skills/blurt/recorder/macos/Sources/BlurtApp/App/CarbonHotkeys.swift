@@ -7,10 +7,13 @@ import ScreenCaptureKit
 import ServiceManagement
 
 // MARK: - Hotkeys (Carbon via BlurtCore.HotkeyCenter: work without Accessibility permission, even when we're not the
-// active app). Configurable actions arrive through HotkeyCenter.onFire; the fixed keys below (Esc for the pen, ↩ / Esc / F
-// in the picker) through onRaw.
+// active app). Configurable actions arrive through HotkeyCenter.onFire (and onRelease: voice input's push-to-talk);
+// the fixed keys below (Esc for the pen and for voice input, ↩ / Esc / F in the picker) through onRaw.
 
-enum HK: UInt32 { case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11, pickFull = 12 }
+enum HK: UInt32 {
+    case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11,
+         pickFull = 12, voice = 13, project = 14, voiceEsc = 15
+}
 var hotkeyHandler: ((HK) -> Void)?
 
 func installHotkeyHandler() {
@@ -20,6 +23,7 @@ func installHotkeyHandler() {
     c.onFire = { a in
         if let k = a.hk { hotkeyHandler?(k) } else if a == .openMain { AppEnvironment.mainWindow?.show() }
     }
+    c.onRelease = { a in if a == .voice { VoiceInput.shared.released() } }
 }
 
 @discardableResult
