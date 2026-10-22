@@ -196,6 +196,7 @@
 "main.menu.copy_link" = "Copy Link";
 "main.menu.enrich" = "AI Fill-in";
 "main.menu.kind" = "Kind";
+"main.undo.kind" = "Change Kind";
 "main.menu.move_to" = "Move to Project";
 "main.menu.open_in" = "Open in %@";
 "main.menu.quick_look" = "Quick Look";

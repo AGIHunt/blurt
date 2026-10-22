@@ -196,6 +196,7 @@
 "main.menu.copy_link" = "复制链接";
 "main.menu.enrich" = "AI 补全";
 "main.menu.kind" = "种类";
+"main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";
 "main.menu.quick_look" = "快速查看";

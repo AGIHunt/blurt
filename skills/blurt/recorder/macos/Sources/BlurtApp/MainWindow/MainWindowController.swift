@@ -373,6 +373,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let items = items.filter { !$0.legacy }
         guard !items.isEmpty else { return }
         guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
+        // ⌘Z: each item's old title / kind back (registered now, so inside an undo it becomes the redo)
+        let olds = items.map { it in (it.uid, set.keys.reduce(into: [String: Any]()) { d, k in
+            switch k { case "title": d[k] = it.title; case "kind": d[k] = it.kind; default: break }
+        }) }
+        if let um = window?.undoManager, olds.allSatisfy({ $0.1.count == set.count }) {
+            um.registerUndo(withTarget: self) { c in for (uid, old) in olds { c.edit(c.model.items(uids: [uid]), old) } }
+            um.setActionName(set.keys.contains("title") ? T("main.menu.rename").replacingOccurrences(of: "…", with: "") : T("main.undo.kind"))
+        }
         for (p, group) in Dictionary(grouping: items, by: \.projectID) {
             let ops: [[String: Any]] = group.map { ["op": "set", "id": $0.uid, "set": set, "unset": [] as [String]] }
             Scripts.userOps(["--project", p], ops) { [weak self] r in
