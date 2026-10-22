@@ -781,6 +781,10 @@ button.chip:hover {
 .work-h .linkbtn {
   margin: -4px 0;
 }
+.work-h .work-x {
+  margin: -4px -6px -4px auto;
+  color: var(--mute);
+}
 .work-claim,
 .work-note {
   margin: 6px 0 0 26px;
@@ -1979,6 +1983,9 @@ button.chip:hover {
   border-radius: 0;
   min-height: 260px;
 }
+.focus.item-mode.bare {
+  grid-template-rows: auto;
+}
 .item-mode .slide {
   padding: 14px 14px 8px;
 }
@@ -2003,6 +2010,10 @@ button.chip:hover {
   }
   .item-mode .side {
     overflow: auto;
+  }
+  .focus.item-mode.bare {
+    grid-template-columns: minmax(0, 720px);
+    justify-content: center;
   }
 }
 

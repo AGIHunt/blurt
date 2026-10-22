@@ -118,6 +118,10 @@ final class TitleCell: NSTableCellView {
             s.append(NSAttributedString(string: "   ", attributes: [.font: Look.subFont]))
             s.append(TitleCell.marked(h))
         }
+        // an attributed value drops the field's line break mode: without this a long title is clipped, no ellipsis
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingTail
+        s.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: s.length))
         title.attributedStringValue = s
     }
 

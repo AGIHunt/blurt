@@ -27,8 +27,9 @@ function Shell({ onTheme }: { onTheme: () => void }) {
     return (
       <>
         {s.item ? (
-          <main id="itemView" className="focus item-mode">
-            <Stage />
+          // an item with nothing to show (a typed or spoken one) gets no picture well: the details start at the top
+          <main id="itemView" className={cx("focus item-mode", s.mediaItems(s.item).length === 0 && "bare")}>
+            {s.mediaItems(s.item).length > 0 && <Stage />}
             <Inspector />
           </main>
         ) : (

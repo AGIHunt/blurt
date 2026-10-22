@@ -1,6 +1,6 @@
 import { workStateOf } from "@blurt/ui";
 import { KindIcon } from "@blurt/ui/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FixRecord, Item, WorkRecord } from "../host";
 import { fieldLabel } from "../fields";
 import { isEnter } from "../ime";
@@ -52,6 +52,20 @@ function Field({ i, k, label, type = "area", cls, title, placeholder }: { i: Ite
   useLayoutEffect(() => {
     if (multiline) autosize(ref.current, title ? 200 : 260);
   }, [value, multiline, title]);
+  // the pane can change width after the first layout (the embedded detail settles, fonts load): fit the height again,
+  // or a title that wraps differently shows half of its second line
+  useEffect(() => {
+    const el = ref.current;
+    if (!multiline || !el || typeof ResizeObserver === "undefined") return;
+    let w = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === w) return;
+      w = el.clientWidth;
+      autosize(el, title ? 200 : 260);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [multiline, title]);
   const props = {
     ref,
     value,
@@ -128,10 +142,16 @@ function WorkPanel({ i }: { i: Item }) {
             <Icon name="git-pull-request" size={13} /> {s.t("work.pr")}
           </a>
         ) : null}
+        {can && w !== "wontfix" && w !== "done" && (
+          // a quiet way out, at the end of the state line rather than a lone button under it
+          <button className="btn sm ghost work-x" id="workWontfix" onClick={() => s.setWork([i], "wontfix")}>
+            {s.t("work.wontfix")}
+          </button>
+        )}
       </div>
       {w === "to_verify" && rec?.claim && <p className="work-claim">{s.t(rec.claim === "wontfix" ? "work.claim.wontfix" : "work.claim.fixed")}</p>}
       {rec?.note ? <p className="work-note">{rec.note}</p> : null}
-      {(can || (rec?.to === "session" && rec.job && s.host.openSession)) && (
+      {((can && (w === "to_verify" || w === "done" || w === "wontfix")) || (rec?.to === "session" && rec.job && s.host.openSession && w !== "done")) && (
         <div className="work-a">
           {can && w === "to_verify" && (
             <button className="btn sm keep" id="workDone" onClick={() => s.setWork([i], "done")}>
@@ -146,11 +166,6 @@ function WorkPanel({ i }: { i: Item }) {
           {rec?.to === "session" && rec.job && s.host.openSession && w !== "done" && (
             <button className="btn sm" id="workSession" onClick={() => s.openSession(rec.job!)}>
               <Icon name="terminal" size={14} /> {s.t("work.open_session")}
-            </button>
-          )}
-          {can && w !== "wontfix" && w !== "done" && (
-            <button className="btn sm ghost" id="workWontfix" onClick={() => s.setWork([i], "wontfix")}>
-              {s.t("work.wontfix")}
             </button>
           )}
         </div>

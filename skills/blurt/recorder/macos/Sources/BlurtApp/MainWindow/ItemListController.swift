@@ -151,12 +151,11 @@ final class EmptyStateView: NSView {
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
 }
 
-/// Kind segments, the review and work filters, and the count.
+/// Kind segments and the review and work filters (the count is the window's subtitle).
 final class FilterBar: NSView {
     let kinds = NSSegmentedControl()
     let status = NSPopUpButton()
     let work = NSPopUpButton()
-    let count = NSTextField(labelWithString: "")
     var onChange: (() -> Void)?
 
     override init(frame: NSRect) {
@@ -193,12 +192,9 @@ final class FilterBar: NSView {
         }
         status.setAccessibilityLabel(T("main.filter.review"))
         work.setAccessibilityLabel(T("main.filter.work"))
-        count.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        count.textColor = .secondaryLabelColor
-        count.alignment = .right
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let row = NSStackView(views: [kinds, status, work, spacer, count])
+        let row = NSStackView(views: [kinds, status, work, spacer])
         row.orientation = .horizontal
         row.spacing = 8
         row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 14)
@@ -232,8 +228,6 @@ final class FilterBar: NSView {
         kinds.isHidden = !ready
         status.isHidden = !ready || m.scope == .inbox
         work.isHidden = !ready
-        count.isHidden = !ready
-        count.stringValue = TP("main.items.count", m.rowCount)
     }
 }
 
