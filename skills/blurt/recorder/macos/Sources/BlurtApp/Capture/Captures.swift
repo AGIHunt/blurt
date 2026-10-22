@@ -170,9 +170,12 @@ final class Snapper {
     }
 
     /// K9's fast path (`transcribe.py note`) → `said`; without it the card just says "Voice note" and an agent
-    /// transcribes when the user hands the cards over.
+    /// transcribes when the user hands the cards over. One run per capture: a second caller waits for the first.
     private func transcribe(_ s: Shot, then: @escaping (String?) -> Void) {
         guard let wav = s.voiceURL else { return then(nil) }
+        let key = ObjectIdentifier(s)
+        if pendingWords[key] != nil { pendingWords[key]?.append(then); return }
+        pendingWords[key] = [then]
         Task {
             let r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
             let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -183,8 +186,21 @@ final class Snapper {
                     s.batch?.save(s)
                     hanging.update(s)
                 }
-                then(s.said)
+                for f in self.pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
             }
+        }
+    }
+    private var pendingWords: [ObjectIdentifier: [(String?) -> Void]] = [:]
+
+    /// The words of every spoken note among `shots` that has none yet (a card dragged onto a project while its words
+    /// were still coming), then `then` — so the item gets them as its title and quote, not "Screenshot 14:32".
+    private func words(for shots: [Shot], then: @escaping () -> Void) {
+        let need = shots.filter { $0.voiceURL != nil && $0.words == nil }
+        guard !need.isEmpty else { return then() }
+        var left = need.count
+        for s in need {
+            transcribed.insert(ObjectIdentifier(s))
+            transcribe(s) { _ in left -= 1; if left == 0 { then() } }
         }
     }
 
@@ -193,7 +209,12 @@ final class Snapper {
     /// The note bubble closed (or there was none). With a project and a note it is filed now, without an agent; a
     /// spoken note is transcribed first. No note → it lets go of the project and hangs as a card.
     func settled(_ s: Shot) {
-        guard !s.deleted, let p = s.project, s.assignedBy == "capture", let b = s.batch else { return }
+        guard !s.deleted else { return }
+        // a card (auto mode) with a spoken note: its words now, for the hover note, a copy and the item it becomes
+        if s.isCard, s.voice != nil, s.words == nil, transcribed.insert(ObjectIdentifier(s)).inserted {
+            transcribe(s) { _ in }
+        }
+        guard let p = s.project, s.assignedBy == "capture", let b = s.batch else { return }
         if s.words != nil { return file([s], in: b, project: p) }
         // once: if the words can't be had here, the card waits for an agent (it transcribes when handed the cards)
         if s.voice != nil, s.said == nil, transcribed.insert(ObjectIdentifier(s)).inserted {
@@ -218,7 +239,12 @@ final class Snapper {
         let ns = shots.map(\.n)
         for s in shots { hanging.pullIn(s) }
         island.expectProcess(session: b.dir, captures: ns)
-        b.sync {
+        words(for: shots) { b.sync { self.write(shots, in: b, project: project) } }
+    }
+
+    private func write(_ shots: [Shot], in b: ShotBatch, project: String) {
+        let ns = shots.map(\.n)
+        do {
             let job = JobWriter(type: .process, project: project, session: b.dir, title: T("job.title.filed"))
             job.setCaptures(ns)
             job.step("prepare", .done)
