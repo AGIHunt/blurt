@@ -27,6 +27,7 @@
 "capture.countdown.pause" = "暂停 / 继续";
 "capture.countdown.ready" = "准备，开喷";
 "capture.countdown.skip" = "点一下跳过倒计时";
+"capture.discarded" = "已丢弃";
 "capture.drawer.auto_sub" = "每次捕获自动分到合适的项目";
 "capture.drawer.drop_title" = "放到";
 "capture.drawer.inbox_sub" = "先收着，稍后再分";
@@ -36,9 +37,12 @@
 "capture.drawer.open_message" = "选一个文件夹。它的条目保存在其中的 .blurt 文件夹里，不进 git。";
 "capture.drawer.open_prompt" = "打开";
 "capture.drawer.switch_title" = "当前项目";
+"capture.filed" = "已归到 %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";
 "capture.hotkey.tip" = "（%@）";
 "capture.island.ax" = "口喷鸡刘海岛";
+"capture.island.organize" = "整理";
+"capture.island.organize_tip" = "把等着的卡片整理到 %@（一次 AI 调用）";
 "capture.island.project_ax" = "当前项目：%@";
 "capture.island.record" = "录屏";
 "capture.island.snap" = "截图";
@@ -77,11 +81,15 @@
 "capture.menu.snap" = "截图";
 "capture.menu.switch_project" = "切换项目…";
 "capture.menu.voice" = "语音输入";
+"capture.note.discard_tip" = "丢弃这张截图（Esc）";
+"capture.note.goes_to" = "→ %@";
+"capture.note.keep_discard" = "⏎ 不写备注直接留下 · Esc 丢弃";
+"capture.note.keep_tip" = "留下（⏎）";
 "capture.note.listening" = "在听… 说完停一下就好 · 直接打字也行";
 "capture.note.listening_save" = "在听，停一下就保存 · ⏎ 现在保存";
 "capture.note.next" = "下一张";
 "capture.note.next_hint" = "下一张";
-"capture.note.no_mic" = "麦克风不可用 · ⏎ 保存 · Esc 跳过";
+"capture.note.no_mic" = "麦克风不可用 · ⏎ 保存 · Esc 丢弃";
 "capture.note.paused" = "已暂停 · ⏎ 保存并继续 · Esc 继续";
 "capture.note.pen_hint" = "⌃ 拖动圈画";
 "capture.note.placeholder" = "写一句备注";
@@ -92,9 +100,8 @@
 "capture.note.recording_new" = "在录新的语音…";
 "capture.note.rerecord" = "重新录一段语音";
 "capture.note.save_cancel" = "⏎ 保存 · Esc 取消";
-"capture.note.save_skip" = "⏎ 保存 · Esc 跳过";
+"capture.note.save_discard" = "⏎ 保存 · Esc 丢弃";
 "capture.note.saved" = "已记下";
-"capture.note.skip" = "Esc 跳过";
 "capture.note.undo" = "撤销笔迹（⌘Z）";
 "capture.peck.done_one" = "已完成：%@";
 "capture.peck.verify_one" = "待验证：%@";
@@ -128,6 +135,7 @@
 "capture.service.image_from" = "图片（来自 %@）";
 "capture.service.title" = "收集的笔记";
 "capture.snap.no_permission" = "截图失败：需要「录屏」权限";
+"capture.undo" = "撤销";
 "capture.voice.card_empty" = "语音 · %@";
 "capture.voice.goes_card" = "先挂成卡片，等你分项目";
 "capture.voice.goes_to" = "归入 %@";

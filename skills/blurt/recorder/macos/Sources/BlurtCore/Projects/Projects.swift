@@ -49,6 +49,8 @@ public final class ProjectStore {
     public private(set) var projects: [Project] = []
     /// nil = auto (AI sorts captures into projects)
     public private(set) var currentID: String?
+    /// Who set the current project: "user", or "migrate" (carried over from v0.6 — the app asks once).
+    public private(set) var currentBy: String?
     /// The confidence at or above which the AI moves an item (projects.json route_threshold).
     public private(set) var routeThreshold = 0.75
     /// Main thread; projects.json changed (another process, or our own CLI call).
@@ -94,6 +96,7 @@ public final class ProjectStore {
         }
         let cur = raw["current"] as? String
         currentID = cur == nil || cur == "auto" || !list.contains(where: { $0.id == cur }) ? nil : cur
+        currentBy = raw["current_by"] as? String
         routeThreshold = (raw["route_threshold"] as? NSNumber)?.doubleValue ?? 0.75
         lastStamp = modified
     }

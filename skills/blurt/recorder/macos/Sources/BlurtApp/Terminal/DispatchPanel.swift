@@ -30,6 +30,11 @@ final class DispatchModel: ObservableObject {
     @Published var agents: [AgentChoice] = []
     @Published var agent = ""
     var agentTouched = false                    // the user picked one: login results no longer move it
+    /// The chosen agent's models (agents.py models) and the pick: "" = whatever the CLI is set to. Remembered per
+    /// project and agent (config sessions.models.<project>.<agent>).
+    @Published var models: [AgentModels.Model] = []
+    @Published var cliDefault: String?
+    @Published var model = ""
     @Published var mode: DispatchMode = .together
     @Published var worktree: WorktreeChoice = .auto
     @Published var warnings: [DispatchWarning] = []
@@ -100,6 +105,7 @@ final class DispatchModel: ObservableObject {
         let order = [saved, projectDefault, globalDefault, d?.pick, list.first?.id].compactMap { $0 }
         agent = order.first { id in list.contains { $0.id == id } } ?? ""
         if pickItems { await loadCandidates() } else { await loadLabels() }
+        await loadModels()
         await check()
         // the quick detect can't tell who is logged in; the full one (a few seconds) can: never default to an agent
         // that would stop at its login screen, and say so next to its name
@@ -112,6 +118,26 @@ final class DispatchModel: ObservableObject {
                 agent = better
             }
         }
+    }
+
+    private var modelKey: String { projectID ?? "_" }
+
+    func loadModels() async {
+        let a = agent
+        guard !a.isEmpty, let m = try? await Agents.shared.models(a) else { models = []; cliDefault = nil; model = ""; return }
+        guard a == agent else { return }
+        models = m.models
+        cliDefault = m.cliDefault
+        let saved = ((Config.shared["sessions.models"] as? [String: Any])?[modelKey] as? [String: Any])?[a] as? String ?? ""
+        model = models.contains { $0.id == saved } ? saved : ""
+    }
+
+    private func rememberModel() {
+        var all = Config.shared["sessions.models"] as? [String: Any] ?? [:]
+        var p = all[modelKey] as? [String: Any] ?? [:]
+        p[agent] = model.isEmpty ? nil : model
+        all[modelKey] = p
+        Config.shared.set("sessions.models", all)
     }
 
     func loadCandidates() async {
@@ -140,7 +166,7 @@ final class DispatchModel: ObservableObject {
         if phase != .starting { phase = .checking }
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent.isEmpty ? nil : agent, mode: mode,
-                                                            worktree: mode == .parallel ? .on : worktree, dryRun: true)
+                                                            worktree: mode == .parallel ? .on : worktree, dryRun: true, model: model)
             guard gen == checkGen else { return }
             warnings = r.warnings
             preview = r.rows
@@ -156,12 +182,14 @@ final class DispatchModel: ObservableObject {
     func start() async -> DispatchResult? {
         phase = .starting
         Config.shared.set("sessions.agent", agent)
+        rememberModel()
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent, mode: mode,
                                                             worktree: mode == .parallel ? .on : (worktree == .auto ? (worktreeOn ? .on : .off) : worktree),
-                                                            dryRun: false)
+                                                            dryRun: false, model: model)
             for l in r.launch { AppRunner.shared.launch(l) }
-            emit(["event": "dispatch", "jobs": r.jobs, "warnings": r.warnings.map(\.code), "app_runner": r.launch.count])
+            emit(["event": "dispatch", "jobs": r.jobs, "warnings": r.warnings.map(\.code), "app_runner": r.launch.count,
+                  "agent": agent, "model": model.isEmpty ? NSNull() : model])
             phase = .idle
             return r
         } catch {
@@ -204,6 +232,17 @@ struct DispatchView: View {
                             }
                         }
                             .labelsHidden().fixedSize()
+                    }
+                }
+                if !m.models.isEmpty {
+                    field(TL("dispatch.model")) {
+                        Picker("", selection: $m.model) {
+                            Text(m.cliDefault.map { TL("dispatch.model.default_named", $0) } ?? TL("dispatch.model.default")).tag("")
+                            Divider()
+                            ForEach(m.models) { x in Text(x.name).tag(x.id) }
+                        }
+                        .labelsHidden().fixedSize()
+                        .accessibilityLabel(TL("dispatch.model"))
                     }
                 }
                 if m.count > 1 {
@@ -261,7 +300,8 @@ struct DispatchView: View {
         .padding(.bottom, 20)
         .frame(width: 500)
         .task { await m.load() }
-        .onChange(of: m.agent) { _ in Task { await m.check() } }
+        .onChange(of: m.agent) { _ in Task { await m.loadModels(); await m.check() } }
+        .onChange(of: m.model) { _ in Task { await m.check() } }
         .onChange(of: m.mode) { _ in Task { await m.check() } }
         .onChange(of: m.worktree) { _ in Task { await m.check() } }
         .onChange(of: m.chosen) { _ in Task { await m.check() } }

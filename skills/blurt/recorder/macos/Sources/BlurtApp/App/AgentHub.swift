@@ -32,15 +32,105 @@ struct AgentDef {
         fix = o["fix"] as? [String: String] ?? [:]
         install = o["install"] as? [String: String] ?? [:]
         headless = o["headless"] as? Bool ?? true
+        modelArgs = o["model_args"] as? [String: [String]] ?? [:]
+        processingDefault = o["processing"] as? [String: String] ?? [:]
+        modelsSpec = o["models"] as? [String: Any] ?? [:]
+        usageSpec = o["usage"] as? [String: Any] ?? [:]
     }
     /// false = an app / interactive-only entry (WP2's zcode): never in the background chain or its menus.
     let headless: Bool
+    let modelArgs: [String: [String]]
+    let processingDefault: [String: String]
+    let modelsSpec: [String: Any]
+    let usageSpec: [String: Any]
     var fixText: String { Loc.pick(fix) ?? "" }
     var installText: String { Loc.pick(install) ?? "" }
 
-    /// The headless command line for the shell (cwd = the workspace).
-    func command(bin: String, prompt: String) -> String {
-        ([bin] + run.map { $0 == "{prompt}" ? prompt : $0.replacingOccurrences(of: "{prompt}", with: prompt) }).map(shq).joined(separator: " ")
+    /// The headless command line for the shell (cwd = the workspace); `extra` goes after the run arguments.
+    func command(bin: String, prompt: String, extra: [String] = []) -> String {
+        ([bin] + run.map { $0 == "{prompt}" ? prompt : $0.replacingOccurrences(of: "{prompt}", with: prompt) } + extra)
+            .map(shq).joined(separator: " ")
+    }
+
+    // MARK: the processing model (same rules as agents.py processing / models / parse_usage)
+
+    static let efforts = ["low", "medium", "high", "xhigh", "max"]
+    private static let cheapWords = try! NSRegularExpression(pattern: #"\b(affordable|cheap|cheapest|fast|efficient|mini|nano|small|lite|flash|haiku)\b"#,
+                                                             options: [.caseInsensitive])
+
+    /// The cheap model: the first one marked cheap in agents.json's list, or (Codex) in the CLI's own model cache —
+    /// the picker's models, best first, whose description says fast / affordable.
+    func cheapestModel(env: [String: String]) -> String? {
+        if let list = modelsSpec["list"] as? [[String: Any]] {
+            return list.first { $0["cheap"] as? Bool == true }?["id"] as? String
+        }
+        guard let cache = modelsSpec["cache"] as? String,
+              let d = FileManager.default.contents(atPath: AgentDef.expand(cache, env: env)),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
+        let listed = (o["models"] as? [[String: Any]] ?? []).filter { ($0["visibility"] as? String ?? "list") == "list" && $0["slug"] is String }
+            .sorted { ($0["priority"] as? Double ?? 999) < ($1["priority"] as? Double ?? 999) }
+        return listed.first { m in
+            let s = m["description"] as? String ?? ""
+            return AgentDef.cheapWords.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+        }?["slug"] as? String
+    }
+
+    /// record.agent_processing.<id> over agents.json `processing`: model id | "cheapest" | "default", effort | "default".
+    func processing(env: [String: String]) -> (model: String?, effort: String?) {
+        let over = (recordConfig()["agent_processing"] as? [String: Any])?[id] as? [String: Any] ?? [:]
+        let wantModel = over["model"] as? String ?? processingDefault["model"]
+        let wantEffort = over["effort"] as? String ?? processingDefault["effort"]
+        var model: String?
+        if let w = wantModel, !w.isEmpty, w != "default" { model = w == "cheapest" ? cheapestModel(env: env) : w }
+        let effort = wantEffort.flatMap { AgentDef.efforts.contains($0) ? $0 : nil }
+        return (modelArgs["model"] == nil ? nil : model, modelArgs["effort"] == nil ? nil : effort)
+    }
+
+    /// The flags an unattended organising run adds: model, effort, and the ones that make the CLI report its usage.
+    func processingArgs(env: [String: String]) -> (args: [String], model: String?, effort: String?) {
+        let p = processing(env: env)
+        var out: [String] = []
+        if let m = p.model { out += (modelArgs["model"] ?? []).map { $0.replacingOccurrences(of: "{model}", with: m) } }
+        if let e = p.effort { out += (modelArgs["effort"] ?? []).map { $0.replacingOccurrences(of: "{effort}", with: e) } }
+        out += usageSpec["args"] as? [String] ?? []
+        return (out, p.model, p.effort)
+    }
+
+    /// The tokens a run reported in its output: usage.pattern (Codex's "tokens used 24,953"), else a JSON result
+    /// line with a usage object (Claude's --output-format json).
+    func tokensUsed(in raw: String) -> Int? {
+        let text = raw.replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+        if let p = usageSpec["pattern"] as? String,
+           let re = try? NSRegularExpression(pattern: p.replacingOccurrences(of: "(?im)", with: ""), options: [.caseInsensitive, .anchorsMatchLines]),
+           let m = re.matches(in: text, range: NSRange(text.startIndex..., in: text)).last, m.numberOfRanges > 1,
+           let r = Range(m.range(at: 1), in: text) {
+            let digits = text[r].filter(\.isNumber)
+            if let n = Int(digits) { return n }
+        }
+        var total: Int?
+        for line in text.split(separator: "\n") where line.hasPrefix("{") && line.contains("\"usage\"") {
+            guard let o = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let u = o["usage"] as? [String: Any] else { continue }
+            let n = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]
+                .compactMap { (u[$0] as? NSNumber)?.intValue }.reduce(0, +)
+            guard n > 0 else { continue }
+            if o["type"] as? String == "result" { total = n }
+            else if o["type"] as? String == "turn.completed" { total = (total ?? 0) + n }
+        }
+        return total
+    }
+
+    /// ~ and ${VAR:-default} / $VAR (agents.py expand).
+    static func expand(_ path: String, env: [String: String]) -> String {
+        var s = path
+        let re = try! NSRegularExpression(pattern: #"\$\{(\w+)(?::-([^}]*))?\}|\$(\w+)"#)
+        for m in re.matches(in: path, range: NSRange(path.startIndex..., in: path)).reversed() {
+            let name = Range(m.range(at: 1), in: path).map { String(path[$0]) } ?? Range(m.range(at: 3), in: path).map { String(path[$0]) } ?? ""
+            let def = Range(m.range(at: 2), in: path).map { String(path[$0]) }
+            let v = env[name].flatMap { $0.isEmpty ? nil : $0 } ?? def ?? ""
+            if let r = Range(m.range, in: s) { s.replaceSubrange(r, with: v) }
+        }
+        return (s as NSString).expandingTildeInPath
     }
 }
 
@@ -376,9 +466,12 @@ extension App {
     func attempt(_ dir: URL, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter, captures: [Int]?, project: String?) {
         guard let a = queue.first, let bin = a.bin else { return noAgent(dir, queue, job: job) }
         let cwd = ProjectStore.shared.project(containing: dir).flatMap { $0.isInbox ? nil : $0.path } ?? defaultWorkspace
-        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures))
+        // v0.7: organising is a small job — the processing model (cheap, low effort) unless the user chose otherwise
+        let pa = a.def.processingArgs(env: agentEnvironment())
+        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures), extra: pa.args)
         let log = dir.appendingPathComponent("agent.log")
         appendLog(log, "── blurt \(nowStamp()) · processing with \(a.def.name) (\(bin))"
+                  + " · model \(pa.model ?? "CLI default")" + (pa.effort.map { ", effort \($0)" } ?? "")
                   + (skipped.isEmpty ? "" : " · skipped: " + skipped.map(\.1).joined(separator: "; ")) + " · job \(job.id)\n")
         let started = (try? FileManager.default.attributesOfItem(atPath: log.path)[.size] as? Int) ?? 0
         updateMeta(dir) { m in
@@ -392,6 +485,10 @@ extension App {
         if let p = project { env["BLURT_PROJECT"] = p }
         shell(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
             guard let self = self else { return }
+            let tail = (try? Data(contentsOf: log)).map { d in String(decoding: d.dropFirst(min(started, d.count)), as: UTF8.self) } ?? ""
+            let tokens = a.def.tokensUsed(in: tail)
+            job.setUsage(tokens: tokens, agent: a.def.id, model: pa.model, effort: pa.effort)
+            emit(["event": "process_usage", "job": job.id, "agent": a.def.id, "model": pa.model ?? NSNull(), "tokens": tokens ?? NSNull()])
             // items.py ingest turns items.json into Markdown (renaming it) and writes batch.json
             let fm = FileManager.default
             let hasItems = ["batch.json", "items.json", "items.ingested.json"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
@@ -407,7 +504,6 @@ extension App {
                 self.refreshStatus()
                 return
             }
-            let tail = (try? Data(contentsOf: log)).map { d in String(decoding: d.dropFirst(min(started, d.count)), as: UTF8.self) } ?? ""
             let f = AgentHub.shared.classify(tail)
             let reason = f?.reasonText(a.def) ?? T("app.agent.unfinished", a.def.name, Int(status))
             appendLog(log, "── blurt \(nowStamp()) · failed: \(reason)\n")
@@ -427,6 +523,54 @@ extension App {
             let code = ["auth", "quota", "network", "model"].contains(f?.id ?? "") ? f!.id : "unknown"
             job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil))
             self.refreshStatus()
+        }
+    }
+
+    // MARK: AI fill-in: items filed from the user's own notes, enriched in one run
+
+    /// "AI fill-in" for some items (the ones a note became without an agent carry `enrich: pending`): one agent run
+    /// for all of them, with the processing model — kind, steps, code refs, a clearer title. A process job (K4)
+    /// without a session; its output goes to jobs/<id>.log.
+    func enrich(_ uids: [String], project: String?) {
+        guard !uids.isEmpty else { return }
+        let job = JobWriter(type: .process, project: project, session: nil, title: T("job.title.enrich"))
+        job.setItems(uids)
+        job.step("prepare", .running)
+        let hub = AgentHub.shared
+        hub.reload()
+        hub.check(hub.order()) { statuses in
+            guard let a = statuses.first(where: { $0.state.usable }), let bin = a.bin else {
+                job.finish(.failed, error: JobError(code: "auth", message: statuses.map { "\($0.def.name): \($0.why)" }.joined(separator: "; "),
+                                                    hintKey: "main.job.hint.no_agent"))
+                return
+            }
+            job.step("prepare", .done)
+            job.step("write", .running)
+            let pa = a.def.processingArgs(env: agentEnvironment())
+            let cwd = project.flatMap { ProjectStore.shared.project(id: $0) }.flatMap { $0.isInbox ? nil : $0.path } ?? defaultWorkspace
+            let items = (readConfig()["skill_dir"] as? String).map { "\($0)/scripts/items.py" } ?? "items.py"
+            let prompt = "Use the blurt skill. These items were filed straight from the user's own notes, without an agent "
+                + "(they carry `enrich: pending`): " + uids.joined(separator: ", ") + ".\nFor each one: `\(items) get <uid>`, "
+                + "read it and look at its frames; then set the right kind (issue / idea / note / task), a clear title, and "
+                + "what that kind's lens asks for (for an issue: steps, expected / actual, code_refs found in this folder) with "
+                + "`\(items) patch <uid> --set key=VALUE … --unset enrich`. Keep the user's words in quote; don't change status, "
+                + "project or work. This is an unattended background run started by the Blurt app: don't ask questions and "
+                + "don't open the review page. Finish with one sentence."
+            let log = JobFiles.log(job.id)
+            appendLog(log, "── blurt \(nowStamp()) · AI fill-in with \(a.def.name) · model \(pa.model ?? "CLI default")\n")
+            let cmd = a.def.command(bin: bin, prompt: prompt, extra: pa.args)
+            let env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]
+            emit(["event": "enrich", "job": job.id, "items": uids, "agent": a.def.id, "model": pa.model ?? NSNull()])
+            shell(cmd, cwd: cwd, log: log, append: true, env: env) { status in
+                let tokens = a.def.tokensUsed(in: (try? String(contentsOf: log, encoding: .utf8)) ?? "")
+                job.setUsage(tokens: tokens, agent: a.def.id, model: pa.model, effort: pa.effort)
+                emit(["event": "process_usage", "job": job.id, "agent": a.def.id, "model": pa.model ?? NSNull(), "tokens": tokens ?? NSNull()])
+                job.step("write", status == 0 ? .done : .failed)
+                for s in ["transcribe", "frames", "route"] { job.step(s, .skipped) }
+                job.finish(status == 0 ? .done : .failed,
+                           error: status == 0 ? nil : JobError(code: AgentHub.shared.classify((try? String(contentsOf: log, encoding: .utf8)) ?? "")?.id ?? "unknown",
+                                                               message: T("app.agent.unfinished", a.def.name, Int(status)), hintKey: nil))
+            }
         }
     }
 

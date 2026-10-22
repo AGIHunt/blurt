@@ -970,7 +970,7 @@ final class HangingCards: NSObject {
         sub.addItem(ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(s, to: "inbox") })
         move.submenu = sub
         m.addItem(move)
-        m.addItem(ClosureMenuItem(Loc.t("project.ai_sort")) { snapper.aiSort() })
+        m.addItem(ClosureMenuItem(Loc.t("project.ai_sort")) { snapper.handToAI() })
         m.addItem(.separator())
         m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
         if cards.count > 1 {
@@ -1079,7 +1079,7 @@ final class HangingCards: NSObject {
                 for p in ProjectStore.shared.projects.prefix(8) {
                     actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ax_move", table: "Capture", p.name)) { snapper.assign(s, to: p.id); return true })
                 }
-                actions.append(NSAccessibilityCustomAction(name: Loc.t("project.ai_sort")) { snapper.aiSort(); return true })
+                actions.append(NSAccessibilityCustomAction(name: Loc.t("project.ai_sort")) { snapper.handToAI(); return true })
                 actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s); return true })
                 e.setAccessibilityCustomActions(actions)
                 return e

@@ -206,6 +206,25 @@ public struct AgentDetect: Decodable {
     public var agents: [AgentStatus]
 }
 
+/// `agents.py models ID`
+public struct AgentModels: Decodable {
+    public struct Model: Decodable, Hashable, Identifiable {
+        public var id: String
+        public var name: String
+        public var description: String
+        public var cheap: Bool
+    }
+    public struct Processing: Decodable { public var model: String?; public var effort: String? }
+    public var id: String
+    public var models: [Model]
+    public var cheapest: String?
+    public var cliDefault: String?
+    public var efforts: [String]
+    public var processing: Processing?
+
+    enum CodingKeys: String, CodingKey { case id, models, cheapest, efforts, processing, cliDefault = "cli_default" }
+}
+
 /// `agents.py command`
 public struct AgentCommand: Decodable {
     public var id: String
@@ -341,6 +360,29 @@ public final class Agents {
             return nil
         }
         set { Config.shared.set("record.agents", newValue) }
+    }
+
+    /// An agent's models (agents.py models: agents.json's list or the CLI's own cache — no network, no tokens), the
+    /// CLI's configured default when it can be read, and the processing model / effort in effect.
+    public func models(_ id: String) async throws -> AgentModels {
+        let r = try await SkillCLI.shared.run("agents.py", ["models", id], timeout: 30)
+        guard r.ok, let m = r.decode(AgentModels.self) else { throw AgentError.script(r.errorText) }
+        return m
+    }
+
+    /// record.agent_processing.<id> = {model, effort}: what organising runs use ("cheapest" / "default" / an id).
+    public func setProcessing(_ id: String, model: String?, effort: String?) {
+        var all = Config.shared["record.agent_processing"] as? [String: Any] ?? [:]
+        var o = all[id] as? [String: Any] ?? [:]
+        o["model"] = model
+        o["effort"] = effort
+        all[id] = o.isEmpty ? nil : o
+        Config.shared.set("record.agent_processing", all.isEmpty ? nil : all)
+    }
+
+    public func processingSetting(_ id: String) -> (model: String?, effort: String?) {
+        let o = (Config.shared["record.agent_processing"] as? [String: Any])?[id] as? [String: Any]
+        return (o?["model"] as? String, o?["effort"] as? String)
     }
 
     public func command(_ id: String, mode: String, prompt: String, repo: URL, vars: [String: String] = [:],

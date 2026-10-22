@@ -22,6 +22,8 @@ final class AgentsModel: ObservableObject {
     @Published var tests: [String: (ok: Bool, text: String)] = [:]
     @Published var doctor: SessionsDoctor?
     @Published var projectAgent: String = ""
+    /// Each installed agent's models (agents.py models), for "Model for organizing".
+    @Published var models: [String: AgentModels] = [:]
 
     var headless: [CoreAgent] { rows.filter(\.headless) }
     var manual: [CoreAgent] { rows.filter { !$0.headless } }
@@ -42,6 +44,22 @@ final class AgentsModel: ObservableObject {
         } catch { self.error = "\(error)" }
         doctor = await doc
         projectAgent = project?.defaultAgent ?? ""
+        for a in rows where a.headless && a.installed {
+            if let m = try? await Agents.shared.models(a.id), !m.models.isEmpty { models[a.id] = m }
+        }
+    }
+
+    /// "cheapest" (agents.json's default for organizing) | "default" (the CLI's own setting) | a model id.
+    func processingModel(_ id: String) -> String { Agents.shared.processingSetting(id).model ?? "cheapest" }
+    func processingEffort(_ id: String) -> String { Agents.shared.processingSetting(id).effort ?? "low" }
+
+    func setProcessing(_ id: String, model: String? = nil, effort: String? = nil) {
+        let cur = Agents.shared.processingSetting(id)
+        let m = model ?? cur.model, e = effort ?? cur.effort
+        // the shipped defaults (cheapest, low) are stored as nothing, so a better default later reaches everyone
+        Agents.shared.setProcessing(id, model: m == "cheapest" ? nil : m, effort: e == "low" ? nil : e)
+        emit(["event": "processing_model", "agent": id, "model": m ?? "cheapest", "effort": e ?? "low"])
+        objectWillChange.send()
     }
 
     /// record.agents = the ticked headless agents in the shown order.
@@ -245,6 +263,7 @@ struct AgentsPane: View {
                     else { Text(a.fix).font(.caption).textSelection(.enabled) }
                 }.padding(.leading, ordered ? 44 : 17)
             }
+            if ordered, a.installed, let ms = m.models[a.id] { processingRow(a, ms) }
             if a.id == "codex" && a.installed {
                 Text(TL("agents.codex_trust")).font(.caption).foregroundStyle(.tertiary).padding(.leading, ordered ? 44 : 17)
             }
@@ -257,6 +276,35 @@ struct AgentsPane: View {
         .contextMenu {
             if ordered { Button(TL("agents.move_up")) { m.moveUp(a.id) } }
         }
+    }
+
+    /// "Model for organizing": what recordings, Organize, Let AI sort and AI fill-in run with — a small model at low
+    /// effort is plenty and costs a fraction of the tokens.
+    @ViewBuilder
+    func processingRow(_ a: CoreAgent, _ ms: AgentModels) -> some View {
+        HStack(spacing: 8) {
+            Text(TL("agents.processing")).font(.caption).foregroundStyle(.secondary)
+            Picker("", selection: Binding(get: { m.processingModel(a.id) }, set: { m.setProcessing(a.id, model: $0) })) {
+                Text(ms.cheapest.map { c in TL("agents.processing.cheapest_named", ms.models.first { $0.id == c }?.name ?? c) }
+                     ?? TL("agents.processing.cheapest")).tag("cheapest")
+                Text(ms.cliDefault.map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
+                Divider()
+                ForEach(ms.models) { x in Text(x.name).tag(x.id) }
+            }
+            .labelsHidden().fixedSize().controlSize(.small)
+            .accessibilityLabel(TL("agents.processing"))
+            if !ms.efforts.isEmpty {
+                Picker("", selection: Binding(get: { m.processingEffort(a.id) }, set: { m.setProcessing(a.id, effort: $0) })) {
+                    Text(TL("agents.effort.default")).tag("default")
+                    Divider()
+                    ForEach(ms.efforts, id: \.self) { e in Text(TL("agents.effort.\(e)")).tag(e) }
+                }
+                .labelsHidden().fixedSize().controlSize(.small)
+                .accessibilityLabel(TL("agents.effort"))
+            }
+        }
+        .padding(.leading, 44)
+        .help(TL("agents.processing.help"))
     }
 
     func badge(_ s: String, _ c: Color) -> some View {

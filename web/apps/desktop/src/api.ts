@@ -203,6 +203,17 @@ export interface DispatchOpts {
   mode?: 'together' | 'parallel';
   worktree?: 'on' | 'off' | 'auto';
   dryRun?: boolean;
+  /** the agent's model (agentModels); undefined = the CLI's own setting */
+  model?: string;
+}
+
+/** `agents.py models ID` */
+export interface AgentModels {
+  id: string;
+  models: { id: string; name: string; description: string; cheap: boolean }[];
+  cheapest: string | null;
+  cli_default: string | null;
+  efforts: string[];
 }
 
 export interface AppStatus {
@@ -300,6 +311,7 @@ export const api = {
   move: (uids: string[], project: string) => invoke('items_move', { uids, project }),
   jobs: (active = false) => invoke<Job[]>('jobs_list', { active }),
   detect: () => invoke<Detect>('agents_detect'),
+  models: (agent: string) => invoke<AgentModels>('agents_models', { agent }),
   dispatch: (opts: DispatchOpts) => invoke<DispatchResult>('sessions_dispatch', { opts }),
   sessions: (all = false) => invoke<{ sessions: AgentSession[]; owned?: string[] }>('sessions_list', { all }),
   finish: (job: string, action: 'diff' | 'merge' | 'pr' | 'discard' | 'keep') => invoke<Record<string, any>>('sessions_finish', { job, action }),

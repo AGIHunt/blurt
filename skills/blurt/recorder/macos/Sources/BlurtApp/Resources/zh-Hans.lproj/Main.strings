@@ -48,6 +48,9 @@
 "app.menu.system_audio" = "同时录系统声音";
 "app.menu.updates" = "检查更新…";
 
+"app.migrate.ask" = "截图、语音默认归到 %@（沿用旧设置）还是自动分配？";
+"app.migrate.auto" = "自动分配";
+"app.migrate.keep" = "归 %@";
 "app.name" = "口喷鸡";
 
 "app.permission.detail" = "在 系统设置 → 隐私与安全性 → 录屏与系统录音 里打开「Blurt」，然后退出并重新打开口喷鸡（macOS 只在启动时读取权限）。\n\n如果已经是打开的：选中「Blurt」点「−」删掉，再重新打开口喷鸡授权一次（旧版本的授权对新版本无效）。";
@@ -197,6 +200,7 @@
 "main.list.label" = "条目";
 
 "main.menu.copy_link" = "拷贝链接";
+"main.menu.enrich" = "AI 补全";
 "main.menu.kind" = "种类";
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";

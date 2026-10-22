@@ -1,10 +1,26 @@
 /* Terminal table (P3): agent sessions, the embedded terminal, the dispatch and finish panels, Settings → Agents. */
 
 /* Shared verbs */
+"agents.effort" = "Effort";
+"agents.effort.default" = "Effort: the CLI's setting";
+"agents.effort.high" = "High effort";
+"agents.effort.low" = "Low effort";
+"agents.effort.max" = "Maximum effort";
+"agents.effort.medium" = "Medium effort";
+"agents.effort.xhigh" = "Extra-high effort";
+"agents.processing" = "Model for organizing";
+"agents.processing.cheapest" = "Cheapest";
+"agents.processing.cheapest_named" = "Cheapest (%@)";
+"agents.processing.default" = "The CLI's setting";
+"agents.processing.default_named" = "The CLI's setting (%@)";
+"agents.processing.help" = "Recordings, Organize, Let AI sort and AI fill-in run with this. A small model at low effort is plenty for organizing and uses far fewer tokens.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";
 
+"dispatch.model" = "Model";
+"dispatch.model.default" = "Default (the CLI's setting)";
+"dispatch.model.default_named" = "Default (the CLI's setting: %@)";
 "window.title" = "Sessions";
 "agent.you" = "You";
 "time.now" = "now";

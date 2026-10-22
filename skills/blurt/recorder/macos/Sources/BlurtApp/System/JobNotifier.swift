@@ -56,6 +56,8 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
         let ran = (j.ended ?? Date()).timeIntervalSince(j.started ?? j.created)
         switch (j.type, j.state) {
         case (.process, .done), (.route, .done):
+            // a capture filed from its note (no agent) already said "Filed to …" in the island
+            if let u = j.usage, u.agent == nil { MenuGlyph.shared.hop(); return }
             let n = j.items.isEmpty ? nil : j.items.count
             let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps") : T("notify.done.recording") } ?? T("notify.done.generic")
             let text = n.map { "\(what) · \(TP("app.menu.to_review", $0))" } ?? what

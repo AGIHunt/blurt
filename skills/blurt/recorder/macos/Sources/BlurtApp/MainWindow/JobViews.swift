@@ -250,6 +250,16 @@ final class JobDetailView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// "Used about 24K tokens · gpt-6-luna" / "用了约 2.4万 token · gpt-6-luna"; "No AI · 0 tokens" for a capture filed
+    /// from its note.
+    static func usageText(_ u: (tokens: Int?, agent: String?, model: String?, effort: String?)) -> String {
+        guard let agent = u.agent else { return T("job.usage.none") }
+        let model = u.model ?? T("job.usage.cli_default")
+        guard let n = u.tokens else { return T("job.usage.unknown", AgentNames.name(agent)) + " · " + model }
+        let compact = n.formatted(.number.notation(.compactName).precision(.significantDigits(1...2)).locale(Loc.locale))
+        return T("job.usage.tokens", compact) + " · " + model
+    }
+
     func show(_ j: Job, projectName: String?) {
         let sameJob = job?.id == j.id
         job = j
@@ -259,6 +269,7 @@ final class JobDetailView: NSView {
         parts.append(Loc.relative(j.started ?? j.created))
         if let a = j.agent { parts.append(T("session.\(a.status.rawValue)")) }
         if let b = j.agent?.branch { parts.append(b) }
+        if let u = j.usage { parts.append(JobDetailView.usageText(u)) }
         sub.stringValue = parts.joined(separator: "  ·  ")
         steps.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let ids = j.steps.isEmpty ? (jobSteps[j.type] ?? []).map { JobStep(id: $0, state: .pending) } : j.steps

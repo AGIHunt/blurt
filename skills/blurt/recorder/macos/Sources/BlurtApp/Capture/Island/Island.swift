@@ -110,6 +110,28 @@ final class Island: NSObject, IslandHosting {
         var art: NSView?
         var seconds: Double = 2.4
         var since: CFTimeInterval = 0
+        /// A project's key badge before the text ("Filed to …").
+        var badge: (text: String, color: NSColor)?
+        /// A question: the text wraps, two answers under it, and it stays until one is chosen (also over the open
+        /// island). `action` is the first answer.
+        var secondTitle: String?
+        var second: (() -> Void)?
+        var isQuestion: Bool { secondTitle != nil }
+
+        init(text: String, actionTitle: String?, action: (() -> Void)?) {
+            self.text = text
+            self.actionTitle = actionTitle
+            self.action = action
+        }
+    }
+
+    /// A question in the island that stays until answered (two answers, the first is the suggested one).
+    func ask(_ text: String, _ first: String, _ a: @escaping () -> Void, _ second: String, _ b: @escaping () -> Void) {
+        var t = Toast(text: text, actionTitle: first, action: a)
+        t.secondTitle = second
+        t.second = b
+        t.seconds = .infinity
+        toast(t)
     }
 
     final class Hatch {
