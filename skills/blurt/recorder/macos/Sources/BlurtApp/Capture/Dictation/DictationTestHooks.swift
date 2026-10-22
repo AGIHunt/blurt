@@ -44,6 +44,8 @@ extension App {
                 case "item": DictationHistoryWindow.shared.makeItem(a.count > 1 ? a[1] : nil)
                 case "query": DictationHistoryWindow.shared.setQuery(a.count > 1 ? a[1] : "")
                 case "delete": DictationHistoryWindow.shared.delete(a.count > 1 ? a[1] : nil)
+                case "select": DictationHistoryWindow.shared.testSelect((a.count > 1 ? a[1] : "").split(separator: ",").map(String.init))
+                case "key": DictationHistoryWindow.shared.testKey(a.count > 1 ? a[1] : "")       // delete | cmd+c | cmd+z | cmd+f | esc
                 default: DictationHistoryWindow.shared.show()
                 }
             }

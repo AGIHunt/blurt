@@ -634,6 +634,7 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
  "progress": 0.4 | null,
  "created": "…", "started": "…", "ended": null, "updated": "…",
  "events_offset": 0,                                  // owner 已经并进来的 events.jsonl 字节数
+ "app_pid": 4242,                                     // owner app 时：写它的 App 进程；下次启动发现进程已不在、任务还在跑 → 标为 failed（hint main.job.hint.interrupted）
  "error": null | {"code": "auth|quota|network|model|skill|tmux|git|conflict|io|unknown", "message": "…", "hint_key": "…"|null},
  "agent": { … }                                       // 只有 type agent，见 K5
 }

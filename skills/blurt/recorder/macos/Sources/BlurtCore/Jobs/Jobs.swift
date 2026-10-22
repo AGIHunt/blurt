@@ -371,7 +371,7 @@ public final class JobWriter {
                "title": title ?? NSNull(), "items": [String](), "captures": [Int](),
                "steps": steps.map { ["id": $0, "state": "pending", "started": NSNull(), "ended": NSNull()] as [String: Any] },
                "progress": NSNull(), "created": now, "started": now, "ended": NSNull(), "updated": now,
-               "events_offset": 0, "error": NSNull()]
+               "events_offset": 0, "error": NSNull(), "app_pid": Int(getpid())]   // who to ask whether it is still alive
         save()
     }
 

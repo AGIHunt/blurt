@@ -123,6 +123,38 @@ class Registry(TmpCase):
         ok("items.py", "add", "--project", "inbox", "--json", '{"kind":"note","title":"loose"}', env=self.e.env())
         self.assertEqual(ok("projects.py", "list", env=self.e.env())["inbox"]["unassigned"], 1)
 
+    def test_reopen_a_moved_or_removed_folder(self):
+        """A project folder renamed on disk, opened again: the same project (its items, key, settings) at the new
+        path — not a second, empty one. A folder removed from Blurt earlier keeps its store's id and key."""
+        a = self.tmp / "billing-api"
+        a.mkdir()
+        pa = ok("projects.py", "add", a, "--description", "invoices", env=self.e.env())["project"]
+        ok("items.py", "add", "--project", pa["id"], "--json", '{"kind":"issue","title":"first"}', env=self.e.env())
+        b = self.tmp / "billing-api-v2"
+        a.rename(b)
+        self.assertFalse(ok("projects.py", "list", env=self.e.env())["projects"][0]["exists"])
+        out = ok("projects.py", "add", b, env=self.e.env())
+        self.assertFalse(out["created"])
+        self.assertEqual(out["relocated"], str(a.resolve()))
+        self.assertEqual((out["project"]["id"], out["project"]["key"], out["project"]["description"], out["project"]["exists"]),
+                         (pa["id"], "BA", "invoices", True))
+        rows = ok("projects.py", "list", env=self.e.env())["projects"]
+        self.assertEqual([(r["id"], r["path"], r["open_items"]) for r in rows], [(pa["id"], str(b.resolve()), 1)])
+        self.assertEqual(ok("items.py", "list", "--project", pa["id"], env=self.e.env())["items"][0]["title"], "first")
+        # removed, then opened again (at yet another path): the store's id and key come back with it
+        ok("projects.py", "remove", pa["id"], env=self.e.env())
+        c = self.tmp / "billing"
+        b.rename(c)
+        again = ok("projects.py", "add", c, env=self.e.env())
+        self.assertTrue(again["created"])
+        self.assertEqual((again["project"]["id"], again["project"]["key"], again["project"]["open_items"]), (pa["id"], "BA", 1))
+        # a copy next to a folder that still exists stays a project of its own
+        d = self.tmp / "billing-copy"
+        import shutil
+        shutil.copytree(c, d)
+        copy = ok("projects.py", "add", d, env=self.e.env())["project"]
+        self.assertNotEqual(copy["id"], pa["id"])
+
     def test_migrate_from_v06_config(self):
         a, b = make_repo(self.tmp / "one"), make_repo(self.tmp / "two")
         cfg = {"record": {"install_app": False, "workspaces": [str(a), str(b), str(self.tmp / "gone")],

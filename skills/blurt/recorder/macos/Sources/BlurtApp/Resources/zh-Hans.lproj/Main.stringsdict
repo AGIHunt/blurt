@@ -153,7 +153,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>开 agent 会话处理这 %ld 条</string>
+			<string>在口喷鸡里开始这 %ld 条</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>

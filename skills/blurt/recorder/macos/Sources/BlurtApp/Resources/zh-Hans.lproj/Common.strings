@@ -104,4 +104,4 @@
 "action.retry" = "重试";
 "action.open" = "打开";
 "action.reveal_in_finder" = "在访达中显示";
-"action.copy_path" = "拷贝路径";
+"action.copy_path" = "复制路径";

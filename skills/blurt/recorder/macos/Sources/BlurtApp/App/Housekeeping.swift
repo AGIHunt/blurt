@@ -14,8 +14,10 @@ enum Housekeeping {
 
     static func atLaunch() {
         guard ProcessInfo.processInfo.environment["BLURT_NO_HOUSEKEEPING"] == nil else { return }
+        let launched = Date()
         Task.detached(priority: .utility) {
             let r = ScriptRunner.shared
+            await finishInterruptedJobs(launchedAt: launched)
             for (script, args) in [("projects.py", ["migrate"]), ("items.py", ["migrate", "--all"]), ("jobs.py", ["gc"])] {
                 guard (try? r.scriptURL(script)) != nil else { continue }
                 do { _ = try await r.run(script, args, timeout: 600) } catch { NSLog("blurt: \(script) \(args.joined(separator: " ")): \(error)") }
@@ -66,6 +68,46 @@ enum Housekeeping {
         guard monitor == nil, (try? ScriptRunner.shared.scriptURL("sessions.py")) != nil else { return }
         // --parent: it ends with us, even when we don't get to atQuit (a crash, a kill, an update)
         monitor = try? ScriptRunner.shared.spawn("sessions.py", ["monitor", "--parent", "\(getpid())"]) { _ in }
+    }
+
+    /// Jobs the app owned (a recording, organizing, AI fill-in…) that were still running when it quit or crashed kept
+    /// saying "running" — a spinner in the main window and the menu bar for good. They are marked failed here, with
+    /// the step that was running failed and the rest skipped, so the job page explains it and offers Retry. A job is
+    /// the previous app's when the process that wrote it is gone (app_pid), or, written by an older build without
+    /// one, when it is older than this launch. The app owns these files (K4), so it rewrites them; agent sessions are
+    /// sessions.py's and are left alone.
+    static func finishInterruptedJobs(launchedAt: Date) async {
+        let stale: [String] = await MainActor.run {
+            JobStore.shared.rescan()
+            return JobStore.shared.active.filter { j in
+                guard j.type != .agent, j.raw["owner"] as? String == "app" else { return false }
+                if let pid = (j.raw["app_pid"] as? NSNumber)?.int32Value { return pid != getpid() && kill(pid, 0) != 0 && errno == ESRCH }
+                return j.created < launchedAt.addingTimeInterval(-5)
+            }.map(\.id)
+        }
+        let now = JobFold.now()
+        for id in stale {
+            let url = JobFiles.json(id)
+            guard let d = try? Data(contentsOf: url), var doc = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+            doc["state"] = "failed"
+            doc["ended"] = now
+            doc["updated"] = now
+            doc["error"] = ["code": "unknown", "message": "Blurt quit before this job finished", "hint_key": "main.job.hint.interrupted"]
+            doc["steps"] = (doc["steps"] as? [[String: Any]] ?? []).map { st -> [String: Any] in
+                var st = st
+                switch st["state"] as? String {
+                case "running": st["state"] = "failed"; st["ended"] = now
+                case "pending": st["state"] = "skipped"
+                default: break
+                }
+                return st
+            }
+            if let out = try? JSONSerialization.data(withJSONObject: doc, options: [.sortedKeys]) { try? out.write(to: url, options: .atomic) }
+        }
+        if !stale.isEmpty {
+            await MainActor.run { JobStore.shared.rescan() }
+            emit(["event": "jobs_interrupted", "jobs": stale])
+        }
     }
 
     static func atQuit() {

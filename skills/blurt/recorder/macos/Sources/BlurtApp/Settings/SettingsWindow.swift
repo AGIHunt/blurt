@@ -87,6 +87,7 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                 if window == nil { build() }
                 let want = pane.flatMap(SettingsPane.init(rawValue:)) ?? SettingsPane(rawValue: Config.shared["app.settings_pane"] as? String ?? "") ?? .general
                 if let i = SettingsPane.allCases.firstIndex(of: want) { tabs?.selectedTabViewItemIndex = i }
+                MainMenu.ensureEditKeys()       // ⌘V into its fields while the main window has never been open
                 activateApp()
                 if window?.isVisible != true { window?.center() }
                 window?.makeKeyAndOrderFront(nil)

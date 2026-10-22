@@ -13,6 +13,8 @@ final class DictationHistoryModel: ObservableObject {
     @Published var showRaw: Set<String> = []
     @Published var working: Set<String> = []
     @Published var error: String?
+    /// The selected rows (↑↓, ⇧/⌘-click): ⌘C copies them, ⌫ deletes them, ↩ copies — like the main window's list.
+    @Published var selection: Set<String> = []
 
     func reload() { entries = DictationHistory.shared.load() }
 
@@ -44,10 +46,36 @@ final class DictationHistoryModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in if self?.copied == id { self?.copied = nil } }
     }
 
-    func delete(_ e: DictationEntry) {
-        DictationHistory.shared.delete([e.id])
+    func delete(_ e: DictationEntry, undo: UndoManager? = nil) { delete([e], undo: undo) }
+
+    /// ⌘Z puts them back (the text and the item link; a recording kept with them is gone).
+    func delete(_ es: [DictationEntry], undo: UndoManager?) {
+        guard !es.isEmpty else { return }
+        let undo = DictationHistoryWindow.shared.undoManager ?? undo     // the window's: what ⌘Z in its Edit menu reaches
+        DictationHistory.shared.delete(es.map(\.id))
+        selection.subtract(es.map(\.id))
         reload()
-        emit(["event": "dictation_history", "action": "delete", "id": e.id])
+        undo?.registerUndo(withTarget: self) { m in
+            for e in es.reversed() {
+                var back = e
+                back.audio = nil
+                DictationHistory.shared.append(back)
+                if let i = e.item, let u = e.itemUID { DictationHistory.shared.markItem(e.id, item: i, uid: u) }
+            }
+            m.reload()
+            m.selection = Set(es.map(\.id))
+        }
+        undo?.setActionName(T("dictation.history.delete"))
+        for e in es { emit(["event": "dictation_history", "action": "delete", "id": e.id]) }
+    }
+
+    var selected: [DictationEntry] { filtered.filter { selection.contains($0.id) } }
+
+    /// The selection's text, newest first, one per paragraph.
+    func copySelection() {
+        let es = selected
+        guard !es.isEmpty else { return }
+        copy(es.map { showRaw.contains($0.id) ? $0.raw : $0.text }.joined(separator: "\n\n"))
     }
 
     /// dictation.py item ID --project <the current project, else Unassigned>
@@ -99,6 +127,7 @@ final class DictationHistoryWindow: NSObject, NSWindowDelegate {
             model = m
         }
         model?.reload()
+        MainMenu.ensureEditKeys()
         activateApp()
         if window?.isVisible != true { window?.center() }
         window?.makeKeyAndOrderFront(nil)
@@ -111,8 +140,59 @@ final class DictationHistoryWindow: NSObject, NSWindowDelegate {
     }
 
     var windowNumber: Int? { window?.isVisible == true ? window?.windowNumber : nil }
+    var undoManager: UndoManager? { window?.undoManager }
 
     @MainActor func setQuery(_ q: String) { model?.query = q }
+    // tests (BLURT_TEST_COMMANDS: `dictation history select ID,… | key K`)
+    @MainActor func testSelect(_ ids: [String]) {
+        model?.selection = Set(ids)
+        emit(["event": "dictation_history", "action": "select", "selected": Array(model?.selection ?? [])])
+    }
+
+    /// A real key event through the app's queue to this window (key equivalents need it key): delete, cmd+c, cmd+z,
+    /// cmd+f, esc. Answers with the state afterwards ("dictation_history" action "key").
+    @MainActor func testKey(_ k: String) {
+        guard let w = window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        w.makeKeyAndOrderFront(nil)
+        if k != "cmd+f", k != "esc", let table = w.contentView.flatMap(Self.firstTable) { w.makeFirstResponder(table) }
+        let (code, chars, mods): (UInt16, String, NSEvent.ModifierFlags) = {
+            switch k {
+            case "delete": return (51, "\u{7f}", [])
+            case "cmd+c": return (8, "c", .command)
+            case "cmd+z": return (6, "z", .command)
+            case "cmd+f": return (3, "f", .command)
+            default: return (53, "\u{1b}", [])
+            }
+        }()
+        guard let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+                                       windowNumber: w.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                       isARepeat: false, keyCode: code) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            // ⌘Z / ⌘C are Edit-menu key equivalents, which only fire while the app is active — a test app launched in
+            // the background isn't: send their actions up the window's responder chain, as the menu would
+            if k == "cmd+z" || k == "cmd+c" {
+                _ = (w.firstResponder ?? w).tryToPerform(k == "cmd+z" ? Selector(("undo:")) : #selector(NSText.copy(_:)), with: nil)
+            } else {
+                NSApp.postEvent(e, atStart: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                MainActor.assumeIsolated {
+                    emit(["event": "dictation_history", "action": "key", "key": k, "entries": self?.model?.entries.count ?? -1,
+                          "selected": Array(self?.model?.selection ?? []), "query": self?.model?.query ?? "",
+                          "responder": w.firstResponder.map { "\(type(of: $0))" } ?? "none", "menu": NSApp.mainMenu?.items.count ?? 0,
+                          "can_undo": w.undoManager?.canUndo ?? false, "can_redo": w.undoManager?.canRedo ?? false])
+                }
+            }
+        }
+    }
+
+    private static func firstTable(_ v: NSView) -> NSView? {
+        if v is NSTableView { return v }
+        for s in v.subviews { if let t = firstTable(s) { return t } }
+        return nil
+    }
+
     @MainActor func toggleRaw(_ id: String?) {
         guard let m = model else { return }
         let target = id ?? m.entries.first?.id
@@ -135,12 +215,16 @@ private func glyph(_ i: BlurtIcon, _ size: CGFloat = 12) -> Image {
 
 struct DictationHistoryView: View {
     @ObservedObject var m: DictationHistoryModel
+    @Environment(\.undoManager) private var undo
+    @FocusState private var searching: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 glyph(.search).foregroundStyle(.secondary)
                 TextField(T("dictation.history.search"), text: $m.query).textFieldStyle(.plain)
+                    .focused($searching)
+                    .onExitCommand { if m.query.isEmpty { searching = false } else { m.query = "" } }   // Esc
                 if !m.query.isEmpty {
                     Button { m.query = "" } label: { glyph(.x, 10) }.buttonStyle(.borderless).help(T("dictation.history.clear_search"))
                 }
@@ -161,17 +245,25 @@ struct DictationHistoryView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
+                List(selection: $m.selection) {
                     ForEach(m.days, id: \.day) { group in
                         Section(header: Text(dayTitle(group.day))) {
-                            ForEach(group.rows) { e in row(e) }
+                            ForEach(group.rows) { e in row(e).tag(e.id) }
                         }
                     }
                 }
                 .listStyle(.inset)
+                .onDeleteCommand { m.delete(m.selected, undo: undo) }        // ⌫
+                .onCopyCommand {                                             // ⌘C
+                    m.copySelection()
+                    return []
+                }
             }
         }
         .frame(minWidth: 520, minHeight: 360)
+        .background {   // ⌘F: the search field, as in the main window
+            Button("") { searching = true }.keyboardShortcut("f", modifiers: .command).hidden()
+        }
         .onAppear { m.reload() }
     }
 
@@ -214,7 +306,7 @@ struct DictationHistoryView: View {
                     Button(e.item == nil ? T("dictation.history.make_item") : T("dictation.history.item_exists", e.item ?? "")) { m.makeItem(e) }
                         .disabled(e.item != nil || m.working.contains(e.id))
                     Divider()
-                    Button(T("dictation.history.delete"), role: .destructive) { m.delete(e) }
+                    Button(T("dictation.history.delete"), role: .destructive) { m.delete(e, undo: undo) }
                 } label: { glyph(.more) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help(T("dictation.history.more")).accessibilityLabel(T("dictation.history.more"))
@@ -228,7 +320,10 @@ struct DictationHistoryView: View {
             Button(T("dictation.history.copy_raw")) { m.copy(e.raw) }
             Button(T("dictation.history.make_item")) { m.makeItem(e) }.disabled(e.item != nil)
             Divider()
-            Button(T("dictation.history.delete"), role: .destructive) { m.delete(e) }
+            Button(T("dictation.history.delete"), role: .destructive) {
+                // a right-click on a selected row acts on the whole selection, like Finder and Mail
+                m.delete(m.selection.contains(e.id) ? m.selected : [e], undo: undo)
+            }
         }
     }
 

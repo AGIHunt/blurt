@@ -142,6 +142,8 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.place.all"), "square.stack", "⌘4") { c.go(.all) },
             e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
             e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
+            Entry(title: T("dictation.history.menu"), detail: "", image: BlurtIcon.keyboard.symbolImage(pointSize: 14), keys: "⌥⌘D",
+                  enabled: true) { c.mDictationHistory() },
             e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() },
         ]
         // K3: what the selection can do from its state (hand off is above), with the hint as the detail
@@ -224,10 +226,16 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         }
     }
 
+    /// The next enabled row, wrapping around. Nothing enabled (e.g. "copy" with nothing selected): stays put — the
+    /// old loop never ended there, since no row was selected to come back to.
     func step(_ d: Int) {
-        guard !entries.isEmpty else { return }
-        var k = table.selectedRow
-        repeat { k = (k + d + entries.count) % entries.count } while !entries[k].enabled && k != table.selectedRow
+        let n = entries.count
+        guard n > 0, entries.contains(where: \.enabled) else { return }
+        var k = table.selectedRow < 0 ? (d > 0 ? -1 : n) : table.selectedRow
+        for _ in 0..<n {
+            k = ((k + d) % n + n) % n
+            if entries[k].enabled { break }
+        }
         table.selectRowIndexes([k], byExtendingSelection: false)
         table.scrollRowToVisible(k)
     }

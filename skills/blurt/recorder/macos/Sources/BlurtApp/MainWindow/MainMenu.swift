@@ -97,6 +97,33 @@ enum MainMenu {
     }
 }
 
+extension MainMenu {
+    /// While only a small window of ours is open (Dictation History, Settings) the app is a menu-bar app without a
+    /// main menu — and without one ⌘C / ⌘V / ⌘A / ⌘Z / ⌘W do nothing, in its search field too. This gives it the
+    /// Edit keys (the menu bar itself stays hidden); the main window replaces it with the full menu when it opens.
+    static func ensureEditKeys() {
+        if let m = NSApp.mainMenu, m.items.contains(where: { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true }) { return }
+        func item(_ t: String, _ sel: Selector, _ key: String, _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+            let i = NSMenuItem(title: t, action: sel, keyEquivalent: key)
+            i.keyEquivalentModifierMask = mods
+            return i
+        }
+        let edit = NSMenu(title: T("menu.edit"))
+        for i in [item(T("menu.undo"), Selector(("undo:")), "z"), item(T("menu.redo"), Selector(("redo:")), "z", [.command, .shift]), .separator(),
+                  item(T("menu.cut"), #selector(NSText.cut(_:)), "x"), item(T("menu.copy"), #selector(NSText.copy(_:)), "c"),
+                  item(T("menu.paste"), #selector(NSText.paste(_:)), "v"), item(T("menu.select_all"), #selector(NSText.selectAll(_:)), "a"),
+                  .separator(), item(T("menu.close"), #selector(NSWindow.performClose(_:)), "w")] { edit.addItem(i) }
+        let main = NSMenu()
+        let app = NSMenuItem(title: "Blurt", action: nil, keyEquivalent: "")
+        app.submenu = NSMenu(title: "Blurt")
+        main.addItem(app)
+        let e = NSMenuItem(title: edit.title, action: nil, keyEquivalent: "")
+        e.submenu = edit
+        main.addItem(e)
+        NSApp.mainMenu = main
+    }
+}
+
 /// Shows a single-key equivalent next to a menu-bar item without letting the menu bar act on it: a key equivalent
 /// without ⌘ would also fire while typing in the search field or the detail. MainWindowController.validateMenuItem
 /// disables these items while a key press is being matched (isKeyMatch), so the key reaches the list's keyDown —
@@ -134,7 +161,7 @@ enum ShortcutsSheet {
             ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("main.cmd.copy_instruction")),
             ("S", T("main.keys.state")), ("A", StateMenu.title("keep")), ("D", StateMenu.title("done")), ("R", T("main.keys.back")),
             ("W", StateMenu.title("wontfix")), ("X  ⌫", StateMenu.title("discard")),
-            ("E", T("main.menu.rename")), ("1 2 3 4", T("main.keys.kind")),
+            ("E", T("main.menu.rename")), ("1 2 3 4", T("main.keys.kind")), ("⌘Z  ⇧⌘Z", T("main.keys.undo")),
             (T("main.keys.space"), "Quick Look"),
             ("⌘1 … ⌘4", T("main.keys.places")), ("⌘5 … ⌘9", T("main.keys.projects")),
             ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")), ("?", T("main.keys.this")),

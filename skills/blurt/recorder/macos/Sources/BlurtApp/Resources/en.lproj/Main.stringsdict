@@ -173,9 +173,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Start Agent Session for %ld Item</string>
+			<string>Start %ld Item in Blurt</string>
 			<key>other</key>
-			<string>Start Agent Session for %ld Items</string>
+			<string>Start %ld Items in Blurt</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>

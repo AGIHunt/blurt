@@ -221,6 +221,28 @@ enum SelfTests {
             if parts[0] == "mainstate" {
                 if arg == "back" { c.act(key: "r") } else { c.apply(arg, to: c.list.selectedItems) }
             } else { c.move(uids: c.list.selectedItems.map(\.uid), to: arg) }
+        case "mainundo", "mainredo":    // ⌘Z / ⇧⌘Z in the main window (the state actions register their undo)
+            let um = MainWindowController.shared.window?.undoManager
+            if parts[0] == "mainundo" { if um?.canUndo == true { um?.undo() } } else if um?.canRedo == true { um?.redo() }
+            out(["can_undo": um?.canUndo ?? false, "can_redo": um?.canRedo ?? false,
+                 "undo_title": um?.undoMenuItemTitle ?? "", "redo_title": um?.redoMenuItemTitle ?? ""])
+        case "mainpalette":             // mainpalette [QUERY | down | up | close]: ⌘K, typing, ↓ / ↑ — the rows after it
+            let pal = MainWindowController.shared.palette
+            switch arg {
+            case "down": pal.step(1)
+            case "up": pal.step(-1)
+            case "close": pal.close()
+            default:
+                if !pal.isOpen { pal.open() }
+                pal.field.stringValue = arg
+                pal.refresh()
+            }
+            out(["open": pal.isOpen, "selected": pal.table.selectedRow,
+                 "rows": pal.entries.prefix(12).map { "\($0.title)\($0.enabled ? "" : " (off)")" }, "count": pal.entries.count])
+        case "maindrag":                // maindrag ROW: what dragging that row out carries (Finder, Terminal, a project)
+            let c = MainWindowController.shared
+            let w = Int(arg).flatMap { c.list.tableView(c.list.table, pasteboardWriterForRow: $0) } as? NSPasteboardItem
+            out(["types": w?.types.map(\.rawValue) ?? [], "file": w?.string(forType: .fileURL) ?? NSNull()])
         case "mainringclick":           // mainringclick ROW: a click on that row's state ring (selects it, opens the state menu)
             let c = MainWindowController.shared
             let b = Int(arg).flatMap { c.list.ringView(row: $0) } as? NSButton
@@ -301,6 +323,18 @@ enum SelfTests {
             c.model.text = ""
             c.model.reload()
             out(["ms": res])
+        case "perfscroll":              // perfscroll [STEP]: page through the whole list, drawing each screenful
+            let c = MainWindowController.shared
+            let step = max(1, Int(arg) ?? 30)
+            var worst = 0.0, total = 0.0, n = 0
+            for r in stride(from: 0, to: c.model.rowCount, by: step) {
+                let t0 = DispatchTime.now().uptimeNanoseconds
+                c.list.table.scrollRowToVisible(r)
+                c.list.table.displayIfNeeded()
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+                worst = max(worst, ms); total += ms; n += 1
+            }
+            out(["rows": c.model.rowCount, "steps": n, "avg_ms": n > 0 ? total / Double(n) : 0, "worst_ms": worst])
         case "perms":
             let p = Permissions()
             out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue,

@@ -16,6 +16,8 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     private let worktree = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let keyNote = NSTextField(labelWithString: "")
     private let save = NSButton()
+    /// projects.py set refuses a new key once the store has items (their ids carry it): the field is read-only then.
+    private let keyLocked: Bool
 
     static func show(_ p: Project, on window: NSWindow, onSave: @escaping ([String: Any]) -> Void) {
         let s = ProjectSettingsSheet(p, onSave: onSave)
@@ -27,6 +29,8 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     private init(_ p: Project, onSave: @escaping ([String: Any]) -> Void) {
         project = p
         self.onSave = onSave
+        keyLocked = ((try? FileManager.default.contentsOfDirectory(atPath: p.store.appendingPathComponent("items").path)) ?? [])
+            .contains { $0.hasSuffix(".md") && !$0.hasPrefix(".") }
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 480, height: 360), styleMask: [.titled, .docModalWindow], backing: .buffered, defer: true)
         super.init()
         let title = NSTextField(labelWithString: T("main.project.settings.title", p.name))
@@ -37,14 +41,18 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         path.lineBreakMode = .byTruncatingMiddle
 
         name.stringValue = p.name
+        name.delegate = self                // an emptied name turns Save off
         key.stringValue = p.key
         key.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         key.delegate = self
         key.placeholderString = "BA"
+        key.isEditable = !keyLocked
+        key.isSelectable = true
+        if keyLocked { key.textColor = .secondaryLabelColor; key.drawsBackground = false; key.isBezeled = false }
         keyNote.font = .systemFont(ofSize: 11)
         keyNote.textColor = .secondaryLabelColor
         keyNote.stringValue = T("main.project.key.note", p.key)
-       desc.stringValue = p.description
+        desc.stringValue = p.description
         desc.placeholderString = T("main.project.description.placeholder")
         desc.usesSingleLineMode = false
         desc.cell?.wraps = true
@@ -130,9 +138,10 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     private func validate() {
         let up = key.stringValue.uppercased()
         if up != key.stringValue { key.stringValue = up }
-        save.isEnabled = keyValid && !name.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
-        keyNote.stringValue = keyValid ? T("main.project.key.note", key.stringValue) : T("main.project.key.invalid")
-        keyNote.textColor = keyValid ? .secondaryLabelColor : .systemRed
+        save.isEnabled = (keyLocked || keyValid) && !name.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
+        keyNote.stringValue = keyLocked ? T("main.project.key.locked", project.key)
+            : keyValid ? T("main.project.key.note", key.stringValue) : T("main.project.key.invalid")
+        keyNote.textColor = keyLocked || keyValid ? .secondaryLabelColor : .systemRed
     }
 
     @objc func cancelTapped() { panel.sheetParent?.endSheet(panel) }
@@ -141,7 +150,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         var patch: [String: Any] = [:]
         let n = name.stringValue.trimmingCharacters(in: .whitespaces)
         if n != project.name { patch["name"] = n }
-        if key.stringValue != project.key { patch["key"] = key.stringValue }
+        if !keyLocked, key.stringValue != project.key { patch["key"] = key.stringValue }
         if desc.stringValue != project.description { patch["description"] = desc.stringValue }
         let a = agent.selectedItem?.representedObject as? String
         if a != project.defaultAgent { patch["default_agent"] = a ?? NSNull() }

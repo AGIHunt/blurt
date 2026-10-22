@@ -222,6 +222,7 @@ final class MainModel {
         let t0 = DispatchTime.now().uptimeNanoseconds
         pages.removeAll()
         uids = (try? reader?.uids(query)) ?? []
+        rowByUID = nil
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         reloadJobs()
         onReload?()
@@ -244,7 +245,13 @@ final class MainModel {
         return pages[p]?[row % pageSize]
     }
 
-    func row(of uid: String) -> Int? { uids.firstIndex(of: uid) }
+    /// uid → row, built on first use after a reload: keeping a big selection (⌘A on 20k rows) across a reload looks
+    /// up every selected uid, which was quadratic with firstIndex.
+    private var rowByUID: [String: Int]?
+    func row(of uid: String) -> Int? {
+        if rowByUID == nil { rowByUID = Dictionary(uids.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a }) }
+        return rowByUID?[uid]
+    }
 
     func project(id: String) -> ProjectEntry? { projects.first { $0.id == id } }
     func sessionRow(id: String) -> SessionRow? { (try? reader?.session(id: id)) ?? nil }
