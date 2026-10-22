@@ -1,0 +1,232 @@
+{
+  "schema": 2,
+  "session": "20261021-101500",
+  "source_video": "recording.mp4",
+  "language": "zh",
+  "title": "个人中心和登录页走查",
+  "digest": "## 总览\n- 头像上传 500（已修）\n- toast 叠加（修复中）\n- 命令面板模糊搜索\n- 验证码倒计时",
+  "reviewed": false,
+  "agent_at": 1792556200.0,
+  "items": [
+    {
+      "id": "I-001",
+      "uid": "01KAQ6N2W8C3D4E5F6G7H8J9KM",
+      "kind": "issue",
+      "title": "头像上传返回 500",
+      "quote": "上传头像直接报 500。",
+      "time": {
+        "start": 0.1,
+        "end": 1.4
+      },
+      "frames": [
+        {
+          "path": "frames/I-001-1.jpg",
+          "t": 0.9,
+          "caption": "上传后的报错"
+        },
+        {
+          "path": "frames/I-001-2.jpg",
+          "t": 1.2,
+          "caption": "Network 面板：POST /avatar 500"
+        }
+      ],
+      "clip": "clips/I-001.mp4",
+      "tags": [
+        "个人中心"
+      ],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "confirmed",
+      "exported": {},
+      "module": "profile",
+      "severity": "high",
+      "type": "bug",
+      "actual": "POST /api/avatar 返回 500",
+      "expected": "上传成功并刷新头像",
+      "steps": [
+        "打开个人中心",
+        "上传 PNG 头像"
+      ],
+      "code_refs": [
+        "api/avatar.py:88"
+      ],
+      "fix": {
+        "state": "fixed",
+        "agent": "claude",
+        "run_id": "r-20261021-101500-ab12",
+        "commit": "a1c3e5f",
+        "pr": null,
+        "note": "multipart 边界解析错误",
+        "at": 1792560000.0
+      },
+      "fix_history": [
+        {
+          "state": "fixing",
+          "agent": "claude",
+          "run_id": "r-20261021-101500-ab12",
+          "commit": null,
+          "pr": null,
+          "note": "",
+          "at": 1792559400.0
+        }
+      ],
+      "_user": {
+        "status": 1792556500.0
+      }
+    },
+    {
+      "id": "I-002",
+      "uid": "01KAQ6N2W8C3D4E5F6G7H8J9KN",
+      "kind": "issue",
+      "title": "保存后 toast 叠加三个",
+      "quote": "保存以后 toast 叠了三个。",
+      "time": {
+        "start": 1.5,
+        "end": 2.8
+      },
+      "frames": [
+        {
+          "path": "frames/I-002-1.jpg",
+          "t": 2.0
+        }
+      ],
+      "tags": [],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "confirmed",
+      "exported": {},
+      "module": "ui",
+      "severity": "medium",
+      "actual": "连续保存出现多个 toast",
+      "expected": "只保留最新一个",
+      "fix": {
+        "state": "fixing",
+        "agent": "codex",
+        "run_id": "r-20261021-110000-cd34",
+        "commit": null,
+        "pr": null,
+        "note": "",
+        "at": 1792561000.0
+      }
+    },
+    {
+      "id": "I-003",
+      "uid": "01KAQ6N2W8C3D4E5F6G7H8J9KP",
+      "kind": "idea",
+      "title": "命令面板支持模糊搜索",
+      "quote": "命令面板要能模糊搜索。",
+      "time": {
+        "start": 2.9,
+        "end": 4.0
+      },
+      "frames": [
+        {
+          "path": "frames/I-003-1.jpg",
+          "t": 3.3
+        }
+      ],
+      "tags": [
+        "效率"
+      ],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "draft",
+      "exported": {},
+      "why": "命令多了以后记不住全名",
+      "next": "试 fzf 风格的打分"
+    },
+    {
+      "id": "I-004",
+      "uid": "01KAQ6N2W8C3D4E5F6G7H8J9KQ",
+      "kind": "task",
+      "title": "整理埋点文档",
+      "quote": "埋点文档回头整理一下。",
+      "time": {
+        "start": 4.1,
+        "end": 5.0
+      },
+      "frames": [
+        {
+          "path": "frames/I-004-1.jpg",
+          "t": 4.1
+        }
+      ],
+      "tags": [],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "draft",
+      "exported": {},
+      "fix": {
+        "state": "wontfix",
+        "agent": "human",
+        "run_id": null,
+        "commit": null,
+        "pr": null,
+        "note": "文档迁到 Notion 了",
+        "at": 1792562000.0
+      }
+    },
+    {
+      "id": "I-005",
+      "uid": "01KAQ6N2W8C3D4E5F6G7H8J9KR",
+      "kind": "issue",
+      "title": "登录页验证码倒计时不重置",
+      "quote": "登录页验证码倒计时不会重置。",
+      "time": {
+        "start": 5.1,
+        "end": 5.9
+      },
+      "frames": [
+        {
+          "path": "frames/I-005-1.jpg",
+          "t": 5.5
+        }
+      ],
+      "tags": [
+        "登录"
+      ],
+      "confidence": "low",
+      "questions": [
+        "切换手机号后也不重置吗？"
+      ],
+      "answer": "",
+      "status": "draft",
+      "exported": {},
+      "module": "auth",
+      "severity": "low",
+      "fix": {
+        "state": "reopened",
+        "agent": "human",
+        "run_id": null,
+        "commit": null,
+        "pr": null,
+        "note": "换号后仍然不重置",
+        "at": 1792563000.0
+      },
+      "fix_history": [
+        {
+          "state": "fixing",
+          "agent": "kimi",
+          "run_id": "r-20261021-112000-ef56",
+          "commit": null,
+          "pr": null,
+          "note": "",
+          "at": 1792561500.0
+        },
+        {
+          "state": "fixed",
+          "agent": "kimi",
+          "run_id": "r-20261021-112000-ef56",
+          "commit": "9b8d7c6",
+          "pr": "https://github.com/example/app/pull/7",
+          "note": "",
+          "at": 1792562500.0
+        }
+      ]
+    }
+  ]
+}

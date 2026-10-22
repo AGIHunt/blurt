@@ -1,0 +1,107 @@
+/* Common — the shared vocabulary of every platform (docs/design/next-round.md K10). Owner: P4.
+   Same keys and placeholders in zh-Hans.lproj/Common.strings (tests/test_l10n.py). */
+
+/* Item kinds */
+"job.title.enrich" = "AI fill-in";
+"job.title.filed" = "Filed from your note";
+"job.usage.cli_default" = "the CLI's default model";
+"job.usage.none" = "No AI · 0 tokens";
+"job.usage.tokens" = "Used about %@ tokens";
+"job.usage.unknown" = "%@ didn't report its token use";
+"kind.issue" = "Issue";
+"kind.idea" = "Idea";
+"kind.note" = "Note";
+"kind.task" = "Task";
+
+/* Item state — K3's one lifecycle (same words as web/packages/i18n state.* / action.*) */
+"state.new" = "New";
+"state.todo" = "To do";
+"state.handed_off" = "Handed off";
+"state.handed_off.session" = "With %@";
+"state.handed_off.external" = "Copied to your agent";
+"state.in_progress" = "In progress";
+"state.to_verify" = "To verify";
+"state.done" = "Done";
+"state.wontfix" = "Won’t do";
+"state.discarded" = "Discarded";
+"state.menu" = "Change state";
+
+/* What you can do from a state: the verb, and one line saying what it does */
+"action.keep" = "Keep";
+"action.keep.hint" = "Add it to To do";
+"action.hand_off" = "Hand off…";
+"action.hand_off.hint" = "Start it in Blurt, or copy an instruction";
+"action.done" = "Mark as done";
+"action.done.hint" = "It’s handled";
+"action.done.hint_verify" = "You checked — it’s fixed";
+"action.send_back" = "Send back";
+"action.send_back.hint" = "Not fixed yet — back to To do";
+"action.take_back" = "Take back";
+"action.take_back.hint" = "Stop waiting on the agent — back to To do";
+"action.reopen" = "Reopen";
+"action.reopen.hint" = "Back to To do";
+"action.wontfix" = "Won’t do";
+"action.wontfix.hint" = "Keep a record, out of your inbox";
+"action.discard" = "Discard";
+"action.discard.hint" = "Move to Discarded — you can restore it";
+"action.restore" = "Restore";
+"action.restore.hint" = "Put it back where it was";
+
+/* Agent session status */
+"session.running" = "Working";
+"session.waiting_input" = "Needs your input";
+"session.turn_done" = "Turn finished";
+"session.exited" = "Exited";
+"session.error" = "Error";
+
+/* Projects */
+"project.auto" = "Auto";
+"project.inbox" = "Unassigned";
+"project.ai_sort" = "Let AI sort";
+"project.open_folder" = "Open Folder…";
+
+/* Handing off to an external agent */
+"handoff.copy_instruction" = "Copy instruction";
+"handoff.copy_full" = "Copy full text";
+
+/* Job types */
+"job.type.record" = "Recording";
+"job.type.snap" = "Snap";
+"job.type.voice" = "Voice note";
+"job.type.process" = "Organizing";
+"job.type.route" = "Sorting into projects";
+"job.type.agent" = "Agent session";
+
+/* Job steps */
+"job.step.capture" = "Capturing";
+"job.step.finalize" = "Saving";
+"job.step.listen" = "Listening";
+"job.step.transcribe" = "Transcribing";
+"job.step.file" = "Filing";
+"job.step.prepare" = "Preparing";
+"job.step.write" = "Writing items";
+"job.step.frames" = "Picking screenshots";
+"job.step.route" = "Sorting into projects";
+"job.step.launch" = "Starting";
+"job.step.work" = "Working";
+"job.step.finish" = "Wrapping up";
+
+/* Job states */
+"job.state.queued" = "Queued";
+"job.state.running" = "Running";
+"job.state.done" = "Done";
+"job.state.failed" = "Failed";
+"job.state.cancelled" = "Cancelled";
+
+/* Time */
+"time.just_now" = "just now";
+
+/* Buttons used everywhere */
+"action.ok" = "OK";
+"action.cancel" = "Cancel";
+"action.save" = "Save";
+"action.continue" = "Continue";
+"action.retry" = "Try Again";
+"action.open" = "Open";
+"action.reveal_in_finder" = "Show in Finder";
+"action.copy_path" = "Copy Path";

@@ -1,0 +1,13 @@
+{
+  "author": "Tester",
+  "duration": 4.0,
+  "engine": "native-app",
+  "region": [
+    0,
+    0,
+    320,
+    200
+  ],
+  "started_at": "2026-10-19T01:30:00Z",
+  "video": "recording.mp4"
+}

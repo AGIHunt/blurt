@@ -1,0 +1,58 @@
+[package]
+name = "blurt-desktop"
+version = "0.7.0"
+description = "Blurt for Windows and Linux: what you say, snap and record becomes work, filed into projects and handed to agents"
+authors = ["Blurt"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "blurt_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "blurt"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "protocol-asset", "image-png", "macos-private-api"] }
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+sha1 = "0.10"
+dirs = "6"
+sys-locale = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+base64 = "0.22"
+# K5: the embedded terminal — tmux attach-cmd (macOS / Linux) or the app runner in ConPTY (Windows)
+portable-pty = "0.9"
+# record.py ffmpeg engine + overlay windows (picker, island, cards, note)
+blurt-capture = { path = "../../../crates/blurt-capture" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Wayland: global shortcuts through the xdg-desktop-portal GlobalShortcuts interface (GNOME 48+, KDE 5.27+).
+ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

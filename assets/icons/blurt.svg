@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>blurt — the chick that blurts it out (app mark)</title>
+  <g transform="translate(-.5 3) scale(.86)">
+  <path d="M15 7.2A7.4 7.1 0 1 1 9 7.2 1.24 1.24 0 0 1 10.7 5.4 1.3 1.3 0 0 1 13.3 5.4 1.24 1.24 0 0 1 15 7.2Z"/>
+  <path d="M4.8 15.2C3.1 15.3 2.5 17.6 4.1 18.5c.8.4 1.6.3 2.4-.2M19.2 15.2c1.7.1 2.3 2.4.7 3.3-.8.4-1.6.3-2.4-.2"/>
+  <circle cx="8.9" cy="13" r="1.25" fill="currentColor" stroke="none"/>
+  <circle cx="15.1" cy="13" r="1.25" fill="currentColor" stroke="none"/>
+  <path d="M10.9 14.5 12 13.9l1.1.6L12 15.7Z"/>
+  </g>
+  <path d="M17.2 5.3A3.6 3.6 0 0 1 19.4 8M18.4 2.4A6.4 6.4 0 0 1 22.1 7"/>
+</svg>

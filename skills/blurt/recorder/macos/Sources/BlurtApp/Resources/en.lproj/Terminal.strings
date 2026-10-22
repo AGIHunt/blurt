@@ -1,0 +1,229 @@
+/* Terminal table (P3): agent sessions, the embedded terminal, the dispatch and finish panels, Settings → Agents. */
+
+/* Shared verbs */
+"agents.effort" = "Effort";
+"agents.effort.default" = "Effort: the CLI's setting";
+"agents.effort.high" = "High effort";
+"agents.effort.low" = "Low effort";
+"agents.effort.max" = "Maximum effort";
+"agents.effort.medium" = "Medium effort";
+"agents.effort.xhigh" = "Extra-high effort";
+"agents.processing" = "Model for organizing";
+"agents.processing.cheapest" = "Cheapest";
+"agents.processing.cheapest_named" = "Cheapest (%@)";
+"agents.processing.default" = "The CLI's setting";
+"agents.processing.default_named" = "The CLI's setting (%@)";
+"agents.processing.help" = "Recordings, Organize, Let AI sort and AI fill-in run with this. A small model at low effort is plenty for organizing and uses far fewer tokens.";
+"common.cancel" = "Cancel";
+"common.close" = "Close";
+"common.done" = "Done";
+
+"dispatch.model" = "Model";
+"dispatch.model.default" = "Default (the CLI's setting)";
+"dispatch.model.default_named" = "Default (the CLI's setting: %@)";
+"window.title" = "Sessions";
+"agent.you" = "You";
+"time.now" = "now";
+
+/* Sessions list */
+"list.new" = "New Session…";
+"list.new.help" = "Hand items from a project to Claude Code or Codex in a new session";
+"list.empty.title" = "No sessions yet";
+"list.empty.body" = "Sessions you start from the inbox appear here, grouped by project.";
+"row.ready_to_review" = "Ready to review";
+"session.items.more" = "%1$@ and %2$ld more";
+
+/* Header above the terminal */
+"header.none" = "No session selected";
+"header.hide_list" = "Hide Sessions";
+"header.show_list" = "Show Sessions";
+"header.worktree" = "In a worktree";
+"header.branch.help" = "Works on branch %1$@, cut from %2$@";
+"header.app_runner" = "Ends when you quit Blurt";
+"header.app_runner.help" = "tmux isn’t installed, so this session runs inside Blurt. Install tmux (brew install tmux) to keep sessions running after you quit.";
+"header.open_external.help" = "Open this session in your terminal app";
+"header.interrupt" = "Interrupt (Control-C)";
+"header.end" = "End Session…";
+"header.review" = "Review Changes…";
+"header.review.help" = "See what changed on the branch, then merge it, open a pull request or discard it";
+"header.pop_out" = "Open in New Window";
+"header.reveal_folder" = "Show Folder in Finder";
+"header.open_handoff" = "Open Hand-off Notes";
+"header.more" = "More";
+
+/* Ending a session */
+"end.title" = "End this session?";
+"end.body" = "The agent stops and its terminal window closes. Changes it already made stay where they are.";
+"end.confirm" = "End Session";
+
+/* What the terminal area shows when there is no live terminal */
+"overlay.connecting" = "Connecting…";
+"overlay.detached.title" = "Disconnected";
+"overlay.detached.body" = "The session is still running. Reconnect to pick up where it is.";
+"overlay.reconnect" = "Reconnect";
+"overlay.retry" = "Try Again";
+"overlay.elsewhere.title" = "Open in another window";
+"overlay.elsewhere.body" = "This session runs inside Blurt and is showing in another window.";
+"overlay.pick" = "Select a session to see its terminal.";
+"overlay.empty.title" = "Your agents work here";
+"overlay.empty.body" = "Hand items to Claude Code or Codex and each runs in its own terminal. Watch it, type into it, or step away — Blurt tells you when it needs you.";
+"overlay.ended.title" = "Session ended";
+"overlay.ended.error" = "Session ended with an error (exit %ld)";
+"overlay.ended.review_hint" = "The agent worked on its own branch. Review the changes to merge them, open a pull request or discard them.";
+"overlay.ended.verify_hint" = "Its items are now waiting for you to verify. Mark them done once you’ve checked.";
+
+/* Dispatch panel */
+"dispatch.title" = "Hand Off to an Agent";
+"dispatch.subtitle.none" = "Choose the items to work on";
+"dispatch.agent" = "Agent";
+"dispatch.agent.logged_out" = "%@ (not logged in)";
+"dispatch.agent.none" = "No agent that can run a session is installed. Install Claude Code or Codex, then check again in Settings → Agents.";
+"dispatch.mode" = "Approach";
+"dispatch.mode.together" = "Together";
+"dispatch.mode.parallel" = "In Parallel";
+"dispatch.mode.together.help" = "One conversation works through all of them, in order.";
+"dispatch.worktree" = "Where";
+"dispatch.worktree.toggle" = "Work on a separate branch";
+"dispatch.worktree.on" = "A git worktree next to the project. When it’s done, you merge it, open a pull request or discard it.";
+"dispatch.worktree.on.branch" = "On branch %@, in a worktree next to the project. When it’s done, you merge it, open a pull request or discard it.";
+"dispatch.worktree.off" = "Changes go straight into %@. The agent won’t commit.";
+"dispatch.project" = "Project";
+"dispatch.pick.empty" = "Nothing to do in this project.";
+"dispatch.pick.failed" = "Couldn’t list this project’s items.";
+"dispatch.start" = "Start Session";
+
+/* Dispatch warnings (sessions.py dispatch --dry-run) */
+"warning.concurrent_edit" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.";
+"warning.concurrent_edit.use_worktree" = "Use a worktree";
+"warning.concurrent_edit.continue" = "Continue";
+"warning.no_git" = "This folder isn’t a git repository, so the agents work in it directly.";
+"warning.no_tmux" = "tmux isn’t installed: the session runs inside Blurt and ends when you quit it.";
+"warning.draft_confirmed" = "Items still to review will be marked Kept.";
+
+/* Finish panel (worktree results) */
+"finish.title" = "Review Changes";
+"finish.subtitle" = "%1$@ → %2$@";
+"finish.loading" = "Comparing with the base branch…";
+"finish.open_patch" = "Open Diff";
+"finish.no_changes" = "No changes on this branch yet.";
+"finish.help" = "Merge brings the branch into %@ in your project folder. Nothing is pushed unless you open a pull request.";
+"finish.merge" = "Merge";
+"finish.end_and.merge" = "End Session and Merge";
+"finish.merge.help" = "Merge into %@ and remove the worktree";
+"finish.pr" = "Open Pull Request";
+"finish.pr.help" = "Push the branch and open a pull request";
+"finish.keep" = "Keep for Later";
+"finish.keep.help" = "Leave the branch and worktree as they are";
+"finish.discard" = "Discard";
+"finish.discard.confirm.title" = "Discard these changes?";
+"finish.discard.confirm.body" = "The worktree and the branch %@ are deleted. This can’t be undone.";
+"finish.working.merge" = "Merging…";
+"finish.working.pr" = "Opening a pull request…";
+"finish.working.discard" = "Discarding…";
+"finish.working.keep" = "Saving…";
+"finish.done.merge" = "Merged.";
+"finish.done.pr" = "Pull request opened.";
+"finish.done.discard" = "Discarded.";
+"finish.done.keep" = "Kept. You can review it again from the session.";
+"finish.done.pushed" = "Branch pushed to origin. No pull request was opened — open one on your Git host.";
+"finish.done.compare" = "Branch pushed. Finish the pull request in your browser:";
+"finish.done.verify" = "Its items are waiting for you to verify.";
+
+/* Notifications */
+"notify.title.waiting_input" = "Needs your input · %@";
+"notify.title.turn_done" = "Turn finished · %@";
+"notify.title.exited" = "Session ended · %@";
+"notify.title.error" = "Session failed · %@";
+"notify.title.running" = "Working · %@";
+"notify.more" = "and %ld more";
+"notify.exit" = "Exit code %ld";
+
+/* An item reached "to verify" (the chicken pecks it) */
+"verify.by" = "%@ says it’s fixed";
+"verify.by.wontfix" = "%@ suggests not doing it";
+"verify.notification" = "Ready to verify: %@";
+
+/* Errors from sessions.py (by code) */
+"error.unknown" = "Something went wrong (%@).";
+"error.failed" = "The session command failed.";
+"error.timeout" = "The session command took too long.";
+"error.missing_dependency" = "tmux or git is missing on this Mac.";
+"error.no_sessions_cli" = "This version of the Blurt skill can’t run sessions yet. Update the skill, then try again.";
+"error.uv_missing" = "uv isn’t installed. Blurt needs it to run its tools — see Settings → General.";
+"error.no_window" = "The session’s terminal window is gone.";
+"error.no_job" = "This session no longer exists.";
+"error.app_runner_lost" = "This session ran inside Blurt and ended when Blurt quit.";
+"error.needs_project" = "These items aren’t in a project with a folder yet. Move them to a project first.";
+"error.mixed_projects" = "The items belong to different projects. Hand off one project at a time.";
+"error.deleted" = "Dropped items can’t be handed off.";
+"error.bad_agent" = "That agent isn’t set up for sessions.";
+"error.tmux" = "tmux couldn’t start the session.";
+"error.git" = "git couldn’t prepare the worktree.";
+"error.conflict" = "The merge stopped on conflicts and was undone. The branch is untouched — resolve it in the worktree or open a pull request.";
+"error.dirty" = "Your project folder has uncommitted changes. Commit or stash them, then merge.";
+"error.wrong_branch" = "Your project folder isn’t on the branch this work started from. Switch back to it, then merge.";
+"error.push" = "Pushing the branch failed. Check your connection and access to the remote.";
+"error.no_remote" = "This repository has no remote to open a pull request on.";
+"error.no_worktree" = "This session didn’t use a worktree.";
+"error.app_runner" = "This session runs inside Blurt; open it in Blurt’s own window.";
+"error.bad_args" = "The session command was called the wrong way.";
+"error.bad_job" = "This session’s record is damaged.";
+"error.no_agent" = "No agent that can run a session is installed and signed in.";
+"error.no_git" = "This folder isn’t a git repository, so there’s no branch to review.";
+"error.no_terminal" = "None of the supported terminal apps is installed.";
+"error.no_tmux" = "tmux 3.2 or later isn’t installed.";
+"error.gone" = "The session’s folder no longer exists.";
+"error.running" = "The agent’s session is still open in this worktree. End it first, then merge.";
+"error.uncommitted" = "The worktree has uncommitted changes. Ask the agent to commit them, or commit them yourself, then try again.";
+"error.nothing" = "The branch has no commits to merge yet.";
+
+/* Settings → Agents */
+"agents.header" = "Agents that process recordings (tried in order)";
+"agents.footer" = "Drag to reorder. The first usable one runs; on a login or quota problem the next one takes over. Unticked agents are never used.";
+"agents.check_again" = "Check Again";
+"agents.drag" = "Drag to reorder";
+"agents.runs_first" = "Runs first";
+"agents.sessions_badge" = "Sessions";
+"agents.sessions_badge.help" = "Can work on items in a Blurt session";
+"agents.install" = "Install Skill + MCP…";
+"agents.test" = "Test";
+"agents.test.help" = "Sends a one-line prompt to check it runs (uses a few tokens)";
+"agents.test.no_command" = "No command-line mode";
+"agents.test.ok" = "Works — replied in %@ s";
+"agents.test.exit" = "Exit code %ld";
+"agents.test.timeout" = "Timed out";
+"agents.fix" = "Fix:";
+"agents.install_hint" = "Install:";
+"agents.codex_trust" = "Codex marks the projects it works in as trusted (in its own settings).";
+"agents.state.ready" = "Signed in";
+"agents.state.not_installed" = "Not installed";
+"agents.state.manual" = "Installed · set up by hand";
+"agents.manual.header" = "Skill + MCP only";
+"agents.manual.footer" = "These have no command line, so they never run in Blurt. Import the blurt skill and MCP once in their own settings; “Copy instruction” hands items to them.";
+"agents.sessions.header" = "Sessions";
+"agents.tmux.ok" = "tmux %@";
+"agents.tmux.ok.detail" = "Sessions keep running after you quit Blurt and reconnect when you open it again.";
+"agents.tmux.missing" = "tmux isn’t installed";
+"agents.tmux.old" = "tmux is too old (3.2 or later is needed)";
+"agents.tmux.missing.detail" = "Sessions still work, inside Blurt, but end when you quit it.";
+"agents.project_agent" = "Default agent for %@";
+"agents.project_agent.default" = "The first one above";
+"agents.project_agent.hint" = "Used when you hand off this project’s items. You can still pick another each time.";
+"agents.move_up" = "Move Up";
+
+/* Install sheet */
+"install.title" = "Install Blurt into %@";
+"install.title.applied" = "Installed into %@";
+"install.preview" = "These changes will be made (nothing has changed yet):";
+"install.result" = "Result:";
+"install.confirm" = "Install";
+"install.symlink" = "Link %1$@ → %2$@";
+"install.exists" = "Already there: %@";
+"install.conflict" = "%1$@ is another skill (%2$@) — left alone";
+"install.run" = "Run: %@";
+"install.json_merge" = "Add %1$@ to %2$@";
+"install.manual" = "By hand (%1$@): %2$@";
+"finish.state.merge" = "Merged";
+"finish.state.pr" = "Pull request opened";
+"finish.state.pushed" = "Pushed";
+"finish.state.discard" = "Discarded";

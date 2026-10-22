@@ -1,12 +1,18 @@
 """Shared helpers for blurt scripts (stdlib only)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import secrets
 import platform
+import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -84,13 +90,24 @@ def load_json(path: Path, default=None):
 def save_json(path: Path, data) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(20):  # Windows: replace fails while a reader has the target open
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
+
+
+def _config_path() -> Path:
+    return Path(os.environ["BLURT_HOME"]) / "config.json" if os.environ.get("BLURT_HOME") else GLOBAL_CONFIG
 
 
 def global_config() -> dict:
-    return load_json(GLOBAL_CONFIG, {}) or {}
+    return load_json(_config_path(), {}) or {}
 
 
 def update_global_config(patch: dict) -> dict:
@@ -100,7 +117,7 @@ def update_global_config(patch: dict) -> dict:
             cfg[k].update(v)
         else:
             cfg[k] = v
-    save_json(GLOBAL_CONFIG, cfg)
+    save_json(_config_path(), cfg)
     return cfg
 
 
@@ -178,14 +195,411 @@ def fix_tcl_env() -> None:
         return
 
 
-# ------------------------------------------------------------------ session output: items.json
-def load_session(session: Path) -> dict | None:
-    return load_json(Path(session) / "items.json")
+# ------------------------------------------------------------------ where things live (read at call time: tests and
+# the apps point BLURT_HOME / BLURT_WORKSPACE elsewhere after import)
+def blurt_home() -> Path:
+    return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
 
 
-def save_session(session: Path, data: dict) -> None:
-    save_json(Path(session) / "items.json", data)
+def blurt_workspace() -> Path:
+    """The Blurt app's own folder (~/Blurt): the inbox store lives in it, and v0.6 recordings in recordings/."""
+    return Path(os.environ.get("BLURT_WORKSPACE") or Path.home() / "Blurt")
 
 
-def live_items(data: dict, kind: str | None = None) -> list[dict]:
-    return [i for i in data.get("items", []) if i.get("status") != "deleted" and (kind is None or i.get("kind") == kind)]
+def real(p: Path | str) -> Path:
+    return Path(os.path.realpath(os.path.expanduser(str(p))))
+
+
+# ------------------------------------------------------------------ time (contract: ISO 8601 with offset on disk)
+def now_iso(t: float | None = None, timespec: str = "seconds") -> str:
+    return datetime.fromtimestamp(time.time() if t is None else t).astimezone().isoformat(timespec=timespec)
+
+
+def to_epoch(v) -> float | None:
+    """ISO 8601 (any offset, or Z) or epoch seconds → epoch seconds; None when it is neither."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str) and v:
+        try:
+            d = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return (d if d.tzinfo else d.astimezone()).timestamp()
+    return None
+
+
+# ------------------------------------------------------------------ locks
+# One lock file per thing that has several writers (a store, a session's batch, projects.json), shared across
+# processes (flock / msvcrt) and threads. Re-entrant within a thread, so a write that holds a store's lock can call
+# helpers that take it again.
+_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_HELD = threading.local()
+
+
+@contextmanager
+def file_lock(path: Path, timeout: float | None = None):
+    path = Path(path)
+    if timeout is None:
+        timeout = float(os.environ.get("BLURT_LOCK_TIMEOUT") or 15)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    key = str(path.resolve())
+    held = getattr(_HELD, "paths", None)
+    if held is None:
+        held = _HELD.paths = {}
+    if held.get(key):
+        held[key] += 1
+        try:
+            yield
+        finally:
+            held[key] -= 1
+        return
+    tl = _THREAD_LOCKS.setdefault(key, threading.Lock())
+    if not tl.acquire(timeout=timeout):
+        raise TimeoutError(f"{path} is locked")
+    try:
+        fh = open(path, "a+b")
+        try:
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    if IS_WIN:
+                        import msvcrt
+                        fh.seek(0)
+                        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise TimeoutError(f"{path} is locked by another process")
+                    time.sleep(0.02)
+            held[key] = 1
+            try:
+                yield
+            finally:
+                held.pop(key, None)
+                if IS_WIN:
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+    finally:
+        tl.release()
+
+
+def items_lock(session: Path, timeout: float | None = None):
+    """A session's batch (batch.json, and a pending items.json): everything that reads-modifies-writes them."""
+    return file_lock(Path(session) / ".items.lock", timeout)
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
+    for attempt in range(20):  # Windows: replace fails while a reader has the target open
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                tmp.unlink(missing_ok=True)
+                raise
+            time.sleep(0.05)
+
+
+# ------------------------------------------------------------------ identities (contract C1, unchanged in v3)
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def new_ulid(now: float | None = None) -> str:
+    """26-char ULID: 48-bit ms timestamp + 80 random bits, Crockford base32 (sorts by creation time)."""
+    n = (int((time.time() if now is None else now) * 1000) & (2**48 - 1)) << 80 | secrets.randbits(80)
+    return "".join(_CROCKFORD[(n >> (5 * k)) & 31] for k in range(25, -1, -1))
+
+
+def legacy_uid(session_name: str, item_id: str) -> str:
+    """uid of an item written before v2 (no "uid" field): "L" + sha1("<session dir name>/<id>").hex[:25].
+    26 chars like a ULID, and "L" is not in Crockford's alphabet, so the two never collide."""
+    return "L" + hashlib.sha1(f"{session_name}/{item_id}".encode("utf-8")).hexdigest()[:25]
+
+
+def item_uid(session: Path, item: dict) -> str:
+    return item.get("uid") or legacy_uid(Path(session).resolve().name, item.get("id") or "")
+
+
+def file_etag(raw: bytes) -> str:
+    """sha1 of the bytes, 16 hex chars, quoted (HTTP ETag)."""
+    return '"' + hashlib.sha1(raw).hexdigest()[:16] + '"'
+
+
+def project_id(path: Path | str) -> str:
+    """K2: sha1(realpath(path)).hex[:12] — the same formula as the v1 index's workspace id."""
+    return hashlib.sha1(str(real(path)).encode("utf-8")).hexdigest()[:12]
+
+
+class InvalidEdit(ValueError):
+    """An edit the store refuses (review.py answers 400 with it, items.py exits 1 with it)."""
+
+
+REQUIRED_TEXT = ("title",)  # an item without a title can't be listed, searched, exported or reviewed
+
+
+def check_item_fields(sets: dict, unsets=(), where: str = "") -> None:
+    """Raises InvalidEdit when an edit would leave an item's title empty / whitespace-only, or remove it."""
+    for k in REQUIRED_TEXT:
+        if k in (unsets or ()):
+            raise InvalidEdit(f"{where}{k} can't be removed: every item needs a {k}")
+        if k in sets and (sets[k] is None or (isinstance(sets[k], str) and not sets[k].strip())):
+            raise InvalidEdit(f"{where}{k} can't be empty: keep the previous {k} or type a new one")
+
+
+# ------------------------------------------------------------------ K3: the item lifecycle (one state)
+# One user-visible state per item (docs/design/next-round.md K3). The same table is in web/packages/ui/src/lifecycle.ts
+# and BlurtCore/Lifecycle.swift; all three are tested against tests/fixtures/lifecycle.json.
+STATES = ("new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded")
+INBOX_STATES = ("new", "to_verify")                         # "needs you": every inbox count in every app
+OPEN_STATES = ("new", "todo", "handed_off", "in_progress")  # MCP open_items, the backlog
+ACTIVE_STATES = ("handed_off", "in_progress", "to_verify")
+CLOSED_STATES = ("done", "wontfix")
+WORK_KEYS = ("to", "agent", "job", "handoff", "claim", "note", "commit", "pr", "at", "by")  # `work`: hand-off details
+WORK_BY = ("user", "agent", "app")
+# the states a hand-off passes through: moving into or out of them rewrites `work` and appends to work_history
+WORK_TRACKED = ("handed_off", "in_progress", "to_verify", "done", "wontfix")
+_LIVE = STATES[:-1]
+# action → (from states, to state; None = the item's restore_to). The user's state menu is exactly this table.
+ACTIONS = {
+    "keep": (("new",), "todo"),
+    "hand_off": (("new", "todo"), "handed_off"),
+    "done": (("todo", "handed_off", "in_progress", "to_verify"), "done"),
+    "send_back": (("to_verify",), "todo"),
+    "take_back": (("handed_off", "in_progress"), "todo"),
+    "reopen": (("done", "wontfix"), "todo"),
+    "restore": (("discarded",), None),
+    "wontfix": (("new", "todo", "handed_off", "in_progress", "to_verify"), "wontfix"),
+    "discard": (_LIVE, "discarded"),
+}
+_AGENT_MOVES = {("new", "in_progress"), ("todo", "in_progress"), ("handed_off", "in_progress"),
+                ("to_verify", "in_progress"), ("new", "to_verify"), ("todo", "to_verify"), ("handed_off", "to_verify"),
+                ("in_progress", "to_verify"), ("to_verify", "to_verify"), ("in_progress", "in_progress"),
+                ("in_progress", "todo"), ("to_verify", "todo")}  # an agent may take back its own claim (reopened)
+_APP_MOVES = _AGENT_MOVES | {("new", "handed_off"), ("todo", "handed_off"), ("handed_off", "handed_off")}
+_USER_MOVES = {(f, to) for frm, to in ACTIONS.values() if to for f in frm} | {("handed_off", "handed_off")} \
+    | {("discarded", s) for s in _LIVE}  # restore: back to where it was (restore_to)
+
+# the shapes before one state (v1 / v2 items.json, early v0.7 files): accepted as input only
+REVIEW_STATES = ("draft", "confirmed", "deleted")
+LEGACY_WORK = ("todo", "handed_off", "in_progress", "to_verify", "done", "wontfix")
+FIX_STATES = ("fixing", "fixed", "wontfix", "reopened")  # v2 (items.py fix, mark_fixed)
+FIX_TO_WORK = {"fixing": ("in_progress", None), "fixed": ("to_verify", "fixed"), "wontfix": ("to_verify", "wontfix"),
+               "reopened": ("todo", None)}
+
+
+def state_of(item: dict) -> str:
+    """The item's state. A file from before the one-state model (status + work.state, or a v2 fix) converts the way
+    K3's migration says: deleted → discarded; a work state other than todo wins; else draft → new, confirmed → todo."""
+    s = item.get("state")
+    if s in STATES:
+        return s
+    if item.get("status") == "deleted":
+        return "discarded"
+    return _live_state(item)
+
+
+def _live_state(item: dict) -> str:
+    w = item.get("work")
+    ws = w.get("state") if isinstance(w, dict) else None
+    if ws not in LEGACY_WORK and isinstance(item.get("fix"), dict):
+        ws = work_from_fix(item["fix"])["state"]
+    if ws in LEGACY_WORK and ws != "todo":
+        return ws
+    return "todo" if item.get("status") == "confirmed" else "new"
+
+
+def migrate_state(item: dict) -> dict:
+    """In place: an item of any shape → `state` (+ `restore_to` while discarded), a `work` without a state key, no
+    `status` / `fix` / `fix_history`. Idempotent; a file is written in this shape on its next write."""
+    legacy = item.get("state") not in STATES
+    state = state_of(item)
+    if legacy and state == "discarded":
+        item["restore_to"] = _live_state(item)
+    if isinstance(item.get("fix"), dict) and not isinstance(item.get("work"), dict):
+        item["work"] = work_from_fix(item["fix"])
+    hist = [work_from_fix(f) for f in item.pop("fix_history", None) or [] if isinstance(f, dict)]
+    if hist:
+        item["work_history"] = hist + [h for h in item.get("work_history") or [] if isinstance(h, dict)]
+    item.pop("fix", None)
+    item.pop("status", None)
+    if isinstance(item.get("work"), dict):
+        item["work"] = {k: item["work"].get(k) for k in WORK_KEYS}
+    item["state"] = state
+    if state != "discarded":
+        item.pop("restore_to", None)
+    return item
+
+
+def may_move(cur: str, new: str, by: str) -> bool:
+    if by == "user":
+        return (cur, new) in _USER_MOVES
+    return (cur, new) in (_APP_MOVES if by == "app" else _AGENT_MOVES)
+
+
+def action_target(action: str, cur: str, restore_to: str | None = None) -> str | None:
+    """Where the user's action takes an item in state cur; None = the action isn't valid there."""
+    frm, to = ACTIONS.get(action, ((), None))
+    if cur not in frm:
+        return None
+    return to or (restore_to if restore_to in _LIVE else "new")
+
+
+def work_from_fix(fix: dict) -> dict:
+    """A v2 `fix` record → {state, …work} (K3 mapping). An old human wontfix is a decision, not a claim."""
+    state, claim = FIX_TO_WORK.get(fix.get("state"), ("todo", None))
+    agent = fix.get("agent") or None
+    if fix.get("state") == "wontfix" and agent in (None, "human"):
+        state, claim = "wontfix", None
+    at = fix.get("at")
+    return {"state": state, "to": "session" if fix.get("run_id") else None, "agent": agent,
+            "job": fix.get("run_id") or None, "handoff": None, "claim": claim, "note": fix.get("note") or "",
+            "commit": fix.get("commit") or None, "pr": fix.get("pr") or None,
+            "at": now_iso(at) if isinstance(at, (int, float)) else (at or None),
+            "by": "user" if agent in (None, "human") else "agent"}
+
+
+def legacy_filter_states(statuses=(), works=(), fix_states=()) -> list[str] | None:
+    """The old --status / --work / --fix-state filters as states (None = none given). Different kinds of filter
+    narrow each other, as they did as columns."""
+    sets = []
+    if statuses:
+        m = {"draft": {"new"}, "confirmed": set(LEGACY_WORK), "deleted": {"discarded"}}
+        sets.append(set().union(*(m.get(s, set()) for s in statuses)))
+    if works:
+        sets.append(set().union(*({"new", "todo"} if w == "todo" else {w} for w in works)))
+    if fix_states:
+        m = {"fixing": {"in_progress"}, "fixed": {"to_verify", "done"}, "wontfix": {"wontfix", "to_verify"},
+             "reopened": {"new", "todo"}, "none": {"new", "todo"}}
+        sets.append(set().union(*(m.get(f, set()) for f in fix_states)))
+    if not sets:
+        return None
+    out = set.intersection(*sets)
+    return [s for s in STATES if s in out]
+
+
+def append_job_event(job: str | None, event: dict) -> None:
+    """K4: anyone but a job's owner reports progress by appending one line to jobs/<id>.events.jsonl (O_APPEND,
+    one write < 4 KB). Best effort: a missing job or a read-only home never fails the caller."""
+    if not job or not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", job):
+        return
+    path = blurt_home() / "jobs" / f"{job}.events.jsonl"
+    if not (path.parent / f"{job}.json").exists():
+        return
+    line = json.dumps({"t": now_iso(), "source": "items", **event}, ensure_ascii=False) + "\n"
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, line.encode("utf-8")[:4000])
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+# ---------------------------------------------------------------- hotkeys (config record.hotkeys)
+# Same grammar as the macOS app (Hotkeys.swift): "opt+shift+R", "ctrl+alt+F5", "⌥⇧A", "off". Stored canonically as
+# "<ctrl+><opt+><shift+><cmd+>KEY". On Windows/Linux opt = Alt and cmd = the Windows / Super key.
+# voice / project: K7 (voice input, project switcher) — same names in HotkeyCenter.Action (Swift) and the Tauri app
+HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project")
+HOTKEY_DEFAULT_KEYS = {"record": "R", "menu": "B", "pause": "P", "snap": "A", "marker": "M", "pen": "D", "stop": "S",
+                       "voice": "V", "project": "O"}
+_MOD_ALIASES = {"ctrl": "ctrl", "control": "ctrl", "⌃": "ctrl", "^": "ctrl",
+                "opt": "opt", "option": "opt", "alt": "opt", "⌥": "opt",
+                "shift": "shift", "⇧": "shift",
+                "cmd": "cmd", "command": "cmd", "⌘": "cmd", "win": "cmd", "super": "cmd", "meta": "cmd"}
+_MOD_ORDER = ("ctrl", "opt", "shift", "cmd")
+_NAMED_KEYS = {"space": "Space", "spacebar": "Space", "tab": "Tab", "return": "Return", "enter": "Return",
+               "left": "Left", "right": "Right", "up": "Up", "down": "Down",
+               "←": "Left", "→": "Right", "↑": "Up", "↓": "Down"}
+_PUNCT = set("-=[];',./\\`")
+_OFF = ("off", "none", "disabled", "-", "")
+
+
+def _hotkey_key(tok: str) -> str | None:
+    if len(tok) == 1 and ((tok.isalnum() and tok.isascii()) or tok in _PUNCT):
+        return tok.upper()
+    low = tok.lower()
+    if low in _NAMED_KEYS:
+        return _NAMED_KEYS[low]
+    if low.startswith("f") and low[1:].isdigit() and 1 <= int(low[1:]) <= 20:
+        return "F" + low[1:]
+    return None
+
+
+def parse_hotkey(spec) -> tuple[tuple[str, ...], str] | None:
+    """"opt+shift+R" / "⌥⇧R" / "Alt+Shift+r" → (("opt", "shift"), "R"). None for off / empty / unparseable.
+    Needs ⌃ / ⌥ / ⌘ (shift alone would steal typing) — F-keys may stand alone."""
+    if not isinstance(spec, str) or spec.strip().lower() in _OFF:
+        return None
+    s = spec.strip()
+    mods: set[str] = set()
+    while s and s[0] in "⌃⌥⇧⌘^":  # glyph prefixes: ⌥⇧R
+        mods.add(_MOD_ALIASES[s[0]])
+        s = s[1:]
+    key = None
+    for tok in s.replace(" ", "").split("+"):
+        if not tok:
+            continue
+        mod = _MOD_ALIASES.get(tok.lower())
+        if (mod and len(tok) > 1) or (len(tok) == 1 and tok in "⌃⌥⇧⌘"):
+            mods.add(mod or _MOD_ALIASES[tok])
+        elif key is None and _hotkey_key(tok):
+            key = _hotkey_key(tok)
+        else:
+            return None
+    if key is None:
+        return None
+    if not (mods - {"shift"}) and not (key.startswith("F") and len(key) > 1):
+        return None
+    return tuple(m for m in _MOD_ORDER if m in mods), key
+
+
+def hotkey_spec(hk: tuple[tuple[str, ...], str] | None) -> str:
+    return "+".join([*hk[0], hk[1]]) if hk else "off"
+
+
+def hotkey_label(hk: tuple[tuple[str, ...], str] | None, mac: bool = IS_MAC) -> str:
+    """What to show the user: "⌥⇧R" on macOS, "Alt+Shift+R" elsewhere; "" when off."""
+    if not hk:
+        return ""
+    if mac:
+        glyph = {"ctrl": "⌃", "opt": "⌥", "shift": "⇧", "cmd": "⌘"}
+        keys = {"Left": "←", "Right": "→", "Up": "↑", "Down": "↓", "Return": "↩", "Tab": "⇥"}
+        return "".join(glyph[m] for m in hk[0]) + keys.get(hk[1], hk[1])
+    name = {"ctrl": "Ctrl", "opt": "Alt", "shift": "Shift", "cmd": "Win"}
+    return "+".join([*(name[m] for m in hk[0]), hk[1]])
+
+
+def hotkeys_from_config(cfg: dict | None = None) -> dict[str, tuple[tuple[str, ...], str] | None]:
+    """action → hotkey (None = off). Missing / unparseable entries fall back to the default; the defaults' modifiers
+    can be overridden for tests with BLURT_HOTKEY_MODS (e.g. "ctrl+opt+shift+cmd"), as in the app."""
+    rec = (cfg if cfg is not None else global_config()).get("record", {})
+    user = rec.get("hotkeys") if isinstance(rec.get("hotkeys"), dict) else {}
+    env = os.environ.get("BLURT_HOTKEY_MODS") or ""
+    want = {_MOD_ALIASES.get(t.strip().lower()) for t in env.split("+")}
+    dmods = tuple(m for m in _MOD_ORDER if m in want) or ("opt", "shift")
+    out: dict[str, tuple[tuple[str, ...], str] | None] = {}
+    for a in HOTKEY_ACTIONS:
+        v = user.get(a)
+        if v is False or (isinstance(v, str) and v.strip().lower() in _OFF):
+            out[a] = None
+        elif parse_hotkey(v):
+            out[a] = parse_hotkey(v)
+        else:
+            out[a] = (dmods, HOTKEY_DEFAULT_KEYS[a])
+    return out

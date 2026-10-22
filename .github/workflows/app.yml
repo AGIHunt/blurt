@@ -4,36 +4,97 @@ on:
   push:
     tags: ["v*"]
     branches: [main]
-    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", ".github/workflows/app.yml"]
+    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", "scripts/release-mac.sh", "tests/test_mac_shell.py",
+            ".github/workflows/app.yml"]
   pull_request:
-    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", ".github/workflows/app.yml"]
+    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", "scripts/release-mac.sh", "tests/test_mac_shell.py",
+            ".github/workflows/app.yml"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  macos:
+  # What a skill user gets: `record.py build` from the Command Line Tools toolchain (no Xcode), then the app's GUI-less
+  # self test (ScriptRunner, ShellEnv, hotkey grammar, config) and the size budget.
+  skill-build:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - name: Build universal Blurt.app
+      - name: Build with the Command Line Tools + selftest
         env:
-          BLURT_HOME: ${{ runner.temp }}/blurt
-          BLURT_UNIVERSAL: "1"
+          BLURT_E2E: "1"
         run: |
-          mkdir -p "$BLURT_HOME" && echo '{"record": {"install_app": false}}' > "$BLURT_HOME/config.json"
-          uv run skills/blurt/scripts/record.py build
-          lipo -info "$BLURT_HOME/Blurt.app/Contents/MacOS/blurt-recorder"
-          ditto -c -k --keepParent "$BLURT_HOME/Blurt.app" Blurt-macOS.zip
+          export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+          swift --version
+          uv run -q --with pytest pytest tests/test_mac_shell.py -q
+
+  # Release-shaped build: universal + Sparkle, Developer ID signing / notarization when the secrets exist, otherwise the
+  # script's dry run (ad hoc, throwaway appcast key). Artifacts: DMG, Sparkle zip, appcast.xml.
+  release:
+    runs-on: macos-15
+    env:
+      HAS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
+      HAS_SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # CFBundleVersion = commit count
+      - uses: astral-sh/setup-uv@v6
+      - name: Import the Developer ID certificate
+        if: env.HAS_CERT == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          KC=$RUNNER_TEMP/build.keychain
+          security create-keychain -p ci "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p ci "$KC"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KC"
+          security list-keychains -d user -s "$KC" login.keychain
+          xcrun notarytool store-credentials blurt-notary --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" \
+            --password "$NOTARY_PASSWORD" --keychain "$KC"
+      - name: Build, sign, package
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" skills/blurt/recorder/macos/Info.plist)
+          [[ "$GITHUB_REF" == refs/tags/v* ]] && VERSION=${GITHUB_REF#refs/tags/v}
+          if [ -n "$SPARKLE_PRIVATE_ED_KEY" ]; then
+            printf '%s' "$SPARKLE_PRIVATE_ED_KEY" > "$RUNNER_TEMP/ed25519.key"
+            export SPARKLE_ED_KEY_FILE=$RUNNER_TEMP/ed25519.key
+          fi
+          [ -n "$SPARKLE_PUBLIC_ED_KEY" ] || unset SPARKLE_PUBLIC_ED_KEY
+          scripts/release-mac.sh --version "$VERSION" --out dist/macos | tee dist-summary.json
+          lipo -info dist/macos/Blurt.app/Contents/MacOS/blurt-recorder
+          ditto -c -k --keepParent dist/macos/Blurt.app Blurt-macOS.zip     # the old asset name, for existing links
+          # a dry run signs its appcast with a throwaway key: keep it as a CI artifact, never publish it
+          if [ "$HAS_SPARKLE_KEY" != true ]; then mkdir -p dry-run && mv dist/macos/appcast.xml dry-run/; fi
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
         with:
           name: Blurt-macOS
-          path: Blurt-macOS.zip
+          path: |
+            dist/macos/*.dmg
+            dist/macos/*.zip
+            dist/macos/*.delta
+            dist/macos/appcast.xml
+            dry-run/appcast.xml
+            Blurt-macOS.zip
+            dist-summary.json
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: Blurt-macOS.zip
+          files: |
+            dist/macos/*.dmg
+            dist/macos/*.zip
+            dist/macos/appcast.xml
+            Blurt-macOS.zip

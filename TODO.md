@@ -39,6 +39,23 @@
 - [ ] Demo GIF / video for the README
 - [ ] Windows tray app (resident mode parity)
 
+## v0.6 (feat/live-snap) — snap mode, live pipeline, perch — design: docs/design/snap-and-live.md
+- [x] Live pipeline: recorder → live/audio.pcm, `live.py` streaming ASR (transcript ready ~1 s after stop) + drafts
+      via a small model (claude haiku or codex, whichever CLI is logged in) → eggs in the HUD nest, live caption
+- [x] Text-first processing: `items.py` patches under a lock, review page opens as soon as items exist, frames stream in;
+      user edits win (measured: stop → review ~74 s, all frames ~115 s in the integrated app run with codex)
+- [x] Snap mode ⌥⇧A: standalone (release-to-capture, auto-listening voice note / typing / ink, batch `-shots` session,
+      "🐔 整理 N 张") and during recording (no pause, full-res still anchors an item); Tk: in-recording snap only
+- [x] Perch (top-of-screen shelf, chicken-foot clips, spring / swing / gravity, drag-out, never captured); kind eggs
+- [x] App unattended runs: agent launched with the user's login-shell env (not the opening session's); login preflight
+- [x] Homepage: playable snap demo, eggs, speed copy, dark mode, `site/llms.txt` (not deployed yet)
+- [ ] Verify on Windows/Linux VMs: live/audio.pcm sidecar from MicRecorder, in-recording snap (ffmpeg frame grab)
+- [ ] Real mic: silence endpointing of voice notes; real ⌥⇧A / hold-⌃ pen in the integrated app (tests used hooks)
+- [ ] Frames phase: first `frames.py` call inside codex spent ~59 s installing numpy/pillow — warm deps or pre-scan
+- [ ] Standalone snap + perch on Windows/Linux; "收集系统截图" toggle and drop-into-Terminal untested
+- [ ] Rebuild the Kai font subset for the new homepage copy (full source not on the build machine)
+- [ ] `live/audio.pcm` kept after the run (~115 MB/h) — delete after transcript.json once the mp4 is verified
+
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and
       auto red circles, no pixel guessing

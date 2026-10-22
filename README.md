@@ -27,7 +27,7 @@ your agent does the rest:
 
 | | |
 |---|---|
-| 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. This is the fastest way to push AI to the finish line. |
+| 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. That's how you push AI to the finish line. |
 | 💡 **Capture ideas while browsing** | "I like how this site does onboarding… and this pricing page…" You get an idea board: each idea, why you had it, where it came from, the next step, plus a one-page digest. |
 | 📐 **Browse, then get the spec** | Building a landing page or a store? Tour a few dozen reference sites, circle what you like and say why. Your agent turns it into a requirements doc and a design doc, each requirement next to the frame you circled, ready to build from. |
 | 🤝 **Hand off from anyone** | PMs, designers, ops, clients: anyone can record with the Blurt app, no repo needed, and send the video. The developer's agent processes it with the code at hand. |
@@ -52,18 +52,55 @@ The first run picks a speech model for your machine and installs the **Blurt** m
 1. **Draw the area** to record: drag a region, click a window, or go full screen. Tabs, bookmarks and everything
    else stay out of the video.
 2. **3-2-1**, then talk. A tiny floating bar shows time and mic level, with ⏸ pause, ↺ redo and **Finish**. The bar
-   itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧S` finish (Windows: `Alt+Shift+P` / `Alt+Shift+S`).
+   itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧A` snap, `⌥⇧S` finish (Windows: `Alt+Shift+P` / `A` / `S`).
    When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
    your agent sees exactly what you meant. To keep the pen on, click ✎ on the bar or press `⌥⇧D`; while it's on,
    clicks draw instead of reaching your app, and **`Esc`**, `⌥⇧D` or ✎ again turns it off.
-3. Click **Finish** and get back to work. Your agent transcribes locally, writes the items, and opens the review page.
-4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
+3. Click **Finish** and get back to work. Speech is transcribed locally while you talk, so the transcript is done when
+   you stop; your agent writes the items as text and the review page opens in about a minute, with frames and code
+   pointers streaming in while you review.
+4. **Triage like a feed**: `A` keep · `X` discard · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".
+
+**Snap mode:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go: the shot
+hangs on a little perch at the top of the screen, and you just say what's wrong (or type it, or circle it with `⌃`).
+Click **🐔 Process** when you've collected a few. Snapping during a recording (`⌥⇧A`, or 📸 on the bar) grabs a
+full-resolution still of that exact moment without pausing. Use video for flows, animations and timing.
 
 **Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
 finishes it; `⌥⇧B` opens the menu. Recordings go to a workspace: `~/Blurt` by default, or a project you bind, so
-your agent can process them with the code. Turn on *After recording → Claude Code / Codex* and every recording gets
-processed in the background, with the review page popping up when it's ready.
+your agent can process them with the code. Turn on *After recording → Process with an agent* and every recording
+gets processed in the background (Claude Code first; if it isn't installed or logged in, Codex, then Kimi Code,
+OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready. Every shortcut can be
+changed in *Shortcuts…* (`⌘,` in the menu).
+
+## Item lifecycle
+
+Every item has **one** state. The two that need you — **New** and **To verify** — make up your Inbox; everything
+else is either waiting on someone or finished.
+
+```
+New ──keep──▶ To do ──hand off──▶ Handed off ──▶ In progress ──▶ To verify ──mark as done──▶ Done
+                ▲                      │              │              │
+                ├── take back ─────────┴──────────────┘              │
+                └── send back ───────────────────────────────────────┘
+```
+
+| State | What it means |
+|---|---|
+| **New** | Just captured; you haven't looked at it yet. |
+| **To do** | You kept it. |
+| **Handed off** | Given to an agent: started in Blurt, or an instruction copied to your own agent. |
+| **In progress** | The agent is working on it. |
+| **To verify** | The agent says it's finished. Check it, then mark it done — or send it back. |
+| **Done** | You confirmed it. |
+| **Won't do** | You decided not to. Possible from any state that isn't finished; out of your inbox, kept on record. |
+| **Discarded** | The trash. Restore puts it back where it was. |
+
+An agent can only move an item to *In progress* or *To verify*: "fixed" means *to verify* until you say it's done.
+Click an item's status ring to see what you can do next — only the steps that make sense right now. Keys:
+`A` keep · `D` done · `R` back (send back, take back, reopen or restore) · `W` won't do · `X` discard · `S` the menu.
+More in the [user guide](docs/guide.md).
 
 ## Solo or team
 
@@ -95,14 +132,19 @@ reads the text, and it looks at a few frames only for the moments that become it
 more; silence and clicking around cost nothing. Quality follows the model: use one with
 vision, the stronger the better. Three real sessions (Claude Code, Opus 5.5, a production web app):
 
-| recording | speech | items | transcription (local) | recording → review page | new input / output tokens | at API prices |
-|---|---|---|---|---|---|---|
-| 7.0 min | 2.8 min | 9 | 4 s | ~4 min | ~142k / ~19k | ~$2 |
-| 14.3 min | 12.3 min | 23 | 12 s | ~7 min | ~138k / ~27k | ~$2.6 |
-| 20.0 min | 17.7 min | 34 | 15 s | ~6 min | ~122k / ~27k | ~$2.1 |
+| recording | speech | items | transcription (local) | new input / output tokens | at API prices |
+|---|---|---|---|---|---|
+| 7.0 min | 2.8 min | 9 | 4 s | ~142k / ~19k | ~$2 |
+| 14.3 min | 12.3 min | 23 | 12 s | ~138k / ~27k | ~$2.6 |
+| 20.0 min | 17.7 min | 34 | 15 s | ~122k / ~27k | ~$2.1 |
 
 <sub>Plus cache reads of the ongoing conversation (~3–5M tokens, 1/20 of the input price, included above), which depend
-on how long your chat already is.</sub>
+on how long your chat already is. The live drafts written while you record use a small model (Claude Haiku or Codex's
+small one) and aren't in the table.</sub>
+
+**How long until I can review?** About a minute after you click Finish; frames stream in while you review. Measured: a
+111-second recording (Codex) opened for review after 74 s, with every frame in by 115 s; a real 5-minute, 12-item
+session opened in 51 s.
 
 **Does it run on Windows and Linux?** Yes. Recording, local transcription, frames, the review page and exports are
 tested step by step on Windows and Linux, and CI runs on both. On Windows your agent starts the recorder, and after
@@ -110,6 +152,34 @@ the first recording there's a **Blurt** entry in the Start menu. Linux needs an 
 system audio are macOS-only for now. Setup (`doctor.py` tells you what's missing): Windows
 `winget install astral-sh.uv` and `winget install Gyan.FFmpeg`; Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk`, plus
 [uv](https://docs.astral.sh/uv/).
+
+**Which agent processes my recordings?** The first one in *menu → Agent* that is installed and logged in: by default
+Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. The menu shows each one's state and the command that fixes
+it; click one to try it first. When Blurt falls back it says so ("Claude Code isn't logged in — processing with Codex
+this time"), and if a run fails the toast names the reason (login expired, quota / rate limit, network, model, skill
+not found); details are in `agent.log` next to the recording. In `~/.blurt/config.json`:
+
+```json
+{"record": {"process": "auto", "agents": ["codex", "claude"]},
+ "review": {"open_in": "app"}}
+```
+
+`agents` lists the ones to use, in order (leave it out for all of them); `review.open_in` is `"app"` (a Blurt window,
+the default on macOS) or `"browser"`. `uv run skills/blurt/scripts/agents.py status` prints the same check.
+
+**Can I change the shortcuts?** On macOS: *menu → Shortcuts…* records a new combination per action, turns one off
+(⌫), restores the defaults, and warns when a shortcut is already taken (two actions on the same keys, another app,
+a macOS system shortcut). The hints on the bar and in the menu follow your keys. The same setting in
+`~/.blurt/config.json` also works on Windows (pause, snap, marker, finish):
+
+```json
+{"record": {"hotkeys": {"record": "ctrl+opt+R", "snap": "opt+shift+A", "pause": "off"},
+            "draw_key": "control"}}
+```
+
+Actions: `record`, `menu`, `snap`, `pause`, `marker`, `pen`, `stop`. Modifiers `ctrl`, `opt`/`alt`, `shift`,
+`cmd`/`win`; keys A–Z, 0–9, F1–F20, `Space`, arrows, punctuation. `draw_key` (hold to draw): `control`, `option`,
+`fn` or `off`.
 
 **I don't do frontend. Is it for me?** Yes, if you can see the problem on screen or film it with a phone. See
 *Not just web apps* above.

@@ -1,0 +1,972 @@
+// Blurt's main window: sidebar (places + projects) | items | detail in an NSSplitViewController, a unified toolbar
+// (Record, Snap, Hand Off, Move to Project, search), ⌘K command palette, context menus, Quick Look, window state
+// restored from $BLURT_HOME/ui/main-window.json (not UserDefaults: test builds share the bundle id with the user's
+// real app and must not disturb its state).
+//
+// Reads come from index.db (MainModel / IndexReader v3), projects.json (ProjectStore) and $BLURT_HOME/jobs
+// (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / state / move, projects.py,
+// handoff.py, sessions.py (AppEnvironment.dispatch, P3). The index follows (items.py updates it in-process, FSEvents
+// + `index.py update` catch everything else) and the model reloads when index.db's data_version moves.
+// This window never opens by itself: no review pops up when processing finishes (K4 notification rules).
+import AppKit
+import BlurtCore
+import Quartz
+
+final class MainWindow: NSWindow {
+    weak var controller: MainWindowController?
+    override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        if controller?.handleKeyEquivalent(e) == true { return true }
+        return super.performKeyEquivalent(with: e)
+    }
+}
+
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate,
+                                  NSMenuDelegate, NSMenuItemValidation, ItemListActions, WebHostActions, SidebarActions, MainWindowHosting {
+    static let shared = MainWindowController()
+
+    let model = MainModel()
+    let split = NSSplitViewController()
+    let sidebar: SidebarController
+    let list: ItemListController
+    let detail = WebHostController()
+    var searchItem: NSSearchToolbarItem?
+    var watcher: IndexWatcher?
+    var watchedRoots: [String] = []
+    lazy var palette = CommandPalette(controller: self)
+    private var saveTimer: Timer?
+    private var restored = false
+    /// The job the detail shows (selected in the jobs section), until another selection replaces it.
+    private(set) var shownJob: String?
+    /// The reminder sheet while it is up (tests answer it).
+    var openAlert: NSAlert?
+
+    init() {
+        sidebar = SidebarController(model: model)
+        list = ItemListController(model: model)
+        let w = MainWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
+                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                           backing: .buffered, defer: true)
+        super.init(window: w)
+        w.controller = self
+        w.title = "Blurt"
+        w.minSize = NSSize(width: 900, height: 520)
+        w.isReleasedWhenClosed = false
+        w.tabbingMode = .disallowed
+        w.titlebarSeparatorStyle = .automatic
+        w.toolbarStyle = .unified
+        w.collectionBehavior.insert(.fullScreenPrimary)
+        w.delegate = self
+        w.setAccessibilityLabel(T("main.window.label"))
+        if let appearance = ProcessInfo.processInfo.environment["BLURT_APPEARANCE"] {   // screenshots of both themes
+            w.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+        }
+
+        let side = NSSplitViewItem(sidebarWithViewController: sidebar)
+        side.minimumThickness = 190
+        side.maximumThickness = 320
+        side.canCollapse = true
+        let content = NSSplitViewItem(contentListWithViewController: list)
+        content.minimumThickness = 360
+        let det = NSSplitViewItem(viewController: detail)
+        det.minimumThickness = 380
+        det.canCollapse = true
+        det.holdingPriority = .init(249)
+        split.addSplitViewItem(side)
+        split.addSplitViewItem(content)
+        split.addSplitViewItem(det)
+        split.splitView.dividerStyle = .thin
+        w.contentViewController = split
+        w.setContentSize(NSSize(width: 1320, height: 820))   // the content VC sized the window to its views
+
+        let tb = NSToolbar(identifier: "BlurtMain")
+        tb.delegate = self
+        tb.displayMode = .iconOnly
+        tb.allowsUserCustomization = false
+        w.toolbar = tb
+
+        list.actions = self
+        detail.actions = self
+        sidebar.actions = self
+        model.onReload = { [weak self] in self?.list.reload(); self?.updateTitle(); self?.scheduleSave() }
+        model.onSidebar = { [weak self] in self?.sidebar.rebuild(); self?.updateWatcher() }
+        model.onJobs = { [weak self] in self?.list.reloadJobs() }
+        model.onIndexState = { [weak self] in
+            guard let self = self else { return }
+            self.list.reload()
+            self.updateTitle()
+            if self.model.indexState == .ready, self.list.table.selectedRow < 0, self.model.rowCount > 0 {
+                self.list.table.selectRowIndexes([0], byExtendingSelection: false)
+            }
+        }
+        ProjectStore.shared.onChange = { [weak self] in self?.model.reloadSidebar(); self?.updateTitle(); self?.list.updateEmpty() }
+        NotificationCenter.default.addObserver(forName: .blurtJobsChanged, object: nil, queue: .main) { [weak self] n in
+            self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
+        }
+
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.saveState(open: self?.window?.isVisible == true)
+        }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: MainWindowHosting
+
+    func show() {
+        if !restored { restoreState(); restored = true } else { model.reloadAll() }
+        becomeRegular()
+        activateApp()
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+        if window?.firstResponder == nil || window?.firstResponder === window { window?.makeFirstResponder(list.table) }
+    }
+
+    func reveal(uid: String) {
+        show()
+        guard let row = model.itemRow(uid: uid) else { return }
+        model.text = ""
+        searchItem?.searchField.stringValue = ""
+        model.state = row.discarded ? "discarded" : nil
+        model.kinds = []
+        if model.row(of: uid) == nil {
+            model.scope = row.projectID == "inbox" ? .unassigned : .project(row.projectID)
+            model.reload()
+        }
+        if model.row(of: uid) == nil { model.scope = .all; model.reload() }
+        sidebar.select(model.scope)
+        list.select(id: uid)
+        window?.makeFirstResponder(list.table)
+    }
+
+    /// A capture batch: its items, with the whole batch in the detail to triage.
+    func reveal(session: URL) {
+        show()
+        let dir = session.resolvingSymlinksInPath().standardizedFileURL.path
+        if let s = (try? model.reader?.session(dir: dir)) ?? nil {
+            go(.session(s.id))
+            if s.itemCount > 0, !s.legacy { detail.show(session: s.url) }
+        } else if let j = JobStore.shared.jobs.first(where: { $0.session?.standardizedFileURL.path == dir }) {
+            reveal(job: j.id)       // still being captured or processed: its progress
+        }
+    }
+
+    func reveal(job: String) {
+        show()
+        guard let j = JobStore.shared.job(job) else { return }
+        if !model.scope.showsJobs || !model.jobs.contains(where: { $0.id == job }) {
+            go(j.project.map { $0 == "inbox" ? .unassigned : .project($0) } ?? .inProgress)
+            if !model.jobs.contains(where: { $0.id == job }) { go(.inProgress) }
+        }
+        selectJob(job)
+    }
+
+    func reveal(project: String) {
+        show()
+        go(project == "inbox" ? .unassigned : .project(project))
+    }
+
+    func showInbox() {
+        show()
+        go(.inbox)
+    }
+
+    func becomeRegular() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.mainMenu = MainMenu.build()
+    }
+
+    // MARK: navigation
+
+    func go(_ s: Scope) {
+        guard s != model.scope || model.rowCount == 0 else { return }
+        list.forgetSelection()        // a new place starts at its first row
+        shownJob = nil
+        model.scope = s
+        if s.isTable { roomForTable() }
+        model.reload()
+        sidebar.select(s)
+        if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+        listSelectionChanged()
+    }
+
+    func sidebarSelected(_ s: Scope) { go(s) }
+
+    /// The full table wants ~760 pt: take it from the detail column while that keeps its minimum.
+    func roomForTable() {
+        let sv = split.splitView
+        let items = split.splitViewItems
+        guard items.count == 3, !items[2].isCollapsed else { return }
+        let list = sv.convert(items[1].viewController.view.bounds, from: items[1].viewController.view)
+        let detail = items[2].viewController.view.frame
+        let want: CGFloat = 760, minDetail: CGFloat = 400
+        guard list.width < want, detail.width > minDetail else { return }
+        let give = min(want - list.width, detail.width - minDetail)
+        sv.setPosition(list.maxX + give, ofDividerAt: 1)
+    }
+
+    func updateTitle() {
+        window?.title = model.scopeTitle
+        window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)
+    }
+
+    /// The inbox's subtitle (K3): "Needs you: 3 new · 2 to verify" — a zero part left out; nothing when both are zero
+    /// (the empty state says it).
+    var needsYou: String {
+        let c = model.counts
+        let parts = [c.new > 0 ? T("main.inbox.new", c.new) : nil, c.toVerify > 0 ? T("main.inbox.verify", c.toVerify) : nil].compactMap { $0 }
+        return parts.isEmpty ? "" : T("main.inbox.needs_you", parts.joined(separator: " · "))
+    }
+
+    func jobsChanged(_ changed: [Job]) {
+        model.reloadJobs()
+        detail.refreshBanner(projects: model.projects)
+        if let id = shownJob, let j = JobStore.shared.job(id) {
+            detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
+        }
+    }
+
+    // MARK: ItemListActions
+
+    func listSelectionChanged() {
+        let items = list.selectedItems
+        if !items.isEmpty { shownJob = nil; list.jobs.selected = nil }
+        if shownJob != nil { return }
+        if items.count == 1, let it = items.first {
+            detail.show(item: it, projects: model.projects)
+        } else {
+            detail.showNothing(items.count)
+        }
+        scheduleSave()
+    }
+
+    func selectJob(_ id: String) {
+        guard let j = JobStore.shared.job(id) else { return }
+        list.table.deselectAll(nil)
+        shownJob = id
+        list.jobs.selected = id
+        detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
+    }
+
+    func openSelection() { window?.makeFirstResponder(detail.web) }
+
+    func handOffSelection() {
+        let uids = list.selectedItems.map(\.uid)
+        guard !uids.isEmpty else { NSSound.beep(); return }
+        dispatch(uids: uids)
+    }
+
+    func renameSelection() {
+        guard let it = list.selectedItems.first, let w = window else { return }
+        let a = NSAlert()
+        a.messageText = T("main.rename.title")
+        a.informativeText = "\(Look.kindName(it.kind)) · \(it.itemID)"
+        let f = NSTextField(string: it.title)
+        f.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
+        a.accessoryView = f
+        a.addButton(withTitle: T("action.save"))
+        a.addButton(withTitle: T("action.cancel"))
+        a.window.initialFirstResponder = f
+        a.beginSheetModal(for: w) { [weak self] r in
+            let t = f.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard r == .alertFirstButtonReturn, !t.isEmpty, t != it.title else { return }
+            self?.edit([it], ["title": t])
+        }
+    }
+
+    func setKind(_ kind: String) { edit(list.selectedItems.filter { $0.kind != kind }, ["kind": kind]) }
+
+    // MARK: state (K3)
+
+    /// An action on the items it is valid for (the others are left alone). Hand off opens the dispatch panel; the rest
+    /// go to items.py state.
+    func apply(_ action: String, to items: [ItemRow]) {
+        let items = StateMenu.valid(action, items)
+        guard !items.isEmpty else { NSSound.beep(); return }
+        if action == "hand_off" { return dispatch(uids: items.map(\.uid)) }
+        guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
+        Scripts.state(items.map(\.uid), action: action) { [weak self] r in
+            switch r {
+            case .success: self?.wrote(items)
+            case .failure(let f): self?.alert(T("main.error.save_title"), f.localized)
+            }
+        }
+    }
+
+    func applyState(_ action: String, uids: [String]) { apply(action, to: model.items(uids: uids)) }
+
+    /// A list key (A, D, R, W, X / ⌫) on the selection: each item gets what the key means from its own state — R sends
+    /// back what is waiting to be verified and reopens what is done in the same press.
+    func act(key: String) {
+        let byAction = Dictionary(grouping: list.selectedItems.filter { !$0.legacy }) { Lifecycle.action(forKey: key, state: $0.state) ?? "" }
+        let runs = byAction.filter { !$0.key.isEmpty }
+        guard !runs.isEmpty else { NSSound.beep(); return }
+        for a in Lifecycle.actions where runs[a] != nil { apply(a, to: runs[a]!) }
+    }
+
+    /// The state menu of the selection, under a row's ring (S, or a click on the ring).
+    func showStateMenu(row: Int?, from view: NSView?) {
+        let items = list.selectedItems
+        guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
+        let m = StateMenu.menu(for: items, canHandOff: true, selector: #selector(mState(_:)), target: self)
+        guard !m.items.isEmpty else { NSSound.beep(); return }
+        if let v = view ?? row.flatMap(list.ringView(row:)), v.window != nil {
+            m.popUp(positioning: nil, at: NSPoint(x: -4, y: v.isFlipped ? v.bounds.height + 3 : -3), in: v)
+        } else if let r = row ?? list.table.selectedRowIndexes.first {
+            let rect = list.table.rect(ofRow: r)
+            m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.maxY), in: list.table)
+        }
+    }
+
+    @objc func mState(_ i: NSMenuItem) {
+        guard let a = i.representedObject as? String else { return }
+        if a == "back" { act(key: "r") } else { apply(a, to: list.selectedItems) }
+    }
+    @objc func mStateMenu() { showStateMenu(row: list.table.selectedRowIndexes.first, from: nil) }
+
+    /// User edits = items.py user-ops by uid, per project (the same ops the review component sends).
+    func edit(_ items: [ItemRow], _ set: [String: Any]) {
+        let items = items.filter { !$0.legacy }
+        guard !items.isEmpty else { return }
+        guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
+        for (p, group) in Dictionary(grouping: items, by: \.projectID) {
+            let ops: [[String: Any]] = group.map { ["op": "set", "id": $0.uid, "set": set, "unset": [] as [String]] }
+            Scripts.userOps(["--project", p], ops) { [weak self] r in
+                if case .failure(let f) = r { self?.alert(T("main.error.save_title"), f.localized) }
+                self?.wrote(group)
+            }
+        }
+    }
+
+    /// After a write: make sure the index catches up even when items.py couldn't update it in-process.
+    func wrote(_ items: [ItemRow]) {
+        Scripts.indexUpdate(items.map(\.fileURL))
+        detail.reload()
+    }
+
+    func copyPaths() {
+        let paths = list.selectedItems.map { $0.primaryFrame.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil } ?? $0.fileURL.path }
+        guard !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(paths.map { URL(fileURLWithPath: $0) as NSURL })
+        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+    }
+
+    func focusSearch() {
+        if let s = searchItem { s.beginSearchInteraction(); window?.makeFirstResponder(s.searchField) }
+    }
+
+    func emptyAction(_ tag: Int) {
+        switch tag {
+        case 1: model.scan()
+        case 2: clearFilters()
+        case 3: record()
+        case 4: snap()
+        case 5: openFolder()
+        case 6: if case .project(let p) = model.scope { useProject(p) }
+        default: break
+        }
+    }
+
+    func clearFilters() {
+        model.kinds = []; model.state = nil; model.text = ""
+        searchItem?.searchField.stringValue = ""
+        model.reload()
+    }
+
+    func showShortcuts() { ShortcutsSheet.show(on: window) }
+
+    // MARK: projects
+
+    @objc func openFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = true
+        panel.prompt = T("main.open.prompt")
+        panel.message = T("main.open.message")
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            guard r == .OK else { return }
+            self?.openFolders(panel.urls)
+        }
+        if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { activateApp(); done(panel.runModal()) }
+    }
+
+    /// Registers the folders as projects (projects.py add) and shows the last one.
+    func openFolders(_ urls: [URL]) {
+        Task { @MainActor in
+            var last: Project?
+            for u in urls {
+                do { last = try await ProjectStore.shared.open(folder: u) }
+                catch let e as ProjectError { alert(T("main.open.failed", u.lastPathComponent), Scripts.Failure(code: e.code, message: "\(e)").localized) }
+                catch { alert(T("main.open.failed", u.lastPathComponent), "\(error)") }
+            }
+            if let p = last {
+                model.reloadSidebar()
+                reveal(project: p.id)
+            }
+        }
+    }
+
+    /// Items to a project (or "inbox" = Unassigned), as the user's choice (items.py move --by user).
+    func move(uids: [String], to project: String) {
+        let items = model.items(uids: uids).filter { $0.projectID != project && !$0.legacy }
+        guard !items.isEmpty else { return }
+        Scripts.move(items.map(\.uid), to: project) { [weak self] r in
+            switch r {
+            case .success(let o):
+                let n = (o["moved"] as? [Any])?.count ?? items.count
+                let name = project == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: project)?.name ?? project
+                appDelegate?.toast(TP("main.move.done", n, name))
+                self?.wrote(items)
+            case .failure(let f): self?.alert(T("main.move.failed"), f.localized)
+            }
+        }
+    }
+
+    func projectSettings(_ id: String) {
+        guard let p = ProjectStore.shared.project(id: id), !p.isInbox, let w = window else { return }
+        ProjectSettingsSheet.show(p, on: w) { [weak self] patch in
+            Task { @MainActor in
+                do { try await ProjectStore.shared.update(id, patch) }
+                catch let e as ProjectError { self?.alert(T("main.project.save_failed"), Scripts.Failure(code: e.code, message: "\(e)").localized) }
+                catch { self?.alert(T("main.project.save_failed"), "\(error)") }
+            }
+        }
+    }
+
+    func removeProject(_ id: String) {
+        guard let p = ProjectStore.shared.project(id: id), let w = window else { return }
+        let a = NSAlert()
+        a.messageText = T("main.project.remove.title", p.name)
+        a.informativeText = T("main.project.remove.detail")
+        a.addButton(withTitle: T("main.project.remove.confirm"))
+        a.addButton(withTitle: T("action.cancel"))
+        a.beginSheetModal(for: w) { [weak self] r in
+            guard r == .alertFirstButtonReturn else { return }
+            Task { @MainActor in
+                do {
+                    try await ProjectStore.shared.remove(id)
+                    if self?.model.scope == .project(id) { self?.go(.inbox) }
+                } catch { self?.alert(T("main.project.save_failed"), "\(error)") }
+            }
+        }
+    }
+
+    func useProject(_ id: String?) {
+        Task { @MainActor in try? await ProjectStore.shared.use(id) }
+    }
+
+    // MARK: handing off (K5 in Blurt, K6 to your own agent)
+
+    /// Start an agent session in Blurt: P3's panel (agent, mode, worktree, the concurrent-edit reminder) when it is
+    /// installed, else straight to sessions.py with the project's defaults — after the same reminder.
+    func dispatch(uids: [String]) {
+        let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
+        guard !items.isEmpty else { NSSound.beep(); return }
+        if Set(items.map(\.projectID)).count > 1 { return alert(T("main.dispatch.one_project"), T("main.dispatch.one_project.detail")) }
+        if items.first?.projectID == "inbox" { return alert(T("main.dispatch.needs_project"), T("main.dispatch.needs_project.detail")) }
+        if let d = AppEnvironment.dispatch { return d(items.map(\.uid)) }
+        Task { @MainActor in
+            let s = AgentSessions.shared
+            do {
+                let dry = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: .auto, dryRun: true)
+                var worktree = WorktreeChoice.auto
+                if dry.warnings.contains(where: { $0.code == "concurrent_edit" }) {
+                    guard let choice = await concurrentEditReminder(project: items[0].projectName) else { return }
+                    worktree = choice
+                }
+                let r = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: worktree, dryRun: false)
+                wrote(items)
+                if let j = r.jobs.first {
+                    JobStore.shared.rescan()
+                    reveal(job: j)
+                }
+            } catch let e as SessionsError {
+                alert(T("main.dispatch.failed"), Scripts.Failure(code: e.code, message: "\(e)").localized)
+            } catch {
+                alert(T("main.dispatch.failed"), "\(error)")
+            }
+        }
+    }
+
+    /// K5: never a block, just a reminder (a sheet on the window). nil = cancelled.
+    @MainActor
+    func concurrentEditReminder(project: String) async -> WorktreeChoice? {
+        let a = NSAlert()
+        a.messageText = T("main.dispatch.concurrent.title")
+        a.informativeText = T("main.dispatch.concurrent", project)
+        a.icon = Look.symbol("arrow.triangle.branch", "", size: 32)
+        a.addButton(withTitle: T("main.dispatch.use_worktree"))
+        a.addButton(withTitle: T("action.continue"))
+        a.addButton(withTitle: T("action.cancel"))
+        a.buttons.last?.keyEquivalent = "\u{1b}"
+        guard let w = window, w.isVisible else { return nil }
+        openAlert = a
+        let r: NSApplication.ModalResponse = await withCheckedContinuation { c in a.beginSheetModal(for: w) { c.resume(returning: $0) } }
+        openAlert = nil
+        switch r {
+        case .alertFirstButtonReturn: return .on
+        case .alertSecondButtonReturn: return .off
+        default: return nil
+        }
+    }
+
+    /// Copy instruction / full text for your own agent app (K6). The sheet is written and the items marked handed off
+    /// when you copy — that click is the hand-off.
+    func handOff(uids: [String], what: String, reply: @escaping ([String: Any]?) -> Void) {
+        let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
+        guard !items.isEmpty else { NSSound.beep(); return reply(nil) }
+        Scripts.handoff(items.map(\.uid)) { [weak self] r in
+            switch r {
+            case .success(let o):
+                let text = (what == "full" ? o["full"] : o["instruction"]) as? String ?? ""
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                appDelegate?.toast(T(what == "full" ? "main.handoff.copied_full" : "main.handoff.copied"))
+                self?.wrote(items)
+                reply(["id": o["id"] ?? "", "path": o["path"] ?? "", "text": text])
+            case .failure(let f):
+                self?.alert(T("main.handoff.failed"), f.localized)
+                reply(nil)
+            }
+        }
+    }
+
+    @objc func mCopyInstruction() { handOff(uids: list.selectedItems.map(\.uid), what: "instruction") { _ in } }
+    @objc func mCopyFull() { handOff(uids: list.selectedItems.map(\.uid), what: "full") { _ in } }
+    /// AI fill-in (v0.7): items filed from notes without an agent get kind, steps, code refs — one agent run for all.
+    @objc func mEnrich() {
+        let items = list.selectedItems
+        (NSApp.delegate as? App)?.enrich(items.map(\.uid), project: items.first.map(\.projectID).flatMap { $0 == "inbox" ? nil : $0 })
+    }
+
+    // MARK: context menus
+
+    func contextMenu(for rows: IndexSet) -> NSMenu? {
+        let items = list.selectedItems
+        guard !items.isEmpty else { return nil }
+        let m = NSMenu()
+        m.autoenablesItems = true
+        let n = items.count
+        // what you can do from here (K3); handing off has its own section below
+        let states = StateMenu.actions(for: items, canHandOff: false)
+        if !states.isEmpty, Scripts.canWrite {
+            m.addItem(menuHeader(T("state.menu")))
+            for a in states { m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self)) }
+            m.addItem(.separator())
+        }
+        // hand off
+        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
+        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
+        _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
+        m.addItem(.separator())
+        m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
+        m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items)))
+        if n == 1 { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
+        if n == 1, let it = items.first, it.sessionURL != nil {
+            _ = add(m, T("main.menu.review_batch"), #selector(mReviewBatch), "rectangle.stack")
+        }
+        m.addItem(.separator())
+        _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "folder", key: "r", mods: [.command, .shift])
+        _ = add(m, T("action.copy_path"), #selector(mCopyPath), "doc.on.doc", key: "c", mods: [.command, .option])
+        _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink), "link")
+        if n == 1, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
+        return m
+    }
+
+    @discardableResult
+    func add(_ m: NSMenu, _ t: String, _ sel: Selector, _ sym: String? = nil, obj: Any? = nil, key: String = "",
+             mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+        let i = NSMenuItem(title: t, action: sel, keyEquivalent: key)
+        i.keyEquivalentModifierMask = mods
+        i.target = self
+        i.representedObject = obj
+        if let s = sym { i.image = Look.symbol(s, t) }
+        m.addItem(i)
+        return i
+    }
+
+    func submenu(_ t: String, _ sym: String, _ sub: NSMenu) -> NSMenuItem {
+        let i = NSMenuItem(title: t, action: nil, keyEquivalent: "")
+        i.image = Look.symbol(sym, t)
+        i.submenu = sub
+        return i
+    }
+
+    /// Projects (most recent first) and Unassigned — the selection's current one checked.
+    func moveMenu() -> NSMenu {
+        let m = NSMenu()
+        let here = Set(list.selectedItems.map(\.projectID))
+        for p in ProjectStore.shared.projects {
+            let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
+            i.state = here == [p.id] ? .on : .off
+        }
+        if !ProjectStore.shared.projects.isEmpty { m.addItem(.separator()) }
+        let u = add(m, T("project.inbox"), #selector(mMove(_:)), "tray.2", obj: "inbox")
+        u.state = here == ["inbox"] ? .on : .off
+        m.addItem(.separator())
+        _ = add(m, T("project.open_folder"), #selector(openFolder), "folder.badge.plus")
+        return m
+    }
+
+    func kindMenu(_ items: [ItemRow]) -> NSMenu {
+        let m = NSMenu()
+        for (k, key) in KindStyle.builtIn.enumerated() {
+            let i = add(m, Look.kindName(key), #selector(mSetKind(_:)), nil, obj: key, key: "\(k + 1)", mods: [])
+            i.image = Look.kindImage(key)
+            i.state = items.allSatisfy { $0.kind == key } ? .on : .off
+        }
+        return m
+    }
+
+    func sidebarMenu(_ s: Scope) -> NSMenu? {
+        guard case .project(let id) = s, let p = model.project(id: id) else { return nil }
+        let m = NSMenu()
+        if !p.registered {
+            _ = add(m, T("main.project.open_as"), #selector(mOpenUnregistered(_:)), "folder.badge.plus", obj: p.path)
+            return m
+        }
+        let cur = ProjectStore.shared.currentID == id
+        let use = add(m, cur ? T("main.project.use_auto") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
+        use.toolTip = T("main.project.use.tip")
+        _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
+        m.addItem(.separator())
+        _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "folder", obj: p.path)
+        if let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenURLInEditor(_:)), "chevron.left.forwardslash.chevron.right", obj: p.path) }
+        _ = add(m, T("action.copy_path"), #selector(mCopyURL(_:)), "doc.on.doc", obj: p.path)
+        m.addItem(.separator())
+        _ = add(m, T("main.project.remove"), #selector(mRemoveProject(_:)), "minus.circle", obj: id)
+        return m
+    }
+
+    @objc func mHandOff() { handOffSelection() }
+    @objc func mMove(_ i: NSMenuItem) { (i.representedObject as? String).map { move(uids: list.selectedItems.map(\.uid), to: $0) } }
+    @objc func mSetKind(_ i: NSMenuItem) { (i.representedObject as? String).map(setKind) }
+    @objc func mRename() { renameSelection() }
+    @objc func mReviewBatch() {
+        guard let s = list.selectedItems.first?.sessionURL else { return }
+        shownJob = nil
+        detail.show(session: s)
+    }
+    @objc func mQuickLook() { list.toggleQuickLook() }
+    @objc func mCopyPath() { copyPaths() }
+    @objc func mCopyLink() {
+        let links = list.selectedItems.map { "blurt://item/\($0.uid)" }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(links.joined(separator: "\n"), forType: .string)
+    }
+    @objc func mReveal() {
+        let urls = list.selectedItems.map { it -> URL in
+            if let f = it.primaryFrame, FileManager.default.fileExists(atPath: f) { return URL(fileURLWithPath: f) }
+            return it.fileURL
+        }
+        if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
+    }
+    @objc func mOpenInEditor() { list.selectedItems.first.map { Editor.open(file: $0.fileURL, line: nil) } }
+    @objc func mRevealURL(_ i: NSMenuItem) { (i.representedObject as? URL).map { NSWorkspace.shared.activateFileViewerSelecting([$0]) } }
+    @objc func mCopyURL(_ i: NSMenuItem) {
+        guard let u = i.representedObject as? URL else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(u.path, forType: .string)
+    }
+    @objc func mOpenURLInEditor(_ i: NSMenuItem) { (i.representedObject as? URL).map { Editor.open(folder: $0) } }
+    @objc func mOpenUnregistered(_ i: NSMenuItem) { (i.representedObject as? URL).map { openFolders([$0]) } }
+    @objc func mUseProject(_ i: NSMenuItem) { useProject(i.representedObject as? String) }
+    @objc func mProjectSettings(_ i: NSMenuItem) { (i.representedObject as? String).map(projectSettings) }
+    @objc func mRemoveProject(_ i: NSMenuItem) { (i.representedObject as? String).map(removeProject) }
+
+    /// This item is being validated because its own unmodified key was pressed (key-equivalent matching), not because
+    /// a menu opened.
+    func isKeyMatch(_ item: NSMenuItem) -> Bool {
+        guard item.keyEquivalentModifierMask.isEmpty, !item.keyEquivalent.isEmpty, let e = NSApp.currentEvent, e.type == .keyDown,
+              e.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
+        if item.keyEquivalent == "\u{8}" { return e.keyCode == 51 || e.keyCode == 117 }
+        return e.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let items = list.selectedItems
+        if item.action == #selector(mState(_:)) || item.action == #selector(mStateMenu), item.menu?.supermenu != nil, isKeyMatch(item) {
+            return false        // a menu-bar item's single key: the list's keyDown handles it there (MainMenu.displayKey)
+        }
+        switch item.action {
+        case #selector(mHandOff), #selector(mCopyInstruction), #selector(mCopyFull):
+            return Scripts.canWrite && items.contains { !$0.discarded && !$0.legacy }
+        case #selector(mState(_:)):
+            guard Scripts.canWrite, let a = item.representedObject as? String else { return false }
+            if a == "back" {
+                // the menu bar's one "back" entry says what R does for the selection
+                let back = items.filter { !$0.legacy }.compactMap { Lifecycle.backAction($0.state) }
+                item.title = StateMenu.title(Set(back).count == 1 ? back[0] : "send_back")
+                return !back.isEmpty
+            }
+            return !StateMenu.valid(a, items).isEmpty
+        case #selector(mStateMenu):
+            return Scripts.canWrite && !StateMenu.actions(for: items, canHandOff: true).isEmpty
+        case #selector(mMove(_:)):
+            guard let p = item.representedObject as? String else { return false }
+            return Scripts.canWrite && items.contains { $0.projectID != p && !$0.legacy }
+        case #selector(mRename), #selector(mSetKind(_:)):
+            return Scripts.canWrite && items.contains { !$0.legacy }
+        case #selector(mReveal), #selector(mCopyPath), #selector(mCopyLink), #selector(mQuickLook), #selector(mOpenInEditor):
+            return !items.isEmpty
+        default: return true
+        }
+    }
+
+    // MARK: WebHostActions
+
+    func reveal(file: URL) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
+    func quickLook(files: [URL]) { list.toggleQuickLook(files) }
+    func webWrote() { detail.currentItem.map { Scripts.indexUpdate([$0.fileURL]) } }
+    func revealJob(_ id: String) { reveal(job: id) }
+
+    func openCode(_ ref: String, item: ItemRow?) {
+        let repo = item.flatMap { ProjectStore.shared.project(id: $0.projectID) }.map(\.path)
+        Editor.open(ref: ref, repo: repo, session: item?.sessionURL)
+    }
+
+    func jobAction(_ action: String, job: Job) {
+        switch action {
+        case "log": NSWorkspace.shared.open(JobFiles.log(job.id))
+        case "retry": if let s = job.session { AppEnvironment.process?(s, job.captures.isEmpty ? nil : job.captures, job.project == "inbox" ? nil : job.project) }
+        case "items":
+            if let first = job.items.first { reveal(uid: first) }
+        case "external":
+            Task { try? await AgentSessions.shared.openExternal(job: job.id, terminal: nil) }
+        case "stop":
+            Task { try? await AgentSessions.shared.stop(job: job.id, kill: false) }
+        default: break
+        }
+    }
+
+    // MARK: toolbar actions
+
+    @objc func record() { appDelegate?.startRecording(useLast: false) }
+    @objc func snap() { snapper.hotkey() }
+    @objc func showPalette() { palette.toggle() }
+
+    // MARK: keys that work wherever the focus is
+
+    func handleKeyEquivalent(_ e: NSEvent) -> Bool {
+        let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
+        let ch = e.charactersIgnoringModifiers?.lowercased() ?? ""
+        if mods == .command {
+            switch ch {
+            case "k": palette.toggle(); return true
+            case "f": focusSearch(); return true
+            case "o": openFolder(); return true
+            case "1": go(.inbox); return true
+            case "2": go(.inProgress); return true
+            case "3": go(.unassigned); return true
+            case "4": go(.all); return true
+            default: break
+            }
+            if let n = Int(ch), n >= 5, n <= 9, n - 5 < model.projects.count { go(.project(model.projects[n - 5].id)); return true }
+            if e.keyCode == 36 || e.keyCode == 76, window?.firstResponder === list.table { handOffSelection(); return true }
+        }
+        if mods == [.command, .shift], ch == "r" { mReveal(); return true }
+        if mods == [.command, .shift], ch == "c", window?.firstResponder === list.table { mCopyInstruction(); return true }
+        if mods == [.command, .option], ch == "c" { copyPaths(); return true }
+        return false
+    }
+
+    // MARK: toolbar
+
+    static let recordID = NSToolbarItem.Identifier("record"), snapID = NSToolbarItem.Identifier("snap")
+    static let handOffID = NSToolbarItem.Identifier("handoff"), moveID = NSToolbarItem.Identifier("move")
+    static let searchID = NSToolbarItem.Identifier("search")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator, Self.recordID, Self.snapID, .flexibleSpace, Self.moveID, Self.handOffID, Self.searchID]
+    }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        func button(_ label: String, _ sym: String, _ sel: Selector, tip: String) -> NSToolbarItem {
+            let i = NSToolbarItem(itemIdentifier: id)
+            i.label = label
+            i.paletteLabel = label
+            i.toolTip = tip
+            i.image = Look.symbol(sym, label, size: 15)
+            i.target = self
+            i.action = sel
+            i.isBordered = true
+            return i
+        }
+        func menuItem(_ label: String, _ sym: String, tip: String, tag: Int) -> NSToolbarItem {
+            let i = NSMenuToolbarItem(itemIdentifier: id)
+            i.label = label
+            i.paletteLabel = label
+            i.toolTip = tip
+            i.image = Look.symbol(sym, label, size: 15)
+            let m = NSMenu()
+            m.delegate = self
+            m.identifier = .init("toolbar-\(tag)")
+            i.menu = m
+            i.showsIndicator = true
+            return i
+        }
+        switch id {
+        case Self.recordID:
+            return button(T("main.action.record"), "record.circle", #selector(record), tip: T("main.toolbar.record.tip", hk(.toggleRecord)))
+        case Self.snapID:
+            return button(T("main.action.snap"), "camera.viewfinder", #selector(snap), tip: T("main.toolbar.snap.tip", hk(.snap)))
+        case Self.handOffID:
+            return menuItem(T("main.toolbar.handoff"), "paperplane", tip: T("main.toolbar.handoff.tip"), tag: 1)
+        case Self.moveID:
+            return menuItem(T("main.toolbar.move"), "folder", tip: T("main.toolbar.move.tip"), tag: 2)
+        case Self.searchID:
+            let s = NSSearchToolbarItem(itemIdentifier: id)
+            s.searchField.placeholderString = T("main.search.placeholder")
+            s.searchField.delegate = self
+            s.searchField.sendsSearchStringImmediately = true
+            s.searchField.sendsWholeSearchString = false
+            s.searchField.setAccessibilityLabel(T("main.search.label"))
+            s.preferredWidthForSearchField = 240
+            searchItem = s
+            return s
+        default: return nil
+        }
+    }
+
+    /// The two toolbar menus, built when they open (the selection decides what is enabled).
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        switch menu.identifier?.rawValue {
+        case "toolbar-1":
+            let n = list.selectedItems.count
+            _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
+            menu.addItem(.separator())
+            menu.addItem(menuHeader(T("main.toolbar.handoff.own")))
+            _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
+            _ = add(menu, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
+        case "toolbar-2":
+            for it in moveMenu().items { it.menu?.removeItem(it); menu.addItem(it) }
+        default: break
+        }
+    }
+
+    func controlTextDidChange(_ n: Notification) {
+        guard let f = n.object as? NSSearchField, f === searchItem?.searchField else { return }
+        model.text = f.stringValue
+        model.reload()
+        if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        guard control === searchItem?.searchField else { return false }
+        if sel == #selector(NSResponder.moveDown(_:)) || sel == #selector(NSResponder.insertNewline(_:)) {
+            window?.makeFirstResponder(list.table)
+            if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+            return true
+        }
+        if sel == #selector(NSResponder.cancelOperation(_:)) {
+            if control.stringValue.isEmpty { window?.makeFirstResponder(list.table); return true }
+            return false
+        }
+        return false
+    }
+
+    // MARK: index watcher (FSEvents → index.py update)
+
+    func updateWatcher() {
+        let stores = ProjectStore.shared.projects.map(\.store.path) + [ProjectStore.shared.inbox.store.path]
+        let legacy = [BlurtPaths.workspace.appendingPathComponent("recordings").path]
+        let all = (stores + legacy).sorted()
+        guard all != watchedRoots else { return }
+        watchedRoots = all
+        watcher?.stop()
+        let w = IndexWatcher(stores: stores.map { URL(fileURLWithPath: $0) }, legacyRoots: legacy.map { URL(fileURLWithPath: $0) })
+        w.onChange = { paths in Scripts.indexUpdate(paths) }
+        w.start()
+        watcher = w
+    }
+
+    // MARK: window state
+
+    struct State: Codable {
+        var frame: String?, sidebar: Double?, detail: Double?, sidebarCollapsed: Bool?
+        var scope: String?, kinds: [String]?, state: String?, sort: String?, ascending: Bool?
+        var selected: [String]?, open: Bool?
+    }
+    static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
+
+    static func loadState() -> State? {
+        (try? Data(contentsOf: stateURL)).flatMap { try? JSONDecoder().decode(State.self, from: $0) }
+    }
+
+    func scheduleSave() {
+        guard restored else { return }
+        saveTimer?.invalidate()
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in self?.saveState(open: self?.window?.isVisible == true) }
+    }
+
+    func saveState(open: Bool) {
+        guard restored, let w = window else { return }
+        let items = split.splitViewItems
+        var s = State()
+        s.frame = w.frameDescriptor
+        s.sidebar = items[0].isCollapsed ? nil : Double(items[0].viewController.view.frame.width)
+        s.sidebarCollapsed = items[0].isCollapsed
+        s.detail = Double(items[2].viewController.view.frame.width)
+        if case .session = model.scope {} else { s.scope = model.scope.key }
+        s.kinds = model.kinds.sorted(); s.state = model.state
+        s.sort = model.sort; s.ascending = model.ascending
+        s.selected = list.selectedIDs
+        s.open = open
+        try? FileManager.default.createDirectory(at: Self.stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let d = try? JSONEncoder().encode(s) { try? d.write(to: Self.stateURL, options: .atomic) }
+    }
+
+    func restoreState() {
+        guard let w = window else { return }
+        _ = list.view; _ = sidebar.view; _ = detail.view
+        let s = Self.loadState()
+        if let f = s?.frame { w.setFrame(from: f) } else { w.center() }
+        if let sc = s?.scope.flatMap(Scope.init(key:)) { model.scope = sc }
+        if case .project(let p) = model.scope, ProjectStore.shared.project(id: p) == nil { model.scope = .inbox }
+        model.kinds = Set(s?.kinds ?? [])
+        model.state = s?.state.flatMap { $0 == "inbox" || Lifecycle.isState($0) ? $0 : nil }
+        model.text = ""          // like Finder and Mail: a new window starts without the last search
+        model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
+        model.ascending = s?.ascending ?? false
+        searchItem?.searchField.stringValue = model.text
+        list.table.sortDescriptors = [NSSortDescriptor(key: model.sort, ascending: model.ascending)]
+        model.reloadAll()
+        sidebar.select(model.scope)
+        list.reload(keep: s?.selected ?? [])
+        if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+        listSelectionChanged()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let sv = self.split.splitView
+            if s?.sidebarCollapsed == true { self.split.splitViewItems[0].isCollapsed = true }
+            else if let sb = s?.sidebar { sv.setPosition(CGFloat(sb), ofDividerAt: 0) }
+            if let d = s?.detail, d > 0 { sv.setPosition(sv.bounds.width - CGFloat(d) - sv.dividerThickness, ofDividerAt: 1) }
+            else {
+                let side = self.split.splitViewItems[0].isCollapsed ? 0 : self.sidebar.view.frame.width
+                sv.setPosition(min(sv.bounds.width - 460, side + 560), ofDividerAt: 1)
+            }
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) { scheduleSave() }
+    func windowDidMove(_ notification: Notification) { scheduleSave() }
+    func windowDidBecomeKey(_ notification: Notification) { NSApp.mainMenu = MainMenu.build() }
+
+    func windowWillClose(_ notification: Notification) {
+        saveState(open: false)
+        palette.close()
+        if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().orderOut(nil) }
+        DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
+    }
+
+    func alert(_ title: String, _ text: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = text
+        if let w = window, w.isVisible { a.beginSheetModal(for: w) } else { a.runModal() }
+    }
+}

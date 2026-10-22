@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>Hand to an agent (run)</title>
+  <rect x="2.5" y="6.5" width="13" height="10.5" rx="3"/>
+  <path d="M9 6.5V4.2"/>
+  <circle cx="9" cy="3.3" r="1.1" fill="currentColor" stroke="none"/>
+  <circle cx="6.8" cy="11.6" r="1.15" fill="currentColor" stroke="none"/>
+  <circle cx="11.2" cy="11.6" r="1.15" fill="currentColor" stroke="none"/>
+  <path d="M17.2 14.8v6.4l5-3.2Z" fill="currentColor" stroke="none"/>
+</svg>

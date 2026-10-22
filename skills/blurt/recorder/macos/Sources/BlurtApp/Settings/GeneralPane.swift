@@ -1,0 +1,145 @@
+// Settings → General: projects (the folders opened in Blurt, and which one new captures go to), open at login,
+// language, Spotlight, what happens after a recording.
+import AppKit
+import ServiceManagement
+import SwiftUI
+import BlurtCore
+
+@MainActor
+final class GeneralModel: ObservableObject {
+    @Published var projects: [Project] = []
+    @Published var current: String = "auto"
+    @Published var openAtLogin = false
+    @Published var loginError: String?
+    @Published var language = "auto"
+    @Published var processMode = "auto"
+    @Published var countdown = 3
+    @Published var spotlight = true
+    @Published var error: String?
+
+    init() { reload() }
+
+    func reload() {
+        let s = ProjectStore.shared
+        s.reload()
+        projects = s.projects
+        current = s.currentID ?? "auto"
+        openAtLogin = SMAppService.mainApp.status == .enabled
+        let l = Config.shared["lang"] as? String ?? "auto"
+        language = l == "zh" ? "zh-Hans" : (["en", "zh-Hans"].contains(l) ? l : "auto")
+        processMode = (recordConfig()["process"] as? String ?? "auto") == "off" ? "off" : "auto"
+        countdown = recordConfig()["countdown"] as? Int ?? 3
+        spotlight = Config.shared["spotlight"] as? Bool ?? true
+    }
+
+    private func run(_ f: @escaping () async throws -> Void) {
+        Task { @MainActor in
+            do { try await f(); error = nil } catch let e as ProjectError {
+                error = Scripts.Failure(code: e.code, message: "\(e)").localized
+            } catch { self.error = "\(error)" }
+            reload()
+        }
+    }
+
+    func setCurrent(_ id: String) { run { try await ProjectStore.shared.use(id == "auto" ? nil : id) } }
+    func remove(_ p: Project) { run { try await ProjectStore.shared.remove(p.id) } }
+    func openFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = T("main.open.prompt")
+        panel.message = T("main.open.message")
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        run { for u in urls { _ = try await ProjectStore.shared.open(folder: u) } }
+    }
+    func setLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            loginError = nil
+        } catch { loginError = error.localizedDescription }
+        openAtLogin = SMAppService.mainApp.status == .enabled
+    }
+    func setLanguage(_ v: String) {
+        Config.shared.set("lang", v == "auto" ? nil : v)
+        language = v
+    }
+    func setProcess(_ v: String) { setRecordConfig("process", v); processMode = v }
+    func setCountdown(_ v: Int) { setRecordConfig("countdown", v); countdown = v }
+    func setSpotlight(_ v: Bool) {
+        Config.shared.set("spotlight", v ? nil : false)
+        spotlight = v
+        if v { Spotlight.shared.refresh() } else { Spotlight.shared.removeAll() }
+    }
+}
+
+struct GeneralPane: View {
+    @StateObject var m = GeneralModel()
+
+    var body: some View {
+        PaneFrame {
+            Section {
+                Picker(T("settings.general.capture_into"), selection: Binding(get: { m.current }, set: { m.setCurrent($0) })) {
+                    Text(T("settings.general.auto")).tag("auto")
+                    ForEach(m.projects, id: \.id) { p in Text(p.name).tag(p.id) }
+                }
+                ForEach(m.projects, id: \.id) { p in
+                    HStack {
+                        Image(systemName: p.exists ? "folder" : "questionmark.folder").foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 6) {
+                                Text(p.name)
+                                Text(p.key).font(.caption.monospaced()).foregroundStyle(.tertiary)
+                            }
+                            Text((p.path.path as NSString).abbreviatingWithTildeInPath).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button { NSWorkspace.shared.open(p.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
+                            .help(T("action.open")).accessibilityLabel(T("action.open"))
+                        Button { m.remove(p) } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless)
+                            .help(T("settings.general.remove.help")).accessibilityLabel(T("settings.general.remove.help"))
+                    }
+                }
+                HStack {
+                    Button(T("project.open_folder")) { m.openFolder() }
+                    Spacer()
+                    Button(T("settings.general.open_unassigned")) { NSWorkspace.shared.open(ProjectStore.shared.inbox.store) }
+                }
+                if let e = m.error { Text(e).font(.caption).foregroundStyle(.orange) }
+                Hint(T("settings.general.projects.hint"))
+            } header: { Text(T("main.sidebar.projects")) }
+
+            Section {
+                Toggle(T("settings.general.login"), isOn: Binding(get: { m.openAtLogin }, set: { m.setLogin($0) }))
+                if let e = m.loginError { Text(e).font(.caption).foregroundStyle(.orange) }
+                Picker(T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
+                    Text(T("settings.general.language.system")).tag("auto")
+                    Text("English").tag("en")
+                    Text("简体中文").tag("zh-Hans")
+                }
+                if Loc.normalize(m.language) != Loc.language {   // the running app keeps the language it opened with
+                    Hint(T("settings.general.language.restart"))
+                }
+                Toggle(T("settings.general.spotlight"), isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
+            } header: { Text(T("settings.general.app")) }
+
+            Section {
+                Picker(T("settings.general.after_recording"), selection: Binding(get: { m.processMode }, set: { m.setProcess($0) })) {
+                    Text(T("app.menu.after.organize")).tag("auto")
+                    Text(T("app.menu.after.keep")).tag("off")
+                }
+                Picker(T("app.menu.countdown"), selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) })) {
+                    Text(T("app.menu.countdown.none")).tag(0)
+                    Text(T("app.menu.countdown.seconds", 3)).tag(3)
+                    Text(T("app.menu.countdown.seconds", 5)).tag(5)
+                }
+                HStack {
+                    Spacer()
+                    Button(T("settings.general.assistant")) { Onboarding.shared.show() }
+                }
+            } header: { Text(T("settings.general.recording")) }
+        }
+        .onAppear { m.reload() }
+    }
+}

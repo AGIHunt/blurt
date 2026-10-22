@@ -10,7 +10,8 @@ SRC_DIR holds the full fonts (OFL, not kept in the repo):
 
 Both pages are opened in headless Chromium; every text node is bucketed by the family and weight it is set in,
 so each subset only carries the glyphs that face actually renders. Strings that only appear after a click
-(data-* attributes, JS labels) are added from the HTML and main.js.
+(data-* attributes, JS labels) are added from the HTML and main.js,
+except the main.js blocks marked @fonts:system-ui-start/-end, which render in the system font.
 """
 import functools, http.server, re, shutil, socketserver, sys, threading
 from pathlib import Path
@@ -58,6 +59,8 @@ srv.shutdown()
 extra = ""
 for f in (SITE / "index.html", SITE / "en" / "index.html", SITE / "main.js", SITE / "style.css"):
     t = f.read_text()
+    # main.js marks the strings that render in the system UI font (the snap desk, live captions): no need to subset those
+    t = re.sub(r"// @fonts:system-ui-start.*?// @fonts:system-ui-end", "", t, flags=re.S)
     extra += "".join(re.findall(r'data-(?:done|busy|close|other|touch)="([^"]*)"', t))
     extra += "".join(re.findall(r'content: "([^"]*)"', t))
     extra += "".join(re.findall(r'"([^"\n]*[　-鿿][^"\n]*)"', t)) if f.suffix == ".js" else ""

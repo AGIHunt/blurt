@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>Peck — the chick pecks the bug (fixed)</title>
+  <path d="M12.6 5.4A6.4 6.4 0 1 1 6.3 5.8 1.2 1.2 0 0 1 8.1 4.4 1.25 1.25 0 0 1 10.6 4.3 1.2 1.2 0 0 1 12.6 5.4Z"/>
+  <path d="M15.9 12.5 17.9 16 14.4 15.5Z"/>
+  <path d="M15.9 12.5 17.9 16 14.4 15.5Z" fill="currentColor" stroke="none"/>
+  <circle cx="12.1" cy="10" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="19" cy="18.1" r="1" fill="currentColor" stroke="none"/>
+  <ellipse cx="19.8" cy="20.4" rx="2.3" ry="1.95" fill="currentColor" stroke="none"/>
+  <path d="M16.9 19.9h-1M17.3 21.9l-.9.6"/>
+</svg>

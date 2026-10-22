@@ -1,0 +1,38 @@
+{
+  "name": "@blurt/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Blurt design tokens (macOS / Windows / GNOME × light / dark), the theme/platform helpers, and the K8 kind icons, the K3 lifecycle and the state ring + menu shared by the review canvas and the Tauri shell.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.tsx",
+    "./tokens.css": "./src/tokens.css",
+    "./base.css": "./src/base.css"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@blurt/icons": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "react-dom": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "jsdom": "26.1.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

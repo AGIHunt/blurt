@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Blurt.app Info.plist (WP4 owns it; record.py build copies it into the bundle). The bundle id and the config keys
+     never change: a new build installs over the old one and keeps its permissions. Release builds
+     (scripts/release-mac.sh) set CFBundleVersion and SUPublicEDKey. -->
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>dev.blurt.recorder</string>
+<key>CFBundleName</key><string>Blurt</string>
+<key>CFBundleDisplayName</key><string>Blurt 口喷鸡</string>
+<!-- K10: English is the development language; the string tables are Contents/Resources/{en,zh-Hans}.lproj -->
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
+<key>CFBundleExecutable</key><string>blurt-recorder</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.5.0</string>
+<key>CFBundleVersion</key><string>0.5.0</string>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>LSUIElement</key><true/>
+<key>NSMicrophoneUsageDescription</key><string>Blurt records your voice while you narrate feedback.</string>
+<key>NSScreenCaptureUsageDescription</key><string>Blurt records the screen area you select.</string>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+<!-- blurt://item/<uid>, blurt://session/<abs-path-encoded>, blurt://record, blurt://snap (C7); blurt-app:// is the
+     scheme the in-app review canvas loads from (C6) -->
+<key>CFBundleURLTypes</key><array><dict>
+  <key>CFBundleURLName</key><string>dev.blurt.recorder</string>
+  <key>CFBundleTypeRole</key><string>Viewer</string>
+  <key>CFBundleURLSchemes</key><array><string>blurt</string><string>blurt-app</string></array>
+</dict></array>
+<!-- K2: folders dropped on the Dock icon (or "Open With") open as projects -->
+<key>CFBundleDocumentTypes</key><array><dict>
+  <key>CFBundleTypeName</key><string>Folder</string>
+  <key>CFBundleTypeRole</key><string>Viewer</string>
+  <key>LSHandlerRank</key><string>None</string>
+  <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+</dict></array>
+<!-- Services → "Add to Blurt": selected text or image becomes a note in the inbox (implemented by WP6:
+     NSApp.servicesProvider.addToBlurt(_:userData:error:)) -->
+<key>NSServices</key><array><dict>
+  <key>NSMenuItem</key><dict><key>default</key><string>Add to Blurt</string></dict>
+  <key>NSMessage</key><string>addToBlurt</string>
+  <key>NSPortName</key><string>Blurt</string>
+  <key>NSSendTypes</key><array><string>public.utf8-plain-text</string><string>public.plain-text</string><string>public.image</string><string>public.file-url</string></array>
+  <key>NSRequiredContext</key><dict/>
+</dict></array>
+<!-- Sparkle 2 -->
+<key>SUFeedURL</key><string>https://github.com/AGIHunt/blurt/releases/latest/download/appcast.xml</string>
+<key>SUPublicEDKey</key><string></string>
+</dict></plist>

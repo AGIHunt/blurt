@@ -15,5 +15,26 @@
   "homepage": "https://github.com/AGIHunt/blurt",
   "author": {
     "name": "AGI Hunt"
+  },
+  "mcpServers": {
+    "blurt": {
+      "command": "uv",
+      "args": ["run", "-q", "--script", "${CLAUDE_PLUGIN_ROOT}/skills/blurt/scripts/mcp_server.py"]
+    }
+  },
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": ["run", "-q", "--script", "${CLAUDE_PLUGIN_ROOT}/skills/blurt/scripts/index.py", "update",
+                     "--workspace", "${CLAUDE_PROJECT_DIR}"],
+            "timeout": 30
+          }
+        ]
+      }
+    ]
   }
 }

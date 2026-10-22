@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlays",
+  "description": "What the overlay windows need (the Tauri app grants the same to blurt-overlay-*)",
+  "windows": ["blurt-overlay-*"],
+  "permissions": ["core:default"]
+}

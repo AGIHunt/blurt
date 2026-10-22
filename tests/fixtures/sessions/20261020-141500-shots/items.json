@@ -1,0 +1,58 @@
+{
+  "session": "20261020-141500-shots",
+  "language": "zh",
+  "title": "设置页两处小问题",
+  "reviewed": false,
+  "agent_at": 1792477000.0,
+  "items": [
+    {
+      "id": "I-001",
+      "kind": "issue",
+      "title": "设置页分组标题字号太小",
+      "quote": "设置页的分组标题太小",
+      "time": null,
+      "frames": [
+        {
+          "path": "shots/001.png",
+          "t": null
+        }
+      ],
+      "tags": [],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "draft",
+      "exported": {},
+      "module": "settings",
+      "severity": "low",
+      "actual": "分组标题 11px",
+      "expected": "13px 加粗"
+    },
+    {
+      "id": "I-002",
+      "kind": "issue",
+      "title": "保存按钮颜色太浅，看不出可点击",
+      "quote": "保存按钮颜色太浅，看不出能点",
+      "time": null,
+      "frames": [
+        {
+          "path": "shots/002.marked.png",
+          "t": null,
+          "caption": "用户圈出的保存按钮"
+        }
+      ],
+      "tags": [
+        "按钮"
+      ],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "draft",
+      "exported": {},
+      "module": "settings",
+      "severity": "medium",
+      "actual": "按钮是浅灰色",
+      "expected": "主色按钮"
+    }
+  ]
+}

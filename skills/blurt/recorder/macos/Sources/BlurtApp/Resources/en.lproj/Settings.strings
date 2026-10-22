@@ -1,0 +1,153 @@
+/* Settings — the settings window and the setup assistant (K10). Owner: P4.
+   Same keys and placeholders in the other language (tests/test_l10n.py). */
+
+"onboarding.back" = "Back";
+
+"onboarding.blurt_hands_recordings_agent" = "Blurt hands recordings to the agent you already use. With the blurt skill + MCP installed it can read items and report fixes back.";
+
+"onboarding.blurt_records_area_you" = "Blurt records the area you pick; files stay on your Mac. The status below updates live.";
+
+"onboarding.coding_agent" = "Coding agent";
+
+"onboarding.dependencies_ready_index_built" = "Dependencies ready, index built";
+
+"onboarding.done" = "Done";
+
+"onboarding.download" = "Download";
+
+"onboarding.download_via_hf_mirror" = "Download via hf-mirror.com (mainland China)";
+
+"onboarding.downloaded" = "Downloaded";
+
+"onboarding.fetches_scripts_packages_now" = "Fetches the scripts' packages now so the first run doesn’t wait";
+
+"onboarding.four_quick_steps_talk" = "Four quick steps: talk while you record, let your agent fix it.";
+
+"onboarding.install_skill_mcp" = "Install skill + MCP…";
+
+"onboarding.install_uv" = "Install uv";
+
+"onboarding.looking_agents" = "Looking for agents…";
+
+"onboarding.needs_uv_first_previous" = "Needs uv first (previous step).";
+
+"onboarding.next" = "Next";
+
+"onboarding.no_claude_code_codex" = "No Claude Code, Codex, Kimi Code… found. Install one, then connect it in Settings → Agents.";
+
+"onboarding.permissions" = "Permissions";
+
+"onboarding.preparing_about_minute_first" = "Preparing… (about a minute the first time)";
+
+"onboarding.processing_search_speech_recognition" = "Processing, search and speech recognition are Python scripts that ship with the skill; uv runs them — no Python setup needed.";
+
+"onboarding.python_uv" = "Python (uv)";
+
+"onboarding.reading_models" = "Reading models…";
+
+"onboarding.set_up_blurt" = "Set up Blurt";
+
+"onboarding.skip_setup" = "Skip setup";
+
+"onboarding.speech_model" = "Speech model";
+
+"onboarding.step" = "Step %@ · ";
+
+"onboarding.turns_your_narration_into" = "Turns your narration into text on this Mac — nothing is uploaded. The recommended model covers Chinese, English, Japanese, Korean and Cantonese.";
+
+"onboarding.uv_found" = "uv found: ";
+
+"onboarding.uv_not_found" = "uv not found";
+
+"onboarding.warm_up_dependencies" = "Warm up dependencies";
+
+"onboarding.welcome_blurt" = "Welcome to Blurt";
+
+"onboarding.you_can_switch_models" = "You can switch models or use cloud recognition later in Settings → Speech.";
+
+"onboarding.your_ok_blurt_runs" = "With your OK, Blurt runs uv’s official installer into ~/.blurt/bin (your shell config is not touched):";
+
+"settings.export.ask_each_time" = "Ask each time";
+"settings.export.blurt_config_json_shared" = "For %@ (.blurt/config.json), shared with your team.";
+"settings.export.choose" = "Choose";
+"settings.export.choose_2" = "Choose…";
+"settings.export.default_destination" = "Default destination";
+"settings.export.default_workspace_blurt" = "For the default workspace ~/Blurt.";
+"settings.export.exporters" = "Exporters";
+"settings.export.exports_run_from_review" = "Exports run from the review page or your agent; re-exporting never creates duplicates.";
+"settings.export.feishu_app_id_set" = "FEISHU_APP_ID is set";
+"settings.export.feishu_lark_bitable" = "Lark Base (Feishu Bitable)";
+"settings.export.feishu_lark_cli" = "Lark: lark-cli";
+"settings.export.feishu_self_built_app" = "Lark: a custom app";
+"settings.export.logged" = "logged in";
+"settings.export.not_installed" = "not installed";
+"settings.export.not_installed_exports_as" = "not installed — exports as you, no app needed";
+"settings.export.not_logged" = "not logged in";
+"settings.export.nothing_install" = "nothing to install";
+"settings.export.open_table_browser_copy" = "Open the table in the browser and copy the address. Columns are matched by meaning; missing ones are created.";
+"settings.export.optional_used_without_lark" = "optional; used without lark-cli";
+"settings.export.save" = "Save to";
+"settings.export.send_confirmed_items" = "Send confirmed items to";
+"settings.export.session_folder" = "the session’s folder";
+"settings.export.table_url" = "Table URL";
+
+"settings.general.after_recording" = "After a recording";
+"settings.general.app" = "App";
+"settings.general.assistant" = "Run the Setup Assistant Again…";
+"settings.general.auto" = "Auto — the AI sorts them into projects";
+"settings.general.capture_into" = "New captures go to";
+"settings.general.language" = "Language";
+"settings.general.language.restart" = "Takes effect the next time Blurt opens.";
+"settings.general.language.system" = "Same as the system";
+"settings.general.login" = "Open Blurt at login";
+"settings.general.open_unassigned" = "Show Unassigned in Finder";
+"settings.general.projects.hint" = "A project is a folder on this Mac. Its items live in the folder’s .blurt, which Blurt keeps out of git for you.";
+"settings.general.recording" = "Recording";
+"settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
+"settings.general.spotlight" = "Show items in Spotlight";
+
+"settings.kit.accessibility" = "Accessibility";
+"settings.kit.agents" = "Agents";
+"settings.kit.allow" = "Allow…";
+"settings.kit.allowed" = "Allowed";
+"settings.kit.conflicts_are_checked_three" = "Conflicts are checked on three levels: two Blurt actions on the same keys, a macOS system shortcut, and the system refusing the registration (another app or another Blurt holds it). Changes apply at once and are saved to ~/.blurt/config.json.";
+"settings.kit.copy" = "Copy";
+"settings.kit.export" = "Export";
+"settings.kit.general" = "General";
+"settings.kit.hold_pen_reads_modifier" = "For the hold-⌃ pen (reads modifier keys globally)";
+"settings.kit.microphone" = "Microphone";
+"settings.kit.needed_record_snap" = "Needed to record and to snap";
+"settings.kit.not_allowed" = "Not allowed";
+"settings.kit.not_set" = "Not set";
+"settings.kit.privacy" = "Privacy";
+"settings.kit.screen_recording" = "Screen Recording";
+"settings.kit.shortcuts" = "Shortcuts";
+"settings.kit.speech" = "Speech";
+"settings.kit.storage" = "Storage";
+"settings.kit.system_settings" = "System Settings…";
+"settings.kit.your_narration_recording_works" = "Your narration; recording works without it, just silent";
+
+"settings.privacy.agent_runs" = "Agent runs";
+"settings.privacy.audio_never_goes_cloud" = "Audio never goes to a cloud recognition service. Processing and fixing are done by the agent you chose, under its own terms.";
+"settings.privacy.benchmark_samples" = "Benchmark samples";
+"settings.privacy.blurt_own_files" = "Blurt’s own files";
+"settings.privacy.build_cache" = "Build cache";
+"settings.privacy.cancel" = "Cancel";
+"settings.privacy.clean_up" = "Clean up";
+"settings.privacy.data" = "Data";
+"settings.privacy.deleted_by_default_once" = "Deleted by default once the transcript exists — recording.mp4 has the same audio.";
+"settings.privacy.freed" = "Freed ";
+"settings.privacy.index_can_be_deleted" = "The index can be deleted without losing anything (it is rebuilt); manage speech models under Speech.";
+"settings.privacy.items_appear_spotlight" = "Items appear in Spotlight";
+"settings.privacy.keep_raw_live_caption" = "Keep the raw live-caption audio (live/audio.pcm)";
+"settings.privacy.local_speech_recognition_only" = "Local speech recognition only";
+"settings.privacy.macos_applies_screen_recording" = "macOS applies a Screen Recording change after Blurt restarts.";
+"settings.privacy.move_trash" = "Move to Trash";
+"settings.privacy.move_trash_2" = "Move to the Trash?";
+"settings.privacy.permissions_live" = "Permissions (live)";
+"settings.privacy.prompts" = "Prompts";
+"settings.privacy.raw_live_caption_audio" = "Raw live-caption audio";
+"settings.privacy.recordings_screenshots" = "Recordings and screenshots";
+"settings.privacy.recordings_screenshots_items_stay" = "Recordings, screenshots and items stay on your Mac (~/Blurt or the project’s .blurt/); Blurt uploads nothing.";
+"settings.privacy.search_index" = "Search index";
+"settings.privacy.speech_models" = "Speech models";

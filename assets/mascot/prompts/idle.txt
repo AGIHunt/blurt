@@ -1,0 +1,19 @@
+# codex exec (built-in image_gen) with --image for each reference: d1a-hero.png d1a-idle.png
+# (promo/cases/v0.7/mascot/d1-round-chick/, the approved 1A design). Sent verbatim; see gen.sh.
+Use your built-in image generation tool to create exactly ONE image (do not write code to draw it; do not create SVG; do not compose it from separate images with code). Request a landscape 1536x1024 image with a transparent background. Image brief:
+
+ANIMATION FRAME SHEET for a 2D sprite animation (frame-by-frame, like a sticker/emoji animation).
+The attached image(s) show the approved mascot: a perfectly round, plump baby chick — head and body are one soft circle like a mochi — warm butter-yellow (#FFC83D) with soft subtle shading, NO outline, a small coral (#FF5A3C) rounded-triangle beak, two small coral blush cheeks, two small dark charcoal (#2A2A2E) oval dot eyes each with a tiny white highlight, a tiny wing nub on each side, and a playful 2-feather tuft on top of the head. Reproduce EXACTLY this character — same shapes, proportions, colours, soft rendering and level of detail — in every frame. It must look like the SAME drawing reused frame after frame, with only the described change between frames (this is critical: consecutive frames must differ only by the described motion, so the animation does not flicker).
+Layout rules: ONE image, landscape 1536x1024, TRANSPARENT background (real alpha channel). The frames are arranged in a clean grid of equal cells, read left-to-right, top-to-bottom. No grid lines, no borders, no frame numbers, no labels, no text, no ground line, no ground shadow. Each frame is drawn centred in its own cell with generous empty space around it so nothing touches another cell. The chick has the SAME size in every cell (about 55% of the cell height) and sits at the SAME place in every cell (its bottom on the same invisible baseline about 18% above the cell's bottom edge, horizontally centred), unless the frame description explicitly says it moves up or down. No legs, no feet, no claws, no teeth; cute, premium, Apple-quality flat illustration.
+
+ANIMATION: "idle" — a calm breathing loop with one blink. 8 frames, grid of 4 columns x 2 rows.
+1. Calm idle, eyes open, beak closed, exactly like the reference.
+2. Same as 1, but the body very slightly taller and narrower (inhale, about 3%).
+3. Same as 1 (back to rest).
+4. Same as 1, but the body very slightly wider and shorter (exhale, about 3%).
+5. Same as 1.
+6. Blink starting: eyes half closed (flattened ovals), everything else identical to 1.
+7. Eyes fully closed: each eye a short gently curved charcoal line, everything else identical to 1.
+8. Eyes half open again, everything else identical to 1.
+
+After the image is generated, copy the generated PNG file to $RAW/idle.png (use cp from ~/.codex/generated_images). Reply only with the final path.
