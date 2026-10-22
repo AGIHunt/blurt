@@ -96,9 +96,9 @@ struct GeneralPane: View {
                         }
                         Spacer()
                         Button { NSWorkspace.shared.open(p.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
-                            .help(T("action.reveal_in_finder"))
+                            .help(T("action.open")).accessibilityLabel(T("action.open"))
                         Button { m.remove(p) } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless)
-                            .help(T("settings.general.remove.help"))
+                            .help(T("settings.general.remove.help")).accessibilityLabel(T("settings.general.remove.help"))
                     }
                 }
                 HStack {

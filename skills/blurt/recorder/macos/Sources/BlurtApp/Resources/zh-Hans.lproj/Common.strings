@@ -79,5 +79,6 @@
 "action.save" = "保存";
 "action.continue" = "继续";
 "action.retry" = "重试";
+"action.open" = "打开";
 "action.reveal_in_finder" = "在访达中显示";
 "action.copy_path" = "拷贝路径";

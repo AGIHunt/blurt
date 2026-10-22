@@ -156,6 +156,7 @@ struct StoragePane: View {
                 ForEach(m.rows) { r in
                     row(r.name, detail: TP("settings.privacy.sessions", r.count ?? 0) + " · " + (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
                         Button { NSWorkspace.shared.open(r.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
+                            .help(T("action.open")).accessibilityLabel(T("action.open"))
                     }
                 }
             } header: {
@@ -173,6 +174,7 @@ struct StoragePane: View {
                             Button(T("settings.privacy.move_trash")) { confirm = r.path }
                         } else {
                             Button { NSWorkspace.shared.activateFileViewerSelecting([r.path]) } label: { Image(systemName: "magnifyingglass") }.buttonStyle(.borderless)
+                                .help(T("action.reveal_in_finder")).accessibilityLabel(T("action.reveal_in_finder"))
                         }
                     }
                 }

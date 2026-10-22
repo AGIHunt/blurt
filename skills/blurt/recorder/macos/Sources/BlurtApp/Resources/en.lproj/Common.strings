@@ -79,5 +79,6 @@
 "action.save" = "Save";
 "action.continue" = "Continue";
 "action.retry" = "Try Again";
+"action.open" = "Open";
 "action.reveal_in_finder" = "Show in Finder";
 "action.copy_path" = "Copy Path";

@@ -130,6 +130,7 @@ struct SessionHeader: View {
             HStack(spacing: 10) {
                 Button { actions?.toggleSidebar() } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.borderless).help(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
+                    .accessibilityLabel(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
                 if let r = pane.job.flatMap({ model.row($0) }) {
                     SessionStatusMark(status: r.status, size: 11)
                     VStack(alignment: .leading, spacing: 1) {
@@ -195,6 +196,7 @@ struct SessionHeader: View {
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
                 .help(TL("header.open_external.help"))
+                .accessibilityLabel(TL("header.open_external.help"))
             }
             Menu {
                 if r.alive {
@@ -215,6 +217,7 @@ struct SessionHeader: View {
             } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 .help(TL("header.more"))
+                .accessibilityLabel(TL("header.more"))
         }
     }
 }

@@ -141,7 +141,7 @@ struct AgentsPane: View {
                     Spacer()
                     if m.loading { ProgressView().controlSize(.mini) }
                     Button { Task { await m.load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless)
-                        .help(TL("agents.check_again"))
+                        .help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
                 }
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
@@ -185,7 +185,7 @@ struct AgentsPane: View {
                 if !AgentSessions.shared.tmuxAvailable {
                     CommandText(text: "brew install tmux")
                     Button { AgentSessions.shared.refreshTmux(); Task { await m.load(login: false) } } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.borderless).help(TL("agents.check_again"))
+                        .buttonStyle(.borderless).help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
                 }
             }
             if let p = m.project {
