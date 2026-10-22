@@ -362,7 +362,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     struct Col { let id: String; let title: String; let width: CGFloat; let min: CGFloat; let max: CGFloat; let sort: String? }
     static var columns: [Col] { [
         Col(id: "lead", title: "", width: 44, min: 22, max: 44, sort: "kind"),
-        Col(id: "title", title: T("main.col.title"), width: 260, min: 140, max: 4000, sort: "title"),
+        Col(id: "title", title: T("main.col.title"), width: 260, min: 120, max: 4000, sort: "title"),
         Col(id: "meta", title: T("main.col.id"), width: 64, min: 48, max: 120, sort: "id"),
         Col(id: "project", title: T("main.col.project"), width: 110, min: 60, max: 240, sort: "project"),
         Col(id: "state", title: T("main.col.state"), width: 120, min: 60, max: 220, sort: "state"),
@@ -442,7 +442,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         for c in table.tableColumns {
             switch c.identifier.rawValue {
             case "lead": c.width = full ? 22 : 44
-            case "project": c.isHidden = inProject || !full; c.width = 100
+            case "project": c.isHidden = inProject || !full; c.width = 100; projectHiddenForRoom = false
             case "meta": c.width = full ? 58 : (inProject ? 56 : 132); c.maxWidth = full ? 120 : 200
             case "state": c.isHidden = !full; c.width = 120
             case "time": c.width = 72
@@ -481,9 +481,39 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                 }
             }
         }
+        // the full table in a narrow list (a small window, the detail at its minimum): Project, then State give way
+        // before State and Updated end up past the list's edge; they grow back to their usual width when there's room
+        if model.scope.isTable, let project = table.tableColumn(withIdentifier: .init("project")) {
+            // narrower still: the project goes (the detail says it), back once the title has room again
+            if projectHiddenForRoom, room() - project.minWidth - table.intercellSpacing.width >= title.minWidth + 20 {
+                projectHiddenForRoom = false
+                project.isHidden = false
+                return fitTitle()
+            }
+            for (id, _) in Self.yielding {
+                guard let c = table.tableColumn(withIdentifier: .init(id)), !c.isHidden else { continue }
+                let short = title.minWidth - room()
+                if short > 0.5 { c.width = max(c.minWidth, c.width - short) }
+            }
+            for (id, want) in Self.yielding.reversed() {
+                guard let c = table.tableColumn(withIdentifier: .init(id)), !c.isHidden, c.width < want else { continue }
+                let spare = room() - title.minWidth - 60
+                if spare > 0.5 { c.width = min(want, c.width + spare) }
+            }
+            if !project.isHidden, room() < title.minWidth - 0.5 {
+                projectHiddenForRoom = true
+                project.isHidden = true
+                return fitTitle()
+            }
+        }
         let w = room()
         if abs(title.width - max(title.minWidth, w)) > 0.5 { title.width = max(title.minWidth, w) }
     }
+
+    private var projectHiddenForRoom = false
+
+    /// The table's columns that shrink for the title, in that order, with their usual width.
+    static let yielding: [(String, CGFloat)] = [("project", 100), ("state", 120), ("time", 72), ("meta", 58)]
 
     func tableViewColumnDidResize(_ notification: Notification) {
         guard let c = notification.userInfo?["NSTableColumn"] as? NSTableColumn, c.identifier.rawValue != "title" else { return }
