@@ -15,14 +15,17 @@ final class ExportModel: ObservableObject {
     @Published var gh: String?
     @Published var ghAuthed: Bool?
     @Published var checking = false
-    let ws = currentWorkspace()
+    /// The current project's folder; nil = Unassigned (Blurt's own config.json). Read again each time the pane shows.
+    @Published var ws: URL? = ProjectStore.shared.current?.path
 
-    var isProject: Bool { !isDefaultWorkspace(ws) }
+    var isProject: Bool { ws != nil }
     private var section: [String: Any] {
-        isProject ? (ProjectConfig.read(ws)["export"] as? [String: Any] ?? [:]) : (Config.shared["export"] as? [String: Any] ?? [:])
+        if let ws = ws { return ProjectConfig.read(ws)["export"] as? [String: Any] ?? [:] }
+        return (Config.shared["export"] as? [String: Any] ?? [:])
     }
 
     func load() async {
+        ws = ProjectStore.shared.current?.path
         let s = section
         target = s["target"] as? String ?? "ask"
         url = s["url"] as? String ?? ""
@@ -41,7 +44,7 @@ final class ExportModel: ObservableObject {
     }
 
     func set(_ key: String, _ value: Any?) {
-        if isProject { ProjectConfig.set(ws, "export", key, value) } else { Config.shared.set("export.\(key)", value) }
+        if let ws = ws { ProjectConfig.set(ws, "export", key, value) } else { Config.shared.set("export.\(key)", value) }
     }
     func setTarget(_ t: String) { target = t; set("target", t == "ask" ? nil : t) }
     func commitURL() { set("url", url.isEmpty ? nil : url) }
@@ -80,7 +83,7 @@ struct ExportPane: View {
                         Button(T("settings.export.choose_2")) { m.chooseOut() }
                     }
                 }
-                Hint(m.isProject ? T("settings.export.blurt_config_json_shared", "\(m.ws.lastPathComponent)")
+                Hint(m.isProject ? T("settings.export.blurt_config_json_shared", ProjectStore.shared.current?.name ?? m.ws?.lastPathComponent ?? "")
                                  : T("settings.export.default_workspace_blurt"))
             } header: { Text(T("settings.export.default_destination")) }
 
@@ -91,7 +94,9 @@ struct ExportPane: View {
                 tool(T("settings.export.feishu_self_built_app"), ok: m.feishuApp,
                      detail: m.feishuApp ? T("settings.export.feishu_app_id_set") : T("settings.export.optional_used_without_lark"), fix: nil)
                 tool("GitHub: gh", ok: m.gh != nil && m.ghAuthed == true,
-                     detail: m.gh == nil ? T("settings.export.not_installed") : (m.ghAuthed == true ? T("settings.export.logged") : T("settings.export.not_logged")),
+                     detail: m.gh == nil ? T("settings.export.not_installed")
+                         : m.ghAuthed == nil ? T("settings.export.checking")      // `gh auth status` takes a moment
+                         : (m.ghAuthed == true ? T("settings.export.logged") : T("settings.export.not_logged")),
                      fix: m.gh == nil ? "brew install gh" : (m.ghAuthed == false ? "gh auth login" : nil))
                 tool("Markdown + CSV", ok: true, detail: T("settings.export.nothing_install"), fix: nil)
             } header: {

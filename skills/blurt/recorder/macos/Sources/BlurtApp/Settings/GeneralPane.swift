@@ -109,6 +109,7 @@ struct GeneralPane: View {
                                 Text(p.key).font(.caption.monospaced()).foregroundStyle(.tertiary)
                             }
                             Text((p.path.path as NSString).abbreviatingWithTildeInPath).font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(1).truncationMode(.middle).help(p.path.path)
                         }
                         Spacer()
                         Button { NSWorkspace.shared.open(p.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)

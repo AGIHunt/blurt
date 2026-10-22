@@ -71,6 +71,8 @@ final class Permissions: ObservableObject {
     @Published var screen: State = .notAsked
     @Published var mic: State = .notAsked
     @Published var accessibility: State = .notAsked
+    /// Input Monitoring: dictation notices its key (right ⌥ / fn) with it.
+    @Published var inputMonitoring: State = .notAsked
     private var timer: Timer?
     private var observers: [Any] = []
 
@@ -100,18 +102,21 @@ final class Permissions: ObservableObject {
         default: m = .notAsked
         }
         let a: State = AXIsProcessTrusted() ? .granted : .notAsked
+        let i: State = CGPreflightListenEventAccess() ? .granted : .notAsked
         if s != screen { screen = s }
         if m != mic { mic = m }
         if a != accessibility { accessibility = a }
+        if i != inputMonitoring { inputMonitoring = i }
         emitOnChange()
     }
 
     private var last = ""
     private func emitOnChange() {
-        let sig = "\(screen.rawValue),\(mic.rawValue),\(accessibility.rawValue)"
+        let sig = "\(screen.rawValue),\(mic.rawValue),\(accessibility.rawValue),\(inputMonitoring.rawValue)"
         guard sig != last else { return }
         last = sig
-        emit(["event": "permissions", "screen": screen.rawValue, "mic": mic.rawValue, "accessibility": accessibility.rawValue])
+        emit(["event": "permissions", "screen": screen.rawValue, "mic": mic.rawValue, "accessibility": accessibility.rawValue,
+              "input_monitoring": inputMonitoring.rawValue])
     }
 
     static var askedScreen: Bool { Config.shared["app.asked_screen"] as? Bool ?? false }
@@ -130,6 +135,11 @@ final class Permissions: ObservableObject {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         if !AXIsProcessTrustedWithOptions(opts) { Permissions.openPane("Privacy_Accessibility") }
     }
+    func requestInputMonitoring() {
+        if !CGRequestListenEventAccess() { Permissions.openPane("Privacy_ListenEvent") }
+        Dictation.shared.apply()
+        refresh()
+    }
 
     static func openPane(_ anchor: String) {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!)
@@ -146,6 +156,8 @@ struct PermissionRows: View {
             action: p.mic == .notAsked ? { p.requestMic() } : nil, settings: "Privacy_Microphone")
         row(T("settings.kit.accessibility"), T("settings.kit.hold_pen_reads_modifier"), p.accessibility,
             action: p.accessibility == .granted ? nil : { p.requestAccessibility() }, settings: "Privacy_Accessibility")
+        row(T("settings.kit.input_monitoring"), T("dictation.perm.input_monitoring.why", Dictation.keyName), p.inputMonitoring,
+            action: p.inputMonitoring == .granted ? nil : { p.requestInputMonitoring() }, settings: "Privacy_ListenEvent")
     }
 
     func row(_ title: String, _ why: String, _ st: Permissions.State, action: (() -> Void)?, settings: String) -> some View {
@@ -153,7 +165,7 @@ struct PermissionRows: View {
             StatusDot(tone: st == .granted ? .good : st == .denied ? .bad : .warn)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                Text(why).font(.caption).foregroundStyle(.secondary)
+                Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Text(st == .granted ? T("settings.kit.allowed") : st == .denied ? T("settings.kit.not_allowed") : T("settings.kit.not_set"))

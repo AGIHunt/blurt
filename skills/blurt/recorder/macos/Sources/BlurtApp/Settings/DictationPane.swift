@@ -35,7 +35,7 @@ final class DictationSettings: ObservableObject {
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
     @Published var keepAudio = Dictation.keepAudio
-    @Published var inputMonitoring = DictationKeys.allowed
+    @Published var inputMonitoring = CGPreflightListenEventAccess()
     @Published var accessibility = AXIsProcessTrusted()
     @Published var tap = Dictation.shared.tapInstalled
     @Published var polish: PolishState?
@@ -54,7 +54,7 @@ final class DictationSettings: ObservableObject {
     func stop() { timer?.invalidate(); timer = nil }
 
     func refresh() {
-        let im = DictationKeys.allowed, ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
+        let im = CGPreflightListenEventAccess(), ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
         if im != inputMonitoring { inputMonitoring = im }
         if ax != accessibility { accessibility = ax }
         if t != tap { tap = t }
@@ -107,7 +107,10 @@ final class DictationSettings: ObservableObject {
         download[m.id] = (0, m.sizeMB)
         var env: [String: String] = [:]
         if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
-        procs[m.id] = try? SkillCLI.shared.spawn("polish.py", ["setup", "--model", m.id, "--use"], env: env, onLine: { [weak self] line, _ in
+        // BLURT_TEST_POLISH_SETUP (test builds only): a script that stands in for polish.py and fakes the download
+        let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+            ? ProcessInfo.processInfo.environment["BLURT_TEST_POLISH_SETUP"] ?? "polish.py" : "polish.py"
+        procs[m.id] = try? SkillCLI.shared.spawn(script, ["setup", "--model", m.id, "--use"], env: env, onLine: { [weak self] line, _ in
             let t = line.trimmingCharacters(in: .whitespaces)
             if let r = t.range(of: #"^(\d+)/(\d+) MB"#, options: .regularExpression) {
                 let p = t[r].replacingOccurrences(of: " MB", with: "").split(separator: "/")
