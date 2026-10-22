@@ -94,6 +94,27 @@ class ReviewPersistence(TmpCase):
         self.assertEqual(self.post("/api/items", {"items": [{"id": "I-001", "title": "clobber"}]}), 400)
         self.assertEqual(self.title(), "draft")
 
+    def test_handoff_writes_a_note_and_marks_the_items(self):
+        """POST /api/handoff (host protocol v3): the doc advertises it; the note exists and the item is handed off."""
+        request = self.handler.__new__(self.handler)
+        request.headers = {}
+        request._json = Mock()
+        request._items()
+        self.assertIn("handoff", request._json.call_args.args[1]["_caps"])
+        uid = ok("items.py", "get", "IN-1", env=self.e.env())["item"]["uid"]
+        sent = Mock()
+        request = self.handler.__new__(self.handler)
+        body = json.dumps({"uids": [uid], "what": "full"}).encode()
+        request.path, request.command, request.headers = "/api/handoff", "POST", {"Content-Length": str(len(body))}
+        request.rfile, request._json = io.BytesIO(body), sent
+        request.do_POST()
+        code, out = sent.call_args.args[:2]
+        self.assertEqual(code, 200, out)
+        self.assertTrue(Path(out["path"]).is_file() and out["text"].startswith("# ") and out["items"] == [uid])
+        work = ok("items.py", "get", uid, env=self.e.env())["item"]["work"]
+        self.assertEqual((work["state"], work["to"], work["handoff"]), ("handed_off", "external", out["id"]))
+        self.assertEqual(self.post("/api/handoff", {"uids": []}), 400)
+
 
 if __name__ == "__main__":
     import unittest

@@ -15,7 +15,8 @@ Start it as soon as items.json has text (frames can follow): it ingests items.js
 "processing" the page polls and shows new frames / items as items.py writes them; the user's edits always win.
 
 HTTP (contract K1): GET /api/items → the doc (`items.py doc`, ETag; 304 on If-None-Match); POST /api/items {ops} and
-POST /api/confirm {ops} → the merged doc (same code path as `items.py user-ops`); GET /files/<percent-encoded absolute
+POST /api/confirm {ops} → the merged doc (same code path as `items.py user-ops`); POST /api/handoff {uids, what} →
+{id, path, text} (handoff.py create --mark; the doc's `_caps` says so); GET /files/<percent-encoded absolute
 path> for files in a known store, a session dir or $BLURT_HOME/handoff (the old /files/<path relative to the session>
 works too).
 """
@@ -65,6 +66,7 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
     def current_doc() -> tuple[dict, str]:
         items_mod._NAMES = None  # project names may have changed since the last request
         doc = items_mod.make_doc(scope)
+        doc["_caps"] = ["handoff"]  # POST /api/handoff (host protocol v3): the page offers the copy buttons
         return doc, items_mod.doc_etag(doc)
 
     class H(BaseHTTPRequestHandler):
@@ -149,12 +151,14 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
             nonlocal confirmed
             path = urlparse(self.path).path
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-            if path not in ("/api/items", "/api/confirm"):
+            if path not in ("/api/items", "/api/confirm", "/api/handoff"):
                 return self._send(404, b"not found", "text/plain")
             try:
                 data = json.loads(body or b"{}")
             except ValueError:
                 return self._json(400, {"ok": False, "error": "not JSON", "code": "bad_json"})
+            if path == "/api/handoff":
+                return self._handoff(data)
             ops = data.get("ops") if isinstance(data, dict) else None
             if ops is None and path == "/api/items":
                 return self._json(400, {"ok": False, "error": "send the user's edits as {ops: [...]}", "code": "bad_args"})
@@ -176,6 +180,22 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
             finally:
                 if path == "/api/confirm":
                     done.set()
+
+        def _handoff(self, data):
+            """{uids, what: instruction|full} → a hand-off note for the user's own agent (K6), its items marked
+            handed off; → {id, path, text}, the text the page copies."""
+            import handoff
+            uids = data.get("uids") if isinstance(data, dict) else None
+            if not isinstance(uids, list) or not uids or not all(isinstance(u, str) for u in uids):
+                return self._json(400, {"ok": False, "error": "send {uids: [...], what}", "code": "bad_args"})
+            what = data.get("what") if data.get("what") in ("instruction", "full") else "instruction"
+            with write_lock:
+                try:
+                    h = handoff.create(uids, mark=True)
+                except handoff.CliError as e:
+                    return self._json(400, {"ok": False, "error": str(e), "code": e.code})
+            return self._json(200, {"ok": True, "id": h["id"], "path": h["path"], "items": h["items"],
+                                    "text": h["full"] if what == "full" else h["instruction"]})
 
     return H
 
