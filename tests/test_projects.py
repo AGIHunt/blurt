@@ -130,11 +130,28 @@ class Registry(TmpCase):
         (self.e.home / "config.json").write_text(json.dumps(cfg))
         out = ok("projects.py", "migrate", env=self.e.env())
         self.assertEqual((out["added"], out["current"]), (2, projects.project_id(b)))
+        # carried over, not chosen: the app asks once (current_by "migrate")
+        self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "migrate")
         again = ok("projects.py", "migrate", env=self.e.env())
         self.assertEqual((again["added"], again["current"]), (0, projects.project_id(b)))
+        self.assertEqual(ok("projects.py", "list", env=self.e.env())["current_by"], "migrate")
+        # the user's answer (keep it) makes it theirs
+        ok("projects.py", "use", projects.project_id(b), env=self.e.env())
+        self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "user")
         ok("projects.py", "use", "auto", env=self.e.env())
         self.assertEqual(ok("projects.py", "migrate", env=self.e.env())["current"], "auto")  # the user's choice stays
+        self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "user")
         self.assertEqual(json.loads((self.e.home / "config.json").read_text()), cfg)  # config.json untouched
+
+    def test_migrated_by_an_earlier_build_is_asked_about(self):
+        """A registry an earlier v0.7 build migrated (no current_by) still gets the question once."""
+        a = make_repo(self.tmp / "one")
+        pid = ok("projects.py", "add", a, env=self.e.env())["project"]["id"]
+        reg = json.loads((self.e.home / "projects.json").read_text())
+        reg.update(current=pid, _migrated=True)
+        (self.e.home / "projects.json").write_text(json.dumps(reg))
+        ok("projects.py", "migrate", env=self.e.env())
+        self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "migrate")
 
 
 class Route(TmpCase):

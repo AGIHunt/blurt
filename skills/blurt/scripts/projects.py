@@ -11,7 +11,9 @@ is its only writer (lock $BLURT_HOME/.projects.lock, atomic replace). The apps r
   projects.py set ID --json '{patch}'      name description default_agent worktree worktree_root modules hints key
                                            pinned → {"ok","project"}   (key: only while the project has no items)
   projects.py use ID|auto                  the current project (captures go there) → {"ok","current"}
-  projects.py current                      → {"ok","current","project":Row|null}
+  projects.py current                      → {"ok","current","current_by","project":Row|null}
+                                           current_by: "user" (chosen in Blurt) | "migrate" (carried over from
+                                           v0.6's record.workspace — the app asks once whether to keep it) | null
   projects.py resolve PATH                 the (deepest) project PATH is in → {"ok","project":Row|null}
   projects.py route --items REF … [--apply] [--threshold X] [--agent ID] [--no-llm]
                                            suggest a project per item: rules first, then a small model →
@@ -284,8 +286,8 @@ def find(ref: str) -> dict | None:
 # ------------------------------------------------------------------ commands
 def cmd_list() -> dict:
     reg = load()
-    return {"ok": True, "current": reg.get("current") or "auto", "projects": _sorted([row(e) for e in entries()]),
-            "inbox": row(inbox_entry())}
+    return {"ok": True, "current": reg.get("current") or "auto", "current_by": reg.get("current_by"),
+            "projects": _sorted([row(e) for e in entries()]), "inbox": row(inbox_entry())}
 
 
 def cmd_add(path: str, name=None, key=None, description=None) -> dict:
@@ -354,7 +356,9 @@ def cmd_set(pid: str, patch: dict) -> dict:
     return {"ok": True, "project": row(e)}
 
 
-def cmd_use(pid: str) -> dict:
+def cmd_use(pid: str, by: str = "user") -> dict:
+    """by "user": the user chose it (in Blurt, or answering the app's "keep the old setting?" question);
+    "migrate": carried over from v0.6 — the app asks about it once."""
     with editing() as reg:
         if pid != "auto":
             e = next((p for p in reg["projects"] if p.get("id") == pid), None)
@@ -362,6 +366,7 @@ def cmd_use(pid: str) -> dict:
                 raise ProjectError(f"no project {pid}", "no_project")
             e["last_used"] = now_iso(timespec="milliseconds")
         reg["current"] = pid
+        reg["current_by"] = by
     return {"ok": True, "current": pid}
 
 
@@ -370,7 +375,7 @@ def cmd_current() -> dict:
     e = by_id(cur) if cur != "auto" else None
     if cur != "auto" and e is None:
         cur = "auto"
-    return {"ok": True, "current": cur, "project": row(e) if e else None}
+    return {"ok": True, "current": cur, "current_by": load().get("current_by"), "project": row(e) if e else None}
 
 
 def cmd_migrate() -> dict:
@@ -390,9 +395,13 @@ def cmd_migrate() -> dict:
         if by_id(project_id(w)) is None:
             cmd_add(w)
             added += 1
-        cmd_use(project_id(w))
+        cmd_use(project_id(w), by="migrate")
         cur = project_id(w)
     with editing() as reg:
+        # an earlier v0.7 build migrated without saying who chose the current project: treat it as carried over,
+        # so the app asks once instead of filing captures there silently
+        if reg.get("_migrated") and "current_by" not in reg and (reg.get("current") or "auto") != "auto":
+            reg["current_by"] = "migrate"
         reg["_migrated"] = True  # once: a later `use auto` is the user's choice, not something to undo
     return {"ok": True, "added": added, "current": cur}
 
