@@ -35,8 +35,8 @@ struct AgentDef {
     }
     /// false = an app / interactive-only entry (WP2's zcode): never in the background chain or its menus.
     let headless: Bool
-    var fixText: String { fix[opts.lang] ?? fix["en"] ?? "" }
-    var installText: String { install[opts.lang] ?? install["en"] ?? "" }
+    var fixText: String { Loc.pick(fix) ?? "" }
+    var installText: String { Loc.pick(install) ?? "" }
 
     /// The headless command line for the shell (cwd = the workspace).
     func command(bin: String, prompt: String) -> String {
@@ -50,9 +50,9 @@ struct FailureDef {
     let reason: [String: String]
     let patterns: [NSRegularExpression]
 
-    var shortText: String { short[opts.lang] ?? short["en"] ?? id }
+    var shortText: String { Loc.pick(short) ?? id }
     func reasonText(_ a: AgentDef) -> String {
-        (reason[opts.lang] ?? reason["en"] ?? id).replacingOccurrences(of: "{name}", with: a.name).replacingOccurrences(of: "{fix}", with: a.fixText)
+        (Loc.pick(reason) ?? id).replacingOccurrences(of: "{name}", with: a.name).replacingOccurrences(of: "{fix}", with: a.fixText)
     }
 }
 

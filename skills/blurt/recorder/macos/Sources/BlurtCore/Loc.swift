@@ -40,6 +40,12 @@ public enum Loc {
         return Locale(identifier: language + (region.map { "_" + $0 } ?? ""))
     }
 
+    /// A text from data that carries its own translations (agents.json: {"en": …, "zh": …}): the UI language, then en.
+    public static func pick(_ texts: [String: String]) -> String? {
+        let keys = language == "zh-Hans" ? ["zh-Hans", "zh", "en"] : [language, "en"]
+        return keys.lazy.compactMap { texts[$0] }.first
+    }
+
     /// true for zh-Hans: callers that build sentences around names use it to pick spacing / punctuation.
     public static var isChinese: Bool { language == "zh-Hans" }
 

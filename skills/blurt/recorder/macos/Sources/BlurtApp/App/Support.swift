@@ -15,7 +15,7 @@ struct Options {
     var fps = 30
     var maxWidth = 2560
     var countdown = 3
-    var lang = (Locale.preferredLanguages.first ?? "en").hasPrefix("zh") ? "zh" : "en"
+    var lang: String? = nil       // --lang en|zh-Hans: overrides config `lang` (K10, Loc.setting)
     var region: CGRect? = nil      // skip picker (global top-left points)
     var lastRegion: CGRect? = nil  // offered in the picker
     var preselect: CGRect? = nil   // picker opens with this selection (testing / "last region")
@@ -38,7 +38,7 @@ struct Options {
             case "--fps": o.fps = Int(it.next() ?? "") ?? o.fps
             case "--max-width": o.maxWidth = Int(it.next() ?? "") ?? o.maxWidth
             case "--countdown": o.countdown = Int(it.next() ?? "") ?? o.countdown
-            case "--lang": o.lang = it.next() ?? o.lang
+            case "--lang": o.lang = it.next()
             case "--region": o.region = rect(it.next())
             case "--last-region": o.lastRegion = rect(it.next())
             case "--preselect": o.preselect = rect(it.next())
@@ -72,8 +72,6 @@ func lastRegionFromConfig() -> CGRect? {
     guard let r = recordConfig()["last_region"] as? [Double], r.count == 4 else { return nil }
     return CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
 }
-
-func L(_ zh: String, _ en: String) -> String { opts.lang == "zh" ? zh : en }
 
 func emit(_ obj: [String: Any]) {
     if let d = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]),

@@ -84,8 +84,7 @@ final class ServiceProvider: NSObject {
                                    "workspace": currentWorkspace().path]
         try JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]).write(to: dir.appendingPathComponent("meta.json"))
         // the session header items.py keeps (C1); items.py add fills in the rest
-        let head: [String: Any] = ["session": dir.lastPathComponent, "title": Loc.t("capture.service.title", table: "Capture"),
-                                   "language": opts.lang, "items": []]
+        let head: [String: Any] = ["session": dir.lastPathComponent, "title": Loc.t("capture.service.title", table: "Capture"), "items": []]
         try JSONSerialization.data(withJSONObject: head, options: [.prettyPrinted, .sortedKeys]).write(to: dir.appendingPathComponent("items.json"))
         return dir
     }

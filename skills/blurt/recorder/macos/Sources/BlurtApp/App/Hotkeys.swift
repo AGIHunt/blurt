@@ -42,11 +42,6 @@ func hkHint(_ a: HotAction, _ key: String) -> String? {
     let l = hk(a)
     return l.isEmpty ? nil : Loc.t("capture.hotkey.hint", table: "Capture", l, Loc.t(key, table: "Capture"))
 }
-/// The same, for callers that still pass both strings (AppDelegate's welcome toast and tooltip); goes with L().
-func hkHint(_ a: HotAction, _ zh: String, _ en: String) -> String? {
-    let l = hk(a)
-    return l.isEmpty ? nil : "\(l) " + (Loc.language == "zh-Hans" ? zh : en)
-}
 
 extension NSMenuItem {
     /// Show (and accept) the user's hotkey for this action as the item's key equivalent.

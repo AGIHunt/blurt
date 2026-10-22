@@ -7,10 +7,6 @@ import BlurtCore
 
 enum SettingsModule {
     static func install() {
-        // K10: config `lang` (Settings → General: auto | en | zh-Hans) decides, unless --lang was given; the strings not
-        // moved to the tables yet (L(zh, en)) follow the same choice
-        if !CommandLine.arguments.contains("--lang") { opts.lang = Loc.isChinese ? "zh" : "en"; BlurtLocale.lang = opts.lang }
-
         AppEnvironment.settings = SettingsController.shared
         AppEnvironment.openURL = { URLRouter.handle($0) }
         ServiceProvider.shared.register()

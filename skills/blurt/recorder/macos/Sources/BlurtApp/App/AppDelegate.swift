@@ -31,8 +31,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             s.resume()
             signalSources.append(s)
         }
-        BlurtLocale.lang = opts.lang
-        if CommandLine.arguments.contains("--lang") { Loc.setting = opts.lang }
+        if let l = opts.lang { Loc.setting = l }
         if resident { AppEnvironment.installModules() }
         installHotkeyHandler()
         hotkeyHandler = { [weak self] k in self?.hotkey(k) }
