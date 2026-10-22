@@ -114,6 +114,22 @@ enum SelfTests {
                 out(["previewed": AgentsModel.shared.plan != nil, "env_home": Agents.shared.installEnvironment()["HOME"] ?? "",
                      "codex_home": Agents.shared.installEnvironment()["CODEX_HOME"] ?? ""])
             }
+        case "agents":                  // agents toggle ID on|off | up ID | processing ID MODEL [EFFORT] | state: Settings → Agents
+            let a = arg.split(separator: " ").map(String.init)
+            Task { @MainActor in
+                let m = AgentsModel.shared
+                if m.rows.isEmpty { await m.load(login: false) }
+                switch a.first ?? "state" {
+                case "toggle" where a.count == 3: m.toggle(a[1], a[2] == "on")
+                case "up" where a.count == 2: m.moveUp(a[1])
+                case "processing" where a.count >= 3: m.setProcessing(a[1], model: a[2], effort: a.count > 3 ? a[3] : nil)
+                default: break
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)      // save() reloads
+                out(["shown": m.headless.map { "\($0.id)\(m.enabled.contains($0.id) ? "" : " (off)")" },
+                     "config": Config.shared["record.agents"] ?? NSNull(),
+                     "processing": Config.shared["record.agent_processing"] ?? NSNull(), "pick": m.pick ?? NSNull()])
+            }
         case "install-apply":
             Task { @MainActor in
                 await AgentsModel.shared.apply()
