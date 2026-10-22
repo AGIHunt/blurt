@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "reference": "ram_mb / warm_ms / cold_ms: Apple M5 Max (128 GB), mlx-lm 0.32.2, 3 threads, 25 % memory cap, the 42-sentence set in tests/fixtures/polish_eval.jsonl; docs/design/dictation.md",
+  "models": [
+    {"id": "qwen3.5-0.8b", "name": "Qwen3.5 0.8B", "family": "qwen", "repo": "mlx-community/Qwen3.5-0.8B-MLX-4bit", "params_b": 0.8, "size_mb": 620, "tiers": ["light", "minimal"]},
+    {"id": "qwen3.5-2b", "name": "Qwen3.5 2B", "family": "qwen", "repo": "mlx-community/Qwen3.5-2B-MLX-4bit", "params_b": 2.0, "size_mb": 1670, "tiers": ["standard", "pro"]},
+    {"id": "qwen3.5-4b", "name": "Qwen3.5 4B", "family": "qwen", "repo": "mlx-community/Qwen3.5-4B-MLX-4bit", "params_b": 4.0, "size_mb": 2920, "tiers": ["pro"]},
+    {"id": "qwen3-0.6b", "name": "Qwen3 0.6B", "family": "qwen", "repo": "mlx-community/Qwen3-0.6B-4bit", "params_b": 0.6, "size_mb": 335, "tiers": ["minimal"]},
+    {"id": "qwen3-1.7b", "name": "Qwen3 1.7B", "family": "qwen", "repo": "mlx-community/Qwen3-1.7B-4bit", "params_b": 1.7, "size_mb": 935, "tiers": ["light", "standard"]},
+    {"id": "qwen3-4b-2507", "name": "Qwen3 4B Instruct 2507", "family": "qwen", "repo": "mlx-community/Qwen3-4B-Instruct-2507-4bit", "params_b": 4.0, "size_mb": 2175, "tiers": ["pro"]},
+    {"id": "gemma3-1b", "name": "Gemma 3 1B", "family": "gemma", "repo": "mlx-community/gemma-3-1b-it-qat-4bit", "params_b": 1.0, "size_mb": 735, "tiers": ["light"]},
+    {"id": "gemma3-4b", "name": "Gemma 3 4B", "family": "gemma", "repo": "mlx-community/gemma-3-4b-it-qat-4bit", "params_b": 4.0, "size_mb": 2890, "tiers": ["pro"]},
+    {"id": "gemma4-e2b", "name": "Gemma 4 E2B", "family": "gemma", "repo": "mlx-community/gemma-4-e2b-it-4bit", "params_b": 2.0, "size_mb": 3415, "tiers": ["standard", "pro"]},
+    {"id": "gemma4-e4b", "name": "Gemma 4 E4B", "family": "gemma", "repo": "mlx-community/gemma-4-e4b-it-4bit", "params_b": 4.0, "size_mb": 4940, "tiers": ["pro"]}
+  ],
+  "defaults": {"pro": "qwen3.5-2b", "standard": "qwen3.5-2b", "light": "qwen3.5-0.8b", "minimal": "qwen3.5-0.8b"}
+}
