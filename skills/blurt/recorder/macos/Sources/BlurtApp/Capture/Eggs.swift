@@ -300,10 +300,3 @@ final class DraftsWatcher {
 
     var kinds: [String] { order.compactMap { current[$0] }.map { $0["kind"] as? String ?? "note" } }
 }
-
-/// Every kind's drafts from a finished / running session (AgentHub).
-func draftKinds(in session: URL) -> [String] {
-    let w = DraftsWatcher(session: session)
-    w.poll()
-    return w.kinds
-}

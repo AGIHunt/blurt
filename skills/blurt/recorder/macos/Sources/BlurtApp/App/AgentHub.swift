@@ -304,6 +304,19 @@ extension App {
         let job = JobWriter(type: .process, project: pid, session: dir)
         if let c = captures { job.setCaptures(c) }
         job.step("prepare", .running)
+        // tests: BLURT_TEST_PROCESS=done|failed plays the job out in ~4 s instead of starting an agent (K7 details)
+        if let outcome = ProcessInfo.processInfo.environment["BLURT_TEST_PROCESS"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { job.step("prepare", .done); job.step("write", .running, progress: 0.4) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                job.setItems((captures ?? [0]).map { "test-\($0)" })
+                job.step("write", outcome == "done" ? .done : .failed)
+                job.finish(outcome == "done" ? .done : .failed,
+                           error: outcome == "done" ? nil : JobError(code: "unknown", message: "processing failed (test)"))
+                self?.processing.removeAll { $0 == dir.path }
+                self?.refreshStatus()
+            }
+            return
+        }
         let hub = AgentHub.shared
         hub.reload()
         let order = only.flatMap { hub.def($0) }.map { [$0] } ?? hub.order()
@@ -333,7 +346,6 @@ extension App {
                           "agents": statuses.map { ["id": $0.def.id, "state": $0.state.rawValue, "why": $0.why] }]
         }
         job.finish(.failed, error: JobError(code: "auth", message: lines.joined(separator: "; "), hintKey: "main.job.hint.no_agent"))
-        perch.hatched(id: dir.path, ok: false)
     }
 
     /// The agent's instructions for an unattended run (English: agents read it, the user never does).
@@ -363,7 +375,6 @@ extension App {
             m["agent"] = rec
         }
         job.step("transcribe", .running)
-        perch.hatch(id: dir.path, kinds: draftKinds(in: dir))
         refreshStatus()
         var env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]
         if let p = project { env["BLURT_PROJECT"] = p }
@@ -374,7 +385,6 @@ extension App {
             let hasItems = ["batch.json", "items.json", "items.ingested.json"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
             if hasItems {
                 self.processing.removeAll { $0 == dir.path }
-                perch.hatched(id: dir.path, ok: true)
                 updateMeta(dir) { m in m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(["result": "ok", "done_at": nowStamp()]) { _, n in n } }
                 appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) done" + (status == 0 ? "" : " (exit \(status))") + "\n")
                 for s in ["transcribe", "write", "frames"] { job.step(s, .done) }
@@ -395,7 +405,6 @@ extension App {
                 return
             }
             self.processing.removeAll { $0 == dir.path }
-            perch.hatched(id: dir.path, ok: false)
             updateMeta(dir) { m in
                 m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(
                     ["result": "failed", "class": f?.id ?? "unknown", "short": f?.shortText ?? T("job.state.failed"), "reason": reason,

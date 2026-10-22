@@ -6,7 +6,7 @@
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
-//     project ID|auto         switch the current project · hatch DIR · hatched DIR ok|fail (v0.6 AgentHub calls)
+//     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chicken · axcards  the cards' accessibility elements ("ax" event)
 //     menuicon DIR            renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x
 
@@ -92,10 +92,6 @@ extension App {
         case "cancel": NoteBubble.shared.cancel()
         case "edit":
             if let n = Int(arg), let s = snapper.cards.first(where: { $0.n == n }) { NoteBubble.shared.begin(s, mode: .edit) }
-        case "hatch": perch.hatch(id: arg, kinds: [])
-        case "hatched":
-            let a = arg.split(separator: " ").map(String.init)
-            if let id = a.first { perch.hatched(id: id, ok: a.last == "ok") }
         case "peck":
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             let state = ["to_verify", "done"].contains(a.first ?? "") ? a[0] : "to_verify"

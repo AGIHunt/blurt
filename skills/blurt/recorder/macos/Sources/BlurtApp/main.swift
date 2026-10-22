@@ -8,7 +8,7 @@
 // Control: HUD buttons, global hotkeys (defaults ⌥⇧P pause/resume, ⌥⇧A snap, ⌥⇧M marker (+ snap), ⌥⇧D pen on/off,
 // ⌥⇧S stop; configurable, Hotkeys.swift),
 // stdin lines ("pause" | "resume" | "toggle" | "snap" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
-// Snap mode, the perch, eggs and live captions live in Snap.swift, Perch.swift, Eggs.swift, NoteBubble.swift, HUDLive.swift.
+// Snap mode, the island, eggs and notes live in Capture/ (Snap.swift, Island/, Eggs.swift, NoteBubble.swift).
 // stdout: one JSON object per line: ready, selected, countdown, recording, paused, resumed, marker, level?, stopped,
 // cancelled, error.
 
