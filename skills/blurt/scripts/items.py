@@ -652,6 +652,9 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
             target = store_for_project(pid) if pid else st.inbox_store()
             target.ensure()
             fields = {k: v for k, v in it.items() if k not in ("project_confidence", "project_reason")}
+            if shot is not None and (shots.get(shot) or {}).get("type") == "voice":
+                # a voice input in a shots batch is a voice capture, not a snap (K1 source.type)
+                fields["source"] = {**(it["source"] if isinstance(it.get("source"), dict) else {}), "type": "voice"}
             with target.lock():
                 item = build_item(fields, uid, target, project_by=by, created=created, session=session, meta=meta,
                                   local=lid, language=data.get("language"), shot=shot)

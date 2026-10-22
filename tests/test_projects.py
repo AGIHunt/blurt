@@ -322,6 +322,19 @@ class Route(TmpCase):
         self.assertTrue(Path(a["frames"][0]["path"]).is_file())
         self.assertTrue(a["frames"][0]["path"].startswith(str(self.docs / ".blurt" / "assets")))
 
+    def test_a_voice_input_in_a_shots_batch_is_a_voice_item(self):
+        """⌥⇧V without a project hangs a voice card in the shots batch; its item says source.type voice, not snap."""
+        s = self.e.ws / "inbox" / "sessions" / "20261022-141500-shots"
+        (s / "shots").mkdir(parents=True)
+        (s / "shots.jsonl").write_text("\n".join(json.dumps(x) for x in (
+            {"n": 1, "type": "voice", "file": None, "voice": "shots/001.wav", "said": "water the basil", "project": None},
+            {"n": 1, "project": None, "assigned_by": "ai"})) + "\n")
+        (s / "items.json").write_text(json.dumps({"items": [
+            {"id": "I-001", "kind": "task", "title": "Water the basil", "source": {"shot": 1}}]}))
+        out = ok("items.py", "ingest", s, env=self.e.env(BLURT_NO_ROUTE="1"))
+        a = ok("items.py", "get", out["items"][0]["uid"], env=self.e.env())["item"]
+        self.assertEqual((a["source"]["type"], a["source"]["shot"]), ("voice", 1))
+
 
 if __name__ == "__main__":
     import unittest
