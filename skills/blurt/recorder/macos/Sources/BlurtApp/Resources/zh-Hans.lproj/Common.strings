@@ -2,6 +2,12 @@
    键和占位符与 en.lproj/Common.strings 一致（tests/test_l10n.py）。 */
 
 /* 条目种类 */
+"job.title.enrich" = "AI 补全";
+"job.title.filed" = "按备注直接归档";
+"job.usage.cli_default" = "CLI 默认模型";
+"job.usage.none" = "未用 AI · 0 token";
+"job.usage.tokens" = "用了约 %@ token";
+"job.usage.unknown" = "%@ 没报告用量";
 "kind.issue" = "问题";
 "kind.idea" = "想法";
 "kind.note" = "笔记";

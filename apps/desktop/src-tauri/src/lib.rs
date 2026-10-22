@@ -268,6 +268,11 @@ fn jobs_list(active: Option<bool>) -> Vec<Value> {
 }
 
 #[tauri::command(async)]
+fn agents_models(state: tauri::State<'_, AppState>, agent: String) -> R<Value> {
+    sessions::models(&state.runner(), &agent)
+}
+
+#[tauri::command(async)]
 fn agents_detect(state: tauri::State<'_, AppState>) -> R<Value> {
     sessions::detect(&state.runner())
 }
@@ -660,6 +665,7 @@ pub fn run() {
             items_move,
             jobs_list,
             agents_detect,
+            agents_models,
             sessions_dispatch,
             sessions_list,
             sessions_finish,

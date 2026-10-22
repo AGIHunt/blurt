@@ -117,9 +117,12 @@ public final class AgentSessions {
 
     // MARK: K5 CLI
 
-    public func dispatch(items: [String], agent: String?, mode: DispatchMode, worktree: WorktreeChoice, dryRun: Bool) async throws -> DispatchResult {
+    /// `model`: the agent's model (Agents.models); nil / "" = whatever the CLI is set to.
+    public func dispatch(items: [String], agent: String?, mode: DispatchMode, worktree: WorktreeChoice, dryRun: Bool,
+                         model: String? = nil) async throws -> DispatchResult {
         var args = ["dispatch", "--items"] + items + ["--mode", mode.rawValue, "--worktree", worktree.rawValue, "--lang", lang]
         if let a = agent, !a.isEmpty { args += ["--agent", a] }
+        if let m = model, !m.isEmpty { args += ["--model", m] }
         if dryRun { args.append("--dry-run") }
         let o = try await call(args, timeout: dryRun ? 60 : 120)
         let rows = o["jobs"] as? [[String: Any]] ?? []

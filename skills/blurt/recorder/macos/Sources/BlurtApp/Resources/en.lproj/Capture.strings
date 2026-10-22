@@ -27,6 +27,7 @@
 "capture.countdown.pause" = "pause / resume";
 "capture.countdown.ready" = "Get ready";
 "capture.countdown.skip" = "click to skip";
+"capture.discarded" = "Discarded";
 "capture.drawer.auto_sub" = "Each capture goes to the project it fits";
 "capture.drawer.drop_title" = "MOVE TO";
 "capture.drawer.inbox_sub" = "Keep it, sort it later";
@@ -36,9 +37,12 @@
 "capture.drawer.open_message" = "Pick a folder. Its items are kept in a .blurt folder inside it, never committed to git.";
 "capture.drawer.open_prompt" = "Open";
 "capture.drawer.switch_title" = "CURRENT PROJECT";
+"capture.filed" = "Filed to %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";
 "capture.hotkey.tip" = " (%@)";
 "capture.island.ax" = "Blurt island";
+"capture.island.organize" = "Organize";
+"capture.island.organize_tip" = "Organize the waiting cards into %@ — one AI run";
 "capture.island.project_ax" = "Current project: %@";
 "capture.island.record" = "Record";
 "capture.island.snap" = "Snap";
@@ -77,11 +81,15 @@
 "capture.menu.snap" = "Snap";
 "capture.menu.switch_project" = "Switch Project…";
 "capture.menu.voice" = "Voice Input";
+"capture.note.discard_tip" = "Discard this shot (Esc)";
+"capture.note.goes_to" = "→ %@";
+"capture.note.keep_discard" = "⏎ keep without a note · Esc discard";
+"capture.note.keep_tip" = "Keep (⏎)";
 "capture.note.listening" = "Listening… just pause when you’re done · or type";
 "capture.note.listening_save" = "listening — pause to save · ⏎ save now";
 "capture.note.next" = "Next shot";
 "capture.note.next_hint" = "next shot";
-"capture.note.no_mic" = "Mic unavailable · ⏎ save · Esc skip";
+"capture.note.no_mic" = "Mic unavailable · ⏎ save · Esc discard";
 "capture.note.paused" = "Paused · ⏎ save & resume · Esc resume";
 "capture.note.pen_hint" = "⌃-drag to circle";
 "capture.note.placeholder" = "Write a note";
@@ -92,9 +100,8 @@
 "capture.note.recording_new" = "recording a new voice note…";
 "capture.note.rerecord" = "Record a new voice note";
 "capture.note.save_cancel" = "⏎ save · Esc cancel";
-"capture.note.save_skip" = "⏎ save · Esc skip";
+"capture.note.save_discard" = "⏎ save · Esc discard";
 "capture.note.saved" = "Saved";
-"capture.note.skip" = "Esc skip";
 "capture.note.undo" = "Undo ink (⌘Z)";
 "capture.peck.done_one" = "Done: %@";
 "capture.peck.verify_one" = "Ready to verify: %@";
@@ -128,6 +135,7 @@
 "capture.service.image_from" = "Image from %@";
 "capture.service.title" = "Collected notes";
 "capture.snap.no_permission" = "Couldn’t take the shot — Screen Recording permission needed";
+"capture.undo" = "Undo";
 "capture.voice.card_empty" = "Voice note · %@";
 "capture.voice.goes_card" = "Waits on a card until you pick a project";
 "capture.voice.goes_to" = "Goes to %@";

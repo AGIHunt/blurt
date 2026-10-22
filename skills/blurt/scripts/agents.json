@@ -1,5 +1,5 @@
 {
-  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation. WP2 fields (agents.py detect / command / install): version = args printing the version; events = args appended to run for machine-readable progress + its format; headless: false = never run unattended (skip it in the auto chain); interactive = {url (placeholders {repo_q} {prompt_q}, max_prompt), | terminal (args after the bin, run in the user's terminal; paste_prompt: put the prompt on the clipboard), | copy_prompt}; app = {macos: path} for app-only agents; skill_dir = where the blurt skill is linked; mcp = {args (+check: args that exit 0 when already added) | json: {path, key, value} merged into a config file}, {mcp_server} = absolute path of mcp_server.py. Paths take ~ and ${VAR:-default}. headless_mcp = args `agents.py command … headless` adds so the run can use the blurt MCP server with no prompts (codex: the whole server via -c, since -c on an unregistered server breaks codex, plus approve mode and the BLURT_* env it forwards); {mcp_server_json} = that path as a JSON/TOML string. interactive.session (K5, sessions.py dispatch: an interactive agent in a tmux window or the app's pty) = {argv: args after the bin ({prompt} = the short hand-off prompt), prompt: 'arg' (default) | 'paste' (pasted into the window once it is up), hooks: 'claude' (--settings <job>.claude-settings.json with per-session hooks) | 'codex' (-c notify + -c hooks.*) | absent (status from the terminal only), mcp: args added when the user hasn't installed the blurt MCP server ({mcp_config_json} = a --mcp-config JSON) or 'headless_mcp' (reuse those args)}. interactive.waiting_patterns = regexes on the last 15 lines of the window meaning 'waiting for you' — only used while an agent's hooks aren't reporting (no hooks, or the user didn't trust them) — and for codex always, since its hooks don't cover a tool's questions.",
+  "_doc": "Coding-agent CLIs the Blurt app can hand a recording to, headless. Read by agents.py and by the macOS app (BlurtRecorder: Agents.swift; a copy is bundled into Blurt.app/Contents/Resources). Order of `agents` = default fallback order; the user's order is config record.agents. A custom agent can be added in config record.agent_defs with the same fields. status: how to tell whether it is logged in without spending tokens — `args` run with a 15 s timeout, then: json_key (a bool in the first JSON object of the output) > creds_json ({path, keys}: the file exists and every key is empty → logged out) > logged_out (substrings) > ok_if (substrings, exit 0) > configured_if (regex: has credentials, can't verify them) > env_any / files_any (credentials in env / on disk) > otherwise ('logged_out' | 'unknown'). run: the headless command, {prompt} = the task text. verified: 'run' = a real headless run was checked, 'cli' = flags checked with --help only, 'docs' = from the CLI's documentation. WP2 fields (agents.py detect / command / install): version = args printing the version; events = args appended to run for machine-readable progress + its format; headless: false = never run unattended (skip it in the auto chain); interactive = {url (placeholders {repo_q} {prompt_q}, max_prompt), | terminal (args after the bin, run in the user's terminal; paste_prompt: put the prompt on the clipboard), | copy_prompt}; app = {macos: path} for app-only agents; skill_dir = where the blurt skill is linked; mcp = {args (+check: args that exit 0 when already added) | json: {path, key, value} merged into a config file}, {mcp_server} = absolute path of mcp_server.py. Paths take ~ and ${VAR:-default}. headless_mcp = args `agents.py command … headless` adds so the run can use the blurt MCP server with no prompts (codex: the whole server via -c, since -c on an unregistered server breaks codex, plus approve mode and the BLURT_* env it forwards); {mcp_server_json} = that path as a JSON/TOML string. interactive.session (K5, sessions.py dispatch: an interactive agent in a tmux window or the app's pty) = {argv: args after the bin ({prompt} = the short hand-off prompt), prompt: 'arg' (default) | 'paste' (pasted into the window once it is up), hooks: 'claude' (--settings <job>.claude-settings.json with per-session hooks) | 'codex' (-c notify + -c hooks.*) | absent (status from the terminal only), mcp: args added when the user hasn't installed the blurt MCP server ({mcp_config_json} = a --mcp-config JSON) or 'headless_mcp' (reuse those args)}. interactive.waiting_patterns = regexes on the last 15 lines of the window meaning 'waiting for you' — only used while an agent's hooks aren't reporting (no hooks, or the user didn't trust them) — and for codex always, since its hooks don't cover a tool's questions. Processing (v0.7): models = where the agent's models are listed ({list: [{id, name, cheap}]} | {cache: the CLI's own model cache, format, config: its config file for the current default}); model_args = how a model / an effort level is passed ({model}, {effort}); processing = the default for unattended organising runs ({model: id | 'cheapest' (the cache's or list's cheap model) | 'default' (the CLI's own setting), effort: level | 'default'}), overridden per agent by config record.agent_processing.<id>; usage = how a run reports the tokens it used (args added to the processing run + format | pattern with the number in group 1).",
   "agents": [
     {
       "id": "claude", "name": "Claude Code", "bins": ["claude"], "verified": "run",
@@ -13,7 +13,12 @@
       "skill_dir": "~/.claude/skills",
       "mcp": {"args": ["mcp", "add", "--scope", "user", "blurt", "--", "uv", "run", "--script", "{mcp_server}"],
               "check": ["mcp", "get", "blurt"], "verified": "cli"},
-      "drafts": true
+      "drafts": true,
+      "models": {"list": [{"id": "haiku", "name": "Haiku", "cheap": true}, {"id": "sonnet", "name": "Sonnet"}, {"id": "opus", "name": "Opus"},
+                          {"id": "fable", "name": "Fable"}], "verified": "cli"},
+      "model_args": {"model": ["--model", "{model}"], "effort": ["--effort", "{effort}"]},
+      "processing": {"model": "cheapest", "effort": "low"},
+      "usage": {"args": ["--output-format", "json"], "format": "claude-json"}
     },
     {
       "id": "codex", "name": "Codex", "bins": ["codex"], "verified": "run",
@@ -34,7 +39,12 @@
                                 "-c", "mcp_servers.blurt.args=[\"run\", \"-q\", \"--script\", {mcp_server_json}]",
                                 "-c", "mcp_servers.blurt.env_vars=[\"BLURT_HOME\", \"BLURT_WORKSPACE\", \"BLURT_AGENT\", \"BLURT_RUN_ID\", \"BLURT_JOB\", \"BLURT_PROJECT\"]",
                                 "-c", "mcp_servers.blurt.default_tools_approval_mode=\"approve\""], "verified": "run"},
-      "drafts": true
+      "drafts": true,
+      "models": {"cache": "${CODEX_HOME:-~/.codex}/models_cache.json", "format": "codex", "config": "${CODEX_HOME:-~/.codex}/config.toml",
+                 "verified": "run"},
+      "model_args": {"model": ["-m", "{model}"], "effort": ["-c", "model_reasoning_effort=\"{effort}\""]},
+      "processing": {"model": "cheapest", "effort": "low"},
+      "usage": {"pattern": "(?im)^tokens used\\s*:?\\s*([0-9][0-9,.\u00a0 ]*)$"}
     },
     {
       "id": "kimi", "name": "Kimi Code", "bins": ["kimi"], "verified": "cli",
@@ -64,7 +74,8 @@
       "skill_dir": "~/.config/opencode/skills",
       "mcp": {"json": {"path": "~/.config/opencode/opencode.json", "key": ["mcp", "blurt"],
                        "value": {"type": "local", "command": ["uv", "run", "--script", "{mcp_server}"], "enabled": true}},
-              "verified": "docs"}
+              "verified": "docs"},
+      "model_args": {"model": ["--model", "{model}"]}
     },
     {
       "id": "gemini", "name": "Gemini CLI", "bins": ["gemini"], "verified": "docs",
@@ -77,7 +88,8 @@
       "interactive": {"terminal": ["-i", "{prompt}"], "session": {"argv": ["-i", "{prompt}"], "verified": "docs"},
                       "waiting_patterns": ["Allow execution", "Apply this change\\?", "Waiting for user confirmation"]},
       "skill_dir": "~/.agents/skills",
-      "mcp": {"args": ["mcp", "add", "--scope", "user", "blurt", "uv", "run", "--script", "{mcp_server}"], "verified": "docs"}
+      "mcp": {"args": ["mcp", "add", "--scope", "user", "blurt", "uv", "run", "--script", "{mcp_server}"], "verified": "docs"},
+      "model_args": {"model": ["--model", "{model}"]}
     },
     {
       "id": "zcode", "name": "ZCode", "bins": [], "app": {"macos": "/Applications/ZCode.app"}, "verified": "docs",

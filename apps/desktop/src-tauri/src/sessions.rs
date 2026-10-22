@@ -21,6 +21,11 @@ pub fn detect(runner: &Runner) -> Result<Value, String> {
     runner.run("agents.py", &["detect".into()], None, Duration::from_secs(90)).map_err(String::from)
 }
 
+/// `agents.py models ID`: the agent's models (its own list or the CLI's cache; no network, no tokens).
+pub fn models(runner: &Runner, agent: &str) -> Result<Value, String> {
+    runner.run("agents.py", &["models".into(), agent.into()], None, Duration::from_secs(30)).map_err(String::from)
+}
+
 fn pick_agent(runner: &Runner, wanted: Option<String>) -> Result<String, String> {
     match wanted.filter(|a| !a.is_empty()) {
         Some(a) => Ok(a),
@@ -40,6 +45,8 @@ pub struct DispatchOpts {
     /// tmux | app | auto
     pub runner: Option<String>,
     pub dry_run: bool,
+    /// the agent's model; None / "" = the CLI's own setting
+    pub model: Option<String>,
 }
 
 /// `sessions.py dispatch …`; an app-runner result (`launch`) starts in our own pty right away.
@@ -51,6 +58,9 @@ pub fn dispatch(app: &AppHandle, runner: &Runner, o: &DispatchOpts) -> Result<Va
     args.extend(o.items.iter().cloned());
     if let Some(a) = o.agent.as_deref().filter(|a| !a.is_empty()) {
         args.extend(["--agent".into(), a.into()]);
+    }
+    if let Some(m) = o.model.as_deref().filter(|m| !m.is_empty()) {
+        args.extend(["--model".into(), m.into()]);
     }
     args.extend(["--mode".into(), o.mode.clone().unwrap_or_else(|| "together".into())]);
     args.extend(["--worktree".into(), o.worktree.clone().unwrap_or_else(|| "auto".into())]);
@@ -262,6 +272,8 @@ pub fn process(
         scripts::s(&repo),
         "--var".into(),
         format!("run_id={}", job.id),
+        // v0.7: organising runs with the processing model (cheap, low effort) unless the user chose otherwise
+        "--processing".into(),
     ];
     let cmd = match runner.run("agents.py", &args, None, Duration::from_secs(30)) {
         Ok(c) => c,

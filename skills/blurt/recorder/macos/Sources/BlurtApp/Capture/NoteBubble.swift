@@ -1,8 +1,9 @@
-// The note bubble under a fresh shot: "🎙 在听… 说完停一下就好 · 直接打字也行 · Esc 跳过".
+// The note bubble under a fresh shot: "Listening… just pause when you're done · or type", and where it will go.
 //
 //  • listens right away (the user usually starts talking as they let go of the mouse); ~1.8 s of silence after
 //    speech ends the note, 8 s without speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono).
-//  • typing before speaking switches to a text note (the mic stops). ⏎ saves, Esc skips.
+//  • typing before speaking switches to a text note (the mic stops). ⏎ (or ✓) keeps the shot — with the note, or
+//    without one (then it hangs as a card); Esc (or the bin) discards the shot: Trash, "Discarded · Undo" for 3 s.
 //  • the shot is shown enlarged; drag (⌃-drag, as with the recorder's pen — or just drag) to circle things → the
 //    ink is burnt into shots/NNN.marked.png, the original stays as it was.
 //  • ⌥⇧A while it is open saves the note and takes the next shot.
@@ -388,6 +389,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private var playBtn: SymbolButton!
     private var prevBtn: SymbolButton!
     private var nextBtn: SymbolButton!
+    private var keepBtn: SymbolButton!
+    private var discardBtn: SymbolButton!
     private var penHint = NSTextField(labelWithString: "")
     private var voice: NoteVoice?
     private var typed = false
@@ -480,7 +483,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         playBtn = SymbolButton("play.fill", tip: Loc.t("capture.note.play", table: "Capture")) { [weak self] in self?.play() }
         prevBtn = SymbolButton("chevron.left", tip: Loc.t("capture.note.prev", table: "Capture")) { [weak self] in self?.step(-1) }
         nextBtn = SymbolButton("chevron.right", tip: Loc.t("capture.note.next", table: "Capture")) { [weak self] in self?.step(1) }
-        [micBtn, playBtn, prevBtn, nextBtn].forEach { root.addSubview($0!) }
+        keepBtn = SymbolButton("checkmark.circle.fill", tip: Loc.t("capture.note.keep_tip", table: "Capture")) { [weak self] in self?.commit() }
+        keepBtn.contentTintColor = .controlAccentColor
+        discardBtn = SymbolButton("trash", tip: Loc.t("capture.note.discard_tip", table: "Capture")) { [weak self] in self?.cancel() }
+        [micBtn, playBtn, prevBtn, nextBtn, keepBtn, discardBtn].forEach { root.addSubview($0!) }
         panel = p
     }
 
@@ -527,10 +533,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         icon.frame = NSRect(x: pad + 2, y: rowY + 1, width: 22, height: 20)
         bars.frame = NSRect(x: pad, y: rowY, width: 26, height: 22)
         field.frame = NSRect(x: pad + 34, y: rowY + 1, width: width - pad * 2 - 34 - 6, height: fieldH)
-        let buttons: CGFloat = mode == .recording && recordingShots.count > 1 ? 56 : mode == .edit ? 56 : 0
+        let buttons: CGFloat = mode == .recording && recordingShots.count > 1 ? 56 : mode == .edit || mode == .listen ? 56 : 0
         status.frame = NSRect(x: pad + 34, y: rowY + fieldH + 4, width: width - pad * 2 - 34 - buttons, height: 15)
         var bx = width - pad - 26
-        for b in [nextBtn, prevBtn, micBtn, playBtn] { b?.isHidden = true }
+        for b in [nextBtn, prevBtn, micBtn, playBtn, keepBtn, discardBtn] { b?.isHidden = true }
+        if mode == .listen {
+            keepBtn.isHidden = false; keepBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
+            discardBtn.isHidden = false; discardBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
+        }
         if mode == .recording, recordingShots.count > 1 {
             nextBtn.isHidden = false; nextBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH); bx -= 26
             prevBtn.isHidden = false; prevBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH); bx -= 26
@@ -646,13 +656,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         case .listen:
             field.placeholderString = listening ? Loc.t("capture.note.listening", table: "Capture")
                                                 : Loc.t("capture.note.placeholder_optional", table: "Capture")
+            // where it goes first (with a note, straight into the current project; without, it waits as a card)
+            let dest = destination.map { $0 + " · " } ?? ""
             let next = hkHint(.snap, "capture.note.next_hint").map { " · " + $0 } ?? ""
-            if typed { status.stringValue = Loc.t("capture.note.save_skip", table: "Capture") + next }
+            if typed { status.stringValue = dest + Loc.t("capture.note.save_discard", table: "Capture") + next }
             else if listening && speechStarted {
                 status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + "  " + Loc.t("capture.note.listening_save", table: "Capture"))
             }
-            else if listening { status.stringValue = Loc.t("capture.note.skip", table: "Capture") + next }
-            else { status.stringValue = Loc.t("capture.note.no_mic", table: "Capture") }
+            else if listening { status.stringValue = dest + Loc.t("capture.note.keep_discard", table: "Capture") + next }
+            else { status.stringValue = dest + Loc.t("capture.note.no_mic", table: "Capture") }
         case .edit:
             field.placeholderString = Loc.t("capture.note.placeholder", table: "Capture")
             if listening { status.attributedStringValue = recLabel(fmt(voice?.elapsed ?? 0) + "  " + Loc.t("capture.note.recording_new", table: "Capture")) }
@@ -667,6 +679,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     }
 
     private func fmt(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
+
+    /// "→ ordo-platform" for a fresh shot taken with a current project.
+    private var destination: String? {
+        guard mode == .listen, let pid = shot?.project, let p = ProjectStore.shared.project(id: pid) else { return nil }
+        return Loc.t("capture.note.goes_to", table: "Capture", p.name)
+    }
 
     private func tick() {
         bars.needsDisplay = true
@@ -733,12 +751,31 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         player?.play()
     }
 
+    // MARK: tests (BLURT_TEST_COMMANDS: SnapApp's "notetype" / "notekey")
+
+    /// Typing into the field, as the field editor would.
+    func testType(_ text: String) {
+        guard isOpen else { return }
+        if let ed = field.currentEditor() { ed.insertText(text) } else { field.stringValue += text }
+        controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+    }
+
+    /// A real key event through the bubble's panel (Esc = 53, Return = 36): the same path a key press takes.
+    func testKey(_ code: UInt16) {
+        guard let p = panel, isOpen else { return }
+        let chars = code == 53 ? "\u{1B}" : "\r"
+        guard let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                       windowNumber: p.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
+                                       isARepeat: false, keyCode: code) else { return }
+        p.sendEvent(e)
+    }
+
     // MARK: close
 
     /// Save what's there (⏎, ⌥⇧A again, silence after speech).
     func commit() { if isOpen { close(save: true, flash: voice?.running == true || voiceKept) } }
 
-    /// Esc: no note for a fresh shot; for an edit, put things back as they were.
+    /// Esc = cancel: a fresh shot is discarded (with Undo); an edit puts things back as they were.
     func cancel() { if isOpen { close(save: false, flash: false) } }
 
     private func saveText(_ s: Shot) {
@@ -752,22 +789,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         showWork?.cancel()
         ticker?.invalidate()
         player?.stop()
+        // Esc on a fresh shot discards it; what was said, typed and drawn goes with it, and comes back with Undo
+        let discard = !save && mode == .listen
         if let v = voice {
-            let keep = save && speechStarted
+            let keep = (save || discard) && speechStarted
             v.stop(keep: keep)
             if keep { s.voice = "shots/\(ShotBatch.name(s.n)).wav" }
             voice = nil
         }
-        if save {
+        if save || discard {
             let t = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             s.text = t.isEmpty ? nil : t
             if mode != .recording { applyInk(s) }
-            s.batch?.save(s)
-        } else if mode == .listen {
-            if let v = s.voiceURL, !voiceKept { try? FileManager.default.removeItem(at: v) }
-            if !voiceKept { s.voice = nil }
-            s.text = nil
-            applyInk(s)            // Esc skips the words, not the circles the user drew
             s.batch?.save(s)
         } else if mode == .edit, let o = original {
             s.text = o.text; s.voice = o.voice; s.strokes = o.strokes
@@ -775,7 +808,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             // Esc = resume without saving the edit in the field
         }
         shot = nil
-        if mode != .recording { hanging.update(s); hanging.hold(false); snapper.settled(s) }
+        if mode != .recording {
+            hanging.update(s)
+            hanging.hold(false)
+            if discard { snapper.discard(s) } else { snapper.settled(s) }
+        }
         let p = panel
         let done = { [weak self] in
             p?.orderOut(nil)

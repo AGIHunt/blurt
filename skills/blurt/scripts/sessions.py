@@ -5,7 +5,9 @@
 socket (one tmux session per project, one window per dispatch), or in the app's own pty when there is no tmux.
 
   sessions.py dispatch --items REF … [--agent ID] [--mode together|parallel] [--worktree on|off|auto]
-                       [--runner tmux|app|auto] [--dry-run] [--lang en|zh]
+                       [--runner tmux|app|auto] [--dry-run] [--lang en|zh] [--model M]
+                       --model: the agent's model (agents.py models ID), passed with its model_args; omitted /
+                       "default" = whatever the CLI is set to
   sessions.py list [--project ID] [--all]
   sessions.py attach-cmd JOB                 → {"ok","argv","env"}: a grouped view on the job's window
   sessions.py open-external JOB [--terminal auto|terminal|iterm|ghostty|wezterm|kitty|gnome-terminal|konsole|wt]
@@ -645,20 +647,20 @@ def _new_window(session: str, name: str, cwd: str, env: dict, argv: list[str]) -
 
 
 def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", worktree: str = "auto",
-             runner: str = "auto", dry_run: bool = False, lang: str | None = None) -> dict:
+             runner: str = "auto", dry_run: bool = False, lang: str | None = None, model: str | None = None) -> dict:
     import agents
     import handoff
     pl = plan(refs, agent, mode, worktree, runner)
     project = pl["project"]
     if dry_run:
-        return {"ok": True, "dry_run": True, "agent": pl["agent"], "mode": mode, "runner": pl["runner"],
+        return {"ok": True, "dry_run": True, "agent": pl["agent"], "model": model, "mode": mode, "runner": pl["runner"],
                 "worktree": pl["worktree"], "jobs": [_public(e) for e in pl["jobs"]], "warnings": pl["warnings"]}
     mcp = None
     out_jobs, launch = [], []
     warnings = list(pl["warnings"])
     for e in pl["jobs"]:
         jid = jobs.new_id()
-        agent_obj = {"id": pl["agent"], "mode": mode, "runner": pl["runner"], "tmux": None, "cwd": e["cwd"],
+        agent_obj = {"id": pl["agent"], "model": model, "mode": mode, "runner": pl["runner"], "tmux": None, "cwd": e["cwd"],
                      "worktree": None, "status": "running", "status_at": jobs.now_iso(), "status_source": "app",
                      "exit": None, "handoff": None, "agent_session_id": None, "finish": None}
         title = e["_items"][0].get("title") if len(e["_items"]) == 1 else None
@@ -682,7 +684,7 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
             if mcp is None:
                 defn = agents.definitions(agents.config(project["path"])).get(pl["agent"]) or {}
                 mcp = agents.mcp_installed(defn) is False
-            cmd = agents.session_command(pl["agent"], pr["prompt"], e["cwd"], job=jid, mcp=mcp,
+            cmd = agents.session_command(pl["agent"], pr["prompt"], e["cwd"], job=jid, mcp=mcp, model=model,
                                          settings=jobs.path(jid, ".claude-settings.json"))
             env = _session_env(jid, pl["agent"], project["id"])
             if pl["runner"] == "tmux":
@@ -1099,6 +1101,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--runner", choices=["tmux", "app", "auto"], default="auto")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
+    s.add_argument("--model", help="the agent's model (agents.py models ID); default = the CLI's own setting")
     s = sub.add_parser("list")
     s.add_argument("--project")
     s.add_argument("--all", action="store_true")
@@ -1132,7 +1135,8 @@ def main(argv: list[str] | None = None) -> None:
     a = p.parse_args(argv)
     try:
         if a.cmd == "dispatch":
-            emit(dispatch(a.items, a.agent, a.mode, a.worktree, a.runner, a.dry_run, a.lang))
+            emit(dispatch(a.items, a.agent, a.mode, a.worktree, a.runner, a.dry_run, a.lang,
+                          None if a.model in (None, "", "default") else a.model))
         elif a.cmd == "list":
             emit(list_sessions(a.project, a.all))
         elif a.cmd == "attach-cmd":

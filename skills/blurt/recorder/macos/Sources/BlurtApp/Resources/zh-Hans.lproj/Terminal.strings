@@ -1,10 +1,26 @@
 /* Terminal 表（P3）：agent 会话、内嵌终端、派发和收尾面板、设置 → Agent。 */
 
 /* 通用 */
+"agents.effort" = "思考强度";
+"agents.effort.default" = "强度：跟随 CLI";
+"agents.effort.high" = "高强度";
+"agents.effort.low" = "低强度";
+"agents.effort.max" = "最高强度";
+"agents.effort.medium" = "中强度";
+"agents.effort.xhigh" = "超高强度";
+"agents.processing" = "整理用模型";
+"agents.processing.cheapest" = "最省";
+"agents.processing.cheapest_named" = "最省（%@）";
+"agents.processing.default" = "跟随 CLI 设置";
+"agents.processing.default_named" = "跟随 CLI 设置（%@）";
+"agents.processing.help" = "录屏整理、整理、交给 AI 分、AI 补全都用它。整理用小模型、低思考强度就够了，省很多 token。";
 "common.cancel" = "取消";
 "common.close" = "关闭";
 "common.done" = "完成";
 
+"dispatch.model" = "模型";
+"dispatch.model.default" = "默认（跟随 CLI 设置）";
+"dispatch.model.default_named" = "默认（跟随 CLI 设置：%@）";
 "window.title" = "会话";
 "agent.you" = "你";
 "time.now" = "刚刚";

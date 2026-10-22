@@ -24,6 +24,7 @@ enum Housekeeping {
                 ProjectStore.shared.reload()
                 Scripts.indexUpdate([ProjectStore.shared.inbox.store])
                 startMonitor()
+                askAboutCarriedOverProject()
             }
             await speechModels()
         }
@@ -44,6 +45,21 @@ enum Housekeeping {
                 AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
             }
         }
+    }
+
+    /// v0.6's bound repo became the current project in the migration, which nobody chose here: ask once, in the
+    /// island, whether captures should keep going there. Either answer is recorded (current_by "user").
+    static func askAboutCarriedOverProject() {
+        let store = ProjectStore.shared
+        guard store.currentBy == "migrate", let p = store.current else { return }
+        emit(["event": "ask_current_project", "project": p.id])
+        island.ask(T("app.migrate.ask", p.name), T("app.migrate.keep", p.name), {
+            emit(["event": "current_project_answer", "keep": true])
+            Task { try? await store.use(p.id); await MainActor.run { island.projectChanged() } }
+        }, T("app.migrate.auto"), {
+            emit(["event": "current_project_answer", "keep": false])
+            Task { try? await store.use(nil); await MainActor.run { island.projectChanged() } }
+        })
     }
 
     static func startMonitor() {

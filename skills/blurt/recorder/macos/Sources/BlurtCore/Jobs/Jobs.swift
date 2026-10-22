@@ -80,6 +80,12 @@ public struct Job: Identifiable {
 
     /// The effective state as a dictionary, as jobs.py get prints it.
     public let raw: [String: Any]
+
+    /// What an organising run cost (JobWriter.setUsage): tokens nil = the CLI didn't say; agent nil = no agent ran.
+    public var usage: (tokens: Int?, agent: String?, model: String?, effort: String?)? {
+        guard let u = raw["usage"] as? [String: Any] else { return nil }
+        return ((u["tokens"] as? NSNumber)?.intValue, u["agent"] as? String, u["model"] as? String, u["effort"] as? String)
+    }
 }
 
 // MARK: - The fold (K4)
@@ -385,6 +391,12 @@ public final class JobWriter {
     public func setItems(_ uids: [String]) { mutate { $0["items"] = uids } }
     public func setCaptures(_ n: [Int]) { mutate { $0["captures"] = n } }
     public func setProgress(_ p: Double?) { mutate { $0["progress"] = p ?? NSNull() } }
+    /// What the run cost (v0.7): {"tokens": n | null, "agent", "model", "effort"} — tokens 0 and agent null for a
+    /// capture filed without an agent.
+    public func setUsage(tokens: Int?, agent: String?, model: String?, effort: String?) {
+        mutate { $0["usage"] = ["tokens": tokens ?? NSNull(), "agent": agent ?? NSNull(), "model": model ?? NSNull(),
+                                "effort": effort ?? NSNull()] as [String: Any] }
+    }
 
     public func finish(_ state: JobState, error: JobError? = nil) {
         mutate { d in

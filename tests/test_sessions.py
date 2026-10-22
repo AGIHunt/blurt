@@ -280,6 +280,20 @@ def test_app_runner_returns_the_launch(p2):
     assert ev["job"]["state"] == "done" and ev["job"]["agent"]["status"] == "exited"
 
 
+def test_dispatch_model_reaches_the_command_line(p2):
+    """The dispatch panel's model choice: the agent's own model flag before the prompt, recorded on the job."""
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    assert dispatch(p2, it["uid"], agent="codex", runner="app", model="gpt-test-mini", dry_run=True)["model"] == "gpt-test-mini"
+    (launch,) = dispatch(p2, it["uid"], agent="codex", runner="app", model="gpt-test-mini")["launch"]
+    argv = launch["argv"]
+    assert argv[argv.index("-m") + 1] == "gpt-test-mini" and argv.index("-m") < len(argv) - 1
+    assert p2.job(launch["job"])["agent"]["model"] == "gpt-test-mini"
+    it2 = p2.item(proj["id"])
+    (launch,) = dispatch(p2, it2["uid"], agent="codex", runner="app", model="default")["launch"]
+    assert "-m" not in launch["argv"] and p2.job(launch["job"])["agent"]["model"] is None
+
+
 def test_hook_is_fast_silent_and_harmless(p2):
     proj = p2.project(p2.repo(), worktree=False)
     it = p2.item(proj["id"])

@@ -6,6 +6,8 @@
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
+//     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
+//     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
 //     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
@@ -89,7 +91,17 @@ extension App {
             try? FileManager.default.createDirectory(at: URL(fileURLWithPath: opts.out).deletingLastPathComponent(), withIntermediateDirectories: true)
             r.snaps = RecordingSnaps(rec: r, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
             island.recordingStarted(r, on: NSScreen.main)
-        case "aisort": snapper.aiSort()
+        case "aisort": snapper.handToAI()
+        case "organize": snapper.handToAI(project: ProjectStore.shared.currentID)   // the island's "Organize" button
+        case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
+        case "notekey": NoteBubble.shared.testKey(arg == "esc" ? 53 : 36)           // notekey esc|return: a real key event
+        case "toastaction":                             // toastaction [1|2]: click the island toast's (or question's) answer
+            guard let t = island.currentToast else { return }
+            island.dismissToast()
+            if arg == "2" { t.second?() } else { t.action?() }
+        case "askproject": Housekeeping.askAboutCarriedOverProject()
+        case "enrich":                                  // enrich UID,UID…: "AI fill-in" for those items
+            enrich(arg.split(separator: ",").map(String.init), project: ProjectStore.shared.currentID)
         case "deleteall": snapper.deleteAllCards()
         case "project":
             Task { try? await ProjectStore.shared.use(arg == "auto" ? nil : arg); await MainActor.run { island.projectChanged() } }

@@ -3,7 +3,7 @@
 // reminder with its two buttons — never a block. The other road (K6) sits at the bottom: copy it for your own agent.
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@blurt/icons';
-import { api, type AgentInfo, type DispatchWarning, type ProjectRow } from '../api';
+import { api, type AgentInfo, type AgentModels, type DispatchWarning, type ProjectRow } from '../api';
 import { plural, t, errText } from '../i18n';
 
 export function DispatchSheet({
@@ -41,8 +41,48 @@ export function DispatchSheet({
     );
   }, []);
 
+  // the agent's model, remembered per project and agent ('' = the CLI's own setting)
+  const [models, setModels] = useState<AgentModels | null>(null);
+  const [model, setModel] = useState('');
+  const memoKey = 'blurt.dispatch.models';
+  const remembered = (): Record<string, Record<string, string>> => {
+    try {
+      return JSON.parse(localStorage.getItem(memoKey) ?? '{}') ?? {};
+    } catch {
+      return {};
+    }
+  };
+  useEffect(() => {
+    if (!agent) return;
+    let alive = true;
+    setModels(null);
+    api.models(agent).then(
+      (m) => {
+        if (!alive) return;
+        setModels(m);
+        const saved = remembered()[project?.id ?? '_']?.[agent] ?? '';
+        setModel(m.models.some((x) => x.id === saved) ? saved : '');
+      },
+      () => alive && setModel(''),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [agent]);
+  const pickModel = (m: string) => {
+    setModel(m);
+    try {
+      const all = remembered();
+      all[project?.id ?? '_'] = { ...(all[project?.id ?? '_'] ?? {}), [agent]: m };
+      localStorage.setItem(memoKey, JSON.stringify(all));
+    } catch {
+      /* private mode: just not remembered */
+    }
+  };
+
   const wt = mode === 'parallel' ? 'on' : worktree ? 'on' : 'off';
-  const opts = useMemo(() => ({ items: uids, agent: agent || undefined, mode, worktree: (isRepo ? wt : 'off') as 'on' | 'off' }), [uids, agent, mode, wt, isRepo]);
+  const opts = useMemo(() => ({ items: uids, agent: agent || undefined, mode, worktree: (isRepo ? wt : 'off') as 'on' | 'off', model: model || undefined }),
+    [uids, agent, mode, wt, isRepo, model]);
 
   useEffect(() => {
     if (!agent) return;
@@ -111,6 +151,17 @@ export function DispatchSheet({
                 ))}
               </div>
             </div>
+            {!!models?.models.length && (
+              <label className="field">
+                <span className="label">{t('dispatch.model')}</span>
+                <select value={model} onChange={(e) => pickModel(e.target.value)} data-testid="dispatch-model">
+                  <option value="">{models.cli_default ? t('dispatch.model.default_named', { model: models.cli_default }) : t('dispatch.model.default')}</option>
+                  {models.models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {uids.length > 1 && (
               <div className="field">
                 <span className="label">{t('dispatch.mode')}</span>

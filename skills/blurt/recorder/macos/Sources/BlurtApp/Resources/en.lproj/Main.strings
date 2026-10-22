@@ -48,6 +48,9 @@
 "app.menu.system_audio" = "Also Record System Audio";
 "app.menu.updates" = "Check for Updates…";
 
+"app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or be sorted automatically?";
+"app.migrate.auto" = "Sort automatically";
+"app.migrate.keep" = "Keep %@";
 "app.name" = "Blurt";
 
 "app.permission.detail" = "Turn on Blurt in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen Blurt — macOS reads the permission at launch.\n\nAlready on? Remove Blurt from the list with −, reopen Blurt and allow it again: a grant from an older build doesn’t carry over.";
@@ -197,6 +200,7 @@
 "main.list.label" = "Items";
 
 "main.menu.copy_link" = "Copy Link";
+"main.menu.enrich" = "AI Fill-in";
 "main.menu.kind" = "Kind";
 "main.menu.move_to" = "Move to Project";
 "main.menu.open_in" = "Open in %@";

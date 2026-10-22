@@ -50,14 +50,17 @@ enum TerminalSelfTests {
         case "dispatch":
             DispatchPanel.show(items: arg.split(separator: ",").map(String.init))
             out(["window": DispatchPanel.windowNumber ?? -1])
-        case "dispatch-set":            // dispatch-set mode together|parallel | worktree on|off
+        case "dispatch-set":            // dispatch-set mode together|parallel | worktree on|off | agent ID | model ID|default
             guard let m = DispatchPanel.current?.model, words.count == 2 else { out(["error": "no panel"]); return }
             if words[0] == "mode" { m.mode = DispatchMode(rawValue: words[1]) ?? .together }
             if words[0] == "worktree" { m.worktree = WorktreeChoice(rawValue: words[1]) ?? .auto }
+            if words[0] == "agent" { m.agent = words[1]; m.agentTouched = true }
+            if words[0] == "model" { m.model = words[1] == "default" ? "" : words[1] }
             out(["ok": true])
         case "dispatch-state":
             guard let m = DispatchPanel.current?.model else { out(["error": "no panel"]); return }
             out(["agent": m.agent, "agents": m.agents.map(\.id), "items": m.items.map { "\($0.ref) \($0.title)" },
+                 "model": m.model, "models": m.models.map(\.id), "cli_default": m.cliDefault ?? NSNull(),
                  "warnings": m.warnings.map(\.code), "worktree": m.worktreeOn, "branch": m.branchPreview ?? NSNull(),
                  "phase": "\(m.phase)", "can_start": m.canStart])
         case "dispatch-start":

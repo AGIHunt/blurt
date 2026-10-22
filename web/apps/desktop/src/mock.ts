@@ -171,6 +171,10 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
         { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: '', fix: '', installed: true, version: '0.61.0', login: 'ok', headless: true, interactive: 'terminal', session: true },
         { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal', session: true },
       ] });
+    case 'agents_models':
+      return r(args.agent === 'codex'
+        ? { ok: true, id: 'codex', models: [{ id: 'gpt-6-astra', name: 'GPT-6-Astra', description: '', cheap: false }, { id: 'gpt-6-luna', name: 'GPT-6-Luna', description: 'Fast and affordable', cheap: true }], cheapest: 'gpt-6-luna', cli_default: 'gpt-6-astra', efforts: ['low', 'medium', 'high'] }
+        : { ok: true, id: args.agent, models: [{ id: 'haiku', name: 'Haiku', description: '', cheap: true }, { id: 'sonnet', name: 'Sonnet', description: '', cheap: false }], cheapest: 'haiku', cli_default: null, efforts: [] });
     case 'sessions_dispatch':
       if (args.opts?.dryRun)
         return r({ ok: true, jobs: [], warnings: args.opts.worktree === 'off' ? [{ code: 'concurrent_edit', jobs: ['j-20261021-161000-a7q2'] }] : [] });

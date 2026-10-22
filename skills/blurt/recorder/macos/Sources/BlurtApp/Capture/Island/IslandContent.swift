@@ -26,6 +26,8 @@ final class IslandButton: NSView {
     var title: String?
     var fill: NSColor?
     var tip: String
+    /// A project's key badge before the title — the current-project chip.
+    var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize) } }
     private var hover = false, pressed = false
 
     init(symbol: String, title: String? = nil, tip: String, fill: NSColor? = nil, action: @escaping () -> Void) {
@@ -49,6 +51,7 @@ final class IslandButton: NSView {
     override var intrinsicContentSize: NSSize {
         guard let t = title else { return NSSize(width: 30, height: 30) }
         let tw = (t as NSString).size(withAttributes: [.font: IslandButton.titleFont]).width
+        if let b = badge { return NSSize(width: ceil(tw) + ProjectLook.badgeSize(b.text).width + 7 + 7 + 13, height: 28) }
         return NSSize(width: ceil(tw) + (symbol.isEmpty ? 26 : 44), height: 28)
     }
     override var isFlipped: Bool { true }
@@ -79,8 +82,22 @@ final class IslandButton: NSView {
             x = ix + s.width + 6
         }
         if let t = title {
-            let a = NSAttributedString(string: t, attributes: [.font: IslandButton.titleFont, .foregroundColor: NSColor.white])
-            a.draw(at: NSPoint(x: symbol.isEmpty ? 13 : x, y: (bounds.height - a.size().height) / 2))
+            let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont, .foregroundColor: NSColor.white]
+            let tx = symbol.isEmpty ? 13 : x
+            guard let b = badge else {
+                let a = NSAttributedString(string: t, attributes: attrs)
+                a.draw(at: NSPoint(x: tx, y: (bounds.height - a.size().height) / 2))
+                return
+            }
+            // the key leads (it carries the project's colour); the name gives way to it when room is short
+            let bs = ProjectLook.badgeSize(b.text)
+            ProjectLook.drawBadge(b.text, color: b.color, in: NSRect(x: 7, y: (bounds.height - bs.height) / 2, width: bs.width, height: bs.height))
+            let nx = 7 + bs.width + 7
+            let room = bounds.width - nx - (subviews.isEmpty ? 12 : 22)
+            var name = t
+            while !name.isEmpty && ((name + (name == t ? "" : "…")) as NSString).size(withAttributes: attrs).width > room { name.removeLast() }
+            let a = NSAttributedString(string: name == t ? t : name + "…", attributes: attrs)
+            a.draw(at: NSPoint(x: nx, y: (bounds.height - a.size().height) / 2))
         }
     }
 }
@@ -225,7 +242,7 @@ final class IslandContent: NSView {
     private(set) var toastWidth: CGFloat = 300
     var preferredWidth: CGFloat {
         guard let i = island else { return Island.openW }
-        return !i.open && i.drawer == nil && i.currentToast != nil ? toastWidth : Island.openW
+        return i.drawer == nil && i.currentToast.map { !i.open || $0.isQuestion } == true ? toastWidth : Island.openW
     }
 
     enum Target: Equatable { case project(String), inbox, aiSort, auto, openFolder, more }
@@ -278,8 +295,8 @@ final class IslandContent: NSView {
         if let d = i.drawer {
             usesRow = true
             y = buildDrawer(d, w)
-        } else if !i.open, let t = i.currentToast {
-            y = buildToast(t, w, top: row)
+        } else if let t = i.currentToast, !i.open || t.isQuestion {
+            y = t.isQuestion ? buildQuestion(t, top: row) : buildToast(t, w, top: row)
         } else if i.isRecording {
             y = buildRecording(w, top: row)
         } else if VoiceInput.shared.active {
@@ -299,11 +316,18 @@ final class IslandContent: NSView {
     private func chip(_ w: CGFloat, small: Bool = false) -> IslandButton {
         let p = ProjectStore.shared.current
         let name = p?.name ?? Loc.t("project.auto")
-        let b = IslandButton(symbol: p == nil ? "sparkles" : "folder.fill", title: name,
+        let b = IslandButton(symbol: p == nil ? "sparkles" : "", title: name,
                              tip: tip("capture.island.switch_project", .project)) { [weak self] in self?.island?.showSwitcher() }
-        b.fill = NSColor(white: 1, alpha: 0.1)
+        // every capture with a note goes to the current project: its key in its colour leads, so it reads at a glance
+        if let p = p {
+            let c = ProjectLook.color(p)
+            b.fill = c.withAlphaComponent(0.26)
+            b.badge = (p.key, c)
+        } else {
+            b.fill = NSColor(white: 1, alpha: 0.1)
+        }
         b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", name))
-        let maxW = small ? 180 : max(110, side(w) - 22)
+        let maxW = small ? 200 : max(110, side(w) - 14)
         b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 14), height: 26))
         let chev = NSImageView(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [ink2])))!)
@@ -379,8 +403,15 @@ final class IslandContent: NSView {
                 place(r, x: 0, y: y, w: cards > 0 ? w - 150 : w, h: 36)
             }
             if cards > 0 {
-                let b = IslandButton(symbol: "wand.and.stars", title: Loc.t("project.ai_sort"), tip: Loc.plural("capture.island.ai_sort_tip", table: "Capture", count: cards),
-                                     fill: accent.withAlphaComponent(0.9)) { snapper.aiSort() }
+                // with a current project the cards are organised into it; in auto mode the AI also picks the project.
+                // Either way: one agent run for all of them (the processing model).
+                let cur = ProjectStore.shared.current
+                let b = cur.map { p in
+                    IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
+                                 tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
+                                 fill: accent.withAlphaComponent(0.9)) { snapper.handToAI(project: p.id) }
+                } ?? IslandButton(symbol: "wand.and.stars", title: Loc.t("project.ai_sort"), tip: Loc.plural("capture.island.ai_sort_tip", table: "Capture", count: cards),
+                                  fill: accent.withAlphaComponent(0.9)) { snapper.handToAI() }
                 place(b, x: w - 14 - b.frame.width, y: y + 4)
                 if review == 0 {
                     let l = label(Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards), size: 12.5, color: ink2)
@@ -596,7 +627,7 @@ final class IslandContent: NSView {
         switch t {
         case .project(let id): if let s = shot { snapper.assign(s, to: id) }
         case .inbox: if let s = shot { snapper.assign(s, to: "inbox") }
-        case .aiSort: snapper.aiSort()
+        case .aiSort: snapper.handToAI()
         default: break
         }
     }
@@ -670,6 +701,12 @@ final class IslandContent: NSView {
             addSubview(art)
             x = 64
         }
+        if let b = t.badge {
+            let s = ProjectLook.badgeSize(b.text, height: 18)
+            let v = BadgeView(text: b.text, color: b.color)
+            place(v, x: x, y: top + 14, w: s.width, h: s.height)
+            x += s.width + 8
+        }
         var right: CGFloat = 18
         var btn: IslandButton?
         if let a = t.actionTitle, let act = t.action {
@@ -683,6 +720,31 @@ final class IslandContent: NSView {
         place(l, x: x, y: top + 13, w: min(tw, toastWidth - x - right))
         if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: top + 9) }
         return top + 46
+    }
+
+    /// A question (Island.ask): the text, wrapped, then the two answers on the right — the suggested one filled.
+    private func buildQuestion(_ t: Island.Toast, top: CGFloat) -> CGFloat {
+        let w = Island.openW
+        toastWidth = w
+        let l = NSTextField(wrappingLabelWithString: t.text)
+        l.font = .systemFont(ofSize: 13, weight: .medium)
+        l.textColor = ink
+        l.preferredMaxLayoutWidth = w - 40
+        let h = ceil(l.sizeThatFits(NSSize(width: w - 40, height: 200)).height)
+        place(l, x: 20, y: top + 10, w: w - 40, h: h)
+        var bx = w - 16
+        var y = top + 10 + h + 10
+        for (title, act, filled) in [(t.secondTitle, t.second, false), (t.actionTitle, t.action, true)].reversed() {
+            guard let title = title, let act = act else { continue }
+            let b = IslandButton(symbol: "", title: title, tip: title, fill: filled ? accent.withAlphaComponent(0.9) : NSColor(white: 1, alpha: 0.14)) {
+                [weak self] in self?.island?.dismissToast(); act()
+            }
+            bx -= b.frame.width
+            place(b, x: bx, y: y)
+            bx -= 8
+        }
+        y += 28 + 14
+        return y
     }
 
     // MARK: live values

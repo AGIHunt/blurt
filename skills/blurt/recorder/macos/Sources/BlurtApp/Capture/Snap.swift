@@ -192,7 +192,8 @@ final class Shot {
                                 "t": t.map { ($0 * 1000).rounded() / 1000 } ?? NSNull(),
                                 "wall": (wall * 1000).rounded() / 1000, "region": region, "voice": voice ?? NSNull(),
                                 "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull()]
-        if kind == .voice { o["said"] = said ?? NSNull(); o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
+        if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
+        if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
         if let a = assignedBy { o["assigned_by"] = a }
         if deleted { o["deleted"] = true }
         return o
@@ -297,13 +298,32 @@ final class ShotBatch {
         onChange?()
     }
 
-    /// `{"n", "deleted": true}`; the files go to the Trash (recoverable).
-    func delete(_ s: Shot) {
+    /// Captured with a project, but it hangs as a card after all (no note): `{"n", "project": null, "assigned_by": null}`.
+    func release(_ s: Shot) {
+        s.project = nil
+        s.assignedBy = nil
+        io.async { appendJSONL(self.jsonl, ["n": s.n, "project": NSNull(), "assigned_by": NSNull()]) }
+        onChange?()
+    }
+
+    /// `{"n", "deleted": true}`; the files go to the Trash (recoverable). `done` gets where each one went (for Undo).
+    func delete(_ s: Shot, done: (([URL: URL]) -> Void)? = nil) {
         s.deleted = true
         io.async { appendJSONL(self.jsonl, ["n": s.n, "deleted": true]) }
-        for u in [s.url, s.markedURL, s.voiceURL].compactMap({ $0 }) where FileManager.default.fileExists(atPath: u.path) {
-            NSWorkspace.shared.recycle([u]) { _, _ in }
+        let files = [s.url, s.markedURL, s.voiceURL].compactMap { $0 }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        if !inRecording { writeMeta() }
+        onChange?()
+        guard !files.isEmpty else { done?([:]); return }
+        NSWorkspace.shared.recycle(files) { moved, _ in DispatchQueue.main.async { done?(moved) } }
+    }
+
+    /// Undo of delete: the files back out of the Trash, `{"n", "deleted": false}`.
+    func undelete(_ s: Shot, from trashed: [URL: URL]) {
+        for (orig, now) in trashed where !FileManager.default.fileExists(atPath: orig.path) {
+            try? FileManager.default.moveItem(at: now, to: orig)
         }
+        s.deleted = false
+        io.async { appendJSONL(self.jsonl, ["n": s.n, "deleted": false]) }
         if !inRecording { writeMeta() }
         onChange?()
     }

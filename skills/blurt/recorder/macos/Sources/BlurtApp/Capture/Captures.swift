@@ -1,12 +1,15 @@
 // Captures outside a recording (docs/design/next-round.md K7): ⌥⇧A stills, ⌥⇧V voice inputs, and (optionally) the
 // system's own screenshots. Each one is a line in the current store's open shots batch, <store>/sessions/<ts>-shots/.
 //
-//  • a current project is set → the capture belongs to it (project_by capture): it flies up, a thread catches it and
-//    reels it into the island, and it is processed — captures within 8 s of each other become one process job.
-//  • current = auto → the capture goes to the inbox store unassigned and hangs from the island on a thread, as a card,
-//    until the user drags it onto a project in the island (assign + process), onto "Unassigned", or lets the AI sort
-//    every card.
-// Processing goes through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
+// v0.7 token diet — an agent runs only when the user asks for one, once per batch:
+//  • a current project is set and the capture has a note (typed, or spoken and transcribed here) → it is filed
+//    straight away by captures.py, no agent, no tokens: it flies up, a thread reels it into the island, and the island
+//    says where it went ("Filed to ordo-platform · OP-14"). The item carries `enrich: pending` for a later AI fill-in.
+//  • no note (or no project: current = auto) → it hangs from the island on a thread, as a card, until the user drags
+//    it onto a project in the island (filed there the same way, no agent), onto "Unassigned", or hands the cards to
+//    the AI: "Organize" (into the current project) / "Let AI sort" — one agent run with the processing model.
+//  • Esc in the note bubble discards the capture (Trash, with Undo for 3 s); ⏎ keeps it without a note (→ a card).
+// Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 
 import AppKit
 import BlurtCore
@@ -34,12 +37,9 @@ final class Snapper {
     var prevApp: NSRunningApplication?
     var app: App? { NSApp.delegate as? App }
     private var open: [String: ShotBatch] = [:]          // project id → its store's collecting -shots batch
-    private(set) var cardBatches: [ShotBatch] = []       // inbox batches with cards still hanging
-    private var queued: [String: (batch: ShotBatch, project: String, ns: [Int], timer: Timer)] = [:]
+    private(set) var cardBatches: [ShotBatch] = []       // batches with cards still hanging
     private var collectTimer: Timer?
     private var collectSeen = Set<String>()
-    /// captures closer together than this become one process job (K7)
-    static let mergeWindow: TimeInterval = 8
 
     /// Every card, oldest first.
     var cards: [Shot] { cardBatches.flatMap { $0.live.filter(\.isCard) }.sorted { ($0.wall, $0.n) < ($1.wall, $1.n) } }
@@ -118,7 +118,7 @@ final class Snapper {
 
     private func adopt(_ b: ShotBatch, key: String, project p: Project) -> ShotBatch {
         open[key] = b
-        if p.isInbox, !cardBatches.contains(where: { $0 === b }) { cardBatches.append(b) }
+        if !cardBatches.contains(where: { $0 === b }) { cardBatches.append(b) }      // any capture may become a card
         b.onChange = { hanging.refresh() }
         return b
     }
@@ -155,71 +155,164 @@ final class Snapper {
 
     // MARK: voice inputs
 
-    /// A finished voice input (VoiceInput.swift): its wav is at shots/NNN.wav of `batch`.
+    /// A finished voice input (VoiceInput.swift): its wav is at shots/NNN.wav of `batch`. The words are its note:
+    /// with a project it is filed once they are transcribed; without words (or a project) it hangs as a card.
     func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?) {
         let s = b.addVoice(n: n, duration: duration, project: project)
         emit(["event": "voice", "n": n, "session": b.dir.path, "duration": duration, "project": project ?? NSNull()])
-        if project == nil { hanging.catchCapture(s, from: island.frameOnScreen) } else { settled(s) }
-        transcribe(s)
+        if project == nil {
+            hanging.catchCapture(s, from: island.frameOnScreen)
+            transcribe(s) { _ in }
+        } else {
+            transcribed.insert(ObjectIdentifier(s))
+            transcribe(s) { [weak self] _ in self?.settled(s) }
+        }
     }
 
-    /// K9's fast path (`transcribe.py note`); without it the card just says "Voice note" and the agent transcribes.
-    private func transcribe(_ s: Shot) {
-        guard let wav = s.voiceURL else { return }
+    /// K9's fast path (`transcribe.py note`) → `said`; without it the card just says "Voice note" and an agent
+    /// transcribes when the user hands the cards over.
+    private func transcribe(_ s: Shot, then: @escaping (String?) -> Void) {
+        guard let wav = s.voiceURL else { return then(nil) }
         Task {
             let r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
             let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             await MainActor.run {
                 emit(["event": "voice_text", "n": s.n, "ok": text != nil])
-                guard let t = text, !t.isEmpty, !s.deleted else { return }
-                s.said = t
-                s.batch?.save(s)
-                hanging.update(s)
+                if let t = text, !t.isEmpty, !s.deleted {
+                    s.said = t
+                    s.batch?.save(s)
+                    hanging.update(s)
+                }
+                then(s.said)
             }
         }
     }
 
     // MARK: where a capture goes once it is complete
 
-    /// The note bubble closed (or there was none): a capture with a project is pulled into the island and queued.
+    /// The note bubble closed (or there was none). With a project and a note it is filed now, without an agent; a
+    /// spoken note is transcribed first. No note → it lets go of the project and hangs as a card.
     func settled(_ s: Shot) {
         guard !s.deleted, let p = s.project, s.assignedBy == "capture", let b = s.batch else { return }
-        hanging.pullIn(s)
-        queue(b, project: p, n: s.n, after: Snapper.mergeWindow)
+        if s.words != nil { return file([s], in: b, project: p) }
+        // once: if the words can't be had here, the card waits for an agent (it transcribes when handed the cards)
+        if s.voice != nil, s.said == nil, transcribed.insert(ObjectIdentifier(s)).inserted {
+            return transcribe(s) { [weak self] _ in self?.settled(s) }
+        }
+        hangAsCard(s)
+    }
+    private var transcribed = Set<ObjectIdentifier>()
+
+    /// Captured with a project but nothing said about it: not worth filing on its own — a card, like in auto mode.
+    private func hangAsCard(_ s: Shot) {
+        guard let b = s.batch else { return }
+        b.release(s)
+        emit(["event": "card", "n": s.n, "session": b.dir.path, "reason": "no_note"])
+        if hanging.screenRect(of: s) == nil { hanging.catchCapture(s, from: island.frameOnScreen) }
+        hanging.refresh()
     }
 
-    /// A card dropped on a project (or "inbox" = Unassigned) in the island.
+    /// Captures → items with captures.py: the note is the item, no agent, no tokens. A process job (K4) all the
+    /// same, so the island hatches it and the main window lists it (usage: 0 tokens).
+    func file(_ shots: [Shot], in b: ShotBatch, project: String) {
+        let ns = shots.map(\.n)
+        for s in shots { hanging.pullIn(s) }
+        island.expectProcess(session: b.dir, captures: ns)
+        b.sync {
+            let job = JobWriter(type: .process, project: project, session: b.dir, title: T("job.title.filed"))
+            job.setCaptures(ns)
+            job.step("prepare", .done)
+            job.step("write", .running)
+            emit(["event": "file", "session": b.dir.path, "captures": ns, "project": project, "job": job.id])
+            Task {
+                var r: [String: Any]?
+                var why: String?
+                do {
+                    r = try await ScriptRunner.shared.json("captures.py", ["file", b.dir.path, "--captures"] + ns.map(String.init)
+                                                            + ["--project", project], timeout: 120)
+                } catch { why = "\(error)" }
+                await MainActor.run {
+                    let made = r?["items"] as? [[String: Any]] ?? []
+                    job.setItems(made.compactMap { $0["uid"] as? String })
+                    job.setUsage(tokens: 0, agent: nil, model: nil, effort: nil)
+                    job.step("write", r == nil ? .failed : .done)
+                    for st in ["transcribe", "frames", "route"] { job.step(st, .skipped) }
+                    job.finish(r == nil ? .failed : .done, error: why.map { JobError(code: "io", message: $0, hintKey: nil) })
+                    emit(["event": "filed", "job": job.id, "items": made.compactMap { $0["id"] as? String }, "tokens": 0])
+                    guard let first = made.first else { return }
+                    self.announceFiled(project: project, id: first["id"] as? String, count: made.count)
+                }
+            }
+        }
+    }
+
+    /// One quiet line in the island: "Filed to ordo-platform · OP-14" (the project's key badge in its colour).
+    private func announceFiled(project: String, id: String?, count: Int) {
+        let store = ProjectStore.shared
+        let p = project == "inbox" ? store.inbox : store.project(id: project)
+        let name = p?.name ?? project
+        let ids = (id ?? "") + (count > 1 ? " +\(count - 1)" : "")
+        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: nil, action: nil)
+        t.badge = p.map { ($0.key, ProjectLook.color($0)) }
+        island.toast(t)
+    }
+
+    /// A card dropped on a project (or "inbox" = Unassigned) in the island: filed there, like a capture with a note.
     func assign(_ s: Shot, to project: String) {
         guard s.isCard, let b = s.batch else { return }
         b.assign(s, project: project, by: "user")
         emit(["event": "assign", "n": s.n, "session": b.dir.path, "project": project])
-        hanging.pullIn(s)
-        queue(b, project: project, n: s.n, after: 1.2)
+        file([s], in: b, project: project)
     }
 
-    /// "Let AI sort": every card is processed, one process job per batch, routed per item (K2).
-    func aiSort() {
+    /// The cards, to an agent — one run per batch, with the processing model. `project` set ("Organize"): they all
+    /// go there; nil ("Let AI sort"): routed per item (K2).
+    func handToAI(project: String? = nil) {
         let all = cards
         guard !all.isEmpty else { return }
         NoteBubble.shared.commit()
         var by: [ObjectIdentifier: (ShotBatch, [Int])] = [:]
         for s in all {
             guard let b = s.batch else { continue }
-            b.assign(s, project: nil, by: "ai")
+            b.assign(s, project: project, by: project == nil ? "ai" : "user")
             by[ObjectIdentifier(b), default: (b, [])].1.append(s.n)
         }
         hanging.pullInAll(all)
         for (b, ns) in by.values {
-            emit(["event": "ai_sort", "session": b.dir.path, "captures": ns])
+            emit(["event": project == nil ? "ai_sort" : "organize", "session": b.dir.path, "captures": ns, "project": project ?? NSNull()])
             island.expectProcess(session: b.dir, captures: ns)
-            process(b, ns, project: nil)
+            process(b, ns, project: project)
         }
     }
 
     func delete(_ s: Shot) {
         if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+        guard !s.deleted else { return }        // a fresh shot's bubble discards it itself (with Undo)
         hanging.drop(s)
         s.batch?.delete(s)
+    }
+
+    /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 3 s brings it back (with what
+    /// was typed or said), and it then goes where a capture without Esc would have gone.
+    func discard(_ s: Shot) {
+        guard let b = s.batch else { return }
+        hanging.drop(s)
+        emit(["event": "discard", "n": s.n, "session": b.dir.path])
+        b.delete(s) { [weak self] trashed in
+            var t = Island.Toast(text: Loc.t("capture.discarded", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
+                self?.undoDiscard(s, trashed: trashed)
+            }
+            t.seconds = 3
+            island.toast(t)
+        }
+    }
+
+    private func undoDiscard(_ s: Shot, trashed: [URL: URL]) {
+        guard let b = s.batch, s.deleted else { return }
+        b.undelete(s, from: trashed)
+        emit(["event": "undo_discard", "n": s.n, "session": b.dir.path])
+        hanging.catchCapture(s, from: nil)
+        settled(s)
     }
 
     func deleteAllCards() {
@@ -229,18 +322,6 @@ final class Snapper {
         }
     }
 
-    private func queue(_ b: ShotBatch, project: String, n: Int, after: TimeInterval) {
-        let key = b.dir.path + "\u{1}" + project
-        var ns = [n]
-        if let q = queued[key] { q.timer.invalidate(); ns = q.ns + [n] }
-        island.expectProcess(session: b.dir, captures: ns)
-        let t = Timer.scheduledTimer(withTimeInterval: after, repeats: false) { [weak self] _ in
-            guard let self = self, let q = self.queued.removeValue(forKey: key) else { return }
-            self.process(q.batch, q.ns, project: q.project)
-        }
-        queued[key] = (b, project, ns, t)
-    }
-
     private func process(_ b: ShotBatch, _ ns: [Int], project: String?) {
         b.sync {
             emit(["event": "process", "session": b.dir.path, "captures": ns, "project": project ?? NSNull()])
@@ -248,15 +329,18 @@ final class Snapper {
         }
     }
 
-    /// Cards come back after a restart: every inbox batch of the last 30 days with unassigned captures.
+    /// Cards come back after a restart: every shots batch of the last 30 days with unassigned captures — in the inbox,
+    /// and in the projects (captures taken there without a note).
     func restore() {
-        let root = ProjectStore.shared.inbox.store.appendingPathComponent("sessions")
+        let store = ProjectStore.shared
         let cutoff = Date().addingTimeInterval(-30 * 86400)
-        let dirs = ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
-            .filter { $0.lastPathComponent.hasSuffix("-shots") }
-            .filter { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) > cutoff }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        for d in dirs {
+        let dirs = ([store.inbox] + store.projects).flatMap { p -> [URL] in
+            let root = p.store.appendingPathComponent("sessions")
+            return ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+                .filter { $0.lastPathComponent.hasSuffix("-shots") }
+                .filter { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) > cutoff }
+        }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        for d in dirs where !cardBatches.contains(where: { canonicalPath($0.dir) == canonicalPath(d) }) {
             guard let b = ShotBatch.load(d), b.live.contains(where: \.isCard) else { continue }
             b.onChange = { hanging.refresh() }
             cardBatches.append(b)

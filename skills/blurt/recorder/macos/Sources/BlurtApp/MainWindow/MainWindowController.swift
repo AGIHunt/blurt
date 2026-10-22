@@ -510,6 +510,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     @objc func mCopyInstruction() { handOff(uids: list.selectedItems.map(\.uid), what: "instruction") { _ in } }
     @objc func mCopyFull() { handOff(uids: list.selectedItems.map(\.uid), what: "full") { _ in } }
+    /// AI fill-in (v0.7): items filed from notes without an agent get kind, steps, code refs — one agent run for all.
+    @objc func mEnrich() {
+        let items = list.selectedItems
+        (NSApp.delegate as? App)?.enrich(items.map(\.uid), project: items.first.map(\.projectID).flatMap { $0 == "inbox" ? nil : $0 })
+    }
 
     // MARK: context menus
 
@@ -523,6 +528,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
         _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
         _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
+        _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
         m.addItem(.separator())
         // work state
         _ = add(m, T("main.cmd.mark_done"), #selector(mWork(_:)), "checkmark.circle", obj: "done", key: "d", mods: [])
