@@ -1,28 +1,37 @@
-//! Blurt for Windows and Linux (Tauri 2). docs/design/desktop-app.md §1.5, §2, §5 C8, §6 WP7.
+//! Blurt for Windows and Linux (Tauri 2) — the v0.7 model (docs/design/next-round.md "v0.7 契约"): projects are
+//! folders, items are Markdown in each project's store, everything under way is a job, agents run in tmux windows
+//! (or in the app's own ConPTY on Windows) shown in an embedded terminal, and a top-centre island holds capture.
 //!
-//! Rust side: read-only index.db (rusqlite), the skill's Python CLIs through uv for every write, tray, global
-//! shortcuts, file watching, single instance, `blurt://` deep links, updater. The UI is web/apps/desktop (React).
+//! Rust side: read-only index.db (rusqlite), the skill's Python CLIs through uv for every write (`items.py`,
+//! `projects.py`, `sessions.py`, `handoff.py`, `jobs.py`), jobs folded from their files, ptys, tray, global
+//! shortcuts, file watching, single instance, `blurt://` deep links, updater. The UI is web/apps/desktop (React) and
+//! web/apps/overlays (the island, picker and note bubble).
 
-pub mod agents;
 pub mod capture;
 pub mod hotkeys;
 pub mod index;
+pub mod island;
+pub mod items;
+pub mod jobs;
+pub mod l10n;
 pub mod paths;
-pub mod review;
+pub mod projects;
+pub mod pty;
 pub mod scripts;
+pub mod sessions;
 pub mod settings;
 pub mod watcher;
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Mutex, RwLock};
 use std::time::Duration;
 
 use serde_json::{json, Value};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent, Wry};
+use tauri::{AppHandle, Emitter, Listener, Manager, RunEvent, WindowEvent, Wry};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_global_shortcut::ShortcutState;
-use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::capture::Control;
@@ -32,7 +41,7 @@ use crate::scripts::Runner;
 pub struct AppState {
     runner: RwLock<Runner>,
     pub capture: capture::Capture,
-    pub runs: Arc<agents::Runs>,
+    pub docs: items::DocCache,
     tray_record: Mutex<Option<MenuItem<Wry>>>,
 }
 
@@ -45,28 +54,12 @@ impl AppState {
     }
 }
 
-pub fn zh() -> bool {
-    std::env::var("BLURT_LANG").map(|l| l.starts_with("zh")).unwrap_or_else(|_| sys_locale::get_locale().is_some_and(|l| l.starts_with("zh")))
-}
-
-fn t(zh_s: &'static str, en: &'static str) -> &'static str {
-    if zh() {
-        zh_s
-    } else {
-        en
-    }
-}
-
 pub fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
     }
-}
-
-pub fn notify(app: &AppHandle, title: &str, body: &str) {
-    let _ = app.notification().builder().title(title).body(body).show();
 }
 
 /// One place for what a hotkey / tray item / deep link does.
@@ -82,8 +75,18 @@ pub fn dispatch(app: &AppHandle, action: &str) {
             show_main(app);
             Ok(())
         }
-        "snap" if recording => st.capture.control(Control::Snap),
-        "snap" => Err(t("截图目前只能在录制中用：先 Alt+Shift+R 开始录制", "Snaps work during a recording for now: start one with the record shortcut").to_string()),
+        "snap" => {
+            capture::snap(app);
+            Ok(())
+        }
+        "voice" => {
+            capture::voice_start(app, false);
+            Ok(())
+        }
+        "project" => {
+            island::send(app, json!({"op": "switcher", "open": true}));
+            Ok(())
+        }
         "pause" if recording => {
             let paused = st.capture.state()["paused"] == true;
             st.capture.control(if paused { Control::Resume } else { Control::Pause })
@@ -101,27 +104,22 @@ pub fn dispatch(app: &AppHandle, action: &str) {
 pub fn on_recording(app: &AppHandle, on: bool) {
     hotkeys::apply(app, Some(on));
     if let Some(item) = app.state::<AppState>().tray_record.lock().unwrap().as_ref() {
-        let _ = item.set_text(if on { t("结束录制", "Finish recording") } else { t("录制", "Record") });
+        let _ = item.set_text(l10n::t(if on { "tray.finish" } else { "tray.record" }));
     }
 }
 
-/// blurt://item/<uid> · blurt://session/<abs path, url-encoded> · blurt://record · blurt://snap · blurt://open …
+/// blurt://item/<uid> · blurt://session/<abs path, url-encoded> · blurt://job/<id> · blurt://record · blurt://open …
 pub fn handle_url(app: &AppHandle, raw: &str) {
     let Ok(url) = tauri::Url::parse(raw) else { return };
     if url.scheme() != "blurt" {
         return;
     }
     let host = url.host_str().unwrap_or("").to_string();
-    let rest = url.path().trim_start_matches('/');
-    let rest = percent_decode(rest);
+    let rest = percent_decode(url.path().trim_start_matches('/'));
     match host.as_str() {
-        "item" => {
+        "item" | "session" | "job" | "project" if !rest.is_empty() => {
             show_main(app);
-            let _ = app.emit("nav", json!({"item": rest}));
-        }
-        "session" => {
-            show_main(app);
-            let _ = app.emit("nav", json!({"session": rest}));
+            let _ = app.emit("nav", json!({ host: rest }));
         }
         "" => show_main(app),
         other => dispatch(app, other),
@@ -146,35 +144,40 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-// ------------------------------------------------------------------ commands (C8)
+// ------------------------------------------------------------------ commands (names fixed by the v0.7 contract)
 
 type R<T> = Result<T, String>;
 
-#[tauri::command]
-fn app_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Value {
-    let r = state.runner();
-    let platform = if cfg!(windows) {
+fn platform() -> &'static str {
+    if cfg!(windows) {
         "win"
     } else if cfg!(target_os = "macos") {
         "mac"
     } else {
         "gnome"
-    };
+    }
+}
+
+#[tauri::command]
+fn app_status(app: AppHandle, state: tauri::State<'_, AppState>) -> Value {
+    let r = state.runner();
+    let tmux = !cfg!(windows) && scripts::agent_environment().get("PATH").is_some_and(|p| std::env::split_paths(p).any(|d| d.join("tmux").is_file()));
     json!({
         "version": app.package_info().version.to_string(),
         "os": std::env::consts::OS,
-        "platform": platform,
+        "platform": platform(),
         "wayland": hotkeys::is_wayland(),
-        "lang": if zh() { "zh" } else { "en" },
+        "lang": l10n::lang(),
         "blurt_home": scripts::s(&paths::blurt_home()),
-        "index_db": scripts::s(&paths::index_db()),
-        "index_exists": paths::index_db().is_file(),
-        "default_workspace": scripts::s(&paths::default_workspace()),
+        "inbox_store": scripts::s(&paths::inbox_store()),
+        "handoff_dir": scripts::s(&paths::handoff_dir()),
+        "index_ready": state.index().ready(),
         "scripts": r.scripts.as_deref().map(scripts::s),
         "uv": r.uv.as_deref().map(scripts::s),
+        "tmux": tmux,
         "capture": state.capture.state(),
         "hotkey_mode": app.state::<hotkeys::Hotkeys>().mode.lock().unwrap().clone(),
-        // test hook (smoke screenshots): open on this view — items | inbox | sessions | agents | settings | review:<dir>
+        // test hook (smoke screenshots): open on this view — inbox | items | project:<id> | sessions | settings | …
         "start_view": std::env::var("BLURT_START_VIEW").ok(),
     })
 }
@@ -185,13 +188,13 @@ fn index_query(state: tauri::State<'_, AppState>, q: ItemQuery) -> R<index::Item
 }
 
 #[tauri::command(async)]
-fn index_sessions(state: tauri::State<'_, AppState>, q: Option<SessionQuery>) -> R<Vec<Value>> {
-    state.index().sessions(&q.unwrap_or_default())
+fn index_item(state: tauri::State<'_, AppState>, uid: String) -> R<Option<Value>> {
+    state.index().item(&uid)
 }
 
 #[tauri::command(async)]
-fn index_workspaces(state: tauri::State<'_, AppState>) -> R<Vec<Value>> {
-    state.index().workspaces()
+fn index_sessions(state: tauri::State<'_, AppState>, q: Option<SessionQuery>) -> R<Vec<Value>> {
+    state.index().sessions(&q.unwrap_or_default())
 }
 
 #[tauri::command(async)]
@@ -200,68 +203,159 @@ fn index_summary(state: tauri::State<'_, AppState>) -> R<Value> {
 }
 
 #[tauri::command(async)]
-fn index_item(state: tauri::State<'_, AppState>, uid: String) -> R<Option<Value>> {
-    state.index().item(&uid)
-}
-
-#[tauri::command(async)]
 fn index_rescan(app: AppHandle) {
     watcher::initial_scan(&app);
 }
 
-fn allow_session(app: &AppHandle, session: &str) {
-    let _ = app.asset_protocol_scope().allow_directory(session, true);
+#[tauri::command(async)]
+fn projects_list(state: tauri::State<'_, AppState>) -> Value {
+    projects::list(&state.index())
 }
 
 #[tauri::command(async)]
-fn review_load(app: AppHandle, session: String) -> R<Value> {
-    allow_session(&app, &session);
-    review::load(&session)
+fn projects_add(app: AppHandle, state: tauri::State<'_, AppState>, path: String) -> R<Value> {
+    let r = projects::add(&state.runner(), &path)?;
+    watcher::refresh(&app);
+    island::refresh(&app);
+    Ok(r)
 }
 
 #[tauri::command(async)]
-fn review_poll(session: String, etag: String) -> R<Value> {
-    review::poll(&session, &etag)
+fn projects_use(app: AppHandle, state: tauri::State<'_, AppState>, id: String) -> R<Value> {
+    let r = projects::use_project(&state.runner(), &id)?;
+    island::refresh(&app);
+    Ok(r)
 }
 
 #[tauri::command(async)]
-fn review_ops(state: tauri::State<'_, AppState>, session: String, ops: Value, confirm: Option<bool>) -> R<Value> {
-    review::ops(&state.runner(), &session, &ops, confirm.unwrap_or(false))
+fn projects_set(state: tauri::State<'_, AppState>, id: String, patch: Value) -> R<Value> {
+    projects::set(&state.runner(), &id, &patch)
+}
+
+#[tauri::command]
+fn projects_open_folder(app: AppHandle, make_current: Option<bool>) {
+    island::open_folder(&app, make_current.unwrap_or(false));
+}
+
+#[tauri::command(async)]
+fn items_doc(state: tauri::State<'_, AppState>, scope: Value) -> R<Value> {
+    items::doc(&state.runner(), &state.docs, &scope)
+}
+
+#[tauri::command(async)]
+fn items_poll(state: tauri::State<'_, AppState>, scope: Value, etag: String) -> R<Value> {
+    items::poll(&state.runner(), &state.docs, &scope, &etag)
+}
+
+#[tauri::command(async)]
+fn items_ops(state: tauri::State<'_, AppState>, scope: Value, ops: Value, confirm: Option<bool>) -> R<Value> {
+    items::ops(&state.runner(), &state.docs, &scope, &ops, confirm.unwrap_or(false))
+}
+
+#[tauri::command(async)]
+fn items_work(state: tauri::State<'_, AppState>, uids: Vec<String>, work: String, note: Option<String>) -> R<Value> {
+    items::work(&state.runner(), &uids, &work, note.as_deref())
+}
+
+#[tauri::command(async)]
+fn items_move(state: tauri::State<'_, AppState>, uids: Vec<String>, project: String) -> R<Value> {
+    items::move_items(&state.runner(), &uids, &project)
+}
+
+#[tauri::command(async)]
+fn jobs_list(active: Option<bool>) -> Vec<Value> {
+    jobs::list(active.unwrap_or(false), 100)
 }
 
 #[tauri::command(async)]
 fn agents_detect(state: tauri::State<'_, AppState>) -> R<Value> {
-    agents::detect(&state.runner())
+    sessions::detect(&state.runner())
 }
 
 #[tauri::command(async)]
-fn agent_run(app: AppHandle, state: tauri::State<'_, AppState>, id: String, prompt: String, repo: String) -> R<String> {
-    agents::run(&app, &state.runner(), &state.runs, &id, &prompt, &repo, vec![])
+fn sessions_dispatch(app: AppHandle, state: tauri::State<'_, AppState>, opts: sessions::DispatchOpts) -> R<Value> {
+    let r = sessions::dispatch(&app, &state.runner(), &opts)?;
+    items::bump();
+    Ok(r)
+}
+
+#[tauri::command(async)]
+fn sessions_list(app: AppHandle, state: tauri::State<'_, AppState>, all: Option<bool>) -> R<Value> {
+    let mut r = sessions::list(&state.runner(), all.unwrap_or(false))?;
+    r["owned"] = json!(pty::owned_jobs(&app)); // app-runner sessions end when Blurt quits (the UI says so)
+    Ok(r)
+}
+
+#[tauri::command(async)]
+fn sessions_finish(state: tauri::State<'_, AppState>, job: String, action: String) -> R<Value> {
+    let r = sessions::finish(&state.runner(), &job, &action)?;
+    items::bump();
+    Ok(r)
+}
+
+#[tauri::command(async)]
+fn sessions_stop(app: AppHandle, state: tauri::State<'_, AppState>, job: String, kill: Option<bool>) -> R<Value> {
+    sessions::stop(&app, &state.runner(), &job, kill.unwrap_or(false))
+}
+
+#[tauri::command(async)]
+fn sessions_open_external(state: tauri::State<'_, AppState>, job: String, terminal: Option<String>) -> R<Value> {
+    sessions::open_external(&state.runner(), &job, terminal.as_deref())
+}
+
+#[tauri::command(async)]
+fn sessions_send(state: tauri::State<'_, AppState>, job: String, text: String, enter: Option<bool>) -> R<Value> {
+    sessions::send(&state.runner(), &job, &text, enter.unwrap_or(true))
+}
+
+#[tauri::command(async)]
+fn pty_open(app: AppHandle, state: tauri::State<'_, AppState>, job: String, cols: Option<u16>, rows: Option<u16>) -> R<Value> {
+    pty::open(&app, &state.runner(), &job, cols.unwrap_or(100), rows.unwrap_or(30))
 }
 
 #[tauri::command]
-fn agent_runs(state: tauri::State<'_, AppState>) -> Vec<agents::AgentRun> {
-    state.runs.list.lock().unwrap().clone()
+fn pty_write(app: AppHandle, pty_id: u32, data: String) -> R<()> {
+    pty::write(&app, pty_id, &data)
 }
 
 #[tauri::command]
-fn agent_stop(state: tauri::State<'_, AppState>, run_id: String) -> bool {
-    agents::stop(&state.runs, &run_id)
+fn pty_resize(app: AppHandle, pty_id: u32, cols: u16, rows: u16) -> R<()> {
+    pty::resize(&app, pty_id, cols, rows)
+}
+
+#[tauri::command]
+fn pty_close(app: AppHandle, pty_id: u32) {
+    pty::close(&app, pty_id);
+}
+
+/// K6: hand these items to the user's own agent — the sheet is written, the items are marked handed off, and the
+/// instruction (or the full text) is on the clipboard. → {id, path, text}
+#[tauri::command(async)]
+fn handoff_create(app: AppHandle, state: tauri::State<'_, AppState>, uids: Vec<String>, full: Option<bool>) -> R<Value> {
+    let r = sessions::handoff(&state.runner(), &uids, full.unwrap_or(false))?;
+    if let Some(t) = r["text"].as_str() {
+        app.clipboard().write_text(t.to_string()).map_err(|e| e.to_string())?;
+    }
+    Ok(r)
+}
+
+/// K7: file these captures of a shots batch into a project (None = the AI sorts them), then sort them.
+#[tauri::command(async)]
+fn process_captures(app: AppHandle, session: String, captures: Option<Vec<u64>>, project: Option<String>) -> R<String> {
+    let by = project.as_ref().map(|_| "user");
+    let r = sessions::process(&app, std::path::Path::new(&session), captures, project, by, None);
+    island::refresh_cards(&app);
+    r
 }
 
 #[tauri::command(async)]
-fn fix_with_agent(app: AppHandle, state: tauri::State<'_, AppState>, session: String, item_ids: Vec<String>, agent: Option<String>) -> R<Value> {
-    agents::fix_with_agent(&app, &state.runner(), &state.runs, &session, &item_ids, agent)
+fn voice_start(app: AppHandle) {
+    capture::voice_start(&app, false);
 }
 
 #[tauri::command(async)]
-fn process_session(app: AppHandle, state: tauri::State<'_, AppState>, session: String, agent: Option<String>) -> R<Value> {
-    agents::process_session(&app, &state.runner(), &state.runs, &session, agent)
-}
-
-#[tauri::command(async)]
-fn agent_prompt(state: tauri::State<'_, AppState>, uids: Vec<String>) -> R<Value> {
-    agents::fix_prompt(&state.runner(), &uids, None)
+fn voice_stop(app: AppHandle, cancel: Option<bool>) {
+    capture::voice_stop(&app, cancel.unwrap_or(false));
 }
 
 #[tauri::command]
@@ -283,8 +377,8 @@ fn settings_set(app: AppHandle, patch: Value) -> R<Value> {
     if patch.pointer("/record/hotkeys").is_some() {
         hotkeys::apply(&app, None);
     }
-    if patch.pointer("/record/workspaces").is_some() || patch.pointer("/record/workspace").is_some() {
-        watcher::refresh(&app);
+    if patch.get("lang").is_some() {
+        island::refresh(&app);
     }
     Ok(cfg)
 }
@@ -318,6 +412,11 @@ fn open_path(app: AppHandle, path: String) -> R<()> {
     app.opener().open_path(&path, None::<&str>).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn clipboard_write(app: AppHandle, text: String) -> R<()> {
+    app.clipboard().write_text(text).map_err(|e| e.to_string())
+}
+
 #[derive(serde::Deserialize, Default)]
 #[serde(default)]
 struct StartOpts {
@@ -341,8 +440,16 @@ async fn capture_start(app: AppHandle, opts: Option<StartOpts>) -> R<String> {
 
 #[tauri::command(async)]
 fn capture_control(app: AppHandle, cmd: String) -> R<()> {
-    let c = Control::parse(&cmd).ok_or_else(|| format!("unknown control {cmd}"))?;
-    app.state::<AppState>().capture.control(c)
+    match cmd.as_str() {
+        "snap" if !app.state::<AppState>().capture.recording() => {
+            capture::snap(&app);
+            Ok(())
+        }
+        _ => {
+            let c = Control::parse(&cmd).ok_or_else(|| format!("unknown control {cmd}"))?;
+            app.state::<AppState>().capture.control(c)
+        }
+    }
 }
 
 #[tauri::command]
@@ -367,14 +474,17 @@ async fn update_check(app: AppHandle) -> R<Value> {
 // ------------------------------------------------------------------ app
 
 fn tray(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", t("打开 Blurt", "Open Blurt"), true, None::<&str>)?;
-    let record = MenuItem::with_id(app, "record", t("录制", "Record"), true, None::<&str>)?;
-    let snap = MenuItem::with_id(app, "snap", t("截图", "Snap"), true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", t("退出 Blurt", "Quit Blurt"), true, None::<&str>)?;
+    let item = |id: &str, key: &str| MenuItem::with_id(app, id, l10n::t(key), true, None::<&str>);
+    let open = item("open", "tray.open")?;
+    let record = item("record", "tray.record")?;
+    let snap = item("snap", "tray.snap")?;
+    let voice = item("voice", "tray.voice")?;
+    let quit = item("quit", "tray.quit")?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&open, &record, &snap, &sep, &quit])?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&open, &sep, &record, &snap, &voice, &sep2, &quit])?;
     *app.state::<AppState>().tray_record.lock().unwrap() = Some(record);
-    let mut b = TrayIconBuilder::with_id("main").menu(&menu).tooltip("Blurt").show_menu_on_left_click(false);
+    let mut b = TrayIconBuilder::with_id("main").menu(&menu).tooltip(l10n::t("tray.tooltip")).show_menu_on_left_click(false);
     // monochrome, template-style (the `blurt` glyph; assets/icons/tools/build.py writes icons/tray*.png): black as a macOS template image; white on
     // Windows / Linux panels, which are dark by default — black when the system theme is light
     let light = app.get_webview_window("main").and_then(|w| w.theme().ok()) == Some(tauri::Theme::Light);
@@ -419,6 +529,38 @@ fn linux_graphics_workarounds() {
     }
 }
 
+/// Tests only: `BLURT_TEST_EVAL=<file>` — whenever the file changes, its first line names a window (`main`,
+/// `blurt-overlay-island`, …) and the rest is JavaScript evaluated there. Scripted smoke runs drive the UI through
+/// the DOM this way, without touching the real mouse or keyboard.
+fn test_channel(app: &AppHandle) {
+    let Some(file) = std::env::var_os("BLURT_TEST_EVAL").map(std::path::PathBuf::from) else { return };
+    // what a script reports back (`emit('blurt://test-result', …)` from any page) lands in <file>.out, one JSON per line
+    let out = file.with_extension("out");
+    app.listen_any("blurt://test-result", move |e| {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&out) {
+            use std::io::Write as _;
+            let _ = writeln!(f, "{}", e.payload());
+        }
+    });
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut seen = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+        loop {
+            std::thread::sleep(Duration::from_millis(300));
+            let m = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+            if m.is_none() || m == seen {
+                continue;
+            }
+            seen = m;
+            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let (label, js) = text.split_once('\n').unwrap_or((text.as_str(), ""));
+            if let Some(w) = app.get_webview_window(label.trim()) {
+                let _ = w.eval(js);
+            }
+        }
+    });
+}
+
 pub fn run() {
     linux_graphics_workarounds();
     let app = tauri::Builder::default()
@@ -429,30 +571,39 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, sc, ev| {
-                    if ev.state == ShortcutState::Pressed {
-                        if let Some(a) = hotkeys::action_for(app, sc) {
-                            hotkeys::fire(app, &a);
-                        }
+                    let Some(a) = hotkeys::action_for(app, sc) else { return };
+                    match ev.state {
+                        ShortcutState::Pressed => hotkeys::fire(app, &a),
+                        // K7: the voice key held past 0.35 s is push-to-talk — letting go ends the note
+                        ShortcutState::Released if a == "voice" => capture::voice_released(app),
+                        ShortcutState::Released => {}
                     }
                 })
                 .build(),
         )
         .manage(hotkeys::Hotkeys::default())
         .manage(watcher::WatchState::default())
+        .manage(pty::Ptys::default())
+        .manage(island::Hub::default())
+        .manage(sessions::Monitor::default())
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(AppState {
                 runner: RwLock::new(Runner::new(&handle)),
                 capture: capture::Capture::default(),
-                runs: Arc::new(agents::Runs::default()),
+                docs: items::DocCache::default(),
                 tray_record: Mutex::new(None),
             });
-            if let Err(e) = tray(&handle) {
-                eprintln!("blurt: no tray: {e}"); // e.g. GNOME without the AppIndicator extension
+            if std::env::var_os("BLURT_NO_TRAY").is_none() {
+                if let Err(e) = tray(&handle) {
+                    eprintln!("blurt: no tray: {e}"); // e.g. GNOME without the AppIndicator extension
+                }
             }
             hotkeys::apply(&handle, Some(false));
             #[cfg(any(windows, target_os = "linux"))]
@@ -476,6 +627,9 @@ pub fn run() {
             if std::env::var_os("BLURT_NO_SCAN").is_none() {
                 watcher::initial_scan(&handle);
             }
+            sessions::start_monitor(&handle);
+            island::init(&handle);
+            test_channel(&handle);
             Ok(())
         })
         .on_window_event(|w, ev| {
@@ -490,21 +644,36 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_status,
             index_query,
-            index_sessions,
-            index_workspaces,
-            index_summary,
             index_item,
+            index_sessions,
+            index_summary,
             index_rescan,
-            review_load,
-            review_poll,
-            review_ops,
+            projects_list,
+            projects_add,
+            projects_use,
+            projects_set,
+            projects_open_folder,
+            items_doc,
+            items_poll,
+            items_ops,
+            items_work,
+            items_move,
+            jobs_list,
             agents_detect,
-            agent_run,
-            agent_runs,
-            agent_stop,
-            agent_prompt,
-            fix_with_agent,
-            process_session,
+            sessions_dispatch,
+            sessions_list,
+            sessions_finish,
+            sessions_stop,
+            sessions_open_external,
+            sessions_send,
+            pty_open,
+            pty_write,
+            pty_resize,
+            pty_close,
+            handoff_create,
+            process_captures,
+            voice_start,
+            voice_stop,
             settings_get,
             settings_set,
             shortcut_set,
@@ -512,6 +681,7 @@ pub fn run() {
             reveal,
             open_external,
             open_path,
+            clipboard_write,
             capture_start,
             capture_control,
             capture_state,
@@ -524,6 +694,8 @@ pub fn run() {
             if app.state::<AppState>().capture.recording() {
                 capture::stop_and_wait(app, Duration::from_secs(10)); // never lose a take on quit
             }
+            pty::kill_all(app);
+            sessions::stop_monitor(app);
         }
     });
 }

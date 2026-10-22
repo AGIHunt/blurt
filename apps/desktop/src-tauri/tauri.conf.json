@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Blurt",
   "mainBinaryName": "blurt",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "identifier": "dev.blurt.desktop",
   "build": {
     "beforeDevCommand": {
@@ -25,25 +25,36 @@
         "title": "Blurt",
         "width": 1280,
         "height": 800,
-        "minWidth": 880,
+        "minWidth": 960,
         "minHeight": 520,
-        "center": true
+        "center": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/Blurt/**", "$HOME/.blurt/**"]
+        "scope": [
+          "$HOME/Blurt/**",
+          "$HOME/.blurt/**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi", "deb", "rpm", "appimage", "app"],
+    "targets": [
+      "nsis",
+      "msi",
+      "deb",
+      "rpm",
+      "appimage",
+      "app"
+    ],
     "category": "Productivity",
-    "shortDescription": "Screen + voice → issues, ideas, notes",
-    "longDescription": "Record your screen while you talk; Blurt turns it into bug reports, ideas, notes and todos, lets you review them, and hands them to a coding agent to fix.",
+    "shortDescription": "Speak, snap, record — Blurt turns it into work for your coding agents",
+    "longDescription": "Talk through your screen, take a screenshot or leave a voice note; Blurt organizes it into issues, ideas, notes and tasks, files them into your project folders, and hands them to Claude Code or Codex in a terminal right inside the app — or copies the hand-off for your own agent.",
     "homepage": "https://blurt.agihunt.info",
     "copyright": "MIT",
     "icon": [
@@ -55,25 +66,39 @@
     ],
     "resources": {
       "../../../skills/blurt/scripts/*.py": "scripts/",
-      "../../../skills/blurt/scripts/agents.json": "scripts/agents.json",
+      "../../../skills/blurt/scripts/*.json": "scripts/",
       "../../../skills/blurt/scripts/review.html": "scripts/review.html"
     },
     "createUpdaterArtifacts": false,
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English", "SimpChinese"],
+        "languages": [
+          "English",
+          "SimpChinese"
+        ],
         "displayLanguageSelector": false
       }
     },
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libayatana-appindicator3-1"],
-        "recommends": ["ffmpeg"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1"
+        ],
+        "recommends": [
+          "ffmpeg"
+        ]
       },
       "rpm": {
-        "depends": ["webkit2gtk4.1", "gtk3"]
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3"
+        ]
       },
       "appimage": {
         "bundleMediaFramework": false
@@ -83,13 +108,19 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["blurt"]
+        "schemes": [
+          "blurt"
+        ]
       }
     },
     "updater": {
-      "endpoints": ["https://blurt.agihunt.info/updates/desktop/{{target}}-{{arch}}.json"],
+      "endpoints": [
+        "https://blurt.agihunt.info/updates/desktop/{{target}}-{{arch}}.json"
+      ],
       "pubkey": "",
-      "windows": { "installMode": "passive" }
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

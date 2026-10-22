@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { mountReview, type BlurtHost, type MountOptions, type ReviewHandle } from '../review';
 
-/** Mounts the review component (C6) for one session. A new session or mode remounts; another item of the same
-    session goes through handle.setItem (no reload). */
+/** Mounts the review component (protocol v3, embedded in the main window) for one scope. Another scope or mode
+    remounts; another item of the same scope goes through handle.setItem (no reload). */
 export function ReviewPane({ host, opts, hostKey }: { host: BlurtHost; opts: MountOptions; hostKey: string }) {
   const el = useRef<HTMLDivElement>(null);
   const handle = useRef<ReviewHandle | null>(null);
@@ -12,7 +12,7 @@ export function ReviewPane({ host, opts, hostKey }: { host: BlurtHost; opts: Mou
     const child = document.createElement('div');
     child.className = 'review-mount';
     el.current.appendChild(child);
-    const h = mountReview(child, host, opts);
+    const h = mountReview(child, host, { ...opts, embedded: true });
     handle.current = h;
     return () => {
       handle.current = null;
@@ -23,9 +23,12 @@ export function ReviewPane({ host, opts, hostKey }: { host: BlurtHost; opts: Mou
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostKey, opts.mode, opts.lang]);
+  }, [hostKey, opts.mode]);
   useEffect(() => {
     if (opts.itemId) handle.current?.setItem(opts.itemId);
   }, [opts.itemId]);
+  useEffect(() => {
+    if (opts.lang) handle.current?.setLang(opts.lang);
+  }, [opts.lang]);
   return <div className="review-pane" ref={el} />;
 }

@@ -1,54 +1,62 @@
-// The 'tauri' BlurtHost (C6) for one session dir: WP3's adapter (review_load / review_poll / review_ops → items.py
-// user-ops, files through the asset protocol) plus what the shell adds — open code refs in the editor and
-// "let agent fix" with feedback in the main window. In a plain browser (mock data) the same calls go to ./mock.
+// The review component's host in the main window (protocol v3, contract K1 + "审核组件宿主协议 v3"): the canvas's
+// own tauri host (items_doc / items_poll / items_ops / handoff_create by scope, files through the asset protocol)
+// plus the shell's navigation — dispatch opens the hand-off sheet, openSession the agent's terminal, openCode the
+// editor. In a plain browser (mock data) the same calls go to ./mock.
 
-import { api, fileSrc, inTauri, invoke, joinPath } from './api';
-import { createTauriHost, type BlurtHost, type UserOp } from './review';
+import { api, fileSrc, inTauri, invoke } from './api';
+import { createTauriHost, type BlurtHost, type HandoffResult, type Scope, type UserOp } from './review';
 
 export interface HostCallbacks {
-  onFixWithAgent?: (session: string, itemIds: string[]) => void;
-  onError?: (msg: string) => void;
+  onDispatch?: (uids: string[]) => void;
+  onOpenSession?: (job: string) => void;
+  onHandoff?: (r: HandoffResult, what: 'instruction' | 'full') => void;
+  onError?: (e: unknown) => void;
 }
 
 /** `src/app.py:88` / `src/app.py` → an editor URL. The editor comes from config app.editor (vscode | cursor | zed). */
-export function codeUrl(repo: string, ref: string, editor = 'vscode'): string {
+export function codeUrl(root: string, ref: string, editor = 'vscode'): string {
   const m = ref.match(/^(.*?)(?::(\d+))?(?::(\d+))?$/);
-  const file = joinPath(repo, m?.[1] ?? ref).replace(/\\/g, '/');
+  const rel = (m?.[1] ?? ref).replace(/\\/g, '/');
+  const file = /^([a-zA-Z]:)?\//.test(rel) ? rel : `${root.replace(/\\/g, '/').replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}`;
   const line = m?.[2] ?? '1';
   const path = file.startsWith('/') ? file : `/${file}`;
   if (editor === 'zed') return `zed://file${path}:${line}`;
   return `${editor === 'cursor' ? 'cursor' : 'vscode'}://file${path}:${line}`;
 }
 
-export function repoOf(session: string): string | null {
-  const m = session.replace(/\\/g, '/').match(/^(.*)\/\.blurt\/sessions\/[^/]+\/?$/);
-  return m ? m[1] : null;
-}
-
-function mockHost(session: string): BlurtHost {
+function mockHost(scope: Scope): BlurtHost {
   return {
     host: 'tauri',
     inApp: true,
-    load: () => invoke('review_load', { session }),
-    poll: (etag: string) => invoke('review_poll', { session, etag }),
-    sendOps: (ops: UserOp[], confirm = false) => invoke('review_ops', { session, ops, confirm }),
-    fileUrl: (rel: string) => fileSrc(joinPath(session, rel)),
+    scope,
+    load: () => invoke('items_doc', { scope }),
+    poll: (etag: string) => invoke('items_poll', { scope, etag }),
+    sendOps: (ops: UserOp[], confirm = false) => invoke('items_ops', { scope, ops, confirm }),
+    fileUrl: (p: string) => fileSrc(p),
+    handoff: (uids: string[], what: 'instruction' | 'full') => invoke<HandoffResult>('handoff_create', { uids, full: what === 'full' }),
   };
 }
 
-export function tauriHost(session: string, cb: HostCallbacks = {}, editor = 'vscode'): BlurtHost {
-  const repo = repoOf(session);
-  const base = inTauri ? createTauriHost(session) : mockHost(session);
+/** `projectPath`: the project folder code refs are relative to (none for the inbox). */
+export function hostFor(scope: Scope, projectPath: string | null, cb: HostCallbacks = {}, editor = 'vscode'): BlurtHost {
+  const base = inTauri ? createTauriHost(scope) : mockHost(scope);
+  const fail = (e: unknown) => {
+    cb.onError?.(e);
+    throw e;
+  };
   return {
     ...base,
     inApp: true,
-    sendOps: (ops, confirm) =>
-      base.sendOps(ops, confirm).catch((e) => {
-        cb.onError?.(String(e));
-        throw e;
-      }),
-    reveal: (rel: string) => void api.reveal(joinPath(session, rel)).catch((e) => cb.onError?.(String(e))),
-    openCode: repo ? (ref: string) => void api.openExternal(codeUrl(repo, ref, editor)).catch((e) => cb.onError?.(String(e))) : undefined,
-    dispatch: repo && cb.onFixWithAgent ? (ids: string[]) => cb.onFixWithAgent!(session, ids) : undefined, // protocol v3 name (P6); P8 moves this to sessions_dispatch
+    sendOps: (ops, confirm) => base.sendOps(ops, confirm).catch(fail),
+    openCode: projectPath ? (ref: string) => void api.openUrl(codeUrl(projectPath, ref, editor)).catch(cb.onError) : undefined,
+    dispatch: cb.onDispatch,
+    openSession: cb.onOpenSession,
+    handoff: base.handoff
+      ? async (uids, what) => {
+          const r = await base.handoff!(uids, what).catch(fail);
+          cb.onHandoff?.(r, what);
+          return r;
+        }
+      : undefined,
   };
 }

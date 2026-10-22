@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Lay out WP1's fixture sessions as a user would have them and index them with index.py — what the desktop app's
-smoke test and the Linux e2e open.
+"""Lay out the fixture sessions as a v0.7 user would have them — a git project opened in Blurt, its sessions migrated
+into Markdown, the index built — for the desktop app's smoke runs and the Linux e2e.
 
   python3 apps/desktop/scripts/fixture_index.py OUT_DIR [--env-file F]
 
-OUT_DIR/home/Blurt/recordings/<shots session>     the default workspace (BLURT_WORKSPACE)
-OUT_DIR/repo/.blurt/sessions/<video sessions>     a project workspace ("repo")
-OUT_DIR/blurt-home/index.db                       BLURT_HOME, built by `index.py scan --root OUT_DIR/repo`
+OUT_DIR/repo                          a git project (`projects.py add`), its store at repo/.blurt (never in git)
+OUT_DIR/home/Blurt                    BLURT_WORKSPACE; the -shots fixture lands in recordings/ (migrated to inbox/)
+OUT_DIR/blurt-home                    BLURT_HOME: projects.json, index.db (`index.py scan`)
 
-Prints one JSON line {home, repo, blurt_home, workspace, index_db, scan}. --env-file writes KEY=VALUE lines (HOME,
-BLURT_HOME, BLURT_WORKSPACE) for CI's $GITHUB_ENV or a shell `set -a; . F`. OUT_DIR is wiped first.
+Prints one JSON line {home, repo, blurt_home, workspace, index_db, project, scan}. --env-file writes KEY=VALUE lines
+(HOME, BLURT_HOME, BLURT_WORKSPACE) for CI's $GITHUB_ENV or a shell `set -a; . F`. OUT_DIR is wiped first.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "tests" / "fixtures" / "sessions"
-SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
+SCRIPTS = Path(os.environ.get("BLURT_SCRIPTS") or ROOT / "skills" / "blurt" / "scripts")
 
 
 def main() -> None:
@@ -36,21 +36,32 @@ def main() -> None:
         shutil.rmtree(out)
     home, repo, bh = out / "home", out / "repo", out / "blurt-home"
     ws = home / "Blurt"
-    for s in sorted(d for d in FIXTURES.iterdir() if d.is_dir()):
-        dest = (ws / "recordings") if s.name.endswith("-shots") else (repo / ".blurt" / "sessions")
-        shutil.copytree(s, dest / s.name)
     bh.mkdir(parents=True)
+    (bh / "config.json").write_text(json.dumps({"record": {"install_app": False}}), encoding="utf-8")
     env = {**os.environ, "HOME": str(home), "BLURT_HOME": str(bh), "BLURT_WORKSPACE": str(ws)}
     env.pop("BLURT_NO_INDEX", None)
     uv = shutil.which("uv")
-    cmd = [uv, "run", "--quiet", "--script"] if uv else [sys.executable]
-    r = subprocess.run([*cmd, str(SCRIPTS / "index.py"), "scan", "--root", str(repo)], env=env, capture_output=True,
-                       text=True, encoding="utf-8")
-    if r.returncode != 0:
-        sys.exit(f"index.py scan failed:\n{r.stderr}{r.stdout}")
-    scan = json.loads(r.stdout.strip().splitlines()[-1])
+    py = [uv, "run", "--quiet", "--script"] if uv else [sys.executable]
+
+    def run(script: str, *args: str) -> dict:
+        r = subprocess.run([*py, str(SCRIPTS / script), *args], env=env, capture_output=True, text=True, encoding="utf-8")
+        if r.returncode != 0:
+            sys.exit(f"{script} {' '.join(args)} failed:\n{r.stderr}{r.stdout}")
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    repo.mkdir(parents=True)
+    git = ["git", "-c", "user.email=e2e@blurt", "-c", "user.name=e2e"]
+    (repo / "README.md").write_text("fixture project\n", encoding="utf-8")
+    for cmd in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "init"]):
+        subprocess.run([*git, *cmd], cwd=repo, check=True, capture_output=True)
+    project = run("projects.py", "add", str(repo), "--name", "my-saas")["project"]
+    for s in sorted(d for d in FIXTURES.iterdir() if d.is_dir()):
+        dest = (ws / "recordings") if s.name.endswith("-shots") else (repo / ".blurt" / "sessions")
+        shutil.copytree(s, dest / s.name)
+    run("items.py", "migrate", "--all")
+    scan = run("index.py", "scan")
     info = {"home": str(home), "repo": str(repo), "blurt_home": str(bh), "workspace": str(ws),
-            "index_db": str(bh / "index.db"), "scan": scan}
+            "index_db": str(bh / "index.db"), "project": project["id"], "scan": scan}
     if a.env_file:
         Path(a.env_file).write_text(f"HOME={home}\nBLURT_HOME={bh}\nBLURT_WORKSPACE={ws}\n", encoding="utf-8")
     print(json.dumps(info))  # ASCII: Windows pipes default to a legacy code page

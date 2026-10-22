@@ -3,7 +3,7 @@ name: capture
 # WP8 (docs/design/desktop-app.md §6): Windows/Linux recording for the Tauri app — record.py's ffmpeg engine with
 # --status-jsonl, crates/blurt-capture and the overlay pages in web/apps/overlays.
 #   linux:   x11grab take under xvfb (no mic) + status sequence + in-recording snap, crate tests on the real
-#            screen, overlays rendered transparent and on top (openbox + xcompmgr), a take through the HUD
+#            screen, overlays rendered transparent and on top (openbox + xcompmgr), a take shown in the island
 #   windows: crate build + tests (lavfi screen), the ffmpeg-engine unit tests, overlay windows open
 on:
   push:
@@ -90,14 +90,14 @@ jobs:
         run: cargo build
       - name: "Overlays: rendered, transparent, on top"
         run: python3 crates/blurt-capture/ci/check_overlays.py crates/blurt-capture/demo/target/debug/blurt-capture-demo "$RUNNER_TEMP/overlays"
-      - name: "A take through the HUD (overlay::record, x11grab)"
+      - name: "A take shown in the island (engine::record, x11grab)"
         run: |
           mkdir -p "$RUNNER_TEMP/home" && echo '{"record":{"install_app":false,"live":false}}' > "$RUNNER_TEMP/home/config.json"
           WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 crates/blurt-capture/demo/target/debug/blurt-capture-demo record \
-            --record-py skills/blurt/scripts/record.py --session "$RUNNER_TEMP/hud-take" --region 0,0,640,360 \
-            --seconds 5 --home "$RUNNER_TEMP/home" | tee "$RUNNER_TEMP/hud-take.out"
-          grep -q '"ev":"stopped"' "$RUNNER_TEMP/hud-take.out"
-          test -s "$RUNNER_TEMP/hud-take/recording.mp4" && test -s "$RUNNER_TEMP/hud-take/shots/001.png"
+            --record-py skills/blurt/scripts/record.py --session "$RUNNER_TEMP/island-take" --region 0,0,640,360 \
+            --seconds 5 --home "$RUNNER_TEMP/home" | tee "$RUNNER_TEMP/island-take.out"
+          grep -q '"ev":"stopped"' "$RUNNER_TEMP/island-take.out"
+          test -s "$RUNNER_TEMP/island-take/recording.mp4" && test -s "$RUNNER_TEMP/island-take/shots/001.png"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,7 +107,7 @@ jobs:
             ${{ runner.temp }}/take/session/*.json*
             ${{ runner.temp }}/take/stderr.log
             ${{ runner.temp }}/overlays
-            ${{ runner.temp }}/hud-take.out
+            ${{ runner.temp }}/island-take.out
           if-no-files-found: ignore
 
   windows:
@@ -156,4 +156,4 @@ jobs:
         continue-on-error: true  # depends on the runner's desktop session; the real check is on a VM (deferred)
         run: |
           crates/blurt-capture/demo/target/debug/blurt-capture-demo.exe overlays --seconds 3 | tee overlays.out
-          grep -q blurt-overlay-hud overlays.out
+          grep -q blurt-overlay-island overlays.out

@@ -1,4 +1,6 @@
-// In-browser stand-in for the Rust commands (vite dev / unit tests): a tiny fixed dataset, writes kept in memory.
+// In-browser stand-in for the Rust commands (vite dev, UI screenshots, unit tests): a small fixed world — three
+// projects, a dozen items in every work state, a batch to review, an agent session waiting for an answer, a
+// terminal that prints what Claude Code would. Writes are kept in memory.
 
 type Listener = (p: unknown) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -8,130 +10,187 @@ export function mockListen(event: string, cb: Listener): () => void {
   listeners.get(event)!.add(cb);
   return () => listeners.get(event)?.delete(cb);
 }
+const emit = (event: string, p: unknown) => listeners.get(event)?.forEach((cb) => cb(p));
 
+const param = (k: string) => (typeof location === 'undefined' ? null : new URLSearchParams(location.search).get(k));
+const zh = () => (param('lang') ?? (typeof navigator === 'undefined' ? '' : navigator.language)).startsWith('zh');
+const L = (en: string, cn: string) => (zh() ? cn : en);
 const now = Date.now() / 1000;
-const ws = [
-  { id: 'w0', path: '/home/me/Blurt', name: 'Blurt', kind: 'default', sessions: 1, open_items: 2 },
-  { id: 'w1', path: '/home/me/code/my-saas', name: 'my-saas', kind: 'repo', sessions: 2, open_items: 4 },
+const H = '/home/maya';
+
+const projects = () => [
+  { id: 'p1', name: 'storefront', key: 'SF', slug: 'storefront', path: `${H}/code/storefront`, store: `${H}/code/storefront/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-22T09:40:00+02:00', open_items: 6, to_review: 3, to_verify: 1, items: 9 },
+  { id: 'p2', name: 'mobile-app', key: 'MA', slug: 'mobile-app', path: `${H}/code/mobile-app`, store: `${H}/code/mobile-app/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-21T17:10:00+02:00', open_items: 2, to_review: 1, to_verify: 0, items: 3 },
+  { id: 'p3', name: L('Launch notes', '发布笔记'), key: 'LN', slug: 'launch-notes', path: `${H}/Documents/Launch notes`, store: `${H}/Documents/Launch notes/.blurt`, kind: 'folder', exists: true, worktree: false, last_used: '2026-10-20T11:00:00+02:00', open_items: 1, to_review: 0, to_verify: 0, items: 2 },
 ];
-const S1 = '/home/me/code/my-saas/.blurt/sessions/20261021-101500';
-const S2 = '/home/me/Blurt/recordings/20261020-141500-shots';
+const inbox = () => ({ id: 'inbox', name: L('Unassigned', '待分配'), key: 'IN', slug: 'inbox', path: `${H}/Blurt/inbox`, store: `${H}/Blurt/inbox`, kind: 'inbox', exists: true, open_items: 2, to_review: 2, to_verify: 0, items: 2 });
 
-const docs: Record<string, any> = {
-  [S1]: {
-    schema: 2,
-    title: '个人中心和登录页走查',
-    reviewed: false,
-    items: [
-      { id: 'I-001', uid: 'u1', kind: 'issue', title: '头像上传返回 500', quote: '上传头像直接报 500。', status: 'confirmed', severity: 'high',
-        actual: 'POST /api/avatar 返回 500', expected: '上传成功并刷新头像', steps: ['打开个人中心', '上传 PNG 头像'], code_refs: ['api/avatar.py:88'],
-        frames: [{ path: 'frames/I-001-1.jpg', t: 0.9, caption: '上传后的报错' }],
-        fix: { state: 'fixed', agent: 'claude', run_id: 'r-1', commit: 'a1c3e5f', pr: null, note: 'multipart 边界解析错误', at: now - 3 * 86400 } },
-      { id: 'I-002', uid: 'u2', kind: 'issue', title: '登录按钮点击无响应', quote: '这个登录按钮点了没反应', status: 'draft', severity: 'high',
-        actual: '点击后没有请求', expected: '跳转到首页', frames: [{ path: 'frames/I-002-1.jpg', t: 3.1 }] },
-      { id: 'I-003', uid: 'u3', kind: 'idea', title: '学 Linear 的空状态', quote: '空列表可以像 Linear 那样给个引导', status: 'draft', why: '新用户第一次进来不知道干嘛' },
-    ],
-  },
-  [S2]: {
-    schema: 2,
-    title: '价格页',
-    items: [{ id: 'I-001', uid: 'u4', kind: 'issue', title: '价格页移动端溢出', status: 'draft', severity: 'medium', frames: [{ path: 'shots/001.png' }] }],
-  },
-};
+const S1 = `${H}/code/storefront/.blurt/sessions/20261022-093000`;
+const S2 = `${H}/Blurt/inbox/sessions/20261022-101500-shots`;
 
-function rows() {
-  const out: any[] = [];
-  for (const [dir, d] of Object.entries(docs)) {
-    const w = dir.startsWith('/home/me/Blurt') ? ws[0] : ws[1];
-    d.items.forEach((it: any, i: number) =>
-      out.push({
-        uid: it.uid, session_id: `${w.id}:${dir.split('/').pop()}`, session_dir: dir, item_id: it.id, kind: it.kind, title: it.title,
-        status: it.status ?? 'draft', fix_state: it.fix?.state ?? null, severity: it.severity ?? null,
-        primary_frame: it.frames?.[0] ? `${dir}/${it.frames[0].path}` : null, updated: now - (i + 1) * 3600 * (dir === S2 ? 20 : 2),
-        snippet: null, workspace_id: w.id, created: now - 86400, session_title: d.title, quote: it.quote ?? '', tags: '', frame_count: it.frames?.length ?? 0,
-        has_code_refs: it.code_refs?.length ? 1 : 0,
-      }),
-    );
-  }
-  return out.sort((a, b) => b.updated - a.updated);
+interface MItem {
+  uid: string; id: string; project: string; kind: string; title: string; quote?: string; status: string; work: string; work_to?: string | null; work_agent?: string | null;
+  severity?: string | null; session?: string; age: number; actual?: string; expected?: string; steps?: string[]; why?: string; code_refs?: string[]; suggested?: string;
+}
+const items: MItem[] = [
+  { uid: 'u01', id: 'SF-12', project: 'p1', kind: 'issue', title: L('Checkout button does nothing on Safari', 'Safari 上结算按钮点了没反应'), quote: L('I click checkout and nothing happens — no spinner, nothing.', '我点结算，什么都没发生，也没有加载。'), status: 'draft', work: 'todo', severity: 'high', session: S1, age: 0.4, actual: L('No request is sent; the console shows a TypeError in cart.ts', '没有发请求，控制台在 cart.ts 报 TypeError'), expected: L('Goes to the payment step', '进入付款步骤'), steps: [L('Add any product to the cart', '把任意商品加入购物车'), L('Open the cart in Safari 18', '在 Safari 18 打开购物车'), L('Click Checkout', '点结算')], code_refs: ['web/src/cart/cart.ts:118'] },
+  { uid: 'u02', id: 'SF-13', project: 'p1', kind: 'issue', title: L('Price filter resets after going back', '返回后价格筛选被重置'), status: 'draft', work: 'todo', severity: 'medium', session: S1, age: 0.5 },
+  { uid: 'u03', id: 'SF-14', project: 'p1', kind: 'idea', title: L('Show delivery date on the product card', '商品卡片上显示预计送达日期'), status: 'draft', work: 'todo', session: S1, age: 0.6, why: L('People ask support “when will it arrive?” more than anything else', '客服被问最多的就是「什么时候到」') },
+  { uid: 'u04', id: 'SF-9', project: 'p1', kind: 'issue', title: L('Avatar upload returns 500', '头像上传返回 500'), status: 'confirmed', work: 'in_progress', work_to: 'session', work_agent: 'claude', severity: 'high', age: 2 },
+  { uid: 'u05', id: 'SF-10', project: 'p1', kind: 'task', title: L('Translate the checkout emails into German', '把结算邮件翻译成德语'), status: 'confirmed', work: 'handed_off', work_to: 'external', age: 5 },
+  { uid: 'u06', id: 'SF-7', project: 'p1', kind: 'issue', title: L('Search results flicker while typing', '输入时搜索结果闪烁'), status: 'confirmed', work: 'to_verify', work_agent: 'codex', severity: 'medium', age: 20 },
+  { uid: 'u07', id: 'SF-5', project: 'p1', kind: 'note', title: L('Competitors all show stock levels', '竞品都显示库存数量'), status: 'confirmed', work: 'todo', age: 48 },
+  { uid: 'u08', id: 'SF-3', project: 'p1', kind: 'issue', title: L('Footer links overlap on small phones', '小屏手机上页脚链接重叠'), status: 'confirmed', work: 'done', severity: 'low', age: 90 },
+  { uid: 'u09', id: 'SF-2', project: 'p1', kind: 'idea', title: L('Dark mode for the storefront', '商店的深色模式'), status: 'confirmed', work: 'wontfix', age: 120 },
+  { uid: 'u10', id: 'MA-4', project: 'p2', kind: 'issue', title: L('Onboarding skips the notifications step', '新手引导跳过了通知那一步'), status: 'draft', work: 'todo', severity: 'medium', age: 7 },
+  { uid: 'u11', id: 'MA-3', project: 'p2', kind: 'task', title: L('Ship the iPad layout', '上线 iPad 布局'), status: 'confirmed', work: 'in_progress', work_to: 'session', work_agent: 'codex', age: 26 },
+  { uid: 'u12', id: 'LN-2', project: 'p3', kind: 'note', title: L('Keynote: open with the 5-minute demo', '发布会：用 5 分钟演示开场'), status: 'confirmed', work: 'todo', age: 70 },
+  { uid: 'u13', id: 'IN-1', project: 'inbox', kind: 'idea', title: L('A weekly digest of what got fixed', '每周发一份修好了什么的周报'), status: 'draft', work: 'todo', session: S2, age: 0.2, suggested: 'p3' },
+  { uid: 'u14', id: 'IN-2', project: 'inbox', kind: 'issue', title: L('Login page logo is blurry on 4K', '登录页 logo 在 4K 屏上发虚'), status: 'draft', work: 'todo', session: S2, severity: 'low', age: 0.25, suggested: 'p1' },
+];
+
+const pname = (id: string) => (id === 'inbox' ? inbox() : projects().find((p) => p.id === id))!;
+
+function row(i: MItem) {
+  const p = pname(i.project);
+  return {
+    uid: i.uid, project_id: i.project, project_name: p.name, project_key: p.key, session_id: i.session ? `${i.project}:${i.session.split('/').pop()}` : null, session_dir: i.session ?? null,
+    path: `${p.store}/items/${i.id}.md`, item_id: i.id, kind: i.kind, title: i.title, status: i.status, work_state: i.work, work_to: i.work_to ?? null, work_agent: i.work_agent ?? null,
+    severity: i.severity ?? null, primary_frame: null, created: now - i.age * 3600, updated: now - i.age * 3600, snippet: null, suggested_project: i.suggested ?? null,
+    suggested_confidence: i.suggested ? 0.58 : null, project_by: 'capture', quote: i.quote ?? '', frame_count: 0,
+  };
 }
 
-function etag(dir: string) {
-  return `"${JSON.stringify(docs[dir]).length.toString(16)}"`;
+function docItem(i: MItem) {
+  const r = row(i);
+  return {
+    id: i.id, uid: i.uid, kind: i.kind, title: i.title, quote: i.quote, status: i.status, severity: i.severity ?? undefined, actual: i.actual, expected: i.expected, steps: i.steps, why: i.why,
+    code_refs: i.code_refs, project: i.project, path: r.path, work: { state: i.work, to: i.work_to ?? null, agent: i.work_agent ?? null, job: null, handoff: null, claim: i.work === 'to_verify' ? 'fixed' : null, note: '', at: new Date((now - i.age * 3600) * 1000).toISOString(), by: 'agent' },
+    created: new Date((now - i.age * 3600) * 1000).toISOString(), source: { type: i.session === S2 ? 'snap' : 'recording', by: 'maya' },
+  };
 }
 
-const hotkeys = ['record', 'menu', 'pause', 'snap', 'marker', 'pen', 'stop'].map((a) => ({
-  action: a, spec: `opt+shift+${a === 'menu' ? 'B' : a === 'snap' ? 'A' : a === 'pen' ? 'D' : a[0].toUpperCase()}`,
-  label: `Alt+Shift+${a === 'menu' ? 'B' : a === 'snap' ? 'A' : a === 'pen' ? 'D' : a[0].toUpperCase()}`, default: '', active: ['record', 'menu', 'snap'].includes(a),
-  result: a === 'pen' ? 'unsupported' : ['record', 'menu', 'snap'].includes(a) ? 'ok' : 'idle',
-}));
+let rev = 1;
+function doc(scope: { session?: string; project?: string }) {
+  const list = scope.session ? items.filter((i) => i.session === scope.session) : items.filter((i) => i.project === scope.project);
+  return {
+    schema: 3, scope, title: scope.session === S1 ? L('Checkout walkthrough', '结算流程走查') : undefined, language: zh() ? 'zh' : 'en', items: list.map(docItem), _removed: {},
+    projects: [...projects().map((p) => ({ id: p.id, name: p.name, key: p.key, path: p.path })), { id: 'inbox', name: inbox().name, key: 'IN' }],
+  };
+}
+
+const sessions = () => [
+  { job: 'j-20261022-094100-k2m4', project: 'p1', agent: 'claude', items: ['u04'], window: 'SF-9', status: 'waiting_input', status_at: '2026-10-22T09:52:00+02:00', worktree: `${H}/code/.storefront-worktrees/SF-9`, branch: 'blurt/sf-9-avatar-upload', cwd: `${H}/code/.storefront-worktrees/SF-9`, started: new Date((now - 1500) * 1000).toISOString(), ended: null, exit: null },
+  { job: 'j-20261021-161000-a7q2', project: 'p2', agent: 'codex', items: ['u11'], window: 'MA-3', status: 'running', status_at: null, worktree: null, branch: null, cwd: `${H}/code/mobile-app`, started: new Date((now - 7200) * 1000).toISOString(), ended: null, exit: null },
+];
+
+const TERM = [
+  '\x1b[38;5;209m╭─────────────────────────────────────────────────────────╮\x1b[0m\r\n',
+  '\x1b[38;5;209m│\x1b[0m \x1b[1m\u273b Claude Code\x1b[0m                                            \x1b[38;5;209m│\x1b[0m\r\n',
+  '\x1b[38;5;209m│\x1b[0m   cwd: ~/code/.storefront-worktrees/SF-9                \x1b[38;5;209m│\x1b[0m\r\n',
+  '\x1b[38;5;209m╰─────────────────────────────────────────────────────────╯\x1b[0m\r\n\r\n',
+  '\x1b[2m> Read /home/maya/.blurt/handoff/H-0031.md and handle the item in it.\x1b[0m\r\n\r\n',
+  '\x1b[1m\u25cf\x1b[0m Reading the hand-off sheet and the avatar upload handler.\r\n\r\n',
+  '\x1b[32m\u25cf\x1b[0m \x1b[1mRead\x1b[0m(api/avatar.py)\r\n  \u23bf  Read 142 lines\r\n\r\n',
+  '\x1b[1m\u25cf\x1b[0m The multipart boundary is parsed before the size check, so a 6 MB PNG\r\n  overflows the 5 MB buffer and raises. I\'ll stream it instead.\r\n\r\n',
+  '\x1b[33m\u25cf\x1b[0m \x1b[1mEdit\x1b[0m(api/avatar.py)\r\n',
+  '\x1b[48;5;236m Do you want to make this edit to avatar.py?                \x1b[0m\r\n',
+  '\x1b[48;5;236m \u276f 1. Yes                                                  \x1b[0m\r\n',
+  '\x1b[48;5;236m   2. Yes, and don\'t ask again this session                \x1b[0m\r\n',
+  '\x1b[48;5;236m   3. No, and tell Claude what to do differently (esc)      \x1b[0m\r\n',
+];
+
+const hotkeyRows = () =>
+  ['record', 'snap', 'voice', 'project', 'menu', 'pause', 'marker', 'stop', 'pen'].map((a) => {
+    const k = ({ record: 'R', snap: 'A', voice: 'V', project: 'O', menu: 'B', pause: 'P', marker: 'M', stop: 'S', pen: 'D' } as Record<string, string>)[a];
+    const resident = ['record', 'snap', 'voice', 'project', 'menu'].includes(a);
+    return { action: a, spec: `opt+shift+${k}`, label: `Alt+Shift+${k}`, default: `opt+shift+${k}`, active: resident, result: a === 'pen' ? 'unsupported' : resident ? 'ok' : 'idle' };
+  });
+
+let current = 'p1';
+let ptySeq = 0;
 
 export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {}): Promise<T> {
   const r = (v: unknown) => v as T;
   switch (cmd) {
     case 'app_status':
-      return r({ version: '0.6.0-mock', os: 'linux', platform: 'gnome', wayland: false, lang: navigator.language.startsWith('zh') ? 'zh' : 'en',
-        blurt_home: '/home/me/.blurt', index_db: '/home/me/.blurt/index.db', index_exists: true, default_workspace: '/home/me/Blurt',
-        scripts: '/home/me/.claude/skills/blurt/scripts', uv: '/usr/bin/uv', capture: { recording: false, paused: false, session: null, engine: 'mock' }, hotkey_mode: 'plugin' });
+      return r({ version: '0.7.0', os: 'linux', platform: 'gnome', wayland: false, lang: param('lang') ?? navigator.language, blurt_home: `${H}/.blurt`, inbox_store: `${H}/Blurt/inbox`,
+        handoff_dir: `${H}/.blurt/handoff`, index_ready: true, scripts: `${H}/.claude/skills/blurt/scripts`, uv: '/usr/bin/uv', tmux: true, capture: { recording: false, paused: false, session: null, voice: null }, hotkey_mode: 'plugin',
+        start_view: param('view') });
+    case 'projects_list':
+      return r({ current, projects: projects(), inbox: inbox() });
+    case 'projects_use':
+      current = args.id;
+      return r({ ok: true, current });
+    case 'index_summary':
+      return r({ missing: false, items: items.filter((i) => i.status !== 'deleted').length, to_review: items.filter((i) => i.status === 'draft').length, unassigned: 2, in_progress: 3, to_verify: 1, batches: 2 });
+    case 'jobs_list':
+      return r([
+        { id: 'j-20261022-101800-p9x2', type: 'process', state: 'running', project: null, session: S2, title: L('Two screenshots and a voice note', '两张截图和一条语音'), items: [], steps: [{ id: 'prepare', state: 'done' }, { id: 'transcribe', state: 'done' }, { id: 'write', state: 'running', progress: 0.6 }, { id: 'frames', state: 'pending' }, { id: 'route', state: 'pending' }], progress: 0.6, created: '', started: '', ended: null, error: null },
+        { id: sessions()[0].job, type: 'agent', state: 'running', project: 'p1', session: null, title: null, items: ['u04'], steps: [], progress: null, created: '', started: '', ended: null, error: null, agent: { id: 'claude', mode: 'together', runner: 'tmux', status: 'waiting_input', cwd: '' } },
+      ]);
     case 'index_query': {
       const q = args.q ?? {};
-      let items = rows().filter((x) => (q.status?.length ? q.status.includes(x.status) : x.status !== 'deleted'));
-      if (q.kind?.length) items = items.filter((x) => q.kind.includes(x.kind));
-      if (q.fix_state?.length) items = items.filter((x) => q.fix_state.includes(x.fix_state ?? 'none'));
-      if (q.workspace) items = items.filter((x) => x.workspace_id === q.workspace);
-      if (q.session) items = items.filter((x) => x.session_dir === q.session || x.session_id === q.session);
-      for (const t of (q.query ?? '').split(/\s+/).filter(Boolean)) items = items.filter((x) => (x.title + x.quote).includes(t));
-      return r({ total: items.length, items: items.slice(q.offset ?? 0, (q.offset ?? 0) + (q.limit ?? 50)), missing: false });
+      let list = items.filter((x) => (q.status?.length ? q.status.includes(x.status) : x.status !== 'deleted'));
+      if (q.kind?.length) list = list.filter((x) => q.kind.includes(x.kind));
+      if (q.work?.length) list = list.filter((x) => q.work.includes(x.work));
+      if (q.project) list = list.filter((x) => x.project === q.project);
+      for (const term of (q.query ?? '').toLowerCase().split(/\s+/).filter(Boolean)) list = list.filter((x) => (x.title + (x.quote ?? '')).toLowerCase().includes(term));
+      list = [...list].sort((a, b) => a.age - b.age);
+      return r({ total: list.length, items: list.slice(q.offset ?? 0, (q.offset ?? 0) + (q.limit ?? 50)).map(row), missing: false });
     }
     case 'index_item':
-      return r(rows().find((x) => x.uid === args.uid) ?? null);
-    case 'index_workspaces':
-      return r(ws);
-    case 'index_summary':
-      return r({ missing: false, items: rows().length, sessions: 2, inbox: 1, fixing: 0 });
+      return r(items.find((x) => x.uid === args.uid) ? row(items.find((x) => x.uid === args.uid)!) : null);
     case 'index_sessions':
-      return r(Object.entries(docs).filter(([dir]) => (args.q?.state === 'inbox' ? !docs[dir].reviewed : true)).map(([dir, d]) => ({
-        id: dir.split('/').pop(), workspace_id: dir.includes('my-saas') ? 'w1' : 'w0', workspace_name: dir.includes('my-saas') ? 'my-saas' : 'Blurt',
-        workspace_path: '', dir, mode: dir.endsWith('shots') ? 'shots' : 'video', title: d.title, created: now - 86400, duration: 42, shot_count: 3,
-        item_count: d.items.length, processed: 1, processing: 0, reviewed: d.reviewed ? 1 : 0, fixed_count: 1,
-      })));
-    case 'index_rescan':
-      return r(undefined);
-    case 'review_load':
-      return r({ doc: structuredClone(docs[args.session]), etag: etag(args.session) });
-    case 'review_poll':
-      return r(etag(args.session) === args.etag ? { etag: args.etag } : { doc: structuredClone(docs[args.session]), etag: etag(args.session) });
-    case 'review_ops': {
-      const d = docs[args.session];
+      return r([
+        { id: 'p1:20261022-093000', project_id: 'p1', project_name: 'storefront', project_key: 'SF', project_path: `${H}/code/storefront`, dir: S1, mode: 'video', title: L('Checkout walkthrough', '结算流程走查'), created: now - 1800, duration: 312, shot_count: 2, item_count: 3, draft_count: 3, processed: 1, processing: 0, reviewed: 0 },
+        { id: 'inbox:20261022-101500-shots', project_id: 'inbox', project_name: inbox().name, project_key: 'IN', project_path: `${H}/Blurt/inbox`, dir: S2, mode: 'shots', title: null, created: now - 700, duration: null, shot_count: 2, item_count: 2, draft_count: 2, processed: 1, processing: 0, reviewed: 0 },
+      ]);
+    case 'items_doc':
+      return r({ doc: doc(args.scope), etag: `"m${rev}"` });
+    case 'items_poll':
+      return r(args.etag === `"m${rev}"` ? { etag: args.etag } : { doc: doc(args.scope), etag: `"m${rev}"` });
+    case 'items_ops': {
       for (const op of args.ops ?? []) {
-        const it = d.items.find((i: any) => i.id === op.id);
-        if (op.op === 'set' && it) {
-          Object.assign(it, op.set ?? {});
-          it._user = { ...(it._user ?? {}), ...Object.fromEntries(Object.keys(op.set ?? {}).map((k) => [k, Date.now() / 1000])) };
-        }
+        const it = items.find((i) => i.uid === op.id || i.id === op.id);
+        if (!it) continue;
+        if (op.op === 'set') Object.assign(it, op.set ?? {});
+        if (op.op === 'work') it.work = op.state;
       }
-      if (args.confirm) d.reviewed = true;
-      return r({ ok: true, etag: etag(args.session) });
+      rev++;
+      return r({ ok: true, etag: `"m${rev}"`, doc: doc(args.scope) });
     }
+    case 'items_work':
+    case 'items_move':
+      return r({ ok: true });
+    case 'handoff_create':
+      return r({ id: 'H-0032', path: `${H}/.blurt/handoff/H-0032.md`, text: 'Please handle SF-12 — details and screenshots are in …' });
     case 'agents_detect':
-      return r({ order: ['claude', 'codex', 'kimi'], pick: 'codex', agents: [
-        { id: 'claude', name: 'Claude Code', path: '/usr/bin/claude', state: 'logged_out', why: 'not logged in', fix: 'run `claude` and /login', installed: true, version: '2.1.0', login: 'logged_out', headless: true, interactive: 'url' },
-        { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: 'logged in', fix: '', installed: true, version: '0.50.0', login: 'ok', headless: true, interactive: 'terminal' },
-        { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: 'not installed', fix: '', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal' },
+      return r({ order: ['claude', 'codex', 'kimi'], pick: 'claude', agents: [
+        { id: 'claude', name: 'Claude Code', path: '/usr/bin/claude', state: 'ready', why: '', fix: '', installed: true, version: '2.3.1', login: 'ok', headless: true, interactive: 'terminal', session: true },
+        { id: 'codex', name: 'Codex', path: '/usr/bin/codex', state: 'ready', why: '', fix: '', installed: true, version: '0.61.0', login: 'ok', headless: true, interactive: 'terminal', session: true },
+        { id: 'kimi', name: 'Kimi Code', path: null, state: 'not_installed', why: '', fix: 'npm i -g kimi-code', installed: false, version: null, login: 'n/a', headless: true, interactive: 'terminal', session: true },
       ] });
-    case 'agent_runs':
-      return r([]);
-    case 'fix_with_agent':
-      return r({ run_id: 'r-mock', agent: 'codex', repo: '/home/me/code/my-saas' });
+    case 'sessions_dispatch':
+      if (args.opts?.dryRun)
+        return r({ ok: true, jobs: [], warnings: args.opts.worktree === 'off' ? [{ code: 'concurrent_edit', jobs: ['j-20261021-161000-a7q2'] }] : [] });
+      return r({ ok: true, jobs: [{ id: sessions()[0].job, project: 'p1', window: '@3', cwd: '', items: args.opts.items }], warnings: [] });
+    case 'sessions_list':
+      return r({ ok: true, sessions: sessions(), owned: [] });
+    case 'sessions_finish':
+      return r({ ok: true, base: 'main', branch: 'blurt/sf-9-avatar-upload', stat: [{ path: 'api/avatar.py', added: 24, deleted: 9 }, { path: 'api/tests/test_avatar.py', added: 31, deleted: 0 }], patch: '', uncommitted: 0 });
+    case 'pty_open': {
+      const id = ++ptySeq;
+      setTimeout(() => TERM.forEach((l, i) => setTimeout(() => emit('pty://data', { ptyId: id, data: btoa(String.fromCharCode(...new TextEncoder().encode(l))) }), i * 40)), 50);
+      return r({ ptyId: id, replay: null, owned: false });
+    }
     case 'settings_get':
-      return r({ config: { record: { agents: ['codex', 'claude'] } }, hotkeys, hotkey_mode: 'plugin', wayland: false, config_path: '/home/me/.blurt/config.json',
+      return r({ config: { record: { agents: ['claude', 'codex', 'kimi'] }, notify: {} }, hotkeys: hotkeyRows(), hotkey_mode: 'plugin', wayland: false, config_path: `${H}/.blurt/config.json`,
         export_targets: [{ id: 'markdown', name: 'Markdown', configured: true }, { id: 'csv', name: 'CSV', configured: true }, { id: 'github', name: 'GitHub Issues', configured: true, needs: 'gh auth login' }, { id: 'feishu', name: 'Feishu / Lark Bitable', configured: false }] });
-    case 'settings_set':
-      return r({});
     case 'shortcut_set':
-      return r(args.combo.toLowerCase().includes('win+shift+s') ? { result: 'system', name: 'Snipping Tool' } : { result: 'ok', spec: args.combo, label: args.combo });
+      return r(String(args.combo).toLowerCase().includes('cmd+shift+s') ? { result: 'system', name: 'Snipping Tool' } : { result: 'ok', spec: args.combo, label: args.combo });
     case 'asr_models':
-      return r({ models: [{ id: 'sensevoice', name: 'SenseVoice Small', installed: true, size_mb: 241, languages: ['zh', 'en', 'ja'] }, { id: 'whisper-large-v3-turbo', name: 'Whisper large-v3 turbo', installed: false, size_mb: 1600, languages: 'multi' }] });
+      return r({ models: [{ id: 'sensevoice-small', name: 'SenseVoice Small', backend: 'sherpa-onnx', installed: true, size_mb: 228, languages: ['zh', 'en', 'ja', 'ko', 'yue'] }, { id: 'whisper-large-v3-turbo-ct2', name: 'Whisper large-v3 turbo', backend: 'faster-whisper', installed: false, size_mb: 1620, languages: 'multi' }] });
     case 'update_check':
       return r({ configured: false });
     default:

@@ -335,6 +335,25 @@ impl Drop for CaptureHandle {
     }
 }
 
+/// A take watched to its end: `on_event` gets every status line (from a reader thread, in order), `on_done` the
+/// final one once the recorder has exited. The host shows the take where it likes (the Tauri app: its island).
+pub fn record(
+    opts: &CaptureOptions,
+    on_event: impl FnMut(&StatusEvent) + Send + 'static,
+    on_done: impl FnOnce(Result<StatusEvent, CaptureError>) + Send + 'static,
+) -> Result<Arc<Mutex<CaptureHandle>>, CaptureError> {
+    let handle = Arc::new(Mutex::new(start(opts, on_event)?));
+    let h = handle.clone();
+    thread::spawn(move || {
+        while !h.lock().unwrap().is_finished() {
+            thread::sleep(Duration::from_millis(100));
+        }
+        let result = h.lock().unwrap().wait(Duration::from_secs(5));
+        on_done(result);
+    });
+    Ok(handle)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
