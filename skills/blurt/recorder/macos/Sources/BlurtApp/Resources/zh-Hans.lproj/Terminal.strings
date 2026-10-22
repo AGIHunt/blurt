@@ -60,6 +60,7 @@
 "dispatch.title" = "交给 agent";
 "dispatch.subtitle.none" = "选择要处理的条目";
 "dispatch.agent" = "Agent";
+"dispatch.agent.logged_out" = "%@（未登录）";
 "dispatch.agent.none" = "还没有装能跑会话的 agent。装好 Claude Code 或 Codex 后，到「设置 → Agent」重新检查。";
 "dispatch.mode" = "方式";
 "dispatch.mode.together" = "一起处理";

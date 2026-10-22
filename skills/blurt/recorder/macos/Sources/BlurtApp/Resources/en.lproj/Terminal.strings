@@ -60,6 +60,7 @@
 "dispatch.title" = "Hand Off to an Agent";
 "dispatch.subtitle.none" = "Choose the items to work on";
 "dispatch.agent" = "Agent";
+"dispatch.agent.logged_out" = "%@ (not logged in)";
 "dispatch.agent.none" = "No agent that can run a session is installed. Install Claude Code or Codex, then check again in Settings → Agents.";
 "dispatch.mode" = "Approach";
 "dispatch.mode.together" = "Together";

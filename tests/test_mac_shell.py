@@ -48,6 +48,14 @@ class Layout(unittest.TestCase):
                        '"capture.card.ax_shot_n"', "setAccessibilityCustomActions", "override func accessibilityPerformPress()"]:
             self.assertIn(needle, src)
 
+    def test_dispatch_panel_never_defaults_to_a_logged_out_agent(self):
+        # e2e v0.7: with Claude Code installed but logged out, the panel picked it (the quick detect can't see logins)
+        # and the session stopped at its login page. K5 order: project default → global → detect's pick (with login).
+        src = (MAC / "Sources/BlurtApp/Terminal/DispatchPanel.swift").read_text()
+        for needle in ["detect(login: true)", "defaultAgent", '"record.default_agent"', '"dispatch.agent.logged_out"',
+                       "agentTouched"]:
+            self.assertIn(needle, src)
+
     def test_no_review_window_and_nothing_opens_by_itself(self):
         # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
         src = MAC / "Sources" / "BlurtApp"

@@ -15,7 +15,8 @@ struct DispatchItem: Identifiable, Hashable {
 
 @MainActor
 final class DispatchModel: ObservableObject {
-    struct AgentChoice: Identifiable, Hashable { let id: String; let name: String; let installed: Bool; let session: Bool }
+    struct AgentChoice: Identifiable, Hashable { let id: String; let name: String; let installed: Bool; let session: Bool
+        var loggedOut = false }
     enum Phase: Equatable { case idle, checking, starting, failed(String) }
 
     @Published var items: [DispatchItem]
@@ -28,6 +29,7 @@ final class DispatchModel: ObservableObject {
 
     @Published var agents: [AgentChoice] = []
     @Published var agent = ""
+    var agentTouched = false                    // the user picked one: login results no longer move it
     @Published var mode: DispatchMode = .together
     @Published var worktree: WorktreeChoice = .auto
     @Published var warnings: [DispatchWarning] = []
@@ -91,10 +93,25 @@ final class DispatchModel: ObservableObject {
             if a.installed && session { list.append(AgentChoice(id: a.id, name: a.name, installed: a.installed, session: session)) }
         }
         agents = list
+        // K5: the project's default agent → the global one → the first that is set up; the last one used wins over all
         let saved = Config.shared["sessions.agent"] as? String
-        agent = [saved, d?.pick, list.first?.id].compactMap { $0 }.first { id in list.contains { $0.id == id } } ?? ""
+        let projectDefault = projectID.flatMap { ProjectStore.shared.project(id: $0)?.defaultAgent }
+        let globalDefault = Config.shared["record.default_agent"] as? String
+        let order = [saved, projectDefault, globalDefault, d?.pick, list.first?.id].compactMap { $0 }
+        agent = order.first { id in list.contains { $0.id == id } } ?? ""
         if pickItems { await loadCandidates() } else { await loadLabels() }
         await check()
+        // the quick detect can't tell who is logged in; the full one (a few seconds) can: never default to an agent
+        // that would stop at its login screen, and say so next to its name
+        if let full = try? await Agents.shared.detect(login: true) {
+            let out = Set(full.agents.filter { $0.state == "logged_out" }.map(\.id))
+            agents = agents.map { var a = $0; a.loggedOut = out.contains(a.id); return a }
+            if !agentTouched, out.contains(agent),
+               let better = ([projectDefault, globalDefault, full.pick] + agents.map(\.id)).compactMap({ $0 })
+                .first(where: { id in agents.contains { $0.id == id && !$0.loggedOut } }) {
+                agent = better
+            }
+        }
     }
 
     func loadCandidates() async {
@@ -181,7 +198,11 @@ struct DispatchView: View {
                         Text(TL("dispatch.agent.none")).foregroundStyle(.secondary).font(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
-                        Picker("", selection: $m.agent) { ForEach(m.agents) { Text($0.name).tag($0.id) } }
+                        Picker("", selection: Binding(get: { m.agent }, set: { m.agent = $0; m.agentTouched = true })) {
+                            ForEach(m.agents) { a in
+                                Text(a.loggedOut ? Loc.t("dispatch.agent.logged_out", table: "Terminal", a.name) : a.name).tag(a.id)
+                            }
+                        }
                             .labelsHidden().fixedSize()
                     }
                 }
