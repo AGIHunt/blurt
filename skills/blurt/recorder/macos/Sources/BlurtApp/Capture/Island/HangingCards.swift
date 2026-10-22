@@ -386,6 +386,15 @@ final class HangingCards: NSObject {
     /// Where the threads come out (the island's bottom edge, tucked in a little), in panel coordinates.
     private var threadTop: CGFloat { anchor.y - HangingCards.below - 3 }
 
+    /// Where a card's thread comes out of the island: straight above it where the island is wide enough (a notch),
+    /// else drawn in towards it, so the threads of a narrow pill fan out like a chime and none hangs from thin air.
+    private func threadX(_ x: CGFloat) -> CGFloat {
+        guard let s = screen else { return x }
+        let f = island.frameOnScreen
+        let inset = min(f.height / 2, f.width / 2)
+        return min(max(x, f.minX - s.frame.minX + inset), f.maxX - s.frame.minX - inset)
+    }
+
     /// A card's resting top edge: the shortest thread plus its slack, shortened while hovered.
     private func rest(_ c: HangingCard) -> CGFloat { anchor.y + c.slack - 6 * c.lift.value }
 
@@ -698,7 +707,7 @@ final class HangingCards: NSObject {
             stack.position = CGPoint(x: stack.position.x, y: first.grip.value)
             let k = reeled(first)
             stack.opacity = Float(k)
-            drawThread(stackThread, from: CGPoint(x: stack.position.x, y: threadTop), to: CGPoint(x: stack.position.x, y: first.grip.value))
+            drawThread(stackThread, from: CGPoint(x: threadX(stack.position.x), y: threadTop), to: CGPoint(x: stack.position.x, y: first.grip.value))
             stackClasp.position = CGPoint(x: stack.position.x, y: first.grip.value + 0.5)
             stackClasp.opacity = Float(k)
         }
@@ -742,6 +751,7 @@ final class HangingCards: NSObject {
         c.root.transform = t
         c.root.opacity = Float(c.flying || c.dragging ? 0 : c.opacity * min(1, k * 1.4))
         // the thread: from inside the island to the clasp — or after the dragged card, springing back once it snapped
+        let tx = threadX(gx)
         var end = CGPoint(x: clasp.x, y: y + 0.5)
         var show: CGFloat = 1
         if let u = c.unreel {
@@ -753,15 +763,15 @@ final class HangingCards: NSObject {
             if let snapped = tt.snapped {
                 let f = CGFloat((now - snapped) / 0.32)
                 let back = Ease.outBack(f, 1.2)
-                end = CGPoint(x: tt.from.x + (gx - tt.from.x) * back, y: tt.from.y + (top - tt.from.y) * back)
-                if f >= 1 { c.tether = nil; end = CGPoint(x: gx, y: top) }
+                end = CGPoint(x: tt.from.x + (tx - tt.from.x) * back, y: tt.from.y + (top - tt.from.y) * back)
+                if f >= 1 { c.tether = nil; end = CGPoint(x: tx, y: top) }
             } else {
                 end = tt.end
             }
         } else if c.dragging {
-            end = CGPoint(x: gx, y: top)
+            end = CGPoint(x: tx, y: top)
         }
-        drawThread(c.thread, from: CGPoint(x: gx, y: top), to: CGPoint(x: gx + (end.x - gx) * show, y: top + (end.y - top) * show))
+        drawThread(c.thread, from: CGPoint(x: tx, y: top), to: CGPoint(x: tx + (end.x - tx) * show, y: top + (end.y - top) * show))
         c.clasp.opacity = c.dragging || show < 0.98 ? 0 : 1
         c.card.shadowRadius = 12 + 6 * c.lift.value
         c.card.shadowOffset = CGSize(width: 0, height: 6 + 4 * c.lift.value)
@@ -786,7 +796,7 @@ final class HangingCards: NSObject {
             let s = 1 - 0.8 * k
             c.root.transform = CATransform3DScale(CATransform3DMakeRotation(c.theta * (1 - k) * .pi / 180, 0, 0, 1), s, s, 1)
             c.root.opacity = Float(raw > 0.8 ? (1 - raw) / 0.2 : 1)
-            drawThread(c.thread, from: CGPoint(x: p.x, y: top), to: CGPoint(x: p.x, y: max(top, p.y)))
+            drawThread(c.thread, from: CGPoint(x: threadX(p.x), y: top), to: CGPoint(x: p.x, y: max(top, p.y)))
         } else {
             // the thread lets go: the card drops with a turn and a fade; the empty thread springs back up
             let e = raw * raw
@@ -797,7 +807,8 @@ final class HangingCards: NSObject {
             c.root.opacity = Float(1 - raw)
             c.clasp.opacity = 0                 // the clasp stays on the thread
             let back = Ease.outCubic(min(1, raw * 1.8))
-            drawThread(c.thread, from: CGPoint(x: l.from.x, y: top), to: CGPoint(x: l.from.x, y: l.from.y + (top - l.from.y) * back))
+            let tx = threadX(l.from.x)
+            drawThread(c.thread, from: CGPoint(x: tx, y: top), to: CGPoint(x: l.from.x + (tx - l.from.x) * back, y: l.from.y + (top - l.from.y) * back))
         }
     }
 
@@ -981,7 +992,7 @@ final class HangingCards: NSObject {
         guard let c = dragging, let f = panel?.frame, var t = c.tether, t.snapped == nil else { return }
         // the drag image's top edge, where the thread still holds it
         let end = CGPoint(x: p.x - f.minX, y: f.maxY - p.y - c.size.height / 2)
-        let top = CGPoint(x: c.x.value - c.size.width / 2 + c.gripX, y: threadTop)
+        let top = CGPoint(x: threadX(c.x.value - c.size.width / 2 + c.gripX), y: threadTop)
         if hypot(end.x - top.x, end.y - top.y) > (anchor.y + c.slack - top.y) + 44 || reduceMotion {
             t.snapped = CACurrentMediaTime()       // stretched as far as it goes: it snaps and springs back
             t.from = t.end
