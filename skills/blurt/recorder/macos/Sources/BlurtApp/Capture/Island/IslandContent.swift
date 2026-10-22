@@ -282,6 +282,9 @@ final class IslandContent: NSView {
 
     /// The ears row: its height, and the room on each side of the notch (the whole width without one).
     private var row: CGFloat { island?.rowHeight ?? 30 }
+    /// The open island's first row (home, drawer): the ears row beside a notch; on a capsule, whose top edge shows,
+    /// a little taller, so its controls clear the 22 pt corners instead of grazing them.
+    private var firstRow: CGFloat { (island?.notchGap ?? 0) > 0 ? row : row + 8 }
     private func side(_ w: CGFloat) -> CGFloat { island.map { $0.notchGap > 0 ? (w - $0.notchGap) / 2 : w / 2 } ?? w / 2 }
 
     func rebuild() {
@@ -340,6 +343,7 @@ final class IslandContent: NSView {
     private func buildHome(_ w: CGFloat) -> CGFloat {
         guard let i = island else { return 0 }
         // the ears row: the project on the left of the notch, record / snap / voice on its right
+        let row = firstRow
         let rowY = (row - 26) / 2
         let c = chip(w)
         place(c, x: 12, y: rowY)
@@ -548,6 +552,7 @@ final class IslandContent: NSView {
                 .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12.5, weight: .medium).applying(.init(paletteColors: [c])))
         }
         // the ears row: what this is on the left of the notch, the filter typed so far on its right
+        let row = firstRow
         let head = label(Loc.t(d == .drop ? "capture.drawer.drop_title" : "capture.drawer.switch_title", table: "Capture"), size: 11, weight: .semibold, color: ink3)
         place(head, x: 20, y: (row - head.frame.height) / 2, w: min(head.frame.width, side(w) - 26))
         if !query.isEmpty {
@@ -717,8 +722,10 @@ final class IslandContent: NSView {
             right += b.frame.width + 10
         }
         toastWidth = min(Island.openW, max(240, x + tw + right))
-        place(l, x: x, y: top + 13, w: min(tw, toastWidth - x - right))
-        if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: top + 9) }
+        // text, key badge and button share one centre line (the row is 46 high)
+        let mid = top + 23
+        place(l, x: x, y: (mid - l.frame.height / 2).rounded(), w: min(tw, toastWidth - x - right))
+        if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: (mid - b.frame.height / 2).rounded()) }
         return top + 46
     }
 
