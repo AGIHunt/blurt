@@ -2,6 +2,7 @@
 //   dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "…"}; every answer is one JSON line on stdout.
 //   settings PANE | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
 //   route URL                    parse a blurt:// URL (no action)         url URL   handle it like macOS would
+//   mainopen PATH[|PATH…]       open folders as projects (the Open panel's OK)
 //   mainstub                     a stand-in main window that reports reveal(uid:) / reveal(session:) (until WP5 lands)
 //   spotlight-index              index now → {"count"}                    spotlight-search TEXT → {"found": [uid…]}
 //   spotlight-clear              remove our domain's entries
@@ -131,6 +132,9 @@ enum SelfTests {
             c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
             c.window?.makeFirstResponder(c.list.table)
             out(["selected": c.list.selectedIDs])
+        case "mainopen":                // mainopen PATH[|PATH…]: what the Open panel's OK / a folder drop does
+            MainWindowController.shared.show()
+            MainWindowController.shared.openFolders(arg.split(separator: "|").map { URL(fileURLWithPath: String($0)) })
         case "mainjob":                 // mainjob ID: the job's detail
             MainWindowController.shared.selectJob(arg)
             out(["job": arg, "found": JobStore.shared.job(arg) != nil])
