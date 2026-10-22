@@ -6,7 +6,7 @@
 //   spotlight-index              index now → {"count"}                    spotlight-search TEXT → {"found": [uid…]}
 //   spotlight-clear              remove our domain's entries
 //   service TEXT                 "Add to Blurt" with TEXT on a private pasteboard, through the real service method
-//   fix UIDS [AGENT bg|it]       the "fix with an agent" panel (autostarted when AGENT is given)
+//   fix UIDS                     the dispatch panel for those items (agent, mode, worktree)
 //   peck TITLE | peckframes DIR [dark] | perms
 import AppKit
 import Carbon.HIToolbox
