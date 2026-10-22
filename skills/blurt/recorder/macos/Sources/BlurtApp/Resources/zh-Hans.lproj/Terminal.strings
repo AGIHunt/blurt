@@ -109,6 +109,8 @@
 "finish.done.pr" = "PR 已创建。";
 "finish.done.discard" = "已丢弃。";
 "finish.done.keep" = "已保留，之后可以在会话里再次查看。";
+"finish.done.pushed" = "分支已推送到 origin，但没有自动开 PR，请到你的 Git 托管平台上开。";
+"finish.done.compare" = "分支已推送，在浏览器里完成 PR：";
 "finish.done.verify" = "相关条目在等你验证。";
 
 /* 系统通知 */
@@ -207,4 +209,5 @@
 "install.manual" = "手动（%1$@）：%2$@";
 "finish.state.merge" = "已合并";
 "finish.state.pr" = "已开 PR";
+"finish.state.pushed" = "已推送";
 "finish.state.discard" = "已丢弃";

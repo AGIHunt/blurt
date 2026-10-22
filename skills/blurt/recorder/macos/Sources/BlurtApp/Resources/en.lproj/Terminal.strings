@@ -109,6 +109,8 @@
 "finish.done.pr" = "Pull request opened.";
 "finish.done.discard" = "Discarded.";
 "finish.done.keep" = "Kept. You can review it again from the session.";
+"finish.done.pushed" = "Branch pushed to origin. No pull request was opened — open one on your Git host.";
+"finish.done.compare" = "Branch pushed. Finish the pull request in your browser:";
 "finish.done.verify" = "Its items are waiting for you to verify.";
 
 /* Notifications */
@@ -207,4 +209,5 @@
 "install.manual" = "By hand (%1$@): %2$@";
 "finish.state.merge" = "Merged";
 "finish.state.pr" = "Pull request opened";
+"finish.state.pushed" = "Pushed";
 "finish.state.discard" = "Discarded";

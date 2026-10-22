@@ -47,6 +47,12 @@ final class FinishModel: ObservableObject {
         do {
             let o = try await AgentSessions.shared.finish(job: job, action: action)
             prURL = o["pr"] as? String ?? o["compare"] as? String
+            // without gh (or a host it knows) nothing was opened: say what did happen
+            if action == "pr", o["pr"] as? String == nil {
+                phase = .done(prURL == nil ? "pushed" : "compare")
+                emit(["event": "session_finish", "job": job, "action": action, "pr": NSNull()])
+                return
+            }
             phase = .done(action)
             emit(["event": "session_finish", "job": job, "action": action])
         } catch {
@@ -110,7 +116,7 @@ struct FinishView: View {
                 if let u = m.prURL, let url = URL(string: u) {
                     Link(u, destination: url).font(.callout).lineLimit(1).truncationMode(.middle)
                 }
-                if action == "merge" || action == "pr" {
+                if ["merge", "pr", "pushed", "compare"].contains(action) {
                     Text(TL("finish.done.verify")).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack { Spacer(); Button(TL("common.done"), action: close).keyboardShortcut(.defaultAction) }

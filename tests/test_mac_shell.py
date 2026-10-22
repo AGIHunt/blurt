@@ -64,6 +64,13 @@ class Layout(unittest.TestCase):
         self.assertIn("func endSessionThen(", src)
         self.assertIn("AgentSessions.shared.stop(job: job, kill: false)", src)
 
+    def test_open_pull_request_says_when_it_only_pushed(self):
+        # e2e v0.7: with a remote gh doesn't know, sessions.py pushed and returned pr: null, compare: null — the panel
+        # still said "Pull request opened." and the session row "Pull request opened"
+        src = (MAC / "Sources/BlurtApp/Terminal/FinishPanel.swift").read_text()
+        self.assertIn('phase = .done(prURL == nil ? "pushed" : "compare")', src)
+        self.assertIn('"finish.state.pushed"', (MAC / "Sources/BlurtApp/Terminal/SessionsViews.swift").read_text())
+
     def test_no_review_window_and_nothing_opens_by_itself(self):
         # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
         src = MAC / "Sources" / "BlurtApp"

@@ -144,7 +144,8 @@ struct SessionHeader: View {
                             Text(r.agentName)
                             if let f = r.agent.finishAction, f != "keep" {
                                 Text("·").foregroundStyle(.tertiary)
-                                Text(TL("finish.state.\(f)"))
+                                // "pr" without a pull request url = only pushed (no gh, or a host it doesn't know)
+                                Text(TL(f == "pr" && r.agent.finishResult?["pr"] as? String == nil ? "finish.state.pushed" : "finish.state.\(f)"))
                             } else if let b = r.agent.branch {
                                 Text("·").foregroundStyle(.tertiary)
                                 Label(b, systemImage: "arrow.triangle.branch").labelStyle(.titleAndIcon)
