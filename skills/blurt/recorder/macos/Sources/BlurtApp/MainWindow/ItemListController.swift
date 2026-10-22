@@ -129,6 +129,7 @@ final class EmptyStateView: NSView {
     func show(symbol: String?, image: NSImage? = nil, title t: String, message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
         icon.image = image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         icon.isHidden = icon.image == nil || busy
+        icon.setAccessibilityElement(false); icon.cell?.setAccessibilityElement(false)      // decoration (an SF Symbol's own name, e.g. "split view", says nothing here)
         busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
         title.stringValue = t
         message.stringValue = m

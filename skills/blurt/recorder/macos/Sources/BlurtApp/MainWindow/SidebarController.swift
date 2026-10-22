@@ -76,6 +76,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         open.contentTintColor = .secondaryLabelColor
         open.font = .systemFont(ofSize: 12)
         open.toolTip = T("main.sidebar.open_folder.tip")
+        open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
         let root = NSView()
         for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([

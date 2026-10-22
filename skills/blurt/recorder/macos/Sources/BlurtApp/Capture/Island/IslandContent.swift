@@ -302,6 +302,7 @@ final class IslandContent: NSView {
         let chev = NSImageView(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [ink2])))!)
         chev.frame = NSRect(x: b.frame.width - 18, y: 8, width: 10, height: 10)
+        chev.setAccessibilityElement(false); chev.cell?.setAccessibilityElement(false)      // decoration: the button already says what it does
         b.addSubview(chev)
         return b
     }
