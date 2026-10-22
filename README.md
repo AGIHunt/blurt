@@ -59,7 +59,7 @@ The first run picks a speech model for your machine and installs the **Blurt** m
 3. Click **Finish** and get back to work. Speech is transcribed locally while you talk, so the transcript is done when
    you stop; your agent writes the items as text and the review page opens in about a minute, with frames and code
    pointers streaming in while you review.
-4. **Triage like a feed**: `A` keep · `X` drop · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
+4. **Triage like a feed**: `A` keep · `X` discard · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".
 
 **Snap mode:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go: the shot
@@ -73,6 +73,34 @@ your agent can process them with the code. Turn on *After recording → Process 
 gets processed in the background (Claude Code first; if it isn't installed or logged in, Codex, then Kimi Code,
 OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready. Every shortcut can be
 changed in *Shortcuts…* (`⌘,` in the menu).
+
+## Item lifecycle
+
+Every item has **one** state. The two that need you — **New** and **To verify** — make up your Inbox; everything
+else is either waiting on someone or finished.
+
+```
+New ──keep──▶ To do ──hand off──▶ Handed off ──▶ In progress ──▶ To verify ──mark as done──▶ Done
+                ▲                      │              │              │
+                ├── take back ─────────┴──────────────┘              │
+                └── send back ───────────────────────────────────────┘
+```
+
+| State | What it means |
+|---|---|
+| **New** | Just captured; you haven't looked at it yet. |
+| **To do** | You kept it. |
+| **Handed off** | Given to an agent: started in Blurt, or an instruction copied to your own agent. |
+| **In progress** | The agent is working on it. |
+| **To verify** | The agent says it's finished. Check it, then mark it done — or send it back. |
+| **Done** | You confirmed it. |
+| **Won't do** | You decided not to. Possible from any state that isn't finished; out of your inbox, kept on record. |
+| **Discarded** | The trash. Restore puts it back where it was. |
+
+An agent can only move an item to *In progress* or *To verify*: "fixed" means *to verify* until you say it's done.
+Click an item's status ring to see what you can do next — only the steps that make sense right now. Keys:
+`A` keep · `D` done · `R` back (send back, take back, reopen or restore) · `W` won't do · `X` discard · `S` the menu.
+More in the [user guide](docs/guide.md).
 
 ## Solo or team
 
