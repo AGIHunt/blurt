@@ -274,6 +274,16 @@ final class HangingCards: NSObject {
         k.shadowOffset = CGSize(width: 0, height: 0.5)
     }
 
+    /// A plain string with the layer's own font and colour: an NSAttributedString in a CATextLayer with a truncation
+    /// mode draws nothing at all once it overflows (macOS 26), so the voice cards' words and long tips went blank.
+    static func setText(_ l: CATextLayer, _ text: String, font: NSFont, color: NSColor) {
+        l.string = text
+        l.font = font
+        l.fontSize = font.pointSize
+        l.foregroundColor = color.cgColor
+    }
+    private func setText(_ l: CATextLayer, _ text: String, font: NSFont, color: NSColor) { HangingCards.setText(l, text, font: font, color: color) }
+
     private func style(_ c: HangingCard) {
         let dark = isDarkMode
         styleThread(c.thread, c.clasp)
@@ -285,8 +295,8 @@ final class HangingCards: NSObject {
             let words = s.words
             let dur = HangingCards.clock(s.duration ?? 0)
             let text = words ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
-            c.title.string = NSAttributedString(string: text, attributes: [
-                .font: f, .foregroundColor: words == nil ? NSColor(white: dark ? 1 : 0, alpha: 0.5) : (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1))])
+            setText(c.title, text, font: f,
+                    color: words == nil ? NSColor(white: dark ? 1 : 0, alpha: 0.5) : (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1)))
         } else {
             c.card.backgroundColor = NSColor(white: 0.5, alpha: 0.2).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.12)).cgColor
@@ -873,14 +883,16 @@ final class HangingCards: NSObject {
         let w: CGFloat = 260
         let dark = isDarkMode
         let text = c.shot.words ?? ""
+        let tf = NSFont.systemFont(ofSize: 12.5)
         let attr = NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
+            .font: tf, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
         let th = text.isEmpty ? 0 : min(72, ceil(attr.boundingRect(with: NSSize(width: w - 24, height: 200), options: [.usesLineFragmentOrigin]).height) + 2)
         let hasVoice = c.shot.voiceURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let h = 12 + th + (hasVoice ? (th > 0 ? 8 : 0) + 22 : 0) + 12
         tip.bounds = CGRect(x: 0, y: 0, width: w, height: h)
         tipText.frame = CGRect(x: 12, y: 12, width: w - 24, height: th)
-        tipText.string = attr
+        setText(tipText, text, font: tf,
+                color: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1))
         tipPlay.isHidden = !hasVoice
         if hasVoice {
             tipPlay.frame = CGRect(x: 12, y: 12 + th + (th > 0 ? 8 : 0), width: 22, height: 22)

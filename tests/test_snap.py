@@ -210,5 +210,20 @@ class CaptureStrings(unittest.TestCase):
         self.assertEqual(sorted(used - tables), [])
 
 
+class TruncatingTextLayers(unittest.TestCase):
+    """A CATextLayer with a truncationMode draws nothing once an NSAttributedString in it overflows (macOS 26): the
+    voice cards hung blank. Such layers get a plain string plus font / fontSize / foregroundColor."""
+
+    def test_no_attributed_string_in_a_truncating_text_layer(self):
+        import re
+        bad = []
+        for f in (MAC / "Sources" / "BlurtApp").rglob("*.swift"):
+            src = f.read_text(encoding="utf-8")
+            for var in set(re.findall(r"(\b[\w.]+)\.truncationMode\s*=\s*\.", src)):
+                if re.search(re.escape(var) + r"\.string\s*=\s*(NSAttributedString|attr\b)", src):
+                    bad.append(f"{f.name}: {var}")
+        self.assertEqual(bad, [])
+
+
 if __name__ == "__main__":
     unittest.main()
