@@ -207,7 +207,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            toast(T("app.toast.welcome", hk(.toggleRecord), hk(.openMenu)), icon: .chicken)
+            toast(T("app.toast.welcome", hk(.toggleRecord), hk(.openMenu)), icon: .blurt)   // the menu-bar hen: where to find blurt
         } else {
             Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
         }

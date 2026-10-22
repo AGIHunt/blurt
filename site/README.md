@@ -19,7 +19,8 @@ files it expects).
 
 `assets/promo.mp4` is a 1280-wide re-encode of `../assets/blurt-promo.mp4`, `assets/poster.jpg` its title card at
 0:31; `assets/media/chicken.*` is a Veo-generated loop keyed to alpha (`.mov` HEVC for Safari, `.webm` VP9 elsewhere);
-`assets/og.png` is the social card; `assets/perch*.jpg` are crops of the real app's perch (below the menu bar, so no
+`assets/og.png` is the social card (its logo slot, `logo.png`, `favicon.png` and `apple-touch-icon.png` are rendered
+by `../assets/brand/build.py` from the brand SVGs); `assets/perch*.jpg` are crops of the real app's perch (below the menu bar, so no
 personal menu-bar icons), light and dark.
 
 The snap-mode section is a playable demo with no assets: the "screenshot" is a scaled DOM clone of the mock billing

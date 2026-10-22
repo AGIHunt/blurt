@@ -9,6 +9,7 @@
 //   service TEXT                 "Add to Blurt" with TEXT on a private pasteboard, through the real service method
 //   fix UIDS                     the dispatch panel for those items (agent, mode, worktree)
 //   peck TITLE | peckframes DIR [dark] | perms
+//   menuglyph DIR                the menu-bar hen (rest / listen / hop; light / dark; 1x / 2x) as PNGs
 import AppKit
 import Carbon.HIToolbox
 import BlurtCore
@@ -104,6 +105,8 @@ enum SelfTests {
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.contains("dark"))])
+        case "menuglyph":               // menuglyph DIR: the menu-bar hen as the status item draws it, as PNGs
+            out(["files": MenuGlyph.renderPoses(to: URL(fileURLWithPath: arg.isEmpty ? "/tmp/menuglyph" : arg))])
         case "install":                 // install ID: the dry-run preview (sheet in Settings → Agents); install-apply: confirm it
             SettingsController.shared.show(pane: "agents")
             Task { @MainActor in
