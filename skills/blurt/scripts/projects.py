@@ -7,6 +7,8 @@ is its only writer (lock $BLURT_HOME/.projects.lock, atomic replace). The apps r
   projects.py list                         → {"ok","current","projects":[Row],"inbox":Row}
   projects.py add PATH [--name N] [--key K] [--description D]   open a folder: register it, create its store
                                            (<PATH>/.blurt, kept out of git via .git/info/exclude) → {"ok","project","created"}
+                                           A folder with a store whose project moved away (renamed on disk) or was
+                                           removed is that project again → + "relocated": the old path
   projects.py remove ID                    unregister only — never deletes .blurt → {"ok"}
   projects.py set ID --json '{patch}'      name description default_agent worktree worktree_root modules hints key
                                            pinned → {"ok","project"}   (key: only while the project has no items)
@@ -27,7 +29,9 @@ list: {"id": "inbox", "key": "IN", "path": $BLURT_WORKSPACE/inbox}. Errors: {"ok
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
+import io
 import json
 import locale
 import os
@@ -300,19 +304,45 @@ def cmd_add(path: str, name=None, key=None, description=None) -> dict:
     if folder == real(st.inbox_root()) or folder == real(blurt_home()):
         raise ProjectError(f"{folder} is Blurt's own folder", "reserved")
     pid = project_id(folder)
-    created = False
+    created, relocated = False, None
+    # a folder that already has a store keeps the project its items belong to: moved or renamed on disk (the
+    # registered path is gone), or removed from Blurt earlier — not a new, empty project next to the old one
+    own = st.Store(folder / ".blurt")
+    sid = own.meta.get("project") if own.exists else None
     with editing() as reg:
         e = next((p for p in reg["projects"] if p.get("id") == pid), None)
+        if e is None and isinstance(sid, str) and sid and sid != st.INBOX and sid != pid:
+            old = next((p for p in reg["projects"] if p.get("id") == sid), None)
+            if old is not None and not Path(old["path"]).is_dir():
+                relocated = old["path"]
+                old["path"] = str(folder)
+                old["last_used"] = now_iso(timespec="milliseconds")
+                e = old
+            elif old is None:
+                mine = own.meta.get("key")
+                keep = mine if mine and mine not in {p.get("key") for p in reg["projects"]} else None
+                e = _new_entry(folder, reg, name, key or keep, description)
+                e["id"] = sid
+                reg["projects"].append(e)
+                created = True
         if e is None:
             e = _new_entry(folder, reg, name, key, description)
             reg["projects"].append(e)
             created = True
-        else:
+        elif not created and relocated is None:
             e["last_used"] = now_iso(timespec="milliseconds")
     s = store_of(e)
     s.ensure(e["id"], e["key"])
     st.ensure_git_exclude(folder)
-    return {"ok": True, "project": row(e), "created": created}
+    if (relocated or (created and e["id"] != pid)) and (blurt_home() / "index.db").is_file() \
+            and not os.environ.get("BLURT_NO_INDEX"):
+        try:  # the items are still indexed at the old path: point the index at the new one (best effort, as items.py)
+            import index  # noqa: PLC0415
+            with contextlib.redirect_stdout(io.StringIO()):
+                index.update_paths([s.root] + ([Path(relocated) / ".blurt"] if relocated else []))
+        except (Exception, SystemExit):
+            pass
+    return {"ok": True, "project": row(e), "created": created, **({"relocated": relocated} if relocated else {})}
 
 
 def cmd_remove(pid: str) -> dict:
