@@ -236,6 +236,7 @@ final class HangingCards: NSObject {
         stackThread.zPosition = 9_998
         stack.zPosition = 9_999
         stackClasp.zPosition = 10_000
+        tip.zPosition = 10_001                        // the hovered card's note goes over its neighbours, never under
         tip.cornerRadius = 10
         tip.shadowOpacity = 0.22
         tip.shadowRadius = 10
@@ -955,7 +956,7 @@ final class HangingCards: NSObject {
             return
         }
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
-        let over = card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
+        let over = testHover != nil || card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
             || (!tip.isHidden && tip.frame.insetBy(dx: -6, dy: -10).contains(local))
         pointerOver = over
         // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc
@@ -968,7 +969,7 @@ final class HangingCards: NSObject {
             awaySince = awaySince ?? now
             if now - awaySince! >= 0.4 { awaySince = nil; retract(); return }
         }
-        let hit = dragging == nil ? card(at: local) : nil
+        let hit = testHover ?? (dragging == nil ? card(at: local) : nil)
         if hit !== hoverCard && down == nil {
             hoverCard?.hovered = false
             hoverCard = hit
@@ -1035,7 +1036,10 @@ final class HangingCards: NSObject {
         let tf = NSFont.systemFont(ofSize: 12.5)
         let attr = NSAttributedString(string: text, attributes: [
             .font: tf, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
-        let th = text.isEmpty ? 0 : min(72, ceil(attr.boundingRect(with: NSSize(width: w - 24, height: 200), options: [.usesLineFragmentOrigin]).height) + 2)
+        // at most 4 whole lines: a height between lines left a blank band above the play button once the text was cut
+        let lineH = ceil(NSLayoutManager().defaultLineHeight(for: tf))
+        let measured = ceil(attr.boundingRect(with: NSSize(width: w - 24, height: 400), options: [.usesLineFragmentOrigin]).height)
+        let th = text.isEmpty ? 0 : min(measured, 4 * lineH) + 2
         let hasVoice = c.shot.voiceURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
         let h = 12 + th + (hasVoice ? (th > 0 ? 8 : 0) + 22 : 0) + 12
         tip.bounds = CGRect(x: 0, y: 0, width: w, height: h)
@@ -1136,6 +1140,14 @@ final class HangingCards: NSObject {
         items.append((Loc.t("capture.card.edit_note", table: "Capture"), { NoteBubble.shared.begin(s, mode: .edit) }))
         items.append((Loc.t("capture.card.reveal", table: "Capture"), { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } }))
         return items
+    }
+
+    /// Tests: as if the pointer rested on capture N (lifted, its note under it) — nil lets the pointer decide again.
+    private var testHover: HangingCard?
+    func testHover(n: Int?) {
+        testHover = n.flatMap { n in cards.first { $0.shot.n == n } }
+        if testHover != nil { show() }
+        wake()
     }
 
     /// Tests: copy capture N as a click / Copy Image / Copy Text would; the menu's titles for it.

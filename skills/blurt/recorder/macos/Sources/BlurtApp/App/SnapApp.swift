@@ -3,7 +3,8 @@
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
 //     menudump [FILE]         the ⌥⇧B menu as text rows (also written to FILE), without opening it
-//     cards [show|reveal|dismiss|older]  the cards down (peek) / to stay (= ⌥⇧H) / Esc / "+N" clicked; their state, every card's rect
+//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (= ⌥⇧H) / Esc / "+N" clicked / as if the
+//                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
@@ -20,7 +21,7 @@
 //     dictation keys SCRIPT   synthetic key events into the dictation trigger, at their script times (no event tap,
 //                             nothing posted to any app): "ropt-down@0 ropt-up@120" — BlurtCore DictationTrigger.parse
 //     dictation toggle|cancel|apply|status · dictation testpad [open|close|text] (our own window with a text view,
-//                             focused: the only place a test pastes into) · dictation history [show|raw ID|item ID|query Q]
+//                             focused: the only place a test pastes into) · dictation history [show|raw ID|item ID|delete ID|query Q]
 //                             (Capture/Dictation/DictationTestHooks.swift)
 
 import AppKit
@@ -65,6 +66,7 @@ extension App {
             if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥⇧H / the ear's count / the menu
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
             if arg == "older" { hanging.showOlder() }               // = a click on the "+N" stack
+            if arg.hasPrefix("hover") { hanging.testHover(n: Int(arg.dropFirst(5).trimmingCharacters(in: .whitespaces))) }  // hover N | hover
             emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])
             emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
