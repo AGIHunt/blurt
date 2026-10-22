@@ -1,0 +1,24 @@
+# codex exec (built-in image_gen) with --image for each reference: d1a-hero.png d1a-pecking.png
+# (promo/cases/v0.7/mascot/d1-round-chick/, the approved 1A design). Sent verbatim; see gen.sh.
+Use your built-in image generation tool to create exactly ONE image (do not write code to draw it; do not create SVG; do not compose it from separate images with code). Request a landscape 1536x1024 image with a transparent background. Image brief:
+
+ANIMATION FRAME SHEET for a 2D sprite animation (frame-by-frame, like a sticker/emoji animation).
+The attached image(s) show the approved mascot: a perfectly round, plump baby chick — head and body are one soft circle like a mochi — warm butter-yellow (#FFC83D) with soft subtle shading, NO outline, a small coral (#FF5A3C) rounded-triangle beak, two small coral blush cheeks, two small dark charcoal (#2A2A2E) oval dot eyes each with a tiny white highlight, a tiny wing nub on each side, and a playful 2-feather tuft on top of the head. Reproduce EXACTLY this character — same shapes, proportions, colours, soft rendering and level of detail — in every frame. It must look like the SAME drawing reused frame after frame, with only the described change between frames (this is critical: consecutive frames must differ only by the described motion, so the animation does not flicker).
+Layout rules: ONE image, landscape 1536x1024, TRANSPARENT background (real alpha channel). The frames are arranged in a clean grid of equal cells, read left-to-right, top-to-bottom. No grid lines, no borders, no frame numbers, no labels, no text, no ground line, no ground shadow. Each frame is drawn centred in its own cell with generous empty space around it so nothing touches another cell. The chick has the SAME size in every cell (about 55% of the cell height) and sits at the SAME place in every cell (its bottom on the same invisible baseline about 18% above the cell's bottom edge, horizontally centred), unless the frame description explicitly says it moves up or down. No legs, no feet, no claws, no teeth; cute, premium, Apple-quality flat illustration.
+
+ANIMATION: "peck the bug" — the chick spots a tiny cute ladybug and pecks it; the ladybug vanishes with a tiny sparkle. One-shot, 12 frames, grid of 4 columns x 3 rows.
+The chick sits slightly LEFT of the cell centre in every frame (its centre about 42% across the cell). The ladybug: a tiny cute cartoon ladybug, coral-red (#FF5A3C) round shell with 4-5 charcoal dots, a small charcoal head with two tiny white dot eyes and a little smile, friendly, NOT gross, NOT realistic; about one sixth of the chick's size, sitting on the baseline to the right of the chick (its centre about 72% across the cell).
+1. The chick at rest, eyes open, the ladybug on the baseline to the right.
+2. The chick turns its eyes and beak down-right to look at the ladybug, curious.
+3. Anticipation: the chick leans back a little (rotated about 8 degrees away from the bug), eyes on the bug.
+4. PECK: the chick leans forward and down (rotated about 25 degrees towards the bug) so the beak tip gently touches the ladybug; tiny short impact lines next to the bug.
+5. The chick back up to about 8 degrees forward lean, the ladybug a little squished but smiling.
+6. PECK again: the chick leans forward 25 degrees, beak tip touches the ladybug.
+7. The chick back upright; the ladybug turns into a small puff: a coral-and-yellow burst of four tiny four-point sparkle stars where the ladybug was (the ladybug itself is gone).
+8. The chick upright, eyes closed as happy arcs (^ ^); the sparkles smaller and drifting up.
+9. Same as 8, only one tiny sparkle left, fading.
+10. The chick upright, happy arcs, no sparkles, nothing where the ladybug was.
+11. The chick upright, eyes open, content smile.
+12. The chick at rest, eyes open (like frame 1 but without the ladybug).
+
+After the image is generated, copy the generated PNG file to $RAW/peck.png (use cp from ~/.codex/generated_images). Reply only with the final path.

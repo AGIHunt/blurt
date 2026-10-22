@@ -1,0 +1,24 @@
+# codex exec (built-in image_gen) with --image for each reference: d1a-hero.png d1a-happy.png
+# (promo/cases/v0.7/mascot/d1-round-chick/, the approved 1A design). Sent verbatim; see gen.sh.
+Use your built-in image generation tool to create exactly ONE image (do not write code to draw it; do not create SVG; do not compose it from separate images with code). Request a landscape 1536x1024 image with a transparent background. Image brief:
+
+ANIMATION FRAME SHEET for a 2D sprite animation (frame-by-frame, like a sticker/emoji animation).
+The attached image(s) show the approved mascot: a perfectly round, plump baby chick — head and body are one soft circle like a mochi — warm butter-yellow (#FFC83D) with soft subtle shading, NO outline, a small coral (#FF5A3C) rounded-triangle beak, two small coral blush cheeks, two small dark charcoal (#2A2A2E) oval dot eyes each with a tiny white highlight, a tiny wing nub on each side, and a playful 2-feather tuft on top of the head. Reproduce EXACTLY this character — same shapes, proportions, colours, soft rendering and level of detail — in every frame. It must look like the SAME drawing reused frame after frame, with only the described change between frames (this is critical: consecutive frames must differ only by the described motion, so the animation does not flicker).
+Layout rules: ONE image, landscape 1536x1024, TRANSPARENT background (real alpha channel). The frames are arranged in a clean grid of equal cells, read left-to-right, top-to-bottom. No grid lines, no borders, no frame numbers, no labels, no text, no ground line, no ground shadow. Each frame is drawn centred in its own cell with generous empty space around it so nothing touches another cell. The chick has the SAME size in every cell (about 55% of the cell height) and sits at the SAME place in every cell (its bottom on the same invisible baseline about 18% above the cell's bottom edge, horizontally centred), unless the frame description explicitly says it moves up or down. No legs, no feet, no claws, no teeth; cute, premium, Apple-quality flat illustration.
+
+ANIMATION: "happy / done" — a joyful little celebration hop. One-shot, 12 frames, grid of 4 columns x 3 rows.
+The hop moves the WHOLE chick up from the baseline and back down, with squash and stretch. Sparkles are small four-point stars in warm yellow (#FFC83D) and coral (#FF5A3C).
+1. Calm idle at the baseline, eyes open.
+2. Anticipation: body squashed (6% wider, 6% shorter) at the baseline, eyes squeezed into happy arcs (^ ^).
+3. Taking off: body stretched (5% taller, narrower), 6% above the baseline, both wing nubs starting to rise, eyes happy arcs, beak open in joy.
+4. In the air: 14% above the baseline, normal round shape, both wing nubs raised high, happy arcs, beak open, two small sparkles appear beside the head.
+5. Top of the hop: 16% above the baseline, wings up, three sparkles around the head.
+6. Coming down: 10% above the baseline, wings up, sparkles bigger.
+7. Landing: at the baseline, body squashed (6% wider, 6% shorter), wings lowering, sparkles still around.
+8. Settling: at the baseline, normal shape, happy arcs, beak open smile, sparkles drifting outwards.
+9. Same as 8, sparkles smaller and lighter.
+10. At the baseline, eyes still happy arcs, beak closed smile, one tiny sparkle left.
+11. At the baseline, eyes open and content, no sparkles.
+12. Calm idle at the baseline, eyes open (same as frame 1).
+
+After the image is generated, copy the generated PNG file to $RAW/happy.png (use cp from ~/.codex/generated_images). Reply only with the final path.

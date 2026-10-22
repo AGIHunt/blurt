@@ -1,6 +1,7 @@
 // The island on Windows / Linux (v0.7 contract K7): a floating pill at the top centre of the screen — the same
 // component as the macOS notch island, with lighter motion. Collapsed it shows only what is happening (recording
-// time, a voice note, the hatching egg while captures are organized); hovering it (or the hotkeys) opens it: the
+// time, a voice note with the listening chick, the hatching egg while captures are organized — the colour mascot,
+// @blurt/icons/mascot); hovering it (or the hotkeys) opens it: the
 // current project and the switcher, record / screenshot / voice, the jobs under way, the agent sessions that need
 // you, what waits for review. Unfiled captures hang under it as cards, each on a thin thread with a small clasp in the
 // brand colour, the lengths a little uneven like a wind chime; drag one onto a project to file it.
@@ -8,6 +9,8 @@
 // The window is the full width of the screen and click-through except over what is drawn (we report those rects).
 // Rust (apps/desktop/src-tauri/src/island.rs) sends `state` / `cards` / … ops and gets actions back.
 import { iconSvg, type IconName } from '@blurt/icons/core';
+import { mascotHtml } from '@blurt/icons/mascot';
+import '@blurt/icons/mascot.css';
 import { meterBars } from './clock';
 import {
   EV,
@@ -114,12 +117,12 @@ function pillHtml(): string {
       <span class="ear r">${ic('camera', 14)}<span class="num">${num(r.shots)}</span>${attnDot()}</span>`;
   }
   if (S.voice) {
-    return `<span class="ear l"><span class="wave" data-wave>${'<i></i>'.repeat(5)}</span></span>
+    return `<span class="ear l">${ic('chicken', 14, 'tilt')}<span class="wave" data-wave>${'<i></i>'.repeat(5)}</span></span>
       <span class="ear r"><span class="time" data-clock="voice">${clock(voiceElapsed())}</span></span>`;
   }
   const name = S.project ? esc(S.project.name) : esc(t('project.auto'));
   const right = [
-    S.hatching ? `<span class="egg"><span class="wobble">${ic('egg', 15)}</span><span class="num">${num(S.hatching)}</span></span>` : '',
+    S.hatching ? `<span class="egg">${mascotHtml('wobble', { size: 24 })}<span class="num">${num(S.hatching)}</span></span>` : '',
     S.toReview ? `<span class="badge" title="${esc(plural('island.open_inbox', S.toReview))}">${num(S.toReview)}</span>` : '',
     attnDot(),
   ].join('');
@@ -130,7 +133,8 @@ function toastHtml(): string {
   const tt = toast!;
   if (tt.kind === 'sorted') {
     const msg = tt.n ? plural('island.toast.sorted', tt.n) : t('island.toast.sorted_none');
-    return `<button class="toast ok" data-a="open.inbox">${ic('hatched', 15)}<span>${esc(msg)}</span></button>`;
+    // the egg cracks and the chick pops out (one-shot: the pill only re-renders when its markup changes)
+    return `<button class="toast ok" data-a="open.inbox">${mascotHtml('hatching', { size: 26 })}<span>${esc(msg)}</span></button>`;
   }
   const what = tt.type ? t(`job.type.${tt.type}`) : '';
   const msg = tt.kind === 'failed' ? t('island.toast.failed', { what }) : t(`error.${tt.code ?? 'unknown'}`);
@@ -161,7 +165,7 @@ function jobRow(j: JobRow) {
   const step = j.step ? t(`job.step.${j.step}`) : '';
   const p = typeof j.progress === 'number' ? Math.max(0.04, Math.min(1, j.progress)) : null;
   return `<div class="row job">
-    <span class="lead${j.type === 'process' ? ' wobble' : ''}">${ic(JOB_ICON[j.type] ?? 'process', 15)}</span>
+    <span class="lead">${j.type === 'process' ? mascotHtml('wobble', { size: 24 }) : ic(JOB_ICON[j.type] ?? 'process', 15)}</span>
     <span class="txt"><span class="title">${esc(title)}</span><span class="sub">${esc(step)}</span></span>
     <span class="bar${p === null ? ' indet' : ''}"><i style="${p === null ? '' : `width:${(p * 100).toFixed(0)}%`}"></i></span></div>`;
 }
@@ -210,7 +214,7 @@ function recBody() {
 }
 
 function voiceBody() {
-  return `<div class="head voice"><span class="wave big" data-wave>${'<i></i>'.repeat(9)}</span>
+  return `<div class="head voice">${mascotHtml('listening', { size: 40 })}<span class="wave big" data-wave>${'<i></i>'.repeat(9)}</span>
       <span class="txt"><span class="title">${esc(t('island.voice.listening'))}</span><span class="sub">${esc(t('island.voice.hint'))}</span></span>
       <span class="grow"></span><span class="time" data-clock="voice">${clock(voiceElapsed())}</span>
       <button class="btn primary" data-a="voice.stop">${esc(t('island.voice.done'))}</button></div>`;
@@ -268,13 +272,19 @@ function bodyHtml() {
 
 // ------------------------------------------------------------------ render
 let lastBody = '';
+let lastPill = '';
 function render() {
   const shown = visible();
   const expanded = shown && (open || !!drawer);
   island.classList.toggle('shown', shown);
   island.classList.toggle('open', expanded);
   island.dataset.mode = S.recording ? 'rec' : S.voice ? 'voice' : 'idle';
-  pill.innerHTML = `<span class="pill-in">${pillHtml()}</span>`;
+  const ph = pillHtml();
+  if (ph !== lastPill) {
+    // only when it changed: a one-shot mascot clip (the hatch) must not restart on every state op
+    pill.innerHTML = `<span class="pill-in">${ph}</span>`;
+    lastPill = ph;
+  }
   const html = expanded ? bodyHtml() : '';
   if (drawer === 'switch' && body.querySelector('.search input') && expanded) {
     body.querySelector('.list')!.innerHTML = listHtml(); // keep the filter field (focus, caret) while typing
@@ -452,14 +462,7 @@ function showToast(op: Extract<IslandOp, { op: 'toast' }>) {
     toast = null;
     render();
   }, op.kind === 'sorted' ? TOAST_MS : TOAST_MS * 2);
-  if (op.kind === 'sorted') hatchPop();
   render();
-}
-
-function hatchPop() {
-  island.classList.remove('hatch');
-  void island.offsetWidth;
-  island.classList.add('hatch'); // the egg cracks (0.6 s), the count takes its place
 }
 
 function bumpIsland() {

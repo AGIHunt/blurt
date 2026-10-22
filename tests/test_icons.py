@@ -87,3 +87,23 @@ def test_kind_and_ring_colours_match_between_web_and_swift():
     ring = (icons / "StatusRing.swift").read_text()
     for swift, token in (("accent", "--accent"), ("attention", "--warn"), ("keep", "--keep")):
         assert f"static let {swift} = KindStyle.dynamic(KindStyle.rgb(0x{tok(light, token)}), KindStyle.rgb(0x{tok(dark, token)}))" in ring, swift
+
+
+def test_mascot_outputs_are_copied_from_assets_mascot():
+    """The 1A chick's frame strips (assets/mascot) reach the mac app and the web package unchanged, and stay small."""
+    import json
+    r = subprocess.run([sys.executable, str(ROOT / "assets/mascot/tools/build.py"), "--check"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = json.loads((ROOT / "assets/mascot/mascot.json").read_text())
+    sheets = {c["sheet"] for c in m["clips"].values()}
+    assert {"idle", "listening", "thinking", "wobble", "hatching", "happy", "peck"} <= set(m["clips"])
+    assert sum((ROOT / f"assets/mascot/{s}.webp").stat().st_size for s in sheets) < 2.5 * 1024 * 1024
+    for name, c in m["clips"].items():
+        assert 8 <= c["frames"] <= 16, name
+        assert all(0 <= f < c["frames"] and t > 0 for f, t in c["timeline"]), name
+    # record.py puts them into Blurt.app; the old drawn hen and egg are gone
+    assert '"Mascot"' in (ROOT / "skills/blurt/scripts/record.py").read_text()
+    app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+    src = "\n".join(p.read_text() for p in app.rglob("*.swift"))
+    for gone in ("ChickenArt", "HenView", "HenMood", "drawEgg", "eggImage"):
+        assert gone not in src, gone

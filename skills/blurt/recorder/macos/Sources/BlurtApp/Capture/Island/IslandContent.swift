@@ -4,11 +4,12 @@
 //               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Let AI sort"
 //   recording   pause / resume · snap + note (pauses) · discard (asks first: keep / restart / discard) · mic level ·
 //               finish · "hold ⌃ to draw" · how many items were spotted so far · the project (changeable)
-//   voice       the live waveform, the words if any, "pause to finish · Esc to cancel", where it will go
+//   voice       the listening chick (mascot), the live waveform, the words if any, "pause to finish · Esc to cancel",
+//               where it will go
 //   drawer      switcher (⌥⇧O): Auto, recent projects (≤ 8, "More…", type to filter), Open Folder… ⌘O
 //               drop (a card dragged in): recent projects, Unassigned, Let AI sort
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on a 12 % accent wash
-//   toast       one quiet line (K4), optionally with art (the completion chicken) and an action
+//   toast       one quiet line (K4), optionally with art (the mascot: done, fixed) and an action
 // Dark on black in both appearances (it is the notch); white text at 92 / 60 / 40 %.
 
 import AppKit
@@ -480,7 +481,13 @@ final class IslandContent: NSView {
     private func buildVoice(_ w: CGFloat, top: CGFloat) -> CGFloat {
         let v = VoiceInput.shared
         var y: CGFloat = top + 8
-        let wv = Bars(frame: NSRect(x: 18, y: y, width: w - 36, height: 34))
+        // the chick listens (head tilted, sound arcs) beside the live waveform
+        let chick = MascotView(size: 56)
+        chick.frame.origin = NSPoint(x: 8, y: y - 13)
+        addSubview(chick)
+        chick.play(.listening)
+        let wx: CGFloat = 8 + 56 + 4
+        let wv = Bars(frame: NSRect(x: wx, y: y, width: w - wx - 18, height: 34))
         wv.color = accent
         wv.bar = 3; wv.gap = 2.5
         addSubview(wv)
@@ -657,7 +664,7 @@ final class IslandContent: NSView {
         let tw = ceil((t.text as NSString).size(withAttributes: [.font: f]).width)
         var x: CGFloat = 18
         if let art = t.art {
-            art.frame = NSRect(x: 10, y: top - 2, width: 50, height: 50)
+            art.frame = NSRect(x: 10, y: top - 9, width: 50, height: 50)   // the chick's foot sits on the text's baseline
             addSubview(art)
             x = 64
         }

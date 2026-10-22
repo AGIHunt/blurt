@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
-  <title>Chicken — the blurt mark; also “process / 整理”</title>
-  <path d="M17.3 9.7C16.2 7.4 14.1 6 11.6 6 7.9 6 5 9 5 12.8c0 1 .2 2 .5 2.8L3.6 17.6l2.9.3C7.7 19.8 9.7 21 12 21c1.9 0 3.4-.8 4.4-2.1"/>
-  <path d="M7.3 7.7C5.9 6.1 6.8 3.6 9 4.1 9.5 2 12.7 1.9 13.2 4.1c2.2-.4 3.3 2 1.9 3.5"/>
-  <path d="M17.3 9.7 21 12.1l-3.6 2.3"/>
-  <path d="M17.4 14.4c.6.6 1.1 1.4 1.1 2.4 0 1.2-.9 2.1-2.1 2.1"/>
-  <circle cx="12.6" cy="10.8" r="1.2" fill="currentColor" stroke="none"/>
+  <title>Chick — the blurt mark; also “process / 整理”</title>
+  <path d="M15 7.2A7.4 7.1 0 1 1 9 7.2 1.24 1.24 0 0 1 10.7 5.4 1.3 1.3 0 0 1 13.3 5.4 1.24 1.24 0 0 1 15 7.2Z"/>
+  <path d="M4.8 15.2C3.1 15.3 2.5 17.6 4.1 18.5c.8.4 1.6.3 2.4-.2M19.2 15.2c1.7.1 2.3 2.4.7 3.3-.8.4-1.6.3-2.4-.2"/>
+  <circle cx="8.9" cy="13" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="15.1" cy="13" r="1.2" fill="currentColor" stroke="none"/>
+  <path d="M11 14.6 12 14.1l1 .5-1 1.1Z"/>
 </svg>

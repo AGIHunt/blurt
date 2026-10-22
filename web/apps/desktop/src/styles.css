@@ -485,6 +485,9 @@ body {
 .hero-empty svg {
   color: var(--accent);
 }
+.hero-empty .mascot {
+  margin-bottom: -6px;
+}
 .hero-empty h2 {
   margin: 6px 0 0;
   font-size: 18px;

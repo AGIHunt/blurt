@@ -1,0 +1,20 @@
+# codex exec (built-in image_gen) with --image for each reference: d1a-hero.png d1a-listening.png
+# (promo/cases/v0.7/mascot/d1-round-chick/, the approved 1A design). Sent verbatim; see gen.sh.
+Use your built-in image generation tool to create exactly ONE image (do not write code to draw it; do not create SVG; do not compose it from separate images with code). Request a landscape 1536x1024 image with a transparent background. Image brief:
+
+ANIMATION FRAME SHEET for a 2D sprite animation (frame-by-frame, like a sticker/emoji animation).
+The attached image(s) show the approved mascot: a perfectly round, plump baby chick — head and body are one soft circle like a mochi — warm butter-yellow (#FFC83D) with soft subtle shading, NO outline, a small coral (#FF5A3C) rounded-triangle beak, two small coral blush cheeks, two small dark charcoal (#2A2A2E) oval dot eyes each with a tiny white highlight, a tiny wing nub on each side, and a playful 2-feather tuft on top of the head. Reproduce EXACTLY this character — same shapes, proportions, colours, soft rendering and level of detail — in every frame. It must look like the SAME drawing reused frame after frame, with only the described change between frames (this is critical: consecutive frames must differ only by the described motion, so the animation does not flicker).
+Layout rules: ONE image, landscape 1536x1024, TRANSPARENT background (real alpha channel). The frames are arranged in a clean grid of equal cells, read left-to-right, top-to-bottom. No grid lines, no borders, no frame numbers, no labels, no text, no ground line, no ground shadow. Each frame is drawn centred in its own cell with generous empty space around it so nothing touches another cell. The chick has the SAME size in every cell (about 55% of the cell height) and sits at the SAME place in every cell (its bottom on the same invisible baseline about 18% above the cell's bottom edge, horizontally centred), unless the frame description explicitly says it moves up or down. No legs, no feet, no claws, no teeth; cute, premium, Apple-quality flat illustration.
+
+ANIMATION: "listening" — the chick listens attentively to the user's voice; a seamless loop. 8 frames, grid of 4 columns x 2 rows.
+In EVERY frame: the whole chick (body, face and tuft together, as one rigid shape) is clearly rotated/tilted about 12 degrees to its left (towards the viewer's right side), curious attentive eyes looking slightly up-right, the wing nub on the viewer's right is raised and cupped next to the head like a hand behind an ear. To the upper right of the head there are two small coral (#FF5A3C) curved sound-wave arcs (like the right half of ")" parentheses, a small inner arc and a larger outer arc), drawn as soft rounded strokes.
+1. Tilt 8 degrees, no sound arcs visible.
+2. Tilt 13 degrees, the small inner arc appears faintly (light).
+3. Tilt 14 degrees, inner arc fully visible.
+4. Tilt 16 degrees, inner arc and outer arc both fully visible.
+5. Tilt 16 degrees, both arcs visible, eyes a little wider (delighted to hear).
+6. Tilt 14 degrees, inner arc fading, outer arc still visible.
+7. Tilt 13 degrees, only the outer arc, faint.
+8. Tilt 10 degrees, no arcs.
+
+After the image is generated, copy the generated PNG file to $RAW/listening.png (use cp from ~/.codex/generated_images). Reply only with the final path.

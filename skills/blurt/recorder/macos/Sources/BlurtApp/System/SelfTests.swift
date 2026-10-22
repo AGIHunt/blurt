@@ -96,7 +96,7 @@ enum SelfTests {
         case "peck": PeckCard.shared.leadIn = 1.6; PeckCard.shared.play(title: arg.isEmpty ? "Login button does nothing" : arg, detail: T("main.misc.by_codex"), uid: "test")
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
-            out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.dropFirst().first == "dark")])
+            out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.contains("dark"))])
         case "install":                 // install ID: the dry-run preview (sheet in Settings → Agents); install-apply: confirm it
             SettingsController.shared.show(pane: "agents")
             Task { @MainActor in

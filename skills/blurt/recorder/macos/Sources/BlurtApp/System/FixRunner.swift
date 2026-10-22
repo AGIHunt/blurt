@@ -1,6 +1,6 @@
 // "Hand to an agent" used to open a panel that ran the agent in the background (`-p`). That is gone (v0.7, K5): items
 // go to an interactive agent session in tmux through the dispatch panel (Terminal/DispatchPanel.swift). What stays here:
-//   FixRunner.announceFixed(…)     → an item reached "to verify": the chicken pecks it, and a notification
+//   FixRunner.announceFixed(…)     → an item reached "to verify": the chick pecks it, and a notification
 //   enum Notify                    → system notifications (unchanged)
 import AppKit
 import UserNotifications
@@ -40,6 +40,7 @@ enum Notify {
             n.title = title
             n.body = body
             n.userInfo = ["uid": uid]
+            n.attachments = MascotLibrary.shared.attachment(.peck)
             c.add(UNNotificationRequest(identifier: "fixed-\(uid)-\(Int(Date().timeIntervalSince1970))", content: n, trigger: nil))
         }
     }

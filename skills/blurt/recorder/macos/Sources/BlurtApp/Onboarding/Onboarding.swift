@@ -73,7 +73,10 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
-                if let icon = NSApp.applicationIconImage { Image(nsImage: icon).resizable().frame(width: 52, height: 52) }
+                // the chick hatches to say hello, and hops when everything is set up (the mascot, Icons/Mascot.swift)
+                MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 64)
+                    .frame(width: 64, height: 64).padding(-6)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(T("onboarding.welcome_blurt")).font(.title2.weight(.semibold))
                     Text(T("onboarding.four_quick_steps_talk"))

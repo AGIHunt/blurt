@@ -115,3 +115,15 @@ final class MotionDriver: NSObject {
         slow = nil
     }
 }
+
+/// Renders vector art into a CGImage at the best backing scale of any screen.
+func renderImage(_ size: CGSize, _ draw: (CGContext) -> Void) -> CGImage? {
+    let scale = max(2, NSScreen.screens.map(\.backingScaleFactor).max() ?? 2)
+    let w = Int(ceil(size.width * scale)), h = Int(ceil(size.height * scale))
+    guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    ctx.scaleBy(x: scale, y: scale)
+    draw(ctx)
+    return ctx.makeImage()
+}

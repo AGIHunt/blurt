@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor), generated from assets/icons/*.svg: <Icon name/> for React, iconSvg()/SPRITE for plain pages.",
+  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor), generated from assets/icons/*.svg: <Icon name/> for React, iconSvg()/SPRITE for plain pages; the colour mascot (frame strips, CSS-played): @blurt/icons/mascot + mascot.css.",
   "exports": {
     ".": "./src/index.tsx",
     "./core": "./src/core.ts",
+    "./mascot": "./src/mascot.ts",
+    "./mascot.css": "./mascot/mascot.css",
     "./sprite.svg": "./sprite.svg"
   },
   "scripts": {
-    "generate": "python3 ../../../assets/icons/tools/build.py --no-png",
+    "generate": "python3 ../../../assets/icons/tools/build.py --no-png && python3 ../../../assets/mascot/tools/build.py",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ."
   },
@@ -18,7 +20,9 @@
     "react": ">=18"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "22.18.0",
