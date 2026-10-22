@@ -273,8 +273,8 @@
 
 "main.toast.download_failed" = "没能保存：%@";
 "main.toast.downloaded" = "已存到「下载」：%@";
-"main.speech.better_model" = "有更准的语音识别模型适合这台 Mac · %@";
-"main.speech.better_model.action" = "查看";
+"main.speech.recommended" = "推荐这台 Mac 使用的语音识别模型 · %@";
+"main.speech.recommended.action" = "查看";
 
 "main.toolbar.handoff" = "交出";
 "main.toolbar.handoff.own" = "给你自己的 agent";

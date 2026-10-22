@@ -40,7 +40,7 @@ enum Housekeeping {
         let size = ByteCountFormatter.string(fromByteCount: Int64(mb * 1_000_000), countStyle: .file)
         await MainActor.run {
             emit(["event": "asr_suggest", "models": need.compactMap { $0["model"] as? String }, "size_mb": mb])
-            AppEnvironment.island?.toast(T("main.speech.better_model", size), actionTitle: T("main.speech.better_model.action")) {
+            AppEnvironment.island?.toast(T("main.speech.recommended", size), actionTitle: T("main.speech.recommended.action")) {
                 AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
             }
         }
