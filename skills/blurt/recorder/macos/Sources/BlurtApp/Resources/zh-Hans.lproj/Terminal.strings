@@ -93,8 +93,8 @@
 "dispatch.start" = "开始会话";
 
 /* 派发前的提醒（sessions.py dispatch --dry-run） */
-"warning.concurrent_edit" = "%@ 里已经有一个会话在直接改文件。同时改同一批文件可能冲突，建议用 worktree 分开。";
-"warning.concurrent_edit.use_worktree" = "用 worktree";
+"warning.concurrent_edit" = "%@ 里已经有一个会话在直接改文件。同时改同一批文件可能冲突，建议放到单独的分支上做。";
+"warning.concurrent_edit.use_worktree" = "用单独的分支";
 "warning.concurrent_edit.continue" = "继续";
 "warning.no_git" = "这个文件夹不是 git 仓库，agent 会直接在里面改。";
 "warning.no_tmux" = "没有安装 tmux：会话在口喷鸡里运行，退出口喷鸡就会结束。";

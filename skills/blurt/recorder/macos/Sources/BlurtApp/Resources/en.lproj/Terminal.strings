@@ -93,8 +93,8 @@
 "dispatch.start" = "Start Session";
 
 /* Dispatch warnings (sessions.py dispatch --dry-run) */
-"warning.concurrent_edit" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.";
-"warning.concurrent_edit.use_worktree" = "Use a worktree";
+"warning.concurrent_edit" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a separate branch keeps them apart.";
+"warning.concurrent_edit.use_worktree" = "Use a Separate Branch";
 "warning.concurrent_edit.continue" = "Continue";
 "warning.no_git" = "This folder isn’t a git repository, so the agents work in it directly.";
 "warning.no_tmux" = "tmux isn’t installed: the session runs inside Blurt and ends when you quit it.";

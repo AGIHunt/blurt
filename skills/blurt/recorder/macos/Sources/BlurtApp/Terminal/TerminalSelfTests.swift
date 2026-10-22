@@ -73,10 +73,10 @@ enum TerminalSelfTests {
         case "review":
             FinishPanel.show(job: arg, over: SessionsWindowController.shared.window)
             out(["job": arg])
-        case "finish":                  // finish merge|pr|discard|keep — what the finish panel's buttons do
+        case "finish":                  // finish merge|pr|discard|keep|end-merge — what the finish panel's buttons do
             guard let m = FinishPanel.current else { out(["error": "no panel"]); return }
             Task { @MainActor in
-                await m.run(arg)
+                if arg.hasPrefix("end-") { await m.endSessionThen(String(arg.dropFirst(4))) } else { await m.run(arg) }
                 out(["action": arg, "phase": "\(m.phase)", "pr": m.prURL ?? NSNull()])
             }
         case "dispatch-app":            // dispatch-app REF: as on a Mac without tmux (sessions.py --runner app → AppRunner)
