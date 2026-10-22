@@ -660,8 +660,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
             field.placeholderString = Loc.t("capture.note.placeholder_shot", table: "Capture")
-            status.stringValue = Loc.t("capture.note.paused", table: "Capture")
-                + (recordingShots.count > 1 ? "  ·  \(i)/\(recordingShots.count)" : "")
+            // the shot counter first: on a narrow bubble the hint's tail is what gets cut, not "2/2"
+            status.stringValue = (recordingShots.count > 1 ? "\(i)/\(recordingShots.count)  ·  " : "")
+                + Loc.t("capture.note.paused", table: "Capture")
         }
     }
 
