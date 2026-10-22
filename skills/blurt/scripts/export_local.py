@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts  # noqa: E402
+from _common import die, fmt_ts, state_of  # noqa: E402
 import items as items_mod  # noqa: E402
 
 LABELS = {
@@ -37,7 +37,7 @@ KINDS = {"zh": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "
          "en": {"issue": "Issues", "idea": "Ideas", "note": "Notes", "task": "Tasks"}}
 KIND_ORDER = ["issue", "idea", "task", "note"]
 COMMON = ["id", "title", "time", "quote", "frames", "clip", "source", "tags", "questions", "answer"]
-SKIP = {"kind", "status", "exported", "confidence", "merged_from", "merged_into", "_touched", "_dropped", "_user",
+SKIP = {"kind", "state", "restore_to", "status", "exported", "confidence", "merged_from", "merged_into", "_touched", "_dropped", "_user",
         "schema", "uid", "work", "work_history", "project", "project_by", "project_confidence", "suggested_project",
         "created", "updated", "aliases", "path", "store", "_project", "language", "assignee"}
 
@@ -90,7 +90,7 @@ def main():
     out = Path(a.out or default_out)
     out.mkdir(parents=True, exist_ok=True)
     rel = lambda p: Path(os.path.relpath(p, out)).as_posix()  # noqa: E731  (paths in the doc are absolute)
-    items = [i for i in data["items"] if i.get("status") != "deleted"]
+    items = [i for i in data["items"] if state_of(i) != "discarded"]
     kinds = sorted({i["kind"] for i in items}, key=lambda k: (KIND_ORDER.index(k) if k in KIND_ORDER else 99, k))
 
     title = data.get("title") or ("录屏整理" if lang == "zh" else "Recording notes")

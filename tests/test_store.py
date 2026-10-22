@@ -100,8 +100,8 @@ class TmpCase(unittest.TestCase):
 
 # ------------------------------------------------------------------ the format
 FULL = {"id": "BA-12", "uid": "01JB7ZK3Q4M8W2E5R6T9Y0ABCD", "kind": "issue", "title": "登录按钮点击后无响应",
-        "status": "draft", "work": {"state": "todo", "to": None, "agent": None, "job": None, "handoff": None,
-                                    "claim": None, "note": "", "commit": None, "pr": None, "at": None, "by": None},
+        "state": "new", "work": {"to": None, "agent": None, "job": None, "handoff": None,
+                                 "claim": None, "note": "", "commit": None, "pr": None, "at": None, "by": None},
         "project": "3f2a9c1b7e44", "project_by": "capture", "project_confidence": None,
         "created": "2026-10-22T10:15:00+08:00", "updated": "2026-10-22T10:20:41+08:00",
         "source": {"type": "recording", "by": "john", "role": None, "app": "Chrome", "url": "https://example.test/a b",
@@ -170,7 +170,7 @@ class Format(unittest.TestCase):
         text = st.render({"id": "IN-1", "uid": "01JB7ZK3Q4M8W2E5R6T9Y0ABCE", "kind": "note", "title": "t",
                           "quote": "", "steps": [], "answer": None, "due": None})
         self.assertNotIn("##", text)
-        self.assertEqual(set(st.parse(text)), {"schema", "id", "uid", "kind", "title"})
+        self.assertEqual(set(st.parse(text)), {"schema", "id", "uid", "kind", "title", "state"})
 
     def test_values_that_cant_be_sections_stay_in_front_matter(self):
         it = {"id": "IN-1", "uid": "01JB7ZK3Q4M8W2E5R6T9Y0ABCE", "kind": "note", "title": "t",

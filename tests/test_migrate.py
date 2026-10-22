@@ -12,8 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from test_store import FIXTURES, SHOTS, V1, V2, TmpCase, copy_session, make_repo, ok, run_cli  # noqa: E402
 
+import _common  # noqa: E402
 import store as st  # noqa: E402
 from _common import legacy_uid  # noqa: E402
+
+# K3 one state, from the fixtures' status + v2 fix: v1 = 3 kept + 1 deleted; shots = 2 drafts; v2 = fixed (claim),
+# fixing, a draft, a draft the user said won't do (the reported case: it must leave the inbox), a reopened draft
+STATE_COUNTS = {"todo": 3, "discarded": 1, "new": 4, "to_verify": 1, "in_progress": 1, "wontfix": 1}
 
 
 def v2(name: str) -> dict:
@@ -65,26 +70,30 @@ class Migrate(TmpCase):
                          ["BA-1", "BA-2", "BA-3", "BA-4"])
         self.assertEqual([by_local[(V2, f"I-00{n}")]["id"] for n in range(1, 6)], [f"BA-{n}" for n in range(5, 10)])
         self.assertEqual(sorted(i["id"] for i in inbox_items.values()), ["IN-1", "IN-2"])
-        # fix → work (K3 mapping), history too
+        # fix → state + work (K3 mapping), history too
+        s = {x: by_local[(V2, x)]["state"] for x in ("I-001", "I-002", "I-003", "I-004", "I-005")}
         w = {x: by_local[(V2, x)].get("work") for x in ("I-001", "I-002", "I-003", "I-004", "I-005")}
-        self.assertEqual((w["I-001"]["state"], w["I-001"]["claim"], w["I-001"]["commit"]), ("to_verify", "fixed", "a1c3e5f"))
-        self.assertEqual((w["I-002"]["state"], w["I-002"]["agent"], w["I-002"]["job"]),
+        self.assertEqual((s["I-001"], w["I-001"]["claim"], w["I-001"]["commit"]), ("to_verify", "fixed", "a1c3e5f"))
+        self.assertEqual((s["I-002"], w["I-002"]["agent"], w["I-002"]["job"]),
                          ("in_progress", "codex", "r-20261021-110000-cd34"))
-        self.assertIsNone(w["I-003"])  # never handed off: no work key = todo
-        self.assertEqual((w["I-004"]["state"], w["I-004"]["claim"]), ("wontfix", None))  # a human's wontfix
-        self.assertEqual((w["I-005"]["state"], w["I-005"]["by"]), ("todo", "user"))  # reopened
+        self.assertIsNone(w["I-003"])  # never handed off: no work key
+        self.assertEqual((s["I-004"], w["I-004"]["claim"]), ("wontfix", None))  # a human's wontfix
+        self.assertEqual(w["I-005"]["by"], "user")  # reopened
+        self.assertEqual(s["I-005"], "new")  # a reopened draft: still new
         self.assertEqual([h["state"] for h in by_local[(V2, "I-005")]["work_history"]], ["in_progress", "to_verify"])
         self.assertEqual(by_local[(V2, "I-001")]["work_history"][0]["state"], "in_progress")
-        for wk in [x for x in w.values() if x] + by_local[(V2, "I-005")]["work_history"]:
-            self.assertEqual(list(wk), ["state", "to", "agent", "job", "handoff", "claim", "note", "commit", "pr",
-                                        "at", "by"])
+        for wk in [x for x in w.values() if x]:
+            self.assertEqual(list(wk), list(_common.WORK_KEYS))
             self.assertRegex(wk["at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$")
+        for wk in by_local[(V2, "I-005")]["work_history"]:
+            self.assertEqual(list(wk), ["state", *_common.WORK_KEYS])
+        self.assertTrue(all("status" not in i for i in repo_items.values()))
         self.assertTrue(all("fix" not in i and "fix_history" not in i for i in repo_items.values()))
         # review status, the user's edits, merges
         old1 = {i["id"]: i for i in v2(V1)["items"]}
         for x in ("I-001", "I-002", "I-003", "I-005"):
             it = by_local[(V1, x)]
-            self.assertEqual(it["status"], old1[x]["status"])
+            self.assertEqual(it["state"], _common.state_of(old1[x]))  # draft → new, confirmed → todo, …
             self.assertEqual(it.get("_user"), old1[x].get("_user"))
             self.assertEqual(it["title"], old1[x]["title"])
             self.assertEqual(it["project_by"], "migrate")
@@ -175,8 +184,8 @@ class Migrate(TmpCase):
         self.assertEqual({r[0] for r in con.execute("SELECT uid FROM items")}, legacy_uids)  # same identities
         self.assertEqual(con.execute("SELECT item_id FROM items WHERE uid = ?", ("01KAQ6N2W8C3D4E5F6G7H8J9KM",))
                          .fetchone()[0], "BA-5")
-        rows = dict(con.execute("SELECT work_state, COUNT(*) FROM items GROUP BY work_state").fetchall())
-        self.assertEqual(rows, {"todo": 8, "to_verify": 1, "in_progress": 1, "wontfix": 1})
+        rows = dict(con.execute("SELECT state, COUNT(*) FROM items GROUP BY state").fetchall())
+        self.assertEqual(rows, STATE_COUNTS)
         counts = dict(con.execute("SELECT dir, item_count FROM sessions").fetchall())
         self.assertEqual(counts, {str(self.v1): 3, str(self.v2): 5, str(self.shots): 2})
 

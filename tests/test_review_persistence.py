@@ -111,8 +111,8 @@ class ReviewPersistence(TmpCase):
         code, out = sent.call_args.args[:2]
         self.assertEqual(code, 200, out)
         self.assertTrue(Path(out["path"]).is_file() and out["text"].startswith("# ") and out["items"] == [uid])
-        work = ok("items.py", "get", uid, env=self.e.env())["item"]["work"]
-        self.assertEqual((work["state"], work["to"], work["handoff"]), ("handed_off", "external", out["id"]))
+        it = ok("items.py", "get", uid, env=self.e.env())["item"]
+        self.assertEqual((it["state"], it["work"]["to"], it["work"]["handoff"]), ("handed_off", "external", out["id"]))
         self.assertEqual(self.post("/api/handoff", {"uids": []}), 400)
 
 

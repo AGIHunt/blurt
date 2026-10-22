@@ -87,7 +87,7 @@ def test_v1_index_is_rebuilt(env):
     con.close()
     cli("scan", "--root", env["repo"])
     con = db()
-    assert con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] == "2"
+    assert con.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] == "3"
     assert not con.execute("SELECT 1 FROM sqlite_master WHERE name = 'workspaces'").fetchone()
 
 
@@ -107,9 +107,11 @@ def test_scan_before_migration_shows_v06_sessions(env):
     assert {r["dir"]: r["item_count"] for r in con.execute("SELECT dir, item_count FROM sessions")} == {
         str(env["repo"] / ".blurt/sessions/20261019-093000"): 3, str(env["repo"] / ".blurt/sessions/20261021-101500"): 5,
         str(env["home"] / "Blurt/recordings/20261020-141500-shots"): 2}
-    # v2 fix states show as work states already
-    assert dict(con.execute("SELECT work_state, COUNT(*) FROM items GROUP BY work_state").fetchall()) == \
-        {"todo": 8, "to_verify": 1, "in_progress": 1, "wontfix": 1}
+    # status + v2 fix show as one state already (K3), before any file is migrated
+    assert dict(con.execute("SELECT state, COUNT(*) FROM items GROUP BY state").fetchall()) == \
+        {"todo": 3, "discarded": 1, "new": 4, "to_verify": 1, "in_progress": 1, "wontfix": 1}
+    # the inbox ("needs you") is new + to verify: the draft the user marked won't do is not in it
+    assert con.execute("SELECT COUNT(*) FROM items WHERE state IN ('new', 'to_verify')").fetchone()[0] == 5
     again = cli("scan")  # the repo is remembered (registered = 0) and unchanged files are skipped
     assert (again["sessions"], again["items"]) == (3, 11)
 
@@ -123,8 +125,8 @@ def test_scan_after_migration(env):
     assert (r["registered"], r["key"], r["kind"], r["slug"]) == (1, "REP", "folder", "repo")
     it = con.execute("SELECT * FROM items WHERE uid = '01KAQ6N2W8C3D4E5F6G7H8J9KM'").fetchone()
     assert it["item_id"] == "REP-5" and it["path"].endswith(".md") and Path(it["path"]).is_file()
-    assert (it["work_state"], it["work_claim"], it["work_agent"], it["work_to"]) == ("to_verify", "fixed", "claude",
-                                                                                     "session")
+    assert (it["state"], it["work_claim"], it["work_agent"], it["work_to"]) == ("to_verify", "fixed", "claude",
+                                                                                "session")
     assert (it["source_type"], it["source_by"], it["project_by"]) == ("recording", "Tester", "migrate")
     assert it["session_id"].endswith(":20261021-101500") and it["user_edited"] == 1 and it["frame_count"] == 2
     assert Path(it["primary_frame"]).is_absolute() and Path(it["primary_frame"]).is_file()
@@ -144,15 +146,18 @@ def test_search_trigram_like_and_filters(env):
     assert like["items"][0]["project_key"] == "REP" and like["items"][0]["item_id"].startswith("REP-")
     assert cli("search", "POST api/avatar")["total"] == 1  # English, through the body
     assert cli("search", "avatar")["items"][0]["uid"] == "01KAQ6N2W8C3D4E5F6G7H8J9KM"
-    assert all(r["status"] != "deleted" for r in cli("search", "--limit", 500)["items"])
-    assert all(r["status"] == "deleted" for r in cli("search", "--status", "deleted")["items"])
+    assert all(r["state"] != "discarded" for r in cli("search", "--limit", 500)["items"])
+    assert [r["state"] for r in cli("search", "--state", "discarded")["items"]] == ["discarded"]
+    assert cli("search", "--status", "deleted")["items"] == cli("search", "--state", "discarded")["items"]
+    inbox_states = {r["state"] for r in cli("search", "--state", "new", "--state", "to_verify", "--limit", 500)["items"]}
+    assert inbox_states == {"new", "to_verify"}
     issues = cli("search", "--kind", "issue")
     assert issues["total"] >= 1 and all(r["kind"] == "issue" for r in issues["items"])
-    assert [r["work_state"] for r in cli("search", "--work", "in_progress")["items"]] == ["in_progress"]
+    assert [r["state"] for r in cli("search", "--work", "in_progress")["items"]] == ["in_progress"]
     fixed = cli("search", "--fix-state", "fixed")  # the v2 name: an agent's "fixed" claim, or done
     assert [r["item_id"] for r in fixed["items"]] == ["REP-5"]
-    assert cli("search", "--fix-state", "wontfix")["items"][0]["work_state"] == "wontfix"
-    assert {r["work_state"] for r in cli("search", "--fix-state", "none")["items"]} == {"todo"}
+    assert [r["state"] for r in cli("search", "--fix-state", "wontfix")["items"]] == ["wontfix"]
+    assert {r["state"] for r in cli("search", "--fix-state", "none")["items"]} == {"new", "todo"}
     inbox = cli("search", "--project", "inbox")
     assert inbox["total"] == 2 and all(r["project_id"] == "inbox" for r in inbox["items"])
     for ref in ("REP", "repo", str(env["repo"])):

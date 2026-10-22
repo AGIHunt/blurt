@@ -29,7 +29,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import index  # noqa: E402
 import items as items_mod  # noqa: E402
-from _common import OPEN_WORK, load_json  # noqa: E402
+from _common import OPEN_STATES, STATES, load_json  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.types import ImageContent, TextContent  # noqa: E402
 
@@ -38,7 +38,11 @@ MAX_SIDE = 1280
 WRITE_RULE = ("Change items only with update_item / mark_fixed (or `items.py`); never write the item files "
               "(.blurt/items/*.md), items.json or anything else under .blurt/ or ~/Blurt yourself — the user may be "
               "editing the same item.")
-DONE_RULE = ("When you say an item is fixed it goes to \"to verify\": it is done only once the user confirms it.")
+DONE_RULE = ("When you say an item is fixed it goes to \"to verify\": it is done only once the user confirms it. "
+             "Only the user keeps, finishes, declines (won't do) or discards items.")
+STATE_HELP = ("state (one per item): new (the user hasn't looked yet) | todo | handed_off | in_progress | to_verify "
+              "(an agent says it's finished; waits for the user) | done | wontfix | discarded. The user's inbox is new "
+              "+ to_verify.")
 MARK_STATES = {"fixing": ("in_progress", None), "fixed": ("to_verify", "fixed"), "wontfix": ("to_verify", "wontfix"),
                "reopened": ("todo", None)}
 
@@ -137,16 +141,16 @@ def _jpeg(path: Path) -> bytes | None:
 @mcp.tool()
 def list_projects() -> list[dict]:
     """The user's projects (folders opened in Blurt) and the inbox ("inbox": captures not filed into a project yet).
-    open_items = items not deleted and still to do, handed off or in progress. unassigned = for the inbox, its items;
-    for a project, inbox items the AI suggested for it."""
+    open_items = items in state new, todo, handed_off or in_progress (not finished yet). unassigned = for the inbox,
+    its items; for a project, inbox items the AI suggested for it."""
     rows = _rows(
         "SELECT p.id, p.name, p.key, p.path, p.kind, "
-        "(SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.status != 'deleted' AND i.work_state IN "
-        f"({','.join('?' * len(OPEN_WORK))})) AS open_items, "
+        "(SELECT COUNT(*) FROM items i WHERE i.project_id = p.id AND i.state IN "
+        f"({','.join('?' * len(OPEN_STATES))})) AS open_items, "
         "CASE WHEN p.id = 'inbox' THEN (SELECT COUNT(*) FROM items i WHERE i.project_id = 'inbox' AND "
-        "i.status != 'deleted') ELSE (SELECT COUNT(*) FROM items i WHERE i.project_id = 'inbox' AND "
-        "i.status != 'deleted' AND i.suggested_project = p.id) END AS unassigned "
-        "FROM projects p ORDER BY p.kind = 'inbox', p.name", OPEN_WORK)
+        "i.state != 'discarded') ELSE (SELECT COUNT(*) FROM items i WHERE i.project_id = 'inbox' AND "
+        "i.state != 'discarded' AND i.suggested_project = p.id) END AS unassigned "
+        "FROM projects p ORDER BY p.kind = 'inbox', p.name", OPEN_STATES)
     return rows
 
 
@@ -177,16 +181,18 @@ def list_sessions(project: str | None = None, state: str | None = None, limit: i
 @mcp.tool()
 def search_items(query: str | None = None, project: str | None = None, kind: list[str] | None = None,
                  status: list[str] | None = None, fix_state: list[str] | None = None, limit: int = 20,
-                 work_state: list[str] | None = None) -> list[dict]:
+                 work_state: list[str] | None = None, state: list[str] | None = None) -> list[dict]:
     """Search items across all projects (full text over title, quote, body, tags; Chinese works). kind: issue | idea
-    | note | task | a custom lens; status (the user's review): draft | confirmed | deleted (default: all but
-    deleted); work_state: todo | handed_off | in_progress | to_verify | done | wontfix; fix_state (older name):
-    fixing | fixed | wontfix | reopened | none. Returns ItemRows with the uid to pass to get_item / mark_fixed."""
+    | note | task | a custom lens; state: [states] (default: all but discarded). status / work_state / fix_state are
+    older filters, still accepted. Returns ItemRows with the uid to pass to get_item / mark_fixed."""
+    bad = [x for x in state or [] if x not in STATES]
+    if bad:
+        raise ValueError(f"unknown state {bad[0]!r}: " + STATE_HELP)
     con = _db()
     try:
         pid = index.resolve_project(con, project) if project else None
         return index.search(query, kind, status, work_state, pid, None, "updated", int(limit), 0, con=con,
-                            fix_state=fix_state)["items"]
+                            fix_state=fix_state, state=state)["items"]
     finally:
         con.close()
 
@@ -246,7 +252,7 @@ def get_transcript(session: str, start: float | None = None, end: float | None =
 @mcp.tool(description=(
     "Change fields of an item (same as `items.py patch`): set = {field: value}, unset = [field]. Fields the user "
     "edited on the review page are kept (listed in kept_user) — tell the user instead of forcing them. Its project "
-    "and work state have their own commands (mark_fixed). " + WRITE_RULE))
+    "and state have their own commands (mark_fixed). " + WRITE_RULE))
 def update_item(uid: str, set: dict, unset: list[str] | None = None) -> dict:
     _known(uid)
     args = ["patch", uid]
@@ -261,23 +267,23 @@ def update_item(uid: str, set: dict, unset: list[str] | None = None) -> dict:
     "Report your work on an item: state = fixing (call it when you start) | fixed | wontfix | reopened. note = one "
     "line on what changed (or why not); commit / pr if there is one. " + DONE_RULE + " fixed and wontfix are your "
     "claim, shown to the user as \"to verify\"; reopened takes your claim back. agent defaults to $BLURT_AGENT. The "
-    "Blurt app shows it to the user right away. " + WRITE_RULE))
+    "Blurt app shows it to the user right away. " + STATE_HELP + " " + WRITE_RULE))
 def mark_fixed(uid: str, state: str = "fixed", commit: str | None = None, pr: str | None = None,
                note: str | None = None, agent: str | None = None) -> dict:
     if state not in MARK_STATES:
         raise ValueError("state must be fixing | fixed | wontfix | reopened")
     _known(uid)
-    work, claim = MARK_STATES[state]
-    args = ["work", uid, "--state", work, "--by", "agent"]
+    to, claim = MARK_STATES[state]
+    args = ["state", uid, "--state", to, "--by", "agent"]
     for flag, v in (("--claim", claim), ("--commit", commit), ("--pr", pr), ("--note", note),
                     ("--agent", agent or os.environ.get("BLURT_AGENT") or "mcp")):
         if v:
             args += [flag, v]
     out = _items_py(*args)
     w = (out.get("items") or [{}])[0]
-    return {"ok": True, "uid": uid, "id": w.get("id"), "work": w.get("work"),
+    return {"ok": True, "uid": uid, "id": w.get("id"), "state": w.get("state"), "work": w.get("work"),
             **({"note": w["note"]} if w.get("note") else {}),
-            "next": "the user verifies it" if work == "to_verify" else None}
+            "next": "the user verifies it" if to == "to_verify" else None}
 
 
 def main() -> None:

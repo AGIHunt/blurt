@@ -280,7 +280,7 @@ def _items_in(uids: list[str], states: tuple[str, ...]) -> list[str]:
             it = handoff.item(u)
         except handoff.CliError:
             continue
-        if ((it.get("work") or {}).get("state") or "todo") in states:
+        if it.get("state") in states:
             out.append(u)
     return out
 
@@ -563,10 +563,10 @@ def plan(refs: list[str], agent: str | None, mode: str, worktree: str, runner: s
     if not pid or pid == "inbox":
         raise SessionError("needs_project", "unassigned items: move them into a project first",
                            items=[i["uid"] for i in items])
-    gone = [i["uid"] for i in items if i.get("status") == "deleted"]
+    gone = [i["uid"] for i in items if i.get("state") == "discarded"]
     if gone:
-        raise SessionError("deleted", "dropped items can't be handed to an agent", items=gone)
-    busy = [i["uid"] for i in items if ((i.get("work") or {}).get("state") or "todo") not in ("todo", "handed_off")]
+        raise SessionError("deleted", "discarded items can't be handed to an agent", items=gone)
+    busy = [i["uid"] for i in items if i.get("state") not in ("new", "todo", "handed_off")]
     if busy:
         raise SessionError("bad_transition", "some items are already being worked on or done — reopen them first",
                            items=busy)
@@ -612,7 +612,7 @@ def plan(refs: list[str], agent: str | None, mode: str, worktree: str, runner: s
               and is_alive(j, wins)]
     if not want_wt and (direct or len(out) > 1):
         warnings.append({"code": "concurrent_edit", "jobs": direct})
-    drafts = [it["uid"] for it in items if it.get("status") == "draft"]
+    drafts = [it["uid"] for it in items if it.get("state") == "new"]  # handing them off is keeping them
     if drafts:
         warnings.append({"code": "draft_confirmed", "items": drafts})
     return {"project": project, "agent": agent_id, "mode": mode, "runner": use_runner, "worktree": want_wt,
@@ -718,10 +718,7 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
             if pl["runner"] == "tmux":
                 _step(j, "work", "running")
         jobs.update(jid, launched)
-        try:  # the items: handed to this session; drafts become kept (the user chose to act on them, hence --force)
-            drafts = [it["uid"] for it in e["_items"] if it.get("status") == "draft"]
-            for u in drafts:
-                handoff.cli(handoff.ITEMS_PY, "patch", u, "--set", "status=confirmed", "--force")
+        try:  # the items: handed to this session (new ones too: handing off is keeping them, K3)
             handoff.set_work(e["items"], "handed_off", to="session", agent=pl["agent"], job=jid,
                              handoff=agent_obj["handoff"], by="app")
         except handoff.CliError as err:

@@ -19,14 +19,16 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   set-frames REF | SESSION ID PATH[@T][#CAPTION] … [--append]     PATH relative to SESSION, or absolute
   done       SESSION                                   processing finished (the page stops saying "still working")
   get        REF | SESSION ID                          → {"item": {…}, "session": …}; every path absolute
-  list       [SESSION] [--project P|inbox] [--kind K]… [--status S]… [--work W]… [--fix-state F]…
-  work       REF … --state todo|handed_off|in_progress|to_verify|done|wontfix [--to session|external]
-             [--agent A] [--job J] [--handoff H] [--claim fixed|wontfix] [--commit SHA] [--pr URL] [--note TEXT]
-             [--by user|agent|app]      an agent's "done" is --state to_verify --claim fixed: only the user marks done
+  list       [SESSION] [--project P|inbox] [--kind K]… [--state S]…     (--status / --work / --fix-state: old names)
+  state      REF … (--state S | --action A) [--to session|external] [--agent A] [--job J] [--handoff H]
+             [--claim fixed|wontfix] [--commit SHA] [--pr URL] [--note TEXT] [--by user|agent|app]
+             S = new todo handed_off in_progress to_verify done wontfix discarded; A = the user's actions (keep
+             hand_off done send_back take_back reopen restore wontfix discard). An agent's "done" is --state
+             to_verify --claim fixed: only the user marks done, won't do, keeps or discards. `work` = old name.
   fix        REF | SESSION ID --state fixing|fixed|wontfix|reopened [--agent A] [--run-id R] [--commit] [--pr] [--note]
-             v2 alias of work (fixing → in_progress, fixed / wontfix → to_verify with that claim, reopened → todo)
+             v2 alias of state (fixing → in_progress, fixed / wontfix → to_verify with that claim, reopened → todo)
   move       REF … --project P|inbox [--by user|ai] [--confidence X] [--reason TEXT]
-  doc        SESSION | --project P|inbox [--status S]… [--work W]… [--kind K]…   what the review page shows
+  doc        SESSION | --project P|inbox [--state S]… [--kind K]…   what the review page shows
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm]           the user's edits (apps)
   migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items
@@ -52,19 +54,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (FIX_STATES, FIX_TO_WORK, REVIEW_STATES, WORK_BY, WORK_KEYS, WORK_STATES,  # noqa: E402
-                     InvalidEdit, append_job_event, blurt_home, check_item_fields, file_etag, fix_alias_states,
-                     items_lock, legacy_uid, load_json, may_move, new_ulid, now_iso, real, to_epoch, work_from_fix,
-                     work_state, write_text_atomic)
+from _common import (ACTIONS, FIX_STATES, FIX_TO_WORK, LEGACY_WORK, REVIEW_STATES, STATES, WORK_BY,  # noqa: E402
+                     WORK_KEYS, WORK_TRACKED, InvalidEdit, action_target, append_job_event, blurt_home,
+                     check_item_fields, file_etag, items_lock, legacy_filter_states, legacy_uid, load_json,
+                     may_move, migrate_state, new_ulid, now_iso, real, state_of, to_epoch, write_text_atomic)
 import store as st  # noqa: E402
 from store import Store, Unparseable  # noqa: E402
 
-PROTECTED = {"id", "uid", "_user", "_removed", "fix", "fix_history", "schema", "work", "work_history", "project",
-             "path", "store", "aliases", "created", "updated", "merged_into", "project_by", "_project", "_sections",
-             "_preamble"}
+PROTECTED = {"id", "uid", "_user", "_removed", "fix", "fix_history", "schema", "state", "restore_to", "work",
+             "work_history", "project", "path", "store", "aliases", "created", "updated", "merged_into", "project_by",
+             "_project", "_sections", "_preamble"}
 BATCH_PROTECTED = {"schema", "session", "items", "local", "removed"}
 # set only by items.py itself, never by a page's ops ("project" is a move, handled on its own)
-SERVER_KEYS = PROTECTED - {"_removed"} | {"project_confidence", "suggested_project", "source_session"}
+SERVER_KEYS = PROTECTED - {"_removed"} | {"project_confidence", "suggested_project", "source_session", "status"}
 EXIT_LOCKED = 3
 UID_RE = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}|L[0-9a-f]{25}")
 LOCAL_RE = re.compile(r"(.*?)(\d+)")
@@ -286,7 +288,7 @@ def locate(session: Path | None, ref: str) -> tuple[Path | None, str | None, str
     if path is None:
         return None, None, None
     h = st.read_header(path)
-    if h.get("status") == "deleted" and h.get("merged_into"):
+    if h.get("state") == "discarded" and h.get("merged_into"):
         return path, h.get("uid"), h["merged_into"]
     return path, h.get("uid"), None
 
@@ -323,13 +325,19 @@ def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Pa
     written, kept = [], []
     for k, v in sets.items():
         if k in PROTECTED:
-            fail(f"can't set {k}" + (" — use items.py work" if k.startswith(("fix", "work")) else
+            fail(f"can't set {k}" + (" — use items.py state" if k.startswith(("fix", "work", "state")) else
                                      " — use items.py move" if k == "project" else ""), "protected")
-        if k == "status" and v not in REVIEW_STATES:
-            fail(f"status must be one of {', '.join(REVIEW_STATES)}", "bad_value")
-        if k == "status" and v != "draft" and not force:
-            fail("only the user keeps or drops items (status); write draft, or --force when they asked in chat",
-                 "user_only")
+        if k == "status":  # before K3's one state; kept for old callers: confirmed = keep, deleted = discard
+            if v not in REVIEW_STATES:
+                fail(f"status must be one of {', '.join(REVIEW_STATES)}", "bad_value")
+            if v != "draft" and not force:
+                fail("only the user keeps or discards items; leave it, or --force when they asked in chat",
+                     "user_only")
+            target = legacy_status_target(state_of(item), v)
+            if target:
+                set_state(item, target, {}, "user")
+                written.append("state")
+            continue
         if k in user and not force:
             kept.append(k)
             continue
@@ -359,8 +367,8 @@ def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | No
     def fn(item):
         out = {"ok": True, "id": item.get("id"), "uid": item.get("uid"),
                **apply_fields(item, sets, unsets, force, ctx or _session_of(item), root)}
-        if item.get("status") == "deleted":
-            out["note"] = "the user dropped this item — no need to spend more work on it"
+        if item.get("state") == "discarded":
+            out["note"] = "the user discarded this item — no need to spend more work on it"
         if not out["written"]:
             out["_write"] = False
         return out
@@ -505,11 +513,13 @@ def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: st
     if not isinstance(title, str) or not title.strip():
         title = (str(fields.get("quote") or "").strip().split("\n")[0][:80] or item["kind"])
     item["title"] = title
-    item["status"] = fields.get("status") if fields.get("status") in REVIEW_STATES else "draft"
-    if isinstance(fields.get("work"), dict) and fields["work"].get("state") in WORK_STATES:
-        item["work"] = {k: fields["work"].get(k) for k in WORK_KEYS}
-    elif isinstance(fields.get("fix"), dict):
-        item["work"] = work_from_fix(fields["fix"])
+    # K3: the state from whatever shape the fields have (state, or v2 / early v0.7 status + work / fix)
+    shaped = migrate_state({k: fields[k] for k in ("state", "restore_to", "status", "work", "fix", "fix_history",
+                                                   "work_history") if k in fields})
+    item["state"] = shaped["state"]
+    for k in ("restore_to", "work", "work_history"):
+        if shaped.get(k):
+            item[k] = shaped[k]
     item["project"] = s.project_id
     item["project_by"] = project_by
     item["created"] = created
@@ -524,16 +534,12 @@ def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: st
     lang = fields.get("language") or language
     if lang:
         item["language"] = lang
-    skip = {"id", "uid", "kind", "title", "status", "work", "fix", "fix_history", "source", "language", "frames",
-            "clip", "project", "project_by", "created", "updated", "schema", "path", "store",
+    skip = {"id", "uid", "kind", "title", "state", "restore_to", "status", "work", "fix", "fix_history", "source",
+            "language", "frames", "clip", "project", "project_by", "created", "updated", "schema", "path", "store",
             "_project", "work_history", "aliases"}
     for k, v in fields.items():
         if k not in skip:
             item[k] = v
-    hist = [work_from_fix(f) for f in fields.get("fix_history") or [] if isinstance(f, dict)]
-    hist += [w for w in fields.get("work_history") or [] if isinstance(w, dict)]
-    if hist:
-        item["work_history"] = hist
     if fields.get("frames") is not None:
         item["frames"] = import_media(item, "frames", fields["frames"], session, s.root)
     if fields.get("clip"):
@@ -763,7 +769,7 @@ def done(session: Path) -> dict:
     for uid in b.get("items") or []:
         p = find_path(uid, st.store_of_session(session))
         h = st.read_header(p) if p else {}
-        if not h or h.get("status") == "deleted":
+        if not h or h.get("state") == "discarded":
             continue
         live += 1
         if not h.get("frames"):
@@ -774,31 +780,57 @@ def done(session: Path) -> dict:
             **({"reviewed": True} if b.get("reviewed") else {})}
 
 
-# ------------------------------------------------------------------ K3: work
-def set_work(item: dict, state: str, given: dict, by: str) -> dict:
-    if state not in WORK_STATES:
-        fail(f"state must be one of {', '.join(WORK_STATES)}", "bad_value")
+# ------------------------------------------------------------------ K3: the item's state
+def set_state(item: dict, state: str, given: dict, by: str, undo: bool = False, force: bool = False) -> dict:
+    """Move one item to `state` (K3). Keep / discard / restore only change `state` (and `restore_to`); a move into or
+    out of the hand-off states rewrites `work` and appends the previous {state, …work} to work_history. undo = the
+    user takes back their own last change (the page's undo): any state, the previous work comes back. force = an old
+    caller's user decision (v2 `fix`, an old page's work op) that K3's table may not have: any state."""
+    if state not in STATES:
+        fail(f"state must be one of {', '.join(STATES)}", "bad_value")
     if by not in WORK_BY:
         fail(f"--by must be one of {', '.join(WORK_BY)}", "bad_value")
-    cur_state = work_state(item)
-    cur = item.get("work") if isinstance(item.get("work"), dict) else None
-    if item.get("status") == "deleted" and state in ("handed_off", "in_progress"):
-        fail(f"{item.get('id')}: the user dropped this item — it can't be handed off", "deleted")
-    if not may_move(cur_state, state, by):
-        who = "only the user" if state in ("done", "wontfix", "todo") else f"not {by}"
-        fail(f"{item.get('id')}: {cur_state} → {state} ({who} may do that)", "bad_transition")
+    cur = state_of(item)
+    out = {"uid": item.get("uid"), "id": item.get("id"), "state": state}
+    if (undo or force) and by != "user":
+        fail("only the user's own change skips the transition table", "bad_args")
+    if cur == "discarded" and state in ("handed_off", "in_progress") and by != "user":
+        fail(f"{item.get('id')}: the user discarded this item — it can't be handed off", "deleted")
+    same = cur == state
+    if same and not may_move(cur, state, by):
+        return {**out, "work": item.get("work"), "_write": False}  # already there: nothing to do
+    if not same and not (undo or force) and not may_move(cur, state, by):
+        who = "only the user" if state in ("todo", "done", "wontfix", "discarded") or cur == "discarded" \
+            else f"not {by}"
+        fail(f"{item.get('id')}: {cur} → {state} ({who} may do that)", "bad_transition")
+    cur_work = item.get("work") if isinstance(item.get("work"), dict) else None
+    hist = item.get("work_history") if isinstance(item.get("work_history"), list) else []
+    if state == "discarded":
+        item["restore_to"] = cur
+    else:
+        item.pop("restore_to", None)
+    item["state"] = state
+    if state == "discarded" or cur == "discarded" or (cur not in WORK_TRACKED and state not in WORK_TRACKED):
+        return {**out, "work": item.get("work")}  # keep / discard / restore: the hand-off record stays as it was
+    if undo and hist and isinstance(hist[-1], dict) and hist[-1].get("state") == state:
+        prev = hist.pop()
+        item["work"] = {k: prev.get(k) for k in WORK_KEYS}
+        if not hist:
+            item.pop("work_history", None)
+        return {**out, "work": item["work"]}
     given = {k: v for k, v in given.items() if v is not None}
     now = now_iso()
-    if cur and cur_state == state:
-        new = {**{k: cur.get(k) for k in WORK_KEYS}, **given, "at": now, "by": by}
+    if same and cur_work:
+        new = {**{k: cur_work.get(k) for k in WORK_KEYS}, **given, "at": now, "by": by}
     else:
-        if cur:
-            item.setdefault("work_history", []).append({k: cur.get(k) for k in WORK_KEYS})
-        carry = cur if cur and cur_state in ("handed_off", "in_progress", "to_verify") and state != "todo" else {}
-        new = {"state": state, "to": given.get("to") or carry.get("to"),
+        if cur_work:
+            item["work_history"] = [*hist, {"state": cur, **{k: cur_work.get(k) for k in WORK_KEYS}}]
+        w = cur_work or {}
+        carry = w if cur in ("handed_off", "in_progress", "to_verify") and state != "todo" else {}
+        new = {"to": given.get("to") or carry.get("to"),
                "agent": given.get("agent") or carry.get("agent") or ("human" if by == "user" else None),
                "job": given.get("job") or carry.get("job"), "handoff": given.get("handoff") or carry.get("handoff"),
-               "claim": given.get("claim") if state == "to_verify" else None, "note": given.get("note") or "",
+               "claim": given.get("claim"), "note": given.get("note") or "",
                "commit": given.get("commit") or (carry.get("commit") if state != "in_progress" else None),
                "pr": given.get("pr") or (carry.get("pr") if state != "in_progress" else None), "at": now, "by": by}
     if state == "handed_off" and not new.get("to"):
@@ -806,19 +838,23 @@ def set_work(item: dict, state: str, given: dict, by: str) -> dict:
     if state != "to_verify":
         new["claim"] = None
     item["work"] = {k: new.get(k) for k in WORK_KEYS}
-    out = {"uid": item.get("uid"), "id": item.get("id"), "work": item["work"]}
-    if state == "handed_off" and new["to"] == "session" and item.get("status") == "draft":
-        item["status"] = "confirmed"  # dispatching a draft to a session keeps it (sessions.py warns draft_confirmed)
-        out["confirmed"] = True
-    if item.get("status") == "deleted":
-        out["note"] = "the user dropped this item"
-    return out
+    return {**out, "work": item["work"]}
 
 
-def work(session: Path | None, refs: list[str], state: str, given: dict, by: str) -> dict:
+def legacy_status_target(cur: str, status: str) -> str | None:
+    """An old review status written by an old caller (patch --set status=…, a page's set) → the state it means now."""
+    if status == "deleted":
+        return None if cur == "discarded" else "discarded"
+    if status == "confirmed":
+        return "todo" if cur == "new" else None
+    return "new" if cur == "todo" else None  # draft: an old page undoing its keep
+
+
+def change_state(session: Path | None, refs: list[str], state: str | None, action: str | None, given: dict,
+                 by: str, undo: bool = False) -> dict:
     given = dict(given)
     given.setdefault("agent", None)
-    if not given.get("agent") and os.environ.get("BLURT_AGENT"):
+    if not given.get("agent") and os.environ.get("BLURT_AGENT") and by != "user":
         given["agent"] = os.environ["BLURT_AGENT"]
     if not given.get("job"):
         given["job"] = os.environ.get("BLURT_JOB") or os.environ.get("BLURT_RUN_ID") or None
@@ -826,6 +862,18 @@ def work(session: Path | None, refs: list[str], state: str, given: dict, by: str
         fail("--to must be session or external", "bad_value")
     if given.get("claim") not in (None, "fixed", "wontfix"):
         fail("--claim must be fixed or wontfix", "bad_value")
+    if (state is None) == (action is None):
+        fail("pass --state S or --action A")
+    if action is not None and action not in ACTIONS:
+        fail(f"action must be one of {', '.join(ACTIONS)}", "bad_value")
+
+    def target(it):
+        if action is None:
+            return state
+        to = action_target(action, state_of(it), it.get("restore_to"))
+        if to is None:
+            fail(f"{it.get('id')}: can't {action.replace('_', ' ')} an item that is {state_of(it)}", "bad_transition")
+        return to
     targets = []
     for ref in refs:
         path, uid, into = locate(session, ref)
@@ -835,7 +883,7 @@ def work(session: Path | None, refs: list[str], state: str, given: dict, by: str
             targets.append((ref, None, into))
             continue
         it = load(path)
-        set_work(json.loads(json.dumps(it)), state, given, by)  # check every item before writing any
+        set_state(json.loads(json.dumps(it)), target(it), given, by, undo)  # check every item before writing any
         targets.append((ref, path, into))
     out = []
     for ref, path, into in targets:
@@ -843,13 +891,13 @@ def work(session: Path | None, refs: list[str], state: str, given: dict, by: str
             out.append({"uid": None, "id": ref, "skipped": f"merged into {_id_of(into)}" if into else
                         "removed by the user"})
             continue
-        out.append(mutate(path, lambda it: set_work(it, state, given, by)))
+        out.append(mutate(path, lambda it: set_state(it, target(it), given, by, undo)))
         touch_batch(st.read_header(path))
     return {"ok": True, "items": out}
 
 
 def fix(session: Path | None, ref: str, state: str, given: dict) -> dict:
-    """v2 `items.py fix` → K3 work. Without an agent (none given, no $BLURT_AGENT) it is the user's own call."""
+    """v2 `items.py fix` → K3. Without an agent (none given, no $BLURT_AGENT) it is the user's own call."""
     if state not in FIX_STATES:
         fail(f"state must be one of {', '.join(FIX_STATES)}", "bad_value")
     agent = given.get("agent") or os.environ.get("BLURT_AGENT") or "human"
@@ -864,7 +912,9 @@ def fix(session: Path | None, ref: str, state: str, given: dict) -> dict:
         fail(f"no item {ref}", "not_found")
     g = {"agent": agent, "job": given.get("run_id") or os.environ.get("BLURT_JOB") or os.environ.get("BLURT_RUN_ID"),
          "commit": given.get("commit"), "pr": given.get("pr"), "note": given.get("note"), "claim": claim}
-    out = mutate(path, lambda it: set_work(it, new, g, by))
+    if by == "user":  # no agent: the user's own word — fixed by hand is done
+        new = {"fixing": "in_progress", "fixed": "done", "wontfix": "wontfix", "reopened": "todo"}[state]
+    out = mutate(path, lambda it: set_state(it, new, g, by, force=by == "user"))
     touch_batch(st.read_header(path))
     return {"ok": True, **out}
 
@@ -958,13 +1008,20 @@ def get(session: Path | None, ref: str) -> dict:
             if isinstance(item.get("source"), dict) else None}
 
 
-def _matches(item: dict, kinds, statuses, works) -> bool:
+def _matches(item: dict, kinds, states) -> bool:
+    """states None = every state but discarded."""
     if kinds and item.get("kind") not in kinds:
         return False
-    stt = item.get("status") or "draft"
-    if (statuses and stt not in statuses) or (not statuses and stt == "deleted"):
-        return False
-    return not works or work_state(item) in works
+    s = state_of(item)
+    return s in states if states is not None else s != "discarded"
+
+
+def filter_states(states=(), statuses=(), works=(), fix_states=()) -> list[str] | None:
+    """--state, plus the old --status / --work / --fix-state names (K3), as one list of states (None = not given)."""
+    old = legacy_filter_states(statuses, works, fix_states)
+    if not states:
+        return old
+    return [s for s in states if old is None or s in old]
 
 
 def scope_items(scope: dict) -> tuple[list[tuple[Path, dict]], dict | None]:
@@ -996,33 +1053,33 @@ def scope_items(scope: dict) -> tuple[list[tuple[Path, dict]], dict | None]:
     return out, None
 
 
-def list_items(session: Path | None, project: str | None, kinds, statuses, works, fix_states) -> dict:
-    works = list(works or []) + fix_alias_states(fix_states)
+def list_items(session: Path | None, project: str | None, kinds, states) -> dict:
     if session is not None:
         prepare(session)
         scope = {"session": str(session)}
     else:
         scope = {"project": resolve_project(project)} if project else {}
     pairs, _ = scope_items(scope)
-    rows = [present(i, p) for p, i in pairs if _matches(i, kinds, statuses, works)]
+    rows = [present(i, p) for p, i in pairs if _matches(i, kinds, states)]
     return {"ok": True, "items": rows, **({"session": str(session)} if session else {})}
 
 
-def make_doc(scope: dict, kinds=(), statuses=(), works=()) -> dict:
+def make_doc(scope: dict, kinds=(), states=None) -> dict:
+    """A session's doc lists every item it still has (discarded ones too: the page shows and restores them); a
+    project's doc lists its items but the discarded, unless asked for them (states)."""
     import projects  # noqa: PLC0415
     pairs, b = scope_items(scope)
     names = _project_names()
     removed = dict((b or {}).get("removed") or {})
     items = []
     for p, it in pairs:
-        if it.get("status") == "deleted" and it.get("merged_into"):
+        if it.get("state") == "discarded" and it.get("merged_into"):
             removed.setdefault(it["uid"], it["merged_into"])
             continue
         if it["uid"] in removed:
             continue
-        if statuses or works or kinds:
-            if not _matches(it, kinds, statuses, works):
-                continue
+        if (b is None or states is not None or kinds) and not _matches(it, kinds, states):
+            continue
         items.append(present(it, p, names=names))
     plist = [{"id": e["id"], "name": e.get("name"), "key": e.get("key"), "path": e["path"]}
              for e in [*projects.entries(), projects.inbox_entry()]]
@@ -1037,8 +1094,8 @@ def make_doc(scope: dict, kinds=(), statuses=(), works=()) -> dict:
     else:
         pid = scope.get("project")
         meta = names.get(pid) or {}
-        sc = {"project": pid, **({"status": list(statuses)} if statuses else {}),
-              **({"work": list(works)} if works else {}), **({"kind": list(kinds)} if kinds else {})}
+        sc = {"project": pid, **({"state": list(states)} if states is not None else {}),
+              **({"kind": list(kinds)} if kinds else {})}
         doc = {"schema": st.SCHEMA, "scope": sc, "title": meta.get("name"), "digest": None,
                "language": None, "processing": False, "reviewed": False, "agent_at": None, "source_video": None,
                "_video": False, "project": pid}
@@ -1062,7 +1119,7 @@ def scope_of(session: Path | None, project: str | None) -> dict:
 
 
 # ------------------------------------------------------------------ the user's edits (review page, apps)
-OP_KINDS = {"set", "remove", "add", "work"}
+OP_KINDS = {"set", "remove", "add", "state", "work"}  # work: the state op's old name
 
 
 def parse_ops(raw: str) -> list[dict]:
@@ -1085,13 +1142,16 @@ def check_ops(ops: list) -> None:
         if ok and op["op"] == "set":
             ok = isinstance(op.get("id"), str) and isinstance(op.get("set") or {}, dict) \
                  and isinstance(op.get("unset") or [], list)
-        elif ok and op["op"] in ("remove", "work"):
-            ok = isinstance(op.get("id"), str) and (op["op"] != "work" or op.get("state") in WORK_STATES)
+        elif ok and op["op"] == "remove":
+            ok = isinstance(op.get("id"), str)
+        elif ok and op["op"] in ("state", "work"):
+            ok = isinstance(op.get("id"), str) and (
+                op.get("action") in ACTIONS if op.get("action") is not None else op.get("state") in STATES)
         elif ok:
             ok = isinstance(op.get("item"), dict) and isinstance(op["item"].get("id") or op["item"].get("uid"), str)
         if not ok:
             fail(f"ops[{n}]: expected {{op: set, id, set?, unset?}} | {{op: remove, id, into?}} "
-                 f"| {{op: add, item: {{id, …}}, after?}} | {{op: work, id, state, note?}}, got "
+                 f"| {{op: add, item: {{id, …}}, after?}} | {{op: state, id, action | state, note?, undo?}}, got "
                  f"{json.dumps(op, ensure_ascii=False)[:200]}")
     for n, op in enumerate(ops):
         try:
@@ -1172,6 +1232,12 @@ def apply_user_ops(scope: dict, ops: list[dict], confirm: bool = False, now: flo
                 proj = sets.pop("project", None)
 
                 def edit(it, sets=sets, unsets=op.get("unset") or [], root=st.store_of_item(path).root):
+                    # an old page's state change rides in a set: state as is, status the way it maps now (K3)
+                    to = sets.get("state") if sets.get("state") in STATES else \
+                        legacy_status_target(state_of(it), sets["status"]) if sets.get("status") in REVIEW_STATES \
+                        else None
+                    if to and to != state_of(it):
+                        set_state(it, to, {}, "user", force=True)
                     _user_set(it, sets, unsets, now, root, uid_of)
                     return {}
                 mutate(path, edit)
@@ -1182,9 +1248,9 @@ def apply_user_ops(scope: dict, ops: list[dict], confirm: bool = False, now: flo
                 into = uid_of(op.get("into")) if op.get("into") else None
 
                 def rm(it, into=into):
-                    it["status"] = "deleted"
+                    if state_of(it) != "discarded":
+                        set_state(it, "discarded", {}, "user")
                     it["merged_into"] = into
-                    it.setdefault("_user", {})["status"] = now
                     return {}
                 mutate(path, rm)
                 uid = st.read_header(path).get("uid")
@@ -1192,9 +1258,15 @@ def apply_user_ops(scope: dict, ops: list[dict], confirm: bool = False, now: flo
                     b.setdefault("removed", {})[uid] = into or ""
                     if uid in (b.get("items") or []):
                         b["items"].remove(uid)
-            elif kind == "work":
-                def decide(it, state=op["state"], note=op.get("note")):
-                    set_work(it, state, {"note": note}, "user")
+            else:  # state (work: its old name, from a page before K3's one state: the user's word, any state)
+                def decide(it, op=op):
+                    cur = state_of(it)
+                    to = action_target(op["action"], cur, it.get("restore_to")) if op.get("action") is not None \
+                        else op["state"]
+                    undo, force = bool(op.get("undo")), op["op"] == "work"
+                    if to is None or to == cur or not (undo or force or may_move(cur, to, "user")):
+                        return {"_write": False}  # no longer valid (another window got there first): the doc says
+                    set_state(it, to, {"note": op.get("note")}, "user", undo=undo, force=force)
                     return {}
                 mutate(path, decide)
         if b is not None:
@@ -1222,8 +1294,10 @@ def _add_op(op, b, home, session, now, find, uid_of) -> None:
             for k, v in fields.items():
                 if k not in SERVER_KEYS:
                     it[k] = _relativize(v, root) if k in ("frames", "clip") else v
-            if merged:
-                it["status"] = fields.get("status") if fields.get("status") in REVIEW_STATES else "draft"
+            if merged and state_of(it) == "discarded":
+                to = fields.get("state") if fields.get("state") in STATES and fields["state"] != "discarded" \
+                    else it.get("restore_to") or "new"
+                set_state(it, to, {}, "user", undo=True)
             it["merged_into"] = None
             return {}
         mutate(path, restore)
@@ -1350,6 +1424,17 @@ class Parser(argparse.ArgumentParser):
         fail(f"{self.prog}: {message}")
 
 
+def add_state_filters(s, fix: bool = False) -> None:
+    s.add_argument("--state", action="append", default=[], choices=list(STATES))
+    s.add_argument("--kind", action="append", default=[])
+    # before K3's one state (old callers): mapped to states
+    s.add_argument("--status", action="append", default=[], choices=list(REVIEW_STATES), help=argparse.SUPPRESS)
+    s.add_argument("--work", action="append", default=[], choices=list(LEGACY_WORK), help=argparse.SUPPRESS)
+    if fix:
+        s.add_argument("--fix-state", action="append", default=[], choices=[*FIX_STATES, "none"],
+                       help=argparse.SUPPRESS)
+
+
 def build_parser() -> Parser:
     p = Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True, parser_class=Parser)
@@ -1376,13 +1461,13 @@ def build_parser() -> Parser:
     s = sub.add_parser("list")
     s.add_argument("session", nargs="?")
     s.add_argument("--project")
-    s.add_argument("--kind", action="append", default=[])
-    s.add_argument("--status", action="append", default=[], choices=list(REVIEW_STATES))
-    s.add_argument("--work", action="append", default=[], choices=list(WORK_STATES))
-    s.add_argument("--fix-state", action="append", default=[], choices=[*FIX_STATES, "none"])
-    s = sub.add_parser("work")
+    add_state_filters(s, fix=True)
+    s = sub.add_parser("state", aliases=["work"])
     s.add_argument("target", nargs="+", metavar="REF")
-    s.add_argument("--state", required=True, choices=list(WORK_STATES))
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--state", choices=list(STATES))
+    g.add_argument("--action", choices=list(ACTIONS))
+    s.add_argument("--undo", action="store_true", help=argparse.SUPPRESS)  # the user takes back their last change
     s.add_argument("--to", choices=["session", "external"])
     s.add_argument("--agent")
     s.add_argument("--job")
@@ -1410,9 +1495,7 @@ def build_parser() -> Parser:
         s = sub.add_parser(name)
         s.add_argument("session", nargs="?")
         s.add_argument("--project")
-        s.add_argument("--status", action="append", default=[], choices=list(REVIEW_STATES))
-        s.add_argument("--work", action="append", default=[], choices=list(WORK_STATES))
-        s.add_argument("--kind", action="append", default=[])
+        add_state_filters(s)
         if name == "poll":
             s.add_argument("--etag", required=True)
     s = sub.add_parser("user-ops")
@@ -1422,6 +1505,7 @@ def build_parser() -> Parser:
     g.add_argument("--json", metavar="OPS")
     g.add_argument("--stdin", action="store_true")
     s.add_argument("--confirm", action="store_true", help="the user finished the review (reviewed: true)")
+    add_state_filters(s)  # the doc that comes back
     s = sub.add_parser("migrate")
     s.add_argument("sessions", nargs="*")
     s.add_argument("--all", action="store_true")
@@ -1493,22 +1577,23 @@ def run(a) -> dict:
     if a.cmd == "done":
         return done(_session_arg(a.session))
     if a.cmd == "list":
-        return list_items(_session_arg(a.session), a.project, a.kind, a.status, a.work, a.fix_state)
-    if a.cmd == "work":
+        return list_items(_session_arg(a.session), a.project, a.kind,
+                          filter_states(a.state, a.status, a.work, a.fix_state))
+    if a.cmd in ("state", "work"):
         session, refs = target_of(a.target)
         if session is not None:
             prepare(session)
         if not refs:
-            fail("work: expected REF …")
+            fail(f"{a.cmd}: expected REF …")
         given = {"to": a.to, "agent": a.agent, "job": a.job, "handoff": a.handoff, "claim": a.claim,
                  "commit": a.commit, "pr": a.pr, "note": a.note}
-        return work(session, refs, a.state, given, a.by)
+        return change_state(session, refs, a.state, a.action, given, a.by, a.undo)
     if a.cmd == "move":
         session, refs = target_of(a.target)
         return move(session, refs, a.project, a.by, a.confidence, a.reason)
     if a.cmd in ("doc", "poll"):
         scope = scope_of(_session_arg(a.session), a.project)
-        doc = make_doc(scope, a.kind, a.status, a.work)
+        doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work))
         tag = doc_etag(doc)
         if a.cmd == "poll" and a.etag == tag:
             return {"ok": True, "etag": tag}
@@ -1525,7 +1610,7 @@ def run(a) -> dict:
         ops = parse_ops(raw)
         scope = scope_of(_session_arg(a.session), a.project)
         apply_user_ops(scope, ops, a.confirm)
-        doc = make_doc(scope)
+        doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work))
         return {"ok": True, "etag": doc_etag(doc), "doc": doc}
     if a.cmd == "migrate":
         if a.all:

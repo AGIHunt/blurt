@@ -255,7 +255,7 @@ def summary(scope: dict) -> dict:
     """What the agent reads when the page closes."""
     doc = items_mod.make_doc(scope)
     items = doc["items"]
-    kept = [i for i in items if i.get("status") != "deleted"]
+    kept = [i for i in items if i.get("state") != "discarded"]
     kinds: dict[str, int] = {}
     for i in kept:
         kinds[i.get("kind") or "note"] = kinds.get(i.get("kind") or "note", 0) + 1

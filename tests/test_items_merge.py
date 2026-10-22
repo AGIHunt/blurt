@@ -103,8 +103,8 @@ class Merge(TmpCase):
                  {"op": "remove", "id": "I-004", "into": "I-003"})
         out = self.items_py("patch", self.s, "I-002", "--set", "severity=high")
         self.assertIn("note", out)
-        self.assertEqual(self.items_py("patch", self.s, "I-002", "--set", "status=draft")["kept_user"], ["status"])
-        self.assertEqual(self.item("MA-2")["status"], "deleted")
+        self.items_py("patch", self.s, "I-002", "--set", "status=draft")  # an agent can't bring it back
+        self.assertEqual((self.item("MA-2")["state"], self.item("MA-2")["restore_to"]), ("discarded", "new"))
         out = self.items_py("patch", self.s, "I-004", "--set", "title=back?")
         self.assertEqual(out["skipped"], "merged into MA-3")
         out = self.items_py("set-frames", self.s, "I-004", "frames/I-004-1.jpg")
@@ -121,10 +121,10 @@ class Merge(TmpCase):
         doc = json.loads(self.request("GET", "/api/items")[1])
         self.assertEqual([i["id"] for i in doc["items"]], ["MA-1", "MA-6", "MA-2", "MA-3", "MA-4", "MA-5"])
         self.assertEqual(doc["_removed"], {})
-        self.assertEqual((self.item("MA-4")["status"], self.item("MA-4").get("merged_into")), ("draft", None))
+        self.assertEqual((self.item("MA-4")["state"], self.item("MA-4").get("merged_into")), ("new", None))
 
     def test_confirm_while_processing(self):
-        code = self.ops({"op": "set", "id": "I-001", "set": {"status": "confirmed"}}, path="/api/confirm")[0]
+        code = self.ops({"op": "state", "id": "I-001", "action": "keep"}, path="/api/confirm")[0]
         self.assertEqual(code, 200)
         self.assertTrue(self.done.is_set())
         b = json.loads((self.s / "batch.json").read_text())
@@ -136,7 +136,7 @@ class Merge(TmpCase):
         self.assertTrue(out["reviewed"])
         b = json.loads((self.s / "batch.json").read_text())
         self.assertFalse(b["processing"])
-        self.assertEqual(self.item("MA-1")["status"], "confirmed")
+        self.assertEqual(self.item("MA-1")["state"], "todo")
         s = review.summary({"session": str(self.s)})
         self.assertEqual((s["reviewed"], s["kept"], s["kinds"]), (True, 5, {"issue": 5}))
 

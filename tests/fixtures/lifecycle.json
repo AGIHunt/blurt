@@ -1,0 +1,60 @@
+{
+  "_comment": "K3 item lifecycle (docs/design/next-round.md). One table, three implementations: _common.LIFECYCLE (Python), web/packages/ui/src/lifecycle.ts, BlurtCore/Lifecycle.swift — each is tested against this file.",
+  "states": ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded"],
+  "groups": {
+    "inbox": ["new", "to_verify"],
+    "open": ["new", "todo", "handed_off", "in_progress"],
+    "active": ["handed_off", "in_progress", "to_verify"],
+    "closed": ["done", "wontfix"]
+  },
+  "actions": [
+    {"action": "keep", "from": ["new"], "to": "todo", "key": "a"},
+    {"action": "hand_off", "from": ["new", "todo"], "to": "handed_off", "key": "cmd+enter"},
+    {"action": "done", "from": ["todo", "handed_off", "in_progress", "to_verify"], "to": "done", "key": "d"},
+    {"action": "send_back", "from": ["to_verify"], "to": "todo", "key": "r"},
+    {"action": "take_back", "from": ["handed_off", "in_progress"], "to": "todo", "key": "r"},
+    {"action": "reopen", "from": ["done", "wontfix"], "to": "todo", "key": "r"},
+    {"action": "restore", "from": ["discarded"], "to": null, "key": "r"},
+    {"action": "wontfix", "from": ["new", "todo", "handed_off", "in_progress", "to_verify"], "to": "wontfix", "key": "w"},
+    {"action": "discard", "from": ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"], "to": "discarded", "key": "x"}
+  ],
+  "menus": {
+    "new": ["keep", "hand_off", "wontfix", "discard"],
+    "todo": ["hand_off", "done", "wontfix", "discard"],
+    "handed_off": ["done", "take_back", "wontfix", "discard"],
+    "in_progress": ["done", "take_back", "wontfix", "discard"],
+    "to_verify": ["done", "send_back", "wontfix", "discard"],
+    "done": ["reopen", "discard"],
+    "wontfix": ["reopen", "discard"],
+    "discarded": ["restore"]
+  },
+  "agent_moves": [
+    ["new", "in_progress"], ["todo", "in_progress"], ["handed_off", "in_progress"], ["to_verify", "in_progress"],
+    ["new", "to_verify"], ["todo", "to_verify"], ["handed_off", "to_verify"], ["in_progress", "to_verify"],
+    ["to_verify", "to_verify"], ["in_progress", "in_progress"],
+    ["in_progress", "todo"], ["to_verify", "todo"]
+  ],
+  "app_extra_moves": [["new", "handed_off"], ["todo", "handed_off"], ["handed_off", "handed_off"]],
+  "migrate": [
+    {"in": {}, "state": "new"},
+    {"in": {"status": "draft"}, "state": "new"},
+    {"in": {"status": "confirmed"}, "state": "todo"},
+    {"in": {"status": "confirmed", "work": {"state": "todo"}}, "state": "todo"},
+    {"in": {"status": "draft", "work": {"state": "wontfix"}}, "state": "wontfix"},
+    {"in": {"status": "draft", "work": {"state": "to_verify", "claim": "fixed"}}, "state": "to_verify"},
+    {"in": {"status": "confirmed", "work": {"state": "handed_off"}}, "state": "handed_off"},
+    {"in": {"status": "confirmed", "work": {"state": "in_progress"}}, "state": "in_progress"},
+    {"in": {"status": "confirmed", "work": {"state": "done"}}, "state": "done"},
+    {"in": {"status": "deleted"}, "state": "discarded", "restore_to": "new"},
+    {"in": {"status": "deleted", "work": {"state": "done"}}, "state": "discarded", "restore_to": "done"},
+    {"in": {"status": "deleted", "merged_into": "01JB7ZK3Q4M8W2E5R6T9Y0ABCD"}, "state": "discarded", "restore_to": "new"},
+    {"in": {"status": "confirmed", "fix": {"state": "fixed", "agent": "claude"}}, "state": "to_verify"},
+    {"in": {"status": "confirmed", "fix": {"state": "fixing", "agent": "codex"}}, "state": "in_progress"},
+    {"in": {"status": "draft", "fix": {"state": "wontfix", "agent": "human"}}, "state": "wontfix"},
+    {"in": {"status": "confirmed", "fix": {"state": "wontfix"}}, "state": "wontfix"},
+    {"in": {"status": "confirmed", "fix": {"state": "wontfix", "agent": "claude"}}, "state": "to_verify"},
+    {"in": {"status": "draft", "fix": {"state": "reopened"}}, "state": "new"},
+    {"in": {"state": "done", "status": "draft", "work": {"state": "todo"}}, "state": "done"},
+    {"in": {"state": "bogus", "status": "confirmed"}, "state": "todo"}
+  ]
+}

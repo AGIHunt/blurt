@@ -37,7 +37,7 @@ def test_claude_session_walks_every_status(p2):
     assert p2.tmux("list-windows", "-a", "-F", "#{session_name} #{window_name} #{@blurt_job} #{@blurt_items}").split() \
         == [f"blurt-{proj['slug']}", it["id"], jid, it["uid"]]
     item = p2.get(it["uid"])
-    assert item["status"] == "confirmed" and item["work"]["state"] in ("handed_off", "in_progress")
+    assert item["state"] in ("handed_off", "in_progress")  # a new item handed off is kept by that move
     assert item["work"]["to"] == "session" and item["work"]["job"] == jid and item["work"]["handoff"].startswith("H-")
     settings = json.loads((p2.home / "jobs" / f"{jid}.claude-settings.json").read_text())
     assert set(settings["hooks"]) == {"SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop",
@@ -48,7 +48,7 @@ def test_claude_session_walks_every_status(p2):
     p2.wait(lambda: p2.status(jid) == "waiting_input", what="waiting_input")
     j = p2.job(jid)
     assert j["agent"]["status_source"] == "hook" and j["agent"]["agent_session_id"] == "fake-claude-1"
-    assert p2.get(it["uid"])["work"]["state"] == "in_progress"  # first running
+    assert p2.get(it["uid"])["state"] == "in_progress"  # first running
     p2.type(jid)  # approve → PostToolUse → running, then Stop → turn_done (the idle_prompt changes nothing)
     p2.wait(lambda: p2.status(jid) == "turn_done", what="turn_done")
     events = [json.loads(ln) for ln in (p2.home / "jobs" / f"{jid}.events.jsonl").read_text().splitlines()]
@@ -58,7 +58,7 @@ def test_claude_session_walks_every_status(p2):
     j = p2.wait(lambda: (lambda j: j if j["agent"].get("exit") == 0 else None)(p2.job(jid)), what="exit code")
     assert j["state"] == "done" and [s["state"] for s in j["steps"]] == ["done", "done", "pending"]
     item = p2.get(it["uid"])
-    assert item["work"]["state"] == "to_verify" and item["work"]["claim"] in (None, "")  # exited: to_verify, claim null
+    assert item["state"] == "to_verify" and item["work"]["claim"] in (None, "")  # exited: to_verify, claim null
     rows = p2.run("sessions.py", "list")["sessions"]
     assert [r["job"] for r in rows] == [jid] and rows[0]["status"] == "exited" and rows[0]["exit"] == 0  # window kept
 
@@ -106,7 +106,7 @@ def test_terminal_fallback_for_an_agent_without_hooks(p2):
     assert p2.status(jid) == "running"
     p2.wait(lambda: p2.status(jid) == "waiting_input", what="pattern")
     assert p2.job(jid)["agent"]["status_source"] == "tty"
-    assert p2.get(it["uid"])["work"]["state"] == "in_progress"  # no hooks: an open window counts as running
+    assert p2.get(it["uid"])["state"] == "in_progress"  # no hooks: an open window counts as running
     p2.type(jid, "y")
     p2.wait(lambda: p2.status(jid) == "running", what="new output")
     p2.wait(lambda: p2.status(jid) == "turn_done", timeout=20, what="8 s of quiet")
@@ -122,7 +122,7 @@ def test_dry_run_warns_about_concurrent_edits(p2):
     dry = dispatch(p2, b["uid"], agent="claude", dry_run=True)
     assert dry["dry_run"] and dry["worktree"] is False
     assert {"code": "concurrent_edit", "jobs": [first]} in dry["warnings"]
-    assert p2.get(b["uid"])["work"]["state"] == "todo" and len(p2.run("jobs.py", "list")["jobs"]) == 1
+    assert p2.get(b["uid"])["state"] == "new" and len(p2.run("jobs.py", "list")["jobs"]) == 1
     # with a worktree there is nothing to warn about
     wt = dispatch(p2, b["uid"], agent="claude", dry_run=True, worktree="on")
     assert not [w for w in wt["warnings"] if w["code"] == "concurrent_edit"] and wt["jobs"][0]["branch"].startswith("blurt/")
@@ -181,7 +181,7 @@ def test_parallel_worktrees_diff_merge_discard(p2):
     assert m["removed"] and not wa.exists() and (repo / "src" / "login.txt").read_text() == "button: blue\n"
     assert p2.git(repo, "log", "-1", "--format=%P").count(" ") == 1  # --no-ff: a merge commit
     assert ja["branch"] not in p2.git(repo, "branch", "--list")
-    assert p2.get(a["uid"])["work"]["state"] == "to_verify" and m["items"] == []  # stopping already moved it
+    assert p2.get(a["uid"])["state"] == "to_verify" and m["items"] == []  # stopping already moved it
     disc = p2.run("sessions.py", "finish", jb["id"], "--action", "discard")
     assert disc["removed"] and not wb.exists() and jb["branch"] not in p2.git(repo, "branch", "--list")
     assert p2.git(repo, "worktree", "list").count("\n") == 0
@@ -222,7 +222,7 @@ def test_pr_without_gh_gives_the_compare_url(p2):
     out = p2.run("sessions.py", "finish", j["id"], "--action", "pr")
     assert out["pr"] is None and out["compare"] is None  # a local path has no web compare page
     assert j["branch"] in subprocess.run(["git", "-C", str(bare), "branch"], capture_output=True, text=True).stdout
-    assert p2.get(it["uid"])["work"]["state"] == "to_verify"
+    assert p2.get(it["uid"])["state"] == "to_verify"
 
 
 def test_compare_url():
