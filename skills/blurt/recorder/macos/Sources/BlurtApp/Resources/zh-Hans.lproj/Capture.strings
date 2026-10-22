@@ -54,7 +54,7 @@
 "capture.island.voice" = "语音输入";
 "capture.keys.anytime" = "随时可用";
 "capture.keys.bad_key" = "这个键不能用";
-"capture.keys.change_it" = " · 可以在 设置 → 快捷键 里更换";
+"capture.keys.change_it" = " · 可以在「设置 → 快捷键」里更换";
 "capture.keys.control" = "⌃ Control 键";
 "capture.keys.custom" = "已自定义";
 "capture.keys.dictation_change" = "到「听写」设置里修改";

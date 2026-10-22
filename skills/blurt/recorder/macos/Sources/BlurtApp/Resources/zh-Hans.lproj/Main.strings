@@ -161,7 +161,7 @@
 "main.job.error.network" = "网络断了。";
 "main.job.error.quota" = "agent 的额度用完了。";
 "main.job.error.tmux" = "没装 tmux，可以用 Homebrew 安装（brew install tmux）。";
-"main.job.hint.no_agent" = "还没有能用的 coding agent。在 设置 → Agent 里安装或登录 Claude Code、Codex。";
+"main.job.hint.no_agent" = "还没有能用的 agent。在「设置 → Agent」里安装或登录 Claude Code、Codex。";
 "main.job.no_terminal" = "终端不可用";
 "main.job.no_terminal.detail" = "可以在你自己的终端里打开这个会话。";
 "main.job.open_terminal_app" = "在终端中打开";

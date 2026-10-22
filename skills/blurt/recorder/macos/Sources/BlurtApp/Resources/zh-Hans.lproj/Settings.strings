@@ -7,7 +7,7 @@
 
 "onboarding.blurt_records_area_you" = "口喷鸡录的是你选的区域，录完的文件只存在你的 Mac 上。状态会实时更新。";
 
-"onboarding.coding_agent" = "Coding agent";
+"onboarding.coding_agent" = "写代码的 agent";
 
 "onboarding.dependencies_ready_index_built" = "依赖已就绪，索引已建好";
 
@@ -33,7 +33,7 @@
 
 "onboarding.next" = "下一步";
 
-"onboarding.no_claude_code_codex" = "没找到 Claude Code、Codex、Kimi Code 等。装一个后在 设置 → Agent 里接入。";
+"onboarding.no_claude_code_codex" = "没找到 Claude Code、Codex、Kimi Code 等。装好一个后，在「设置 → Agent」里接入。";
 
 "onboarding.permissions" = "权限";
 
@@ -63,7 +63,7 @@
 
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
 
-"onboarding.you_can_switch_models" = "也可以以后在 设置 → 语音 里换模型或用云端识别。";
+"onboarding.you_can_switch_models" = "以后也可以在「设置 → 语音」里换模型，或者改用云端识别。";
 
 "onboarding.your_ok_blurt_runs" = "经你同意后，口喷鸡会用 uv 官方安装脚本把它装到 ~/.blurt/bin（不改你的 shell 配置）：";
 
