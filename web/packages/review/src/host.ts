@@ -1,15 +1,15 @@
 /* The review canvas's host protocol, v3 (design doc §5 C6 + next-round.md "审核组件宿主协议 v3"). The component talks
    to whatever shows it — review.py's browser page, the macOS main window's WKWebView, the Tauri app — only through
    this interface. It reads both doc shapes: v2 (a session's items.json, paths relative to the session) and v3
-   (K1 `items.py doc`: a session or a project, absolute paths, uid identity, work state, projects). */
-import type { Platform, ThemePref } from "@blurt/ui";
+   (K1 `items.py doc`: a session or a project, absolute paths, uid identity, the K3 state, projects). */
+import type { Action, Platform, State, ThemePref } from "@blurt/ui";
 
 export type Host = "browser" | "macos" | "tauri";
 
 /** What the canvas shows: one capture session's batch, or a project (or the inbox) with filters (K1 doc scope). */
 export type Scope =
   | { session: string }
-  | { project: string; status?: string[]; work?: string[]; kind?: string[] };
+  | { project: string; state?: string[]; kind?: string[] };
 
 export interface Frame {
   path: string;
@@ -26,10 +26,10 @@ export interface FixRecord {
   note?: string;
   at?: number;
 }
-export type WorkStateName = "todo" | "handed_off" | "in_progress" | "to_verify" | "done" | "wontfix";
-/** K3 work record */
+/** K3 work record: the latest hand-off's details. The item's state is `Item.state`; a `work_history` entry carries
+    the state it had (and pre-v0.7 files keep one in `work.state`, read through stateOf). */
 export interface WorkRecord {
-  state: WorkStateName;
+  state?: State;
   to?: "session" | "external" | null;
   agent?: string | null;
   job?: string | null;
@@ -63,6 +63,11 @@ export interface Item {
   time?: { start: number; end: number } | null;
   frames?: Frame[];
   clip?: string;
+  /** K3: new | todo | handed_off | in_progress | to_verify | done | wontfix | discarded (server-owned) */
+  state?: State;
+  /** a discarded item: where Restore puts it back */
+  restore_to?: State;
+  /** pre-v0.7 review status (read only: stateOf migrates it) */
   status?: "draft" | "confirmed" | "deleted";
   severity?: string;
   type?: string;
@@ -86,8 +91,6 @@ export interface Item {
   /** absolute path of the item's .md (v3) */
   path?: string;
   _user?: Record<string, number>;
-  _touched?: boolean;
-  _dropped?: boolean;
   [k: string]: unknown;
 }
 export interface ProjectRef {
@@ -121,12 +124,14 @@ export interface ReviewDoc {
 export type SessionDoc = ReviewDoc;
 
 /** What the page sends: only what the user changed (`items.py user-ops`, review.py POST /api/items). `id` is the
-    uid on a v3 doc (it survives a project move), the display id on v2. A `set` with `project` moves the item. */
+    uid on a v3 doc (it survives a project move), the display id on v2. A `set` with `project` moves the item.
+    `state` (K3): the user's action; undo puts back the exact state it had (`undo: true`). */
 export type UserOp =
   | { op: "set"; id: string; set: Record<string, unknown>; unset: string[] }
   | { op: "remove"; id: string; into: string }
   | { op: "add"; item: Item; after: string | null }
-  | { op: "work"; id: string; state: WorkStateName; note?: string };
+  | { op: "state"; id: string; action: Action; note?: string }
+  | { op: "state"; id: string; state: State; undo: true };
 
 /** A frame on screen, in CSS px relative to the viewport, so the native layer can make it draggable as a file.
     `rel` is the path as the doc has it (absolute on v3). */

@@ -16,7 +16,7 @@
 			<string>%ld 个会话等你回答</string>
 		</dict>
 	</dict>
-	<key>app.menu.to_review</key>
+	<key>app.menu.new</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@n@</string>
@@ -27,7 +27,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 条待审</string>
+			<string>%ld 条新的</string>
 		</dict>
 	</dict>
 	<key>app.menu.to_verify</key>

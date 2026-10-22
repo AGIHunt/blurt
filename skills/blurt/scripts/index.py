@@ -3,7 +3,7 @@
 # ///
 """The search index over every blurt item: $BLURT_HOME/index.db (SQLite, WAL). This script is its only writer;
 the apps, mcp_server.py and agents.py open it read-only. The files stay the source of truth — deleting index.db loses
-nothing, `index.py scan` rebuilds it. Schema v2: docs/contracts/index-schema.sql (contract K1, next-round.md).
+nothing, `index.py scan` rebuilds it. Schema v3: docs/contracts/index-schema.sql (contracts K1 + K3, next-round.md).
 
   index.py path                        → {"db": "…/index.db"}
   index.py scan [--root DIR …] [--full]   projects.json's projects, the inbox, ~/Blurt/recordings (v0.6), projects
@@ -11,9 +11,10 @@ nothing, `index.py scan` rebuilds it. Schema v2: docs/contracts/index-schema.sql
                                        (unchanged files are skipped unless --full)
   index.py update PATH …               re-index .md files, store dirs or session dirs (gone → their rows go)
   index.py update --workspace DIR      re-index DIR's store (<DIR>/.blurt) if it has one (no-op otherwise)
-  index.py search [QUERY] [--kind K]… [--status S]… [--work W]… [--fix-state F]… [--project ID|DIR|NAME|inbox]
+  index.py search [QUERY] [--kind K]… [--state S]… [--project ID|DIR|NAME|inbox]
                   [--session ID|DIR] [--source-type T] [--sort updated|created|t_start|title] [--limit 50]
-                  [--offset 0]          → {"total": n, "items": [ItemRow]}   (--workspace = --project)
+                  [--offset 0]          → {"total": n, "items": [ItemRow]}   (--workspace = --project; the old
+                                       --status / --work / --fix-state filters still work, mapped to states)
   index.py backlog REPO                writes REPO/.blurt/BACKLOG.md (open items) → {"path", "items"}
 
 Every call prints one JSON line. Python API: update_paths(paths), scan(roots, full), search(...), ensure_index(),
@@ -23,19 +24,20 @@ Search, for every host (macOS app, Tauri, mcp_server.py) — run the same querie
   QUERY is split on whitespace; each term must match (AND). A term of ≥ 3 characters goes to FTS5 (trigram,
   so Chinese works without word segmentation) as a quoted phrase ("" doubles a quote); a 1–2 character term
   can't use trigram and becomes `(i.title LIKE ?1 OR i.quote LIKE ?1 OR i.body LIKE ?1)` with ?1 = '%term%'
-  (LIKE escapes % _ \\ with ESCAPE '\\'). Status defaults to "everything but deleted".
+  (LIKE escapes % _ \\ with ESCAPE '\\'). State defaults to "everything but discarded"; the inbox ("needs you")
+  is state IN ('new', 'to_verify') in every app.
 
     SELECT i.*, p.name AS project_name, p.key AS project_key, s.dir AS session_dir,
            snippet(items_fts, -1, '[', ']', '…', 12) AS snippet
     FROM items i JOIN items_fts f ON f.rowid = i.rowid JOIN projects p ON p.id = i.project_id
     LEFT JOIN sessions s ON s.id = i.session_id
-    WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] [AND i.work_state IN (…)] …
+    WHERE items_fts MATCH ?1 AND i.state != 'discarded' [AND i.kind IN (…)] [AND i.state IN (…)] …
     ORDER BY i.updated DESC, i.item_id LIMIT ? OFFSET ?
   -- without any ≥3-char term: same query without the items_fts join (snippet computed by the host, or NULL)
   -- --sort created: i.created DESC ; t_start: i.t_start, i.created DESC ; title: i.title COLLATE NOCASE
 
-ItemRow = {uid, project_id, project_name, project_key, session_id, session_dir, path, item_id, kind, title, status,
-           work_state, work_to, work_agent, severity, primary_frame, created, updated, snippet, suggested_project}.
+ItemRow = {uid, project_id, project_name, project_key, session_id, session_dir, path, item_id, kind, title, state,
+           work_to, work_agent, severity, primary_frame, created, updated, snippet, suggested_project}.
 """
 from __future__ import annotations
 
@@ -51,13 +53,13 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (OPEN_WORK, blurt_home, blurt_workspace, fix_alias_states, legacy_uid, load_json,  # noqa: E402,F401
-                     project_id, real, to_epoch, work_from_fix, work_state)
+from _common import (OPEN_STATES, blurt_home, blurt_workspace, legacy_filter_states, legacy_uid,  # noqa: E402,F401
+                     load_json, project_id, real, state_of, to_epoch, work_from_fix)
 import store as st  # noqa: E402
 
 # Keep byte-identical to docs/contracts/index-schema.sql (tests/test_index.py checks it). The skill ships without docs/.
 SCHEMA = """\
--- blurt index.db — schema v2 (contract K1 in docs/design/next-round.md, "index.db schema v2")
+-- blurt index.db — schema v3 (contracts K1 + K3 in docs/design/next-round.md; v3 = one `state` per item)
 -- Location: $BLURT_HOME/index.db (default ~/.blurt/index.db).
 -- Single writer: skills/blurt/scripts/index.py. Readers (read-only, WAL): macOS app (SQLite3 C API),
 -- Tauri app (rusqlite), mcp_server.py, agents.py. The files stay the source of truth (items/*.md in each store,
@@ -69,7 +71,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS meta (
-  key   TEXT PRIMARY KEY,           -- 'schema_version' = '2', 'last_full_scan' = epoch seconds
+  key   TEXT PRIMARY KEY,           -- 'schema_version' = '3', 'last_full_scan' = epoch seconds
   value TEXT NOT NULL
 );
 
@@ -96,7 +98,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   duration    REAL,                 -- seconds; NULL for shots / voice sessions
   shot_count  INTEGER NOT NULL DEFAULT 0,
   card_count  INTEGER NOT NULL DEFAULT 0,  -- captures with no project and not processed yet (the cards, K7)
-  item_count  INTEGER NOT NULL DEFAULT 0,  -- items with source.session = dir and status != 'deleted'
+  item_count  INTEGER NOT NULL DEFAULT 0,  -- items with source.session = dir and state != 'discarded'
   processed   INTEGER NOT NULL DEFAULT 0,  -- batch.json (or a v1/v2 items.json) exists
   processing  INTEGER NOT NULL DEFAULT 0,  -- batch "processing": true
   reviewed    INTEGER NOT NULL DEFAULT 0,  -- batch "reviewed": true
@@ -118,8 +120,8 @@ CREATE TABLE IF NOT EXISTS items (
   quote                TEXT NOT NULL DEFAULT '',
   body                 TEXT NOT NULL DEFAULT '',  -- lens fields flattened: actual, expected, steps, why… joined by "\\n"
   tags                 TEXT NOT NULL DEFAULT '',  -- space-joined
-  status               TEXT NOT NULL,          -- draft | confirmed | deleted
-  work_state           TEXT NOT NULL DEFAULT 'todo',  -- todo | handed_off | in_progress | to_verify | done | wontfix
+  state                TEXT NOT NULL,          -- new | todo | handed_off | in_progress | to_verify | done | wontfix
+                                               -- | discarded (K3); the inbox = new + to_verify
   work_to              TEXT,                   -- session | external
   work_agent           TEXT,
   work_job             TEXT,
@@ -150,7 +152,7 @@ CREATE TABLE IF NOT EXISTS items (
   UNIQUE (project_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS items_updated ON items(updated DESC);
-CREATE INDEX IF NOT EXISTS items_proj    ON items(project_id, status, work_state);
+CREATE INDEX IF NOT EXISTS items_proj    ON items(project_id, state);
 CREATE INDEX IF NOT EXISTS items_session ON items(session_id);
 
 -- Full text. trigram handles Chinese/Japanese (no word segmentation needed); queries shorter than 3 characters
@@ -170,19 +172,20 @@ CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
   INSERT INTO items_fts(rowid, title, quote, body, tags) VALUES (new.rowid, new.title, new.quote, new.body, new.tags);
 END;
 
-INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3');
 """
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 SESSION_MARKERS = ("meta.json", "items.json", "batch.json", "recording.mp4", "shots.jsonl")
 # Item fields that have their own column (or aren't text): everything else that holds text goes into `body`.
-NOT_BODY = {"schema", "id", "uid", "kind", "title", "quote", "tags", "status", "severity", "owner", "module",
+NOT_BODY = {"schema", "id", "uid", "kind", "title", "quote", "tags", "state", "restore_to", "status", "severity",
+            "owner", "module",
             "confidence", "time", "frames", "clip", "exported", "_user", "fix", "fix_history", "work", "work_history",
             "merged_from", "merged_into", "aliases", "t", "project", "project_by", "project_confidence",
             "suggested_project", "created", "updated", "source", "language", "assignee", "code_refs"}
 ITEM_ROW = ("uid", "project_id", "project_name", "project_key", "session_id", "session_dir", "path", "item_id", "kind",
-            "title", "status", "work_state", "work_to", "work_agent", "severity", "primary_frame", "created", "updated",
-            "snippet", "suggested_project")
+            "title", "state", "work_to", "work_agent", "severity", "primary_frame", "created", "updated", "snippet",
+            "suggested_project")
 
 
 # ------------------------------------------------------------------ paths
@@ -358,9 +361,7 @@ def item_row(item: dict, base: Path, pid: str, session_id: str | None, path: str
         "item_id": str(item.get("id")), "kind": str(item.get("kind") or "note"), "title": str(item.get("title") or ""),
         "quote": str(item.get("quote") or ""), "body": body,
         "tags": " ".join(map(str, tags)) if isinstance(tags, list) else str(tags),
-        "status": str(item.get("status") or "draft"),
-        "work_state": work.get("state") if work.get("state") in ("todo", "handed_off", "in_progress", "to_verify",
-                                                                  "done", "wontfix") else "todo",
+        "state": state_of(item),
         "work_to": _text(work.get("to")), "work_agent": _text(work.get("agent")), "work_job": _text(work.get("job")),
         "work_claim": _text(work.get("claim")),
         "severity": _text(item.get("severity")), "owner": _text(item.get("owner")), "module": _text(item.get("module")),
@@ -517,7 +518,7 @@ def _like_prefix(s: str) -> str:
 
 def _count(con, sids=None) -> None:
     sql = ("UPDATE sessions SET item_count = (SELECT COUNT(*) FROM items i WHERE i.session_id = sessions.id "
-           "AND i.status != 'deleted')")
+           "AND i.state != 'discarded')")
     if sids is None:
         con.execute(sql)
     else:
@@ -720,7 +721,9 @@ def resolve_session(con, value: str) -> str:
 
 def search(query: str | None = None, kind=None, status=None, work=None, project: str | None = None,
            session: str | None = None, sort: str = "updated", limit: int = 50, offset: int = 0, con=None,
-           fix_state=None, source_type=None) -> dict:
+           fix_state=None, source_type=None, state=None) -> dict:
+    """state: [K3 states] (none = all but discarded); status / work / fix_state are the old names, mapped to states
+    and narrowing each other and `state`."""
     own = con is None
     con = con or connect(readonly=True)
     try:
@@ -734,30 +737,22 @@ def search(query: str | None = None, kind=None, status=None, work=None, project:
         for t in short:
             where.append("(i.title LIKE ? ESCAPE '\\' OR i.quote LIKE ? ESCAPE '\\' OR i.body LIKE ? ESCAPE '\\')")
             args += [_like(t)] * 3
-        if status:
-            where.append(f"i.status IN ({','.join('?' * len(status))})")
-            args += list(status)
+        states = legacy_filter_states(status or (), work or (), fix_state or ())
+        if state:
+            states = [x for x in state if states is None or x in states]
+        if states is None:
+            where.append("i.state != 'discarded'")
         else:
-            where.append("i.status != 'deleted'")
+            where.append(f"i.state IN ({','.join('?' * len(states))})" if states else "0")
+            args += list(states)
         for col, vals in (("i.kind", kind), ("i.source_type", source_type)):
             if vals:
                 where.append(f"{col} IN ({','.join('?' * len(vals))})")
                 args += list(vals)
-        works = list(work or [])
-        if fix_state:  # v2 alias: fixed = to_verify (claim fixed) or done, …
-            fs = []
-            for f in fix_state:
-                if f == "fixed":
-                    fs.append("(i.work_state = 'done' OR (i.work_state = 'to_verify' AND i.work_claim = 'fixed'))")
-                elif f == "wontfix":
-                    fs.append("(i.work_state = 'wontfix' OR (i.work_state = 'to_verify' AND i.work_claim = 'wontfix'))")
-                else:
-                    fs += [f"i.work_state = '{s}'" for s in fix_alias_states([f])]
-            if fs:
-                where.append("(" + " OR ".join(fs) + ")")
-        if works:
-            where.append(f"i.work_state IN ({','.join('?' * len(works))})")
-            args += works
+        claims = {f for f in fix_state or () if f in ("fixed", "wontfix")}
+        if claims and not {"fixing", "reopened", "none"} & set(fix_state):  # v2: fixed = claimed fixed, or done
+            where.append("(i.state != 'to_verify' OR i.work_claim IN (" + ",".join("?" * len(claims)) + "))")
+            args += sorted(claims)
         if project:
             where.append("i.project_id = ?")
             args.append(resolve_project(con, project))
@@ -797,8 +792,8 @@ def backlog(repo: Path) -> dict:
         con = connect(readonly=True)
         try:
             rows = con.execute(
-                f"SELECT * FROM items WHERE project_id = ? AND status != 'deleted' AND work_state IN "
-                f"({','.join('?' * len(OPEN_WORK))}) ORDER BY kind, created DESC, item_id", (pid, *OPEN_WORK)).fetchall()
+                f"SELECT * FROM items WHERE project_id = ? AND state IN ({','.join('?' * len(OPEN_STATES))}) "
+                f"ORDER BY kind, created DESC, item_id", (pid, *OPEN_STATES)).fetchall()
         finally:
             con.close()
     lines = ["# Blurt backlog", "",
@@ -809,7 +804,7 @@ def backlog(repo: Path) -> dict:
         if r["kind"] != kind:
             kind = r["kind"]
             lines += ["", f"## {kind}", ""]
-        extra = ", ".join(x for x in (r["severity"], r["work_state"], r["status"]) if x)
+        extra = ", ".join(x for x in (r["severity"], r["state"]) if x)
         rel = os.path.relpath(r["path"].split("#")[0], repo)
         lines.append(f"- **{r['item_id']} {r['title']}** ({extra}) — `{rel}` · uid `{r['uid']}`")
     out = s.root / "BACKLOG.md"
@@ -832,9 +827,10 @@ def main(argv=None) -> None:
     s = sub.add_parser("search")
     s.add_argument("query", nargs="?", default="")
     s.add_argument("--kind", action="append")
-    s.add_argument("--status", action="append")
-    s.add_argument("--work", action="append")
-    s.add_argument("--fix-state", action="append")
+    s.add_argument("--state", action="append")
+    s.add_argument("--status", action="append", help=argparse.SUPPRESS)  # old names, mapped to states
+    s.add_argument("--work", action="append", help=argparse.SUPPRESS)
+    s.add_argument("--fix-state", action="append", help=argparse.SUPPRESS)
     s.add_argument("--project", "--workspace", dest="project")
     s.add_argument("--session")
     s.add_argument("--source-type", action="append")
@@ -859,7 +855,7 @@ def main(argv=None) -> None:
         elif a.cmd == "search":
             ensure_index()
             out = search(a.query, a.kind, a.status, a.work, a.project, a.session, a.sort, a.limit, a.offset,
-                         fix_state=a.fix_state, source_type=a.source_type)
+                         fix_state=a.fix_state, source_type=a.source_type, state=a.state)
         else:
             out = backlog(Path(a.repo))
     except sqlite3.Error as e:

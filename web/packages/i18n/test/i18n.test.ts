@@ -40,8 +40,8 @@ describe("messages", () => {
     expect(zh.plural("items.count", 1)).toBe("1 条");
   });
   it("merges the common words under every catalog", () => {
-    expect(en.t("work.to_verify")).toBe("To verify");
-    expect(zh.t("work.handed_off.session", { agent: "Claude Code" })).toBe("已交给 Claude Code");
+    expect(en.t("state.to_verify")).toBe("To verify");
+    expect(zh.t("state.handed_off.session", { agent: "Claude Code" })).toBe("已交给 Claude Code");
     expect(zh.t("job.step.frames")).toBe("补截图");
   });
 });
@@ -81,6 +81,14 @@ describe("formatting", () => {
 describe("catalog checks", () => {
   it("the common catalogs have the same keys and placeholders", () => {
     expect(checkCatalogs(COMMON.en, COMMON["zh-Hans"])).toEqual([]);
+  });
+  it("has every K3 state and action, each action with its one-line hint", () => {
+    for (const s of ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded"]) expect(COMMON.en).toHaveProperty(`state.${s}`);
+    for (const a of ["keep", "hand_off", "done", "send_back", "take_back", "reopen", "restore", "wontfix", "discard"]) {
+      expect(COMMON.en).toHaveProperty(`action.${a}`);
+      expect(COMMON.en).toHaveProperty(`action.${a}.hint`);
+    }
+    expect(Object.keys(COMMON.en).filter((k) => /^(work|review)\./.test(k))).toEqual([]);
   });
   it("has every K4 job type and step", () => {
     for (const t of ["record", "snap", "voice", "process", "route", "agent"]) expect(COMMON.en).toHaveProperty(`job.type.${t}`);

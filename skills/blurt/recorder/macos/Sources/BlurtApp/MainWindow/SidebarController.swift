@@ -100,15 +100,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             return node
         }
         let top = [
-            place(T("main.place.inbox"), .inbox, "tray", c.attention, alert: true, ax: T("main.sidebar.inbox.ax")),
-            place(T("main.place.progress"), .inProgress, "circle.dashed", c.active + c.toVerify, ax: T("main.sidebar.progress.ax")),
+            place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
+            place(T("main.place.progress"), .inProgress, "circle.dashed", c.active, ax: T("main.sidebar.progress.ax")),
             place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
         ]
         let projectNodes = model.projects.map { p -> SidebarNode in
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
-                                count: p.attention > 0 ? p.attention : nil)
-            n.alert = p.attention > 0
+                                count: p.inbox > 0 ? p.inbox : nil)
+            n.alert = p.inbox > 0
             n.detail = p.key
             n.dimmed = !p.registered || !p.exists
             let path = (p.path.path as NSString).abbreviatingWithTildeInPath

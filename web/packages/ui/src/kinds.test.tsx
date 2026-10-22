@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { contrast } from "./contrast";
-import { customKindColor, kindHue, kindIcon, ringShapes, statusRingSvg, WORK_STATES, workStateOf } from "./kinds";
+import { customKindColor, kindHue, kindIcon, ringShapes, statusRingSvg } from "./kinds";
+import { STATES } from "./lifecycle";
 import { KindIcon, StatusRing } from "./react";
 
 const css = readFileSync(new URL("./tokens.css", import.meta.url), "utf8");
@@ -36,19 +37,10 @@ describe("kinds (K8)", () => {
   });
 });
 
-describe("work state ring (K8)", () => {
-  it("reads work, and maps v2 fix states (K3)", () => {
-    expect(workStateOf({ work: { state: "to_verify" } })).toBe("to_verify");
-    expect(workStateOf({})).toBe("todo");
-    expect(workStateOf({ fix: { state: "fixing" } })).toBe("in_progress");
-    expect(workStateOf({ fix: { state: "fixed" } })).toBe("to_verify");
-    expect(workStateOf({ fix: { state: "wontfix", agent: "claude" } })).toBe("to_verify");
-    expect(workStateOf({ fix: { state: "wontfix", agent: "human" } })).toBe("wontfix");
-    expect(workStateOf({ fix: { state: "reopened" } })).toBe("todo");
-  });
+describe("state ring (K8)", () => {
   it("every state draws inside its box at 14 and 18", () => {
     for (const size of [14, 18])
-      for (const s of WORK_STATES)
+      for (const s of STATES)
         for (const sh of ringShapes(s, size)) {
           // circles (plus half the 1.5 line for stroked ones), and the absolute M/L/V points of the glyph paths
           const pts =
@@ -62,12 +54,27 @@ describe("work state ring (K8)", () => {
         }
   });
   it("distinct drawing per state; glyphs are shapes, never text", () => {
-    const svgs = WORK_STATES.map((s) => statusRingSvg(s, 14));
-    expect(new Set(svgs).size).toBe(6);
+    const svgs = STATES.map((s) => statusRingSvg(s, 14));
+    expect(new Set(svgs).size).toBe(8);
     for (const s of svgs) expect(s).not.toMatch(/<text|[!\u2713\u2714]/);
     expect(statusRingSvg("done", 14, "Done")).toContain('aria-label="Done"');
   });
+  it("new is a ring of 8 dashes from 12 o'clock; discarded a ring and a cross (K8 geometry)", () => {
+    for (const size of [14, 18]) {
+      const c = size / 2, R = c - 1.25, u = size / 14;
+      const [d] = ringShapes("new", size);
+      expect(d.el === "path" && d.d.startsWith(`M${c} ${c - R}A`)).toBe(true);
+      expect(d.el === "path" ? d.dash : 0).toBeCloseTo((2 * Math.PI * R) / 16, 1);
+      const [ring, x] = ringShapes("discarded", size);
+      expect(ring).toMatchObject({ el: "circle", r: R, paint: "stroke" });
+      const n = (x.el === "path" ? x.d : "").match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+      const a = c - 2.1 * u, b = c + 2.1 * u;
+      [a, a, b, b, b, a, a, b].forEach((v, k) => expect(n[k]).toBeCloseTo(v, 1));
+    }
+    expect(statusRingSvg("new", 14)).toMatch(/stroke-dasharray="2\.26" stroke-linecap="butt"/);
+  });
   it("<StatusRing> matches the string version", () => {
+    expect(renderToStaticMarkup(<StatusRing state="new" />)).toContain('stroke-dasharray="2.26"');
     const h = renderToStaticMarkup(<StatusRing state="in_progress" size={18} label="In progress" />);
     expect(h).toContain('class="sring s-in_progress"');
     expect(h).toContain('aria-label="In progress"');

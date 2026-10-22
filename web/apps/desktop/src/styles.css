@@ -1,5 +1,6 @@
 /* The main window. Colours, type, radii and focus come from @blurt/ui (tokens.css, data-platform = win | gnome | mac
-   and data-theme = light | dark on <html>); kind icons and work rings are @blurt/ui's .kind-ic / .sring. Class names
+   and data-theme = light | dark on <html>); kind icons, state rings and the state menu are @blurt/ui's .kind-ic /
+   .sring / .spill / .smenu. Class names
    avoid the ones the review canvas styles globally (.schip .done .dot .egg .keys .search .sev .nm .toast .toolbar …). */
 :root {
   --rec: #e5484d;
@@ -69,6 +70,30 @@ body {
 .app button.link:hover {
   color: var(--ink);
   background: none;
+}
+/* the K3 state pill and ring button (@blurt/ui) keep their own shape under the shell's button look, here and in the
+   embedded review canvas */
+.app button.spill,
+.app button.spill-ring {
+  min-height: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+}
+.app button.spill {
+  padding: 0 8px 0 6px;
+  background: var(--chip, var(--panel-2));
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.app button.spill-ring {
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  background: none;
+  box-shadow: none;
+}
+.app button.spill-ring:hover:not(:disabled),
+.app button.spill-ring.open {
+  background: var(--hover);
 }
 .app .icon-btn {
   background: none;
@@ -395,6 +420,25 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+.sub-lead {
+  margin: -4px 0 10px;
+  max-width: 880px;
+  color: var(--mute);
+  font-size: 12.5px;
+}
+.verify-list {
+  max-width: 880px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+.verify-list .table {
+  overflow: visible;
+}
+.verify-list .table .row {
+  cursor: pointer;
+}
 .app .banner {
   width: 100%;
   max-width: 880px;
@@ -644,15 +688,6 @@ body {
 .table .row.cur-row {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
-.rdot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-}
-.rdot.on {
-  background: var(--accent);
-}
 .iid {
   font: 500 11.5px var(--mono);
   color: var(--faint);
@@ -673,22 +708,28 @@ body {
   color: var(--faint);
   font-size: 12px;
 }
-.row.w-done .tt,
-.row.w-wontfix .tt,
-.row.st-deleted .tt {
+.row.s-done .tt,
+.row.s-wontfix .tt,
+.row.s-discarded .tt {
   color: var(--faint);
+}
+.row.s-new .tt {
+  font-weight: 600;
 }
 .wnote {
   font-size: 11.5px;
   color: var(--mute);
   white-space: nowrap;
 }
-.wnote.w-in_progress,
-.wnote.w-handed_off {
+.wnote.s-in_progress,
+.wnote.s-handed_off {
   color: var(--accent);
 }
-.wnote.w-to_verify {
+.wnote.s-to_verify {
   color: var(--warn);
+}
+.wnote.s-done {
+  color: var(--keep-ink);
 }
 .suggest {
   font-size: 11.5px;

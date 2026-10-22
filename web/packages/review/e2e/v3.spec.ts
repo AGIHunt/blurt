@@ -1,4 +1,4 @@
-/* The v3 contract from the component's side (next-round.md K1 doc / user-ops, K2 moves, K3 work, K6 handoff, K8
+/* The v3 contract from the component's side (next-round.md K1 doc / user-ops, K2 moves, K3 state, K6 handoff, K8
    rings, protocol v3), in Chromium and WebKit, against e2e/v3server.ts. Skipped in the parity run (REVIEW_HTML). */
 import { expect, test as base, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -54,6 +54,8 @@ async function shot(page: Page, name: string, info: { project: { name: string } 
 }
 
 test("ops go out by uid; a project move changes the id and keeps what you were typing", async ({ page, server }) => {
+  await expect(curId(page)).toHaveText("IN-3"); // the review opens on the first new item
+  await page.locator(".qi").first().click();
   await expect(curId(page)).toHaveText("BA-12");
   const actual = page.locator('textarea[data-k="actual"]');
   await actual.click();
@@ -71,16 +73,47 @@ test("ops go out by uid; a project move changes the id and keeps what you were t
   await expect(page.locator("#provenance")).toContainText("BA-12"); // earlier IDs
 });
 
-test("work: the agent says fixed, you mark it done; reopen brings it back", async ({ page, server }) => {
-  await expect(page.locator("#workRow .sring")).toHaveClass(/s-to_verify/);
+test("state: the agent says fixed, you mark it done; S + R reopens it; Z undoes", async ({ page, server }) => {
+  await page.locator(".qi").first().click();
+  await expect(page.locator("#statePill .sring")).toHaveClass(/s-to_verify/);
   await expect(page.locator("#workRow")).toContainText("The agent says it’s fixed");
   await page.locator("#workDone").click();
-  await expect(page.locator("#workRow .sring")).toHaveClass(/s-done/);
-  await until(() => item(server, 0).work?.state === "done");
-  expect(server.ops.at(-1)).toEqual({ op: "work", id: U(0), state: "done" });
-  await page.locator("#workReopen").click();
-  await until(() => item(server, 0).work?.state === "todo");
+  await expect(page.locator("#statePill .sring")).toHaveClass(/s-done/);
+  await until(() => item(server, 0).state === "done");
+  expect(server.ops.at(-1)).toEqual({ op: "state", id: U(0), action: "done" });
+  // the pill's menu by keyboard: S opens it on the first action, only what Done allows
+  await page.keyboard.press("s");
+  await expect(page.locator(".smenu [role=menuitem]")).toHaveText([/Reopen/, /Discard/]);
+  await expect(page.locator(".smenu [role=menuitem]").first()).toBeFocused();
+  await page.keyboard.press("r");
+  await expect(page.locator(".smenu")).toHaveCount(0);
+  await expect(page.locator("#statePill")).toBeFocused();
+  await until(() => item(server, 0).state === "todo");
   await expect(page.locator(".qi").first().locator(".sring")).toHaveClass(/s-todo/);
+  await page.keyboard.press("z");
+  await until(() => item(server, 0).state === "done");
+  expect(server.ops.at(-1)).toEqual({ op: "state", id: U(0), state: "done", undo: true });
+});
+
+test("review keys: Enter keeps and moves on, X discards (struck through, restorable), W won't do", async ({ page, server }) => {
+  await expect(curId(page)).toHaveText("IN-3");
+  await expect(page.locator("#counts")).toContainText("2 new");
+  await page.keyboard.press("Enter");
+  await until(() => item(server, 1).state === "todo");
+  await expect(curId(page)).toHaveText("WS-7"); // the next new one
+  await page.keyboard.press("x");
+  await until(() => item(server, 3).state === "discarded");
+  expect(item(server, 3).restore_to).toBe("new");
+  await expect(page.locator(".qi").nth(3)).toHaveClass(/drop/);
+  await expect(curId(page)).toHaveText("BA-14"); // nothing new left: on to the next one
+  await page.locator(".qi").nth(3).click();
+  await expect(page.locator("#dropBtn")).toContainText("Restore");
+  await page.keyboard.press("r");
+  await until(() => item(server, 3).state === "new");
+  await page.locator(".qi").nth(5).click(); // in progress
+  await page.keyboard.press("w");
+  await until(() => item(server, 5).state === "wontfix");
+  await expect(page.locator("#statePill")).toContainText("Won’t do");
 });
 
 test("an agent's write shows up by itself (poll), the user's edits stay", async ({ page, server }) => {
@@ -90,7 +123,7 @@ test("an agent's write shows up by itself (poll), the user's edits stay", async 
   await t.click();
   await t.fill("Toast stacks three times after save");
   server.store.agentWork(U(5), "to_verify", "fixed");
-  await expect(page.locator("#workRow .sring")).toHaveClass(/s-to_verify/, { timeout: 4000 });
+  await expect(page.locator("#statePill .sring")).toHaveClass(/s-to_verify/, { timeout: 4000 });
   await expect(t).toHaveValue("Toast stacks three times after save");
   await until(() => item(server, 5).title === "Toast stacks three times after save");
 });
@@ -102,13 +135,13 @@ test("handoff: copy the instruction for your own agent", async ({ page, server, 
   await page.locator("#copyInstruction").click();
   await expect(page.locator("#toast")).toContainText("Instruction copied · H-0013");
   expect(server.handoffs).toEqual([{ uids: [U(3)], what: "instruction" }]);
-  await expect(page.locator("#workRow .sring")).toHaveClass(/s-handed_off/, { timeout: 4000 });
-  await expect(page.locator("#workRow")).toContainText("Copied to your agent");
+  await expect(page.locator("#statePill .sring")).toHaveClass(/s-handed_off/, { timeout: 4000 });
+  await expect(page.locator("#statePill")).toContainText("Copied to your agent");
   if (browserName === "chromium") expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("H-0013.md");
 });
 
 test("list: select, batch move, drag cards onto a project", async ({ page, server }, info) => {
-  await expect(curId(page)).toHaveText("BA-12");
+  await expect(curId(page)).toHaveText("IN-3");
   await page.keyboard.press("g");
   await expect(page.locator(".card")).toHaveCount(7);
   await page.locator(".card").nth(1).hover();
@@ -136,21 +169,30 @@ for (const theme of ["light", "dark"] as const)
   for (const lang of ["en", "zh-Hans"] as const)
     test.describe(`screens ${lang} ${theme}`, () => {
       test.use({ query: `?lang=${lang}&theme=${theme}&platform=mac` });
-      test(`six work rings, focus and list (${lang}, ${theme})`, async ({ page }, info) => {
+      test(`state rings and menu, focus and list (${lang}, ${theme})`, async ({ page }, info) => {
         await expect(page.locator(".shot.ready img")).toBeVisible();
         await shot(page, `focus-${lang}-${theme}`, info);
         await page.keyboard.press("g");
         const rings = page.locator(".card .sring");
         await expect(rings).toHaveCount(7);
         const states = await rings.evaluateAll((els) => [...new Set(els.map((e) => e.getAttribute("class")))].sort());
-        expect(states).toEqual(["sring s-done", "sring s-handed_off", "sring s-in_progress", "sring s-to_verify", "sring s-todo", "sring s-wontfix"]);
+        expect(states).toEqual(["sring s-done", "sring s-handed_off", "sring s-in_progress", "sring s-new", "sring s-to_verify", "sring s-wontfix"]);
         await shot(page, `list-${lang}-${theme}`, info);
-        // the rings up close, at the detail size
+        // a card's ring opens the same menu
+        await page.locator(".card .spill-ring").first().click();
+        await expect(page.locator(".smenu [role=menuitem]")).toHaveCount(4);
+        await shot(page, `list-menu-${lang}-${theme}`, info);
+        await page.keyboard.press("Escape");
+        // the pills up close, and one open menu
         await page.keyboard.press("g");
         for (const n of [0, 1, 2, 4, 5, 6]) {
           await page.locator(".qi").nth(n).click();
-          await page.locator("#workRow").screenshot({ path: join(SHOTS, `${info.project.name}-ring-${n}-${lang}-${theme}.png`) });
+          await page.locator("#statePill").screenshot({ path: join(SHOTS, `${info.project.name}-pill-${n}-${lang}-${theme}.png`) });
         }
+        await page.locator(".qi").first().click();
+        await page.keyboard.press("s");
+        await expect(page.locator(".smenu")).toBeVisible();
+        await shot(page, `focus-menu-${lang}-${theme}`, info);
       });
     });
 
@@ -164,6 +206,9 @@ test.describe("in the macOS main window (macos host over the bridge, a project, 
     expect(server.calls[0]).toEqual({ method: "load", params: { scope: { project: "p-blurt" } } });
     await expect(page.locator("#workSession")).toBeVisible();
     await page.locator("#workSession").click();
+    await expect(page.locator("#dispatchBtn")).toHaveCount(0); // to verify: answer it first
+    await page.locator("#workBack").click(); // send back → to do: now it can be handed off
+    await until(() => item(server, 0).state === "todo");
     await page.locator("#dispatchBtn").click();
     await until(() => server.calls.some((c) => c.method === "dispatch"));
     expect(server.calls.find((c) => c.method === "dispatch")!.params).toEqual({ uids: [U(0)] });

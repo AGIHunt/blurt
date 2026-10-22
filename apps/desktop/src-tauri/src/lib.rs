@@ -253,8 +253,8 @@ fn items_ops(state: tauri::State<'_, AppState>, scope: Value, ops: Value, confir
 }
 
 #[tauri::command(async)]
-fn items_work(state: tauri::State<'_, AppState>, uids: Vec<String>, work: String, note: Option<String>) -> R<Value> {
-    items::work(&state.runner(), &uids, &work, note.as_deref())
+fn items_state(state: tauri::State<'_, AppState>, uids: Vec<String>, action: String, note: Option<String>) -> R<Value> {
+    items::state(&state.runner(), &uids, &action, note.as_deref())
 }
 
 #[tauri::command(async)]
@@ -661,7 +661,7 @@ pub fn run() {
             items_doc,
             items_poll,
             items_ops,
-            items_work,
+            items_state,
             items_move,
             jobs_list,
             agents_detect,

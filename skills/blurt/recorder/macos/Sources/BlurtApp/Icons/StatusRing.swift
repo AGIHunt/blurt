@@ -1,14 +1,16 @@
-// K8: the processing state as a small ring (14 pt in lists, 18 pt in the detail, 1.5 pt line):
+// K8: an item's K3 state as a small ring (14 pt in lists, 18 pt in the detail, 1.5 pt line):
+//   new         dashed ring (16 equal parts from 12 o'clock, butt ends), accent
 //   todo        empty ring, secondary text colour        handed_off  ring + 4 pt centre dot, accent
 //   in_progress ring + right half filled, accent          to_verify   filled disc with a "!" shape, attention amber
 //   done        filled disc with a check, green           wontfix     ring + a 45° slash, tertiary text colour
-// Drawn, not glyphs: the "!" and the check are paths. Same geometry and colours as web/packages/ui (kinds.ts
-// ringShapes, base.css .sring). The image carries the localized state (`work.<state>`) for VoiceOver.
+//   discarded   ring + an ×, tertiary text colour
+// Drawn, not glyphs: the "!", the check and the × are paths. Same geometry and colours as web/packages/ui (kinds.ts
+// ringShapes, base.css .sring). The image carries the localized state (`state.<state>`) for VoiceOver.
 import AppKit
 import BlurtCore
 
 enum StatusRing {
-    static let states = ["todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"]
+    static let states = Lifecycle.states
 
     /// Brand coral (--accent), attention (--warn), keep (--keep): tokens.css, light / dark
     static let accent = KindStyle.dynamic(KindStyle.rgb(0xF55B3E), KindStyle.rgb(0xFF7A5C))
@@ -19,10 +21,10 @@ enum StatusRing {
 
     static func color(_ state: String) -> NSColor {
         switch state {
-        case "handed_off", "in_progress": return accent
+        case "new", "handed_off", "in_progress": return accent
         case "to_verify": return attention
         case "done": return keep
-        case "wontfix": return .tertiaryLabelColor
+        case "wontfix", "discarded": return .tertiaryLabelColor
         default: return .secondaryLabelColor
         }
     }
@@ -33,7 +35,7 @@ enum StatusRing {
             draw(state, in: r)
             return true
         }
-        im.accessibilityDescription = Loc.t("work.\(state)")
+        im.accessibilityDescription = Loc.t("state.\(state)")
         return im
     }
 
@@ -55,6 +57,16 @@ enum StatusRing {
         color(state).set()
         let ring = disc(c, c, R)
         switch state {
+        case "new":
+            // the ring from 12 o'clock, clockwise (y-down), in 16 equal parts: 8 dashes, 8 gaps
+            let p = NSBezierPath()
+            p.move(to: pt(c, c - R))
+            p.appendArc(withCenter: pt(c, c), radius: R, startAngle: -90, endAngle: 270, clockwise: false)
+            let dash = 2 * .pi * R / 16
+            p.setLineDash([dash, dash], count: 2, phase: 0)
+            p.lineWidth = lw
+            p.lineCapStyle = .butt
+            p.stroke()
         case "handed_off":
             stroke(ring)
             disc(c, c, 2 * u).fill()
@@ -89,6 +101,15 @@ enum StatusRing {
             let p = NSBezierPath()
             p.move(to: pt(c - d, c + d))
             p.line(to: pt(c + d, c - d))
+            stroke(p)
+        case "discarded":
+            stroke(ring)
+            let a = c - 2.1 * u, b = c + 2.1 * u
+            let p = NSBezierPath()
+            p.move(to: pt(a, a))
+            p.line(to: pt(b, b))
+            p.move(to: pt(b, a))
+            p.line(to: pt(a, b))
             stroke(p)
         default:
             stroke(ring)

@@ -34,30 +34,28 @@ async function ready(page: Page) {
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.()); // keys go to the page, not a field
 }
 
-test("J/K move, A keeps, X drops, Z undoes, G and V switch views", async ({ page, session }) => {
+test("J/K move, A keeps, X discards, Z undoes, G and V switch views", async ({ page, session }) => {
   await ready(page);
-  await expect(curId(page)).toHaveText("I-001");
+  // K3: I-001 to verify, I-002 in progress, I-003 new, I-004 won't do (draft + your wontfix), I-005 new (reopened)
+  await expect(curId(page)).toHaveText("I-003"); // the first new one
   await page.keyboard.press("j");
-  await expect(curId(page)).toHaveText("I-002");
+  await expect(curId(page)).toHaveText("I-004");
   await page.keyboard.press("k");
-  await expect(curId(page)).toHaveText("I-001");
-  await page.keyboard.press("j");
-  await page.keyboard.press("j");
   await expect(curId(page)).toHaveText("I-003");
 
   await page.keyboard.press("a");
   await expect(page.locator("#toast")).toHaveClass(/show/);
-  await expect(curId(page)).toHaveText("I-004"); // the next one still to review
-  await until(() => session.item("I-003")?.status === "confirmed" && session.item("I-003")?._user?.status);
+  await expect(curId(page)).toHaveText("I-005"); // the next new one
+  await until(() => session.item("I-003")?.state === "todo");
 
   await page.keyboard.press("x");
-  await until(() => session.item("I-004")?.status === "deleted");
+  await until(() => session.item("I-005")?.state === "discarded");
   await expect(page.locator(".qi.drop")).toHaveCount(1);
 
   await page.keyboard.press("z");
-  await until(() => session.item("I-004")?.status === "draft" && !session.item("I-004")?._dropped);
+  await until(() => session.item("I-005")?.state === "new");
   await expect(page.locator(".qi.drop")).toHaveCount(0);
-  await expect(curId(page)).toHaveText("I-004");
+  await expect(curId(page)).toHaveText("I-005");
 
   await page.keyboard.press("g");
   await expect(page.locator("#listView")).toBeVisible();
@@ -197,9 +195,9 @@ test("NEW: an IME's Enter (keyCode 229 / isComposing / just after compositionend
 
 test("⌘⏎ → confirm: unsaved typing is saved first, review.py exits with the summary", async ({ page, session }) => {
   await ready(page);
-  await page.keyboard.press("x"); // drop I-001
+  await page.keyboard.press("x"); // discard I-003
   const title = page.locator(".title").first();
-  await expect(curId(page)).toHaveText("I-002");
+  await expect(curId(page)).toHaveText("I-005");
   await title.click();
   await title.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(el.value.length, el.value.length));
   await page.keyboard.type(" (typed)");
@@ -209,18 +207,19 @@ test("⌘⏎ → confirm: unsaved typing is saved first, review.py exits with th
   await expect(page.locator("#done")).toHaveClass(/show/);
   const out = await session.exited;
   const summary = JSON.parse(out.trim().split("\n").pop()!);
-  expect(summary).toMatchObject({ reviewed: true, kept: 4, deleted: 1 });
+  expect(summary).toMatchObject({ reviewed: true });
   const d = session.items();
   expect(d.reviewed).toBe(true);
-  expect(session.item("I-002")!.title).toBe("保存后 toast 叠加三个 (typed)");
-  expect(d.items.map((i) => i.status)).toEqual(["deleted", "confirmed", "confirmed", "confirmed", "confirmed"]);
+  expect(session.item("I-005")!.title).toBe("登录页验证码倒计时不重置 (typed)");
+  // finishing keeps what is still new; nothing else changes
+  expect(d.items.map((i) => i.state)).toEqual(["to_verify", "in_progress", "discarded", "wontfix", "todo"]);
   for (const i of d.items) expect(i._touched).toBeUndefined();
 });
 
 test("finish dialog: review the rest, cancel with Esc", async ({ page }) => {
   await ready(page);
   await page.locator("#finishBtn").click();
-  await expect(page.locator("#modal")).toContainText(/还有 5 条没看|5 not reviewed/);
+  await expect(page.locator("#modal")).toContainText(/还有 2 条没看|2 not reviewed/);
   await page.locator("#mRest").click();
   await expect(page.locator("#modalBg")).not.toHaveClass(/show/);
   await page.keyboard.press("?");
@@ -229,7 +228,7 @@ test("finish dialog: review the rest, cancel with Esc", async ({ page }) => {
   await expect(page.locator("#modalBg")).not.toHaveClass(/show/);
 });
 
-test("list view: search, status and kind filters, open a card", async ({ page }) => {
+test("list view: search, state and kind filters, open a card", async ({ page }) => {
   await ready(page);
   await page.keyboard.press("g");
   await expect(page.locator(".card")).toHaveCount(5);
@@ -239,9 +238,11 @@ test("list view: search, status and kind filters, open a card", async ({ page })
   await page.locator('#kindFilter [data-kf="idea"]').click();
   await expect(page.locator(".card")).toHaveCount(1);
   await page.locator('#kindFilter [data-kf=""]').click();
-  await page.locator('#filters [data-f="keep"]').click();
-  await expect(page.locator(".card")).toHaveCount(0);
-  await page.locator('#filters [data-f="all"]').click();
+  await page.locator("#stateFilter").selectOption("inbox"); // needs you: new + to verify
+  await expect(page.locator(".card")).toHaveCount(3);
+  await page.locator("#stateFilter").selectOption("wontfix");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#stateFilter").selectOption("live");
   await page.locator(".card").nth(2).click();
   await expect(page.locator("#focusView")).toBeVisible();
   await expect(curId(page)).toHaveText("I-003");
@@ -267,6 +268,7 @@ test("media: ← → step through frames, clip and recording; lightbox; O jumps 
 
 test("severity keys and chips, language switch", async ({ page, session }) => {
   await ready(page);
+  await page.locator(".qi").first().click();
   await page.keyboard.press("3");
   await expect(page.locator("#sevChip")).toHaveClass(/sev-low/);
   await until(() => session.item("I-001")?.severity === "low");
@@ -275,7 +277,7 @@ test("severity keys and chips, language switch", async ({ page, session }) => {
   await page.locator("#langBtn").click();
   await expect(page.locator("#keepBtn")).toContainText("Keep");
   await page.locator("#langBtn").click();
-  await expect(page.locator("#keepBtn")).toContainText("保留");
+  await expect(page.locator("#keepBtn")).toContainText("要做");
 });
 
 test.describe("screenshots session (no recording)", () => {
@@ -307,14 +309,15 @@ test.describe("v1 session (no uid, one item dropped in this review)", () => {
 test("NEW: v2 fields — fix records shown as work state and history, uid never shown as a field", async ({ page }) => {
   newOnly();
   await ready(page);
-  // v2 fix records read as K3 work states: fixed → to verify, reopened → to do
-  await expect(page.locator("#workRow .sring")).toHaveClass(/s-to_verify/);
+  // v2 fix records read as K3 states: fixed → to verify, a draft reopened → new
+  await page.locator(".qi").first().click();
+  await expect(page.locator("#statePill .sring")).toHaveClass(/s-to_verify/);
   await expect(page.locator("#workRow")).toContainText("a1c3e5f");
   await expect(page.locator(".worklog li")).toHaveCount(2);
   await expect(page.locator('[data-k="uid"]')).toHaveCount(0);
   await expect(page.locator(".qi .sring")).toHaveCount(5);
   await page.locator(".qi").nth(4).click();
-  await expect(page.locator("#workRow .sring")).toHaveClass(/s-todo/);
+  await expect(page.locator("#statePill .sring")).toHaveClass(/s-new/);
   await expect(page.locator(".worklog a")).toHaveAttribute("href", "https://github.com/example/app/pull/7");
 });
 
@@ -330,11 +333,13 @@ test.describe("item mode (the main window's detail pane)", () => {
     await until(() => session.item("I-003")?.why === "名字太长记不住" && session.item("I-003")?._user?.why);
     await page.evaluate(() => (window as unknown as { blurtReview: { setItem(i: string): void } }).blurtReview.setItem("I-005"));
     await expect(page.locator(".insp .idrow > span").first()).toHaveText("I-005");
-    // review keys do nothing here
+    // the review's own keys do nothing here; the state keys act on this item
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+    await page.keyboard.press("m");
+    await page.keyboard.press("j");
+    await expect(page.locator(".insp .idrow > span").first()).toHaveText("I-005");
     await page.keyboard.press("x");
-    await page.waitForTimeout(700);
-    expect(session.item("I-005")!.status).toBe("draft");
+    await until(() => session.item("I-005")?.state === "discarded");
   });
 });
 

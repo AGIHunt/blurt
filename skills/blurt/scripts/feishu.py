@@ -40,7 +40,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts, global_config, use_system_certs  # noqa: E402
+from _common import die, fmt_ts, global_config, state_of, use_system_certs  # noqa: E402
 from export_local import LABELS, load_doc  # noqa: E402
 import items as items_mod  # noqa: E402
 
@@ -363,7 +363,7 @@ def main():
     existing = {x["name"]: x["kind"] for x in be.fields(base, table)}
     missing = {col: ("attachment" if set(keys) & ATTACH_KEYS else "text") for col, keys in cols.items()
                if col not in existing}
-    todo = [i for i in data["items"] if i.get("status") != "deleted" and i.get("kind") == a.kind
+    todo = [i for i in data["items"] if state_of(i) != "discarded" and i.get("kind") == a.kind
             and not (i.get("exported") or {}).get("feishu_done")]
     if a.dry_run:
         print(json.dumps({"backend": be.name, "base": base, "table": table, "will_create_columns": missing,

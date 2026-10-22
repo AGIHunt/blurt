@@ -60,7 +60,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             if let u = j.usage, u.agent == nil { MenuGlyph.shared.hop(); return }
             let n = j.items.isEmpty ? nil : j.items.count
             let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps") : T("notify.done.recording") } ?? T("notify.done.generic")
-            let text = n.map { "\(what) · \(TP("app.menu.to_review", $0))" } ?? what
+            let text = n.map { "\(what) · \(TP("app.menu.new", $0))" } ?? what
             quiet(text, action: T("notify.open"), art: .happy) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
             MenuGlyph.shared.hop()
             if !frontmost, ran >= 20, setting("done") { post("done", title: text, body: JobLook.title(j), job: j) }
@@ -145,21 +145,21 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-/// The number next to the menu-bar icon: items to review + items to verify + agent sessions waiting for you.
-/// Read from index.db (only when its data_version moves) and the job store.
+/// The number next to the menu-bar icon: what needs you (K3's inbox = new + to verify) + agent sessions waiting for
+/// an answer. Read from index.db (only when its data_version moves) and the job store.
 final class MenuBadge {
     static let shared = MenuBadge()
-    private(set) var review = 0, verify = 0, waiting = 0
+    private(set) var new = 0, verify = 0, waiting = 0
     private var reader: IndexReader?
     private var version = -1
     private var timer: Timer?
 
-    var count: Int { review + verify + waiting }
+    var count: Int { new + verify + waiting }
     /// An agent is waiting for an answer: the number takes the attention colour.
     var urgent: Bool { waiting > 0 }
     var tooltip: String {
         var parts: [String] = []
-        if review > 0 { parts.append(TP("app.menu.to_review", review)) }
+        if new > 0 { parts.append(TP("app.menu.new", new)) }
         if verify > 0 { parts.append(TP("app.menu.to_verify", verify)) }
         if waiting > 0 { parts.append(TP("app.badge.waiting", waiting)) }
         return parts.isEmpty ? T("app.name") : parts.joined(separator: " · ")
@@ -175,7 +175,7 @@ final class MenuBadge {
             let v = r.dataVersion
             if v != version, let c = try? r.counts() {
                 version = v
-                review = c.draft
+                new = c.new
                 verify = c.toVerify
             }
         }

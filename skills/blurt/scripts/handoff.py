@@ -67,7 +67,7 @@ def item(ref: str) -> dict:
 def set_work(uids: list[str], state: str, *, to: str | None = None, agent: str | None = None, job: str | None = None,
              handoff: str | None = None, by: str = "app", note: str | None = None, claim: str | None = None,
              commit: str | None = None, pr: str | None = None) -> dict:
-    args = ["work", *uids, "--state", state, "--by", by]
+    args = ["state", *uids, "--state", state, "--by", by]
     for flag, v in (("--to", to), ("--agent", agent), ("--job", job), ("--handoff", handoff), ("--note", note),
                     ("--claim", claim), ("--commit", commit), ("--pr", pr)):
         if v:
@@ -121,7 +121,7 @@ T = {
         "folder": "Project folder: {path}",
         "mcp": "When you finish an item, call the blurt MCP tool `mark_fixed` with its uid (state \"fixed\" or "
                "\"wontfix\", plus a short note).",
-        "nomcp": "Without the MCP: `{items_cmd} work <uid> --state to_verify --claim fixed --note \"…\"`.",
+        "nomcp": "Without the MCP: `{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`.",
         "verify": "The user confirms each item before it counts as done.",
         "rule_worktree": "Don't push. You're on your own branch, {branch}, in a separate worktree: commit your work "
                          "there.",
@@ -143,7 +143,7 @@ T = {
         "title_one": "{project} · {id}", "title_many": "{project} 的 {n} 个条目", "title_bare": "{n} 个条目",
         "folder": "项目文件夹：{path}",
         "mcp": "每做完一条，用它的 uid 调用 blurt MCP 工具 `mark_fixed`（state 填 \"fixed\" 或 \"wontfix\"，附一句说明）。",
-        "nomcp": "没有 MCP 时：`{items_cmd} work <uid> --state to_verify --claim fixed --note \"…\"`。",
+        "nomcp": "没有 MCP 时：`{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`。",
         "verify": "每一条都要用户确认后才算完成。",
         "rule_worktree": "不要推送。你在单独的 worktree 和自己的分支 {branch} 上，改完在这个分支上提交。",
         "rule_direct": "不要推送，也不要提交：你直接在项目文件夹里改，用户会先看改动。",
@@ -359,13 +359,14 @@ def create(refs: list[str], lang: str | None = None, to: str = "external", mark:
     tmp = note.with_name(f".{note.name}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, note)
-    if mark:
-        mark_external(hid, [it["uid"] for it in uniq])
+    if mark:  # only what can still be handed off (K3: new, to do, or handed off again); the rest keep their state
+        mark_external(hid, [it["uid"] for it in uniq if it.get("state") in ("new", "todo", "handed_off")])
     return describe(hid, text)
 
 
 def mark_external(hid: str, uids: list[str]) -> None:
-    set_work(uids, "handed_off", to="external", handoff=hid, by="user")
+    if uids:
+        set_work(uids, "handed_off", to="external", handoff=hid, by="user")
 
 
 def describe(hid: str, text: str | None = None) -> dict:

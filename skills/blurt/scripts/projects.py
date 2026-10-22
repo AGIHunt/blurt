@@ -41,8 +41,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import (OPEN_WORK, blurt_home, blurt_workspace, file_lock, global_config, load_json,  # noqa: E402
-                     now_iso, project_id, real, work_state, write_text_atomic)
+from _common import (OPEN_STATES, blurt_home, blurt_workspace, file_lock, global_config, load_json,  # noqa: E402
+                     now_iso, project_id, real, write_text_atomic)
 import store as st  # noqa: E402
 
 SCHEMA = 1
@@ -228,10 +228,10 @@ def counts(s: st.Store) -> tuple[int, int]:
     open_, live = 0, 0
     for f in s.files():
         h = st.read_header(f)
-        if not h or h.get("status") == "deleted":
+        if not h or h.get("state") == "discarded":
             continue
         live += 1
-        if work_state(h) in OPEN_WORK:
+        if h.get("state") in OPEN_STATES:
             open_ += 1
     return open_, live
 

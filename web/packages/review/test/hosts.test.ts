@@ -25,11 +25,11 @@ describe("browser host (review.py)", () => {
     expect((await h.poll('"e0"')).doc).toEqual(doc);
     const r = await h.sendOps([{ op: "set", id: "01JB", set: { project: "p1" }, unset: [] }]);
     expect(r).toMatchObject({ ok: true, etag: '"e2"', doc });
-    await h.sendOps([{ op: "work", id: "01JB", state: "done" }], true);
+    await h.sendOps([{ op: "state", id: "01JB", action: "done" }], true);
     expect(calls.map(([u, i]) => `${i?.method || "GET"} ${u}`)).toEqual([
       "GET api/items", "GET api/items", "GET api/items", "POST api/items", "POST api/confirm",
     ]);
-    expect(JSON.parse(String(calls[4][1]!.body))).toEqual({ ops: [{ op: "work", id: "01JB", state: "done" }] });
+    expect(JSON.parse(String(calls[4][1]!.body))).toEqual({ ops: [{ op: "state", id: "01JB", action: "done" }] });
     expect(h.fileUrl("frames/a b#1.jpg")).toBe("files/frames/a%20b%231.jpg");
     expect(h.fileUrl("/Users/me/p/.blurt/assets/01JB/1.png")).toBe("files/%2FUsers%2Fme%2Fp%2F.blurt%2Fassets%2F01JB%2F1.png");
     expect(h.fileUrl("C:\\p\\1.png")).toBe("files/C%3A%5Cp%5C1.png");

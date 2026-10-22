@@ -41,7 +41,7 @@ def test_note_and_instruction_en(p2):
     assert json.loads(re.search(r"^project: (.*)$", fm, re.M).group(1)) == {"id": proj["id"], "name": proj["name"],
                                                                               "path": proj["path"]}
     assert f"# 2 items for {proj['name']}" in text and f"Project folder: {proj['path']}" in text
-    assert "`mark_fixed`" in text and "items.py' work <uid> --state to_verify --claim fixed" in text
+    assert "`mark_fixed`" in text and "items.py' state <uid> --state to_verify --claim fixed" in text
     assert "Don't push" in text
     assert f"## 1. {a['id']} · Login button 0" in text and "uid " + a["uid"] + " · issue · high · module auth" in text
     assert "**They said**\n> I click login and nothing happens" in text and "1. Open the page\n2. Click Login" in text
@@ -57,7 +57,7 @@ def test_note_and_instruction_en(p2):
     assert one["id"] != out["id"] and one["instruction"] == (
         f"Please handle {a['id']} — details and screenshots are in {one['path']}. When you're done, call mark_fixed if "
         "the blurt MCP is available.")
-    assert p2.get(a["uid"])["work"]["state"] == "todo"  # not marked without --mark
+    assert p2.get(a["uid"])["state"] == "new"  # not marked without --mark
     got = p2.run("handoff.py", "get", out["id"])
     assert {k: got[k] for k in ("id", "path", "instruction", "full", "items")} == \
         {k: out[k] for k in ("id", "path", "instruction", "full", "items")}
@@ -72,7 +72,8 @@ def test_zh_and_mark(p2):
     assert "项目文件夹：" in text and "**原话**" in text and "**复现步骤**" in text and "截图 1 · 0:14" in text
     assert "uid " + a["uid"] + " · 问题 · 高 · 模块 auth" in text
     w = p2.get(a["uid"])["work"]
-    assert w["state"] == "handed_off" and w["to"] == "external" and w["handoff"] == out["id"] and w["by"] == "user"
+    assert p2.get(a["uid"])["state"] == "handed_off"
+    assert w["to"] == "external" and w["handoff"] == out["id"] and w["by"] == "user"
     many = p2.run("handoff.py", "create", "--items", a["uid"], p2.item(proj["id"])["uid"], "--lang", "zh")
     assert many["instruction"].startswith("请处理这 2 个条目，详情和截图见 ") and "逐条调用 mark_fixed" in many["instruction"]
 

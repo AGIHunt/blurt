@@ -163,10 +163,10 @@ body {
 }
 .qi {
   display: grid;
-  grid-template-columns: 6px 15px minmax(0, 1fr) 14px;
-  gap: 8px;
+  grid-template-columns: 15px minmax(0, 1fr) 14px;
+  gap: 9px;
   align-items: start;
-  padding: 7px 10px 7px 7px;
+  padding: 7px 10px 7px 11px;
   border-radius: var(--r-sm);
   cursor: pointer;
   color: var(--ink-2);
@@ -241,27 +241,9 @@ body {
   color: var(--faint);
 }
 .qi.drop > .kind-ic,
-.qi.w-done .t,
-.qi.w-wontfix .t {
+.qi.s-done .t,
+.qi.s-wontfix .t {
   opacity: 0.6;
-}
-/* draft = unread: a 6 pt accent dot at the start of the row (K8) */
-.rd {
-  width: 6px;
-  height: 6px;
-  border-radius: 9px;
-  margin-top: 7px;
-  flex: none;
-  background: transparent;
-  display: inline-block;
-}
-.pending > .rd,
-.pending .h > .rd,
-.chip.st-draft .rd {
-  background: var(--accent);
-}
-.chip.st-draft .rd {
-  margin: 0;
 }
 .qd {
   display: inline-block;
@@ -378,25 +360,6 @@ body {
 }
 .shot.none::after {
   display: none;
-}
-.stamp {
-  position: absolute;
-  z-index: 1;
-  width: 24px;
-  height: 24px;
-  right: 8px;
-  top: 8px;
-  border-radius: 99px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.5);
-}
-.stamp.keep {
-  background: var(--keep);
-}
-.stamp.drop {
-  background: var(--drop);
 }
 .cap {
   display: flex;
@@ -682,22 +645,6 @@ body {
   width: 13px;
   height: 13px;
 }
-.chip.st-keep {
-  background: var(--keep);
-  color: #fff;
-}
-.chip.st-drop {
-  background: var(--drop);
-  color: #fff;
-}
-[data-theme="dark"] .chip.st-keep {
-  background: var(--keep-soft);
-  color: var(--keep-ink);
-}
-[data-theme="dark"] .chip.st-drop {
-  background: var(--drop-soft);
-  color: var(--drop-ink);
-}
 button.chip:hover {
   color: var(--ink);
 }
@@ -724,9 +671,6 @@ button.chip:hover {
   opacity: 0.8;
 }
 
-.chip.st-draft {
-  color: var(--ink-2);
-}
 .chip.low {
   color: var(--amber);
   background: var(--amber-soft);
@@ -735,21 +679,17 @@ button.chip:hover {
   margin-left: -2px;
 }
 
-/* work state (K3): the ring, what it means, the user's decisions */
+/* what happened with the work (K3 `work`): who / when / commit / PR, the agent's claim, the answers */
 .work {
-  margin: -4px 0 14px;
+  margin: -6px 0 14px;
   padding: 10px 12px;
   border-radius: var(--r);
   background: var(--panel-2);
 }
-.work.w-todo {
-  background: transparent;
-  padding: 0 0 2px;
-}
-.work.w-to_verify {
+.work.s-to_verify {
   background: color-mix(in srgb, var(--warn) 11%, transparent);
 }
-.work.w-done {
+.work.s-done {
   background: var(--keep-soft);
 }
 .work-h {
@@ -758,14 +698,6 @@ button.chip:hover {
   gap: 8px;
   flex-wrap: wrap;
   min-height: 22px;
-}
-.work-s {
-  font-weight: 650;
-  color: var(--ink);
-}
-.work.w-todo .work-s {
-  font-weight: 500;
-  color: var(--mute);
 }
 .work-m {
   color: var(--mute);
@@ -781,24 +713,28 @@ button.chip:hover {
 .work-h .linkbtn {
   margin: -4px 0;
 }
-.work-h .work-x {
-  margin: -4px -6px -4px auto;
-  color: var(--mute);
-}
 .work-claim,
 .work-note {
-  margin: 6px 0 0 26px;
+  margin: 6px 0 0;
   font-size: 12.5px;
   color: var(--ink-2);
+}
+.work-h + .work-claim,
+.work-h + .work-note {
+  margin-top: 4px;
+}
+.work > :first-child {
+  margin-top: 0;
 }
 .work-a {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 10px 0 0 26px;
+  margin: 10px 0 0;
 }
-.work.w-todo .work-a {
-  margin-left: 0;
+.btn.keep .sring {
+  color: #fff;
+  --ring-cut: var(--keep);
 }
 .handoff {
   display: flex;
@@ -862,14 +798,15 @@ button.chip:hover {
   background: var(--wl, var(--line-2));
   flex: none;
 }
-.worklog .w-handed_off,
-.worklog .w-in_progress {
+.worklog .s-new,
+.worklog .s-handed_off,
+.worklog .s-in_progress {
   --wl: var(--accent);
 }
-.worklog .w-to_verify {
+.worklog .s-to_verify {
   --wl: var(--warn);
 }
-.worklog .w-done {
+.worklog .s-done {
   --wl: var(--keep);
 }
 .worklog .wls {
@@ -1009,7 +946,7 @@ button.chip:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#workFilter + .pick-ch {
+#stateFilter + .pick-ch {
   position: absolute;
   right: 9px;
   pointer-events: none;
@@ -1475,28 +1412,26 @@ button.chip:hover {
 .card .h .tm {
   font-variant-numeric: tabular-nums;
 }
-.card .h .rd {
-  margin: 0 -2px 0 0;
-}
 .card .h .kind-ic .ico {
   width: 14px;
   height: 14px;
 }
-.card.w-done .tt,
-.card.w-wontfix .tt {
+.card.s-done .tt,
+.card.s-wontfix .tt {
   color: var(--mute);
 }
 .wk {
   font-weight: 600;
   color: var(--accent);
 }
-.wk.w-to_verify {
+.wk.s-to_verify {
   color: var(--amber);
 }
-.wk.w-done {
+.wk.s-done {
   color: var(--keep-ink);
 }
-.wk.w-wontfix {
+.wk.s-wontfix,
+.wk.s-discarded {
   color: var(--faint);
 }
 .empty {

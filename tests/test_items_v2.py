@@ -74,12 +74,14 @@ class Ingest(Base):
         self.assertEqual(b["items"], [r["uid"] for r in out["items"]])
         self.assertEqual(b["local"], {r["local"]: r["uid"] for r in out["items"]})
         a = self.item("WA-1")
-        self.assertEqual((a["status"], a["project"], a["project_by"], a["source"]["type"], a["source"]["app"],
+        self.assertEqual((a["state"], a["project"], a["project_by"], a["source"]["type"], a["source"]["app"],
                           a["source"]["local_id"], a["source"]["session"]),
-                         ("draft", self.p["id"], "capture", "recording", "Chrome", "I-001", str(self.s)))
+                         ("new", self.p["id"], "capture", "recording", "Chrome", "I-001", str(self.s)))
         self.assertEqual(a["steps"], ["Open Settings", "Look at Save"])
-        self.assertNotIn("work", a)  # todo
+        self.assertNotIn("work", a)  # nobody handed it off yet
+        self.assertNotIn("status", a)
         md = Path(a["path"]).read_text()
+        self.assertIn("\nstate: new\n", md)
         self.assertTrue(Path(a["path"]).name == "WA-1-save-sits-6px-low.md")
         self.assertIn("## Steps\n\n1. Open Settings\n2. Look at Save", md)
         # nothing pending: a second ingest is a no-op
@@ -151,12 +153,17 @@ class Refs(Base):
         self.assertEqual(ids(self.s), ["WA-1", "WA-2", "WA-3"])  # session: review order
         self.assertEqual(ids("--project", "WA"), ["WA-3", "WA-2", "WA-1"])  # project: newest first (ties: id desc)
         self.assertEqual(ids(self.s, "--kind", "idea", "--kind", "task"), ["WA-2", "WA-3"])
-        self.ok("work", "WA-1", "--state", "in_progress")
-        self.assertEqual(ids(self.s, "--work", "in_progress"), ["WA-1"])
+        self.ok("state", "WA-1", "--state", "in_progress")
+        self.assertEqual(ids(self.s, "--state", "in_progress"), ["WA-1"])
+        self.assertEqual(ids(self.s, "--state", "new", "--state", "in_progress"), ["WA-1", "WA-2", "WA-3"])
+        self.assertEqual(ids(self.s, "--work", "in_progress"), ["WA-1"])  # the old names, as states
+        self.assertEqual(ids(self.s, "--work", "todo"), ["WA-2", "WA-3"])  # (todo included the drafts)
+        self.assertEqual(ids(self.s, "--status", "draft"), ["WA-2", "WA-3"])
         self.assertEqual(ids(self.s, "--fix-state", "fixing"), ["WA-1"])  # the v2 name
         self.assertEqual(ids(self.s, "--fix-state", "none"), ["WA-2", "WA-3"])
-        self.ok("user-ops", self.s, "--json", json.dumps([{"op": "set", "id": "WA-3", "set": {"status": "deleted"}}]))
-        self.assertEqual(ids(self.s), ["WA-1", "WA-2"])  # deleted only when asked for
+        self.ok("state", "WA-3", "--action", "discard", "--by", "user")
+        self.assertEqual(ids(self.s), ["WA-1", "WA-2"])  # discarded only when asked for
+        self.assertEqual(ids(self.s, "--state", "discarded"), ["WA-3"])
         self.assertEqual(ids(self.s, "--status", "deleted"), ["WA-3"])
         self.assertTrue(all(os.path.isabs(i["path"]) for i in self.ok("list")["items"]))
 
@@ -177,15 +184,19 @@ class AgentWrites(Base):
         self.assertNotIn("_touched", self.item("WA-1")["_user"])  # bookkeeping keys aren't user fields
 
     def test_protected_and_user_only_fields(self):
-        for field in ("work", "work_history", "fix", "uid", "id", "project", "aliases", "created", "_user", "path"):
+        for field in ("state", "restore_to", "work", "work_history", "fix", "uid", "id", "project", "aliases",
+                      "created", "_user", "path"):
             code, out = self.cli("patch", "WA-1", "--set", f"{field}=1")
             self.assertEqual((code, out["code"]), (1, "protected"), field)
-        code, out = self.cli("patch", "WA-1", "--set", "status=confirmed")  # keeping / dropping is the user's call
+        # the old status still works for old callers: keeping / discarding is the user's call
+        code, out = self.cli("patch", "WA-1", "--set", "status=confirmed")
         self.assertEqual((code, out["code"]), (1, "user_only"))
-        self.ok("patch", "WA-1", "--set", "status=deleted", "--force")  # the user said so in chat
-        self.assertEqual(self.item("WA-1")["status"], "deleted")
+        self.ok("patch", "WA-2", "--set", "status=confirmed", "--force")  # the user said so in chat: keep
+        self.assertEqual(self.item("WA-2")["state"], "todo")
+        self.ok("patch", "WA-1", "--set", "status=deleted", "--force")
+        self.assertEqual((self.item("WA-1")["state"], self.item("WA-1")["restore_to"]), ("discarded", "new"))
         out = self.ok("patch", "WA-1", "--set", "owner=x")
-        self.assertIn("dropped", out["note"])
+        self.assertIn("discarded", out["note"])
         for args in (["--set", "title="], ["--set", "title=  "], ["--unset", "title"]):
             code, out = self.cli("patch", "WA-2", *args)
             self.assertEqual((code, out["ok"]), (1, False), args)
@@ -234,57 +245,94 @@ class Work(Base):
         self.ok("ingest", self.s)
 
     def test_who_may_set_what(self):
-        # an agent: start, claim, never done / wontfix / handed_off
-        w = self.ok("work", "WA-1", "--state", "in_progress", "--agent", "claude", "--job", "j-1")["items"][0]["work"]
-        self.assertEqual((w["state"], w["agent"], w["job"], w["by"]), ("in_progress", "claude", "j-1", "agent"))
+        # an agent: start, claim, never keep / done / wontfix / handed_off / discard
+        r = self.ok("state", "WA-1", "--state", "in_progress", "--agent", "claude", "--job", "j-1")["items"][0]
+        w = r["work"]
+        self.assertEqual((r["state"], w["agent"], w["job"], w["by"]), ("in_progress", "claude", "j-1", "agent"))
         self.assertEqual(list(w), list(_common.WORK_KEYS))
-        for state in ("done", "wontfix", "handed_off"):
-            code, out = self.cli("work", "WA-1", "--state", state)
+        for state in ("todo", "done", "wontfix", "handed_off", "discarded"):
+            code, out = self.cli("state", "WA-2", "--state", state)
             self.assertEqual((code, out["code"]), (1, "bad_transition"), state)
-        w = self.ok("work", "WA-1", "--state", "to_verify", "--claim", "fixed", "--commit", "abc1234",
+        w = self.ok("work", "WA-1", "--state", "to_verify", "--claim", "fixed", "--commit", "abc1234",  # old name
                     "--note", "nudged 6px")["items"][0]["work"]
-        self.assertEqual((w["state"], w["claim"], w["agent"], w["job"], w["commit"]),
+        self.assertEqual((self.item("WA-1")["state"], w["claim"], w["agent"], w["job"], w["commit"]),
                          ("to_verify", "fixed", "claude", "j-1", "abc1234"))  # agent and job carry over
-        w = self.ok("work", "WA-1", "--state", "to_verify", "--pr", "https://example.test/pr/1")["items"][0]["work"]
+        w = self.ok("state", "WA-1", "--state", "to_verify", "--pr", "https://example.test/pr/1")["items"][0]["work"]
         self.assertEqual((w["commit"], w["pr"], w["claim"]), ("abc1234", "https://example.test/pr/1", "fixed"))
-        # only the user marks it done (or reopens it)
-        w = self.ok("work", "WA-1", "--state", "done", "--by", "user")["items"][0]["work"]
-        self.assertEqual((w["state"], w["by"], w["commit"]), ("done", "user", "abc1234"))
+        # only the user marks it done (or sends it back)
+        r = self.ok("state", "WA-1", "--action", "done", "--by", "user")["items"][0]
+        self.assertEqual((r["state"], r["work"]["by"], r["work"]["commit"]), ("done", "user", "abc1234"))
         hist = self.item("WA-1")["work_history"]
         self.assertEqual([h["state"] for h in hist], ["in_progress", "to_verify"])  # same state: no new entry
-        self.assertEqual(self.ok("work", "WA-1", "--state", "todo", "--by", "user", "--note", "still low")
+        self.assertEqual(self.ok("state", "WA-1", "--action", "reopen", "--by", "user", "--note", "still low")
                          ["items"][0]["work"]["agent"], "human")
-        code, out = self.cli("work", "WA-1", "--state", "in_progress", "--by", "robot")
+        self.assertEqual(self.item("WA-1")["state"], "todo")
+        code, out = self.cli("state", "WA-1", "--state", "in_progress", "--by", "robot")
+        self.assertEqual(code, 1)
+        code, out = self.cli("state", "WA-1", "--action", "send_back", "--by", "user")  # only from to verify
+        self.assertEqual((code, out["code"]), (1, "bad_transition"))
+        code, out = self.cli("state", "WA-1", "--action", "done", "--state", "done")
         self.assertEqual(code, 1)
 
-    def test_handoffs_and_deleted_items(self):
-        w = self.ok("work", "WA-2", "--state", "handed_off", "--by", "user", "--handoff", "H-0012")["items"][0]
-        self.assertEqual((w["work"]["to"], w["work"]["handoff"]), ("external", "H-0012"))
-        self.assertNotIn("confirmed", w)
-        out = self.ok("work", "WA-3", "--state", "handed_off", "--by", "app", "--agent", "codex", "--job", "j-9")
-        self.assertEqual((out["items"][0]["work"]["to"], out["items"][0]["confirmed"]), ("session", True))
-        self.assertEqual(self.item("WA-3")["status"], "confirmed")  # dispatching a draft keeps it
-        w = self.ok("work", "WA-3", "--state", "in_progress", "--by", "app")["items"][0]["work"]
+    def test_the_users_actions(self):
+        st_ = lambda ref: self.item(ref)["state"]  # noqa: E731
+        act = lambda ref, a: self.ok("state", ref, "--action", a, "--by", "user")  # noqa: E731
+        act("WA-1", "keep")
+        self.assertEqual(st_("WA-1"), "todo")
+        self.assertNotIn("work", self.item("WA-1"))  # keeping isn't a hand-off
+        act("WA-1", "discard")
+        self.assertEqual((st_("WA-1"), self.item("WA-1")["restore_to"]), ("discarded", "todo"))
+        act("WA-1", "restore")
+        self.assertEqual(st_("WA-1"), "todo")
+        self.assertNotIn("restore_to", self.item("WA-1"))
+        act("WA-2", "wontfix")  # from new: won't do, out of the inbox
+        self.assertEqual(st_("WA-2"), "wontfix")
+        act("WA-2", "reopen")
+        self.assertEqual(st_("WA-2"), "todo")
+        self.ok("state", "WA-3", "--state", "to_verify", "--claim", "fixed", "--agent", "claude")
+        act("WA-3", "send_back")
+        self.assertEqual((st_("WA-3"), self.item("WA-3")["work"]["claim"]), ("todo", None))
+        code, out = self.cli("state", "WA-3", "--action", "keep", "--by", "user")  # not new any more
+        self.assertEqual((code, out["code"]), (1, "bad_transition"))
+        # same state again: nothing to do, not an error
+        before = self.file("WA-3").read_text()
+        self.ok("state", "WA-3", "--state", "todo", "--by", "user")
+        self.assertEqual(self.file("WA-3").read_text(), before)
+
+    def test_handoffs_and_discarded_items(self):
+        w = self.ok("state", "WA-2", "--state", "handed_off", "--by", "user", "--handoff", "H-0012")["items"][0]
+        self.assertEqual((w["state"], w["work"]["to"], w["work"]["handoff"]), ("handed_off", "external", "H-0012"))
+        out = self.ok("state", "WA-3", "--state", "handed_off", "--by", "app", "--agent", "codex", "--job", "j-9")
+        self.assertEqual(out["items"][0]["work"]["to"], "session")  # a new item handed off: kept by the same move
+        w = self.ok("state", "WA-3", "--state", "in_progress", "--by", "app")["items"][0]["work"]
         self.assertEqual((w["agent"], w["job"], w["to"]), ("codex", "j-9", "session"))
-        self.ok("user-ops", self.s, "--json", json.dumps([{"op": "set", "id": "WA-1", "set": {"status": "deleted"}}]))
-        code, out = self.cli("work", "WA-1", "--state", "handed_off", "--by", "app")
+        self.ok("user-ops", self.s, "--json", json.dumps([{"op": "state", "id": "WA-1", "action": "discard"}]))
+        code, out = self.cli("state", "WA-1", "--state", "handed_off", "--by", "app")
         self.assertEqual((code, out["code"]), (1, "deleted"))
         # several at once: all checked before any is written
-        code, out = self.cli("work", "WA-2", "WA-1", "--state", "in_progress")
+        code, out = self.cli("state", "WA-2", "WA-1", "--state", "in_progress")
         self.assertEqual(out["code"], "deleted")
-        self.assertEqual(self.item("WA-2")["work"]["state"], "handed_off")
+        self.assertEqual(self.item("WA-2")["state"], "handed_off")
+        # take back, then a discarded hand-off restores to where it was
+        self.ok("state", "WA-3", "--action", "discard", "--by", "user")
+        self.ok("state", "WA-3", "--action", "restore", "--by", "user")
+        self.assertEqual((self.item("WA-3")["state"], self.item("WA-3")["work"]["agent"]), ("in_progress", "codex"))
+        self.ok("state", "WA-3", "--action", "take_back", "--by", "user")
+        self.assertEqual(self.item("WA-3")["state"], "todo")
 
     def test_env_defaults_and_the_v2_fix_alias(self):
         env = {"BLURT_AGENT": "kimi", "BLURT_RUN_ID": "r-9"}
-        w = self.ok("fix", self.s, "I-002", "--state", "fixing", env=env)["work"]
-        self.assertEqual((w["state"], w["agent"], w["job"], w["by"]), ("in_progress", "kimi", "r-9", "agent"))
-        w = self.ok("fix", "WA-2", "--state", "fixed", "--commit", "abc", env={**env, "BLURT_JOB": "j-2"})["work"]
-        self.assertEqual((w["state"], w["claim"], w["commit"], w["job"]), ("to_verify", "fixed", "abc", "j-2"))
-        w = self.ok("fix", "WA-2", "--state", "wontfix", env=env)["work"]
-        self.assertEqual((w["state"], w["claim"]), ("to_verify", "wontfix"))  # an agent's wontfix is a claim
-        w = self.ok("fix", "WA-3", "--state", "wontfix")["work"]  # no agent anywhere: the user's own call
-        self.assertEqual((w["state"], w["agent"], w["by"]), ("wontfix", "human", "user"))
-        w = self.ok("fix", "WA-2", "--state", "reopened", env=env)["work"]  # an agent takes its claim back
+        w = self.ok("fix", self.s, "I-002", "--state", "fixing", env=env)
+        self.assertEqual((w["state"], w["work"]["agent"], w["work"]["job"], w["work"]["by"]),
+                         ("in_progress", "kimi", "r-9", "agent"))
+        w = self.ok("fix", "WA-2", "--state", "fixed", "--commit", "abc", env={**env, "BLURT_JOB": "j-2"})
+        self.assertEqual((w["state"], w["work"]["claim"], w["work"]["commit"], w["work"]["job"]),
+                         ("to_verify", "fixed", "abc", "j-2"))
+        w = self.ok("fix", "WA-2", "--state", "wontfix", env=env)
+        self.assertEqual((w["state"], w["work"]["claim"]), ("to_verify", "wontfix"))  # an agent's wontfix is a claim
+        w = self.ok("fix", "WA-3", "--state", "wontfix")  # no agent anywhere: the user's own call
+        self.assertEqual((w["state"], w["work"]["agent"], w["work"]["by"]), ("wontfix", "human", "user"))
+        w = self.ok("fix", "WA-2", "--state", "reopened", env=env)  # an agent takes its claim back
         self.assertEqual(w["state"], "todo")
         code, out = self.cli("fix", "WA-1", "--state", "done")
         self.assertEqual(code, 1)
@@ -333,12 +381,13 @@ class Moves(Base):
 
 class UserOps(Base):
     OPS = [
-        {"op": "set", "id": "I-001", "set": {"title": "Save is low (Safari)", "status": "confirmed", "_touched": True}},
+        {"op": "set", "id": "I-001", "set": {"title": "Save is low (Safari)", "_touched": True}},
+        {"op": "state", "id": "I-001", "action": "keep"},
         {"op": "set", "id": "I-002", "set": {"answer": "next week"}, "unset": ["why"]},
         {"op": "set", "id": "I-003", "set": {"merged_from": ["I-002"]}},
         {"op": "remove", "id": "I-002", "into": "I-003"},
         {"op": "add", "item": {"id": "I-002", "kind": "idea", "title": "Tip card"}, "after": "I-003"},
-        {"op": "work", "id": "I-001", "state": "wontfix", "note": "by design"},
+        {"op": "state", "id": "I-001", "action": "wontfix", "note": "by design"},
         {"op": "set", "id": "I-999", "set": {"title": "gone"}},  # unknown ids are ignored, as on the page
     ]
 
@@ -401,9 +450,9 @@ class UserOps(Base):
         self.assertEqual([i["id"] for i in doc["items"]], ["WA-1", "WA-3", "WA-2"])  # I-002 came back after I-003
         self.assertEqual(doc["_removed"], {})
         a = self.item("WA-1")
-        self.assertEqual(set(a["_user"]), {"title", "status"})
-        self.assertEqual((a["status"], a["work"]["state"], a["work"]["by"], a["work"]["note"]),
-                         ("confirmed", "wontfix", "user", "by design"))
+        self.assertEqual(set(a["_user"]), {"title"})
+        self.assertEqual((a["state"], a["work"]["by"], a["work"]["note"]), ("wontfix", "user", "by design"))
+        self.assertEqual([h["state"] for h in a.get("work_history") or []], [])  # keep: no hand-off record
         self.assertTrue(a["_touched"])
         self.assertNotIn("why", self.item("WA-2"))
         self.assertIn("why", self.item("WA-2")["_user"])
@@ -414,12 +463,45 @@ class UserOps(Base):
         self.assertEqual(out["doc"]["_removed"], {uid3: self.ok("path", "WA-1")["uid"]})
         self.assertEqual([i["id"] for i in out["doc"]["items"]], ["WA-1", "WA-2"])
         h = st.read_header(self.file("WA-3"))
-        self.assertEqual((h["status"], h["merged_into"]), ("deleted", self.ok("path", "WA-1")["uid"]))
+        self.assertEqual((h["state"], h["merged_into"]), ("discarded", self.ok("path", "WA-1")["uid"]))
         # ops by uid, the page's POST body as is, and --confirm
         self.ok("user-ops", self.s, "--confirm", "--json", json.dumps({"ops": [{"op": "set", "id": a["uid"],
                                                                                  "set": {"owner": "bo"}}]}))
         self.assertEqual(self.item("WA-1")["owner"], "bo")
         self.assertTrue(json.loads((self.s / "batch.json").read_text())["reviewed"])
+
+    def test_state_ops_old_pages_and_undo(self):
+        u = {i: self.ok("path", f"WA-{i}")["uid"] for i in (1, 2, 3)}
+        run = lambda *ops: self.ok("user-ops", self.s, "--json", json.dumps(list(ops)))  # noqa: E731
+        st_ = lambda i: self.item(u[i])["state"]  # noqa: E731
+        # a page from before K3: status in a set, the work op — both still land, as the user's word
+        run({"op": "set", "id": u[1], "set": {"status": "confirmed"}})
+        self.assertEqual(st_(1), "todo")
+        run({"op": "set", "id": u[1], "set": {"status": "draft"}})  # its undo of a keep
+        self.assertEqual(st_(1), "new")
+        run({"op": "work", "id": u[2], "state": "done"})
+        self.assertEqual(st_(2), "done")
+        run({"op": "set", "id": u[2], "set": {"status": "deleted"}})
+        self.assertEqual((st_(2), self.item(u[2])["restore_to"]), ("discarded", "done"))
+        # an action that doesn't fit the state any more (another window got there first) is skipped
+        run({"op": "state", "id": u[1], "action": "send_back"}, {"op": "state", "id": u[2], "action": "restore"})
+        self.assertEqual((st_(1), st_(2)), ("new", "done"))
+        # undo: back to any earlier state, with its hand-off record
+        self.ok("state", u[3], "--state", "to_verify", "--claim", "fixed", "--agent", "claude")
+        run({"op": "state", "id": u[3], "action": "done"})
+        run({"op": "state", "id": u[3], "state": "to_verify", "undo": True})
+        it = self.item(u[3])
+        self.assertEqual((it["state"], it["work"]["claim"], it["work"]["agent"]), ("to_verify", "fixed", "claude"))
+        self.assertNotIn("work_history", it)  # the done it undid left no trace
+        run({"op": "state", "id": u[3], "action": "discard"}, {"op": "state", "id": u[3], "state": "to_verify",
+                                                                "undo": True})
+        self.assertEqual(st_(3), "to_verify")
+        # a session doc keeps discarded items (the page restores them); a project doc leaves them out unless asked
+        run({"op": "state", "id": u[1], "action": "discard"})
+        self.assertIn(u[1], [i["uid"] for i in self.ok("doc", self.s)["doc"]["items"]])
+        self.assertNotIn(u[1], [i["uid"] for i in self.ok("doc", "--project", "WA")["doc"]["items"]])
+        self.assertEqual([i["uid"] for i in self.ok("doc", "--project", "WA", "--state", "discarded")["doc"]["items"]],
+                         [u[1]])
 
     def test_changing_project_is_a_move_by_the_user(self):
         other = self.tmp / "other-proj"
@@ -439,7 +521,8 @@ class UserOps(Base):
     def test_bad_ops_change_nothing(self):
         before = self.snapshot()
         for bad in ("not json", "{}", '[{"op":"merge","id":"WA-1"}]', '[{"op":"set"}]', '[{"op":"add","item":{}}]',
-                    '[{"op":"set","id":"WA-1","set":[1]}]', '[1]', '[{"op":"work","id":"WA-1","state":"later"}]'):
+                    '[{"op":"set","id":"WA-1","set":[1]}]', '[1]', '[{"op":"work","id":"WA-1","state":"later"}]',
+                    '[{"op":"state","id":"WA-1","action":"later"}]', '[{"op":"state","id":"WA-1"}]'):
             code, out = self.cli("user-ops", self.s, "--json", bad)
             self.assertEqual((code, out["ok"]), (1, False), bad)
         code, out = self.cli("user-ops", self.s)
@@ -475,6 +558,7 @@ class Cli(Base):
         for args, code in ((("patch", "WA-1", "--set", "novalue"), "bad_args"),
                            (("patch", "WA-77", "--set", "a=1"), "not_found"), (("get",), "bad_args"),
                            (("list", "--status", "maybe"), "bad_args"), (("work", "WA-1"), "bad_args"),
+                           (("state", "WA-1", "--state", "later"), "bad_args"),
                            (("list", self.tmp / "nowhere"), "not_found")):
             c, out = self.cli(*args)
             self.assertEqual((c, out["ok"], out["code"]), (1, False, code), args)

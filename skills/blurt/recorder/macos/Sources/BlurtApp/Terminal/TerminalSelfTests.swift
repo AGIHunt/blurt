@@ -94,7 +94,7 @@ enum TerminalSelfTests {
             }
         case "fixwatch":                // the stores FixWatcher follows and what it reads from FILE's front-matter
             let fm = arg.isEmpty ? nil : FixWatcher.frontMatter(URL(fileURLWithPath: arg))
-            out(["stores": FixWatcher.stores().map(\.path), "work": fm.flatMap(FixWatcher.workState) ?? NSNull(),
+            out(["stores": FixWatcher.stores().map(\.path), "state": fm.map(FixWatcher.state) ?? NSNull(),
                  "projects": ProjectStore.shared.projects.map(\.id)])
         case "type":
             guard words.count >= 2, let n = Int(words[0]), let t = pane(n)?.surface.term else { out(["error": "no terminal"]); return }

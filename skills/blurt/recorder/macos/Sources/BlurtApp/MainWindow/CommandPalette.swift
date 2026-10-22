@@ -132,14 +132,10 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.menu.start_session"), "apple.terminal", "⌘↩", enabled: has) { c.handOffSelection() },
             e(T("main.cmd.copy_instruction"), "doc.on.clipboard", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
             e(T("main.cmd.copy_full"), "text.alignleft", enabled: has) { c.mCopyFull() },
-            e(T("main.cmd.mark_done"), "checkmark.circle", "D", enabled: items.contains { c.allowed("done", $0) }) { c.setWork("done") },
-            e(T("main.cmd.reopen"), "arrow.uturn.backward.circle", "R", enabled: items.contains { c.allowed("todo", $0) }) { c.setWork("todo") },
             e(T("main.menu.quick_look"), "eye", T("main.keys.space"), enabled: has) { c.list.toggleQuickLook() },
             e(T("action.reveal_in_finder"), "folder", "⇧⌘R", enabled: has) { c.mReveal() },
             e(T("action.copy_path"), "doc.on.doc", "⌥⌘C", enabled: has) { c.copyPaths() },
             e(T("main.menu.rename"), "pencil", "E", enabled: has) { c.renameSelection() },
-            e(T("review.confirmed"), "checkmark", "S", enabled: has) { c.setStatus("confirmed") },
-            e(T("review.deleted"), "trash", "⌫", enabled: has) { c.setStatus("deleted") },
             e(T("main.place.inbox"), "tray", "⌘1") { c.go(.inbox) },
             e(T("main.place.progress"), "circle.dashed", "⌘2") { c.go(.inProgress) },
             e(T("project.inbox"), "tray.2", "⌘3") { c.go(.unassigned) },
@@ -148,6 +144,11 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
             e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() },
         ]
+        // K3: what the selection can do from its state (hand off is above), with the hint as the detail
+        out.insert(contentsOf: StateMenu.actions(for: items, canHandOff: false).map { a in
+            Entry(title: StateMenu.title(a), detail: StateMenu.hint(a, items), image: Look.ring(StateMenu.target(a, items), size: 14),
+                  keys: a == "discard" ? "⌫" : Lifecycle.keyLabel(a), enabled: Scripts.canWrite) { c.apply(a, to: items) }
+        }, at: min(out.count, 6))
         for k in KindStyle.builtIn {
             out.append(Entry(title: T("main.palette.only_kind", Look.kindName(k)), detail: "", image: Look.kindImage(k), keys: "", enabled: true) {
                 c.model.kinds = [k]; c.model.reload()

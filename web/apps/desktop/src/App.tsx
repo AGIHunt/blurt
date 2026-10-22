@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@blurt/icons';
-import { applyPlatform, applyTheme } from '@blurt/ui';
+import { applyPlatform, applyTheme, CLOSED_STATES, INBOX_STATES, OPEN_STATES, targetOf, type Action, type State } from '@blurt/ui';
 import { KindIcon } from '@blurt/ui/react';
 import {
   api,
@@ -32,27 +32,14 @@ import { SessionsView } from './components/SessionsView';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar, type View } from './components/Sidebar';
 
-type Filter = 'open' | 'review' | 'verify' | 'done' | 'all' | 'dropped';
-const FILTERS: Filter[] = ['open', 'review', 'verify', 'done', 'all', 'dropped'];
+/** the list's filters are K3's groups: needs you, not finished, finished, everything (but discarded), discarded */
+type Filter = 'inbox' | 'open' | 'closed' | 'all' | 'discarded';
+const FILTERS: Filter[] = ['inbox', 'open', 'closed', 'all', 'discarded'];
+const FILTER_STATES: Record<Filter, readonly State[] | undefined> = {
+  inbox: INBOX_STATES, open: OPEN_STATES, closed: CLOSED_STATES, all: undefined, discarded: ['discarded'],
+};
 const KINDS = ['issue', 'idea', 'note', 'task'] as const;
 const PAGE = 200;
-
-function filterQuery(f: Filter): Pick<ItemQuery, 'status' | 'work'> {
-  switch (f) {
-    case 'open':
-      return { work: ['todo', 'handed_off', 'in_progress'] };
-    case 'review':
-      return { status: ['draft'] };
-    case 'verify':
-      return { work: ['to_verify'] };
-    case 'done':
-      return { work: ['done', 'wontfix'] };
-    case 'dropped':
-      return { status: ['deleted'] };
-    default:
-      return {};
-  }
-}
 
 function useToast() {
   const [msg, setMsg] = useState<string | null>(null);
@@ -91,6 +78,7 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState<string | null>(null);
   const [batches, setBatches] = useState<BatchRow[] | null>(null);
+  const [verify, setVerify] = useState<ItemRow[] | null>(null);
   const [dispatch, setDispatch] = useState<string[] | null>(null);
   const [palette, setPalette] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -155,7 +143,8 @@ export default function App() {
 
   // the list
   const q: ItemQuery = useMemo(() => {
-    const out: ItemQuery = { limit, sort: 'updated', ...filterQuery(query.trim() ? 'all' : filter) };
+    const states = FILTER_STATES[query.trim() ? 'all' : filter];
+    const out: ItemQuery = { limit, sort: 'updated', ...(states ? { state: [...states] } : {}) };
     if (query.trim()) out.query = query.trim();
     if (kinds.length) out.kind = kinds;
     if (view.kind === 'project') out.project = view.id;
@@ -181,7 +170,8 @@ export default function App() {
 
   useEffect(() => {
     if (view.kind !== 'inbox') return;
-    api.batches({ state: 'to_review', limit: 100 }).then(setBatches, () => setBatches([]));
+    api.batches({ state: 'to_review', limit: 100 }).then((b) => setBatches(b.filter((x) => x.new_count > 0)), () => setBatches([]));
+    api.items({ state: ['to_verify'], sort: 'updated', limit: 100 }).then((r) => setVerify(r.items), () => setVerify([]));
   }, [view, tick]);
 
   useEffect(() => {
@@ -238,6 +228,18 @@ export default function App() {
     setSelected((cur) => nextSelection(items.map((i) => i.uid), cur, focus, uid, how));
     setFocus(uid);
   };
+  /** a pick from a row's state menu (K3): hand off opens the dispatch sheet, the rest is `items.py state --action` */
+  const act = useCallback(async (r: ItemRow, a: Action) => {
+    if (a === 'hand_off') return setDispatch([r.uid]);
+    try {
+      await api.state([r.uid], a);
+      refresh();
+      const to = targetOf(a, { state: r.state });
+      toast.show(a === 'restore' || !to ? t('act.restored', { id: r.item_id }) : t('act.state', { state: t(`state.${to}`), id: r.item_id }));
+    } catch (e) {
+      toast.show(errText(e));
+    }
+  }, []);
   const moveItems = async (uids: string[], project: string) => {
     try {
       await api.move(uids, project);
@@ -389,8 +391,18 @@ export default function App() {
           <InboxView
             batches={batches}
             summary={summary}
+            verify={verify}
             onReview={(b) => setView({ kind: 'review', session: b.dir, title: b.title ?? '', back: { kind: 'inbox' } })}
             onUnassigned={() => setView({ kind: 'project', id: 'inbox' })}
+            onOpenItem={(r) => {
+              setView({ kind: 'project', id: r.project_id });
+              setFilter('inbox');
+              setFocus(r.uid);
+              setSelected(new Set([r.uid]));
+            }}
+            onAction={act}
+            projectName={projectName}
+            mac={platform === 'mac'}
           />
         )}
         {listView && (
@@ -437,7 +449,8 @@ export default function App() {
               ) : (
                 <>
                   <ItemList rows={items} selected={selected} focus={focus} showProject={view.kind === 'all'} projectName={projectName} onSelect={select}
-                    onOpen={(r) => r.session_dir && setView({ kind: 'review', session: r.session_dir, title: '', back: view })} />
+                    onOpen={(r) => r.session_dir && setView({ kind: 'review', session: r.session_dir, title: '', back: view })}
+                    onAction={act} mac={platform === 'mac'} />
                   <div className="list-foot">
                     <span className="dim small" data-testid="total">{plural('list.count', total)}</span>
                     {total > items.length && <button className="link" onClick={() => setLimit((l) => l + PAGE)}>{t('list.more', { n: total - items.length })}</button>}

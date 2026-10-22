@@ -1,5 +1,5 @@
-import { workStateOf } from "@blurt/ui";
-import { KindIcon } from "@blurt/ui/react";
+import { canDo, stateOf } from "@blurt/ui";
+import { KindIcon, StatusRing } from "@blurt/ui/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FixRecord, Item, WorkRecord } from "../host";
 import { fieldLabel } from "../fields";
@@ -7,7 +7,7 @@ import { isEnter } from "../ime";
 import { isTitle, kindOf, SEV, type ReviewStore } from "../store";
 import { Icon, type IconName } from "./Icon";
 import { cx, useStore } from "./ctx";
-import { agentName, WorkRing, workText } from "./Queue";
+import { agentName, StateControl } from "./Queue";
 import { isMacLike } from "./TopBar";
 import { MovePicker } from "./Views";
 
@@ -15,7 +15,7 @@ type FieldType = "text" | "area" | "list" | "tags" | "src";
 
 /** keys the inspector never shows as generic lens fields */
 const RESERVED = new Set(["id", "uid", "kind", "title", "quote", "time", "frames", "clip", "source", "tags", "confidence",
-  "questions", "answer", "status", "exported", "merged_from", "merged_into", "severity", "type", "fix", "fix_history",
+  "questions", "answer", "state", "restore_to", "status", "exported", "merged_from", "merged_into", "severity", "type", "fix", "fix_history",
   "schema", "work", "work_history", "project", "project_by", "project_confidence", "suggested_project", "created",
   "updated", "path", "store", "aliases", "language", "assignee"]);
 const SHOWN = new Set(["module", "owner", "actual", "expected", "steps", "code_refs", "summary", "why", "inspired_by",
@@ -117,54 +117,53 @@ const pct = (s: ReviewStore, x: number | null | undefined) => (x == null ? "" : 
 
 /** v2 fix records shown as work records (K3 mapping), so one history renders both */
 function fixAsWork(f: FixRecord): WorkRecord {
-  return { state: workStateOf({ fix: f }), agent: f.agent, commit: f.commit, pr: f.pr, note: f.note, at: f.at,
+  return { state: stateOf({ status: "confirmed", fix: f }), agent: f.agent, commit: f.commit, pr: f.pr, note: f.note, at: f.at,
     claim: f.state === "fixed" ? "fixed" : f.state === "wontfix" && f.agent !== "human" ? "wontfix" : null,
     by: f.agent === "human" ? "user" : "agent" };
 }
 
-/** K3 work state: the ring, what it means, and the user's decisions (only the user marks things done) */
+/** What happened with the work (K3 `work`): who and when, commit, PR, what the agent claims, its note — and, when an
+    agent says it's finished, the two answers right there (the state pill's menu has every action). */
 function WorkPanel({ i }: { i: Item }) {
   const s = useStore();
-  const w = s.workOf(i);
+  const st = s.stateOf(i);
   const rec = i.work ?? (i.fix ? fixAsWork(i.fix) : undefined);
-  const can = s.canWork && i.status !== "deleted";
-  const who = rec?.by === "user" ? s.t("work.by_you") : rec?.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(rec.agent) }) : "";
-  const when = rec?.at ? s.i18n.formatRelative(rec.at) : "";
+  if (!rec || st === "new" || st === "discarded") return null;
+  const who = rec.by === "user" ? s.t("work.by_you") : rec.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(rec.agent) }) : "";
+  const when = rec.at ? s.i18n.formatRelative(rec.at) : "";
+  const session = rec.to === "session" && rec.job && s.host.openSession && st !== "done" && st !== "wontfix" ? rec.job : null;
+  const verify = st === "to_verify";
+  const meta = who || when || rec.commit || rec.pr;
+  if (!meta && !verify && !rec.note && !session) return null;
   return (
-    <div className={cx("work", "w-" + w)} id="workRow">
-      <div className="work-h">
-        <WorkRing i={i} size={18} />
-        <span className="work-s">{workText(s, i)}</span>
-        {(who || when) && <span className="work-m">{[who, when].filter(Boolean).join(" · ")}</span>}
-        {rec?.commit ? <code title={rec.commit}>{shortSha(rec.commit)}</code> : null}
-        {rec?.pr ? (
-          <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
-            <Icon name="git-pull-request" size={13} /> {s.t("work.pr")}
-          </a>
-        ) : null}
-        {can && w !== "wontfix" && w !== "done" && (
-          // a quiet way out, at the end of the state line rather than a lone button under it
-          <button className="btn sm ghost work-x" id="workWontfix" onClick={() => s.setWork([i], "wontfix")}>
-            {s.t("work.wontfix")}
-          </button>
-        )}
-      </div>
-      {w === "to_verify" && rec?.claim && <p className="work-claim">{s.t(rec.claim === "wontfix" ? "work.claim.wontfix" : "work.claim.fixed")}</p>}
-      {rec?.note ? <p className="work-note">{rec.note}</p> : null}
-      {((can && (w === "to_verify" || w === "done" || w === "wontfix")) || (rec?.to === "session" && rec.job && s.host.openSession && w !== "done")) && (
+    <div className={cx("work", "s-" + st)} id="workRow">
+      {meta && (
+        <div className="work-h">
+          {(who || when) && <span className="work-m">{[who, when].filter(Boolean).join(" · ")}</span>}
+          {rec.commit ? <code title={rec.commit}>{shortSha(rec.commit)}</code> : null}
+          {rec.pr ? (
+            <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
+              <Icon name="git-pull-request" size={13} /> {s.t("work.pr")}
+            </a>
+          ) : null}
+        </div>
+      )}
+      {verify && rec.claim && <p className="work-claim">{s.t(rec.claim === "wontfix" ? "work.claim.wontfix" : "work.claim.fixed")}</p>}
+      {rec.note ? <p className="work-note">{rec.note}</p> : null}
+      {(verify || session) && (
         <div className="work-a">
-          {can && w === "to_verify" && (
-            <button className="btn sm keep" id="workDone" onClick={() => s.setWork([i], "done")}>
-              <Icon name="check" size={14} /> {s.t("work.confirm_done")}
-            </button>
+          {verify && (
+            <>
+              <button className="btn sm keep" id="workDone" onClick={() => s.act([i], "done")}>
+                <StatusRing state="done" size={14} /> {s.t("action.done")}
+              </button>
+              <button className="btn sm" id="workBack" onClick={() => s.act([i], "send_back")}>
+                <StatusRing state="todo" size={14} /> {s.t("action.send_back")}
+              </button>
+            </>
           )}
-          {can && (w === "to_verify" || w === "done" || w === "wontfix") && (
-            <button className="btn sm" id="workReopen" onClick={() => s.setWork([i], "todo")}>
-              <Icon name="restart" size={14} /> {s.t("work.reopen")}
-            </button>
-          )}
-          {rec?.to === "session" && rec.job && s.host.openSession && w !== "done" && (
-            <button className="btn sm" id="workSession" onClick={() => s.openSession(rec.job!)}>
+          {session && (
+            <button className="btn sm" id="workSession" onClick={() => s.openSession(session)}>
               <Icon name="terminal" size={14} /> {s.t("work.open_session")}
             </button>
           )}
@@ -179,9 +178,7 @@ function HandoffPanel({ i }: { i: Item }) {
   const s = useStore();
   const h = s.host;
   if (!h.dispatch && !s.canHandoff) return null;
-  if (i.status === "deleted") return null;
-  const w = s.workOf(i);
-  if (w === "done" || w === "wontfix") return null;
+  if (!canDo("hand_off", s.stateOf(i))) return null;
   return (
     <div className="handoff" id="handoffRow" aria-label={s.t("handoff.title")}>
       {h.dispatch && (
@@ -206,19 +203,20 @@ function HandoffPanel({ i }: { i: Item }) {
 
 function WorkHistory({ i }: { i: Item }) {
   const s = useStore();
+  // work_history holds each earlier step (the state it was in); the newest row is the item now
   const rows: WorkRecord[] = i.work
-    ? [...(i.work_history || []), i.work]
+    ? [...(i.work_history || []), { ...i.work, state: s.stateOf(i) }]
     : i.fix
       ? [...(i.fix_history || []), i.fix].map(fixAsWork)
       : [];
-  if (rows.length < 2 && !(rows[0] && rows[0].state !== "todo")) return null;
+  if (rows.length < 2 && !(rows[0]?.state && rows[0].state !== "todo" && rows[0].state !== "new")) return null;
   return (
     <div className="f worklog">
       <label>{s.t("work.history")}</label>
       <ol>
         {[...rows].reverse().map((f, n) => (
-          <li key={n} className={"w-" + f.state}>
-            <span className="wls">{s.workLabel(f.state)}</span>
+          <li key={n} className={"s-" + (f.state ?? "todo")}>
+            <span className="wls">{s.stateLabel(f.state ?? "todo")}</span>
             {f.agent && f.agent !== "human" ? <span className="wla">{s.t("work.by", { who: agentName(f.agent) })}</span> : null}
             {f.commit ? <code>{shortSha(f.commit)}</code> : null}
             {f.pr ? (
@@ -310,7 +308,6 @@ export function Inspector() {
     if (side.current) side.current.scrollTop = 0;
   }, [ik]);
   if (!i) return <aside className="side insp scroll" id="side" ref={side} />;
-  const st = s.st(i);
   const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
   const kind = kindOf(i);
   const F = (k: string, label: string, type: FieldType = "area", cls?: string) => <Field key={ik + k} i={i} k={k} label={label} type={type} cls={cls} />;
@@ -391,22 +388,7 @@ export function Inspector() {
       </div>
       <Field key={ik + ":title"} i={i} k="title" title />
       <div className="chips">
-        {st === "keep" ? (
-          <span className="chip st-keep">
-            <Icon name="check" />
-            {s.t("review.confirmed")}
-          </span>
-        ) : st === "drop" ? (
-          <span className="chip st-drop">
-            <Icon name="x" />
-            {s.t("review.deleted")}
-          </span>
-        ) : (
-          <span className="chip st-draft">
-            <span className="rd" />
-            {s.t("review.draft")}
-          </span>
-        )}
+        <StateControl i={i} id="statePill" shortcuts controlled />
         <span className="chip kind-chip">
           <KindIcon kind={kind} size={14} /> {s.kindLabel(kind)}
         </span>

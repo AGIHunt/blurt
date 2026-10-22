@@ -1,7 +1,7 @@
-// The item list's look and cells. One line per item (K8 density pass): an unread-style dot while it waits for review,
-// the kind's icon in its colour, the title, the id and project folded into quiet text, the processing ring, the time.
-// The full table (All Items) adds a header and the review / work columns. Fixed row height, view-based, reused —
-// 20k rows scroll like 20.
+// The item list's look and cells. One line per item (K8 density pass): the kind's icon in its colour, the item's one
+// state ring (K3 — click it for what you can do from there), the title (medium weight while it's new), the id and
+// project folded into quiet text, the time. The full table (All Items) adds a header and a State column (ring + name)
+// instead of the ring up front. Fixed row height, view-based, reused — 20k rows scroll like 20.
 import AppKit
 import BlurtCore
 
@@ -13,20 +13,38 @@ enum Look {
     static let monoSub = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     static let smallFont = NSFont.systemFont(ofSize: 11, weight: .medium)
 
-    /// Brand coral, only for the primary action, the unread dot and selection accents: #FF5C3D light, #FF7A5C dark.
+    /// Brand coral, only for the primary action, new items and selection accents: #F55B3E light, #FF7A5C dark.
     static let brand = StatusRing.accent
 
     static func kindName(_ k: String) -> String {
         KindStyle.builtIn.contains(k) ? T("kind.\(k)") : k.replacingOccurrences(of: "_", with: " ").capitalized
     }
-    static func reviewName(_ s: String) -> String { ["draft", "confirmed", "deleted"].contains(s) ? T("review.\(s)") : s }
-    static func workName(_ w: String) -> String { StatusRing.states.contains(w) ? T("work.\(w)") : w }
+    static func stateName(_ s: String) -> String { Lifecycle.isState(s) ? T("state.\(s)") : s }
     /// "With Claude Code" / "Copied to your agent" for handed_off, else the state's name.
-    static func workLabel(_ it: ItemRow) -> String {
-        guard it.workState == "handed_off" else { return workName(it.workState) }
-        if it.workTo == "external" { return T("work.handed_off.external") }
-        if let a = it.workAgent, let d = AgentHub.shared.def(a) { return T("work.handed_off.session", d.name) }
-        return workName("handed_off")
+    static func stateLabel(_ it: ItemRow) -> String {
+        guard it.state == "handed_off" else { return stateName(it.state) }
+        if it.workTo == "external" { return T("state.handed_off.external") }
+        if let a = it.workAgent, let d = AgentHub.shared.def(a) { return T("state.handed_off.session", d.name) }
+        return stateName("handed_off")
+    }
+    /// The state's text colour next to its ring: the ring's own colour where it asks for you, quiet otherwise.
+    static func stateColor(_ s: String) -> NSColor {
+        switch s {
+        case "new", "handed_off", "in_progress": return StatusRing.accent
+        case "to_verify": return StatusRing.attention
+        case "done": return StatusRing.keep
+        case "wontfix", "discarded": return .tertiaryLabelColor
+        default: return .secondaryLabelColor
+        }
+    }
+    /// Menus in English use title case (the macOS convention); the shared catalog is in sentence case.
+    static func menuCase(_ t: String) -> String {
+        guard !Loc.isChinese else { return t }
+        let small: Set<String> = ["a", "an", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to"]
+        return t.split(separator: " ", omittingEmptySubsequences: false).enumerated().map { k, w in
+            let s = String(w)
+            return k > 0 && small.contains(s.lowercased()) ? s : s.prefix(1).uppercased() + s.dropFirst()
+        }.joined(separator: " ")
     }
 
     static func symbol(_ name: String, _ label: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSImage? {
@@ -50,41 +68,131 @@ enum Look {
     }
 }
 
-/// The unread-style dot of a draft (K8: 6 pt, accent) and the kind icon, side by side.
+/// An image in its colours; white on a selected (emphasized) row, like the text next to it.
+private func onRow(_ image: NSImage?, emphasized: Bool) -> NSImage? {
+    guard emphasized, let t = image?.copy() as? NSImage else { return image }
+    t.isTemplate = true
+    return t
+}
+
+/// The kind icon and — in the dense list — the state ring, side by side. The ring is a button: it opens the state menu.
 final class LeadCell: NSTableCellView {
-    let dot = DotView()
     let icon = NSImageView()
+    let ring = StateRingButton()
     /// The kind icon in its colour; white on a selected (emphasized) row, like the text next to it.
     var kindImage: NSImage? { didSet { restyle() } }
+    var showsRing = true { didSet { ring.isHidden = !showsRing } }
     override var backgroundStyle: NSView.BackgroundStyle { didSet { restyle() } }
     private func restyle() {
         let on = backgroundStyle == .emphasized
-        dot.inverted = on
-        guard let k = kindImage else { icon.image = nil; return }
-        if on, let t = k.copy() as? NSImage { t.isTemplate = true; icon.image = t; icon.contentTintColor = .white }
-        else { icon.image = k; icon.contentTintColor = nil }
+        icon.image = onRow(kindImage, emphasized: on)
+        icon.contentTintColor = on ? .white : nil
+        ring.emphasized = on
     }
     override init(frame: NSRect) {
         super.init(frame: frame)
-        for v in [dot, icon] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        for v in [icon, ring] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         icon.imageScaling = .scaleNone
         NSLayoutConstraint.activate([
-            dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), dot.centerYAnchor.constraint(equalTo: centerYAnchor),
-            dot.widthAnchor.constraint(equalToConstant: 6), dot.heightAnchor.constraint(equalToConstant: 6),
-            icon.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 18),
+            ring.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 3), ring.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ring.widthAnchor.constraint(equalToConstant: 20), ring.heightAnchor.constraint(equalToConstant: 20),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
 }
 
-final class DotView: NSView {
-    var on = false { didSet { needsDisplay = true } }
-    var inverted = false { didSet { needsDisplay = true } }
+/// The state ring as a borderless button (14 pt ring in a 20 pt target). Hover shows a soft circle, like a toolbar
+/// button; the click goes to the list (target / action), which opens the state menu under it.
+final class StateRingButton: NSButton {
+    var ringState = "new" { didSet { if ringState != oldValue { restyle() } } }
+    var emphasized = false { didSet { if emphasized != oldValue { restyle() } } }
+    private var hovering = false { didSet { needsDisplay = true } }
+    private var area: NSTrackingArea?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        isBordered = false
+        imagePosition = .imageOnly
+        imageScaling = .scaleNone
+        title = ""
+        setButtonType(.momentaryPushIn)
+        focusRingType = .none
+        restyle()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(_ state: String, label: String) {
+        ringState = state
+        toolTip = label
+        setAccessibilityLabel(T("main.state.ax", label))
+    }
+
+    private func restyle() {
+        image = onRow(Look.ring(ringState), emphasized: emphasized)
+        contentTintColor = emphasized ? .white : nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        area.map(removeTrackingArea)
+        let a = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(a)
+        area = a
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
     override func draw(_ dirtyRect: NSRect) {
-        guard on else { return }
-        (inverted ? NSColor.white : Look.brand).setFill()
-        NSBezierPath(ovalIn: bounds).fill()
+        if hovering || isHighlighted {
+            (emphasized ? NSColor.white.withAlphaComponent(0.22) : NSColor.labelColor.withAlphaComponent(isHighlighted ? 0.14 : 0.08)).setFill()
+            NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
+        }
+        super.draw(dirtyRect)
+    }
+}
+
+/// The full table's State column: ring + the state's name, one button that opens the state menu.
+final class StateCell: NSTableCellView {
+    let button = NSButton()
+    private var state = "new", label = ""
+    override var backgroundStyle: NSView.BackgroundStyle { didSet { restyle() } }
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        button.isBordered = false
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
+        button.alignment = .left
+        button.focusRingType = .none
+        button.setButtonType(.momentaryPushIn)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 0),
+            button.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
+            button.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(_ state: String, label: String) {
+        self.state = state
+        self.label = label
+        button.toolTip = label
+        button.setAccessibilityLabel(T("main.state.ax", label))
+        restyle()
+    }
+
+    private func restyle() {
+        let on = backgroundStyle == .emphasized
+        button.image = onRow(Look.ring(state), emphasized: on)
+        button.contentTintColor = on ? .white : nil
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingTail
+        button.attributedTitle = NSAttributedString(string: " " + label, attributes: [
+            .font: Look.subFont, .foregroundColor: on ? NSColor.white : Look.stateColor(state), .paragraphStyle: p])
     }
 }
 
@@ -236,7 +344,7 @@ final class MetaCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-/// Row view: VoiceOver reads the whole row as one sentence (kind, title, review, work, project, time).
+/// Row view: VoiceOver reads the whole row as one sentence (kind, title, id, state, project, time).
 final class ItemRowView: NSTableRowView {
     var label = "" { didSet { setAccessibilityLabel(label) } }
 }

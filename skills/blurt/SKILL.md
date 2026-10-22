@@ -185,7 +185,8 @@ top-down — the user reviews from the top — and write each item as soon as it
 
 The page has been open since §3. Wait as in §1 until the review summary prints. The user may finish before the
 frames are in (`"processing": true` in the summary): complete §4 anyway, then `done`. Read the result with
-`items.py list <session>` (`--status deleted` for what they dropped; answers are in `answer`; merged items are gone
+`items.py list <session>` (each item has one `state`: `todo` = they kept it, `wontfix`, …; `--state discarded` for
+what they threw away; answers are in `answer`; merged items are gone
 on purpose — see the target's `merged_from`; `_user` lists fields the user edited; the user may have moved items to
 another project: ids follow the project, uids never change) and continue with §6. If they reply in chat instead,
 apply it with `items.py … --force` and close the page (`pkill -f "review.py <session>"`).
@@ -222,22 +223,25 @@ When the user asks you to handle items — "fix these", a Blurt session that sta
 (`~/.blurt/handoff/H-….md`, see `reference/sessions.md`) — for each item:
 1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <uid|id>` and open the frame files
    (absolute paths). Look at the frames; they are the evidence.
-2. `items.py work <uid> --state in_progress` (MCP: `mark_fixed(uid, state="fixing")`) before you start — the app
+2. `items.py state <uid> --state in_progress` (MCP: `mark_fixed(uid, state="fixing")`) before you start — the app
    shows it in progress.
 3. Do it, smallest change that does it. Commit only when the handoff says so (a worktree session); never push.
-4. `items.py work <uid> --state to_verify --claim fixed --note "<one line: what changed, which files>"`
+4. `items.py state <uid> --state to_verify --claim fixed --note "<one line: what changed, which files>"`
    (`--commit SHA` / `--pr URL` if there is one; MCP: `mark_fixed(uid, state="fixed", note=…)`); can't or shouldn't →
-   `--claim wontfix --note "<why>"`. That is your claim: the item waits for the user to verify it — only they mark it
-   done or reopen it.
-`--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set by the app). The v0.6 form `items.py fix <session>
-<id> --state fixing|fixed|wontfix` still works. Never set `work` with `patch`, and never edit item files yourself.
+   `--claim wontfix --note "<why>"`. That is your claim: the item waits in the user's inbox as *to verify* — only
+   they mark it done, send it back or decide they won't do it.
+Every item has one `state` (`reference/schema.md`): new → todo → handed_off → in_progress → to_verify → done, plus
+wontfix and discarded. You only ever move items to `in_progress` / `to_verify` (or back to `todo` to take your own
+claim back). `--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set by the app). The older forms
+`items.py work …` and `items.py fix <session> <id> --state fixing|fixed|wontfix` still work. Never set `state` or
+`work` with `patch`, and never edit item files yourself.
 
 ## 8. Across recordings: index and MCP
 
 Every item on this machine (every project's store, the inbox, v0.6 sessions not migrated yet) is indexed in
 `~/.blurt/index.db` (`index.py`; items.py keeps it fresh). To find things across projects:
-`index.py search "<words>" [--kind issue] [--work todo] [--project <key|folder|inbox>]` → items with uid, id,
-project, path, title, status, work state (Chinese works; 1–2 character words too). `index.py backlog <repo>` writes
+`index.py search "<words>" [--kind issue] [--state todo] [--project <key|folder|inbox>]` → items with uid, id,
+project, path, title, state (Chinese works; 1–2 character words too). `index.py backlog <repo>` writes
 `.blurt/BACKLOG.md` with the open items. `items.py migrate --all` moves v0.6 sessions into the stores (the app does
 it on start).
 

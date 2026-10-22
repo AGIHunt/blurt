@@ -4,7 +4,7 @@
   • a key's placeholders are the same in both languages (positions may differ: %1$@ … %2$@ is fine);
   • every key the Swift code looks up by name (T("…"), TP("…"), Loc.t / Loc.plural) is in its table;
   • the .strings files parse the way Foundation reads them, and every plural has an "other" form;
-  • the shared words of K10 (kind.*, review.*, work.*, session.*, project.*, handoff.*) are all in Common.
+  • the shared words of K10 (kind.*, state.*, action.*, session.*, project.*, handoff.*) are all in Common.
 
   uv run --with pytest pytest tests/test_l10n.py -q
 """
@@ -21,9 +21,11 @@ ENTRY = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;\s*$')
 PLACEHOLDER = re.compile(r"%(?:(\d+)\$)?(#@\w+@|l?[@dlfsu]|ld|%)")
 
 # K10's common words — every platform has them under the same names
-COMMON = ["kind.issue", "kind.idea", "kind.note", "kind.task", "review.draft", "review.confirmed", "review.deleted",
-          "work.todo", "work.handed_off", "work.handed_off.session", "work.handed_off.external", "work.in_progress",
-          "work.to_verify", "work.done", "work.wontfix", "work.confirm_done", "work.reopen", "session.running",
+STATES = ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded"]  # K3
+ACTIONS = ["keep", "hand_off", "done", "send_back", "take_back", "reopen", "restore", "wontfix", "discard"]
+COMMON = ["kind.issue", "kind.idea", "kind.note", "kind.task", *[f"state.{s}" for s in STATES], "state.menu",
+          "state.handed_off.session", "state.handed_off.external", *[f"action.{a}" for a in ACTIONS],
+          *[f"action.{a}.hint" for a in ACTIONS], "action.done.hint_verify", "session.running",
           "session.waiting_input", "session.turn_done", "session.exited", "session.error", "project.auto", "project.inbox",
           "project.ai_sort", "project.open_folder", "handoff.copy_instruction", "handoff.copy_full"]
 JOB_TYPES = ["record", "snap", "voice", "process", "route", "agent"]

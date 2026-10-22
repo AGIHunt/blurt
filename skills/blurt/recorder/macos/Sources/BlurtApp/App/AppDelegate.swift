@@ -416,9 +416,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if AppEnvironment.mainWindow != nil {
             add(T("app.menu.open"), #selector(mOpenMain)).showHotkey(.openMain)
             let badge = MenuBadge.shared
-            if badge.review > 0 {
-                let i = add(TP("app.menu.to_review", badge.review), #selector(mOpenInbox))
-                i.image = Look.symbol("tray", "", size: 13)
+            if badge.new > 0 {
+                let i = add(TP("app.menu.new", badge.new), #selector(mOpenInbox))
+                i.image = Look.ring("new", size: 13)
                 i.indentationLevel = 1
             }
             if badge.verify > 0 {

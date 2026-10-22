@@ -1,4 +1,4 @@
--- blurt index.db — schema v2 (contract K1 in docs/design/next-round.md, "index.db schema v2")
+-- blurt index.db — schema v3 (contracts K1 + K3 in docs/design/next-round.md; v3 = one `state` per item)
 -- Location: $BLURT_HOME/index.db (default ~/.blurt/index.db).
 -- Single writer: skills/blurt/scripts/index.py. Readers (read-only, WAL): macOS app (SQLite3 C API),
 -- Tauri app (rusqlite), mcp_server.py, agents.py. The files stay the source of truth (items/*.md in each store,
@@ -10,7 +10,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS meta (
-  key   TEXT PRIMARY KEY,           -- 'schema_version' = '2', 'last_full_scan' = epoch seconds
+  key   TEXT PRIMARY KEY,           -- 'schema_version' = '3', 'last_full_scan' = epoch seconds
   value TEXT NOT NULL
 );
 
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   duration    REAL,                 -- seconds; NULL for shots / voice sessions
   shot_count  INTEGER NOT NULL DEFAULT 0,
   card_count  INTEGER NOT NULL DEFAULT 0,  -- captures with no project and not processed yet (the cards, K7)
-  item_count  INTEGER NOT NULL DEFAULT 0,  -- items with source.session = dir and status != 'deleted'
+  item_count  INTEGER NOT NULL DEFAULT 0,  -- items with source.session = dir and state != 'discarded'
   processed   INTEGER NOT NULL DEFAULT 0,  -- batch.json (or a v1/v2 items.json) exists
   processing  INTEGER NOT NULL DEFAULT 0,  -- batch "processing": true
   reviewed    INTEGER NOT NULL DEFAULT 0,  -- batch "reviewed": true
@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS items (
   quote                TEXT NOT NULL DEFAULT '',
   body                 TEXT NOT NULL DEFAULT '',  -- lens fields flattened: actual, expected, steps, why… joined by "\n"
   tags                 TEXT NOT NULL DEFAULT '',  -- space-joined
-  status               TEXT NOT NULL,          -- draft | confirmed | deleted
-  work_state           TEXT NOT NULL DEFAULT 'todo',  -- todo | handed_off | in_progress | to_verify | done | wontfix
+  state                TEXT NOT NULL,          -- new | todo | handed_off | in_progress | to_verify | done | wontfix
+                                               -- | discarded (K3); the inbox = new + to_verify
   work_to              TEXT,                   -- session | external
   work_agent           TEXT,
   work_job             TEXT,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS items (
   UNIQUE (project_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS items_updated ON items(updated DESC);
-CREATE INDEX IF NOT EXISTS items_proj    ON items(project_id, status, work_state);
+CREATE INDEX IF NOT EXISTS items_proj    ON items(project_id, state);
 CREATE INDEX IF NOT EXISTS items_session ON items(session_id);
 
 -- Full text. trigram handles Chinese/Japanese (no word segmentation needed); queries shorter than 3 characters
@@ -111,4 +111,4 @@ CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
   INSERT INTO items_fts(rowid, title, quote, body, tags) VALUES (new.rowid, new.title, new.quote, new.body, new.tags);
 END;
 
-INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '2');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '3');

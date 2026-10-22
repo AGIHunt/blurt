@@ -116,7 +116,7 @@ pub fn state(app: &AppHandle) -> Value {
     json!({"op": "state", "state": {
         "project": reg.current_project().map(short),
         "projects": reg.projects.iter().filter(|p| p["path"].as_str().is_some_and(|x| std::path::Path::new(x).is_dir())).map(short).collect::<Vec<_>>(),
-        "toReview": summary["to_review"].as_i64().unwrap_or(0),
+        "toReview": summary["inbox"].as_i64().unwrap_or(0), // K3 "needs you": new + to verify
         "recording": if cap["recording"] == true {
             json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "at": now})
         } else { Value::Null },
@@ -141,7 +141,7 @@ pub fn refresh_cards(app: &AppHandle) {
 }
 
 fn update_tray(app: &AppHandle) {
-    let n = app.state::<AppState>().index().summary().ok().and_then(|s| s["to_review"].as_i64()).unwrap_or(0);
+    let n = app.state::<AppState>().index().summary().ok().and_then(|s| s["inbox"].as_i64()).unwrap_or(0);
     if let Some(t) = app.tray_by_id("main") {
         let tip = if n > 0 { l10n::plural("tray.tooltip.review", n, &[]) } else { l10n::t("tray.tooltip") };
         let _ = t.set_tooltip(Some(tip));

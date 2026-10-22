@@ -1,11 +1,10 @@
-/* K8 — kind icons and the work-state ring, as data and plain SVG strings (no React; see ./react.tsx for components).
+/* K8 — kind icons and the state ring, as data and plain SVG strings (no React; see ./react.tsx for components).
    The same rules are in Swift (Sources/BlurtApp/Icons/KindStyle.swift, StatusRing.swift); tests keep them in step. */
 import { contrast } from "./contrast";
+import type { State } from "./lifecycle";
 
 export const KINDS = ["issue", "idea", "note", "task"] as const;
 export type BuiltinKind = (typeof KINDS)[number];
-export const WORK_STATES = ["todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"] as const;
-export type WorkState = (typeof WORK_STATES)[number];
 
 const KIND_ICON: Record<BuiltinKind, string> = { issue: "bug", idea: "lightbulb", note: "document", task: "checklist" };
 
@@ -58,35 +57,29 @@ export function kindStyle(kind: string): Record<string, string> {
   return { "--kc-light": customKindColor(kind, "light"), "--kc-dark": customKindColor(kind, "dark") };
 }
 
-/** The work state of an item's `work` (K3), with the v2 `fix` mapping for files written before v0.7. */
-export function workStateOf(i: { work?: { state?: string } | null; fix?: { state?: string; agent?: string } | null }): WorkState {
-  const w = i.work?.state;
-  if (w && (WORK_STATES as readonly string[]).includes(w)) return w as WorkState;
-  const f = i.fix?.state;
-  if (f === "fixing") return "in_progress";
-  if (f === "fixed") return "to_verify";
-  if (f === "wontfix") return i.fix?.agent === "human" ? "wontfix" : "to_verify";
-  return "todo";
-}
-
 // ---------------------------------------------------------------- the ring
 /** One shape of the ring, in a size×size box: stroke = the state colour at 1.5, fill = the colour, cut = the glyph
-    colour on a filled disk (white on done; dark on the dark theme's amber). */
+    colour on a filled disk (white on done; dark on the dark theme's amber); dash = a dashed stroke (new). */
 export type RingShape =
   | { el: "circle"; cx: number; cy: number; r: number; paint: "stroke" | "fill" }
-  | { el: "path"; d: string; paint: "stroke" | "fill" | "cut-stroke" | "cut-fill" };
+  | { el: "path"; d: string; paint: "stroke" | "fill" | "cut-stroke" | "cut-fill"; dash?: number };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 /** a filled dot as a path (two arcs), so "cut" shapes are all paths */
 const dot = (cx: number, cy: number, r: number) => `M${r2(cx - r)} ${cy}a${r} ${r} 0 1 0 ${r2(2 * r)} 0a${r} ${r} 0 1 0 ${r2(-2 * r)} 0Z`;
 
 /** Geometry for a state at `size` px (14 in lists, 18 in the detail). Line width 1.5 at every size. */
-export function ringShapes(state: WorkState, size: number): RingShape[] {
+export function ringShapes(state: State, size: number): RingShape[] {
   const c = size / 2;
   const R = r2(c - 0.75 - 0.5); // outer edge half a pixel inside the box
   const ring = { el: "circle", cx: c, cy: c, r: R, paint: "stroke" } as const;
   const u = size / 14; // glyph scale: designed at 14
   switch (state) {
+    case "new": {
+      // the ring as a path from 12 o'clock, clockwise, cut into 16 equal parts: 8 dashes, 8 gaps (butt ends)
+      const d = `M${c} ${r2(c - R)}A${R} ${R} 0 1 1 ${c} ${r2(c + R)}A${R} ${R} 0 1 1 ${c} ${r2(c - R)}`;
+      return [{ el: "path", d, paint: "stroke", dash: r2((2 * Math.PI * R) / 16) }];
+    }
     case "todo":
       return [ring];
     case "handed_off":
@@ -110,13 +103,18 @@ export function ringShapes(state: WorkState, size: number): RingShape[] {
       const o = r2(R * Math.SQRT1_2);
       return [ring, { el: "path", d: `M${r2(c - o)} ${r2(c + o)}L${r2(c + o)} ${r2(c - o)}`, paint: "stroke" }];
     }
+    case "discarded": {
+      const a = r2(c - 2.1 * u), b = r2(c + 2.1 * u);
+      return [ring, { el: "path", d: `M${a} ${a}L${b} ${b}M${b} ${a}L${a} ${b}`, paint: "stroke" }];
+    }
   }
 }
 
 const attrs = (s: RingShape): Record<string, string> => {
   const base: Record<string, string> =
     s.el === "circle" ? { cx: String(s.cx), cy: String(s.cy), r: String(s.r) } : { d: s.d };
-  if (s.paint === "stroke") return { ...base, fill: "none", stroke: "currentColor" };
+  if (s.paint === "stroke")
+    return { ...base, fill: "none", stroke: "currentColor", ...(s.el === "path" && s.dash ? { "stroke-dasharray": String(s.dash), "stroke-linecap": "butt" } : {}) };
   if (s.paint === "fill") return { ...base, fill: "currentColor" };
   if (s.paint === "cut-fill") return { ...base, fill: "var(--ring-cut)" };
   return { ...base, fill: "none", stroke: "var(--ring-cut)" };
@@ -124,7 +122,7 @@ const attrs = (s: RingShape): Record<string, string> => {
 export const ringAttrs = attrs;
 
 /** A complete <svg> for non-React pages (class "sring s-<state>"; colours come from base.css). */
-export function statusRingSvg(state: WorkState, size = 14, label?: string): string {
+export function statusRingSvg(state: State, size = 14, label?: string): string {
   const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const body = ringShapes(state, size)
     .map((s) => `<${s.el} ${Object.entries(attrs(s)).map(([k, v]) => `${k}="${v}"`).join(" ")}/>`)

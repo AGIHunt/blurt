@@ -15,7 +15,7 @@ items to their own agent.
 
 Both write the same note: `$BLURT_HOME/handoff/H-0012.md` — titles, what the user said, actual / expected, steps,
 suspected code, and screenshots as absolute paths. Agents finish an item with the blurt MCP tool `mark_fixed`
-(or the `items.py work … --state to_verify` command in the note). An agent's "fixed" only reaches *to verify*;
+(or the `items.py state … --state to_verify` command in the note). An agent's "fixed" only reaches *to verify*;
 the user confirms *done*.
 
 ## Dispatch

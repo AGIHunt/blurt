@@ -1,8 +1,9 @@
 // The middle column: the running jobs (K4) above a filter bar and a view-based NSTableView with a fixed row height.
 // Dense one-line rows everywhere; All Items shows the same table with a header and every column. Keyboard-first:
-// J/K, ↩, ⌘↩ (hand off), E, 1–4 (kind), S (keep / review), D (mark done), R (reopen), Space (Quick Look), ⌘C (path),
-// ⌫ (drop). Rows drag out as their primary frame (a file) and onto a project in the sidebar (move). Empty states for
-// first run, no matches, nothing yet.
+// J/K, ↩, ⌘↩ (hand off), E, 1–4 (kind), Space (Quick Look), ⌘C (path), and K3's state keys — A keep, D done,
+// R the one way back (send back / take back / reopen / restore), W won't do, X / ⌫ discard, S the state menu. Rows
+// drag out as their primary frame (a file) and onto a project in the sidebar (move). Empty states for first run, no
+// matches, nothing yet.
 import AppKit
 import BlurtCore
 import Quartz
@@ -13,9 +14,8 @@ protocol ItemListActions: AnyObject {
     func handOffSelection()                    // ⌘↩
     func renameSelection()                     // E
     func setKind(_ kind: String)               // 1–4
-    func cycleStatus()                         // S
-    func setStatus(_ status: String)
-    func setWork(_ state: String)              // D = done, R = reopen
+    func act(key: String)                      // A D R W X ⌫: K3's actions, each item from its own state
+    func showStateMenu(row: Int?, from view: NSView?)   // S, a click on a row's ring
     func copyPaths()                           // ⌘C
     func contextMenu(for rows: IndexSet) -> NSMenu?
     func showShortcuts()                       // ?
@@ -41,13 +41,12 @@ final class ItemTableView: NSTableView {
             switch (e.keyCode, ch) {
             case (36, _), (76, _): actions?.openSelection(); return
             case (49, _): quickLook?(); return
-            case (51, _), (117, _): actions?.setStatus("deleted"); return
+            case (51, _), (117, _): actions?.act(key: "delete"); return
             case (_, "j"): move(1); return
             case (_, "k"): move(-1); return
             case (_, "e"): actions?.renameSelection(); return
-            case (_, "s"): actions?.cycleStatus(); return
-            case (_, "d"): actions?.setWork("done"); return
-            case (_, "r"): actions?.setWork("todo"); return
+            case (_, "s"): actions?.showStateMenu(row: selectedRowIndexes.first, from: nil); return
+            case (_, "a"), (_, "d"), (_, "r"), (_, "w"), (_, "x"): actions?.act(key: ch.lowercased()); return
             case (_, "/"): actions?.focusSearch(); return
             case (_, "?"): actions?.showShortcuts(); return
             case (_, "1"): actions?.setKind("issue"); return
@@ -168,11 +167,10 @@ final class EmptyStateView: NSView {
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
 }
 
-/// Kind segments and the review and work filters (the count is the window's subtitle).
+/// Kind segments and the state filter (the count is the window's subtitle).
 final class FilterBar: NSView {
     let kinds = NSSegmentedControl()
-    let status = NSPopUpButton()
-    let work = NSPopUpButton()
+    let state = NSPopUpButton()
     var onChange: (() -> Void)?
 
     override init(frame: NSRect) {
@@ -190,28 +188,29 @@ final class FilterBar: NSView {
         kinds.target = self
         kinds.action = #selector(changed)
         kinds.setAccessibilityLabel(T("main.filter.kind"))
-        for p in [status, work] {
-            p.controlSize = .small
-            p.font = .systemFont(ofSize: 11)
-            p.bezelStyle = .recessed
-            p.isBordered = true
-            p.target = self
-            p.action = #selector(changed)
+        state.controlSize = .small
+        state.font = .systemFont(ofSize: 11)
+        state.bezelStyle = .recessed
+        state.isBordered = true
+        state.target = self
+        state.action = #selector(changed)
+        // All but discarded · Needs you · each live state · Discarded (only here: K3)
+        func add(_ title: String, _ value: String?, ring: String?) {
+            state.addItem(withTitle: title)
+            state.lastItem?.representedObject = value
+            state.lastItem?.image = ring.map { Look.ring($0, size: 12) }
         }
-        let st: [(String, String?)] = [(T("main.filter.any_review"), nil), (Look.reviewName("draft"), "draft"),
-                                        (Look.reviewName("confirmed"), "confirmed"), (Look.reviewName("deleted"), "deleted")]
-        for (t, v) in st { status.addItem(withTitle: t); status.lastItem?.representedObject = v }
-        work.addItem(withTitle: T("main.filter.any_work"))
-        for s in StatusRing.states {
-            work.addItem(withTitle: Look.workName(s))
-            work.lastItem?.representedObject = s
-            work.lastItem?.image = Look.ring(s, size: 12)
-        }
-        status.setAccessibilityLabel(T("main.filter.review"))
-        work.setAccessibilityLabel(T("main.filter.work"))
+        add(T("main.filter.live"), nil, ring: nil)
+        add(T("main.filter.needs_you"), "inbox", ring: nil)
+        state.lastItem?.image = Look.symbol("tray", "", size: 11)
+        state.menu?.addItem(.separator())
+        for s in Lifecycle.live { add(Look.stateName(s), s, ring: s) }
+        state.menu?.addItem(.separator())
+        add(Look.stateName("discarded"), "discarded", ring: "discarded")
+        state.setAccessibilityLabel(T("main.filter.state"))
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let row = NSStackView(views: [kinds, status, work, spacer])
+        let row = NSStackView(views: [kinds, state, spacer])
         row.orientation = .horizontal
         row.spacing = 8
         row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 14)
@@ -239,12 +238,10 @@ final class FilterBar: NSView {
 
     func sync(_ m: MainModel) {
         for (k, key) in KindStyle.builtIn.enumerated() { kinds.setSelected(m.kinds.contains(key), forSegment: k) }
-        status.selectItem(at: status.itemArray.firstIndex { $0.representedObject as? String == m.status } ?? 0)
-        work.selectItem(at: work.itemArray.firstIndex { $0.representedObject as? String == m.work } ?? 0)
+        state.selectItem(at: state.itemArray.firstIndex { !$0.isSeparatorItem && $0.representedObject as? String == m.state } ?? 0)
         let ready = m.indexState == .ready
         kinds.isHidden = !ready
-        status.isHidden = !ready || m.scope == .inbox
-        work.isHidden = !ready
+        state.isHidden = !ready || m.scope == .inbox
     }
 }
 
@@ -268,12 +265,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     struct Col { let id: String; let title: String; let width: CGFloat; let min: CGFloat; let max: CGFloat; let sort: String? }
     static var columns: [Col] { [
-        Col(id: "lead", title: "", width: 34, min: 34, max: 34, sort: "kind"),
+        Col(id: "lead", title: "", width: 44, min: 22, max: 44, sort: "kind"),
         Col(id: "title", title: T("main.col.title"), width: 260, min: 140, max: 4000, sort: "title"),
         Col(id: "meta", title: T("main.col.id"), width: 64, min: 48, max: 120, sort: "id"),
         Col(id: "project", title: T("main.col.project"), width: 110, min: 60, max: 240, sort: "project"),
-        Col(id: "review", title: T("main.col.review"), width: 84, min: 60, max: 140, sort: "status"),
-        Col(id: "work", title: T("main.col.work"), width: 132, min: 22, max: 220, sort: "work"),
+        Col(id: "state", title: T("main.col.state"), width: 120, min: 60, max: 220, sort: "state"),
         Col(id: "time", title: T("main.col.updated"), width: 78, min: 56, max: 140, sort: "updated"),
     ] }
 
@@ -285,7 +281,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             col.width = c.width
             col.minWidth = c.min
             col.maxWidth = c.max
-            if let s = c.sort { col.sortDescriptorPrototype = NSSortDescriptor(key: s, ascending: ["title", "kind", "status", "work", "project"].contains(s)) }
+            if let s = c.sort { col.sortDescriptorPrototype = NSSortDescriptor(key: s, ascending: ["title", "kind", "state", "project"].contains(s)) }
             if c.id == "lead" { col.headerToolTip = T("main.col.kind") }
             if c.id == "time" { col.headerCell.alignment = .right }
             table.addTableColumn(col)
@@ -343,10 +339,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         metaWant = full ? 0 : (inProject ? 56 : 132)
         for c in table.tableColumns {
             switch c.identifier.rawValue {
-            case "review": c.isHidden = !full; c.width = 76
+            case "lead": c.width = full ? 22 : 44
             case "project": c.isHidden = inProject || !full; c.width = 100
             case "meta": c.width = full ? 58 : (inProject ? 56 : 132); c.maxWidth = full ? 120 : 200
-            case "work": c.width = full ? 116 : 22; c.minWidth = full ? 60 : 22
+            case "state": c.isHidden = !full; c.width = 120
             case "time": c.width = 72
             default: break
             }
@@ -399,11 +395,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let keepIDs = keep ?? selectionIDs     // captured before the model changed (row numbers mean other rows now)
         let top = table.rows(in: table.visibleRect).location
         let topID = id(at: top)
+        let firstSelected = table.selectedRowIndexes.first
         suppressSelection = true
         applyLayout()
         table.reloadData()
         var set = IndexSet()
         for k in keepIDs { if let r = model.row(of: k) { set.insert(r) } }
+        // the selection left this list (kept out of the inbox, discarded, moved): the next row takes its place, like Mail
+        if set.isEmpty, keep == nil, !keepIDs.isEmpty, let f = firstSelected, model.rowCount > 0, view.window?.firstResponder === table {
+            set.insert(min(f, model.rowCount - 1))
+        }
         table.selectRowIndexes(set, byExtendingSelection: false)
         if let t = topID, let r = model.row(of: t), r != top, keep == nil {
             table.scroll(NSPoint(x: 0, y: table.rect(ofRow: r).minY - (table.headerView?.frame.height ?? 0)))
@@ -433,8 +434,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     func filtersChanged() {
         model.kinds = bar.selectedKinds
-        model.status = bar.status.selectedItem?.representedObject as? String
-        model.work = bar.work.selectedItem?.representedObject as? String
+        model.state = bar.state.selectedItem?.representedObject as? String
         model.reload()
     }
 
@@ -465,9 +465,12 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let q = model.text.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty {
             empty.show(symbol: "magnifyingglass", title: T("main.empty.no_results", q),
-                       message: model.kinds.count + (model.status == nil ? 0 : 1) + (model.work == nil ? 0 : 1) > 0
+                       message: model.kinds.count + (model.state == nil ? 0 : 1) > 0
                            ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
                        buttons: [(T("main.empty.clear_all"), 2)])
+        } else if model.state == "discarded", model.kinds.isEmpty {
+            empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
+                       buttons: [(T("main.empty.clear_filters"), 2)])
         } else if model.filtered {
             empty.show(symbol: "line.3.horizontal.decrease.circle", title: T("main.empty.no_match"), message: "",
                        buttons: [(T("main.empty.clear_filters"), 2)])
@@ -510,14 +513,21 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     var inOwnProject: Bool { if case .project = model.scope { return true }; return model.scope == .unassigned }
 
     func itemCell(_ col: String, _ it: ItemRow) -> NSView? {
-        let dropped = it.status == "deleted"
+        let quiet = it.discarded || Lifecycle.closed.contains(it.state)
         switch col {
         case "lead":
-            let c = make("lead") { LeadCell() }
-            c.dot.on = it.status == "draft"
+            let c = make("lead") { () -> LeadCell in
+                let c = LeadCell()
+                c.ring.target = self
+                c.ring.action = #selector(ringClicked(_:))
+                return c
+            }
             c.kindImage = Look.kindImage(it.kind)
-            c.icon.alphaValue = dropped ? 0.4 : 1
-            c.setAccessibilityLabel(Look.kindName(it.kind))
+            c.icon.alphaValue = it.discarded ? 0.4 : 1
+            c.icon.setAccessibilityLabel(Look.kindName(it.kind))
+            c.showsRing = !model.scope.isTable
+            c.ring.set(it.state, label: Look.stateLabel(it))
+            c.ring.isEnabled = !it.legacy
             return c
         case "title":
             let c = make("title") { TitleCell() }
@@ -526,8 +536,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                 .trimmingCharacters(in: CharacterSet(charactersIn: "…"))
             let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
             let hit = searching && !plain.isEmpty && !it.title.contains(plain) ? it.snippet : nil
-            c.set(title: it.title, unread: it.status == "draft", dimmed: dropped || it.workState == "done" || it.workState == "wontfix",
-                  struck: dropped, hit: hit)
+            c.set(title: it.title, unread: it.state == "new", dimmed: quiet, struck: false, hit: hit)
             c.toolTip = [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
             return c
         case "meta":
@@ -542,16 +551,15 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             let c = make("icontext") { IconTextCell() }
             c.set(it.projectID == "inbox" ? T("project.inbox") : it.projectName)
             return c
-        case "review":
-            let c = make("icontext") { IconTextCell() }
-            c.set(Look.reviewName(it.status), color: it.status == "draft" ? Look.brand : .secondaryLabelColor)
-            return c
-        case "work":
-            let c = make("icontext") { IconTextCell() }
-            c.set(model.scope.isTable ? Look.workLabel(it) : "", image: Look.ring(it.workState),
-                  color: it.workState == "to_verify" ? StatusRing.color("to_verify") : .secondaryLabelColor)
-            c.toolTip = Look.workLabel(it)
-            c.setAccessibilityLabel(Look.workLabel(it))
+        case "state":
+            let c = make("state") { () -> StateCell in
+                let c = StateCell()
+                c.button.target = self
+                c.button.action = #selector(ringClicked(_:))
+                return c
+            }
+            c.set(it.state, label: Look.stateLabel(it))
+            c.button.isEnabled = !it.legacy
             return c
         case "time":
             let c = make("time") { IconTextCell() }
@@ -566,8 +574,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let v = make("row") { ItemRowView() }
         if let it = model.item(at: row) {
-            v.label = [Look.kindName(it.kind), it.title.isEmpty ? T("main.item.untitled") : it.title, it.itemID, Look.reviewName(it.status),
-                       Look.workLabel(it), it.projectID == "inbox" ? T("project.inbox") : it.projectName,
+            v.label = [Look.kindName(it.kind), it.title.isEmpty ? T("main.item.untitled") : it.title, it.itemID, Look.stateLabel(it),
+                       it.projectID == "inbox" ? T("project.inbox") : it.projectName,
                        MainModel.relative(it.updated)].joined(separator: ", ")
         }
         return v
@@ -585,6 +593,27 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         model.sort = key
         model.ascending = d.ascending
         model.reload()
+    }
+
+    /// A row's ring (or the State column): select that row unless it is part of the selection, then its state menu.
+    @objc func ringClicked(_ sender: NSButton) {
+        let r = table.row(for: sender)
+        guard r >= 0 else { return }
+        if !table.selectedRowIndexes.contains(r) { table.selectRowIndexes([r], byExtendingSelection: false) }
+        view.window?.makeFirstResponder(table)
+        actions?.showStateMenu(row: r, from: sender)
+    }
+
+    /// The ring of a row on screen (the S key opens the menu under it).
+    func ringView(row r: Int) -> NSView? {
+        let id = model.scope.isTable ? "state" : "lead"
+        guard let col = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == id }) else { return nil }
+        table.scrollRowToVisible(r)
+        switch table.view(atColumn: col, row: r, makeIfNecessary: false) {
+        case let c as LeadCell: return c.ring
+        case let c as StateCell: return c.button
+        default: return nil
+        }
     }
 
     @objc func doubleClicked() {

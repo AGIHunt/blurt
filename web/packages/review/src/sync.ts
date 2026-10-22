@@ -6,8 +6,9 @@
    changed here and hasn't saved yet keeps the user's value.
 
    Items are matched by a key: the uid on a v3 doc (the display id changes when an item moves project, the uid
-   never does), the display id on v2. Fields the server owns (the display id, work state, paths) always come from
-   the server and are never sent back. */
+   never does), the display id on v2. Fields the server owns (the display id, the state, work, paths) always come
+   from the server and are never sent back; a state change is an explicit op (store.act). */
+import { stateOf } from "@blurt/ui";
 import type { Item, UserOp } from "./host";
 
 export const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
@@ -30,18 +31,20 @@ export const byUid: KeyFn = (i) => i.uid || i.id;
 
 /** written by the server only: never diffed into ops; on a v3 doc always taken from the server (with `id`) */
 export const SERVER_OWNED = new Set(["uid", "_user", "fix", "fix_history", "schema", "work", "work_history", "path",
-  "store", "aliases", "updated", "created", "_project", "suggested_project", "project_by", "project_confidence"]);
+  "store", "aliases", "updated", "created", "_project", "suggested_project", "project_by", "project_confidence",
+  "state", "restore_to", "status"]);
+/** never sent as field edits, whatever the doc's shape: the state goes as `state` ops; `status` and the review
+    bookkeeping are the pre-v0.7 two-axis model, read (stateOf) but not written */
+const NOT_FIELDS = new Set(["state", "restore_to", "status", "_touched", "_dropped"]);
 
-/** dropped before this review: hidden */
-export const shown = (i: Item) => !(i.status === "deleted" && !i._dropped);
-export const norm = (items: Item[] | undefined): Item[] =>
-  (items || []).filter(shown).map((i) => (i.kind ? i : { ...i, kind: "issue" }));
+export const norm = (items: Item[] | undefined): Item[] => (items || []).map((i) => (i.kind ? i : { ...i, kind: "issue" }));
 
 export type Status = "keep" | "drop" | "pending";
-/** review state: dropped, kept or still to review. A session's batch (v2) counts what was decided in this review
-    (`_touched`); a v3 doc's status is persistent, so confirmed = kept, draft = to review. */
-export const statusOf = (i: Item, persistent = false): Status =>
-  i.status === "deleted" ? "drop" : i._touched || (persistent && i.status === "confirmed") ? "keep" : "pending";
+/** the review's three-way view of the state (K3): new = still to review, discarded = dropped, anything else = kept */
+export const statusOf = (i: Item): Status => {
+  const s = stateOf(i);
+  return s === "new" ? "pending" : s === "discarded" ? "drop" : "keep";
+};
 
 export interface RebaseResult {
   items: Item[];
@@ -50,8 +53,10 @@ export interface RebaseResult {
   structural: boolean;
 }
 
-/** three-way merge: local items L, the base they were edited from B (key → item), server S */
-export function rebase(L: Item[], B: Map<string, Item>, S: Item[], undoing: boolean, key: KeyFn = byId): RebaseResult {
+/** three-way merge: local items L, the base they were edited from B (key → item), server S. `keep(key)`: an item
+    the server no longer lists that stays anyway (one the user discarded on this page). */
+export function rebase(L: Item[], B: Map<string, Item>, S: Item[], undoing: boolean, key: KeyFn = byId,
+  keep: (k: string) => boolean = () => false): RebaseResult {
   const v3 = key === byUid;
   const Smap = new Map(S.map((i) => [key(i), i]));
   const Lkeys = new Set(L.map(key));
@@ -63,7 +68,7 @@ export function rebase(L: Item[], B: Map<string, Item>, S: Item[], undoing: bool
     const s = Smap.get(lk);
     const b = B.get(lk);
     if (!s) {
-      if (!undoing && b && canon(l) === canon(b)) {
+      if (!undoing && b && canon(l) === canon(b) && !keep(lk)) {
         structural = true; // removed on the server (merged by another page / the app), untouched here: let it go
         continue;
       }
@@ -126,7 +131,7 @@ export function diffOps(items: Item[], base: Map<string, Item>, key: KeyFn = byI
     const set: Record<string, unknown> = {};
     const unset: string[] = [];
     for (const f of new Set([...Object.keys(i), ...Object.keys(b)])) {
-      if (f === "id" || f === "_user" || (v3 && SERVER_OWNED.has(f))) continue;
+      if (f === "id" || f === "_user" || NOT_FIELDS.has(f) || (v3 && SERVER_OWNED.has(f))) continue;
       if (canon(i[f]) !== canon(b[f])) {
         if (i[f] === undefined) unset.push(f);
         else set[f] = i[f];
@@ -142,8 +147,8 @@ export function diffOps(items: Item[], base: Map<string, Item>, key: KeyFn = byI
   return ops;
 }
 
-/** keys a merge never copies from the merged item: identity, review bookkeeping, project and the work record */
-const MERGE_SKIP = new Set(["id", "uid", "kind", "title", "quote", "time", "status", "merged_from", "exported",
+/** keys a merge never copies from the merged item: identity, the state, project and the work record */
+const MERGE_SKIP = new Set(["id", "uid", "kind", "title", "quote", "time", "state", "restore_to", "status", "merged_from", "exported",
   "fix", "fix_history", "schema", "work", "work_history", "project", "project_by", "project_confidence",
   "suggested_project", "aliases", "created", "updated", "path", "source", "merged_into"]);
 const MERGE_KEEP_TARGET = new Set(["severity", "type", "owner", "module", "language", "assignee"]);
@@ -167,15 +172,4 @@ export function mergeInto(p: Item, i: Item, key: KeyFn = byId): void {
   p.merged_from = [...(p.merged_from || []), key(i)];
   if (i.time && p.time)
     p.time = { start: Math.min(p.time.start, i.time.start), end: Math.max(p.time.end, i.time.end) };
-}
-
-/** the items as confirmed: everything not dropped is kept; review bookkeeping removed */
-export function finalize(items: Item[]): Item[] {
-  const final = items.map(clone);
-  final.forEach((i) => {
-    if (i.status !== "deleted") i.status = "confirmed";
-    delete i._touched;
-    delete i._dropped;
-  });
-  return final;
 }

@@ -71,3 +71,4 @@ export function setSystemAccent(color: string | null, el: HTMLElement = document
 
 export * from "./contrast";
 export * from "./kinds";
+export * from "./lifecycle";

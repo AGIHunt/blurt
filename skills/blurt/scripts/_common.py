@@ -361,37 +361,106 @@ def check_item_fields(sets: dict, unsets=(), where: str = "") -> None:
             raise InvalidEdit(f"{where}{k} can't be empty: keep the previous {k} or type a new one")
 
 
-# ------------------------------------------------------------------ K3: review status + work state
-REVIEW_STATES = ("draft", "confirmed", "deleted")
-WORK_STATES = ("todo", "handed_off", "in_progress", "to_verify", "done", "wontfix")
-WORK_KEYS = ("state", "to", "agent", "job", "handoff", "claim", "note", "commit", "pr", "at", "by")
+# ------------------------------------------------------------------ K3: the item lifecycle (one state)
+# One user-visible state per item (docs/design/next-round.md K3). The same table is in web/packages/ui/src/lifecycle.ts
+# and BlurtCore/Lifecycle.swift; all three are tested against tests/fixtures/lifecycle.json.
+STATES = ("new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix", "discarded")
+INBOX_STATES = ("new", "to_verify")                         # "needs you": every inbox count in every app
+OPEN_STATES = ("new", "todo", "handed_off", "in_progress")  # MCP open_items, the backlog
+ACTIVE_STATES = ("handed_off", "in_progress", "to_verify")
+CLOSED_STATES = ("done", "wontfix")
+WORK_KEYS = ("to", "agent", "job", "handoff", "claim", "note", "commit", "pr", "at", "by")  # `work`: hand-off details
 WORK_BY = ("user", "agent", "app")
-OPEN_WORK = ("todo", "handed_off", "in_progress")  # MCP list_projects open_items, the backlog
+# the states a hand-off passes through: moving into or out of them rewrites `work` and appends to work_history
+WORK_TRACKED = ("handed_off", "in_progress", "to_verify", "done", "wontfix")
+_LIVE = STATES[:-1]
+# action → (from states, to state; None = the item's restore_to). The user's state menu is exactly this table.
+ACTIONS = {
+    "keep": (("new",), "todo"),
+    "hand_off": (("new", "todo"), "handed_off"),
+    "done": (("todo", "handed_off", "in_progress", "to_verify"), "done"),
+    "send_back": (("to_verify",), "todo"),
+    "take_back": (("handed_off", "in_progress"), "todo"),
+    "reopen": (("done", "wontfix"), "todo"),
+    "restore": (("discarded",), None),
+    "wontfix": (("new", "todo", "handed_off", "in_progress", "to_verify"), "wontfix"),
+    "discard": (_LIVE, "discarded"),
+}
+_AGENT_MOVES = {("new", "in_progress"), ("todo", "in_progress"), ("handed_off", "in_progress"),
+                ("to_verify", "in_progress"), ("new", "to_verify"), ("todo", "to_verify"), ("handed_off", "to_verify"),
+                ("in_progress", "to_verify"), ("to_verify", "to_verify"), ("in_progress", "in_progress"),
+                ("in_progress", "todo"), ("to_verify", "todo")}  # an agent may take back its own claim (reopened)
+_APP_MOVES = _AGENT_MOVES | {("new", "handed_off"), ("todo", "handed_off"), ("handed_off", "handed_off")}
+_USER_MOVES = {(f, to) for frm, to in ACTIONS.values() if to for f in frm} | {("handed_off", "handed_off")} \
+    | {("discarded", s) for s in _LIVE}  # restore: back to where it was (restore_to)
+
+# the shapes before one state (v1 / v2 items.json, early v0.7 files): accepted as input only
+REVIEW_STATES = ("draft", "confirmed", "deleted")
+LEGACY_WORK = ("todo", "handed_off", "in_progress", "to_verify", "done", "wontfix")
 FIX_STATES = ("fixing", "fixed", "wontfix", "reopened")  # v2 (items.py fix, mark_fixed)
 FIX_TO_WORK = {"fixing": ("in_progress", None), "fixed": ("to_verify", "fixed"), "wontfix": ("to_verify", "wontfix"),
                "reopened": ("todo", None)}
-# Who may move an item from → to (K3's table). The user may do anything; done and wontfix are theirs alone. An agent
-# may also start on an item nobody handed off (the user asked in chat).
-_AGENT_MOVES = {("todo", "in_progress"), ("handed_off", "in_progress"), ("in_progress", "in_progress"),
-                ("to_verify", "in_progress"), ("todo", "to_verify"), ("handed_off", "to_verify"),
-                ("in_progress", "to_verify"), ("to_verify", "to_verify"),
-                ("in_progress", "todo"), ("to_verify", "todo")}  # an agent may take back its own claim (reopened)
-_APP_MOVES = _AGENT_MOVES | {("todo", "handed_off"), ("handed_off", "handed_off")}
 
 
-def work_state(item: dict) -> str:
+def state_of(item: dict) -> str:
+    """The item's state. A file from before the one-state model (status + work.state, or a v2 fix) converts the way
+    K3's migration says: deleted → discarded; a work state other than todo wins; else draft → new, confirmed → todo."""
+    s = item.get("state")
+    if s in STATES:
+        return s
+    if item.get("status") == "deleted":
+        return "discarded"
+    return _live_state(item)
+
+
+def _live_state(item: dict) -> str:
     w = item.get("work")
-    return w.get("state") if isinstance(w, dict) and w.get("state") in WORK_STATES else "todo"
+    ws = w.get("state") if isinstance(w, dict) else None
+    if ws not in LEGACY_WORK and isinstance(item.get("fix"), dict):
+        ws = work_from_fix(item["fix"])["state"]
+    if ws in LEGACY_WORK and ws != "todo":
+        return ws
+    return "todo" if item.get("status") == "confirmed" else "new"
+
+
+def migrate_state(item: dict) -> dict:
+    """In place: an item of any shape → `state` (+ `restore_to` while discarded), a `work` without a state key, no
+    `status` / `fix` / `fix_history`. Idempotent; a file is written in this shape on its next write."""
+    legacy = item.get("state") not in STATES
+    state = state_of(item)
+    if legacy and state == "discarded":
+        item["restore_to"] = _live_state(item)
+    if isinstance(item.get("fix"), dict) and not isinstance(item.get("work"), dict):
+        item["work"] = work_from_fix(item["fix"])
+    hist = [work_from_fix(f) for f in item.pop("fix_history", None) or [] if isinstance(f, dict)]
+    if hist:
+        item["work_history"] = hist + [h for h in item.get("work_history") or [] if isinstance(h, dict)]
+    item.pop("fix", None)
+    item.pop("status", None)
+    if isinstance(item.get("work"), dict):
+        item["work"] = {k: item["work"].get(k) for k in WORK_KEYS}
+    item["state"] = state
+    if state != "discarded":
+        item.pop("restore_to", None)
+    return item
 
 
 def may_move(cur: str, new: str, by: str) -> bool:
     if by == "user":
-        return True
+        return (cur, new) in _USER_MOVES
     return (cur, new) in (_APP_MOVES if by == "app" else _AGENT_MOVES)
 
 
+def action_target(action: str, cur: str, restore_to: str | None = None) -> str | None:
+    """Where the user's action takes an item in state cur; None = the action isn't valid there."""
+    frm, to = ACTIONS.get(action, ((), None))
+    if cur not in frm:
+        return None
+    return to or (restore_to if restore_to in _LIVE else "new")
+
+
 def work_from_fix(fix: dict) -> dict:
-    """A v2 `fix` record → a v3 `work` object (K3 mapping). An old human wontfix is a decision, not a claim."""
+    """A v2 `fix` record → {state, …work} (K3 mapping). An old human wontfix is a decision, not a claim."""
     state, claim = FIX_TO_WORK.get(fix.get("state"), ("todo", None))
     agent = fix.get("agent") or None
     if fix.get("state") == "wontfix" and agent in (None, "human"):
@@ -404,11 +473,23 @@ def work_from_fix(fix: dict) -> dict:
             "by": "user" if agent in (None, "human") else "agent"}
 
 
-def fix_alias_states(fix_states) -> list[str]:
-    """index / list filters: the v2 --fix-state values as work states (none = todo)."""
-    m = {"fixing": ["in_progress"], "fixed": ["to_verify", "done"], "wontfix": ["wontfix"], "reopened": ["todo"],
-         "none": ["todo"]}
-    return list(dict.fromkeys(s for f in fix_states or [] for s in m.get(f, [])))
+def legacy_filter_states(statuses=(), works=(), fix_states=()) -> list[str] | None:
+    """The old --status / --work / --fix-state filters as states (None = none given). Different kinds of filter
+    narrow each other, as they did as columns."""
+    sets = []
+    if statuses:
+        m = {"draft": {"new"}, "confirmed": set(LEGACY_WORK), "deleted": {"discarded"}}
+        sets.append(set().union(*(m.get(s, set()) for s in statuses)))
+    if works:
+        sets.append(set().union(*({"new", "todo"} if w == "todo" else {w} for w in works)))
+    if fix_states:
+        m = {"fixing": {"in_progress"}, "fixed": {"to_verify", "done"}, "wontfix": {"wontfix", "to_verify"},
+             "reopened": {"new", "todo"}, "none": {"new", "todo"}}
+        sets.append(set().union(*(m.get(f, set()) for f in fix_states)))
+    if not sets:
+        return None
+    out = set.intersection(*sets)
+    return [s for s in STATES if s in out]
 
 
 def append_job_event(job: str | None, event: dict) -> None:

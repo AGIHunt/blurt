@@ -78,7 +78,7 @@ export function Sidebar({
       <a className={is('inbox') ? 'sel' : ''} onClick={() => onNav({ kind: 'inbox' })} data-testid="nav-inbox">
         <Icon name="inbox" size={16} />
         <span className="name">{t('nav.inbox')}</span>
-        <Count n={summary?.to_review ?? 0} />
+        <Count n={summary?.inbox ?? 0} />
       </a>
       <a className={is('sessions') ? 'sel' : ''} onClick={() => onNav({ kind: 'sessions', job: null })} data-testid="nav-sessions">
         <Icon name="terminal" size={16} />

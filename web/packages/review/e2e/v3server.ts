@@ -43,8 +43,9 @@ export async function startV3(scope: Scope, frames: Record<string, string[]> = {
     const id = `H-${String(++seq).padStart(4, "0")}`;
     for (const u of uids) {
       const it = store.items.find((i) => i.uid === u)!;
-      if (it.work) it.work_history = [...(it.work_history || []), it.work];
-      it.work = { state: "handed_off", to: "external", handoff: id, by: "user", at: new Date().toISOString() };
+      if (it.work) it.work_history = [...(it.work_history || []), { ...it.work, state: it.state }];
+      it.state = "handed_off";
+      it.work = { to: "external", handoff: id, by: "user", at: new Date().toISOString() };
     }
     store.rev++;
     const ids = uids.map((u) => store.items.find((i) => i.uid === u)!.id);

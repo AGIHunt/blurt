@@ -1,6 +1,7 @@
 // In-browser stand-in for the Rust commands (vite dev, UI screenshots, unit tests): a small fixed world — three
-// projects, a dozen items in every work state, a batch to review, an agent session waiting for an answer, a
+// projects, a dozen items in every K3 state, a batch to review, an agent session waiting for an answer, a
 // terminal that prints what Claude Code would. Writes are kept in memory.
+import { INBOX_STATES, migrate, OPEN_STATES, targetOf, type State } from '@blurt/ui';
 
 type Listener = (p: unknown) => void;
 const listeners = new Map<string, Set<Listener>>();
@@ -19,35 +20,44 @@ const now = Date.now() / 1000;
 const H = '/home/maya';
 
 const projects = () => [
-  { id: 'p1', name: 'storefront', key: 'SF', slug: 'storefront', path: `${H}/code/storefront`, store: `${H}/code/storefront/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-22T09:40:00+02:00', open_items: 6, to_review: 3, to_verify: 1, items: 9 },
-  { id: 'p2', name: 'mobile-app', key: 'MA', slug: 'mobile-app', path: `${H}/code/mobile-app`, store: `${H}/code/mobile-app/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-21T17:10:00+02:00', open_items: 2, to_review: 1, to_verify: 0, items: 3 },
-  { id: 'p3', name: L('Launch notes', '发布笔记'), key: 'LN', slug: 'launch-notes', path: `${H}/Documents/Launch notes`, store: `${H}/Documents/Launch notes/.blurt`, kind: 'folder', exists: true, worktree: false, last_used: '2026-10-20T11:00:00+02:00', open_items: 1, to_review: 0, to_verify: 0, items: 2 },
+  { id: 'p1', name: 'storefront', key: 'SF', slug: 'storefront', path: `${H}/code/storefront`, store: `${H}/code/storefront/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-22T09:40:00+02:00', ...counts('p1') },
+  { id: 'p2', name: 'mobile-app', key: 'MA', slug: 'mobile-app', path: `${H}/code/mobile-app`, store: `${H}/code/mobile-app/.blurt`, kind: 'repo', exists: true, worktree: true, last_used: '2026-10-21T17:10:00+02:00', ...counts('p2') },
+  { id: 'p3', name: L('Launch notes', '发布笔记'), key: 'LN', slug: 'launch-notes', path: `${H}/Documents/Launch notes`, store: `${H}/Documents/Launch notes/.blurt`, kind: 'folder', exists: true, worktree: false, last_used: '2026-10-20T11:00:00+02:00', ...counts('p3') },
 ];
-const inbox = () => ({ id: 'inbox', name: L('Unassigned', '待分配'), key: 'IN', slug: 'inbox', path: `${H}/Blurt/inbox`, store: `${H}/Blurt/inbox`, kind: 'inbox', exists: true, open_items: 2, to_review: 2, to_verify: 0, items: 2 });
+const inbox = () => ({ id: 'inbox', name: L('Unassigned', '待分配'), key: 'IN', slug: 'inbox', path: `${H}/Blurt/inbox`, store: `${H}/Blurt/inbox`, kind: 'inbox', exists: true, ...counts('inbox') });
 
 const S1 = `${H}/code/storefront/.blurt/sessions/20261022-093000`;
 const S2 = `${H}/Blurt/inbox/sessions/20261022-101500-shots`;
 
 interface MItem {
-  uid: string; id: string; project: string; kind: string; title: string; quote?: string; status: string; work: string; work_to?: string | null; work_agent?: string | null;
+  uid: string; id: string; project: string; kind: string; title: string; quote?: string; state: State; restore_to?: State; work_to?: string | null; work_agent?: string | null;
   severity?: string | null; session?: string; age: number; actual?: string; expected?: string; steps?: string[]; why?: string; code_refs?: string[]; suggested?: string;
 }
 const items: MItem[] = [
-  { uid: 'u01', id: 'SF-12', project: 'p1', kind: 'issue', title: L('Checkout button does nothing on Safari', 'Safari 上结算按钮点了没反应'), quote: L('I click checkout and nothing happens — no spinner, nothing.', '我点结算，什么都没发生，也没有加载。'), status: 'draft', work: 'todo', severity: 'high', session: S1, age: 0.4, actual: L('No request is sent; the console shows a TypeError in cart.ts', '没有发请求，控制台在 cart.ts 报 TypeError'), expected: L('Goes to the payment step', '进入付款步骤'), steps: [L('Add any product to the cart', '把任意商品加入购物车'), L('Open the cart in Safari 18', '在 Safari 18 打开购物车'), L('Click Checkout', '点结算')], code_refs: ['web/src/cart/cart.ts:118'] },
-  { uid: 'u02', id: 'SF-13', project: 'p1', kind: 'issue', title: L('Price filter resets after going back', '返回后价格筛选被重置'), status: 'draft', work: 'todo', severity: 'medium', session: S1, age: 0.5 },
-  { uid: 'u03', id: 'SF-14', project: 'p1', kind: 'idea', title: L('Show delivery date on the product card', '商品卡片上显示预计送达日期'), status: 'draft', work: 'todo', session: S1, age: 0.6, why: L('People ask support “when will it arrive?” more than anything else', '客服被问最多的就是「什么时候到」') },
-  { uid: 'u04', id: 'SF-9', project: 'p1', kind: 'issue', title: L('Avatar upload returns 500', '头像上传返回 500'), status: 'confirmed', work: 'in_progress', work_to: 'session', work_agent: 'claude', severity: 'high', age: 2 },
-  { uid: 'u05', id: 'SF-10', project: 'p1', kind: 'task', title: L('Translate the checkout emails into German', '把结算邮件翻译成德语'), status: 'confirmed', work: 'handed_off', work_to: 'external', age: 5 },
-  { uid: 'u06', id: 'SF-7', project: 'p1', kind: 'issue', title: L('Search results flicker while typing', '输入时搜索结果闪烁'), status: 'confirmed', work: 'to_verify', work_agent: 'codex', severity: 'medium', age: 20 },
-  { uid: 'u07', id: 'SF-5', project: 'p1', kind: 'note', title: L('Competitors all show stock levels', '竞品都显示库存数量'), status: 'confirmed', work: 'todo', age: 48 },
-  { uid: 'u08', id: 'SF-3', project: 'p1', kind: 'issue', title: L('Footer links overlap on small phones', '小屏手机上页脚链接重叠'), status: 'confirmed', work: 'done', severity: 'low', age: 90 },
-  { uid: 'u09', id: 'SF-2', project: 'p1', kind: 'idea', title: L('Dark mode for the storefront', '商店的深色模式'), status: 'confirmed', work: 'wontfix', age: 120 },
-  { uid: 'u10', id: 'MA-4', project: 'p2', kind: 'issue', title: L('Onboarding skips the notifications step', '新手引导跳过了通知那一步'), status: 'draft', work: 'todo', severity: 'medium', age: 7 },
-  { uid: 'u11', id: 'MA-3', project: 'p2', kind: 'task', title: L('Ship the iPad layout', '上线 iPad 布局'), status: 'confirmed', work: 'in_progress', work_to: 'session', work_agent: 'codex', age: 26 },
-  { uid: 'u12', id: 'LN-2', project: 'p3', kind: 'note', title: L('Keynote: open with the 5-minute demo', '发布会：用 5 分钟演示开场'), status: 'confirmed', work: 'todo', age: 70 },
-  { uid: 'u13', id: 'IN-1', project: 'inbox', kind: 'idea', title: L('A weekly digest of what got fixed', '每周发一份修好了什么的周报'), status: 'draft', work: 'todo', session: S2, age: 0.2, suggested: 'p3' },
-  { uid: 'u14', id: 'IN-2', project: 'inbox', kind: 'issue', title: L('Login page logo is blurry on 4K', '登录页 logo 在 4K 屏上发虚'), status: 'draft', work: 'todo', session: S2, severity: 'low', age: 0.25, suggested: 'p1' },
+  { uid: 'u01', id: 'SF-12', project: 'p1', kind: 'issue', title: L('Checkout button does nothing on Safari', 'Safari 上结算按钮点了没反应'), quote: L('I click checkout and nothing happens — no spinner, nothing.', '我点结算，什么都没发生，也没有加载。'), state: 'new', severity: 'high', session: S1, age: 0.4, actual: L('No request is sent; the console shows a TypeError in cart.ts', '没有发请求，控制台在 cart.ts 报 TypeError'), expected: L('Goes to the payment step', '进入付款步骤'), steps: [L('Add any product to the cart', '把任意商品加入购物车'), L('Open the cart in Safari 18', '在 Safari 18 打开购物车'), L('Click Checkout', '点结算')], code_refs: ['web/src/cart/cart.ts:118'] },
+  { uid: 'u02', id: 'SF-13', project: 'p1', kind: 'issue', title: L('Price filter resets after going back', '返回后价格筛选被重置'), state: 'new', severity: 'medium', session: S1, age: 0.5 },
+  { uid: 'u03', id: 'SF-14', project: 'p1', kind: 'idea', title: L('Show delivery date on the product card', '商品卡片上显示预计送达日期'), state: 'new', session: S1, age: 0.6, why: L('People ask support “when will it arrive?” more than anything else', '客服被问最多的就是「什么时候到」') },
+  { uid: 'u04', id: 'SF-9', project: 'p1', kind: 'issue', title: L('Avatar upload returns 500', '头像上传返回 500'), state: 'in_progress', work_to: 'session', work_agent: 'claude', severity: 'high', age: 2 },
+  { uid: 'u05', id: 'SF-10', project: 'p1', kind: 'task', title: L('Translate the checkout emails into German', '把结算邮件翻译成德语'), state: 'handed_off', work_to: 'external', age: 5 },
+  { uid: 'u06', id: 'SF-7', project: 'p1', kind: 'issue', title: L('Search results flicker while typing', '输入时搜索结果闪烁'), state: 'to_verify', work_agent: 'codex', severity: 'medium', age: 20 },
+  { uid: 'u07', id: 'SF-5', project: 'p1', kind: 'note', title: L('Competitors all show stock levels', '竞品都显示库存数量'), state: 'todo', age: 48 },
+  { uid: 'u08', id: 'SF-3', project: 'p1', kind: 'issue', title: L('Footer links overlap on small phones', '小屏手机上页脚链接重叠'), state: 'done', severity: 'low', age: 90 },
+  { uid: 'u09', id: 'SF-2', project: 'p1', kind: 'idea', title: L('Dark mode for the storefront', '商店的深色模式'), state: 'wontfix', age: 120 },
+  { uid: 'u10', id: 'MA-4', project: 'p2', kind: 'issue', title: L('Onboarding skips the notifications step', '新手引导跳过了通知那一步'), state: 'new', severity: 'medium', age: 7 },
+  { uid: 'u11', id: 'MA-3', project: 'p2', kind: 'task', title: L('Ship the iPad layout', '上线 iPad 布局'), state: 'in_progress', work_to: 'session', work_agent: 'codex', age: 26 },
+  { uid: 'u12', id: 'LN-2', project: 'p3', kind: 'note', title: L('Keynote: open with the 5-minute demo', '发布会：用 5 分钟演示开场'), state: 'todo', age: 70 },
+  { uid: 'u13', id: 'IN-1', project: 'inbox', kind: 'idea', title: L('A weekly digest of what got fixed', '每周发一份修好了什么的周报'), state: 'new', session: S2, age: 0.2, suggested: 'p3' },
+  { uid: 'u15', id: 'SF-6', project: 'p1', kind: 'idea', title: L('Confetti when an order goes through', '下单成功时撒彩带'), state: 'discarded', restore_to: 'new', age: 30 },
+  { uid: 'u14', id: 'IN-2', project: 'inbox', kind: 'issue', title: L('Login page logo is blurry on 4K', '登录页 logo 在 4K 屏上发虚'), state: 'new', session: S2, severity: 'low', age: 0.25, suggested: 'p1' },
 ];
+// ?empty=1: a fresh install (the empty inbox)
+if (param('empty') === '1') items.length = 0;
+
+function counts(project: string) {
+  const live = items.filter((i) => i.project === project && i.state !== 'discarded');
+  const n = (sts: readonly State[]) => live.filter((i) => sts.includes(i.state)).length;
+  return { items: live.length, open_items: n(OPEN_STATES), inbox: n(INBOX_STATES), new: n(['new']), to_verify: n(['to_verify']) };
+}
 
 const pname = (id: string) => (id === 'inbox' ? inbox() : projects().find((p) => p.id === id))!;
 
@@ -55,7 +65,7 @@ function row(i: MItem) {
   const p = pname(i.project);
   return {
     uid: i.uid, project_id: i.project, project_name: p.name, project_key: p.key, session_id: i.session ? `${i.project}:${i.session.split('/').pop()}` : null, session_dir: i.session ?? null,
-    path: `${p.store}/items/${i.id}.md`, item_id: i.id, kind: i.kind, title: i.title, status: i.status, work_state: i.work, work_to: i.work_to ?? null, work_agent: i.work_agent ?? null,
+    path: `${p.store}/items/${i.id}.md`, item_id: i.id, kind: i.kind, title: i.title, state: i.state, work_to: i.work_to ?? null, work_agent: i.work_agent ?? null,
     severity: i.severity ?? null, primary_frame: null, created: now - i.age * 3600, updated: now - i.age * 3600, snippet: null, suggested_project: i.suggested ?? null,
     suggested_confidence: i.suggested ? 0.58 : null, project_by: 'capture', quote: i.quote ?? '', frame_count: 0,
   };
@@ -64,15 +74,16 @@ function row(i: MItem) {
 function docItem(i: MItem) {
   const r = row(i);
   return {
-    id: i.id, uid: i.uid, kind: i.kind, title: i.title, quote: i.quote, status: i.status, severity: i.severity ?? undefined, actual: i.actual, expected: i.expected, steps: i.steps, why: i.why,
-    code_refs: i.code_refs, project: i.project, path: r.path, work: { state: i.work, to: i.work_to ?? null, agent: i.work_agent ?? null, job: null, handoff: null, claim: i.work === 'to_verify' ? 'fixed' : null, note: '', at: new Date((now - i.age * 3600) * 1000).toISOString(), by: 'agent' },
+    id: i.id, uid: i.uid, kind: i.kind, title: i.title, quote: i.quote, state: i.state, restore_to: i.restore_to, severity: i.severity ?? undefined, actual: i.actual, expected: i.expected, steps: i.steps, why: i.why,
+    code_refs: i.code_refs, project: i.project, path: r.path, work: { to: i.work_to ?? null, agent: i.work_agent ?? null, job: null, handoff: null, claim: i.state === 'to_verify' ? 'fixed' : null, note: '', at: new Date((now - i.age * 3600) * 1000).toISOString(), by: 'agent' },
     created: new Date((now - i.age * 3600) * 1000).toISOString(), source: { type: i.session === S2 ? 'snap' : 'recording', by: 'maya' },
   };
 }
 
 let rev = 1;
 function doc(scope: { session?: string; project?: string }) {
-  const list = scope.session ? items.filter((i) => i.session === scope.session) : items.filter((i) => i.project === scope.project);
+  // a session: its whole batch; a project: everything but discarded (K3)
+  const list = scope.session ? items.filter((i) => i.session === scope.session) : items.filter((i) => i.project === scope.project && i.state !== 'discarded');
   return {
     schema: 3, scope, title: scope.session === S1 ? L('Checkout walkthrough', '结算流程走查') : undefined, language: zh() ? 'zh' : 'en', items: list.map(docItem), _removed: {},
     projects: [...projects().map((p) => ({ id: p.id, name: p.name, key: p.key, path: p.path })), { id: 'inbox', name: inbox().name, key: 'IN' }],
@@ -107,6 +118,14 @@ const hotkeyRows = () =>
     return { action: a, spec: `opt+shift+${k}`, label: `Alt+Shift+${k}`, default: `opt+shift+${k}`, active: resident, result: a === 'pen' ? 'unsupported' : resident ? 'ok' : 'idle' };
   });
 
+/** K3 in memory: discarded remembers where it was */
+function setState(it: MItem, to: State | null | undefined) {
+  if (!to) return;
+  const from = migrate(it).state;
+  it.restore_to = to === 'discarded' ? from : undefined;
+  it.state = to;
+}
+
 let current = 'p1';
 let ptySeq = 0;
 
@@ -123,7 +142,12 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       current = args.id;
       return r({ ok: true, current });
     case 'index_summary':
-      return r({ missing: false, items: items.filter((i) => i.status !== 'deleted').length, to_review: items.filter((i) => i.status === 'draft').length, unassigned: 2, in_progress: 3, to_verify: 1, batches: 2 });
+    {
+      const live = items.filter((i) => i.state !== 'discarded');
+      const n = (sts: readonly State[]) => live.filter((i) => sts.includes(i.state)).length;
+      return r({ missing: false, items: live.length, inbox: n(INBOX_STATES), new: n(['new']), to_verify: n(['to_verify']), active: n(['handed_off', 'in_progress']),
+        open: n(OPEN_STATES), unassigned: live.filter((i) => i.project === 'inbox').length, batches: 2 });
+    }
     case 'jobs_list':
       return r([
         { id: 'j-20261022-101800-p9x2', type: 'process', state: 'running', project: null, session: S2, title: L('Two screenshots and a voice note', '两张截图和一条语音'), items: [], steps: [{ id: 'prepare', state: 'done' }, { id: 'transcribe', state: 'done' }, { id: 'write', state: 'running', progress: 0.6 }, { id: 'frames', state: 'pending' }, { id: 'route', state: 'pending' }], progress: 0.6, created: '', started: '', ended: null, error: null },
@@ -131,9 +155,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       ]);
     case 'index_query': {
       const q = args.q ?? {};
-      let list = items.filter((x) => (q.status?.length ? q.status.includes(x.status) : x.status !== 'deleted'));
+      let list = items.filter((x) => (q.state?.length ? q.state.includes(x.state) : x.state !== 'discarded'));
       if (q.kind?.length) list = list.filter((x) => q.kind.includes(x.kind));
-      if (q.work?.length) list = list.filter((x) => q.work.includes(x.work));
       if (q.project) list = list.filter((x) => x.project === q.project);
       for (const term of (q.query ?? '').toLowerCase().split(/\s+/).filter(Boolean)) list = list.filter((x) => (x.title + (x.quote ?? '')).toLowerCase().includes(term));
       list = [...list].sort((a, b) => a.age - b.age);
@@ -143,8 +166,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r(items.find((x) => x.uid === args.uid) ? row(items.find((x) => x.uid === args.uid)!) : null);
     case 'index_sessions':
       return r([
-        { id: 'p1:20261022-093000', project_id: 'p1', project_name: 'storefront', project_key: 'SF', project_path: `${H}/code/storefront`, dir: S1, mode: 'video', title: L('Checkout walkthrough', '结算流程走查'), created: now - 1800, duration: 312, shot_count: 2, item_count: 3, draft_count: 3, processed: 1, processing: 0, reviewed: 0 },
-        { id: 'inbox:20261022-101500-shots', project_id: 'inbox', project_name: inbox().name, project_key: 'IN', project_path: `${H}/Blurt/inbox`, dir: S2, mode: 'shots', title: null, created: now - 700, duration: null, shot_count: 2, item_count: 2, draft_count: 2, processed: 1, processing: 0, reviewed: 0 },
+        { id: 'p1:20261022-093000', project_id: 'p1', project_name: 'storefront', project_key: 'SF', project_path: `${H}/code/storefront`, dir: S1, mode: 'video', title: L('Checkout walkthrough', '结算流程走查'), created: now - 1800, duration: 312, shot_count: 2, item_count: 3, new_count: items.filter((i) => i.session === S1 && i.state === 'new').length, processed: 1, processing: 0, reviewed: 0 },
+        { id: 'inbox:20261022-101500-shots', project_id: 'inbox', project_name: inbox().name, project_key: 'IN', project_path: `${H}/Blurt/inbox`, dir: S2, mode: 'shots', title: null, created: now - 700, duration: null, shot_count: 2, item_count: 2, new_count: items.filter((i) => i.session === S2 && i.state === 'new').length, processed: 1, processing: 0, reviewed: 0 },
       ]);
     case 'items_doc':
       return r({ doc: doc(args.scope), etag: `"m${rev}"` });
@@ -155,12 +178,19 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
         const it = items.find((i) => i.uid === op.id || i.id === op.id);
         if (!it) continue;
         if (op.op === 'set') Object.assign(it, op.set ?? {});
-        if (op.op === 'work') it.work = op.state;
+        if (op.op === 'state') setState(it, op.action ? targetOf(op.action, it) : op.state);
       }
       rev++;
       return r({ ok: true, etag: `"m${rev}"`, doc: doc(args.scope) });
     }
-    case 'items_work':
+    case 'items_state':
+      for (const uid of args.uids ?? []) {
+        const it = items.find((i) => i.uid === uid);
+        if (it) setState(it, targetOf(args.action, it));
+      }
+      rev++;
+      emit('index://changed', {});
+      return r({ ok: true });
     case 'items_move':
       return r({ ok: true });
     case 'handoff_create':

@@ -75,7 +75,7 @@ fn open_migrate_search_edit() {
 
     // the project list, as the sidebar reads it (projects.json + index counts)
     let ix = Index::new(home.join("index.db"));
-    assert!(ix.ready(), "index.db is schema v2");
+    assert!(ix.ready(), "index.db is schema v3");
     let list = projects::list(&ix);
     let row = list["projects"].as_array().unwrap().iter().find(|p| p["id"] == pid.as_str()).cloned().unwrap();
     assert_eq!((row["key"].as_str(), row["kind"].as_str()), (Some("STO"), Some("repo")));

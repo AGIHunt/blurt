@@ -24,8 +24,8 @@ import time
 import unicodedata
 from pathlib import Path
 
-from _common import (blurt_workspace, file_lock, legacy_uid, load_json, now_iso, real,  # noqa: F401
-                     write_text_atomic)
+from _common import (blurt_workspace, file_lock, legacy_uid, load_json, migrate_state, now_iso,  # noqa: F401
+                     real, write_text_atomic)
 
 SCHEMA = 3
 INBOX = "inbox"
@@ -33,9 +33,9 @@ INBOX_KEY = "IN"
 EXCLUDE_COMMENT = "# blurt: local items and recordings (never committed)"
 
 # ------------------------------------------------------------------ front-matter
-FM_ORDER = ("schema", "id", "uid", "kind", "title", "status", "work", "project", "project_by", "project_confidence",
-            "suggested_project", "created", "updated", "source", "language", "severity", "module", "owner", "assignee",
-            "tags", "confidence", "time", "frames", "clip", "code_refs", "exported", "merged_into", "merged_from",
+FM_ORDER = ("schema", "id", "uid", "kind", "title", "state", "restore_to", "work", "project", "project_by",
+            "project_confidence", "suggested_project", "created", "updated", "source", "language", "severity",
+            "module", "owner", "assignee", "tags", "confidence", "time", "frames", "clip", "code_refs", "exported", "merged_into", "merged_from",
             "aliases", "work_history", "_user")
 _SAFE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/+-]*")
 _RESERVED = {"true", "false", "null", "yes", "no", "on", "off", "~"}
@@ -200,6 +200,7 @@ def render_section(field: str, v, zh: bool) -> str:
 def render(item: dict) -> str:
     """The file for an item (front-matter in the fixed key order, then the sections). Empty fields are left out."""
     zh = str(item.get("language") or "").lower().startswith("zh")
+    item = migrate_state(dict(item))  # K3: one `state`, never the old status / work.state / fix
     fm, sections, custom = {}, {}, {}
     for k, v in item.items():
         if k in INTERNAL or v is None and k not in FM_ORDER:
@@ -245,6 +246,7 @@ def parse(text: str) -> dict:
     item = parse_front_matter(lines[1:end])
     if not isinstance(item.get("uid"), str) or not item["uid"]:
         raise Unparseable("no uid")
+    migrate_state(item)  # a file from before K3's one state reads as the new shape; the next write stores it
     chunks: list[tuple[str | None, list[str]]] = [(None, [])]
     fence = False
     for ln in lines[end + 1:]:
@@ -302,7 +304,8 @@ def read_header(path: Path) -> dict:
             lines = []
             for ln in fh:
                 if ln.strip() == "---":
-                    return parse_front_matter(lines)
+                    h = parse_front_matter(lines)
+                    return migrate_state(h) if h.get("uid") else h
                 lines.append(ln.rstrip("\n"))
     except (OSError, UnicodeDecodeError, Unparseable):
         pass

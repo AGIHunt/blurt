@@ -120,6 +120,7 @@ def test_all_tools_over_stdio(env):
         ["search_like", "search_items", {"query": "登录", "kind": ["issue"]}],
         ["fixed", "search_items", {"fix_state": ["fixed"]}],
         ["working", "search_items", {"work_state": ["in_progress"]}],
+        ["needs_you", "search_items", {"state": ["new", "to_verify"], "limit": 100}],
         ["item", "get_item", {"uid": "$uid"}],
         ["item_noframes", "get_item", {"uid": "$uid", "include_frames": False}],
         ["transcript", "get_transcript", {"session": str(env["repo"] / ".blurt/sessions/20261019-093000")}],
@@ -140,7 +141,7 @@ def test_all_tools_over_stdio(env):
                                 "update_item", "mark_fixed"}
     assert r["_tools"]["update_item"]["params"] == ["set", "uid", "unset"]
     assert r["_tools"]["mark_fixed"]["params"] == ["agent", "commit", "note", "pr", "state", "uid"]
-    assert "work_state" in r["_tools"]["search_items"]["params"]
+    assert "work_state" in r["_tools"]["search_items"]["params"] and "state" in r["_tools"]["search_items"]["params"]
     for name in ("update_item", "mark_fixed"):
         assert "never write the item files" in r["_tools"][name]["description"]
     assert "the user confirms" in r["_tools"]["mark_fixed"]["description"]
@@ -157,8 +158,9 @@ def test_all_tools_over_stdio(env):
     hits = text_json(r["search"])
     assert hits and "登录按钮" in hits[0]["title"]
     assert any("登录按钮" in h["title"] for h in text_json(r["search_like"]))
-    assert [h["work_state"] for h in text_json(r["fixed"])] == ["to_verify"]  # v2's "fixed": an agent's claim
-    assert [h["work_state"] for h in text_json(r["working"])] == ["in_progress"]
+    assert [h["state"] for h in text_json(r["fixed"])] == ["to_verify"]  # v2's "fixed": an agent's claim
+    assert [h["state"] for h in text_json(r["working"])] == ["in_progress"]
+    assert {h["state"] for h in text_json(r["needs_you"])} <= {"new", "to_verify"}
 
     item = r["item"]
     assert not item["is_error"]
@@ -183,9 +185,9 @@ def test_all_tools_over_stdio(env):
     kept = text_json(r["update_user"])
     assert kept["ok"] and sorted(kept.get("kept_user")) == ["severity", "title"]  # the user edited it on the review page
 
-    assert text_json(r["fixing"])["work"]["state"] == "in_progress"
+    assert text_json(r["fixing"])["state"] == "in_progress"
     fx = text_json(r["fix"])
-    assert fx["ok"] and fx["work"]["state"] == "to_verify" and fx["work"]["claim"] == "fixed"  # not done: the user is
+    assert fx["ok"] and fx["state"] == "to_verify" and fx["work"]["claim"] == "fixed"  # not done: the user is
     assert fx["work"]["agent"] == "claude" and fx["work"]["commit"] == "abc1234" and fx["work"]["by"] == "agent"
     assert text_json(r["after"]) and text_json(r["after"])[0]["uid"] == r["_uid"]  # index followed the write
     assert text_json(r["after_v2"])[0]["uid"] == r["_uid"]
@@ -197,7 +199,7 @@ def test_all_tools_over_stdio(env):
     sys.path.insert(0, str(SCRIPTS))
     import store as st
     it = st.read_item(Path(doc["item"]["path"]))
-    assert it["module"] == "auth/login" and it["title"] != "x" and it["work"]["state"] == "to_verify"
+    assert it["module"] == "auth/login" and it["title"] != "x" and it["state"] == "to_verify"
     assert it["work_history"][-1]["state"] == "in_progress" and it["schema"] == 3
     assert (env["repo"] / ".blurt/sessions/20261019-093000/items.v2.json").is_file()
 

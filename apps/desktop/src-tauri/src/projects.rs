@@ -93,14 +93,14 @@ pub fn inbox_row() -> Value {
 }
 
 /// `projects_list` → {current: "auto" | id, projects: [Row], inbox: Row}; Row = the registry entry + {exists, store,
-/// open_items, to_review, to_verify} (counts from index.db v2; zero while the index is being built).
+/// items, open_items, inbox, new, to_verify} (K3 counts from index.db v3; zero while the index is being built).
 pub fn list(index: &Index) -> Value {
     let reg = Registry::load();
     let counts = index.project_counts().unwrap_or_default();
     let with_counts = |mut row: Value| {
         let id = row.get("id").and_then(Value::as_str).unwrap_or("").to_string();
         let c = counts.get(&id).cloned().unwrap_or_else(|| json!({}));
-        for k in ["open_items", "to_review", "to_verify", "items"] {
+        for k in ["items", "open_items", "inbox", "new", "to_verify"] {
             row[k] = c.get(k).cloned().unwrap_or(json!(0));
         }
         row

@@ -5,7 +5,7 @@ import BlurtCore
 
 struct IndexedItem {
     var uid: String, itemID: String, kind: String, title: String, quote: String
-    var status: String, workState: String, primaryFrame: String?, updated: Double
+    var state: String, primaryFrame: String?, updated: Double
     /// the item's .md file
     var path: String
     /// "" for an item with no source session
@@ -15,7 +15,7 @@ struct IndexedItem {
 
     /// The v2 fix state, for callers that still speak it (K3's mapping, reversed).
     var fixState: String? {
-        switch workState {
+        switch state {
         case "handed_off", "in_progress": return "fixing"
         case "to_verify", "done": return "fixed"
         case "wontfix": return "wontfix"
@@ -30,7 +30,7 @@ enum IndexLookup {
     private static func reader() -> IndexReader? { try? IndexReader(url: BlurtPaths.indexDB) }
 
     private static func make(_ r: ItemRow, _ paths: [String: String]) -> IndexedItem {
-        IndexedItem(uid: r.uid, itemID: r.itemID, kind: r.kind, title: r.title, quote: r.quote, status: r.status, workState: r.workState,
+        IndexedItem(uid: r.uid, itemID: r.itemID, kind: r.kind, title: r.title, quote: r.quote, state: r.state,
                     primaryFrame: r.primaryFrame, updated: r.updated, path: r.fileURL.path, sessionDir: r.sessionDir ?? "",
                     sessionTitle: r.sessionTitle, workspacePath: paths[r.projectID] ?? "", projectID: r.projectID, projectName: r.projectName)
     }
@@ -44,7 +44,7 @@ enum IndexLookup {
         return make(row, paths(r))
     }
 
-    /// Live items (not dropped), newest first.
+    /// Live items (not discarded), newest first.
     static func items(limit: Int = 5000) -> [IndexedItem] {
         guard let r = reader() else { return [] }
         let p = paths(r)

@@ -20,6 +20,12 @@ export const plural = (key: string, n: number, p?: Params) => current.plural(key
 /** "3 minutes ago" from epoch seconds or ISO */
 export const ago = (v: number | string | null | undefined) => (v == null || v === '' ? '' : current.formatRelative(v));
 
+/** "Needs you: 3 new · 2 to verify" (K3 inbox); "" when nothing needs you. */
+export function needsYou(fresh: number, verify: number): string {
+  const parts = [fresh ? plural('inbox.part.new', fresh) : '', verify ? plural('inbox.part.verify', verify) : ''].filter(Boolean);
+  return parts.length ? t('inbox.needs_you', { parts: parts.join(' · ') }) : '';
+}
+
 /** A command error in the UI language: the CLI's machine code at its end (`… [needs_project]`) → `error.<code>`. */
 export function errText(e: unknown): string {
   const code = String(e).match(/\[([a-z_]+)\]\s*$/)?.[1] ?? 'unknown';

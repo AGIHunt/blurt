@@ -101,19 +101,45 @@ describe("v3 doc: ops by uid", () => {
     s.dispose();
   });
 
-  it("work: the user confirms done; optimistic, sent as a work op, history kept", async () => {
+  it("state: the user confirms done; optimistic, sent as a state op by uid, history kept", async () => {
     vi.useFakeTimers();
     const { m, host, sent } = v3Host({ session: "/s" });
     const s = new ReviewStore(host, { lang: "en" });
     await s.load();
-    s.setWork([s.data.items[0]], "done");
-    expect(s.workOf(s.data.items[0])).toBe("done"); // before the server answers
+    expect(s.stateOf(s.data.items[4])).toBe("wontfix"); // an old file: draft + work.state wontfix
+    s.act([s.data.items[0]], "done");
+    expect(s.stateOf(s.data.items[0])).toBe("done"); // before the server answers
+    expect(s.toast?.msg).toBe("Done · BA-12");
     await flush();
-    expect(sent[0]).toEqual([{ op: "work", id: U(0), state: "done" }]);
+    expect(sent[0]).toEqual([{ op: "state", id: U(0), action: "done" }]);
     const f = m.items[0];
-    expect(f.work!.state).toBe("done");
-    expect(f.work_history!.map((w) => w.state)).toEqual(["handed_off", "to_verify"]);
-    expect(s.data.items[0].work!.state).toBe("done");
+    expect(f.state).toBe("done");
+    expect(f.work_history!.map((w) => w.state)).toEqual(["in_progress", "to_verify"]);
+    expect(s.data.items[0].state).toBe("done");
+    expect(s.pendingOps()).toEqual([]);
+    s.dispose();
+  });
+
+  it("in a project's list, a discarded item leaves the doc but stays on the page until undone", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ project: "p-blurt" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    s.act([s.data.items[1]], "discard");
+    await flush();
+    expect(sent[0]).toEqual([{ op: "state", id: U(2), action: "discard" }]);
+    expect(m.items[2]).toMatchObject({ state: "discarded", restore_to: "handed_off" });
+    expect(s.data.items.map((i) => s.stateOf(i))).toEqual(["to_verify", "discarded", "wontfix", "in_progress", "done"]);
+    expect(s.listed().map(({ i }) => i.id)).toEqual(["BA-12", "BA-14", "BA-15", "BA-16"]); // all but discarded
+    s.setStateF("discarded");
+    expect(s.listed().map(({ i }) => i.id)).toEqual(["BA-13"]);
+    s.setStateF("inbox");
+    expect(s.listed().map(({ i }) => i.id)).toEqual(["BA-12"]);
+    s.undo();
+    await flush();
+    expect(sent[1]).toEqual([{ op: "state", id: U(2), state: "handed_off", undo: true }]);
+    expect(m.items[2].state).toBe("handed_off");
+    expect(s.pendingOps()).toEqual([]);
     s.dispose();
   });
 
@@ -124,7 +150,7 @@ describe("v3 doc: ops by uid", () => {
     await s.load();
     m.agentWork(U(5), "to_verify", "fixed");
     await vi.advanceTimersByTimeAsync(2100);
-    expect(s.workOf(s.data.items[5])).toBe("to_verify");
+    expect(s.stateOf(s.data.items[5])).toBe("to_verify");
     s.dispose();
   });
 
@@ -153,23 +179,39 @@ describe("v3 UI", () => {
     return { s, el, ...h, done: () => (act(() => root.unmount()), s.dispose()) };
   }
 
-  it("inspector: project picker, work panel with Mark as done, provenance, handoff buttons", async () => {
+  it("inspector: project picker, state pill, work panel with Mark as done, provenance, handoff buttons", async () => {
     const handoff = vi.fn(async () => ({ id: "H-0013", path: "/h/H-0013.md", text: "Please handle BA-12 …" }));
     const dispatch = vi.fn();
     const { el, s, done } = await mount(<Inspector />, { handoff, dispatch, openSession: vi.fn() });
+    await act(async () => s.go(0)); // the review opens on the first new item; this one is waiting to be verified
     expect((el.querySelector("#projectPick") as HTMLSelectElement).value).toBe("p-blurt");
-    expect(el.querySelector("#workRow .sring.s-to_verify")?.getAttribute("aria-label")).toBe("To verify");
+    const pill = el.querySelector("#statePill") as HTMLButtonElement;
+    expect(pill.querySelector(".sring.s-to_verify")).not.toBeNull();
+    expect(pill.textContent).toBe("To verify");
+    expect(pill.getAttribute("aria-haspopup")).toBe("menu");
     expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as done");
     expect(el.querySelector("#workSession")).not.toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
     expect(el.querySelector("#provenance")?.textContent).toContain("Captured in this project");
     expect(el.querySelector("#provenance")?.textContent).toContain("blurt.dev/login");
+    expect(el.querySelector("#handoffRow")).toBeNull(); // to verify: nothing to hand off
+    // the pill's menu: only what to-verify allows, hand off not among them
+    await act(async () => pill.click());
+    expect([...document.querySelectorAll<HTMLElement>(".smenu [role=menuitem]")].map((b) => b.dataset.action)).toEqual(["done", "send_back", "wontfix", "discard"]);
+    await act(async () => document.querySelector<HTMLElement>('.smenu [data-action="send_back"]')!.click());
+    expect(s.stateOf(s.data.items[0])).toBe("todo");
+    expect(document.querySelector(".smenu")).toBeNull();
+    // to do: now it can be handed off
     await act(async () => (el.querySelector("#copyInstruction") as HTMLButtonElement).click());
     expect(handoff).toHaveBeenCalledWith([U(0)], "instruction");
     expect(s.toast?.msg).toBe("Instruction copied · H-0013");
     await act(async () => (el.querySelector("#dispatchBtn") as HTMLButtonElement).click());
     expect(dispatch).toHaveBeenCalledWith([U(0)]);
+    await act(async () => pill.click());
+    expect(document.querySelector('.smenu [data-action="hand_off"]')).not.toBeNull();
+    await act(async () => document.querySelector<HTMLElement>('.smenu [data-action="hand_off"]')!.click());
+    expect(dispatch).toHaveBeenCalledTimes(2);
     done();
   });
 
@@ -185,15 +227,16 @@ describe("v3 UI", () => {
     done();
   });
 
-  it("list: kind icons, six work rings, multi-select and batch move", async () => {
+  it("list: kind icons, a state ring per card, multi-select and batch move", async () => {
     vi.useFakeTimers();
     const { el, s, sent, done } = await mount(<ListView />, {}, "zh-Hans");
     const cards = [...el.querySelectorAll(".card")];
     expect(cards.map((c) => c.querySelector(".kind-ic")!.className)).toEqual([
       "kind-ic k-issue", "kind-ic k-idea", "kind-ic k-task", "kind-ic k-note", "kind-ic k-competitor", "kind-ic k-issue", "kind-ic k-issue"]);
-    expect(new Set(cards.map((c) => c.querySelector(".sring")!.getAttribute("class")))).toEqual(
-      new Set(["sring s-to_verify", "sring s-todo", "sring s-handed_off", "sring s-wontfix", "sring s-in_progress", "sring s-done"]));
-    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给外部 agent");
+    expect(cards.map((c) => c.querySelector(".sring")!.getAttribute("class"))).toEqual(["sring s-to_verify", "sring s-new",
+      "sring s-handed_off", "sring s-new", "sring s-wontfix", "sring s-in_progress", "sring s-done"]);
+    expect(cards[1].querySelector(".spill-ring")?.getAttribute("aria-label")).toBe("新 · 更改状态");
+    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给你的 agent");
     expect(cards[5].querySelector(".wk")?.textContent).toBe("进行中");
     await act(async () => (cards[0].querySelector(".pickbox") as HTMLButtonElement).click());
     await act(async () => (cards[2].querySelector(".pickbox") as HTMLButtonElement).click());
