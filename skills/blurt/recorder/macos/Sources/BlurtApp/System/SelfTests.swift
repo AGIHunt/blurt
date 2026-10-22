@@ -1,6 +1,6 @@
 // BLURT_TEST_COMMANDS=1 only: scripted checks for WP6, over a distributed notification like the shell's channel —
 //   dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "…"}; every answer is one JSON line on stdout.
-//   settings PANE | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
+//   settings PANE | settingsscroll top|bottom|N | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
 //   route URL                    parse a blurt:// URL (no action)         url URL   handle it like macOS would
 //   mainopen PATH[|PATH…]       open folders as projects (the Open panel's OK)
 //   mainstub                     a stand-in main window that reports reveal(uid:) / reveal(session:) (until WP5 lands)
@@ -39,6 +39,8 @@ enum SelfTests {
         func out(_ o: [String: Any]) { emit(["event": "wp6", "cmd": parts.first ?? ""].merging(o) { _, n in n }) }
         switch parts.first ?? "" {
         case "settings": SettingsController.shared.show(pane: arg.isEmpty ? nil : arg)
+        case "settingsscroll":          // settingsscroll top|bottom|POINTS: scroll the visible pane
+            out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
         case "onboarding": Onboarding.shared.show(step: Int(arg) ?? 0)
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
@@ -282,7 +284,8 @@ enum SelfTests {
             out(["ms": res])
         case "perms":
             let p = Permissions()
-            out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue])
+            out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue,
+                 "input_monitoring": p.inputMonitoring.rawValue])
         default: out(["error": "unknown command"])
         }
     }

@@ -102,6 +102,26 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
 
     var windowNumber: Int? { window?.isVisible == true ? window?.windowNumber : nil }
 
+    /// Tests (`settingsscroll top|bottom|N`): scroll the visible pane, for a screenshot of its lower part.
+    @MainActor
+    func scrollPane(_ to: String) -> Bool {
+        guard let tc = tabs, tc.selectedTabViewItemIndex >= 0,
+              let root = tc.tabViewItems[tc.selectedTabViewItemIndex].viewController?.view else { return false }
+        var queue = [root]
+        while !queue.isEmpty {
+            let v = queue.removeFirst()
+            if let s = v as? NSScrollView, let doc = s.documentView {
+                let maxY = max(0, doc.frame.height - s.contentView.bounds.height)
+                let y = to == "bottom" ? maxY : to == "top" ? 0 : min(maxY, Double(to) ?? 0)
+                s.contentView.scroll(to: NSPoint(x: 0, y: doc.isFlipped ? y : maxY - y))
+                s.reflectScrolledClipView(s.contentView)
+                return true
+            }
+            queue += v.subviews
+        }
+        return false
+    }
+
     func windowWillClose(_ notification: Notification) {
         ShortcutField.active?.stop()
         if let p = visiblePane { Config.shared.set("app.settings_pane", p) }
@@ -111,22 +131,40 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
 /// Settings → Shortcuts: the recorder rows from HotkeySettings (WP4) — record-style fields, the three conflict layers
 /// shown inline (our own duplicates, macOS system shortcuts, RegisterEventHotKey / another Blurt holding it).
 final class ShortcutsPaneController: NSViewController {
+    /// The rows are taller than the pane (every pane is 660 × 560): they scroll, like the SwiftUI forms do.
+    private final class FlippedView: NSView { override var isFlipped: Bool { true } }
+
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 660, height: 560))
+        let scroll = NSScrollView(frame: root.bounds)
+        scroll.autoresizingMask = [.width, .height]
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        let doc = FlippedView()
+        doc.translatesAutoresizingMaskIntoConstraints = false
         let content = HotkeySettings.shared.makeContent()
         content.translatesAutoresizingMaskIntoConstraints = false
         let note = NSTextField(wrappingLabelWithString: T("settings.kit.conflicts_are_checked_three"))
         note.font = .systemFont(ofSize: 11.5)
         note.textColor = .secondaryLabelColor
         note.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(content)
-        root.addSubview(note)
+        doc.addSubview(content)
+        doc.addSubview(note)
+        scroll.documentView = doc
+        root.addSubview(scroll)
+        let clip = scroll.contentView
         NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
-            content.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            note.topAnchor.constraint(equalTo: content.bottomAnchor, constant: 4),
-            note.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 34),
-            note.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -34),
+            doc.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            doc.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            doc.topAnchor.constraint(equalTo: clip.topAnchor),
+            content.topAnchor.constraint(equalTo: doc.topAnchor, constant: 8),
+            content.centerXAnchor.constraint(equalTo: doc.centerXAnchor),
+            note.topAnchor.constraint(equalTo: content.bottomAnchor, constant: 2),
+            note.leadingAnchor.constraint(equalTo: doc.leadingAnchor, constant: 34),
+            note.trailingAnchor.constraint(equalTo: doc.trailingAnchor, constant: -34),
+            note.bottomAnchor.constraint(equalTo: doc.bottomAnchor, constant: -20),
         ])
         view = root
     }

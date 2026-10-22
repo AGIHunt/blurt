@@ -52,11 +52,12 @@
 "capture.island.switch_project" = "Switch project";
 "capture.island.tip_with_key" = "%1$@ · %2$@";
 "capture.island.voice" = "Voice input";
-"capture.keys.anytime" = "ANYTIME";
+"capture.keys.anytime" = "Anytime";
 "capture.keys.bad_key" = "That key can’t be used";
 "capture.keys.change_it" = " · change it in Settings → Shortcuts";
 "capture.keys.control" = "⌃ Control";
 "capture.keys.custom" = "custom";
+"capture.keys.dictation_change" = "Change in Dictation settings";
 "capture.keys.draw_note" = "hold it and drag to circle things while recording";
 "capture.keys.duplicate" = "Same as “%@” — not active";
 "capture.keys.failed" = "Couldn’t register it (%@) — probably taken";
@@ -76,7 +77,7 @@
 "capture.keys.turn_off" = "Turn this shortcut off";
 "capture.keys.type" = "Type a shortcut…";
 "capture.keys.unreadable" = "Couldn’t read “%@” in the config — using the default";
-"capture.keys.while_recording" = "WHILE RECORDING";
+"capture.keys.while_recording" = "While recording";
 "capture.keys.why" = "%1$@: %2$@";
 "capture.keys.wont_work" = "Shortcut %@ won’t work";
 "capture.menu.live_caption" = "Live Caption";

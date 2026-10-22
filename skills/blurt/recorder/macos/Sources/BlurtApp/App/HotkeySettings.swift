@@ -104,11 +104,51 @@ final class ShortcutField: NSView {
     static weak var active: ShortcutField?
 }
 
+/// A read-only key field in the Shortcuts list (dictation's key, which Settings → Dictation sets): drawn like a
+/// ShortcutField; a click opens Settings → Dictation.
+final class DictationKeyField: NSView {
+    var text: String?                   // nil = dictation is off
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(Loc.t("dictation.settings.tab", table: "Dictation"))
+        toolTip = Loc.t("capture.keys.dictation_change", table: "Capture")
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: 150, height: 26) }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func accessibilityValue() -> Any? { text ?? Loc.t("capture.keys.off", table: "Capture") }
+    override func accessibilityPerformPress() -> Bool { HotkeySettings.shared.openDictation(); return true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+        NSColor.controlBackgroundColor.setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+        let a = NSAttributedString(string: text ?? Loc.t("capture.keys.off", table: "Capture"), attributes: [
+            .font: text == nil ? NSFont.systemFont(ofSize: 12, weight: .medium) : NSFont.systemFont(ofSize: 13.5, weight: .semibold),
+            .foregroundColor: text == nil ? NSColor.tertiaryLabelColor : NSColor.labelColor])
+        let sz = a.size()
+        a.draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2))
+    }
+
+    override func mouseDown(with event: NSEvent) { HotkeySettings.shared.openDictation() }
+}
+
 final class HotkeySettings: NSObject, NSWindowDelegate {
     static let shared = HotkeySettings()
     var window: NSWindow?
     var fields: [HotAction: ShortcutField] = [:]
     var notes: [HotAction: NSTextField] = [:]
+    var clears: [HotAction: NSButton] = [:]
+    /// Dictation's key lives in Settings → Dictation; this row shows it and leads there.
+    var dictationField: DictationKeyField?
+    var dictationNote: NSTextField?
     var drawPopup: NSPopUpButton?
     weak var content: NSView?
 
@@ -138,6 +178,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
     func makeContent() -> NSView {
         fields = [:]
         notes = [:]
+        clears = [:]
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -146,9 +187,9 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         func header(_ s: String) -> NSTextField {
-            let t = NSTextField(labelWithString: s)
-            t.font = .systemFont(ofSize: 11, weight: .semibold)
-            t.textColor = .secondaryLabelColor
+            let t = NSTextField(labelWithString: s)     // the same look as the Settings forms' section headers
+            t.font = .systemFont(ofSize: 13, weight: .semibold)
+            t.textColor = .labelColor
             return t
         }
         func row(_ a: HotAction) -> NSView {
@@ -169,6 +210,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             clear.contentTintColor = .tertiaryLabelColor
             clear.identifier = NSUserInterfaceItemIdentifier(a.rawValue)
             clear.toolTip = Loc.t("capture.keys.turn_off", table: "Capture")
+            clears[a] = clear
             let note = NSTextField(labelWithString: "")
             note.font = .systemFont(ofSize: 11.5)
             note.lineBreakMode = .byTruncatingTail
@@ -185,6 +227,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         for a in [HotAction.toggleRecord, .snap, .voice, .project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]) {
             stack.addArrangedSubview(row(a))
         }
+        if AppEnvironment.settings != nil { stack.addArrangedSubview(dictationRow()) }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(header(Loc.t("capture.keys.while_recording", table: "Capture")))
         for a in [HotAction.pause, .marker, .pen, .finish] { stack.addArrangedSubview(row(a)) }
@@ -247,13 +290,57 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         return content
     }
 
+    /// Dictation: its key (right ⌥ / fn, tap or hold) — set in Settings → Dictation, where the click leads.
+    func dictationRow() -> NSView {
+        let title = NSTextField(labelWithString: Loc.t("dictation.settings.tab", table: "Dictation"))
+        title.font = .systemFont(ofSize: 13)
+        title.alignment = .right
+        title.translatesAutoresizingMaskIntoConstraints = false
+        title.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        let f = DictationKeyField(frame: NSRect(x: 0, y: 0, width: 150, height: 26))
+        f.translatesAutoresizingMaskIntoConstraints = false
+        f.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        f.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        dictationField = f
+        let go = NSButton(image: NSImage(systemSymbolName: "arrow.right.circle.fill",
+                                         accessibilityDescription: Loc.t("capture.keys.dictation_change", table: "Capture")) ?? NSImage(),
+                          target: self, action: #selector(openDictation))
+        go.isBordered = false
+        go.contentTintColor = .tertiaryLabelColor
+        go.toolTip = Loc.t("capture.keys.dictation_change", table: "Capture")
+        let note = NSTextField(labelWithString: "")
+        note.font = .systemFont(ofSize: 11.5)
+        note.textColor = .tertiaryLabelColor
+        note.lineBreakMode = .byTruncatingTail
+        note.translatesAutoresizingMaskIntoConstraints = false
+        note.widthAnchor.constraint(equalToConstant: 210).isActive = true
+        dictationNote = note
+        let r = NSStackView(views: [title, f, go, note])
+        r.spacing = 10
+        r.alignment = .centerY
+        return r
+    }
+
+    @objc func openDictation() {
+        ShortcutField.active?.stop()
+        AppEnvironment.settings?.show(pane: "dictation")
+    }
+
     func refresh() {
         guard content != nil else { return }
+        if let f = dictationField {
+            f.text = Dictation.enabled ? Loc.t(Dictation.key == .fn ? "dictation.key.fn" : "dictation.key.right_option", table: "Dictation") : nil
+            f.needsDisplay = true
+            dictationNote?.stringValue = Dictation.enabled
+                ? Loc.t(Dictation.mode == .hold ? "dictation.mode.hold" : "dictation.mode.tap", table: "Dictation") : ""
+            dictationNote?.toolTip = dictationNote?.stringValue
+        }
         let hk = Hotkeys.shared
         for a in HotAction.allCases {
             let st = hk.states[a] ?? .ok
             fields[a]?.conflict = st.isConflict
             fields[a]?.needsDisplay = true
+            clears[a]?.isHidden = hk.shortcut(a) == nil      // nothing to turn off
             guard let n = notes[a] else { continue }
             if let bad = hk.invalid[a] {
                 n.stringValue = Loc.t("capture.keys.unreadable", table: "Capture", bad)

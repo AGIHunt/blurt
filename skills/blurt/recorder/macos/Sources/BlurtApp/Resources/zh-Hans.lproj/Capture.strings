@@ -57,6 +57,7 @@
 "capture.keys.change_it" = " · 可以在 设置 → 快捷键 里更换";
 "capture.keys.control" = "⌃ Control 键";
 "capture.keys.custom" = "已自定义";
+"capture.keys.dictation_change" = "到「听写」设置里修改";
 "capture.keys.draw_note" = "录制时按住它拖动，圈出重点";
 "capture.keys.duplicate" = "和「%@」重复，没生效";
 "capture.keys.failed" = "注册失败（%@），可能被占用";
