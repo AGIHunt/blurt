@@ -101,9 +101,14 @@ extension App {
             if arg != "up" { Hotkeys.shared.simulate(.voice, released: false) }
             if arg == "tap" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Hotkeys.shared.simulate(.voice, released: true) } }
             if arg == "up" { Hotkeys.shared.simulate(.voice, released: true) }
-        case "cardcopy":                                // cardcopy N [click|image|text]: = a click / Copy Image / Copy Text
-            let a = arg.split(separator: " ").map(String.init)
-            if let n = Int(a.first ?? "") {
+        case "cardcopy":                                // cardcopy N [click|image|text|cmd] | all: = a click / Copy Image /
+            let a = arg.split(separator: " ").map(String.init)      // Copy Text / a ⌘-click / Copy All N Cards
+            if a.first == "all" {
+                if !hanging.copyAll() { emit(["event": "card_copied", "what": "all", "failed": true]) }
+            } else if a.count > 1, a[1] == "cmd", let n = Int(a[0]) {
+                _ = hanging.testPick(n: n)
+                emit(["event": "card_picked", "n": n, "picked": hanging.pickedNumbers])
+            } else if let n = Int(a.first ?? "") {
                 let ok = hanging.testCopy(n: n, HangingCards.Copy(rawValue: a.count > 1 ? a[1] : "click") ?? .click)
                 if !ok { emit(["event": "card_copied", "n": n, "what": a.count > 1 ? a[1] : "click", "failed": true]) }
             }

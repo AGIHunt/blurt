@@ -1,31 +1,31 @@
-// Where a shot card is being dropped, and what that kind of app handles best (v0.8.2).
+// Where a shot card is being dropped, and what that kind of app needs besides the rich item (v0.8.2, v0.8.3).
 //
-// The report: a card dropped into WeChat arrived as the picture *plus a Markdown file attachment* (the note, and an
-// image line pointing at the picture). WeChat — like Notes, Messages, TextEdit, any AppKit text view — takes a picture
-// and text together; the .md was there only for web apps. Those (Chromium / Electron: the Claude desktop app, Chrome,
-// Slack, VS Code…) attach the files and ignore loose text when there are files, so for them the note has to be a file.
-// One payload can't suit both, so the app under the pointer picks it (HangingCards / CardDrag.swift):
+// v0.8.3: a card's first item is the same rich item everywhere but a terminal — its picture's file and bytes, the
+// picture and note as HTML and RTFD, the note as one line of text (CardPasteboard) — the way a WeChat or Notes copy of a
+// picture-and-text message carries both. What still depends on the app is the second item, and that is why the app
+// under the pointer still picks the payload (HangingCards / CardDrag.swift):
 //
-//   class      apps                                                  item 1 (picture)          item 2 (note)
-//   web        Claude desktop, Chrome & Chromium browsers, Safari,   file + PNG                .md file + text
-//              Firefox, Slack, VS Code, Cursor, Notion, Discord,
+//   class      apps                                                  item 1                    item 2
+//   web        Claude desktop, Chrome & Chromium browsers, Safari,   rich (file, PNG, HTML,    the note's .md file
+//              Firefox, Slack, VS Code, Cursor, Notion, Discord,     RTFD, RTF, text)
 //              Feishu / Lark, Obsidian, Figma… any Electron app
-//   text       WeChat, QQ, Messages, Notes, TextEdit, Mail,          file + PNG + RTFD(picture) text only — no .md
+//   text       WeChat, QQ, Messages, Notes, TextEdit, Mail,          rich                      — (an inert item)
 //              Telegram, WhatsApp, Pages, Keynote, Stickies
-//   terminal   Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,      file                      .md file — no text
+//   terminal   Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,      the picture's file only   the .md file
 //              Alacritty, Hyper, Tabby
-//   finder     the Finder (and the Desktop)                          file + PNG                .md file
-//   unknown    anything else                                         file + PNG                .md file + text
+//   finder     the Finder (and the Desktop)                          rich                      the .md file
+//   unknown    anything else                                         rich                      the .md file
 //
-// Why these, measured with our own stand-ins (an NSTextView, a WKWebView page, a pad that logs what it gets):
-//  • a rich NSTextView prefers RTFD > RTF > HTML > file names, and plain text only after those: given [picture file,
-//    text] it inserts the picture and drops the text; given [picture file, .md file] it inserts two attachments (the
-//    WeChat report). With an RTFD of the picture on item 1 and the note as text on item 2 it inserts both. A plain text
-//    view takes the text.
-//  • a web page (WebKit here; Chromium measured in v0.8.1) attaches the files and gets "" for the text.
+// Why, measured with our own stand-ins (a rich NSTextView, a WKWebView contenteditable, pads that log what they get):
+//  • a rich NSTextView reads RTFD before anything else (then RTF, HTML, file names, plain text), on a drop as on a
+//    paste: from the rich item it inserts the picture and the note, and it adds a later item's text (the note twice)
+//    but not a later item's file. The v0.8.2 report — a picture plus a .md attachment in WeChat — came from a payload
+//    without RTFD; WeChat's own reading order isn't known, so a text app still never gets the .md.
+//  • a web app attaches the files and drops the text and the HTML when there are files (WebKit here; Chromium measured
+//    in v0.8.1): for the note to arrive it has to be a file, the .md.
 //  • a terminal types the file paths it gets; with no text on the pasteboard it can never type the note.
-//  • unknown: the web layout reaches the note in every stand-in (a file where files win, the text where text wins);
-//    the text layout loses it in a web app. So an app we don't know gets the files — at worst an extra .md.
+//  • unknown: the rich item and the .md reach the note in every stand-in (RTFD where a text view reads, the .md where
+//    files win). At worst an extra .md.
 // Which app: Electron apps are found by their bundle (Contents/Frameworks/Electron Framework.framework) when no table
 // names them; the tables win (QQ is in the text row by request even though recent builds ship Electron).
 
@@ -84,22 +84,33 @@ public enum DropTargets {
     }
 }
 
-/// What the island says after a shot card was dropped into another app (Snapper.takeOut).
+/// What happens after a shot card was dropped into another app (Snapper.takeOut): whether the note also goes on the
+/// clipboard, and what the island says.
 public enum DragReceipt {
-    /// The Capture table key. `delivered`: the class whose payload the app got (nil: not sure — the drop landed in a
-    /// different kind of app than the one the pasteboard was last written for); `hasNote`: a shot with a note;
-    /// `noteCopied`: the safety net put the note on the clipboard (record.drag_copy_note).
-    ///  • text: the picture and the words went in — no "⌘V to paste" (the clipboard still has the note, quietly);
+    /// The safety net (record.drag_copy_note): the note goes on the clipboard only where the app may have kept just the
+    /// picture — a web app, the Finder, an app we don't know, or a drop we aren't sure about (it landed in a different
+    /// kind of app than the pasteboard was last written for). A text app took the picture and the note from the rich
+    /// item, a terminal both paths: the clipboard is left alone (v0.8.3; it used to be overwritten quietly).
+    public static func copiesNote(delivered: DropClass?) -> Bool {
+        switch delivered {
+        case .text?, .terminal?: return false
+        case .web?, .finder?, .unknown?, nil: return true
+        }
+    }
+
+    /// The Capture table key. `delivered`: the class whose payload the app got (nil: not sure); `hasNote`: a shot with
+    /// a note; `noteCopied`: the safety net put the note on the clipboard.
+    ///  • text: the picture and the note went in — nothing to paste;
     ///  • terminal: both paths went in — no ⌘V either (that would paste the note at a shell prompt);
-    ///  • web / finder / unknown: the picture and the note's file — ⌘V pastes the note if the app kept only the picture;
-    ///  • not sure: "note copied, ⌘V to paste", as before.
+    ///  • web / finder: the picture and the note's file — ⌘V pastes the note if the app kept only the picture;
+    ///  • an app we don't know (it may have read the rich item, or the files) or not sure: "note copied, ⌘V to paste".
     public static func toastKey(delivered: DropClass?, hasNote: Bool, noteCopied: Bool) -> String {
         guard hasNote else { return "capture.taken_out" }
         switch delivered {
         case .text?: return "capture.taken_out_text"
         case .terminal?: return "capture.taken_out_paths"
-        case .web?, .finder?, .unknown?: return noteCopied ? "capture.taken_out_files_note" : "capture.taken_out_files"
-        case nil: return noteCopied ? "capture.taken_out_note" : "capture.taken_out"
+        case .web?, .finder?: return noteCopied ? "capture.taken_out_files_note" : "capture.taken_out_files"
+        case .unknown?, nil: return noteCopied ? "capture.taken_out_note" : "capture.taken_out"
         }
     }
 }

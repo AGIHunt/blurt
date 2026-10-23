@@ -110,7 +110,7 @@
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
 "settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
 "settings.general.drag_copy_note" = "After dragging a card out, copy its note too";
-"settings.general.drag_copy_note.hint" = "If the app keeps only the picture, ⌘V pastes the note. This replaces what’s on the clipboard; Undo in the island puts it back.";
+"settings.general.drag_copy_note.hint" = "Where the app may keep only the picture (browsers, Claude, Slack, the Finder…), ⌘V then pastes the note. Chat apps like WeChat and Notes get the note with the picture, and terminals get both paths, so the clipboard is left alone there. This replaces what’s on the clipboard; Undo in the island puts it back.";
 "settings.general.drag_caption" = "Add the note under the picture when dragging";
 "settings.general.drag_caption.hint" = "The dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The capture itself stays clean.";
 "settings.general.about" = "About";

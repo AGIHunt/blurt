@@ -8,6 +8,24 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>删除全部 %d 张卡片</string></dict>
   </dict>
+  <key>capture.card.copied_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已拷贝 %d 张卡片</string></dict>
+  </dict>
+  <key>capture.card.copy_all</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>拷贝全部 %d 张卡片</string></dict>
+  </dict>
+  <key>capture.menu.copy_cards</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>拷贝全部 %d 张挂着的卡片</string></dict>
+  </dict>
   <key>capture.drawer.ai_sub</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

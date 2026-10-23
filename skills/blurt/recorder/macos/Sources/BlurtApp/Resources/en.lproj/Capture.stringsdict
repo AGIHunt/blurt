@@ -8,6 +8,24 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Delete the Card</string><key>other</key><string>Delete All %d Cards</string></dict>
   </dict>
+  <key>capture.card.copied_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Copied</string><key>other</key><string>Copied %d cards</string></dict>
+  </dict>
+  <key>capture.card.copy_all</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Copy the Card</string><key>other</key><string>Copy All %d Cards</string></dict>
+  </dict>
+  <key>capture.menu.copy_cards</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Copy the Hanging Card</string><key>other</key><string>Copy All %d Hanging Cards</string></dict>
+  </dict>
   <key>capture.drawer.ai_sub</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

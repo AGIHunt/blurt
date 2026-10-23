@@ -24,43 +24,51 @@
 //    transcribed: "Transcribing…" under whatever was typed, never an empty mic; failed: "Couldn't transcribe" and
 //    Retry Transcription in the right-click menu. A spoken note with no speech in it (the room, a cough, abandoned
 //    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
-//  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy (a voice
-//    card: its words; a shot: what a drag carries — see below — with the note's line breaks kept) · right-click: Copy
-//    Image / Copy Text (only with text), Retry Transcription (after a failure), edit, move, delete · double-click =
-//    edit the note · drag = into any app, or onto a project in the island: the thread stretches after it, then snaps
-//    and springs back up · × = the thread lets go and the card falls.
-//  • what a shot card hands out depends on the app it is dropped into (v0.8.2; BlurtCore CardDropTarget.swift has the
-//    measurements, CardDrag.swift the mechanism). Two items, the count fixed when the drag starts; the second is a .md
-//    file or just text, decided by the app under the pointer — the window there in CGWindowList z-order, skipping
-//    ours, its owner's bundle id — when that app asks for the data (lazily provided), and written again whenever the
-//    pointer moves into another kind of app (the pasteboard keeps the first answer otherwise, and apps read while a
-//    drag only passes over them):
-//      Claude desktop, Chrome / Chromium browsers, Safari,   the picture (file + PNG) + the note as a .md file (and
-//      Slack, VS Code, Cursor, Notion, Discord, Feishu…,      as text): a web app attaches files and drops loose text
+//  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy (rich
+//    content, see below) · ⌘-click = add the card to a selection that is copied as one (a ring in the brand colour;
+//    a plain click or the cards going up ends it) · right-click: Copy Image / Copy Text (only with text), Copy All N
+//    Cards (more than one), Retry Transcription (after a failure), edit, move, delete · double-click = edit the note ·
+//    drag = into any app, or onto a project in the island: the thread stretches after it, then snaps and springs back
+//    up · × = the thread lets go and the card falls. The island's right-click menu has Copy All N Hanging Cards too.
+//  • rich content (v0.8.3; BlurtCore CardPasteboard has the measurements, CardExport.swift the flavours): a card
+//    travels the way a WeChat or Notes copy of a picture-and-text message does — one item with the picture and the
+//    note together as HTML (<img src="data:…"> then <p>note</p>: Chromium / Electron editors such as Feishu, Claude,
+//    Slack, Notion), RTFD (picture attachment then note: AppKit text views such as Notes, TextEdit, WeChat's
+//    composer), RTF (the notes), the picture's PNG, the note as text. So ⌘V after a click, or a drop, brings both.
+//      copy (click, ⌘-click selection, Copy All)   that one item, every card in order (pictures and notes; a voice
+//                                                  card's words as a paragraph), the notes with their line breaks; no
+//                                                  file URL for one picture (with one, WebKit pastes nothing), each
+//                                                  picture's file for two or more (Chromium shows one pasted image at
+//                                                  most, but every file). A voice card alone: its words.
+//      drag                                        the rich item with the picture's file too (the note as one line),
+//                                                  then what the app under the pointer needs besides (CardDropTarget):
+//      Claude desktop, Chrome / Chromium browsers, Safari,   + the note as a .md file: a web app attaches files and
+//      Slack, VS Code, Cursor, Notion, Discord, Feishu…,      drops the text and the HTML when there are files
 //      any Electron app (Electron Framework in its bundle)
-//      WeChat, QQ, Messages, Notes, TextEdit, Mail,           the picture (file + PNG + RTFD) + the note as text — no
-//      Telegram, WhatsApp, Pages, Keynote                     .md (a rich text view inserts both)
-//      Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,       the picture's path and the .md's path — the note's text
-//      Alacritty                                              is never offered to a shell
-//      Finder / the Desktop                                   the picture file + the .md file
-//      anything else                                          as for Claude: the files and the text (reaches the
-//                                                             note in every kind of target we measured)
-//    The .md is the note and nothing else (no heading, no image line): out/<NNN>/截图-HHMMSS-备注.md, next to
-//    out/<NNN>/截图-HHMMSS.png (inked if marked, the note also in its PNG Description). Optional
-//    (record.drag_caption, off): the dragged picture is a copy with the note burned in under it. A voice card: its
-//    words only (text that happened to be spoken: no audio file, no .md), whatever the app.
-//  • a drag's text is one line, control characters out (CardTransfer.dragText): the app that reads it is the one
-//    under the pointer at that moment, which may not be where it lands. A copy (click) keeps the note's line breaks
-//    (pasting is the user's own act) and carries the files and the text, as for an unknown app.
+//      WeChat, QQ, Messages, Notes, TextEdit, Mail,           nothing else — no .md (a rich text view takes picture
+//      Telegram, WhatsApp, Pages, Keynote                     and note from the RTFD)
+//      Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,       only the picture's path and the .md's path — the note's
+//      Alacritty                                              text is never offered to a shell
+//      Finder / the Desktop, anything else                    + the .md file
+//    The app under the pointer is the window there in CGWindowList z-order, skipping ours, its owner's bundle id; the
+//    items are lazily provided, and written again when the pointer moves into an app that needs another layout (the
+//    pasteboard keeps the first answer otherwise, and apps read while a drag only passes over them). The .md is the
+//    note and nothing else (no heading, no image line): out/<NNN>/截图-HHMMSS-备注.md, next to out/<NNN>/截图-HHMMSS.png
+//    (inked if marked, the note also in its PNG Description). Optional (record.drag_caption, off): the picture is a
+//    copy with the note burned in under it. A voice card dragged: its words only, whatever the app.
+//  • a drag's plain text is one line, control characters out (CardTransfer.dragText): the app that reads it is the
+//    one under the pointer at that moment, which may not be where it lands. A copy keeps the note's line breaks
+//    (pasting is the user's own act).
 //  • dropped in another app (the session ended with an operation, over a window that isn't ours): the card has been
 //    used, so it leaves its thread — "taken" (Snapper.takeOut: `{"n","taken":wall}`), not discarded: its files stay,
 //    and it is in Recently Taken for 7 days (the island's right-click menu, the main window; TakenPanel.swift: copy,
-//    drag out again, put back), then housekeeping trashes it. With a note, the note also goes on the clipboard
-//    (record.drag_copy_note, on by default), and the toast says what went in (DragReceipt): "Dragged out · picture
-//    and note" where the text went in directly (no ⌘V hint), "… picture and note paths" in a terminal (no ⌘V: that
-//    would paste at a prompt), "… picture and note file · note copied, ⌘V to paste" elsewhere — "Dragged out · note
-//    copied, ⌘V to paste" when the app it landed in isn't the kind the pasteboard was last written for. Undo puts the
-//    card back and the clipboard as it was. It went with the
+//    drag out again, put back), then housekeeping trashes it. Where the app may have kept only the picture (a web
+//    app, the Finder, an unknown app, or not sure), the note also goes on the clipboard (record.drag_copy_note, on by
+//    default; DragReceipt.copiesNote); a text app or a terminal leaves the clipboard alone. The toast says what went
+//    in (DragReceipt): "Dragged out · picture and note" in a text app, "… picture and note paths" in a terminal (no
+//    ⌘V: that would paste at a prompt), "… picture and note file · note copied, ⌘V to paste" in a web app or the
+//    Finder, "Dragged out · note copied, ⌘V to paste" in an app we don't know or when it isn't the kind the
+//    pasteboard was last written for. Undo puts the card back and the clipboard as it was. It went with the
 //    drag, so nothing falls: the thread lets go and its free end springs back into the island, and the others close
 //    up. Dropped on nothing (or on one of our windows): it comes back to its thread; on a project in the island: filed.
 //  • a voice card is a text card: up to two lines of its words and a small mic mark (it was spoken). Dragged before
@@ -388,6 +396,7 @@ final class HangingCards: NSObject {
             layoutCaption(c, note)
         }
         c.card.shadowOpacity = dark ? 0.55 : 0.3
+        stylePick(c)                    // a ⌘-click selection's ring survives a restyle (appearance, a new note)
         // the mic mark: these words were spoken — never on a card without them
         let marks: [BlurtIcon] = (s.kind == .shot && note.showsMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
         c.badge.contents = marks.isEmpty ? nil : HangingCards.badgeImage(marks)
@@ -670,6 +679,7 @@ final class HangingCards: NSObject {
     private func remove(_ c: HangingCard, _ how: Leave) {
         guard let i = cards.firstIndex(where: { $0 === c }) else { return }
         cards.remove(at: i)
+        picked.removeAll { $0 === c }
         if hoverCard === c { hoverCard = nil; tip.isHidden = true }
         if how == .taken, visible {
             // the thread's free end: still stretched after the pointer, or already sprung back into the island
@@ -877,6 +887,7 @@ final class HangingCards: NSObject {
         sticky = false
         holdEsc(false)
         retractedAt = turnable ? NSEvent.mouseLocation : nil
+        if !picked.isEmpty { setPicked([]) }           // the cards going up end a ⌘-click selection (the copy stays)
         guard shown else { return }
         shown = false
         pointerOver = false
@@ -1355,6 +1366,8 @@ final class HangingCards: NSObject {
         if e.clickCount >= 2 {
             c.copiedUntil = 0
             NoteBubble.shared.begin(c.shot, mode: .edit)
+        } else if e.modifierFlags.contains(.command) {
+            pick(c)
         } else {
             copy(c, .click)
         }
@@ -1364,13 +1377,14 @@ final class HangingCards: NSObject {
 
     enum Copy: String { case click, image, text }
 
-    /// click: a shot gives what a drag gives (CardExport.copy: the picture and its note as files, the note as text with
-    /// its line breaks), a voice card its words · image / text: just that (the right-click menu, Recently Taken).
+    /// click: the card as rich content (CardExport.copy: a shot's picture and note as HTML / RTFD / PNG / text, like
+    /// a WeChat copy of a picture-and-text message; a voice card its words) · image / text: just that (the right-click
+    /// menu, Recently Taken).
     static func copyShot(_ s: Shot, _ what: Copy) -> Bool {
         switch what {
-        case .click where s.kind == .shot: return CardExport.copy(s)
+        case .click: return CardExport.copy([s]) != nil
         case .image: return s.kind == .shot && s.bestURL.map { copyImageToPasteboard($0) } ?? false
-        case .click, .text:
+        case .text:
             return s.copyText.map { t in
                 let pb = capturePasteboard
                 pb.clearContents()
@@ -1379,20 +1393,76 @@ final class HangingCards: NSObject {
         }
     }
 
-    /// A copy (HangingCards.copyShot) that shows "Copied" on the card.
+    /// A copy (HangingCards.copyShot) that shows "Copied" on the card. A plain click ends a ⌘-click selection.
     @discardableResult
     func copy(_ c: HangingCard, _ what: Copy) -> Bool {
         let s = c.shot
+        if what == .click { setPicked([]) }
         let ok = HangingCards.copyShot(s, what)
         guard ok else { return false }
-        pill(c, Loc.t("capture.card.copied", table: "Capture"))
-        c.copiedUntil = CACurrentMediaTime() + 1.2
-        if s.kind == .shot { c.omega += 30 }
-        wake()
+        copied(c, Loc.t("capture.card.copied", table: "Capture"))
         emit(["event": "card_copied", "n": s.n, "what": what.rawValue,
               "types": (capturePasteboard.pasteboardItems?.first?.types ?? []).map(\.rawValue),
               "items": (capturePasteboard.pasteboardItems ?? []).map { $0.types.map(\.rawValue) }])
         return true
+    }
+
+    private func copied(_ c: HangingCard, _ text: String) {
+        pill(c, text)
+        c.copiedUntil = CACurrentMediaTime() + 1.2
+        if c.shot.kind == .shot { c.omega += 30 }
+        wake()
+    }
+
+    /// ⌘-clicked cards: a selection, copied as one — every ⌘-click adds the card (or takes it out again) and puts the
+    /// whole selection on the clipboard at once, pictures and notes in the order the cards hang (oldest first), like
+    /// ⌘A ⌘C over a run of messages. The picked cards wear a ring in the brand colour; a plain click, or the cards going
+    /// back up, ends the selection.
+    private var picked: [HangingCard] = []
+
+    func pick(_ c: HangingCard) {
+        let on = !picked.contains { $0 === c }
+        setPicked(on ? picked + [c] : picked.filter { $0 !== c })
+        guard !picked.isEmpty else { return }
+        copyCards(picked, pill: c)
+    }
+
+    private func setPicked(_ cs: [HangingCard]) {
+        picked = cards.filter { k in cs.contains { $0 === k } }       // the order they hang in
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for k in cards { stylePick(k) }
+        CATransaction.commit()
+    }
+
+    private func stylePick(_ c: HangingCard) {
+        guard picked.contains(where: { $0 === c }) else {
+            c.card.borderWidth = 0.5
+            c.card.borderColor = (isDarkMode ? NSColor(white: 1, alpha: c.shot.kind == .voice ? 0.14 : 0.22)
+                                             : NSColor(white: 0, alpha: c.shot.kind == .voice ? 0.08 : 0.12)).cgColor
+            return
+        }
+        c.card.borderWidth = 2.5
+        c.card.borderColor = accent.cgColor
+    }
+
+    /// `cs` (in this order) on the clipboard as one rich copy; "Copied N cards" on `pill`, or in the island.
+    @discardableResult
+    func copyCards(_ cs: [HangingCard], pill on: HangingCard?) -> Bool {
+        guard !cs.isEmpty, let items = CardExport.copy(cs.map(\.shot)) else { return false }
+        let text = cs.count == 1 ? Loc.t("capture.card.copied", table: "Capture")
+                                 : Loc.plural("capture.card.copied_n", table: "Capture", count: cs.count)
+        if let c = on { copied(c, text) } else { island.toast(text, actionTitle: nil, action: nil) }
+        emit(["event": "card_copied", "n": cs.map(\.shot.n), "what": on == nil ? "all" : "picked",
+              "items": items.map { $0.types.map(\.rawValue) }])
+        return true
+    }
+
+    /// "Copy All N Cards" (a card's menu, the island's menu): every hanging card, in order, as one rich copy.
+    @discardableResult
+    func copyAll() -> Bool {
+        setPicked([])
+        return copyCards(cards.filter { $0.shot.isCard }, pill: nil)
     }
 
     /// The right-click menu's items for a card (tests read the titles).
@@ -1404,6 +1474,10 @@ final class HangingCards: NSObject {
         }
         if s.copyText != nil {
             items.append((Loc.t("capture.card.copy_text", table: "Capture"), { [weak self] in self?.copy(c, .text) }))
+        }
+        let all = cards.filter { $0.shot.isCard }.count
+        if all > 1 {
+            items.append((Loc.plural("capture.card.copy_all", table: "Capture", count: all), { [weak self] in self?.copyAll() }))
         }
         if s.note.status == .failed {
             items.append((Loc.t("capture.card.retry_transcribe", table: "Capture"), { snapper.retryWords(s) }))
@@ -1421,8 +1495,10 @@ final class HangingCards: NSObject {
         wake()
     }
 
-    /// Tests: copy capture N as a click / Copy Image / Copy Text would; the menu's titles for it.
+    /// Tests: copy capture N as a click / Copy Image / Copy Text would; ⌘-click it; the menu's titles for it.
     func testCopy(n: Int, _ what: Copy) -> Bool { cards.first { $0.shot.n == n }.map { copy($0, what) } ?? false }
+    func testPick(n: Int) -> Bool { cards.first { $0.shot.n == n }.map { pick($0); return true } ?? false }
+    var pickedNumbers: [Int] { picked.map(\.shot.n) }
     func testMenu(n: Int) -> [String] { cards.first { $0.shot.n == n }.map { menuItems($0).map(\.0) } ?? [] }
     /// Tests: what a drag of capture N into an app of class `target` carries, written to `pb`.
     func testDrag(n: Int, for target: DropClass, to pb: NSPasteboard) -> [[String]] {

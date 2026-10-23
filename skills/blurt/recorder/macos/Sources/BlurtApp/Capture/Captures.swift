@@ -389,9 +389,10 @@ final class Snapper {
     /// not discarded: its files stay where they are (the app may read them late) and it is in Recently Taken (the
     /// island's right-click menu, the main window) for 7 days, where it can be copied, dragged out again or put back;
     /// then housekeeping trashes it (expireTaken). With a note, the note also goes on the clipboard
-    /// (record.drag_copy_note): if that app kept only the picture, ⌘V brings the words back. The toast says what went
-    /// in (BlurtCore DragReceipt: `delivered` is the kind of app whose payload the drop got, nil if not sure) — no "⌘V
-    /// to paste" where the words went in directly or into a terminal. "Undo" in the toast puts the card back on its
+    /// (record.drag_copy_note) where the app may have kept only the picture — not a text app (it took the note from the
+    /// rich item) or a terminal (both paths): ⌘V brings the words back (BlurtCore DragReceipt.copiesNote). The toast
+    /// says what went in (`delivered` is the kind of app whose payload the drop got, nil if not sure) — no "⌘V to
+    /// paste" where the words went in directly or into a terminal. "Undo" in the toast puts the card back on its
     /// thread (and the clipboard as it was, if nothing was copied since).
     /// `fromPanel`: dragged out of Recently Taken again (it is already off its thread; its days start over).
     func takeOut(_ s: Shot, fromPanel: Bool = false, delivered: DropClass? = nil) {
@@ -399,7 +400,7 @@ final class Snapper {
         if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
         if !fromPanel { hanging.takeAway(s) }
         b.take(s, at: Snapper.now)
-        let note = s.kind == .shot && CardExport.copyNoteAfterDrag ? s.copyText : nil
+        let note = s.kind == .shot && CardExport.copyNoteAfterDrag && DragReceipt.copiesNote(delivered: delivered) ? s.copyText : nil
         let saved = note.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
         let key = DragReceipt.toastKey(delivered: delivered, hasNote: s.kind == .shot && s.copyText != nil, noteCopied: saved != nil)
         emit(["event": "take_out", "n": s.n, "session": b.dir.path, "note_copied": saved != nil, "from_panel": fromPanel,

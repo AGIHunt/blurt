@@ -8,10 +8,10 @@
 //    transcribe" (Retry in the card's right-click menu). A voice note that turned out to hold no speech is dropped
 //    (no mark, nothing left to transcribe) — the app does that, CardNote never sees one.
 //
-// Drag-out / copy (v0.8.1, v0.8.2: CardFiles.swift / CardPasteboard / CardDropTarget.swift): two pasteboard items —
-//  1. the picture: its file (the note in its PNG Description) + PNG (a drag) or PNG + TIFF (a copy);
-//  2. the note: what the app under the pointer handles best — a .md file and the text (web apps take files and drop
-//     loose text), the text alone (WeChat, Notes: a picture and text), the .md's path (a terminal).
+// Copy / drag-out (v0.8.3: CardFiles.swift / CardPasteboard / CardDropTarget.swift): one rich item — picture and note
+// together as HTML, RTFD and RTF, the picture's PNG, the note as text (a WeChat-style copy) — and, for a drag, what the
+// app under the pointer needs besides: the note's .md for web apps and the Finder (they take files and drop the text),
+// nothing for WeChat / Notes, only the two paths for a terminal.
 // A drag's text is CardTransfer.dragText: one line (the note's lines joined with " · "), control characters out. The
 // app that reads the text first is the one under the pointer when it asks, which is not always where the drag ends —
 // and a terminal types what it gets at its prompt (a dropped newline would run the line, an escape sequence could end
@@ -52,7 +52,7 @@ public struct CardNote: Equatable {
         }
     }
 
-    static func clean(_ s: String?) -> String? {
+    public static func clean(_ s: String?) -> String? {
         guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
         return t
     }

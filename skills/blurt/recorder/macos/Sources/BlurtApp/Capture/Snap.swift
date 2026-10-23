@@ -65,8 +65,8 @@ let capturePasteboard: NSPasteboard = {
     return .general
 }()
 
-/// Just the picture (PNG + TIFF): a card's "Copy Image". A click copies more — CardExport.copy (the picture and the
-/// note as files, and the note as text).
+/// Just the picture (PNG + TIFF): a card's "Copy Image". A click copies more — CardExport.copy (picture and note
+/// together as rich content: HTML, RTFD, PNG, text).
 @discardableResult
 func copyImageToPasteboard(_ url: URL) -> Bool {
     guard let data = try? Data(contentsOf: url) else { return false }

@@ -1,6 +1,9 @@
 // One card dragged out of the app — a hanging card, or a picture in Recently Taken (v0.8.2). What is on the drag
 // pasteboard follows the app under the pointer: BlurtCore DropTargets says which kind of app it is, CardPasteboard
 // .drag(for:) what that kind gets (the table is in CardDropTarget.swift; the user's view of it in HangingCards' header).
+// v0.8.3: the first item is the same rich item (picture file + PNG + HTML + RTFD + RTF + the note as one line) for
+// every kind of app but a terminal, so moving between a web app, the Finder and an unknown app rewrites nothing; only
+// the second item (the .md, or an inert item for a text app) and a terminal's paths-only first item still need it.
 //
 // How, and why this way (measured with our own stand-in apps — an NSTextView, a WKWebView page, logging pads):
 //  • The items are lazily provided (NSPasteboardItemDataProvider): when an app asks for a type, we look at where the
@@ -10,12 +13,13 @@
 //  • But the pasteboard keeps the first answer for the rest of the drag, whoever asks again, and apps ask while the
 //    drag is only passing over them: a web view on entering, a text view while hovering. So the first app passed over
 //    (often the one under the cards) would decide for the one it lands in. Hence: when the pointer moves into an app
-//    of another class (draggingSession(movedTo:)), the drag pasteboard is cleared and written again, lazily, for the
-//    new class — with that class's own types, so item 2 is a .md file or just text, never a declared type that comes
-//    back empty (a text view logs "Couldn't get a copy of a URL-flavored data" for every such read and skips it).
+//    of another class with another layout (draggingSession(movedTo:)), the drag pasteboard is cleared and written
+//    again, lazily, for the new class — with that class's own types, so item 2 is a .md file or inert, never a
+//    declared type that comes back empty (a text view logs "Couldn't get a copy of a URL-flavored data" for every
+//    such read and skips it).
 //  • The number of items is fixed when the drag starts (the badge says 2); what item 2 is depends on the target.
-//  • A race is still possible (an app reads before the rewrite reaches it); the drop's end compares the class of the
-//    app it landed in with the class last written, and the toast only claims what it knows (DragReceipt).
+//  • A race is still possible (an app reads before the rewrite reaches it); the drop's end compares the layout for
+//    the app it landed in with the one last written, and the toast only claims what it knows (DragReceipt).
 // Tests (BLURT_TEST_COMMANDS=1): `droptarget map PID=BUNDLE,…` gives our stand-in processes the bundle ids of the apps
 // they stand in for (the decision still goes through the window owner's pid); BLURT_TEST_DROP_TARGET=BUNDLE (or
 // `droptarget fixed BUNDLE`) does it for every window that isn't ours.
@@ -96,8 +100,9 @@ enum DropProbe {
 /// A card's drag: its files, the pasteboard it fills, and the class that pasteboard was last written for.
 final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     let shot: Shot
-    let files: CardExport.Files
-    let note: String?
+    let card: CardPasteboard.Card
+    /// the rich flavours (HTML, RTFD, RTF), built the first time an app asks for one
+    let rich: CardRich
     let tag: String?
     /// the class the drag pasteboard holds now
     private(set) var written: DropClass
@@ -110,8 +115,9 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
 
     init(_ s: Shot) {
         shot = s
-        files = CardExport.prepare(s)
-        note = s.copyText
+        let (c, part) = CardExport.card(s)
+        card = c
+        rich = CardRich([part])
         tag = CardExport.tag(s)
         target = DropProbe.target()
         written = target?.cls ?? .unknown
@@ -119,16 +125,14 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         report("card_drag_target")
     }
 
-    func layout(_ c: DropClass) -> [CardPasteboard.Item] {
-        CardPasteboard.drag(for: c, image: files.image, noteFile: files.note, note: note)
-    }
+    func layout(_ c: DropClass) -> [CardPasteboard.Item] { CardPasteboard.drag(for: c, card: card) }
 
     /// The items for `written`, every type lazily provided; at least one (the capture's tag) so a drag can start.
     func pasteboardItems() -> [NSPasteboardItem] {
         index = [:]
         let items = layout(written).enumerated().map { i, it -> NSPasteboardItem in
             let p = NSPasteboardItem()
-            p.setDataProvider(self, forTypes: CardDrag.types(it))
+            p.setDataProvider(self, forTypes: CardDrag.types(it, tag: tag != nil))
             index[ObjectIdentifier(p)] = i
             return p
         }
@@ -141,14 +145,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         return items
     }
 
-    static func types(_ it: CardPasteboard.Item) -> [NSPasteboard.PasteboardType] {
-        var t: [NSPasteboard.PasteboardType] = []
-        if it.file != nil { t.append(.fileURL) }
-        if it.imageData { t.append(.png) }
-        if it.rtfd { t.append(.rtfd) }
-        if it.text != nil { t.append(.string) }
-        if it.tag { t.append(capturePasteboardType) }
-        return t
+    static func types(_ it: CardPasteboard.Item, tag: Bool = true) -> [NSPasteboard.PasteboardType] {
+        CardExport.flavours(it, copy: false, tag: tag).map(CardExport.type)
     }
 
     /// The pointer moved: into an app of another class, the pasteboard is written again for it.
@@ -161,7 +159,9 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         guard let t = DropProbe.target(at: p) else { return }     // over our own windows: as it was
         let changedApp = t.pid != target?.pid
         target = t
-        guard t.cls != written, let pb = session?.draggingPasteboard else {
+        // the same layout for another class (text ↔ web differ only in the second item; terminal in both): no rewrite
+        guard layout(t.cls) != layout(written), let pb = session?.draggingPasteboard else {
+            if t.cls != written { written = t.cls }
             if changedApp { report("card_drag_target") }
             return
         }
@@ -175,7 +175,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     /// written for another kind of app).
     func delivered(at p: NSPoint) -> DropClass? {
         let t = DropProbe.target(at: p)
-        let got: DropClass? = t.map { $0.cls == written ? written : nil } ?? nil
+        let got: DropClass? = t.flatMap { layout($0.cls) == layout(written) ? $0.cls : nil }
         emit(["event": "card_drag_end", "n": shot.n, "bundle": t?.bundleID ?? NSNull(), "class": t?.cls.rawValue ?? NSNull(),
               "written": written.rawValue, "delivered": got?.rawValue ?? NSNull()])
         return got
@@ -184,7 +184,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     private func report(_ event: String, _ extra: [String: Any] = [:]) {
         var o: [String: Any] = ["event": event, "n": shot.n, "pid": Int(target?.pid ?? 0), "bundle": target?.bundleID ?? NSNull(),
                                 "class": target?.cls.rawValue ?? NSNull(), "written": written.rawValue,
-                                "items": layout(written).map { CardDrag.types($0).map(\.rawValue) }]
+                                "items": layout(written).map { CardDrag.types($0, tag: tag != nil).map(\.rawValue) }]
         for (k, v) in extra { o[k] = v }
         emit(o)
     }
@@ -200,24 +200,14 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         let lay = layout(now)
         guard i < lay.count else { return }
         let it = lay[i]
-        var given = true
-        switch type {
-        case .fileURL: if let f = it.file { item.setString(f.absoluteString, forType: type) } else { given = false }
-        case .png: if it.imageData, let f = it.file, let d = try? Data(contentsOf: f) { item.setData(d, forType: type) } else { given = false }
-        case .rtfd: if it.rtfd, let f = it.file, let d = CardDrag.rtfd(f) { item.setData(d, forType: type) } else { given = false }
-        case .string: if let t = it.text { item.setString(t, forType: type) } else { given = false }
-        case capturePasteboardType: if let t = tag { item.setString(t, forType: type) } else { given = false }
-        default: given = false
+        var given = false
+        if let f = CardExport.flavours.first(where: { CardExport.type($0) == type }),
+           CardExport.flavours(it, copy: false, tag: tag != nil).contains(f),
+           let d = CardExport.data(f, of: it, rich: rich, tag: tag) {
+            item.setData(d, forType: type)
+            given = true
         }
         emit(["event": "card_drag_provide", "n": shot.n, "item": i + 1, "type": type.rawValue, "class": now.rawValue,
               "written": written.rawValue, "given": given])
-    }
-
-    /// The picture as RTFD: one attachment, so a rich text view inserts it (and reads the note from the next item).
-    static func rtfd(_ png: URL) -> Data? {
-        guard let w = try? FileWrapper(url: png, options: .immediate) else { return nil }
-        w.preferredFilename = png.lastPathComponent
-        let s = NSAttributedString(attachment: NSTextAttachment(fileWrapper: w))
-        return s.rtfd(from: NSRange(location: 0, length: s.length), documentAttributes: [:])
     }
 }

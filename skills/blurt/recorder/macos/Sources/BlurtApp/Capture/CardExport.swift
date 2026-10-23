@@ -1,6 +1,9 @@
 // What a shot card hands to other apps (v0.8.1; BlurtCore CardFiles has the why): the files a drag or a copy carries,
 // written next to the capture, and the pasteboard items built from BlurtCore CardPasteboard's layout (a drag's items
-// follow the app under the pointer: CardDrag.swift).
+// follow the app under the pointer: CardDrag.swift). v0.8.3: the first item is rich — the pictures and notes as HTML,
+// RTFD and RTF (CardRich), like a WeChat or Notes copy of a picture-and-text message — so ⌘V or a drop into Feishu,
+// Claude, WeChat or Notes brings both. The flavours and their order on an item are one list (CardExport.flavours), to
+// match a real app's copy if one is measured.
 //
 //   <batch>/out/<NNN>/截图-153012.png       the picture (inked if marked) with the note in its PNG Description — and,
 //                                            with record.drag_caption on, the note burned in as a strip under it (a
@@ -9,9 +12,10 @@
 // Written again on every drag / copy (the note may have been edited); they live as long as the capture does — taken
 // captures keep them for their 7 days (an app that took the file may read it late) and they go to the Trash with it.
 //
-// After a drop that another app took, the note also goes on the clipboard (record.drag_copy_note, default on): if that
-// app kept only the picture, ⌘V brings the words back. The clipboard as it was is kept, and Undo puts it back while
-// nothing else has been copied since (DragClipboard).
+// After a drop that another app took, the note also goes on the clipboard (record.drag_copy_note, default on) where
+// that app may have kept only the picture (BlurtCore DragReceipt.copiesNote: not a text app, not a terminal): ⌘V
+// brings the words back. The clipboard as it was is kept, and Undo puts it back while nothing else has been copied
+// since (DragClipboard).
 
 import AppKit
 import BlurtCore
@@ -55,42 +59,90 @@ enum CardExport {
         return Files(image: image, note: noteURL)
     }
 
-    /// CardPasteboard items → NSPasteboardItems. `copy`: the picture's bytes as PNG + TIFF (a paste); else PNG (a drag).
-    /// `tag`: the capture's own type on the first item ("<batch dir>\n<n>"), for a drop on a project in the island.
-    static func pasteboardItems(_ items: [CardPasteboard.Item], copy: Bool, tag: String?) -> [NSPasteboardItem] {
+    /// The flavours an item can carry, in the order they are put on it: the richest first (an app that takes the first
+    /// type it knows gets picture and note), the file last but the capture's own tag.
+    enum Flavour: CaseIterable { case rtfd, html, rtf, png, tiff, text, file, tag }
+    static let flavours: [Flavour] = Flavour.allCases
+
+    static func type(_ f: Flavour) -> NSPasteboard.PasteboardType {
+        switch f {
+        case .rtfd: return .rtfd
+        case .html: return .html
+        case .rtf: return .rtf
+        case .png: return .png
+        case .tiff: return .tiff
+        case .text: return .string
+        case .file: return .fileURL
+        case .tag: return capturePasteboardType
+        }
+    }
+
+    /// The flavours `it` carries (`copy`: TIFF next to the PNG; `tag`: there is a tag to give).
+    static func flavours(_ it: CardPasteboard.Item, copy: Bool, tag: Bool) -> [Flavour] {
+        flavours.filter { f in
+            switch f {
+            case .rtfd, .html, .rtf: return it.rich
+            case .png: return it.image != nil
+            case .tiff: return copy && it.image != nil
+            case .text: return it.text != nil
+            case .file: return it.file != nil
+            case .tag: return it.tag && tag
+            }
+        }
+    }
+
+    /// One flavour of `it`, as data (nil: none to give).
+    static func data(_ f: Flavour, of it: CardPasteboard.Item, rich: CardRich?, tag: String?) -> Data? {
+        switch f {
+        case .rtfd: return it.rich ? rich?.rtfd : nil
+        case .html: return it.rich ? rich.map { Data($0.html.utf8) } : nil
+        case .rtf: return it.rich ? rich?.rtf : nil
+        case .png: return it.image.flatMap { try? Data(contentsOf: $0) }
+        case .tiff: return it.image.flatMap { try? Data(contentsOf: $0) }.flatMap { NSBitmapImageRep(data: $0)?.tiffRepresentation(using: .lzw, factor: 0) }
+        case .text: return it.text.map { Data($0.utf8) }
+        case .file: return it.file.map { Data($0.absoluteString.utf8) }
+        case .tag: return it.tag ? tag.map { Data($0.utf8) } : nil
+        }
+    }
+
+    /// CardPasteboard items → NSPasteboardItems, written at once. `copy`: the picture's bytes as PNG + TIFF (a paste);
+    /// else PNG (a drag). `tag`: the capture's own type ("<batch dir>\n<n>"), for a drop on a project in the island.
+    static func pasteboardItems(_ items: [CardPasteboard.Item], rich: CardRich?, copy: Bool, tag: String?) -> [NSPasteboardItem] {
         items.map { it in
             let p = NSPasteboardItem()
-            if let f = it.file { p.setString(f.absoluteString, forType: .fileURL) }
-            if it.imageData, let f = it.file, let d = try? Data(contentsOf: f) {
-                p.setData(d, forType: .png)
-                if copy, let tiff = NSImage(data: d)?.tiffRepresentation { p.setData(tiff, forType: .tiff) }
+            for f in flavours(it, copy: copy, tag: tag != nil) {
+                if let d = data(f, of: it, rich: rich, tag: tag) { p.setData(d, forType: type(f)) }
             }
-            if it.rtfd, let f = it.file, let d = CardDrag.rtfd(f) { p.setData(d, forType: .rtfd) }
-            if let t = it.text { p.setString(t, forType: .string) }
-            if it.tag, let t = tag { p.setString(t, forType: capturePasteboardType) }
             return p
         }
     }
 
     static func tag(_ s: Shot) -> String? { s.batch.map { "\($0.dir.path)\n\(s.n)" } }
 
+    /// A shot or voice card as it travels (its files freshly written).
+    static func card(_ s: Shot) -> (CardPasteboard.Card, CardRich.Part) {
+        let f = prepare(s)
+        return (CardPasteboard.Card(image: f.image, note: s.copyText, noteFile: f.note),
+                CardRich.Part(image: f.image, note: s.copyText, scale: s.scale))
+    }
+
     /// What dragging `s` out into an app of class `target` carries (BlurtCore CardPasteboard.drag), written at once —
     /// for tests (`carddrag`); a real drag is lazy and follows the pointer (CardDrag).
     static func dragItems(_ s: Shot, for target: DropClass) -> [NSPasteboardItem] {
-        let f = prepare(s)
-        let layout = CardPasteboard.drag(for: target, image: f.image, noteFile: f.note, note: s.copyText)
-        let items = pasteboardItems(layout, copy: false, tag: tag(s))
+        let (c, part) = card(s)
+        let items = pasteboardItems(CardPasteboard.drag(for: target, card: c), rich: CardRich([part]), copy: false, tag: tag(s))
         return items.isEmpty ? [{ let p = NSPasteboardItem(); if let t = tag(s) { p.setString(t, forType: capturePasteboardType) }; return p }()] : items
     }
 
-    /// A click's copy of `s`: the same things as a drag, the text with its line breaks (CardPasteboard.copy).
+    /// A copy of `shots`, in order (a click: one; a ⌘-click selection or Copy All: several) — one rich item with every
+    /// picture and note, the notes as text with their line breaks (CardPasteboard.copy). Returns the items written.
     @discardableResult
-    static func copy(_ s: Shot, to pb: NSPasteboard = capturePasteboard) -> Bool {
-        let f = prepare(s)
-        let items = pasteboardItems(CardPasteboard.copy(image: f.image, noteFile: f.note, note: s.copyText), copy: true, tag: nil)
-        guard !items.isEmpty else { return false }
+    static func copy(_ shots: [Shot], to pb: NSPasteboard = capturePasteboard) -> [NSPasteboardItem]? {
+        let cards = shots.map(card)
+        let items = pasteboardItems(CardPasteboard.copy(cards.map(\.0)), rich: CardRich(cards.map(\.1)), copy: true, tag: nil)
+        guard !items.isEmpty else { return nil }
         pb.clearContents()
-        return pb.writeObjects(items)
+        return pb.writeObjects(items) ? items : nil
     }
 
     // MARK: the caption strip (record.drag_caption)
@@ -123,6 +175,66 @@ enum CardExport {
         text.draw(with: NSRect(x: pad, y: pad, width: textW, height: textH), options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
         NSGraphicsContext.restoreGraphicsState()
         return ctx.makeImage()
+    }
+}
+
+/// The rich flavours of a payload — every card, in order: HTML (the picture as a data: URL, then the note), RTFD (the
+/// picture as an attachment, then the note), RTF (the notes) — built when first asked for, once.
+final class CardRich {
+    struct Part { var image: URL?; var note: String?; var scale: CGFloat }
+    let parts: [Part]
+    init(_ parts: [Part]) { self.parts = parts }
+
+    lazy var html: String = CardPasteboard.html(parts.map { p in
+        CardPasteboard.HTMLPart(image: p.image.flatMap { CardRich.htmlImage($0, scale: p.scale) }, note: p.note)
+    })
+
+    lazy var rtfd: Data? = {
+        let s = attributed(withPictures: true)
+        return s.length == 0 ? nil : s.rtfd(from: NSRange(location: 0, length: s.length), documentAttributes: [:])
+    }()
+
+    lazy var rtf: Data? = {
+        let s = attributed(withPictures: false)
+        return s.length == 0 ? nil : s.rtf(from: NSRange(location: 0, length: s.length), documentAttributes: [:])
+    }()
+
+    /// The picture for the HTML: the PNG, or — past CardPasteboard.htmlPNGLimit — a JPEG of it; its size in points.
+    static func htmlImage(_ u: URL, scale: CGFloat) -> (mime: String, data: Data, width: Int, height: Int)? {
+        guard let d = try? Data(contentsOf: u), let rep = NSBitmapImageRep(data: d) else { return nil }
+        let k = max(1, scale)
+        let w = Int((CGFloat(rep.pixelsWide) / k).rounded()), h = Int((CGFloat(rep.pixelsHigh) / k).rounded())
+        if d.count > CardPasteboard.htmlPNGLimit, let j = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.82]) {
+            return ("image/jpeg", j, w, h)
+        }
+        return ("image/png", d, w, h)
+    }
+
+    /// Picture, line break, note — the cards one after another (a blank line between them). No colour: the receiving
+    /// app's own text colour (dark mode) applies.
+    private func attributed(withPictures: Bool) -> NSAttributedString {
+        let out = NSMutableAttributedString()
+        let font: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13)]
+        for p in parts {
+            var piece: [NSAttributedString] = []
+            if withPictures, let u = p.image, let w = try? FileWrapper(url: u, options: .immediate) {
+                w.preferredFilename = u.lastPathComponent
+                let a = NSTextAttachment(fileWrapper: w)
+                if let rep = w.regularFileContents.flatMap(NSBitmapImageRep.init(data:)) {
+                    let k = max(1, p.scale)
+                    a.bounds = CGRect(x: 0, y: 0, width: CGFloat(rep.pixelsWide) / k, height: CGFloat(rep.pixelsHigh) / k)
+                }
+                piece.append(NSAttributedString(attachment: a))
+            }
+            if let n = CardNote.clean(p.note) { piece.append(NSAttributedString(string: n, attributes: font)) }
+            guard !piece.isEmpty else { continue }
+            if out.length > 0 { out.append(NSAttributedString(string: "\n\n", attributes: font)) }
+            for (i, x) in piece.enumerated() {
+                if i > 0 { out.append(NSAttributedString(string: "\n", attributes: font)) }
+                out.append(x)
+            }
+        }
+        return out
     }
 }
 

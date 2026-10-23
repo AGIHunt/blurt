@@ -72,61 +72,101 @@ final class CardFilesTests: XCTestCase {
     // MARK: which item carries what
 
     let img = URL(fileURLWithPath: "/s/out/003/截图-144012.png")
+    let img2 = URL(fileURLWithPath: "/s/out/004/截图-144230.png")
     let md = URL(fileURLWithPath: "/s/out/003/截图-144012-备注.md")
+    func card(_ note: String?, image: URL? = URL(fileURLWithPath: "/s/out/003/截图-144012.png"), md: URL? = URL(fileURLWithPath: "/s/out/003/截图-144012-备注.md")) -> CardPasteboard.Card {
+        CardPasteboard.Card(image: image, note: note, noteFile: md)
+    }
 
-    /// The report: Claude (Electron) took the files and dropped the loose text. For a web app (and an app we don't know)
-    /// the note is a file of its own, and the text rides on that file's item.
+    /// The report (v0.8.1): Claude (Electron) took the files and dropped the loose text and the HTML. For a web app (and
+    /// an app we don't know) the note is a file of its own, after the rich item.
     func testDragOfASnapWithANoteIntoAWebApp() {
         for c in [DropClass.web, .unknown] {
-            XCTAssertEqual(CardPasteboard.drag(for: c, image: img, noteFile: md, note: "see the header\nthe logo overlaps"), [
-                CardPasteboard.Item(file: img, imageData: true, tag: true),
-                CardPasteboard.Item(file: md, text: "see the header · the logo overlaps"),
+            XCTAssertEqual(CardPasteboard.drag(for: c, card: card("see the header\nthe logo overlaps")), [
+                CardPasteboard.Item(file: img, image: img, rich: true, text: "see the header · the logo overlaps", tag: true),
+                CardPasteboard.Item(file: md),
             ], "\(c)")
         }
     }
 
     func testDragTextIsSafeForATerminal() {
-        let items = CardPasteboard.drag(for: .web, image: img, noteFile: md, note: "ls\n\u{1B}[201~rm -rf ~\r")
-        XCTAssertEqual(items[1].text, "ls · [201~rm -rf ~")
-        XCTAssertEqual(CardPasteboard.drag(for: .text, image: img, noteFile: md, note: "ls\n\u{1B}[201~rm -rf ~\r")[1].text,
-                       "ls · [201~rm -rf ~", "every class gets the one-line form: the app that reads it may not be the one it lands in")
+        let note = "ls\n\u{1B}[201~rm -rf ~\r"
+        for c in [DropClass.web, .text, .finder, .unknown] {
+            XCTAssertEqual(CardPasteboard.drag(for: c, card: card(note))[0].text, "ls · [201~rm -rf ~",
+                           "every class gets the one-line form: the app that reads it may not be the one it lands in")
+        }
+        XCTAssertTrue(CardPasteboard.drag(for: .terminal, card: card(note)).allSatisfy { $0.text == nil && !$0.rich })
     }
 
     func testDragWithoutANote() {
         for c in DropClass.allCases {
-            let first = CardPasteboard.drag(for: c, image: img, noteFile: nil, note: nil)
+            let first = CardPasteboard.drag(for: c, card: card(nil, md: nil))
             XCTAssertEqual(first.count, 1, "\(c)")
             XCTAssertEqual(first[0].file, img)
             XCTAssertTrue(first[0].tag)
-            XCTAssertEqual(CardPasteboard.drag(for: c, image: img, noteFile: nil, note: " \n "), first, "\(c)")
+            XCTAssertEqual(CardPasteboard.drag(for: c, card: card(" \n ", md: nil)), first, "\(c)")
         }
     }
 
+    /// No .md (it couldn't be written): the note still rides on the rich item; the second item is inert — and a
+    /// terminal still gets only the picture's path.
     func testDragWhenTheNoteFileCouldNotBeWritten() {
-        XCTAssertEqual(CardPasteboard.drag(for: .web, image: img, noteFile: nil, note: "words"),
-                       [CardPasteboard.Item(file: img, imageData: true, tag: true), CardPasteboard.Item(text: "words")])
-        XCTAssertEqual(CardPasteboard.drag(for: .terminal, image: img, noteFile: nil, note: "words"),
-                       [CardPasteboard.Item(file: img, tag: true)], "a terminal never gets the note as text")
+        XCTAssertEqual(CardPasteboard.drag(for: .web, card: card("words", md: nil)),
+                       [CardPasteboard.Item(file: img, image: img, rich: true, text: "words", tag: true), CardPasteboard.Item(tag: true)])
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: card("words", md: nil)),
+                       [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(tag: true)], "a terminal never gets the note as text")
     }
 
     /// A voice card is text that happened to be spoken: its words, no audio file, no .md — whatever the app.
     func testDragOfAVoiceCard() {
         for c in DropClass.allCases {
-            XCTAssertEqual(CardPasteboard.drag(for: c, image: nil, noteFile: nil, note: "call Ana\nabout pricing"),
+            XCTAssertEqual(CardPasteboard.drag(for: c, card: card("call Ana\nabout pricing", image: nil, md: nil)),
                            [CardPasteboard.Item(text: "call Ana · about pricing", tag: true)], "\(c)")
-            XCTAssertEqual(CardPasteboard.drag(for: c, image: nil, noteFile: md, note: "words"), [CardPasteboard.Item(text: "words", tag: true)])
-            XCTAssertEqual(CardPasteboard.drag(for: c, image: nil, noteFile: nil, note: nil), [])
+            XCTAssertEqual(CardPasteboard.drag(for: c, card: card("words", image: nil)), [CardPasteboard.Item(text: "words", tag: true)])
+            XCTAssertEqual(CardPasteboard.drag(for: c, card: card(nil, image: nil, md: nil)), [])
         }
     }
 
-    /// A click copies what a drag carries — the text with its line breaks (pasting is the user's own act).
-    func testCopyMatchesTheDrag() {
-        XCTAssertEqual(CardPasteboard.copy(image: img, noteFile: md, note: " see the header\nthe logo overlaps "), [
-            CardPasteboard.Item(file: img, imageData: true),
-            CardPasteboard.Item(file: md, text: "see the header\nthe logo overlaps"),
+    /// A click: one rich item — picture bytes, HTML / RTFD / RTF, the note with its line breaks — and no file URL (with
+    /// one, WebKit's paste inserts nothing) and no .md.
+    func testCopyOfOneCardIsOneRichItem() {
+        XCTAssertEqual(CardPasteboard.copy([card(" see the header\nthe logo overlaps ")]), [
+            CardPasteboard.Item(image: img, rich: true, text: "see the header\nthe logo overlaps"),
         ])
-        XCTAssertEqual(CardPasteboard.copy(image: nil, noteFile: nil, note: "a\nb"), [CardPasteboard.Item(text: "a\nb")])
-        XCTAssertEqual(CardPasteboard.copy(image: img, noteFile: nil, note: nil), [CardPasteboard.Item(file: img, imageData: true)])
+        XCTAssertEqual(CardPasteboard.copy([card(nil)]), [CardPasteboard.Item(image: img, rich: true)])
+        XCTAssertEqual(CardPasteboard.copy([card("a\nb", image: nil, md: nil)]), [CardPasteboard.Item(text: "a\nb")], "a voice card: its words")
+        XCTAssertEqual(CardPasteboard.copy([]), [])
+        XCTAssertTrue(CardPasteboard.copy([card("x")]).allSatisfy { $0.file == nil })
+    }
+
+    /// Several cards (⌘-click, Copy All): one rich item with all of them in order, the notes separated by a blank line;
+    /// every picture's file too (Chromium exposes one image/png at most, but every file), each on an item of its own —
+    /// and nothing but the first item carries text (a text view would add it again).
+    func testCopyOfSeveralCards() {
+        let items = CardPasteboard.copy([card("first\nline two"), card("call Ana", image: nil, md: nil), card(nil, image: img2), card("last", image: img2)])
+        XCTAssertEqual(items, [
+            CardPasteboard.Item(file: img, image: img, rich: true, text: "first\nline two\n\ncall Ana\n\nlast"),
+            CardPasteboard.Item(file: img2),
+            CardPasteboard.Item(file: img2),
+        ])
+        XCTAssertTrue(items.dropFirst().allSatisfy { $0.text == nil && !$0.rich && $0.image == nil })
+    }
+
+    // MARK: the HTML
+
+    func testHTMLIsPictureThenNoteForEachCard() {
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let h = CardPasteboard.html([
+            .init(image: ("image/png", png, 864, 540), note: "结账按钮被挡住了\n<b>not bold</b> & \"quoted\""),
+            .init(image: nil, note: "  call Ana  "),
+            .init(image: ("image/jpeg", Data([1, 2, 3]), 10, 20), note: nil),
+        ])
+        XCTAssertEqual(h, "<meta charset=\"utf-8\">"
+            + "<p><img src=\"data:image/png;base64,\(png.base64EncodedString())\" width=\"864\" height=\"540\"></p>"
+            + "<p>结账按钮被挡住了<br>&lt;b&gt;not bold&lt;/b&gt; &amp; &quot;quoted&quot;</p>"
+            + "<p>call Ana</p>"
+            + "<p><img src=\"data:image/jpeg;base64,AQID\" width=\"10\" height=\"20\"></p>")
+        XCTAssertTrue(h.hasPrefix("<meta charset=\"utf-8\">"), "WebKit reads HTML without a charset as Latin-1")
     }
 
     // MARK: taken: 7 days

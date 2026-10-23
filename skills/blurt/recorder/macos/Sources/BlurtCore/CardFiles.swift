@@ -9,8 +9,9 @@
 //   • <stem>-备注.md     the note and nothing else — line breaks kept, no heading, no image line (v0.8.2: the image line
 //                       was noise wherever the .md was opened; the picture travels next to it anyway).
 // stem = "<Screenshot>-HHMMSS" in the UI language ("截图-153012"), from when it was captured; one folder per capture,
-// so two captures in the same second never collide. CardPasteboard says which pasteboard item carries what, per kind
-// of app (CardDropTarget.swift: v0.8.2, the .md only goes where it is needed).
+// so two captures in the same second never collide. CardPasteboard says which pasteboard item carries what: since
+// v0.8.3 one rich item — the pictures and notes as HTML and RTFD, like a WeChat or Notes copy of a picture-and-text
+// message — plus, for a drag, the .md only where the app needs it (CardDropTarget.swift).
 //
 // A card dragged out and taken by another app is "taken", not discarded: it leaves its thread but stays findable for
 // TakenCaptures.keepDays (the island's right-click "Recently Taken", the main window), then housekeeping trashes it.
@@ -130,68 +131,133 @@ public enum PNGText {
     }
 }
 
-/// Which pasteboard item carries what, for a card dragged out or copied (click). Each item is one "thing" to the
+/// Which pasteboard item carries what, for cards copied (a click, Copy All) or one card dragged out (v0.8.3: rich
+/// content, the way copying a picture-and-text message in WeChat or Notes does). Each item is one "thing" to the
 /// receiving app; the order is the order things arrive in.
+///
+/// The rich flavours (CardRich in the app; the HTML here, CardPasteboard.html) carry every card of the payload, in
+/// order — the picture, then its note:
+///   public.html            <img src="data:image/png;base64,…"> then <p>the note</p>: Chromium / Electron editors
+///                          (Feishu / Lark, Claude, Slack, Notion…) and WebKit read HTML on paste and on drop
+///   com.apple.flat-rtfd    the picture as an attachment, then the note: what an AppKit text view (Notes, TextEdit,
+///                          Mail, WeChat's composer) reads first
+///   public.rtf             the notes alone (RTF has no pictures): what Chromium turns into HTML when there is none
+/// next to them the picture's bytes (PNG; a copy adds TIFF) and the notes as plain text.
+///
+/// Measured with our own stand-ins (rlab: a rich NSTextView, a WKWebView contenteditable, a terminal pad, a file pad):
+///  • the NSTextView reads RTFD before anything else, on paste and on drop: picture and note, whatever else is there.
+///    It does not add a later item's file (no second picture, no .md attachment) — but it does add a later item's text
+///    (the note twice), so no item after the rich one carries text.
+///  • WebKit: with a file URL anywhere on the pasteboard a paste exposes "Files" and the HTML but no text/plain, and
+///    its default insertion inserts nothing; without one it renders the <img> (data: URLs up to 27 MB tested) and the
+///    note. So a single card's copy carries no file URL.
+///  • Chromium (from its clipboard_mac source, not measured here): HTML from public.html; files from every item's file
+///    URL; image/png ("image.png") only when there are no files — one picture, the first item's.
 public enum CardPasteboard {
+    /// One card as it travels: its picture (a shot; nil for a voice card), its note, the note's .md (if written).
+    public struct Card: Equatable {
+        public var image: URL?
+        public var note: String?
+        public var noteFile: URL?
+        public init(image: URL?, note: String?, noteFile: URL? = nil) {
+            self.image = image; self.note = note; self.noteFile = noteFile
+        }
+    }
+
     public struct Item: Equatable {
-        /// a file (public.file-url): the picture, or the note's .md
+        /// a file (public.file-url): a picture, or the note's .md
         public var file: URL?
-        /// the picture's bytes ride along (a drag: PNG; a copy: PNG + TIFF) for apps that take image data, not files
-        public var imageData: Bool = false
-        /// the picture as RTFD (an attachment): what a rich AppKit text view reads before file names, so it inserts the
-        /// picture and still reads the note's text from the next item
-        public var rtfd: Bool = false
+        /// this picture's bytes: PNG (a drag) / PNG + TIFF (a copy)
+        public var image: URL?
+        /// the payload's cards as rich text: HTML, RTFD, RTF
+        public var rich: Bool = false
         /// plain text (public.utf8-plain-text)
         public var text: String?
-        /// the capture's own type (dev.blurt.capture), for a drop on a project in the island
+        /// the capture's own type (dev.blurt.capture), for a drop on a project in the island — and, alone, an item
+        /// no other app reads (a drag's second item when the app takes everything from the first)
         public var tag: Bool = false
 
-        public init(file: URL? = nil, imageData: Bool = false, rtfd: Bool = false, text: String? = nil, tag: Bool = false) {
-            self.file = file; self.imageData = imageData; self.rtfd = rtfd; self.text = text; self.tag = tag
+        public init(file: URL? = nil, image: URL? = nil, rich: Bool = false, text: String? = nil, tag: Bool = false) {
+            self.file = file; self.image = image; self.rich = rich; self.text = text; self.tag = tag
         }
     }
 
-    /// A drag into an app of class `target` (DropTargets; the table is in CardDropTarget.swift). Two items for a shot
-    /// with a note — the count is fixed when the drag starts, what item 2 is depends on the app it lands in:
-    ///  • web / unknown: (1) the picture, file + PNG; (2) the note's .md file, and the note as text on the same item.
-    ///  • text: (1) the picture, file + PNG + RTFD; (2) the note as text only — no .md.
-    ///  • terminal: (1) the picture's file; (2) the .md's file — paths only, the note's text never reaches a shell.
-    ///  • finder: (1) the picture, file + PNG; (2) the .md file.
-    /// The text is CardTransfer.dragText (one line, no control characters): which app reads it first is the app under
-    /// the pointer at that moment, not always the one it lands in. No note file (it couldn't be written): the text as
-    /// the second item (a terminal: nothing). A voice card: its words, nothing else, for every app.
-    public static func drag(for target: DropClass, image: URL?, noteFile: URL?, note: String?) -> [Item] {
-        let text = CardTransfer.dragText(note)
-        guard let img = image else { return text.map { [Item(text: $0, tag: true)] } ?? [] }
-        var items: [Item]
-        switch target {
-        case .terminal: items = [Item(file: img)]
-        case .text: items = [Item(file: img, imageData: true, rtfd: true)]
-        case .web, .finder, .unknown: items = [Item(file: img, imageData: true)]
+    /// One card dragged into an app of class `target` (DropTargets; the table is in CardDropTarget.swift). The rich
+    /// item first — the picture's file, its bytes, the rich text, the note as one line (CardTransfer.dragText) — then,
+    /// for a shot with a note, what that kind of app needs besides:
+    ///  • text (WeChat, Notes…): nothing — an inert item (the count is fixed when the drag starts): the text view
+    ///    takes picture and note from the RTFD, and no .md lands in a chat.
+    ///  • web / finder / unknown: the note's .md file — a web app attaches the files and drops the text and the HTML
+    ///    when there are files, so the note has to be a file there.
+    ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell).
+    /// A voice card: its words (one line), nothing else, for every app.
+    public static func drag(for target: DropClass, card: Card) -> [Item] {
+        let text = CardTransfer.dragText(card.note)
+        guard let img = card.image else { return text.map { [Item(text: $0, tag: true)] } ?? [] }
+        var items = [target == .terminal ? Item(file: img, tag: true) : Item(file: img, image: img, rich: true, text: text, tag: true)]
+        guard text != nil else { return items }
+        switch (target, card.noteFile) {
+        case (.text, _), (_, nil): items.append(Item(tag: true))     // (no .md: the note is in the first item)
+        case (_, let f?): items.append(Item(file: f))
         }
-        if text != nil {
-            switch (target, noteFile) {
-            case (.web, let f?), (.unknown, let f?): items.append(Item(file: f, text: text))
-            case (.finder, let f?), (.terminal, let f?): items.append(Item(file: f))
-            case (.text, _), (.web, nil), (.unknown, nil), (.finder, nil): items.append(Item(text: text))
-            case (.terminal, nil): break
+        return items
+    }
+
+    /// A copy (a click on a card, a ⌘-click selection, Copy All): one rich item with every card, in order — the first
+    /// picture's bytes, the rich text, the notes as text with their line breaks (pasting is the user's own act, at a
+    /// place they chose). No file URL for a single picture (WebKit then pastes nothing: see above); with two or more,
+    /// each picture's file too (the first on the rich item, the others an item each), or Chromium editors would see
+    /// only the first one. A voice card alone is its words.
+    public static func copy(_ cards: [Card]) -> [Item] {
+        let notes = cards.compactMap { CardNote.clean($0.note) }
+        let text = notes.isEmpty ? nil : notes.joined(separator: "\n\n")
+        let images = cards.compactMap(\.image)
+        guard let first = images.first else { return text.map { [Item(text: $0)] } ?? [] }
+        if images.count < copyFilesFrom { return [Item(image: first, rich: true, text: text)] }
+        return [Item(file: first, image: first, rich: true, text: text)] + images.dropFirst().map { Item(file: $0) }
+    }
+
+    /// From how many pictures a copy also carries their files (1: always; Int.max: never) — the one knob to turn if a
+    /// real app's copy (WeChat's, say) turns out to do it the other way.
+    public static let copyFilesFrom = 2
+
+    // MARK: the HTML
+
+    /// One card in the HTML: its picture as a data: URL (`mime`, its bytes, its size in points) and its note.
+    public struct HTMLPart: Equatable {
+        public var image: (mime: String, data: Data, width: Int, height: Int)?
+        public var note: String?
+        public init(image: (mime: String, data: Data, width: Int, height: Int)?, note: String?) { self.image = image; self.note = note }
+        public static func == (a: HTMLPart, b: HTMLPart) -> Bool {
+            a.note == b.note && a.image?.mime == b.image?.mime && a.image?.data == b.image?.data
+                && a.image?.width == b.image?.width && a.image?.height == b.image?.height
+        }
+    }
+
+    /// The cards as an HTML fragment, the way a browser copies one: a charset first (WebKit guesses Latin-1 without
+    /// it), then per card `<p><img …></p>` and the note as `<p>` with `<br>` between its lines.
+    public static func html(_ parts: [HTMLPart]) -> String {
+        var s = "<meta charset=\"utf-8\">"
+        for p in parts {
+            if let i = p.image {
+                s += "<p><img src=\"data:\(i.mime);base64,\(i.data.base64EncodedString())\" width=\"\(i.width)\" height=\"\(i.height)\"></p>"
+            }
+            if let n = CardNote.clean(p.note) {
+                let lines = n.components(separatedBy: .newlines).map(escape)
+                s += "<p>" + lines.joined(separator: "<br>") + "</p>"
             }
         }
-        items[0].tag = true
-        return items
+        return s
     }
 
-    /// A copy (a click on the card): the picture, the note's .md and the note as text — the app it will be pasted into
-    /// isn't known, so the unknown-app layout — but the text keeps the note's line breaks (pasting is the user's own
-    /// act, at a place they chose).
-    public static func copy(image: URL?, noteFile: URL?, note: String?) -> [Item] {
-        var items: [Item] = []
-        if let img = image { items.append(Item(file: img, imageData: true)) }
-        let text = CardNote.clean(note)
-        if let f = noteFile, image != nil, text != nil { items.append(Item(file: f, text: text)) }
-        else if let t = text { items.append(Item(text: t)) }
-        return items
+    static func escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
     }
+
+    /// A picture bigger than this goes into the HTML as a JPEG (the PNG still travels as a file / PNG): a data: URL
+    /// several MB long makes some editors slow to paste (WebKit rendered 27 MB in the stand-in).
+    public static let htmlPNGLimit = 3 << 20
 }
 
 /// A card dragged out into another app, and taken there: off its thread, but not gone — kept `keepDays`, then trashed.
