@@ -287,7 +287,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
         w.title = T("onboarding.set_up_blurt")
         w.isReleasedWhenClosed = false
         w.delegate = self
-        w.sharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly
+        // an ordinary window: screenshots (yours or ours) can show it; our own recordings leave it out by their filter
         m.close = { [weak w] in w?.close() }
         w.contentViewController = NSHostingController(rootView: OnboardingView(m: m))
         w.center()

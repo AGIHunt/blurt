@@ -196,12 +196,12 @@ final class PickerView: NSView {
                 as? [[String: Any]] else { return nil }
         let me = Int(getpid())
         for w in list {
-            guard (w[kCGWindowLayer as String] as? Int) == 0, let pid = w[kCGWindowOwnerPID as String] as? Int, pid != me,
+            guard (w[kCGWindowLayer as String] as? Int) == 0, let pid = w[kCGWindowOwnerPID as String] as? Int,
                   let b = w[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
             // windows you can't see: fully transparent ones, and windows of background apps (agents / helpers
             // such as MobileDeviceUpdater keep an "on-screen" window you never see) unless that app is in front
             if (w[kCGWindowAlpha as String] as? Double ?? 1) < 0.05 { continue }
-            if pid_t(pid) != controller?.frontPID,
+            if pid != me, pid_t(pid) != controller?.frontPID,
                NSRunningApplication(processIdentifier: pid_t(pid))?.activationPolicy != .regular { continue }
             let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
             if r.width > 40, r.height > 40, r.contains(cg) {

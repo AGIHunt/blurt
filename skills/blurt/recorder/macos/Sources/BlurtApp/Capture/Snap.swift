@@ -100,7 +100,9 @@ func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], c
         guard let display = content.displays.first(where: { $0.frame.contains(c) }) ?? content.displays.first else {
             DispatchQueue.main.async { completion(nil, 2) }; return
         }
-        let mine = content.windows.filter { $0.owningApplication?.processID == getpid() && !keep.contains($0.windowID) }
+        // leave out our floating chrome (island, cards, bubbles, picker, HUD: above the normal window layer); our
+        // ordinary windows (main window, Settings) are part of the screen like any other app's
+        let mine = content.windows.filter { $0.owningApplication?.processID == getpid() && $0.windowLayer != 0 && !keep.contains($0.windowID) }
         let filter = SCContentFilter(display: display, excludingWindows: mine)
         let clipped = rect.intersection(display.frame)
         let scale = backingScale(forDisplay: display.displayID)

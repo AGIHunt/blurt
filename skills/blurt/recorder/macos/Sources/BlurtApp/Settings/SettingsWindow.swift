@@ -76,7 +76,7 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.setFrameAutosaveName("BlurtSettings")
-        w.sharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly
+        // an ordinary window: screenshots (yours or ours) can show it; our own recordings leave it out by their filter
         window = w
         tabs = tc
     }
