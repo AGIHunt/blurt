@@ -24,8 +24,11 @@ final class PickerController {
     var snapMode = false            // ⌥⇧A: release (or click a window / F / L) captures right away
     let toolbar = PickerToolbar()
     var toolbarHost: NSView?
+    /// The app in front when the picker opened: its windows can be picked even if it's a background-style app.
+    var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
     func show(preselect: CGRect?) {
+        frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         for screen in NSScreen.screens {
             let w = KeyWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
             w.level = .screenSaver
@@ -193,8 +196,13 @@ final class PickerView: NSView {
                 as? [[String: Any]] else { return nil }
         let me = Int(getpid())
         for w in list {
-            guard (w[kCGWindowLayer as String] as? Int) == 0, (w[kCGWindowOwnerPID as String] as? Int) != me,
+            guard (w[kCGWindowLayer as String] as? Int) == 0, let pid = w[kCGWindowOwnerPID as String] as? Int, pid != me,
                   let b = w[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
+            // windows you can't see: fully transparent ones, and windows of background apps (agents / helpers
+            // such as MobileDeviceUpdater keep an "on-screen" window you never see) unless that app is in front
+            if (w[kCGWindowAlpha as String] as? Double ?? 1) < 0.05 { continue }
+            if pid_t(pid) != controller?.frontPID,
+               NSRunningApplication(processIdentifier: pid_t(pid))?.activationPolicy != .regular { continue }
             let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
             if r.width > 40, r.height > 40, r.contains(cg) {
                 return toNS(r).intersection(controller!.screenFrame(containing: p))
