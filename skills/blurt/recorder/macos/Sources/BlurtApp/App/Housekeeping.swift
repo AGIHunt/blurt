@@ -4,6 +4,9 @@
 //   jobs.py gc               jobs that ended 14+ days ago, beyond the last 300 (K4)
 //   transcribe.py auto --apply   speech models for this Mac (K9); after a hardware change that wants a download, one
 //                            quiet line in the island offers Settings → Speech (once: --apply records the hardware)
+//   Snapper.expireTaken      captures dragged out into another app 7+ days ago (Recently Taken) go to the Trash —
+//                            also hourly while the app runs
+//                            (BlurtCore TakenCaptures; the app's own, no script)
 // and keeps one `sessions.py monitor` running while it lives (K5: tmux windows → session status; it takes its own lock,
 // so a second copy just exits). Any of them missing (an older skill) is skipped.
 import AppKit
@@ -26,6 +29,7 @@ enum Housekeeping {
                 ProjectStore.shared.reload()
                 Scripts.indexUpdate([ProjectStore.shared.inbox.store])
                 startMonitor()
+                snapper.expireTaken()
                 askAboutCarriedOverProject()
             }
             await speechModels()

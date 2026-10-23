@@ -14,6 +14,8 @@
 //   recording             red dot (1 Hz breath) + time  snaps (n), else the mic level
 //   voice input           live waveform                 duration
 // Open: IslandContent.swift (home, recording, voice, the project drawer / switcher, one-line toasts).
+// Right-click (on the count, anywhere on it): Show N Hanging Cards · Recently Taken (N) — the cards dragged out into
+// other apps in the last 7 days, each with Copy / Copy Image / Copy Note / Put Back (TakenPanel.swift).
 //
 // Motion: the shape is three springs (width, height, corner) — response 0.42 s, damping 0.78 — so it can be
 // interrupted at any point; a bump (1.04 → 1, 0.25 s) when it swallows a capture; Reduce Motion = 0.2 s cross-fades.
@@ -40,6 +42,12 @@ final class IslandView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func keyDown(with e: NSEvent) { if island?.key(e) != true { super.keyDown(with: e) } }
     override func mouseDown(with e: NSEvent) { island?.clicked(at: convert(e.locationInWindow, from: nil)) }
+    /// Right-click (the ear's count, anywhere on the island): Show Hanging Cards, Recently Taken (N) — TakenPanel.
+    override func rightMouseDown(with e: NSEvent) {
+        let p = convert(e.locationInWindow, from: nil)
+        emit(["event": "island_menu"])
+        TakenPanel.islandMenu().popUp(positioning: nil, at: p, in: self)
+    }
     /// The left ear's count takes its own clicks, even while the open content grows over it.
     override func hitTest(_ p: NSPoint) -> NSView? {
         if let i = island, i.earHit(convert(p, from: superview)) { return self }

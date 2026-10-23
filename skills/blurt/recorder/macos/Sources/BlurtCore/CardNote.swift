@@ -8,10 +8,10 @@
 //    transcribe" (Retry in the card's right-click menu). A voice note that turned out to hold no speech is dropped
 //    (no mark, nothing left to transcribe) — the app does that, CardNote never sees one.
 //
-// Drag-out / copy: two pasteboard items, so apps that take several get both —
-//  1. the image: its file URL + PNG (a drag) or PNG + TIFF (a copy);
-//  2. the note as plain text.
-// A text-only target reads the text item; an image target the image. A drag's text is CardTransfer.dragText: one line
+// Drag-out / copy (v0.8.1: CardFiles.swift / CardPasteboard): two pasteboard items, so apps that take several get both —
+//  1. the picture: its file (the note in its PNG Description) + PNG (a drag) or PNG + TIFF (a copy);
+//  2. the note: a .md file, and the note as plain text on the same item (web apps take files and drop loose text).
+// A text-only target reads the text; an image target the image. A drag's text is CardTransfer.dragText: one line
 // (the note's lines joined with " · "), control characters out. A drop lands in whatever app is under the pointer —
 // a terminal types what it gets at its prompt, so a dropped newline would run the line, an escape sequence could end
 // a bracketed paste. Which app it is can't be known when the text is written: the first app the drag passes over

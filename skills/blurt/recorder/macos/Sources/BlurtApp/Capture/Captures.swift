@@ -383,23 +383,77 @@ final class Snapper {
         }
     }
 
-    /// A card dragged out and dropped in another app: it has done its job, so it leaves its thread — discarded like Esc
-    /// in the note (restorable: "Dragged out · Undo" for 4 s puts it back on its thread). Its files stay put for 20 s
-    /// before going to the Trash, for an app that reads a dropped file a little later.
-    func takeOut(_ s: Shot) {
+    // MARK: taken — dragged out and dropped in another app (v0.8.1)
+
+    /// A card dragged out and dropped in another app: it has done its job, so it leaves its thread — but it is "taken",
+    /// not discarded: its files stay where they are (the app may read them late) and it is in Recently Taken (the
+    /// island's right-click menu, the main window) for 7 days, where it can be copied, dragged out again or put back;
+    /// then housekeeping trashes it (expireTaken). With a note, the note also goes on the clipboard
+    /// (record.drag_copy_note): if that app kept only the picture, ⌘V brings the words back. "Undo" in the toast puts
+    /// the card back on its thread (and the clipboard as it was, if nothing was copied since).
+    /// `fromPanel`: dragged out of Recently Taken again (it is already off its thread; its days start over).
+    func takeOut(_ s: Shot, fromPanel: Bool = false) {
         guard let b = s.batch, !s.deleted else { return }
         if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
-        hanging.takeAway(s)
-        emit(["event": "take_out", "n": s.n, "session": b.dir.path])
-        final class Moved { var files: [URL: URL] = [:] }
-        let moved = Moved()
-        b.delete(s, recycleAfter: 20) { moved.files = $0 }
-        var t = Island.Toast(text: Loc.t("capture.taken_out", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
-            [weak self] in self?.undoDiscard(s, trashed: moved.files)
+        if !fromPanel { hanging.takeAway(s) }
+        b.take(s, at: Snapper.now)
+        let note = s.kind == .shot && CardExport.copyNoteAfterDrag ? s.copyText : nil
+        let saved = note.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
+        emit(["event": "take_out", "n": s.n, "session": b.dir.path, "note_copied": saved != nil, "from_panel": fromPanel])
+        takenChanged()
+        var t = Island.Toast(text: Loc.t(saved != nil ? "capture.taken_out_note" : "capture.taken_out", table: "Capture"),
+                             actionTitle: fromPanel ? nil : Loc.t("capture.undo", table: "Capture")) { [weak self] in
+            saved?.restore(capturePasteboard)
+            self?.putBack(s)
         }
-        t.seconds = 4
+        if fromPanel { t.action = nil }
+        t.seconds = saved != nil ? 5 : 4
         island.toast(t)
     }
+
+    /// Back on its thread (Undo after a drag-out, "Put Back" in Recently Taken): a card again. `from`: where it flies
+    /// up from (a row of the panel, screen rect).
+    func putBack(_ s: Shot, from: NSRect? = nil) {
+        guard let b = s.batch, !s.deleted, s.taken != nil else { return }
+        b.untake(s)
+        emit(["event": "put_back", "n": s.n, "session": b.dir.path])
+        if !cardBatches.contains(where: { $0 === b }) { b.onChange = { hanging.refresh() }; cardBatches.append(b) }
+        hanging.catchCapture(s, from: from)
+        takenChanged()
+    }
+
+    /// Recently Taken: captures dragged out in the last 7 days, newest first.
+    var recentlyTaken: [Shot] {
+        let now = Snapper.now
+        return cardBatches.flatMap { $0.live.filter { s in s.taken.map { TakenCaptures.isRecent(taken: $0, now: now) } ?? false } }
+            .sorted { ($0.taken ?? 0, $0.n) > ($1.taken ?? 0, $1.n) }
+    }
+
+    /// Housekeeping: a capture taken 7+ days ago goes to the Trash (files, its out/ folder; `{"n","deleted":true}`).
+    @discardableResult
+    func expireTaken() -> Int {
+        let now = Snapper.now
+        var n = 0
+        for b in cardBatches {
+            for s in b.live where s.taken.map({ TakenCaptures.isExpired(taken: $0, now: now) }) ?? false {
+                b.delete(s)
+                emit(["event": "taken_expired", "n": s.n, "session": b.dir.path])
+                n += 1
+            }
+        }
+        if n > 0 { takenChanged() }
+        return n
+    }
+
+    private func takenChanged() {
+        NotificationCenter.default.post(name: .blurtTakenChanged, object: nil, userInfo: ["count": recentlyTaken.count])
+        TakenPanel.shared.reload()
+    }
+
+    /// Now (seconds since 1970) — scripted checks move the clock (test command `clock SECONDS`) to see 7 days pass.
+    static var now: Double { Date().timeIntervalSince1970 + clockOffset }
+    static var clockOffset: Double = 0
+    private var expiryTimer: Timer?
 
     /// A voice note's words, if they are not there yet (a card dragged before they were written down).
     func wantWords(_ s: Shot) {
@@ -442,11 +496,16 @@ final class Snapper {
                 .filter { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) > cutoff }
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         for d in dirs where !cardBatches.contains(where: { canonicalPath($0.dir) == canonicalPath(d) }) {
-            guard let b = ShotBatch.load(d), b.live.contains(where: \.isCard) else { continue }
+            // cards, and captures dragged out (Recently Taken — or past their days, for expireTaken)
+            guard let b = ShotBatch.load(d), b.live.contains(where: { $0.isCard || $0.taken != nil }) else { continue }
             b.onChange = { hanging.refresh() }
             cardBatches.append(b)
         }
         hanging.refresh(quiet: true)
+        expireTaken()
+        takenChanged()
+        expiryTimer?.invalidate()
+        expiryTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in self?.expireTaken() }
         // a spoken note left without words (the app quit first, or an older version skipped it): its words now — or,
         // if it holds none, it is dropped. One after another (not a model process per card at launch).
         transcribeInTurn(cards.filter(\.needsWords))

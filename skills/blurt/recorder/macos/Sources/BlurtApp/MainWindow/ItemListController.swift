@@ -208,6 +208,47 @@ final class CapturesBanner: NSView {
     }
 }
 
+/// "Recently taken: 2" on top of the Inbox and Unassigned (v0.8.1): cards dragged out into other apps in the last 7
+/// days — a click opens Recently Taken (TakenPanel: copy, drag out again, put back). Hidden when there are none.
+final class TakenBanner: NSView {
+    var onClick: (() -> Void)?
+    private let row = JobRow()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.title.font = .systemFont(ofSize: 12, weight: .regular)
+        row.status.textColor = .controlAccentColor
+        row.bar.isHidden = true
+        row.spinner.isHidden = true
+        row.icon.image = Look.symbol("arrow.up.right.square", "", size: 14)
+        row.icon.contentTintColor = .secondaryLabelColor
+        row.onClick = { [weak self] in self?.onClick?() }
+        addSubview(row)
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(line)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 4), row.bottomAnchor.constraint(equalTo: line.topAnchor, constant: -4),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10), row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
+            line.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(count: Int) {
+        isHidden = count == 0
+        guard count > 0 else { return }
+        row.title.stringValue = T("main.captures.taken", count)
+        row.status.stringValue = T("main.captures.taken.show")
+        row.setAccessibilityLabel("\(row.title.stringValue), \(row.status.stringValue)")
+        row.toolTip = T("main.captures.taken.tip")
+    }
+}
+
 /// On top of a project whose folder is gone (moved, renamed, an unplugged disk): what happened, and "Locate…" — the
 /// folder opened again is the same project (projects.py add relocates it). Hidden otherwise.
 final class MissingFolderBanner: NSView {
@@ -345,6 +386,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let table = ItemTableView()
     let jobs = JobsSection()
     let captures = CapturesBanner()
+    let taken = TakenBanner()
     let missing = MissingFolderBanner()
     let bar = FilterBar()
     let empty = EmptyStateView()
@@ -412,12 +454,18 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         captures.onClick = { AppEnvironment.island?.revealCards() }
         missing.onLocate = { [weak self] in self?.actions?.emptyAction(7) }
         NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
-        let stack = NSStackView(views: [captures, missing, jobs, bar])
+        taken.onClick = { [weak self] in
+            let w = self?.view.window
+            TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
+        }
+        NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
+        let stack = NSStackView(views: [captures, taken, missing, jobs, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
-            captures.widthAnchor.constraint(equalTo: stack.widthAnchor), missing.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            captures.widthAnchor.constraint(equalTo: stack.widthAnchor), taken.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            missing.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -588,7 +636,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
     /// "Unfiled captures: N" on top of the inbox while cards hang under the island.
-    func reloadCaptures() { captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0) }
+    /// "Recently taken: N" on top of the Inbox and Unassigned while cards dragged out in the last 7 days are there.
+    func reloadCaptures() {
+        captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0)
+        taken.set(count: model.scope == .inbox || model.scope == .unassigned ? snapper.recentlyTaken.count : 0)
+    }
 
     /// "Can't find this folder" over a registered project whose folder is gone.
     func reloadMissing() {

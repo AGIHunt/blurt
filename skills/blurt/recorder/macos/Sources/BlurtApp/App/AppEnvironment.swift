@@ -47,6 +47,8 @@ protocol IslandHosting: AnyObject {
 extension Notification.Name {
     /// The number of hanging cards changed (userInfo "count").
     static let blurtCardsChanged = Notification.Name("dev.blurt.cards-changed")
+    /// Recently Taken changed — a card dragged out, put back, expired (userInfo "count").
+    static let blurtTakenChanged = Notification.Name("dev.blurt.taken-changed")
 }
 
 enum AppEnvironment {

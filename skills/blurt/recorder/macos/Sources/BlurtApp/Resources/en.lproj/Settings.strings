@@ -109,6 +109,10 @@
 "settings.general.system_audio" = "Also record system audio";
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
 "settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
+"settings.general.drag_copy_note" = "After dragging a card out, copy its note too";
+"settings.general.drag_copy_note.hint" = "If the app keeps only the picture, ⌘V pastes the note. This replaces what’s on the clipboard; Undo in the island puts it back.";
+"settings.general.drag_caption" = "Add the note under the picture when dragging";
+"settings.general.drag_caption.hint" = "The dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The capture itself stays clean.";
 "settings.general.about" = "About";
 "settings.general.version" = "Version";
 "settings.general.help" = "Help";

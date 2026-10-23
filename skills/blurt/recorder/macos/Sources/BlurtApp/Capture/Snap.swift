@@ -7,7 +7,10 @@
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
 // {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
-// same n win key by key; {"n","project","assigned_by"} assigns a card, {"n","deleted":true} deletes one.
+// same n win key by key; {"n","project","assigned_by"} assigns a card, {"n","deleted":true} deletes one,
+// {"n","taken":<wall>} marks a card dragged out and taken by another app (kept 7 days, BlurtCore TakenCaptures; put
+// back: {"n","taken":null}). What a card hands out as files (the picture with its note inside, the note as .md) is
+// written to out/<NNN>/ next to shots/ (CardExport.swift) and goes with the capture.
 
 import AppKit
 import AVFoundation
@@ -62,24 +65,17 @@ let capturePasteboard: NSPasteboard = {
     return .general
 }()
 
-/// The picture (PNG + TIFF) and, when there is one, the note (`text`: typed, then the words said) as a second item of
-/// its own: apps that take several items get both, an image-only app the image, a text-only app the words (v0.8: the
-/// text used to ride on the image's item, and most apps took the image and never saw it).
+/// Just the picture (PNG + TIFF): a card's "Copy Image". A click copies more — CardExport.copy (the picture and the
+/// note as files, and the note as text).
 @discardableResult
-func copyImageToPasteboard(_ url: URL, text: String? = nil) -> Bool {
+func copyImageToPasteboard(_ url: URL) -> Bool {
     guard let data = try? Data(contentsOf: url) else { return false }
     let pb = capturePasteboard
     pb.clearContents()
     let item = NSPasteboardItem()
     item.setData(data, forType: .png)
     if let tiff = NSImage(data: data)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
-    var items = [item]
-    if let t = text, !t.isEmpty {
-        let words = NSPasteboardItem()
-        words.setString(t, forType: .string)
-        items.append(words)
-    }
-    return pb.writeObjects(items)
+    return pb.writeObjects([item])
 }
 
 func backingScale(forDisplay id: CGDirectDisplayID) -> CGFloat {
@@ -181,6 +177,8 @@ final class Shot {
     var duration: Double?        // voice inputs
     var strokes: [[[Double]]] = []
     var deleted = false
+    /// dragged out and taken by another app (seconds since 1970): off its thread, in "Recently Taken" for 7 days
+    var taken: Double?
     /// how many times it was deleted: a delayed recycle only goes ahead for the deletion that scheduled it
     var deletions = 0
     /// project id | "inbox" | nil (nil and not assigned = a card waiting on a thread)
@@ -204,7 +202,7 @@ final class Shot {
     var voiceURL: URL? { voice.flatMap { batch?.dir.appendingPathComponent($0) } }
     var hasNote: Bool { !(text ?? "").isEmpty || voice != nil }
     /// Waiting on a thread: not assigned to a project, not handed to the AI, not deleted, not part of a recording.
-    var isCard: Bool { !deleted && project == nil && assignedBy == nil && batch?.inRecording == false }
+    var isCard: Bool { !deleted && taken == nil && project == nil && assignedBy == nil && batch?.inRecording == false }
     /// transcribe.py note on `voice`: running, failed (Retry in the card's menu), or nothing to do (in memory only:
     /// after a restart a voice note without `said` is simply transcribed again)
     var transcription: Transcription = .idle
@@ -227,6 +225,7 @@ final class Shot {
         if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
         if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
         if let a = assignedBy { o["assigned_by"] = a }
+        if let t = taken { o["taken"] = (t * 1000).rounded() / 1000 }
         if deleted { o["deleted"] = true }
         return o
     }
@@ -338,6 +337,25 @@ final class ShotBatch {
         onChange?()
     }
 
+    /// Dragged out and taken by another app: `{"n", "taken": wall}` — off its thread, files untouched (the app that took
+    /// them may read them late), findable in "Recently Taken" until housekeeping trashes it (Snapper.expireTaken).
+    func take(_ s: Shot, at wall: Double) {
+        s.taken = wall
+        let o: [String: Any] = ["n": s.n, "taken": (wall * 1000).rounded() / 1000]
+        io.async { appendJSONL(self.jsonl, o) }
+        onChange?()
+    }
+
+    /// Put back on its thread: `{"n", "taken": null}` — a card again.
+    func untake(_ s: Shot) {
+        s.taken = nil
+        io.async { appendJSONL(self.jsonl, ["n": s.n, "taken": NSNull()]) }
+        onChange?()
+    }
+
+    /// Where a capture's handed-out files live: out/<NNN>/ (the picture with its note, the note as .md).
+    func outDir(_ s: Shot) -> URL { dir.appendingPathComponent("out").appendingPathComponent(ShotBatch.name(s.n)) }
+
     /// `{"n", "deleted": true}`; the files go to the Trash (recoverable). `done` gets where each one went (for Undo).
     /// `recycleAfter`: the files stay where they are that long first (an app a card was dragged into may still be
     /// reading its file); undone meanwhile, they never move.
@@ -346,7 +364,7 @@ final class ShotBatch {
         s.deletions += 1
         let gen = s.deletions
         io.async { appendJSONL(self.jsonl, ["n": s.n, "deleted": true]) }
-        let files = [s.url, s.markedURL, s.voiceURL].compactMap { $0 }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let files = [s.url, s.markedURL, s.voiceURL, outDir(s)].compactMap { $0 }.filter { FileManager.default.fileExists(atPath: $0.path) }
         if !inRecording { writeMeta() }
         onChange?()
         guard !files.isEmpty else { done?([:]); return }
@@ -416,6 +434,7 @@ final class ShotBatch {
             s.deleted = o["deleted"] as? Bool ?? false
             s.project = o["project"] as? String
             s.assignedBy = o["assigned_by"] as? String
+            s.taken = (o["taken"] as? NSNumber)?.doubleValue
             s.batch = b
             if kind == .shot, !s.deleted, let u = s.url, let img = loadCGImage(u) {
                 s.pixelSize = CGSize(width: img.width, height: img.height)

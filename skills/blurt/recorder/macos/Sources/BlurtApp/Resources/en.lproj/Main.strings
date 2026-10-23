@@ -70,6 +70,9 @@
 
 "main.captures.show" = "Show under the island";
 "main.captures.tip" = "Captures hanging under the island, waiting for a project: click to bring them all down";
+"main.captures.taken" = "Recently taken: %ld";
+"main.captures.taken.show" = "Show";
+"main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back";
 "main.cmd.copy_full" = "Copy Full Text";
 "main.cmd.copy_instruction" = "Copy Instruction";
 

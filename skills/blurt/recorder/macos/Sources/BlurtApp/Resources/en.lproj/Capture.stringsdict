@@ -38,6 +38,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the Hanging Card</string><key>other</key><string>Show %d Hanging Cards</string></dict>
   </dict>
+  <key>capture.taken.days_left</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>kept 1 more day</string><key>other</key><string>kept %d more days</string></dict>
+  </dict>
   <key>capture.peck.done_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

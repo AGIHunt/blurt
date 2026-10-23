@@ -38,6 +38,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>显示 %d 张挂着的卡片</string></dict>
   </dict>
+  <key>capture.taken.days_left</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>还保留 %d 天</string></dict>
+  </dict>
   <key>capture.peck.done_many</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
