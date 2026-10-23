@@ -1,7 +1,10 @@
 // Typing the dictated text where the cursor is: save the user's pasteboard (every item, every type), put the text
 // on it, ⌘V into the frontmost app, put the old pasteboard back ~0.6 s later (unless something else changed it).
-//   • no Accessibility (posting keystrokes needs it), or the focused element is clearly not a text field →
+// BlurtCore's DictationPastePolicy decides, like Typeless: ⌘V into any other app in front, whatever its focused
+// element looks like to Accessibility (WeChat's input box isn't a text role) —
+//   • no app in front, secure input on / a password field, or no Accessibility (a posted ⌘V wouldn't arrive) →
 //     the text stays on the clipboard and the island says "Copied — paste with ⌘V";
+//   • a paste into a focus Accessibility can't confirm as text → the island offers "Copy again" for a few seconds;
 //   • never into Blurt's own island / panels. Our own windows (the test pad) get a real paste: action, no keystroke.
 import AppKit
 import ApplicationServices
@@ -58,36 +61,41 @@ enum DictationInsert {
             return paste(text, into: tv, window: tv.window, done: done)
         }
         let front = NSWorkspace.shared.frontmostApplication
-        if front?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+        let me = ProcessInfo.processInfo.processIdentifier
+        let trusted = AXIsProcessTrusted()
+        // the focused element only says whether the paste is confirmed (and catches a password field); it no longer
+        // decides: WeChat's input box and many Electron / web editors aren't an Accessibility text role
+        let focus = trusted && front != nil && front?.processIdentifier != me ? focusedElement() : Focus()
+        let decision = DictationPastePolicy.decide(.init(
+            hasFrontApp: front != nil, frontIsBlurt: front?.processIdentifier == me, secureInput: IsSecureEventInputEnabled(),
+            accessibility: trusted, focusSecure: focus.secure,
+            focusIsText: focus.role == nil && focus.pid == nil ? nil : focus.editable && (focus.pid == nil || focus.pid == front?.processIdentifier)))
+        switch decision {
+        case .own:
             return insertHere(text, done: done)
-        }
-        guard AXIsProcessTrusted() else {
+        case .copy(let why):
             copy(text)
-            emit(["event": "dictation_insert", "result": "copied", "why": "no_accessibility"])
+            emit(["event": "dictation_insert", "result": "copied", "why": why, "role": focus.role ?? ""])
             return done(.copied)
-        }
-        let focus = focusedElement()
-        if focus.clearlyNotText {
-            copy(text)
-            emit(["event": "dictation_insert", "result": "copied", "why": "not_text", "role": focus.role ?? ""])
-            return done(.copied)
-        }
-        // ⌘V only when we know where it lands: the focused element belongs to the app in front, and that app isn't us
-        guard let fp = focus.pid, let front = front, fp == front.processIdentifier, fp != ProcessInfo.processInfo.processIdentifier else {
-            copy(text)
-            emit(["event": "dictation_insert", "result": "copied", "why": "focus_unconfirmed", "role": focus.role ?? ""])
-            return done(.copied)
-        }
-        let saved = Saved.take()
-        put(text, transient: true)
-        let ours = NSPasteboard.general.changeCount
-        postCommandV()
-        emit(["event": "dictation_insert", "result": "pasted", "app": front.bundleIdentifier ?? "", "role": focus.role ?? ""])
-        DispatchQueue.main.asyncAfter(deadline: .now() + restoreAfter) {
-            if NSPasteboard.general.changeCount == ours { saved.restore() }
-            done(.pasted)
+        case .paste(let confirmed):
+            lastPasteConfirmed = confirmed
+            let saved = Saved.take()
+            put(text, transient: true)
+            let ours = NSPasteboard.general.changeCount
+            postCommandV()
+            emit(["event": "dictation_insert", "result": "pasted", "app": front?.bundleIdentifier ?? "", "role": focus.role ?? "",
+                  "confirmed": confirmed])
+            // the user's clipboard comes back; the dictated text stays in the history (and "Copy again" on the island)
+            DispatchQueue.main.asyncAfter(deadline: .now() + restoreAfter) {
+                if NSPasteboard.general.changeCount == ours { saved.restore() }
+                done(.pasted)
+            }
         }
     }
+
+    /// The last ⌘V went to a focus Accessibility recognised as a text field (false: WeChat and the like — the island
+    /// then offers "Copy again" in case it didn't land).
+    static var lastPasteConfirmed = true
 
     /// Our own app is in front: a text view in one of our windows gets a paste: (no synthetic key); the island or
     /// anything that isn't a text field gets nothing — the text goes to the clipboard.
@@ -147,16 +155,8 @@ enum DictationInsert {
         /// the process the focused element belongs to
         var pid: pid_t?
         var editable = false
-        /// a focused element we know can't take text (a button, a list, a table…): copy instead of pasting.
-        /// Unknown (no element, a web area, a window) still pastes — Electron and web apps often look like that.
-        var clearlyNotText: Bool {
-            guard let r = role, !editable else { return false }
-            return Focus.notText.contains(r)
-        }
-        static let notText: Set<String> = ["AXButton", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXImage",
-                                           "AXMenu", "AXMenuItem", "AXMenuBar", "AXMenuBarItem", "AXList", "AXTable", "AXOutline",
-                                           "AXRow", "AXCell", "AXSlider", "AXIncrementor", "AXBrowser", "AXDisclosureTriangle",
-                                           "AXTabGroup", "AXToolbar", "AXDockItem"]
+        /// a password field (AXSecureTextField as role or subrole): never pasted into
+        var secure = false
         static let text: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
     }
 
@@ -172,6 +172,9 @@ enum DictationInsert {
         if AXUIElementGetPid(el, &pid) == .success, pid > 0 { f.pid = pid }
         var role: CFTypeRef?
         if AXUIElementCopyAttributeValue(el, kAXRoleAttribute as CFString, &role) == .success { f.role = role as? String }
+        var sub: CFTypeRef?
+        let subrole = AXUIElementCopyAttributeValue(el, kAXSubroleAttribute as CFString, &sub) == .success ? sub as? String : nil
+        f.secure = f.role == "AXSecureTextField" || subrole == "AXSecureTextField"
         var settable: DarwinBoolean = false
         let canSetValue = AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable) == .success && settable.boolValue
         var range: CFTypeRef?

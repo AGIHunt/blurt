@@ -93,6 +93,87 @@ class Guard(unittest.TestCase):
         self.check("Figma里面那个design token还没同步", "Figma 里面那个 design tokens 还没同步。", None)
 
 
+OVERDELETE = ROOT / "tests" / "fixtures" / "polish_overdelete.jsonl"
+
+
+class Repair(unittest.TestCase):
+    """Polish dropping a meaningful phrase (a condition, an alternative, a number said its own way): the repair puts
+    the transcript's words back instead of losing the meaning (docs/design/dictation.md §Repair)."""
+
+    def overdelete(self) -> list[dict]:
+        return [json.loads(ln) for ln in OVERDELETE.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    def test_good_outputs_are_left_alone(self):
+        """No reference output of either eval set gets anything put back (fillers, stutters, restarts, corrections
+        applied, numbers in digits, moved words, paragraphs are all fine)."""
+        for c in cases() + self.overdelete():
+            fixed, spans = polish.repair(c["input"], c["reference"])
+            self.assertEqual(spans, [], c["id"])
+            self.assertEqual(fixed, c["reference"], c["id"])
+
+    def test_dropped_phrases_come_back(self):
+        for c in self.overdelete():
+            fixed, _spans = polish.repair(c["input"], c["bad"])
+            for k in c["keep"]:
+                self.assertIn(polish._norm(k), polish._norm(fixed), f"{c['id']}: {fixed}")
+            self.assertTrue(polish.guard(c["input"], fixed)["pass"], f"{c['id']}: {fixed}")
+
+    def test_a_dropped_condition_goes_back_where_it_was_said(self):
+        raw = "那我估计它会比，呃，句子短的时候比 Siri 要快，句子长的时候就，嗯，比 Siri 要慢一些。"
+        fixed, spans = polish.repair(raw, "那我估计它会比 Siri 要快，句子长的时候比 Siri 要慢一些。")
+        self.assertEqual(fixed, "那我估计它会比，句子短的时候比 Siri 要快，句子长的时候比 Siri 要慢一些。")
+        self.assertEqual(spans, ["比，句子短的时候"])
+
+    def test_numbers_stay_as_said(self):
+        fixed, spans = polish.repair("预算大概是一点二万，或者再多一点", "预算大概是一万二，或者再多一点。")
+        self.assertEqual(fixed, "预算大概是一点二万，或者再多一点。")
+        self.assertEqual(spans, ["一万二→一点二万"])
+        for said, wrote, same in [("三十", "30", True), ("十七点二", "17.2", True), ("五零零", "500", True),
+                                  ("二点三点一", "2.3.1", True), ("三万两千", "32000", True), ("一点二万", "12000", True),
+                                  ("一点二万", "一万二", False), ("两百五", "250", False), ("三千五百", "三千五", False)]:
+            self.assertEqual(polish.same_number(said, wrote), same, (said, wrote))
+
+    def test_corrections_and_fillers_may_go(self):
+        for raw, out in [("我们下午两点不对三点开会", "我们下午三点开会。"),
+                         ("把文件发给小王哦不是发给小李", "把文件发给小李。"),
+                         ("报价是两万，不对，是两万五，含税的。", "报价是两万五，含税的。"),
+                         ("嗯嗯那个我我我想说的是这个先放一放", "我想说的是，这个先放一放。"),
+                         ("这个按钮的，这个按钮的颜色要再深一点", "这个按钮的颜色要再深一点。"),
+                         ("send it to Tom no wait to Jerry", "Send it to Jerry.")]:
+            self.assertEqual(polish.repair(raw, out)[1], [], raw)
+        # "不是" that isn't a correction: what follows it was dropped too, so it goes back
+        fixed, spans = polish.repair("这个接口不是每次都慢，只有在凌晨备份的时候才会慢。", "这个接口只有在备份的时候才会慢。")
+        self.assertIn("不是每次都慢", fixed)
+        self.assertIn("凌晨", fixed)
+
+    def test_copying_the_context_is_caught(self):
+        """A streamed piece gets the polished text so far as context; continuing it isn't polishing."""
+        from dictation_vocab import allowed_units
+        raw = "智能客服项目的数据接口还没联调，明天上午再看。"
+        ctx = "数据看板项目下个月要上线，前端还差两个页面。"
+        allowed = allowed_units([], ctx)
+        g = polish.guard(raw, raw + "要上线，前端还差两个页面。", allowed, [], ctx)
+        self.assertEqual(g["reason"], "copied")
+        self.assertTrue(polish.guard(raw, "智能客服项目的数据接口还没联调，明天上午再看。", allowed, [], ctx)["pass"])
+        # the same words said again (in the dictation itself) aren't a copy
+        self.assertTrue(polish.guard("前端还差两个页面我们再看", "前端还差两个页面，我们再看。", allowed, [], ctx)["pass"])
+
+    def test_too_much_put_back_is_a_bad_polish(self):
+        raw = "嗯如果明天下雨的话我们就改成线上开会不下雨就还是去公司然后周五之前把方案发给我"
+        fixed, spans = polish.repair(raw, "周五前发方案。")
+        self.assertGreater(polish.repaired_share(raw, spans), polish.REPAIR_MAX)
+
+    def test_adaptive_idle(self):
+        from _common import adaptive_idle
+        now = 10_000.0
+        self.assertEqual(adaptive_idle(180, [], "pro", now=now), 180)
+        self.assertEqual(adaptive_idle(180, [now - 60] * 3, "pro", now=now), 360)
+        self.assertEqual(adaptive_idle(180, [now - 60] * 8, "standard", now=now), 900)
+        self.assertEqual(adaptive_idle(600, [now - 60] * 9, "pro", now=now), 1800)        # capped
+        self.assertEqual(adaptive_idle(180, [now - 4000] * 9, "pro", now=now), 180)       # long ago doesn't count
+        self.assertEqual(adaptive_idle(180, [now - 60] * 9, "light", now=now), 180)       # small Macs: memory first
+
+
 class CleanOutput(unittest.TestCase):
     def test_strips_wrappers(self):
         c = polish.clean_output

@@ -457,6 +457,11 @@ final class Island: NSObject, IslandHosting {
         } else if Dictation.shared.busy {
             // dictation never opens the island: ears only, so the app being typed into keeps the whole screen
             switch Dictation.shared.phase {
+            case .listening where !Dictation.shared.micLive:
+                // the mic is still starting (a Bluetooth headset takes ~1 s): not "listening" until audio arrives,
+                // so the user knows when to start talking
+                left.set(.glyph(.keyboard, pulse: false))
+                right.set(.dots)
             case .listening:
                 left.set(.dictation(Dictation.shared.levels))
                 right.set(.text(Island.clock(Dictation.shared.elapsed), mono: true))

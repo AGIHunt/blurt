@@ -219,6 +219,42 @@ class BiasedNote(unittest.TestCase):
         self.assertEqual(Biasable.seen[1], [])                # cleared: the next voice note isn't biased
         self.assertNotIn("asr_text", plain)                   # no vocab asked: the plain voice-note answer
 
+    def test_streamed_piece_gets_the_text_so_far(self):
+        """A streamed dictation's piece: `prior` (the text so far) reaches the backend for this request only."""
+        import test_asr_select as A
+        T = A.T
+
+        class Prior(A.FakeBackend):
+            seen = []
+
+            def set_vocab(self, terms):
+                return bool(terms)
+
+            def set_prior(self, text):
+                Prior.seen.append(text)
+
+            def transcribe(self, x):
+                return [(0.0, len(x) / A.SR, "然后跑一遍评测", "zh")]
+
+        old = T.BACKENDS
+        T.BACKENDS = {**T.BACKENDS, "sensevoice": Prior}
+        oldvad = T.vad_segments
+        T.vad_segments = lambda x, max_speech=25: [(0.0, len(x) / A.SR)]
+        real = A.fake_installed("sensevoice-small")
+        try:
+            with tempfile.TemporaryDirectory() as d, A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                wav = A.write_wav(Path(d) / "p.wav", 1.5)
+                r = T.NoteEngine().note(wav, vocab=["Gemini"], prior="先检查一下 Gemini API 的配额" * 20)
+                T.NoteEngine().note(wav, vocab=["Gemini"])
+        finally:
+            T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
+        self.assertEqual(r["text"], "然后跑一遍评测")
+        self.assertEqual(len(Prior.seen), 2)                  # set, then cleared
+        self.assertEqual(len(Prior.seen[0]), 200)             # the last 200 characters
+        self.assertTrue(Prior.seen[0].endswith("的配额"))
+        self.assertEqual(Prior.seen[1], "")
+        self.assertIn("load_ms", r)
+
     def test_dictation_models_rows(self):
         import test_asr_select as A
         T = A.T
@@ -226,13 +262,19 @@ class BiasedNote(unittest.TestCase):
         try:
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
                 d = T.dictation_models(A.hw())
-                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")       # Apple silicon, pro
+                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")       # Apple silicon, pro (v0.8 speed eval)
                 self.assertEqual(d["selected"], "sensevoice-small")             # … until it is installed
-                self.assertEqual(d["models"][0]["id"], "qwen3-asr-0.6b-mlx")
+                self.assertEqual(d["models"][0]["id"], "qwen3-asr-1.7b-mlx")
                 self.assertEqual({m["id"]: m["vocab"] for m in d["models"]}["sensevoice-small"], "none")
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["recommended"], "qwen3-asr-0.6b-mlx")   # standard
             T.installed = lambda m: m["id"] in ("sensevoice-small", "qwen3-asr-0.6b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                # a pro Mac with only the 0.6B keeps using it until the 1.7B is installed
                 self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-0.6b-mlx")
+            T.installed = lambda m: m["id"] in ("sensevoice-small", "qwen3-asr-0.6b-mlx", "qwen3-asr-1.7b-mlx")
+            with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-0.6b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"},
                            "record": {"dictation": {"asr_model": "sensevoice-small"}}}):
                 d = T.dictation_models(A.hw())

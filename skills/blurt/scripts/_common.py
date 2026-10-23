@@ -197,6 +197,23 @@ def fix_tcl_env() -> None:
 
 # ------------------------------------------------------------------ where things live (read at call time: tests and
 # the apps point BLURT_HOME / BLURT_WORKSPACE elsewhere after import)
+# the warm model servers (transcribe.py / polish.py serve)
+IDLE_CAP = 1800          # the longest a model stays loaded without a request (frequent use)
+EXIT_CAP = 4 * 3600      # … and the longest the server waits for one
+
+
+def adaptive_idle(base: float, uses: list[float], tier: str, cap: float = IDLE_CAP, now: float | None = None) -> float:
+    """How long to keep the model (or the server) without a request: `base`, longer while dictation is used often —
+    ×2 at 3+ requests in the last 30 min, ×5 at 8+ (at most `cap`) — so the next dictation finds it warm. Only where
+    memory allows: the light and minimal tiers keep `base` (the model is a large share of their RAM)."""
+    if tier not in ("pro", "standard"):
+        return base
+    now = now or time.time()
+    recent = sum(1 for t in uses if now - t < 1800)
+    factor = 5 if recent >= 8 else 2 if recent >= 3 else 1
+    return max(base, min(cap, base * factor))
+
+
 def blurt_home() -> Path:
     return Path(os.environ.get("BLURT_HOME") or Path.home() / ".blurt")
 

@@ -223,8 +223,9 @@ public final class ScriptRunner {
 
     /// Long-running script (live.py, a watcher…): stdout+stderr lines delivered on the main queue as they arrive.
     /// The process is already running when this returns; the caller owns it (terminate(), terminationHandler).
-    public func spawn(_ script: String, _ args: [String], onLine: @escaping (String) -> Void) throws -> Process {
+    public func spawn(_ script: String, _ args: [String], env: [String: String] = [:], onLine: @escaping (String) -> Void) throws -> Process {
         let p = try process(script, args)
+        if !env.isEmpty { p.environment = (p.environment ?? [:]).merging(env) { _, new in new } }
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe

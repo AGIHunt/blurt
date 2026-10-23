@@ -27,6 +27,11 @@
 "dictation.toast.voice_busy" = "语音备注正在听，先结束它";
 "dictation.toast.nothing" = "没听到内容";
 "dictation.toast.copied" = "已复制，可粘贴";
+"dictation.toast.pasted_unsure" = "已粘贴";
+"dictation.toast.copy_again" = "再复制一次";
+"dictation.mic.builtin" = "听写时使用 Mac 自带的麦克风";
+"dictation.mic.builtin.detail" = "AirPods 等蓝牙耳机要约一秒才开始收音（开头的话会丢），还会把音乐切到通话音质。Mac 自带的麦克风立刻就能听，但会收进更多环境声。自动：默认输入是蓝牙时开启。";
+"dictation.mic.start_sound" = "开始收音时提示音";
 
 /* 菜单 */
 "dictation.menu.history" = "听写历史…";

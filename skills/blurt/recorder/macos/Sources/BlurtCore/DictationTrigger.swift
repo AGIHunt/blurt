@@ -10,7 +10,8 @@
 //                       held when it went down — so the key as a modifier (⌥-letter, ⌥⇧V, Fn-←) never triggers.
 //   hold mode           held alone for `holdMin` (250 ms) starts; letting go stops; another key or a click joining
 //                       in cancels (the user is typing a shortcut, not talking).
-//   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models early).
+//   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models, open the mic
+//                       early); `armedDown` says whether that press can still start (else the app closes the mic).
 import Foundation
 
 public struct DictationTrigger {
@@ -93,6 +94,15 @@ public struct DictationTrigger {
     public var deadline: Double? {
         if let h = holdThreshold, case let .down(at, clean, _) = state, clean, !active { return at + h }
         return nil
+    }
+
+    /// The key is down alone and nothing has started yet: what `.arm` said may still become a `.start`. The app opens
+    /// the microphone on `.arm` (so the first words aren't lost while the trigger waits for the key to come up) and
+    /// closes it again as soon as this turns false without a start — the press became a shortcut (Fn-←, ⌥A), a click
+    /// joined in, or it was let go too early or too late.
+    public var armedDown: Bool {
+        if case let .down(_, clean, _) = state { return clean && !active }
+        return false
     }
 
     /// The dictation ended or was started some other way (a menu, the island, a time limit).

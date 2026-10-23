@@ -25,6 +25,27 @@ extension App {
                 DispatchQueue.main.asyncAfter(deadline: .now() + t) { d.handle(shifted) }
             }
         case "toggle": d.toggle()
+        case "set":                 // set KEY true|false|NUMBER|-: record.dictation.KEY (- = unset)
+            let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
+            guard a.count == 2 else { return }
+            var v: Any? = a[1]
+            if a[1] == "-" { v = nil } else if a[1] == "true" { v = true } else if a[1] == "false" { v = false } else if let n = Double(a[1]) { v = n }
+            Dictation.set(a[0], v)
+            emit(["event": "dictation_test_set", "key": a[0], "value": v.map { "\($0)" } ?? "default"])
+        case "stop-after":          // stop-after SECONDS: the next dictation stops (as the key-up would) at that point of the wav
+            d.testStopAfter = Double(rest)
+            emit(["event": "dictation_test_stop_after", "seconds": d.testStopAfter ?? NSNull()])
+        case "wav":                 // wav PATH: the "microphone" for the next dictations (a file, never the real mic)
+            d.testWav = rest.isEmpty ? nil : rest
+            emit(["event": "dictation_test_wav", "wav": d.testWav ?? NSNull()])
+        case "paste-policy":
+            // paste-policy front=other|self|none secure=0|1 ax=0|1 text=yes|no|unknown: what DictationInsert would do
+            var kv: [String: String] = [:]
+            for p in rest.split(separator: " ") { let a = p.split(separator: "=", maxSplits: 1).map(String.init); if a.count == 2 { kv[a[0]] = a[1] } }
+            let decision = DictationPastePolicy.decide(.init(
+                hasFrontApp: kv["front"] != "none", frontIsBlurt: kv["front"] == "self", secureInput: kv["secure"] == "1",
+                accessibility: kv["ax"] != "0", focusIsText: kv["text"] == "yes" ? true : kv["text"] == "no" ? false : nil))
+            emit(["event": "dictation_paste_policy", "decision": "\(decision)"])
         case "cancel": d.cancel()
         case "apply":
             d.apply()

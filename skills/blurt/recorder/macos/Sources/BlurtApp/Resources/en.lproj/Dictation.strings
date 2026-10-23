@@ -27,6 +27,11 @@
 "dictation.toast.voice_busy" = "A voice note is listening — finish it first";
 "dictation.toast.nothing" = "Didn’t catch anything";
 "dictation.toast.copied" = "Copied — paste it with Command-V";
+"dictation.toast.pasted_unsure" = "Pasted";
+"dictation.toast.copy_again" = "Copy Again";
+"dictation.mic.builtin" = "Use the Mac’s microphone for dictation";
+"dictation.mic.builtin.detail" = "AirPods and other Bluetooth headsets take about a second to start listening (the first words are lost) and switch your music to call quality. The Mac’s microphone is ready at once, but hears more of the room. Automatic: on while the default input is Bluetooth.";
+"dictation.mic.start_sound" = "Play a sound when listening starts";
 
 /* menus */
 "dictation.menu.history" = "Dictation History…";

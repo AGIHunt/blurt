@@ -51,5 +51,23 @@ final class DictationHistoryTests: XCTestCase {
         try Data(#"{"id":"d-x","raw":"hi","t":"2026-10-23T10:00:00+08:00"}"#.utf8).write(to: h.url)
         XCTAssertNil(h.load().first?.termsApplied)
         XCTAssertNil(h.load().first?.contextUsed)
+        XCTAssertNil(h.load().first?.timing)
+    }
+
+    func testStageTimingsAndRepairsAreKept() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        var e = entry("d-t", "长的一段", Date().timeIntervalSince1970)
+        e.timing = ["asr_ms": 180, "polish_ms": 240, "load_ms": 0, "total_ms": 450, "segments": 6, "asr_ms_all": 999]
+        e.repaired = ["句子短的时候"]
+        h.append(e)
+        let line = try String(contentsOf: h.url, encoding: .utf8)
+        XCTAssertTrue(line.contains("\"total_ms\":450") && line.contains("\"segments\":6") && line.contains("\"asr_ms\":180"))
+        XCTAssertFalse(line.contains("asr_ms_all"))                    // only the documented keys
+        XCTAssertEqual(h.load().first?.timing?["polish_ms"], 240)
+        XCTAssertEqual(h.load().first?.repaired, ["句子短的时候"])
+        XCTAssertEqual(h.prune(days: 30), 0)                             // prune keeps them
+        XCTAssertEqual(h.load().first?.timing?["load_ms"], 0)
     }
 }

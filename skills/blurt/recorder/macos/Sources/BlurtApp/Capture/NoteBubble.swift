@@ -19,8 +19,10 @@
 
 import AppKit
 import BlurtCore
+import AudioToolbox
 import AVFoundation
 import Carbon.HIToolbox
+import CoreAudio
 
 // MARK: - Voice note: microphone (or an injected wav) → VAD → wav file
 
@@ -31,12 +33,19 @@ final class NoteVoice {
     var onLevel: ((Float) -> Void)?
     var onSpeech: (() -> Void)?
     var onEnd: ((End) -> Void)?
+    /// every buffer of 16 kHz mono samples, as it is written (dictation streams them to the speech model)
+    var onSamples: (([Float]) -> Void)?
+    /// the first audio arrived: the microphone really listens now (dictation shows "listening" only from here)
+    var onFirstAudio: (() -> Void)?
     var speaking: Bool { vad.speaking }
     private(set) var running = false
+    /// seconds from start() to the first buffer (nil until then)
+    private(set) var firstAudioAfter: Double?
     private var engine: AVAudioEngine?
     private var file: AVAudioFile?
     private var injectTimer: Timer?
     private var started = Date()
+    private var startedAt: CFTimeInterval = 0
     /// speech start / the pause that ends it (BlurtCore: an adaptive noise floor, so a room louder than the mic's
     /// first moments still counts as quiet)
     private var vad = NoteEndpointer(sampleRate: NoteVoice.rate)
@@ -57,6 +66,14 @@ final class NoteVoice {
     var speechSeconds: Double { vad.speechSeconds }
     /// A wav to play through instead of the microphone (tests); nil = $BLURT_NOTE_WAV, else the mic.
     var inject: String?
+    /// Tests: the injected wav stands for the world's sound since this moment (the key-down): audio that played
+    /// before the feed started is skipped, as a real mic would have missed it. nil = the wav from its start.
+    var injectClock: CFTimeInterval?
+    /// Tests: how long the simulated microphone takes to deliver its first buffer (BLURT_TEST_MIC_START_MS; a
+    /// Bluetooth headset switching to its call profile takes ~1 s).
+    static var testStartDelay: Double { Double(ProcessInfo.processInfo.environment["BLURT_TEST_MIC_START_MS"] ?? "").map { $0 / 1000 } ?? 0 }
+    /// dictation: prefer the Mac's own microphone (DictationMicChoice decides; MicEngine sets the device)
+    var builtInMic = false
 
     init(url: URL) { self.url = url }
 
@@ -89,43 +106,66 @@ final class NoteVoice {
                                        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         started = Date()
+        startedAt = CACurrentMediaTime()
         if NoteVoice.testDenied { ready(false); return }
         if let wav = inject ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"] {
+            running = true                  // the feed checks it as it begins
             running = startInjected(URL(fileURLWithPath: wav))
             ready(running)
             return
         }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: running = startMic(); ready(running)
+        case .authorized: startMic(ready)
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { ok in
-                DispatchQueue.main.async { self.running = ok && self.startMic(); ready(self.running) }
+                DispatchQueue.main.async { if ok { self.startMic(ready) } else { ready(false) } }
             }
         default: ready(false)
         }
     }
 
-    private func startMic() -> Bool {
-        let e = AVAudioEngine()
-        let input = e.inputNode
-        let inFmt = input.outputFormat(forBus: 0)
-        guard inFmt.sampleRate > 0, let conv = AVAudioConverter(from: inFmt, to: fmt) else { return false }
-        input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(inFmt.sampleRate / 10), format: inFmt) { [weak self] buf, _ in
+    /// The prepared engine (MicEngine: made at launch, input node ready, not started — no mic in use until here),
+    /// started off the main thread: a Bluetooth headset can take a second to switch profiles, and the key presses
+    /// and the island must not wait for it.
+    private func startMic(_ ready: @escaping (Bool) -> Void) {
+        running = true          // buffers may arrive before ready() runs
+        let builtIn = builtInMic
+        MicEngine.shared.queue.async { [weak self] in
             guard let self = self else { return }
-            let cap = AVAudioFrameCount(Double(buf.frameLength) * NoteVoice.rate / inFmt.sampleRate) + 32
-            guard let out = AVAudioPCMBuffer(pcmFormat: self.fmt, frameCapacity: cap) else { return }
-            var fed = false
-            conv.convert(to: out, error: nil) { _, status in
-                if fed { status.pointee = .noDataNow; return nil }
-                fed = true
-                status.pointee = .haveData
-                return buf
+            let e = MicEngine.shared.take(builtIn: builtIn)
+            let input = e.inputNode
+            let inFmt = input.outputFormat(forBus: 0)
+            guard inFmt.sampleRate > 0, let conv = AVAudioConverter(from: inFmt, to: self.fmt) else {
+                MicEngine.shared.giveBack(e, builtIn: builtIn)
+                return DispatchQueue.main.async { self.running = false; ready(false) }
             }
-            DispatchQueue.main.async { self.feed(out) }
+            input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(inFmt.sampleRate / 20), format: inFmt) { [weak self] buf, _ in
+                guard let self = self else { return }
+                let cap = AVAudioFrameCount(Double(buf.frameLength) * NoteVoice.rate / inFmt.sampleRate) + 32
+                guard let out = AVAudioPCMBuffer(pcmFormat: self.fmt, frameCapacity: cap) else { return }
+                var fed = false
+                conv.convert(to: out, error: nil) { _, status in
+                    if fed { status.pointee = .noDataNow; return nil }
+                    fed = true
+                    status.pointee = .haveData
+                    return buf
+                }
+                DispatchQueue.main.async { self.feed(out) }
+            }
+            do { try e.start() } catch {
+                input.removeTap(onBus: 0)
+                MicEngine.shared.giveBack(e, builtIn: builtIn)
+                return DispatchQueue.main.async { self.running = false; ready(false) }
+            }
+            DispatchQueue.main.async {
+                guard self.running else {          // stopped while it was starting
+                    MicEngine.shared.queue.async { input.removeTap(onBus: 0); e.stop(); MicEngine.shared.giveBack(e, builtIn: builtIn) }
+                    return
+                }
+                self.engine = e
+                ready(true)
+            }
         }
-        do { try e.start() } catch { input.removeTap(onBus: 0); return false }
-        engine = e
-        return true
     }
 
     private func startInjected(_ src: URL) -> Bool {
@@ -141,22 +181,37 @@ final class NoteVoice {
         }
         var pos: AVAudioFrameCount = 0
         let chunk = AVAudioFrameCount(NoteVoice.rate / 10)
-        injectTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, let b = AVAudioPCMBuffer(pcmFormat: self.fmt, frameCapacity: chunk) else { return }
-            b.frameLength = chunk
-            let dst = b.floatChannelData![0]
-            let src = out.floatChannelData![0]
-            for i in 0..<Int(chunk) { dst[i] = pos + AVAudioFrameCount(i) < out.frameLength ? src[Int(pos) + i] : 0 }
-            pos += chunk
-            self.feed(b)
+        let begin = { [weak self] in
+            guard let self = self, self.running else { return }
+            // the world kept talking since the key went down: what played before the "mic" came up is not heard
+            if let clock = self.injectClock {
+                pos = AVAudioFrameCount(max(0, (CACurrentMediaTime() - clock) * NoteVoice.rate))
+            }
+            self.injectTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                guard let self = self, let b = AVAudioPCMBuffer(pcmFormat: self.fmt, frameCapacity: chunk) else { return }
+                b.frameLength = chunk
+                let dst = b.floatChannelData![0]
+                let src = out.floatChannelData![0]
+                for i in 0..<Int(chunk) { dst[i] = pos + AVAudioFrameCount(i) < out.frameLength ? src[Int(pos) + i] : 0 }
+                pos += chunk
+                self.feed(b)
+            }
+            self.injectTimer?.fire()
         }
+        let delay = NoteVoice.testStartDelay
+        if delay > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: begin) } else { begin() }
         return true
     }
 
     private func feed(_ b: AVAudioPCMBuffer) {
         guard running || injectTimer != nil, b.frameLength > 0 else { return }
+        if firstAudioAfter == nil {
+            firstAudioAfter = CACurrentMediaTime() - startedAt
+            onFirstAudio?()
+        }
         try? file?.write(from: b)
         let samples = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
+        onSamples?(samples)
         let db = NoteEndpointer.level(samples)
         onLevel?(max(0, min(1, (db + 55) / 45)))
         for e in vad.feed(samples) {
@@ -181,10 +236,112 @@ final class NoteVoice {
         running = false
         injectTimer?.invalidate()
         injectTimer = nil
-        if let e = engine { e.inputNode.removeTap(onBus: 0); e.stop() }
-        engine = nil
+        if let e = engine {
+            engine = nil
+            let builtIn = builtInMic
+            MicEngine.shared.queue.async { e.inputNode.removeTap(onBus: 0); e.stop(); MicEngine.shared.giveBack(e, builtIn: builtIn) }
+        }
         file = nil
         if !keep { try? FileManager.default.removeItem(at: url) }
+    }
+}
+
+/// The microphone's AVAudioEngine, made once (at launch, when microphone access is already granted) and reused: the
+/// engine and its input node (the HAL unit, the device's format) are set up and `prepare()`d, but never started until
+/// someone listens — macOS shows the mic as in use only while it runs. That takes the engine set-up (tens of ms, more
+/// on the first use) off the moment the dictation key goes down. Dictation can ask for the Mac's built-in mic
+/// (DictationMicChoice): the input unit's device is switched before it starts. Test builds never touch it.
+final class MicEngine {
+    static let shared = MicEngine()
+    /// starts and stops happen here, never on the main thread
+    let queue = DispatchQueue(label: "blurt.mic", qos: .userInteractive)
+    private var spare: AVAudioEngine?
+    private var spareBuiltIn = false
+    private var observer: NSObjectProtocol?
+
+    /// At launch and after each use: a spare engine, ready but not running.
+    func prepare(builtIn: Bool) {
+        guard !DictationInsert.testMode, AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return }
+        queue.async {
+            guard self.spare == nil || self.spareBuiltIn != builtIn else { return }
+            self.spare = self.make(builtIn: builtIn)
+            self.spareBuiltIn = builtIn
+        }
+    }
+
+    /// On `queue`: the spare engine when it fits, else a new one.
+    func take(builtIn: Bool) -> AVAudioEngine {
+        if let e = spare, spareBuiltIn == builtIn { spare = nil; return e }
+        spare = nil
+        return make(builtIn: builtIn)
+    }
+
+    /// On `queue`: a stopped engine goes back to being the spare (the next dictation reuses it).
+    func giveBack(_ e: AVAudioEngine, builtIn: Bool) {
+        guard spare == nil, !DictationInsert.testMode else { return }
+        e.prepare()
+        spare = e
+        spareBuiltIn = builtIn
+    }
+
+    private func make(builtIn: Bool) -> AVAudioEngine {
+        let e = AVAudioEngine()
+        if builtIn, let dev = AudioDevices.builtInInput(), let unit = e.inputNode.audioUnit {
+            var id = dev
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id,
+                                 UInt32(MemoryLayout<AudioDeviceID>.size))
+        }
+        _ = e.inputNode.outputFormat(forBus: 0)
+        e.prepare()
+        if observer == nil {
+            // the default input changed (headphones plugged in, AirPods connected): the spare is stale
+            observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { [weak self] n in
+                guard let self = self else { return }
+                self.queue.async { if let s = self.spare, (n.object as? AVAudioEngine) === s { self.spare = nil } }
+            }
+        }
+        return e
+    }
+}
+
+/// The audio devices dictation cares about (CoreAudio, read-only: nothing here opens a device).
+enum AudioDevices {
+    private static func prop<T>(_ obj: AudioObjectID, _ sel: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal, _ empty: T) -> T? {
+        var addr = AudioObjectPropertyAddress(mSelector: sel, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+        var v = empty
+        var size = UInt32(MemoryLayout<T>.size)
+        return AudioObjectGetPropertyData(obj, &addr, 0, nil, &size, &v) == noErr ? v : nil
+    }
+
+    static var defaultInput: AudioDeviceID? {
+        prop(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice, AudioDeviceID(0)).flatMap { $0 == 0 ? nil : $0 }
+    }
+
+    static func transport(_ d: AudioDeviceID) -> UInt32? { prop(d, kAudioDevicePropertyTransportType, UInt32(0)) }
+
+    static func isBluetooth(_ d: AudioDeviceID) -> Bool {
+        guard let t = transport(d) else { return false }
+        return t == kAudioDeviceTransportTypeBluetooth || t == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    /// The default input is a Bluetooth headset (AirPods & co.).
+    static var defaultInputIsBluetooth: Bool { defaultInput.map(isBluetooth) ?? false }
+
+    /// The Mac's own microphone, if it has one (a Mac mini or Studio doesn't).
+    static func builtInInput() -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return nil }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return nil }
+        return ids.first { id in
+            guard transport(id) == kAudioDeviceTransportTypeBuiltIn else { return false }
+            var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput,
+                                               mElement: kAudioObjectPropertyElementMain)
+            var s: UInt32 = 0
+            return AudioObjectGetPropertyDataSize(id, &a, 0, nil, &s) == noErr && s > 0
+        }
     }
 }
 
