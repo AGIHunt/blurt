@@ -332,7 +332,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             f.text = Dictation.enabled ? Dictation.keyName : nil
             f.needsDisplay = true
             dictationNote?.stringValue = Dictation.enabled
-                ? Loc.t(Dictation.mode == .hold ? "dictation.mode.hold" : "dictation.mode.tap", table: "Dictation") : ""
+                ? Loc.t("dictation.mode.\(Dictation.mode.rawValue)", table: "Dictation") : ""
             dictationNote?.toolTip = dictationNote?.stringValue
         }
         let hk = Hotkeys.shared

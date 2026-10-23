@@ -19,7 +19,7 @@
 "dictation.polish.family.gemma.installed" = "Gemma · %@ on this Mac";
 "dictation.polish.family.qwen.installed" = "Qwen · %@ on this Mac";
 "dictation.polish.progress" = "Downloading · %1$@ of %2$@";
-"dictation.toast.needs_permission" = "To dictate with %@, allow Input Monitoring";
+"dictation.toast.needs_permission" = "To dictate with %@, Blurt needs a permission";
 "dictation.toast.set_up" = "Set Up";
 "dictation.toast.on.tap" = "Dictation is on: tap %@ to talk";
 "dictation.toast.on.hold" = "Dictation is on: hold %@ and talk";
@@ -32,8 +32,8 @@
 "dictation.menu.history" = "Dictation History…";
 "dictation.menu.history.tip" = "Tap %@ in any app to dictate";
 "dictation.menu.turn_on" = "Turn On Dictation…";
-"dictation.menu.turn_on.tip" = "Blurt can’t hear %@ yet: dictation needs Input Monitoring.";
-"dictation.menu.turn_on.subtitle" = "Allow Input Monitoring to use %@";
+"dictation.menu.turn_on.tip" = "Blurt can’t hear %@ yet: dictation needs Accessibility or Input Monitoring.";
+"dictation.menu.turn_on.subtitle" = "Set up permissions to use %@";
 
 /* Settings → Dictation */
 "dictation.settings.tab" = "Dictation";
@@ -42,7 +42,6 @@
 "dictation.settings.enable.detail" = "Press %@ alone, talk, and the words are typed where your cursor is. Esc cancels.";
 "dictation.settings.key" = "Key";
 "dictation.settings.mode" = "How it works";
-"dictation.settings.fn_hint" = "For Fn: in System Settings → Keyboard, set \"Press fn key to\" to \"Do Nothing\". If Typeless is running and also uses Fn, both will react — give one of them another key.";
 "dictation.settings.voice_note_hint" = "Dictation types into the app in front. To keep what you say in Blurt instead, use the voice note (%@).";
 "dictation.settings.voice_note_off" = "its shortcut is off";
 "dictation.settings.either_hint" = "A tap counts only when no other key or click comes in between, so Option shortcuts keep working.";
@@ -52,7 +51,7 @@
 "dictation.status.on.tap" = "Tap %@ in any app to start talking, and tap it again to stop.";
 "dictation.status.on.hold" = "Hold %@ in any app and talk; let go to stop.";
 "dictation.status.off" = "Not working yet: Blurt can’t hear %@";
-"dictation.status.off.detail" = "Allow Input Monitoring for Blurt in System Settings. It starts working right away, no restart needed.";
+"dictation.status.off.detail" = "Click Turn On: Blurt opens the right place in System Settings and shows what to switch on. It works right away, no restart needed.";
 "dictation.status.fix" = "Turn On…";
 "dictation.listener.tap" = "Listening in every app (Input Monitoring).";
 "dictation.listener.monitor" = "Listening in every app through Accessibility (Input Monitoring is off).";
@@ -63,9 +62,9 @@
 
 "dictation.perm.section" = "Permissions";
 "dictation.perm.input_monitoring" = "Input Monitoring";
-"dictation.perm.input_monitoring.why" = "To notice %@ on its own. Blurt only listens for that key — it never records what you type.";
+"dictation.perm.input_monitoring.why" = "To notice %@ in every app. Blurt only listens for that key — it never records what you type.";
 "dictation.perm.accessibility" = "Accessibility";
-"dictation.perm.accessibility.why" = "To paste the text into the app you’re in, and to read the words around the cursor so names come out right (never password fields, never kept). Without it the text is copied and you paste it yourself.";
+"dictation.perm.accessibility.why" = "To paste the text into the app you’re in and read the words around the cursor so names come out right (never password fields, never kept). With Fn, it also hears the key. Without it the text is copied and you paste it yourself.";
 "dictation.perm.restart_hint" = "Allowed. Blurt picks it up within a few seconds, no restart needed.";
 
 "dictation.polish.section" = "Polish";
@@ -160,3 +159,28 @@
 "dictation.vocab.context.detail" = "So names are spelled the way the document spells them. Read when you start talking, never kept, never from password fields.";
 "dictation.vocab.learn" = "Learn from my fixes";
 "dictation.vocab.learn.detail" = "For a minute after dictating, Blurt notices when you correct a word it typed and suggests it here.";
+
+/* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
+"dictation.mode.auto" = "Tap or hold";
+"dictation.mode.auto.detail" = "Tap %@ to start and tap it again to stop, or hold it while you talk — it stops when you let go.";
+"dictation.mode.tap.detail" = "Tap %@ to start, and tap it again to stop.";
+"dictation.mode.hold.detail" = "Hold %@ while you talk; let go to stop.";
+"dictation.toast.on.auto" = "Dictation is on: tap %@ to talk, or hold it";
+"dictation.status.on.auto" = "In any app, tap %@ to start talking and tap it again to stop, or hold it while you talk.";
+"dictation.listener.filter" = "Listening in every app, and keeping Fn from macOS (Accessibility).";
+"dictation.perm.input_monitoring.why_fn" = "Not needed for Fn: Blurt hears it through Accessibility. Other keys use it.";
+"dictation.perm.microphone.why" = "To hear what you say.";
+"dictation.fn.capture" = "Keep Fn for dictation";
+"dictation.fn.capture.on" = "macOS’s own Fn action doesn’t run while Blurt listens for Fn.";
+"dictation.fn.capture.needs_ax" = "Needs Accessibility. Until it’s allowed, macOS may also react to Fn.";
+"dictation.fn.capture.detail" = "Off: Fn reaches macOS as well, so set what it does to Do Nothing below.";
+"dictation.fn.usage" = "macOS “Press 🌐 key to”: %@";
+"dictation.fn_usage.0" = "Do Nothing";
+"dictation.fn_usage.1" = "Change Input Source";
+"dictation.fn_usage.2" = "Show Emoji & Symbols";
+"dictation.fn_usage.3" = "Start Dictation";
+"dictation.fn_usage.default" = "macOS default";
+"dictation.fn.usage.clash" = "Pressing Fn may do this as well. Set it to Do Nothing — Blurt never changes it for you.";
+"dictation.fn.usage.ok" = "Fn does nothing else in macOS.";
+"dictation.fn.usage.fix" = "Fix…";
+"dictation.settings.fn_clash" = "%@ is running and also uses Fn: both will react. Quit it, or give one of them another key.";

@@ -1,12 +1,15 @@
 // Dictation (听写, docs/design/dictation.md): talk, and the words are typed into whichever app has the focus —
 // separate from the voice note (⌥⇧V files into Blurt; the two never share a key).
 //
-//  • trigger: right ⌥ (or Fn, or either ⌥) alone, read by a listen-only event tap (DictationKeys) and decided by
-//    BlurtCore's DictationTrigger — tap to start / tap to stop (default), or hold to talk. Esc cancels.
-//  • the tap needs Input Monitoring. Until it is installed (BlurtCore's DictationAccess decides): macOS is asked once
-//    per version at launch, the menu-bar menu's top row says "Turn On Dictation…", the island reminds about once a
-//    day (launch, the voice-note key, Settings), and a poll picks the grant up without a restart. Test builds never
-//    install a tap or ask macOS: BLURT_TEST_DICTATION_TAP=ok|failed (or `dictation tap …`) simulates the answer.
+//  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
+//    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
+//    to talk. Esc cancels. With Fn and Accessibility, the tap is an active filter that keeps the Fn press from macOS.
+//  • the key needs Accessibility (the Fn filter, or the monitor) or Input Monitoring (the listen-only tap). Until it
+//    is heard (BlurtCore's DictationAccess decides): the menu-bar menu's top row says "Turn On Dictation…", the
+//    island reminds about once a day (launch, the voice-note key, Settings), and both start the permission guide
+//    (Onboarding/PermissionGuide.swift); a poll picks the grant up without a restart. macOS is never asked at launch.
+//    Test builds never install a tap or ask macOS: BLURT_TEST_DICTATION_TAP=ok|failed (or `dictation tap …`)
+//    simulates the answer.
 //  • capture: NoteVoice (the voice note's mic → wav path; BLURT_TEST_MIC_WAV / BLURT_NOTE_WAV in tests), no silence
 //    stop — you end it. The models are warmed on key-down: `transcribe.py serve --preload` (SenseVoice, or what
 //    Settings → Speech picked for voice notes) and, with polish on, `polish.py serve --preload`.
@@ -18,7 +21,8 @@
 //    the text around the cursor (DictationContext, read at the start, never stored). After the text goes in, the
 //    field is watched for a minute (DictationWatch) and the user's own fixes become words (DictationLearn).
 //  • off while a screen recording runs (it owns the mic) and while a voice note listens.
-// Config record.dictation: enabled (true), key right_option|fn|either_option, mode tap|hold, polish off|light, polish_model,
+// Config record.dictation: enabled (true), key fn|right_option|either_option (unset = fn), mode auto|tap|hold (unset =
+// auto), fn_capture (true: keep Fn from macOS's own 🌐 action), polish off|light, polish_model,
 // polish_timeout_ms, retention_days (30), keep_audio (false), asr_model (automatic), context (true), learn (true). Test hooks: SnapApp.swift `dictation …`.
 import AppKit
 import BlurtCore
@@ -57,8 +61,11 @@ final class Dictation {
     static var settings: [String: Any] { recordConfig()["dictation"] as? [String: Any] ?? [:] }
     static func set(_ key: String, _ value: Any?) { Config.shared.set("record.dictation.\(key)", value) }
     static var enabled: Bool { settings["enabled"] as? Bool ?? true }
-    static var key: DictationTrigger.Key { DictationTrigger.Key(rawValue: settings["key"] as? String ?? "") ?? .rightOption }
-    static var mode: DictationTrigger.Mode { DictationTrigger.Mode(rawValue: settings["mode"] as? String ?? "") ?? .tap }
+    /// Fn unless the user picked another key (≤ 0.8 stored nothing for right ⌥, the old default: they get Fn now)
+    static var key: DictationTrigger.Key { DictationTrigger.Key(rawValue: settings["key"] as? String ?? "") ?? .fn }
+    static var mode: DictationTrigger.Mode { DictationTrigger.Mode(rawValue: settings["mode"] as? String ?? "") ?? .auto }
+    /// With Fn: an active tap keeps the Fn press from macOS's own 🌐 action (needs Accessibility)
+    static var fnCapture: Bool { settings["fn_capture"] as? Bool ?? true }
     static var polishOn: Bool { (settings["polish"] as? String ?? "light") != "off" }
     static var polishTimeout: Double { max(0.5, (settings["polish_timeout_ms"] as? Double ?? 3000) / 1000) }
     static var retentionDays: Int { settings["retention_days"] as? Int ?? 30 }
@@ -107,14 +114,13 @@ final class Dictation {
         emit(["event": "dictation_learned_toast", "term": term])
     }
 
-    /// The setup assistant (first launch) has its own Input Monitoring row: no prompt or toast on top of it.
+    /// The setup assistant (first launch) walks the permissions itself: no toast on top of it.
     private var assistantShows: Bool { Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil }
 
+    /// At launch macOS is never asked (DictationAccess.asksAtLaunch): only the island's reminder, whose button starts
+    /// the permission guide; a guide cut short by a relaunch (Screen Recording) carries on.
     private func launchCheck() {
-        let asked = Config.shared["app.dictation_asked_version"] as? String
-        if access.askAtLaunch(assistantShowing: assistantShows, askedVersion: asked, version: Dictation.appVersion) {
-            Dictation.requestListenAccess(via: "launch")
-        }
+        MainActor.assumeIsolated { PermissionGuide.shared.resumeIfNeeded() }
         if !assistantShows { nudge("launch") }
     }
 
@@ -123,6 +129,7 @@ final class Dictation {
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
         keys.watchedKeyCodes = trigger.key.keyCodes
+        keys.wantsFilter = Dictation.enabled && trigger.key == .fn && Dictation.fnCapture
         if Dictation.enabled {
             // DictationKeys polls (and listens for Blurt being activated) until the key is heard everywhere; test
             // builds only simulate macOS, and only when a test says something about it
@@ -133,7 +140,7 @@ final class Dictation {
         }
         lastAccess = access
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
-              "key": trigger.key.rawValue,
+              "key": trigger.key.rawValue, "filter": keys.filtering,
               "mode": trigger.mode.rawValue, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
               "test_mode": DictationInsert.testMode])
     }
@@ -142,12 +149,21 @@ final class Dictation {
     var tapInstalled: Bool { keys.installed }
     var listenerKind: DictationListenerKind { keys.kind }
     var tapGeneration: Int { keys.tapGeneration }
+    /// The Fn filter runs (macOS's own Fn action is kept out), and how many Fn changes it kept.
+    var fnFiltering: Bool { keys.filtering }
+    var fnSwallowed: Int { keys.swallowed }
     /// When the key was last heard while another app was in front (Settings → Dictation; only the user can do this).
     var lastKeyFromOtherApp: Date? { keys.lastOtherApp }
     private var lastAccess: DictationAccess?
 
     // tests (DictationTestHooks): the listener's paths without macOS
     func testRefreshListener(_ via: String) { keys.refresh(via: via) }
+    func testFilterDecision(_ code: Int) -> Bool { keys.testFilterDecision(keyCode: code) }
+    /// The permission guide saw Accessibility or Input Monitoring change: the listener now, not at its next poll.
+    func refreshListener(via: String) {
+        guard Dictation.enabled else { return }
+        keys.refresh(via: via)
+    }
     func testTapDisabled() { keys.tapDisabled("timeout") }
     func testHeard(keyCode: Int, otherApp: Bool) {
         let down: UInt64 = keyCode == 61 ? 0x80040 : keyCode == 58 ? 0x80020 : keyCode == 63 ? 0x800000 : 0
@@ -170,7 +186,7 @@ final class Dictation {
     /// "Dictation is on: tap right Option to talk" — once, when the key starts being heard.
     private func confirmOn() {
         Config.shared.set("app.dictation_nudged_at", nil)
-        var t = Island.Toast(text: Loc.t(Dictation.mode == .hold ? "dictation.toast.on.hold" : "dictation.toast.on.tap", table: "Dictation",
+        var t = Island.Toast(text: Loc.t("dictation.toast.on.\(Dictation.mode.rawValue)", table: "Dictation",
                                          Dictation.keyShort), actionTitle: nil, action: nil)
         t.seconds = 5
         island.toast(t)
@@ -202,12 +218,16 @@ final class Dictation {
         }
     }
 
-    /// "Turn On Dictation…" (the menu row, the toast's button, Settings → Dictation): Settings → Dictation, then the
-    /// Input Monitoring pane on top of it with Blurt in its list.
-    func openSetup() {
+    /// "Turn On Dictation…" (the menu row, the island's button, Settings → Dictation, the Dictation page): Settings →
+    /// Dictation, then the permission guide's dictation walk — Blurt registered in each list, the exact pane, the
+    /// helper panel next to System Settings, and back here with a check mark when it works.
+    func openSetup(from source: String = "dictation") {
         AppEnvironment.settings?.show(pane: "dictation")
-        Dictation.requestListenAccess(via: "setup")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { Dictation.openSystemPane() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            MainActor.assumeIsolated {
+                PermissionGuide.shared.start(.dictation, source: PermissionGuide.Source(rawValue: source) ?? .dictation)
+            }
+        }
     }
 
     /// The island's reminder while the key can't be heard — at launch, when the voice-note key is pressed, when
@@ -219,7 +239,7 @@ final class Dictation {
         Config.shared.set("app.dictation_nudged_at", Date().timeIntervalSince1970)
         emit(["event": "dictation_nudge", "reason": reason])
         var t = Island.Toast(text: Loc.t("dictation.toast.needs_permission", table: "Dictation", Dictation.keyShort),
-                             actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation"), action: { Dictation.shared.openSetup() })
+                             actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation"), action: { Dictation.shared.openSetup(from: "island") })
         t.seconds = 8               // the island's line is quiet and brief by default; this one must be read
         island.toast(t)
     }
@@ -322,7 +342,7 @@ final class Dictation {
         let v = NoteVoice(url: url)
         v.inject = ProcessInfo.processInfo.environment["BLURT_TEST_MIC_WAV"] ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"]
         v.silenceToEnd = .infinity                   // you end it, not a pause
-        v.noSpeechTimeout = trigger.mode == .hold ? .infinity : 30
+        v.noSpeechTimeout = trigger.pushToTalk ? .infinity : 30     // push-to-talk ends when the key comes up
         v.maxLength = 300
         v.onLevel = { [weak self] l in
             guard let self = self else { return }
@@ -347,7 +367,7 @@ final class Dictation {
             escRegistered = true
         }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
-              "key": trigger.key.rawValue, "mode": trigger.mode.rawValue])
+              "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk])
         v.start { [weak self] ok in
             guard let self = self, self.voice === v else { return }
             if !ok {

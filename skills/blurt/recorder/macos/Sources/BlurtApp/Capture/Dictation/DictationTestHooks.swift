@@ -39,6 +39,15 @@ extension App {
                 DictationKeys.testTap = rest.isEmpty ? nil : rest
             }
             emit(["event": "dictation_test_tap", "tap": DictationKeys.testTap ?? NSNull()])
+        case "filter":
+            // filter ok|failed: what an active (Fn filter) tapCreate answers; filter-event CODE below: what it does
+            DictationKeys.testFilterTap = rest.isEmpty ? nil : rest
+            emit(["event": "dictation_test_filter", "filter": DictationKeys.testFilterTap ?? NSNull()])
+        case "filter-event":
+            // filter-event CODE: a flagsChanged of key CODE reaching the filter — dropped (kept from macOS) or passed
+            let code = Int(rest) ?? 63
+            emit(["event": "dictation_filter_event", "key_code": code, "dropped": d.testFilterDecision(code),
+                  "filter": d.fnFiltering, "swallowed": d.fnSwallowed])
         case "im", "ax":            // im on|off, ax on|off: Input Monitoring / Accessibility as macOS would report them
             let on: Bool? = rest == "on" ? true : rest == "off" ? false : nil
             if parts[0] == "im" { DictationKeys.testInputMonitoring = on } else { DictationKeys.testAccessibility = on }
@@ -56,7 +65,8 @@ extension App {
                   "needs_setup": d.needsSetup, "key": Dictation.key.rawValue, "asked_version": Config.shared["app.dictation_asked_version"] ?? NSNull(),
                   "nudged_at": Config.shared["app.dictation_nudged_at"] ?? NSNull(), "prompted_flag": Config.shared["app.dictation_prompted"] ?? NSNull(),
                   "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
-                  "listener": d.listenerKind.rawValue, "tap_generation": d.tapGeneration,
+                  "listener": d.listenerKind.rawValue, "tap_generation": d.tapGeneration, "mode": Dictation.mode.rawValue,
+                  "filter": d.fnFiltering, "swallowed": d.fnSwallowed,
                   "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)

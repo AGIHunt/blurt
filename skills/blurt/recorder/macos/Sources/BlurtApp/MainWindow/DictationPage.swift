@@ -240,7 +240,7 @@ final class DictationHistoryModel: ObservableObject {
     }
 
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
-    func turnOn() { Dictation.shared.openSetup() }
+    func turnOn() { Dictation.shared.openSetup(from: "page") }
 
     // MARK: words for the views
 

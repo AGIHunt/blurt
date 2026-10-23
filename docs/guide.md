@@ -129,13 +129,19 @@ fits) · `W` won't do · `X` discard · `S` open the menu.
 Dictation types what you say into **whichever app has the focus**: a chat box, an email, your editor, a terminal.
 It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and dictation puts it where you're typing.
 
-- **Tap right Option** (alone, nothing else held), talk, **tap it again**. The island's ears show a keyboard and a mint
-  level while it listens, then a few dots while it transcribes and polishes. `Esc` cancels. Right Option used with
-  another key (`⌥`-letter, `⌥⇧V`…) never starts a dictation.
-- *Settings → Dictation* switches the key to **Fn** or **either Option key** (left or right, still only when tapped
-  alone) and the mode to **hold to talk** (it starts after you've held the key
-  for a quarter of a second and stops when you let go; pressing another key cancels it). For Fn, set System Settings →
-  Keyboard → "Press fn key to" to "Do Nothing". If Typeless is also running on Fn, the two apps clash.
+- **Tap Fn** (🌐, alone), talk, **tap it again**. Or **hold Fn** while you talk and let go to stop: anything held
+  longer than about 0.3 s is push-to-talk. The island's ears show a keyboard and a mint level while it listens, then
+  a few dots while it transcribes and polishes. `Esc` cancels. Fn used with another key (`Fn`-arrow, `Fn`-F-keys…)
+  never starts a dictation.
+- *Settings → Dictation* (or the setup assistant) switches the key to **right Option** or **either Option key** (left
+  or right, still only when tapped alone), and the mode to **tap to start, tap to stop** or **hold to talk** only. If
+  you never picked a key before, you now have Fn; a key you chose stays.
+- **Fn and macOS.** macOS has its own use for Fn (System Settings → Keyboard → "Press 🌐 key to": emoji, input
+  source or system dictation). With Accessibility allowed, Blurt keeps the Fn press to itself so that action doesn't
+  run as well (*Keep Fn for dictation*, on by default). Settings → Dictation also shows what that macOS setting is; if
+  it isn't "Do Nothing", **Fix…** opens Keyboard settings with a note saying what to change. Blurt never changes it
+  for you. If Typeless or Wispr Flow is running, Settings says so: both apps would react to Fn, so quit one or give one
+  of them another key.
 - **Polish** (Light, the default) runs a small model on your Mac. It removes fillers (嗯, 那个, um, uh), stutters and the
   words you corrected ("周三，不对，周四" → "周四"), and adds punctuation and paragraphs. It doesn't rewrite, summarize,
   translate or answer. When its output looks like any of that, or it takes longer than the time limit (3 s), you
@@ -153,13 +159,22 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **The text around the cursor** helps too: when you start talking, Blurt reads about 500 characters before and after
   the cursor (and the window's title) so names are spelled the way the document spells them. It is used for that one
   dictation and not kept; password fields are never read. Both this and learning can be turned off in Settings.
-- **Permissions:** Input Monitoring lets Blurt notice the key; Accessibility lets it paste and read the text around
-  the cursor. Settings shows both, with a button to the right System Settings pane, whether the key is actually
-  heard, and when it was last heard while another app was in front. Until it is, the menu-bar menu starts with
-  *Turn On Dictation…* and the island reminds you about once a day; once you allow Input Monitoring, dictation
-  starts working within a few seconds, no restart needed. With Accessibility alone, Blurt still hears the key.
+- **Permissions:** Accessibility lets Blurt paste, read the text around the cursor and hear Fn; Input Monitoring is
+  what it uses to hear the other keys; and the microphone, of course. Settings → Dictation shows each one, whether the
+  key is actually heard, and when it was last heard while another app was in front. Until it is, the menu-bar menu
+  starts with *Turn On Dictation…* and the island reminds you about once a day. Both, and *Turn On…* in Settings, start
+  the **permission guide** (below); dictation starts working within a few seconds of the switch, no restart needed.
   Without Accessibility, or when the focus isn't a text field, the text is copied and the island says so: paste it
   with `⌘V`. Your clipboard is put back after a paste.
+- **The permission guide.** *Set Up Permissions…* (the setup assistant, Settings → Privacy, Settings → Dictation) and
+  each permission's *Allow…* do the clicking-around for you, one missing permission at a time: Blurt puts itself in
+  the list (macOS may show its own prompt the first time), opens the exact page of System Settings, and a small panel
+  next to the System Settings window says what to do — usually just "Turn on Blurt here". If Blurt isn't in the list,
+  drag the Blurt icon from the panel into it. The panel follows the window, shows every step's state, and moves on by
+  itself as soon as a switch is on; *Skip* leaves one for later. At the end Blurt comes back to the front with a check
+  mark: "Done — dictation works in every app now." Screen Recording sometimes needs Blurt restarted; the panel and
+  Settings → Privacy have a **Restart Blurt** button for that. Blurt never clicks or changes anything in System
+  Settings itself.
 - **Dictation** is a place in the main window's sidebar, under All Items (also menu bar → *Dictation History…*,
   `⌥⌘D`, or the command palette). It lists every dictation by day: the app it went into, the time, the text, and small
   marks for polished, typed as spoken (polish fell back) and terms applied. The toolbar's search field searches it.
@@ -272,12 +287,14 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
-- **按一下右 Option**（单独按，不带别的键），说话，**再按一下**。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。右 Option 和别的键一起用（`⌥` 加字母、`⌥⇧V` 等）时不会开始听写。
-- 在「设置 → 听写」里可以把按键换成 **Fn** 或**任一 Option 键**（左右都行，同样只认单按），方式换成**按住说话**：按住约 0.25 秒开始，松开结束，中途按了别的键就取消。用 Fn 时，把「系统设置 → 键盘 → 按下 fn 键时」设为「不执行任何操作」；如果 Typeless 也在用 Fn，两边会冲突。
+- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。
+- 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
+- **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。「设置 → 听写」也会显示这项系统设置现在是什么；不是「不执行任何操作」时，点**去设置…**会打开键盘设置，并提示你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
 - **自定义词**（「设置 → 听写」）：你常说的名字和术语，比如「Claude Code」「tmux」、项目名。听写会照列表里的写法输出，「Claude」不会变成「cloud」，「option」也不会只剩「op」。口喷鸡会先帮你填好 Claude Code、Codex、blurt / 口喷鸡，以及你的项目名和项目代号（不想要的可以移除）。推荐的**识别模型**（Apple 芯片上用 Qwen3-ASR，下载约 1 GB）在识别时就会照顾这些词；用其他模型时，这些词在识别之后再改。
 - **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。拿不准的会作为建议留在设置里，由你决定添加还是忽略。
 - **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。只用于这一次听写，不会保存，也从不读密码框。这项和自动学习都可以在设置里关掉。
-- **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴和读取光标附近的文字。设置页显示两者的状态，并有按钮直达系统设置里对应的位置，也会显示按键现在能不能被听到，以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次；允许「输入监控」后几秒内自动生效，不用重启。只有「辅助功能」时也能听到按键。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
+- **权限**：「辅助功能」用来粘贴、读取光标附近的文字和听到 Fn；「输入监控」用来听到其他按键；还有麦克风。「设置 → 听写」显示每一项的状态，也会显示按键现在能不能被听到，以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次。这两处和设置里的「开启…」都会打开**权限向导**（见下）；开关打开后几秒内自动生效，不用重启。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
+- **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」录屏权限有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
 - **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长和输入方式。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。

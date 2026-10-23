@@ -1,16 +1,23 @@
-// The dictation key (right ⌥ / Fn / either ⌥): modifier-only keys can't be Carbon hotkeys, so something has to listen
+// The dictation key (Fn / right ⌥ / either ⌥): modifier-only keys can't be Carbon hotkeys, so something has to listen
 // to the keyboard. Which listener runs is BlurtCore's DictationListener (unit-tested); this file carries it out:
+//   • the Fn filter (the key is Fn, record.dictation.fn_capture on, Accessibility granted): an active CGEventTap on a
+//     thread of its own. macOS lets an Accessibility-trusted app filter every app's events, so it hears Fn without
+//     Input Monitoring, and it drops the Fn press itself (flagsChanged of kVK_Function) so macOS's own 🌐 action
+//     (emoji, input source, system dictation) doesn't run as well. Every other event passes untouched and at once:
+//     the callback only copies the key code and flags and hands them to the main thread. If macOS refuses it, the
+//     listen-only tap or the monitor below takes over (`filterRefused`, until Accessibility or the key changes);
 //   • a listen-only CGEventTap (Input Monitoring). Listen-only = we never block, delay or change an event. A tap made
 //     before Input Monitoring was granted hears only events aimed at Blurt and macOS never upgrades it, so
 //     CGPreflightListenEventAccess() is the truth and the tap is made again when it flips to granted (a poll every
-//     3 s while it isn't, and whenever Blurt is activated);
+//     3 s while it isn't, whenever Blurt is activated, and at once from the permission guide);
 //   • NSEvent global + local monitors when Input Monitoring is missing but Accessibility is granted (AppKit delivers
 //     key events, flagsChanged included, to a global monitor of an Accessibility-trusted app);
 //   • a tap the system disabled (tapDisabledByTimeout / ByUserInput) is enabled again, and made again if that fails.
-// flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events. The right ⌥ heard while another app
+// flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events. The key heard while another app
 // is in front is remembered (`lastOtherApp`): Settings shows it, and only the user can make it happen.
 // Test builds never install a tap or a monitor: BLURT_TEST_DICTATION_TAP (ok | failed: what tapCreate answers),
-// BLURT_TEST_INPUT_MONITORING / BLURT_TEST_ACCESSIBILITY (1 | 0) and the `dictation tap|im|ax …` hooks simulate macOS.
+// BLURT_TEST_FILTER_TAP (ok | failed, default: the same), BLURT_TEST_INPUT_MONITORING / BLURT_TEST_ACCESSIBILITY
+// (1 | 0) and the `dictation tap|filter|im|ax …` hooks simulate macOS.
 import AppKit
 import BlurtCore
 
@@ -20,7 +27,9 @@ final class DictationKeys {
     var onChange: (() -> Void)?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
+    private var sourceLoop: CFRunLoop?
     private var tapMadeWithAccess = false
+    private var tapIsFilter = false
     private var globalMonitor: Any?
     private var localMonitor: Any?
     /// test builds: what exists, simulated (nothing is installed)
@@ -35,13 +44,26 @@ final class DictationKeys {
     /// When the dictation key was last heard while another app was in front (from the listener itself).
     private(set) var lastOtherApp: Date?
     /// The keys whose presses count for `lastOtherApp` (Dictation sets them from the chosen key).
-    var watchedKeyCodes: Set<Int> = [61]
+    var watchedKeyCodes: Set<Int> = [63]
+    /// The key is Fn and the user wants it kept from macOS (Dictation.apply sets it).
+    var wantsFilter = false {
+        didSet { if wantsFilter != oldValue { filterRefused = false } }
+    }
+    /// macOS refused the filter tap: not asked again until Accessibility or the key changes.
+    private var filterRefused = false
+    private var filterRefusedWithAX = false
+    /// Read on the filter's thread: drop Fn presses (true while the filter runs for dictation).
+    fileprivate var swallowFn = false
+    /// How many Fn presses / releases the filter kept from macOS (tests and Settings).
+    fileprivate(set) var swallowed = 0
 
     // MARK: what macOS says (simulated in test builds)
 
     /// Test builds only: what tapCreate "answers", "ok" or "failed" (BLURT_TEST_DICTATION_TAP, or the hook
     /// `dictation tap ok|failed`). nil = no simulated tap and no waiting for one. Never a real tap either way.
     static var testTap: String? = DictationInsert.testMode ? ProcessInfo.processInfo.environment["BLURT_TEST_DICTATION_TAP"] : nil
+    /// Test builds: what an active (filter) tapCreate answers; nil = the same as `testTap`.
+    static var testFilterTap: String? = DictationInsert.testMode ? ProcessInfo.processInfo.environment["BLURT_TEST_FILTER_TAP"] : nil
     /// Test builds: Input Monitoring / Accessibility as a test says (default: Input Monitoring when the tap is "ok").
     static var testInputMonitoring: Bool? = DictationInsert.testMode ? ProcessInfo.processInfo.environment["BLURT_TEST_INPUT_MONITORING"].map { $0 == "1" } : nil
     static var testAccessibility: Bool? = DictationInsert.testMode ? ProcessInfo.processInfo.environment["BLURT_TEST_ACCESSIBILITY"].map { $0 == "1" } : nil
@@ -60,11 +82,14 @@ final class DictationKeys {
 
     var state: DictationListener {
         DictationListener(inputMonitoring: DictationKeys.inputMonitoring, accessibility: DictationKeys.accessibility,
-                          tap: tap != nil || simTap, tapMadeWithAccess: tapMadeWithAccess, monitor: globalMonitor != nil || simMonitor)
+                          tap: tap != nil || simTap, tapMadeWithAccess: tapMadeWithAccess, monitor: globalMonitor != nil || simMonitor,
+                          wantsFilter: wantsFilter && !filterRefused, tapIsFilter: tapIsFilter)
     }
     var kind: DictationListenerKind { state.kind }
     /// The key is heard in other apps: what "dictation works" means.
     var installed: Bool { kind.global }
+    /// The Fn filter runs: macOS's own Fn action is kept out.
+    var filtering: Bool { state.filtering }
 
     // MARK: start / stop / refresh
 
@@ -88,6 +113,8 @@ final class DictationKeys {
     /// Re-reads Input Monitoring / Accessibility and carries out DictationListener's plan.
     func refresh(via: String) {
         if DictationInsert.testMode && !simulating { return }      // a test build that says nothing about macOS
+        let ax = DictationKeys.accessibility
+        if filterRefused && ax != filterRefusedWithAX { filterRefused = false }     // Accessibility changed: try again
         let before = kind
         var steps = state.plan()
         var failed = false
@@ -96,8 +123,17 @@ final class DictationKeys {
             steps.removeFirst()
             done.append(step.rawValue)
             switch step {
-            case .createTap: failed = !makeTap()
-            case .recreateTap: removeTap(); failed = !makeTap()
+            case .createTap: failed = !makeTap(filter: false)
+            case .recreateTap: removeTap(); failed = !makeTap(filter: false)
+            case .createFilterTap, .recreateFilterTap:
+                if step == .recreateFilterTap { removeTap() }
+                failed = !makeTap(filter: true)
+                if failed {
+                    filterRefused = true
+                    filterRefusedWithAX = ax
+                    steps = state.plan()           // without the filter: the listen-only tap or the monitor
+                    failed = false
+                }
             case .removeTap: removeTap()
             case .installMonitor: installMonitor()
             case .removeMonitor: removeMonitor()
@@ -105,16 +141,19 @@ final class DictationKeys {
             if failed && steps.isEmpty { steps = state.plan(tapFailed: true) }    // no tap after all: the fallback
             if done.count > 8 { break }
         }
+        swallowFn = tapIsFilter && wantsFilter
         schedulePoll()
         if !done.isEmpty || before != kind {
             emit(["event": "dictation_listener", "via": via, "kind": kind.rawValue, "steps": done, "generation": tapGeneration,
+                  "filter": filtering, "filter_refused": filterRefused,
                   "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility])
             onChange?()
         }
     }
 
     private func schedulePoll() {
-        guard state.shouldPoll else { poll?.invalidate(); poll = nil; return }
+        // the Fn filter waits for Accessibility the same way
+        guard state.shouldPoll || (wantsFilter && !filterRefused && !tapIsFilter) else { poll?.invalidate(); poll = nil; return }
         guard poll == nil else { return }
         let every = DictationInsert.testMode ? 0.5 : 3
         poll = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] _ in self?.refresh(via: "poll") }
@@ -122,13 +161,16 @@ final class DictationKeys {
 
     // MARK: the tap
 
-    private func makeTap() -> Bool {
-        let withAccess = DictationKeys.inputMonitoring
+    private func makeTap(filter: Bool) -> Bool {
+        let withAccess = filter ? DictationKeys.accessibility : DictationKeys.inputMonitoring
         // test builds (test channel on, or not the real bundle id) feed the trigger through their hook only: a real
         // tap there would hear the user's own keyboard (a test app started from a terminal inherits its grants)
         if DictationInsert.testMode {
-            guard DictationKeys.testTap == "ok" else { return false }
+            let answer = filter ? (DictationKeys.testFilterTap ?? DictationKeys.testTap) : DictationKeys.testTap
+            // an active tap needs Accessibility
+            guard answer == "ok", !filter || DictationKeys.accessibility else { return false }
             simTap = true
+            tapIsFilter = filter
             tapMadeWithAccess = withAccess
             tapGeneration += 1
             return true
@@ -136,24 +178,40 @@ final class DictationKeys {
         let types: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
         let me = Unmanaged.passUnretained(self).toOpaque()
-        guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
-                                        eventsOfInterest: mask, callback: dictationTapCallback, userInfo: me) else { return false }
+        let t: CFMachPort?
+        if filter {
+            // at the HID level, ahead of everything else, so the Fn press is gone before any app or macOS sees it
+            t = CGEvent.tapCreate(tap: .cghidEventTap, place: .headInsertEventTap, options: .defaultTap,
+                                  eventsOfInterest: mask, callback: dictationFilterCallback, userInfo: me)
+        } else {
+            t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
+                                  eventsOfInterest: mask, callback: dictationTapCallback, userInfo: me)
+        }
+        guard let t else { return false }
         let s = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, t, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), s, .commonModes)
+        // the filter holds every key press until its callback returns: never on the main thread, which can be busy
+        let loop = filter ? FilterThread.shared.loop : CFRunLoopGetMain()
+        CFRunLoopAddSource(loop, s, .commonModes)
+        CFRunLoopWakeUp(loop)
         CGEvent.tapEnable(tap: t, enable: true)
         tap = t
         source = s
+        sourceLoop = loop
+        tapIsFilter = filter
         tapMadeWithAccess = withAccess
         tapGeneration += 1
         return true
     }
 
     private func removeTap() {
+        swallowFn = false
         if let t = tap { CGEvent.tapEnable(tap: t, enable: false); CFMachPortInvalidate(t) }
-        if let s = source { CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes) }
+        if let s = source, let l = sourceLoop { CFRunLoopRemoveSource(l, s, .commonModes) }
         tap = nil
         source = nil
+        sourceLoop = nil
         simTap = false
+        tapIsFilter = false
         tapMadeWithAccess = false
     }
 
@@ -166,7 +224,7 @@ final class DictationKeys {
         } else if simTap {
             back = DictationKeys.testTapReenables
         }
-        emit(["event": "dictation_tap_disabled", "why": why, "reenabled": back])
+        emit(["event": "dictation_tap_disabled", "why": why, "reenabled": back, "filter": tapIsFilter])
         if !back {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
@@ -177,6 +235,13 @@ final class DictationKeys {
     }
     /// test builds: whether a simulated disabled tap comes back on when enabled again (`dictation tap disable stuck`)
     static var testTapReenables = true
+
+    /// Test builds: what the filter does with a key change (`dictation filter-event CODE`): dropped or passed.
+    func testFilterDecision(keyCode: Int) -> Bool {
+        let drop = swallowFn && keyCode == 63
+        if drop { swallowed += 1 }
+        return drop
+    }
 
     // MARK: the monitor (Accessibility)
 
@@ -210,11 +275,11 @@ final class DictationKeys {
 
     // MARK: events
 
-    /// A modifier changed — from the tap, a monitor or a test (`dictation heard …`). Two listeners can overlap for a
+    /// A modifier changed — from a tap, a monitor or a test (`dictation heard …`). Two listeners can overlap for a
     /// moment while one replaces the other: the same change twice within 30 ms counts once.
-    func flags(_ code: Int, _ raw: UInt64, otherApp: Bool) {
-        let now = CACurrentMediaTime()
-        if let l = lastFlags, l.code == code, l.flags == raw, now - l.at < 0.03 { return }
+    func flags(_ code: Int, _ raw: UInt64, otherApp: Bool, at: CFTimeInterval? = nil) {
+        let now = at ?? CACurrentMediaTime()
+        if let l = lastFlags, l.code == code, l.flags == raw, abs(now - l.at) < 0.03 { return }
         lastFlags = (code, raw, now)
         if otherApp && watchedKeyCodes.contains(code) {
             lastOtherApp = Date()
@@ -223,17 +288,17 @@ final class DictationKeys {
         onEvent?(.flags(keyCode: code, flags: raw, time: now))
     }
 
-    fileprivate func received(_ type: CGEventType, _ e: CGEvent) {
-        let now = CACurrentMediaTime()
+    /// From the listen-only tap (main thread) or the filter (handed over from its thread): type, key code, flags.
+    fileprivate func received(_ type: CGEventType, code: Int, flags raw: UInt64, at now: CFTimeInterval) {
         switch type {
         case .tapDisabledByTimeout: tapDisabled("timeout")
         case .tapDisabledByUserInput: tapDisabled("user_input")
         case .flagsChanged:
             let pid = ProcessInfo.processInfo.processIdentifier
             let other = NSWorkspace.shared.frontmostApplication.map { $0.processIdentifier != pid } ?? false
-            flags(Int(e.getIntegerValueField(.keyboardEventKeycode)), e.flags.rawValue, otherApp: other)
+            flags(code, raw, otherApp: other, at: now)
         case .keyDown:
-            onEvent?(.keyDown(keyCode: Int(e.getIntegerValueField(.keyboardEventKeycode)), time: now))
+            onEvent?(.keyDown(keyCode: code, time: now))
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             onEvent?(.mouseDown(time: now))
         default: break
@@ -242,6 +307,48 @@ final class DictationKeys {
 }
 
 private func dictationTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
-    if let r = refcon { Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue().received(type, event) }
+    if let r = refcon {
+        Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
+            .received(type, code: Int(event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags.rawValue, at: CACurrentMediaTime())
+    }
     return Unmanaged.passUnretained(event)
+}
+
+/// The Fn filter, on FilterThread: decide at once (drop an Fn change, pass everything else), handle on the main thread.
+private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    guard let r = refcon else { return Unmanaged.passUnretained(event) }
+    let keys = Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
+    let now = CACurrentMediaTime()
+    let code = type == .flagsChanged || type == .keyDown ? Int(event.getIntegerValueField(.keyboardEventKeycode)) : 0
+    let raw = event.flags.rawValue
+    let drop = type == .flagsChanged && code == 63 && keys.swallowFn
+    DispatchQueue.main.async {
+        if drop { keys.swallowed += 1 }
+        keys.received(type, code: code, flags: raw, at: now)
+    }
+    return drop ? nil : Unmanaged.passUnretained(event)
+}
+
+/// A thread with its own run loop for the filter tap (an active tap stalls every key press while its callback waits).
+private final class FilterThread: Thread {
+    static let shared: FilterThread = {
+        let t = FilterThread()
+        t.name = "blurt.dictation.fn-filter"
+        t.qualityOfService = .userInteractive
+        t.start()
+        t.ready.wait()
+        return t
+    }()
+    private let ready = DispatchSemaphore(value: 0)
+    private(set) var loop: CFRunLoop!
+
+    override func main() {
+        loop = CFRunLoopGetCurrent()
+        // a source that never fires keeps the run loop alive while no tap is attached
+        var ctx = CFRunLoopSourceContext()
+        let keepAlive = CFRunLoopSourceCreate(nil, 0, &ctx)
+        CFRunLoopAddSource(loop, keepAlive, .commonModes)
+        ready.signal()
+        while true { CFRunLoopRunInMode(.defaultMode, 3600, false) }
+    }
 }

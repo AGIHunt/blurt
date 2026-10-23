@@ -1,5 +1,7 @@
 // The setup assistant (§2.2), at most four steps, every one skippable:
-//   1. permissions — Screen Recording, Microphone, Accessibility, live;
+//   1. permissions — Screen Recording, Microphone, Accessibility, Input Monitoring, live, and "Set Up Permissions":
+//      the permission guide (PermissionGuide.swift) walks the missing ones with the helper panel next to System
+//      Settings; the dictation key (Fn first) is picked here too, since Fn adds a step (macOS's own 🌐 action);
 //   2. uv + Python — found, or installed into ~/.blurt/bin with the user's consent (the official installer), then the
 //      scripts' dependencies warmed up so the first real run doesn't wait;
 //   3. a speech model — the recommended one for the user's language, downloaded with progress;
@@ -16,6 +18,14 @@ final class OnboardingModel: ObservableObject {
     @Published var installingUV = false
     @Published var uvLog: [String] = []
     @Published var warm: String?            // nil | "running" | "done" | error text
+    @Published var dictationKey = Dictation.key
+
+    func setKey(_ k: DictationTrigger.Key) {
+        dictationKey = k
+        Dictation.set("key", k.rawValue)
+        Dictation.shared.apply()
+        emit(["event": "dictation_setting", "key": "key", "value": k.rawValue, "via": "onboarding"])
+    }
     let steps = 4
     var close: () -> Void = {}
 
@@ -115,7 +125,7 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, 28).padding(.vertical, 14)
         }
-        .frame(width: 640, height: 520)
+        .frame(width: 640, height: 600)
         .onAppear { perms.start() }
         .onDisappear { perms.stop() }
     }
@@ -128,9 +138,24 @@ struct OnboardingView: View {
     }
 
     var permissions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            title(1, T("onboarding.permissions"), T("onboarding.blurt_records_area_you"))
-            GroupBox { VStack(spacing: 12) { PermissionRows(p: perms) }.padding(6) }
+        VStack(alignment: .leading, spacing: 10) {
+            title(1, T("onboarding.permissions"), T("onboarding.permissions_detail"))
+            PermissionSetupButton(flow: .all, source: .onboarding, p: perms)
+            GroupBox { VStack(spacing: 10) { PermissionRows(p: perms, source: .onboarding) }.padding(4) }
+            HStack(spacing: 10) {
+                Text(T("onboarding.dictation_key"))
+                Picker("", selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) })) {
+                    ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(Dictation.keyName(k)).tag(k) }
+                }
+                .labelsHidden().pickerStyle(.segmented).fixedSize()
+                Spacer()
+            }
+            Text(m.dictationKey == .fn ? T("onboarding.dictation_key.fn") : T("onboarding.dictation_key.other", Dictation.keyInline(m.dictationKey)))
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if m.dictationKey == .fn, !SystemAccess.fnClashApps.isEmpty {
+                Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -255,7 +280,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
         }
         let m = OnboardingModel()
         m.step = step
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 520), styleMask: [.titled, .closable, .fullSizeContentView],
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600), styleMask: [.titled, .closable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
@@ -280,4 +305,13 @@ final class Onboarding: NSObject, NSWindowDelegate {
     }
 
     var windowNumber: Int? { window?.windowNumber }
+
+    /// Back to the front as it was (the permission guide finished), without changing the step.
+    @MainActor
+    func bringToFront() {
+        guard let w = window else { return }
+        activateApp()
+        w.makeKeyAndOrderFront(nil)
+        w.orderFrontRegardless()        // even when macOS keeps the focus on System Settings
+    }
 }

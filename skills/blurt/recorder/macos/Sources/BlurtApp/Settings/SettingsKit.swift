@@ -65,13 +65,15 @@ struct CommandText: View {
 
 // MARK: - Permissions (live)
 
+/// The four permissions as macOS reports them now (SystemAccess, simulated in test builds), refreshed while a pane or
+/// the assistant shows them.
 @MainActor
 final class Permissions: ObservableObject {
-    enum State: String { case granted, denied, notAsked = "not_asked" }
+    typealias State = SystemAccess.State
     @Published var screen: State = .notAsked
     @Published var mic: State = .notAsked
     @Published var accessibility: State = .notAsked
-    /// Input Monitoring: dictation notices its key (right ⌥ / fn) with it.
+    /// Input Monitoring: dictation notices its key with it (with Fn, Accessibility alone does).
     @Published var inputMonitoring: State = .notAsked
     private var timer: Timer?
     private var observers: [Any] = []
@@ -93,16 +95,19 @@ final class Permissions: ObservableObject {
         observers = []
     }
 
-    func refresh() {
-        let s: State = CGPreflightScreenCaptureAccess() ? .granted : (Permissions.askedScreen ? .denied : .notAsked)
-        let m: State
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: m = .granted
-        case .denied, .restricted: m = .denied
-        default: m = .notAsked
+    func state(_ k: PermissionKind) -> State {
+        switch k {
+        case .screen: return screen
+        case .microphone: return mic
+        case .accessibility: return accessibility
+        case .inputMonitoring: return inputMonitoring
+        case .fnKey: return SystemAccess.state(.fnKey)
         }
-        let a: State = AXIsProcessTrusted() ? .granted : .notAsked
-        let i: State = CGPreflightListenEventAccess() ? .granted : .notAsked
+    }
+
+    func refresh() {
+        let s = SystemAccess.state(.screen), m = SystemAccess.state(.microphone)
+        let a = SystemAccess.state(.accessibility), i = SystemAccess.state(.inputMonitoring)
         if s != screen { screen = s }
         if m != mic { mic = m }
         if a != accessibility { accessibility = a }
@@ -121,62 +126,69 @@ final class Permissions: ObservableObject {
 
     static var askedScreen: Bool { Config.shared["app.asked_screen"] as? Bool ?? false }
 
-    func requestScreen() {
-        Config.shared.set("app.asked_screen", true)
-        if !CGRequestScreenCaptureAccess() { Permissions.openPane("Privacy_ScreenCapture") }
-        refresh()
-    }
-    func requestMic() {
-        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in self.refresh() } }
-        } else { Permissions.openPane("Privacy_Microphone") }
-    }
-    func requestAccessibility() {
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        if !AXIsProcessTrustedWithOptions(opts) { Permissions.openPane("Privacy_Accessibility") }
-    }
-    func requestInputMonitoring() {
-        if !Dictation.requestListenAccess(via: "permissions") { Dictation.openSystemPane() }
-        Dictation.shared.apply()
-        refresh()
-    }
-
-    static func openPane(_ anchor: String) {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!)
-    }
+    /// The exact System Settings pane (the rows' small link).
+    static func openPane(_ k: PermissionKind) { SystemAccess.openPane(k) }
 }
 
+/// The four permission rows (the setup assistant, Settings → Privacy): live state, why in one line, and Allow — the
+/// permission guide for that one permission (Blurt put in the list, the pane, the helper panel).
 struct PermissionRows: View {
     @ObservedObject var p: Permissions
+    var source: PermissionGuide.Source
+    @ObservedObject var guide = PermissionGuide.shared
 
     var body: some View {
-        row(T("settings.kit.screen_recording"), T("settings.kit.needed_record_snap"), p.screen,
-            action: p.screen == .granted ? nil : { p.requestScreen() }, settings: "Privacy_ScreenCapture")
-        row(T("settings.kit.microphone"), T("settings.kit.your_narration_recording_works"), p.mic,
-            action: p.mic == .notAsked ? { p.requestMic() } : nil, settings: "Privacy_Microphone")
-        row(T("settings.kit.accessibility"), T("settings.kit.hold_pen_reads_modifier"), p.accessibility,
-            action: p.accessibility == .granted ? nil : { p.requestAccessibility() }, settings: "Privacy_Accessibility")
-        row(T("settings.kit.input_monitoring"), T("dictation.perm.input_monitoring.why", Dictation.keyInline), p.inputMonitoring,
-            action: p.inputMonitoring == .granted ? nil : { p.requestInputMonitoring() }, settings: "Privacy_ListenEvent")
+        ForEach([PermissionKind.screen, .microphone, .accessibility, .inputMonitoring], id: \.self) { k in
+            row(k, p.state(k))
+        }
     }
 
-    func row(_ title: String, _ why: String, _ st: Permissions.State, action: (() -> Void)?, settings: String) -> some View {
-        HStack(alignment: .center, spacing: 10) {
+    func row(_ k: PermissionKind, _ st: Permissions.State) -> some View {
+        let now = guide.running && guide.current == k
+        return HStack(alignment: .center, spacing: 10) {
             StatusDot(tone: st == .granted ? .good : st == .denied ? .bad : .warn)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(PermissionGuide.name(k))
+                Text(PermissionGuide.why(k)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Text(st == .granted ? T("settings.kit.allowed") : st == .denied ? T("settings.kit.not_allowed") : T("settings.kit.not_set"))
+            Text(now ? T("settings.perm.now") : st == .granted ? T("settings.kit.allowed") : st == .denied ? T("settings.kit.not_allowed") : T("settings.kit.not_set"))
                 .foregroundStyle(st == .granted ? .secondary : .primary).font(.callout)
-            if let a = action {
-                Button(T("settings.kit.allow"), action: a)
-            } else if st != .granted {
-                Button(T("settings.kit.system_settings")) { Permissions.openPane(settings) }
+            if st != .granted {
+                Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
+                Button { Permissions.openPane(k) } label: { Image(nsImage: BlurtIcon.externalLink.symbolImage(pointSize: 12)) }
+                    .buttonStyle(.borderless).help(T("settings.kit.system_settings")).accessibilityLabel(T("settings.kit.system_settings"))
             }
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// "Set Up Permissions": the guide through everything still missing, with the done line once it has run.
+struct PermissionSetupButton: View {
+    var flow: PermissionFlowKind
+    var source: PermissionGuide.Source
+    @ObservedObject var p: Permissions
+    /// the done line here (false: the pane shows it higher up)
+    var banner = true
+    @ObservedObject var guide = PermissionGuide.shared
+
+    var body: some View {
+        let missing = guide.missing(flow)
+        let _ = p.screen                // re-evaluated as the states change
+        VStack(alignment: .leading, spacing: 6) {
+            if banner { PermissionDoneBanner() }
+            if !missing.isEmpty {
+                HStack(spacing: 10) {
+                    Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
+                        guide.start(flow, source: source)
+                    }
+                    Text(missing.map(PermissionGuide.name).joined(separator: T("settings.perm.list_sep")))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Spacer()
+                }
+            }
+        }
     }
 }
 

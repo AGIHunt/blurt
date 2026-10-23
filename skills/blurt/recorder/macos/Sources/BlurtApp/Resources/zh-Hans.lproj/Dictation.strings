@@ -19,7 +19,7 @@
 "dictation.polish.family.gemma.installed" = "Gemma · 已安装，占用 %@";
 "dictation.polish.family.qwen.installed" = "Qwen · 已安装，占用 %@";
 "dictation.polish.progress" = "正在下载 · %1$@ / %2$@";
-"dictation.toast.needs_permission" = "要用%@ 键听写，请开启「输入监控」权限";
+"dictation.toast.needs_permission" = "要用%@ 键听写，还需要开启权限";
 "dictation.toast.set_up" = "去设置";
 "dictation.toast.on.tap" = "听写已开启：单按%@ 开始说话";
 "dictation.toast.on.hold" = "听写已开启：按住%@ 说话";
@@ -32,8 +32,8 @@
 "dictation.menu.history" = "听写历史…";
 "dictation.menu.history.tip" = "在任意 App 里单按%@开始听写";
 "dictation.menu.turn_on" = "开启听写…";
-"dictation.menu.turn_on.tip" = "口喷鸡还听不到%@：听写需要「输入监控」权限。";
-"dictation.menu.turn_on.subtitle" = "开启「输入监控」后才能用%@";
+"dictation.menu.turn_on.tip" = "口喷鸡还听不到%@：听写需要「辅助功能」或「输入监控」权限。";
+"dictation.menu.turn_on.subtitle" = "设置权限后才能用%@";
 
 /* 设置 → 听写 */
 "dictation.settings.tab" = "听写";
@@ -42,7 +42,6 @@
 "dictation.settings.enable.detail" = "单独按一下%@，说话，文字就打在光标处。按 Esc 取消。";
 "dictation.settings.key" = "按键";
 "dictation.settings.mode" = "方式";
-"dictation.settings.fn_hint" = "用 Fn 时：在「系统设置 → 键盘」里把「按下 fn 键时」设为「不执行任何操作」。如果 Typeless 也在运行并用 Fn，两边会同时响应，请给其中一个换个键。";
 "dictation.settings.voice_note_hint" = "听写会把字打进当前 App。想把说的话留在口喷鸡里，用语音备注（%@）。";
 "dictation.settings.voice_note_off" = "它的快捷键已关闭";
 "dictation.settings.either_hint" = "中间没按别的键、也没点鼠标，才算单按，所以 Option 组合键照常能用。";
@@ -52,7 +51,7 @@
 "dictation.status.on.tap" = "在任意 App 里单按%@开始说话，再按一下结束。";
 "dictation.status.on.hold" = "在任意 App 里按住%@说话，松开结束。";
 "dictation.status.off" = "还没生效：口喷鸡听不到%@";
-"dictation.status.off.detail" = "在「系统设置」里给口喷鸡开启「输入监控」，马上生效，不用重启。";
+"dictation.status.off.detail" = "点「开启…」：口喷鸡会打开「系统设置」里对应的位置，并告诉你打开哪个开关。马上生效，不用重启。";
 "dictation.status.fix" = "开启…";
 "dictation.listener.tap" = "在所有 App 里都能听到（输入监控）。";
 "dictation.listener.monitor" = "通过辅助功能在所有 App 里听（没有开启输入监控）。";
@@ -63,9 +62,9 @@
 
 "dictation.perm.section" = "权限";
 "dictation.perm.input_monitoring" = "输入监控";
-"dictation.perm.input_monitoring.why" = "用来识别单独按下的%@。口喷鸡只听这一个键，不会记录你打的字。";
+"dictation.perm.input_monitoring.why" = "在任何 App 里识别%@。口喷鸡只听这个键，从不记录你打的字。";
 "dictation.perm.accessibility" = "辅助功能";
-"dictation.perm.accessibility.why" = "用来把文字粘贴进当前 App，并读取光标附近的文字，让名字写对（不读密码框，也不保存）。没有它，文字会复制到剪贴板，由你自己粘贴。";
+"dictation.perm.accessibility.why" = "把文字粘贴到你正在用的 App，并读取光标附近的文字让名字写对（从不读密码框，也不保存）。用 Fn 时也靠它听到按键。没有这个权限时，文字会复制到剪贴板，由你自己粘贴。";
 "dictation.perm.restart_hint" = "已允许，几秒内自动生效，不用重启。";
 
 "dictation.polish.section" = "润色";
@@ -160,3 +159,28 @@
 "dictation.vocab.context.detail" = "让名字和文档里的写法一致。开始说话时读取，不会保存，也不读密码框。";
 "dictation.vocab.learn" = "从我的修改中学习";
 "dictation.vocab.learn.detail" = "听写后一分钟内，如果你改了口喷鸡打错的词，它会记下来，并在这里给出建议。";
+
+/* Fn 作为听写键：自动模式、不让 macOS 响应 Fn、macOS 的 🌐 键设置 */
+"dictation.mode.auto" = "按一下或按住";
+"dictation.mode.auto.detail" = "按一下%@开始，再按一下结束；也可以按住说话，松开就结束。";
+"dictation.mode.tap.detail" = "按一下%@开始，再按一下结束。";
+"dictation.mode.hold.detail" = "按住%@说话，松开结束。";
+"dictation.toast.on.auto" = "听写已开启：单按%@ 开始说话，或按住说话";
+"dictation.status.on.auto" = "在任意 App 里单按%@开始说话，再按一下结束；也可以按住说话，松开结束。";
+"dictation.listener.filter" = "在所有 App 里都能听到，并且不让 macOS 响应 Fn（辅助功能）。";
+"dictation.perm.input_monitoring.why_fn" = "用 Fn 时不需要：口喷鸡通过「辅助功能」就能听到。换成别的键时才用它。";
+"dictation.perm.microphone.why" = "听你说话。";
+"dictation.fn.capture" = "Fn 只用来听写";
+"dictation.fn.capture.on" = "口喷鸡在听 Fn 时，macOS 自己的 Fn 功能不会触发。";
+"dictation.fn.capture.needs_ax" = "需要「辅助功能」权限。开启之前，按 Fn 可能也会触发 macOS 自己的功能。";
+"dictation.fn.capture.detail" = "关闭后 Fn 也会传给 macOS，请把下面的设置改成「不执行任何操作」。";
+"dictation.fn.usage" = "macOS「按下 🌐 键时」：%@";
+"dictation.fn_usage.0" = "不执行任何操作";
+"dictation.fn_usage.1" = "更改输入法";
+"dictation.fn_usage.2" = "显示表情与符号";
+"dictation.fn_usage.3" = "开始听写";
+"dictation.fn_usage.default" = "系统默认";
+"dictation.fn.usage.clash" = "按 Fn 时可能也会触发它。建议设为「不执行任何操作」，口喷鸡不会替你改。";
+"dictation.fn.usage.ok" = "在 macOS 里 Fn 不会再做别的事。";
+"dictation.fn.usage.fix" = "去设置…";
+"dictation.settings.fn_clash" = "%@ 正在运行，也在用 Fn，两边都会响应。退出它，或者给其中一个换个键。";
