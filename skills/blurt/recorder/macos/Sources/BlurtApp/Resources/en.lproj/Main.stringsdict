@@ -210,5 +210,69 @@
 			<string>and %ld more</string>
 		</dict>
 	</dict>
+	<key>main.dictation.count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld dictation</string>
+			<key>other</key>
+			<string>%ld dictations</string>
+		</dict>
+	</dict>
+	<key>main.dictation.multi</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld dictation selected</string>
+			<key>other</key>
+			<string>%ld dictations selected</string>
+		</dict>
+	</dict>
+	<key>main.dictation.stat.count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld dictation</string>
+			<key>other</key>
+			<string>%ld dictations</string>
+		</dict>
+	</dict>
+	<key>main.dictation.stat.words</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld word</string>
+			<key>other</key>
+			<string>%ld words</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

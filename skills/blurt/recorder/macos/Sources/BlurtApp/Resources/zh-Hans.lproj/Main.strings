@@ -355,3 +355,46 @@
 "notify.open" = "打开";
 
 "notify.show" = "查看";
+
+/* the Dictation page (DictationPage.swift) */
+"main.sidebar.dictation.ax" = "听写：你听写进其它 App 的内容";
+"main.dictation.today" = "今天";
+"main.dictation.today.none" = "今天还没有听写";
+"main.dictation.stat.saved" = "约省 %ld 分钟";
+"main.dictation.stat.saved.tip" = "按每分钟打 50 字左右估算，减去说话的时间";
+"main.dictation.settings" = "听写设置…";
+"main.dictation.off" = "听写已关闭";
+"main.dictation.off.detail" = "可在 设置 → 听写 中打开。";
+"main.dictation.deaf.short" = "听写还听不到按键";
+"main.dictation.ready" = "听写已开启";
+"main.dictation.unknown_app" = "未知 App";
+"main.dictation.mark.terms" = "用到的术语：%@";
+"main.dictation.mode.label" = "显示";
+"main.dictation.mode.polished" = "润色后";
+"main.dictation.mode.raw" = "识别原文";
+"main.dictation.mode.compare" = "对照";
+"main.dictation.typed" = "输入的文字";
+"main.dictation.heard" = "识别原文";
+"main.dictation.same" = "润色没有改动";
+"main.dictation.copied" = "已复制";
+"main.dictation.show_item" = "查看条目 %@";
+"main.dictation.delete.tip" = "删除这条听写（⌫，⌘Z 可撤销）";
+"main.dictation.info.app" = "App";
+"main.dictation.info.when" = "时间";
+"main.dictation.info.length" = "时长";
+"main.dictation.info.result" = "结果";
+"main.dictation.info.pasted" = "已输入到 App";
+"main.dictation.info.copied" = "已复制到剪贴板（当时没有可输入的地方）";
+"main.dictation.info.not_typed" = "未输入";
+"main.dictation.info.polish" = "润色";
+"main.dictation.info.polish.off" = "关闭";
+"main.dictation.info.asr" = "语音模型";
+"main.dictation.info.language" = "语言";
+"main.dictation.info.terms" = "用到的术语";
+"main.dictation.info.context" = "上下文";
+"main.dictation.info.context.yes" = "已使用";
+"main.dictation.none" = "没有选中听写";
+"main.dictation.none.detail" = "在左边选一条。↑↓ 切换，⌘C 复制，⌫ 删除。";
+"main.dictation.none.empty" = "这里还是空的";
+"main.dictation.none.empty.detail" = "每次听写都会显示在这里：输入了什么、识别到什么、打到了哪里。";
+"main.dictation.copy_all" = "全部复制";

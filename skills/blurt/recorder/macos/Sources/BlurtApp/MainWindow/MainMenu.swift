@@ -57,7 +57,8 @@ enum MainMenu {
                   item(T("main.place.inbox"), #selector(MainWindowController.mGo(_:)), "1", obj: "inbox"),
                   item(T("main.place.progress"), #selector(MainWindowController.mGo(_:)), "2", obj: "progress"),
                   item(T("project.inbox"), #selector(MainWindowController.mGo(_:)), "3", obj: "unassigned"),
-                  item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all")]
+                  item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all"),
+                  item(T("dictation.history.sidebar"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option])]
         for (k, p) in c.model.projects.prefix(5).enumerated() where p.registered {
             go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
         }
@@ -87,8 +88,7 @@ enum MainMenu {
                                   item(T("action.copy_path"), #selector(MainWindowController.mCopyPath), "c", [.command, .option]),
                                   item(T("main.menu.copy_link"), #selector(MainWindowController.mCopyLink))])
         _ = menu(T("menu.window"), [item(T("menu.minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil),
-                                    item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil), .separator(),
-                                    item(T("dictation.history.menu"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option])])
+                                    item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil)])
         let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),
                                          item(T("menu.website"), #selector(MainWindowController.mHelp))])
         NSApp.helpMenu = help
@@ -98,7 +98,7 @@ enum MainMenu {
 }
 
 extension MainMenu {
-    /// While only a small window of ours is open (Dictation History, Settings) the app is a menu-bar app without a
+    /// While only a small window of ours is open (Settings) the app is a menu-bar app without a
     /// main menu — and without one ⌘C / ⌘V / ⌘A / ⌘Z / ⌘W do nothing, in its search field too. This gives it the
     /// Edit keys (the menu bar itself stays hidden); the main window replaces it with the full menu when it opens.
     static func ensureEditKeys() {
@@ -140,7 +140,7 @@ extension MainWindowController {
     @objc func mGo(_ i: NSMenuItem) { (i.representedObject as? String).flatMap(Scope.init(key:)).map(go) }
     @objc func mGoProject(_ i: NSMenuItem) { (i.representedObject as? String).map { reveal(project: $0) } }
     @objc func mShortcuts() { showShortcuts() }
-    @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
+    @objc func mDictationHistory() { showDictation() }
     @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
 }
 
@@ -163,7 +163,7 @@ enum ShortcutsSheet {
             ("W", StateMenu.title("wontfix")), ("X  ⌫", StateMenu.title("discard")),
             ("E", T("main.menu.rename")), ("1 2 3 4", T("main.keys.kind")), ("⌘Z  ⇧⌘Z", T("main.keys.undo")),
             (T("main.keys.space"), "Quick Look"),
-            ("⌘1 … ⌘4", T("main.keys.places")), ("⌘5 … ⌘9", T("main.keys.projects")),
+            ("⌘1 … ⌘4", T("main.keys.places")), ("⌥⌘D", T("dictation.history.sidebar")), ("⌘5 … ⌘9", T("main.keys.projects")),
             ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")), ("?", T("main.keys.this")),
         ]
         let grid = NSGridView(views: rows.map { k, v in

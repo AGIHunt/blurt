@@ -47,12 +47,14 @@ extension App {
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
             MainActor.assumeIsolated {
                 switch a.first ?? "show" {
+                // the history is a page of the main window (MainWindow/DictationPage.swift); these drive it
                 case "raw": DictationHistoryWindow.shared.toggleRaw(a.count > 1 ? a[1] : nil)
+                case "mode": DictationHistoryWindow.shared.setMode(a.count > 1 ? a[1] : "polished")   // polished | raw | compare
                 case "item": DictationHistoryWindow.shared.makeItem(a.count > 1 ? a[1] : nil)
                 case "query": DictationHistoryWindow.shared.setQuery(a.count > 1 ? a[1] : "")
                 case "delete": DictationHistoryWindow.shared.delete(a.count > 1 ? a[1] : nil)
                 case "select": DictationHistoryWindow.shared.testSelect((a.count > 1 ? a[1] : "").split(separator: ",").map(String.init))
-                case "key": DictationHistoryWindow.shared.testKey(a.count > 1 ? a[1] : "")       // delete | cmd+c | cmd+z | cmd+f | esc
+                case "key": DictationHistoryWindow.shared.testKey(a.count > 1 ? a[1] : "")       // delete | cmd+c | cmd+z | cmd+f | esc | up | down
                 default: DictationHistoryWindow.shared.show()
                 }
             }

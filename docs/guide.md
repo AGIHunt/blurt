@@ -145,10 +145,16 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   starts with *Turn On Dictation…* and the island reminds you about once a day; once you allow it, dictation starts
   working without a restart. Without Accessibility, or when the focus isn't a text field, the text
   is copied and the island says so: paste it with `⌘V`. Your clipboard is put back after a paste.
-- **Dictation History** (menu bar → *Dictation History…*, the main window's sidebar, or `⌥⌘D`) lists every dictation by
-  day, with search. Each row shows what was typed; the eye button shows what the speech model heard. You can copy
-  either, delete a row, or **turn it into an item** in the current project (or Unassigned). History is kept for 30
-  days (Settings), and the audio is deleted right after transcription unless you choose to keep it.
+- **Dictation** is a place in the main window's sidebar, under All Items (also menu bar → *Dictation History…*,
+  `⌥⌘D`, or the command palette). It lists every dictation by day: the app it went into, the time, the text, and small
+  marks for polished, typed as spoken (polish fell back) and terms applied. The toolbar's search field searches it.
+  Above the list are today's numbers (dictations, words, roughly the minutes saved) and a link to *Dictation
+  Settings…*. Select a dictation to see it on the right: what was typed and what the speech model heard, one at a time
+  or side by side, each with its own Copy button. From there you can **turn it into an item** in the current project
+  (or Unassigned) or delete it. The detail also shows the app, the length, and how it was typed. Keys: `↑` `↓` to move,
+  `⌘C` to copy, `⌫` to delete (`⌘Z` puts it back), `⌘F` to search. With no dictations yet, the page explains which key
+  to tap and says when dictation is off or can't hear its key yet. History is kept for 30 days (Settings), and the
+  audio is deleted right after transcription unless you choose to keep it.
 - Dictation is off while a screen recording runs, because the recording is using the microphone. Dictation and the
   voice note never listen at the same time: whichever started first keeps the microphone until it's done.
 
@@ -255,5 +261,5 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - 在「设置 → 听写」里可以把按键换成 **Fn** 或**任一 Option 键**（左右都行，同样只认单按），方式换成**按住说话**：按住约 0.25 秒开始，松开结束，中途按了别的键就取消。用 Fn 时，把「系统设置 → 键盘 → 按下 fn 键时」设为「不执行任何操作」；如果 Typeless 也在用 Fn，两边会冲突。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
 - **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴。设置页显示两者的状态，并有按钮直达系统设置里对应的位置，也会显示按键现在能不能被听到。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次；允许之后不用重启就能用。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
-- **听写历史**（菜单栏 →「听写历史…」、主窗口侧栏，或 `⌥⌘D`）按天列出所有听写，可以搜索。每行显示打出去的文字，眼睛按钮显示语音模型听到的原文；两者都能复制，也能删除，或者**转为条目**（进当前项目，没有当前项目就进「未归类」）。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
+- **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长和输入方式。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。

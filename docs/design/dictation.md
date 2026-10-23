@@ -23,7 +23,7 @@ right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
 | Polish model + guard + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/test_polish.py` |
-| UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), Dictation History window (`MainWindow/DictationHistoryWindow.swift`), menu-bar menu, sidebar, `⌥⌘D` |
+| UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it) |
 
 ## Trigger
 

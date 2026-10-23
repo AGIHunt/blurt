@@ -355,3 +355,46 @@
 "notify.open" = "Open";
 
 "notify.show" = "Show";
+
+/* the Dictation page (DictationPage.swift) */
+"main.sidebar.dictation.ax" = "Dictation: what you dictated into other apps";
+"main.dictation.today" = "Today";
+"main.dictation.today.none" = "Nothing dictated today yet";
+"main.dictation.stat.saved" = "about %ld min saved";
+"main.dictation.stat.saved.tip" = "Compared with typing the same text at about 40 words a minute";
+"main.dictation.settings" = "Dictation Settings…";
+"main.dictation.off" = "Dictation is off";
+"main.dictation.off.detail" = "Turn it on in Settings → Dictation.";
+"main.dictation.deaf.short" = "Dictation can’t hear its key yet";
+"main.dictation.ready" = "Dictation is on";
+"main.dictation.unknown_app" = "Unknown app";
+"main.dictation.mark.terms" = "Terms applied: %@";
+"main.dictation.mode.label" = "Show";
+"main.dictation.mode.polished" = "Polished";
+"main.dictation.mode.raw" = "As Heard";
+"main.dictation.mode.compare" = "Side by Side";
+"main.dictation.typed" = "Typed";
+"main.dictation.heard" = "Heard";
+"main.dictation.same" = "polish changed nothing";
+"main.dictation.copied" = "Copied";
+"main.dictation.show_item" = "Show Item %@";
+"main.dictation.delete.tip" = "Delete this dictation (⌫, undo with ⌘Z)";
+"main.dictation.info.app" = "App";
+"main.dictation.info.when" = "When";
+"main.dictation.info.length" = "Length";
+"main.dictation.info.result" = "Result";
+"main.dictation.info.pasted" = "Typed into the app";
+"main.dictation.info.copied" = "Copied to the clipboard (no text field had the focus)";
+"main.dictation.info.not_typed" = "Not typed";
+"main.dictation.info.polish" = "Polish";
+"main.dictation.info.polish.off" = "Off";
+"main.dictation.info.asr" = "Speech model";
+"main.dictation.info.language" = "Language";
+"main.dictation.info.terms" = "Terms applied";
+"main.dictation.info.context" = "Context";
+"main.dictation.info.context.yes" = "Used";
+"main.dictation.none" = "No dictation selected";
+"main.dictation.none.detail" = "Pick one on the left. ↑↓ to move, ⌘C to copy, ⌫ to delete.";
+"main.dictation.none.empty" = "Nothing here yet";
+"main.dictation.none.empty.detail" = "Each dictation shows here: what was typed, what was heard, and where it went.";
+"main.dictation.copy_all" = "Copy All";

@@ -1,4 +1,4 @@
-// The source list: the places (Inbox, In Progress, Unassigned, All Items) and the projects — the folders opened in
+// The source list: the places (Inbox, In Progress, Unassigned, All Items, Dictation) and the projects — the folders opened in
 // Blurt, most recently used first — with an "Open Folder…" button at the bottom. Folders dropped anywhere on the
 // sidebar open as projects; items dragged onto a project (or Unassigned) move there. Vibrancy comes from
 // NSSplitViewItem(sidebarWithViewController:).
@@ -9,6 +9,8 @@ final class SidebarNode: NSObject {
     let title: String
     let scope: Scope?            // nil = a group header
     let symbol: String?
+    /// an icon that isn't an SF Symbol name (Dictation's, from BlurtIcon)
+    var image: NSImage?
     var count: Int?
     var children: [SidebarNode] = []
     var accessibility: String?
@@ -77,22 +79,11 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         open.font = .systemFont(ofSize: 12)
         open.toolTip = T("main.sidebar.open_folder.tip")
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
-        // Dictation (听写): its history is a window of its own — dictations aren't items until you make them one
-        let dictation = NSButton(title: T("dictation.history.sidebar"), image: BlurtIcon.keyboard.symbolImage(pointSize: 13),
-                                 target: self, action: #selector(dictationTapped))
-        dictation.bezelStyle = .recessed
-        dictation.isBordered = false
-        dictation.imagePosition = .imageLeading
-        dictation.contentTintColor = .secondaryLabelColor
-        dictation.font = .systemFont(ofSize: 12)
-        dictation.toolTip = T("dictation.history.sidebar.tip")
         let root = NSView()
-        for v in [scroll, dictation, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        for v in [scroll, open] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: dictation.topAnchor, constant: -6),
-            dictation.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            dictation.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -4),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
             open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
             open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
         ])
@@ -101,7 +92,6 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     @objc func openTapped() { actions?.openFolder() }
-    @objc func dictationTapped() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
 
     func rebuild() {
         let c = model.counts
@@ -111,11 +101,16 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             node.accessibility = ax
             return node
         }
+        // not items: what was dictated into other apps — a page of its own (DictationPage.swift)
+        let dictation = SidebarNode(T("dictation.history.sidebar"), scope: .dictation)
+        dictation.image = BlurtIcon.keyboard.symbolImage(pointSize: 13)
+        dictation.accessibility = T("main.sidebar.dictation.ax")
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.dashed", c.active, ax: T("main.sidebar.progress.ax")),
             place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
+            dictation,
         ]
         let projectNodes = model.projects.map { p -> SidebarNode in
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
@@ -288,7 +283,7 @@ final class SourceCell: NSTableCellView {
         title.textColor = n.dimmed ? .secondaryLabelColor : .labelColor
         key.stringValue = n.detail ?? ""
         key.isHidden = n.detail == nil
-        icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
+        icon.image = n.image ?? n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.contentTintColor = n.dimmed ? .tertiaryLabelColor : nil
         icon.alphaValue = 1
         badge.stringValue = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""

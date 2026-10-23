@@ -9,6 +9,7 @@
 //   In Progress  handed off, in progress, to verify — with the running jobs above the list
 //   Unassigned   items not filed under a project yet (the inbox store)
 //   All Items    everything, as a full table
+//   Dictation    not items: what was dictated into other apps (DictationPage.swift replaces both columns)
 //   <project>    one opened folder
 //   <session>    one capture batch (a recording, a snap batch), reached from a job or a link
 import AppKit
@@ -16,6 +17,8 @@ import BlurtCore
 
 enum Scope: Hashable {
     case inbox, inProgress, unassigned, all
+    /// the Dictation page (DictationPage.swift): no item rows
+    case dictation
     case project(String)
     case session(String)
 
@@ -25,6 +28,7 @@ enum Scope: Hashable {
         case .inProgress: return "progress"
         case .unassigned: return "unassigned"
         case .all: return "all"
+        case .dictation: return "dictation"
         case .project(let p): return "project:" + p
         case .session(let s): return "session:" + s
         }
@@ -36,6 +40,7 @@ enum Scope: Hashable {
         case "progress": self = .inProgress
         case "unassigned": self = .unassigned
         case "all": self = .all
+        case "dictation": self = .dictation
         default:
             if key.hasPrefix("project:") { self = .project(String(key.dropFirst(8))) }
             else if key.hasPrefix("session:") { self = .session(String(key.dropFirst(8))) }
@@ -176,7 +181,7 @@ final class MainModel {
         case .unassigned: q.project = "inbox"
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
-        case .all: break
+        case .all, .dictation: break
         }
         return q
     }
@@ -221,7 +226,7 @@ final class MainModel {
     func reload() {
         let t0 = DispatchTime.now().uptimeNanoseconds
         pages.removeAll()
-        uids = (try? reader?.uids(query)) ?? []
+        uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
         rowByUID = nil
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         reloadJobs()
@@ -265,6 +270,7 @@ final class MainModel {
         case .inProgress: return T("main.place.progress")
         case .unassigned: return T("project.inbox")
         case .all: return T("main.place.all")
+        case .dictation: return T("dictation.history.sidebar")
         case .project(let p): return project(id: p)?.name ?? ProjectStore.shared.project(id: p)?.name ?? T("main.place.project")
         case .session(let s): return sessionRow(id: s).map(MainModel.title(of:)) ?? T("main.place.session")
         }

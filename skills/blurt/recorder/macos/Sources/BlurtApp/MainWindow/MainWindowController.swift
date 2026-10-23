@@ -10,6 +10,7 @@
 // This window never opens by itself: no review pops up when processing finishes (K4 notification rules).
 import AppKit
 import BlurtCore
+import Combine
 import Quartz
 
 final class MainWindow: NSWindow {
@@ -29,6 +30,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     let sidebar: SidebarController
     let list: ItemListController
     let detail = WebHostController()
+    /// The middle and detail columns: the items and their detail, or the Dictation page's two halves.
+    let listColumn: ColumnController
+    let detailColumn: ColumnController
+    private var page: DictationPage?
+    /// The Dictation page (DictationPage.swift), made on first use.
+    var dictation: DictationPage {
+        if let p = page { return p }
+        let p = DictationPage()
+        page = p
+        entriesWatch = p.model.$entries.sink { [weak self] _ in DispatchQueue.main.async { self?.updateTitle() } }
+        return p
+    }
+    var dictationIfLoaded: DictationPage? { page }
+    private var entriesWatch: AnyCancellable?
     var searchItem: NSSearchToolbarItem?
     var watcher: IndexWatcher?
     var watchedRoots: [String] = []
@@ -43,6 +58,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     init() {
         sidebar = SidebarController(model: model)
         list = ItemListController(model: model)
+        listColumn = ColumnController(list)
+        detailColumn = ColumnController(detail)
         let w = MainWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780),
                            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                            backing: .buffered, defer: true)
@@ -65,9 +82,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         side.minimumThickness = 190
         side.maximumThickness = 320
         side.canCollapse = true
-        let content = NSSplitViewItem(contentListWithViewController: list)
+        let content = NSSplitViewItem(contentListWithViewController: listColumn)
         content.minimumThickness = 360
-        let det = NSSplitViewItem(viewController: detail)
+        let det = NSSplitViewItem(viewController: detailColumn)
         det.minimumThickness = 380
         det.canCollapse = true
         det.holdingPriority = .init(249)
@@ -89,6 +106,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         sidebar.actions = self
         model.onReload = { [weak self] in
             guard let self = self else { return }
+            self.syncPage()             // every way to a place (go, reveal, restore) reloads: the columns follow the scope
             self.list.reload()
             // the same item still selected, but its row changed under it (a state, a move, a renamed folder)
             if self.shownJob == nil, self.list.selectedIDs.count == 1, let it = self.list.selectedItems.first {
@@ -126,7 +144,68 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         activateApp()
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
-        if window?.firstResponder == nil || window?.firstResponder === window { window?.makeFirstResponder(list.table) }
+        if model.scope == .dictation { dictation.didShow() }
+        if window?.firstResponder == nil || window?.firstResponder === window { focusList() }
+    }
+
+    /// The Dictation page (⌥⌘D, the menu-bar menu, the palette, Settings → Dictation).
+    func showDictation() {
+        show()
+        go(.dictation)
+        focusList()
+    }
+
+    /// The list that is showing: the items' table, or the Dictation page's.
+    func focusList() {
+        if model.scope == .dictation {
+            // SwiftUI builds its table on the next pass
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self = self, self.model.scope == .dictation, let t = self.dictation.table else { return }
+                    self.window?.makeFirstResponder(t)
+                }
+            }
+        } else {
+            window?.makeFirstResponder(list.table)
+        }
+    }
+
+    /// The columns follow the scope: the Dictation page in place of the items and their detail, and the toolbar's
+    /// search field searching what is showing.
+    func syncPage() {
+        let on = model.scope == .dictation
+        let showing = listColumn.current !== list
+        guard on != showing else { return }
+        let field = searchItem?.searchField
+        if on {
+            let p = dictation
+            listColumn.show(p.list)
+            detailColumn.show(p.detail)
+            p.didShow()
+            field?.placeholderString = T("dictation.history.search")
+            field?.stringValue = p.model.query
+            if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().orderOut(nil) }
+        } else {
+            page?.didHide()
+            listColumn.show(list)
+            detailColumn.show(detail)
+            field?.placeholderString = T("main.search.placeholder")
+            field?.stringValue = model.text
+        }
+    }
+
+    /// Tests and the search field: the Dictation page's search.
+    func setDictationQuery(_ q: String) {
+        dictation.model.query = q
+        if model.scope == .dictation { searchItem?.searchField.stringValue = q }
+        dictationFollowsSearch()
+    }
+
+    /// After a search: keep a selection among what still matches (the first match otherwise).
+    private func dictationFollowsSearch() {
+        let m = dictation.model
+        let ids = Set(m.filtered.map(\.id))
+        if m.selection.isEmpty || !m.selection.isSubset(of: ids) { m.select(m.filtered.first?.id) }
     }
 
     func reveal(uid: String) {
@@ -193,6 +272,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if s.isTable { roomForTable() }
         model.reload()
         sidebar.select(s)
+        if s == .dictation {
+            list.table.deselectAll(nil)      // nothing of the items is acted on from here (the Item menu, the palette)
+            dictation.model.selectFirstIfNone()
+            focusList()
+            return
+        }
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
         list.scrollToStart()
         listSelectionChanged()
@@ -215,6 +300,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func updateTitle() {
         window?.title = model.scopeTitle
+        if model.scope == .dictation {
+            let n = page?.model.entries.count ?? 0
+            window?.subtitle = n > 0 ? TP("main.dictation.count", n) : ""
+            return
+        }
         window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)
     }
 
@@ -933,6 +1023,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func controlTextDidChange(_ n: Notification) {
         guard let f = n.object as? NSSearchField, f === searchItem?.searchField else { return }
+        if model.scope == .dictation { return setDictationQuery(f.stringValue) }
         model.text = f.stringValue
         model.reload()
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
@@ -941,6 +1032,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
         guard control === searchItem?.searchField else { return false }
+        if model.scope == .dictation {
+            if sel == #selector(NSResponder.moveDown(_:)) || sel == #selector(NSResponder.insertNewline(_:))
+                || (sel == #selector(NSResponder.cancelOperation(_:)) && control.stringValue.isEmpty) {
+                dictation.model.selectFirstIfNone()
+                focusList()
+                return true
+            }
+            return false
+        }
         if sel == #selector(NSResponder.moveDown(_:)) || sel == #selector(NSResponder.insertNewline(_:)) {
             window?.makeFirstResponder(list.table)
             if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
@@ -1042,6 +1142,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func windowWillClose(_ notification: Notification) {
         saveState(open: false)
+        page?.didHide()
         palette.close()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().orderOut(nil) }
         DispatchQueue.main.async { NSApp.setActivationPolicy(.accessory) }
@@ -1052,5 +1153,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         a.messageText = title
         a.informativeText = text
         if let w = window, w.isVisible { a.beginSheetModal(for: w) } else { a.runModal() }
+    }
+}
+
+/// One column of the split view whose content can be swapped — the items or the Dictation page — without touching
+/// the split view itself (its divider positions and saved widths stay as they are).
+final class ColumnController: NSViewController {
+    private(set) var current: NSViewController
+
+    init(_ vc: NSViewController) {
+        current = vc
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        view = NSView()
+        embed(current)
+    }
+
+    func show(_ vc: NSViewController) {
+        guard vc !== current else { return }
+        current.view.removeFromSuperview()
+        current.removeFromParent()
+        current = vc
+        if isViewLoaded { embed(vc) }
+    }
+
+    private func embed(_ vc: NSViewController) {
+        addChild(vc)
+        let v = vc.view
+        v.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(v)
+        NSLayoutConstraint.activate([v.topAnchor.constraint(equalTo: view.topAnchor), v.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                                     v.leadingAnchor.constraint(equalTo: view.leadingAnchor), v.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
     }
 }
