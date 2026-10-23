@@ -80,5 +80,11 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 item spotted</string><key>other</key><string>%d items spotted</string></dict>
   </dict>
+  <key>capture.smart_paste.done_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Picture + text pasted</string><key>other</key><string>%d pictures + text pasted</string></dict>
+  </dict>
 </dict>
 </plist>

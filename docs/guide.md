@@ -68,9 +68,15 @@ What you can do with a card:
   you started talking and then typed instead (or the mic only heard the room), the recording is dropped: the card
   keeps what you typed and shows no mic.
 - **Click to copy**, then `⌘V` anywhere: a snap copies its picture and its note together, as rich content — the way
-  copying a picture-and-text message in WeChat does — so pasting into Feishu/Lark, Claude, WeChat, Notes, Slack or
-  Notion brings both the image and the text (the note keeps its line breaks). A voice note copies its words.
+  copying a picture-and-text message in WeChat does — so pasting into Feishu/Lark, Claude, Notes, Slack or Notion
+  brings both the image and the text (the note keeps its line breaks). A voice note copies its words.
   Right-click for *Copy Image* or *Copy Text* on their own.
+- **WeChat and QQ** take only one thing per paste or drop — the picture, without the note. So for 2 minutes after
+  you click a card, `⌘V` in WeChat or QQ pastes the picture and then the note as a second paste (several cards: each
+  picture, then its note), and the island says *Picture + text pasted*. The card copy is back on the clipboard
+  afterwards, so `⌘V` works again — and every other app still gets the normal copy. A card dragged into WeChat or QQ
+  gets its note typed in right after the picture. This needs Accessibility; turn it off in *Settings → General →
+  WeChat and QQ: paste the picture and the note*.
 - **Copy several at once**: `⌘`-click cards to pick them (a coloured ring shows which); each `⌘`-click copies all the
   picked cards as one — pictures and notes in the order they hang, like `⌘A` `⌘C` over a run of messages. A plain
   click, or the cards tucking away, ends the selection. *Copy All N Cards* in a card's right-click menu (or *Copy All N
@@ -81,7 +87,8 @@ What you can do with a card:
 
   | Drop it on | You get |
   | --- | --- |
-  | WeChat, QQ, Messages, Notes, TextEdit, Mail, Telegram, WhatsApp, Pages, Keynote | the picture and the note, nothing else |
+  | Messages, Notes, TextEdit, Mail, Telegram, WhatsApp, Pages, Keynote | the picture and the note, nothing else |
+  | WeChat, QQ | the picture, then Blurt types the note in after it (needs Accessibility) |
   | Claude (desktop app), Chrome and other browsers, Slack, VS Code, Cursor, Notion, Discord, Feishu/Lark, other Electron apps | the picture and the note as a small Markdown file (`Screenshot-153012-note.md`) — a dropped file wins over text in these apps, so the note comes as a file too |
   | Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm, Alacritty | the two files' paths, so Claude Code or Codex can read the note and see the picture (the note itself is never typed into the shell) |
   | Finder or the Desktop | the two files |
@@ -95,8 +102,9 @@ What you can do with a card:
 - **After a drop**, the card has done its job and leaves its thread — but it isn't thrown away. The island says what
   went in: *Dragged out · picture and note* in a chat or notes app, *… picture and note paths* in a terminal,
   *… picture and note file · note copied, ⌘V to paste* in a browser, Electron app or the Finder. Only where an app may
-  have kept just the picture (browsers, Electron apps, the Finder, apps Blurt doesn't know) is the note also put on
-  the clipboard, so `⌘V` brings the words back; this replaces what was on your clipboard, and *Undo* puts the card
+  have kept just the picture (browsers, Electron apps, the Finder, apps Blurt doesn't know, and WeChat or QQ when the
+  note couldn't be typed in — *Dragged out · picture · note copied, ⌘V to paste*) is the note also put on the
+  clipboard, so `⌘V` brings the words back; this replaces what was on your clipboard, and *Undo* puts the card
   back on its thread and your clipboard as it was. You can turn this off in *Settings → General → After dragging a
   card out, copy its note too*.
 - **Recently Taken**: cards you dragged out stay findable for 7 days. Right-click the island (or the count left of
@@ -271,20 +279,22 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
 - 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
-- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制成富文本——就像在微信里复制一条图文消息——所以贴进飞书/Lark、Claude、微信、备忘录、Slack、Notion，图片和文字都会过去（备注保留换行）。语音卡片复制说的话。右键可以单独「拷贝图片」或「拷贝文字」。
+- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制成富文本——就像在微信里复制一条图文消息——所以贴进飞书/Lark、Claude、备忘录、Slack、Notion，图片和文字都会过去（备注保留换行）。语音卡片复制说的话。右键可以单独「拷贝图片」或「拷贝文字」。
+- **微信和 QQ** 每次粘贴或拖入只收一样东西：只有图片，备注会丢。所以点卡片复制后的 2 分钟内，在微信或 QQ 里按 `⌘V`，会先贴图片、再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），岛上显示「图 + 文已粘贴」。贴完剪贴板里还是这份卡片，可以再按 `⌘V`；其他应用拿到的仍是普通的复制内容。把卡片拖进微信或 QQ，图片放进去后口喷鸡会接着把备注打在后面。需要「辅助功能」权限；不想要可以在「设置 → 通用 → 微信、QQ：图片和备注一起粘贴」里关掉。
 - **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按挂着的顺序排，就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「拷贝全部 N 张卡片」（或者岛的右键菜单里「拷贝全部 N 张挂着的卡片」）一次复制所有卡片。
 - **拖到别的应用里**：截图拖出去是图片（`截图-153012.png`，画过就带笔迹）连同备注，和复制的富文本一样。另外还带什么，看指针下面是哪个应用：
 
   | 拖到 | 得到 |
   | --- | --- |
-  | 微信、QQ、信息、备忘录、文本编辑、邮件、Telegram、WhatsApp、Pages、Keynote | 图片和备注，不多出任何文件 |
+  | 信息、备忘录、文本编辑、邮件、Telegram、WhatsApp、Pages、Keynote | 图片和备注，不多出任何文件 |
+  | 微信、QQ | 图片，然后口喷鸡在图片后面把备注打上（需要「辅助功能」权限） |
   | Claude（桌面版）、Chrome 等浏览器、Slack、VS Code、Cursor、Notion、Discord、飞书/Lark、其他 Electron 应用 | 图片 + 写着备注的 Markdown 小文件（`截图-153012-备注.md`）——这些应用拖进文件时只收文件、不收文字，所以备注也做成文件 |
   | 终端、iTerm2、Ghostty、Warp、kitty、WezTerm、Alacritty | 两个文件的路径，Claude Code、Codex 能读到备注、看到图片（备注文字本身不会打进命令行） |
   | 访达或桌面 | 两个文件 |
   | 其他应用 | 图片和备注，外加 Markdown 文件 |
 
   Markdown 文件里只有你的备注。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖出去的纯文字在一行里（「打的字 · 说的话」）。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
-- **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：聊天、备忘录类应用里是「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」，浏览器、Electron 应用和访达里是「已拖走 · 图片和备注文件 · 备注已复制，⌘V 可粘贴」。只有对方可能只收了图片时（浏览器、Electron 应用、访达、口喷鸡不认识的应用），备注才会另外放进剪贴板，在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖走卡片后，把备注也拷贝到剪贴板」里关掉。
+- **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：聊天、备忘录类应用里是「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」，浏览器、Electron 应用和访达里是「已拖走 · 图片和备注文件 · 备注已复制，⌘V 可粘贴」。只有对方可能只收了图片时（浏览器、Electron 应用、访达、口喷鸡不认识的应用，以及没法在图片后面打上备注时的微信、QQ——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」），备注才会另外放进剪贴板，在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖走卡片后，把备注也拷贝到剪贴板」里关掉。
 - **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一张都可以再拷贝（图片和备注一起，或者单独一样）、把图片再拖出去，或者放回线上。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的应用用。默认关闭；原来的截图不变。
 - 悬停看备注，双击改备注，点 × 扔掉。

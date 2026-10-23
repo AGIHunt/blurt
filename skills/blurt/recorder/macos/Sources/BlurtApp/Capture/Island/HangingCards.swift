@@ -33,8 +33,9 @@
 //  • rich content (v0.8.3; BlurtCore CardPasteboard has the measurements, CardExport.swift the flavours): a card
 //    travels the way a WeChat or Notes copy of a picture-and-text message does — one item with the picture and the
 //    note together as HTML (<img src="data:…"> then <p>note</p>: Chromium / Electron editors such as Feishu, Claude,
-//    Slack, Notion), RTFD (picture attachment then note: AppKit text views such as Notes, TextEdit, WeChat's
-//    composer), RTF (the notes), the picture's PNG, the note as text. So ⌘V after a click, or a drop, brings both.
+//    Slack, Notion), RTFD (picture attachment then note: AppKit text views such as Notes, TextEdit, Mail), RTF (the
+//    notes), the picture's PNG, the note as text. So ⌘V after a click, or a drop, brings both — except in WeChat and
+//    QQ (below).
 //      copy (click, ⌘-click selection, Copy All)   that one item, every card in order (pictures and notes; a voice
 //                                                  card's words as a paragraph), the notes with their line breaks; no
 //                                                  file URL for one picture (with one, WebKit pastes nothing), each
@@ -45,8 +46,10 @@
 //      Claude desktop, Chrome / Chromium browsers, Safari,   + the note as a .md file: a web app attaches files and
 //      Slack, VS Code, Cursor, Notion, Discord, Feishu…,      drops the text and the HTML when there are files
 //      any Electron app (Electron Framework in its bundle)
-//      WeChat, QQ, Messages, Notes, TextEdit, Mail,           nothing else — no .md (a rich text view takes picture
-//      Telegram, WhatsApp, Pages, Keynote                     and note from the RTFD)
+//      Messages, Notes, TextEdit, Mail, Telegram,             nothing else — no .md (a rich text view takes picture
+//      WhatsApp, Pages, Keynote                               and note from the RTFD)
+//      WeChat, QQ                                             nothing else in the drag; they keep only the picture,
+//                                                             so Blurt types the note in after it (smart paste, below)
 //      Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,       only the picture's path and the .md's path — the note's
 //      Alacritty                                              text is never offered to a shell
 //      Finder / the Desktop, anything else                    + the .md file
@@ -56,6 +59,15 @@
 //    note and nothing else (no heading, no image line): out/<NNN>/截图-HHMMSS-备注.md, next to out/<NNN>/截图-HHMMSS.png
 //    (inked if marked, the note also in its PNG Description). Optional (record.drag_caption, off): the picture is a
 //    copy with the note burned in under it. A voice card dragged: its words only, whatever the app.
+//  • WeChat and QQ (v0.8.4; BlurtCore CardSmartPaste.swift, Capture/SmartPaste.swift, record.smart_paste on): their
+//    composer takes one thing per paste or drop — the picture — and reads neither the RTFD nor the HTML (WeChat 4 is
+//    Qt). So: (1) for 2 minutes after a copy, ⌘V there runs a sequence instead — each picture alone, then its note
+//    alone, one paste each (several cards: img, text, img, text…), each step once the app has read the last — then
+//    the card copy is back on the clipboard (armed again) and the island says "图 + 文已粘贴"; (2) after a drop there,
+//    the app comes forward at that window, ⌘↓ (caret after the picture), the note goes in as one paste, the
+//    clipboard comes back; the toast: "Dragged out · picture and note". Needs Accessibility (an active event tap,
+//    only while a copy is armed; posted ⌘V). Off, or it can't: the picture alone, and the safety net copies the note
+//    ("Dragged out · picture · note copied, ⌘V to paste"). Every other app gets exactly what it got before.
 //  • a drag's plain text is one line, control characters out (CardTransfer.dragText): the app that reads it is the
 //    one under the pointer at that moment, which may not be where it lands. A copy keeps the note's line breaks
 //    (pasting is the user's own act).
@@ -63,9 +75,10 @@
 //    used, so it leaves its thread — "taken" (Snapper.takeOut: `{"n","taken":wall}`), not discarded: its files stay,
 //    and it is in Recently Taken for 7 days (the island's right-click menu, the main window; TakenPanel.swift: copy,
 //    drag out again, put back), then housekeeping trashes it. Where the app may have kept only the picture (a web
-//    app, the Finder, an unknown app, or not sure), the note also goes on the clipboard (record.drag_copy_note, on by
-//    default; DragReceipt.copiesNote); a text app or a terminal leaves the clipboard alone. The toast says what went
-//    in (DragReceipt): "Dragged out · picture and note" in a text app, "… picture and note paths" in a terminal (no
+//    app, the Finder, an unknown app, WeChat / QQ when the note couldn't be typed in, or not sure), the note also goes
+//    on the clipboard (record.drag_copy_note, on by default; DragReceipt.copiesNote); a text app or a terminal leaves
+//    the clipboard alone. The toast says what went in (DragReceipt): "Dragged out · picture and note" in a text app
+//    (and in WeChat / QQ once the note is typed in), "… picture and note paths" in a terminal (no
 //    ⌘V: that would paste at a prompt), "… picture and note file · note copied, ⌘V to paste" in a web app or the
 //    Finder, "Dragged out · note copied, ⌘V to paste" in an app we don't know or when it isn't the kind the
 //    pasteboard was last written for. Undo puts the card back and the clipboard as it was. It went with the
@@ -1597,7 +1610,7 @@ final class HangingCards: NSObject {
         // dropped in another app, which took it: the card has done its job — it leaves (restorable: "Dragged out · Undo")
         if !operation.isEmpty, !ourWindow(at: p) {
             emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue)])
-            snapper.takeOut(c.shot, delivered: drag?.delivered(at: p))
+            snapper.takeOut(c.shot, delivered: drag?.delivered(at: p), landed: DropProbe.target(at: p), at: p)
             show(peek: 1.0)                  // the rest close up while you watch
             return
         }

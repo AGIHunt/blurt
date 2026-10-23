@@ -2,8 +2,9 @@
 // written next to the capture, and the pasteboard items built from BlurtCore CardPasteboard's layout (a drag's items
 // follow the app under the pointer: CardDrag.swift). v0.8.3: the first item is rich — the pictures and notes as HTML,
 // RTFD and RTF (CardRich), like a WeChat or Notes copy of a picture-and-text message — so ⌘V or a drop into Feishu,
-// Claude, WeChat or Notes brings both. The flavours and their order on an item are one list (CardExport.flavours), to
-// match a real app's copy if one is measured.
+// Claude or Notes brings both. The flavours and their order on an item are one list (CardExport.flavours), to
+// match a real app's copy if one is measured. WeChat and QQ take one thing per paste or drop (the picture): there
+// the note goes in as a second paste (SmartPaste.swift; a copy is armed for it here).
 //
 //   <batch>/out/<NNN>/截图-153012.png       the picture (inked if marked) with the note in its PNG Description — and,
 //                                            with record.drag_caption on, the note burned in as a strip under it (a
@@ -136,13 +137,22 @@ enum CardExport {
 
     /// A copy of `shots`, in order (a click: one; a ⌘-click selection or Copy All: several) — one rich item with every
     /// picture and note, the notes as text with their line breaks (CardPasteboard.copy). Returns the items written.
+    /// On the clipboard, the copy is armed for smart paste (SmartPaste.swift): ⌘V in WeChat / QQ within 2 minutes pastes
+    /// each picture and then its note, and writes this copy back afterwards.
     @discardableResult
     static func copy(_ shots: [Shot], to pb: NSPasteboard = capturePasteboard) -> [NSPasteboardItem]? {
         let cards = shots.map(card)
-        let items = pasteboardItems(CardPasteboard.copy(cards.map(\.0)), rich: CardRich(cards.map(\.1)), copy: true, tag: nil)
-        guard !items.isEmpty else { return nil }
-        pb.clearContents()
-        return pb.writeObjects(items) ? items : nil
+        let layout = CardPasteboard.copy(cards.map(\.0))
+        let rich = CardRich(cards.map(\.1))
+        let write = { () -> [NSPasteboardItem]? in
+            let items = pasteboardItems(layout, rich: rich, copy: true, tag: nil)
+            guard !items.isEmpty else { return nil }
+            pb.clearContents()
+            return pb.writeObjects(items) ? items : nil
+        }
+        guard let items = write() else { return nil }
+        if pb === capturePasteboard { SmartPaste.shared.armed(cards: cards.map(\.0)) { write() != nil } }
+        return items
     }
 
     // MARK: the caption strip (record.drag_caption)

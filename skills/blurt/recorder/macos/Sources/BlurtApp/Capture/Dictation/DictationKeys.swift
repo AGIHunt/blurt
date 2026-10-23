@@ -329,8 +329,9 @@ private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, 
     return drop ? nil : Unmanaged.passUnretained(event)
 }
 
-/// A thread with its own run loop for the filter tap (an active tap stalls every key press while its callback waits).
-private final class FilterThread: Thread {
+/// A thread with its own run loop for the filter tap (an active tap stalls every key press while its callback waits) —
+/// and for smart paste's ⌘V tap (Capture/SmartPaste.swift), which runs only while a card copy is armed.
+final class FilterThread: Thread {
     static let shared: FilterThread = {
         let t = FilterThread()
         t.name = "blurt.dictation.fn-filter"

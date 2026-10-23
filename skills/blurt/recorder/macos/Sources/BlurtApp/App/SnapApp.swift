@@ -8,8 +8,12 @@
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
 //                             a drag into that kind of app carries (web text terminal finder unknown, or a bundle id)
-//     takeout N [CLASS]       as if card N had been dragged out and taken by that kind of app (the safety-net copy, the
-//                             toast; no CLASS: not sure which)
+//     takeout N [CLASS [PID]] as if card N had been dragged out and taken by that kind of app (the safety-net copy, the
+//                             toast; no CLASS: not sure which); PID: it landed in that process (a stand-in mapped to
+//                             WeChat / QQ gets the note typed in after the picture, through the test route)
+//     smartpaste key PID | state | set on|off   smart paste (Capture/SmartPaste.swift): a ⌘V with process PID in
+//                             front (its bundle from `droptarget map`); the armed copy; record.smart_paste. Each ⌘V the
+//                             sequence would post goes to PID as a dev.blurt.test.standin notification, never an event
 //     droptarget map PID=BUNDLE,… | fixed BUNDLE | clear   stand-in windows (by owner pid) as the apps they stand in
 //                             for, when a drag decides what to hand over (CardDrag.swift)
 //     taken list|show|hide|rows|expire|menu   Recently Taken: the captures ("taken" events), its panel, the panel's rows
@@ -133,9 +137,12 @@ extension App {
         case "takeout":                                 // takeout N [CLASS]: as if card N was dragged out and taken
             let a = arg.split(separator: " ").map(String.init)
             if let n = Int(a.first ?? ""), let s = snapper.cards.last(where: { $0.n == n }) {
-                snapper.takeOut(s, delivered: a.count > 1 ? testDropClass(a[1]) : nil)
+                // takeout N CLASS PID: it landed in that (stand-in) process — WeChat / QQ then get the note typed in
+                let landed = a.count > 2 ? pid_t(a[2]).map { DropProbe.target(pid: $0) } : nil
+                snapper.takeOut(s, delivered: a.count > 1 ? testDropClass(a[1]) : nil, landed: landed)
             }
         case "droptarget": DropProbe.testCommand(arg)
+        case "smartpaste": SmartPaste.shared.testCommand(arg)      // smartpaste key PID | state | set on|off
         case "clock":                                   // clock SECONDS: Recently Taken's clock, moved
             Snapper.clockOffset = Double(arg) ?? 0
             emit(["event": "clock", "offset": Snapper.clockOffset])

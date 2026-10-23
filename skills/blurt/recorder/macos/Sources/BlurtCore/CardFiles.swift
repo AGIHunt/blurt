@@ -140,7 +140,8 @@ public enum PNGText {
 ///   public.html            <img src="data:image/png;base64,…"> then <p>the note</p>: Chromium / Electron editors
 ///                          (Feishu / Lark, Claude, Slack, Notion…) and WebKit read HTML on paste and on drop
 ///   com.apple.flat-rtfd    the picture as an attachment, then the note: what an AppKit text view (Notes, TextEdit,
-///                          Mail, WeChat's composer) reads first
+///                          Mail) reads first. Not WeChat 4 (Qt: it takes the TIFF and nothing else — the note goes in
+///                          as a second paste there, CardSmartPaste.swift)
 ///   public.rtf             the notes alone (RTF has no pictures): what Chromium turns into HTML when there is none
 /// next to them the picture's bytes (PNG; a copy adds TIFF) and the notes as plain text.
 ///
@@ -186,7 +187,8 @@ public enum CardPasteboard {
     /// item first — the picture's file, its bytes, the rich text, the note as one line (CardTransfer.dragText) — then,
     /// for a shot with a note, what that kind of app needs besides:
     ///  • text (WeChat, Notes…): nothing — an inert item (the count is fixed when the drag starts): the text view
-    ///    takes picture and note from the RTFD, and no .md lands in a chat.
+    ///    takes picture and note from the RTFD, and no .md lands in a chat. (WeChat / QQ take just the picture; the
+    ///    app types the note in after the drop: CardSmartPaste.swift.)
     ///  • web / finder / unknown: the note's .md file — a web app attaches the files and drops the text and the HTML
     ///    when there are files, so the note has to be a file there.
     ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell).

@@ -20,7 +20,10 @@
 //  • a rich NSTextView reads RTFD before anything else (then RTF, HTML, file names, plain text), on a drop as on a
 //    paste: from the rich item it inserts the picture and the note, and it adds a later item's text (the note twice)
 //    but not a later item's file. The v0.8.2 report — a picture plus a .md attachment in WeChat — came from a payload
-//    without RTFD; WeChat's own reading order isn't known, so a text app still never gets the .md.
+//    without RTFD, so a text app still never gets the .md.
+//  • WeChat and QQ (v0.8.4, SingleFlavourApps in CardSmartPaste.swift) stay in the text row for the drag itself, but
+//    their composer takes one thing per drop — the picture (WeChat 4 is Qt: no RTFD, and HTML loses to the image) —
+//    so the app types the note in after the drop, and DragReceipt counts the drop as "picture only" when it couldn't.
 //  • a web app attaches the files and drops the text and the HTML when there are files (WebKit here; Chromium measured
 //    in v0.8.1): for the note to arrive it has to be a file, the .md.
 //  • a terminal types the file paths it gets; with no text on the pasteboard it can never type the note.
@@ -91,7 +94,10 @@ public enum DragReceipt {
     /// picture — a web app, the Finder, an app we don't know, or a drop we aren't sure about (it landed in a different
     /// kind of app than the pasteboard was last written for). A text app took the picture and the note from the rich
     /// item, a terminal both paths: the clipboard is left alone (v0.8.3; it used to be overwritten quietly).
-    public static func copiesNote(delivered: DropClass?) -> Bool {
+    /// `pictureOnly`: it landed in a single-flavour app (WeChat, QQ: SingleFlavourApps) and the note wasn't typed in
+    /// after the picture (DragFollowUp: off, no Accessibility, or it couldn't) — the picture alone went in.
+    public static func copiesNote(delivered: DropClass?, pictureOnly: Bool = false) -> Bool {
+        if pictureOnly { return true }
         switch delivered {
         case .text?, .terminal?: return false
         case .web?, .finder?, .unknown?, nil: return true
@@ -104,8 +110,11 @@ public enum DragReceipt {
     ///  • terminal: both paths went in — no ⌘V either (that would paste the note at a shell prompt);
     ///  • web / finder: the picture and the note's file — ⌘V pastes the note if the app kept only the picture;
     ///  • an app we don't know (it may have read the rich item, or the files) or not sure: "note copied, ⌘V to paste".
-    public static func toastKey(delivered: DropClass?, hasNote: Bool, noteCopied: Bool) -> String {
+    ///  • a single-flavour app (WeChat, QQ): the note typed in after the picture → "picture and note"; not typed in →
+    ///    "picture" (and "note copied, ⌘V to paste" when the safety net copied it).
+    public static func toastKey(delivered: DropClass?, hasNote: Bool, noteCopied: Bool, pictureOnly: Bool = false) -> String {
         guard hasNote else { return "capture.taken_out" }
+        if pictureOnly { return noteCopied ? "capture.taken_out_picture_note" : "capture.taken_out_picture" }
         switch delivered {
         case .text?: return "capture.taken_out_text"
         case .terminal?: return "capture.taken_out_paths"

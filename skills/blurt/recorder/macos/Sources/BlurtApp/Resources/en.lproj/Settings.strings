@@ -110,9 +110,11 @@
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
 "settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
 "settings.general.drag_copy_note" = "After dragging a card out, copy its note too";
-"settings.general.drag_copy_note.hint" = "Where the app may keep only the picture (browsers, Claude, Slack, the Finder…), ⌘V then pastes the note. Chat apps like WeChat and Notes get the note with the picture, and terminals get both paths, so the clipboard is left alone there. This replaces what’s on the clipboard; Undo in the island puts it back.";
+"settings.general.drag_copy_note.hint" = "Where the app may keep only the picture (browsers, Claude, Slack, the Finder…), ⌘V then pastes the note — and in WeChat or QQ when the note can’t be typed in after the picture. Notes, Messages, Mail and the like get the note with the picture, and terminals get both paths, so the clipboard is left alone there. This replaces what’s on the clipboard; Undo in the island puts it back.";
 "settings.general.drag_caption" = "Add the note under the picture when dragging";
 "settings.general.drag_caption.hint" = "The dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The capture itself stays clean.";
+"settings.general.smart_paste" = "WeChat and QQ: paste the picture and the note";
+"settings.general.smart_paste.hint" = "WeChat and QQ take only one thing per paste or drop: the picture, without the note. With this on, for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. A card dragged into them gets its note typed in after the picture. Needs Accessibility.";
 "settings.general.about" = "About";
 "settings.general.version" = "Version";
 "settings.general.help" = "Help";

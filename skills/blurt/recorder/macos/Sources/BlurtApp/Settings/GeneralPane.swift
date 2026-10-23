@@ -1,7 +1,8 @@
 // Settings → General: projects (the folders opened in Blurt, and which one new captures go to), open at login,
 // language, Spotlight; recording (what happens after one, countdown, system audio, collecting macOS screenshots, and
 // what dragging a card out does: copy its note too — record.drag_copy_note, on — and burn the note under the dragged
-// picture — record.drag_caption, off);
+// picture — record.drag_caption, off; WeChat / QQ get picture and note in two pastes — record.smart_paste, on:
+// Capture/SmartPaste.swift);
 // about (version, help, updates). The menu-bar menu stays short because these live here.
 import AppKit
 import ServiceManagement
@@ -21,6 +22,7 @@ final class GeneralModel: ObservableObject {
     @Published var collect = false
     @Published var dragCopyNote = true
     @Published var dragCaption = false
+    @Published var smartPaste = true
     @Published var spotlight = true
     @Published var error: String?
 
@@ -40,6 +42,7 @@ final class GeneralModel: ObservableObject {
         collect = snapper.collecting
         dragCopyNote = CardExport.copyNoteAfterDrag
         dragCaption = CardExport.burnCaption
+        smartPaste = SmartPaste.enabled
         spotlight = Config.shared["spotlight"] as? Bool ?? true
     }
 
@@ -86,6 +89,11 @@ final class GeneralModel: ObservableObject {
     }
     func setDragCopyNote(_ v: Bool) { setRecordConfig("drag_copy_note", v); dragCopyNote = v }
     func setDragCaption(_ v: Bool) { setRecordConfig("drag_caption", v); dragCaption = v }
+    func setSmartPaste(_ v: Bool) {
+        setRecordConfig("smart_paste", v)
+        smartPaste = v
+        if !v { SmartPaste.shared.disarm("off") }
+    }
     func setSpotlight(_ v: Bool) {
         Config.shared.set("spotlight", v ? nil : false)
         spotlight = v
@@ -166,6 +174,8 @@ struct GeneralPane: View {
                 Hint(T("settings.general.drag_copy_note.hint"))
                 Toggle(T("settings.general.drag_caption"), isOn: Binding(get: { m.dragCaption }, set: { m.setDragCaption($0) }))
                 Hint(T("settings.general.drag_caption.hint"))
+                Toggle(T("settings.general.smart_paste"), isOn: Binding(get: { m.smartPaste }, set: { m.setSmartPaste($0) }))
+                Hint(T("settings.general.smart_paste.hint"))
             } header: { Text(T("settings.general.recording")) }
 
             Section {

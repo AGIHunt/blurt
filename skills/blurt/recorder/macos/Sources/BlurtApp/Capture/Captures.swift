@@ -395,17 +395,40 @@ final class Snapper {
     /// paste" where the words went in directly or into a terminal. "Undo" in the toast puts the card back on its
     /// thread (and the clipboard as it was, if nothing was copied since).
     /// `fromPanel`: dragged out of Recently Taken again (it is already off its thread; its days start over).
-    func takeOut(_ s: Shot, fromPanel: Bool = false, delivered: DropClass? = nil) {
+    /// `landed` / `at`: the app it was dropped into and where (a screen point). In WeChat / QQ (BlurtCore
+    /// SingleFlavourApps: one thing per drop, the picture wins) the note is then typed in after the picture
+    /// (DragNoteFollowUp, record.smart_paste); when that can't happen, the safety net copies the note as for a web app.
+    func takeOut(_ s: Shot, fromPanel: Bool = false, delivered: DropClass? = nil, landed: DropTarget? = nil, at p: NSPoint? = nil) {
         guard let b = s.batch, !s.deleted else { return }
         if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
         if !fromPanel { hanging.takeAway(s) }
         b.take(s, at: Snapper.now)
-        let note = s.kind == .shot && CardExport.copyNoteAfterDrag && DragReceipt.copiesNote(delivered: delivered) ? s.copyText : nil
-        let saved = note.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
-        let key = DragReceipt.toastKey(delivered: delivered, hasNote: s.kind == .shot && s.copyText != nil, noteCopied: saved != nil)
-        emit(["event": "take_out", "n": s.n, "session": b.dir.path, "note_copied": saved != nil, "from_panel": fromPanel,
-              "delivered": delivered?.rawValue ?? NSNull(), "toast": key])
         takenChanged()
+        let single = s.kind == .shot && s.copyText != nil && SingleFlavourApps.contains(landed?.bundleID)
+        let plan = DragFollowUp.plan(bundleID: landed?.bundleID,
+                                     card: CardPasteboard.Card(image: s.kind == .shot ? s.bestURL : nil, note: s.copyText),
+                                     enabled: SmartPaste.enabled, accessibility: SmartPaste.accessibility,
+                                     secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled())
+        if single { emit(["event": "drag_note_plan", "n": s.n, "bundle": landed?.bundleID ?? NSNull(), "plan": "\(plan)"]) }
+        if case .typeNote(let note) = plan, let t = landed {
+            DragNoteFollowUp.run(note: note, pid: t.pid, at: p ?? NSEvent.mouseLocation) { [weak self] typed in
+                self?.tookOut(s, b, fromPanel: fromPanel, delivered: delivered, pictureOnly: !typed, noteTyped: typed)
+            }
+            return
+        }
+        tookOut(s, b, fromPanel: fromPanel, delivered: delivered, pictureOnly: single, noteTyped: false)
+    }
+
+    /// The rest of a take-out: the safety-net copy of the note, and the toast saying what went in.
+    private func tookOut(_ s: Shot, _ b: ShotBatch, fromPanel: Bool, delivered: DropClass?, pictureOnly: Bool, noteTyped: Bool) {
+        let note = s.kind == .shot && CardExport.copyNoteAfterDrag && DragReceipt.copiesNote(delivered: delivered, pictureOnly: pictureOnly)
+            ? s.copyText : nil
+        let saved = note.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
+        let key = noteTyped ? "capture.taken_out_text"
+            : DragReceipt.toastKey(delivered: delivered, hasNote: s.kind == .shot && s.copyText != nil, noteCopied: saved != nil,
+                                   pictureOnly: pictureOnly)
+        emit(["event": "take_out", "n": s.n, "session": b.dir.path, "note_copied": saved != nil, "from_panel": fromPanel,
+              "delivered": delivered?.rawValue ?? NSNull(), "note_typed": noteTyped, "picture_only": pictureOnly, "toast": key])
         var t = Island.Toast(text: Loc.t(key, table: "Capture"),
                              actionTitle: fromPanel ? nil : Loc.t("capture.undo", table: "Capture")) { [weak self] in
             saved?.restore(capturePasteboard)
