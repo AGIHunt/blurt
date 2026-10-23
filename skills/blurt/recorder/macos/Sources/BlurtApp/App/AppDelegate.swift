@@ -190,7 +190,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = item
         MenuGlyph.shared.onFrame = { [weak self] img in
             guard let self = self, self.rec == nil, let b = self.statusItem?.button else { return }
-            b.image = img ?? self.menuIcon
+            b.image = img ?? self.menuIcon(self.menuLook(b))
         }
         refreshStatus()
         statusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.refreshStatus() }
@@ -362,24 +362,72 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
             return
         }
+        let look = menuLook(b)
+        MenuGlyph.shared.look = look
         MenuGlyph.shared.listening = VoiceInput.shared.active
-        b.image = MenuGlyph.shared.current ?? menuIcon
+        b.image = MenuGlyph.shared.current ?? menuIcon(look)
         b.imagePosition = .imageLeft
         let badge = MenuBadge.shared
-        // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing
+        // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing. The colour hen
+        // ends in its shout strokes, so the count sits a hair closer than after the template glyph (a thin space)
         b.attributedTitle = badge.count > 0
-            ? NSAttributedString(string: " " + Loc.number(badge.count), attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                                                                                       .foregroundColor: badge.urgent ? StatusRing.attention : NSColor.labelColor])
+            ? NSAttributedString(string: (look == nil ? " " : "\u{2009}") + Loc.number(badge.count), attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                .foregroundColor: badge.urgent ? StatusRing.attention : NSColor.labelColor])
             : NSAttributedString(string: "")
         b.toolTip = badge.tooltip
         b.setAccessibilityLabel(badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name"))
     }
 
+    /// The menu-bar icon at rest: the colour hen (Icons/MenuHen.swift, brand direction A) in the look that suits the
+    /// bar, or — Settings → General → "Monochrome menu-bar icon" — the template glyph below. The recording state (red
+    /// dot / pause) replaces either.
+    func menuIcon(_ look: MenuHen.Look?) -> NSImage {
+        let key = look?.rawValue ?? "mono"
+        if let i = menuIcons[key] { return i }
+        let i: NSImage
+        if let l = look {
+            i = MenuHen.image(size: 18, look: l)
+            i.accessibilityDescription = T("app.name")
+        } else {
+            i = App.makeMenuIcon()
+        }
+        menuIcons[key] = i
+        return i
+    }
+    private var menuIcons: [String: NSImage] = [:]
+
+    /// Which colour hen this status button needs: a light rim where the hen's dark outline would melt into the bar —
+    /// a dark or tinted-dark menu bar (the button's effectiveAppearance follows the wallpaper) — and while the menu is
+    /// open (the highlight behind it); nil = the monochrome template glyph.
+    func menuLook(_ b: NSStatusBarButton) -> MenuHen.Look? {
+        if MenuGlyph.monochrome { return nil }
+        let dark = b.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return dark || menuOpen ? .dark : .light
+    }
+    private var menuOpen = false
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        menuOpen = true
+        refreshStatus()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        menuOpen = false
+        refreshStatus()
+    }
+
+    /// The `menuglyph` self-test: the button as it looks with its menu open, without opening it.
+    func testMenuOpen(_ open: Bool) {
+        menuOpen = open
+        refreshStatus()
+    }
+
     /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray), drawn at 18 pt as a monochrome
     /// template image like every other menu-bar icon: macOS tints it for light / dark menu bars, and it is vector, so
-    /// it is crisp at every scale.
-    lazy var menuIcon: NSImage? = App.makeMenuIcon()
-
+    /// it is crisp at every scale. Shown when the user prefers a monochrome menu-bar icon.
     static func makeMenuIcon() -> NSImage {
         let img = BlurtIcon.blurt.image(size: 18)
         img.isTemplate = true

@@ -106,6 +106,7 @@
 "settings.general.recording" = "录制";
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
 "settings.general.spotlight" = "在 Spotlight 里搜得到条目";
+"settings.general.menu_mono" = "单色菜单栏图标";
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
 "settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";

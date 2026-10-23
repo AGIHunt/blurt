@@ -154,7 +154,9 @@ final class MenuBadge {
     private var version = -1
     private var timer: Timer?
 
-    var count: Int { new + verify + waiting }
+    var count: Int { testCount ?? new + verify + waiting }
+    /// Tests only (the `menuglyph` self-test): a stand-in count, to render the status button with a number.
+    var testCount: Int?
     /// An agent is waiting for an answer: the number takes the attention colour.
     var urgent: Bool { waiting > 0 }
     var tooltip: String {
