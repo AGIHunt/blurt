@@ -69,8 +69,8 @@ BlurtIcon(named: "close")                             // names and aliases, the 
 
 Two chicks, one family. The line glyph (`chicken`, `blurt`, `peck`, `hatched`: the 4A design, front-facing round chick)
 is the icon: template-tinted, in menus, the menu bar and small marks. It moves in code only — `GlyphMotion.tilt / hop`
-(Core Animation) and `App/MenuGlyph.swift` (the menu-bar chick tilts while voice input listens, hops when something is
-done); on the web `.ico.tilt` / `.ico.hop` from `@blurt/icons/mascot.css`.
+(Core Animation) and `App/MenuGlyph.swift` (the menu-bar chick's sound arcs pulse while voice input listens, it hops
+when something is done); on the web `.ico.tilt` / `.ico.hop` from `@blurt/icons/mascot.css`.
 The colour chick (1A) is for moments: `assets/mascot/` holds one WebP strip per animation (160 px frames) and
 `mascot.json` (clips: idle, listening, thinking, wobble, hatching, happy, peck — timelines at 12 fps). `assets/mascot/tools/
 cut.py` makes the strips from the codex-generated sheets (prompts in `assets/mascot/prompts/`), `build.py` copies them to
