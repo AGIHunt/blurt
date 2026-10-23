@@ -24,6 +24,9 @@
 "capture.card.edit_note" = "Edit Note…";
 "capture.card.move_to" = "Move To";
 "capture.card.reveal" = "Show in Finder";
+"capture.card.retry_transcribe" = "Retry Transcription";
+"capture.card.transcribe_failed" = "Couldn’t transcribe";
+"capture.card.transcribing" = "Transcribing…";
 "capture.card.words_pending" = "The words aren’t ready yet";
 "capture.cards.ax" = "Captures waiting for a project";
 "capture.cards.none" = "No unfiled captures";

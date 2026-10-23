@@ -1,8 +1,13 @@
 // The note bubble under a fresh shot: "Listening… just pause when you're done · or type", and where it will go.
 //
 //  • listens right away (the user usually starts talking as they let go of the mouse); ~1.8 s of silence after
-//    speech ends the note, 8 s without speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono).
-//  • typing before speaking switches to a text note (the mic stops). ⏎ (or ✓) keeps the shot — with the note, or
+//    speech ends the note, 8 s without speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono). "Silence" is
+//    relative to the room (BlurtCore NoteEndpointer: an adaptive noise floor — v0.7's floor froze at the mic's quiet
+//    first moments, so a normal room never counted as silence and the note never ended).
+//  • typing before speaking switches to a text note (the mic stops). Typing after speaking keeps listening until the
+//    pause; if less than 1 s of it was talking, the recording was abandoned for typing and is dropped (no mic mark,
+//    nothing to transcribe). A kept recording is always transcribed (Snapper.settled), also next to typed text.
+//  • ⏎ (or ✓) keeps the shot — with the note, or
 //    without one (then it hangs as a card); Esc (or the bin) discards the shot: Trash, "Discarded · Undo" for 3 s.
 //  • the shot is shown enlarged; drag (⌃-drag, as with the recorder's pen — or just drag) to circle things → the
 //    ink is burnt into shots/NNN.marked.png, the original stays as it was.
@@ -26,19 +31,30 @@ final class NoteVoice {
     var onLevel: ((Float) -> Void)?
     var onSpeech: (() -> Void)?
     var onEnd: ((End) -> Void)?
-    private(set) var speaking = false
+    var speaking: Bool { vad.speaking }
     private(set) var running = false
     private var engine: AVAudioEngine?
     private var file: AVAudioFile?
     private var injectTimer: Timer?
     private var started = Date()
-    private var heard: Double = 0          // seconds of audio processed
-    private var silentFor: Double = 0
-    private var loudRun: Double = 0
-    private var floorDB: Float = -60
-    private var floorN = 0
+    /// speech start / the pause that ends it (BlurtCore: an adaptive noise floor, so a room louder than the mic's
+    /// first moments still counts as quiet)
+    private var vad = NoteEndpointer(sampleRate: NoteVoice.rate)
     let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: NoteVoice.rate, channels: 1, interleaved: false)!
-    var silenceToEnd = 1.8, noSpeechTimeout = 8.0, maxLength = 60.0
+    var noSpeechTimeout: Double {
+        get { vad.noSpeechTimeout }
+        set { vad.noSpeechTimeout = newValue }
+    }
+    var silenceToEnd: Double {
+        get { vad.silenceToEnd }
+        set { vad.silenceToEnd = newValue }
+    }
+    var maxLength: Double {
+        get { vad.maxLength }
+        set { vad.maxLength = newValue }
+    }
+    /// how much of it was talking (seconds)
+    var speechSeconds: Double { vad.speechSeconds }
     /// A wav to play through instead of the microphone (tests); nil = $BLURT_NOTE_WAV, else the mic.
     var inject: String?
 
@@ -65,7 +81,7 @@ final class NoteVoice {
         }
     }
 
-    var elapsed: Double { heard }
+    var elapsed: Double { vad.heard }
 
     func start(_ ready: @escaping (Bool) -> Void) {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -140,26 +156,18 @@ final class NoteVoice {
     private func feed(_ b: AVAudioPCMBuffer) {
         guard running || injectTimer != nil, b.frameLength > 0 else { return }
         try? file?.write(from: b)
-        let n = Int(b.frameLength)
-        let d = b.floatChannelData![0]
-        var sum: Float = 0
-        for i in 0..<n { sum += d[i] * d[i] }
-        let db = 20 * log10(max(sqrt(sum / Float(n)), 1e-6))
-        let dt = Double(n) / NoteVoice.rate
-        heard += dt
+        let samples = Array(UnsafeBufferPointer(start: b.floatChannelData![0], count: Int(b.frameLength)))
+        let db = NoteEndpointer.level(samples)
         onLevel?(max(0, min(1, (db + 55) / 45)))
-        if floorN < 3 { floorDB = floorN == 0 ? db : min(floorDB, db); floorN += 1 }
-        else if !speaking { floorDB = db < floorDB ? db : floorDB + Float(dt) * 0.5 }   // follows the room, slowly
-        let on = max(floorDB + 12, -48), off = max(floorDB + 6, -54)
-        if !speaking {
-            loudRun = db > on ? loudRun + dt : 0
-            if loudRun >= 0.2 { speaking = true; silentFor = 0; onSpeech?() }
-            else if heard >= noSpeechTimeout { finish(.noSpeech) }
-        } else {
-            silentFor = db < off ? silentFor + dt : 0
-            if silentFor >= silenceToEnd { finish(.silence) }
+        for e in vad.feed(samples) {
+            switch e {
+            case .speechStarted: onSpeech?()
+            case .ended(let end):
+                emit(["event": "note_voice_end", "end": "\(end)", "heard": (vad.heard * 100).rounded() / 100,
+                      "speech": (vad.speechSeconds * 100).rounded() / 100, "floor_db": Double((vad.floorDB * 10).rounded() / 10)])
+                finish(end == .silence ? .silence : end == .noSpeech ? .noSpeech : .maxed)
+            }
         }
-        if heard >= maxLength && running { finish(.maxed) }
     }
 
     private func finish(_ e: End) {
@@ -418,9 +426,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private var typed = false
     private var speechStarted = false
     private var voiceKept = false
+    /// how much of the kept recording was talking
+    private var voiceSpeech: Double = 0
+    /// Typed, and said less than this: the voice was abandoned for typing (a word, a cough, the keyboard) — dropped.
+    static let abandonedSpeech = 1.0
     private var ticker: Timer?
     private var showWork: DispatchWorkItem?
-    private var original: (text: String?, voice: String?, strokes: [[[Double]]])?
+    private var original: (text: String?, voice: String?, said: String?, strokes: [[[Double]]])?
     private var player: AVAudioPlayer?
     /// recording mode: which shots can be switched between, and what to do on close (resume).
     var recordingShots: [Shot] = []
@@ -446,7 +458,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         typed = false
         speechStarted = false
         voiceKept = false
-        original = (s.text, s.voice, s.strokes)
+        voiceSpeech = 0
+        original = (s.text, s.voice, s.said, s.strokes)
         build()
         load(s)
         if m == .listen { startListening() }
@@ -647,7 +660,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             } else {
                 self.voice = nil
                 self.voiceKept = true
+                self.voiceSpeech = v.speechSeconds
                 self.shot?.voice = rel
+                self.shot?.said = nil                    // a new recording (a re-record in edit): its words to come
                 if !self.typed { self.close(save: true, flash: true) }
             }
         }
@@ -816,11 +831,23 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         player?.stop()
         // Esc on a fresh shot discards it; what was said, typed and drawn goes with it, and comes back with Undo
         let discard = !save && mode == .listen
+        let rel = "shots/\(ShotBatch.name(s.n)).wav"
+        // (a fresh shot only: in an edit the text was there before the re-record)
+        let hadTyping = mode == .listen && typed && !field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if let v = voice {
-            let keep = (save || discard) && speechStarted
+            // kept: something was said — unless the user went on to type and what was "said" was barely anything (a
+            // word, a cough, the keyboard): then the voice was abandoned for typing, and it goes
+            let keep = (save || discard) && speechStarted && !(hadTyping && v.speechSeconds < NoteBubble.abandonedSpeech)
+            emit(["event": "note_voice_close", "n": s.n, "kept": keep, "speech": (v.speechSeconds * 100).rounded() / 100, "typed": hadTyping])
             v.stop(keep: keep)
-            if keep { s.voice = "shots/\(ShotBatch.name(s.n)).wav" }
+            if keep { s.voice = rel; s.said = nil } else if s.voice == rel { s.voice = nil; s.said = nil }
             voice = nil
+        } else if voiceKept, hadTyping, voiceSpeech < NoteBubble.abandonedSpeech, save || discard {
+            // it had ended by itself (a pause), then the user typed the note instead
+            if let u = s.voiceURL { try? FileManager.default.removeItem(at: u) }
+            s.voice = nil
+            s.said = nil
+            emit(["event": "note_voice_close", "n": s.n, "kept": false, "speech": (voiceSpeech * 100).rounded() / 100, "typed": true])
         }
         if save || discard {
             let t = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -828,7 +855,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             if mode != .recording { applyInk(s) }
             s.batch?.save(s)
         } else if mode == .edit, let o = original {
-            s.text = o.text; s.voice = o.voice; s.strokes = o.strokes
+            s.text = o.text; s.voice = o.voice; s.said = o.said; s.strokes = o.strokes
         } else if mode == .recording {
             // Esc = resume without saving the edit in the field
         }

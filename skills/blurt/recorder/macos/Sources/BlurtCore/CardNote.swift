@@ -1,0 +1,82 @@
+// What a hanging card (a capture without a project) says, and what it carries when copied or dragged out (v0.8).
+//
+// Card content (CardNote.make):
+//  • the note is the typed text first, then the words said (if both, each once: "typed\nsaid") — the card shows it,
+//    the hover note shows it, a copy / drag / captures.py item carries it.
+//  • the mic mark means "these words were spoken": only when there is a voice note *and* its words.
+//  • a voice note still being transcribed: a quiet "Transcribing…" (never an empty card); failed: "Couldn't
+//    transcribe" (Retry in the card's right-click menu). A voice note that turned out to hold no speech is dropped
+//    (no mark, nothing left to transcribe) — the app does that, CardNote never sees one.
+//
+// Drag-out / copy: two pasteboard items, so apps that take several get both —
+//  1. the image: its file URL + PNG (a drag) or PNG + TIFF (a copy);
+//  2. the note as plain text.
+// A text-only target reads the text item; an image target the image. A drag's text is CardTransfer.dragText: one line
+// (the note's lines joined with " · "), control characters out. A drop lands in whatever app is under the pointer —
+// a terminal types what it gets at its prompt, so a dropped newline would run the line, an escape sequence could end
+// a bracketed paste. Which app it is can't be known when the text is written: the first app the drag passes over
+// reads it (and the pasteboard keeps that answer), not necessarily the one it is dropped on. So every drop gets the
+// safe form. Terminals themselves take the file item and type its path (Terminal, iTerm2, Ghostty all prefer a file
+// to text) — the note isn't typed there. A copy (click) keeps the note's line breaks: pasting is the user's own act.
+
+import Foundation
+
+public enum Transcription: String, Equatable {
+    case idle        // nothing asked yet (or done)
+    case pending     // transcribe.py note is running
+    case failed      // it failed: "Couldn't transcribe", Retry in the menu
+}
+
+public struct CardNote: Equatable {
+    public enum Status: Equatable { case none, transcribing, failed }
+
+    /// The note: typed text first, then the words said (each once); nil when there is neither.
+    public let text: String?
+    /// The mic mark: the note was (also) spoken, and its words are here.
+    public let showsMic: Bool
+    /// A voice note whose words aren't here (yet).
+    public let status: Status
+
+    public static func make(typed: String?, said: String?, hasVoice: Bool, transcription: Transcription) -> CardNote {
+        let s = clean(said)
+        let status: Status = !hasVoice || s != nil ? .none : transcription == .failed ? .failed : .transcribing
+        return CardNote(text: merged(typed: typed, said: said), showsMic: hasVoice && s != nil, status: status)
+    }
+
+    /// Typed first, then said; one of them if the other is empty or the same (or already contains it).
+    public static func merged(typed: String?, said: String?) -> String? {
+        switch (clean(typed), clean(said)) {
+        case let (t?, s?): return t == s || t.contains(s) ? t : s.contains(t) ? s : t + "\n" + s
+        case let (t?, nil): return t
+        case let (nil, s?): return s
+        default: return nil
+        }
+    }
+
+    static func clean(_ s: String?) -> String? {
+        guard let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t
+    }
+}
+
+public enum CardTransfer {
+    /// A dragged card's text: the note's lines joined with " · " on one line, every control character out (nothing a
+    /// terminal would run or take as an escape sequence). nil when nothing is left.
+    public static func dragText(_ note: String?) -> String? {
+        guard let note = note else { return nil }
+        var lines: [String] = []
+        var cur = ""
+        for u in note.unicodeScalars {
+            let v = u.value
+            if v == 0x0A || v == 0x0D || v == 0x2028 || v == 0x2029 || v == 0x85 {
+                lines.append(cur); cur = ""; continue
+            }
+            if v == 0x09 { cur.append(" "); continue }
+            if v < 0x20 || v == 0x7F || (0x80...0x9F).contains(v) { continue }
+            cur.unicodeScalars.append(u)
+        }
+        lines.append(cur)
+        let kept = lines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return kept.isEmpty ? nil : kept.joined(separator: " · ")
+    }
+}

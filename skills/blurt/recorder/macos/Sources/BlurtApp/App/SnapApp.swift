@@ -7,6 +7,8 @@
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
+//     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
+//                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
@@ -94,6 +96,15 @@ extension App {
             }
         case "cardmenu":                                // cardmenu N: the right-click menu's titles
             if let n = Int(arg) { emit(["event": "card_menu", "n": n, "items": hanging.testMenu(n: n)]) }
+        case "cardnote":                                // cardnote N: what card N says (text, mic mark, status)
+            if let n = Int(arg), let s = snapper.cards.last(where: { $0.n == n }) {        // the newest card N
+                let note = s.note
+                emit(["event": "card_note", "n": n, "text": note.text ?? NSNull(), "mic": note.showsMic, "status": "\(note.status)",
+                      "voice": s.voice ?? NSNull(), "said": s.said ?? NSNull(), "typed": s.text ?? NSNull(),
+                      "transcription": s.transcription.rawValue])
+            }
+        case "cardretry":                               // cardretry N: = "Retry Transcription" in card N's menu
+            if let n = Int(arg), let s = snapper.cards.last(where: { $0.n == n }) { snapper.retryWords(s) }
         case "carddrag":                                // carddrag N PASTEBOARD: what dragging card N out carries
             let a = arg.split(separator: " ").map(String.init)
             if a.count == 2, let n = Int(a[0]) {

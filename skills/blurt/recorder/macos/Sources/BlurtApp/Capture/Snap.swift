@@ -11,6 +11,7 @@
 
 import AppKit
 import AVFoundation
+import BlurtCore
 import Carbon.HIToolbox
 import CoreImage
 import ScreenCaptureKit
@@ -61,8 +62,9 @@ let capturePasteboard: NSPasteboard = {
     return .general
 }()
 
-/// The picture as one pasteboard item (PNG + TIFF); `text` (a note, the words said) rides along as the same item's
-/// plain text, so apps that only take text get the words.
+/// The picture (PNG + TIFF) and, when there is one, the note (`text`: typed, then the words said) as a second item of
+/// its own: apps that take several items get both, an image-only app the image, a text-only app the words (v0.8: the
+/// text used to ride on the image's item, and most apps took the image and never saw it).
 @discardableResult
 func copyImageToPasteboard(_ url: URL, text: String? = nil) -> Bool {
     guard let data = try? Data(contentsOf: url) else { return false }
@@ -71,8 +73,13 @@ func copyImageToPasteboard(_ url: URL, text: String? = nil) -> Bool {
     let item = NSPasteboardItem()
     item.setData(data, forType: .png)
     if let tiff = NSImage(data: data)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
-    if let t = text, !t.isEmpty { item.setString(t, forType: .string) }
-    return pb.writeObjects([item])
+    var items = [item]
+    if let t = text, !t.isEmpty {
+        let words = NSPasteboardItem()
+        words.setString(t, forType: .string)
+        items.append(words)
+    }
+    return pb.writeObjects(items)
 }
 
 func backingScale(forDisplay id: CGDirectDisplayID) -> CGFloat {
@@ -198,16 +205,17 @@ final class Shot {
     var hasNote: Bool { !(text ?? "").isEmpty || voice != nil }
     /// Waiting on a thread: not assigned to a project, not handed to the AI, not deleted, not part of a recording.
     var isCard: Bool { !deleted && project == nil && assignedBy == nil && batch?.inRecording == false }
-    /// What the card says: the typed note, else the transcript.
-    var words: String? { [text, said].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } }
-    /// What a copy or a drag carries as text: the typed note and the words said, each once (nil when there are none).
-    var copyText: String? {
-        var parts: [String] = []
-        for p in [text, said].compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) }) where !p.isEmpty && !parts.contains(p) {
-            parts.append(p)
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: "\n")
-    }
+    /// transcribe.py note on `voice`: running, failed (Retry in the card's menu), or nothing to do (in memory only:
+    /// after a restart a voice note without `said` is simply transcribed again)
+    var transcription: Transcription = .idle
+    /// A spoken note whose words are still to be had: a wav, no `said` yet, not given up on.
+    var needsWords: Bool { voice != nil && said == nil && transcription != .failed }
+    /// What the card shows (BlurtCore CardNote): the typed note first, then the words said; the mic mark only with
+    /// words; "Transcribing…" / "Couldn't transcribe" while a spoken note has none.
+    var note: CardNote { CardNote.make(typed: text, said: said, hasVoice: voice != nil, transcription: transcription) }
+    /// The note's text — what the card says, what a copy or a drag carries, the item's title and quote (nil: none).
+    var words: String? { CardNote.merged(typed: text, said: said) }
+    var copyText: String? { words }
 
     func image() -> CGImage? { full ?? url.flatMap(loadCGImage) }
 

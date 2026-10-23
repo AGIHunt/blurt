@@ -18,12 +18,24 @@
 //    the menu, the main window's "Unfiled captures" — they stay (sticky) until the pointer has come to the cards and
 //    gone again, or Esc.
 //    The pointer resting on the ear itself opens the island a little later (0.45 s), so its count can be clicked.
+//  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
+//    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (top right
+//    once there is a caption) only when the note was spoken *and* its words are here. A spoken note still being
+//    transcribed: "Transcribing…" under whatever was typed, never an empty mic; failed: "Couldn't transcribe" and
+//    Retry Transcription in the right-click menu. A spoken note with no speech in it (the room, a cough, abandoned
+//    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
 //  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy (a voice
-//    card: its words; a shot: the image — inked if marked — with its note / words as the same item's text, for apps
-//    that only take text) · right-click: Copy Image / Copy Text (only with text), edit, move, delete · double-click =
-//    edit the note · drag = a shot's file (+ its words), a voice card's words only (as text: no audio file) into any
-//    app, or onto a project in the island: the thread stretches after it, then snaps and springs back up · × = the
-//    thread lets go and the card falls.
+//    card: its words; a shot: two pasteboard items — the image, inked if marked, as PNG + TIFF, and its note as text
+//    of its own, so apps that take several get both and text-only apps the words) · right-click: Copy Image / Copy
+//    Text (only with text), Retry Transcription (after a failure), edit, move, delete · double-click = edit the note ·
+//    drag = a shot's file + its note as two items, a voice card's words only (as text: no audio file) into any app, or
+//    onto a project in the island: the thread stretches after it, then snaps and springs back up · × = the thread
+//    lets go and the card falls.
+//  • a drag's text is one line, control characters out (CardTransfer.dragText): the drop may be a terminal, which
+//    types it at its prompt (a newline would run it). Which app reads the text can't be known when it is written —
+//    the first app the drag passes over reads it and the pasteboard keeps that answer (seen: a chat app under the
+//    cards, not the pad it was dropped on) — so every drop gets the safe form. Terminals take the file item and type
+//    its path. A copy keeps the note's line breaks (pasting is the user's own act).
 //  • dropped in another app (the session ended with an operation, over a window that isn't ours): the card has been
 //    used, so it leaves — discarded like Esc in the note ("Dragged out · Undo" for 4 s; its files go to the Trash only
 //    20 s later, for an app that reads the dropped file late). It went with the drag, so nothing falls: the thread
@@ -54,6 +66,9 @@ final class HangingCard {
     let card = CALayer()            // shadow + shape
     let face = CALayer()            // photo / voice face, clipped
     let title = CATextLayer()       // voice cards: the words
+    let scrim = CAGradientLayer()   // shot cards: the dark band under the note
+    let caption = CATextLayer()     // shot cards: the note (typed, then said)
+    let captionStatus = CATextLayer()   // shot cards: "Transcribing…" / "Couldn't transcribe"
     let badge = CALayer()
     let close = CALayer()
     let copied = CATextLayer()
@@ -334,24 +349,68 @@ final class HangingCards: NSObject {
         let dark = isDarkMode
         styleThread(c.thread, c.clasp)
         let s = c.shot
+        let note = s.note
         if s.kind == .voice {
             c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.99)).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.08)).cgColor
             let f = NSFont.systemFont(ofSize: 12.5, weight: .medium)
             let words = s.words
             let dur = HangingCards.clock(s.duration ?? 0)
-            let text = words ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
+            let text = words ?? HangingCards.statusText(note.status) ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
             setText(c.title, text, font: f,
                     color: words == nil ? NSColor(white: dark ? 1 : 0, alpha: 0.5) : (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1)))
         } else {
             c.card.backgroundColor = NSColor(white: 0.5, alpha: 0.2).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.12)).cgColor
             c.face.contents = s.markedThumb ?? s.thumb
+            layoutCaption(c, note)
         }
         c.card.shadowOpacity = dark ? 0.55 : 0.3
-        let marks: [BlurtIcon] = (s.kind == .shot && s.voice != nil ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
+        // the mic mark: these words were spoken — never on a card without them
+        let marks: [BlurtIcon] = (s.kind == .shot && note.showsMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
         c.badge.contents = marks.isEmpty ? nil : HangingCards.badgeImage(marks)
         c.badge.isHidden = marks.isEmpty
+        // with a caption along the bottom, the marks move to the top right corner (the × has the top left)
+        let w = c.size.width, h = c.size.height
+        c.badge.frame = CGRect(x: w - 6 - 31, y: c.caption.isHidden && c.captionStatus.isHidden ? h - 6 - 16 : 6, width: 31, height: 16)
+    }
+
+    /// "Transcribing…" / "Couldn't transcribe" (nil: nothing pending).
+    static func statusText(_ s: CardNote.Status) -> String? {
+        switch s {
+        case .none: return nil
+        case .transcribing: return Loc.t("capture.card.transcribing", table: "Capture")
+        case .failed: return Loc.t("capture.card.transcribe_failed", table: "Capture")
+        }
+    }
+
+    /// A shot card's note along its bottom edge, white on a dark band: up to two lines of it, or one line and the
+    /// quiet status under it.
+    private func layoutCaption(_ c: HangingCard, _ note: CardNote) {
+        let w = c.size.width, h = c.size.height
+        let f = NSFont.systemFont(ofSize: 10, weight: .semibold)
+        let sf = NSFont.systemFont(ofSize: 9.5, weight: .medium)
+        let lineH: CGFloat = 12.5
+        let status = HangingCards.statusText(note.status)
+        let text = note.text.map { $0.replacingOccurrences(of: "\n", with: " · ") }
+        c.caption.isHidden = text == nil
+        c.captionStatus.isHidden = status == nil
+        c.scrim.isHidden = text == nil && status == nil
+        guard !c.scrim.isHidden else { return }
+        let inner = w - 14
+        var lines: CGFloat = 0
+        if let t = text {
+            let hgt = (t as NSString).boundingRect(with: NSSize(width: inner, height: 100), options: [.usesLineFragmentOrigin],
+                                                   attributes: [.font: f]).height
+            lines = status == nil && hgt > lineH * 1.3 ? 2 : 1
+            setText(c.caption, t, font: f, color: NSColor(white: 1, alpha: 0.96))
+        }
+        if let st = status { setText(c.captionStatus, st, font: sf, color: NSColor(white: 1, alpha: 0.72)) }
+        let statusH: CGFloat = status == nil ? 0 : 12
+        let band = 5 + lines * lineH + statusH + 5
+        c.caption.frame = CGRect(x: 7, y: h - 5 - statusH - lines * lineH, width: inner, height: lines * lineH + 1)
+        c.captionStatus.frame = CGRect(x: 7, y: h - 5 - statusH, width: inner, height: statusH)
+        c.scrim.frame = CGRect(x: 0, y: h - band - 10, width: w, height: band + 10)
     }
 
     static func clock(_ t: Double) -> String { String(format: "%d:%02d", Int(t) / 60, Int(t) % 60) }
@@ -403,6 +462,25 @@ final class HangingCards: NSObject {
             let mic = BlurtIcon.mic.makeLayer(size: 11, color: accent.withAlphaComponent(0.85).cgColor)
             mic.position = CGPoint(x: w - 10 - 5.5, y: h - 8 - 5.5)
             c.card.addSublayer(mic)
+        } else {
+            // the note, on the picture's bottom edge (layoutCaption sizes it to what it says)
+            c.scrim.colors = [NSColor(white: 0, alpha: 0).cgColor, NSColor(white: 0, alpha: 0.6).cgColor, NSColor(white: 0, alpha: 0.82).cgColor]
+            c.scrim.locations = [0, 0.35, 1]
+            c.scrim.startPoint = CGPoint(x: 0.5, y: 0)
+            c.scrim.endPoint = CGPoint(x: 0.5, y: 1)
+            c.scrim.isHidden = true
+            c.face.addSublayer(c.scrim)                  // (clipped to the card's corners with the picture)
+            for line in [c.caption, c.captionStatus] {
+                line.contentsScale = 2
+                line.isWrapped = true
+                line.truncationMode = .end
+                line.isHidden = true
+                line.shadowColor = NSColor.black.cgColor
+                line.shadowOpacity = 0.5
+                line.shadowRadius = 1.2
+                line.shadowOffset = .zero
+                c.card.addSublayer(line)
+            }
         }
         c.badge.frame = CGRect(x: w - 6 - 31, y: h - 6 - 16, width: 31, height: 16)
         c.badge.contentsGravity = .topRight
@@ -1166,7 +1244,7 @@ final class HangingCards: NSObject {
         tipFor = c
         let w: CGFloat = 260
         let dark = isDarkMode
-        let text = c.shot.words ?? ""
+        let text = [c.shot.words, HangingCards.statusText(c.shot.note.status)].compactMap { $0 }.joined(separator: "\n")
         let tf = NSFont.systemFont(ofSize: 12.5)
         let attr = NSAttributedString(string: text, attributes: [
             .font: tf, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
@@ -1287,7 +1365,8 @@ final class HangingCards: NSObject {
         if s.kind == .shot { c.omega += 30 }
         wake()
         emit(["event": "card_copied", "n": s.n, "what": what.rawValue,
-              "types": (capturePasteboard.pasteboardItems?.first?.types ?? []).map(\.rawValue)])
+              "types": (capturePasteboard.pasteboardItems?.first?.types ?? []).map(\.rawValue),
+              "items": (capturePasteboard.pasteboardItems ?? []).map { $0.types.map(\.rawValue) }])
         return true
     }
 
@@ -1300,6 +1379,9 @@ final class HangingCards: NSObject {
         }
         if s.copyText != nil {
             items.append((Loc.t("capture.card.copy_text", table: "Capture"), { [weak self] in self?.copy(c, .text) }))
+        }
+        if s.note.status == .failed {
+            items.append((Loc.t("capture.card.retry_transcribe", table: "Capture"), { snapper.retryWords(s) }))
         }
         items.append((Loc.t("capture.card.edit_note", table: "Capture"), { NoteBubble.shared.begin(s, mode: .edit) }))
         items.append((Loc.t("capture.card.reveal", table: "Capture"), { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } }))
@@ -1318,12 +1400,12 @@ final class HangingCards: NSObject {
     func testCopy(n: Int, _ what: Copy) -> Bool { cards.first { $0.shot.n == n }.map { copy($0, what) } ?? false }
     func testMenu(n: Int) -> [String] { cards.first { $0.shot.n == n }.map { menuItems($0).map(\.0) } ?? [] }
     /// Tests: what a drag of capture N carries, written to `pb`.
-    func testDrag(n: Int, to pb: NSPasteboard) -> [String] {
+    func testDrag(n: Int, to pb: NSPasteboard) -> [[String]] {
         guard let s = cards.first(where: { $0.shot.n == n })?.shot else { return [] }
-        let item = HangingCards.dragItem(s)
+        let items = HangingCards.dragItems(s)
         pb.clearContents()
-        pb.writeObjects([item])
-        return item.types.map(\.rawValue)
+        pb.writeObjects(items)
+        return items.map { $0.types.map(\.rawValue) }
     }
 
     func rightMouseDown(_ e: NSEvent, at p: NSPoint) {
@@ -1353,30 +1435,54 @@ final class HangingCards: NSObject {
 
     private func startDrag(_ c: HangingCard, event: NSEvent) {
         guard let v = view else { return }
-        let di = NSDraggingItem(pasteboardWriter: HangingCards.dragItem(c.shot))
+        // one dragging item per pasteboard item (the image, the note): the first shows the card, the others ride
+        // under it without an image of their own (draggingFormation .none keeps them where the first is)
+        let frame = NSRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height)
         let img = NSImage(size: c.size)
         if let rep = HangingCards.snapshot(c) { img.addRepresentation(rep) }
-        di.setDraggingFrame(NSRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height), contents: img)
+        let dis: [NSDraggingItem] = HangingCards.dragItems(c.shot).enumerated().map { i, item in
+            let di = NSDraggingItem(pasteboardWriter: item)
+            di.setDraggingFrame(i == 0 ? frame : NSRect(x: frame.midX, y: frame.midY, width: 1, height: 1), contents: i == 0 ? img : nil)
+            return di
+        }
         c.dragging = true                    // the thread follows the pointer, then snaps (dragMoved)
         c.tether = (CGPoint(x: c.x.value - c.size.width / 2 + c.gripX, y: c.grip.value), nil, .zero)
         dragging = c
         island.dragBegan()
-        let session = v.beginDraggingSession(with: [di], event: event, source: v)
+        let session = v.beginDraggingSession(with: dis, event: event, source: v)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
         panel?.ignoresMouseEvents = true    // the session tracks the pointer; the windows under the cards take the drop
         wake()
     }
 
-    /// What a card carries when dragged out: a shot's file (inked if marked) with its words as text; a voice note only
-    /// its words (it is text that happened to be spoken: no audio file); and (inside the app) which capture it is —
-    /// for dropping on a project in the island.
-    static func dragItem(_ s: Shot) -> NSPasteboardItem {
-        let item = NSPasteboardItem()
-        if s.kind == .shot, let u = s.bestURL { item.setString(u.absoluteString, forType: .fileURL) }
-        if let t = s.copyText { item.setString(t, forType: .string) }
-        if let b = s.batch { item.setString("\(b.dir.path)\n\(s.n)", forType: capturePasteboardType) }
-        return item
+    /// What a card carries when dragged out — separate pasteboard items, so an app that takes several gets all of
+    /// them (v0.8: the words used to ride on the file's item as its text, and most apps took the file and dropped them):
+    ///  1. a shot: its file (inked if marked) as a file URL, with the PNG itself;
+    ///  2. the note (typed, then said) as plain text, on one line without control characters (CardTransfer.dragText):
+    ///     the drop may land in a terminal, which types what it gets — and which app reads the text first can't be
+    ///     known (the first app the drag passes over does), so every drop gets the form that is safe at a prompt.
+    /// A voice note is only its words (text that happened to be spoken: no audio file). The first item also says
+    /// (inside the app) which capture it is, for dropping on a project in the island.
+    static func dragItems(_ s: Shot) -> [NSPasteboardItem] {
+        var items: [NSPasteboardItem] = []
+        let tag = s.batch.map { "\($0.dir.path)\n\(s.n)" }
+        if s.kind == .shot, let u = s.bestURL {
+            let item = NSPasteboardItem()
+            item.setString(u.absoluteString, forType: .fileURL)
+            if let d = try? Data(contentsOf: u) { item.setData(d, forType: .png) }
+            items.append(item)
+        }
+        if let t = CardTransfer.dragText(s.copyText) {
+            let item = NSPasteboardItem()
+            item.setString(t, forType: .string)
+            items.append(item)
+        }
+        if let t = tag {
+            if items.isEmpty { items.append(NSPasteboardItem()) }
+            items[0].setString(t, forType: capturePasteboardType)
+        }
+        return items
     }
 
     func dragMoved(to p: NSPoint) {

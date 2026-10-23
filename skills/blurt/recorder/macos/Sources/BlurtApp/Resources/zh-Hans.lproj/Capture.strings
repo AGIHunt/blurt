@@ -24,6 +24,9 @@
 "capture.card.edit_note" = "编辑备注…";
 "capture.card.move_to" = "移到";
 "capture.card.reveal" = "在访达中显示";
+"capture.card.retry_transcribe" = "重新转文字";
+"capture.card.transcribe_failed" = "没能转成文字";
+"capture.card.transcribing" = "正在转文字…";
 "capture.card.words_pending" = "文字还没转好，稍等一下";
 "capture.cards.ax" = "还没归类的捕获";
 "capture.cards.none" = "没有未归类的捕获";
