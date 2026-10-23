@@ -139,8 +139,11 @@ final class VoiceInput {
             return
         }
         if let s = server, s.isRunning { return }
-        server = try? ScriptRunner.shared.spawn("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation"] : [])) { _ in }
+        server = WarmSpawn.start("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation"] : []), server: "asr-serve")
     }
+
+    /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).
+    static var serverStarting: Bool { server?.isRunning == true && !WarmServer.running("asr-serve") }
 
     private func finish(keep: Bool, ended: Bool = false) {
         guard active, let v = voice, let b = batch else { return }

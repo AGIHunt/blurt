@@ -34,8 +34,16 @@ final class DictationVocabularyTests: XCTestCase {
 
     func testSeedOnceAndRemovedStaysRemoved() {
         let added = v.seed(projects: [(name: "Bug Agent", key: "BA"), (name: "X", key: "X")])
-        XCTAssertEqual(added, ["Claude Code", "Codex", "blurt", "口喷鸡", "Bug Agent", "BA"])   // 1-letter ones skipped
-        XCTAssertTrue(v.load().allSatisfy { $0.source == .project })
+        let defaults = DictationVocabulary.defaults.map(\.0)
+        XCTAssertEqual(added, ["Claude Code", "Codex", "blurt", "口喷鸡", "Bug Agent", "BA"] + defaults)   // 1-letter ones skipped
+        XCTAssertTrue(v.load().filter { !defaults.contains($0.term) }.allSatisfy { $0.source == .project })
+        // the common product names are their own source ("default"), removable like the rest
+        XCTAssertTrue(defaults.contains("Typeless") && defaults.contains("Gemini") && defaults.contains("OpenClaw"))
+        XCTAssertEqual(v.load().first { $0.term == "Typeless" }?.source, .builtIn)
+        XCTAssertTrue(String(data: try! Data(contentsOf: v.url), encoding: .utf8)!.contains("\"source\" : \"default\""))
+        v.remove("Typeless")
+        XCTAssertEqual(v.load().first { $0.term == "Typeless" }?.state, .removed)
+        XCTAssertFalse(v.payload().contains { $0["term"] as? String == "Typeless" })
         XCTAssertEqual(v.load().first { $0.term == "口喷鸡" }?.soundsLike, ["口喷机", "口碰鸡"])
         v.remove("Codex")
         XCTAssertEqual(v.load().first { $0.term == "Codex" }?.state, .removed)

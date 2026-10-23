@@ -2,7 +2,9 @@
 // dictation; edits are lines too, applied in order when it is read:
 //   {"id","t","app","bundle","duration","raw","polished","text","model","fell_back","reason","insert","audio",
 //    "terms_applied" [custom words the dictation wrote], "context_used" (text around the cursor went to polish),
-//    "context" (that text — only with record.dictation.keep_audio, the debug setting), …}
+//    "context" (that text — only with record.dictation.keep_audio, the debug setting),
+//    "asr_ms","polish_ms","load_ms","total_ms" (key-up → paste),"segments" (pieces streamed), "repaired" (spans polish
+//    dropped that the guard put back), …}
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio). dictation.py reads the
@@ -36,16 +38,24 @@ public struct DictationEntry: Identifiable, Hashable {
     public var contextUsed: Bool?
     /// that text itself — kept only when record.dictation.keep_audio (debugging) is on
     public var context: String?
+    /// per-stage times (ms): asr_ms, polish_ms, load_ms (model loads waited for), total_ms (key-up → paste), segments
+    /// (pieces transcribed while talking); nil in older entries
+    public var timing: [String: Int]?
+    /// words polish dropped that the guard put back (nil: none, or an older entry)
+    public var repaired: [String]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
                 asrModel: String? = nil, language: String? = nil, termsApplied: [String]? = nil, contextUsed: Bool? = nil,
-                context: String? = nil) {
+                context: String? = nil, timing: [String: Int]? = nil, repaired: [String]? = nil) {
         self.id = id; self.time = time; self.app = app; self.bundle = bundle; self.duration = duration; self.raw = raw
         self.polished = polished; self.text = text; self.model = model; self.fellBack = fellBack; self.reason = reason
         self.insert = insert; self.audio = audio; self.asrModel = asrModel; self.language = language
         self.termsApplied = termsApplied; self.contextUsed = contextUsed; self.context = context
+        self.timing = timing; self.repaired = repaired
     }
+
+    public static let timingKeys = ["asr_ms", "polish_ms", "load_ms", "total_ms", "segments"]
 
     static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -68,6 +78,8 @@ public struct DictationEntry: Identifiable, Hashable {
         if let t = termsApplied { o["terms_applied"] = t }
         if let c = contextUsed { o["context_used"] = c }
         if let c = context { o["context"] = c }
+        for (k, v) in timing ?? [:] where DictationEntry.timingKeys.contains(k) { o[k] = v }
+        if let r = repaired, !r.isEmpty { o["repaired"] = r }
         return o
     }
 
@@ -91,6 +103,10 @@ public struct DictationEntry: Identifiable, Hashable {
         termsApplied = o["terms_applied"] as? [String]
         contextUsed = o["context_used"] as? Bool
         context = o["context"] as? String
+        var t: [String: Int] = [:]
+        for k in DictationEntry.timingKeys { if let v = o[k] as? Int { t[k] = v } }
+        timing = t.isEmpty ? nil : t
+        repaired = o["repaired"] as? [String]
     }
 }
 

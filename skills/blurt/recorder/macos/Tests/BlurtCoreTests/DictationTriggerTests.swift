@@ -106,6 +106,23 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(auto("fn-down@0 fn-up@450"), [.arm])                           // long, no tick delivered: nothing
     }
 
+    /// `armedDown`: the app opens the mic on `.arm` and closes it once the press can no longer start a dictation.
+    func testArmedDownSaysWhenThePressCanStillStart() {
+        func states(_ script: String, mode: DictationTrigger.Mode = .auto) -> [Bool] {
+            var t = DictationTrigger(key: .fn, mode: mode)
+            return DictationTrigger.parse(script).map { e in _ = t.handle(e); return t.armedDown }
+        }
+        XCTAssertEqual(states("fn-down@0 fn-up@100"), [true, false])                 // a tap: started at the key-up
+        XCTAssertEqual(states("fn-down@0 tick@300 fn-up@900"), [true, false, false])  // held: started at the tick
+        XCTAssertEqual(states("fn-down@0 key:123@50 fn-up@100"), [true, false, false]) // Fn-←: the mic closes at once
+        XCTAssertEqual(states("fn-down@0 click@40 fn-up@90"), [true, false, false])
+        XCTAssertEqual(states("fn-down@0 fn-up@450"), [true, false])                  // too long, no tick: closes
+        XCTAssertEqual(states("cmd-down@0 fn-down@10 fn-up@60 cmd-up@90"), [false, false, false, false])  // never armed
+        XCTAssertEqual(states("fn-down@0 fn-up@100 fn-down@1000 fn-up@1100"), [true, false, false, false]) // the stop press isn't an arm
+        XCTAssertEqual(states("fn-down@0 tick@250 fn-up@400", mode: .hold), [true, false, false])
+        XCTAssertEqual(states("fn-down@0 fn-up@100", mode: .hold), [true, false])     // let go before 250 ms
+    }
+
     func testAutoStopsHandsFreeWithALongPressToo() {
         XCTAssertEqual(auto("fn-down@0 fn-up@100 fn-down@2000 fn-up@2900"), [.arm, .start, .stop])
     }

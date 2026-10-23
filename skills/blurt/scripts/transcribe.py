@@ -75,7 +75,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
-from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
+from _common import (BLURT_HOME, EXIT_CAP, IS_MAC, IS_WIN, MODELS_DIR, adaptive_idle, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      load_json, probe_duration, save_json, update_global_config, use_system_certs)
 
 use_system_certs()
@@ -667,6 +667,9 @@ def model_path(m: dict) -> Path | None:
         need = [d / k.rstrip("/") for k in inst.get("keep", [])]
         return d if d.is_dir() and all(p.exists() for p in need) else None
     if inst.get("hf"):
+        own = MODELS_DIR / "asr" / inst["hf"].split("/")[-1]       # a ModelScope download (the mirror)
+        if own.is_dir() and (own / "config.json").exists() and any(own.glob("*.safetensors")) and not any(own.glob("*.part")):
+            return own
         snap = hf_snapshot(inst["hf"])
         if snap is None and m["backend"] == "faster-whisper":  # older Blurt downloaded it under models/faster-whisper
             legacy = MODELS_DIR / "faster-whisper"
@@ -727,21 +730,73 @@ def install_model(m: dict) -> Path:
         from huggingface_hub import snapshot_download
         if os.environ.get("BLURT_HF_MIRROR"):
             os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-        print(f"downloading {inst['hf']}", file=sys.stderr, flush=True)
-        stop = threading.Event()
-        target = hf_cache() / ("models--" + inst["hf"].replace("/", "--"))
-        th = threading.Thread(target=_progress_poller, args=(target, float(m["size_mb"]), stop), daemon=True)
-        th.start()
-        try:
-            snapshot_download(inst["hf"])
-        except Exception as e:  # noqa: BLE001
-            raise Fail(f"could not download {inst['hf']}: {e}", "network")
-        finally:
-            stop.set()
+        mirrored = inst["hf"].startswith("mlx-community/")      # ModelScope mirrors mlx-community (fast from China)
+        if mirrored and os.environ.get("BLURT_HF_MIRROR"):
+            _modelscope(inst["hf"], float(m["size_mb"]))
+        else:
+            print(f"downloading {inst['hf']}", file=sys.stderr, flush=True)
+            stop = threading.Event()
+            target = hf_cache() / ("models--" + inst["hf"].replace("/", "--"))
+            th = threading.Thread(target=_progress_poller, args=(target, float(m["size_mb"]), stop), daemon=True)
+            th.start()
+            try:
+                snapshot_download(inst["hf"])
+            except Exception as e:  # noqa: BLE001
+                if not mirrored:
+                    raise Fail(f"could not download {inst['hf']}: {e}", "network")
+                print(f"  Hugging Face failed ({e}); trying ModelScope", file=sys.stderr, flush=True)
+                _modelscope(inst["hf"], float(m["size_mb"]))
+            finally:
+                stop.set()
     path = model_path(m)
     if not path:
         raise Fail(f"{m['id']}: download finished but the files are not complete", "model_missing")
     return path
+
+
+def _modelscope(repo: str, total_mb: float) -> Path:
+    """An mlx-community repo from ModelScope's mirror → MODELS_DIR/asr/<name> (each file .part first)."""
+    dest = MODELS_DIR / "asr" / repo.split("/")[-1]
+    dest.mkdir(parents=True, exist_ok=True)
+    api = f"https://modelscope.cn/api/v1/models/{repo}/repo/files?Recursive=true"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "blurt"}), timeout=30) as r:
+            files = json.load(r)["Data"]["Files"]
+    except Exception as e:  # noqa: BLE001
+        raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
+    want = [x for x in files if x.get("Type") == "blob" and not x["Path"].endswith((".md", ".gitattributes"))]
+    done = 0.0
+    print(f"downloading {repo} (ModelScope)", file=sys.stderr, flush=True)
+    for x in want:
+        p = dest / x["Path"]
+        if p.exists() and p.stat().st_size == x.get("Size"):
+            done += p.stat().st_size / 2**20
+            continue
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".part")
+        url = f"https://modelscope.cn/models/{repo}/resolve/master/{x['Path']}"
+        for attempt in range(3):
+            t0, got = time.time(), 0
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "blurt"}), timeout=60) as r, \
+                        open(tmp, "wb") as o:
+                    while chunk := r.read(1 << 20):
+                        o.write(chunk)
+                        got += len(chunk)
+                        if time.time() - t0 > 1:
+                            print(f"  {int(done + got / 2**20)}/{int(total_mb)} MB", file=sys.stderr, flush=True)
+                            t0 = time.time()
+            except Exception as e:  # noqa: BLE001
+                if attempt == 2:
+                    raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
+                continue
+            if not x.get("Size") or got == x["Size"]:          # a dropped connection can end the read quietly
+                break
+            if attempt == 2:
+                raise Fail(f"could not download {repo} from ModelScope: {x['Path']} came short", "network")
+        done += got / 2**20
+        os.replace(tmp, p)
+    return dest
 
 
 def _install_archive(m: dict) -> None:
@@ -1088,8 +1143,15 @@ class Qwen3Mlx(MlxBackend):
         self.context = dictation_vocab.qwen_context(terms) or self.base_context
         return bool(terms)
 
+    def set_prior(self, text: str) -> None:
+        """A streamed dictation's text so far: after the names, in the same system prompt (docs/design/dictation.md
+        §Streaming), so a name is spelled the same way in every piece."""
+        self.prior = (text or "").strip()
+
     def decode(self, x):
-        r = self.m.transcribe(x, model=self.repo, context=self.context, language=self.args.language)
+        prior = getattr(self, "prior", "")
+        ctx = (self.context + "\n" + prior).strip() if prior else self.context
+        r = self.m.transcribe(x, model=self.repo, context=ctx, language=self.args.language)
         return [(0.0, len(x) / SR, (r.text or "").strip(), lang_code(getattr(r, "language", None)))]
 
 
@@ -1355,6 +1417,10 @@ def resolve_backend(a, purpose: str = "batch") -> str:
     cfg = asr_config()
     m = select(purpose, a)
     a.model = None if m["backend"] == "sensevoice" else m.get("model")
+    if m["backend"] == "qwen3-asr-mlx":
+        p = model_path(m)           # the folder it is in (HF cache snapshot or a ModelScope copy): loaded offline
+        if p:
+            a.model = str(p)
     a.model_id = m["id"]
     lang = getattr(a, "language", None) or cfg.get("language")
     a.language = None if lang in (None, "", "auto") else lang
@@ -1675,7 +1741,7 @@ class NoteEngine:
             pass
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
-             purpose: str | None = None) -> dict:
+             purpose: str | None = None, prior: str | None = None) -> dict:
         """vocab: None = no custom words; True = the file's; a list = these (strings or term dicts). The model is
         biased toward them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords), then exact
         sounds-likes are fixed (dictation_vocab.apply): `text` has the fixes, `asr_text` is what the model wrote."""
@@ -1683,20 +1749,27 @@ class NoteEngine:
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
             model_id = dictation_models()["selected"]
+        before = self.backend
+        t_load = time.perf_counter()
         self.load(language, model_id)
+        load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not before else 0
         x = read_wav(wav)
         terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
         biased = False
         if hasattr(self.backend, "set_vocab"):
-            biased = self.backend.set_vocab(dictation_vocab.ranked(terms))
+            biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or ""))
+        if prior and hasattr(self.backend, "set_prior"):
+            self.backend.set_prior(prior[-200:])
         try:
             results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
         finally:
             if biased:
                 self.backend.set_vocab([])  # a voice note after this gets no dictation words
+            if prior and hasattr(self.backend, "set_prior"):
+                self.backend.set_prior("")
         text, lang = note_text(results)
         out = {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
-               "model": self.model_id, "audio_seconds": round(len(x) / SR, 2)}
+               "model": self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": load_ms}
         if vocab is not None:
             fixed, applied = dictation_vocab.apply(text, terms)
             out.update(text=fixed, asr_text=text, terms=applied, biased=biased)
@@ -1766,9 +1839,11 @@ def cmd_serve(a):
         eng.load(None, mid)
     emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
     last = time.time()
+    uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
+    tier = probe()["tier"]
     try:
-        while time.time() - last < a.exit_after:
-            if eng.backend is not None and time.time() - eng.last > a.idle:
+        while time.time() - last < adaptive_idle(a.exit_after, uses, tier, cap=EXIT_CAP):
+            if eng.backend is not None and time.time() - eng.last > adaptive_idle(a.idle, uses, tier):
                 eng.unload()
                 print("serve: idle, model unloaded", file=sys.stderr, flush=True)
             try:
@@ -1791,8 +1866,11 @@ def cmd_serve(a):
                         resp = {"ok": True, "pid": os.getpid(), "model": eng.model_id, "loaded": eng.backend is not None}
                     elif req.get("cmd") == "note":
                         last = time.time()
+                        if req.get("purpose") == "dictation":
+                            uses.append(last)
+                            del uses[:-50]
                         resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
-                                        req.get("purpose"))
+                                        req.get("purpose"), req.get("prior"))
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
                         last = time.time()
                         mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)
@@ -1864,7 +1942,8 @@ def cmd_auto(a):
 
 # --- dictation's recognition model (record.dictation.asr_model; docs/design/dictation.md §Recognition model)
 QWEN_MLX = "qwen3-asr-0.6b-mlx"
-DICTATION_MODELS = (QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2)   # the local ones dictation offers, best first
+QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
+DICTATION_MODELS = (QWEN_MLX_17, QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2)   # the local ones dictation offers, best first
 
 
 def dictation_models(hw: dict | None = None) -> dict:
@@ -1875,9 +1954,15 @@ def dictation_models(hw: dict | None = None) -> dict:
     cfg = (global_config().get("record") or {}).get("dictation") or {}
     configured = cfg.get("asr_model") if isinstance(cfg, dict) else None
     note_pick = select("note")
-    rec = QWEN_MLX if hw_kind(hw) == "apple" and hw["tier"] in ("pro", "standard") and _fits(entry(QWEN_MLX), hw) \
-        else note_pick["id"]
-    selected = next((mid for mid in (configured, rec) if mid and entry(mid) and runs_here(entry(mid))
+    apple = hw_kind(hw) == "apple"
+    # the v0.8 speed eval (docs/design/dictation.md §Recognition model): 1.7B on pro Macs (≥ 32 GB: 3 GB more is
+    # fine there), 0.6B on standard ones
+    rec = QWEN_MLX_17 if apple and hw["tier"] == "pro" and _fits(entry(QWEN_MLX_17), hw) else \
+        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and _fits(entry(QWEN_MLX), hw) else note_pick["id"]
+    # what runs: the configured one, else the recommended one, else the 0.6B a pro Mac already has (until the 1.7B
+    # is installed), all only when installed; else the voice-note model
+    fallback = QWEN_MLX if rec == QWEN_MLX_17 else None
+    selected = next((mid for mid in (configured, rec, fallback) if mid and entry(mid) and runs_here(entry(mid))
                      and installed(entry(mid))), note_pick["id"])
     rows = []
     for mid in DICTATION_MODELS:

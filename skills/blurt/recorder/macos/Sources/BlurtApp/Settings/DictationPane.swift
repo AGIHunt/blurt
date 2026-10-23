@@ -140,6 +140,15 @@ final class DictationSettings: ObservableObject {
     func reject(_ t: VocabTerm) { DictationVocabulary.shared.reject(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "reject", "term": t.term]) }
     func setContext(_ v: Bool) { contextOn = v; save("context", v ? nil : false) }
     func setLearn(_ v: Bool) { learnOn = v; save("learn", v ? nil : false) }
+    /// automatic (unset) shows what it does now; flipping it stores the choice
+    @Published var builtInMic = Dictation.useBuiltInMic
+    @Published var startSound = Dictation.startSound
+    func setBuiltInMic(_ v: Bool) {
+        builtInMic = v
+        save("builtin_mic", v)
+        MicEngine.shared.prepare(builtIn: v)
+    }
+    func setStartSound(_ v: Bool) { startSound = v; save("start_sound", v ? true : nil) }
 
     // MARK: recognition model
 
@@ -287,6 +296,15 @@ struct DictationPane: View {
                 Hint(T("dictation.mode.\(m.mode.rawValue).detail", Dictation.keyInline(m.key)))
                 if m.key == .fn && m.enabled { fnRows }
                 Hint(T("dictation.settings.voice_note_hint", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice)))
+                Toggle(isOn: Binding(get: { m.builtInMic }, set: { m.setBuiltInMic($0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(T("dictation.mic.builtin"))
+                        Text(T("dictation.mic.builtin.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .disabled(!m.enabled)
+                Toggle(T("dictation.mic.start_sound"), isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+                    .disabled(!m.enabled)
             } header: { Text(T("dictation.settings.section")) }
 
             Section {
@@ -465,7 +483,7 @@ struct DictationPane: View {
                     HStack(spacing: 6) {
                         Text(t.term)
                         if t.source == .learned { Badge(T("dictation.vocab.learned")) }
-                        if t.source == .project { Badge(T("dictation.vocab.auto"), tint: .secondary) }
+                        if t.source == .project || t.source == .builtIn { Badge(T("dictation.vocab.auto"), tint: .secondary) }
                     }
                     if !t.soundsLike.isEmpty {
                         Text(T("dictation.vocab.heard_as", t.soundsLike.joined(separator: T("dictation.vocab.list_sep"))))

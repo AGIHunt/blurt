@@ -105,7 +105,7 @@ struct DictationContext {
     var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 
     static func capture() -> DictationContext? {
-        guard let f = DictationField.focused() else { return nil }
+        guard let f = DictationField.focused() else { return titleOnly() }
         var c = DictationContext()
         c.app = f.app ?? ""
         c.title = f.windowTitle ?? ""
@@ -117,6 +117,28 @@ struct DictationContext {
             c.after = ns.substring(with: NSRange(location: hi, length: min(chars, ns.length - hi)))
         }
         return c.isEmpty ? nil : c
+    }
+
+    /// Apps whose focused element Accessibility can't read (WeChat's input box, some Electron apps): the front app's
+    /// name and its focused window's title (often the chat or document name — still a spelling hint). Never Blurt,
+    /// never with secure input on; test builds never read another app.
+    static func titleOnly() -> DictationContext? {
+        guard !DictationInsert.testMode, AXIsProcessTrusted(), !IsSecureEventInputEnabled(),
+              let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return nil }
+        let app = AXUIElementCreateApplication(front.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.25)
+        var w: CFTypeRef?
+        var c = DictationContext()
+        c.app = front.localizedName ?? ""
+        if AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &w) == .success, let win = w,
+           CFGetTypeID(win) == AXUIElementGetTypeID() {
+            var t: CFTypeRef?
+            if AXUIElementCopyAttributeValue(win as! AXUIElement, kAXTitleAttribute as CFString, &t) == .success {   // swiftlint:disable:this force_cast
+                c.title = (t as? String) ?? ""
+            }
+        }
+        return c.title.isEmpty ? nil : c
     }
 }
 

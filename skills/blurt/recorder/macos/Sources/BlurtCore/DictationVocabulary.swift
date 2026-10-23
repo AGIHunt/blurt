@@ -12,7 +12,9 @@
 import Foundation
 
 public struct VocabTerm: Equatable, Identifiable, Hashable {
-    public enum Source: String { case manual, learned, project }
+    /// manual (Settings), learned (from a fix), project (Blurt's own words and the projects' names), default (the AI /
+    /// dev product names nearly every user says: Gemini, Claude, Typeless, tmux, …) — both seeds, removable
+    public enum Source: String { case manual, learned, project, builtIn = "default" }
     public enum State: String { case active, suggested, rejected, removed }
 
     public var term: String
@@ -64,6 +66,23 @@ public final class DictationVocabulary {
         ("Codex", ["codec", "codecs", "kodex"]),
         ("blurt", ["blurred", "blurr"]),
         ("口喷鸡", ["口喷机", "口碰鸡"]),
+    ]
+
+    /// Source `default`: the AI and developer products people dictate about all day, so the speech model is biased
+    /// toward them from the first dictation (docs/design/dictation.md §Custom words). Removable: a removed one is
+    /// never seeded again.
+    public static let defaults: [(String, [String])] = [
+        ("Gemini", []),
+        ("Claude", []),
+        ("ChatGPT", ["chat gpt"]),
+        ("Cursor", []),
+        ("Typeless", ["type less", "TypePlus"]),        // Qwen3-ASR 1.7B's miss in the v0.8 speed eval
+        ("OpenClaw", ["open claw"]),
+        ("MCP", []),
+        ("tmux", ["t mux"]),
+        ("GitHub", ["git hub"]),
+        ("PR", []),
+        ("worktree", ["work tree"]),
     ]
 
     // MARK: reading
@@ -140,7 +159,7 @@ public final class DictationVocabulary {
             guard let i = DictationVocabulary.index(all, term) else { return }
             switch all[i].source {
             case .manual: all.remove(at: i)
-            case .project: all[i].state = .removed
+            case .project, .builtIn: all[i].state = .removed
             case .learned: all[i].state = .rejected
             }
         }
@@ -167,18 +186,20 @@ public final class DictationVocabulary {
 
     // MARK: the seed
 
-    /// Adds the obvious words once, as source `project`: the built-in ones and each project's name and key. A word
-    /// the user removed stays removed; nothing already there is touched. Returns the words added.
+    /// Adds the obvious words once: the built-in ones and each project's name and key (source `project`), then the
+    /// common product names (source `default`). A word the user removed stays removed; nothing already there is
+    /// touched. Returns the words added.
     @discardableResult
     public func seed(projects: [(name: String, key: String)]) -> [String] {
-        var want = DictationVocabulary.builtIn.map { (term: $0.0, sounds: $0.1) }
+        var want = DictationVocabulary.builtIn.map { (term: $0.0, sounds: $0.1, source: VocabTerm.Source.project) }
         for p in projects {
-            for t in [p.name, p.key] where t.count >= 2 && t.count <= 40 { want.append((t, [])) }
+            for t in [p.name, p.key] where t.count >= 2 && t.count <= 40 { want.append((t, [], .project)) }
         }
+        want += DictationVocabulary.defaults.map { (term: $0.0, sounds: $0.1, source: VocabTerm.Source.builtIn) }
         return edit { all in
             var added: [String] = []
-            for (t, sounds) in want where DictationVocabulary.index(all, t) == nil && !added.contains(t) {
-                all.append(VocabTerm(term: t, soundsLike: sounds, source: .project))
+            for (t, sounds, source) in want where DictationVocabulary.index(all, t) == nil && !added.contains(t) {
+                all.append(VocabTerm(term: t, soundsLike: sounds, source: source))
                 added.append(t)
             }
             return added

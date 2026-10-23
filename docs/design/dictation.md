@@ -1,4 +1,4 @@
-# Dictation (听写) — v0.8, macOS
+# Dictation (听写) — v0.8, macOS (with the v0.8 speed work: streaming, start of speech, paste, repair)
 
 Typeless-style dictation: you talk, and the words are typed into **whichever app has the focus**. It is separate from
 the voice note: `⌥⇧V` still files what you say into Blurt, and the two never share a key.
@@ -6,15 +6,19 @@ the voice note: `⌥⇧V` still files what you say into Blurt, and the two never
 ## Flow
 
 ```
-Fn tap/hold ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav) ──▶ ASR (warm transcribe.py serve, dictation model,
-  (DictationListener: tap   │ arm: warm ASR + polish servers           │   biased toward the custom words; exact
-   or AX monitor)           │ start: read the text around the cursor   │   sounds-likes fixed: dictation_vocab.py)
-                            ▼                                         ▼
-                   island ears: keyboard + mint level      polish (warm polish.py serve, ≤ 3 s, guard)
-                                                           + custom words + context as spelling hints
+Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEngine: prepared at launch, started off the main thread)
+  (DictationListener: tap   │            + warm ASR / polish servers (offline-first spawn)
+   or AX monitor)           │ start (key-up of a tap, or 300 ms held): keeps that audio; the text around the cursor
+                            ▼
+      NoteVoice (16 kHz) ──▶ DictationStream: DictationSegmenter cuts at pauses ≥ 0.5 s (pieces 3–20 s)
+      island: "listening" once        │ each piece, while the user still talks:
+      audio actually arrives          ├─▶ ASR (warm transcribe.py serve; custom words + the text so far as context)
+                                      └─▶ polish (warm polish.py serve; the polished text so far as "before the
+                                          cursor"; the guard, and the repair that puts dropped words back)
+      key-up ──▶ only the last piece is left ──▶ DictationStitch joins the pieces ──▶ the joined guard
                                                                       │
-          history.jsonl ◀── DictationInsert: save pasteboard → text → ⌘V → restore after 0.6 s
-                                                                      │
+          history.jsonl ◀── DictationInsert: ⌘V into any app in front (DictationPastePolicy) → clipboard restored
+          (timings: asr / polish / load / total ms)                   │
           vocabulary.json ◀── DictationWatch: the same field for 60 s → DictationLearn: the user's fixes
 ```
 
@@ -29,10 +33,12 @@ Fn tap/hold ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav) 
 | Context, the after-typing watch | `Capture/Dictation/DictationContext.swift` |
 | Custom words in ASR and polish | `scripts/dictation_vocab.py`, `transcribe.py` (`note --dictation --vocab`, `dictation-models`), `polish.py`, `tests/test_dictation_vocab.py` |
 | Controller (capture → ASR → polish → insert → history) | `Capture/Dictation/Dictation.swift` |
-| Insertion | `Capture/Dictation/DictationInsert.swift` |
+| Streaming: cut, transcribe and polish while talking | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift`, `BlurtCore/DictationStitch.swift` (`DictationSegmenterTests`, `DictationStitchTests`) |
+| The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
+| Insertion | `Capture/Dictation/DictationInsert.swift`; the rule: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicyTests`) |
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
-| Polish model + guard + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/test_polish.py` |
+| Polish model + guard + repair + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
 | UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it) |
 
 ## Trigger
@@ -52,7 +58,8 @@ Fn tap/hold ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav) 
   when it went down. One tap starts, the next stops. So ⌥-letter, ⌥⇧V and Fn-← never trigger.
 - **Hold**: held alone for 250 ms starts (the caller ticks at `deadline`), release stops, and another key or a click
   joining in cancels.
-- `Esc` cancels. `arm` on a clean key-down warms the models while the user starts talking.
+- `Esc` cancels. `arm` on a clean key-down warms the models and opens the mic while the user starts talking
+  (§Start of speech).
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
 - Permissions: Accessibility for the paste, the context and the Fn filter; Input Monitoring for the listen-only tap.
 - **The Fn filter.** macOS uses Fn itself (System Settings → Keyboard → "Press 🌐 key to", `com.apple.HIToolbox
@@ -113,6 +120,43 @@ Fn tap/hold ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav) 
   - `dictation nudge REASON` / `dictation setup` drive the cues, and `BLURT_TEST_DICTATION_NUDGE_SECONDS` shortens the
     once-a-day rule.
 
+## Start of speech
+
+What the user's history showed (B): the first two or three words of a dictation were missing from the transcript —
+the first ~0.5–1 s was never recorded. Two causes, both measured in the test build with a wav whose speech starts at its first sample, played as
+the world's sound since the key went down (`BLURT_TEST_MIC_CLOCK=keydown`) through a simulated mic that takes
+`BLURT_TEST_MIC_START_MS` to deliver its first buffer (a synthetic sentence that starts with a two-character
+pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
+
+| Mic start-up | Press | Mic opened at the trigger's start (v0.8) | Mic opened on the key-down (now) |
+|---:|---|---|---|
+| 0 ms | tap | audio from 126 ms; all words kept | from 5 ms; all kept |
+| 0 ms | hold (push-to-talk) | from 315 ms: **the first 4 words lost** (B's symptom) | from 6 ms; all kept |
+| 150 ms | tap / hold | from 286 / 469 ms: the first word / 4 words lost | from 162 ms: the first word lost |
+| 1000 ms (Bluetooth HFP) | tap / hold | from 1180 / 1322 ms: 5 / 6 words lost | from 1009 / 1054 ms: 5 words lost |
+
+1. **The trigger decided late.** The mic opened at `start`: the key-up of a tap (~0.1 s) or 300 ms into a hold — and
+   the engine was then made on the main thread. Now `arm` (the clean key-down) opens it, `start` keeps that audio,
+   and a press that turns into something else (Fn-←, ⌥A, a click, let go too late) closes it again and drops it
+   (`DictationTrigger.armedDown`; `dictation_precapture_dropped`). The price: the orange mic dot flashes for a
+   moment on an Fn-arrow shortcut. `record.dictation.precapture` (default on) switches it off.
+2. **The device takes time to start.** `MicEngine` makes the `AVAudioEngine` and its input node at launch (only when
+   microphone access is already granted; nothing runs, so macOS shows no mic in use) and starts it off the main
+   thread. That removes the engine set-up, not the device's own start-up. A Bluetooth headset (AirPods) switches to
+   its call profile (HFP) when its mic opens: ~1 s with no audio, which no software can get back without keeping
+   the mic open all the time (a pre-roll before the key-down would need exactly that: not done). So:
+   - **"Use the Mac's microphone for dictation"** (`record.dictation.builtin_mic`; Settings → Dictation): unset =
+     automatic, on while the default input is Bluetooth (CoreAudio transport type), when the Mac has a built-in mic.
+     The input unit's device is switched before it starts. Trade-off: the built-in mic is ready at once and the
+     headset's music keeps its quality (HFP drops it to call quality), but it is farther from the mouth and hears
+     more of the room. `DictationMicChoice` (pure, tested) decides.
+   - **The island says "listening" only once audio arrives** (`NoteVoice.onFirstAudio` → `Dictation.micLive`):
+     until then the keyboard glyph with dots (`shots/island-mic-starting.png`), then the mint level and the clock
+     (`shots/island-listening.png`). `dictation_mic_live` records `from_key_ms`.
+   - An optional soft tick when listening starts (`record.dictation.start_sound`, off; never while recording).
+- Only the user can measure the real devices: the built-in mic's start-up and AirPods' HFP switch on their Mac
+  (`dictation_mic_live.from_key_ms` in the log), and whether the prepared engine really leaves the mic indicator off.
+
 ## Permissions (the guide)
 
 Granting a permission used to mean System Settings, "+", and hunting for the app. The guide does what CleanShot,
@@ -157,28 +201,103 @@ Raycast or Loom do (`BlurtCore/PermissionFlow.swift` + `Onboarding/PermissionGui
   `perm skip|cancel|restart`, `perm standin …` — a window of the test app standing in for System Settings —, `perm drag
   PB`, `perm status`).
 
+## Streaming
+
+Before, everything waited for the key to come up: the whole recording to the speech model, then the whole text to
+polish — 1.1 s after a 30 s dictation, 2.3 s after a minute, growing with the length (Typeless felt faster on long
+utterances, slower on short ones). Now (`DictationStream`):
+
+- **Cut at pauses while talking** (`DictationSegmenter`, pure, tested): 20 ms frames against the room's level (the
+  10th percentile of the last 3 s, rising at most 2 dB/s while someone talks); a cut goes in the middle of a pause
+  of 0.5 s once the piece is ≥ 3 s long and has speech in it — between words, never inside one (Chinese has no
+  spaces to find a word boundary in the text). A piece that reaches 20 s without such a pause is cut at the
+  quietest 100 ms of its last 2 s; when even that is louder than the room + 6 dB, the cut is *hard*: the next piece
+  starts 0.8 s earlier, and the words both pieces heard are dropped by `DictationStitch.dropOverlap` (the longest
+  run of ≥ 2 units at the end of one that the other starts with, allowing one half-heard unit when ≥ 3 match).
+- **Each piece is transcribed as it completes** (a serial queue; the warm ASR server; its wav written from memory),
+  with `prior` = the last 200 characters of the text so far appended to the custom-word context: Qwen3-ASR keeps
+  a name spelled the same way all through. Measured below: it never leaked into the output, and it helped 1.7B.
+- **…and polished right after** (a second serial queue): the polished text so far is appended to "Near the cursor"
+  (before ▮), so polish sees what came before but may not change or continue it (the guard's `copied` check, below).
+  A piece that opens with a self-correction (不对 / 我是说 / no wait …; not 不对称 & co.) is polished together with
+  the one before it, so the corrected-away words can still go.
+- **At key-up only the last piece is left**; with a pause ≥ 0.5 s before the release there is nothing left at all.
+  The pieces are joined (`DictationStitch.join`: a space only between Latin words), and the joined polish is
+  checked once more against the joined transcript (`polish.py serve`'s `guard` command; `stitch_<reason>` falls
+  back to the transcript).
+- **Safety path**: a piece the speech model failed on → the whole recording is transcribed and polished in one go,
+  the old way (`dictation_stream_fallback`). Polishing pieces is also safer than polishing a minute at once (below).
+- A short dictation (no pause cut) is exactly the old path: one piece at key-up. `record.dictation.streaming` off
+  forces that always.
+
+Latency, key-up → paste, measured inside the app (`total_ms`; `results/latency-*.jsonl`), the `say` wavs fed in real
+time as the mic, warm models, three takes each (median). "Quick release": the app stops itself 0.1 s after the last
+word (`dictation stop-after`) — the worst case for streaming, the last sentence is still to do. M5 Max:
+
+| Utterance | v0.8 (whole, after key-up) | Now, 0.6B, quick release | Now, 1.7B (pro default), quick release | Now, pause ≥ 0.5 s before release |
+|---:|---:|---:|---:|---:|
+| 3 s (1 sentence) | 269 ms (ASR 137 + polish 128) | 286 ms (1 piece) | 287 ms | 9 ms |
+| 10 s | 536 ms (278 + 251) | 351 ms (2 pieces) | 375 ms | 12 ms |
+| 30 s | 1159 ms (640 + 506) | 519 ms (3 pieces) | 538 ms | 11 ms |
+| 60 s | 2406 ms (1357 + 1042) | 388 ms (11 pieces) | 394 ms | 13 ms |
+
+- The target (< 1 s after a 30 s dictation, no worse for short ones) holds: the last piece's ASR + polish is all
+  that is left, ~0.2 + 0.2 s, whatever the length. A one-sentence dictation is one piece: the same work as before
+  (~15 ms more, within a run's spread: 265–281 ms before, 283–297 ms now).
+
 ## Insert
 
 1. Save the general pasteboard: every item, every type, as data.
 2. Put the text, marked `org.nspasteboard.TransientType` so clipboard managers skip it.
-3. Post ⌘V (HID level). This happens **only** when all of these hold:
-   - Accessibility is granted;
-   - the AX focused element is not clearly a non-text control (button, list, table, menu…);
-   - the focused element's pid equals the frontmost app's pid;
-   - that app isn't Blurt.
+3. Post ⌘V (HID level). `DictationPastePolicy` (BlurtCore, unit-tested) decides, the way Typeless does: **⌘V goes to
+   any other app in front**, whatever its focused element looks like to Accessibility. Refused only when
+   - there is no app in front;
+   - Blurt itself is in front (its own text views get a `paste:` action; panels get nothing);
+   - secure event input is on (`IsSecureEventInputEnabled()`: a password field anywhere), or the focused element is an
+     `AXSecureTextField` (role or subrole);
+   - Accessibility isn't granted (a posted ⌘V wouldn't arrive).
 4. Restore the old pasteboard 0.6 s later, unless something else has changed it since.
-- Otherwise the text stays on the clipboard and the island says "已复制，可粘贴" / "Copied — paste it with Command-V".
-- Blurt's own windows get a `paste:` action, never a keystroke. Panels (island, note bubble, cards) get nothing.
+- Why: v0.8 also required the focused element to belong to the app in front and not to be a button, list or table.
+  WeChat's input box isn't an AX text role (no focused element can be read there at all), so every dictation into
+  WeChat was left on the clipboard ("copied"), while Typeless pastes there fine (C).
+- When Accessibility couldn't confirm a text field (`focusIsText` false or unknown: WeChat, many Electron and web
+  editors), the island says "Pasted" for 4 s with **Copy Again**, in case it didn't land; the history keeps every
+  text (copy from the Dictation page).
+- Refused → the text stays on the clipboard and the island says "已复制，可粘贴" / "Copied — paste it with Command-V".
 - **Test builds never post an event or create a tap.** A test build is one with `BLURT_TEST_COMMANDS=1` *or* a bundle
-  id other than `dev.blurt.recorder`. In a test build the text goes only into the app's own test pad.
+  id other than `dev.blurt.recorder`. In a test build the text goes only into the app's own test pad;
+  `dictation paste-policy front=other text=unknown …` reports what the policy would decide.
 
 ## Polish
 
 `polish.py serve --preload` keeps one MLX model warm:
 - 127.0.0.1 with a token, in `$BLURT_HOME/run/polish-serve.json`;
-- unloads after 180 s idle and exits after 30 min;
+- unloads after 180 s idle and exits after 30 min — longer while dictation is used often (`adaptive_idle` in
+  `_common.py`, also for `transcribe.py serve`'s dictation requests): ×2 at 3+ requests in the last 30 min, ×5 at
+  8+ (the model stays at most 30 min unused, the server 4 h). Only on the pro and standard tiers: on 8 GB Macs the
+  model is too large a share of memory to keep around;
 - uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
   Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
+
+### Why a polish was "unavailable" (A), and model loads
+
+The history entry said `reason: unavailable`, `model: null` after a 19 s dictation: the app waited `polish_timeout_ms`
+(3 s) after key-up for the server to write its address, and it hadn't — 22 s after the key-down had started it.
+Starting a server is `uv run polish.py serve`, which resolves the script's packages, then re-runs itself under
+`uv run --with mlx-lm`. Each resolution asks PyPI again once uv's index cache has expired: on this Mac the first
+`uv run --with mlx-lm` of the day took 13.1 s against 2.5 s cached, and a cold `polish.py serve` with the cache
+expired (`--refresh`) wrote its address after 6.6 s and had the model loaded at 9.5 s, against 0.5 s / 2.9 s
+offline (`results/coldstart.jsonl`). Two slow resolutions on a slow network are > 20 s. (The other way to get there —
+the server never started — leaves the same entry; the timings below now tell them apart.) Now:
+- servers start **offline first** (`WarmSpawn`: `UV_OFFLINE=1`, so the cached packages are used as they are; only if
+  that fails — nothing cached yet, the first use ever — again online);
+- a model coming up gets its own **load budget** (`record.dictation.load_budget_ms`, 12 s: the server starting and
+  the weights loading), never counted against `polish_timeout_ms`, which the server applies to the generation alone
+  once the model is loaded (`load_ms` in its answer);
+- both servers are still warmed on the key-down, in parallel with the recording, and stay warm longer while
+  dictation is used (above);
+- every history entry records `asr_ms`, `polish_ms` (what the user waited for after key-up), `load_ms` (model loads
+  waited for), `total_ms` (key-up → paste) and `segments`.
 
 The fixed prompt prefix (rules + 4 examples) is prefilled once and its KV cache copied per request. Thinking is off
 (`enable_thinking=False`; `<think>` blocks are stripped anyway). Decoding is greedy, and max tokens = 1.6 × the input.
@@ -188,7 +307,15 @@ Rules, from the user:
 - **Allowed:** remove fillers, stutters and repeats; apply self-corrections, keeping only the corrected version; add
   punctuation and paragraphs; fix obvious homophones.
 - **Not allowed:** rewrite, summarize, translate, change the tone, answer or carry out the text, or drop content.
-  Mixed Chinese and English stays as spoken.
+  Mixed Chinese and English stays as spoken. **Numbers stay as said** (一点二万 never becomes 一万二).
+- The prompt says it in so many words since the user's dictations lost a condition clause (turning "faster when
+  short, slower when long" into "faster, slower when long") and an "or …" alternative, and wrote 「一点二万」 as
+  「一万二」: "Apart from the
+  fillers, stutters and the part a speaker took back, every word stays. Never remove a phrase that carries meaning,
+  even when the sentence sounds clumsy with it: a condition, a contrast, an alternative, a name, a number."
+  The price: Gemma 4 E2B now leaves a filler in 4 of the 41 sentences (就是那个, 就是说, 那个, like: fillers removed
+  97 % → 88 %). A first version that also said "When unsure, keep it" left a correction unapplied as well, so that
+  sentence went.
 
 A prompt variant with a "translate this to Japanese" example primed the models to translate and formalize: fall-backs
 went 7 % → 22 % (Qwen3 4B) and 12 % → 63 % (Gemma 3 4B). So the examples avoid instruction-shaped sentences.
@@ -210,8 +337,10 @@ before comparing.
 | `grew` | output > 1.25 × input + 8 units |
 | `novel` | more than max(4, 15 % of output) units that aren't in the input (digits exempt: 五零零 → 500), the custom words or the context |
 | `term` | a custom word that was spoken (any case or spacing) is missing from the output |
+| `copied` | 6 units in a row of the context (the text around the cursor, or a streamed dictation's polished text so far) that weren't spoken: the model continued the document |
+| `dropped` | the repair (below) had to put back more than 40 % of the content: the polish was bad |
 | `timeout` | no answer within `record.dictation.polish_timeout_ms` (3000) after the model is loaded; the server stops generating at the deadline |
-| `error` / `unavailable` | the model raised, or the server never came up |
+| `error` / `unavailable` | the model raised, or the server never came up within the load budget |
 
 Why these thresholds:
 - Every hand-written reference output in the eval set passes. The largest legitimate shrink is
@@ -227,6 +356,26 @@ losing a key term or touching an untouched sentence. It fell back on 7 of 322 go
 are small losses that stay within the slack: a dropped 我觉得 or 请, an un-fixed homophone. It also misses a model
 that leaves a correction unapplied but keeps both versions (no loss).
 
+### Repair: dropped words go back in
+
+The guard counts totals, so one dropped clause in a long dictation stayed inside its slack (D's condition clause
+passed).
+`polish.repair` (before the guard) aligns the transcript with the output (difflib over units) and looks at every span
+the output left out:
+- **may go**: fillers (嗯 呃 那个 就是说 um uh …) and discourse words (然后 呢 就是 so and …); a stutter or a
+  repetition (the same words right after or before); a restart (its end said again right after); the corrected-away
+  part of a self-correction (a marker — 不对 / 不是 / 我是说 / no wait … — inside the span with ≤ 4 units after it
+  that the output kept, or a strong marker right after the span); words that were only moved (they are in the
+  output); a single unimportant unit (上面 → 上) — but never a lone 不 / 没 / 或 / 只 / 也 / 都 / not / or / only …;
+- **anything else carries meaning: it is put back where it was said** (after the punctuation that preceded it in the
+  transcript, fillers taken out), instead of throwing the whole polish away;
+- **numbers**: a number run written differently is replaced by the spoken one unless it is the same value in
+  digits (三十 → 30, 十七点二 → 17.2, 五零零 → 500, 二点三点一 → 2.3.1) or the corrected value of a correction
+  (周三…不对周四 → 周四). 一点二万 → 一万二 and 三千五百 → 三千五 go back.
+- More than 40 % of the content put back → `dropped` (the raw text). The history keeps the spans (`repaired`).
+- Calibration: no reference output of either eval set gets anything put back; every over-deleting output of the
+  over-deletion set gets its phrases back (`tests/test_polish.py::Repair`).
+
 ## Custom words
 
 `$BLURT_HOME/dictation/vocabulary.json`, owned by the app (`BlurtCore/DictationVocabulary.swift`), read by
@@ -237,11 +386,16 @@ that leaves a correction unapplied but keeps both versions (no loss).
                          "state": "active", "added": "2026-10-23T13:00:00+08:00", "hits": 3, "seen": 0}]}
 ```
 
-- `source`: `manual` (Settings), `learned` (from a fix), `project` (the seed). `state`: `active` (used), `suggested`
-  (learned once), `rejected` (a suggestion the user ignored: never suggested again), `removed` (a seed the user
-  removed: never seeded again). A removed manual word just goes.
+- `source`: `manual` (Settings), `learned` (from a fix), `project` (Blurt's own seed and the projects), `default`
+  (the common product names). `state`: `active` (used), `suggested` (learned once), `rejected` (a suggestion the user
+  ignored: never suggested again), `removed` (a seed the user removed: never seeded again). A removed manual word just
+  goes.
 - The seed, once per launch and when Settings opens, adds what's missing: Claude Code, Codex, blurt, 口喷鸡 (with the
-  misrecognitions the eval found as sounds-likes) and each project's name and key.
+  misrecognitions the eval found as sounds-likes) and each project's name and key (`project`); and, as `default`, the
+  AI / dev products nearly every user says: Gemini, Claude, ChatGPT, Cursor, Typeless, OpenClaw, MCP, tmux, GitHub,
+  PR, worktree (`DictationVocabulary.defaults`). Settings shows both seeds as "Automatic"; each is removable like any
+  word. Typeless has no "TTS" sounds-like on purpose: that would rewrite every real "TTS" — the biasing does it
+  instead.
 - Every dictation request carries the active words. What happens to them:
   1. **ASR biasing** where the model takes it: Qwen3-ASR (MLX) gets an English sentence as its `context` ("Notes
      about Claude Code, Codex, … and Whisper."), Whisper a comma list as `initial_prompt`, Qwen3-ASR (onnx)
@@ -271,6 +425,9 @@ app's name. Accessibility, read-only, 0.25 s timeouts. Skipped entirely for `AXS
 while secure event input is on, for Blurt's own windows (test builds read only the test pad), and when
 `record.dictation.context` is off. Polish gets 300 characters each side; the guard accepts their words. The history
 stores only `context_used`; the text itself only with `keep_audio` (the debugging setting).
+- Apps whose focused element Accessibility can't read (WeChat's input box, some Electron apps): the front app's name
+  and its focused window's title only (`DictationContext.titleOnly`: often the chat's or the document's name).
+- A streamed dictation's pieces get the polished text so far appended to "before the cursor".
 
 ## Auto-learn
 
@@ -331,7 +488,8 @@ sounds-likes, the rest by hand) and, for "+ctx", a release-notes paragraph as th
 | Qwen3-ASR MLX (context), polish off | 86 / 79 % | 98 % | 10.8 % | 0 % | — | 175 / 195 ms |
 | **Qwen3-ASR MLX (context) + polish with words + ctx** | **86 / 81 %** | **98 %** | 10.8 % | **0 %** | 3 | **314 / 358 ms** |
 
-**Default: Qwen3-ASR 0.6B MLX 8-bit** (`qwen3-asr-0.6b-mlx`, Apple silicon pro / standard tiers):
+**Default (v0.8): Qwen3-ASR 0.6B MLX 8-bit** (`qwen3-asr-0.6b-mlx`, Apple silicon pro / standard tiers; the speed
+eval below made the 1.7B the pro tier's default):
 - the most terms of anything that fits the budget (98 % outside the Reed clips), no English errors, simplified Chinese;
 - 0.17 s of ASR and about 0.31 s with polish after the key is released; 1.0 GB download, 2.1 GB of memory;
 - it never hallucinated on silence or noise, while Whisper's prompt leaked into one output and looped for 3–5 s
@@ -349,6 +507,41 @@ The 41-case polish eval with the new prompt (no words, no context, so the same p
 fall-backs, similarity 0.946 (model) / 0.970 (final), every untouched sentence kept, fillers removed 91 % (97 %
 before: one 那个 more is kept). Putting the two custom-word examples after the old four made it translate en-04 into
 Chinese and leave a correction unapplied; before them, nothing else changed.
+
+### Qwen3-ASR 1.7B (the v0.8 speed eval)
+
+`mlx-community` has Qwen3-ASR 1.7B in bf16, 8-, 6-, 5- and 4-bit. Two test sets, all synthetic (none is the user's
+own speech); data and scripts in `promo/cases/v0.8-dictation-speed/` (not in git):
+- **new**: 28 Chinese sentences full of product and dev names (Gemini, Claude Code, Codex, Claw / OpenClaw,
+  Typeless, tmux, worktree, MCP, API, PR, review, session, Chinese project names, 一点二万), 45 terms, six zh_CN
+  `say` voices (Tingting, Eddy, Flo, Sandy, Shelley, Grandpa), each clip also with pink noise at 12–18 dB SNR, mains
+  hum and an early reflection (a laptop in a room);
+- **v0.8**: the 20 Chinese / mixed clips of the earlier eval (Tingting, Reed, Eddy), 29 terms.
+Context = the default and project words plus every term of the set (~27 words). In-process, warm, M5 Max.
+
+| Model | Download | Peak RAM | New clean: terms / CER | New noisy: terms / CER | v0.8: terms / CER | v0.8 + prior | Median / clip |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0.6B 8-bit (v0.8 default) | 1.0 GB | 1.3 GB | 53 % / 21.7 % | 36 % / 33.5 % | 72 % / 7.6 % | 72 % / 8.0 % | 124 ms |
+| **1.7B 8-bit** | 2.5 GB | 3.0 GB | 51 % / **19.4 %** | 38 % / **26.7 %** | **90 % / 2.7 %** | **97 % / 1.7 %** | 149 ms |
+| 1.7B 4-bit | 1.6 GB | 2.2 GB | 40 % / 34.1 % | 27 % / 40.8 % | 86 % / 3.7 % | 83 % / 4.0 % | 141 ms |
+
+- Most of the new set's errors are the voices: Sandy, Grandpa and Shelley garble English names for every model
+  (25–60 % CER); Tingting is 3–6 % for both. Per voice, 1.7B 8-bit is better on noisy audio for every voice but
+  Tingting, and much better on the cleaner v0.8 set. Its own misses: Typeless → "TypePlus" (now a sounds-like of
+  the seeded Typeless), letters spelled apart ("A P I").
+- The 4-bit 1.7B is worse than the 0.6B 8-bit with context on the hard voices: quantisation below 8 bits costs more
+  than the size buys.
+- **Context format** (0.6B, new set clean): none 22 % / 30.9 %, "Notes about A, B … and Z." 53 % / 21.7 %, a bare
+  comma list 44 % / 25.4 %, a Chinese glossary line (术语：A、B、C。) 51 % / 41.1 % — it **copied the glossary into one
+  output**. The English sentence stays. Adding the text so far (`prior`, a streamed piece's context) changed little
+  for 0.6B and helped 1.7B (90 → 97 % terms on v0.8); it never leaked into an output.
+- **Default: 1.7B 8-bit on the pro tier (≥ 32 GB), 0.6B 8-bit on standard (16–24 GB)** (`dictation_models`). With
+  streaming the extra 25 ms per piece only shows on the last one (the latency table: +6–19 ms). A pro Mac with only
+  the 0.6B keeps using it until the 1.7B is installed: Settings → Dictation shows it as recommended, 2.5 GB.
+- Downloads: an installed model is loaded from its folder (no Hugging Face lookup on the key-down); mlx-community
+  repos come from ModelScope when the download mirror is on, or when Hugging Face fails (here: 2.9 MB/s from
+  ModelScope, 0.12 MB/s from Hugging Face, 8 KB/s from hf-mirror). Files are checked against their listed size: a
+  dropped connection once ended a 1.6 GB file at 550 MB without an error.
 
 ## Evaluation
 
@@ -406,6 +599,30 @@ Notes, including my own reading of every output:
 2 % fall-backs against Qwen3.5 2B's 20 % and Qwen3.5 4B's 5 %, and removes the most fillers. Qwen is still the
 better choice under 2 GB, where Gemma 4 has no model.
 
+### Over-deletion (the v0.8 speed eval)
+
+`tests/fixtures/polish_overdelete.jsonl`: 22 synthetic sentences like the user's D and E (a condition, a contrast, an
+alternative, numbers said their own way, negations; Chinese, mixed, English), each with the phrases that must survive
+and an over-deleting output for the repair's tests. Plus a long check: the Chinese ones joined four at a time (~30 s
+of speech, like D), polished whole and piece by piece (with the polished text so far as context), 45 phrases.
+
+| Model | 41-set fall-back | 41-set kept (final) | Fillers removed | Similarity | Over-deletion kept: model → final | Long, whole: model → final | Warm (median) | Peak RAM | Download |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Gemma 4 E2B, v0.8 prompt, no repair | 2.4 % | 98 % | 97 % | 0.970 | 91 % → 95.5 % (1 lost: 一点二万 → 一万二万) | 43 → 43 / 45 | 108 ms | 3.5 GB | 3.4 GB |
+| **Gemma 4 E2B, now** | 2.4 % | 97.6 % | 88 % | 0.966 | 95.5 % → **100 %** | 44 → **45** / 45 | 111 ms | 3.9 GB | 3.4 GB |
+| Gemma 4 E4B, now | **0 %** | **100 %** | **94 %** | **0.989** | 95.5 % → 95.5 % (reordered a sentence) | 45 → 45 | 166 ms | 5.4 GB | 5.2 GB |
+| Qwen3.5 4B, now | 2.4 % | **100 %** | 79 % | 0.964 | **100 %** → 100 % | 45 → 45 | 137 ms | 4.0 GB | 3.1 GB |
+| Qwen3.5 4B, v0.8 prompt | — | — | — | — | — | **36** → 43 (pieces: 43) | — | — | — |
+
+- Gemma 4 E2B reproduces D's failure (od-01: the "when short" clause dropped) with either prompt; the repair puts it back. With
+  the v0.8 prompt and a 30 s input, Qwen3.5 4B dropped 9 of 45 phrases; in pieces, 2: shorter inputs lose less. The
+  new prompt brings every model to 44–45 on its own.
+- Gemma 4 E4B has the best similarity and no fall-backs, but it rewrites more: it turned 「如果明天下雨的话，我们就改成线上
+  开会，不下雨就还是去公司」 around (both halves swapped). Qwen3.5 4B keeps every phrase but leaves a fifth of the fillers.
+- **Defaults unchanged: Gemma 4 E2B on pro and standard.** With the repair it loses nothing on either set, removes
+  more fillers than Qwen3.5 4B, is the fastest and needs no new download. E4B (5.2 GB) and Qwen3.5 4B stay
+  offered on pro Macs; streaming makes their extra 25–55 ms per piece affordable if the user prefers them.
+
 ### Defaults by hardware tier
 
 `polish_models.json` `defaults`; tiers from `transcribe.py probe`. The polish process is capped at 25 % of RAM.
@@ -428,8 +645,10 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
 - one line per dictation: `id`, `t`, `app`, `bundle`, `duration`, `raw` (what the speech model wrote), `polished`
   (or null), `text` (what was typed), `model`, `fell_back`, `reason`, `insert` (pasted | copied | none), `audio`,
   `asr_model`, `language`, `terms_applied` (custom words it wrote), `context_used` (the text around the cursor went
-  to polish), `context` (that text, only with `keep_audio`). Older lines lack the last three: read as unknown.
-  `prune` rewrites lines through `DictationEntry.json`, which carries them;
+  to polish), `context` (that text, only with `keep_audio`), and since the speed work `asr_ms`, `polish_ms` (waited
+  for after key-up), `load_ms` (model loads waited for), `total_ms` (key-up → paste), `segments` (pieces streamed)
+  and `repaired` (spans polish dropped that were put back). Older lines lack them: read as unknown. `prune` rewrites
+  lines through `DictationEntry.json`, which carries them;
 - edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`.
 
 Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
@@ -451,15 +670,43 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | `fn_capture` | `true`: with Fn and Accessibility, keep the Fn press from macOS (the filter) |
 | `polish` | `light` \| `off` |
 | `polish_model` | by tier |
-| `polish_timeout_ms` | `3000` |
+| `polish_timeout_ms` | `3000` (the generation only, once the model is loaded) |
+| `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
+| `streaming` | `true`: transcribe and polish pieces while talking |
+| `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
+| `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
+| `start_sound` | `false`: a soft tick when listening starts |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
 | `keep_audio` | `false` (also keeps the context in the history: debugging) |
-| `asr_model` | automatic (Qwen3-ASR MLX when installed on Apple silicon, else the voice-note model) |
+| `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
 | `context` | `true`: read the text around the cursor for polish |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 
 ## Verification
+
+- The speed work (`promo/cases/v0.8-dictation-speed/`, not in git; isolated test build `dev.blurt.recorder.speedtest`,
+  scratch `BLURT_HOME`, launched through LaunchServices, no real mic, no tap, nothing pasted outside its test pad):
+  - `swift test` (116): `DictationSegmenterTests` (cuts in pauses, never too short, hard cuts with overlap, digital
+    silence), `DictationStitchTests` (joins, the overlap drop, correction openers), `DictationPastePolicyTests`
+    (WeChat-like focus pastes; Blurt, secure input, no app, no Accessibility don't; the mic choice),
+    `DictationTriggerTests.testArmedDownSaysWhenThePressCanStillStart`, `DictationHistoryTests` (timings, repairs),
+    `DictationVocabularyTests` (the `default` seed, removable);
+  - `pytest tests` (320): `test_polish.py::Repair` (both eval sets' references untouched, every over-deletion put
+    back, numbers, corrections, `copied`, adaptive idle), `test_dictation_vocab.py` (`prior` reaches the backend and is
+    cleared; the 1.7B / 0.6B selection by tier, the 0.6B fallback);
+  - test hooks: `dictation wav PATH` (the next "mic"), `dictation stop-after S` (a release timed to the audio),
+    `dictation set KEY VALUE`, `dictation paste-policy …`; env `BLURT_TEST_MIC_CLOCK=keydown`,
+    `BLURT_TEST_MIC_START_MS`;
+  - the latency table, the clipped-start table, the island's two states (`shots/`), the cold start, the ASR and
+    polish evals above.
+- Only the user can check: the real mic's start-up after the key-down (built-in, and AirPods with the built-in-mic
+  setting on and off: `dictation_mic_live.from_key_ms`), that the prepared engine leaves the mic indicator off until
+  the key goes down and that an Fn-arrow only flashes it, ⌘V into WeChat (and other apps whose input isn't an AX text
+  role) with the clipboard coming back, "Copy Again", and a cold polish server after a day off the network cache.
+
+Earlier rounds:
+
 
 - `swift test --filter DictationTriggerTests` (14 cases), and the `--selftest` checks `dictation_trigger` and
   `dictation_history` (no XCTest needed).
