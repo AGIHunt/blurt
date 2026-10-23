@@ -13,9 +13,13 @@
 //  • text: the warm ASR server (WarmServer, no `uv run` per request), else `transcribe.py note`; then polish (Light)
 //    through the warm polish server with record.dictation.polish_timeout_ms (3 s) — any fall-back = the raw text.
 //  • insert: DictationInsert (pasteboard → ⌘V → pasteboard back). History: DictationHistory (history.jsonl).
+//  • custom words (DictationVocabulary, vocabulary.json): sent with every request — the speech model is biased toward
+//    them where it can be and exact sounds-likes are fixed (transcribe.py), polish gets them as spelling hints with
+//    the text around the cursor (DictationContext, read at the start, never stored). After the text goes in, the
+//    field is watched for a minute (DictationWatch) and the user's own fixes become words (DictationLearn).
 //  • off while a screen recording runs (it owns the mic) and while a voice note listens.
 // Config record.dictation: enabled (true), key right_option|fn|either_option, mode tap|hold, polish off|light, polish_model,
-// polish_timeout_ms, retention_days (30), keep_audio (false). Test hooks: SnapApp.swift `dictation …`.
+// polish_timeout_ms, retention_days (30), keep_audio (false), asr_model (automatic), context (true), learn (true). Test hooks: SnapApp.swift `dictation …`.
 import AppKit
 import BlurtCore
 import Carbon.HIToolbox
@@ -43,6 +47,8 @@ final class Dictation {
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
     private(set) var polishModel: String?
     private var generation = 0
+    /// the text around the cursor when this dictation started (polish's hints; never stored unless debugging)
+    private var context: DictationContext?
 
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
 
@@ -57,6 +63,10 @@ final class Dictation {
     static var polishTimeout: Double { max(0.5, (settings["polish_timeout_ms"] as? Double ?? 3000) / 1000) }
     static var retentionDays: Int { settings["retention_days"] as? Int ?? 30 }
     static var keepAudio: Bool { settings["keep_audio"] as? Bool ?? false }
+    /// read the text around the cursor for polish (Accessibility, read-only)
+    static var contextOn: Bool { settings["context"] as? Bool ?? true }
+    /// watch the field after typing and learn the user's fixes
+    static var learnOn: Bool { settings["learn"] as? Bool ?? true }
 
     // MARK: launch / settings changed
 
@@ -70,7 +80,31 @@ final class Dictation {
         if Config.shared["app.dictation_prompted"] != nil { Config.shared.set("app.dictation_prompted", nil) }
         apply()
         refreshPolishModel()
+        seedVocabulary()
+        DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
+    }
+
+    /// The words every user obviously says: the agents, Blurt itself, each project's name and key (source "project",
+    /// once; a removed one stays removed). At launch and when Settings → Dictation opens.
+    func seedVocabulary() {
+        let ps = ProjectStore.shared.projects.map { (name: $0.name, key: $0.key) }
+        DispatchQueue.global(qos: .utility).async {
+            let added = DictationVocabulary.shared.seed(projects: ps)
+            if !added.isEmpty { emit(["event": "dictation_vocab_seed", "added": added]) }
+        }
+    }
+
+    /// "Learned “Claude” · Undo" — the first time a fix became a word.
+    static func toastLearned(_ term: String) {
+        var t = Island.Toast(text: Loc.t("dictation.toast.learned", table: "Dictation", term),
+                             actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: {
+            DictationVocabulary.shared.forget(term)
+            emit(["event": "dictation_vocab_undo", "term": term])
+        })
+        t.seconds = 5
+        island.toast(t)
+        emit(["event": "dictation_learned_toast", "term": term])
     }
 
     /// The setup assistant (first launch) has its own Input Monitoring row: no prompt or toast on top of it.
@@ -255,7 +289,7 @@ final class Dictation {
 
     /// Key went down alone: get the models loaded while the user starts talking.
     private func warm() {
-        VoiceInput.warmSpeechModel()
+        VoiceInput.warmSpeechModel(dictation: true)
         guard Dictation.polishOn, polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
             DispatchQueue.global(qos: .userInitiated).async { _ = WarmServer.call("polish-serve", ["cmd": "load"], timeout: 30) }
@@ -307,6 +341,7 @@ final class Dictation {
         heardSpeech = false
         generation += 1
         phase = .listening
+        captureContext()
         if !keys.installed {        // without the tap, Esc comes as a Carbon hotkey (as for the voice note)
             registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0)
             escRegistered = true
@@ -320,6 +355,25 @@ final class Dictation {
                 self.discard(quietly: true)
                 NoteVoice.toastUnavailable()
             }
+        }
+    }
+
+    /// The text around the cursor, read while the user talks (Accessibility calls can take a moment). Test builds read
+    /// the test pad on the main thread; nothing else of this app is read.
+    private func captureContext() {
+        context = nil
+        guard Dictation.contextOn, Dictation.polishOn else { return }
+        let g = generation
+        let done = { (c: DictationContext?) in
+            guard g == self.generation else { return }
+            self.context = c
+            emit(["event": "dictation_context", "id": self.entryID, "found": c != nil, "before": c?.before.count ?? 0,
+                  "after": c?.after.count ?? 0, "title": !(c?.title.isEmpty ?? true)])
+        }
+        if DictationInsert.testMode { return done(DictationContext.capture()) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let c = DictationContext.capture()
+            DispatchQueue.main.async { done(c) }
         }
     }
 
@@ -364,10 +418,12 @@ final class Dictation {
         let id = entryID, app = front, started = startedAt
         let polish = Dictation.polishOn && polishModel != nil
         let timeout = Dictation.polishTimeout
+        let vocab = DictationVocabulary.shared.payload()
+        let ctx = polish ? context : nil
         emit(["event": "dictation_stop", "id": id, "duration": (duration * 100).rounded() / 100])
         Task.detached(priority: .userInitiated) {
             let t0 = Date()
-            let asr = await Dictation.transcribe(url)
+            let asr = await Dictation.transcribe(url, vocab: vocab)
             let asrMS = Int(Date().timeIntervalSince(t0) * 1000)
             let raw = (asr?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !raw.isEmpty else {
@@ -382,52 +438,68 @@ final class Dictation {
             }
             if polish { await MainActor.run { if gen == self.generation { self.phase = .polishing } } }
             let t1 = Date()
-            let pol = polish ? Dictation.polish(raw, timeout: timeout) : nil
+            let pol = polish ? Dictation.polish(raw, timeout: timeout, vocab: vocab, context: ctx) : nil
             let polMS = polish ? Int(Date().timeIntervalSince(t1) * 1000) : 0
             await MainActor.run {
                 guard gen == self.generation else { return }
                 self.deliver(id: id, raw: raw, asr: asr ?? [:], polish: pol, polishTried: polish, app: app, started: started,
-                             duration: duration, wav: url, timing: ["asr_ms": asrMS, "polish_ms": polMS])
+                             duration: duration, wav: url, timing: ["asr_ms": asrMS, "polish_ms": polMS], context: ctx)
             }
         }
     }
 
-    /// The warm server (no process start), else `transcribe.py note` (it starts the model itself).
-    private static func transcribe(_ wav: URL) async -> [String: Any]? {
+    /// The warm server (no process start), else `transcribe.py note` (it starts the model itself). Dictation's model
+    /// (record.dictation.asr_model, else the recommended one when installed), biased toward the custom words; the
+    /// answer's `text` has the exact sounds-likes fixed, `asr_text` is what the model wrote.
+    private static func transcribe(_ wav: URL, vocab: [[String: Any]]) async -> [String: Any]? {
         let lang = Config.shared["asr.language"] as? String ?? "auto"
-        if let r = WarmServer.call("asr-serve", ["cmd": "note", "wav": wav.path, "language": lang], timeout: 60), r["ok"] as? Bool == true {
+        let req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": lang, "purpose": "dictation", "vocab": vocab]
+        if let r = WarmServer.call("asr-serve", req, timeout: 60), r["ok"] as? Bool == true {
             return r
         }
-        return try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", lang], timeout: 120)
+        return try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", lang, "--dictation", "--vocab"], timeout: 120)
     }
 
     /// The warm polish server, waiting up to `timeout` for it to come up; its own deadline is `timeout` once the
     /// model is loaded (a cold load gets 4 s more). nil = no polish (raw text, not a fall-back).
-    private static func polish(_ raw: String, timeout: Double) -> [String: Any]? {
+    private static func polish(_ raw: String, timeout: Double, vocab: [[String: Any]], context: DictationContext?) -> [String: Any]? {
         let until = Date().addingTimeInterval(timeout)
         while !WarmServer.running("polish-serve") && Date() < until { usleep(100_000) }
         guard WarmServer.running("polish-serve") else { return ["ok": true, "text": raw, "fell_back": true, "reason": "unavailable"] }
-        guard let r = WarmServer.call("polish-serve", ["cmd": "polish", "text": raw, "timeout": timeout], timeout: timeout + 4) else {
+        let req: [String: Any] = ["cmd": "polish", "text": raw, "timeout": timeout, "vocab": vocab, "context": context?.payload ?? NSNull()]
+        guard let r = WarmServer.call("polish-serve", req, timeout: timeout + 4) else {
             return ["ok": true, "text": raw, "fell_back": true, "reason": "timeout"]
         }
         return r["ok"] as? Bool == true ? r : nil
     }
 
     private func deliver(id: String, raw: String, asr: [String: Any], polish: [String: Any]?, polishTried: Bool,
-                         app: NSRunningApplication?, started: Date, duration: Double, wav: URL, timing: [String: Int]) {
+                         app: NSRunningApplication?, started: Date, duration: Double, wav: URL, timing: [String: Int],
+                         context: DictationContext?) {
         let text = (polish?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? raw
         let fellBack = polish?["fell_back"] as? Bool ?? false
+        let asrText = asr["asr_text"] as? String ?? raw         // what the speech model wrote, before the sounds-like pass
+        var terms: [String] = []
+        for t in (asr["terms"] as? [String] ?? []) + (polish?["terms"] as? [String] ?? []) where !terms.contains(t) { terms.append(t) }
+        let contextUsed = polish?["context"] as? Bool ?? false
         phase = .idle
+        // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes
+        let field = Dictation.learnOn ? DictationField.focused() : nil
+        let at = field?.read()?.selection.location
         DictationInsert.insert(text) { [weak self] result in
             guard let self = self else { return }
             let keep = Dictation.keepAudio
             if !keep { try? FileManager.default.removeItem(at: wav) }
             let e = DictationEntry(id: id, time: started, app: app?.localizedName, bundle: app?.bundleIdentifier, duration: duration,
-                                   raw: raw, polished: polish?["polished"] as? String, text: text,
+                                   raw: asrText, polished: polish?["polished"] as? String, text: text,
                                    model: polish?["model"] as? String, fellBack: fellBack, reason: polish?["reason"] as? String,
                                    insert: result.rawValue, audio: keep ? "audio/\(wav.lastPathComponent)" : nil,
-                                   asrModel: asr["model"] as? String, language: asr["language"] as? String)
+                                   asrModel: asr["model"] as? String, language: asr["language"] as? String,
+                                   termsApplied: terms, contextUsed: contextUsed,
+                                   context: keep && contextUsed ? context?.debugText : nil)
             DictationHistory.shared.append(e)
+            if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
+            if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
             DictationHistoryWindow.shared.reloadIfOpen()
             if result == .copied {
                 island.toast(Loc.t("dictation.toast.copied", table: "Dictation"), actionTitle: nil, action: nil)
@@ -435,7 +507,9 @@ final class Dictation {
             var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": raw, "text": text,
                                       "fell_back": fellBack, "reason": polish?["reason"] as? String ?? NSNull(),
                                       "polished": polish?["polished"] as? String ?? NSNull(), "model": polish?["model"] as? String ?? NSNull(),
-                                      "insert": result.rawValue, "polish_tried": polishTried]
+                                      "insert": result.rawValue, "polish_tried": polishTried, "asr_text": asrText,
+                                      "terms": terms, "context_used": contextUsed, "asr_model": asr["model"] as? String ?? NSNull(),
+                                      "biased": asr["biased"] as? Bool ?? false]
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)

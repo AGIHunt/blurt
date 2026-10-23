@@ -129,9 +129,17 @@ final class VoiceInput {
 
     /// K9's voice-note server: answers "already" when one runs (this app's or another), else stays up on its own
     /// (unloads the model after 5 idle minutes, exits after 30).
-    static func warmSpeechModel() {
+    /// dictation: its own model (record.dictation.asr_model / the recommended one) — a running server is asked to
+    /// load it, a new one preloads it.
+    static func warmSpeechModel(dictation: Bool = false) {
+        if dictation && WarmServer.running("asr-serve") {
+            DispatchQueue.global(qos: .userInitiated).async {
+                _ = WarmServer.call("asr-serve", ["cmd": "load", "purpose": "dictation"], timeout: 30)
+            }
+            return
+        }
         if let s = server, s.isRunning { return }
-        server = try? ScriptRunner.shared.spawn("transcribe.py", ["serve", "--preload"]) { _ in }
+        server = try? ScriptRunner.shared.spawn("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation"] : [])) { _ in }
     }
 
     private func finish(keep: Bool, ended: Bool = false) {

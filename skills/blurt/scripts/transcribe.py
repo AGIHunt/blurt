@@ -17,7 +17,7 @@ video, so any backend (even ones without timestamps) works.
                                                      dictation model (record.dictation.asr_model); --vocab: bias it
                                                      toward the custom words (dictation_vocab.py) where the model can
                                                      be biased, then fix exact sounds-likes → + "asr_text","terms","biased"
-  transcribe.py serve  [--preload] [--model-id ID] [--idle 300]   keep the voice-note model warm; unloads it after
+  transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 300]   keep the voice-note (or dictation) model warm; unloads it after
                                                      --idle s, exits after --exit-after s without a request
   transcribe.py dictation-models                     the models dictation can use here: selected, recommended
   transcribe.py probe                                hardware → tier (pro / standard / light / minimal)
@@ -1760,7 +1760,10 @@ def cmd_serve(a):
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
     if a.preload:
-        eng.load(None, getattr(a, "model_id", None))
+        mid = getattr(a, "model_id", None)
+        if not mid and getattr(a, "purpose", None) == "dictation":
+            mid = dictation_models()["selected"]
+        eng.load(None, mid)
     emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
     last = time.time()
     try:
@@ -2197,7 +2200,8 @@ def main():
     n.add_argument("--vocab", action="store_true", help="the custom words: bias the model, fix exact sounds-likes")
     sv = sub.add_parser("serve")
     sv.add_argument("--preload", action="store_true", help="load the voice-note model now (e.g. when recording starts)")
-    sv.add_argument("--model-id", dest="model_id", metavar="ID", help="preload this model instead (dictation's)")
+    sv.add_argument("--model-id", dest="model_id", metavar="ID", help="preload this model instead")
+    sv.add_argument("--purpose", choices=["note", "dictation"], help="dictation: preload dictation's model")
     sv.add_argument("--idle", type=float, default=300, help="unload the model after this many idle seconds")
     sv.add_argument("--exit-after", type=float, default=1800, help="exit after this many seconds without a request")
     sub.add_parser("probe")

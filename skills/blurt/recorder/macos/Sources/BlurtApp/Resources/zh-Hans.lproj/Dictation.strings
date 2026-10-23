@@ -135,3 +135,28 @@
 "dictation.history.reason.correction" = "润色弄丢了改口，已按原话输入";
 "dictation.history.reason.empty" = "润色没有返回内容，已按原话输入";
 "dictation.history.reason.error" = "润色出错，已按原话输入";
+
+/* Custom words, recognition model */
+"dictation.toast.learned" = "记住了 %@";
+"dictation.toast.undo" = "撤销";
+"dictation.asr.section" = "识别模型";
+"dictation.asr.vocab.yes" = "能按你的自定义词来识别";
+"dictation.asr.vocab.none" = "自定义词在识别之后再改";
+"dictation.asr.recommend_hint" = "%@ 更容易把你的自定义词识别对。安装后就会用它来听写。";
+"dictation.vocab.section" = "自定义词";
+"dictation.vocab.detail" = "你常说的名字和术语。听写会照这里的写法输出；你改正一个写错的词时，它会学着记下来。";
+"dictation.vocab.add.placeholder" = "添加一个词，比如 Claude Code";
+"dictation.vocab.add" = "添加";
+"dictation.vocab.suggested" = "建议";
+"dictation.vocab.learned" = "学到的";
+"dictation.vocab.auto" = "自动添加";
+"dictation.vocab.heard_as" = "常被听成：%@";
+"dictation.vocab.list_sep" = "、";
+"dictation.vocab.accept" = "添加";
+"dictation.vocab.ignore" = "忽略";
+"dictation.vocab.remove" = "移除";
+"dictation.vocab.empty" = "还没有自定义词。";
+"dictation.vocab.context" = "参考光标附近的文字";
+"dictation.vocab.context.detail" = "让名字和文档里的写法一致。开始说话时读取，不会保存，也不读密码框。";
+"dictation.vocab.learn" = "从我的修改中学习";
+"dictation.vocab.learn.detail" = "听写后一分钟内，如果你改了口喷鸡打错的词，它会记下来，并在这里给出建议。";

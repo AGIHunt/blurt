@@ -60,6 +60,34 @@ extension App {
                   "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
+        case "vocab":
+            // vocab add TERM[|SOUNDS,…] | remove TERM | accept TERM | reject TERM | list — the store Settings edits
+            let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
+            let arg = a.count > 1 ? a[1] : ""
+            let v = DictationVocabulary.shared
+            switch a.first ?? "list" {
+            case "add":
+                let p = arg.split(separator: "|", maxSplits: 1).map(String.init)
+                v.add(p.first ?? "", soundsLike: p.count > 1 ? p[1].split(separator: ",").map(String.init) : [])
+            case "remove": v.remove(arg)
+            case "accept": v.accept(arg)
+            case "reject": v.reject(arg)
+            case "seed": d.seedVocabulary()
+            default: break
+            }
+            let all = v.load()
+            emit(["event": "dictation_vocab_list", "active": all.filter { $0.state == .active }.map { "\($0.term)|\($0.source.rawValue)|\($0.soundsLike.joined(separator: ","))|\($0.hits)" },
+                  "suggestions": all.filter { $0.state == .suggested }.map { "\($0.term)|\($0.soundsLike.joined(separator: ","))|\($0.seen)" },
+                  "other": all.filter { $0.state == .rejected || $0.state == .removed }.map { "\($0.term)|\($0.state.rawValue)" }])
+        case "watch":
+            // watch seconds N | status: the after-typing watch (DictationWatch) — its length, and whether it runs
+            let a = rest.split(separator: " ").map(String.init)
+            if a.first == "seconds", a.count > 1, let n = Double(a[1]) { DictationWatch.seconds = n }
+            emit(["event": "dictation_watch_status", "watching": DictationWatch.shared.watching, "seconds": DictationWatch.seconds])
+        case "context":             // what the start of a dictation would read now (counts only, never the text)
+            let c = DictationContext.capture()
+            emit(["event": "dictation_context_probe", "found": c != nil, "before": c?.before.count ?? 0, "after": c?.after.count ?? 0,
+                  "selection": c?.selection.count ?? 0, "title": c?.title ?? NSNull(), "app": c?.app ?? NSNull()])
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)
         case "polish": NotificationCenter.default.post(name: DictationPane.polishRequest, object: rest)
         case "history":
@@ -96,6 +124,23 @@ enum DictationTestPad {
     }
 
     static func command(_ arg: String) {
+        // set TEXT: the pad holds TEXT with the cursor at its end (a document to dictate into: the context);
+        // replace FROM => TO: the user's own edit after a dictation (the first FROM after the cursor's line start)
+        if arg.hasPrefix("set "), let tv = textView {
+            tv.string = String(arg.dropFirst(4)).replacingOccurrences(of: "\\n", with: "\n")
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+            return emit(["event": "dictation_testpad", "set": (tv.string as NSString).length])
+        }
+        if arg.hasPrefix("replace "), let tv = textView {
+            let p = String(arg.dropFirst(8)).components(separatedBy: " => ")
+            guard p.count == 2 else { return }
+            let r = (tv.string as NSString).range(of: p[0], options: .backwards)
+            if r.location != NSNotFound, tv.shouldChangeText(in: r, replacementString: p[1]) {
+                tv.replaceCharacters(in: r, with: p[1])
+                tv.didChangeText()
+            }
+            return emit(["event": "dictation_testpad", "replaced": r.location != NSNotFound, "text": tv.string])
+        }
         switch arg {
         case "close":
             window?.orderOut(nil)

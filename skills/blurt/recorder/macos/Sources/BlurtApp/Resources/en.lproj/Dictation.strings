@@ -135,3 +135,28 @@
 "dictation.history.reason.correction" = "Polish lost a correction — typed as spoken";
 "dictation.history.reason.empty" = "Polish returned nothing — typed as spoken";
 "dictation.history.reason.error" = "Polish failed — typed as spoken";
+
+/* Custom words, recognition model */
+"dictation.toast.learned" = "Learned “%@”";
+"dictation.toast.undo" = "Undo";
+"dictation.asr.section" = "Recognition model";
+"dictation.asr.vocab.yes" = "Can be told your custom words";
+"dictation.asr.vocab.none" = "Custom words are fixed afterwards";
+"dictation.asr.recommend_hint" = "%@ gets your custom words right more often. Install it to use it for dictation.";
+"dictation.vocab.section" = "Custom words";
+"dictation.vocab.detail" = "Names and terms you say often. Dictation writes them exactly like this, and learns new ones when you fix a word it got wrong.";
+"dictation.vocab.add.placeholder" = "Add a word, like Claude Code";
+"dictation.vocab.add" = "Add";
+"dictation.vocab.suggested" = "Suggested";
+"dictation.vocab.learned" = "Learned";
+"dictation.vocab.auto" = "Automatic";
+"dictation.vocab.heard_as" = "Heard as: %@";
+"dictation.vocab.list_sep" = ", ";
+"dictation.vocab.accept" = "Add";
+"dictation.vocab.ignore" = "Ignore";
+"dictation.vocab.remove" = "Remove";
+"dictation.vocab.empty" = "No custom words yet.";
+"dictation.vocab.context" = "Use the text around the cursor";
+"dictation.vocab.context.detail" = "So names are spelled the way the document spells them. Read when you start talking, never kept, never from password fields.";
+"dictation.vocab.learn" = "Learn from my fixes";
+"dictation.vocab.learn.detail" = "For a minute after dictating, Blurt notices when you correct a word it typed and suggests it here.";
