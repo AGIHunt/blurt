@@ -1,4 +1,4 @@
-// Dictation's trigger (docs/design/dictation.md): a modifier key alone — right ⌥ (default) or Fn — which Carbon
+// Dictation's trigger (docs/design/dictation.md): a modifier key alone — right ⌥ (default), Fn or either ⌥ — which Carbon
 // hotkeys can't register, read from a listen-only CGEventTap (flagsChanged, keyDown, mouse down). This is the pure
 // part: events with timestamps in, start / stop / cancel out. No AppKit, no timers — the caller asks for a tick at
 // `deadline` (hold mode's 250 ms) — so every sequence is unit-testable (Tests/BlurtCoreTests/DictationTriggerTests).
@@ -13,15 +13,28 @@ import Foundation
 
 public struct DictationTrigger {
     public enum Key: String, CaseIterable {
-        case rightOption = "right_option", fn
-        /// kVK_RightOption / kVK_Function
-        public var keyCode: Int { self == .rightOption ? 61 : 63 }
-        /// The flag bit that says this key is down: NX_DEVICERALTKEYMASK (right ⌥ only), NX_SECONDARYFNMASK.
-        public var downMask: UInt64 { self == .rightOption ? 0x40 : 0x80_0000 }
-        /// Other modifiers that make a press "not alone": ⌘ ⌃ ⇧, the other ⌥, Fn (for right ⌥) / ⌥ (for Fn).
-        var otherMods: UInt64 {
+        /// right ⌥ (the default), Fn, or either ⌥ — left or right, whichever is tapped alone
+        case rightOption = "right_option", fn, eitherOption = "either_option"
+        /// kVK_RightOption 61, kVK_Option (left) 58, kVK_Function 63
+        public var keyCodes: Set<Int> {
+            switch self {
+            case .rightOption: return [61]
+            case .fn: return [63]
+            case .eitherOption: return [58, 61]
+            }
+        }
+        /// The flag bit that says the key `code` is down: NX_DEVICERALTKEYMASK (right ⌥), NX_DEVICELALTKEYMASK
+        /// (left ⌥), NX_SECONDARYFNMASK (Fn).
+        static func downMask(_ code: Int) -> UInt64 { code == 61 ? 0x40 : code == 58 ? 0x20 : 0x80_0000 }
+        /// Other modifiers that make a press of `code` "not alone": ⌘ ⌃ ⇧, the other ⌥ and Fn (for an ⌥) / any ⌥
+        /// (for Fn).
+        static func otherMods(_ code: Int) -> UInt64 {
             let common: UInt64 = 0x10_0000 | 0x4_0000 | 0x2_0000      // ⌘ ⌃ ⇧ (device-independent bits)
-            return self == .rightOption ? common | 0x20 | 0x80_0000 : common | 0x8_0000
+            switch code {
+            case 61: return common | 0x20 | 0x80_0000
+            case 58: return common | 0x40 | 0x80_0000
+            default: return common | 0x8_0000
+            }
         }
     }
     public enum Mode: String, CaseIterable { case tap, hold }
@@ -44,11 +57,13 @@ public struct DictationTrigger {
 
     private enum State: Equatable {
         case idle
-        case down(at: Double, clean: Bool)
+        case down(at: Double, clean: Bool, code: Int)
         case holding
         case waitRelease          // hold mode, cancelled while still held: ignore until the key comes up
     }
     private var state: State = .idle
+    /// the key code that went down last (either-⌥: which side)
+    private var holdingCode = 0
     /// Dictating, as far as the trigger knows (the app calls `reset` when it ends one itself).
     public private(set) var active = false
 
@@ -59,7 +74,7 @@ public struct DictationTrigger {
 
     /// When hold mode wants a `.tick` (the key has been down alone this long), nil otherwise.
     public var deadline: Double? {
-        if mode == .hold, case let .down(at, clean) = state, clean, !active { return at + holdMin }
+        if mode == .hold, case let .down(at, clean, _) = state, clean, !active { return at + holdMin }
         return nil
     }
 
@@ -77,8 +92,11 @@ public struct DictationTrigger {
     public mutating func handle(_ e: Event) -> [Output] {
         switch e {
         case let .flags(code, flags, t):
-            if code == key.keyCode {
-                return flags & key.downMask != 0 ? keyDown(flags, t) : keyUp(t)
+            if key.keyCodes.contains(code) {
+                // either-⌥: the other side going down or up while one is held is another key, not this one
+                if case let .down(_, _, held) = state, held != code { return otherInput(t) }
+                if state == .holding, holdingCode != code { return otherInput(t) }
+                return flags & Key.downMask(code) != 0 ? keyDown(code, flags, t) : keyUp(t)
             }
             return otherInput(t)
         case let .keyDown(code, t):
@@ -95,10 +113,11 @@ public struct DictationTrigger {
         }
     }
 
-    private mutating func keyDown(_ flags: UInt64, _ t: Double) -> [Output] {
+    private mutating func keyDown(_ code: Int, _ flags: UInt64, _ t: Double) -> [Output] {
         if state == .holding || state == .waitRelease { return [] }        // a repeat of what we know
-        let alone = flags & key.otherMods == 0
-        state = .down(at: t, clean: alone)
+        let alone = flags & Key.otherMods(code) == 0
+        state = .down(at: t, clean: alone, code: code)
+        holdingCode = code
         return alone && !active ? [.arm] : []
     }
 
@@ -106,7 +125,7 @@ public struct DictationTrigger {
         let was = state
         state = .idle
         switch (mode, was) {
-        case let (.tap, .down(at, clean)):
+        case let (.tap, .down(at, clean, _)):
             guard clean, t - at <= tapMax else { return [] }
             active.toggle()
             return [active ? .start : .stop]
@@ -121,9 +140,9 @@ public struct DictationTrigger {
     /// Another key, modifier or click: a tap in progress is no longer clean; push-to-talk is cancelled.
     private mutating func otherInput(_ t: Double) -> [Output] {
         switch state {
-        case let .down(at, _):
+        case let .down(at, _, code):
             if mode == .hold, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined
-            state = .down(at: at, clean: false)
+            state = .down(at: at, clean: false, code: code)
             return []
         case .holding:
             state = .waitRelease
@@ -135,13 +154,13 @@ public struct DictationTrigger {
     }
 
     private mutating func tick(_ t: Double) -> [Output] {
-        guard mode == .hold, case let .down(at, clean) = state, clean, !active else { return [] }
+        guard mode == .hold, case let .down(at, clean, _) = state, clean, !active else { return [] }
         return holdIfDue(at: at, t) ?? []
     }
 
     /// Hold mode: the key has been down alone for holdMin by `t` → start (the other input, if any, came later).
     private mutating func holdIfDue(at: Double, _ t: Double) -> [Output]? {
-        guard case let .down(_, clean) = state, clean, !active, t - at >= holdMin else { return nil }
+        guard case let .down(_, clean, _) = state, clean, !active, t - at >= holdMin else { return nil }
         state = .holding
         active = true
         return [.start]

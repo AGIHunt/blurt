@@ -3,6 +3,15 @@
 /* 按键 */
 "dictation.key.right_option" = "右 Option";
 "dictation.key.fn" = "Fn";
+"dictation.key.either_option" = "任一 Option 键";
+/* 句子里的按键名（"单按%@开始说话"） */
+"dictation.key.right_option.inline" = "右 Option 键";
+"dictation.key.fn.inline" = " Fn 键";
+"dictation.key.either_option.inline" = "左或右 Option 键";
+/* 岛上一行字里的按键名（"单按%@ 开始说话"） */
+"dictation.key.right_option.short" = "右 Option";
+"dictation.key.fn.short" = " Fn";
+"dictation.key.either_option.short" = "任一 Option";
 "dictation.mode.tap" = "按一下开始，再按一下结束";
 "dictation.mode.hold" = "按住说话，松开结束";
 
@@ -10,8 +19,10 @@
 "dictation.polish.family.gemma.installed" = "Gemma · 已安装，占用 %@";
 "dictation.polish.family.qwen.installed" = "Qwen · 已安装，占用 %@";
 "dictation.polish.progress" = "正在下载 · %1$@ / %2$@";
-"dictation.toast.needs_permission" = "听写（%@）需要「输入监控」权限";
+"dictation.toast.needs_permission" = "要用%@ 键听写，请开启「输入监控」权限";
 "dictation.toast.set_up" = "去设置";
+"dictation.toast.on.tap" = "听写已开启：单按%@ 开始说话";
+"dictation.toast.on.hold" = "听写已开启：按住%@ 说话";
 "dictation.toast.recording_busy" = "正在录屏，麦克风归录屏用，听写暂不可用";
 "dictation.toast.voice_busy" = "语音备注正在听，先结束它";
 "dictation.toast.nothing" = "没听到内容";
@@ -19,7 +30,10 @@
 
 /* 菜单 */
 "dictation.menu.history" = "听写历史…";
-"dictation.menu.history.tip" = "在任意 App 里按一下%@ 开始听写";
+"dictation.menu.history.tip" = "在任意 App 里单按%@开始听写";
+"dictation.menu.turn_on" = "开启听写…";
+"dictation.menu.turn_on.tip" = "口喷鸡还听不到%@：听写需要「输入监控」权限。";
+"dictation.menu.turn_on.subtitle" = "开启「输入监控」后才能用%@";
 
 /* 设置 → 听写 */
 "dictation.settings.tab" = "听写";
@@ -31,6 +45,15 @@
 "dictation.settings.fn_hint" = "用 Fn 时：在「系统设置 → 键盘」里把「按下 fn 键时」设为「不执行任何操作」。如果 Typeless 也在运行并用 Fn，两边会同时响应，请给其中一个换个键。";
 "dictation.settings.voice_note_hint" = "听写会把字打进当前 App。想把说的话留在口喷鸡里，用语音备注（%@）。";
 "dictation.settings.voice_note_off" = "它的快捷键已关闭";
+"dictation.settings.either_hint" = "中间没按别的键、也没点鼠标，才算单按，所以 Option 组合键照常能用。";
+
+/* 按键现在能不能被听到（事件监听） */
+"dictation.status.on" = "已生效：口喷鸡能听到%@";
+"dictation.status.on.tap" = "在任意 App 里单按%@开始说话，再按一下结束。";
+"dictation.status.on.hold" = "在任意 App 里按住%@说话，松开结束。";
+"dictation.status.off" = "还没生效：口喷鸡听不到%@";
+"dictation.status.off.detail" = "在「系统设置」里给口喷鸡开启「输入监控」，马上生效，不用重启。";
+"dictation.status.fix" = "开启…";
 
 "dictation.perm.section" = "权限";
 "dictation.perm.input_monitoring" = "输入监控";

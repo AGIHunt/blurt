@@ -9,7 +9,8 @@
 //   service TEXT                 "Add to Blurt" with TEXT on a private pasteboard, through the real service method
 //   fix UIDS                     the dispatch panel for those items (agent, mode, worktree)
 //   peck TITLE | peckframes DIR [dark] | perms
-//   menuglyph DIR                the menu-bar hen (rest / listen / hop; light / dark; 1x / 2x) as PNGs
+//   menuglyph DIR                the menu-bar hen: template glyph + colour hen (rest / listen / hop; each look; 1x / 2x)
+//                                and the real status button with a count of 3 (aqua / dark; rest / open / mono) as PNGs
 import AppKit
 import Carbon.HIToolbox
 import BlurtCore

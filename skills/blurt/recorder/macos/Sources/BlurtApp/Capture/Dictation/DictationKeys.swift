@@ -1,6 +1,8 @@
-// The dictation key (right ⌥ / Fn) from a listen-only CGEventTap: modifier-only keys can't be Carbon hotkeys.
-// Listen-only = we never block, delay or change an event; the tap needs Input Monitoring (or Accessibility) and is
-// simply not created without it. flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events.
+// The dictation key (right ⌥ / Fn / either ⌥) from a listen-only CGEventTap: modifier-only keys can't be Carbon
+// hotkeys. Listen-only = we never block, delay or change an event. A listen-only keyboard tap needs Input Monitoring
+// (kTCCServiceListenEvent): without it tapCreate returns nil, and Accessibility being granted doesn't change that.
+// So whether dictation works is `installed` (the tap is there), never a permission check. flagsChanged / keyDown /
+// mouse-down go to DictationTrigger (BlurtCore) as events.
 import AppKit
 import BlurtCore
 
@@ -8,19 +10,29 @@ final class DictationKeys {
     var onEvent: ((DictationTrigger.Event) -> Void)?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
+    /// test builds: a tap that "came up" (BLURT_TEST_DICTATION_TAP=ok) — nothing is installed
+    private var simulated = false
 
-    var installed: Bool { tap != nil }
+    /// The tap is there, so the key is heard: the one thing that says dictation works.
+    var installed: Bool { tap != nil || simulated }
 
-    /// Input Monitoring (the listen-event permission). Accessibility also lets a tap listen.
-    static var allowed: Bool { CGPreflightListenEventAccess() || AXIsProcessTrusted() }
+    /// Input Monitoring as macOS reports it: for Settings and the logs only (see `installed`).
+    static var inputMonitoring: Bool { CGPreflightListenEventAccess() }
 
-    /// Creates the tap; false when macOS refuses (no permission). Safe to call again.
+    /// Test builds only: what tapCreate "answers", "ok" or "failed" (BLURT_TEST_DICTATION_TAP, or the test hook
+    /// `dictation tap ok|failed`). nil = no tap and no waiting for one. Never a real tap either way.
+    static var testTap: String? = DictationInsert.testMode ? ProcessInfo.processInfo.environment["BLURT_TEST_DICTATION_TAP"] : nil
+
+    /// Creates the tap; false when macOS refuses (no Input Monitoring). Safe to call again.
     @discardableResult
     func start() -> Bool {
-        if tap != nil { return true }
+        if installed { return true }
         // test builds (test channel on, or not the real bundle id) feed the trigger through their hook only: a real
         // tap there would hear the user's own keyboard (a test app started from a terminal inherits its grants)
-        if DictationInsert.testMode { return false }
+        if DictationInsert.testMode {
+            simulated = DictationKeys.testTap == "ok"
+            return simulated
+        }
         let types: [CGEventType] = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
         let me = Unmanaged.passUnretained(self).toOpaque()
@@ -39,6 +51,7 @@ final class DictationKeys {
         if let s = source { CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes) }
         tap = nil
         source = nil
+        simulated = false
     }
 
     fileprivate func received(_ type: CGEventType, _ e: CGEvent) {

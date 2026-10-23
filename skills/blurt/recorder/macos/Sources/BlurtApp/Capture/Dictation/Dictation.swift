@@ -1,8 +1,12 @@
 // Dictation (听写, docs/design/dictation.md): talk, and the words are typed into whichever app has the focus —
 // separate from the voice note (⌥⇧V files into Blurt; the two never share a key).
 //
-//  • trigger: right ⌥ (or Fn) alone, read by a listen-only event tap (DictationKeys) and decided by BlurtCore's
-//    DictationTrigger — tap to start / tap to stop (default), or hold to talk. Esc cancels.
+//  • trigger: right ⌥ (or Fn, or either ⌥) alone, read by a listen-only event tap (DictationKeys) and decided by
+//    BlurtCore's DictationTrigger — tap to start / tap to stop (default), or hold to talk. Esc cancels.
+//  • the tap needs Input Monitoring. Until it is installed (BlurtCore's DictationAccess decides): macOS is asked once
+//    per version at launch, the menu-bar menu's top row says "Turn On Dictation…", the island reminds about once a
+//    day (launch, the voice-note key, Settings), and a poll picks the grant up without a restart. Test builds never
+//    install a tap or ask macOS: BLURT_TEST_DICTATION_TAP=ok|failed (or `dictation tap …`) simulates the answer.
 //  • capture: NoteVoice (the voice note's mic → wav path; BLURT_TEST_MIC_WAV / BLURT_NOTE_WAV in tests), no silence
 //    stop — you end it. The models are warmed on key-down: `transcribe.py serve --preload` (SenseVoice, or what
 //    Settings → Speech picked for voice notes) and, with polish on, `polish.py serve --preload`.
@@ -10,7 +14,7 @@
 //    through the warm polish server with record.dictation.polish_timeout_ms (3 s) — any fall-back = the raw text.
 //  • insert: DictationInsert (pasteboard → ⌘V → pasteboard back). History: DictationHistory (history.jsonl).
 //  • off while a screen recording runs (it owns the mic) and while a voice note listens.
-// Config record.dictation: enabled (true), key right_option|fn, mode tap|hold, polish off|light, polish_model,
+// Config record.dictation: enabled (true), key right_option|fn|either_option, mode tap|hold, polish off|light, polish_model,
 // polish_timeout_ms, retention_days (30), keep_audio (false). Test hooks: SnapApp.swift `dictation …`.
 import AppKit
 import BlurtCore
@@ -57,23 +61,27 @@ final class Dictation {
 
     // MARK: launch / settings changed
 
-    /// At launch (the menu-bar app): history retention, the key tap, one quiet word if a permission is missing.
+    /// At launch (the menu-bar app): history retention, the key tap; if the key can't be heard, ask macOS (once per
+    /// version) and say so on the island (about once a day). The menu-bar menu's top row stays until it works.
     func install() {
         keys.onEvent = { [weak self] e in self?.handle(e) }
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: Dictation.retentionDays) }
+        // ≤ 0.7: a once-ever flag that silenced the reminder for good after one unseen toast
+        if Config.shared["app.dictation_prompted"] != nil { Config.shared.set("app.dictation_prompted", nil) }
         apply()
         refreshPolishModel()
-        // the setup assistant (first launch) asks for Input Monitoring itself: no toast on top of it — next launch, if still missing
-        let assistantShows = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
-        if Dictation.enabled, !DictationKeys.allowed, !assistantShows, Config.shared["app.dictation_prompted"] as? Bool != true {
-            Config.shared.set("app.dictation_prompted", true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                island.toast(Loc.t("dictation.toast.needs_permission", table: "Dictation", Dictation.keyName),
-                             actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation")) {
-                    AppEnvironment.settings?.show(pane: "dictation")
-                }
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
+    }
+
+    /// The setup assistant (first launch) has its own Input Monitoring row: no prompt or toast on top of it.
+    private var assistantShows: Bool { Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil }
+
+    private func launchCheck() {
+        let asked = Config.shared["app.dictation_asked_version"] as? String
+        if access.askAtLaunch(assistantShowing: assistantShows, askedVersion: asked, version: Dictation.appVersion) {
+            Dictation.requestListenAccess(via: "launch")
         }
+        if !assistantShows { nudge("launch") }
     }
 
     /// Re-reads the settings: the tap on or off, the key and the mode.
@@ -81,33 +89,124 @@ final class Dictation {
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
         if Dictation.enabled {
-            if !keys.start() && !DictationInsert.testMode { waitForPermission() }
+            // test builds wait only when a test simulates the tap (they never install a real one)
+            if !keys.start() && (!DictationInsert.testMode || DictationKeys.testTap != nil) { waitForPermission() }
         } else {
             keys.stop()
+            permissionTimer?.invalidate()
             if busy { cancel() }
         }
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "key": trigger.key.rawValue,
-              "mode": trigger.mode.rawValue, "input_monitoring": DictationKeys.allowed, "accessibility": AXIsProcessTrusted(),
+              "mode": trigger.mode.rawValue, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": AXIsProcessTrusted(),
               "test_mode": DictationInsert.testMode])
     }
 
     var tapInstalled: Bool { keys.installed }
 
-    /// No permission yet: try again every few seconds (granting it in System Settings needs no restart).
+    /// What the cues go by: on, and is the key heard (the tap, not a permission check).
+    var access: DictationAccess { DictationAccess(enabled: Dictation.enabled, tapInstalled: keys.installed) }
+    /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder.
+    var needsSetup: Bool { access.needsSetup }
+
+    /// No tap yet: try again every few seconds — granting Input Monitoring in System Settings needs no restart — and
+    /// say so on the island when it comes up.
     private func waitForPermission() {
         permissionTimer?.invalidate()
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] t in
+        let every = DictationInsert.testMode ? 0.5 : 3
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] t in
             guard let self = self else { return t.invalidate() }
             guard Dictation.enabled else { return t.invalidate() }
-            if DictationKeys.allowed, self.keys.start() {
+            let before = self.access
+            if self.keys.start() {
                 t.invalidate()
-                emit(["event": "dictation_keys", "tap": true])
+                emit(["event": "dictation_keys", "tap": true, "via": "poll"])
+                if DictationAccess.confirm(before: before, after: self.access) { self.confirmOn() }
             }
         }
     }
 
-    static var keyName: String {
-        Loc.t(key == .fn ? "dictation.key.fn" : "dictation.key.right_option", table: "Dictation")
+    /// "Dictation is on: tap right Option to talk" — once, when the key starts being heard.
+    private func confirmOn() {
+        Config.shared.set("app.dictation_nudged_at", nil)
+        var t = Island.Toast(text: Loc.t(Dictation.mode == .hold ? "dictation.toast.on.hold" : "dictation.toast.on.tap", table: "Dictation",
+                                         Dictation.keyShort), actionTitle: nil, action: nil)
+        t.seconds = 5
+        island.toast(t)
+        emit(["event": "dictation_on"])
+    }
+
+    // MARK: the key can't be heard (DictationAccess decides; these act)
+
+    static var appVersion: String {
+        let i = Bundle.main.infoDictionary
+        return "\(i?["CFBundleShortVersionString"] as? String ?? "")+\(i?["CFBundleVersion"] as? String ?? "")"
+    }
+
+    /// CGRequestListenEventAccess(): macOS's own prompt the first time, and Blurt listed under Input Monitoring. Remembers
+    /// the version that asked (launch asks once per version). Test builds never call it: an event says they would have.
+    @discardableResult
+    static func requestListenAccess(via: String) -> Bool {
+        Config.shared.set("app.dictation_asked_version", appVersion)
+        emit(["event": "dictation_access_request", "via": via, "test_mode": DictationInsert.testMode])
+        if DictationInsert.testMode { return false }
+        return CGRequestListenEventAccess()
+    }
+
+    /// System Settings → Privacy & Security → Input Monitoring (a test build only says it would open it).
+    static func openSystemPane() {
+        emit(["event": "dictation_open_pane", "pane": "Privacy_ListenEvent"])
+        if !DictationInsert.testMode {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!)
+        }
+    }
+
+    /// "Turn On Dictation…" (the menu row, the toast's button, Settings → Dictation): Settings → Dictation, then the
+    /// Input Monitoring pane on top of it with Blurt in its list.
+    func openSetup() {
+        AppEnvironment.settings?.show(pane: "dictation")
+        Dictation.requestListenAccess(via: "setup")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { Dictation.openSystemPane() }
+    }
+
+    /// The island's reminder while the key can't be heard — at launch, when the voice-note key is pressed, when
+    /// Settings opens — about once a day (BLURT_TEST_DICTATION_NUDGE_SECONDS in test builds).
+    func nudge(_ reason: String) {
+        let last = (Config.shared["app.dictation_nudged_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
+        let test = DictationInsert.testMode ? Double(ProcessInfo.processInfo.environment["BLURT_TEST_DICTATION_NUDGE_SECONDS"] ?? "") : nil
+        guard access.nudge(lastNudge: last, now: Date(), every: test ?? DictationAccess.nudgeInterval) else { return }
+        Config.shared.set("app.dictation_nudged_at", Date().timeIntervalSince1970)
+        emit(["event": "dictation_nudge", "reason": reason])
+        var t = Island.Toast(text: Loc.t("dictation.toast.needs_permission", table: "Dictation", Dictation.keyShort),
+                             actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation"), action: { Dictation.shared.openSetup() })
+        t.seconds = 8               // the island's line is quiet and brief by default; this one must be read
+        island.toast(t)
+    }
+
+    /// The key's name for a picker or a field ("Right Option", "Fn", "Either Option Key").
+    static var keyName: String { keyName(key) }
+    static func keyName(_ k: DictationTrigger.Key) -> String {
+        switch k {
+        case .rightOption: return Loc.t("dictation.key.right_option", table: "Dictation")
+        case .fn: return Loc.t("dictation.key.fn", table: "Dictation")
+        case .eitherOption: return Loc.t("dictation.key.either_option", table: "Dictation")
+        }
+    }
+    /// The key's short name, for the island's one line ("tap right Option to talk", "单按右 Option 开始说话").
+    static var keyShort: String {
+        switch key {
+        case .rightOption: return Loc.t("dictation.key.right_option.short", table: "Dictation")
+        case .fn: return Loc.t("dictation.key.fn.short", table: "Dictation")
+        case .eitherOption: return Loc.t("dictation.key.either_option.short", table: "Dictation")
+        }
+    }
+    /// The key's name inside a sentence ("Press the right Option key alone", "单独按一下右 Option 键").
+    static var keyInline: String { keyInline(key) }
+    static func keyInline(_ k: DictationTrigger.Key) -> String {
+        switch k {
+        case .rightOption: return Loc.t("dictation.key.right_option.inline", table: "Dictation")
+        case .fn: return Loc.t("dictation.key.fn.inline", table: "Dictation")
+        case .eitherOption: return Loc.t("dictation.key.either_option.inline", table: "Dictation")
+        }
     }
 
     /// Which polish model would run (installed + selected) — `polish.py models`, off the main thread.

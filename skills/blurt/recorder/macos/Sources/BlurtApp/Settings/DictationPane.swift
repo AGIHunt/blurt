@@ -48,6 +48,7 @@ final class DictationSettings: ObservableObject {
 
     func start() {
         refresh()
+        emit(["event": "dictation_pane", "tap": tap])
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh() } }
         Task { await loadModels() }
@@ -58,7 +59,10 @@ final class DictationSettings: ObservableObject {
         let im = CGPreflightListenEventAccess(), ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
         if im != inputMonitoring { inputMonitoring = im }
         if ax != accessibility { accessibility = ax }
-        if t != tap { tap = t }
+        if t != tap {
+            tap = t
+            emit(["event": "dictation_pane", "tap": t])
+        }
         let n = DictationHistory.shared.load().count
         if n != historyCount { historyCount = n }
     }
@@ -93,7 +97,7 @@ final class DictationSettings: ObservableObject {
     }
 
     func requestInputMonitoring() {
-        if !CGRequestListenEventAccess() { Permissions.openPane("Privacy_ListenEvent") }
+        if !Dictation.requestListenAccess(via: "settings") { Dictation.openSystemPane() }
         Dictation.shared.apply()
     }
     func requestAccessibility() {
@@ -157,15 +161,18 @@ struct DictationPane: View {
                 Toggle(isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(T("dictation.settings.enable"))
-                        Text(T("dictation.settings.enable.detail", keyName(m.key)))
+                        Text(T("dictation.settings.enable.detail", Dictation.keyInline(m.key)))
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                if m.enabled { keyStatus }
                 Picker(T("dictation.settings.key"), selection: Binding(get: { m.key }, set: { m.setKey($0) })) {
                     Text(T("dictation.key.right_option")).tag(DictationTrigger.Key.rightOption)
+                    Text(T("dictation.key.either_option")).tag(DictationTrigger.Key.eitherOption)
                     Text(T("dictation.key.fn")).tag(DictationTrigger.Key.fn)
                 }
                 .disabled(!m.enabled)
+                if m.key == .eitherOption { Hint(T("dictation.settings.either_hint")) }
                 Picker(T("dictation.settings.mode"), selection: Binding(get: { m.mode }, set: { m.setMode($0) })) {
                     Text(T("dictation.mode.tap")).tag(DictationTrigger.Mode.tap)
                     Text(T("dictation.mode.hold")).tag(DictationTrigger.Mode.hold)
@@ -176,7 +183,7 @@ struct DictationPane: View {
             } header: { Text(T("dictation.settings.section")) }
 
             Section {
-                permissionRow(T("dictation.perm.input_monitoring"), T("dictation.perm.input_monitoring.why", keyName(m.key)),
+                permissionRow(T("dictation.perm.input_monitoring"), T("dictation.perm.input_monitoring.why", Dictation.keyInline(m.key)),
                               granted: m.inputMonitoring, allow: m.requestInputMonitoring, pane: "Privacy_ListenEvent")
                 permissionRow(T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"),
                               granted: m.accessibility, allow: m.requestAccessibility, pane: "Privacy_Accessibility")
@@ -254,7 +261,22 @@ struct DictationPane: View {
         } message: { Text(T("dictation.history.clear.message", m.historyCount)) }
     }
 
-    private func keyName(_ k: DictationTrigger.Key) -> String { T(k == .fn ? "dictation.key.fn" : "dictation.key.right_option") }
+    /// Whether the key is heard right now — the event tap, not the permission rows below (they can say "allowed"
+    /// while the tap still isn't there, and the other way round).
+    var keyStatus: some View {
+        HStack(alignment: .center, spacing: 10) {
+            StatusDot(tone: m.tap ? .good : .warn)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T(m.tap ? "dictation.status.on" : "dictation.status.off", Dictation.keyInline(m.key)))
+                Text(T(m.tap ? (m.mode == .hold ? "dictation.status.on.hold" : "dictation.status.on.tap") : "dictation.status.off.detail",
+                       Dictation.keyInline(m.key)))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if !m.tap { Button(T("dictation.status.fix")) { Dictation.shared.openSetup() } }
+        }
+        .accessibilityElement(children: .combine)
+    }
 
     private func seconds(_ s: Double) -> String {
         let f = NumberFormatter()

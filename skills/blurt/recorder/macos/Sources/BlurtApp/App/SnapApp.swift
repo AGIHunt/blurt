@@ -239,7 +239,9 @@ extension App {
     /// ⌥⇧V (voice input), ⌥⇧O (the project switcher), Esc while listening — K7.
     func captureHotkey(_ k: HK) {
         switch k {
-        case .voice: VoiceInput.shared.pressed()
+        case .voice:
+            VoiceInput.shared.pressed()
+            Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
         case .voiceEsc: VoiceInput.shared.cancel()
         case .dictationEsc: Dictation.shared.cancel()
         case .project: if resident { island.toggleSwitcher() }
@@ -269,7 +271,7 @@ extension App {
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
         let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
         dict.target = self
-        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyName) }
+        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline) }
         menu.addItem(dict)
         // only while something hangs (⌥⇧H itself is listed in Settings → Shortcuts)
         if hanging.count > 0 {

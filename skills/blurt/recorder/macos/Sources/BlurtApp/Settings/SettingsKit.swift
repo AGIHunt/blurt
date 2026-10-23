@@ -136,7 +136,7 @@ final class Permissions: ObservableObject {
         if !AXIsProcessTrustedWithOptions(opts) { Permissions.openPane("Privacy_Accessibility") }
     }
     func requestInputMonitoring() {
-        if !CGRequestListenEventAccess() { Permissions.openPane("Privacy_ListenEvent") }
+        if !Dictation.requestListenAccess(via: "permissions") { Dictation.openSystemPane() }
         Dictation.shared.apply()
         refresh()
     }
@@ -156,7 +156,7 @@ struct PermissionRows: View {
             action: p.mic == .notAsked ? { p.requestMic() } : nil, settings: "Privacy_Microphone")
         row(T("settings.kit.accessibility"), T("settings.kit.hold_pen_reads_modifier"), p.accessibility,
             action: p.accessibility == .granted ? nil : { p.requestAccessibility() }, settings: "Privacy_Accessibility")
-        row(T("settings.kit.input_monitoring"), T("dictation.perm.input_monitoring.why", Dictation.keyName), p.inputMonitoring,
+        row(T("settings.kit.input_monitoring"), T("dictation.perm.input_monitoring.why", Dictation.keyInline), p.inputMonitoring,
             action: p.inputMonitoring == .granted ? nil : { p.requestInputMonitoring() }, settings: "Privacy_ListenEvent")
     }
 

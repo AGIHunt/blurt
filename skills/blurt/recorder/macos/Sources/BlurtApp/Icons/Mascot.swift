@@ -291,6 +291,15 @@ enum GlyphMotion {
     /// about its foot. A template image.
     static func image(_ icon: BlurtIcon, size: CGFloat, angle: CGFloat = 0, pivot: CGPoint = CGPoint(x: 0.5, y: 0.1),
                       lift: CGFloat = 0, squash: CGFloat = 0) -> NSImage {
+        image(size: size, angle: angle, pivot: pivot, lift: lift, squash: squash, template: true) { ctx, r in
+            icon.draw(in: ctx, rect: r, color: NSColor.black.cgColor)
+        }
+    }
+
+    /// The same motion for any drawing (the colour menu-bar hen): `draw` paints the still picture into `rect` of a
+    /// y-up context; `template` = the result tints like a template image.
+    static func image(size: CGFloat, angle: CGFloat = 0, pivot: CGPoint = CGPoint(x: 0.5, y: 0.1), lift: CGFloat = 0,
+                      squash: CGFloat = 0, template: Bool, draw: @escaping (CGContext, CGRect) -> Void) -> NSImage {
         let img = NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             let foot = r.minY + r.height * 0.1
@@ -301,10 +310,10 @@ enum GlyphMotion {
             ctx.translateBy(x: p.x, y: p.y)
             ctx.rotate(by: angle)
             ctx.translateBy(x: -p.x, y: -p.y)
-            icon.draw(in: ctx, rect: r, color: NSColor.black.cgColor)
+            draw(ctx, r)
             return true
         }
-        img.isTemplate = true
+        img.isTemplate = template
         return img
     }
 }

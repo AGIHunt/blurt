@@ -27,7 +27,9 @@ right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav
 
 ## Trigger
 
-- Right ⌥ (keyCode 61, device bit `NX_DEVICERALTKEYMASK` 0x40) by default, or Fn (keyCode 63, `.maskSecondaryFn`).
+- Right ⌥ (keyCode 61, device bit `NX_DEVICERALTKEYMASK` 0x40) by default, or Fn (keyCode 63, `.maskSecondaryFn`), or
+  either ⌥ (keyCodes 58 / 61, `NX_DEVICELALTKEYMASK` 0x20 / 0x40: whichever side is tapped alone; both sides at once
+  is not a tap).
   Modifier-only keys can't be Carbon hotkeys, so a **listen-only** `CGEventTap` (`flagsChanged`, `keyDown`, mouse down)
   feeds the state machine. It never blocks or changes an event.
 - **Tap** (default): down and up within 400 ms, no other key, modifier or click in between, and no other modifier held
@@ -36,9 +38,22 @@ right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav
   joining in cancels.
 - `Esc` cancels. `arm` on a clean key-down warms the models while the user starts talking.
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
-- Permissions: Input Monitoring (`CGPreflightListenEventAccess`) for the tap, Accessibility for the paste. When
-  permission is missing, the tap isn't created; the app retries every 3 s and shows one non-blocking island toast
-  that opens Settings.
+- Permissions: Input Monitoring for the tap, Accessibility for the paste. A listen-only keyboard tap needs Input
+  Monitoring: without it `CGEvent.tapCreate` returns nil, whatever Accessibility says. So "dictation works" means
+  **the tap is installed**, never a permission check, and Settings → Dictation shows that state on its own row.
+- Until the tap is installed (BlurtCore `DictationAccess` decides; `DictationAccessTests`):
+  - at launch, `CGRequestListenEventAccess()` once per app version (`app.dictation_asked_version`), never while the
+    setup assistant shows (it has its own row). This shows macOS's prompt and lists Blurt under Input Monitoring;
+  - the menu-bar menu's first row is "Turn On Dictation…" with a warning sign, naming the key in its subtitle. It
+    (and the toast's button, and Settings → Dictation's "Turn On…") opens Settings → Dictation and the Input
+    Monitoring pane;
+  - the island says "To dictate with right Option, allow Input Monitoring" for 8 s at launch, when the voice-note key is
+    pressed and when Settings opens, at most about once a day (`app.dictation_nudged_at`, 20 h). The ≤ 0.7 once-ever
+    flag `app.dictation_prompted` is removed at launch;
+  - the app retries the tap every 3 s; when it comes up the island says "Dictation is on: tap right Option to talk".
+- Test builds never install a tap or call the request API: `BLURT_TEST_DICTATION_TAP=ok|failed` (or the hook
+  `dictation tap ok|failed`) is what `tapCreate` "answers", `dictation nudge REASON` / `dictation setup` drive the
+  cues, and `BLURT_TEST_DICTATION_NUDGE_SECONDS` shortens the once-a-day rule.
 
 ## Insert
 
