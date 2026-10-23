@@ -102,7 +102,7 @@ struct DictationContext {
     var isEmpty: Bool { before.isEmpty && after.isEmpty && selection.isEmpty && title.isEmpty }
     var payload: [String: Any] { ["before": before, "after": after, "selection": selection, "title": title, "app": app] }
     /// for the history, only with keep_audio (debugging)
-    var debugText: String { "\(title) — \(before)▮\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
+    var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 
     static func capture() -> DictationContext? {
         guard let f = DictationField.focused() else { return nil }
