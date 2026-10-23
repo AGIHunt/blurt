@@ -1,6 +1,8 @@
 // Dictation history (docs/design/dictation.md): $BLURT_HOME/dictation/history.jsonl, append-only. One line per
 // dictation; edits are lines too, applied in order when it is read:
-//   {"id","t","app","bundle","duration","raw","polished","text","model","fell_back","reason","insert","audio",…}
+//   {"id","t","app","bundle","duration","raw","polished","text","model","fell_back","reason","insert","audio",
+//    "terms_applied" [custom words the dictation wrote], "context_used" (text around the cursor went to polish),
+//    "context" (that text — only with record.dictation.keep_audio, the debug setting), …}
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio). dictation.py reads the
@@ -28,13 +30,21 @@ public struct DictationEntry: Identifiable, Hashable {
     /// set once it was turned into an item: its id ("BA-12") and uid
     public var item: String?
     public var itemUID: String?
+    /// the custom words this dictation wrote (biasing, the sounds-like pass or polish); nil in older entries
+    public var termsApplied: [String]?
+    /// whether the text around the cursor went to polish; nil in older entries
+    public var contextUsed: Bool?
+    /// that text itself — kept only when record.dictation.keep_audio (debugging) is on
+    public var context: String?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
-                asrModel: String? = nil, language: String? = nil) {
+                asrModel: String? = nil, language: String? = nil, termsApplied: [String]? = nil, contextUsed: Bool? = nil,
+                context: String? = nil) {
         self.id = id; self.time = time; self.app = app; self.bundle = bundle; self.duration = duration; self.raw = raw
         self.polished = polished; self.text = text; self.model = model; self.fellBack = fellBack; self.reason = reason
         self.insert = insert; self.audio = audio; self.asrModel = asrModel; self.language = language
+        self.termsApplied = termsApplied; self.contextUsed = contextUsed; self.context = context
     }
 
     static let iso: ISO8601DateFormatter = {
@@ -55,6 +65,9 @@ public struct DictationEntry: Identifiable, Hashable {
         o["audio"] = audio ?? NSNull()
         if let a = asrModel { o["asr_model"] = a }
         if let l = language { o["language"] = l }
+        if let t = termsApplied { o["terms_applied"] = t }
+        if let c = contextUsed { o["context_used"] = c }
+        if let c = context { o["context"] = c }
         return o
     }
 
@@ -75,6 +88,9 @@ public struct DictationEntry: Identifiable, Hashable {
         audio = o["audio"] as? String
         asrModel = o["asr_model"] as? String
         language = o["language"] as? String
+        termsApplied = o["terms_applied"] as? [String]
+        contextUsed = o["context_used"] as? Bool
+        context = o["context"] as? String
     }
 }
 

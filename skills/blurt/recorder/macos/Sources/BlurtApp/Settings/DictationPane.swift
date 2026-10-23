@@ -1,6 +1,9 @@
 // Settings → Dictation (docs/design/dictation.md): on / off, the key (right ⌥ or Fn) and how it works (tap / hold),
-// the two permissions it needs (Input Monitoring for the key, Accessibility to paste), polish (Off / Light, the model
-// with its download), the polish time limit, history retention, keeping audio, clearing the history.
+// which listener hears it and when it was last heard in another app, the two permissions it needs (Input Monitoring
+// for the key, Accessibility to paste and read the text around the cursor), the recognition model (with its
+// download), custom words (add, remove, learned ones, suggestions to accept or ignore; reading the context and
+// learning can be turned off), polish (Off / Light, the model with its download), the polish time limit, history
+// retention, keeping audio, clearing the history.
 // Everything is record.dictation.* in config.json; Dictation.shared.apply() picks changes up at once.
 // Strings: Resources/*.lproj/Dictation.strings (T("dictation.…")).
 import AppKit
@@ -15,6 +18,25 @@ struct PolishModel: Decodable, Identifiable, Hashable {
     var installed: Bool
     var recommended: Bool
     enum CodingKeys: String, CodingKey { case id, name, family, installed, recommended, sizeMB = "size_mb" }
+}
+
+/// `transcribe.py dictation-models`: what dictation can use here.
+struct DictationASRModel: Decodable, Identifiable, Hashable {
+    var id: String
+    var name: String?
+    var sizeMB: Double
+    var installed: Bool
+    var recommended: Bool
+    /// none | prompt | context | hotwords: how the model takes the custom words
+    var vocab: String
+    enum CodingKeys: String, CodingKey { case id, name, installed, recommended, vocab, sizeMB = "size_mb" }
+}
+
+struct DictationASRState: Decodable {
+    var configured: String?
+    var recommended: String
+    var selected: String
+    var models: [DictationASRModel]
 }
 
 struct PolishState: Decodable {
@@ -35,20 +57,32 @@ final class DictationSettings: ObservableObject {
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
     @Published var keepAudio = Dictation.keepAudio
-    @Published var inputMonitoring = CGPreflightListenEventAccess()
-    @Published var accessibility = AXIsProcessTrusted()
+    @Published var inputMonitoring = DictationKeys.inputMonitoring
+    @Published var accessibility = DictationKeys.accessibility
     @Published var tap = Dictation.shared.tapInstalled
+    @Published var listener = Dictation.shared.listenerKind
+    @Published var lastOther = Dictation.shared.lastKeyFromOtherApp
     @Published var polish: PolishState?
     @Published var download: [String: (done: Double, total: Double)] = [:]
     @Published var failed: [String: Bool] = [:]
     @Published var historyCount = 0
+    @Published var contextOn = Dictation.contextOn
+    @Published var learnOn = Dictation.learnOn
+    @Published var words: [VocabTerm] = []
+    @Published var suggestions: [VocabTerm] = []
+    @Published var newWord = ""
+    @Published var asr: DictationASRState?
+    @Published var asrDownload: [String: (done: Double, total: Double)] = [:]
+    @Published var asrFailed: [String: Bool] = [:]
     private var timer: Timer?
     private var procs: [String: Process] = [:]
     private var cancelled = Set<String>()
 
     func start() {
+        Dictation.shared.seedVocabulary()
         refresh()
         emit(["event": "dictation_pane", "tap": tap])
+        Task { await loadASR() }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh() } }
         Task { await loadModels() }
@@ -56,15 +90,80 @@ final class DictationSettings: ObservableObject {
     func stop() { timer?.invalidate(); timer = nil }
 
     func refresh() {
-        let im = CGPreflightListenEventAccess(), ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
+        let im = DictationKeys.inputMonitoring, ax = DictationKeys.accessibility, t = Dictation.shared.tapInstalled
         if im != inputMonitoring { inputMonitoring = im }
         if ax != accessibility { accessibility = ax }
+        let l = Dictation.shared.listenerKind, o = Dictation.shared.lastKeyFromOtherApp
+        if l != listener { listener = l; emit(["event": "dictation_pane", "listener": l.rawValue]) }
+        if o != lastOther { lastOther = o }
         if t != tap {
             tap = t
             emit(["event": "dictation_pane", "tap": t])
         }
         let n = DictationHistory.shared.load().count
         if n != historyCount { historyCount = n }
+        reloadWords()
+    }
+
+    // MARK: custom words
+
+    func reloadWords() {
+        let all = DictationVocabulary.shared.load()
+        let w = all.filter { $0.state == .active }.sorted { ($0.source == .learned ? 0 : 1, $0.term.lowercased()) < ($1.source == .learned ? 0 : 1, $1.term.lowercased()) }
+        let sg = all.filter { $0.state == .suggested }
+        if w != words { words = w }
+        if sg != suggestions { suggestions = sg }
+    }
+
+    func addWord() {
+        let t = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        DictationVocabulary.shared.add(t)
+        newWord = ""
+        reloadWords()
+        emit(["event": "dictation_vocab", "op": "add", "term": t])
+    }
+    func removeWord(_ t: VocabTerm) { DictationVocabulary.shared.remove(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "remove", "term": t.term]) }
+    func accept(_ t: VocabTerm) { DictationVocabulary.shared.accept(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "accept", "term": t.term]) }
+    func reject(_ t: VocabTerm) { DictationVocabulary.shared.reject(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "reject", "term": t.term]) }
+    func setContext(_ v: Bool) { contextOn = v; save("context", v ? nil : false) }
+    func setLearn(_ v: Bool) { learnOn = v; save("learn", v ? nil : false) }
+
+    // MARK: recognition model
+
+    func loadASR() async {
+        let r = try? await SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 120)
+        asr = r?.decode(DictationASRState.self)
+    }
+
+    func chooseASR(_ m: DictationASRModel) {
+        save("asr_model", m.id)
+        Task { await loadASR() }
+    }
+
+    /// `transcribe.py setup --model-id ID` (it adds its package through uv) — only when the user asks.
+    func installASR(_ m: DictationASRModel) {
+        guard asrDownload[m.id] == nil else { return }
+        asrFailed[m.id] = nil
+        asrDownload[m.id] = (0, m.sizeMB)
+        var env: [String: String] = [:]
+        if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
+        let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+            ? ProcessInfo.processInfo.environment["BLURT_TEST_ASR_SETUP"] ?? "transcribe.py" : "transcribe.py"
+        let p = try? SkillCLI.shared.spawn(script, ["setup", "--model-id", m.id], env: env, onLine: { [weak self] line, _ in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if let r = t.range(of: #"^(\d+)/(\d+) MB"#, options: .regularExpression) {
+                let q = t[r].replacingOccurrences(of: " MB", with: "").split(separator: "/")
+                if q.count == 2, let a = Double(q[0]), let b = Double(q[1]), b > 0 { self?.asrDownload[m.id] = (a, b) }
+            }
+        }, onExit: { [weak self] st in
+            guard let self = self else { return }
+            self.asrDownload[m.id] = nil
+            if st != 0 { self.asrFailed[m.id] = true } else { self.save("asr_model", m.id) }
+            emit(["event": "asr_download", "model": m.id, "status": Int(st)])
+            Task { await self.loadASR() }
+        })
+        if p == nil { asrDownload[m.id] = nil; asrFailed[m.id] = true }
     }
 
     func loadModels() async {
@@ -187,8 +286,18 @@ struct DictationPane: View {
                               granted: m.inputMonitoring, allow: m.requestInputMonitoring, pane: "Privacy_ListenEvent")
                 permissionRow(T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"),
                               granted: m.accessibility, allow: m.requestAccessibility, pane: "Privacy_Accessibility")
-                if m.enabled && m.inputMonitoring && !m.tap { Hint(T("dictation.perm.restart_hint")) }
+                if m.enabled && m.inputMonitoring && m.listener != .tap { Hint(T("dictation.perm.restart_hint")) }
             } header: { Text(T("dictation.perm.section")) }
+
+            Section {
+                asrModels
+            } header: { Text(T("dictation.asr.section")) }
+            .id("asr")
+
+            Section {
+                vocabulary
+            } header: { Text(T("dictation.vocab.section")) }
+            .id("vocab")
 
             Section {
                 Picker(T("dictation.polish.title"), selection: Binding(get: { m.polishOn }, set: { m.setPolish($0) })) {
@@ -261,6 +370,118 @@ struct DictationPane: View {
         } message: { Text(T("dictation.history.clear.message", m.historyCount)) }
     }
 
+    // MARK: recognition model
+
+    @ViewBuilder var asrModels: some View {
+        if let a = m.asr {
+            ForEach(a.models) { model in asrRow(model, selected: a.selected == model.id) }
+            if a.selected != a.recommended, let rec = a.models.first(where: { $0.id == a.recommended }), !rec.installed {
+                Hint(T("dictation.asr.recommend_hint", rec.name ?? rec.id))
+            }
+        } else {
+            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(T("dictation.polish.loading")).foregroundStyle(.secondary) }
+        }
+    }
+
+    func asrRow(_ model: DictationASRModel, selected: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(model.name ?? model.id)
+                    if model.recommended { Badge(T("dictation.polish.recommended")) }
+                }
+                Group {
+                    if let d = m.asrDownload[model.id] {
+                        Text(T("dictation.polish.progress", byteString(Int64(d.done * 1_048_576)), byteString(Int64(max(d.total, model.sizeMB) * 1_048_576))))
+                            .monospacedDigit()
+                    } else {
+                        Text(T("dictation.asr.vocab.\(model.vocab == "none" ? "none" : "yes")") + " · " + byteString(Int64(model.sizeMB * 1_048_576)))
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if m.asrDownload[model.id] != nil {
+                ProgressView().controlSize(.small)
+            } else if model.installed {
+                if !selected { Button(T("dictation.polish.use")) { m.chooseASR(model) }.controlSize(.small) }
+            } else {
+                if m.asrFailed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(.orange) }
+                Button(T("dictation.polish.install")) { m.installASR(model) }.controlSize(.small)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { if model.installed && !selected { m.chooseASR(model) } }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    // MARK: custom words
+
+    @ViewBuilder var vocabulary: some View {
+        Hint(T("dictation.vocab.detail"))
+        HStack {
+            TextField("", text: $m.newWord, prompt: Text(T("dictation.vocab.add.placeholder")))
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { m.addWord() }
+            Button(T("dictation.vocab.add")) { m.addWord() }
+                .disabled(m.newWord.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        ForEach(m.suggestions) { t in
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) { Text(t.term); Badge(T("dictation.vocab.suggested"), tint: .orange) }
+                    if !t.soundsLike.isEmpty {
+                        Text(T("dictation.vocab.heard_as", t.soundsLike.joined(separator: T("dictation.vocab.list_sep"))))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Button(T("dictation.vocab.accept")) { m.accept(t) }.controlSize(.small)
+                Button(T("dictation.vocab.ignore")) { m.reject(t) }.controlSize(.small)
+            }
+            .accessibilityElement(children: .combine)
+        }
+        if m.words.isEmpty {
+            Text(T("dictation.vocab.empty")).font(.callout).foregroundStyle(.secondary)
+        }
+        ForEach(m.words) { t in
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(t.term)
+                        if t.source == .learned { Badge(T("dictation.vocab.learned")) }
+                        if t.source == .project { Badge(T("dictation.vocab.auto"), tint: .secondary) }
+                    }
+                    if !t.soundsLike.isEmpty {
+                        Text(T("dictation.vocab.heard_as", t.soundsLike.joined(separator: T("dictation.vocab.list_sep"))))
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Spacer()
+                Button { m.removeWord(t) } label: { Image(systemName: "minus.circle") }
+                    .buttonStyle(.borderless).help(T("dictation.vocab.remove")).accessibilityLabel(T("dictation.vocab.remove"))
+            }
+            .accessibilityElement(children: .combine)
+        }
+        Toggle(isOn: Binding(get: { m.contextOn }, set: { m.setContext($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("dictation.vocab.context"))
+                Text(T("dictation.vocab.context.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        Toggle(isOn: Binding(get: { m.learnOn }, set: { m.setLearn($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("dictation.vocab.learn"))
+                Text(T("dictation.vocab.learn.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     /// Whether the key is heard right now — the event tap, not the permission rows below (they can say "allowed"
     /// while the tap still isn't there, and the other way round).
     var keyStatus: some View {
@@ -271,11 +492,23 @@ struct DictationPane: View {
                 Text(T(m.tap ? (m.mode == .hold ? "dictation.status.on.hold" : "dictation.status.on.tap") : "dictation.status.off.detail",
                        Dictation.keyInline(m.key)))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                // which listener runs, and the one thing only the user can prove: the key heard while another app is in front
+                Text(T("dictation.listener.\(m.listener.rawValue)") + " " + (m.lastOther.map { T("dictation.heard.other", heardTime($0)) }
+                        ?? T("dictation.heard.never", Dictation.keyInline(m.key))))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if !m.tap { Button(T("dictation.status.fix")) { Dictation.shared.openSetup() } }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func heardTime(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Loc.locale
+        f.dateStyle = Calendar.current.isDateInToday(d) ? .none : .short
+        f.timeStyle = .medium
+        return f.string(from: d)
     }
 
     private func seconds(_ s: Double) -> String {
@@ -325,11 +558,7 @@ struct DictationPane: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(model.name)
-                    if model.recommended {
-                        Text(T("dictation.polish.recommended")).font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Capsule().fill(Color.accentColor.opacity(0.15))).foregroundStyle(Color.accentColor)
-                    }
+                    if model.recommended { Badge(T("dictation.polish.recommended")) }
                 }
                 Group {
                     if let d = m.download[model.id] {
@@ -357,5 +586,17 @@ struct DictationPane: View {
         .onTapGesture { if model.installed && !selected { m.choose(model) } }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// A small capsule label next to a name ("Recommended", "Learned").
+struct Badge: View {
+    let text: String
+    var tint: Color = .accentColor
+    init(_ text: String, tint: Color = .accentColor) { self.text = text; self.tint = tint }
+    var body: some View {
+        Text(text).font(.caption2.weight(.semibold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Capsule().fill(tint.opacity(0.15))).foregroundStyle(tint)
     }
 }

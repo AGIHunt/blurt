@@ -141,11 +141,25 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   translate or answer. When its output looks like any of that, or it takes longer than the time limit (3 s), you
   get the words exactly as spoken. The first time, install a model in Settings; the recommended one depends on your
   Mac's memory. *Off* types the raw transcript.
-- **Permissions:** Input Monitoring lets Blurt notice the key; Accessibility lets it paste. Settings shows both, with
-  a button to the right System Settings pane, and whether the key is actually heard. Until it is, the menu-bar menu
-  starts with *Turn On Dictation…* and the island reminds you about once a day; once you allow it, dictation starts
-  working without a restart. Without Accessibility, or when the focus isn't a text field, the text
-  is copied and the island says so: paste it with `⌘V`. Your clipboard is put back after a paste.
+- **Custom words** (*Settings → Dictation*): the names and terms you say often — "Claude Code", "tmux", a project's
+  name. Dictation writes them exactly the way they're listed, so "Claude" doesn't come out as "cloud" and "option"
+  isn't cut to "op". Blurt starts the list for you with Claude Code, Codex, blurt / 口喷鸡 and your projects' names and
+  keys (remove any you don't want). The recommended **recognition model** (Qwen3-ASR on Apple silicon, a 1 GB
+  download) listens for these words directly; with the others, the words are corrected afterwards.
+- **It learns from your fixes.** For a minute after a dictation, if you correct a word it typed (pool request →
+  pull request), Blurt notices. The second time you make the same fix, or at once for a capital letter or a space
+  ("github" → "GitHub"), the word joins your list and the island says *Learned "pull request"* with **Undo**.
+  Suggestions it isn't sure about wait in Settings for you to add or ignore.
+- **The text around the cursor** helps too: when you start talking, Blurt reads about 500 characters before and after
+  the cursor (and the window's title) so names are spelled the way the document spells them. It is used for that one
+  dictation and not kept; password fields are never read. Both this and learning can be turned off in Settings.
+- **Permissions:** Input Monitoring lets Blurt notice the key; Accessibility lets it paste and read the text around
+  the cursor. Settings shows both, with a button to the right System Settings pane, whether the key is actually
+  heard, and when it was last heard while another app was in front. Until it is, the menu-bar menu starts with
+  *Turn On Dictation…* and the island reminds you about once a day; once you allow Input Monitoring, dictation
+  starts working within a few seconds, no restart needed. With Accessibility alone, Blurt still hears the key.
+  Without Accessibility, or when the focus isn't a text field, the text is copied and the island says so: paste it
+  with `⌘V`. Your clipboard is put back after a paste.
 - **Dictation** is a place in the main window's sidebar, under All Items (also menu bar → *Dictation History…*,
   `⌥⌘D`, or the command palette). It lists every dictation by day: the app it went into, the time, the text, and small
   marks for polished, typed as spoken (polish fell back) and terms applied. The toolbar's search field searches it.
@@ -261,6 +275,9 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **按一下右 Option**（单独按，不带别的键），说话，**再按一下**。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。右 Option 和别的键一起用（`⌥` 加字母、`⌥⇧V` 等）时不会开始听写。
 - 在「设置 → 听写」里可以把按键换成 **Fn** 或**任一 Option 键**（左右都行，同样只认单按），方式换成**按住说话**：按住约 0.25 秒开始，松开结束，中途按了别的键就取消。用 Fn 时，把「系统设置 → 键盘 → 按下 fn 键时」设为「不执行任何操作」；如果 Typeless 也在用 Fn，两边会冲突。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
-- **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴。设置页显示两者的状态，并有按钮直达系统设置里对应的位置，也会显示按键现在能不能被听到。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次；允许之后不用重启就能用。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
+- **自定义词**（「设置 → 听写」）：你常说的名字和术语，比如「Claude Code」「tmux」、项目名。听写会照列表里的写法输出，「Claude」不会变成「cloud」，「option」也不会只剩「op」。口喷鸡会先帮你填好 Claude Code、Codex、blurt / 口喷鸡，以及你的项目名和项目代号（不想要的可以移除）。推荐的**识别模型**（Apple 芯片上用 Qwen3-ASR，下载约 1 GB）在识别时就会照顾这些词；用其他模型时，这些词在识别之后再改。
+- **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。拿不准的会作为建议留在设置里，由你决定添加还是忽略。
+- **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。只用于这一次听写，不会保存，也从不读密码框。这项和自动学习都可以在设置里关掉。
+- **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴和读取光标附近的文字。设置页显示两者的状态，并有按钮直达系统设置里对应的位置，也会显示按键现在能不能被听到，以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次；允许「输入监控」后几秒内自动生效，不用重启。只有「辅助功能」时也能听到按键。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
 - **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长和输入方式。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。

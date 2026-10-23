@@ -11,10 +11,15 @@ video, so any backend (even ones without timestamps) works.
                                                      while it was made (<session>/live/); --force redoes it
   transcribe.py run    <session dir>                 a shots session (snap mode): transcribe each voice note
                                                      shots/NNN.wav into its shots.jsonl record ("said")
-  transcribe.py note   <wav> [--language auto]       one voice note, fast path → {"ok","text","language","ms","model"}
-                                                     (uses a running `serve` when there is one)
-  transcribe.py serve  [--preload] [--idle 300]      keep the voice-note model warm; unloads it after --idle s,
-                                                     exits after --exit-after s without a request
+  transcribe.py note   <wav> [--language auto] [--dictation] [--vocab]
+                                                     one voice note, fast path → {"ok","text","language","ms","model"}
+                                                     (uses a running `serve` when there is one). --dictation: the
+                                                     dictation model (record.dictation.asr_model); --vocab: bias it
+                                                     toward the custom words (dictation_vocab.py) where the model can
+                                                     be biased, then fix exact sounds-likes → + "asr_text","terms","biased"
+  transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 300]   keep the voice-note (or dictation) model warm; unloads it after
+                                                     --idle s, exits after --exit-after s without a request
+  transcribe.py dictation-models                     the models dictation can use here: selected, recommended
   transcribe.py probe                                hardware → tier (pro / standard / light / minimal)
   transcribe.py recommend [--languages zh,en] [--purpose batch|live|note]
   transcribe.py auto   [--apply]                     pick a model per purpose for this machine (asr.models);
@@ -32,7 +37,9 @@ one batch job at a time ($BLURT_HOME/run/asr.lock, the rest queue), low priority
 
 Backends (models: asr_models.json; measured: docs/design/asr-benchmark.md)
   sensevoice      local CPU, sherpa-onnx + SenseVoice-Small int8 (~230 MB). zh/en/ja/ko/yue.
-  qwen3-asr-onnx  local CPU (any OS), sherpa-onnx + Qwen3-ASR 0.6B int8, 30 languages.
+  qwen3-asr-onnx  local CPU (any OS), sherpa-onnx + Qwen3-ASR 0.6B int8, 30 languages. Hotwords per stream.
+  qwen3-asr-mlx   local, Apple Silicon (MLX), Qwen3-ASR 0.6B 8-bit, 30 languages, `context` biasing per request
+                  (dictation's default: docs/design/dictation.md §Recognition model).  needs mlx-qwen3-asr
   mlx-whisper     local, Apple Silicon (MLX), Whisper large-v3-turbo (fp16 / 4-bit).  needs mlx-whisper
   faster-whisper  local, NVIDIA CUDA (or CPU), Whisper large-v3-turbo (CTranslate2).  needs faster-whisper
   openai          any OpenAI-compatible /audio/transcriptions API (OpenAI, Groq, SiliconFlow, ...)
@@ -67,6 +74,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
+import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      load_json, probe_duration, save_json, update_global_config, use_system_certs)
 
@@ -937,6 +945,9 @@ class SenseVoice:
         self.rec.decode_stream(st)
         return [(0.0, len(x) / SR, st.result.text.strip(), lang_code(getattr(st.result, "lang", None)))]
 
+    # No set_vocab: sherpa-onnx can't bias SenseVoice (greedy CTC only; create_stream(hotwords=…) aborts the process
+    # with "Only transducer models support contextual biasing"). Its custom words go to polish / dictation_vocab.apply.
+
 
 class Qwen3Onnx:
     """Qwen3-ASR 0.6B int8 on the CPU through sherpa-onnx: 30 languages on any OS."""
@@ -952,9 +963,20 @@ class Qwen3Onnx:
             conv_frontend=str(d / "conv_frontend.onnx"), encoder=str(d / "encoder.int8.onnx"),
             decoder=str(d / "decoder.int8.onnx"), tokenizer=str(d / "tokenizer"), num_threads=_threads(args),
             max_total_len=1024, max_new_tokens=400, hotwords=args.prompt or "")
+        self.hotwords = ""
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        """Per stream (no rebuild): "; "-joined — sherpa splits ASCII commas and re-joins them with spaces."""
+        self.hotwords = dictation_vocab.hotwords(terms)
+        return bool(self.hotwords)
 
     def transcribe(self, x):
         st = self.rec.create_stream()
+        if self.hotwords:
+            try:
+                st.set_option("hotwords", self.hotwords)
+            except Exception:  # noqa: BLE001 — an older sherpa-onnx: no per-stream hotwords
+                pass
         st.accept_waveform(SR, x)
         self.rec.decode_stream(st)
         return [(0.0, len(x) / SR, st.result.text.strip(), lang_code(getattr(st.result, "lang", None)))]
@@ -994,6 +1016,12 @@ class MlxWhisper(MlxBackend):
         self.repo = self.model = args.model or "mlx-community/whisper-large-v3-turbo"
         self.net = ModelHolder.get_model(self.repo, mx.float16)  # load now, not inside the first chunk
         self.langs = [] if args.language else user_languages()
+        self.base_prompt = args.prompt
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        """initial_prompt per call: a plain comma list (dictation eval: no insertions, no loops)."""
+        self.args.prompt = dictation_vocab.whisper_prompt(terms) or self.base_prompt
+        return bool(terms)
 
     def decode(self, x):
         out = self.whisper(x, self.args.language)
@@ -1037,6 +1065,32 @@ class MlxWhisper(MlxBackend):
             else:
                 runs.append([s, e, lang])
         return [(s, e, lang) for s, e, lang in runs]
+
+
+class Qwen3Mlx(MlxBackend):
+    """Qwen3-ASR 0.6B on MLX (mlx-qwen3-asr): ~0.18 s for a 6 s dictation on an M5 Max, and the only fast local
+    model here that takes a vocabulary per request (`context`) — dictation's default on Apple Silicon."""
+
+    def load(self, args):
+        try:
+            import mlx.core as mx
+            import mlx_qwen3_asr
+            from mlx_qwen3_asr.load_models import _ModelHolder
+        except ImportError:
+            raise Fail("mlx-qwen3-asr not installed (uv run --with mlx-qwen3-asr …)", "deps", 4)
+        self.m = mlx_qwen3_asr
+        self.repo = self.model = args.model or "mlx-community/Qwen3-ASR-0.6B-8bit"
+        _ModelHolder.get(self.repo, dtype=mx.float16)  # load now, not inside the first chunk
+        self.context = args.prompt or ""
+        self.base_context = self.context
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.context = dictation_vocab.qwen_context(terms) or self.base_context
+        return bool(terms)
+
+    def decode(self, x):
+        r = self.m.transcribe(x, model=self.repo, context=self.context, language=self.args.language)
+        return [(0.0, len(x) / SR, (r.text or "").strip(), lang_code(getattr(r, "language", None)))]
 
 
 class FasterWhisper:
@@ -1147,9 +1201,10 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4) -> dict:
 
 
 BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper": MlxWhisper,
-            "faster-whisper": FasterWhisper, "openai": OpenAICompat, "dashscope": DashScope}
-LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "faster-whisper"}
-EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper"}  # backend → `uv run --with` package
+            "qwen3-asr-mlx": Qwen3Mlx, "faster-whisper": FasterWhisper, "openai": OpenAICompat, "dashscope": DashScope}
+LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "faster-whisper"}
+EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
+                  "qwen3-asr-mlx": "mlx-qwen3-asr"}  # backend → `uv run --with` package
 API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
 
 
@@ -1619,16 +1674,34 @@ class NoteEngine:
         except Exception:  # noqa: BLE001 — not an MLX backend
             pass
 
-    def note(self, wav: Path, language: str | None = None, model_id: str | None = None) -> dict:
+    def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
+             purpose: str | None = None) -> dict:
+        """vocab: None = no custom words; True = the file's; a list = these (strings or term dicts). The model is
+        biased toward them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords), then exact
+        sounds-likes are fixed (dictation_vocab.apply): `text` has the fixes, `asr_text` is what the model wrote."""
         t0 = time.perf_counter()
         language = None if language in (None, "", "auto") else language
+        if purpose == "dictation" and not model_id:
+            model_id = dictation_models()["selected"]
         self.load(language, model_id)
         x = read_wav(wav)
-        results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+        terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
+        biased = False
+        if hasattr(self.backend, "set_vocab"):
+            biased = self.backend.set_vocab(dictation_vocab.ranked(terms))
+        try:
+            results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+        finally:
+            if biased:
+                self.backend.set_vocab([])  # a voice note after this gets no dictation words
         text, lang = note_text(results)
+        out = {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
+               "model": self.model_id, "audio_seconds": round(len(x) / SR, 2)}
+        if vocab is not None:
+            fixed, applied = dictation_vocab.apply(text, terms)
+            out.update(text=fixed, asr_text=text, terms=applied, biased=biased)
         self.last = time.time()
-        return {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
-                "model": self.model_id, "audio_seconds": round(len(x) / SR, 2)}
+        return out
 
 
 SERVE_FILE = RUN_DIR / "asr-serve.json"
@@ -1657,14 +1730,17 @@ def cmd_note(a):
     wav = Path(a.wav).resolve()
     if not wav.exists():
         raise Fail(f"{wav} not found", "not_found")
+    vocab = True if a.vocab else None
+    purpose = "dictation" if a.dictation else None
     if not a.no_server:
-        r = _server_call({"cmd": "note", "wav": str(wav), "language": a.language, "model_id": a.model_id})
+        r = _server_call({"cmd": "note", "wav": str(wav), "language": a.language, "model_id": a.model_id,
+                          "vocab": vocab, "purpose": purpose})
         if r is not None:
             if not r.get("ok"):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
             return emit({**r, "server": True})
     throttle("note")
-    emit(NoteEngine().note(wav, a.language, a.model_id))
+    emit(NoteEngine().note(wav, a.language, a.model_id, vocab, purpose))
 
 
 def cmd_serve(a):
@@ -1684,7 +1760,10 @@ def cmd_serve(a):
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
     if a.preload:
-        eng.load()
+        mid = getattr(a, "model_id", None)
+        if not mid and getattr(a, "purpose", None) == "dictation":
+            mid = dictation_models()["selected"]
+        eng.load(None, mid)
     emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
     last = time.time()
     try:
@@ -1700,8 +1779,8 @@ def cmd_serve(a):
                 conn.settimeout(10)
                 try:
                     buf = b""
-                    while not buf.endswith(b"\n") and len(buf) < 65536:
-                        chunk = conn.recv(4096)
+                    while not buf.endswith(b"\n") and len(buf) < 1 << 20:      # a vocabulary can be long
+                        chunk = conn.recv(65536)
                         if not chunk:
                             break
                         buf += chunk
@@ -1712,7 +1791,14 @@ def cmd_serve(a):
                         resp = {"ok": True, "pid": os.getpid(), "model": eng.model_id, "loaded": eng.backend is not None}
                     elif req.get("cmd") == "note":
                         last = time.time()
-                        resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"))
+                        resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
+                                        req.get("purpose"))
+                    elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
+                        last = time.time()
+                        mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)
+                        eng.load(None, mid)
+                        eng.last = time.time()
+                        resp = {"ok": True, "model": eng.model_id}
                     else:
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
@@ -1774,6 +1860,38 @@ def auto_plan(apply: bool) -> dict:
 
 def cmd_auto(a):
     emit(auto_plan(a.apply))
+
+
+# --- dictation's recognition model (record.dictation.asr_model; docs/design/dictation.md §Recognition model)
+QWEN_MLX = "qwen3-asr-0.6b-mlx"
+DICTATION_MODELS = (QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2)   # the local ones dictation offers, best first
+
+
+def dictation_models(hw: dict | None = None) -> dict:
+    """configured (record.dictation.asr_model or None = automatic), recommended (by the dictation eval: Qwen3-ASR MLX
+    on Apple Silicon pro / standard, else the voice-note pick), selected (what runs: the configured one when it is
+    installed, else the recommended one when installed, else the voice-note model) and the rows for Settings."""
+    hw = hw or probe()
+    cfg = (global_config().get("record") or {}).get("dictation") or {}
+    configured = cfg.get("asr_model") if isinstance(cfg, dict) else None
+    note_pick = select("note")
+    rec = QWEN_MLX if hw_kind(hw) == "apple" and hw["tier"] in ("pro", "standard") and _fits(entry(QWEN_MLX), hw) \
+        else note_pick["id"]
+    selected = next((mid for mid in (configured, rec) if mid and entry(mid) and runs_here(entry(mid))
+                     and installed(entry(mid))), note_pick["id"])
+    rows = []
+    for mid in DICTATION_MODELS:
+        m = entry(mid)
+        if not m or not runs_here(m):
+            continue
+        rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
+                     "ram_mb": m.get("ram_mb"), "installed": installed(m), "vocab": m.get("vocab") or "none",
+                     "recommended": mid == rec, "fits": _fits(m, hw)})
+    return {"configured": configured, "recommended": rec, "selected": selected, "models": rows}
+
+
+def cmd_dictation_models(_a):
+    emit({"ok": True, **dictation_models()})
 
 
 def selected_models() -> dict:
@@ -2078,8 +2196,12 @@ def main():
     n.add_argument("--language", default="auto")
     n.add_argument("--model-id", dest="model_id", metavar="ID")
     n.add_argument("--no-server", action="store_true", help="always transcribe in this process")
+    n.add_argument("--dictation", action="store_true", help="dictation's model (record.dictation.asr_model)")
+    n.add_argument("--vocab", action="store_true", help="the custom words: bias the model, fix exact sounds-likes")
     sv = sub.add_parser("serve")
     sv.add_argument("--preload", action="store_true", help="load the voice-note model now (e.g. when recording starts)")
+    sv.add_argument("--model-id", dest="model_id", metavar="ID", help="preload this model instead")
+    sv.add_argument("--purpose", choices=["note", "dictation"], help="dictation: preload dictation's model")
     sv.add_argument("--idle", type=float, default=300, help="unload the model after this many idle seconds")
     sv.add_argument("--exit-after", type=float, default=1800, help="exit after this many seconds without a request")
     sub.add_parser("probe")
@@ -2096,6 +2218,7 @@ def main():
     s.add_argument("--use", help="also select it: all, or a comma list of batch,live,note")
     sub.add_parser("backends")
     sub.add_parser("models")
+    sub.add_parser("dictation-models")
     b = sub.add_parser("bench")
     b.add_argument("input", nargs="?", help="audio / video file (default: spoken samples made with `say`)")
     model_opts(b)
@@ -2112,7 +2235,8 @@ def main():
         a.model_id, a.model = a.model, None
     try:
         {"run": cmd_run, "note": cmd_note, "serve": cmd_serve, "probe": cmd_probe, "recommend": cmd_recommend,
-         "auto": cmd_auto, "setup": cmd_setup, "backends": cmd_backends, "models": cmd_models, "bench": cmd_bench}[a.cmd](a)
+         "auto": cmd_auto, "setup": cmd_setup, "backends": cmd_backends, "models": cmd_models, "bench": cmd_bench,
+         "dictation-models": cmd_dictation_models}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})

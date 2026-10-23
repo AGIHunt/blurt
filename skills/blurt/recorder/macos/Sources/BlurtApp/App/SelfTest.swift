@@ -51,6 +51,19 @@ func runSelfTest(_ args: [String]) -> Never {
           && after.map(\.id) == ["d-a"] && after.first?.item == "BA-1" && after.first?.polished == "Hello.", after.map(\.id))
     try? FileManager.default.removeItem(at: hist.url.deletingLastPathComponent())
 
+    // Dictation's listener: a tap made before Input Monitoring is made again once it is granted; Accessibility alone → monitor
+    check("dictation_listener", DictationListener(inputMonitoring: false, accessibility: false).plan() == [.createTap]
+          && DictationListener(inputMonitoring: true, accessibility: false, tap: true, tapMadeWithAccess: false).plan() == [.recreateTap]
+          && DictationListener(inputMonitoring: false, accessibility: true, tap: true).plan() == [.removeTap, .installMonitor]
+          && DictationListener(inputMonitoring: true, accessibility: true, tap: true, tapMadeWithAccess: true, monitor: true).plan() == [.removeMonitor])
+    // custom words: learning a fix, the second sighting accepts it
+    let vocab = DictationVocabulary(url: FileManager.default.temporaryDirectory.appendingPathComponent("blurt-selftest-\(getpid())/vocabulary.json"))
+    let fx = DictationLearn.fixes(typed: "open cloud code now", edited: "open Claude Code now")
+    check("dictation_vocab", fx.first?.fixed == "Claude Code" && vocab.learn(heard: "cloud code", fixed: "Claude Code") == .suggested("Claude Code")
+          && vocab.learn(heard: "cloud code", fixed: "Claude Code") == .learned("Claude Code") && vocab.active().first?.soundsLike == ["cloud code"],
+          fx.map { "\($0.heard)→\($0.fixed)" })
+    try? FileManager.default.removeItem(at: vocab.url.deletingLastPathComponent())
+
     // KeyCombo / Config
     let kc = KeyCombo.parse("⌥⇧R")
     check("keycombo", kc?.spec == "opt+shift+R" && KeyCombo.parse("ctrl+F5")?.label == "⌃F5" && KeyCombo.parse("shift+A") == nil
