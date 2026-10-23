@@ -55,6 +55,7 @@ final class DictationSettings: ObservableObject {
     @Published var enabled = Dictation.enabled
     @Published var key = Dictation.key
     @Published var mode = Dictation.mode
+    @Published var doubleTap = Dictation.doubleTapSend
     @Published var polishOn = Dictation.polishOn
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
@@ -202,6 +203,7 @@ final class DictationSettings: ObservableObject {
     // stored even when it is the default: a later default (≤ 0.8: right ⌥, tap) never moves a choice the user made
     func setKey(_ v: DictationTrigger.Key) { key = v; save("key", v.rawValue); refresh() }
     func setMode(_ v: DictationTrigger.Mode) { mode = v; save("mode", v.rawValue) }
+    func setDoubleTap(_ v: Bool) { doubleTap = v; save("double_tap_send", v ? nil : false) }
     func setFnCapture(_ v: Bool) { fnCapture = v; save("fn_capture", v ? nil : false); refresh() }
     func setPolish(_ on: Bool) { polishOn = on; save("polish", on ? nil : "off") }
     func setTimeout(_ s: Double) { timeout = s; save("polish_timeout_ms", Int(s * 1000) == 3000 ? nil : Int(s * 1000)) }
@@ -294,6 +296,14 @@ struct DictationPane: View {
                 }
                 .disabled(!m.enabled)
                 Hint(T("dictation.mode.\(m.mode.rawValue).detail", Dictation.keyInline(m.key)))
+                Toggle(isOn: Binding(get: { m.doubleTap }, set: { m.setDoubleTap($0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(T("dictation.settings.double_tap", Dictation.keyShort(m.key)))
+                        Text(T("dictation.settings.double_tap.detail")).font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .disabled(!m.enabled)
                 if m.key == .fn && m.enabled { fnRows }
                 Hint(T("dictation.settings.voice_note_hint", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice)))
                 Toggle(isOn: Binding(get: { m.builtInMic }, set: { m.setBuiltInMic($0) })) {

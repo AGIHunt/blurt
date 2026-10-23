@@ -3,7 +3,7 @@
 //   {"id","t","app","bundle","duration","raw","polished","text","model","fell_back","reason","insert","audio",
 //    "terms_applied" [custom words the dictation wrote], "context_used" (text around the cursor went to polish),
 //    "context" (that text — only with record.dictation.keep_audio, the debug setting),
-//    "asr_ms","polish_ms","load_ms","total_ms" (key-up → paste),"segments" (pieces streamed), "repaired" (spans polish
+//    "asr_ms","polish_ms","load_ms","total_ms" (key-up → paste),"segments" (pieces streamed), "fitted" (how it was fitted at the cursor), "repaired" (spans polish
 //    dropped that the guard put back), …}
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
@@ -43,16 +43,19 @@ public struct DictationEntry: Identifiable, Hashable {
     public var timing: [String: Int]?
     /// words polish dropped that the guard put back (nil: none, or an older entry)
     public var repaired: [String]?
+    /// how the text was fitted into the field at the cursor (DictationFit: "head" / "tail" — words that repeated the
+    /// field, "punct", "capital", "space"); nil: inserted as it came (or an older entry)
+    public var fitted: [String]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
                 asrModel: String? = nil, language: String? = nil, termsApplied: [String]? = nil, contextUsed: Bool? = nil,
-                context: String? = nil, timing: [String: Int]? = nil, repaired: [String]? = nil) {
+                context: String? = nil, timing: [String: Int]? = nil, repaired: [String]? = nil, fitted: [String]? = nil) {
         self.id = id; self.time = time; self.app = app; self.bundle = bundle; self.duration = duration; self.raw = raw
         self.polished = polished; self.text = text; self.model = model; self.fellBack = fellBack; self.reason = reason
         self.insert = insert; self.audio = audio; self.asrModel = asrModel; self.language = language
         self.termsApplied = termsApplied; self.contextUsed = contextUsed; self.context = context
-        self.timing = timing; self.repaired = repaired
+        self.timing = timing; self.repaired = repaired; self.fitted = fitted
     }
 
     public static let timingKeys = ["asr_ms", "polish_ms", "load_ms", "total_ms", "segments"]
@@ -80,6 +83,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let c = context { o["context"] = c }
         for (k, v) in timing ?? [:] where DictationEntry.timingKeys.contains(k) { o[k] = v }
         if let r = repaired, !r.isEmpty { o["repaired"] = r }
+        if let f = fitted, !f.isEmpty { o["fitted"] = f }
         return o
     }
 
@@ -107,6 +111,7 @@ public struct DictationEntry: Identifiable, Hashable {
         for k in DictationEntry.timingKeys { if let v = o[k] as? Int { t[k] = v } }
         timing = t.isEmpty ? nil : t
         repaired = o["repaired"] as? [String]
+        fitted = o["fitted"] as? [String]
     }
 }
 

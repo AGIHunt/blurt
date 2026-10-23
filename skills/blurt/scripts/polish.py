@@ -479,6 +479,7 @@ Do only this:
 - remove stutters and words said twice by accident;
 - when the speaker corrects themselves (不对, 我是说, 哦不是, 算了, no wait, I mean, sorry), keep only the corrected version;
 - add punctuation, and start a new paragraph when the speaker moves to a new point;
+- fix punctuation across what are just pauses in speech; don't end a sentence at a pause unless the sentence is complete (a full stop in the middle of a clause goes: 等我回到家以后。再慢慢整理 → 等我回到家以后再慢慢整理);
 - fix words the recognizer obviously misheard (wrong homophones).
 
 Apart from the fillers, stutters and the part a speaker took back, every word stays. Never remove a phrase that carries meaning, even when the sentence sounds clumsy with it: a condition (短的时候, if it fails), a contrast, an alternative (或者…, or), a name, a number.

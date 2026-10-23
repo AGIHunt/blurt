@@ -43,6 +43,19 @@ final class DictationSegmenterTests: XCTestCase {
         XCTAssertTrue(s.pieceHasSpeech)             // the last piece (the 3 s) is still open
     }
 
+    func testKnowsHowLongEachPauseWas() {
+        // a breath (0.7 s) and a sentence end (1.5 s): the seam rule keeps a full stop only after the long one
+        let (cuts, s) = run([quiet(0.3), speech(3.5), quiet(0.7), speech(3.5), quiet(1.5), speech(1)])
+        XCTAssertEqual(cuts.count, 2)
+        XCTAssertEqual(s.pauses.count, 2)
+        XCTAssertEqual(s.pauses[0] ?? 0, 0.7, accuracy: 0.1)
+        XCTAssertEqual(s.pauses[1] ?? 0, 1.5, accuracy: 0.1)
+        // still quiet after the cut: not known yet
+        let (_, open) = run([speech(3.5), quiet(0.7)])
+        XCTAssertEqual(open.pauses.count, 1)
+        XCTAssertNil(open.pauses[0])
+    }
+
     func testShortPausesAndShortPiecesDontCut() {
         // pauses of 0.3 s never cut; a 0.8 s pause after only 2 s of talk doesn't either (pieces ≥ 3 s)
         XCTAssertEqual(run([speech(2), quiet(0.3), speech(2), quiet(0.3), speech(2)]).0.count, 0)

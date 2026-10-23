@@ -255,6 +255,44 @@ class BiasedNote(unittest.TestCase):
         self.assertEqual(Prior.seen[1], "")
         self.assertIn("load_ms", r)
 
+    def test_a_piece_that_comes_back_empty_with_the_prior_is_tried_once_without(self):
+        """Qwen3-ASR sometimes says nothing for a short last piece after a whole sentence of context: the VAD heard
+        speech, so the piece is decoded once more without the prior (and not when there was no prior)."""
+        import test_asr_select as A
+        T = A.T
+
+        class Shy(A.FakeBackend):
+            prior = ""
+            calls = 0
+
+            def set_vocab(self, terms):
+                return bool(terms)
+
+            def set_prior(self, text):
+                Shy.prior = text
+
+            def transcribe(self, x):
+                Shy.calls += 1
+                return [(0.0, len(x) / A.SR, "" if Shy.prior else "and won't be back in time", "en")]
+
+        old = T.BACKENDS
+        T.BACKENDS = {**T.BACKENDS, "sensevoice": Shy}
+        oldvad = T.vad_segments
+        T.vad_segments = lambda x, max_speech=25: [(0.0, len(x) / A.SR)]
+        real = A.fake_installed("sensevoice-small")
+        try:
+            with tempfile.TemporaryDirectory() as d, A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                wav = A.write_wav(Path(d) / "p.wav", 1.5)
+                r = T.NoteEngine().note(wav, vocab=["Gemini"], prior="Most of the team is traveling on Wednesday.")
+                n = Shy.calls
+                plain = T.NoteEngine().note(wav, vocab=["Gemini"])
+        finally:
+            T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
+        self.assertEqual(r["text"], "and won't be back in time")
+        self.assertTrue(r["retried"])
+        self.assertEqual(n, 2)
+        self.assertNotIn("retried", plain)
+
     def test_dictation_models_rows(self):
         import test_asr_select as A
         T = A.T

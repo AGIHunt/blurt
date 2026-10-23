@@ -61,12 +61,14 @@ final class DictationHistoryTests: XCTestCase {
         var e = entry("d-t", "长的一段", Date().timeIntervalSince1970)
         e.timing = ["asr_ms": 180, "polish_ms": 240, "load_ms": 0, "total_ms": 450, "segments": 6, "asr_ms_all": 999]
         e.repaired = ["句子短的时候"]
+        e.fitted = ["head", "tail"]
         h.append(e)
         let line = try String(contentsOf: h.url, encoding: .utf8)
         XCTAssertTrue(line.contains("\"total_ms\":450") && line.contains("\"segments\":6") && line.contains("\"asr_ms\":180"))
         XCTAssertFalse(line.contains("asr_ms_all"))                    // only the documented keys
         XCTAssertEqual(h.load().first?.timing?["polish_ms"], 240)
         XCTAssertEqual(h.load().first?.repaired, ["句子短的时候"])
+        XCTAssertEqual(h.load().first?.fitted, ["head", "tail"])          // fitted at the cursor
         XCTAssertEqual(h.prune(days: 30), 0)                             // prune keeps them
         XCTAssertEqual(h.load().first?.timing?["load_ms"], 0)
     }

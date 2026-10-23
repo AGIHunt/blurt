@@ -1760,8 +1760,16 @@ class NoteEngine:
             biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or ""))
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior[-200:])
+        retried = False
         try:
             results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+            # Qwen3-ASR now and then answers nothing for a short piece that follows a whole sentence of context (a
+            # dictation's last words after a long pause: measured 2–5 of 6 takes of one synthetic clip, never when the
+            # same request was replayed). The VAD heard speech, so once more without the context: ~0.13 s, only then.
+            if prior and _speech >= 0.4 and not note_text(results)[0].strip() and hasattr(self.backend, "set_prior"):
+                self.backend.set_prior("")
+                results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+                retried = True
         finally:
             if biased:
                 self.backend.set_vocab([])  # a voice note after this gets no dictation words
@@ -1770,6 +1778,8 @@ class NoteEngine:
         text, lang = note_text(results)
         out = {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
                "model": self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": load_ms}
+        if retried:
+            out["retried"] = True
         if vocab is not None:
             fixed, applied = dictation_vocab.apply(text, terms)
             out.update(text=fixed, asr_text=text, terms=applied, biased=biased)

@@ -48,6 +48,21 @@ public enum DictationPastePolicy {
     }
 }
 
+/// Whether a double tap of the dictation key may press Return (`record.dictation.double_tap_send`): only into another
+/// app in front, never while secure input is on (a password field anywhere: Return would submit it), and only with
+/// Accessibility (a posted key wouldn't arrive otherwise). Test builds never post it at all (DictationInsert.testMode).
+public enum DictationSendPolicy {
+    public enum Decision: Equatable { case press, skip(reason: String) }
+
+    public static func decide(hasFrontApp: Bool, frontIsBlurt: Bool, secureInput: Bool, accessibility: Bool) -> Decision {
+        guard hasFrontApp else { return .skip(reason: "no_front_app") }
+        if frontIsBlurt { return .skip(reason: "blurt_in_front") }
+        if secureInput { return .skip(reason: "secure_input") }
+        guard accessibility else { return .skip(reason: "no_accessibility") }
+        return .press
+    }
+}
+
 /// Which microphone dictation opens (`record.dictation.builtin_mic`). AirPods and other Bluetooth headsets switch to
 /// their call profile (HFP) when their mic opens: ~1 s with no audio — the start of what was said is lost — and the
 /// music in them drops to call quality while dictating. The Mac's own mic is ready at once, at the price of being

@@ -189,3 +189,8 @@
 "dictation.fn.usage.ok" = "在 macOS 里 Fn 不会再做别的事。";
 "dictation.fn.usage.fix" = "去设置…";
 "dictation.settings.fn_clash" = "%@ 正在运行，也在用 Fn，两边都会响应。退出它，或者给其中一个换个键。";
+
+/* double tap = Return */
+"dictation.toast.sent" = "已发送 ↩︎";
+"dictation.settings.double_tap" = "双击%@ 发送（回车）";
+"dictation.settings.double_tap.detail" = "快速连按两下，就是在前台 App 里按回车。刚说完时连按两下：先把文字填进去，再发送出去，聊天时很顺手。";

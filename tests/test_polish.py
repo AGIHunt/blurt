@@ -240,6 +240,11 @@ class Registry(unittest.TestCase):
         self.assertEqual(m[0]["role"], "system")
         self.assertEqual(m[-1], {"role": "user", "content": "你好"})
 
+    def test_prompt_says_a_pause_is_not_a_sentence_end(self):
+        # a streamed dictation is polished in windows cut at pauses (docs/design/dictation.md §Punctuation at seams)
+        self.assertIn("fix punctuation across what are just pauses in speech; don't end a sentence at a pause unless "
+                      "the sentence is complete", polish.SYSTEM)
+
 
 class CLI(unittest.TestCase):
     def run_cli(self, *args, home: str, stdin: str | None = None) -> tuple[int, dict]:
