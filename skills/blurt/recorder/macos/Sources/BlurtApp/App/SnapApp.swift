@@ -229,6 +229,7 @@ extension App {
             }
             emit(["event": "ax", "elements": els])
         case "dictation": dictationCommand(arg)
+        case "perm": permCommand(arg)                  // the permission guide (Onboarding/PermissionTestHooks.swift)
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)
             emit(["event": "menuicon", "files": renderMenuIconPreviews(into: dir).map(\.path)])

@@ -5,12 +5,14 @@ import XCTest
 @testable import BlurtCore
 
 final class DictationListenerTests: XCTestCase {
-    func L(_ im: Bool, _ ax: Bool, tap: Bool = false, made: Bool = false, monitor: Bool = false) -> DictationListener {
-        DictationListener(inputMonitoring: im, accessibility: ax, tap: tap, tapMadeWithAccess: made, monitor: monitor)
+    func L(_ im: Bool, _ ax: Bool, tap: Bool = false, made: Bool = false, monitor: Bool = false, fn: Bool = false,
+           filter: Bool = false) -> DictationListener {
+        DictationListener(inputMonitoring: im, accessibility: ax, tap: tap, tapMadeWithAccess: made, monitor: monitor,
+                          wantsFilter: fn, tapIsFilter: filter)
     }
 
     /// Carries out a plan on the state the way DictationKeys does; `tapWorks` = what tapCreate answers.
-    func run(_ s: DictationListener, tapWorks: Bool = true) -> (DictationListener, [DictationListenerStep]) {
+    func run(_ s: DictationListener, tapWorks: Bool = true, filterWorks: Bool = true) -> (DictationListener, [DictationListenerStep]) {
         var s = s
         var steps = s.plan()
         var done: [DictationListenerStep] = []
@@ -21,9 +23,15 @@ final class DictationListenerTests: XCTestCase {
             switch step {
             case .createTap, .recreateTap:
                 s.tap = tapWorks
+                s.tapIsFilter = false
                 s.tapMadeWithAccess = tapWorks && s.inputMonitoring
                 failed = !tapWorks
-            case .removeTap: s.tap = false; s.tapMadeWithAccess = false
+            case .createFilterTap, .recreateFilterTap:
+                s.tap = filterWorks
+                s.tapIsFilter = filterWorks
+                s.tapMadeWithAccess = filterWorks && s.accessibility
+                if !filterWorks { s.wantsFilter = false; steps = s.plan() }   // what DictationKeys does: refused, the rest
+            case .removeTap: s.tap = false; s.tapMadeWithAccess = false; s.tapIsFilter = false
             case .installMonitor: s.monitor = true
             case .removeMonitor: s.monitor = false
             }
@@ -106,5 +114,61 @@ final class DictationListenerTests: XCTestCase {
         XCTAssertFalse(DictationAccess(enabled: true, tapInstalled: L(true, false, tap: true, made: true).kind.global).needsSetup)
         XCTAssertFalse(DictationAccess(enabled: true, tapInstalled: L(false, true, monitor: true).kind.global).needsSetup)
         XCTAssertEqual(DictationListenerKind.tapLocal.rawValue, "tap_local")
+    }
+
+    // MARK: the Fn filter (an active tap on Accessibility)
+
+    func testFnWithAccessibilityUsesTheFilter() {
+        // Fn, Accessibility only: the filter hears every app without Input Monitoring, and keeps Fn from macOS
+        let (s, steps) = run(L(false, true, fn: true))
+        XCTAssertEqual(steps, [.createFilterTap])
+        XCTAssertEqual(s.kind, .tap)
+        XCTAssertTrue(s.filtering)
+        XCTAssertFalse(s.shouldPoll)
+        XCTAssertEqual(s.plan(), [])
+    }
+
+    func testFilterReplacesTheMonitorAndTheListenOnlyTap() {
+        let (s, steps) = run(L(false, true, monitor: true, fn: true))
+        XCTAssertEqual(steps, [.removeMonitor, .createFilterTap])
+        XCTAssertFalse(s.monitor)
+        let (s2, steps2) = run(L(true, true, tap: true, made: true, fn: true))
+        XCTAssertEqual(steps2, [.recreateFilterTap])
+        XCTAssertTrue(s2.filtering)
+        // a Blurt-only tap made before anything was granted: Accessibility arrives, the filter takes over
+        var s3 = run(L(false, false, fn: true)).0
+        XCTAssertEqual(s3.kind, .tapLocal)
+        s3.accessibility = true
+        XCTAssertEqual(s3.plan(), [.recreateFilterTap])
+    }
+
+    func testFilterWaitsForAccessibility() {
+        // Fn without Accessibility: the usual listen-only plan (Input Monitoring), no filter
+        let (s, steps) = run(L(true, false, fn: true))
+        XCTAssertEqual(steps, [.createTap])
+        XCTAssertEqual(s.kind, .tap)
+        XCTAssertFalse(s.filtering)
+    }
+
+    func testFilterGoesWhenNotWanted() {
+        // another key picked: the filter goes and the listen-only tap comes back
+        let (s, steps) = run(L(true, true, tap: true, made: true, fn: false, filter: true))
+        XCTAssertEqual(steps, [.removeTap, .createTap])
+        XCTAssertFalse(s.filtering)
+        XCTAssertEqual(s.kind, .tap)
+        // Accessibility revoked under the filter: it isn't global any more, and goes; nothing else is granted
+        let revoked = L(false, false, tap: true, made: true, fn: true, filter: true)
+        XCTAssertEqual(revoked.kind, .tapLocal)
+        XCTAssertEqual(revoked.plan(), [.removeTap, .createTap])
+    }
+
+    func testFilterRefusedFallsBack() {
+        let (s, steps) = run(L(false, true, fn: true), filterWorks: false)
+        XCTAssertEqual(steps, [.createFilterTap, .installMonitor])
+        XCTAssertEqual(s.kind, .monitor)
+        let (s2, steps2) = run(L(true, true, fn: true), filterWorks: false)
+        XCTAssertEqual(steps2, [.createFilterTap, .createTap])
+        XCTAssertEqual(s2.kind, .tap)
+        XCTAssertFalse(s2.filtering)
     }
 }

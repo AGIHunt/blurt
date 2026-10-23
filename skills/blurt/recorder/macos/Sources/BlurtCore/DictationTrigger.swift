@@ -1,20 +1,22 @@
-// Dictation's trigger (docs/design/dictation.md): a modifier key alone — right ⌥ (default), Fn or either ⌥ — which Carbon
-// hotkeys can't register, read from a listen-only CGEventTap (flagsChanged, keyDown, mouse down). This is the pure
-// part: events with timestamps in, start / stop / cancel out. No AppKit, no timers — the caller asks for a tick at
-// `deadline` (hold mode's 250 ms) — so every sequence is unit-testable (Tests/BlurtCoreTests/DictationTriggerTests).
+// Dictation's trigger (docs/design/dictation.md): a modifier key alone — Fn (default), right ⌥ or either ⌥ — which
+// Carbon hotkeys can't register, read from an event tap (flagsChanged, keyDown, mouse down). This is the pure part:
+// events with timestamps in, start / stop / cancel out. No AppKit, no timers — the caller asks for a tick at
+// `deadline` (hold's 250 ms, auto's 300 ms) — so every sequence is unit-testable (Tests/BlurtCoreTests/DictationTriggerTests).
 //
-//   tap mode (default)  a clean tap starts, the next clean tap stops. Clean = the key went down and up within
+//   auto mode (default) a short tap starts hands-free and the next clean press stops it; held alone past `autoHold`
+//                       (300 ms) it is push-to-talk instead: it starts then, and letting go stops. Like Typeless.
+//   tap mode            a clean tap starts, the next clean tap stops. Clean = the key went down and up within
 //                       `tapMax` (400 ms) with no other key, modifier or click in between, and no other modifier
-//                       held when it went down — so right ⌥ as a modifier (⌥-letter, ⌥⇧V) never triggers.
+//                       held when it went down — so the key as a modifier (⌥-letter, ⌥⇧V, Fn-←) never triggers.
 //   hold mode           held alone for `holdMin` (250 ms) starts; letting go stops; another key or a click joining
 //                       in cancels (the user is typing a shortcut, not talking).
-//   both                Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models early).
+//   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models early).
 import Foundation
 
 public struct DictationTrigger {
     public enum Key: String, CaseIterable {
-        /// right ⌥ (the default), Fn, or either ⌥ — left or right, whichever is tapped alone
-        case rightOption = "right_option", fn, eitherOption = "either_option"
+        /// Fn / 🌐 (the default), right ⌥, or either ⌥ — left or right, whichever is tapped alone
+        case fn, rightOption = "right_option", eitherOption = "either_option"
         /// kVK_RightOption 61, kVK_Option (left) 58, kVK_Function 63
         public var keyCodes: Set<Int> {
             switch self {
@@ -37,7 +39,8 @@ public struct DictationTrigger {
             }
         }
     }
-    public enum Mode: String, CaseIterable { case tap, hold }
+    /// auto (the default): a tap is hands-free, a hold is push-to-talk; tap: tap / tap; hold: push-to-talk only
+    public enum Mode: String, CaseIterable { case auto, tap, hold }
     public enum Output: Equatable { case arm, start, stop, cancel }
     public enum Event: Equatable {
         /// a modifier changed (CGEvent flagsChanged): its keyCode and the flags after the change
@@ -54,33 +57,48 @@ public struct DictationTrigger {
     public var mode: Mode
     public var tapMax = 0.4
     public var holdMin = 0.25
+    /// auto mode: shorter than this is a tap (hands-free); held alone this long is push-to-talk
+    public var autoHold = 0.3
 
     private enum State: Equatable {
         case idle
         case down(at: Double, clean: Bool, code: Int)
         case holding
-        case waitRelease          // hold mode, cancelled while still held: ignore until the key comes up
+        case waitRelease          // push-to-talk cancelled while still held: ignore until the key comes up
     }
     private var state: State = .idle
     /// the key code that went down last (either-⌥: which side)
     private var holdingCode = 0
     /// Dictating, as far as the trigger knows (the app calls `reset` when it ends one itself).
     public private(set) var active = false
+    /// The dictation in progress was started by holding the key (hold mode, or auto held past `autoHold`): it ends
+    /// when the key comes up, so it has no "nothing said" timeout.
+    public private(set) var pushToTalk = false
 
-    public init(key: Key = .rightOption, mode: Mode = .tap) {
+    public init(key: Key = .fn, mode: Mode = .auto) {
         self.key = key
         self.mode = mode
     }
 
-    /// When hold mode wants a `.tick` (the key has been down alone this long), nil otherwise.
+    /// How long the key must be held alone to start push-to-talk (nil: tap mode has no hold).
+    private var holdThreshold: Double? {
+        switch mode {
+        case .hold: return holdMin
+        case .auto: return autoHold
+        case .tap: return nil
+        }
+    }
+
+    /// When hold / auto mode wants a `.tick` (the key has been down alone this long), nil otherwise.
     public var deadline: Double? {
-        if mode == .hold, case let .down(at, clean, _) = state, clean, !active { return at + holdMin }
+        if let h = holdThreshold, case let .down(at, clean, _) = state, clean, !active { return at + h }
         return nil
     }
 
     /// The dictation ended or was started some other way (a menu, the island, a time limit).
     public mutating func reset(active a: Bool) {
         active = a
+        pushToTalk = false
         if !a { settle() }
     }
 
@@ -102,6 +120,7 @@ public struct DictationTrigger {
         case let .keyDown(code, t):
             if code == DictationTrigger.escape && active {
                 active = false
+                pushToTalk = false
                 settle()
                 return [.cancel]
             }
@@ -129,8 +148,20 @@ public struct DictationTrigger {
             guard clean, t - at <= tapMax else { return [] }
             active.toggle()
             return [active ? .start : .stop]
-        case (.hold, .holding):
+        case let (.auto, .down(at, clean, _)):
+            guard clean else { return [] }
+            if active {                     // hands-free: the next clean press stops it, however long
+                active = false
+                pushToTalk = false
+                return [.stop]
+            }
+            guard t - at < autoHold else { return [] }      // held past the threshold with no tick: never started
+            active = true
+            pushToTalk = false
+            return [.start]
+        case (.hold, .holding), (.auto, .holding):
             active = false
+            pushToTalk = false
             return [.stop]
         default:            // hold mode let go before 250 ms (nothing said), a dirty tap, a release we wait out
             return []
@@ -141,12 +172,13 @@ public struct DictationTrigger {
     private mutating func otherInput(_ t: Double) -> [Output] {
         switch state {
         case let .down(at, _, code):
-            if mode == .hold, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined
+            if holdThreshold != nil, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined
             state = .down(at: at, clean: false, code: code)
             return []
         case .holding:
             state = .waitRelease
             active = false
+            pushToTalk = false
             return [.cancel]
         default:
             return []
@@ -154,15 +186,17 @@ public struct DictationTrigger {
     }
 
     private mutating func tick(_ t: Double) -> [Output] {
-        guard mode == .hold, case let .down(at, clean, _) = state, clean, !active else { return [] }
+        guard holdThreshold != nil, case let .down(at, clean, _) = state, clean, !active else { return [] }
         return holdIfDue(at: at, t) ?? []
     }
 
-    /// Hold mode: the key has been down alone for holdMin by `t` → start (the other input, if any, came later).
+    /// Hold / auto mode: the key has been down alone for the threshold by `t` → push-to-talk starts (the other
+    /// input, if any, came later).
     private mutating func holdIfDue(at: Double, _ t: Double) -> [Output]? {
-        guard case let .down(_, clean, _) = state, clean, !active, t - at >= holdMin else { return nil }
+        guard let h = holdThreshold, case let .down(_, clean, _) = state, clean, !active, t - at >= h else { return nil }
         state = .holding
         active = true
+        pushToTalk = true
         return [.start]
     }
 }

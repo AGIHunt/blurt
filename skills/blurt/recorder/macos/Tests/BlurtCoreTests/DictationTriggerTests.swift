@@ -46,7 +46,7 @@ final class DictationTriggerTests: XCTestCase {
     }
 
     func testResetFromOutside() {
-        var t = DictationTrigger()
+        var t = DictationTrigger(key: .rightOption, mode: .tap)
         XCTAssertEqual(t.run("ropt-down@0 ropt-up@100"), [.arm, .start])
         t.reset(active: false)                       // the app ended it (time limit, the island's button)
         XCTAssertEqual(t.run("ropt-down@2000 ropt-up@2100"), [.arm, .start])
@@ -59,12 +59,81 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(run("ropt-down@0 fn-down@10 fn-up@80 ropt-up@90", key: .fn), [])        // ⌥ held: not alone
     }
 
-    // MARK: either ⌥ (an extra choice; right ⌥ stays the default)
+    // MARK: the default: Fn, auto
 
-    func testDefaultKeyIsRightOption() {
-        XCTAssertEqual(DictationTrigger().key, .rightOption)
+    func testDefaultIsFnAuto() {
+        XCTAssertEqual(DictationTrigger().key, .fn)
+        XCTAssertEqual(DictationTrigger().mode, .auto)
+        XCTAssertEqual(DictationTrigger.Key.allCases.first, .fn)              // Fn first in every picker
+        XCTAssertEqual(DictationTrigger.Mode.allCases.first, .auto)
         XCTAssertEqual(DictationTrigger.Key(rawValue: "either_option"), .eitherOption)
+        XCTAssertEqual(DictationTrigger.Key(rawValue: "right_option"), .rightOption)   // an explicit choice stays
     }
+
+    // MARK: auto mode (tap = hands-free, hold = push-to-talk)
+
+    private func auto(_ script: String, key: DictationTrigger.Key = .fn) -> [DictationTrigger.Output] {
+        run(script, key: key, mode: .auto)
+    }
+
+    func testAutoTapIsHandsFree() {
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0"), [.arm])
+        XCTAssertEqual(t.deadline, 0.3)                                     // asks for a tick at the hold threshold
+        XCTAssertEqual(t.run("fn-up@120"), [.start])
+        XCTAssertTrue(t.active)
+        XCTAssertFalse(t.pushToTalk)
+        XCTAssertNil(t.deadline)                                            // no hold while hands-free
+        XCTAssertEqual(t.run("key:4@500 click@700"), [])                    // typing / clicking doesn't stop it
+        XCTAssertEqual(t.run("fn-down@3000 fn-up@3100"), [.stop])
+        XCTAssertFalse(t.active)
+    }
+
+    func testAutoHoldIsPushToTalk() {
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0 tick@300"), [.arm, .start])
+        XCTAssertTrue(t.pushToTalk)
+        XCTAssertEqual(t.run("fn-up@2500"), [.stop])
+        XCTAssertFalse(t.pushToTalk)
+        // the next short tap is hands-free again
+        XCTAssertEqual(t.run("fn-down@4000 fn-up@4100"), [.arm, .start])
+        XCTAssertFalse(t.pushToTalk)
+    }
+
+    func testAutoBoundary() {
+        XCTAssertEqual(auto("fn-down@0 tick@299 fn-up@299"), [.arm, .start])          // under 300 ms: a tap
+        XCTAssertEqual(auto("fn-down@0 tick@300 fn-up@310"), [.arm, .start, .stop])   // at 300 ms: push-to-talk
+        XCTAssertEqual(auto("fn-down@0 fn-up@450"), [.arm])                           // long, no tick delivered: nothing
+    }
+
+    func testAutoStopsHandsFreeWithALongPressToo() {
+        XCTAssertEqual(auto("fn-down@0 fn-up@100 fn-down@2000 fn-up@2900"), [.arm, .start, .stop])
+    }
+
+    func testAutoIgnoresShortcutsAndCancels() {
+        XCTAssertEqual(auto("fn-down@0 key:123@50 fn-up@100"), [.arm])                           // Fn-← (Home)
+        XCTAssertEqual(auto("fn-down@0 tick@300 key:123@500 fn-up@600"), [.arm, .start, .cancel])  // joined while held
+        XCTAssertEqual(auto("cmd-down@0 fn-down@10 fn-up@60 cmd-up@90"), [])                       // ⌘ held first
+        XCTAssertEqual(auto("fn-down@0 fn-up@100 esc@900"), [.arm, .start, .cancel])
+        XCTAssertEqual(auto("fn-down@0 tick@300 esc@600 fn-up@900"), [.arm, .start, .cancel])      // release waited out
+        // a stop press that turned into a shortcut doesn't stop
+        XCTAssertEqual(auto("fn-down@0 fn-up@100 fn-down@1000 key:123@1050 fn-up@1100"), [.arm, .start])
+    }
+
+    func testAutoWithRightOption() {
+        XCTAssertEqual(auto("ropt-down@0 ropt-up@100", key: .rightOption), [.arm, .start])
+        XCTAssertEqual(auto("ropt-down@0 key:0@60 ropt-up@120", key: .rightOption), [.arm])          // ⌥A
+    }
+
+    func testResetEndsPushToTalk() {
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0 tick@300"), [.arm, .start])
+        t.reset(active: false)                       // the app ended it (time limit)
+        XCTAssertFalse(t.pushToTalk)
+        XCTAssertEqual(t.run("fn-up@900"), [])        // its release is waited out
+    }
+
+    // MARK: either ⌥
 
     func testEitherOptionTapsWithLeftOrRight() {
         XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .eitherOption), [.arm, .start])
@@ -103,7 +172,7 @@ final class DictationTriggerTests: XCTestCase {
     // MARK: hold mode
 
     func testHoldStartsAfterThresholdAndReleaseStops() {
-        var t = DictationTrigger(mode: .hold)
+        var t = DictationTrigger(key: .rightOption, mode: .hold)
         XCTAssertEqual(t.run("ropt-down@0"), [.arm])
         XCTAssertEqual(t.deadline, 0.25)
         XCTAssertEqual(t.run("tick@250"), [.start])

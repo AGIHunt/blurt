@@ -91,6 +91,9 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                 activateApp()
                 if window?.isVisible != true { window?.center() }
                 window?.makeKeyAndOrderFront(nil)
+                // in front even when macOS doesn't hand Blurt the focus (the permission guide brings it back from
+                // System Settings without a click on Blurt)
+                window?.orderFrontRegardless()
                 emit(["event": "settings", "pane": want.rawValue])
                 // dictation can't hear its key: say so (≈ daily) — not over its own pane, which shows it
                 if want != .dictation { Dictation.shared.nudge("settings") }

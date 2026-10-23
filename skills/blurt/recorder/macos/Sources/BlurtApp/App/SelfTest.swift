@@ -25,10 +25,15 @@ func runSelfTest(_ args: [String]) -> Never {
     if let h = ProcessInfo.processInfo.environment["CODEX_HOME"] { check("env_codex_home_passed", env["CODEX_HOME"] == h) }
 
     // Dictation: the trigger (right ⌥ alone, never as a modifier) and the history file (Tests/BlurtCoreTests has more)
-    func trig(_ s: String, _ mode: DictationTrigger.Mode = .tap) -> [DictationTrigger.Output] {
-        var t = DictationTrigger(mode: mode)
+    func trig(_ s: String, _ mode: DictationTrigger.Mode = .tap, key: DictationTrigger.Key = .rightOption) -> [DictationTrigger.Output] {
+        var t = DictationTrigger(key: key, mode: mode)
         return t.run(s)
     }
+    // the default: Fn, auto (a tap is hands-free, holding is push-to-talk)
+    check("dictation_trigger_auto", DictationTrigger().key == .fn && DictationTrigger().mode == .auto
+          && trig("fn-down@0 fn-up@120 fn-down@3000 fn-up@3100", .auto, key: .fn) == [.arm, .start, .stop]
+          && trig("fn-down@0 tick@300 fn-up@2000", .auto, key: .fn) == [.arm, .start, .stop]
+          && trig("fn-down@0 key:123@50 fn-up@100", .auto, key: .fn) == [.arm])
     check("dictation_trigger", trig("ropt-down@0 ropt-up@120 ropt-down@2000 ropt-up@2100") == [.arm, .start, .stop]
           && trig("ropt-down@0 key:9@50 ropt-up@100") == [.arm] && trig("shift-down@0 ropt-down@10 ropt-up@80") == []
           && trig("ropt-down@0 ropt-up@500") == [.arm] && trig("ropt-down@0 ropt-up@100 esc@600") == [.arm, .start, .cancel]
@@ -55,7 +60,16 @@ func runSelfTest(_ args: [String]) -> Never {
     check("dictation_listener", DictationListener(inputMonitoring: false, accessibility: false).plan() == [.createTap]
           && DictationListener(inputMonitoring: true, accessibility: false, tap: true, tapMadeWithAccess: false).plan() == [.recreateTap]
           && DictationListener(inputMonitoring: false, accessibility: true, tap: true).plan() == [.removeTap, .installMonitor]
-          && DictationListener(inputMonitoring: true, accessibility: true, tap: true, tapMadeWithAccess: true, monitor: true).plan() == [.removeMonitor])
+          && DictationListener(inputMonitoring: true, accessibility: true, tap: true, tapMadeWithAccess: true, monitor: true).plan() == [.removeMonitor]
+          // Fn with Accessibility: the filter tap (no Input Monitoring needed), replacing a listen-only one
+          && DictationListener(inputMonitoring: false, accessibility: true, wantsFilter: true).plan() == [.createFilterTap]
+          && DictationListener(inputMonitoring: true, accessibility: true, tap: true, tapMadeWithAccess: true, wantsFilter: true).plan() == [.recreateFilterTap])
+    // the permission guide: the dictation walk's order, the 🌐 setting, docking next to System Settings
+    let dock = HelperDock.place(panel: CGSize(width: 330, height: 200), target: CGRect(x: 400, y: 200, width: 700, height: 600),
+                                screen: CGRect(x: 0, y: 0, width: 1800, height: 1100))
+    check("permission_flow", PermissionPlan.steps(.dictation, satisfied: [.inputMonitoring]) == [.accessibility, .microphone, .fnKey]
+          && FnUsage.from(NSNumber(value: 3)) == .startDictation && FnUsage.clashes(nil) && !FnUsage.clashes(.doNothing)
+          && dock.side == .right && dock.origin.x == 1112)
     // custom words: learning a fix, the second sighting accepts it
     let vocab = DictationVocabulary(url: FileManager.default.temporaryDirectory.appendingPathComponent("blurt-selftest-\(getpid())/vocabulary.json"))
     let fx = DictationLearn.fixes(typed: "open cloud code now", edited: "open Claude Code now")

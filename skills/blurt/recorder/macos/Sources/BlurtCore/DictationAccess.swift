@@ -4,8 +4,8 @@
 //
 //   the truth          the event tap. Dictation works when the tap is installed, not when a permission looks granted:
 //                      a listen-only keyboard tap needs Input Monitoring, and Accessibility alone doesn't make it work
-//   ask macOS          CGRequestListenEventAccess() — the system prompt, and Blurt listed under Input Monitoring —
-//                      once per app version at launch, never on top of the setup assistant (it has its own row)
+//   ask macOS          never at launch: the request APIs (the system prompt, and Blurt listed in System Settings)
+//                      run when the user clicks Allow / Set Up — the permission guide (PermissionGuide.swift)
 //   the island's word  "allow Input Monitoring" again when the user reaches for it (the voice-note key, Settings) or
 //                      at launch, at most about once a day; the menu-bar menu's top row stays until the tap works
 import Foundation
@@ -24,11 +24,8 @@ public struct DictationAccess: Equatable {
     /// The menu row "Turn On Dictation…", Settings → Dictation's warning: on and still deaf.
     public var needsSetup: Bool { enabled && !tapInstalled }
 
-    /// At launch: ask macOS for Input Monitoring (the system prompt) — once per app version, not while the setup
-    /// assistant shows. `askedVersion` = the version that asked last (config), nil = never.
-    public func askAtLaunch(assistantShowing: Bool, askedVersion: String?, version: String) -> Bool {
-        needsSetup && !assistantShowing && askedVersion != version
-    }
+    /// macOS is never asked at launch (≤ 0.8 asked once per version); the user's click in the guide asks.
+    public static let asksAtLaunch = false
 
     /// The island's toast: not more often than `every` (default 20 h — about once a day, whatever time the Mac wakes).
     public func nudge(lastNudge: Date?, now: Date, every: TimeInterval = DictationAccess.nudgeInterval) -> Bool {

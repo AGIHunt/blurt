@@ -6,7 +6,7 @@ the voice note: `⌥⇧V` still files what you say into Blurt, and the two never
 ## Flow
 
 ```
-right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav) ──▶ ASR (warm transcribe.py serve, dictation model,
+Fn tap/hold ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav) ──▶ ASR (warm transcribe.py serve, dictation model,
   (DictationListener: tap   │ arm: warm ASR + polish servers           │   biased toward the custom words; exact
    or AX monitor)           │ start: read the text around the cursor   │   sounds-likes fixed: dictation_vocab.py)
                             ▼                                         ▼
@@ -22,7 +22,9 @@ right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav
 |---|---|
 | Trigger state machine (pure, unit-tested) | `BlurtCore/DictationTrigger.swift`, `Tests/BlurtCoreTests/DictationTriggerTests.swift`, selftest `dictation_trigger` |
 | Which listener runs (pure, unit-tested) | `BlurtCore/DictationListener.swift`, `DictationListenerTests`, selftest `dictation_listener` |
-| Event tap / monitor, permissions | `Capture/Dictation/DictationKeys.swift` |
+| Event tap / Fn filter / monitor | `Capture/Dictation/DictationKeys.swift` |
+| Permission guide: walk order, 🌐 setting, docking (pure, unit-tested) | `BlurtCore/PermissionFlow.swift`, `PermissionFlowTests`, selftest `permission_flow` |
+| Permission guide: flow, helper panel, macOS reads / requests, test hooks | `Onboarding/PermissionGuide.swift`, `Onboarding/HelperPanel.swift`, `Onboarding/SystemAccess.swift`, `Onboarding/PermissionTestHooks.swift` |
 | Custom words: store, seed, learning (pure, unit-tested) | `BlurtCore/DictationVocabulary.swift`, `BlurtCore/DictationLearn.swift`, `DictationVocabularyTests`, selftest `dictation_vocab` |
 | Context, the after-typing watch | `Capture/Dictation/DictationContext.swift` |
 | Custom words in ASR and polish | `scripts/dictation_vocab.py`, `transcribe.py` (`note --dictation --vocab`, `dictation-models`), `polish.py`, `tests/test_dictation_vocab.py` |
@@ -35,24 +37,47 @@ right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav
 
 ## Trigger
 
-- Right ⌥ (keyCode 61, device bit `NX_DEVICERALTKEYMASK` 0x40) by default, or Fn (keyCode 63, `.maskSecondaryFn`), or
-  either ⌥ (keyCodes 58 / 61, `NX_DEVICELALTKEYMASK` 0x20 / 0x40: whichever side is tapped alone; both sides at once
-  is not a tap).
-  Modifier-only keys can't be Carbon hotkeys, so a **listen-only** `CGEventTap` (`flagsChanged`, `keyDown`, mouse down)
-  feeds the state machine. It never blocks or changes an event.
-- **Tap** (default): down and up within 400 ms, no other key, modifier or click in between, and no other modifier held
-  when it went down. One tap starts, the next stops. So ⌥-letter and ⌥⇧V never trigger.
+- **Fn** (keyCode 63, `.maskSecondaryFn`) by default, like Typeless; or right ⌥ (keyCode 61, device bit
+  `NX_DEVICERALTKEYMASK` 0x40), or either ⌥ (keyCodes 58 / 61, `NX_DEVICELALTKEYMASK` 0x20 / 0x40: whichever side is
+  tapped alone; both sides at once is not a tap). Pickers list Fn first.
+  - Migration: `record.dictation.key` unset = Fn. ≤ 0.8 stored nothing for right ⌥ (the old default), so a user who
+    never changed the key gets Fn; any key picked from now on is stored explicitly, the default included.
+  Modifier-only keys can't be Carbon hotkeys, so an event tap (`flagsChanged`, `keyDown`, mouse down) feeds the state
+  machine: the Fn filter (below) when the key is Fn, else a **listen-only** tap that never blocks or changes an event.
+- **Auto** (default, `mode` unset): a clean press released within 300 ms (`autoHold`) starts hands-free and the next
+  clean press stops it (however long); held alone for 300 ms (the caller ticks at `deadline`) is push-to-talk and
+  release stops it. `pushToTalk` tells the app which (push-to-talk has no "nothing said" timeout). Another key or a
+  click while held cancels push-to-talk; a stop press that turned into a shortcut doesn't stop.
+- **Tap**: down and up within 400 ms, no other key, modifier or click in between, and no other modifier held
+  when it went down. One tap starts, the next stops. So ⌥-letter, ⌥⇧V and Fn-← never trigger.
 - **Hold**: held alone for 250 ms starts (the caller ticks at `deadline`), release stops, and another key or a click
   joining in cancels.
 - `Esc` cancels. `arm` on a clean key-down warms the models while the user starts talking.
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
-- Permissions: Input Monitoring for the tap, Accessibility for the paste and the context.
+- Permissions: Accessibility for the paste, the context and the Fn filter; Input Monitoring for the listen-only tap.
+- **The Fn filter.** macOS uses Fn itself (System Settings → Keyboard → "Press 🌐 key to", `com.apple.HIToolbox
+  AppleFnUsageType`: 0 Do Nothing, 1 Change Input Source, 2 Show Emoji & Symbols, 3 Start Dictation — on macOS 26.5
+  value 3 shows as "Start Dictation (Press 🌐 Twice)", checked against System Settings on this Mac; 0–2 follow the
+  same order but weren't switched to, since tests never write that setting). When the key is Fn,
+  `record.dictation.fn_capture` is on (default) and Accessibility is granted, the listener is an **active** tap
+  (`.cghidEventTap`, `.headInsertEventTap`, `.defaultTap`) on a thread of its own: it drops `flagsChanged` of keyCode
+  63 and passes every other event untouched at once (the callback copies the key code and flags and hands them to the
+  main thread). macOS gives an Accessibility-trusted app's filter every app's events, so Fn is heard without Input
+  Monitoring. Typeless 2.8.1 does the same: its `libKeyboardHelper.dylib` creates a HID-level head-insert default tap
+  (keyDown / keyUp / flagsChanged / other mouse buttons) and returns NULL for the events its shortcut matches, and it
+  isn't in the Input Monitoring list here. Whether dropping the press stops macOS's 🌐 action on macOS 26 can only be
+  checked with a real Fn press (below), so Settings and the guide still offer the "Do Nothing" step when the setting
+  isn't 0. If macOS refuses the filter, `filterRefused` sends the plan to the listen-only tap / monitor until
+  Accessibility or the key changes. Typeless (`now.typeless.desktop`) and Wispr Flow (`com.electron.wispr-flow`)
+  running are named in Settings → Dictation and the assistant: both apps would react to Fn.
 - **Which listener** (BlurtCore `DictationListener`, `DictationListenerTests`). The bug it fixes: a listen-only tap
   made at launch **before** Input Monitoring was granted is accepted by macOS, but it only gets the events aimed at
   Blurt itself, and macOS never upgrades it. `start()` returned early because the tap existed, and the status said
   "installed", so right ⌥ worked only while Blurt was in front.
   - `CGPreflightListenEventAccess()` is the truth. A tap counts as global only when it was made with Input
-    Monitoring and the grant is still there (`kind`: `tap` | `tap_local` | `monitor` | `none`).
+    Monitoring (Accessibility for the Fn filter) and the grant is still there (`kind`: `tap` | `tap_local` | `monitor`
+    | `none`). Steps: `create_tap`, `recreate_tap`, `create_filter_tap`, `recreate_filter_tap`, `remove_tap`,
+    `install_monitor`, `remove_monitor`.
   - While the listener isn't a global tap, it is re-planned every 3 s and whenever Blurt is activated
     (`NSApplication.didBecomeActive`). When the grant arrives, the tap is torn down and made again.
   - `tapDisabledByTimeout` / `tapDisabledByUserInput`: the tap is enabled again; if `CGEvent.tapIsEnabled` still
@@ -68,23 +93,69 @@ right ⌥ tap ──▶ DictationTrigger ──▶ NoteVoice (mic → 16 kHz wav
     and *Last heard in another app: 13:46:57* — taken from the listener itself whenever the dictation key changes
     while another app is in front. Only the user can make that line appear.
 - Until the key is heard globally (BlurtCore `DictationAccess` decides; `DictationAccessTests`):
-  - at launch, `CGRequestListenEventAccess()` once per app version (`app.dictation_asked_version`), never while the
-    setup assistant shows (it has its own row). This shows macOS's prompt and lists Blurt under Input Monitoring;
+  - macOS is never asked at launch (≤ 0.8 called `CGRequestListenEventAccess()` once per version). The request APIs
+    run when the user clicks Allow / Set Up (§Permissions);
   - the menu-bar menu's first row is "Turn On Dictation…" with a warning sign, naming the key in its subtitle. It
-    (and the toast's button, and Settings → Dictation's "Turn On…") opens Settings → Dictation and the Input
-    Monitoring pane;
-  - the island says "To dictate with right Option, allow Input Monitoring" for 8 s at launch, when the voice-note key is
+    (and the toast's button, Settings → Dictation's "Turn On…" and the Dictation page) opens Settings → Dictation and
+    starts the permission guide's dictation walk;
+  - the island says "To dictate with Fn, Blurt needs a permission" for 8 s at launch, when the voice-note key is
     pressed and when Settings opens, at most about once a day (`app.dictation_nudged_at`, 20 h). The ≤ 0.7 once-ever
     flag `app.dictation_prompted` is removed at launch;
-  - the listener is re-planned every 3 s; when the key becomes heard the island says "Dictation is on: tap right
-    Option to talk".
+  - the listener is re-planned every 3 s (and at once from the guide's poll); when the key becomes heard the island
+    says "Dictation is on: tap Fn to talk, or hold it".
 - Test builds never install a tap or a monitor, or call the request API. They simulate macOS:
   - `BLURT_TEST_DICTATION_TAP=ok|failed` (hook `dictation tap ok|failed`) is what `tapCreate` "answers";
+    `BLURT_TEST_FILTER_TAP` / `dictation filter ok|failed` the Fn filter's, and `dictation filter-event CODE` reports
+    whether the filter would drop that key change;
   - `BLURT_TEST_INPUT_MONITORING` / `BLURT_TEST_ACCESSIBILITY` (`dictation im|ax on|off`) are the permissions;
   - `dictation tap disable [stuck]` is the system disabling the tap, `dictation activate` Blurt being activated,
     `dictation heard CODE other|self` a key change as the listener reports it;
   - `dictation nudge REASON` / `dictation setup` drive the cues, and `BLURT_TEST_DICTATION_NUDGE_SECONDS` shortens the
     once-a-day rule.
+
+## Permissions (the guide)
+
+Granting a permission used to mean System Settings, "+", and hunting for the app. The guide does what CleanShot,
+Raycast or Loom do (`BlurtCore/PermissionFlow.swift` + `Onboarding/PermissionGuide.swift`, `HelperPanel.swift`,
+`SystemAccess.swift`):
+
+- **One walk, the missing ones in order.** `all` (the setup assistant, Settings → Privacy): Screen Recording,
+  Microphone, Accessibility, Input Monitoring, the 🌐 key. `dictation` (Settings → Dictation, the menu row, the
+  island's button, the Dictation page): Accessibility, Input Monitoring, Microphone, the 🌐 key. A row's *Allow…*
+  walks just that one. A step is skipped when satisfied: Input Monitoring once the key is heard by a tap (the Fn filter
+  needs only Accessibility); the 🌐 key once Fn isn't the key, dictation is off, or `AppleFnUsageType` is 0.
+- **Register first, on the user's click** (never at launch): `CGRequestScreenCaptureAccess()`,
+  `AVCaptureDevice.requestAccess` (macOS's dialog; no pane), `AXIsProcessTrustedWithOptions(prompt: true)`,
+  `CGRequestListenEventAccess()`. Each lists Blurt in the pane (and shows macOS's own prompt the first time), so the
+  user only flips a switch.
+- **The exact pane**, 0.35 s later: `x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture` /
+  `Privacy_Microphone` / `Privacy_Accessibility` / `Privacy_ListenEvent`, and
+  `x-apple.systempreferences:com.apple.Keyboard-Settings.extension` for the 🌐 key. All five open the right page on
+  macOS 26.5 (checked by window title and screenshots of the System Settings window).
+- **The helper panel**: a non-activating floating `NSPanel` docked next to the System Settings window. Its frame comes
+  from `CGWindowListCopyWindowInfo` — only bounds, owner pid (`com.apple.systempreferences`) and layer are read —
+  every 0.25 s, so the panel follows the window. `HelperDock`: right of the window if it fits on that screen, else left,
+  else inside its lower right corner; no window = the screen's top right with *Open System Settings*. It shows: step
+  N of M and the name, one line ("Turn on Blurt here"; the 🌐 step: 「把『按下 🌐 键时』设为『不执行任何操作』」; the
+  microphone: "Click Allow in macOS's prompt"), an arrow toward the window, why it's needed, a **Blurt tile to drag
+  into the list** (an `NSDraggingSource` whose pasteboard item is the app bundle's file URL, as Finder's drag of an app
+  — for the "+" lists), every step with its live state, *Skip* and a close button.
+- **Detect, then move on**: every 0.5 s while the panel shows. Accessibility or Input Monitoring changing re-plans
+  dictation's listener at once (the tap made before the grant is made again). A satisfied step shows its check for
+  0.8 s, then the next one opens. At the end the panel says "Done — …" for a moment and goes; Blurt is activated and
+  the window the walk started from comes back (`orderFrontRegardless`, also when macOS keeps the focus on System
+  Settings) with a check-mark line: "Done — dictation works in every app now." (dictation works) / "Done — Blurt has
+  every permission it needs." / "Done for now — allow the rest here any time." (something skipped).
+- **Screen Recording** may need a relaunch: the panel's step and Settings → Privacy have *Restart Blurt*
+  (`open -n` of our own bundle once this process has exited, then terminate; the rest of the walk is kept in
+  `app.permission_resume` and continues after the relaunch, within 10 minutes).
+- Blurt never clicks, scripts or writes anything in System Settings, and never writes `AppleFnUsageType`.
+- Test builds never register, never open a pane (unless `BLURT_TEST_OPEN_PANES=1`) and never relaunch; they emit
+  `perm_request` / `perm_open_pane` / `perm_relaunch`. States are simulated with `BLURT_TEST_SCREEN_RECORDING`,
+  `BLURT_TEST_MICROPHONE` (granted | denied | not_asked), `BLURT_TEST_ACCESSIBILITY`, `BLURT_TEST_INPUT_MONITORING`,
+  `BLURT_TEST_FN_USAGE`, `BLURT_TEST_FN_APPS`, or the `perm …` hooks (`perm screen|mic|ax|im|fn …`, `perm guide`,
+  `perm skip|cancel|restart`, `perm standin …` — a window of the test app standing in for System Settings —, `perm drag
+  PB`, `perm status`).
 
 ## Insert
 
@@ -375,8 +446,9 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | Key | Default |
 |---|---|
 | `enabled` | `true` |
-| `key` | `right_option` \| `fn` |
-| `mode` | `tap` \| `hold` |
+| `key` | `fn` (unset) \| `right_option` \| `either_option` |
+| `mode` | `auto` (unset) \| `tap` \| `hold` |
+| `fn_capture` | `true`: with Fn and Accessibility, keep the Fn press from macOS (the filter) |
 | `polish` | `light` \| `off` |
 | `polish_model` | by tier |
 | `polish_timeout_ms` | `3000` |
@@ -411,7 +483,21 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
   3. Warm SenseVoice, then the polish server.
   4. The text is pasted into the app's own test pad, and the pasteboard is restored.
   5. A history entry is written.
-- Not verified here (only the user can): right ⌥ pressed while another app is in front, with the real tap after
+- The permission guide and Fn (`dev.blurt.recorder.permtest`, simulated permissions; screenshots in
+  `promo/cases/v0.8-permissions/`, not in git):
+  - dictation walk from nothing granted, docked to a stand-in window, which moved (the panel switched sides):
+    Accessibility on → the listener became the Fn filter (`recreate_filter_tap`, generation 2) and Input Monitoring
+    was skipped; microphone; the 🌐 step with usage 3 → 0; "Done — dictation works in every app now." in Settings;
+  - the `all` walk from Settings → Privacy with right ⌥, docked to the real System Settings window (panes opened, nothing
+    in them touched): Screen Recording (Restart offered, `perm_relaunch` with the rest of the walk), Accessibility
+    skipped, Input Monitoring on → `recreate_tap` (generation 2); "Done for now";
+  - the Fn filter drops keyCode 63 and passes 61; refused → the monitor, back when allowed; auto mode through the
+    trigger hook: a tap started hands-free (`push_to_talk: false`), a 0.9 s hold push-to-talk (`true`);
+  - the island's Set Up and the menu row's start the dictation walk; the assistant's step 1 shows the guide button,
+    the four rows and the key picker (Fn first) with Typeless detected running.
+- Not verified here (only the user can): whether the request APIs list this build in each pane on a signed build;
+  dragging the tile into a list; whether the Fn filter keeps macOS's 🌐 action (emoji / input source / system
+  dictation) from running on macOS 26, and that Fn-arrow / Fn-F-keys still work with it; right ⌥ pressed while another app is in front, with the real tap after
   granting Input Monitoring (Settings shows *Last heard in another app*), and with Accessibility alone (the monitor);
   ⌘V into another app; the real AX context and the after-typing watch in real apps (Notes, Mail, a browser,
   Electron editors, terminals — some expose no AX value, and then there is simply no context and no learning).

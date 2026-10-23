@@ -1,6 +1,8 @@
-// Settings → Dictation (docs/design/dictation.md): on / off, the key (right ⌥ or Fn) and how it works (tap / hold),
-// which listener hears it and when it was last heard in another app, the two permissions it needs (Input Monitoring
-// for the key, Accessibility to paste and read the text around the cursor), the recognition model (with its
+// Settings → Dictation (docs/design/dictation.md): on / off, the key (Fn first, right ⌥, either ⌥) and how it works
+// (auto / tap / hold), with Fn: keeping Fn from macOS and macOS's own "Press 🌐 key to" setting (read live, fixed by
+// the user through the permission guide), other Fn dictation apps running; which listener hears it and when it was
+// last heard in another app, the permissions it needs (Accessibility to paste, read the text around the cursor and
+// hear Fn; Input Monitoring for the other keys; the microphone) with "Set Up Permissions"; the recognition model (with its
 // download), custom words (add, remove, learned ones, suggestions to accept or ignore; reading the context and
 // learning can be turned off), polish (Off / Light, the model with its download), the polish time limit, history
 // retention, keeping audio, clearing the history.
@@ -62,6 +64,11 @@ final class DictationSettings: ObservableObject {
     @Published var tap = Dictation.shared.tapInstalled
     @Published var listener = Dictation.shared.listenerKind
     @Published var lastOther = Dictation.shared.lastKeyFromOtherApp
+    @Published var mic = SystemAccess.state(.microphone)
+    @Published var fnCapture = Dictation.fnCapture
+    @Published var fnFiltering = Dictation.shared.fnFiltering
+    @Published var fnUsage: FnUsage? = SystemAccess.fnUsage
+    @Published var fnApps: [String] = SystemAccess.fnClashApps
     @Published var polish: PolishState?
     @Published var download: [String: (done: Double, total: Double)] = [:]
     @Published var failed: [String: Bool] = [:]
@@ -96,6 +103,11 @@ final class DictationSettings: ObservableObject {
         let l = Dictation.shared.listenerKind, o = Dictation.shared.lastKeyFromOtherApp
         if l != listener { listener = l; emit(["event": "dictation_pane", "listener": l.rawValue]) }
         if o != lastOther { lastOther = o }
+        let mc = SystemAccess.state(.microphone), ff = Dictation.shared.fnFiltering, fu = SystemAccess.fnUsage, fa = SystemAccess.fnClashApps
+        if mc != mic { mic = mc }
+        if ff != fnFiltering { fnFiltering = ff }
+        if fu != fnUsage { fnUsage = fu; emit(["event": "dictation_pane", "fn_usage": fu?.rawValue ?? NSNull()]) }
+        if fa != fnApps { fnApps = fa }
         if t != tap {
             tap = t
             emit(["event": "dictation_pane", "tap": t])
@@ -178,8 +190,10 @@ final class DictationSettings: ObservableObject {
     }
 
     func setEnabled(_ v: Bool) { enabled = v; save("enabled", v ? nil : false) }
-    func setKey(_ v: DictationTrigger.Key) { key = v; save("key", v == .rightOption ? nil : v.rawValue) }
-    func setMode(_ v: DictationTrigger.Mode) { mode = v; save("mode", v == .tap ? nil : v.rawValue) }
+    // stored even when it is the default: a later default (≤ 0.8: right ⌥, tap) never moves a choice the user made
+    func setKey(_ v: DictationTrigger.Key) { key = v; save("key", v.rawValue); refresh() }
+    func setMode(_ v: DictationTrigger.Mode) { mode = v; save("mode", v.rawValue) }
+    func setFnCapture(_ v: Bool) { fnCapture = v; save("fn_capture", v ? nil : false); refresh() }
     func setPolish(_ on: Bool) { polishOn = on; save("polish", on ? nil : "off") }
     func setTimeout(_ s: Double) { timeout = s; save("polish_timeout_ms", Int(s * 1000) == 3000 ? nil : Int(s * 1000)) }
     func setRetention(_ d: Int) {
@@ -195,14 +209,8 @@ final class DictationSettings: ObservableObject {
         Task { await loadModels() }
     }
 
-    func requestInputMonitoring() {
-        if !Dictation.requestListenAccess(via: "settings") { Dictation.openSystemPane() }
-        Dictation.shared.apply()
-    }
-    func requestAccessibility() {
-        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        if !AXIsProcessTrustedWithOptions(opts) { Permissions.openPane("Privacy_Accessibility") }
-    }
+    /// A row's Allow: the permission guide for that one (Blurt in the list, the pane, the helper panel).
+    func allow(_ k: PermissionKind) { PermissionGuide.shared.start(.dictation, only: [k], source: .dictation) }
 
     /// `polish.py setup --model ID --use` — only when the user asks; progress from its "  N/M MB" lines.
     func install(_ m: PolishModel) {
@@ -252,11 +260,13 @@ struct DictationPane: View {
     /// "polish_settings" event with every row's state
     static let polishRequest = Notification.Name("BlurtDictationPanePolish")
     @StateObject var m = DictationSettings()
+    @StateObject var perms = Permissions()
     @State var confirmClear = false
 
     var body: some View {
         ScrollViewReader { proxy in PaneFrame {
             Section {
+                PermissionDoneBanner()          // the permission guide just finished: the first thing seen
                 Toggle(isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(T("dictation.settings.enable"))
@@ -266,26 +276,26 @@ struct DictationPane: View {
                 }
                 if m.enabled { keyStatus }
                 Picker(T("dictation.settings.key"), selection: Binding(get: { m.key }, set: { m.setKey($0) })) {
-                    Text(T("dictation.key.right_option")).tag(DictationTrigger.Key.rightOption)
-                    Text(T("dictation.key.either_option")).tag(DictationTrigger.Key.eitherOption)
-                    Text(T("dictation.key.fn")).tag(DictationTrigger.Key.fn)
+                    ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(Dictation.keyName(k)).tag(k) }    // Fn first
                 }
                 .disabled(!m.enabled)
                 if m.key == .eitherOption { Hint(T("dictation.settings.either_hint")) }
                 Picker(T("dictation.settings.mode"), selection: Binding(get: { m.mode }, set: { m.setMode($0) })) {
-                    Text(T("dictation.mode.tap")).tag(DictationTrigger.Mode.tap)
-                    Text(T("dictation.mode.hold")).tag(DictationTrigger.Mode.hold)
+                    ForEach(DictationTrigger.Mode.allCases, id: \.self) { md in Text(T("dictation.mode.\(md.rawValue)")).tag(md) }
                 }
                 .disabled(!m.enabled)
-                if m.key == .fn { Hint(T("dictation.settings.fn_hint")) }
+                Hint(T("dictation.mode.\(m.mode.rawValue).detail", Dictation.keyInline(m.key)))
+                if m.key == .fn && m.enabled { fnRows }
                 Hint(T("dictation.settings.voice_note_hint", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice)))
             } header: { Text(T("dictation.settings.section")) }
 
             Section {
-                permissionRow(T("dictation.perm.input_monitoring"), T("dictation.perm.input_monitoring.why", Dictation.keyInline(m.key)),
-                              granted: m.inputMonitoring, allow: m.requestInputMonitoring, pane: "Privacy_ListenEvent")
-                permissionRow(T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"),
-                              granted: m.accessibility, allow: m.requestAccessibility, pane: "Privacy_Accessibility")
+                PermissionSetupButton(flow: .dictation, source: .dictation, p: perms, banner: false)
+                permissionRow(.accessibility, T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"), granted: m.accessibility)
+                permissionRow(.inputMonitoring, T("dictation.perm.input_monitoring"),
+                              T(m.key == .fn && m.fnFiltering ? "dictation.perm.input_monitoring.why_fn" : "dictation.perm.input_monitoring.why", Dictation.keyInline(m.key)),
+                              granted: m.inputMonitoring || (m.key == .fn && m.fnFiltering), notNeeded: !m.inputMonitoring && m.key == .fn && m.fnFiltering)
+                permissionRow(.microphone, T("settings.perm.microphone"), T("dictation.perm.microphone.why"), granted: m.mic == .granted)
                 if m.enabled && m.inputMonitoring && m.listener != .tap { Hint(T("dictation.perm.restart_hint")) }
             } header: { Text(T("dictation.perm.section")) }
 
@@ -362,8 +372,8 @@ struct DictationPane: View {
                   }])
         }
         }
-        .onAppear { m.start() }
-        .onDisappear { m.stop() }
+        .onAppear { m.start(); perms.start() }
+        .onDisappear { m.stop(); perms.stop() }
         .alert(T("dictation.history.clear.title"), isPresented: $confirmClear) {
             Button(T("dictation.history.clear.confirm"), role: .destructive) { m.clearHistory() }
             Button(T("dictation.cancel"), role: .cancel) {}
@@ -489,16 +499,16 @@ struct DictationPane: View {
             StatusDot(tone: m.tap ? .good : .warn)
             VStack(alignment: .leading, spacing: 2) {
                 Text(T(m.tap ? "dictation.status.on" : "dictation.status.off", Dictation.keyInline(m.key)))
-                Text(T(m.tap ? (m.mode == .hold ? "dictation.status.on.hold" : "dictation.status.on.tap") : "dictation.status.off.detail",
+                Text(T(m.tap ? "dictation.status.on.\(m.mode.rawValue)" : "dictation.status.off.detail",
                        Dictation.keyInline(m.key)))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 // which listener runs, and the one thing only the user can prove: the key heard while another app is in front
-                Text(T("dictation.listener.\(m.listener.rawValue)") + " " + (m.lastOther.map { T("dictation.heard.other", heardTime($0)) }
+                Text(T("dictation.listener.\(m.fnFiltering && m.listener == .tap ? "filter" : m.listener.rawValue)") + " " + (m.lastOther.map { T("dictation.heard.other", heardTime($0)) }
                         ?? T("dictation.heard.never", Dictation.keyInline(m.key))))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            if !m.tap { Button(T("dictation.status.fix")) { Dictation.shared.openSetup() } }
+            if !m.tap { Button(T("dictation.status.fix")) { Dictation.shared.openSetup(from: "dictation") } }
         }
         .accessibilityElement(children: .combine)
     }
@@ -518,7 +528,36 @@ struct DictationPane: View {
         return f.string(from: s as NSNumber) ?? "\(s)"
     }
 
-    func permissionRow(_ title: String, _ why: String, granted: Bool, allow: @escaping () -> Void, pane: String) -> some View {
+    /// With Fn: keeping it from macOS (the filter, on Accessibility), macOS's own "Press 🌐 key to" setting (read live;
+    /// Fix… walks the user there with the helper panel — Blurt never changes it), other Fn dictation apps running.
+    @ViewBuilder var fnRows: some View {
+        Toggle(isOn: Binding(get: { m.fnCapture }, set: { m.setFnCapture($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("dictation.fn.capture"))
+                Text(T(m.fnCapture ? (m.fnFiltering ? "dictation.fn.capture.on" : "dictation.fn.capture.needs_ax") : "dictation.fn.capture.detail"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        let clash = FnUsage.clashes(m.fnUsage)
+        HStack(alignment: .center, spacing: 10) {
+            StatusDot(tone: clash ? .warn : .good)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("dictation.fn.usage", T("dictation.fn_usage.\(m.fnUsage.map { "\($0.rawValue)" } ?? "default")")))
+                Text(T(clash ? "dictation.fn.usage.clash" : "dictation.fn.usage.ok"))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if clash {
+                Button(T("dictation.fn.usage.fix")) { PermissionGuide.shared.start(.dictation, only: [.fnKey], source: .dictation) }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        if !m.fnApps.isEmpty {
+            Hint(T("dictation.settings.fn_clash", m.fnApps.joined(separator: T("settings.perm.list_sep"))))
+        }
+    }
+
+    func permissionRow(_ k: PermissionKind, _ title: String, _ why: String, granted: Bool, notNeeded: Bool = false) -> some View {
         HStack(alignment: .center, spacing: 10) {
             StatusDot(tone: granted ? .good : .warn)
             VStack(alignment: .leading, spacing: 2) {
@@ -526,10 +565,11 @@ struct DictationPane: View {
                 Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Text(granted ? T("settings.kit.allowed") : T("settings.kit.not_set")).foregroundStyle(.secondary).font(.callout)
+            Text(notNeeded ? T("settings.perm.not_needed") : granted ? T("settings.kit.allowed") : T("settings.kit.not_set"))
+                .foregroundStyle(.secondary).font(.callout)
             if !granted {
-                Button(T("settings.kit.allow"), action: allow)
-                Button { Permissions.openPane(pane) } label: { Image(nsImage: BlurtIcon.externalLink.symbolImage(pointSize: 12)) }
+                Button(T("settings.kit.allow")) { m.allow(k) }
+                Button { Permissions.openPane(k) } label: { Image(nsImage: BlurtIcon.externalLink.symbolImage(pointSize: 12)) }
                     .buttonStyle(.borderless).help(T("settings.kit.system_settings")).accessibilityLabel(T("settings.kit.system_settings"))
             }
         }

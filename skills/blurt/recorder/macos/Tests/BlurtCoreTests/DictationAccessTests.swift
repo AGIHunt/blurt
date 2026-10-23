@@ -1,4 +1,4 @@
-// BlurtCore/DictationAccess.swift: when the dictation key can't be heard — the menu row, asking macOS at launch, the
+// BlurtCore/DictationAccess.swift: when the dictation key can't be heard — the menu row, never asking macOS at launch, the
 // island's reminder (about once a day) and the "dictation is on" word once the tap comes up.
 import XCTest
 @testable import BlurtCore
@@ -14,13 +14,9 @@ final class DictationAccessTests: XCTestCase {
         XCTAssertFalse(off.needsSetup)                          // dictation turned off: no cue at all
     }
 
-    func testAsksMacOSOncePerVersionAndNotOverTheAssistant() {
-        XCTAssertTrue(deaf.askAtLaunch(assistantShowing: false, askedVersion: nil, version: "0.8.0"))
-        XCTAssertFalse(deaf.askAtLaunch(assistantShowing: false, askedVersion: "0.8.0", version: "0.8.0"))
-        XCTAssertTrue(deaf.askAtLaunch(assistantShowing: false, askedVersion: "0.7.2", version: "0.8.0"))   // an update asks again
-        XCTAssertFalse(deaf.askAtLaunch(assistantShowing: true, askedVersion: nil, version: "0.8.0"))
-        XCTAssertFalse(ok.askAtLaunch(assistantShowing: false, askedVersion: nil, version: "0.8.0"))
-        XCTAssertFalse(off.askAtLaunch(assistantShowing: false, askedVersion: nil, version: "0.8.0"))
+    func testNeverAsksMacOSAtLaunch() {
+        // macOS is asked (and Blurt listed) only when the user clicks Allow / Set Up — the permission guide
+        XCTAssertFalse(DictationAccess.asksAtLaunch)
     }
 
     func testNudgeAboutOnceADay() {

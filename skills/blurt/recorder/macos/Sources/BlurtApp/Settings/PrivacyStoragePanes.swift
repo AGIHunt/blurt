@@ -83,10 +83,18 @@ struct PrivacyPane: View {
     var body: some View {
         PaneFrame {
             Section {
-                PermissionRows(p: perms)
+                PermissionSetupButton(flow: .all, source: .privacy, p: perms)
+                PermissionRows(p: perms, source: .privacy)
             } header: { Text(T("settings.privacy.permissions_live")) } footer: {
-                Text(T("settings.privacy.macos_applies_screen_recording"))
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(T("settings.privacy.macos_applies_screen_recording"))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    // Screen Recording allowed while Blurt runs: some macOS versions apply it only after a relaunch
+                    if perms.screen != .granted || Permissions.askedScreen {
+                        Button(T("settings.perm.restart")) { SystemAccess.relaunch() }.controlSize(.small)
+                    }
+                }
             }
             Section {
                 Toggle(T("settings.privacy.local_speech_recognition_only"), isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }))

@@ -537,7 +537,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mOpenInbox() { AppEnvironment.mainWindow?.showInbox() }
     @objc func mOpenJob(_ it: NSMenuItem) { (it.representedObject as? String).map { AppEnvironment.mainWindow?.reveal(job: $0) } }
     @objc func mSettings() { AppEnvironment.settings?.show(pane: nil) }
-    @objc func mDictationSetup() { Dictation.shared.openSetup() }
+    @objc func mDictationSetup() { Dictation.shared.openSetup(from: "menu") }
 
     /// The menu row's small warning sign (BlurtIcon.warning), in the system's orange so it stands out from the rows.
     static let warningImage: NSImage = {
