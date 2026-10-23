@@ -7,6 +7,12 @@
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
+//     takeout N               as if card N had been dragged out and taken by another app (the safety-net copy, the toast)
+//     taken list|show|hide|rows|expire|menu   Recently Taken: the captures ("taken" events), its panel, the panel's rows
+//                             ("taken_row": n + the picture's rect, global top-left), housekeeping now, the island's
+//                             right-click menu as text ("island_menu_dump")
+//     taken putback N · taken copy N [click|image|text] · taken drag N PASTEBOARD   a taken capture's actions
+//     clock SECONDS           move Recently Taken's clock (Snapper.clockOffset) to see 7 days pass
 //     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
 //                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
@@ -110,6 +116,40 @@ extension App {
             if a.count == 2, let n = Int(a[0]) {
                 emit(["event": "card_drag", "n": n, "types": hanging.testDrag(n: n, to: NSPasteboard(name: .init(a[1])))])
             }
+        case "takeout":                                 // takeout N: as if card N was dragged out and taken
+            if let n = Int(arg), let s = snapper.cards.last(where: { $0.n == n }) { snapper.takeOut(s) }
+        case "clock":                                   // clock SECONDS: Recently Taken's clock, moved
+            Snapper.clockOffset = Double(arg) ?? 0
+            emit(["event": "clock", "offset": Snapper.clockOffset])
+        case "taken":
+            let a = arg.split(separator: " ").map(String.init)
+            let find = { (i: Int) -> Shot? in a.count > i ? Int(a[i]).flatMap { n in snapper.recentlyTaken.first { $0.n == n } } : nil }
+            switch a.first ?? "list" {
+            case "show": TakenPanel.shared.show()
+            case "hide": TakenPanel.shared.hide()
+            case "expire": emit(["event": "taken_expire", "trashed": snapper.expireTaken()])
+            case "putback": if let s = find(1) { snapper.putBack(s) }
+            case "copy": if let s = find(1) { TakenPanel.copy(s, HangingCards.Copy(rawValue: a.count > 2 ? a[2] : "click") ?? .click) }
+            case "drag":                                // taken drag N PASTEBOARD: what dragging it out again carries
+                if let s = find(1), a.count > 2 {
+                    let pb = NSPasteboard(name: .init(a[2]))
+                    let items = HangingCards.dragItems(s)
+                    pb.clearContents()
+                    pb.writeObjects(items)
+                    emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])
+                }
+            case "rows":
+                for r in TakenPanel.shared.rows {
+                    guard let w = r.window else { continue }
+                    let f = toCG(w.convertToScreen(r.thumb.convert(r.thumb.bounds, to: nil)))
+                    emit(["event": "taken_row", "n": r.shot.n, "rect": [f.minX, f.minY, f.width, f.height]])
+                }
+            case "menu": emit(["event": "island_menu_dump", "rows": menuDumpLines(TakenPanel.islandMenu())])
+            default: break
+            }
+            emit(["event": "taken", "now": Snapper.now, "captures": snapper.recentlyTaken.map { s -> [String: Any] in
+                ["n": s.n, "session": s.batch?.dir.path ?? "", "taken": s.taken ?? 0, "note": s.words ?? NSNull(), "kind": s.kind.rawValue]
+            }, "panel": TakenPanel.shared.isOpen])
         case "hotkey":                                  // hotkey ACTION: the same path as pressing its keys
             if let act = HotAction(rawValue: arg) { Hotkeys.shared.simulate(act, released: false) }
         case "assign":
@@ -293,7 +333,16 @@ extension App {
             cards.showHotkey(.cards)
             menu.addItem(cards)
         }
+        // cards dragged out into other apps in the last 7 days (never lost: copy them, drag them again, put them back)
+        let taken = snapper.recentlyTaken.count
+        if taken > 0 {
+            let it = NSMenuItem(title: Loc.t("capture.taken.menu", table: "Capture", taken) + "…", action: #selector(mShowTaken), keyEquivalent: "")
+            it.target = self
+            menu.addItem(it)
+        }
     }
+
+    @objc func mShowTaken() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { TakenPanel.shared.show() } }
 
     @objc func mSnap() {
         if let r = rec { r.snap(via: "menu"); return }

@@ -67,17 +67,30 @@ What you can do with a card:
   *Transcribing…*; if that fails it says *Couldn't transcribe* and the right-click menu has *Retry Transcription*. If
   you started talking and then typed instead (or the mic only heard the room), the recording is dropped: the card
   keeps what you typed and shows no mic.
-- **Click to copy**: a voice note copies its words; a snap copies the image (with your ink, if you drew on it) and its
-  note as a second, separate piece of text — chat apps, Notes and Mail paste both, a text-only field gets the words,
-  an image field the picture. Right-click for *Copy Image* or *Copy Text* on their own.
-- **Drag it out** into any app: a snap drops two things, its image file and its note as text, so apps that take
-  several (Slack, Claude, Notes, Mail, most chat apps) get both; one that takes only one gets the one it can use. A
-  voice note is just text you happened to say, so it drops its words, never an audio file. The dropped text is on one
-  line (`typed · said`), so dropping on a terminal never runs anything; terminals type the image's path. Dropped on
-  the Finder or the desktop you may get a text clipping next to the image. Once another app takes it, the card has
-  done its job and leaves its thread; *Dragged out · Undo* in the island puts it back. A drag you let go of over
-  nothing comes back to its thread. (Drag a voice note before its words are written down and it waits a moment for
-  them, or tells you they aren't ready yet.)
+- **Drag it out** into any app: a snap drops two files — the picture (`Screenshot-153012.png`, with your ink if you
+  drew on it) and its note as a small Markdown file (`Screenshot-153012-note.md`) — plus the note as text. Apps that
+  take files (Claude, Slack, ChatGPT, most chat and web apps) attach both, so the note can't get lost; the Finder gets
+  the two files; a text-only field gets the words; a terminal types both paths, so Claude Code or Codex can read the
+  note and see the picture. The note is also written into the picture's own description (Preview's *Get Info* shows
+  it). A voice note is just text you happened to say, so it drops its words, never an audio file. The dropped text is
+  on one line (`typed · said`), so dropping on a terminal never runs anything. A drag you let go of over nothing comes
+  back to its thread. (Drag a voice note before its words are written down and it waits a moment for them, or tells
+  you they aren't ready yet.)
+- **After a drop**, the card has done its job and leaves its thread — but it isn't thrown away. If it had a note, the
+  note is also put on the clipboard, and the island says *Dragged out · note copied, ⌘V to paste*: if the app kept
+  only the picture, press `⌘V` there. This replaces what was on your clipboard; *Undo* puts the card back on its
+  thread and your clipboard as it was. You can turn this off in *Settings → General → After dragging a card out,
+  copy its note too*.
+- **Recently Taken**: cards you dragged out stay findable for 7 days. Right-click the island (or the count left of
+  the notch) → *Recently Taken (N)*, or click *Recently taken: N* at the top of the Inbox or Unassigned in the main
+  window. Each one can be copied (picture and note, or either alone), dragged out again (drag its picture), or put
+  back on its thread. After 7 days it goes to the Trash.
+- **Click to copy**: a voice note copies its words; a snap copies what a drag would drop — the picture, the note file
+  and the note as text (with its line breaks) — so `⌘V` into a chat attaches both. Right-click for *Copy Image* or
+  *Copy Text* on their own.
+- Optional: *Settings → General → Add the note under the picture when dragging* drops a copy of the picture with the
+  note in a strip under it, for apps that take one picture and nothing else. Off by default; the capture itself stays
+  clean.
 - Hover to read the note, double-click to edit it, or click × to throw it away.
 - Up to seven cards hang side by side; older ones stack up as **+N**. Click the stack to bring them forward.
 - While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.
@@ -243,8 +256,11 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
 - 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
-- **单击复制**：语音卡片复制说的话；截图复制图片（画过就带笔迹），备注或说的话作为文字一起放进剪贴板，粘到只收文字的地方就是那段话。右键可以单独「拷贝图片」或「拷贝文字」。
-- **拖到别的应用里**：截图拖出去是图片文件（带上文字）；语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。别的应用接住以后，这张卡片就用完了，会从线上离开；岛上「已拖走 · 撤销」可以把它放回来。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
+- **拖到别的应用里**：截图拖出去是两个文件——图片（`截图-153012.png`，画过就带笔迹）和一个写着备注的 Markdown 小文件（`截图-153012-备注.md`）——再加上备注文字。收文件的应用（Claude、Slack、ChatGPT、大多数聊天和网页应用）会把两个文件都附上，备注不会丢；访达里是两个文件；只收文字的输入框拿到那段话；终端会打出两个文件的路径，Claude Code、Codex 能读到备注、看到图片。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖出去的文字在一行里（「打的字 · 说的话」），拖进终端也不会执行任何东西。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
+- **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。有备注的卡片，备注还会放进剪贴板，岛上显示「已拖走 · 备注已复制，⌘V 可粘贴」：对方只收下了图片的话，在那里按 `⌘V` 就行。这会替换剪贴板里原来的内容；点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖走卡片后，把备注也拷贝到剪贴板」里关掉。
+- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一张都可以再拷贝（图片和备注一起，或者单独一样）、把图片再拖出去，或者放回线上。7 天后移到废纸篓。
+- **单击复制**：语音卡片复制说的话；截图复制的和拖出去的一样——图片、备注文件和备注文字（保留换行）——粘到聊天里两个都会附上。右键可以单独「拷贝图片」或「拷贝文字」。
+- 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的应用用。默认关闭；原来的截图不变。
 - 悬停看备注，双击改备注，点 × 扔掉。
 - 最多并排挂 7 张，更早的叠成「+N」，点一下就换到前面来。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。

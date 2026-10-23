@@ -109,6 +109,10 @@
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
 "settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";
+"settings.general.drag_copy_note" = "拖走卡片后，把备注也拷贝到剪贴板";
+"settings.general.drag_copy_note.hint" = "对方只收下了图片时，⌘V 就能贴上备注。会替换剪贴板里原来的内容；点岛上的「撤销」可以还原。";
+"settings.general.drag_caption" = "拖出图片时把备注印在图片下方";
+"settings.general.drag_caption.hint" = "拖出去的是一份在下方加了备注条的副本，给只收一张图片的应用用；原来的截图不变。";
 "settings.general.about" = "关于";
 "settings.general.version" = "版本";
 "settings.general.help" = "帮助";

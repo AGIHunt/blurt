@@ -105,6 +105,17 @@ class FileCaptures(TmpCase):
         self.assertEqual((again["items"], {s["reason"] for s in again["skipped"]}), ([], {"filed"}))
         self.assertEqual(len(ok("items.py", "list", "--project", self.p["id"], env=self.e.env())["items"]), 3)
 
+    def test_taken_capture_is_not_filed_until_put_back(self):
+        """v0.8.1: a card dragged out into another app is "taken" (Recently Taken, 7 days), not a card and not deleted:
+        filing it is skipped; put back on its thread (`taken: null`, the later line wins) it files as usual."""
+        jl = self.s / "shots.jsonl"
+        jl.write_text(jl.read_text() + json.dumps({"n": 3, "taken": 1761100500.25}) + "\n")
+        out = ok("captures.py", "file", self.s, "--captures", "3", env=self.e.env())
+        self.assertEqual((out["items"], out["skipped"]), ([], [{"n": 3, "reason": "taken"}]))
+        jl.write_text(jl.read_text() + json.dumps({"n": 3, "taken": None}) + "\n")
+        out = ok("captures.py", "file", self.s, "--captures", "3", env=self.e.env())
+        self.assertEqual([r["n"] for r in out["items"]], [3])
+
     def test_explicit_project_wins(self):
         other = ok("projects.py", "add", make_repo(self.tmp / "docs"), env=self.e.env())["project"]
         out = ok("captures.py", "file", self.s, "--captures", "3", "--project", other["id"], env=self.e.env())

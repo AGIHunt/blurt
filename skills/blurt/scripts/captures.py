@@ -12,7 +12,8 @@ whole note; kind = a small keyword guess (issue / task / idea, else
 note); frames = the shot (the inked copy first). Without a note the title says what it is ("Screenshot 14:32").
 Every item gets `enrich: pending`: the app's "AI fill-in" later adds code refs, a better kind, steps — one agent run
 for a whole batch (the app's App.enrich). A capture filed before (batch.json local id C-NNN) is skipped, so a
-second call is harmless. Items are written with items.py (the one writer); the project is --project, else the
+second call is harmless; so is a deleted one, and one dragged out into another app (`"taken": <wall>` — the app's
+Recently Taken, kept 7 days; put back on its thread it is `"taken": null` and files as usual). Items are written with items.py (the one writer); the project is --project, else the
 capture's own (shots.jsonl), else the batch's store.
 """
 from __future__ import annotations
@@ -133,6 +134,9 @@ def file_captures(session: Path, ns: list[int], project: str | None = None, lang
                 continue
             if line.get("deleted"):
                 skipped.append({"n": n, "reason": "deleted"})
+                continue
+            if line.get("taken"):  # dragged out into another app (Recently Taken): put back on its thread first
+                skipped.append({"n": n, "reason": "taken"})
                 continue
             b = items.load_batch(session) or {}
             if f"C-{n:03d}" in (b.get("local") or {}):
