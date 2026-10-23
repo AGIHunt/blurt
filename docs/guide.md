@@ -17,7 +17,7 @@ Linux) is where capture starts. Hover it to see your current project and the thr
 
 | | Shortcut | What happens |
 |---|---|---|
-| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong. Hold `⌃` and drag to circle the exact spot. |
+| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong; stop talking for about 2 s and it's saved (room noise doesn't keep it open). Hold `⌃` and drag to circle the exact spot. |
 | **Voice** | `⌥⇧V` | Press once and talk; a pause of 1.5 s ends it. Or hold the keys and let go when you're done. `Esc` cancels. |
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* on the island) stops. |
 
@@ -62,14 +62,22 @@ What you can do with a card:
 - **Drag a card onto a project** in the island's list to file it there and start processing.
 - Drag it onto **Unassigned** to process it without a project, or choose **Auto-sort** to process all the cards
   and file each item into the project it is about.
-- **Click to copy**: a voice note copies its words; a snap copies the image (with your ink, if you drew on it), and its
-  note or spoken words come along as text, so pasting into a text-only field gives you the words. Right-click for
-  *Copy Image* or *Copy Text* on their own.
-- **Drag it out** into any app: a snap drops its image file (and its words); a voice note is just text you happened to
-  say, so it drops its words, never an audio file. Once another app takes it, the card has done its job and leaves
-  its thread; *Dragged out · Undo* in the island puts it back. A drag you let go of over nothing comes back to its
-  thread. (Drag a voice note before its words are written down and it waits a moment for them, or tells you they
-  aren't ready yet.)
+- **Read it on the card**: a snap shows its note along the bottom of the picture — what you typed first, then what you
+  said. The small mic mark means the words were spoken. While your words are still being written down the card says
+  *Transcribing…*; if that fails it says *Couldn't transcribe* and the right-click menu has *Retry Transcription*. If
+  you started talking and then typed instead (or the mic only heard the room), the recording is dropped: the card
+  keeps what you typed and shows no mic.
+- **Click to copy**: a voice note copies its words; a snap copies the image (with your ink, if you drew on it) and its
+  note as a second, separate piece of text — chat apps, Notes and Mail paste both, a text-only field gets the words,
+  an image field the picture. Right-click for *Copy Image* or *Copy Text* on their own.
+- **Drag it out** into any app: a snap drops two things, its image file and its note as text, so apps that take
+  several (Slack, Claude, Notes, Mail, most chat apps) get both; one that takes only one gets the one it can use. A
+  voice note is just text you happened to say, so it drops its words, never an audio file. The dropped text is on one
+  line (`typed · said`), so dropping on a terminal never runs anything; terminals type the image's path. Dropped on
+  the Finder or the desktop you may get a text clipping next to the image. Once another app takes it, the card has
+  done its job and leaves its thread; *Dragged out · Undo* in the island puts it back. A drag you let go of over
+  nothing comes back to its thread. (Drag a voice note before its words are written down and it waits a moment for
+  them, or tells you they aren't ready yet.)
 - Hover to read the note, double-click to edit it, or click × to throw it away.
 - Up to seven cards hang side by side; older ones stack up as **+N**. Click the stack to bring them forward.
 - While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.

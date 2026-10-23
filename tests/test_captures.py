@@ -39,6 +39,19 @@ class Heuristics(TmpCase):
         self.assertEqual(g("Q3 revenue was 12% up"), "note")
         self.assertEqual(g(""), "note")
 
+    def test_note_is_typed_then_said(self):
+        """v0.8: a shot with typed text and a spoken note carries both (the card shows both); typed comes first."""
+        n = captures.note_of
+        self.assertEqual(n({"text": "fdsfdsa", "said": "按钮被挡住了"}), "fdsfdsa\n按钮被挡住了")
+        self.assertEqual(n({"text": " see header ", "said": None}), "see header")
+        self.assertEqual(n({"text": None, "said": "只有说的"}), "只有说的")
+        self.assertEqual(n({"text": "same words", "said": "same words"}), "same words")
+        self.assertEqual(n({"text": "the logo overlaps, fix it", "said": "the logo overlaps"}), "the logo overlaps, fix it")
+        self.assertEqual(n({"text": "", "said": ""}), "")
+        f = captures.fields_for(5, {"type": "shot", "file": "shots/005.png", "text": "Header looks off.",
+                                    "said": "the logo overlaps the menu"}, "en")
+        self.assertEqual((f["title"], f["quote"]), ("Header looks off", "Header looks off.\nthe logo overlaps the menu"))
+
     def test_first_sentence(self):
         f = captures.first_sentence
         self.assertEqual(f("The save button does nothing. It used to work yesterday."), "The save button does nothing")

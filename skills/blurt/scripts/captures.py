@@ -7,7 +7,8 @@
   captures.py file SESSION --captures N … [--project ID|inbox] [--lang en|zh]
       → {"ok", "items": [{"n","uid","id","title","kind","project","path"}], "skipped": [{"n","reason"}]}
 
-Title = the note's first sentence; quote = the whole note; kind = a small keyword guess (issue / task / idea, else
+Note = the typed text, then the words said (both when there are both). Title = the note's first sentence; quote = the
+whole note; kind = a small keyword guess (issue / task / idea, else
 note); frames = the shot (the inked copy first). Without a note the title says what it is ("Screenshot 14:32").
 Every item gets `enrich: pending`: the app's "AI fill-in" later adds code refs, a better kind, steps — one agent run
 for a whole batch (the app's App.enrich). A capture filed before (batch.json local id C-NNN) is skipped, so a
@@ -87,10 +88,22 @@ def _lang(lang: str | None) -> str:
         return "zh" if (lang or "").lower().startswith("zh") else "en"
 
 
+def note_of(line: dict) -> str:
+    """A capture's note: what was typed first, then what was said (each once) — as the app's card shows it."""
+    typed, said = (s.strip() if isinstance(s, str) else "" for s in (line.get("text"), line.get("said")))
+    if typed and said:
+        if said in typed:
+            return typed
+        if typed in said:
+            return said
+        return f"{typed}\n{said}"
+    return typed or said
+
+
 def fields_for(n: int, line: dict, lang: str) -> dict:
     """The items.py `add` fields for one capture."""
     voice = line.get("type") == "voice"
-    note = next((s.strip() for s in (line.get("text"), line.get("said")) if isinstance(s, str) and s.strip()), "")
+    note = note_of(line)
     if note:
         title = first_sentence(note)
     else:

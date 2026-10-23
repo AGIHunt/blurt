@@ -164,28 +164,49 @@ final class Snapper {
             hanging.catchCapture(s, from: island.frameOnScreen)
             transcribe(s) { _ in }
         } else {
-            transcribed.insert(ObjectIdentifier(s))
             transcribe(s) { [weak self] _ in self?.settled(s) }
         }
     }
 
-    /// K9's fast path (`transcribe.py note`) → `said`; without it the card just says "Voice note" and an agent
-    /// transcribes when the user hands the cards over. One run per capture: a second caller waits for the first.
+    /// K9's fast path (`transcribe.py note`) → `said`. Every kept voice wav goes through here (v0.8: a shot with typed
+    /// text and a spoken note used to skip it — the card showed a mic and no words): words → `said`; no speech in it
+    /// (a cough, the room, a note abandoned for typing) → the voice note is dropped (wav and mark), nothing more to
+    /// do; failed → "Couldn't transcribe" on the card, Retry in its menu (an agent handed the cards transcribes too).
+    /// One run per capture at a time: a second caller waits for the first.
     private func transcribe(_ s: Shot, then: @escaping (String?) -> Void) {
-        guard let wav = s.voiceURL else { return then(nil) }
+        guard s.voice != nil, s.said == nil, let wav = s.voiceURL else { return then(s.said) }
+        guard FileManager.default.fileExists(atPath: wav.path) else {
+            // the wav is gone (trashed by hand, a half-written note): nothing to transcribe, nothing to show
+            if s.kind == .shot { dropVoice(s, reason: "missing") } else { s.transcription = .failed; hanging.update(s) }
+            return then(nil)
+        }
         let key = ObjectIdentifier(s)
         if pendingWords[key] != nil { pendingWords[key]?.append(then); return }
         pendingWords[key] = [then]
+        s.transcription = .pending
+        hanging.update(s)
         Task {
             if let d = Snapper.testWordsDelay { try? await Task.sleep(nanoseconds: UInt64(d * 1e9)) }
-            let r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
-            let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            var r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
+            if Snapper.testFailWords() { r = nil }
+            let ok = r.map { ($0["ok"] as? Bool) ?? true } ?? false
+            let text = ok ? (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
             await MainActor.run {
-                emit(["event": "voice_text", "n": s.n, "ok": text != nil])
-                if let t = text, !t.isEmpty, !s.deleted {
-                    s.said = t
-                    s.batch?.save(s)
+                emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false])
+                if !s.deleted {
+                    if let t = text, !t.isEmpty {
+                        s.said = t
+                        s.transcription = .idle
+                        s.batch?.save(s)
+                    } else if text != nil {
+                        s.transcription = .idle
+                        if s.kind == .shot { self.dropVoice(s, reason: "no_speech") } else { s.said = ""; s.batch?.save(s) }
+                    } else {
+                        s.transcription = .failed
+                    }
                     hanging.update(s)
+                } else if s.transcription == .pending {
+                    s.transcription = .idle
                 }
                 for f in self.pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
             }
@@ -198,15 +219,41 @@ final class Snapper {
         let env = ProcessInfo.processInfo.environment
         return env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_WORDS_DELAY"].flatMap(Double.init) : nil
     }()
+    /// Scripted checks (test commands only): BLURT_TEST_WORDS_FAIL=N — the first N transcriptions fail.
+    private static var testFailsLeft: Int = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_WORDS_FAIL"].flatMap(Int.init) ?? 0 : 0
+    }()
+    private static func testFailWords() -> Bool {
+        guard testFailsLeft > 0 else { return false }
+        testFailsLeft -= 1
+        return true
+    }
+
+    /// A shot's spoken note that holds no words: the wav goes, and with it the mic mark — the shot keeps its typed note.
+    private func dropVoice(_ s: Shot, reason: String) {
+        if let u = s.voiceURL { try? FileManager.default.removeItem(at: u) }
+        s.voice = nil
+        s.said = nil
+        s.transcription = .idle
+        s.batch?.save(s)
+        emit(["event": "voice_dropped", "n": s.n, "reason": reason])
+    }
+
+    /// "Retry Transcription" (a card's menu, after "Couldn't transcribe").
+    func retryWords(_ s: Shot) {
+        guard s.voice != nil, s.said == nil else { return }
+        if s.transcription == .failed { s.transcription = .idle }
+        transcribe(s) { [weak self] _ in self?.settled(s) }
+    }
 
     /// The words of every spoken note among `shots` that has none yet (a card dragged onto a project while its words
     /// were still coming), then `then` — so the item gets them as its title and quote, not "Screenshot 14:32".
     private func words(for shots: [Shot], then: @escaping () -> Void) {
-        let need = shots.filter { $0.voiceURL != nil && $0.words == nil }
+        let need = shots.filter(\.needsWords)
         guard !need.isEmpty else { return then() }
         var left = need.count
         for s in need {
-            transcribed.insert(ObjectIdentifier(s))
             transcribe(s) { _ in left -= 1; if left == 0 { then() } }
         }
     }
@@ -214,22 +261,18 @@ final class Snapper {
     // MARK: where a capture goes once it is complete
 
     /// The note bubble closed (or there was none). With a project and a note it is filed now, without an agent; a
-    /// spoken note is transcribed first. No note → it lets go of the project and hangs as a card.
+    /// spoken note is transcribed first (also next to typed text: the item gets both). No note → it lets go of the
+    /// project and hangs as a card.
     func settled(_ s: Shot) {
         guard !s.deleted else { return }
-        // a card (auto mode) with a spoken note: its words now, for the hover note, a copy and the item it becomes
-        if s.isCard, s.voice != nil, s.words == nil, transcribed.insert(ObjectIdentifier(s)).inserted {
-            transcribe(s) { _ in }
-        }
-        guard let p = s.project, s.assignedBy == "capture", let b = s.batch else { return }
+        let filing = s.project != nil && s.assignedBy == "capture"
+        // a card (auto mode) with a spoken note: its words now, for the card, a copy and the item it becomes
+        if !filing, s.needsWords { transcribe(s) { _ in } }
+        guard filing, let p = s.project, let b = s.batch else { return }
+        if s.needsWords { return transcribe(s) { [weak self] _ in self?.settled(s) } }
         if s.words != nil { return file([s], in: b, project: p) }
-        // once: if the words can't be had here, the card waits for an agent (it transcribes when handed the cards)
-        if s.voice != nil, s.said == nil, transcribed.insert(ObjectIdentifier(s)).inserted {
-            return transcribe(s) { [weak self] _ in self?.settled(s) }
-        }
-        hangAsCard(s)
+        hangAsCard(s)       // nothing typed, and the words couldn't be had here: a card (an agent transcribes it later)
     }
-    private var transcribed = Set<ObjectIdentifier>()
 
     /// Captured with a project but nothing said about it: not worth filing on its own — a card, like in auto mode.
     private func hangAsCard(_ s: Shot) {
@@ -360,8 +403,8 @@ final class Snapper {
 
     /// A voice note's words, if they are not there yet (a card dragged before they were written down).
     func wantWords(_ s: Shot) {
-        guard s.voiceURL != nil, s.words == nil else { return }
-        transcribed.insert(ObjectIdentifier(s))
+        guard s.voice != nil, s.said == nil else { return }
+        if s.transcription == .failed { s.transcription = .idle }      // asked again: one more try
         transcribe(s) { _ in }
     }
 
@@ -404,6 +447,14 @@ final class Snapper {
             cardBatches.append(b)
         }
         hanging.refresh(quiet: true)
+        // a spoken note left without words (the app quit first, or an older version skipped it): its words now — or,
+        // if it holds none, it is dropped. One after another (not a model process per card at launch).
+        transcribeInTurn(cards.filter(\.needsWords))
+    }
+
+    private func transcribeInTurn(_ shots: [Shot]) {
+        guard let s = shots.first else { return }
+        transcribe(s) { [weak self] _ in self?.transcribeInTurn(Array(shots.dropFirst())) }
     }
 
     // MARK: the system's own screenshots (⌘⇧3/4/5), optional
