@@ -178,9 +178,11 @@ _GIT_LOCATION = {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIREC
                  "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
 
 
-def git(cwd: Path, *args: str, check: bool = True, timeout: float = 120) -> subprocess.CompletedProcess:
+def git(cwd: Path, *args: str, check: bool = True, timeout: float = 120,
+        env_extra: dict | None = None) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if k not in _GIT_LOCATION}  # e.g. called from inside a git hook
     env["GIT_TERMINAL_PROMPT"] = "0"
+    env.update(env_extra or {})
     try:
         p = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, encoding="utf-8",
                            errors="replace", env=env, timeout=timeout, stdin=subprocess.DEVNULL)
@@ -189,6 +191,28 @@ def git(cwd: Path, *args: str, check: bool = True, timeout: float = 120) -> subp
     if check and p.returncode != 0:
         raise SessionError("git", f"git {' '.join(args[:2])}: {(p.stderr or p.stdout).strip()[-400:]}")
     return p
+
+
+def add_worktree(root: Path, branch: str, path: str, base_sha: str) -> None:
+    """`git worktree add` that a broken Git LFS remote can't stop: the checkout skips LFS downloads (files stay as
+    pointers), then `git lfs pull` fills them in the background, best effort. A plain checkout would fail outright
+    when one LFS object is missing on the server ("Object does not exist on the server")."""
+    try:
+        git(root, "worktree", "add", "-b", branch, path, base_sha, env_extra={"GIT_LFS_SKIP_SMUDGE": "1"})
+    except SessionError:
+        # leave nothing half-made behind: the directory and the new branch
+        git(root, "worktree", "remove", "--force", path, check=False)
+        git(root, "branch", "-D", branch, check=False)
+        raise
+    attrs = Path(path) / ".gitattributes"
+    if shutil.which("git-lfs") and attrs.exists() and "filter=lfs" in attrs.read_text(errors="replace"):
+        try:
+            subprocess.Popen(["git", "-C", path, "lfs", "pull"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True,
+                             env={**{k: v for k, v in os.environ.items() if k not in _GIT_LOCATION},
+                                  "GIT_TERMINAL_PROMPT": "0"})
+        except OSError:
+            pass
 
 
 def repo_root(path: Path) -> Path | None:
@@ -672,7 +696,7 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
                 base_branch = git(root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
                 base_sha = git(root, "rev-parse", "HEAD").stdout.strip()
                 Path(e["worktree"]).parent.mkdir(parents=True, exist_ok=True)
-                git(root, "worktree", "add", "-b", e["branch"], e["worktree"], base_sha)
+                add_worktree(root, e["branch"], e["worktree"], base_sha)
                 agent_obj["worktree"] = {"path": e["worktree"], "branch": e["branch"], "base": base_branch,
                                          "base_sha": base_sha, "repo": str(root)}
             elif pl["root"]:
