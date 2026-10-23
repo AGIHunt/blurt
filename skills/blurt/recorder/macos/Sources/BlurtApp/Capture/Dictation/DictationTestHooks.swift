@@ -29,16 +29,35 @@ extension App {
         case "apply":
             d.apply()
             d.refreshPolishModel { emit(["event": "dictation_polish_model", "model": d.polishModel ?? NSNull()]) }
-        case "tap":                 // tap ok|failed: what a (simulated) tapCreate answers from now on; `apply` / the poll ask it
-            DictationKeys.testTap = rest.isEmpty ? nil : rest
+        case "tap":
+            // tap ok|failed: what a (simulated) tapCreate answers from now on; `apply` / the poll ask it.
+            // tap disable [stuck]: the system turned the tap off (stuck: enabling it again doesn't hold → a new one)
+            if rest.hasPrefix("disable") {
+                DictationKeys.testTapReenables = !rest.hasSuffix("stuck")
+                d.testTapDisabled()
+            } else {
+                DictationKeys.testTap = rest.isEmpty ? nil : rest
+            }
             emit(["event": "dictation_test_tap", "tap": DictationKeys.testTap ?? NSNull()])
+        case "im", "ax":            // im on|off, ax on|off: Input Monitoring / Accessibility as macOS would report them
+            let on: Bool? = rest == "on" ? true : rest == "off" ? false : nil
+            if parts[0] == "im" { DictationKeys.testInputMonitoring = on } else { DictationKeys.testAccessibility = on }
+            emit(["event": "dictation_test_access", "which": parts[0], "on": on ?? NSNull()])
+        case "activate": d.testRefreshListener("activate")       // what NSApplication.didBecomeActive does
+        case "heard":
+            // heard CODE other|self: a press and release as the listener reports them (the tap's flagsChanged path),
+            // with another app in front or Blurt — what "last key heard from another app" is made of
+            let a = rest.split(separator: " ").map(String.init)
+            d.testHeard(keyCode: Int(a.first ?? "61") ?? 61, otherApp: (a.count > 1 ? a[1] : "other") == "other")
         case "nudge": d.nudge(rest.isEmpty ? "test" : rest)     // the island's reminder, through its once-a-day rule
         case "setup": d.openSetup()                             // what "Turn On Dictation…" does
         case "status":
             emit(["event": "dictation_status", "phase": d.phase.rawValue, "tap": d.tapInstalled, "test_mode": DictationInsert.testMode, "polish_model": d.polishModel ?? NSNull(),
                   "needs_setup": d.needsSetup, "key": Dictation.key.rawValue, "asked_version": Config.shared["app.dictation_asked_version"] ?? NSNull(),
                   "nudged_at": Config.shared["app.dictation_nudged_at"] ?? NSNull(), "prompted_flag": Config.shared["app.dictation_prompted"] ?? NSNull(),
-                  "input_monitoring": DictationKeys.inputMonitoring, "accessibility": AXIsProcessTrusted(),
+                  "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
+                  "listener": d.listenerKind.rawValue, "tap_generation": d.tapGeneration,
+                  "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)

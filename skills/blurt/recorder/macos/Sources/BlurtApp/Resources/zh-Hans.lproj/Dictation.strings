@@ -54,13 +54,19 @@
 "dictation.status.off" = "还没生效：口喷鸡听不到%@";
 "dictation.status.off.detail" = "在「系统设置」里给口喷鸡开启「输入监控」，马上生效，不用重启。";
 "dictation.status.fix" = "开启…";
+"dictation.listener.tap" = "在所有 App 里都能听到（输入监控）。";
+"dictation.listener.monitor" = "通过辅助功能在所有 App 里听（没有开启输入监控）。";
+"dictation.listener.tap_local" = "只有口喷鸡在最前面时才能听到这个键。";
+"dictation.listener.none" = "没有在听。";
+"dictation.heard.other" = "上次在其他 App 里听到：%@。";
+"dictation.heard.never" = "还没在其他 App 里听到过：去别的 App 里按一下%@试试。";
 
 "dictation.perm.section" = "权限";
 "dictation.perm.input_monitoring" = "输入监控";
 "dictation.perm.input_monitoring.why" = "用来识别单独按下的%@。口喷鸡只听这一个键，不会记录你打的字。";
 "dictation.perm.accessibility" = "辅助功能";
-"dictation.perm.accessibility.why" = "用来把文字粘贴进当前 App。没有它，文字会复制到剪贴板，由你自己粘贴。";
-"dictation.perm.restart_hint" = "已允许，但还没生效：退出并重新打开一次口喷鸡。";
+"dictation.perm.accessibility.why" = "用来把文字粘贴进当前 App，并读取光标附近的文字，让名字写对（不读密码框，也不保存）。没有它，文字会复制到剪贴板，由你自己粘贴。";
+"dictation.perm.restart_hint" = "已允许，几秒内自动生效，不用重启。";
 
 "dictation.polish.section" = "润色";
 "dictation.polish.title" = "润色";

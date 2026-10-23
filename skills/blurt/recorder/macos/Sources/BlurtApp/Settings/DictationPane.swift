@@ -35,9 +35,11 @@ final class DictationSettings: ObservableObject {
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
     @Published var keepAudio = Dictation.keepAudio
-    @Published var inputMonitoring = CGPreflightListenEventAccess()
-    @Published var accessibility = AXIsProcessTrusted()
+    @Published var inputMonitoring = DictationKeys.inputMonitoring
+    @Published var accessibility = DictationKeys.accessibility
     @Published var tap = Dictation.shared.tapInstalled
+    @Published var listener = Dictation.shared.listenerKind
+    @Published var lastOther = Dictation.shared.lastKeyFromOtherApp
     @Published var polish: PolishState?
     @Published var download: [String: (done: Double, total: Double)] = [:]
     @Published var failed: [String: Bool] = [:]
@@ -56,9 +58,12 @@ final class DictationSettings: ObservableObject {
     func stop() { timer?.invalidate(); timer = nil }
 
     func refresh() {
-        let im = CGPreflightListenEventAccess(), ax = AXIsProcessTrusted(), t = Dictation.shared.tapInstalled
+        let im = DictationKeys.inputMonitoring, ax = DictationKeys.accessibility, t = Dictation.shared.tapInstalled
         if im != inputMonitoring { inputMonitoring = im }
         if ax != accessibility { accessibility = ax }
+        let l = Dictation.shared.listenerKind, o = Dictation.shared.lastKeyFromOtherApp
+        if l != listener { listener = l; emit(["event": "dictation_pane", "listener": l.rawValue]) }
+        if o != lastOther { lastOther = o }
         if t != tap {
             tap = t
             emit(["event": "dictation_pane", "tap": t])
@@ -187,7 +192,7 @@ struct DictationPane: View {
                               granted: m.inputMonitoring, allow: m.requestInputMonitoring, pane: "Privacy_ListenEvent")
                 permissionRow(T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"),
                               granted: m.accessibility, allow: m.requestAccessibility, pane: "Privacy_Accessibility")
-                if m.enabled && m.inputMonitoring && !m.tap { Hint(T("dictation.perm.restart_hint")) }
+                if m.enabled && m.inputMonitoring && m.listener != .tap { Hint(T("dictation.perm.restart_hint")) }
             } header: { Text(T("dictation.perm.section")) }
 
             Section {
@@ -271,11 +276,23 @@ struct DictationPane: View {
                 Text(T(m.tap ? (m.mode == .hold ? "dictation.status.on.hold" : "dictation.status.on.tap") : "dictation.status.off.detail",
                        Dictation.keyInline(m.key)))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                // which listener runs, and the one thing only the user can prove: the key heard while another app is in front
+                Text(T("dictation.listener.\(m.listener.rawValue)") + " " + (m.lastOther.map { T("dictation.heard.other", heardTime($0)) }
+                        ?? T("dictation.heard.never", Dictation.keyInline(m.key))))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if !m.tap { Button(T("dictation.status.fix")) { Dictation.shared.openSetup() } }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func heardTime(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Loc.locale
+        f.dateStyle = Calendar.current.isDateInToday(d) ? .none : .short
+        f.timeStyle = .medium
+        return f.string(from: d)
     }
 
     private func seconds(_ s: Double) -> String {

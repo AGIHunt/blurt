@@ -54,13 +54,19 @@
 "dictation.status.off" = "Not working yet: Blurt can’t hear %@";
 "dictation.status.off.detail" = "Allow Input Monitoring for Blurt in System Settings. It starts working right away, no restart needed.";
 "dictation.status.fix" = "Turn On…";
+"dictation.listener.tap" = "Listening in every app (Input Monitoring).";
+"dictation.listener.monitor" = "Listening in every app through Accessibility (Input Monitoring is off).";
+"dictation.listener.tap_local" = "Only hears the key while Blurt is in front.";
+"dictation.listener.none" = "Not listening.";
+"dictation.heard.other" = "Last heard in another app: %@.";
+"dictation.heard.never" = "Not heard in another app yet: press %@ in another app to check.";
 
 "dictation.perm.section" = "Permissions";
 "dictation.perm.input_monitoring" = "Input Monitoring";
 "dictation.perm.input_monitoring.why" = "To notice %@ on its own. Blurt only listens for that key — it never records what you type.";
 "dictation.perm.accessibility" = "Accessibility";
-"dictation.perm.accessibility.why" = "To paste the text into the app you’re in. Without it the text is copied and you paste it yourself.";
-"dictation.perm.restart_hint" = "Allowed, but the key isn’t picked up yet — quit and reopen Blurt once.";
+"dictation.perm.accessibility.why" = "To paste the text into the app you’re in, and to read the words around the cursor so names come out right (never password fields, never kept). Without it the text is copied and you paste it yourself.";
+"dictation.perm.restart_hint" = "Allowed. Blurt picks it up within a few seconds, no restart needed.";
 
 "dictation.polish.section" = "Polish";
 "dictation.polish.title" = "Polish";

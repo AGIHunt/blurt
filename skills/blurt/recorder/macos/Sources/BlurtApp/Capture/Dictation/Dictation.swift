@@ -38,7 +38,6 @@ final class Dictation {
     private var heardSpeech = false
     private var front: NSRunningApplication?
     private var holdTimer: Timer?
-    private var permissionTimer: Timer?
     private var escRegistered = false
     private var polishServer: Process?
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
@@ -65,6 +64,7 @@ final class Dictation {
     /// version) and say so on the island (about once a day). The menu-bar menu's top row stays until it works.
     func install() {
         keys.onEvent = { [weak self] e in self?.handle(e) }
+        keys.onChange = { [weak self] in self?.listenerChanged() }
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: Dictation.retentionDays) }
         // ≤ 0.7: a once-ever flag that silenced the reminder for good after one unseen toast
         if Config.shared["app.dictation_prompted"] != nil { Config.shared.set("app.dictation_prompted", nil) }
@@ -88,42 +88,50 @@ final class Dictation {
     func apply() {
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
+        keys.watchedKeyCodes = trigger.key.keyCodes
         if Dictation.enabled {
-            // test builds wait only when a test simulates the tap (they never install a real one)
-            if !keys.start() && (!DictationInsert.testMode || DictationKeys.testTap != nil) { waitForPermission() }
+            // DictationKeys polls (and listens for Blurt being activated) until the key is heard everywhere; test
+            // builds only simulate macOS, and only when a test says something about it
+            keys.start()
         } else {
             keys.stop()
-            permissionTimer?.invalidate()
             if busy { cancel() }
         }
-        emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "key": trigger.key.rawValue,
-              "mode": trigger.mode.rawValue, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": AXIsProcessTrusted(),
+        lastAccess = access
+        emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
+              "key": trigger.key.rawValue,
+              "mode": trigger.mode.rawValue, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
               "test_mode": DictationInsert.testMode])
     }
 
+    /// The key is heard in other apps (a tap made with Input Monitoring, or the Accessibility monitor).
     var tapInstalled: Bool { keys.installed }
+    var listenerKind: DictationListenerKind { keys.kind }
+    var tapGeneration: Int { keys.tapGeneration }
+    /// When the key was last heard while another app was in front (Settings → Dictation; only the user can do this).
+    var lastKeyFromOtherApp: Date? { keys.lastOtherApp }
+    private var lastAccess: DictationAccess?
+
+    // tests (DictationTestHooks): the listener's paths without macOS
+    func testRefreshListener(_ via: String) { keys.refresh(via: via) }
+    func testTapDisabled() { keys.tapDisabled("timeout") }
+    func testHeard(keyCode: Int, otherApp: Bool) {
+        let down: UInt64 = keyCode == 61 ? 0x80040 : keyCode == 58 ? 0x80020 : keyCode == 63 ? 0x800000 : 0
+        keys.flags(keyCode, down, otherApp: otherApp)
+        keys.flags(keyCode, 0x100, otherApp: otherApp)
+    }
+
+    /// The listener changed (a poll, Blurt activated, a tap made again): say once that dictation works now.
+    private func listenerChanged() {
+        let now = access
+        if let before = lastAccess, DictationAccess.confirm(before: before, after: now) { confirmOn() }
+        lastAccess = now
+    }
 
     /// What the cues go by: on, and is the key heard (the tap, not a permission check).
     var access: DictationAccess { DictationAccess(enabled: Dictation.enabled, tapInstalled: keys.installed) }
     /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder.
     var needsSetup: Bool { access.needsSetup }
-
-    /// No tap yet: try again every few seconds — granting Input Monitoring in System Settings needs no restart — and
-    /// say so on the island when it comes up.
-    private func waitForPermission() {
-        permissionTimer?.invalidate()
-        let every = DictationInsert.testMode ? 0.5 : 3
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] t in
-            guard let self = self else { return t.invalidate() }
-            guard Dictation.enabled else { return t.invalidate() }
-            let before = self.access
-            if self.keys.start() {
-                t.invalidate()
-                emit(["event": "dictation_keys", "tap": true, "via": "poll"])
-                if DictationAccess.confirm(before: before, after: self.access) { self.confirmOn() }
-            }
-        }
-    }
 
     /// "Dictation is on: tap right Option to talk" — once, when the key starts being heard.
     private func confirmOn() {
