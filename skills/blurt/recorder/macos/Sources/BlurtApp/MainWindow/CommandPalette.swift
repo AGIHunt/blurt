@@ -142,8 +142,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.place.all"), "square.stack", "⌘4") { c.go(.all) },
             e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
             e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
-            Entry(title: T("dictation.history.menu"), detail: "", image: BlurtIcon.keyboard.symbolImage(pointSize: 14), keys: "⌥⌘D",
-                  enabled: true) { c.mDictationHistory() },
+            e(T("dictation.history.menu"), "character.cursor.ibeam", "⌥⌘D") { c.showDictation() },
             e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() },
         ]
         // K3: what the selection can do from its state (hand off is above), with the hint as the detail

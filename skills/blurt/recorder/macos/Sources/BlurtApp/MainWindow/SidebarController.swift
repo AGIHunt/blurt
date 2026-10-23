@@ -9,8 +9,6 @@ final class SidebarNode: NSObject {
     let title: String
     let scope: Scope?            // nil = a group header
     let symbol: String?
-    /// an icon that isn't an SF Symbol name (Dictation's, from BlurtIcon)
-    var image: NSImage?
     var count: Int?
     var children: [SidebarNode] = []
     var accessibility: String?
@@ -102,9 +100,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             return node
         }
         // not items: what was dictated into other apps — a page of its own (DictationPage.swift)
-        let dictation = SidebarNode(T("dictation.history.sidebar"), scope: .dictation)
-        dictation.image = BlurtIcon.keyboard.symbolImage(pointSize: 13)
-        dictation.accessibility = T("main.sidebar.dictation.ax")
+        // the same mark as Settings → Dictation (text typed at a cursor); the keyboard is Shortcuts'
+        let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.dashed", c.active, ax: T("main.sidebar.progress.ax")),
@@ -283,7 +280,7 @@ final class SourceCell: NSTableCellView {
         title.textColor = n.dimmed ? .secondaryLabelColor : .labelColor
         key.stringValue = n.detail ?? ""
         key.isHidden = n.detail == nil
-        icon.image = n.image ?? n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
+        icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.contentTintColor = n.dimmed ? .tertiaryLabelColor : nil
         icon.alphaValue = 1
         badge.stringValue = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
