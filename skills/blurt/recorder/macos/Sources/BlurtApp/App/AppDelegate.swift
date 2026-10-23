@@ -199,10 +199,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             emit(event)
             self?.takeEnded(code, event)
         }
-        // A second launch (double-click the app again) → start recording in the running instance
+        // A second launch (double-click the app again) → bring up the running instance's main window
         DistributedNotificationCenter.default().addObserver(forName: .init("dev.blurt.recorder.start"), object: nil, queue: .main) { [weak self] _ in
             guard let self = self, !self.busy else { return }
-            self.startRecording(useLast: false)
+            self.openFromLaunch()
         }
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
@@ -220,10 +220,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             process(URL(fileURLWithPath: p), only: arg("--agent"))
         } else if let s = arg("--review-session") {
             AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: s))
-        } else if !args.contains("--background") {
-            startRecording(useLast: false)
+        } else if !args.contains("--background") && !App.launchedAtLogin {
+            openFromLaunch()
         }
     }
+
+    /// Opening the app (Finder, Dock, Spotlight, a second launch) shows the main window; recording starts from the
+    /// menu or ⌥⇧R. The one-shot recorder (`record.py start`, not resident) still records straight away.
+    func openFromLaunch() {
+        if resident, let mw = AppEnvironment.mainWindow { mw.show(); NSApp.activate(ignoringOtherApps: true) }
+        else if !busy { startRecording(useLast: false) }
+    }
+
+    /// Started by "Open at Login": stay in the menu bar.
+    static let launchedAtLogin: Bool = {
+        let e = NSAppleEventManager.shared().currentAppleEvent
+        return e?.eventID == kAEOpenApplication
+            && e?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }()
 
     /// review.py started by an agent in a terminal asks for its batch (dev.blurt.recorder.review {url, session, home}):
     /// the user asked for that review, so the batch opens in the main window — the only window that ever shows one.
@@ -285,7 +299,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if resident && !busy { startRecording(useLast: false) }
+        if !busy { openFromLaunch() }
         return false
     }
 
