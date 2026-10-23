@@ -59,6 +59,47 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(run("ropt-down@0 fn-down@10 fn-up@80 ropt-up@90", key: .fn), [])        // ⌥ held: not alone
     }
 
+    // MARK: either ⌥ (an extra choice; right ⌥ stays the default)
+
+    func testDefaultKeyIsRightOption() {
+        XCTAssertEqual(DictationTrigger().key, .rightOption)
+        XCTAssertEqual(DictationTrigger.Key(rawValue: "either_option"), .eitherOption)
+    }
+
+    func testEitherOptionTapsWithLeftOrRight() {
+        XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .eitherOption), [.arm, .start])
+        XCTAssertEqual(run("ropt-down@0 ropt-up@100", key: .eitherOption), [.arm, .start])
+        // start with the left one, stop with the right one
+        XCTAssertEqual(run("lopt-down@0 lopt-up@100 ropt-down@2000 ropt-up@2100", key: .eitherOption), [.arm, .start, .stop])
+    }
+
+    func testEitherOptionStillIgnoresShortcuts() {
+        XCTAssertEqual(run("lopt-down@0 key:0@60 lopt-up@120", key: .eitherOption), [.arm])                         // ⌥A
+        XCTAssertEqual(run("lopt-down@0 shift-down@30 key:9@60 shift-up@80 lopt-up@100", key: .eitherOption), [.arm]) // ⌥⇧V
+        XCTAssertEqual(run("cmd-down@0 lopt-down@20 lopt-up@90 cmd-up@120", key: .eitherOption), [])
+        XCTAssertEqual(run("lopt-down@0 click@50 lopt-up@100", key: .eitherOption), [.arm])                          // ⌥-click
+        XCTAssertEqual(run("lopt-down@0 fn-down@20 fn-up@40 lopt-up@90", key: .eitherOption), [.arm])
+    }
+
+    func testEitherOptionBothSidesAtOnceIsNotATap() {
+        XCTAssertEqual(run("lopt-down@0 ropt-down@10 ropt-up@80 lopt-up@90", key: .eitherOption), [.arm])
+        XCTAssertEqual(run("ropt-down@0 lopt-down@10 ropt-up@80 lopt-up@90", key: .eitherOption), [.arm])
+        // and the next clean tap works again
+        XCTAssertEqual(run("lopt-down@0 ropt-down@10 ropt-up@80 lopt-up@90 lopt-down@500 lopt-up@600", key: .eitherOption),
+                       [.arm, .arm, .start])
+    }
+
+    func testEitherOptionHold() {
+        XCTAssertEqual(run("lopt-down@0 tick@260 lopt-up@1000", key: .eitherOption, mode: .hold), [.arm, .start, .stop])
+        XCTAssertEqual(run("lopt-down@0 tick@260 ropt-down@500 ropt-up@550 lopt-up@1000", key: .eitherOption, mode: .hold),
+                       [.arm, .start, .cancel])
+    }
+
+    func testRightOptionStillIgnoresLeft() {
+        XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .rightOption), [])
+        XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .fn), [])
+    }
+
     // MARK: hold mode
 
     func testHoldStartsAfterThresholdAndReleaseStops() {

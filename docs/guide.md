@@ -126,7 +126,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **Tap right Option** (alone, nothing else held), talk, **tap it again**. The island's ears show a keyboard and a mint
   level while it listens, then a few dots while it transcribes and polishes. `Esc` cancels. Right Option used with
   another key (`⌥`-letter, `⌥⇧V`…) never starts a dictation.
-- *Settings → Dictation* switches the key to **Fn** and the mode to **hold to talk** (it starts after you've held the key
+- *Settings → Dictation* switches the key to **Fn** or **either Option key** (left or right, still only when tapped
+  alone) and the mode to **hold to talk** (it starts after you've held the key
   for a quarter of a second and stops when you let go; pressing another key cancels it). For Fn, set System Settings →
   Keyboard → "Press fn key to" to "Do Nothing". If Typeless is also running on Fn, the two apps clash.
 - **Polish** (Light, the default) runs a small model on your Mac. It removes fillers (嗯, 那个, um, uh), stutters and the
@@ -135,7 +136,9 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   get the words exactly as spoken. The first time, install a model in Settings; the recommended one depends on your
   Mac's memory. *Off* types the raw transcript.
 - **Permissions:** Input Monitoring lets Blurt notice the key; Accessibility lets it paste. Settings shows both, with
-  a button to the right System Settings pane. Without Accessibility, or when the focus isn't a text field, the text
+  a button to the right System Settings pane, and whether the key is actually heard. Until it is, the menu-bar menu
+  starts with *Turn On Dictation…* and the island reminds you about once a day; once you allow it, dictation starts
+  working without a restart. Without Accessibility, or when the focus isn't a text field, the text
   is copied and the island says so: paste it with `⌘V`. Your clipboard is put back after a paste.
 - **Dictation History** (menu bar → *Dictation History…*, the main window's sidebar, or `⌥⌘D`) lists every dictation by
   day, with search. Each row shows what was typed; the eye button shows what the speech model heard. You can copy
@@ -243,8 +246,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
 - **按一下右 Option**（单独按，不带别的键），说话，**再按一下**。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。右 Option 和别的键一起用（`⌥` 加字母、`⌥⇧V` 等）时不会开始听写。
-- 在「设置 → 听写」里可以把按键换成 **Fn**，方式换成**按住说话**：按住约 0.25 秒开始，松开结束，中途按了别的键就取消。用 Fn 时，把「系统设置 → 键盘 → 按下 fn 键时」设为「不执行任何操作」；如果 Typeless 也在用 Fn，两边会冲突。
+- 在「设置 → 听写」里可以把按键换成 **Fn** 或**任一 Option 键**（左右都行，同样只认单按），方式换成**按住说话**：按住约 0.25 秒开始，松开结束，中途按了别的键就取消。用 Fn 时，把「系统设置 → 键盘 → 按下 fn 键时」设为「不执行任何操作」；如果 Typeless 也在用 Fn，两边会冲突。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
-- **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴。设置页显示两者的状态，并有按钮直达系统设置里对应的位置。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
+- **权限**：「输入监控」用来识别按键，「辅助功能」用来粘贴。设置页显示两者的状态，并有按钮直达系统设置里对应的位置，也会显示按键现在能不能被听到。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次；允许之后不用重启就能用。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
 - **听写历史**（菜单栏 →「听写历史…」、主窗口侧栏，或 `⌥⌘D`）按天列出所有听写，可以搜索。每行显示打出去的文字，眼睛按钮显示语音模型听到的原文；两者都能复制，也能删除，或者**转为条目**（进当前项目，没有当前项目就进「未归类」）。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。

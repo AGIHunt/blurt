@@ -29,9 +29,16 @@ extension App {
         case "apply":
             d.apply()
             d.refreshPolishModel { emit(["event": "dictation_polish_model", "model": d.polishModel ?? NSNull()]) }
+        case "tap":                 // tap ok|failed: what a (simulated) tapCreate answers from now on; `apply` / the poll ask it
+            DictationKeys.testTap = rest.isEmpty ? nil : rest
+            emit(["event": "dictation_test_tap", "tap": DictationKeys.testTap ?? NSNull()])
+        case "nudge": d.nudge(rest.isEmpty ? "test" : rest)     // the island's reminder, through its once-a-day rule
+        case "setup": d.openSetup()                             // what "Turn On Dictation…" does
         case "status":
             emit(["event": "dictation_status", "phase": d.phase.rawValue, "tap": d.tapInstalled, "test_mode": DictationInsert.testMode, "polish_model": d.polishModel ?? NSNull(),
-                  "input_monitoring": DictationKeys.allowed, "accessibility": AXIsProcessTrusted(),
+                  "needs_setup": d.needsSetup, "key": Dictation.key.rawValue, "asked_version": Config.shared["app.dictation_asked_version"] ?? NSNull(),
+                  "nudged_at": Config.shared["app.dictation_nudged_at"] ?? NSNull(), "prompted_flag": Config.shared["app.dictation_prompted"] ?? NSNull(),
+                  "input_monitoring": DictationKeys.inputMonitoring, "accessibility": AXIsProcessTrusted(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)

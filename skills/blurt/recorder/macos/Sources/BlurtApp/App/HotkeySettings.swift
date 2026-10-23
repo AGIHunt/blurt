@@ -329,7 +329,7 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
     func refresh() {
         guard content != nil else { return }
         if let f = dictationField {
-            f.text = Dictation.enabled ? Loc.t(Dictation.key == .fn ? "dictation.key.fn" : "dictation.key.right_option", table: "Dictation") : nil
+            f.text = Dictation.enabled ? Dictation.keyName : nil
             f.needsDisplay = true
             dictationNote?.stringValue = Dictation.enabled
                 ? Loc.t(Dictation.mode == .hold ? "dictation.mode.hold" : "dictation.mode.tap", table: "Dictation") : ""

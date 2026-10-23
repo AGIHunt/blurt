@@ -407,6 +407,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if busy { _ = add(T("app.menu.selecting"), nil); return }
+        // dictation is on but can't hear its key (no Input Monitoring): the first row until the tap works
+        if Dictation.shared.needsSetup {
+            let d = add(T("dictation.menu.turn_on"), #selector(mDictationSetup))
+            d.image = App.warningImage
+            d.toolTip = T("dictation.menu.turn_on.tip", Dictation.keyInline)
+            if #available(macOS 14.4, *) { d.subtitle = T("dictation.menu.turn_on.subtitle", Dictation.keyInline) }
+            menu.addItem(.separator())
+        }
         // Kept short, like other menu-bar apps: capture, what waits for you, the current project, Settings, Quit.
         // After-recording, the agent order, countdown, system audio, open at login, shortcuts and help live in Settings.
         let record = add(T("app.menu.record"), #selector(mStart))
@@ -479,6 +487,20 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mOpenInbox() { AppEnvironment.mainWindow?.showInbox() }
     @objc func mOpenJob(_ it: NSMenuItem) { (it.representedObject as? String).map { AppEnvironment.mainWindow?.reveal(job: $0) } }
     @objc func mSettings() { AppEnvironment.settings?.show(pane: nil) }
+    @objc func mDictationSetup() { Dictation.shared.openSetup() }
+
+    /// The menu row's small warning sign (BlurtIcon.warning), in the system's orange so it stands out from the rows.
+    static let warningImage: NSImage = {
+        let w = BlurtIcon.warning.menuImage
+        let im = NSImage(size: w.size, flipped: false) { r in
+            w.draw(in: r)
+            NSColor.systemOrange.set()
+            r.fill(using: .sourceAtop)
+            return true
+        }
+        im.accessibilityDescription = w.accessibilityDescription
+        return im
+    }()
     @objc func mStart() { startRecording(useLast: false) }
     @objc func mStartLast() { startRecording(useLast: true) }
     @objc func mStop() { command("stop") }

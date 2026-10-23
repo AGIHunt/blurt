@@ -3,6 +3,15 @@
 /* the key */
 "dictation.key.right_option" = "Right Option";
 "dictation.key.fn" = "Fn";
+"dictation.key.either_option" = "Either Option Key";
+/* the key inside a sentence ("tap %@ to talk") */
+"dictation.key.right_option.inline" = "the right Option key";
+"dictation.key.fn.inline" = "the Fn key";
+"dictation.key.either_option.inline" = "the left or right Option key";
+/* the key on the island's one line ("tap %@ to talk") */
+"dictation.key.right_option.short" = "right Option";
+"dictation.key.fn.short" = "Fn";
+"dictation.key.either_option.short" = "either Option";
 "dictation.mode.tap" = "Tap to start, tap to stop";
 "dictation.mode.hold" = "Hold to talk";
 
@@ -10,8 +19,10 @@
 "dictation.polish.family.gemma.installed" = "Gemma · %@ on this Mac";
 "dictation.polish.family.qwen.installed" = "Qwen · %@ on this Mac";
 "dictation.polish.progress" = "Downloading · %1$@ of %2$@";
-"dictation.toast.needs_permission" = "Dictation (%@) needs Input Monitoring";
+"dictation.toast.needs_permission" = "To dictate with %@, allow Input Monitoring";
 "dictation.toast.set_up" = "Set Up";
+"dictation.toast.on.tap" = "Dictation is on: tap %@ to talk";
+"dictation.toast.on.hold" = "Dictation is on: hold %@ and talk";
 "dictation.toast.recording_busy" = "Recording — dictation is off while the recording has the microphone";
 "dictation.toast.voice_busy" = "A voice note is listening — finish it first";
 "dictation.toast.nothing" = "Didn’t catch anything";
@@ -20,6 +31,9 @@
 /* menus */
 "dictation.menu.history" = "Dictation History…";
 "dictation.menu.history.tip" = "Tap %@ in any app to dictate";
+"dictation.menu.turn_on" = "Turn On Dictation…";
+"dictation.menu.turn_on.tip" = "Blurt can’t hear %@ yet: dictation needs Input Monitoring.";
+"dictation.menu.turn_on.subtitle" = "Allow Input Monitoring to use %@";
 
 /* Settings → Dictation */
 "dictation.settings.tab" = "Dictation";
@@ -31,6 +45,15 @@
 "dictation.settings.fn_hint" = "For Fn: in System Settings → Keyboard, set \"Press fn key to\" to \"Do Nothing\". If Typeless is running and also uses Fn, both will react — give one of them another key.";
 "dictation.settings.voice_note_hint" = "Dictation types into the app in front. To keep what you say in Blurt instead, use the voice note (%@).";
 "dictation.settings.voice_note_off" = "its shortcut is off";
+"dictation.settings.either_hint" = "A tap counts only when no other key or click comes in between, so Option shortcuts keep working.";
+
+/* whether the key is heard right now (the event tap) */
+"dictation.status.on" = "Working: Blurt hears %@";
+"dictation.status.on.tap" = "Tap %@ in any app to start talking, and tap it again to stop.";
+"dictation.status.on.hold" = "Hold %@ in any app and talk; let go to stop.";
+"dictation.status.off" = "Not working yet: Blurt can’t hear %@";
+"dictation.status.off.detail" = "Allow Input Monitoring for Blurt in System Settings. It starts working right away, no restart needed.";
+"dictation.status.fix" = "Turn On…";
 
 "dictation.perm.section" = "Permissions";
 "dictation.perm.input_monitoring" = "Input Monitoring";

@@ -92,6 +92,8 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                 if window?.isVisible != true { window?.center() }
                 window?.makeKeyAndOrderFront(nil)
                 emit(["event": "settings", "pane": want.rawValue])
+                // dictation can't hear its key: say so (≈ daily) — not over its own pane, which shows it
+                if want != .dictation { Dictation.shared.nudge("settings") }
             }
         }
     }

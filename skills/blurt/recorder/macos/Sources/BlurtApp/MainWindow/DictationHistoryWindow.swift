@@ -239,7 +239,7 @@ struct DictationHistoryView: View {
                     glyph(.keyboard, 28).foregroundStyle(.tertiary)
                     Text(m.entries.isEmpty ? T("dictation.history.empty.title") : T("dictation.history.no_match")).font(.headline)
                     if m.entries.isEmpty {
-                        Text(T("dictation.history.empty.body", Dictation.keyName)).font(.callout).foregroundStyle(.secondary)
+                        Text(T("dictation.history.empty.body", Dictation.keyInline)).font(.callout).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center).frame(maxWidth: 380)
                     }
                 }
