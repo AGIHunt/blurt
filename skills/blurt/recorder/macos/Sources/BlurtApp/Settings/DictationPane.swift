@@ -424,7 +424,8 @@ struct DictationPane: View {
     @ViewBuilder var vocabulary: some View {
         Hint(T("dictation.vocab.detail"))
         HStack {
-            TextField(T("dictation.vocab.add.placeholder"), text: $m.newWord)
+            TextField("", text: $m.newWord, prompt: Text(T("dictation.vocab.add.placeholder")))
+                .labelsHidden()
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { m.addWord() }
             Button(T("dictation.vocab.add")) { m.addWord() }

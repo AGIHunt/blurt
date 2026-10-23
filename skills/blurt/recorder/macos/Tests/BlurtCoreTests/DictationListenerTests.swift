@@ -89,9 +89,14 @@ final class DictationListenerTests: XCTestCase {
         let (s, steps) = run(L(false, false, monitor: true))
         XCTAssertEqual(steps, [.removeMonitor, .createTap])
         XCTAssertEqual(s.kind, .tapLocal)
-        // a global tap whose grant was revoked keeps running (macOS stops feeding it); nothing to plan without Accessibility
+        // a tap whose grant was revoked isn't global any more (macOS stops feeding it): the cues come back, and
+        // with Accessibility the monitor takes over from it
         XCTAssertEqual(L(false, false, tap: true, made: true).plan(), [])
-        XCTAssertEqual(L(false, false, tap: true, made: true).kind, .tap)
+        XCTAssertEqual(L(false, false, tap: true, made: true).kind, .tapLocal)
+        XCTAssertTrue(L(false, false, tap: true, made: true).shouldPoll)
+        let (s2, steps2) = run(L(false, true, tap: true, made: true))
+        XCTAssertEqual(steps2, [.removeTap, .installMonitor])
+        XCTAssertEqual(s2.kind, .monitor)
     }
 
     func testAccessGoesByTheListenerNotTheTap() {

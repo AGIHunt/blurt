@@ -148,6 +148,14 @@ public enum DictationLearn {
 
     // MARK: the fixes in an edit
 
+    /// English function words: a fix on one of them is grammar, and none of them anchors a learned phrase.
+    static let functionWords: Set<String> = [
+        "a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", "by", "from", "as", "is", "are",
+        "was", "were", "be", "been", "am", "it", "its", "it's", "this", "that", "these", "those", "there", "their", "they're",
+        "they", "them", "he", "she", "we", "you", "your", "you're", "i", "my", "our", "his", "her", "not", "no", "do", "does",
+        "did", "have", "has", "had", "can", "could", "will", "would", "should", "may", "might", "so", "if", "then", "than",
+        "too", "two", "who", "whose", "what", "which", "where", "when", "how", "here", "hear", "we're", "lets", "let's"]
+
     /// Limits: longer replacements are rewrites, not recognition fixes.
     static let maxWords = 3, maxCJK = 4, maxFixedWords = 4, maxFixedCJK = 6, maxFixes = 3
 
@@ -180,11 +188,27 @@ public enum DictationLearn {
                 }
                 if ys.count < 2 { continue }
             }
-            let heard = text(xs, in: typed), fixed = text(ys, in: edited)
+            var heard = text(xs, in: typed), fixed = text(ys, in: edited)
             guard let kind = similarity(heard, fixed) else { continue }
             let plainWord = fixed == fixed.lowercased() && !fixed.contains(" ") && !fixed.utf16.contains(where: isCJK)
                 && !fixed.contains(where: \.isNumber)
-            if plainWord && isCommonWord(fixed) && !key(fixed).hasPrefix(key(heard)) { continue }
+            if plainWord && isCommonWord(fixed) && !key(fixed).hasPrefix(key(heard)) {
+                // an ordinary word: grammar (there → their) is not vocabulary; a misheard word in a phrase is
+                // (pool request → pull request): learn the phrase with its unchanged neighbour, which only ever
+                // replaces that exact phrase
+                if functionWords.contains(fixed) || functionWords.contains(heard.lowercased()) || xs.count != 1 || ys.count != 1 { continue }
+                let ai = xi + x.count, bi = yi + y.count
+                func plainNeighbour(_ t: Token) -> Bool { !t.cjk && !functionWords.contains(t.text.lowercased()) }
+                if ai < a.count, bi < b.count, a[ai].text == b[bi].text, plainNeighbour(a[ai]),
+                   NSMaxRange(xs.last!.range) + 1 == a[ai].range.location, NSMaxRange(ys.last!.range) + 1 == b[bi].range.location {
+                    xs = a[xi...ai]; ys = b[yi...bi]
+                } else if xi > 0, yi > 0, a[xi - 1].text == b[yi - 1].text, plainNeighbour(a[xi - 1]),
+                          NSMaxRange(a[xi - 1].range) + 1 == xs.first!.range.location, NSMaxRange(b[yi - 1].range) + 1 == ys.first!.range.location {
+                    xs = a[(xi - 1)...xi]; ys = b[(yi - 1)...yi]
+                } else { continue }
+                heard = text(xs, in: typed)
+                fixed = text(ys, in: edited)
+            }
             out.append(Fix(heard: heard, fixed: fixed, kind: kind))
         }
         return out

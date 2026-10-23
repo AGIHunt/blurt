@@ -443,7 +443,8 @@ final class Dictation {
             await MainActor.run {
                 guard gen == self.generation else { return }
                 self.deliver(id: id, raw: raw, asr: asr ?? [:], polish: pol, polishTried: polish, app: app, started: started,
-                             duration: duration, wav: url, timing: ["asr_ms": asrMS, "polish_ms": polMS], context: ctx)
+                             duration: duration, wav: url, timing: ["asr_ms": asrMS, "polish_ms": polMS], context: ctx,
+                             vocabTerms: vocab.compactMap { $0["term"] as? String })
             }
         }
     }
@@ -475,12 +476,15 @@ final class Dictation {
 
     private func deliver(id: String, raw: String, asr: [String: Any], polish: [String: Any]?, polishTried: Bool,
                          app: NSRunningApplication?, started: Date, duration: Double, wav: URL, timing: [String: Int],
-                         context: DictationContext?) {
+                         context: DictationContext?, vocabTerms: [String]) {
         let text = (polish?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? raw
         let fellBack = polish?["fell_back"] as? Bool ?? false
         let asrText = asr["asr_text"] as? String ?? raw         // what the speech model wrote, before the sounds-like pass
+        // the custom words this dictation wrote: fixed by the sounds-like pass or polish, or (when the speech model was
+        // told the words) written by the model itself
         var terms: [String] = []
-        for t in (asr["terms"] as? [String] ?? []) + (polish?["terms"] as? [String] ?? []) where !terms.contains(t) { terms.append(t) }
+        let told = asr["biased"] as? Bool == true ? vocabTerms.filter { text.contains($0) } : []
+        for t in (asr["terms"] as? [String] ?? []) + (polish?["terms"] as? [String] ?? []) + told where !terms.contains(t) { terms.append(t) }
         let contextUsed = polish?["context"] as? Bool ?? false
         phase = .idle
         // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes

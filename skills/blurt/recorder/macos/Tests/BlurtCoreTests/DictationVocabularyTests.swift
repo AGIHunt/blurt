@@ -114,6 +114,14 @@ final class DictationLearnTests: XCTestCase {
                        [.init(heard: "github", fixed: "GitHub", kind: .caseOrSpacing)])
     }
 
+    func testOrdinaryWordIsLearnedAsAPhrase() {
+        let f = DictationLearn.fixes(typed: "review the pool request before lunch", edited: "review the pull request before lunch",
+                                     isCommonWord: { ["pull", "pool", "request", "the"].contains($0) })
+        XCTAssertEqual(f, [.init(heard: "pool request", fixed: "pull request", kind: .spelling)])
+        // no plain neighbour to anchor it: nothing
+        XCTAssertEqual(DictationLearn.fixes(typed: "the pool", edited: "the pull", isCommonWord: { _ in true }), [])
+    }
+
     func testChineseFixes() {
         // one changed character is learned with the unchanged ones before it
         XCTAssertEqual(fixes("口喷机现在支持了", "口喷鸡现在支持了"), [.init(heard: "口喷机", fixed: "口喷鸡", kind: .sound)])

@@ -55,7 +55,7 @@ public struct DictationListener: Equatable {
     }
 
     public var kind: DictationListenerKind {
-        if tap && tapMadeWithAccess { return .tap }
+        if tap && tapMadeWithAccess && inputMonitoring { return .tap }      // a revoked grant: macOS stops feeding it
         if monitor { return .monitor }
         return tap ? .tapLocal : .none
     }
@@ -70,7 +70,7 @@ public struct DictationListener: Equatable {
         if accessibility {
             // the monitor hears other apps; a Blurt-only tap next to it would deliver Blurt's own keys twice
             var steps: [DictationListenerStep] = []
-            if tap && !(tapMadeWithAccess && !tapFailed) { steps.append(.removeTap) }
+            if tap { steps.append(.removeTap) }
             if !monitor { steps.append(.installMonitor) }
             return steps
         }
