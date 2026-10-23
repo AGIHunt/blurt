@@ -38,11 +38,14 @@ def test_path_parser_expands_everything_to_absolute_cubics():
 
 
 def test_menu_bar_icons_are_the_blurt_glyph():
-    """Tauri tray and the macOS status item's monochrome option show the same mark: the `blurt` glyph (no stale hand-made
-    template PNGs). The macOS default is the colour hen drawn in code (Icons/MenuHen.swift)."""
+    """Tauri tray and the macOS status item show the same mark: the `blurt` glyph as a template image, the default (no
+    stale hand-made template PNGs). The colour hen drawn in code (Icons/MenuHen.swift) is the option."""
     mac = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/AppDelegate.swift").read_text()
     assert "BlurtIcon.blurt.image(size: 18)" in mac and "MenuIconTemplate" not in mac
     assert "MenuHen.image(size: 18" in mac
+    glyph = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/MenuGlyph.swift").read_text()
+    assert 'colorKey = "app.menu_icon_color"' in glyph and "!(Config.shared[colorKey] as? Bool ?? false)" in glyph
+    assert (ROOT / "assets/brand/glyph.svg").read_text() == (ROOT / "assets/icons/blurt.svg").read_text()
     assert not list((ROOT / "skills/blurt/assets").glob("MenuIconTemplate*.png"))
     build = (ROOT / "assets/icons/tools/build.py").read_text()
     assert 'TRAY_ICON = "blurt"' in build

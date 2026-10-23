@@ -8,13 +8,16 @@ are rendered from these files.
 | --- | --- |
 | `app-icon.svg` | The master app icon. 1024 canvas on the macOS 26 icon grid: an 824 px superellipse tile at (100, 100) with a soft drop shadow, a cream gradient and a top sheen. On top sits the hen (`<g id="hen">`): flat fills with gentle gradients, sheen, and a soft shadow under the art. The hen alone is the logo. |
 | `app-icon-small.svg` | The 16 and 32 px icon slots and the favicon, simplified the way Apple does its small icons. It has a heavier outline, two chunkier shout strokes instead of three, a bigger eye and no sheen, and the hen is 7 % larger. |
-| `glyph.svg` | The tray glyph, and the macOS menu bar's monochrome option (Settings → General → "Monochrome menu-bar icon"): the same hen as a monochrome line drawing on the icon family's 24 grid with the 1.75 stroke. It has an outlined head, a solid comb, an open beak, a pixel-snapped eye and two shout strokes. `assets/icons/blurt.svg` is a copy of it. |
+| `glyph.svg` | The macOS menu-bar icon (an 18 pt template image, the default) and the tray glyph: the same hen as a solid monochrome silhouette, in the weight of the SF Symbols next to it. The head has a negative-space eye and the open beak cut into it, the three-lobe comb and the wattle sit apart from the head by a 1 px gap at 1x, and there are two neck feathers and three shout strokes. It was designed on a 36 grid (1 px at 2x) and scaled into the icon family's 24 grid. `assets/icons/blurt.svg` is a copy of it. |
 | `build.py` | Renders every bitmap below. |
 
-The macOS menu bar shows the hen **in colour** by default: `skills/blurt/recorder/macos/Sources/BlurtApp/Icons/MenuHen.swift`
-redraws this art without the tile for 18 pt, in code, on a 36-unit grid (bold dark outline, a light rim on dark,
-tinted and highlighted bars, a 2 × 2 eye at 1x). It is not generated from these files: if the hen changes here, redraw
-it there and check it with `menuglyph DIR`.
+The macOS menu bar shows the hen **in monochrome** by default, like every other menu-bar icon: `glyph.svg` as a
+template image, which macOS tints for light, dark and highlighted bars. Settings → General → "Colour menu-bar icon"
+switches to the colour hen: `skills/blurt/recorder/macos/Sources/BlurtApp/Icons/MenuHen.swift` redraws this art
+without the tile for 18 pt, in code, on a 36-unit grid (bold dark outline, a light rim on dark, tinted and highlighted
+bars, a 2 × 2 eye at 1x). It is not generated from these files: if the hen changes here, redraw it there and check it
+with `menuglyph DIR`. The four monochrome candidates the glyph was picked from, rendered on fake menu bars next to SF
+Symbols, are in `promo/cases/v0.8-menubar/mono-candidates.png` (untracked, with the generator in `mono-src/`).
 
 ## Regenerate
 

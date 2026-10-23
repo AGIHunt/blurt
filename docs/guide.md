@@ -26,7 +26,8 @@ screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. Use a record
 use a snap or a voice note for everything that fits in one screen or one sentence.
 
 In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The countdown, system audio and
-what happens after a recording are in *Settings → General*.
+what happens after a recording are in *Settings → General*. The menu-bar icon is the hen in monochrome, like the
+other icons up there; *Settings → General → Colour menu-bar icon* shows it in colour instead.
 
 Speech is transcribed on your computer. Nothing leaves it unless you choose a cloud speech service.
 
@@ -178,7 +179,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音。
 
-菜单栏菜单里按住 `⌥`，「开始录制」会变成「录制上次的区域」。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。
+菜单栏菜单里按住 `⌥`，「开始录制」会变成「录制上次的区域」。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的小鸡，和菜单栏里其它图标一致；想要彩色的，打开「设置 → 通用 → 彩色菜单栏图标」。
 
 语音在你的电脑上转写。除非你选了云端语音服务，内容不会离开这台电脑。
 

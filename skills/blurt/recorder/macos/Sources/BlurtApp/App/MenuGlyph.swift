@@ -3,9 +3,9 @@
 // organised). The status item can only show an image, so this swaps images at 24 fps — only while it moves; Reduce
 // Motion: it stays still (no timer, the plain icon).
 //
-// Which hen: the colour one (Icons/MenuHen.swift, brand direction A) in the `look` App picks for the bar, or — with
-// Settings → General → "Monochrome menu-bar icon" (app.menu_icon_mono) — the template `blurt` glyph
-// (assets/brand/glyph.svg). `look == nil` = the template glyph.
+// Which hen: the template `blurt` glyph (assets/brand/glyph.svg — the A hen as a solid monochrome silhouette), like
+// every other menu-bar icon, or — with Settings → General → "Colour menu-bar icon" (app.menu_icon_color) — the colour
+// one (Icons/MenuHen.swift, brand direction A) in the `look` App picks for the bar. `look == nil` = the template glyph.
 import AppKit
 import BlurtCore
 
@@ -23,8 +23,17 @@ final class MenuGlyph {
     /// The back of the neck, in unit coordinates of the 18 pt image (y up): the head tips back about it.
     static let pivot = CGPoint(x: 0.4, y: 0.2)
 
-    /// The user prefers the monochrome template glyph (off by default).
-    static var monochrome: Bool { Config.shared["app.menu_icon_mono"] as? Bool ?? false }
+    /// Settings → General → "Colour menu-bar icon": true = the colour hen; unset = the template glyph (the default).
+    static let colorKey = "app.menu_icon_color"
+    /// The monochrome template glyph (the default; the colour hen only when the user turned it on).
+    static var monochrome: Bool { !(Config.shared[colorKey] as? Bool ?? false) }
+
+    /// v0.8 betas showed the colour hen by default, with "Monochrome menu-bar icon" (app.menu_icon_mono, only ever
+    /// written as true) to opt out. Monochrome is the default now and the switch is "Colour menu-bar icon": whoever
+    /// never touched it gets monochrome, and whoever chose monochrome keeps it — so the old key just goes.
+    static func migrateSetting() {
+        if Config.shared["app.menu_icon_mono"] != nil { Config.shared.set("app.menu_icon_mono", nil) }
+    }
 
     /// The colour hen's look for the bar it is on; nil = the template glyph. Set by App before each refresh.
     var look: MenuHen.Look? = nil {
@@ -62,8 +71,8 @@ final class MenuGlyph {
     }
 
     /// How high the hop goes (a fraction of the size): the comb is at the top of the image, so a higher hop would clip
-    /// it — less for the colour hen, whose outline and rim sit closer to the edge.
-    static func hopHeight(_ look: MenuHen.Look?) -> CGFloat { look == nil ? 0.09 : 0.04 }
+    /// it — both hens fill most of their 18 pt (the template one's comb is 1.1 pt from the top).
+    static func hopHeight(_ look: MenuHen.Look?) -> CGFloat { look == nil ? 0.035 : 0.04 }
     /// The colour hen rises this much (a fraction of the size) as it tips back.
     static let tiltLift: CGFloat = 0.035
 
@@ -118,10 +127,11 @@ extension MenuGlyph {
     ///   menuglyph-<pose>-<light|dark>@<n>x.png   the template glyph (rest / listen / hop), tinted like a template
     ///                                            image (black on a light bar, white on a dark one)
     ///   menuhen-<pose>-<light|dark>@<n>x.png     the colour hen in each look, transparent
-    ///   statusbutton-<aqua|dark>-<rest|open|mono>@<n>x.png
+    ///   statusbutton-<aqua|dark>-<rest|open|color|color-open>@<n>x.png
     ///                                            the real status button (image + a stand-in count of 3) drawn in that
-    ///                                            appearance, at rest, with its menu open (the highlight's look) and
-    ///                                            monochrome — transparent, for a contact sheet on fake menu bars
+    ///                                            appearance: the template hen at rest and with its menu open (the
+    ///                                            highlight's look), then the colour option the same two ways —
+    ///                                            transparent, for a contact sheet on fake menu bars
     /// Returns the file names.
     @MainActor
     static func renderPoses(to dir: URL) -> [String] {
@@ -169,19 +179,19 @@ extension MenuGlyph {
         }
         // the real status button, in each appearance and state, with a count
         guard let app = NSApp.delegate as? App, let b = app.statusItem?.button else { return names }
-        let savedAppearance = b.appearance, savedMono = Config.shared["app.menu_icon_mono"]
+        let savedAppearance = b.appearance, savedColor = Config.shared[colorKey]
         MenuBadge.shared.testCount = 3
         defer {
             MenuBadge.shared.testCount = nil
-            Config.shared.set("app.menu_icon_mono", savedMono)
+            Config.shared.set(colorKey, savedColor)
             b.appearance = savedAppearance
             app.testMenuOpen(false)
         }
         for (name, appearance) in [("aqua", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            for state in ["rest", "open", "mono"] {
+            for state in ["rest", "open", "color", "color-open"] {
                 b.appearance = NSAppearance(named: appearance)
-                Config.shared.set("app.menu_icon_mono", state == "mono" ? true : nil)
-                app.testMenuOpen(state == "open")             // refreshes the button
+                Config.shared.set(colorKey, state.hasPrefix("color") ? true : nil)
+                app.testMenuOpen(state.hasSuffix("open"))       // refreshes the button
                 let size = NSSize(width: ceil(b.intrinsicContentSize.width), height: max(22, b.bounds.height))
                 for scale in [1, 2] {
                     let frame = b.frame

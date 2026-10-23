@@ -188,6 +188,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.autosaveName = "blurt"
         item.isVisible = true
         statusItem = item
+        MenuGlyph.migrateSetting()
         MenuGlyph.shared.onFrame = { [weak self] img in
             guard let self = self, self.rec == nil, let b = self.statusItem?.button else { return }
             b.image = img ?? self.menuIcon(self.menuLook(b))
@@ -379,9 +380,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         b.setAccessibilityLabel(badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name"))
     }
 
-    /// The menu-bar icon at rest: the colour hen (Icons/MenuHen.swift, brand direction A) in the look that suits the
-    /// bar, or — Settings → General → "Monochrome menu-bar icon" — the template glyph below. The recording state (red
-    /// dot / pause) replaces either.
+    /// The menu-bar icon at rest: the monochrome template hen below (the default, like every other menu-bar icon), or —
+    /// Settings → General → "Colour menu-bar icon" — the colour hen (Icons/MenuHen.swift, brand direction A) in the
+    /// look that suits the bar. The recording state (red dot / pause) replaces either.
     func menuIcon(_ look: MenuHen.Look?) -> NSImage {
         let key = look?.rawValue ?? "mono"
         if let i = menuIcons[key] { return i }
@@ -399,7 +400,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Which colour hen this status button needs: a light rim where the hen's dark outline would melt into the bar —
     /// a dark or tinted-dark menu bar (the button's effectiveAppearance follows the wallpaper) — and while the menu is
-    /// open (the highlight behind it); nil = the monochrome template glyph.
+    /// open (the highlight behind it); nil = the monochrome template hen (the default).
     func menuLook(_ b: NSStatusBarButton) -> MenuHen.Look? {
         if MenuGlyph.monochrome { return nil }
         let dark = b.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -425,9 +426,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
-    /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray), drawn at 18 pt as a monochrome
-    /// template image like every other menu-bar icon: macOS tints it for light / dark menu bars, and it is vector, so
-    /// it is crisp at every scale. Shown when the user prefers a monochrome menu-bar icon.
+    /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray): the A hen as a solid silhouette
+    /// (negative-space eye and open beak, the comb and wattle apart from the head, shout strokes), drawn at 18 pt as a
+    /// monochrome template image like every other menu-bar icon: macOS tints it for light, dark and highlighted bars,
+    /// and it is vector, so it is crisp at every scale. The default menu-bar icon.
     static func makeMenuIcon() -> NSImage {
         let img = BlurtIcon.blurt.image(size: 18)
         img.isTemplate = true

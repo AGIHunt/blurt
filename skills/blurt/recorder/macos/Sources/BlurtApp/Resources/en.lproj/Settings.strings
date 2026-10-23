@@ -106,7 +106,7 @@
 "settings.general.recording" = "Recording";
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.spotlight" = "Show items in Spotlight";
-"settings.general.menu_mono" = "Monochrome menu-bar icon";
+"settings.general.menu_color" = "Colour menu-bar icon";
 "settings.general.system_audio" = "Also record system audio";
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
 "settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
