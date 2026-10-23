@@ -11,7 +11,7 @@
 // One shared 12 fps timer drives every playing layer and stops when none plays. Frames are set as the layer's model
 // `contents` (no CAAnimation), so offscreen renders (FrameCapture, `mascotframes`) see the same frame the screen does.
 // Reduce Motion: the clip's still frame, no movement; a one-shot's completion still runs.
-// The line glyphs (BlurtIcon.chicken, the menu-bar hen .blurt) move in code instead: see GlyphMotion below.
+// The line glyphs (BlurtIcon.chicken, the menu-bar chick .blurt) move in code instead: see GlyphMotion below.
 import AppKit
 import BlurtCore
 import SwiftUI
@@ -296,7 +296,7 @@ enum GlyphMotion {
         }
     }
 
-    /// The same motion for any drawing (the colour menu-bar hen): `draw` paints the still picture into `rect` of a
+    /// The same motion for any drawing (the menu-bar chick, layer by layer): `draw` paints the still picture into `rect` of a
     /// y-up context; `template` = the result tints like a template image.
     static func image(size: CGFloat, angle: CGFloat = 0, pivot: CGPoint = CGPoint(x: 0.5, y: 0.1), lift: CGFloat = 0,
                       squash: CGFloat = 0, template: Bool, draw: @escaping (CGContext, CGRect) -> Void) -> NSImage {

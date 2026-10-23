@@ -26,8 +26,8 @@ screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. Use a record
 use a snap or a voice note for everything that fits in one screen or one sentence.
 
 In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The countdown, system audio and
-what happens after a recording are in *Settings → General*. The menu-bar icon is the hen in monochrome, like the
-other icons up there; *Settings → General → Colour menu-bar icon* shows it in colour instead.
+what happens after a recording are in *Settings → General*. The menu-bar icon is the line chick in monochrome, like
+the other icons up there: its sound arcs pulse while voice input listens, and it hops when something is done.
 
 Speech is transcribed on your computer. Nothing leaves it unless you choose a cloud speech service.
 

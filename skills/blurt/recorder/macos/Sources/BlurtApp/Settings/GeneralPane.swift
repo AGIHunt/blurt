@@ -1,5 +1,5 @@
 // Settings → General: projects (the folders opened in Blurt, and which one new captures go to), open at login,
-// language, Spotlight, the colour menu-bar icon option; recording (what happens after one, countdown, system audio, collecting macOS screenshots);
+// language, Spotlight; recording (what happens after one, countdown, system audio, collecting macOS screenshots);
 // about (version, help, updates). The menu-bar menu stays short because these live here.
 import AppKit
 import ServiceManagement
@@ -18,7 +18,6 @@ final class GeneralModel: ObservableObject {
     @Published var systemAudio = false
     @Published var collect = false
     @Published var spotlight = true
-    @Published var menuColor = false
     @Published var error: String?
 
     init() { reload() }
@@ -36,7 +35,6 @@ final class GeneralModel: ObservableObject {
         systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         collect = snapper.collecting
         spotlight = Config.shared["spotlight"] as? Bool ?? true
-        menuColor = !MenuGlyph.monochrome
     }
 
     private func run(_ f: @escaping () async throws -> Void) {
@@ -79,13 +77,6 @@ final class GeneralModel: ObservableObject {
         setRecordConfig("collect_system_shots", v)
         snapper.syncCollector()
         collect = snapper.collecting
-    }
-    /// The monochrome template hen in the menu bar (default, like every other menu-bar icon), or the colour one; the
-    /// status item picks it up on its next refresh.
-    func setMenuColor(_ v: Bool) {
-        Config.shared.set(MenuGlyph.colorKey, v ? true : nil)
-        menuColor = v
-        emit(["event": "menu_icon", "color": v, "mono": !v])
     }
     func setSpotlight(_ v: Bool) {
         Config.shared.set("spotlight", v ? nil : false)
@@ -148,7 +139,6 @@ struct GeneralPane: View {
                     Hint(T("settings.general.language.restart"))
                 }
                 Toggle(T("settings.general.spotlight"), isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
-                Toggle(T("settings.general.menu_color"), isOn: Binding(get: { m.menuColor }, set: { m.setMenuColor($0) }))
             } header: { Text(T("settings.general.app")) }
 
             Section {

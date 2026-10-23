@@ -2,6 +2,7 @@
 and no UI source uses emoji or text glyphs as icons (assets/icons/tools/check_glyphs.py)."""
 from __future__ import annotations
 
+import dataclasses
 import re
 import subprocess
 import sys
@@ -38,17 +39,44 @@ def test_path_parser_expands_everything_to_absolute_cubics():
 
 
 def test_menu_bar_icons_are_the_blurt_glyph():
-    """Tauri tray and the macOS status item show the same mark: the `blurt` glyph as a template image, the default (no
-    stale hand-made template PNGs). The colour hen drawn in code (Icons/MenuHen.swift) is the option."""
-    mac = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/AppDelegate.swift").read_text()
+    """Tauri tray and the macOS status item show the same mark: the `blurt` glyph (the 4A line chick) as a template
+    image — no stale hand-made template PNGs, and no colour option any more (the v0.8 colour hen is gone)."""
+    app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+    mac = (app / "App/AppDelegate.swift").read_text()
     assert "BlurtIcon.blurt.image(size: 18)" in mac and "MenuIconTemplate" not in mac
-    assert "MenuHen.image(size: 18" in mac
-    glyph = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/MenuGlyph.swift").read_text()
-    assert 'colorKey = "app.menu_icon_color"' in glyph and "!(Config.shared[colorKey] as? Bool ?? false)" in glyph
+    assert not (app / "Icons/MenuHen.swift").exists()
+    src = "\n".join(p.read_text() for p in app.rglob("*.swift"))
+    assert "MenuHen" not in src and "settings.general.menu_color" not in src
+    glyph = (app / "App/MenuGlyph.swift").read_text()
+    assert "BlurtIcon.blurt.layers" in glyph and "reduceMotion" in glyph
+    for strings in app.glob("Resources/*.lproj/Settings.strings"):
+        assert "menu_color" not in strings.read_text(), strings
     assert (ROOT / "assets/brand/glyph.svg").read_text() == (ROOT / "assets/icons/blurt.svg").read_text()
     assert not list((ROOT / "skills/blurt/assets").glob("MenuIconTemplate*.png"))
     build = (ROOT / "assets/icons/tools/build.py").read_text()
     assert 'TRAY_ICON = "blurt"' in build
+
+
+def test_blurt_glyph_is_the_chick_with_two_arc_layers():
+    """MenuGlyph pulses the sound arcs by drawing the glyph layer by layer: [chick, inner arc, outer arc], all fills
+    (the glyph carries its own 1.5 pt line as outlines), inside the 24 grid."""
+    icon = next(i for i in iconlib.load_all() if i.name == "blurt")
+    assert [L.mode for L in icon.layers] == ["fill", "fill", "fill"]
+    x0, y0, x1, y1 = iconlib.bbox(icon)
+    assert 0.5 <= x0 and 0.5 <= y0 and x1 <= 23.5 and y1 <= 23.5
+    inner, outer = (iconlib.bbox(dataclasses.replace(icon, layers=[L])) for L in icon.layers[1:])
+    assert inner[2] < outer[2] and inner[1] > outer[1]          # the outer arc reaches further right and higher
+
+
+def test_brand_sources_are_generated_and_rendered():
+    """assets/brand/*.svg come from chick.swift; the bitmaps build.py writes exist."""
+    brand = ROOT / "assets/brand"
+    for f in ("app-icon.svg", "app-icon-small.svg", "app-icon-16.svg", "logo.svg", "chick-line.svg", "chick-filled.svg"):
+        assert "chick.swift" in (brand / f).read_text(), f
+    assert '<g id="tile">' in (brand / "app-icon.svg").read_text()
+    for rel in ("skills/blurt/assets/icon.png", "skills/blurt/assets/icon-16.png", "skills/blurt/assets/icon-32.png",
+                "assets/logo.png", "assets/logo-v0.8a.png", "site/assets/favicon.png", "apps/desktop/src-tauri/icons/icon.icns"):
+        assert (ROOT / rel).stat().st_size > 0, rel
 
 
 def test_tk_recorder_uses_png_icons_not_emoji():
