@@ -148,6 +148,38 @@ enum DictationInsert {
         up?.post(tap: .cghidEventTap)
     }
 
+    // MARK: a double tap: Return
+
+    /// Presses Return in the app in front (a double tap of the dictation key: "send"), when DictationSendPolicy allows
+    /// it. Test builds never post an event: they report what would have happened ("would press Return"), with the
+    /// simulated Accessibility of the test hooks. `pressed` is also true for that test answer.
+    static func pressReturn() -> (pressed: Bool, result: String, why: String?) {
+        let front = NSWorkspace.shared.frontmostApplication
+        let me = ProcessInfo.processInfo.processIdentifier
+        let d = DictationSendPolicy.decide(hasFrontApp: front != nil, frontIsBlurt: front?.processIdentifier == me,
+                                           secureInput: IsSecureEventInputEnabled(),
+                                           accessibility: testMode ? DictationKeys.accessibility : AXIsProcessTrusted())
+        if case .skip(let why) = d { return (false, "skipped", why) }
+        if testMode {
+            emit(["event": "dictation_test_send", "log": "would press Return", "app": front?.bundleIdentifier ?? ""])
+            return (true, "would_press_return", nil)
+        }
+        postReturn()
+        return (true, "pressed", nil)
+    }
+
+    /// Return as a keyboard would send it, no modifiers (the dictation key is up by now).
+    private static func postReturn() {
+        guard !testMode else { return }          // belt and braces: a test build never posts an event
+        let src = CGEventSource(stateID: .hidSystemState)
+        let down = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_Return), keyDown: true)
+        let up = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(kVK_Return), keyDown: false)
+        down?.flags = []
+        up?.flags = []
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
     // MARK: what has the focus (Accessibility)
 
     struct Focus {

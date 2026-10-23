@@ -10,6 +10,14 @@
 //      is polished together with the one before it.
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
 //
+// A cut is a pause, not a sentence end (each piece used to come back as a whole utterance: a full stop at every
+// breath). So a piece's own ending isn't final: its trailing 。/，is taken off before polish, and polish works over a
+// sliding window — the last, unfinished clause of the window before (`carry`) is polished again together with the
+// new piece, and only the text up to the window's last sentence end or comma is committed (DictationStitch.commitSplit).
+// After a long pause (≥ 1.2 s) that follows a whole sentence, the carried clause is committed as it is. Without polish
+// the transcripts are joined with the same rule (DictationStitch.joinPieces). At key-up the last window is the carried
+// clause + the last piece: a few units more than before.
+//
 // Safety: a piece the speech model failed on → the whole recording is transcribed (and polished) in one go, the old
 // way. A hard cut (no pause for 20 s) overlaps the pieces by 0.8 s and DictationStitch drops the doubled words. Each
 // piece's polish has the content-loss guard; the joined result is checked once more against the joined transcript
@@ -46,10 +54,16 @@ final class DictationStream {
         /// what this piece contributes to the final text ("" when it was polished together with the next one)
         var text = ""
         var asrFailed = false
+        /// enqueued at key-up: the dictation ends here, so its ending is final
+        let last: Bool
+        /// polish's own output for what this piece committed (the history's "polished")
+        var polishedPart = ""
         var asrSpan: (Double, Double) = (0, 0)
         var polishSpan: (Double, Double) = (0, 0)
         var loadMS = 0
-        init(index: Int, start: Int, end: Int, hard: Bool) { self.index = index; self.start = start; self.end = end; self.hard = hard }
+        init(index: Int, start: Int, end: Int, hard: Bool, last: Bool = false) {
+            self.index = index; self.start = start; self.end = end; self.hard = hard; self.last = last
+        }
     }
 
     struct Result {
@@ -92,9 +106,17 @@ final class DictationStream {
     private let polishQ = DispatchQueue(label: "blurt.dictation.polish", qos: .userInitiated)
     private var cancelled = false
     private var keyUp: CFTimeInterval = 0
+    /// the pause after each piece (DictationSegmenter.pauses, copied on the main thread as it learns them)
+    private var pauses: [Double?] = []
+    /// polishQ only: the last window's unfinished clause (the typed text and polish's own output) and the
+    /// punctuation it ended in — polished again with the next piece
+    private var carry = "", carryPolished = "", carryEnd = ""
+    /// custom words keep their capital at a seam
+    private let names: Set<String>
 
     init(id: String, dir: URL, wholeWav: URL, options: Options) {
         self.id = id; self.dir = dir; self.wholeWav = wholeWav; self.opt = options
+        names = Set(options.vocab.compactMap { $0["term"] as? String }.flatMap { $0.split(separator: " ").map(String.init) })
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 
@@ -104,7 +126,10 @@ final class DictationStream {
         guard !cancelled else { return }
         audio += x
         guard opt.streaming else { return }
-        for cut in segmenter.feed(x) {
+        let cuts = segmenter.feed(x)
+        let known = segmenter.pauses
+        if known != lock.locked({ pauses }) { lock.locked { pauses = known } }
+        for cut in cuts {
             enqueue(start: pieceStart, end: cut.end, hard: pieceHard)
             pieceStart = cut.nextStart
             pieceHard = cut.hard
@@ -121,10 +146,10 @@ final class DictationStream {
 
     private func wav(_ i: Int) -> URL { dir.appendingPathComponent("\(id)-p\(i).wav") }
 
-    private func enqueue(start: Int, end: Int, hard: Bool) {
+    private func enqueue(start: Int, end: Int, hard: Bool, last: Bool = false) {
         guard end > start else { return }
         let p = lock.locked { () -> Piece in
-            let p = Piece(index: pieces.count, start: start, end: end, hard: hard)
+            let p = Piece(index: pieces.count, start: start, end: end, hard: hard, last: last)
             pieces.append(p)
             return p
         }
@@ -145,8 +170,8 @@ final class DictationStream {
         let url = wav(p.index)
         DictationStream.writeWav(samples, to: url)
         // the text so far, as context: the speech model keeps names consistent across pieces
-        let before = lock.locked { pieces.prefix(p.index).map(\.raw) }
-        let prior = String(DictationStitch.join(before).suffix(200))
+        let (before, gaps) = lock.locked { (Array(pieces.prefix(p.index).map(\.raw)), pauses) }
+        let prior = String(DictationStitch.joinPieces(before, pauses: gaps, names: names).suffix(200))
         let t0 = CACurrentMediaTime()
         let r = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30)
         p.asrSpan = (t0, CACurrentMediaTime())
@@ -167,20 +192,42 @@ final class DictationStream {
         polishQ.async { self.polish(p) }
     }
 
+    /// The pause after piece `i` (nil: not known, or no such piece).
+    private func pause(after i: Int) -> Double? {
+        lock.locked { i >= 0 && i < pauses.count ? pauses[i] : nil }
+    }
+
+    /// One polish window: the carried, unfinished clause + this piece (its own ending taken off unless it is the
+    /// last). What the window says up to its last sentence end or comma is committed; the rest is carried to the next
+    /// window.
     private func polish(_ p: Piece) {
         guard !cancelled else { return }
-        guard opt.polish, !p.raw.isEmpty else { p.text = p.raw; return }
-        // a piece that opens with "不对…" / "no wait…": polished with the one before, so the corrected-away words go
-        var input = p.raw
+        // without polish the transcripts are joined with the seam rule at the end (assemble)
+        guard opt.polish, !p.raw.isEmpty else { return }
+        let core = p.last ? p.raw : DictationStitch.splitTrailing(p.raw).core
+        var input = carry
+        var prefix = "", prefixPolished = ""            // committed ahead of the window
         var merged: Piece?
-        if let prev = previous(p), DictationStitch.startsWithCorrection(p.raw), !prev.raw.isEmpty {
-            input = DictationStitch.join(prev.raw, p.raw)
+        if let prev = previous(p), DictationStitch.startsWithCorrection(p.raw), !(prev.text.isEmpty && carry.isEmpty) {
+            // a piece that opens with "不对…" / "no wait…": what the one before committed is polished again with it,
+            // so the corrected-away words can go
+            input = DictationStitch.join(prev.text, carry)
             merged = prev
+        } else if !carry.isEmpty, let g = pause(after: p.index - 1), g >= DictationStitch.longPause,
+                  // the carry is only the last clause: judge the whole sentence it ends ("…folder, myself.")
+                  DictationStitch.plausiblyFinal(DictationStitch.join(lock.locked { pieces.prefix(p.index).map(\.text) } + [carry]),
+                                                 end: carryEnd.isEmpty ? "。" : carryEnd) {
+            // a long pause after a whole sentence: it ended there
+            prefix = carry + DictationStitch.terminator(carryEnd, after: carry)
+            prefixPolished = carryPolished + DictationStitch.terminator(carryEnd, after: carryPolished)
+            input = ""
         }
+        carry = ""; carryPolished = ""; carryEnd = ""
+        input = DictationStitch.join(input, input.isEmpty ? core : DictationStitch.decapitalize(core, names: names))
         let upTo = merged?.index ?? p.index
-        let done = lock.locked { pieces.prefix(upTo).map(\.text) }
+        let done = lock.locked { pieces.prefix(upTo).map(\.text) } + [prefix]
         var ctx = lock.locked { context }?.payload ?? [:]
-        let so = DictationStitch.join(done)
+        let so = DictationStitch.join(Array(done))
         if !so.isEmpty { ctx["before"] = DictationStitch.join(ctx["before"] as? String ?? "", so) }
         let t0 = CACurrentMediaTime()
         let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
@@ -189,7 +236,20 @@ final class DictationStream {
         p.loadMS += r?["load_ms"] as? Int ?? 0
         p.polish = r
         let out = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? input
-        if let m = merged { m.text = ""; p.text = out } else { p.text = out }
+        let model = (r?["polished"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? out
+        if let m = merged { m.text = ""; m.polishedPart = "" }
+        if p.last {
+            p.text = DictationStitch.join(prefix, out)
+            p.polishedPart = DictationStitch.join(prefixPolished, model)
+        } else {
+            let s = DictationStitch.commitSplit(out), sm = DictationStitch.commitSplit(model)
+            p.text = DictationStitch.join(prefix, s.commit)
+            p.polishedPart = DictationStitch.join(prefixPolished, sm.commit)
+            carry = s.carry; carryEnd = s.end; carryPolished = sm.carry
+        }
+        emit(["event": "dictation_window", "id": id, "index": p.index, "in_units": DictationStitch.units(input).count,
+              "committed": DictationStitch.units(p.text).count, "carry": DictationStitch.units(carry).count,
+              "ms": Int((p.polishSpan.1 - p.polishSpan.0) * 1000)])
     }
 
     // MARK: key-up
@@ -200,7 +260,7 @@ final class DictationStream {
         let n = lock.locked { pieces.count }
         let tail = audio.count - pieceStart
         if n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
-            enqueue(start: pieceStart, end: audio.count, hard: pieceHard)
+            enqueue(start: pieceStart, end: audio.count, hard: pieceHard, last: true)
         }
         onStage?("asr")
         // both queues are serial: this runs after every piece's transcription, and what it queues after every polish
@@ -222,15 +282,16 @@ final class DictationStream {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "asr_failed"])
             return whole(ps.count)
         }
-        let raw = DictationStitch.join(ps.map(\.raw))
-        let heard = DictationStitch.join(ps.map(\.asrText))
-        var text = DictationStitch.join(ps.map(\.text))
+        let gaps = lock.locked { pauses }
+        let raw = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps, names: names)
+        let heard = DictationStitch.joinPieces(ps.map(\.asrText), pauses: gaps, names: names)
+        // polish's windows, then the clause still carried (the dictation ended in it: its ending stays)
+        var text = opt.polish ? DictationStitch.join(ps.map(\.text) + [carry + carryEnd]) : raw
         let pol = ps.compactMap(\.polish)
         var fellBack = pol.contains { $0["fell_back"] as? Bool == true }
         var reason = pol.first { $0["fell_back"] as? Bool == true }?["reason"] as? String
-        let polished: String? = pol.isEmpty ? nil : DictationStitch.join(ps.map { p in
-            p.text.isEmpty ? "" : ((p.polish?["polished"] as? String) ?? p.raw)
-        })
+        let polished: String? = pol.isEmpty ? nil
+            : DictationStitch.join(ps.map(\.polishedPart) + [carryPolished + carryEnd])
         // the joined result once more against the joined transcript: pieces that each passed can still add up wrong
         if opt.polish, ps.count > 1, !pol.isEmpty, text != raw,
            let g = WarmServer.call("polish-serve", ["cmd": "guard", "raw": raw, "output": text, "vocab": opt.vocab,

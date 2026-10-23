@@ -4,6 +4,8 @@
 //  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
 //    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
 //    to talk. Esc cancels. With Fn and Accessibility, the tap is an active filter that keeps the Fn press from macOS.
+//    A double tap presses Return (record.dictation.double_tap_send, on): idle, it cancels the dictation its first tap
+//    started and sends; right after a dictation stopped, Return goes in once the paste has landed.
 //  • the key needs Accessibility (the Fn filter, or the monitor) or Input Monitoring (the listen-only tap). Until it
 //    is heard (BlurtCore's DictationAccess decides): the menu-bar menu's top row says "Turn On Dictation…", the
 //    island reminds about once a day (launch, the voice-note key, Settings), and both start the permission guide
@@ -28,7 +30,8 @@
 // Config record.dictation: enabled (true), key fn|right_option|either_option (unset = fn), mode auto|tap|hold (unset =
 // auto), fn_capture (true: keep Fn from macOS's own 🌐 action), polish off|light, polish_model,
 // polish_timeout_ms, load_budget_ms (12000), streaming (true), precapture (true), builtin_mic (automatic), start_sound
-// (false), retention_days (30), keep_audio (false), asr_model (automatic), context (true), learn (true). Test hooks:
+// (false), retention_days (30), keep_audio (false), asr_model (automatic), context (true), learn (true),
+// double_tap_send (true). Test hooks:
 // DictationTestHooks.swift (`dictation …` on the test channel).
 import AppKit
 import BlurtCore
@@ -73,6 +76,10 @@ final class Dictation {
     private var generation = 0
     /// the text around the cursor when this dictation started (polish's hints; never stored unless debugging)
     private var context: DictationContext?
+    /// a double tap came while the text was still on its way: Return once it has been pasted
+    private var sendAfterPaste = false
+    /// the paste is under way (⌘V posted, the clipboard not back yet)
+    private var inserting = false
 
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
 
@@ -104,6 +111,8 @@ final class Dictation {
     static var contextOn: Bool { settings["context"] as? Bool ?? true }
     /// watch the field after typing and learn the user's fixes
     static var learnOn: Bool { settings["learn"] as? Bool ?? true }
+    /// a double tap of the key presses Return ("send"; after a dictation, once it is pasted)
+    static var doubleTapSend: Bool { settings["double_tap_send"] as? Bool ?? true }
 
     // MARK: launch / settings changed
 
@@ -167,6 +176,7 @@ final class Dictation {
     func apply() {
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
+        trigger.doubleTap = Dictation.doubleTapSend
         keys.watchedKeyCodes = trigger.key.keyCodes
         keys.wantsFilter = Dictation.enabled && trigger.key == .fn && Dictation.fnCapture
         if Dictation.enabled {
@@ -180,7 +190,7 @@ final class Dictation {
         lastAccess = access
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
               "key": trigger.key.rawValue, "filter": keys.filtering,
-              "mode": trigger.mode.rawValue, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
+              "mode": trigger.mode.rawValue, "double_tap": trigger.doubleTap, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
               "test_mode": DictationInsert.testMode])
     }
 
@@ -293,8 +303,9 @@ final class Dictation {
         }
     }
     /// The key's short name, for the island's one line ("tap right Option to talk", "单按右 Option 开始说话").
-    static var keyShort: String {
-        switch key {
+    static var keyShort: String { keyShort(key) }
+    static func keyShort(_ k: DictationTrigger.Key) -> String {
+        switch k {
         case .rightOption: return Loc.t("dictation.key.right_option.short", table: "Dictation")
         case .fn: return Loc.t("dictation.key.fn.short", table: "Dictation")
         case .eitherOption: return Loc.t("dictation.key.either_option.short", table: "Dictation")
@@ -332,6 +343,7 @@ final class Dictation {
             case .start: start()
             case .stop: stop()
             case .cancel: cancel()
+            case .send: send()
             }
         }
         // the press became a shortcut (Fn-←, ⌥A), a click joined in, or it was let go too early / too late: the mic
@@ -532,6 +544,7 @@ final class Dictation {
     }
 
     func cancel() {
+        sendAfterPaste = false
         guard phase == .listening else {
             if busy { generation += 1; phase = .idle }     // a cancel while working: drop the result
             dropPrecapture()
@@ -540,6 +553,28 @@ final class Dictation {
         trigger.reset(active: false)
         emit(["event": "dictation_cancel", "id": entryID])
         discard(quietly: true)
+    }
+
+    /// A double tap: Return in the app in front ("send"). Right after a dictation stopped, once its text has been
+    /// pasted (the clipboard is back by then, so the paste has landed); otherwise now. The dictation the double tap's
+    /// first tap started was cancelled just before (nothing pasted, nothing in the history).
+    private func send() {
+        if phase == .transcribing || phase == .polishing || inserting {
+            sendAfterPaste = true
+            emit(["event": "dictation_send", "result": "queued", "phase": phase.rawValue])
+            return
+        }
+        pressReturn(after: "tap")
+    }
+
+    private func pressReturn(after: String) {
+        let r = DictationInsert.pressReturn()
+        emit(["event": "dictation_send", "result": r.result, "why": r.why ?? NSNull(), "after": after])
+        if r.pressed {
+            var t = Island.Toast(text: Loc.t("dictation.toast.sent", table: "Dictation"), actionTitle: nil, action: nil)
+            t.seconds = 1.2
+            island.toast(t)
+        }
     }
 
     private func releaseEsc() {
@@ -585,6 +620,10 @@ final class Dictation {
             guard let self = self, gen == self.generation else { return }
             guard !r.empty else {
                 try? FileManager.default.removeItem(at: url)
+                if self.sendAfterPaste {         // nothing to send: Return would send something else
+                    self.sendAfterPaste = false
+                    emit(["event": "dictation_send", "result": "skipped", "why": "nothing_dictated", "after": "paste"])
+                }
                 self.phase = .idle
                 island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
                 emit(["event": "dictation_text", "id": id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
@@ -637,20 +676,48 @@ final class Dictation {
 
     private func deliver(id: String, r: DictationStream.Result, polishTried: Bool, app: NSRunningApplication?, started: Date,
                          duration: Double, wav: URL, context: DictationContext?, keyUp: CFTimeInterval) {
-        let text = r.text
+        var text = r.text
         // the custom words this dictation wrote: fixed by the sounds-like pass or polish, or (when the speech model was
         // told the words) written by the model itself
         var terms = r.terms
         if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where text.contains(t) && !terms.contains(t) { terms.append(t) } }
         phase = .idle
-        // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes
-        let field = Dictation.learnOn ? DictationField.focused() : nil
-        let at = field?.read()?.selection.location
+        // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes, and
+        // the text on either side of the cursor the dictation is fitted into (DictationFit: the words that repeat the
+        // field go, punctuation and spacing follow the sentence). A field whose text can't be read (WeChat) gets the
+        // text as it is; nothing in the field is ever changed, only what is inserted.
+        let field = Dictation.learnOn || Dictation.contextOn ? DictationField.focused() : nil
+        let now = field?.read()
+        let at = now?.selection.location
+        var fitted: [String] = []
+        if Dictation.contextOn, let f = now {
+            let ns = f.text as NSString
+            let loc = min(max(0, f.selection.location), ns.length)
+            let len = min(max(0, f.selection.length), ns.length - loc)
+            let before = String(ns.substring(to: loc).suffix(500))
+            let after = String(ns.substring(from: loc + len).prefix(500))
+            let names = Set(DictationVocabulary.shared.active().map(\.term).flatMap { $0.split(separator: " ").map(String.init) })
+            let fit = DictationFit.fit(text, before: before, after: after, names: names)
+            if fit.trimmed {
+                emit(["event": "dictation_fit", "id": id, "changes": fit.changes, "from": text.count, "to": fit.text.count])
+                text = fit.text
+                fitted = fit.changes
+            }
+        }
         let pasteAt = CACurrentMediaTime()
         var timing = r.timing
         timing["total_ms"] = Int((pasteAt - keyUp) * 1000)
+        inserting = true
         DictationInsert.insert(text) { [weak self] result in
             guard let self = self else { return }
+            self.inserting = false
+            if self.sendAfterPaste {
+                self.sendAfterPaste = false
+                if result == .pasted { self.pressReturn(after: "paste") } else {
+                    // left on the clipboard (a password field, Blurt in front …): Return would send without it
+                    emit(["event": "dictation_send", "result": "skipped", "why": "not_pasted", "after": "paste"])
+                }
+            }
             let keep = Dictation.keepAudio
             if !keep { try? FileManager.default.removeItem(at: wav) }
             let e = DictationEntry(id: id, time: started, app: app?.localizedName, bundle: app?.bundleIdentifier, duration: duration,
@@ -661,7 +728,7 @@ final class Dictation {
                                    termsApplied: terms, contextUsed: r.contextUsed,
                                    context: keep && r.contextUsed ? context?.debugText : nil,
                                    timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
-                                   repaired: r.repaired.isEmpty ? nil : r.repaired)
+                                   repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             DictationHistory.shared.append(e)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
@@ -683,7 +750,7 @@ final class Dictation {
                                       "polished": r.polished ?? NSNull(), "model": r.model ?? NSNull(),
                                       "insert": result.rawValue, "polish_tried": polishTried, "asr_text": r.asrText,
                                       "terms": terms, "context_used": r.contextUsed, "asr_model": r.asrModel ?? NSNull(),
-                                      "biased": r.biased, "repaired": r.repaired]
+                                      "biased": r.biased, "repaired": r.repaired, "fitted": fitted]
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)

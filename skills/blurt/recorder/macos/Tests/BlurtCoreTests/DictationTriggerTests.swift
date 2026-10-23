@@ -217,6 +217,93 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(run("ropt-down@0 tick@260 esc@600 ropt-up@900", mode: .hold), [.arm, .start, .cancel])
     }
 
+    // MARK: double tap = Return (send)
+
+    func testSingleTapStillStartsAtOnce() {
+        // nothing waits for a second tap: the first one starts as it always did
+        XCTAssertEqual(auto("fn-down@0 fn-up@100"), [.arm, .start])
+        XCTAssertEqual(auto("fn-down@0 fn-up@100 fn-down@3000 fn-up@3100"), [.arm, .start, .stop])
+    }
+
+    func testDoubleTapWhenIdleCancelsAndSends() {
+        // the first tap started a dictation; the second, 120 ms after its release, cancels it and sends
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@210 fn-up@290"), [.arm, .start, .cancel, .send])
+        XCTAssertEqual(run("ropt-down@0 ropt-up@90 ropt-down@200 ropt-up@280"), [.arm, .start, .cancel, .send])  // tap mode
+        // too slow for a double tap: an ordinary stop
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@420 fn-up@500"), [.arm, .start, .stop])
+        // the window is from the first release to the second press
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@380 fn-up@460"), [.arm, .start, .cancel, .send])
+        // a triple tap: the third starts afresh
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@200 fn-up@280 fn-down@1500 fn-up@1600"),
+                       [.arm, .start, .cancel, .send, .arm, .start])
+    }
+
+    func testDoubleTapWhileDictatingStopsThenSends() {
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0 fn-up@100"), [.arm, .start])
+        // dictating… the first tap stops (the paste starts at once), the second sends — no mic for it
+        XCTAssertEqual(t.run("fn-down@5000 fn-up@5080"), [.stop])
+        XCTAssertEqual(t.run("fn-down@5200"), [])
+        XCTAssertEqual(t.run("fn-up@5270"), [.send])
+        XCTAssertFalse(t.active)
+        // a stop press can be long (auto mode): the next quick tap still sends
+        XCTAssertEqual(auto("fn-down@0 fn-up@100 fn-down@3000 fn-up@3500 fn-down@3600 fn-up@3680"), [.arm, .start, .stop, .send])
+    }
+
+    func testPushToTalkThenTapSends() {
+        // hold to talk, let go (stop), tap at once: send
+        XCTAssertEqual(auto("fn-down@0 tick@300 fn-up@2500 fn-down@2700 fn-up@2780"), [.arm, .start, .stop, .send])
+        // the same in hold mode
+        XCTAssertEqual(run("ropt-down@0 tick@250 ropt-up@2000 ropt-down@2150 ropt-up@2220", mode: .hold), [.arm, .start, .stop, .send])
+    }
+
+    func testHoldModeDoubleTapSends() {
+        // taps start nothing in hold mode; two of them press Return
+        XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@250 ropt-up@330", mode: .hold), [.arm, .send])
+        XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@600 ropt-up@680", mode: .hold), [.arm, .arm])
+        // holding the second press is push-to-talk as usual
+        XCTAssertEqual(run("ropt-down@0 ropt-up@100 ropt-down@250 tick@500 ropt-up@2000", mode: .hold), [.arm, .start, .stop])
+    }
+
+    func testSecondPressHeldIsPushToTalk() {
+        // after a stop, a press held past the threshold isn't a tap: it starts push-to-talk
+        XCTAssertEqual(auto("fn-down@0 fn-up@100 fn-down@3000 fn-up@3080 fn-down@3200 tick@3510 fn-up@5000"),
+                       [.arm, .start, .stop, .start, .stop])
+        // and while dictating, a long second press stops (no send)
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@200 fn-up@800"), [.arm, .start, .stop])
+    }
+
+    func testFnWithAnotherKeyIsNeverADoubleTap() {
+        // Fn-← between two taps: the second tap is an ordinary one
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 key:123@150 fn-down@200 fn-up@280"), [.arm, .start, .stop])
+        // the second press joined by a key (Fn-←): no send, the dictation goes on
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 fn-down@200 key:123@230 fn-up@280"), [.arm, .start])
+        // ⌘ held for the second press: not alone
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 cmd-down@150 fn-down@200 fn-up@280 cmd-up@300"), [.arm, .start])
+        // a click in between
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 click@150 fn-down@200 fn-up@280"), [.arm, .start, .stop])
+    }
+
+    func testEscapeBetweenTapsIsNotADoubleTap() {
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 esc@150 fn-down@200 fn-up@280"), [.arm, .start, .cancel, .arm, .start])
+    }
+
+    func testDoubleTapOff() {
+        var t = DictationTrigger()
+        t.doubleTap = false
+        XCTAssertEqual(t.run("fn-down@0 fn-up@90 fn-down@210 fn-up@290"), [.arm, .start, .stop])
+        var h = DictationTrigger(key: .rightOption, mode: .hold)
+        h.doubleTap = false
+        XCTAssertEqual(h.run("ropt-down@0 ropt-up@100 ropt-down@250 ropt-up@330"), [.arm, .arm])
+    }
+
+    func testResetForgetsTheFirstTap() {
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0 fn-up@90"), [.arm, .start])
+        t.reset(active: false)               // the app couldn't start (a recording has the mic)
+        XCTAssertEqual(t.run("fn-down@200 fn-up@280"), [.arm, .start])
+    }
+
     func testParseFlags() {
         let e = DictationTrigger.parse("ropt-down@0 shift-down@10 ropt-up@20")
         XCTAssertEqual(e, [.flags(keyCode: 61, flags: 0x80040, time: 0), .flags(keyCode: 56, flags: 0xA0040, time: 0.01),

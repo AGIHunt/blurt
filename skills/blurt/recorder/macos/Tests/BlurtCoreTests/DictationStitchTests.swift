@@ -47,4 +47,114 @@ final class DictationStitchTests: XCTestCase {
         XCTAssertFalse(DictationStitch.startsWithCorrection("然后把 PR 合并"))
         XCTAssertFalse(DictationStitch.startsWithCorrection("sorted by date"))
     }
+
+    // MARK: a seam is a pause, not a sentence end (synthetic sentences shaped like the user's reports)
+
+    typealias S = DictationStitch
+
+    func testABreathLeavesNoFullStop() {
+        XCTAssertEqual(S.joinPieces(["我刚才看了一下日志，好像是因为。", "网络断开以后没有重新连接。", "所以后面的请求都失败了。"],
+                                    pauses: [0.7, 0.8]),
+                       "我刚才看了一下日志，好像是因为网络断开以后没有重新连接所以后面的请求都失败了。")
+        // a comma the cut made goes too (polish puts back the ones that belong)
+        XCTAssertEqual(S.joinPieces(["这个新功能确实挺顺手，", "出门的时候不用带电脑了。"], pauses: [0.6]),
+                       "这个新功能确实挺顺手出门的时候不用带电脑了。")
+        // a question mark the cut made, too; the last piece keeps its ending: the dictation ended there
+        XCTAssertEqual(S.joinPieces(["你是不是为了让速度更快？", "所以一边录一边处理的？"], pauses: [0.7]),
+                       "你是不是为了让速度更快所以一边录一边处理的？")
+        // not known (still quiet when the next piece was transcribed): a breath
+        XCTAssertEqual(S.joinPieces(["我们先开个短会。", "把内容再过一遍。"], pauses: [nil]), "我们先开个短会把内容再过一遍。")
+        // mixed Chinese and English
+        XCTAssertEqual(S.joinPieces(["我在 Claude Code 里面。", "让它写了一个 Python 脚本。"], pauses: [0.8]),
+                       "我在 Claude Code 里面让它写了一个 Python 脚本。")
+    }
+
+    func testALongPauseAfterAWholeSentenceEndsIt() {
+        XCTAssertEqual(S.joinPieces(["回到办公室以后再慢慢整理也来得及。", "下午我们再开会。"], pauses: [1.4]),
+                       "回到办公室以后再慢慢整理也来得及。下午我们再开会。")
+        XCTAssertEqual(S.joinPieces(["The report looks good overall.", "Thanks for your help."], pauses: [1.5]),
+                       "The report looks good overall. Thanks for your help.")
+        // long, but the sentence isn't whole: a comma (when there was punctuation), never a full stop
+        XCTAssertEqual(S.joinPieces(["最好在设置页面里也。", "加上一个开关。"], pauses: [1.5]), "最好在设置页面里也，加上一个开关。")
+        XCTAssertEqual(S.joinPieces(["但是呢。", "它识别出来的文字有问题。"], pauses: [1.3]), "但是呢，它识别出来的文字有问题。")
+        XCTAssertEqual(S.joinPieces(["The only problem is.", "That the page is old."], pauses: [1.4]),
+                       "The only problem is, that the page is old.")
+        // exactly the threshold counts as long; just under it doesn't
+        XCTAssertEqual(S.joinPieces(["我们明天上午十点开会。", "下午修问题。"], pauses: [S.longPause]), "我们明天上午十点开会。下午修问题。")
+        XCTAssertEqual(S.joinPieces(["我们明天上午十点开会。", "下午修问题。"], pauses: [1.19]), "我们明天上午十点开会下午修问题。")
+    }
+
+    func testEnglishLosesTheCapitalTheCutGaveIt() {
+        XCTAssertEqual(S.joinPieces(["I tried the new build this morning.", "And it was a lot faster.", "Than the old one."],
+                                    pauses: [0.7, 0.8]),
+                       "I tried the new build this morning and it was a lot faster than the old one.")
+        // names, acronyms and "I" keep theirs
+        XCTAssertEqual(S.joinPieces(["We should move the meeting to.", "Thursday afternoon."], pauses: [0.7]),
+                       "We should move the meeting to Thursday afternoon.")
+        XCTAssertEqual(S.joinPieces(["Yesterday,", "I fixed the login bug."], pauses: [0.7]), "Yesterday I fixed the login bug.")
+        XCTAssertEqual(S.decapitalize("API keys rotate daily"), "API keys rotate daily")
+        XCTAssertEqual(S.decapitalize("GitHub is down"), "GitHub is down")
+        XCTAssertEqual(S.decapitalize("I'm on it"), "I'm on it")
+        XCTAssertEqual(S.decapitalize("Than the old one"), "than the old one")
+        XCTAssertEqual(S.decapitalize("Don't merge yet"), "don't merge yet")
+        XCTAssertEqual(S.decapitalize("Send it"), "send it")
+        XCTAssertEqual(S.decapitalize("Send it", names: ["Send"]), "Send it")        // a custom word
+        XCTAssertEqual(S.decapitalize("下午再说"), "下午再说")
+    }
+
+    func testPlausiblyFinal() {
+        XCTAssertTrue(S.plausiblyFinal("回到办公室以后再整理也来得及", end: "。"))
+        XCTAssertTrue(S.plausiblyFinal("你能帮我看一下这个问题吗", end: "？"))
+        XCTAssertTrue(S.plausiblyFinal("The report looks good overall", end: "."))
+        XCTAssertTrue(S.plausiblyFinal("I will add it to the shared folder, myself", end: "."))   // the sentence counts
+        XCTAssertFalse(S.plausiblyFinal("这个功能确实很顺手。但是呢", end: "。"))               // only the last sentence
+        XCTAssertFalse(S.plausiblyFinal("回到办公室以后再整理也来得及", end: "，"))     // a comma isn't an end
+        XCTAssertFalse(S.plausiblyFinal("回到办公室以后再整理也来得及", end: ""))
+        XCTAssertFalse(S.plausiblyFinal("我们出门的时候", end: "。"))                   // a time clause waits for more
+        XCTAssertFalse(S.plausiblyFinal("好像它是", end: "。"))
+        XCTAssertFalse(S.plausiblyFinal("如果是这样的话", end: "。"))
+        XCTAssertFalse(S.plausiblyFinal("但是呢", end: "。"))                           // a stub
+        XCTAssertFalse(S.plausiblyFinal("所以说呢", end: "。"))
+        XCTAssertFalse(S.plausiblyFinal("I think the problem is", end: "."))
+        XCTAssertFalse(S.plausiblyFinal("and then", end: "."))
+        XCTAssertFalse(S.plausiblyFinal("it was faster than the", end: "."))
+    }
+
+    func testCommitSplitKeepsTheUnfinishedClause() {
+        var r = S.commitSplit("明天上午开个短会，把内容再过一遍。下午的时间")
+        XCTAssertEqual(r.commit, "明天上午开个短会，把内容再过一遍。")
+        XCTAssertEqual(r.carry, "下午的时间")
+        XCTAssertEqual(r.end, "")
+        // a comma inside the window was decided with both sides in view: committed; the clause after it is carried
+        r = S.commitSplit("我刚才看了一下日志，好像是因为网络断开")
+        XCTAssertEqual(r.commit, "我刚才看了一下日志，")
+        XCTAssertEqual(r.carry, "好像是因为网络断开")
+        // only sentence ends, when asked
+        r = S.commitSplit("我刚才看了一下日志，好像是因为网络断开", atClauses: false)
+        XCTAssertEqual(r.commit, "")
+        XCTAssertEqual(r.carry, "我刚才看了一下日志，好像是因为网络断开")
+        // the window's own ending was a pause: carried, its full stop kept aside
+        r = S.commitSplit("我们先开个短会。")
+        XCTAssertEqual(r.commit, "")
+        XCTAssertEqual(r.carry, "我们先开个短会")
+        XCTAssertEqual(r.end, "。")
+        r = S.commitSplit("The report looks good. But the numbers in v2.5 don't match.")
+        XCTAssertEqual(r.commit, "The report looks good.")
+        XCTAssertEqual(r.carry, "But the numbers in v2.5 don't match")
+        XCTAssertEqual(r.end, ".")
+        r = S.commitSplit("It costs 1,000 dollars at 10:30, and then we")
+        XCTAssertEqual(r.commit, "It costs 1,000 dollars at 10:30,")
+        XCTAssertEqual(r.carry, "and then we")
+        r = S.commitSplit("他说：“好的。”然后就走了，")
+        XCTAssertEqual(r.commit, "他说：“好的。”")
+        XCTAssertEqual(r.carry, "然后就走了")
+        XCTAssertEqual(r.end, "，")
+        XCTAssertEqual(S.commitSplit("").commit, "")
+    }
+
+    func testTerminatorFollowsTheScript() {
+        XCTAssertEqual(S.terminator(".", after: "我们下午开会"), "。")
+        XCTAssertEqual(S.terminator("？", after: "Can you check"), "?")
+        XCTAssertEqual(S.terminator("", after: "Done"), ".")
+    }
 }

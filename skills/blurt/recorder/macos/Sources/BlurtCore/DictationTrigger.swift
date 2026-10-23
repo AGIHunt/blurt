@@ -12,6 +12,15 @@
 //                       in cancels (the user is typing a shortcut, not talking).
 //   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models, open the mic
 //                       early); `armedDown` says whether that press can still start (else the app closes the mic).
+//   double tap          (`doubleTap`, on by default) two clean taps, the second going down within `doubleTapWindow`
+//                       (300 ms) of the first one's release, say `.send`: the app presses Return. The first tap still
+//                       does what it always did, at once (no waiting to see whether a second one comes):
+//                         • it started a dictation (idle, auto / tap mode) → the second one cancels it (`.cancel`,
+//                           nothing kept) and sends: Return in the app in front;
+//                         • it stopped one (a tap, or letting go of push-to-talk) → the second one sends: the app
+//                           presses Return once the paste has landed — "dictate, then send";
+//                         • it did nothing (hold mode, a tap too short to start) → the second one sends.
+//                       The second press opens no mic when it can only send; held instead, it is push-to-talk as usual.
 import Foundation
 
 public struct DictationTrigger {
@@ -42,7 +51,11 @@ public struct DictationTrigger {
     }
     /// auto (the default): a tap is hands-free, a hold is push-to-talk; tap: tap / tap; hold: push-to-talk only
     public enum Mode: String, CaseIterable { case auto, tap, hold }
-    public enum Output: Equatable { case arm, start, stop, cancel }
+    public enum Output: Equatable {
+        case arm, start, stop, cancel
+        /// a double tap: press Return in the app in front (after the paste, when a dictation just stopped)
+        case send
+    }
     public enum Event: Equatable {
         /// a modifier changed (CGEvent flagsChanged): its keyCode and the flags after the change
         case flags(keyCode: Int, flags: UInt64, time: Double)
@@ -60,6 +73,10 @@ public struct DictationTrigger {
     public var holdMin = 0.25
     /// auto mode: shorter than this is a tap (hands-free); held alone this long is push-to-talk
     public var autoHold = 0.3
+    /// Two quick taps press Return (record.dictation.double_tap_send, on by default).
+    public var doubleTap = true
+    /// the second tap must go down within this long of the first one's release
+    public var doubleTapWindow = 0.3
 
     private enum State: Equatable {
         case idle
@@ -70,6 +87,11 @@ public struct DictationTrigger {
     private var state: State = .idle
     /// the key code that went down last (either-⌥: which side)
     private var holdingCode = 0
+    /// What the last clean tap did, and when it came up: a second tap soon after it is a double tap.
+    private enum TapDid { case started, stopped, nothing }
+    private var lastTap: (did: TapDid, up: Double)?
+    /// The press now down is the second tap of a double tap (if it comes up quickly): what the first one did.
+    private var second: TapDid?
     /// Dictating, as far as the trigger knows (the app calls `reset` when it ends one itself).
     public private(set) var active = false
     /// The dictation in progress was started by holding the key (hold mode, or auto held past `autoHold`): it ends
@@ -109,6 +131,8 @@ public struct DictationTrigger {
     public mutating func reset(active a: Bool) {
         active = a
         pushToTalk = false
+        lastTap = nil
+        second = nil
         if !a { settle() }
     }
 
@@ -131,6 +155,7 @@ public struct DictationTrigger {
             if code == DictationTrigger.escape && active {
                 active = false
                 pushToTalk = false
+                lastTap = nil
                 settle()
                 return [.cancel]
             }
@@ -147,39 +172,74 @@ public struct DictationTrigger {
         let alone = flags & Key.otherMods(code) == 0
         state = .down(at: t, clean: alone, code: code)
         holdingCode = code
+        second = nil
+        if doubleTap, alone, let l = lastTap, t - l.up <= doubleTapWindow { second = l.did }
+        lastTap = nil
+        // the second tap after a stop (or after a tap that did nothing) can only send: no mic for it
+        if second == .stopped || second == .nothing { return [] }
         return alone && !active ? [.arm] : []
+    }
+
+    /// How long a press may last and still be a tap.
+    private var tapLimit: Double {
+        switch mode {
+        case .tap: return tapMax
+        case .auto: return autoHold
+        case .hold: return holdMin
+        }
     }
 
     private mutating func keyUp(_ t: Double) -> [Output] {
         let was = state
         state = .idle
+        let first = second
+        second = nil
+        // the second tap of a double tap: send (cancelling the dictation the first one started)
+        if let f = first, case let .down(at, clean, _) = was, clean, t - at <= tapLimit {
+            if f == .started && active {
+                active = false
+                pushToTalk = false
+                return [.cancel, .send]
+            }
+            return [.send]
+        }
         switch (mode, was) {
         case let (.tap, .down(at, clean, _)):
             guard clean, t - at <= tapMax else { return [] }
             active.toggle()
+            lastTap = (active ? .started : .stopped, t)
             return [active ? .start : .stop]
         case let (.auto, .down(at, clean, _)):
             guard clean else { return [] }
             if active {                     // hands-free: the next clean press stops it, however long
                 active = false
                 pushToTalk = false
+                lastTap = (.stopped, t)
                 return [.stop]
             }
             guard t - at < autoHold else { return [] }      // held past the threshold with no tick: never started
             active = true
             pushToTalk = false
+            lastTap = (.started, t)
             return [.start]
         case (.hold, .holding), (.auto, .holding):
             active = false
             pushToTalk = false
+            lastTap = (.stopped, t)
             return [.stop]
-        default:            // hold mode let go before 250 ms (nothing said), a dirty tap, a release we wait out
+        case let (.hold, .down(at, clean, _)):
+            // let go before 250 ms: nothing said — but it can be the first tap of a double tap
+            if clean, t - at < holdMin { lastTap = (.nothing, t) }
+            return []
+        default:            // a dirty tap, a release we wait out
             return []
         }
     }
 
-    /// Another key, modifier or click: a tap in progress is no longer clean; push-to-talk is cancelled.
+    /// Another key, modifier or click: a tap in progress is no longer clean; push-to-talk is cancelled. Nor is the
+    /// next tap the second of a double tap.
     private mutating func otherInput(_ t: Double) -> [Output] {
+        lastTap = nil
         switch state {
         case let .down(at, _, code):
             if holdThreshold != nil, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined

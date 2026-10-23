@@ -38,4 +38,14 @@ final class DictationPastePolicyTests: XCTestCase {
         XCTAssertTrue(c(true, false, true))        // the user said always
         XCTAssertFalse(c(true, true, false))       // a Mac without a mic (mini, Studio)
     }
+
+    /// A double tap presses Return only into another app, never with secure input on, and only with Accessibility.
+    func testSendPolicy() {
+        typealias D = DictationSendPolicy
+        XCTAssertEqual(D.decide(hasFrontApp: true, frontIsBlurt: false, secureInput: false, accessibility: true), .press)
+        XCTAssertEqual(D.decide(hasFrontApp: true, frontIsBlurt: true, secureInput: false, accessibility: true), .skip(reason: "blurt_in_front"))
+        XCTAssertEqual(D.decide(hasFrontApp: true, frontIsBlurt: false, secureInput: true, accessibility: true), .skip(reason: "secure_input"))
+        XCTAssertEqual(D.decide(hasFrontApp: true, frontIsBlurt: false, secureInput: false, accessibility: false), .skip(reason: "no_accessibility"))
+        XCTAssertEqual(D.decide(hasFrontApp: false, frontIsBlurt: false, secureInput: false, accessibility: true), .skip(reason: "no_front_app"))
+    }
 }

@@ -24,7 +24,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 
 | Piece | Where |
 |---|---|
-| Trigger state machine (pure, unit-tested) | `BlurtCore/DictationTrigger.swift`, `Tests/BlurtCoreTests/DictationTriggerTests.swift`, selftest `dictation_trigger` |
+| Trigger state machine, double tap (pure, unit-tested) | `BlurtCore/DictationTrigger.swift`, `Tests/BlurtCoreTests/DictationTriggerTests.swift`, selftest `dictation_trigger` |
 | Which listener runs (pure, unit-tested) | `BlurtCore/DictationListener.swift`, `DictationListenerTests`, selftest `dictation_listener` |
 | Event tap / Fn filter / monitor | `Capture/Dictation/DictationKeys.swift` |
 | Permission guide: walk order, 🌐 setting, docking (pure, unit-tested) | `BlurtCore/PermissionFlow.swift`, `PermissionFlowTests`, selftest `permission_flow` |
@@ -33,9 +33,9 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Context, the after-typing watch | `Capture/Dictation/DictationContext.swift` |
 | Custom words in ASR and polish | `scripts/dictation_vocab.py`, `transcribe.py` (`note --dictation --vocab`, `dictation-models`), `polish.py`, `tests/test_dictation_vocab.py` |
 | Controller (capture → ASR → polish → insert → history) | `Capture/Dictation/Dictation.swift` |
-| Streaming: cut, transcribe and polish while talking | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift`, `BlurtCore/DictationStitch.swift` (`DictationSegmenterTests`, `DictationStitchTests`) |
+| Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `commitSplit`) (`DictationSegmenterTests`, `DictationStitchTests`) |
 | The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
-| Insertion | `Capture/Dictation/DictationInsert.swift`; the rule: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicyTests`) |
+| Insertion, fitting at the cursor, Return for a double tap | `Capture/Dictation/DictationInsert.swift`; the rules: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicy`, `DictationSendPolicy`; `DictationPastePolicyTests`), `BlurtCore/DictationFit.swift` (`DictationFitTests`) |
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
 | Polish model + guard + repair + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
@@ -60,6 +60,28 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   joining in cancels.
 - `Esc` cancels. `arm` on a clean key-down warms the models and opens the mic while the user starts talking
   (§Start of speech).
+- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「双击 Fn
+  发送（回车）」 / "Double-tap Fn to send (Return)", named after whichever key is set. In chat apps the user presses
+  Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within 300 ms
+  (`doubleTapWindow`) of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
+  The first tap is never delayed: it does what it always did, at once, and the second one decides:
+  - **idle** (auto / tap mode): the first tap started a dictation; the second cancels it (`.cancel`: audio dropped,
+    nothing pasted, no history entry) and Return goes to the app in front now;
+  - **dictating** ("dictate, then send", the useful case): the first tap stopped it and the paste starts as usual; the
+    second one (no mic opened for it) queues Return, posted once `DictationInsert` reports the paste done — after the
+    clipboard comes back (0.6 s), so the ⌘V has landed. Not when the text was only copied (secure input, Blurt in
+    front …) or nothing was heard: Return would then send something else;
+  - **push-to-talk** (hold mode, or auto held): letting go stops it; a tap within 300 ms of the release sends it the
+    same way. In hold mode two quick taps (which start nothing there) press Return;
+  - a second press held past the hold threshold is push-to-talk as usual; one joined by another key or a click
+    (Fn-←, ⌘), or any key / click between the taps, is never a double tap; a third tap starts afresh.
+  - Return is a `CGEvent` (`kVK_Return`, no modifiers, HID level) posted only when `DictationSendPolicy` allows it:
+    another app in front (never Blurt), secure input off, Accessibility granted (the Fn filter already needs it).
+    The island says 「已发送 ↩︎」 / "Sent ↩︎" for a moment. Test builds never post it: `dictation_test_send` logs
+    "would press Return" (with the hooks' simulated Accessibility), and `dictation send-policy front=… secure=… ax=…`
+    reports the policy.
+  - Price: two quick taps no longer mean "start, then stop at once" (that dictated nothing anyway); someone used to
+    macOS's "Press 🌐 twice" for system dictation now sends Return instead.
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
 - Permissions: Accessibility for the paste, the context and the Fn filter; Input Monitoring for the listen-only tap.
 - **The Fn filter.** macOS uses Fn itself (System Settings → Keyboard → "Press 🌐 key to", `com.apple.HIToolbox
@@ -221,7 +243,10 @@ utterances, slower on short ones). Now (`DictationStream`):
   (before ▮), so polish sees what came before but may not change or continue it (the guard's `copied` check, below).
   A piece that opens with a self-correction (不对 / 我是说 / no wait …; not 不对称 & co.) is polished together with
   the one before it, so the corrected-away words can still go.
-- **At key-up only the last piece is left**; with a pause ≥ 0.5 s before the release there is nothing left at all.
+- **A cut is a pause, not a sentence end** (§Punctuation at the seams): a piece's own ending isn't final, and polish
+  works over a window that spans the seam.
+- **At key-up only the last piece is left** (polished together with the clause carried from the window before);
+  with a pause ≥ 0.5 s before the release there is nothing left at all.
   The pieces are joined (`DictationStitch.join`: a space only between Latin words), and the joined polish is
   checked once more against the joined transcript (`polish.py serve`'s `guard` command; `stitch_<reason>` falls
   back to the transcript).
@@ -245,6 +270,98 @@ word (`dictation stop-after`) — the worst case for streaming, the last sentenc
   that is left, ~0.2 + 0.2 s, whatever the length. A one-sentence dictation is one piece: the same work as before
   (~15 ms more, within a run's spread: 265–281 ms before, 283–297 ms now).
 
+### Punctuation at the seams
+
+What the user saw: the meaning was kept, but there was **a full stop at every pause**, in the middle of sentences
+(「…在路上的时候。不用再…」, 「好像是因为。网络断开…」, 「但是呢。它识别出来…」), and in English a capital after
+it. Each piece was transcribed and polished as if it were a whole utterance, so Qwen3-ASR ended it with 。 and polish
+kept it (polish only saw `before ▮` and the piece). Now (`DictationStitch`, `DictationStream`; pure parts in
+`DictationStitchTests`):
+
+- **The segmenter measures each pause** (`DictationSegmenter.pauses`: from the last speech frame before a cut to the
+  first one after it, known once speech resumes; 0 for a hard cut).
+- **A piece's trailing punctuation isn't final** (`seam`, `joinPieces`): 。.!?！？ and ，, at a seam are taken off,
+  unless the pause was long (`longPause`, ≥ 1.2 s) **and** the text is plausibly a whole sentence
+  (`plausiblyFinal`: the speech model ended it with 。!?, its last sentence has ≥ 4 CJK units / 3 words, it isn't a
+  stub that opens with a connective — 「但是呢」, "and so" — and it doesn't stop on a word that needs more:
+  的时候 / 以后 / 的话 / 因为 / 是 / 也 / 在 …, the / and / to / is / that …). Long but not whole → a comma (when there
+  was punctuation). In English the next piece's first word loses the capital the cut gave it (`decapitalize`: only
+  ordinary words; never "I", a custom word, an acronym or a name — Thursday, GitHub). This is what polish-off
+  dictation types, what a fall-back types, the joined transcript the stitch guard checks against, and the ASR's
+  `prior`.
+- **Polish decides over a sliding window** (`DictationStream.polish`): the window is the clause carried from the
+  window before + the new piece (its ending taken off). What polish writes up to its last sentence end **or comma**
+  is committed (`commitSplit`); the clause after it is carried and polished again with the next piece, so the
+  punctuation across the pause is decided with both sides in view. Every comma inside a window was written with the
+  words on both sides in view; only the window's own end wasn't, and that is what is carried. Carrying the whole
+  unfinished sentence (the first version) made the window at key-up as long as the sentence: polish after key-up
+  went from 150 to 302 ms (median) on these clips; one clause costs ~25 ms. After a long pause that follows a whole
+  sentence, the carried clause is committed as it is (with its sentence end). The last piece's window keeps its
+  ending: the dictation ended there. A carried clause left when the dictation ends (nothing after the last cut) is
+  typed with the punctuation polish gave it — no work after key-up.
+- **The prompt** says it too: "fix punctuation across what are just pauses in speech; don't end a sentence at a pause
+  unless the sentence is complete" (with a synthetic example). A self-correction piece is still polished together
+  with what came before it (that piece's committed text + the carry).
+- `dictation_window` events: units in, committed, carried, ms.
+- **Found on the way: the last words could vanish.** Qwen3-ASR now and then answers nothing for a short last piece
+  that follows a whole sentence of `prior` ("…on Wednesday." + 1.4 s of quiet + "and won't be back in time"): in a
+  repro, 2 of 6 takes on the old build and 3–5 of 6 on this one lost it (the prior differs only in the seams; the
+  same request replayed outside the app always worked, so it is a borderline decode, not the prior's wording). The VAD
+  had heard speech, so `transcribe.py` decodes such a piece once more without the prior (`retried` in its answer;
+  ~0.13 s, only then): 6 of 6 kept afterwards (`tests/test_dictation_vocab.py`).
+
+Evaluation (`promo/cases/v0.8-dictation-punct/`, not in git): 20 synthetic clips made with `say` (8 Chinese
+Tingting, 6 English Samantha, 6 mixed Tingting), 9–15 s, each fragment trimmed and joined by silences: **59 pauses
+in the middle of a clause** (0.6–1.0 s; 32 of them long enough into a piece that the app cut there) and **10 real
+sentence ends** (1.3–1.6 s), a −66 dBFS noise floor. Fed as the mic of the isolated test build (released 0.1 s
+after the last word), the test pad emptied before each clip (a pad full of earlier clips was copied into the polish
+as "near the cursor" context). The scorer finds both sides of every pause in the output (difflib over units) and
+reads the punctuation between them.
+
+Interleaved A/B (`results/ab-*.jsonl`): the old build and the new one running side by side on the same warm servers
+and scripts, every clip dictated into one, then the other, three rounds (so whatever else loaded the machine — a 3D
+render was running — weighed on both), polish on:
+
+| | Old (dd403552) | New |
+|---|---:|---:|
+| Pauses in a clause with a full stop — all / where the app cut | **55 %** (99/180) / **100 %** (99/99) | **0 %** (0/180) / **0 %** (0/99) |
+| … Chinese / English / mixed (all pauses) | 67 % / 42 % / 53 % | 0 % / 0 % / 0 % |
+| English: a capital after a pause in a clause | 42 % (24/57) | 5 % (3/57) |
+| Real sentence ends kept | 80 % (24/30) | 70 % (21/30) → **80 % (16/20)** after judging the whole sentence, not its last clause (`final-ends-cur.jsonl`) |
+| Polish fall-backs (of 60 dictations) | 24 | 18 |
+| Polish off (`base-raw` / `cur-raw`, one round): full stops at pauses | 54 % (32/59), all 32 cuts | 0 % |
+
+The prompt line alone: the 41-case polish eval (same day, same model) — fall-backs 9.8 % (old prompt) → 4.9 %,
+kept 97.6 % → 97.6 %, similarity 0.952 → 0.952, untouched sentences 100 %, fillers removed 76.5 % both; the
+over-deletion set unchanged (100 % kept; one more filler left: 87.5 → 81.2 %). `results/polish-*.json`.
+
+- Before, **every** cut gave a full stop (32/32); pauses that didn't fall on a cut never did (the speech model saw
+  the whole clause). Now none does, with polish or without. The capital after a cut (English) is gone too.
+- Real sentence ends: the same as before (8/10 kept, polish on). The two that go are pauses the segmenter didn't cut
+  at (the speech model wrote a comma inside a piece) — not the seam rule.
+- What polish does with a seam now: mostly a comma where the clause really breaks (「…尤其是在路上的时候，不用再…」),
+  nothing inside a clause (「…默认是打开的。用户不想要的时候自己关掉…」). Gemma 4 E2B leaves some long Chinese
+  sentences without a comma at a seam; polish off types the clause run together (no punctuation at the seam) —
+  better than a wrong full stop, and only the default-off path.
+
+Latency, key-up → paste (`total_ms`, the app's own clock), the same interleaved runs; quick release (0.1 s after
+the last word), so the last piece is always still to do — the worst case:
+
+| | Old: median / p90 | New: median / p90 | Paired difference (median) |
+|---|---:|---:|---:|
+| The 20 clips (9–15 s, 2–4 pieces) ×3 | 378 / 464 ms | 390 / 461 ms | +26 ms (polish +24, ASR −1) |
+| 3 s, one piece | 328 ms | 331 ms | +12 ms (no window: the same work) |
+| 10 s, 2 pieces | 393 ms | 461 ms | +64 ms (polish +28; ASR +25 is noise — unchanged code) |
+| 30 s, 3 pieces | 639 ms | 681 ms | +29 ms (polish +28) |
+
+- The last window is the carried clause + the last piece: ~20–30 ms more polish after key-up. Carrying the whole
+  unfinished sentence instead (the first version) doubled it: polish after key-up 150 → 302 ms median (+144 ms
+  paired, up to +408 ms; `results/archive/`).
+- With a pause ≥ 0.5 s before the release nothing is left to do, as before: the carried clause is typed with the
+  punctuation polish gave it.
+- These absolute numbers are above the speed eval's (287 / 375 / 538 ms) because the machine was busy (a render on
+  the GPU throughout); the paired differences are what to read.
+
 ## Insert
 
 1. Save the general pasteboard: every item, every type, as data.
@@ -257,6 +374,31 @@ word (`dictation stop-after`) — the worst case for streaming, the last sentenc
      `AXSecureTextField` (role or subrole);
    - Accessibility isn't granted (a posted ⌘V wouldn't arrive).
 4. Restore the old pasteboard 0.6 s later, unless something else has changed it since.
+
+**Fitting at the cursor** (before step 1; BlurtCore `DictationFit`, `DictationFitTests`), like Typeless. The field
+holds 「我知道你就是▮的。」 and the user says 「就是从老家回来的。」: pasted as it came, the field became
+「我知道你就是就是从老家回来的。。」; fitted, only 「从老家回来」 goes in → 「我知道你就是从老家回来的。」. Right before
+the paste, after polish and stitching, the focused field is read again (Accessibility, the same read the after-typing
+watch needs; ≤ 500 characters each side of the cursor / selection), and the dictated text — only it — is trimmed:
+- **overlap before**: its start repeats the end of the text before the cursor (no sentence end in between) → that
+  start goes, with the punctuation after it. At least 2 CJK characters / digits or 1 Latin word: 「我们明天去▮」 +
+  「去公园」 keeps its 「去」;
+- **overlap after**: its end repeats the start of the text after the cursor → that end goes, with its punctuation. At
+  least 2 units, or 1 when both end the same way right after it (「的。」 before 「的。」);
+- **punctuation**: the text after starts with punctuation → no punctuation at the insertion's end; it continues the
+  sentence (a CJK character, a lower-case word, a digit) while the text before ends mid-sentence → no closing
+  。.!?！？ (between two whole sentences it stays). The text before ends mid-sentence → no leading 「，」 and no capital
+  the speech model gave (ordinary words only, as at the seams); it ends in punctuation → no second mark at the start
+  (seen: polish repeated the field's 「今天的安排：」 — the overlap and its 「：」 went);
+- **spacing**: a space between Latin words at either seam; between CJK and Latin the field's own way (else the
+  dictation's, else spaced, as polish writes);
+- never: anything in the field is deleted or moved; a fit that would leave nothing to insert; a field whose text can't
+  be read (WeChat, some Electron apps — the paste goes in as it came); `record.dictation.context` off.
+- The history entry records `fitted` (`head`, `tail`, `punct`, `capital`, `space`); `dictation_fit` events. Checked
+  in the test build with the test pad holding text around the cursor (`dictation testpad set 我知道你就是▮的。`;
+  `results/fit.log`): 「我知道你就是从老家回来的。」, "I think we should move the meeting tomorrow." from "We should
+  move the meeting.", and 「今天的安排：下午三点开会。」 (polish had repeated the field). Only the user can check real
+  fields in real apps (Notes, Mail, browsers, Electron editors expose their text differently, or not at all).
 - Why: v0.8 also required the focused element to belong to the app in front and not to be a button, list or table.
   WeChat's input box isn't an AX text role (no focused element can be read there at all), so every dictation into
   WeChat was left on the clipboard ("copied"), while Typeless pastes there fine (C).
@@ -647,7 +789,7 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
   `asr_model`, `language`, `terms_applied` (custom words it wrote), `context_used` (the text around the cursor went
   to polish), `context` (that text, only with `keep_audio`), and since the speed work `asr_ms`, `polish_ms` (waited
   for after key-up), `load_ms` (model loads waited for), `total_ms` (key-up → paste), `segments` (pieces streamed)
-  and `repaired` (spans polish dropped that were put back). Older lines lack them: read as unknown. `prune` rewrites
+  `repaired` (spans polish dropped that were put back) and `fitted` (how it was fitted into the field at the cursor: head / tail / punct / capital / space). Older lines lack them: read as unknown. `prune` rewrites
   lines through `DictationEntry.json`, which carries them;
 - edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`.
 
@@ -682,9 +824,33 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
 | `context` | `true`: read the text around the cursor for polish |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
+| `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
 
 ## Verification
 
+- Punctuation at the seams and double tap = Return (`promo/cases/v0.8-dictation-punct/`, not in git: clips, scripts,
+  results; isolated test builds `dev.blurt.recorder.puncttest` — the old one and the new one side by side —, scratch
+  `BLURT_HOME`, launched through LaunchServices, no real mic, no tap, nothing posted, nothing pasted outside the test
+  pad):
+  - `swift test`: `DictationStitchTests` (a breath leaves no full stop — Chinese, English, mixed, a comma, a question
+    mark —; a long pause after a whole sentence keeps it, after a stub or an open word it becomes a comma; the
+    capital the cut gave goes, names / acronyms / "I" keep theirs; `plausiblyFinal`; `commitSplit` keeps the
+    unfinished clause, not 3.5 / 1,000 / 10:30), `DictationSegmenterTests.testKnowsHowLongEachPauseWas`,
+    `DictationFitTests` (the Typeless example, no overlap, a single-character false overlap, overlap only at the
+    cursor, English, punctuation after the cursor, leading commas and doubled marks, spacing, mixed),
+    `DictationTriggerTests` (single tap starts at once; idle double tap → cancel + send; while dictating → stop, then
+    send; push-to-talk release + tap; hold mode; a held second press is push-to-talk; Fn + another key, ⌘, a click or
+    Esc between the taps is never a double tap; the setting off; reset), `DictationPastePolicyTests.testSendPolicy`;
+  - `pytest tests`: the prompt carries the pause rule; an empty piece after a prior is decoded once more without it;
+  - the A/B and the latency above (`scripts/ab.py`, `score.py`); the double tap through the trigger hook in the test
+    build (`scripts/dt.sh`, `results/double-tap.log`): idle → `dictation_cancel` + "would press Return", no history
+    entry; dictating → paste into the test pad, `dictation_send queued`, then "would press Return" after the paste;
+    push-to-talk + tap the same; simulated Accessibility off → skipped; `send-policy`; the setting off → two taps
+    start and stop.
+- Only the user can check: a real Fn double tap sending in WeChat, Claude and other chat apps (that Return lands
+  after the paste in each — the paste is confirmed done 0.6 s after ⌘V, when the clipboard comes back), that a
+  double tap with nothing dictated sends what is already in the box, and how the punctuation reads on their own
+  speech (real pauses are messier than inserted silence: a breath can be 0.4 s or 1.5 s).
 - The speed work (`promo/cases/v0.8-dictation-speed/`, not in git; isolated test build `dev.blurt.recorder.speedtest`,
   scratch `BLURT_HOME`, launched through LaunchServices, no real mic, no tap, nothing pasted outside its test pad):
   - `swift test` (116): `DictationSegmenterTests` (cuts in pauses, never too short, hard cuts with overlap, digital

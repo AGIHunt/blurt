@@ -38,6 +38,10 @@ public struct DictationSegmenter {
     public private(set) var pieceSpeech = 0
     public private(set) var samples = 0
     public private(set) var floorDB: Float = -90
+    /// The pause at each cut: from the last speech frame before it to the first one after it (seconds), filled in once
+    /// speech resumes; index k = the pause after piece k. nil while not known yet; 0 for a hard cut. DictationStitch
+    /// keeps a sentence end at a seam only after a long one.
+    public private(set) var pauses: [Double?] = []
 
     private let frameLength: Int
     private var carry: [Float] = []
@@ -47,6 +51,8 @@ public struct DictationSegmenter {
     private var quietRun = 0                  // frames since the last speech frame
     private var recentLoud: [Bool] = []       // the last 12 frames
     private var talking = false               // 6 of them loud
+    private var lastLoudFrame = -1
+    private var pauseOpen: Int?               // the cut whose pause ends at the next speech frame
 
     public init(sampleRate: Double = 16000) {
         self.sampleRate = sampleRate
@@ -104,7 +110,15 @@ public struct DictationSegmenter {
         recentLoud.append(isLoud)
         if recentLoud.count > 12 { recentLoud.removeFirst() }
         talking = recentLoud.filter { $0 }.count >= 6
-        if isLoud { pieceSpeech += 1; quietRun = 0 } else { quietRun += 1 }
+        if isLoud {
+            pieceSpeech += 1
+            quietRun = 0
+            if let k = pauseOpen {
+                pauses[k] = seconds(frames - 1 - lastLoudFrame - 1)
+                pauseOpen = nil
+            }
+            lastLoudFrame = frames - 1
+        } else { quietRun += 1 }
         let pieceFrames = frames - pieceStart / frameLength
         let pauseFrames = Int((pause / DictationSegmenter.frameSeconds).rounded())
         // a pause long enough, in a piece long enough that has speech: cut in the middle of the pause
@@ -133,6 +147,7 @@ public struct DictationSegmenter {
     private mutating func cut(at end: Int, hard: Bool) -> Cut {
         let next = hard ? max(pieceStart, end - Int(overlap * sampleRate)) : end
         let c = Cut(end: end, nextStart: next, hard: hard)
+        if hard { pauses.append(0); pauseOpen = nil } else { pauses.append(nil); pauseOpen = pauses.count - 1 }
         // speech frames after the cut belong to the next piece
         let firstNextFrame = next / frameLength
         pieceSpeech = levels[min(firstNextFrame, levels.count)...].filter(loud).count

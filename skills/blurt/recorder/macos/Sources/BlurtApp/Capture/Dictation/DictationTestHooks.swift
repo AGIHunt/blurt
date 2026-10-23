@@ -46,6 +46,14 @@ extension App {
                 hasFrontApp: kv["front"] != "none", frontIsBlurt: kv["front"] == "self", secureInput: kv["secure"] == "1",
                 accessibility: kv["ax"] != "0", focusIsText: kv["text"] == "yes" ? true : kv["text"] == "no" ? false : nil))
             emit(["event": "dictation_paste_policy", "decision": "\(decision)"])
+        case "send-policy":
+            // send-policy front=other|self|none secure=0|1 ax=0|1: whether a double tap would press Return (a test
+            // build never does: a double tap through `keys` logs "would press Return" in dictation_test_send)
+            var kv: [String: String] = [:]
+            for p in rest.split(separator: " ") { let a = p.split(separator: "=", maxSplits: 1).map(String.init); if a.count == 2 { kv[a[0]] = a[1] } }
+            let decision = DictationSendPolicy.decide(hasFrontApp: kv["front"] != "none", frontIsBlurt: kv["front"] == "self",
+                                                      secureInput: kv["secure"] == "1", accessibility: kv["ax"] != "0")
+            emit(["event": "dictation_send_policy", "decision": "\(decision)"])
         case "cancel": d.cancel()
         case "apply":
             d.apply()
@@ -159,9 +167,12 @@ enum DictationTestPad {
     static func command(_ arg: String) {
         // set TEXT: the pad holds TEXT with the cursor at its end (a document to dictate into: the context);
         // replace FROM => TO: the user's own edit after a dictation (the first FROM after the cursor's line start)
+        // (a ▮ in TEXT puts the cursor there instead: dictating into the middle of a sentence)
         if arg.hasPrefix("set "), let tv = textView {
-            tv.string = String(arg.dropFirst(4)).replacingOccurrences(of: "\\n", with: "\n")
-            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+            let s = String(arg.dropFirst(4)).replacingOccurrences(of: "\\n", with: "\n")
+            let caret = (s as NSString).range(of: "\u{25AE}")
+            tv.string = s.replacingOccurrences(of: "\u{25AE}", with: "")
+            tv.setSelectedRange(NSRange(location: caret.location == NSNotFound ? (tv.string as NSString).length : caret.location, length: 0))
             return emit(["event": "dictation_testpad", "set": (tv.string as NSString).length])
         }
         if arg.hasPrefix("replace "), let tv = textView {
