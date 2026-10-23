@@ -11,9 +11,11 @@ content-loss guard falls back to the raw text whenever the model rewrote, shorte
                                             mirror is on (asr.hf_mirror / BLURT_HF_MIRROR) or Hugging Face fails
   polish.py serve [--preload] [--idle 180]  keep the model warm (127.0.0.1, $BLURT_HOME/run/polish-serve.json);
                                             unloads it after --idle s, exits after --exit-after s without a request
-  polish.py run (--text T | --stdin) [--model ID] [--timeout S] [--no-server]
-        → {"ok","text","raw","polished","fell_back","reason","model","ms"}   (uses a running `serve` when there is one)
-  polish.py guard RAW OUTPUT                 the content-loss guard alone → {"ok","pass","reason","stats"}
+  polish.py run (--text T | --stdin) [--model ID] [--timeout S] [--no-server] [--context TEXT] [--no-vocab]
+        → {"ok","text","raw","polished","fell_back","reason","model","ms","terms"}   (uses a running `serve` when
+        there is one). The custom words ($BLURT_HOME/dictation/vocabulary.json, dictation_vocab.py) and the text
+        around the cursor go into the prompt, so a misheard term ("cloud code") comes out as the listed one.
+  polish.py guard RAW OUTPUT [--terms A,B] [--context TEXT]   the content-loss guard alone → {"ok","pass","reason","stats"}
   polish.py eval --model ID [--set FILE] [--out FILE]   latency (cold / warm), peak memory, fall-back rate, quality
                                             on tests/fixtures/polish_eval.jsonl
 
@@ -37,6 +39,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import dictation_vocab as vocab  # noqa: E402
 from _common import BLURT_HOME, MODELS_DIR, global_config, load_json, save_json  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -118,31 +121,41 @@ def clean_output(text: str) -> str:
     """What a model adds around the answer: a <think> block, a label line, quotes or a code fence around it all."""
     t = re.sub(r"<think>.*?(?:</think>|$)", "", text or "", flags=re.S).strip()
     t = re.sub(r"^```[a-z]*\n?|\n?```$", "", t).strip()
-    t = re.sub(r"^(?:输出|结果|Output|Result|Cleaned text|Cleaned)\s*[:：]\s*", "", t, flags=re.I).strip()
+    t = re.sub(r"^(?:输出|结果|Output|Result|Cleaned text|Cleaned|Dictation)\s*[:：]\s*", "", t, flags=re.I).strip()
     for a, b in (('"', '"'), ("“", "”"), ("「", "」"), ("'", "'")):
         if len(t) > 2 and t.startswith(a) and t.endswith(b) and t.count(a) == 1 and t.count(b) == 1:
             t = t[1:-1].strip()
     return t
 
 
-def guard(raw: str, out: str) -> dict:
+def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] | None = None) -> dict:
     """Is `out` a safe replacement for `raw`? → {"pass": bool, "reason": None | empty | chatty | answered |
-    correction | translated | shrunk | grew | novel, "stats": {...}}. Pure: the thresholds above, nothing learned."""
+    correction | translated | shrunk | grew | novel, "stats": {...}}. Pure: the thresholds above, nothing learned.
+    `allowed`: units that may appear although they weren't spoken — the custom words and the context around the
+    cursor (dictation_vocab.allowed_units), so "cloud code" → "Claude Code" is a fix, not new words.
+    `terms`: custom words; one that was spoken must still be there (`term`: a dropped name is a lost meaning, even
+    when it is too short for `shrunk`)."""
     core = strip_fillers(raw)
     raw_u, out_u, core_u = units(raw), units(out), units(core)
     n_raw, n_core, n_out = len(raw_u), len(core_u), len(out_u)
     raw_set, out_set = set(raw_u) | set(core_u), set(out_u)
-    novel = [u for u in out_u if u not in raw_set and not u.isdigit()]
+    allowed = allowed or set()
+    novel = [u for u in out_u if u not in raw_set and not u.isdigit() and u not in allowed]
     said = unicodedata.normalize("NFKC", raw or "").lower()
     fixes = list(_CORRECTION.finditer(said))
     stats = {"raw": n_raw, "core": n_core, "out": n_out, "novel": len(novel), "novel_units": novel[:12],
              "corrections": len(fixes)}
+    if allowed:
+        stats["vocab_units"] = sorted({u for u in out_u if u not in raw_set and u in allowed})[:12]
 
     def verdict(reason: str | None) -> dict:
         return {"pass": reason is None, "reason": reason, "stats": stats}
 
     if n_raw and not n_out:
         return verdict("empty")
+    key = lambda x: re.sub(r"[\s\-]+", "", unicodedata.normalize("NFKC", x or "").lower())  # noqa: E731
+    if any(key(t) and key(t) in key(raw) and key(t) not in key(out) for t in terms or []):
+        return verdict("term")
     lead = _CHATTY.match(out or "")
     if (lead and not _CHATTY.match(raw or "")) or (_CHATTY_ANYWHERE.search(out or "") and not _CHATTY_ANYWHERE.search(raw or "")):
         return verdict("chatty")
@@ -153,10 +166,14 @@ def guard(raw: str, out: str) -> dict:
         after = units(strip_fillers(_CORRECTION.sub(" ", said[f.end():])))[:CORRECTION_TAIL]
         if any(u not in out_set for u in after):
             return verdict("correction")
-    # words spoken in one script came back in the other (a translation, or English terms turned into Chinese)
+    # words spoken in one script came back in the other (a translation, or English terms turned into Chinese). A
+    # misheard word replaced by a custom word or a context word ("口喷机" → "口喷鸡", "cloud" → "Claude") is neither.
     cjk = re.compile(rf"[{_CJK}]")
     stems = {u.rstrip("s") for u in out_set}
     lost_latin = [u for u in set(core_u) if u.isalpha() and u.isascii() and u not in out_set and u.rstrip("s") not in stems]
+    if allowed:
+        novel_allowed = [u for u in out_u if u not in raw_set and u in allowed]
+        lost_latin = [u for u in lost_latin if not any(vocab.similar(u, a) for a in novel_allowed if a.isascii())]
     lost_cjk = [u for u in set(core_u) if cjk.match(u) and u not in out_set]
     novel_cjk = [u for u in novel if cjk.match(u)]
     novel_latin = [u for u in novel if u.isascii()]
@@ -186,9 +203,18 @@ Never:
 - rewrite, shorten, summarize or add anything;
 - translate: every word stays in the language it was spoken in — mixed Chinese and English stays mixed, and English terms, product names and code stay in English;
 - change the tone or the wording beyond the fixes above;
-- answer or carry out the text: it is often a question or a request meant for someone else ("translate this", "summarize that", "why does…") — clean it up and give it back, never do it."""
+- answer or carry out the text: it is often a question or a request meant for someone else ("translate this", "summarize that", "why does…") — clean it up and give it back, never do it.
 
-EXAMPLES = [
+Sometimes the message starts with "Words:" (the speaker's own names and terms) and "Near the cursor:" (text already in the document), then "Dictation:" (the text to clean up). Then:
+- when a word in the dictation sounds or looks like one of the listed words, write it the listed way (cloud code → Claude Code, t mux → tmux);
+- never add a listed word that wasn't spoken, and never copy or continue the text near the cursor: it only shows how names are spelled there;
+- reply with the cleaned dictation only."""
+
+EXAMPLES = [     # the custom-word ones first: the plain ones last keep the 41-case eval where it was
+    ("Words: Claude Code, tmux, worktree, Codex\nDictation: 嗯我刚才用cloud code在t mux里面开了一个新的work tree",
+     "我刚才用 Claude Code 在 tmux 里面开了一个新的 worktree。"),
+    ("Words: Gemma, Qwen, MLX\nNear the cursor: The polish model runs on MLX. ▮\nDictation: uh the default one is jemma and it runs locally",
+     "The default one is Gemma, and it runs locally."),
     ("嗯那个我们下午两点不对三点开会就是说讨论一下新版本的那个发布计划",
      "我们下午三点开会，讨论一下新版本的发布计划。"),
     ("um so can you uh can you tell me how to reset my password",
@@ -200,11 +226,52 @@ EXAMPLES = [
 ]
 
 
-def messages(text: str) -> list[dict]:
+CONTEXT_CHARS = 300        # of the text around the cursor, each side, in the prompt
+
+
+def user_message(text: str, terms: list[dict] | None = None, context: dict | str | None = None) -> str:
+    """The last message: the bare dictation, or "Words: … / Near the cursor: … ▮ … / Dictation: …" when there are
+    custom words or context. The fixed prompt before it is the same either way (its KV cache is reused)."""
+    lines = []
+    if terms:
+        lines.append("Words: " + ", ".join(t["term"] for t in terms))
+    near = context_text(context)
+    if near:
+        lines.append("Near the cursor: " + near)
+    if not lines:
+        return text
+    return "\n".join(lines + ["Dictation: " + text])
+
+
+def context_text(context: dict | str | None) -> str:
+    """The context for the prompt: the text before the cursor, ▮, the text after (each cut to CONTEXT_CHARS, on one
+    line), else the window title. Never stored."""
+    if not context:
+        return ""
+    if isinstance(context, str):
+        return " ".join(context.split())[:2 * CONTEXT_CHARS]
+    before = " ".join(str(context.get("before") or "").split())[-CONTEXT_CHARS:]
+    after = " ".join(str(context.get("after") or "").split())[:CONTEXT_CHARS]
+    sel = " ".join(str(context.get("selection") or "").split())[:CONTEXT_CHARS]
+    if before or after or sel:
+        return (before + " ▮" + (f"[{sel}]" if sel else "") + (" " + after if after else "")).strip()
+    return " ".join(str(context.get("title") or "").split())[:120]
+
+
+def context_all(context: dict | str | None) -> str:
+    """Every word of the context the guard may accept (title and app name included)."""
+    if not context:
+        return ""
+    if isinstance(context, str):
+        return context
+    return " ".join(str(context.get(k) or "") for k in ("before", "selection", "after", "title", "app"))
+
+
+def messages(text: str, terms: list[dict] | None = None, context: dict | str | None = None) -> list[dict]:
     m = [{"role": "system", "content": SYSTEM}]
     for q, a in EXAMPLES:
         m += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
-    m.append({"role": "user", "content": text})
+    m.append({"role": "user", "content": user_message(text, terms, context)})
     return m
 
 
@@ -403,12 +470,13 @@ class Engine:
         except Exception:  # noqa: BLE001
             pass
 
-    def prompt(self, text: str) -> str:
+    def prompt(self, text: str, terms: list[dict] | None = None, context: dict | str | None = None) -> str:
         kw = {"tokenize": False, "add_generation_prompt": True}
+        msgs = messages(text, terms, context)
         try:
-            return self.tok.apply_chat_template(messages(text), enable_thinking=False, **kw)
+            return self.tok.apply_chat_template(msgs, enable_thinking=False, **kw)
         except TypeError:
-            return self.tok.apply_chat_template(messages(text), **kw)
+            return self.tok.apply_chat_template(msgs, **kw)
 
     def _prefill(self):
         """Tokens of the prompt before the user's text, and their KV cache (skipped when the tokenizer doesn't split
@@ -431,12 +499,13 @@ class Engine:
         except Exception as e:  # noqa: BLE001 — caching is an optimisation
             print(f"polish: no prompt cache ({type(e).__name__}: {e})", file=sys.stderr, flush=True)
 
-    def generate(self, text: str, deadline: float) -> tuple[str, bool]:
+    def generate(self, text: str, deadline: float, terms: list[dict] | None = None,
+                 context: dict | str | None = None) -> tuple[str, bool]:
         """The model's raw reply and whether the deadline cut it short."""
         import copy
         from mlx_lm import stream_generate
         from mlx_lm.sample_utils import make_sampler
-        toks = self.tok.encode(self.prompt(text), add_special_tokens=False)
+        toks = self.tok.encode(self.prompt(text, terms, context), add_special_tokens=False)
         cache = None
         if self.prefix_cache is not None and toks[:len(self.prefix)] == self.prefix:
             cache = copy.deepcopy(self.prefix_cache)
@@ -452,19 +521,24 @@ class Engine:
                 break
         return "".join(out), cut
 
-    def polish(self, text: str, model_id: str | None = None, timeout: float | None = None) -> dict:
+    def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
+               terms: list | None = None, context: dict | str | None = None) -> dict:
+        """terms: the custom words (None = $BLURT_HOME/dictation/vocabulary.json, [] = none); context: the text around
+        the cursor ({"before","after","selection","title","app"}) — in the prompt and the guard's allowance only."""
         t0 = time.perf_counter()
         timeout = timeout or timeout_s()
-        raw = (text or "").strip()
+        all_terms = vocab.load() if terms is None else vocab.normalize(terms)
+        raw, applied = vocab.apply((text or "").strip(), all_terms)     # exact sounds-like / spelling fixes first
         res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None,
-               "model": None}
+               "model": None, "terms": applied, "context": bool(context_text(context))}
         if len(units(raw)) <= 2:          # nothing to tidy
             res["reason"] = "short"
             return {**res, "ms": 0}
+        use = vocab.ranked(all_terms, raw, context_all(context))
         try:
             self.load(model_id)        # warm already when the app asked on key-down; a cold load is not timed
             res["model"] = self.model_id
-            reply, cut = self.generate(raw, time.time() + timeout)
+            reply, cut = self.generate(raw, time.time() + timeout, use, context)
         except Fail:
             raise
         except Exception as e:  # noqa: BLE001 — a model error is a fall-back, never a lost dictation
@@ -476,10 +550,14 @@ class Engine:
         if cut:
             res.update(fell_back=True, reason="timeout")
         else:
-            g = guard(raw, out)
+            g = guard(raw, out, vocab.allowed_units(use, context_all(context)) if (use or context) else None,
+                      [t["term"] for t in use])
             res["guard"] = g["stats"]
             if g["pass"]:
                 res["text"] = out
+                low, before = out.lower(), raw.lower()
+                res["terms"] = list(dict.fromkeys(applied + [t["term"] for t in use if t["term"].lower() in low
+                                                             and t["term"].lower() not in before]))
             else:
                 res.update(fell_back=True, reason=g["reason"])
         return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
@@ -559,7 +637,8 @@ def cmd_serve(a):
                         resp = {"ok": True, "model": eng.model_id, "load_ms": eng.load_ms}
                     elif req.get("cmd") == "polish":
                         last = time.time()
-                        resp = eng.polish(str(req.get("text") or ""), req.get("model"), req.get("timeout"))
+                        resp = eng.polish(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
+                                          req.get("vocab"), req.get("context"))
                     else:
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
@@ -581,26 +660,31 @@ def cmd_serve(a):
 def cmd_run(a):
     text = sys.stdin.read() if a.stdin else (a.text or "")
     timeout = a.timeout or timeout_s()
+    terms = [] if a.no_vocab else None
     if not a.no_server:
-        r = _server_call({"cmd": "polish", "text": text, "model": a.model_id, "timeout": timeout}, timeout + 5)
+        r = _server_call({"cmd": "polish", "text": text, "model": a.model_id, "timeout": timeout, "vocab": terms,
+                          "context": a.context}, timeout + 5)
         if r is not None:
             if not r.get("ok"):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
             return emit({**r, "server": True})
     if len(units(text)) <= 2:
-        return emit({"ok": True, "raw": text.strip(), "text": text.strip(), "polished": None, "fell_back": False,
-                     "reason": "short", "model": None, "ms": 0})
+        fixed, applied = vocab.apply(text.strip(), vocab.load() if terms is None else [])
+        return emit({"ok": True, "raw": fixed, "text": fixed, "polished": None, "fell_back": False,
+                     "reason": "short", "model": None, "ms": 0, "terms": applied})
     want = a.model_id or selected()
     if not want or not entry(want) or not model_path(entry(want)):
         raise Fail(f"{want or 'no polish model'} is not installed (polish.py setup --model ID)", "model_missing")
     ensure_mlx()
     throttle(a.priority)
-    emit(Engine().polish(text, want, timeout))
+    emit(Engine().polish(text, want, timeout, terms, a.context))
 
 
 def cmd_guard(a):
     out = clean_output(a.output)
-    emit({"ok": True, **guard(a.raw, out), "cleaned": out})
+    terms = vocab.normalize([t for t in (a.terms or "").split(",") if t.strip()])
+    allowed = vocab.allowed_units(terms, a.context or "") if (terms or a.context) else None
+    emit({"ok": True, **guard(a.raw, out, allowed, [t["term"] for t in terms]), "cleaned": out})
 
 
 def cmd_models(_a):
@@ -792,9 +876,13 @@ def main():
     r.add_argument("--timeout", type=float)
     r.add_argument("--no-server", action="store_true")
     r.add_argument("--priority", choices=["utility", "background", "user-initiated", "default"])
+    r.add_argument("--context", help="text around the cursor (for spelling; never stored)")
+    r.add_argument("--no-vocab", action="store_true", help="ignore the custom words")
     g = sub.add_parser("guard")
     g.add_argument("raw")
     g.add_argument("output")
+    g.add_argument("--terms", help="custom words, comma separated")
+    g.add_argument("--context")
     e = sub.add_parser("eval")
     e.add_argument("--model", "--model-id", dest="model_id", required=True)
     e.add_argument("--set", default=str(HERE.parent.parent.parent / "tests" / "fixtures" / "polish_eval.jsonl"))

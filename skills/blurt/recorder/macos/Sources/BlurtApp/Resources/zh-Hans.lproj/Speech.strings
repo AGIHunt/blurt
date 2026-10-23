@@ -64,6 +64,7 @@
 "speech.note.whisper_turbo_q4" = "准确率几乎不变，体积只有三分之一，适合 8 GB 内存的 Mac。";
 "speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo，用 NVIDIA GPU 运行。";
 "speech.note.qwen3_cpu" = "三十种语言，用处理器运行，任何电脑都能用。";
+"speech.note.qwen3_mlx" = "用 GPU 运行，速度快，能按你的自定义词来识别。推荐用于听写。";
 "speech.note.cloud" = "在云端运行，使用你自己的密钥。";
 
 /* Actions */

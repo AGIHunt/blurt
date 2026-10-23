@@ -64,6 +64,7 @@
 "speech.note.whisper_turbo_q4" = "Nearly the same accuracy at a third of the size. Suits Macs with 8 GB of memory.";
 "speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo on an NVIDIA GPU.";
 "speech.note.qwen3_cpu" = "Thirty languages on the processor, on any computer.";
+"speech.note.qwen3_mlx" = "Fast on the GPU, and it can be told your own words. Recommended for dictation.";
 "speech.note.cloud" = "Runs in the cloud with your own key.";
 
 /* Actions */
