@@ -177,6 +177,7 @@ final class Snapper {
         if pendingWords[key] != nil { pendingWords[key]?.append(then); return }
         pendingWords[key] = [then]
         Task {
+            if let d = Snapper.testWordsDelay { try? await Task.sleep(nanoseconds: UInt64(d * 1e9)) }
             let r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
             let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             await MainActor.run {
@@ -191,6 +192,12 @@ final class Snapper {
         }
     }
     private var pendingWords: [ObjectIdentifier: [(String?) -> Void]] = [:]
+    /// Scripted checks (test commands only): BLURT_TEST_WORDS_DELAY=SECS holds every transcription back that long, so
+    /// a voice card can be dragged before its words are there.
+    static let testWordsDelay: Double? = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_WORDS_DELAY"].flatMap(Double.init) : nil
+    }()
 
     /// The words of every spoken note among `shots` that has none yet (a card dragged onto a project while its words
     /// were still coming), then `then` — so the item gets them as its title and quote, not "Screenshot 14:32".
@@ -331,6 +338,31 @@ final class Snapper {
             t.seconds = 3
             island.toast(t)
         }
+    }
+
+    /// A card dragged out and dropped in another app: it has done its job, so it leaves its thread — discarded like Esc
+    /// in the note (restorable: "Dragged out · Undo" for 4 s puts it back on its thread). Its files stay put for 20 s
+    /// before going to the Trash, for an app that reads a dropped file a little later.
+    func takeOut(_ s: Shot) {
+        guard let b = s.batch, !s.deleted else { return }
+        if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+        hanging.takeAway(s)
+        emit(["event": "take_out", "n": s.n, "session": b.dir.path])
+        final class Moved { var files: [URL: URL] = [:] }
+        let moved = Moved()
+        b.delete(s, recycleAfter: 20) { moved.files = $0 }
+        var t = Island.Toast(text: Loc.t("capture.taken_out", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
+            [weak self] in self?.undoDiscard(s, trashed: moved.files)
+        }
+        t.seconds = 4
+        island.toast(t)
+    }
+
+    /// A voice note's words, if they are not there yet (a card dragged before they were written down).
+    func wantWords(_ s: Shot) {
+        guard s.voiceURL != nil, s.words == nil else { return }
+        transcribed.insert(ObjectIdentifier(s))
+        transcribe(s) { _ in }
     }
 
     private func undoDiscard(_ s: Shot, trashed: [URL: URL]) {

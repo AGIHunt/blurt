@@ -174,6 +174,8 @@ final class Shot {
     var duration: Double?        // voice inputs
     var strokes: [[[Double]]] = []
     var deleted = false
+    /// how many times it was deleted: a delayed recycle only goes ahead for the deletion that scheduled it
+    var deletions = 0
     /// project id | "inbox" | nil (nil and not assigned = a card waiting on a thread)
     var project: String?
     var assignedBy: String?      // capture | user | ai
@@ -329,14 +331,22 @@ final class ShotBatch {
     }
 
     /// `{"n", "deleted": true}`; the files go to the Trash (recoverable). `done` gets where each one went (for Undo).
-    func delete(_ s: Shot, done: (([URL: URL]) -> Void)? = nil) {
+    /// `recycleAfter`: the files stay where they are that long first (an app a card was dragged into may still be
+    /// reading its file); undone meanwhile, they never move.
+    func delete(_ s: Shot, recycleAfter delay: TimeInterval = 0, done: (([URL: URL]) -> Void)? = nil) {
         s.deleted = true
+        s.deletions += 1
+        let gen = s.deletions
         io.async { appendJSONL(self.jsonl, ["n": s.n, "deleted": true]) }
         let files = [s.url, s.markedURL, s.voiceURL].compactMap { $0 }.filter { FileManager.default.fileExists(atPath: $0.path) }
         if !inRecording { writeMeta() }
         onChange?()
         guard !files.isEmpty else { done?([:]); return }
-        NSWorkspace.shared.recycle(files) { moved, _ in DispatchQueue.main.async { done?(moved) } }
+        let recycle = {
+            guard s.deleted, s.deletions == gen else { return }
+            NSWorkspace.shared.recycle(files) { moved, _ in DispatchQueue.main.async { done?(moved) } }
+        }
+        if delay > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: recycle) } else { recycle() }
     }
 
     /// Undo of delete: the files back out of the Trash, `{"n", "deleted": false}`.

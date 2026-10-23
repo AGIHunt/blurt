@@ -996,7 +996,8 @@ uid 01JB… · issue · high · module auth
   走 v0.6 的 `App.process(dir)`），v0.6 AgentHub 的 `perch.hatch / hatched` 调用落到它上面；AgentHub 换成任务后删掉 `LegacyProcess` 和 `perch`。
 - **测试钩子**（`BLURT_TEST_COMMANDS=1`）：`BLURT_TEST_STILL=<png>` 代替屏幕截图、`BLURT_TEST_PROCESS=done|failed` 代替真正的 agent 整理、
   `BLURT_TEST_MIC_WAV` / `BLURT_NOTE_WAV` 代替麦克风、`BLURT_TEST_PASTEBOARD=<名字>` 让卡片拷贝进私有剪贴板、`BLURT_ISLAND_DX=-560`
-  把岛画到刘海左边（指针测试碰不到用户自己的岛）；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
+  把岛画到刘海左边（指针测试碰不到用户自己的岛）、`BLURT_TRACE_CARDS=1` 每帧变化时输出 `cards_frame`（最新一张卡片露在岛下的比例，查闪烁用）、
+  `BLURT_TEST_WORDS_DELAY=<秒>` 让转写晚到（测语音卡片在文字出来前被拖）；命令见 `SnapApp.swift` 文件头（`island`、`voice down|up|tap`、`assign`、`aisort`、`project`、
   `framerec`、`mascotframes`、`mascot`、`fakerecording`、`peck`）。
 
 **细则（polish，合并后）**：鸡爪已按「决定」换成细线（macOS `Capture/Island/HangingCards.swift`，`Claws.swift` / `ClawArt.swift` 删除；

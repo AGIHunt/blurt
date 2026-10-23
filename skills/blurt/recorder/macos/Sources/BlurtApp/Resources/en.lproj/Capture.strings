@@ -24,6 +24,7 @@
 "capture.card.edit_note" = "Edit Note…";
 "capture.card.move_to" = "Move To";
 "capture.card.reveal" = "Show in Finder";
+"capture.card.words_pending" = "The words aren’t ready yet";
 "capture.cards.ax" = "Captures waiting for a project";
 "capture.cards.none" = "No unfiled captures";
 "capture.countdown.finish" = "finish";
@@ -138,6 +139,7 @@
 "capture.service.image_from" = "Image from %@";
 "capture.service.title" = "Collected notes";
 "capture.snap.no_permission" = "Couldn’t take the shot — Screen Recording permission needed";
+"capture.taken_out" = "Dragged out";
 "capture.undo" = "Undo";
 "capture.voice.card_empty" = "Voice note · %@";
 "capture.voice.dictation_busy" = "Dictation is listening — finish it first";

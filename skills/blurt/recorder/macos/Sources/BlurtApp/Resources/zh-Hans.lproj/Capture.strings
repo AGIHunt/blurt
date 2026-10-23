@@ -24,6 +24,7 @@
 "capture.card.edit_note" = "编辑备注…";
 "capture.card.move_to" = "移到";
 "capture.card.reveal" = "在访达中显示";
+"capture.card.words_pending" = "文字还没转好，稍等一下";
 "capture.cards.ax" = "还没归类的捕获";
 "capture.cards.none" = "没有未归类的捕获";
 "capture.countdown.finish" = "完成";
@@ -138,6 +139,7 @@
 "capture.service.image_from" = "图片（来自 %@）";
 "capture.service.title" = "收集的笔记";
 "capture.snap.no_permission" = "截图失败：需要「录屏」权限";
+"capture.taken_out" = "已拖走";
 "capture.undo" = "撤销";
 "capture.voice.card_empty" = "语音 · %@";
 "capture.voice.dictation_busy" = "正在听写，先把这段说完";

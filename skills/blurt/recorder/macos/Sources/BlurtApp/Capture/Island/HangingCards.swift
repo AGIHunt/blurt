@@ -5,9 +5,15 @@
 //  • a capture flies up while its thread drops out of the island (0.35 s ease-out) and catches it; the card sways on
 //    the thread and settles within about a second.
 //  • the cards hang only while you look: for a few seconds after a capture, while a note is open, and while the pointer
-//    is on the island or on the cards — hovering (or opening) the island drops every card together with the island's
-//    detail, and the island stays open while the pointer is on the cards. About 0.4 s after the pointer has left both,
-//    the threads reel the cards back into the island, whose left ear counts them.
+//    is in their region — the island, the cards' row, the gap between them where the threads run, and the hovered
+//    card's note, each with a 10 pt margin (hoverRegion). Hovering (or opening) the island drops every card at once
+//    together with the island's detail, and the island stays open while the pointer is anywhere in the region. Only
+//    after 0.4 s outside the whole region do the threads reel the cards back into the island (its left ear counts
+//    them); coming back while they are still on their way up turns them round from where they are (no restart).
+//  • the cards hang from the island's bottom edge and move with it, rigidly, on the island's own spring (carry): when
+//    it opens or a toast makes it taller they go down with it. (They used to follow on their own springs, lag behind
+//    an opening island, slide under it and fade as if reeled in, then drop out again: the flicker when the pointer
+//    came up to the island from below.) A drop already under way or showing is never started again.
 //  • brought down on purpose — a click on the left ear's count, ⌥⇧H "Show hanging cards" (record.hotkeys "cards"),
 //    the menu, the main window's "Unfiled captures" — they stay (sticky) until the pointer has come to the cards and
 //    gone again, or Esc.
@@ -15,8 +21,17 @@
 //  • hover shortens the thread and lifts the card (its neighbours make room) and shows its note · click = copy (a voice
 //    card: its words; a shot: the image — inked if marked — with its note / words as the same item's text, for apps
 //    that only take text) · right-click: Copy Image / Copy Text (only with text), edit, move, delete · double-click =
-//    edit the note · drag = the file (+ its words) into any app, or onto a project in the island: the thread stretches
-//    after it, then snaps and springs back up · × = the thread lets go and the card falls.
+//    edit the note · drag = a shot's file (+ its words), a voice card's words only (as text: no audio file) into any
+//    app, or onto a project in the island: the thread stretches after it, then snaps and springs back up · × = the
+//    thread lets go and the card falls.
+//  • dropped in another app (the session ended with an operation, over a window that isn't ours): the card has been
+//    used, so it leaves — discarded like Esc in the note ("Dragged out · Undo" for 4 s; its files go to the Trash only
+//    20 s later, for an app that reads the dropped file late). It went with the drag, so nothing falls: the thread
+//    lets go and its free end springs back into the island, and the others close up. Dropped on nothing (or on one
+//    of our windows): it comes back to its thread as before; on a project in the island: filed, as before.
+//  • a voice card is a text card: up to two lines of its words and a small mic mark (it was spoken). Dragged before
+//    its words are written down, the drag waits for them (up to 1 s, while the pointer keeps moving), else it stays
+//    and says "The words aren't ready yet" under the card. Its hover note keeps the small play button.
 //  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the thread reels the card up
 //    into the island, which swallows it with a small bump.
 //  • at most 7 cards show, centred on the island, 12 pt apart, tilted ±2° in turn; older ones stack into "+N".
@@ -43,8 +58,7 @@ final class HangingCard {
     let close = CALayer()
     let copied = CATextLayer()
     var size: CGSize
-    /// where the thread holds the top edge, from the card's left: the middle of a picture; above a voice card's
-    /// waveform disc (its words stay clear)
+    /// where the thread holds the top edge, from the card's left: the middle (a picture, or a voice note's words)
     let gripX: CGFloat
     var x: Spring
     var grip: Spring                // y of the card's top edge (the thread's end), panel coordinates (y down)
@@ -59,6 +73,9 @@ final class HangingCard {
     var copiedUntil: CFTimeInterval = 0
     /// leaving: falling (delete) or pulled into the island
     var leaving: (start: CFTimeInterval, into: CGPoint?, from: CGPoint)?
+    /// leaving because it was dragged out and dropped in another app: the card is already gone (it went with the
+    /// drag); only its thread lets go and settles back up — no fall
+    var taken = false
     /// the thread dropping out of the island: 0.35 s ease-out from `from` to `to`, starting at `start` (then the spring)
     var reach: (start: CFTimeInterval, from: CGFloat, to: CGFloat)?
     /// how much of the thread shows, from the island down (0…1): it unreels again after a drag comes back
@@ -73,7 +90,7 @@ final class HangingCard {
     init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
         shot = s
         size = s.kind == .voice ? HangingCards.voiceSize : HangingCards.shotSize
-        gripX = s.kind == .voice ? 22 : size.width / 2
+        gripX = size.width / 2
         self.x = Spring(x, response: 0.5, damping: 0.82)
         grip = Spring(-HangingCards.shotSize.height - 40, response: 0.55, damping: 0.72)
         self.tilt = tilt
@@ -139,7 +156,7 @@ let capturePasteboardType = NSPasteboard.PasteboardType("dev.blurt.capture")
 
 final class HangingCards: NSObject {
     static let shotSize = CGSize(width: 112, height: 84)
-    static let voiceSize = CGSize(width: 168, height: 44)
+    static let voiceSize = CGSize(width: 168, height: 50)
     static let gap: CGFloat = 12
     static let maxShown = 7
     static let edge: CGFloat = 12                  // the cards keep this far from the screen's edges
@@ -376,18 +393,16 @@ final class HangingCards: NSObject {
         c.face.contentsGravity = .resizeAspectFill
         c.card.addSublayer(c.face)
         if s.kind == .voice {
-            let disc = CALayer()
-            disc.frame = CGRect(x: 8, y: (h - 28) / 2, width: 28, height: 28)
-            disc.cornerRadius = 14
-            disc.backgroundColor = accent.withAlphaComponent(0.14).cgColor
-            let wave = BlurtIcon.waveform.makeLayer(size: 16, color: accent.cgColor)
-            wave.position = CGPoint(x: 14, y: 14)
-            disc.addSublayer(wave)
-            c.card.addSublayer(disc)
-            c.title.frame = CGRect(x: 44, y: (h - 17) / 2, width: w - 52, height: 17)
+            // a text card: a voice note is words that happened to be spoken — up to two lines of them, and a small
+            // mic mark in the corner that says so
+            c.title.frame = CGRect(x: 12, y: 8, width: w - 24 - 14, height: h - 14)
             c.title.contentsScale = 2
+            c.title.isWrapped = true
             c.title.truncationMode = .end
             c.card.addSublayer(c.title)
+            let mic = BlurtIcon.mic.makeLayer(size: 11, color: accent.withAlphaComponent(0.85).cgColor)
+            mic.position = CGPoint(x: w - 10 - 5.5, y: h - 8 - 5.5)
+            c.card.addSublayer(mic)
         }
         c.badge.frame = CGRect(x: w - 6 - 31, y: h - 6 - 16, width: 31, height: 16)
         c.badge.contentsGravity = .topRight
@@ -402,13 +417,11 @@ final class HangingCards: NSObject {
         x.position = CGPoint(x: 10, y: 10)
         c.close.addSublayer(x)
         c.close.opacity = 0
-        c.copied.frame = CGRect(x: w / 2 - 40, y: h + 8, width: 80, height: 22)
         c.copied.contentsScale = 2
         c.copied.alignmentMode = .center
         c.copied.cornerRadius = 11
         c.copied.backgroundColor = NSColor(white: 0.08, alpha: 0.88).cgColor
-        let cf = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
-        c.copied.string = NSAttributedString(string: Loc.t("capture.card.copied", table: "Capture"), attributes: [.font: cf, .foregroundColor: NSColor.white])
+        pill(c, Loc.t("capture.card.copied", table: "Capture"))
         c.copied.opacity = 0
         c.root.addSublayer(c.card)
         c.clasp.position = CGPoint(x: c.gripX, y: 0.5)
@@ -418,6 +431,17 @@ final class HangingCards: NSObject {
         stage.insertSublayer(c.root, below: stack)
         style(c)
         return c
+    }
+
+    /// The small dark pill under a card — "Copied", or a hint — sized to its text.
+    private func pill(_ c: HangingCard, _ text: String) {
+        let f = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        let w = ceil((text as NSString).size(withAttributes: [.font: f]).width) + 24
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        c.copied.frame = CGRect(x: c.size.width / 2 - w / 2, y: c.size.height + 8, width: w, height: 22)
+        c.copied.string = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: NSColor.white])
+        CATransaction.commit()
     }
 
     // MARK: layout
@@ -537,11 +561,26 @@ final class HangingCards: NSObject {
         wake()
     }
 
-    private func remove(_ c: HangingCard, fall: Bool) {
+    /// How a card leaves its thread: it just fades, falls (deleted), or was taken (dragged out into another app: the
+    /// card went with the drag, its thread lets go and settles back up).
+    enum Leave { case fade, fall, taken }
+
+    private func remove(_ c: HangingCard, fall: Bool) { remove(c, fall ? .fall : .fade) }
+
+    private func remove(_ c: HangingCard, _ how: Leave) {
         guard let i = cards.firstIndex(where: { $0 === c }) else { return }
         cards.remove(at: i)
         if hoverCard === c { hoverCard = nil; tip.isHidden = true }
-        if fall, visible, !reduceMotion {
+        if how == .taken, visible {
+            // the thread's free end: still stretched after the pointer, or already sprung back into the island
+            let tx = threadX(c.x.value - c.size.width / 2 + c.gripX)
+            let end = c.tether.flatMap { $0.snapped == nil ? $0.end : nil } ?? CGPoint(x: tx, y: threadTop)
+            c.tether = nil
+            c.taken = true
+            c.root.opacity = 0
+            c.leaving = (CACurrentMediaTime(), nil, end)
+            leaving.append(c)
+        } else if how == .fall, visible, !reduceMotion {
             c.leaving = (CACurrentMediaTime(), nil, c.root.position)
             leaving.append(c)
         } else {
@@ -647,6 +686,12 @@ final class HangingCards: NSObject {
         remove(c, fall: true)
     }
 
+    /// Dragged out and used in another app: the card went with the drag, so only its thread lets go and settles.
+    func takeAway(_ s: Shot) {
+        guard let c = cards.first(where: { $0.shot === s }) else { return }
+        remove(c, .taken)
+    }
+
     func update(_ s: Shot) {
         guard let c = cards.first(where: { $0.shot === s }) else { return }
         CATransaction.begin()
@@ -728,9 +773,10 @@ final class HangingCards: NSObject {
         if on { registerHotkey(.cardsEsc, key: kVK_Escape, mods: 0) } else { unregisterHotkey(.cardsEsc) }
     }
 
-    private func retract() {
+    private func retract(turnable: Bool = false) {
         sticky = false
         holdEsc(false)
+        retractedAt = turnable ? NSEvent.mouseLocation : nil
         guard shown else { return }
         shown = false
         pointerOver = false
@@ -775,6 +821,11 @@ final class HangingCards: NSObject {
         let now = CACurrentMediaTime()
         poll(now)
         let a = anchor
+        // The island grew or shrank (it opened, a toast): everything hanging moves with its bottom edge, rigidly, on
+        // the island's own spring. Left to the cards' springs, a card lagged behind an island opening under it, slid
+        // under the island and faded as if reeled in, then dropped out again — the flicker when the pointer came up.
+        if let last = carriedY, abs(a.y - last) > 0.001 { carry(a.y - last) }
+        carriedY = a.y
         let reduce = reduceMotion
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -836,6 +887,7 @@ final class HangingCards: NSObject {
         }
         positionTip(now)
         CATransaction.commit()
+        if HangingCards.trace { traceFrame(now) }
         if !leaving.isEmpty { moving = true }
         if hoverCard?.shot.hasNote == true || hoverCard?.shot.kind == .voice, tip.isHidden, now - hoverSince < 0.6 { moving = true }
         if !visible || (!moving && !shown) {
@@ -846,6 +898,42 @@ final class HangingCards: NSObject {
             return false
         }
         return moving || shown && (now < peekUntil)
+    }
+
+    /// The anchor's last height (see frame): each frame moves the cards by however far it went since.
+    private var carriedY: CGFloat?
+
+    private func carry(_ dy: CGFloat) {
+        for c in cards {
+            c.grip.value += dy
+            if let r = c.reach { c.reach = (r.start, r.from + dy, r.to + dy) }
+            if let t = c.tether, t.snapped != nil { c.tether = (t.end, t.snapped, CGPoint(x: t.from.x, y: t.from.y + dy)) }
+        }
+        for c in leaving {
+            guard let l = c.leaving else { continue }
+            c.leaving = (l.start, l.into.map { CGPoint(x: $0.x, y: $0.y + dy) }, CGPoint(x: l.from.x, y: l.from.y + dy))
+        }
+    }
+
+    /// Scripted flicker checks (test commands only): BLURT_TRACE_CARDS=1 emits "cards_frame" whenever how much of the
+    /// newest card shows changes — its opacity times the part of it below the island (0 = gone, 1 = all there).
+    static let trace: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TRACE_CARDS"] == "1"
+    }()
+    private var tracedVis: CGFloat = -1
+
+    private func traceFrame(_ now: CFTimeInterval) {
+        guard let c = cards.last, let s = screen else { return }
+        let bottom = s.frame.maxY - island.frameOnScreen.minY          // the island's bottom edge, panel coordinates
+        let h = c.size.height
+        let below = max(0, min(1, (c.grip.value + h - bottom) / h))
+        let vis = c.flying ? 1 : CGFloat(c.root.opacity) * below
+        let q = (vis * 50).rounded() / 50
+        guard q != tracedVis else { return }
+        tracedVis = q
+        emit(["event": "cards_frame", "vis": Double(q), "shown": shown, "grip": Double(c.grip.value.rounded()),
+              "island_bottom": Double(bottom.rounded()), "wall": Date().timeIntervalSince1970])
     }
 
     private func drawThread(_ t: CAShapeLayer, from a: CGPoint, to b: CGPoint) {
@@ -908,11 +996,21 @@ final class HangingCards: NSObject {
         guard let l = c.leaving else { return }
         let raw = CGFloat(max(0, min(1, (now - l.start) / (reduceMotion ? 0.2 : (l.into == nil ? 0.5 : 0.45)))))
         if reduceMotion {
-            c.root.opacity = Float(1 - raw)
+            c.root.opacity = c.taken ? 0 : Float(1 - raw)
             c.thread.opacity = Float(1 - raw)
             return
         }
         let top = threadTop
+        if c.taken {
+            // taken: the card is in the other app already; its thread lets go — the free end springs back up into
+            // the island (a small overshoot) and fades as it settles
+            c.root.opacity = 0
+            let tx = threadX(l.from.x)
+            let back = Ease.outBack(min(1, raw / 0.64), 1.2)
+            drawThread(c.thread, from: CGPoint(x: tx, y: top), to: CGPoint(x: l.from.x + (tx - l.from.x) * back, y: l.from.y + (top - l.from.y) * back))
+            c.thread.opacity = Float(1 - Ease.inCubic(raw))
+            return
+        }
         if let g = l.into {
             // reeled into the island: ease-in towards its centre, shrinking to 0.2; the thread shortens with it
             let k = Ease.inCubic(raw)
@@ -944,30 +1042,65 @@ final class HangingCards: NSObject {
     /// The island stays open while the pointer is on the cards, or one is pressed or dragged.
     var holdsIsland: Bool { shown && (pointerOver || down != nil || dragging != nil) }
 
+    /// The pointer's region (panel coordinates): the island, the cards' row and the gap between them (where the threads
+    /// run), and the hovered card's note — each with a small margin. One region, so passing from the island to a card
+    /// (or brushing past an edge) never counts as leaving.
+    private func hoverRegion() -> [CGRect] {
+        guard let p = panel else { return [] }
+        let f = island.frameOnScreen
+        let isl = CGRect(x: f.minX - p.frame.minX, y: p.frame.maxY - f.maxY, width: f.width, height: f.height)
+        let margin: CGFloat = 10
+        var out = [isl.insetBy(dx: -margin, dy: -margin)]
+        var row: CGRect?
+        for c in cards.suffix(shownCount) where !c.flying {
+            let r = CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height)
+            row = row.map { $0.union(r) } ?? r
+        }
+        if !stack.isHidden, let r0 = row {
+            row = r0.union(CGRect(x: stack.position.x - HangingCards.shotSize.width / 2, y: r0.minY, width: HangingCards.shotSize.width,
+                                  height: HangingCards.shotSize.height))
+        }
+        if var r = row {
+            if r.minY > isl.maxY { r = CGRect(x: r.minX, y: isl.maxY, width: r.width, height: r.maxY - isl.maxY) }   // the gap
+            out.append(r.insetBy(dx: -margin, dy: -margin))
+        }
+        if !tip.isHidden { out.append(tip.frame.insetBy(dx: -margin, dy: -margin)) }
+        return out
+    }
+
+    /// Where the pointer was when the cards went up because it had left (nil after Esc or a recording start, which
+    /// send them up for good): they turn round only if it comes back, not because they rose through where it rests.
+    private var retractedAt: NSPoint?
+
     private func poll(_ now: CFTimeInterval) {
         guard let p = panel else { return }
         let m = NSEvent.mouseLocation
         let onIsland = island.pointerInside
         let held = island.holdsCards           // open by a key or a command, a drawer, a drag
         let recording = island.isRecording     // only brought down on purpose while recording
+        let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
+        let inRegion = !cards.isEmpty && hoverRegion().contains { $0.contains(local) }
         if !shown {
             pointerOver = false
-            if (onIsland || held) && !cards.isEmpty && !recording { show() }
+            // the pointer on the island — or back on cards still on their way up: the retract turns round where they are
+            let turning = visible && inRegion && (retractedAt.map { hypot($0.x - m.x, $0.y - m.y) > 2 } ?? false)
+            if (onIsland || held || turning) && !cards.isEmpty && !recording { show() }
             return
         }
-        let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
         let over = testHover != nil || card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
             || (!tip.isHidden && tip.frame.insetBy(dx: -6, dy: -10).contains(local))
-        pointerOver = over
+        // anywhere in the region holds the island open too (the gap under it, a card's edge)
+        pointerOver = over || inRegion
         // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc
         if sticky {
             if cards.isEmpty { sticky = false; holdEsc(false) }
             else if over { visited = true }
-            else if visited && !onIsland { sticky = false; holdEsc(false) }
+            else if visited && !onIsland && !inRegion { sticky = false; holdEsc(false) }
         }
-        if over || busy || sticky || (!recording && (onIsland || held)) { awaySince = nil } else {
+        // shown at once, gone only after 0.4 s outside the whole region
+        if over || inRegion || busy || sticky || (!recording && (onIsland || held)) { awaySince = nil } else {
             awaySince = awaySince ?? now
-            if now - awaySince! >= 0.4 { awaySince = nil; retract(); return }
+            if now - awaySince! >= 0.4 { awaySince = nil; retract(turnable: true); return }
         }
         let hit = testHover ?? (dragging == nil ? card(at: local) : nil)
         if hit !== hoverCard && down == nil {
@@ -978,8 +1111,9 @@ final class HangingCards: NSObject {
             if hit == nil { tip.isHidden = true }
             layout()
         }
-        let interactive = hit != nil || down != nil || onStack(local)
-            || (!tip.isHidden && tip.frame.insetBy(dx: -4, dy: -10).contains(local))
+        // (never during a drag: the panel spans the top of the screen, and the apps under it must get the drop)
+        let interactive = dragging == nil && (hit != nil || down != nil || onStack(local)
+            || (!tip.isHidden && tip.frame.insetBy(dx: -4, dy: -10).contains(local)))
         if p.ignoresMouseEvents == interactive { p.ignoresMouseEvents = !interactive }
     }
 
@@ -1078,15 +1212,44 @@ final class HangingCards: NSObject {
         }
     }
 
+    /// A voice card dragged before its words are written down: since when the drag has waited for them.
+    private var wordsWait: CFTimeInterval?
+
     func mouseDragged(_ e: NSEvent, at p: NSPoint) {
         guard var d = down, let c = d.card, !d.dragged, hypot(p.x - d.p.x, p.y - d.p.y) > 4 else { return }
+        if c.shot.kind == .voice, c.shot.copyText == nil {
+            // a voice note goes out as its words: wait for them a moment (≤ 1 s, while the pointer keeps moving),
+            // else stay put and say so
+            let now = CACurrentMediaTime()
+            if wordsWait == nil { wordsWait = now; snapper.wantWords(c.shot) }
+            guard now - wordsWait! >= 1 else { return }
+            wordsWait = nil
+            d.dragged = true
+            down = d
+            wordsNotReady(c)
+            return
+        }
+        wordsWait = nil
         d.dragged = true
         down = d
         startDrag(c, event: d.event)
     }
 
+    /// "The words aren't ready yet" under the card, and a small shake of its head.
+    private func wordsNotReady(_ c: HangingCard) {
+        pill(c, Loc.t("capture.card.words_pending", table: "Capture"))
+        c.copiedUntil = CACurrentMediaTime() + 1.8
+        if !reduceMotion { c.omega += 22 }
+        emit(["event": "card_drag_refused", "n": c.shot.n, "reason": "no_words"])
+        wake()
+    }
+
     func mouseUp(_ e: NSEvent, at p: NSPoint) {
         defer { down = nil }
+        if wordsWait != nil, let c = down?.card {     // let go while it waited for the words
+            wordsWait = nil
+            return wordsNotReady(c)
+        }
         if let d = down, d.card == nil, !d.dragged, onStack(p), onStack(d.p) { return showOlder() }
         guard let d = down, !d.dragged, let c = d.card, c === card(at: p) else { return }
         if e.clickCount >= 2 {
@@ -1119,6 +1282,7 @@ final class HangingCards: NSObject {
             } ?? false
         }
         guard ok else { return false }
+        pill(c, Loc.t("capture.card.copied", table: "Capture"))
         c.copiedUntil = CACurrentMediaTime() + 1.2
         if s.kind == .shot { c.omega += 30 }
         wake()
@@ -1200,14 +1364,16 @@ final class HangingCards: NSObject {
         let session = v.beginDraggingSession(with: [di], event: event, source: v)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
+        panel?.ignoresMouseEvents = true    // the session tracks the pointer; the windows under the cards take the drop
         wake()
     }
 
-    /// What a card carries when dragged out: the file (the inked shot, or the voice note's wav), its words as text, and
-    /// (inside the app) which capture it is — for dropping on a project in the island.
+    /// What a card carries when dragged out: a shot's file (inked if marked) with its words as text; a voice note only
+    /// its words (it is text that happened to be spoken: no audio file); and (inside the app) which capture it is —
+    /// for dropping on a project in the island.
     static func dragItem(_ s: Shot) -> NSPasteboardItem {
         let item = NSPasteboardItem()
-        if let u = s.bestURL { item.setString(u.absoluteString, forType: .fileURL) }
+        if s.kind == .shot, let u = s.bestURL { item.setString(u.absoluteString, forType: .fileURL) }
         if let t = s.copyText { item.setString(t, forType: .string) }
         if let b = s.batch { item.setString("\(b.dir.path)\n\(s.n)", forType: capturePasteboardType) }
         return item
@@ -1239,6 +1405,13 @@ final class HangingCards: NSObject {
             remove(c, fall: false)
             return
         }
+        // dropped in another app, which took it: the card has done its job — it leaves (restorable: "Dragged out · Undo")
+        if !operation.isEmpty, !ourWindow(at: p) {
+            emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue)])
+            snapper.takeOut(c.shot)
+            show(peek: 1.0)                  // the rest close up while you watch
+            return
+        }
         // back where it hung: a new thread drops out of the island and takes it
         c.tether = nil
         c.grip.target = rest(c); c.grip.snap()
@@ -1247,6 +1420,13 @@ final class HangingCards: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + (operation.isEmpty ? 0.55 : 0.3)) { [weak self] in self?.popClasp(c) }
         show(peek: 1.5)
         wake()
+    }
+
+    /// Whether the window under a screen point (the one a click there would hit) is one of ours: a drop into the main
+    /// window or a note is not "used in another app".
+    private func ourWindow(at p: NSPoint) -> Bool {
+        let n = NSWindow.windowNumber(at: p, belowWindowWithWindowNumber: 0)
+        return n > 0 && NSApp.windows.contains { $0.windowNumber == n && $0 !== panel }   // (the cards take no drops)
     }
 
     // MARK: images of a card

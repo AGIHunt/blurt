@@ -48,8 +48,9 @@ Items Blurt can't place go to **Unassigned**; move them later by dragging them o
 In Auto mode each snap or voice note hangs under the island on a thin thread, like a wind chime. They tuck away into
 the island when you're not looking (the number left of the notch counts them) and come back when you need them:
 
-- **Point at the island** (or open it): every card drops down with the island's details. They stay while the pointer
-  is on the island or on the cards, and tuck away a moment after it leaves both.
+- **Point at the island** (or open it): every card drops down with the island's details and moves with the island as
+  it opens. They stay while the pointer is on the island, on the cards or in the gap between them, and tuck away a
+  moment after it leaves all of that; come back while they're going up and they turn round.
 - **Click the count** left of the notch, press **`⌥⇧H`** (*Show hanging cards*), or use the menu's *Show N Hanging
   Cards*: the cards come down and stay until you've pointed at them and moved away, or press `Esc`.
 - In the main window, the Inbox shows **Unfiled captures: N** at the top while cards are waiting; click it to bring them
@@ -63,8 +64,12 @@ What you can do with a card:
 - **Click to copy**: a voice note copies its words; a snap copies the image (with your ink, if you drew on it), and its
   note or spoken words come along as text, so pasting into a text-only field gives you the words. Right-click for
   *Copy Image* or *Copy Text* on their own.
-- Hover to read the note, double-click to edit it, drag it out to drop the file (and its words) anywhere, or click ×
-  to throw it away.
+- **Drag it out** into any app: a snap drops its image file (and its words); a voice note is just text you happened to
+  say, so it drops its words, never an audio file. Once another app takes it, the card has done its job and leaves
+  its thread; *Dragged out · Undo* in the island puts it back. A drag you let go of over nothing comes back to its
+  thread. (Drag a voice note before its words are written down and it waits a moment for them, or tells you they
+  aren't ready yet.)
+- Hover to read the note, double-click to edit it, or click × to throw it away.
 - Up to seven cards hang side by side; older ones stack up as **+N**. Click the stack to bring them forward.
 - While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.
 
@@ -183,7 +188,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 
 自动模式下，每张截图、每段语音用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
 
-- **鼠标移到岛上**（或者打开岛）：所有卡片跟着岛的详情一起垂下来。鼠标在岛上或卡片上时一直挂着，离开两者片刻后收起。
+- **鼠标移到岛上**（或者打开岛）：所有卡片跟着岛的详情一起垂下来，岛展开时跟着岛一起往下走。鼠标在岛上、卡片上或两者之间时一直挂着，全部离开片刻后才收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
 - **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走，或者按 `Esc`。
 - 主窗口「待处理」的顶部会显示「**未归类的捕获 N 条**」，点一下就把它们全部放到岛下面。
 
@@ -192,7 +197,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
 - 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
 - **单击复制**：语音卡片复制说的话；截图复制图片（画过就带笔迹），备注或说的话作为文字一起放进剪贴板，粘到只收文字的地方就是那段话。右键可以单独「拷贝图片」或「拷贝文字」。
-- 悬停看备注，双击改备注，拖出去就是一个文件（带上文字），点 × 扔掉。
+- **拖到别的应用里**：截图拖出去是图片文件（带上文字）；语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。别的应用接住以后，这张卡片就用完了，会从线上离开；岛上「已拖走 · 撤销」可以把它放回来。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
+- 悬停看备注，双击改备注，点 × 扔掉。
 - 最多并排挂 7 张，更早的叠成「+N」，点一下就换到前面来。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。
 
