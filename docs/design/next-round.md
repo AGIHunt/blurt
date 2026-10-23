@@ -956,9 +956,12 @@ uid 01JB… · issue · high · module auth
 （v0.8.1）拖进别的应用、被接住的卡片 = 追加 `{"n", "taken": <wall>}`：不再是卡片，也没删（文件留着），在「最近拖走的」里保留 7 天
 （`BlurtCore.TakenCaptures`），放回线上 = `{"n", "taken": null}`；7 天后启动整理 / 每小时的 `Snapper.expireTaken` 按删卡片处理（进废纸篓）。
 `captures.py file` 跳过 taken 的（`reason: "taken"`）。这是捕获的标记，不是条目状态，K3 的 `lifecycle.json` 不变。
-卡片交出去的文件写在批次的 `out/<NNN>/`：`截图-HHMMSS.png`（备注写进 PNG 的 iTXt Description）+ `截图-HHMMSS-备注.md`（备注 + 指向图片的 Markdown 图片行），
+卡片交出去的文件写在批次的 `out/<NNN>/`：`截图-HHMMSS.png`（备注写进 PNG 的 iTXt Description）+ `截图-HHMMSS-备注.md`（v0.8.2：只有备注，不再有图片行），
 拖动 / 复制时是两个 pasteboard item：①图片文件 + PNG；②.md 文件 + 同一 item 上的备注文字（一行，`CardTransfer.dragText`）。
 原因：用户把截图卡片拖进 Claude 桌面版（Electron），角标是 2，但只附上了图片——网页应用有文件时就不看散落的文字。
+（v0.8.2）拖进微信却多出一个 .md 附件：第二个 item 改为按指针下的应用决定（`BlurtCore.DropTargets` / `CardDrag.swift`，懒提供数据，
+指针进入另一类应用时重写拖动 pasteboard）：网页 / Electron = .md + 文字；微信、备忘录等 = 文字（图片另带 RTFD）；终端 = 只有两个路径；
+访达 = 两个文件；不认识的应用 = .md + 文字。
 拖走成功且有备注时，备注也放进剪贴板（`record.drag_copy_note`，默认开），岛上「已拖走 · 备注已复制，⌘V 可粘贴 · 撤销」；
 `record.drag_caption`（默认关）把备注印在拖出去的图片副本下方。
 

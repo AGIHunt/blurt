@@ -144,6 +144,10 @@
 "capture.snap.no_permission" = "Couldn’t take the shot — Screen Recording permission needed";
 "capture.taken_out" = "Dragged out";
 "capture.taken_out_note" = "Dragged out · note copied, ⌘V to paste";
+"capture.taken_out_text" = "Dragged out · picture and note";
+"capture.taken_out_paths" = "Dragged out · picture and note paths";
+"capture.taken_out_files" = "Dragged out · picture and note file";
+"capture.taken_out_files_note" = "Dragged out · picture and note file · note copied, ⌘V to paste";
 "capture.file.shot" = "Screenshot";
 "capture.file.note" = "note";
 "capture.taken.title" = "Recently Taken";

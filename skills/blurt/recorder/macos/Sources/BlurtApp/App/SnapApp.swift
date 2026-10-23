@@ -6,8 +6,12 @@
 //     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (= ⌥⇧H) / Esc / "+N" clicked / as if the
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
-//     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD   a card's copies, menu, drag contents
-//     takeout N               as if card N had been dragged out and taken by another app (the safety-net copy, the toast)
+//     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
+//                             a drag into that kind of app carries (web text terminal finder unknown, or a bundle id)
+//     takeout N [CLASS]       as if card N had been dragged out and taken by that kind of app (the safety-net copy, the
+//                             toast; no CLASS: not sure which)
+//     droptarget map PID=BUNDLE,… | fixed BUNDLE | clear   stand-in windows (by owner pid) as the apps they stand in
+//                             for, when a drag decides what to hand over (CardDrag.swift)
 //     taken list|show|hide|rows|expire|menu   Recently Taken: the captures ("taken" events), its panel, the panel's rows
 //                             ("taken_row": n + the picture's rect, global top-left), housekeeping now, the island's
 //                             right-click menu as text ("island_menu_dump")
@@ -55,6 +59,9 @@ extension App {
             self?.testCommand(cmd)
         }
     }
+
+    /// "web" / "text" / … or a bundle id (classified as a drag would)
+    func testDropClass(_ s: String) -> DropClass { DropClass(rawValue: s) ?? DropTargets.classify(bundleID: s, appURL: nil) }
 
     func testCommand(_ cmd: String) {
         let parts = cmd.split(separator: " ", maxSplits: 1).map(String.init)
@@ -111,13 +118,19 @@ extension App {
             }
         case "cardretry":                               // cardretry N: = "Retry Transcription" in card N's menu
             if let n = Int(arg), let s = snapper.cards.last(where: { $0.n == n }) { snapper.retryWords(s) }
-        case "carddrag":                                // carddrag N PASTEBOARD: what dragging card N out carries
+        case "carddrag":                                // carddrag N PASTEBOARD [CLASS|BUNDLE]: what dragging card N out carries
             let a = arg.split(separator: " ").map(String.init)
-            if a.count == 2, let n = Int(a[0]) {
-                emit(["event": "card_drag", "n": n, "types": hanging.testDrag(n: n, to: NSPasteboard(name: .init(a[1])))])
+            if a.count >= 2, let n = Int(a[0]) {
+                let target = a.count > 2 ? testDropClass(a[2]) : .unknown
+                emit(["event": "card_drag", "n": n, "class": target.rawValue,
+                      "types": hanging.testDrag(n: n, for: target, to: NSPasteboard(name: .init(a[1])))])
             }
-        case "takeout":                                 // takeout N: as if card N was dragged out and taken
-            if let n = Int(arg), let s = snapper.cards.last(where: { $0.n == n }) { snapper.takeOut(s) }
+        case "takeout":                                 // takeout N [CLASS]: as if card N was dragged out and taken
+            let a = arg.split(separator: " ").map(String.init)
+            if let n = Int(a.first ?? ""), let s = snapper.cards.last(where: { $0.n == n }) {
+                snapper.takeOut(s, delivered: a.count > 1 ? testDropClass(a[1]) : nil)
+            }
+        case "droptarget": DropProbe.testCommand(arg)
         case "clock":                                   // clock SECONDS: Recently Taken's clock, moved
             Snapper.clockOffset = Double(arg) ?? 0
             emit(["event": "clock", "offset": Snapper.clockOffset])
@@ -133,7 +146,7 @@ extension App {
             case "drag":                                // taken drag N PASTEBOARD: what dragging it out again carries
                 if let s = find(1), a.count > 2 {
                     let pb = NSPasteboard(name: .init(a[2]))
-                    let items = HangingCards.dragItems(s)
+                    let items = CardExport.dragItems(s, for: a.count > 3 ? testDropClass(a[3]) : .unknown)
                     pb.clearContents()
                     pb.writeObjects(items)
                     emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])

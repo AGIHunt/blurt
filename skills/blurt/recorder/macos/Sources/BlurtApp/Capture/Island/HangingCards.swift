@@ -29,29 +29,38 @@
 //    Image / Copy Text (only with text), Retry Transcription (after a failure), edit, move, delete · double-click =
 //    edit the note · drag = into any app, or onto a project in the island: the thread stretches after it, then snaps
 //    and springs back up · × = the thread lets go and the card falls.
-//  • what a shot card hands out (v0.8.1, BlurtCore CardFiles / CardPasteboard, written by CardExport.swift). The user
-//    dragged a card into Claude (Electron): the badge said 2, only the picture arrived — a web app attaches the files
-//    and ignores loose text when there are files — and the card had left, so the note was gone. Now two items:
-//      1. the picture (inked if marked) as a file — out/<NNN>/截图-HHMMSS.png, the note also in its PNG Description —
-//         with the PNG bytes;
-//      2. the note as a file, out/<NNN>/截图-HHMMSS-备注.md (the note, then ![截图](…png)), and the note as text on
-//         the same item.
-//    Measured with our own targets (a WKWebView page, a scratch-profile Chrome page, rich and plain NSTextViews, an
-//    AppKit pad, a scratch Finder window): Chrome gets both files + the text, WebKit both files, a rich text view two
-//    attachments, a plain one the text, the Finder two files (a text-only third item made it refuse the whole drop),
-//    a terminal both paths. Optional (record.drag_caption, off): the dragged picture is a copy with the note burned in
-//    under it. A voice card: its words only (text that happened to be spoken: no audio file, no .md).
-//  • a drag's text is one line, control characters out (CardTransfer.dragText): the drop may be a terminal, which
-//    types it at its prompt (a newline would run it). Which app reads the text can't be known when it is written —
-//    the first app the drag passes over reads it and the pasteboard keeps that answer (seen: a chat app under the
-//    cards, not the pad it was dropped on) — so every drop gets the safe form. Terminals take the file items and type
-//    their paths. A copy keeps the note's line breaks (pasting is the user's own act). The .md keeps them too.
+//  • what a shot card hands out depends on the app it is dropped into (v0.8.2; BlurtCore CardDropTarget.swift has the
+//    measurements, CardDrag.swift the mechanism). Two items, the count fixed when the drag starts; the second is a .md
+//    file or just text, decided by the app under the pointer — the window there in CGWindowList z-order, skipping
+//    ours, its owner's bundle id — when that app asks for the data (lazily provided), and written again whenever the
+//    pointer moves into another kind of app (the pasteboard keeps the first answer otherwise, and apps read while a
+//    drag only passes over them):
+//      Claude desktop, Chrome / Chromium browsers, Safari,   the picture (file + PNG) + the note as a .md file (and
+//      Slack, VS Code, Cursor, Notion, Discord, Feishu…,      as text): a web app attaches files and drops loose text
+//      any Electron app (Electron Framework in its bundle)
+//      WeChat, QQ, Messages, Notes, TextEdit, Mail,           the picture (file + PNG + RTFD) + the note as text — no
+//      Telegram, WhatsApp, Pages, Keynote                     .md (a rich text view inserts both)
+//      Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,       the picture's path and the .md's path — the note's text
+//      Alacritty                                              is never offered to a shell
+//      Finder / the Desktop                                   the picture file + the .md file
+//      anything else                                          as for Claude: the files and the text (reaches the
+//                                                             note in every kind of target we measured)
+//    The .md is the note and nothing else (no heading, no image line): out/<NNN>/截图-HHMMSS-备注.md, next to
+//    out/<NNN>/截图-HHMMSS.png (inked if marked, the note also in its PNG Description). Optional
+//    (record.drag_caption, off): the dragged picture is a copy with the note burned in under it. A voice card: its
+//    words only (text that happened to be spoken: no audio file, no .md), whatever the app.
+//  • a drag's text is one line, control characters out (CardTransfer.dragText): the app that reads it is the one
+//    under the pointer at that moment, which may not be where it lands. A copy (click) keeps the note's line breaks
+//    (pasting is the user's own act) and carries the files and the text, as for an unknown app.
 //  • dropped in another app (the session ended with an operation, over a window that isn't ours): the card has been
 //    used, so it leaves its thread — "taken" (Snapper.takeOut: `{"n","taken":wall}`), not discarded: its files stay,
 //    and it is in Recently Taken for 7 days (the island's right-click menu, the main window; TakenPanel.swift: copy,
 //    drag out again, put back), then housekeeping trashes it. With a note, the note also goes on the clipboard
-//    (record.drag_copy_note, on by default) — "Dragged out · note copied, ⌘V to paste · Undo": if the app kept only
-//    the picture, ⌘V brings the words back; Undo puts the card back and the clipboard as it was. It went with the
+//    (record.drag_copy_note, on by default), and the toast says what went in (DragReceipt): "Dragged out · picture
+//    and note" where the text went in directly (no ⌘V hint), "… picture and note paths" in a terminal (no ⌘V: that
+//    would paste at a prompt), "… picture and note file · note copied, ⌘V to paste" elsewhere — "Dragged out · note
+//    copied, ⌘V to paste" when the app it landed in isn't the kind the pasteboard was last written for. Undo puts the
+//    card back and the clipboard as it was. It went with the
 //    drag, so nothing falls: the thread lets go and its free end springs back into the island, and the others close
 //    up. Dropped on nothing (or on one of our windows): it comes back to its thread; on a project in the island: filed.
 //  • a voice card is a text card: up to two lines of its words and a small mic mark (it was spoken). Dragged before
@@ -1415,10 +1424,10 @@ final class HangingCards: NSObject {
     /// Tests: copy capture N as a click / Copy Image / Copy Text would; the menu's titles for it.
     func testCopy(n: Int, _ what: Copy) -> Bool { cards.first { $0.shot.n == n }.map { copy($0, what) } ?? false }
     func testMenu(n: Int) -> [String] { cards.first { $0.shot.n == n }.map { menuItems($0).map(\.0) } ?? [] }
-    /// Tests: what a drag of capture N carries, written to `pb`.
-    func testDrag(n: Int, to pb: NSPasteboard) -> [[String]] {
+    /// Tests: what a drag of capture N into an app of class `target` carries, written to `pb`.
+    func testDrag(n: Int, for target: DropClass, to pb: NSPasteboard) -> [[String]] {
         guard let s = cards.first(where: { $0.shot.n == n })?.shot else { return [] }
-        let items = HangingCards.dragItems(s)
+        let items = CardExport.dragItems(s, for: target)
         pb.clearContents()
         pb.writeObjects(items)
         return items.map { $0.types.map(\.rawValue) }
@@ -1456,7 +1465,9 @@ final class HangingCards: NSObject {
         let frame = NSRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height)
         let img = NSImage(size: c.size)
         if let rep = HangingCards.snapshot(c) { img.addRepresentation(rep) }
-        let dis: [NSDraggingItem] = HangingCards.dragItems(c.shot).enumerated().map { i, item in
+        let drag = CardDrag(c.shot)          // its items follow the app under the pointer
+        cardDrag = drag
+        let dis: [NSDraggingItem] = drag.pasteboardItems().enumerated().map { i, item in
             let di = NSDraggingItem(pasteboardWriter: item)
             di.setDraggingFrame(i == 0 ? frame : NSRect(x: frame.midX, y: frame.midY, width: 1, height: 1), contents: i == 0 ? img : nil)
             return di
@@ -1468,21 +1479,18 @@ final class HangingCards: NSObject {
         let session = v.beginDraggingSession(with: dis, event: event, source: v)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
+        drag.session = session
         panel?.ignoresMouseEvents = true    // the session tracks the pointer; the windows under the cards take the drop
         wake()
     }
 
-    /// What a card carries when dragged out (v0.8.1, BlurtCore CardPasteboard.drag; CardExport writes the files):
-    ///  1. a shot's picture (inked if marked; its note in the PNG's Description) as a file, with the PNG itself;
-    ///  2. its note as a .md file, and on the same item the note as plain text — one line without control characters
-    ///     (CardTransfer.dragText): the drop may land in a terminal, which types what it gets, and which app reads the
-    ///     text first can't be known (the first app the drag passes over does), so every drop gets the safe form.
-    /// A web app (Claude, Slack…) attaches two files; the Finder gets two files; a text-only field the text; a terminal
-    /// types both paths. A voice note is only its words (no audio file). The first item also says (inside the app)
-    /// which capture it is, for dropping on a project in the island.
-    static func dragItems(_ s: Shot) -> [NSPasteboardItem] { CardExport.dragItems(s) }
+    /// The card being dragged out: what its pasteboard holds follows the app under the pointer (CardDrag; the table
+    /// is in the header). The first item also says (inside the app) which capture it is, for a drop on a project in
+    /// the island.
+    private var cardDrag: CardDrag?
 
     func dragMoved(to p: NSPoint) {
+        cardDrag?.moved(to: p)
         island.dragMoved(to: p)
         guard let c = dragging, let f = panel?.frame, var t = c.tether, t.snapped == nil else { return }
         // the drag image's top edge, where the thread still holds it
@@ -1502,6 +1510,8 @@ final class HangingCards: NSObject {
         guard let c = dragging else { return }
         dragging = nil
         down = nil
+        let drag = cardDrag
+        cardDrag = nil
         let taken = island.dragEnded(at: p)
         c.dragging = false
         if taken || !c.shot.isCard {
@@ -1511,7 +1521,7 @@ final class HangingCards: NSObject {
         // dropped in another app, which took it: the card has done its job — it leaves (restorable: "Dragged out · Undo")
         if !operation.isEmpty, !ourWindow(at: p) {
             emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue)])
-            snapper.takeOut(c.shot)
+            snapper.takeOut(c.shot, delivered: drag?.delivered(at: p))
             show(peek: 1.0)                  // the rest close up while you watch
             return
         }

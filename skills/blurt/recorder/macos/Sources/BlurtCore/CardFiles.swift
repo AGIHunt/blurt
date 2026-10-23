@@ -3,13 +3,14 @@
 // The report: a snap card (picture + note) dragged into Claude — the desktop app, Chromium/Electron — showed "2" on the
 // drag badge, but only the picture arrived. A web app's drop handler gets `dataTransfer.files` and a separate
 // `getData('text/plain')`; when there are files it attaches them and ignores the loose text. And the card had left its
-// thread, so the note was gone. Now the note travels as a file too:
+// thread, so the note was gone. Now the note can travel as a file too:
 //   • <stem>.png        the picture (inked if marked) — its note also in the PNG's own "Description" (an iTXt chunk:
 //                       UTF-8, what Preview / exiftool / an image pipeline read); never relied on, it just doesn't hurt.
-//   • <stem>-note.md    the note, line breaks kept, then a Markdown image line pointing at the picture next to it — so
-//                       an agent that reads the .md (a terminal drop types both paths) finds the picture too.
+//   • <stem>-备注.md     the note and nothing else — line breaks kept, no heading, no image line (v0.8.2: the image line
+//                       was noise wherever the .md was opened; the picture travels next to it anyway).
 // stem = "<Screenshot>-HHMMSS" in the UI language ("截图-153012"), from when it was captured; one folder per capture,
-// so two captures in the same second never collide. CardPasteboard says which pasteboard item carries what.
+// so two captures in the same second never collide. CardPasteboard says which pasteboard item carries what, per kind
+// of app (CardDropTarget.swift: v0.8.2, the .md only goes where it is needed).
 //
 // A card dragged out and taken by another app is "taken", not discarded: it leaves its thread but stays findable for
 // TakenCaptures.keepDays (the island's right-click "Recently Taken", the main window), then housekeeping trashes it.
@@ -30,15 +31,10 @@ public enum CardFiles {
     /// "截图-153012-备注.md" / "Screenshot-153012-note.md"
     public static func noteName(stem: String, noteWord: String) -> String { stem + "-" + safeName(noteWord) + ".md" }
 
-    /// The .md: the note as it was typed / said (line breaks kept, nothing else touched), a blank line, and the picture
-    /// beside it as a Markdown image (relative: the two files share a folder). Ends with one newline.
-    public static func markdown(note: String, imageName: String?, imageLabel: String) -> String {
-        var out = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let img = imageName {
-            // <…> keeps a name with spaces or brackets a valid link
-            out += "\n\n![\(imageLabel.replacingOccurrences(of: "]", with: ""))](<\(img)>)"
-        }
-        return out + "\n"
+    /// The .md: the note as it was typed / said — line breaks kept, nothing added (no heading, no image line). Ends
+    /// with one newline.
+    public static func markdown(note: String) -> String {
+        note.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
     }
 
     /// A file name piece without what a file system or a shell-quoting app might trip over.
@@ -142,33 +138,52 @@ public enum CardPasteboard {
         public var file: URL?
         /// the picture's bytes ride along (a drag: PNG; a copy: PNG + TIFF) for apps that take image data, not files
         public var imageData: Bool = false
+        /// the picture as RTFD (an attachment): what a rich AppKit text view reads before file names, so it inserts the
+        /// picture and still reads the note's text from the next item
+        public var rtfd: Bool = false
         /// plain text (public.utf8-plain-text)
         public var text: String?
         /// the capture's own type (dev.blurt.capture), for a drop on a project in the island
         public var tag: Bool = false
 
-        public init(file: URL? = nil, imageData: Bool = false, text: String? = nil, tag: Bool = false) {
-            self.file = file; self.imageData = imageData; self.text = text; self.tag = tag
+        public init(file: URL? = nil, imageData: Bool = false, rtfd: Bool = false, text: String? = nil, tag: Bool = false) {
+            self.file = file; self.imageData = imageData; self.rtfd = rtfd; self.text = text; self.tag = tag
         }
     }
 
-    /// A drag: (1) the picture — file + PNG; (2) the note — its .md file *and* the note as text on the same item. A web
-    /// app (Chromium, Electron: Claude, Slack…) gets two files and the text; the Finder two files (no text clipping —
-    /// there is no item that is only text); a text-only target the text; a terminal both paths. The text is
-    /// CardTransfer.dragText (one line, no control characters): the drop may land at a shell prompt. No note file
-    /// (the note couldn't be written): the text alone as the second item. A voice card: its words, nothing else.
-    public static func drag(image: URL?, noteFile: URL?, note: String?) -> [Item] {
-        var items: [Item] = []
-        if let img = image { items.append(Item(file: img, imageData: true)) }
+    /// A drag into an app of class `target` (DropTargets; the table is in CardDropTarget.swift). Two items for a shot
+    /// with a note — the count is fixed when the drag starts, what item 2 is depends on the app it lands in:
+    ///  • web / unknown: (1) the picture, file + PNG; (2) the note's .md file, and the note as text on the same item.
+    ///  • text: (1) the picture, file + PNG + RTFD; (2) the note as text only — no .md.
+    ///  • terminal: (1) the picture's file; (2) the .md's file — paths only, the note's text never reaches a shell.
+    ///  • finder: (1) the picture, file + PNG; (2) the .md file.
+    /// The text is CardTransfer.dragText (one line, no control characters): which app reads it first is the app under
+    /// the pointer at that moment, not always the one it lands in. No note file (it couldn't be written): the text as
+    /// the second item (a terminal: nothing). A voice card: its words, nothing else, for every app.
+    public static func drag(for target: DropClass, image: URL?, noteFile: URL?, note: String?) -> [Item] {
         let text = CardTransfer.dragText(note)
-        if let f = noteFile, image != nil, text != nil { items.append(Item(file: f, text: text)) }
-        else if let t = text { items.append(Item(text: t)) }
-        if !items.isEmpty { items[0].tag = true }
+        guard let img = image else { return text.map { [Item(text: $0, tag: true)] } ?? [] }
+        var items: [Item]
+        switch target {
+        case .terminal: items = [Item(file: img)]
+        case .text: items = [Item(file: img, imageData: true, rtfd: true)]
+        case .web, .finder, .unknown: items = [Item(file: img, imageData: true)]
+        }
+        if text != nil {
+            switch (target, noteFile) {
+            case (.web, let f?), (.unknown, let f?): items.append(Item(file: f, text: text))
+            case (.finder, let f?), (.terminal, let f?): items.append(Item(file: f))
+            case (.text, _), (.web, nil), (.unknown, nil), (.finder, nil): items.append(Item(text: text))
+            case (.terminal, nil): break
+            }
+        }
+        items[0].tag = true
         return items
     }
 
-    /// A copy (a click on the card): the same two things, so ⌘V gives what a drop gives — but the text keeps the note's
-    /// line breaks (pasting is the user's own act, at a place they chose).
+    /// A copy (a click on the card): the picture, the note's .md and the note as text — the app it will be pasted into
+    /// isn't known, so the unknown-app layout — but the text keeps the note's line breaks (pasting is the user's own
+    /// act, at a place they chose).
     public static func copy(image: URL?, noteFile: URL?, note: String?) -> [Item] {
         var items: [Item] = []
         if let img = image { items.append(Item(file: img, imageData: true)) }

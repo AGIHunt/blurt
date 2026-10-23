@@ -144,6 +144,10 @@
 "capture.snap.no_permission" = "截图失败：需要「录屏」权限";
 "capture.taken_out" = "已拖走";
 "capture.taken_out_note" = "已拖走 · 备注已复制，⌘V 可粘贴";
+"capture.taken_out_text" = "已拖走 · 图片和备注";
+"capture.taken_out_paths" = "已拖走 · 图片和备注的路径";
+"capture.taken_out_files" = "已拖走 · 图片和备注文件";
+"capture.taken_out_files_note" = "已拖走 · 图片和备注文件 · 备注已复制，⌘V 可粘贴";
 "capture.file.shot" = "截图";
 "capture.file.note" = "备注";
 "capture.taken.title" = "最近拖走的";

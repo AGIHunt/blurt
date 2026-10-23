@@ -8,16 +8,15 @@
 //    transcribe" (Retry in the card's right-click menu). A voice note that turned out to hold no speech is dropped
 //    (no mark, nothing left to transcribe) — the app does that, CardNote never sees one.
 //
-// Drag-out / copy (v0.8.1: CardFiles.swift / CardPasteboard): two pasteboard items, so apps that take several get both —
+// Drag-out / copy (v0.8.1, v0.8.2: CardFiles.swift / CardPasteboard / CardDropTarget.swift): two pasteboard items —
 //  1. the picture: its file (the note in its PNG Description) + PNG (a drag) or PNG + TIFF (a copy);
-//  2. the note: a .md file, and the note as plain text on the same item (web apps take files and drop loose text).
-// A text-only target reads the text; an image target the image. A drag's text is CardTransfer.dragText: one line
-// (the note's lines joined with " · "), control characters out. A drop lands in whatever app is under the pointer —
-// a terminal types what it gets at its prompt, so a dropped newline would run the line, an escape sequence could end
-// a bracketed paste. Which app it is can't be known when the text is written: the first app the drag passes over
-// reads it (and the pasteboard keeps that answer), not necessarily the one it is dropped on. So every drop gets the
-// safe form. Terminals themselves take the file item and type its path (Terminal, iTerm2, Ghostty all prefer a file
-// to text) — the note isn't typed there. A copy (click) keeps the note's line breaks: pasting is the user's own act.
+//  2. the note: what the app under the pointer handles best — a .md file and the text (web apps take files and drop
+//     loose text), the text alone (WeChat, Notes: a picture and text), the .md's path (a terminal).
+// A drag's text is CardTransfer.dragText: one line (the note's lines joined with " · "), control characters out. The
+// app that reads the text first is the one under the pointer when it asks, which is not always where the drag ends —
+// and a terminal types what it gets at its prompt (a dropped newline would run the line, an escape sequence could end
+// a bracketed paste). So every drop gets the safe form, and a terminal is only ever offered file paths. A copy (click)
+// keeps the note's line breaks: pasting is the user's own act.
 
 import Foundation
 

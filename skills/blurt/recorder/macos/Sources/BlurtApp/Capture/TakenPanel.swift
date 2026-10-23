@@ -255,6 +255,7 @@ final class TakenRow: NSView {
 final class TakenThumb: NSImageView, NSDraggingSource {
     let shot: Shot
     private var downAt: NSPoint?
+    private var cardDrag: CardDrag?
 
     init(_ s: Shot) {
         shot = s
@@ -276,7 +277,9 @@ final class TakenThumb: NSImageView, NSDraggingSource {
     override func mouseDragged(with e: NSEvent) {
         guard let d = downAt, hypot(e.locationInWindow.x - d.x, e.locationInWindow.y - d.y) > 4 else { return }
         downAt = nil
-        let items = HangingCards.dragItems(shot).enumerated().map { i, it -> NSDraggingItem in
+        let drag = CardDrag(shot)            // its items follow the app under the pointer
+        cardDrag = drag
+        let items = drag.pasteboardItems().enumerated().map { i, it -> NSDraggingItem in
             let di = NSDraggingItem(pasteboardWriter: it)
             di.setDraggingFrame(i == 0 ? bounds : NSRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1), contents: i == 0 ? image : nil)
             return di
@@ -285,7 +288,10 @@ final class TakenThumb: NSImageView, NSDraggingSource {
         let session = beginDraggingSession(with: items, event: e, source: self)
         session.draggingFormation = .none
         session.animatesToStartingPositionsOnCancelOrFail = true
+        drag.session = session
     }
+
+    func draggingSession(_ session: NSDraggingSession, movedTo p: NSPoint) { cardDrag?.moved(to: p) }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         context == .outsideApplication ? [.copy, .generic] : []
@@ -293,8 +299,10 @@ final class TakenThumb: NSImageView, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt p: NSPoint, operation: NSDragOperation) {
         emit(["event": "taken_drag_end", "n": shot.n, "operation": Int(operation.rawValue)])
+        let drag = cardDrag
+        cardDrag = nil
         // taken again: its 7 days start over, and the note goes on the clipboard as after any drag-out
-        if !operation.isEmpty { snapper.takeOut(shot, fromPanel: true) }
+        if !operation.isEmpty { snapper.takeOut(shot, fromPanel: true, delivered: drag?.delivered(at: p)) }
     }
 }
 

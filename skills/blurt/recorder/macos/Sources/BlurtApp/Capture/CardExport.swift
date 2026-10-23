@@ -1,10 +1,11 @@
 // What a shot card hands to other apps (v0.8.1; BlurtCore CardFiles has the why): the files a drag or a copy carries,
-// written next to the capture, and the pasteboard items built from BlurtCore CardPasteboard's layout.
+// written next to the capture, and the pasteboard items built from BlurtCore CardPasteboard's layout (a drag's items
+// follow the app under the pointer: CardDrag.swift).
 //
 //   <batch>/out/<NNN>/截图-153012.png       the picture (inked if marked) with the note in its PNG Description — and,
 //                                            with record.drag_caption on, the note burned in as a strip under it (a
 //                                            copy: the capture itself stays clean)
-//   <batch>/out/<NNN>/截图-153012-备注.md   the note, then ![截图](截图-153012.png)
+//   <batch>/out/<NNN>/截图-153012-备注.md   the note, and nothing else (v0.8.2)
 // Written again on every drag / copy (the note may have been edited); they live as long as the capture does — taken
 // captures keep them for their 7 days (an app that took the file may read it late) and they go to the Trash with it.
 //
@@ -48,7 +49,7 @@ enum CardExport {
         var noteURL: URL? = nil
         if let n = note {
             let u = dir.appendingPathComponent(CardFiles.noteName(stem: stem, noteWord: Loc.t("capture.file.note", table: "Capture")))
-            let md = CardFiles.markdown(note: n, imageName: image?.lastPathComponent, imageLabel: Loc.t("capture.file.shot", table: "Capture"))
+            let md = CardFiles.markdown(note: n)
             if (try? md.write(to: u, atomically: true, encoding: .utf8)) != nil { noteURL = u }
         }
         return Files(image: image, note: noteURL)
@@ -64,6 +65,7 @@ enum CardExport {
                 p.setData(d, forType: .png)
                 if copy, let tiff = NSImage(data: d)?.tiffRepresentation { p.setData(tiff, forType: .tiff) }
             }
+            if it.rtfd, let f = it.file, let d = CardDrag.rtfd(f) { p.setData(d, forType: .rtfd) }
             if let t = it.text { p.setString(t, forType: .string) }
             if it.tag, let t = tag { p.setString(t, forType: capturePasteboardType) }
             return p
@@ -72,10 +74,11 @@ enum CardExport {
 
     static func tag(_ s: Shot) -> String? { s.batch.map { "\($0.dir.path)\n\(s.n)" } }
 
-    /// What dragging `s` out carries (BlurtCore CardPasteboard.drag).
-    static func dragItems(_ s: Shot) -> [NSPasteboardItem] {
+    /// What dragging `s` out into an app of class `target` carries (BlurtCore CardPasteboard.drag), written at once —
+    /// for tests (`carddrag`); a real drag is lazy and follows the pointer (CardDrag).
+    static func dragItems(_ s: Shot, for target: DropClass) -> [NSPasteboardItem] {
         let f = prepare(s)
-        let layout = CardPasteboard.drag(image: f.image, noteFile: f.note, note: s.copyText)
+        let layout = CardPasteboard.drag(for: target, image: f.image, noteFile: f.note, note: s.copyText)
         let items = pasteboardItems(layout, copy: false, tag: tag(s))
         return items.isEmpty ? [{ let p = NSPasteboardItem(); if let t = tag(s) { p.setString(t, forType: capturePasteboardType) }; return p }()] : items
     }

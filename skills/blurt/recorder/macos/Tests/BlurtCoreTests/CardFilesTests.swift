@@ -1,5 +1,6 @@
 // BlurtCore/CardFiles.swift: what a shot card hands out (the picture with its note inside, the note as .md), which
-// pasteboard item carries what (the drop into Claude that kept only the picture), and how long a taken card is kept.
+// pasteboard item carries what (the drop into Claude that kept only the picture; per kind of app: CardDropTargetTests),
+// and how long a taken card is kept.
 import ImageIO
 import XCTest
 @testable import BlurtCore
@@ -20,10 +21,13 @@ final class CardFilesTests: XCTestCase {
         XCTAssertEqual(CardFiles.safeName("  "), "capture")
     }
 
-    func testMarkdownKeepsTheNoteAndPointsAtThePicture() {
-        let md = CardFiles.markdown(note: "  结账按钮被挡住了\nthe banner covers it \n", imageName: "截图-144012.png", imageLabel: "截图")
-        XCTAssertEqual(md, "结账按钮被挡住了\nthe banner covers it\n\n![截图](<截图-144012.png>)\n")
-        XCTAssertEqual(CardFiles.markdown(note: "x", imageName: nil, imageLabel: "Screenshot"), "x\n")
+    /// v0.8.2: the .md is the note and nothing else — the image line was noise wherever the file was opened.
+    func testMarkdownIsJustTheNote() {
+        let md = CardFiles.markdown(note: "  结账按钮被挡住了\nthe banner covers it \n")
+        XCTAssertEqual(md, "结账按钮被挡住了\nthe banner covers it\n")
+        XCTAssertFalse(md.contains("!["))
+        XCTAssertFalse(md.hasPrefix("#"))
+        XCTAssertEqual(CardFiles.markdown(note: "x"), "x\n")
     }
 
     // MARK: the note inside the PNG
@@ -70,39 +74,49 @@ final class CardFilesTests: XCTestCase {
     let img = URL(fileURLWithPath: "/s/out/003/截图-144012.png")
     let md = URL(fileURLWithPath: "/s/out/003/截图-144012-备注.md")
 
-    /// The report: Claude (Electron) took the files and dropped the loose text. The note is a file of its own now, and
-    /// the text rides on that file's item — no item is text alone (the Finder would make a clipping of it, and refused
-    /// the whole drop in our test), a text-only target still reads the text.
-    func testDragOfASnapWithANote() {
-        let items = CardPasteboard.drag(image: img, noteFile: md, note: "see the header\nthe logo overlaps")
-        XCTAssertEqual(items, [
-            CardPasteboard.Item(file: img, imageData: true, tag: true),
-            CardPasteboard.Item(file: md, text: "see the header · the logo overlaps"),
-        ])
-        XCTAssertFalse(items.contains { $0.file == nil }, "no text-only item")
+    /// The report: Claude (Electron) took the files and dropped the loose text. For a web app (and an app we don't know)
+    /// the note is a file of its own, and the text rides on that file's item.
+    func testDragOfASnapWithANoteIntoAWebApp() {
+        for c in [DropClass.web, .unknown] {
+            XCTAssertEqual(CardPasteboard.drag(for: c, image: img, noteFile: md, note: "see the header\nthe logo overlaps"), [
+                CardPasteboard.Item(file: img, imageData: true, tag: true),
+                CardPasteboard.Item(file: md, text: "see the header · the logo overlaps"),
+            ], "\(c)")
+        }
     }
 
     func testDragTextIsSafeForATerminal() {
-        let items = CardPasteboard.drag(image: img, noteFile: md, note: "ls\n\u{1B}[201~rm -rf ~\r")
+        let items = CardPasteboard.drag(for: .web, image: img, noteFile: md, note: "ls\n\u{1B}[201~rm -rf ~\r")
         XCTAssertEqual(items[1].text, "ls · [201~rm -rf ~")
+        XCTAssertEqual(CardPasteboard.drag(for: .text, image: img, noteFile: md, note: "ls\n\u{1B}[201~rm -rf ~\r")[1].text,
+                       "ls · [201~rm -rf ~", "every class gets the one-line form: the app that reads it may not be the one it lands in")
     }
 
     func testDragWithoutANote() {
-        XCTAssertEqual(CardPasteboard.drag(image: img, noteFile: nil, note: nil), [CardPasteboard.Item(file: img, imageData: true, tag: true)])
-        XCTAssertEqual(CardPasteboard.drag(image: img, noteFile: nil, note: " \n "), [CardPasteboard.Item(file: img, imageData: true, tag: true)])
+        for c in DropClass.allCases {
+            let first = CardPasteboard.drag(for: c, image: img, noteFile: nil, note: nil)
+            XCTAssertEqual(first.count, 1, "\(c)")
+            XCTAssertEqual(first[0].file, img)
+            XCTAssertTrue(first[0].tag)
+            XCTAssertEqual(CardPasteboard.drag(for: c, image: img, noteFile: nil, note: " \n "), first, "\(c)")
+        }
     }
 
     func testDragWhenTheNoteFileCouldNotBeWritten() {
-        XCTAssertEqual(CardPasteboard.drag(image: img, noteFile: nil, note: "words"),
+        XCTAssertEqual(CardPasteboard.drag(for: .web, image: img, noteFile: nil, note: "words"),
                        [CardPasteboard.Item(file: img, imageData: true, tag: true), CardPasteboard.Item(text: "words")])
+        XCTAssertEqual(CardPasteboard.drag(for: .terminal, image: img, noteFile: nil, note: "words"),
+                       [CardPasteboard.Item(file: img, tag: true)], "a terminal never gets the note as text")
     }
 
-    /// A voice card is text that happened to be spoken: its words, no audio file, no .md.
+    /// A voice card is text that happened to be spoken: its words, no audio file, no .md — whatever the app.
     func testDragOfAVoiceCard() {
-        XCTAssertEqual(CardPasteboard.drag(image: nil, noteFile: nil, note: "call Ana\nabout pricing"),
-                       [CardPasteboard.Item(text: "call Ana · about pricing", tag: true)])
-        XCTAssertEqual(CardPasteboard.drag(image: nil, noteFile: md, note: "words"), [CardPasteboard.Item(text: "words", tag: true)])
-        XCTAssertEqual(CardPasteboard.drag(image: nil, noteFile: nil, note: nil), [])
+        for c in DropClass.allCases {
+            XCTAssertEqual(CardPasteboard.drag(for: c, image: nil, noteFile: nil, note: "call Ana\nabout pricing"),
+                           [CardPasteboard.Item(text: "call Ana · about pricing", tag: true)], "\(c)")
+            XCTAssertEqual(CardPasteboard.drag(for: c, image: nil, noteFile: md, note: "words"), [CardPasteboard.Item(text: "words", tag: true)])
+            XCTAssertEqual(CardPasteboard.drag(for: c, image: nil, noteFile: nil, note: nil), [])
+        }
     }
 
     /// A click copies what a drag carries — the text with its line breaks (pasting is the user's own act).
