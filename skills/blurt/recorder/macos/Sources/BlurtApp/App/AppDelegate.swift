@@ -175,6 +175,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func startResident() {
         LaunchMessages.shared.start()   // at most one island message at launch: everything below posts through it
+        for (name, active) in [(NSApplication.didBecomeActiveNotification, true), (NSApplication.didResignActiveNotification, false)] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in App.activeSince = active ? Date() : nil }
+        }
         FilePrivacy.lockDown()          // Blurt's data is this account's alone (0700 / 0600)
         Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
         ensureDefaultWorkspace()
@@ -315,10 +318,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// blurt://record and blurt://snap can come from any link (a web page, a document): unless Blurt itself is in front
-    /// (its own windows, Services, a shortcut run from Blurt), the island asks first — one click to go ahead.
+    /// When Blurt last became the active app (nil while it isn't): confirmFromURL.
+    static var activeSince: Date?
+
+    /// blurt://record and blurt://snap can come from any link (a web page, a document): unless Blurt itself was in front
+    /// already (its own windows, a shortcut run from Blurt), the island asks first — one click to go ahead. "Already":
+    /// opening a URL can bring Blurt to the front just before it arrives, so being active only counts from a second
+    /// before the URL.
     func confirmFromURL(_ what: String, _ go: @escaping (App) -> Void) {
-        if NSApp.isActive { go(self); return }
+        if NSApp.isActive, let s = App.activeSince, Date().timeIntervalSince(s) > 1 { go(self); return }
         emit(["event": "url_confirm", "what": what])
         guard island.started else { return }       // no island to ask in: nothing starts from a link
         island.ask(T("app.url.ask_\(what)"), T(what == "record" ? "app.menu.record" : "app.url.snap"), { [weak self] in
