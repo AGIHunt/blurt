@@ -1487,7 +1487,12 @@ def preference(kind: str, tier: str, purpose: str, sv_ok: bool, sv_good: bool) -
         if prefer_sv and (kind == "cpu" or tier in ("light", "minimal")):
             return [SV] + multi
         return multi + fallback
-    return ([SV] if prefer_sv else []) + multi + fallback  # live captions and voice notes: latency first
+    # live captions and voice notes: latency first. Their model stays warm next to dictation's: on a 16–24 GB Mac the
+    # 4-bit Whisper (2.6 GB, a 442 MB download) comes before the full one (3.7 GB) — arch098; recordings above keep
+    # accuracy first (a one-off process that ends with the job)
+    if kind == "apple" and tier == "standard":
+        multi = [TURBO_Q4, TURBO]
+    return ([SV] if prefer_sv else []) + multi + fallback
 
 
 def _bench_results() -> dict:

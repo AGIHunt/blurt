@@ -189,7 +189,11 @@ class Recommend(unittest.TestCase):
         h = hw(ram=16)
         self.assertEqual(self.pick(h, ["en", "ja"]), "whisper-large-v3-turbo-mlx")
         self.assertEqual(self.pick(h, ["en", "ja"], "live"), "sensevoice-small")
-        self.assertEqual(self.pick(h, ["es", "en"], "live"), "whisper-large-v3-turbo-mlx")
+        # the warm purposes take the 4-bit Whisper on 16 GB (arch098); recordings keep the full one
+        self.assertEqual(self.pick(h, ["es", "en"], "live"), "whisper-large-v3-turbo-q4-mlx")
+        self.assertEqual(self.pick(h, ["de", "en"], "note"), "whisper-large-v3-turbo-q4-mlx")
+        self.assertEqual(self.pick(h, ["de", "en"]), "whisper-large-v3-turbo-mlx")
+        self.assertEqual(self.pick(hw(ram=32), ["de", "en"], "note"), "whisper-large-v3-turbo-mlx")   # pro unchanged
 
     def test_apple_light(self):
         h = hw(ram=8, perf=4, eff=4)

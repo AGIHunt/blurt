@@ -132,7 +132,7 @@ Whisper's ASCII commas in Chinese and Japanese text are converted to full-width 
 | machine | recordings | live captions | voice notes |
 |---|---|---|---|
 | Apple Silicon, ≥ 32 GB (pro) | Whisper turbo | Whisper turbo (the same model, so the live transcript is final) | SenseVoice¹, else Whisper turbo |
-| Apple Silicon, 16–24 GB (standard) | Whisper turbo | SenseVoice¹, else Whisper turbo | SenseVoice¹, else Whisper turbo |
+| Apple Silicon, 16–24 GB (standard) | Whisper turbo | SenseVoice¹, else Whisper turbo 4-bit³ | SenseVoice¹, else Whisper turbo 4-bit³ |
 | Apple Silicon, 8 GB (light) | SenseVoice¹, else Whisper turbo 4-bit | SenseVoice¹, else turbo 4-bit | SenseVoice¹, else turbo 4-bit |
 | NVIDIA ≥ 4 GB VRAM | Whisper turbo (CUDA) | SenseVoice¹, else turbo (CUDA) | SenseVoice¹, else turbo (CUDA) |
 | CPU only (Windows / Linux / Intel Mac) | SenseVoice², else Qwen3-ASR 0.6B (CPU) | same | same |
@@ -143,6 +143,9 @@ zh, en, ja and yue. Korean is the exception at 10.5 %, against 0.5 % for Whisper
 
 ² On a CPU, SenseVoice is 10× faster than the multilingual alternative and just as accurate in its own languages,
 Korean included (Qwen3-ASR on the CPU also has 13 % error in Korean).
+
+³ Their model stays warm next to dictation's and polish: 2.6 GB instead of 3.7 (a 442 MB download), at 3.3 % zh error
+instead of 1.6 %; the full model when it is the one installed (arch098).
 
 On battery, recordings drop one tier (`asr.on_battery`, default `lighter`). A model is considered only when its
 measured peak memory fits within 40 % of RAM.

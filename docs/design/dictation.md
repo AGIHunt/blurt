@@ -1313,6 +1313,16 @@ of speech, like D), polished whole and piece by piece (with the polished text so
 | light | 8 GB | 2 GB | Qwen3 1.7B (2.1 GB peak; MLX's limit is relaxed, so it slightly overshoots instead of failing) |
 | minimal | < 8 GB | — | Gemma 3 1B (rarely harmful, rarely useful) |
 
+**Memory together (arch098, v0.9).** What a 16 GB Mac holds while it dictates is the sum: dictation's speech model,
+polish, and the voice-note model (one `asr-serve` holds one speech model at a time). Pro Macs (≥ 32 GB) keep
+Qwen3-ASR 1.7B 8-bit + Gemma 4 E2B. On standard Macs dictation already gets the 0.6B Qwen3-ASR (2.1 GB, not 3.1), and
+voice notes and live captions now prefer the 4-bit Whisper turbo (2.6 GB and a 442 MB download, not 3.7 GB / 1.5 GB;
+3.3 % zh error vs 1.6 %), the full one only when it is what is installed; recordings keep the full one (accuracy
+first, a one-off process). Polish stays Gemma 4 E2B: nothing lighter was good enough above (Qwen3.5 2B falls back
+20 % of the time, Qwen3 1.7B 24 %). The bigger saving is time: every warm server now ends after 10 idle minutes and
+with Blurt (§Polish), where the model used to stay up to 30 minutes and the process up to 4 hours. Only automatic
+choices change: a model the user picked (`asr.models`, `record.dictation.asr_model`, `polish_model`) stays.
+
 Nothing is downloaded until the user presses **Install** in Settings → Dictation. The size is shown, and the download
 comes from Hugging Face, or from ModelScope when the download mirror is on (it mirrors mlx-community, and is fast from
 mainland China). Until then dictation types the raw transcript. `mlx-lm` is added with `uv run --with` on first use
