@@ -46,10 +46,15 @@ struct AgentDef {
     var fixText: String { Loc.pick(fix) ?? "" }
     var installText: String { Loc.pick(install) ?? "" }
 
-    /// The headless command line for the shell (cwd = the workspace); `extra` goes after the run arguments.
-    func command(bin: String, prompt: String, extra: [String] = []) -> String {
-        ([bin] + run.map { $0 == "{prompt}" ? prompt : $0.replacingOccurrences(of: "{prompt}", with: prompt) } + extra)
-            .map(shq).joined(separator: " ")
+    /// The headless command line for the shell (cwd = the workspace); `extra` goes after the run arguments. Every
+    /// headless run is unattended on recording-derived text, so `run` asks for the least privilege (agents.json):
+    /// "{writable}" = one `--add-dir` per folder it may write besides its cwd (AgentHub.writableDirs; codex's sandbox).
+    func command(bin: String, prompt: String, extra: [String] = [], writable: [String] = AgentHub.writableDirs()) -> String {
+        let args = run.flatMap { a -> [String] in
+            if a == "{writable}" { return writable.flatMap { ["--add-dir", $0] } }
+            return [a == "{prompt}" ? prompt : a.replacingOccurrences(of: "{prompt}", with: prompt)]
+        }
+        return ([bin] + args + extra).map(shq).joined(separator: " ")
     }
 
     // MARK: the processing model (same rules as agents.py processing / models / parse_usage)
@@ -221,15 +226,26 @@ final class AgentHub {
     static let fallback: [[String: Any]] = [
         ["id": "claude", "name": "Claude Code", "bins": ["claude"],
          "status": ["args": ["auth", "status", "--json"], "json_key": "loggedIn", "logged_out": ["not logged in"]],
-         "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+         "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash(uv run:*)", "Read", "Write", "Edit", "Glob", "Grep"],
          "fix": ["zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal and /login"]],
         ["id": "codex", "name": "Codex", "bins": ["codex"],
          "status": ["args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"]],
-         "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],
+         "run": ["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true",
+                 "{writable}", "{prompt}"],
          "fix": ["zh": "在终端运行 codex login", "en": "run `codex login` in a terminal"]],
     ]
 
     func def(_ id: String) -> AgentDef? { defs.first { $0.id == id } }
+
+    /// What an unattended run may write besides its cwd (agents.json "{writable}", the same list as agents.py
+    /// writable_dirs): Blurt's home, uv's cache, the inbox store and every project's store.
+    static func writableDirs() -> [String] {
+        let env = agentEnvironment()
+        let uv = env["UV_CACHE_DIR"] ?? URL(fileURLWithPath: env["XDG_CACHE_HOME"] ?? NSHomeDirectory() + "/.cache").appendingPathComponent("uv").path
+        let ps = ProjectStore.shared
+        var seen = Set<String>()
+        return ([BlurtPaths.home.path, uv, ps.inbox.store.path] + ps.projects.map(\.store.path)).filter { seen.insert($0).inserted }
+    }
 
     /// record.agents, else the registry order with a legacy record.process = "claude" | "codex" first.
     func order() -> [AgentDef] {
@@ -481,7 +497,9 @@ extension App {
         }
         job.step("transcribe", .running)
         refreshStatus()
-        var env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]
+        // routing the inbox items asks a model and moves files between projects: the app does it after the run, not
+        // the sandboxed agent (BLURT_NO_ROUTE; routeAfter)
+        var env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id, "BLURT_NO_ROUTE": "1"]
         if let p = project { env["BLURT_PROJECT"] = p }
         shell(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
             guard let self = self else { return }
@@ -497,10 +515,11 @@ extension App {
                 updateMeta(dir) { m in m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(["result": "ok", "done_at": nowStamp()]) { _, n in n } }
                 appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) done" + (status == 0 ? "" : " (exit \(status))") + "\n")
                 for s in ["transcribe", "write", "frames"] { job.step(s, .done) }
-                // a filed capture needs no routing; otherwise ingest has handed the inbox items to their own route job
+                // a filed capture needs no routing; otherwise its inbox items get their own route job, started here
                 job.step("route", project != nil ? .skipped : .done)
                 job.finish(.done)
                 Scripts.indexUpdate([dir])
+                if project == nil { self.routeAfter(dir) }
                 self.refreshStatus()
                 return
             }
@@ -523,6 +542,14 @@ extension App {
             let code = ["auth", "quota", "network", "model"].contains(f?.id ?? "") ? f!.id : "unknown"
             job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil))
             self.refreshStatus()
+        }
+    }
+
+    /// Auto mode: the batch's items still in the inbox get a project (projects.py route --apply --session, its own
+    /// route job), outside the organizing run's sandbox. A failure leaves them in the inbox, where they are anyway.
+    func routeAfter(_ dir: URL) {
+        Scripts.run("projects.py", ["route", "--apply", "--session", dir.path], timeout: 300) { r in
+            if case .failure(let e) = r { emit(["event": "route_after", "session": dir.path, "error": "\(e)"]) }
         }
     }
 

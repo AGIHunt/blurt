@@ -150,11 +150,21 @@ def test_command_headless(env, tmp_path):
     for x in sets:  # each -c value is valid TOML
         tomllib.loads(x)
     no_mcp = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path, "--no-mcp")
-    assert "-c" not in no_mcp["argv"]
+    assert not [x for i, x in enumerate(no_mcp["argv"]) if no_mcp["argv"][i - 1] == "-c" and x.startswith("mcp_servers")]
     assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {"BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1"}
+    # unattended on recording-derived text: never full access; codex writes only its cwd + Blurt's folders + uv's cache
+    a = out["argv"]
+    assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"
+    added = [a[i + 1] for i, x in enumerate(a) if x == "--add-dir"]
+    uv_cache = os.environ.get("UV_CACHE_DIR") or str(Path(os.environ.get("XDG_CACHE_HOME") or env["home"] / ".cache") / "uv")
+    assert added[:2] == [str(env["bh"]), uv_cache] and len(added) == 3  # + the inbox store (no projects here)
+    assert "sandbox_workspace_write.network_access=true" in sets  # uv resolves the scripts' dependencies
     c = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path)
     assert c["argv"][1:3] == ["-p", "p"] and c["argv"][-3:] == ["--output-format", "stream-json", "--verbose"]
     assert "mcp__blurt" in c["argv"]  # allowed in -p mode
+    assert "Bash" not in c["argv"] and "Bash(uv run:*)" in c["argv"]  # the skill's scripts, not any command
+    for d in agents.definitions().values():  # no agent runs unattended in a yolo / full-access mode
+        assert not {"--yolo", "danger-full-access", "--dangerously-skip-permissions", "bypassPermissions"} & set(d.get("run") or [])
     plain = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path, "--no-events")
     assert plain["events"] is None and "--output-format" not in plain["argv"]
     k = cli("command", "kimi", "headless", "--prompt", "p", "--repo", tmp_path)

@@ -236,9 +236,29 @@ def expand(path: str, env: dict | None = None) -> Path:
     return Path(os.path.expanduser(s))
 
 
+def writable_dirs() -> list[str]:
+    """What an unattended run may write besides its cwd ("{writable}" in run: one `--add-dir` each, for codex's
+    workspace-write sandbox): $BLURT_HOME (jobs, the index), uv's cache (the scripts' environments), the inbox store
+    and every project's .blurt store (items.py files an inbox capture's items into any project)."""
+    import projects  # noqa: PLC0415 — projects imports agents
+    import store as st  # noqa: PLC0415
+    from _common import blurt_home  # noqa: PLC0415
+    uv = os.environ.get("UV_CACHE_DIR") or str(Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "uv")
+    dirs = [str(blurt_home()), uv, str(st.inbox_root())]
+    try:
+        dirs += [str(Path(e["path"]) / ".blurt") for e in projects.entries()]
+    except Exception:  # noqa: BLE001 — no registry yet: the inbox and Blurt's own folders
+        pass
+    return list(dict.fromkeys(dirs))
+
+
 def _fill(args: list, vals: dict) -> list[str]:
     out = []
     for a in args:
+        if a == "{writable}":  # a list, not a string: one --add-dir per folder (writable_dirs)
+            for d in vals.get("writable") or []:
+                out += ["--add-dir", str(d)]
+            continue
         if isinstance(a, str):
             for k, v in vals.items():
                 a = a.replace("{" + k + "}", str(v))
@@ -366,6 +386,8 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
         if not is_headless(d) or not bin_:
             raise ValueError(f"{agent} has no headless mode")
         vals = {**vars, "prompt": prompt, "repo": repo}
+        if "{writable}" in d["run"]:
+            vals["writable"] = writable_dirs()
         argv = [bin_, *_fill(d["run"], vals)]
         hm = d.get("headless_mcp") or {}
         if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run

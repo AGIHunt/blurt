@@ -493,7 +493,13 @@ Swift、Rust、live.py 不各自拼命令。
     // app-ux 的字段（Agents.swift 和 live.py 依赖，含义不变）
     "status": { "args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"],
                 "env_any": ["OPENAI_API_KEY"] },   // 另有 json_key、creds_json{path,keys}、configured_if、files_any、otherwise
-    "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],   // headless，bin 后面的参数
+    "run": ["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true",
+            "{writable}", "{prompt}"],   // headless，bin 后面的参数。只用于无人值守的运行（整理录屏、AI 补全、归类、草稿），
+                                         // 输入来自屏幕和语音，所以权限最小：codex 只能写 cwd 和 {writable}（每个一条 --add-dir：
+                                         // $BLURT_HOME、uv 缓存、收件箱和各项目的 .blurt），网络开着给 uv 解析依赖；claude 的 Bash
+                                         // 只放行 `uv run …`；gemini 不用 --yolo。用户自己发起的交给 Agent 走 interactive.session，权限不变。
+                                         // 归类（会再调模型、跨项目搬文件）由 App 在运行结束后自己跑：BLURT_NO_ROUTE +
+                                         // projects.py route --session。
     "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
     // WP2 加的字段
     "version": ["--version"],

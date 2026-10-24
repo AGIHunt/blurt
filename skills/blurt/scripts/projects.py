@@ -17,7 +17,8 @@ is its only writer (lock $BLURT_HOME/.projects.lock, atomic replace). The apps r
                                            current_by: "user" (chosen in Blurt) | "migrate" (carried over from
                                            v0.6's record.workspace — the app asks once whether to keep it) | null
   projects.py resolve PATH                 the (deepest) project PATH is in → {"ok","project":Row|null}
-  projects.py route --items REF … [--apply] [--threshold X] [--agent ID] [--no-llm]
+  projects.py route (--items REF … | --session DIR) [--apply] [--threshold X] [--agent ID] [--no-llm]
+             --session: that batch's inbox items with no suggestion yet (the app, after an organizing run)
                                            suggest a project per item: rules first, then a small model →
                                            {"ok","suggestions":[{uid, project, confidence, reason, by}],"moved":[uid]}
   projects.py migrate                      v0.6 config record.workspace(s) → projects → {"ok","added","current"}
@@ -609,6 +610,15 @@ def cmd_route(refs: list[str], apply: bool, threshold: float | None, agent: str 
     return {"ok": True, "suggestions": out, "moved": moved}
 
 
+def session_unrouted(session: str) -> list[str]:
+    """A batch's items still in the inbox with no project suggested — what ingest routes in the background, and what
+    the app routes itself after an organizing run (that run doesn't: it is sandboxed, BLURT_NO_ROUTE)."""
+    import items as items_mod  # noqa: PLC0415 — items imports projects
+    rows, _ = items_mod.scope_items({"session": str(real(session))})
+    return [it["uid"] for _, it in rows if (it.get("project") or st.INBOX) == st.INBOX and not it.get("suggested_project")
+            and it.get("state") != "discarded" and it.get("uid")]
+
+
 def route_job(refs: list[str], apply: bool, threshold: float | None, agent: str | None, no_llm: bool) -> dict:
     """cmd_route; with --apply (the background run after ingest) also a K4 route job this process owns, so the
     island and the main window show the inbox being sorted and what it moved. A preview (no --apply) writes none."""
@@ -672,7 +682,9 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("resolve")
     s.add_argument("path")
     s = sub.add_parser("route")
-    s.add_argument("--items", nargs="+", required=True, metavar="REF")
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--items", nargs="+", metavar="REF")
+    g.add_argument("--session", metavar="DIR")
     s.add_argument("--apply", action="store_true")
     s.add_argument("--threshold", type=float)
     s.add_argument("--agent")
@@ -700,7 +712,8 @@ def main(argv: list[str] | None = None) -> None:
             e = resolve(a.path)
             out = {"ok": True, "project": row(e) if e else None}
         elif a.cmd == "route":
-            out = route_job(a.items, a.apply, a.threshold, a.agent, a.no_llm)
+            refs = a.items or session_unrouted(a.session)
+            out = route_job(refs, a.apply, a.threshold, a.agent, a.no_llm) if refs else {"ok": True, "suggestions": [], "moved": []}
         else:
             out = cmd_migrate()
     except ProjectError as e:

@@ -224,6 +224,22 @@ class Route(TmpCase):
         return ok("items.py", "add", "--project", "inbox", "--json", json.dumps({"kind": "issue", **fields}),
                   env=self.e.env())["uid"]
 
+    def test_route_a_session_after_its_organizing_run(self):
+        """The app routes a batch itself once the (sandboxed, BLURT_NO_ROUTE) organizing run is done: only the items
+        still in the inbox with no suggestion."""
+        session = self.e.ws / "inbox" / "sessions" / "20261025-100000"
+        session.mkdir(parents=True)
+        (session / "items.json").write_text(json.dumps({"items": [
+            {"id": "I-001", "kind": "issue", "title": "crash", "code_refs": ["src/auth/Login.tsx:42"]},
+            {"id": "I-002", "kind": "issue", "title": "typo", "project": self.pd["id"]},  # the agent filed it
+            {"id": "I-003", "kind": "issue", "title": "vague"}]}))
+        ok("items.py", "ingest", session, env=self.e.env())
+        out = ok("projects.py", "route", "--session", session, "--apply", "--no-llm", env=self.e.env())
+        self.assertEqual(len(out["suggestions"]), 2)  # I-001 and I-003, not the one already in a project
+        self.assertEqual(len(out["moved"]), 1)
+        again = ok("projects.py", "route", "--session", session, "--apply", "--no-llm", env=self.e.env())
+        self.assertEqual(len(again["suggestions"]), 1)  # only the vague one is still in the inbox, unsuggested
+
     def test_rules_then_model_then_threshold(self):
         u_code = self.inbox(title="crash", code_refs=["src/auth/Login.tsx:42"])
         u_url = self.inbox(title="slow page", source={"url": "https://www.example.test/pricing"})
