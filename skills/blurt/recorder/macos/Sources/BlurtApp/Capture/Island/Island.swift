@@ -135,6 +135,9 @@ final class Island: NSObject, IslandHosting {
         /// Shown at once, also over the open island (an Undo for something just done on the cards under it); other
         /// toasts wait until the island closes.
         var overOpen = false
+        /// What the toast is about ("Deleted · Undo"): a toast with the same key takes its place — its text and its
+        /// action — instead of being dropped as a repeat, so a second delete's Undo is never lost behind the first's.
+        var key: String?
         /// A project's key badge before the text ("Filed to …").
         var badge: (text: String, color: NSColor)?
         /// A question: the text wraps, two answers under it, and it stays until one is chosen (also over the open
@@ -782,6 +785,17 @@ final class Island: NSObject, IslandHosting {
 
     func toast(_ t: Toast) {
         emit(["event": "island_toast", "text": t.text])
+        if let k = t.key {
+            if toastNow?.key == k {
+                var n = t
+                n.since = CACurrentMediaTime()
+                toastNow = n
+                content.rebuild()
+                wake()
+                return
+            }
+            if let i = toasts.firstIndex(where: { $0.key == k }) { toasts[i] = t; return }
+        }
         if toastNow?.text == t.text { toastNow?.since = CACurrentMediaTime(); return }
         if toasts.contains(where: { $0.text == t.text }) { return }
         toasts.append(t)
@@ -802,6 +816,8 @@ final class Island: NSObject, IslandHosting {
         }
     }
     var currentToast: Toast? { toastNow }
+    /// A toast with this key is showing or waiting to.
+    func toastLive(key: String) -> Bool { toastNow?.key == key || toasts.contains { $0.key == key } }
 
     // MARK: hatching (only for captures being processed — K7)
 

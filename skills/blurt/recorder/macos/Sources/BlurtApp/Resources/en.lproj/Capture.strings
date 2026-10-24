@@ -11,7 +11,7 @@
 "capture.action.snap" = "Snap";
 "capture.action.stop" = "Finish recording";
 "capture.action.voice" = "Voice input";
-"capture.card.ax_help" = "Press to copy · actions: edit the note, move to a project, sort with AI, delete";
+"capture.card.ax_help" = "Press to copy · actions: edit the note, move to a project, auto-sort, delete";
 "capture.card.ax_move" = "Move to %@";
 "capture.card.ax_shot" = "screenshot";
 "capture.card.ax_shot_n" = "Screenshot %d";
@@ -28,7 +28,7 @@
 "capture.card.transcribe_failed" = "Couldn’t transcribe";
 "capture.card.transcribing" = "Transcribing…";
 "capture.card.words_pending" = "The words aren’t ready yet";
-"capture.card.ai_sort" = "Sort with AI";
+"capture.card.ai_sort" = "Auto-sort";
 "capture.card.deleted" = "Deleted";
 "capture.card.first_hint" = "Click to copy, or drag into any app";
 "capture.cards.ax" = "Cards waiting for a project";
@@ -91,7 +91,7 @@
 "capture.menu.snap" = "Snap";
 "capture.menu.switch_project" = "Switch Project…";
 "capture.menu.voice" = "Voice Input";
-"capture.menu.ai_sort_all" = "Sort All with AI";
+"capture.menu.ai_sort_all" = "Auto-sort All Cards";
 "capture.note.discard_tip" = "Discard this shot (Esc)";
 "capture.note.goes_to" = "→ %@";
 "capture.note.keep_discard" = "⏎ keep without a note · Esc discard";

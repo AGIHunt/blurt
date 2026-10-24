@@ -84,9 +84,10 @@
 - [ ] Hanging cards on Windows / Linux (web/apps/overlays island.ts, crates/blurt-capture overlay.rs): bring over the
       v0.9 Mac rules (BlurtCore CardRow.swift): newest first, at most 5 + a "+N" tile that opens an overview of every
       card (no paging); a 180 ms dwell before they drop and 0.25 s to go up; Delete / Delete All with Undo instead of
-      none; "Sort with AI" on one card vs "Sort All with AI" in the island menu; the click's copy deferred past the
-      double-click interval; the hover note only when the card cuts its note short; keyboard + screen-reader access;
-      the first-card hint
+      none (deletes while the Undo shows join it); "Auto-sort" on one card vs "Auto-sort All Cards" in the island menu;
+      the click's copy deferred past the double-click interval; the hover note only when the card cuts its note short;
+      keyboard + screen-reader access (↩ copies and hands the keyboard back; ↩ on "+N" puts it in the overview); Esc
+      only while pointed at or 4 s after a reveal, and a reveal never pointed at lapses after 10 s; the first-card hint
 
 - [x] Documents from recordings (requirements / design doc with the marked frames): `reference/docs.md`
 - [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl

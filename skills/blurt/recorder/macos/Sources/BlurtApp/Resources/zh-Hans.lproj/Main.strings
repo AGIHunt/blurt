@@ -72,7 +72,7 @@
 "main.captures.tip" = "屏幕顶部挂着还没归类的截图和语音备注，点一下全部放下来";
 "main.captures.taken" = "最近拖走的：%ld 张";
 "main.captures.taken.show" = "查看";
-"main.captures.taken.tip" = "最近 7 天拖进别的应用的卡片：可以再拷贝、再拖出去，或者放回线上";
+"main.captures.taken.tip" = "最近 7 天拖进别的应用的卡片：可以再复制、再拖出去，或者放回线上";
 "main.cmd.copy_full" = "复制全文";
 "main.cmd.copy_instruction" = "复制指令";
 

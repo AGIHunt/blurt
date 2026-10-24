@@ -68,7 +68,7 @@
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
 "main.banner.with_agent" = "With %@ · %@";
 
-"main.captures.show" = "Show at the top";
+"main.captures.show" = "Bring down";
 "main.captures.tip" = "Snaps and voice notes waiting at the top of the screen: click to bring them all down";
 "main.captures.taken" = "Recently taken: %ld";
 "main.captures.taken.show" = "Show";

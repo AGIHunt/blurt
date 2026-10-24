@@ -23,14 +23,18 @@
 //    came up to the island from below.) A drop already under way or showing is never started again.
 //  • brought down on purpose — a click on the left ear's count, ⌥⇧H "Show hanging cards" (record.hotkeys "cards"),
 //    the menu, the main window's "Unfiled captures" — they stay (sticky) until the pointer has come to the cards and
-//    gone again, or Esc. Esc is a system-wide hotkey only while the pointer is on them (CardReveal.holdsEsc): an Esc
-//    for the app in front is never swallowed.
+//    gone again, or Esc; if it never comes, they stop staying 10 s later (CardReveal.staysDown), and the keyboard
+//    handed back (a typed key, a click elsewhere) ends it too. Esc is a system-wide hotkey only while the pointer is
+//    on them or the island, or for 4 s after they came down with it elsewhere (CardReveal.holdsEsc): an Esc for the
+//    app in front is never swallowed. Esc with the pointer on the island keeps them up until it has left the island.
 //    The pointer resting on the ear itself opens the island a little later (0.45 s), so its count can be clicked.
 //  • the keyboard (⌥⇧H): the panel takes the keys without activating Blurt, starting on the newest card (a ring in
-//    brand.accent): ←/→, Tab / ⇧Tab move between the cards and the "+N" tile · ↩ / ⌘C copy (on the tile: the
-//    overview) · ⌫ deletes · Esc sends them up. Any other key, a click elsewhere or the cards going up hands the
-//    keyboard back. VoiceOver: each card is a button (its words, or "Screenshot N"; press = copy; actions: edit, move,
-//    sort with AI, delete), then the tile ("Show all N cards").
+//    brand.accent): ←/→, Tab / ⇧Tab move between the cards and the "+N" tile · ↩ / ⌘C copy the card and hand the
+//    keyboard straight back (the next ⌘V pastes it where the user was), the cards going up a moment later · ↩ on the
+//    tile opens the overview with the keyboard in it · ⌫ deletes · Esc sends them up. Any other key, a click
+//    elsewhere or the cards going up hands the keyboard back (that key itself is not passed on). VoiceOver: each card
+//    is a button (its words, or "Screenshot N"; press = copy; actions: edit, move, auto-sort, delete), then the
+//    tile ("Show all N cards", press = the overview, with the keyboard in it).
 //  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
 //    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (top right
 //    once there is a caption) only when the note was spoken *and* its words are here. A spoken note still being
@@ -43,11 +47,11 @@
 //    double-click interval has passed (DeferredClick): double-click = edit the note, and never copies first · ⌘-click =
 //    add the card to a selection that is copied as one (a ring in the brand colour; a plain click or the cards going
 //    up ends it) · right-click (HangingCards.cardMenu, this card): Copy Image / Copy Text (only with text), Copy All N
-//    Cards (more than one), Retry Transcription (after a failure), Edit Note…, Show in Finder, Move To ▸, Sort with AI
+//    Cards (more than one), Retry Transcription (after a failure), Edit Note…, Show in Finder, Move To ▸, Auto-sort
 //    (this card only), Delete · drag = into any app, or onto a project in the island: the thread stretches after it,
 //    then snaps and springs back up · × = the thread lets go and the card falls. Delete never asks: "Deleted · Undo"
 //    in the island for 5 s (Snapper.delete; the files stay until then). The island's right-click menu (and the "+N"
-//    tile's) is about every card: Show, Copy All, Sort All with AI, Delete All N Cards (one Undo for all).
+//    tile's) is about every card: Show, Copy All, Auto-sort All Cards, Delete All N Cards (one Undo for all).
 //  • the first card ever says what it is for, once, under it: "Click to copy, or drag into any app" (record
 //    cards_hint_shown), after its note bubble has closed.
 //  • the picture, then the note (v0.8.5; BlurtCore CardDropTarget.swift has the table and the why, CardPasteboard the
@@ -298,7 +302,11 @@ final class HangingCards: NSObject {
     /// the cards (`visited`) and left them and the island, or Esc.
     private var sticky = false
     private var visited = false
+    private var revealedAt: CFTimeInterval = 0
     private var escHeld = false
+    /// Esc sent them up with the pointer on the island: they stay up until it has left the island (resting there
+    /// would otherwise bring them straight back down).
+    private var upTillLeaves = false
     /// The pointer is over a card, the "+N" stack or a card's note (the island stays open meanwhile).
     private(set) var pointerOver = false
     private var hoverCard: HangingCard?
@@ -956,7 +964,9 @@ final class HangingCards: NSObject {
         if sticky {
             self.sticky = true
             visited = false
+            revealedAt = CACurrentMediaTime()
         }
+        upTillLeaves = false
         awaySince = nil
         guard !shown else { wake(); return }
         shown = true
@@ -971,7 +981,7 @@ final class HangingCards: NSObject {
     /// so it never waits for the cards' own (idle) poll.
     func islandAttention() {
         // (a voice note opens the island to listen, not to show the cards: its words show under the island)
-        guard !cards.isEmpty, !island.isRecording, !VoiceInput.shared.active else { return }
+        guard !cards.isEmpty, !island.isRecording, !VoiceInput.shared.active, !upTillLeaves else { return }
         show()
     }
 
@@ -999,7 +1009,8 @@ final class HangingCards: NSObject {
         if keyboard { beginKeyboard() }
     }
 
-    /// Esc while they were brought down on purpose: up they go.
+    /// Esc while they were brought down on purpose: up they go (and with the pointer on the island, they stay up
+    /// until it has left it).
     func dismiss() {
         sticky = false
         peekUntil = 0
@@ -1008,6 +1019,7 @@ final class HangingCards: NSObject {
         island.closeIfSticky()
         guard holds == 0, dragging == nil, down == nil else { return }
         retract()
+        upTillLeaves = island.pointerInside
     }
 
     /// Esc is a system-wide hotkey only while cards brought down on purpose have the pointer on them (CardReveal.holdsEsc):
@@ -1021,36 +1033,52 @@ final class HangingCards: NSObject {
     // MARK: keyboard
 
     /// The panel has the keyboard (⌥⇧H): it takes keys without activating Blurt.
-    private var keyboard: Bool { panel?.isKeyWindow == true }
+    private var keyboardOn = false
+    private var keyboard: Bool { keyboardOn && panel?.isKeyWindow == true }
 
     /// The card the keyboard is on (nil: none, or the "+N" tile).
     private var focusCard: HangingCard? { focus.flatMap { $0 < row.shown.count ? shownCards[$0] : nil } }
 
     /// ⌥⇧H: the keyboard on the cards, starting at the newest — ←/→ (Tab, ⇧Tab) move between the cards and the "+N"
-    /// tile, ↩ or ⌘C copies the card (on the tile: every card, in the overview), ⌫ deletes it (Undo in the island), Esc
-    /// sends them up. Any other key, a click somewhere else or the cards going up gives the keyboard back to the app in
-    /// front.
+    /// tile, ↩ or ⌘C copies the card and hands the keyboard back (on the tile: the overview, with the keyboard), ⌫
+    /// deletes it (Undo in the island), Esc sends them up. Any other key, a click somewhere else or the cards going up
+    /// gives the keyboard back to the app in front.
     private func beginKeyboard() {
         guard let p = panel, let v = view else { return }
         snapper.rememberFrontApp()
         p.keyable = true
         p.makeKey()
         p.makeFirstResponder(v)
+        keyboardOn = true
         setFocus(CardFocus.move(nil, by: 1, cards: row.shown.count, tile: row.more > 0))
         emit(["event": "cards_keyboard", "on": true, "key": p.isKeyWindow])
     }
 
-    private func endKeyboard() {
-        let had = keyboard
+    /// The keyboard back to the app the user was in (`restore`; false: another of our panels takes it — the overview).
+    /// Brought down by ⌥⇧H, they now go up like any time the pointer isn't on them.
+    private func endKeyboard(restore: Bool = true) {
+        let had = keyboardOn
+        keyboardOn = false
         panel?.keyable = false
-        if had { panel?.resignKey(); snapper.restoreFocus() }
         if focus != nil { setFocus(nil) }
-        if had { emit(["event": "cards_keyboard", "on": false]) }
+        guard had else { return }
+        sticky = false
+        if restore, let p = panel, p.isKeyWindow {
+            // resignKey() only reports a change: ordering the panel out is what gives the key status up. It is back
+            // in the same moment (it can't become key now), so nothing on screen moves.
+            p.orderOut(nil)
+            if visible { p.orderFrontRegardless(); island.orderFront() }
+            snapper.restoreFocus()
+        }
+        emit(["event": "cards_keyboard", "on": false])
+        wake()
     }
 
+    /// Something else took the keyboard (a click in another app, the overview): the same as handing it back.
     @objc private func panelResignedKey() {
         panel?.keyable = false
         if focus != nil { setFocus(nil) }
+        if keyboardOn { keyboardOn = false; sticky = false; emit(["event": "cards_keyboard", "on": false]); wake() }
     }
 
     private func setFocus(_ f: Int?) {
@@ -1073,9 +1101,9 @@ final class HangingCards: NSObject {
         case kVK_RightArrow: setFocus(CardFocus.move(focus, by: 1, cards: n, tile: tile))
         case kVK_Tab: setFocus(CardFocus.move(focus, by: shift ? -1 : 1, cards: n, tile: tile))
         case kVK_Return, kVK_ANSI_KeypadEnter:
-            if let c = focusCard { copy(c, .click) } else if tile, focus == n { openOverview() }
+            if let c = focusCard { copyAndHandBack(c) } else if tile, focus == n { openOverview(keyboard: true) }
         case kVK_ANSI_C where cmd:
-            if let c = focusCard { copy(c, .click) }
+            if let c = focusCard { copyAndHandBack(c) }
         case kVK_Delete, kVK_ForwardDelete:
             if let c = focusCard { snapper.delete(c.shot) }
         case kVK_Escape: dismiss()
@@ -1083,6 +1111,15 @@ final class HangingCards: NSObject {
             endKeyboard()               // typing: the keys are for the app in front, not for the cards
         }
         return true
+    }
+
+    /// ↩ / ⌘C with the keyboard on the cards: copied — and the keyboard goes straight back, so the next ⌘V pastes it
+    /// where the user was; the cards stay a moment for the "Copied" to be seen, then go up unless the pointer is on them.
+    private func copyAndHandBack(_ c: HangingCard) {
+        guard copy(c, .click) else { return }
+        endKeyboard()
+        peekUntil = CACurrentMediaTime() + 0.6
+        wake()
     }
 
     private func retract(turnable: Bool = false) {
@@ -1405,26 +1442,29 @@ final class HangingCards: NSObject {
         let recording = island.isRecording     // only brought down on purpose while recording
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
         let inRegion = !cards.isEmpty && hoverRegion().contains { $0.contains(local) }
+        if upTillLeaves, !onIsland { upTillLeaves = false }
         if !shown {
             pointerOver = false
             holdEsc(false)
             // the pointer resting on the island (CardReveal.dwell: a brush past drops nothing) — or back on cards still
             // on their way up: the retract turns round where they are
             let turning = visible && inRegion && (retractedAt.map { hypot($0.x - m.x, $0.y - m.y) > 2 } ?? false)
-            if (island.pointerDwelled || held || turning) && !cards.isEmpty && !recording { show() }
+            if ((island.pointerDwelled && !upTillLeaves) || held || turning) && !cards.isEmpty && !recording { show() }
             return
         }
         let over = testHover != nil || card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
             || (!tip.isHidden && tip.frame.insetBy(dx: -6, dy: -10).contains(local))
         // anywhere in the region holds the island open too (the gap under it, a card's edge)
         pointerOver = over || inRegion
-        // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc
+        // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc — or, if it
+        // never came, CardReveal.unvisited after
+        let pointerIn = over || inRegion || onIsland
         if sticky {
-            if cards.isEmpty { sticky = false }
-            else if over { visited = true }
-            else if visited && !onIsland && !inRegion { sticky = false }
+            if over { visited = true }
+            if cards.isEmpty || !CardReveal.staysDown(visited: visited, pointerIn: pointerIn, sinceReveal: now - revealedAt) { sticky = false }
         }
-        holdEsc(CardReveal.holdsEsc(sticky: sticky, pointerIn: over || inRegion || onIsland, keyboard: keyboard))
+        holdEsc(CardReveal.holdsEsc(sticky: sticky, pointerIn: pointerIn, keyboard: keyboard || CardsOverview.shared.hasKeyboard,
+                                    visited: visited, sinceReveal: now - revealedAt))
         // gone CardReveal.away after the pointer has left the whole region
         if over || inRegion || busy || sticky || (!recording && (onIsland || held)) { awaySince = nil } else {
             awaySince = awaySince ?? now
@@ -1450,10 +1490,12 @@ final class HangingCards: NSObject {
 
     /// A click on the "+N" tile (↩ on it, its accessibility press): every card at once, in the overview — the newest
     /// first, with the same actions as on their threads (CardsOverview.swift). The row itself never pages or rotates.
-    func openOverview() {
+    /// `keyboard` (↩, VoiceOver): the overview takes the keyboard, on its first card — from the row, if it had it.
+    func openOverview(keyboard: Bool = false) {
         guard row.more > 0 || cards.count > 0 else { return }
-        emit(["event": "cards_overview", "count": cards.count, "more": row.more])
-        CardsOverview.shared.show()
+        emit(["event": "cards_overview", "count": cards.count, "more": row.more, "keyboard": keyboard])
+        if keyboard { endKeyboard(restore: false) }
+        CardsOverview.shared.show(keyboard: keyboard)
     }
 
     private func card(at p: NSPoint) -> HangingCard? {
@@ -1701,7 +1743,7 @@ final class HangingCards: NSObject {
 
     /// A card's right-click menu (on its thread and in the overview): what to do with this one card — Copy Image / Copy
     /// Text, Copy All N Cards, Retry Transcription (after a failure), Edit Note…, Show in Finder · Move To ▸, Sort with
-    /// AI (this card only) · Delete (Undo in the island). What concerns every card at once — Sort All with AI, Delete
+    /// AI (this card only) · Delete (Undo in the island). What concerns every card at once — Auto-sort All Cards, Delete
     /// All — is in the island's menu (islandMenuItems). `copy`: copies it with the feedback of where it was clicked.
     func cardMenu(_ s: Shot, copy: @escaping (Copy) -> Void) -> NSMenu {
         let m = NSMenu()
@@ -1733,7 +1775,7 @@ final class HangingCards: NSObject {
     }
 
     /// The island's right-click menu, about every hanging card at once (TakenPanel.islandMenu puts Recently Taken under
-    /// them): Show N Hanging Cards, Copy All, Sort All with AI, Delete All N Cards (one Undo for all).
+    /// them): Show N Hanging Cards, Copy All, Auto-sort All Cards, Delete All N Cards (one Undo for all).
     func islandMenuItems() -> [(String, () -> Void)] {
         let n = count
         guard n > 0 else { return [] }
@@ -1785,6 +1827,7 @@ final class HangingCards: NSObject {
                   let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                                            windowNumber: panel?.windowNumber ?? 0, context: nil, characters: "", charactersIgnoringModifiers: "",
                                            isARepeat: false, keyCode: UInt16(code)) else { return }
+            CardsOverview.shared.testKeyless = true      // ↩ on the tile: never the user's keyboard
             _ = key(e)
         case "click":
             if a.count > 1, let n = Int(a[1]), let c = cards.first(where: { $0.shot.n == n }) {
@@ -1795,7 +1838,7 @@ final class HangingCards: NSObject {
         case "row", "older", "all": break
         default: return
         }
-        emit(["event": "cards_row", "shown": shownCards.map(\.shot.n), "more": row.more, "esc_held": escHeld, "focus": focus ?? -1,
+        emit(["event": "cards_row", "shown": shownCards.map(\.shot.n), "more": row.more, "esc_held": escHeld, "sticky": sticky, "down": shown, "focus": focus ?? -1,
               "keyboard": keyboard, "tip": tip.isHidden ? NSNull() : ["for": tipFor?.shot.n ?? -1, "text": !tipText.frame.isEmpty,
                                                                       "play": !tipPlay.isHidden, "frame": [tip.frame.minX, tip.frame.minY, tip.frame.width, tip.frame.height]],
               "span": [row.span.lowerBound, row.span.upperBound], "tile_x": row.tileX ?? NSNull(),
@@ -1963,7 +2006,7 @@ final class HangingCards: NSObject {
         if row.more > 0, !stack.isHidden {
             let e = axMore ?? {
                 let e = LayerAXElement.make(role: .button, layer: stack, host: v)
-                e.press = { [weak self] in self?.openOverview() }
+                e.press = { [weak self] in self?.openOverview(keyboard: true) }
                 return e
             }()
             e.setAccessibilityLabel(Loc.plural("capture.cards.more_ax", table: "Capture", count: cards.count))

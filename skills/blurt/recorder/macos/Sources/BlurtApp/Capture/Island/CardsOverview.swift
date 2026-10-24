@@ -3,11 +3,13 @@
 // VoiceOver press) opens this panel: every card, newest first, in a grid — with what a card on its thread can do:
 //   click = copy (once the double-click interval has passed: a double-click edits the note instead, and never copies
 //   first) · right-click = the card's menu (HangingCards.cardMenu: Copy Image / Text, Copy All, Edit Note…, Move To ▸,
-//   Sort with AI, Delete) · drag = out into any app (the same items as a card's drag, CardDrag; a voice card over a chat
-//   app pastes its words), or onto a project in the island · with the keyboard (a click puts it on the panel): arrows
-//   move, ↩ / ⌘C copies, ⌫ deletes (Undo in the island), Esc closes.
-// A small utility panel under the cards, like Recently Taken; it follows the cards as they change and closes itself
-// when none are left. It never activates Blurt.
+//   Auto-sort, Delete) · drag = out into any app (the same items as a card's drag, CardDrag; a voice card over a chat
+//   app pastes its words), or onto a project in the island · with the keyboard (a click puts it on the panel; ↩ on the
+//   tile or its VoiceOver press opens it with the keyboard on the newest card): arrows move, ↩ / ⌘C copies and closes
+//   it (the keyboard back where the user was, so ⌘V pastes), ⌫ deletes (Undo in the island), Esc closes.
+// A small utility panel under the cards, like Recently Taken; it follows the cards as they change (never in the middle
+// of a drag out of it or a click's pending copy: that waits until they are done) and closes itself when none are left.
+// It never activates Blurt.
 
 import AppKit
 import BlurtCore
@@ -37,6 +39,13 @@ final class CardsOverview: NSObject, NSWindowDelegate {
     private var click = DeferredClick<ObjectIdentifier>()
 
     var isOpen: Bool { window?.isVisible ?? false }
+    /// It has the keyboard (the cards' Esc hotkey stays out of its way).
+    var hasKeyboard: Bool { window?.isKeyWindow == true }
+    /// A tile is being dragged out, or a click's copy is pending: the grid is not rebuilt under it until it is done.
+    private var dragging = false
+    private var reloadLater = false
+    /// Tests: "with the keyboard" selects the first tile but never takes the keyboard from the app in front.
+    var testKeyless = false
 
     /// Opens under the cards (`keyboard`: with the keyboard on it, from ↩ on the "+N" tile).
     func show(keyboard: Bool = false) {
@@ -53,8 +62,10 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         w.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, min(top, screen.visibleFrame.maxY) - size.height)))
         w.orderFrontRegardless()
         if keyboard {
-            snapper.rememberFrontApp()
-            w.makeKey()
+            if !testKeyless {
+                snapper.rememberFrontApp()
+                w.makeKey()
+            }
             select(0)
         }
         emit(["event": "cards_overview_open", "count": tiles.count, "order": tiles.map(\.shot.n)])
@@ -71,8 +82,16 @@ final class CardsOverview: NSObject, NSWindowDelegate {
     /// The cards changed (one copied out, filed, deleted, a new one caught): the grid again, if it is open.
     func reload() {
         guard isOpen else { return }
+        if dragging || click.pending != nil { reloadLater = true; return }
+        reloadLater = false
         rebuild()
         if tiles.isEmpty { hide() }
+    }
+
+    /// A drag or a pending click is done: the reload it held back, if any.
+    private func settled() {
+        guard reloadLater, !dragging, click.pending == nil else { return }
+        reload()
     }
 
     func windowWillClose(_ notification: Notification) { emit(["event": "cards_overview_open", "open": false]) }
@@ -146,9 +165,12 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         case .edit:
             emit(["event": "card_edit", "n": t.shot.n, "from": "overview"])
             NoteBubble.shared.begin(t.shot, mode: .edit)
+            settled()
         case .copy(let at):
             DispatchQueue.main.asyncAfter(deadline: .now() + max(0, at - CACurrentMediaTime())) { [weak self, weak t] in
-                guard let self = self, let t = t, self.click.fire(at: CACurrentMediaTime() + 0.01) == ObjectIdentifier(t.shot) else { return }
+                guard let self = self else { return }
+                defer { self.settled() }
+                guard let t = t, self.click.fire(at: CACurrentMediaTime() + 0.01) == ObjectIdentifier(t.shot) else { return }
                 self.copy(t, .click)
             }
         }
@@ -162,11 +184,20 @@ final class CardsOverview: NSObject, NSWindowDelegate {
 
     fileprivate func menu(for t: OverviewTile) -> NSMenu {
         click.cancel()
+        defer { settled() }
         select(tiles.firstIndex { $0 === t })
         return hanging.cardMenu(t.shot) { [weak self, weak t] what in if let t = t { self?.copy(t, what) } }
     }
 
-    fileprivate func dragStarted() { click.cancel() }
+    fileprivate func dragStarted() {
+        click.cancel()
+        dragging = true
+    }
+
+    fileprivate func dragEnded() {
+        dragging = false
+        settled()
+    }
 
     private func key(_ e: NSEvent) -> Bool {
         let cols = CardsOverview.columns
@@ -177,10 +208,10 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         case 124: select(cur.map { $0 + 1 } ?? 0)              // →
         case 126: select((cur ?? 0) - cols)                    // ↑
         case 125: select(cur.map { $0 + cols } ?? 0)           // ↓
-        case 36, 76:                                           // ↩, enter
-            if let i = cur { copy(tiles[i], .click) }
+        case 36, 76:                                           // ↩, enter: copied, and the keyboard back (⌘V)
+            if let i = cur { copyAndClose(tiles[i]) }
         case 8 where cmd:                                      // ⌘C
-            if let i = cur { copy(tiles[i], .click) }
+            if let i = cur { copyAndClose(tiles[i]) }
         case 51, 117:                                          // ⌫, ⌦: Undo in the island
             if let i = cur { snapper.delete(tiles[i].shot) }
         case 53: hide()                                        // Esc
@@ -190,21 +221,36 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Tests: the tiles in order, and acting on tile N as a click / double-click / ⌫ would.
+    /// ↩ / ⌘C: copied — and the overview closes, handing the keyboard back to the app the user was in, so the next ⌘V
+    /// pastes the card there.
+    private func copyAndClose(_ t: OverviewTile) {
+        guard HangingCards.copyShot(t.shot, .click) else { return }
+        emit(["event": "card_copied", "n": t.shot.n, "what": HangingCards.Copy.click.rawValue, "from": "overview", "ok": true])
+        hide()
+    }
+
+    /// Tests: the tiles in order, and acting on tile N as a click / double-click / ⌫ would; `key K` = that key with the
+    /// keyboard on the overview.
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         let tile = { (i: Int) -> OverviewTile? in a.count > i ? Int(a[i]).flatMap { n in self.tiles.first { $0.shot.n == n } } : nil }
         switch a.first ?? "" {
-        case "open": show()
+        case "open": show(keyboard: a.count > 1 && a[1] == "keyboard")
         case "close": hide()
         case "click": if let t = tile(1) { clicked(t, count: 1) }
         case "double": if let t = tile(1) { clicked(t, count: 1); clicked(t, count: 2) }
         case "delete": if let t = tile(1) { snapper.delete(t.shot) }
         case "menu": if let t = tile(1) { emit(["event": "overview_menu", "items": menu(for: t).items.filter { !$0.isSeparatorItem }.map(\.title)]) }
+        case "key":
+            let codes = ["left": 123, "right": 124, "down": 125, "return": 36, "delete": 51, "esc": 53]
+            if a.count > 1, let code = codes[a[1]],
+               let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: window?.windowNumber ?? 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+                                        isARepeat: false, keyCode: UInt16(code)) { _ = key(e) }
         default: break
         }
         emit(["event": "cards_overview", "open": isOpen, "order": tiles.map(\.shot.n), "selected": selected ?? -1,
-              "title": window?.title ?? ""])
+              "title": window?.title ?? "", "key": hasKeyboard])
     }
 }
 
@@ -360,6 +406,8 @@ final class OverviewTile: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt p: NSPoint, operation: NSDragOperation) {
         let drag = cardDrag
         cardDrag = nil
+        let overview = self.overview
+        defer { overview?.dragEnded() }        // (the grid follows the cards again once this tile is done with)
         let filed = island.dragEnded(at: p)
         emit(["event": "overview_drag_end", "n": shot.n, "operation": Int(operation.rawValue), "filed": filed])
         guard !filed, !OverviewTile.ourWindow(at: p) else { return }
