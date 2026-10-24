@@ -119,7 +119,7 @@
 "dictation.history.reason.empty" = "润色没有返回内容，已按原话输入";
 "dictation.history.reason.error" = "润色出错，已按原话输入";
 
-/* Custom words, recognition model */
+/* Words, recognition model */
 "dictation.toast.learned" = "记住了 %@";
 "dictation.toast.undo" = "撤销";
 "dictation.vocab.section" = "词库";
@@ -262,10 +262,9 @@
 "dictation.lab.fell_back" = "退回原文：%@";
 "dictation.lab.guard.passed" = "通过";
 "dictation.lab.piece.whole" = "整段";
-"dictation.lab.piece.vocab" = "套用自定义词后：%@";
 "dictation.lab.piece.committed" = "润色：%@";
 "dictation.lab.piece.ms" = "识别 %ld · 润色 %ld 毫秒";
-"dictation.lab.detail.terms" = "自定义词";
+"dictation.lab.detail.terms" = "用到的词";
 "dictation.lab.detail.guard" = "检查";
 "dictation.lab.detail.repaired" = "补回的内容";
 "dictation.lab.detail.fit" = "光标处衔接";
@@ -307,7 +306,7 @@
 "dictation.lab.rating.none" = "不评";
 "dictation.lab.rating.good" = "好";
 "dictation.lab.rating.bad" = "差";
-"dictation.lab.learned" = "从你的修正里学到的自定义词";
+"dictation.lab.learned" = "从你的修正里学到的词";
 "dictation.lab.learn.undo" = "撤销";
 "dictation.lab.learn.undone" = "已撤销。";
 "dictation.lab.compare" = "对比";
@@ -317,7 +316,7 @@
 "dictation.lab.compare.current" = "当前设置";
 "dictation.lab.compare.polish_with" = "用 %@ 润色";
 "dictation.lab.compare.polish_off" = "不润色";
-"dictation.lab.compare.vocab_off" = "不用自定义词";
+"dictation.lab.compare.vocab_off" = "不用词库";
 "dictation.lab.compare.context_off" = "不看上下文";
 "dictation.lab.compare.whole" = "整段一次识别";
 "dictation.lab.save" = "存为用例";

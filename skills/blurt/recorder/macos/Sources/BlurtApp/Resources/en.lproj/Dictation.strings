@@ -119,7 +119,7 @@
 "dictation.history.reason.empty" = "Polish returned nothing — typed as spoken";
 "dictation.history.reason.error" = "Polish failed — typed as spoken";
 
-/* Custom words, recognition model */
+/* Words, recognition model */
 "dictation.toast.learned" = "Learned “%@”";
 "dictation.toast.undo" = "Undo";
 "dictation.vocab.section" = "Words";
@@ -262,10 +262,9 @@
 "dictation.lab.fell_back" = "Fell back: %@";
 "dictation.lab.guard.passed" = "Passed";
 "dictation.lab.piece.whole" = "whole take";
-"dictation.lab.piece.vocab" = "after custom words: %@";
 "dictation.lab.piece.committed" = "polished: %@";
 "dictation.lab.piece.ms" = "ASR %ld · polish %ld ms";
-"dictation.lab.detail.terms" = "Custom words";
+"dictation.lab.detail.terms" = "Words used";
 "dictation.lab.detail.guard" = "Guard";
 "dictation.lab.detail.repaired" = "Put back";
 "dictation.lab.detail.fit" = "Fit at the cursor";
@@ -307,7 +306,7 @@
 "dictation.lab.rating.none" = "Not rated";
 "dictation.lab.rating.good" = "Good";
 "dictation.lab.rating.bad" = "Bad";
-"dictation.lab.learned" = "Custom words learned from your correction";
+"dictation.lab.learned" = "Words learned from your correction";
 "dictation.lab.learn.undo" = "Undo";
 "dictation.lab.learn.undone" = "Learning undone.";
 "dictation.lab.compare" = "Compare";
@@ -317,7 +316,7 @@
 "dictation.lab.compare.current" = "Current settings";
 "dictation.lab.compare.polish_with" = "Polish with %@";
 "dictation.lab.compare.polish_off" = "Polish off";
-"dictation.lab.compare.vocab_off" = "No custom words";
+"dictation.lab.compare.vocab_off" = "Without Words";
 "dictation.lab.compare.context_off" = "No context";
 "dictation.lab.compare.whole" = "Whole take at once";
 "dictation.lab.save" = "Save as Case";

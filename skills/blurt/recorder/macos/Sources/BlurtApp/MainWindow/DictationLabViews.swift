@@ -492,9 +492,6 @@ struct LabWorkbench: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(p["asr_text"] as? String ?? "").font(.system(size: 12)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
-                        if let raw = p["raw"] as? String, raw != p["asr_text"] as? String, !raw.isEmpty {
-                            Text(T("dictation.lab.piece.vocab", raw)).font(.system(size: 11)).foregroundStyle(.secondary)
-                        }
                         if let out = p["text"] as? String, !out.isEmpty, out != p["raw"] as? String {
                             Text(T("dictation.lab.piece.committed", out)).font(.system(size: 11)).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

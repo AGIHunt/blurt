@@ -365,14 +365,29 @@ private let offeredLanguages = ["en", "zh", "yue", "ja", "ko", "es", "fr", "de",
 struct SpeechPane: View {
     /// Settings → Dictation's "Change…" / "Download…" (and tests): scroll to a section ("dictation").
     static let scrollRequest = Notification.Name("BlurtSpeechPaneScroll")
+    /// The section to scroll to, kept until the pane has scrolled there: a pane that isn't on screen yet picks it up
+    /// when it appears, one already showing gets `scrollRequest`.
+    @MainActor static var pendingScroll: String?
     @ObservedObject var m = SpeechModel.shared
     @State var confirmRemove: ASRModel?
 
     /// Settings → Speech scrolled to dictation's models.
     @MainActor static func showDictationModels() {
+        pendingScroll = "dictation"
         AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            NotificationCenter.default.post(name: SpeechPane.scrollRequest, object: "dictation")
+        NotificationCenter.default.post(name: SpeechPane.scrollRequest, object: nil)
+    }
+
+    /// Scrolls to the pending section. A pane that has just appeared lays its Form out over a few passes (and the
+    /// models load into it), so the scroll is repeated until that settles; a repeat where it already is moves nothing.
+    @MainActor private func scrollToPending(_ proxy: ScrollViewProxy) {
+        guard let id = SpeechPane.pendingScroll else { return }
+        for (i, delay) in [0, 0.15, 0.4, 0.8].enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard SpeechPane.pendingScroll == id else { return }
+                proxy.scrollTo(id, anchor: .top)
+                if i == 3 { SpeechPane.pendingScroll = nil }
+            }
         }
     }
 
@@ -386,9 +401,8 @@ struct SpeechPane: View {
             cloudSection
             advancedSection
         }
-        .onReceive(NotificationCenter.default.publisher(for: SpeechPane.scrollRequest)) { n in
-            if let id = n.object as? String { withAnimation { proxy.scrollTo(id, anchor: .top) } }
-        }
+        .onAppear { scrollToPending(proxy) }
+        .onReceive(NotificationCenter.default.publisher(for: SpeechPane.scrollRequest)) { _ in scrollToPending(proxy) }
         }
         .task { await m.load() }
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
