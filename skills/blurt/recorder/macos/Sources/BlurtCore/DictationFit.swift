@@ -109,10 +109,11 @@ public enum DictationFit {
     /// Where the dictation continues after the words that repeat the end of `before` (nil: no such overlap).
     static func headOverlap(_ t: String, before: String) -> String.Index? {
         let tu = DictationStitch.units(t)
-        let bu = DictationStitch.units(String(before.suffix(200)))
+        let bs = String(before.suffix(200))      // the units' ranges index into this string, not into `before`
+        let bu = DictationStitch.units(bs)
         guard !tu.isEmpty, !bu.isEmpty else { return nil }
         // only directly at the end of the text before: no sentence end between its last unit and the cursor
-        if let last = bu.last, before.suffix(200)[last.range.upperBound...].contains(where: { terminators.contains($0) }) { return nil }
+        if let last = bu.last, bs[last.range.upperBound...].contains(where: { terminators.contains($0) }) { return nil }
         for k in stride(from: min(12, tu.count - 1, bu.count), through: 1, by: -1) {
             guard Array(bu.suffix(k).map(\.value)) == Array(tu.prefix(k).map(\.value)), enough(Array(tu.prefix(k))) else { continue }
             return tu[k - 1].range.upperBound

@@ -97,4 +97,13 @@ final class DictationFitTests: XCTestCase {
         XCTAssertEqual(fit("API 的 timeout 改成三十秒。", "把这个 API 的", ""), " timeout 改成三十秒。")
         XCTAssertEqual(F.fit("API 的 timeout 改成三十秒。", before: "把这个 API 的", after: "").changes, ["head", "space"])
     }
+
+    /// Regression: a long field (more than 200 characters before the cursor, CJK and emoji) crashed the fit.
+    func testLongTextBeforeDoesNotCrash() {
+        let before = String(repeating: "这是一段很长的文字，包含 emoji 😀 和 English words. ", count: 20) + "我知道你就是"
+        let r = DictationFit.fit("就是从老家回来的。", before: before, after: "的。")
+        XCTAssertEqual(r.text, "从老家回来")
+        _ = DictationFit.fit("hello world", before: String(repeating: "长", count: 500), after: String(repeating: "后", count: 500))
+        _ = DictationFit.fit("😀😀", before: String(repeating: "😀", count: 300), after: "")
+    }
 }
