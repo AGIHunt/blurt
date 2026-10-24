@@ -4,8 +4,13 @@
 //  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
 //    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
 //    to talk. Esc cancels. With Fn and Accessibility, the tap is an active filter that keeps the Fn press from macOS.
-//    A double tap presses Return (record.dictation.double_tap_send, on): idle, it cancels the dictation its first tap
-//    started and sends; right after a dictation stopped, Return goes in once the paste has landed.
+//    A double tap presses Return (record.dictation.double_tap_send, on; the window is macOS's double-click interval,
+//    0.3–0.5 s): idle, it cancels the dictation its first tap started and sends; right after a dictation stopped
+//    (a tap, or letting go of push-to-talk and then a double tap), Return goes in once the paste has landed. While a
+//    take is still being transcribed, polished or pasted the trigger is told (`trigger.busy`): a press starts nothing
+//    and never cancels that take; two taps then still queue Return after the paste. A slightly slow double tap (the
+//    stop tap within 0.8 s of the start, nothing heard) sends instead of saying "nothing heard". A start the app
+//    refuses (a recording has the mic, the mic failed) resets the trigger but keeps the tap, so a second one sends.
 //  • the key needs Accessibility (the Fn filter, or the monitor) or Input Monitoring (the listen-only tap). Until it
 //    is heard (BlurtCore's DictationAccess decides): the menu-bar menu's top row says "Turn On Dictation…", the
 //    island reminds about once a day (launch, the voice-note key, Settings), and both start the permission guide
@@ -49,6 +54,7 @@ final class Dictation {
             // the words shown while talking go a moment after the text is in (or at once when nothing was kept)
             if phase == .idle, oldValue != .idle { LiveTranscript.shared.end(session: liveSession, after: 0.6) }
             updateShiftFilter()
+            updateTriggerBusy()
         }
     }
     private(set) var levels: [Float] = []
@@ -90,7 +96,13 @@ final class Dictation {
     /// a double tap came while the text was still on its way: Return once it has been pasted
     private var sendAfterPaste = false
     /// the paste is under way (⌘V posted, the clipboard not back yet)
-    private var inserting = false
+    private var inserting = false { didSet { updateTriggerBusy() } }
+
+    /// The trigger knows when the last take is still on its way (transcribing, polishing, pasting): a press then
+    /// starts nothing, and a tap can't cancel that take.
+    private func updateTriggerBusy() {
+        trigger.busy = phase == .transcribing || phase == .polishing || inserting
+    }
 
     // the style of this take (DictationStyles.swift; docs/design/dictation-styles.md)
     /// the router's decision so far: the app's style at the key-down, then ⇧ / the island / Fn+⇧
@@ -143,6 +155,8 @@ final class Dictation {
     static var learnOn: Bool { settings["learn"] as? Bool ?? true }
     /// a double tap of the key presses Return ("send"; after a dictation, once it is pasted)
     static var doubleTapSend: Bool { settings["double_tap_send"] as? Bool ?? true }
+    /// log every event the trigger gets (`dictation_keytrace`; debugging a real keyboard)
+    static var keyTrace: Bool { settings["key_trace"] as? Bool ?? false }
     /// per-category / per-app styles (unset = light everywhere, with the category's variant)
     static var styleConfig: DictationStyleConfig { DictationStyleConfig(json: settings["styles"] as? [String: Any]) }
     static func setStyleConfig(_ c: DictationStyleConfig) { set("styles", c.json) }
@@ -214,6 +228,7 @@ final class Dictation {
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
         trigger.doubleTap = Dictation.doubleTapSend
+        trigger.doubleTapWindow = DictationTrigger.window(doubleClickInterval: NSEvent.doubleClickInterval)
         keys.watchedKeyCodes = trigger.key.keyCodes
         keys.wantsFilter = Dictation.enabled && trigger.key == .fn && Dictation.fnCapture
         if Dictation.enabled {
@@ -227,7 +242,7 @@ final class Dictation {
         lastAccess = access
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
               "key": trigger.key.rawValue, "filter": keys.filtering,
-              "mode": trigger.mode.rawValue, "double_tap": trigger.doubleTap, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
+              "mode": trigger.mode.rawValue, "double_tap": trigger.doubleTap, "double_tap_window": trigger.doubleTapWindow, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
               "test_mode": DictationInsert.testMode])
     }
 
@@ -400,7 +415,9 @@ final class Dictation {
             return
         }
         let wasIsland: Bool = { if case .islandClick = e { return true }; return false }()
-        for out in trigger.handle(e) {
+        let outs = trigger.handle(e)
+        if Dictation.keyTrace { trace(e, outs) }
+        for out in outs {
             switch out {
             case .arm: arm()
             case .start: start()
@@ -415,6 +432,28 @@ final class Dictation {
         if precaptured, phase == .idle, !trigger.armedDown { dropPrecapture() }
         updateShiftFilter()
         scheduleHoldTick()
+    }
+
+    private var lastTraced: Double?
+    /// record.dictation.key_trace (off; a debugging switch): each event the trigger got, as the keyboard sent it, and
+    /// what it said — to check a real double tap on the user's own keyboard. Only the dictation key's own changes carry
+    /// their flags; any other key is "key" (no key code: this is not a key log).
+    private func trace(_ e: DictationTrigger.Event, _ outs: [DictationTrigger.Output]) {
+        var o: [String: Any] = ["event": "dictation_keytrace", "out": outs.map { "\($0)" }, "busy": trigger.busy,
+                                "active": trigger.active, "phase": phase.rawValue]
+        let t: Double
+        switch e {
+        case let .flags(c, f, at):
+            t = at
+            if trigger.key.keyCodes.contains(c) { o["type"] = "dictation_key"; o["flags"] = String(f, radix: 16) } else { o["type"] = "modifier" }
+        case let .keyDown(c, at): t = at; o["type"] = c == DictationTrigger.escape ? "esc" : c == 179 ? "globe" : "key"
+        case let .mouseDown(at): t = at; o["type"] = "click"
+        case let .islandClick(at): t = at; o["type"] = "island"
+        case let .tick(at): t = at; o["type"] = "tick"
+        }
+        if let l = lastTraced { o["dt_ms"] = Int((t - l) * 1000) }
+        lastTraced = t
+        emit(o)
     }
 
     /// While a take listens (or its key is down), a lone ⇧ is the style toggle: the Fn filter keeps it from the app
@@ -536,7 +575,7 @@ final class Dictation {
         v.start { [weak self] ok in
             guard let self = self, self.voice === v, g == self.generation else { return }
             if !ok {
-                self.trigger.reset(active: false)
+                self.trigger.reset(active: false, keepTap: true)     // a second tap still sends: Return needs no mic
                 self.discard(quietly: true)
                 NoteVoice.toastUnavailable()
             }
@@ -590,9 +629,14 @@ final class Dictation {
     }
 
     private func start() {
-        guard phase == .idle else { return }
+        // the trigger never asks while a take is on its way (`busy`); should it, it must not think it is dictating
+        guard phase == .idle else {
+            trigger.reset(active: false, keepTap: true)
+            emit(["event": "dictation_start_refused", "phase": phase.rawValue])
+            return
+        }
         guard canListen(toast: true) else {
-            trigger.reset(active: false)
+            trigger.reset(active: false, keepTap: true)      // a second tap still sends: Return needs no mic
             dropPrecapture()
             return
         }
@@ -636,19 +680,32 @@ final class Dictation {
     }
 
     private func stop() {
-        guard phase == .listening else { return }
+        guard phase == .listening else {
+            trigger.reset(active: false, keepTap: true)     // in step with the app: nothing is listening
+            return
+        }
+        // a double tap a little too slow for the window: the first tap started, the second stopped within 0.8 s and
+        // nothing was said — the user meant Return, not "nothing heard" (timing only; no words are read)
+        if trigger.quickStop, !heardSpeech, Dictation.doubleTapSend {
+            emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "why": "near_miss_double_tap"])
+            discard(quietly: true)
+            pressReturn(after: "near_miss")
+            return
+        }
         finish(ended: false)
     }
 
+    /// Esc, a double tap's second tap, the menu: ends a take that is listening (nothing kept). A take that already
+    /// stopped is never thrown away by the key — it is on its way to the cursor (and a queued Return stays queued).
     func cancel() {
-        sendAfterPaste = false
         guard phase == .listening else {
-            if busy { generation += 1; phase = .idle }     // a cancel while working: drop the result
+            if busy { emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": true]) }
             dropPrecapture()
             return
         }
+        sendAfterPaste = false
         trigger.reset(active: false)
-        emit(["event": "dictation_cancel", "id": entryID])
+        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue])
         discard(quietly: true)
     }
 
@@ -716,7 +773,10 @@ final class Dictation {
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && Dictation.polishOn && polishModel != nil
         s.finish(keyUp: keyUp, structure: structure) { [weak self] r in
-            guard let self = self, gen == self.generation else { return }
+            guard let self = self, gen == self.generation else {
+                try? FileManager.default.removeItem(at: url)        // a result nobody takes: its audio goes too
+                return
+            }
             guard !r.empty else {
                 try? FileManager.default.removeItem(at: url)
                 if self.sendAfterPaste {         // nothing to send: Return would send something else

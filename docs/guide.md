@@ -196,7 +196,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   types, never what's already there, and where the field's text can't be read (WeChat) the words go in as said.
 - **Double-tap Fn to send.** Two quick taps press Return in the app in front. Right after you dictate, tap twice
   instead of once: the dictation stops, the text goes in, and then it is sent — the Return you'd press yourself in a
-  chat. (With push-to-talk: let go, then tap once quickly.) The island says "Sent ↩︎". It works with whichever key
+  chat. (With push-to-talk: let go, then double-tap.) Taps while the text is still on its way never lose it: a double
+  tap then sends once it is in. The island says "Sent". It works with whichever key
   you set, never types into Blurt itself or a password field, and can be turned off in *Settings → Dictation*
   (*Double-tap Fn to send (Return)*).
 - *Settings → Dictation* (or the setup assistant) switches the key to **right Option** or **either Option key** (left
@@ -427,7 +428,7 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 
 - **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方（每次停顿后更新一两行）；那是原始转写，真正输入的是润色后的文字。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
-- **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后马上再按一下。）岛上会显示「已发送 ↩︎」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
+- **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。岛上会显示「已发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。「设置 → 听写」也会显示这项系统设置现在是什么；不是「不执行任何操作」时，点**去设置…**会打开键盘设置，并提示你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。

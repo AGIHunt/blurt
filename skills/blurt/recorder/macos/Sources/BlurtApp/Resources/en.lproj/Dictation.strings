@@ -191,7 +191,7 @@
 "dictation.settings.fn_clash" = "%@ is running and also uses Fn: both will react. Quit it, or give one of them another key.";
 
 /* double tap = Return */
-"dictation.toast.sent" = "Sent ↩︎";
+"dictation.toast.sent" = "Sent";
 "dictation.settings.double_tap" = "Double-tap %@ to send (Return)";
 "dictation.settings.double_tap.detail" = "Two quick taps press Return in the app in front. Right after you dictate, the text goes in first and is then sent — like pressing Return yourself in a chat.";
 

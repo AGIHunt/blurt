@@ -76,26 +76,50 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   the app.
 - **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「双击 Fn
   发送（回车）」 / "Double-tap Fn to send (Return)", named after whichever key is set. In chat apps the user presses
-  Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within 300 ms
-  (`doubleTapWindow`) of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
+  Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within
+  `doubleTapWindow` of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
+  The window is macOS's own double-click interval (`NSEvent.doubleClickInterval`, System Settings → Accessibility →
+  Pointer Control) clamped to 0.3–0.5 s — 0.5 s by default. It was a fixed 300 ms, and a Fn tap with the little
+  finger is slower than a mouse click: the audit's real "double taps" were 320 ms apart and missed.
   The first tap is never delayed: it does what it always did, at once, and the second one decides:
   - **idle** (auto / tap mode): the first tap started a dictation; the second cancels it (`.cancel`: audio dropped,
     nothing pasted, no history entry) and Return goes to the app in front now;
-  - **dictating** ("dictate, then send", the useful case): the first tap stopped it and the paste starts as usual; the
-    second one (no mic opened for it) queues Return, posted once `DictationInsert` reports the paste done — after the
-    clipboard comes back (0.6 s), so the ⌘V has landed. Not when the text was only copied (secure input, Blurt in
-    front …) or nothing was heard: Return would then send something else;
-  - **push-to-talk** (hold mode, or auto held): letting go stops it; a tap within 300 ms of the release sends it the
-    same way. In hold mode two quick taps (which start nothing there) press Return;
+  - **dictating, hands-free** ("dictate, then send", the useful case): the first tap stopped it and the paste starts
+    as usual; the second one (no mic opened for it) queues Return, posted once `DictationInsert` reports the paste
+    done — after the clipboard comes back (0.6 s), so the ⌘V has landed. Not when the text was only copied (secure
+    input, Blurt in front …) or nothing was heard: Return would then send something else;
+  - **push-to-talk** (hold mode, or auto held): letting go stops it; a **double tap** right after sends it the same
+    way — release, tap, tap, as the help text says (「刚说完时连按两下」 / "right after you dictate"). A tap within the
+    window of the release does nothing by itself (it is the double tap's first tap); before, that single tap already
+    sent, so the user's second tap started an unwanted dictation. In hold mode two quick taps (which start nothing
+    there) press Return;
+  - **while the last take is still on its way** (transcribing, polishing or pasting — the app sets
+    `DictationTrigger.busy`): a press starts nothing — no mic, no start, no push-to-talk — and can't cancel that take.
+    A tap then is a double tap's first tap: two taps queue Return after the paste. Before, a tap there started a
+    dictation the app refused without telling the trigger, which then took the next tap for a stop (Fn "did
+    nothing") or, as the second of a double tap, cancelled the take being transcribed — the words were lost and
+    Return still went out (audit dict019 / dict020, their key sequences are unit tests now);
+  - **a near miss** (`nearMissWindow`, 0.8 s): the first tap started a hands-free take and the second, a little outside
+    the window, stopped it; when nothing was heard the app presses Return instead of saying "nothing heard"
+    (`quickStop`; only timing and the voice detector decide, no words);
   - a second press held past the hold threshold is push-to-talk as usual; one joined by another key or a click
-    (Fn-←, ⌘), or any key / click between the taps, is never a double tap; a third tap starts afresh.
+    (Fn-←, ⌘), or any key / click between the taps, is never a double tap; a third tap starts afresh;
+  - a start the app refuses (a screen recording has the mic, the mic failed) resets the trigger but keeps the tap
+    (`reset(active:keepTap:)`), so the second tap still sends — Return needs no mic.
+  - The events' own timestamps count (`DictationTrigger.eventTime`: CGEventTimestamp, which is mach ticks on Apple
+    Silicon, or NSEvent.timestamp), not when the main thread handled them — opening the mic on the key-down can delay
+    the next event by more than the window. The same key reported down twice is one press; a Globe-key keyDown (179)
+    with the Fn change is part of the press, not "another key". `record.dictation.key_trace` (off) logs each event
+    the trigger got (`dictation_keytrace`: dictation key or not, Δt, what it said; no key codes) to check a real
+    keyboard.
   - Return is a `CGEvent` (`kVK_Return`, no modifiers, HID level) posted only when `DictationSendPolicy` allows it:
     another app in front (never Blurt), secure input off, Accessibility granted (the Fn filter already needs it).
-    The island says 「已发送 ↩︎」 / "Sent ↩︎" for a moment. Test builds never post it: `dictation_test_send` logs
+    The island says 「已发送」 / "Sent" for a moment. Test builds never post it: `dictation_test_send` logs
     "would press Return" (with the hooks' simulated Accessibility), and `dictation send-policy front=… secure=… ax=…`
     reports the policy.
   - Price: two quick taps no longer mean "start, then stop at once" (that dictated nothing anyway); someone used to
-    macOS's "Press 🌐 twice" for system dictation now sends Return instead.
+    macOS's "Press 🌐 twice" for system dictation now sends Return instead. A single tap right after letting go of
+    push-to-talk no longer sends (two do), and a tap while a take is still being typed doesn't start the next one.
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
 - Permissions: Accessibility for the paste, the context and the Fn filter; Input Monitoring for the listen-only tap.
 - **The Fn filter.** macOS uses Fn itself (System Settings → Keyboard → "Press 🌐 key to", `com.apple.HIToolbox

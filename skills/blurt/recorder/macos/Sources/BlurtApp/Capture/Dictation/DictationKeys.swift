@@ -13,13 +13,20 @@
 //   • NSEvent global + local monitors when Input Monitoring is missing but Accessibility is granted (AppKit delivers
 //     key events, flagsChanged included, to a global monitor of an Accessibility-trusted app);
 //   • a tap the system disabled (tapDisabledByTimeout / ByUserInput) is enabled again, and made again if that fails.
-// flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events. The key heard while another app
-// is in front is remembered (`lastOtherApp`): Settings shows it, and only the user can make it happen.
+// flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events, each with the time it happened
+// (the event's own timestamp, DictationTrigger.eventTime — not when the main thread got to it: the double-tap window
+// is a few hundred ms and the main thread can be late). The key heard while another app is in front is remembered
+// (`lastOtherApp`): Settings shows it, and only the user can make it happen. What the filter's thread reads (drop Fn,
+// keep a lone ⇧) is behind a lock (`filterState`); the main thread sets it.
+// The filter keeps keyDown and mouse-down in its mask on purpose: they must reach the trigger in the order they
+// happened relative to the Fn change (Fn-← is a shortcut, not a tap), which a second listener can't promise. The
+// callback only reads the key code and flags and lets them through at once.
 // Test builds never install a tap or a monitor: BLURT_TEST_DICTATION_TAP (ok | failed: what tapCreate answers),
 // BLURT_TEST_FILTER_TAP (ok | failed, default: the same), BLURT_TEST_INPUT_MONITORING / BLURT_TEST_ACCESSIBILITY
 // (1 | 0) and the `dictation tap|filter|im|ax …` hooks simulate macOS.
 import AppKit
 import BlurtCore
+import os
 
 final class DictationKeys {
     var onEvent: ((DictationTrigger.Event) -> Void)?
@@ -52,14 +59,26 @@ final class DictationKeys {
     /// macOS refused the filter tap: not asked again until Accessibility or the key changes.
     private var filterRefused = false
     private var filterRefusedWithAX = false
+    /// What the filter's thread decides by, set from the main thread: behind one lock.
+    struct FilterState {
+        var swallowFn = false
+        var swallowShift = false
+        var shiftKept = false
+    }
+    fileprivate let filterState = OSAllocatedUnfairLock(initialState: FilterState())
     /// Read on the filter's thread: drop Fn presses (true while the filter runs for dictation).
-    fileprivate var swallowFn = false
+    fileprivate var swallowFn: Bool {
+        get { filterState.withLock { $0.swallowFn } }
+        set { filterState.withLock { $0.swallowFn = newValue } }
+    }
     /// Read on the filter's thread: while a dictation listens (or its key is down), a lone ⇧ is Blurt's style toggle
     /// (docs/design/dictation-styles.md §3.2) and is kept from the app in front too — an input method would otherwise
     /// switch between Chinese and English on it. Only ⇧ changes with no other modifier held, and a release only when
     /// its press was kept (the app never sees half of a ⇧).
-    var swallowShift = false
-    fileprivate var shiftKept = false
+    var swallowShift: Bool {
+        get { filterState.withLock { $0.swallowShift } }
+        set { filterState.withLock { $0.swallowShift = newValue } }
+    }
     /// How many Fn presses / releases the filter kept from macOS (tests and Settings).
     fileprivate(set) var swallowed = 0
 
@@ -272,13 +291,26 @@ final class DictationKeys {
     }
 
     private func received(_ e: NSEvent, otherApp: Bool) {
+        // when it happened (monitors deliver asynchronously, on the main thread)
+        let at = DictationTrigger.eventTime(seconds: e.timestamp, now: CACurrentMediaTime())
         switch e.type {
         // the CGEvent's flags keep the device bits (left / right ⌥) the trigger needs
-        case .flagsChanged: flags(Int(e.keyCode), e.cgEvent?.flags.rawValue ?? UInt64(e.modifierFlags.rawValue), otherApp: otherApp)
-        case .keyDown: onEvent?(.keyDown(keyCode: Int(e.keyCode), time: CACurrentMediaTime()))
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown: onEvent?(.mouseDown(time: CACurrentMediaTime()))
+        case .flagsChanged: flags(Int(e.keyCode), e.cgEvent?.flags.rawValue ?? UInt64(e.modifierFlags.rawValue), otherApp: otherApp, at: at)
+        case .keyDown: onEvent?(.keyDown(keyCode: Int(e.keyCode), time: at))
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown: onEvent?(.mouseDown(time: at))
         default: break
         }
+    }
+
+    /// mach_absolute_time ticks → ns (CGEventTimestamp is in ticks on Apple Silicon)
+    static let ticksToNs: Double = {
+        var tb = mach_timebase_info_data_t()
+        mach_timebase_info(&tb)
+        return tb.denom == 0 ? 1 : Double(tb.numer) / Double(tb.denom)
+    }()
+    /// A CGEvent's own time on CACurrentMediaTime's clock.
+    static func time(_ event: CGEvent) -> CFTimeInterval {
+        DictationTrigger.eventTime(raw: event.timestamp, now: CACurrentMediaTime(), ticksToNs: ticksToNs)
     }
 
     // MARK: events
@@ -317,7 +349,8 @@ final class DictationKeys {
 private func dictationTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     if let r = refcon {
         Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
-            .received(type, code: Int(event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags.rawValue, at: CACurrentMediaTime())
+            .received(type, code: Int(event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags.rawValue,
+                      at: DictationKeys.time(event))
     }
     return Unmanaged.passUnretained(event)
 }
@@ -326,15 +359,19 @@ private func dictationTapCallback(proxy: CGEventTapProxy, type: CGEventType, eve
 private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     guard let r = refcon else { return Unmanaged.passUnretained(event) }
     let keys = Unmanaged<DictationKeys>.fromOpaque(r).takeUnretainedValue()
-    let now = CACurrentMediaTime()
+    let now = DictationKeys.time(event)
     let code = type == .flagsChanged || type == .keyDown ? Int(event.getIntegerValueField(.keyboardEventKeycode)) : 0
     let raw = event.flags.rawValue
-    var drop = type == .flagsChanged && code == 63 && keys.swallowFn
-    if type == .flagsChanged, code == 56 || code == 60, keys.swallowFn {
-        let down = raw & 0x2_0000 != 0
-        let others: UInt64 = 0x10_0000 | 0x4_0000 | 0x8_0000       // ⌘ ⌃ ⌥ (Fn is the dictation key itself)
-        if down, !keys.shiftKept, keys.swallowShift, raw & others == 0 { keys.shiftKept = true; drop = true }
-        else if !down, keys.shiftKept { keys.shiftKept = false; drop = true }
+    // one short critical section: the main thread only ever sets these flags
+    let drop = keys.filterState.withLock { s -> Bool in
+        var drop = type == .flagsChanged && code == 63 && s.swallowFn
+        if type == .flagsChanged, code == 56 || code == 60, s.swallowFn {
+            let down = raw & 0x2_0000 != 0
+            let others: UInt64 = 0x10_0000 | 0x4_0000 | 0x8_0000       // ⌘ ⌃ ⌥ (Fn is the dictation key itself)
+            if down, !s.shiftKept, s.swallowShift, raw & others == 0 { s.shiftKept = true; drop = true }
+            else if !down, s.shiftKept { s.shiftKept = false; drop = true }
+        }
+        return drop
     }
     DispatchQueue.main.async {
         if drop { keys.swallowed += 1 }
