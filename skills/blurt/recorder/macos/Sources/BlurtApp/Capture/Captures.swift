@@ -131,7 +131,12 @@ final class Snapper {
         captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
             guard let self = self else { return }
             guard let img = img else {
-                AppEnvironment.island?.toast(Loc.t("capture.snap.no_permission", table: "Capture"), actionTitle: nil, action: nil)
+                // Screen Recording is asked here, not in the setup assistant: Allow… starts the permission guide
+                let ask = !SystemAccess.granted(.screen)
+                AppEnvironment.island?.toast(Loc.t("capture.snap.no_permission", table: "Capture"),
+                                             actionTitle: ask ? T("settings.kit.allow") : nil, action: ask ? {
+                    MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: .capture) }
+                } : nil)
                 self.restoreFocus()
                 return
             }

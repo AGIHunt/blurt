@@ -199,10 +199,11 @@ Granting a permission used to mean System Settings, "+", and hunting for the app
 Raycast or Loom do (`BlurtCore/PermissionFlow.swift` + `Onboarding/PermissionGuide.swift`, `HelperPanel.swift`,
 `SystemAccess.swift`):
 
-- **One walk, the missing ones in order.** `all` (the setup assistant, Settings → Privacy): Screen Recording,
-  Microphone, Accessibility, Input Monitoring, the 🌐 key. `dictation` (Settings → Dictation, the menu row, the
-  island's button, the Dictation page): Accessibility, Input Monitoring, Microphone, the 🌐 key. A row's *Allow…*
-  walks just that one. A step is skipped when satisfied: Input Monitoring once the key is heard by a tap (the Fn filter
+- **One walk, the missing ones in order.** `all` (Settings → Privacy): Microphone, Accessibility, Input Monitoring,
+  the 🌐 key, Screen Recording last (its restart shouldn't cut the walk short). `dictation` (the setup assistant,
+  Settings → Dictation, the menu row, the island's button, the Dictation page): Accessibility, Input Monitoring,
+  Microphone, the 🌐 key. A row's *Allow…* walks just that one. Screen Recording is never asked up front: the first
+  snap that fails without it shows *Allow…* on its toast, and the recording's alert starts the guide for it. A step is skipped when satisfied: Input Monitoring once the key is heard by a tap (the Fn filter
   needs only Accessibility); the 🌐 key once Fn isn't the key, dictation is off, or `AppleFnUsageType` is 0.
 - **Register first, on the user's click** (never at launch): `CGRequestScreenCaptureAccess()`,
   `AVCaptureDevice.requestAccess` (macOS's dialog; no pane), `AXIsProcessTrustedWithOptions(prompt: true)`,
