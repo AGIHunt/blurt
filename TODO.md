@@ -81,6 +81,13 @@
 - [x] **Pen** (macOS): hold ⌃ and drag to circle / underline; ink fades 3 s after the last stroke, is in the video and
       in events.jsonl (`frames.py marks`, `grab --crop/--box stroke`); ✎ on the bar / ⌥⇧D keeps it on
 - [ ] Pen on Windows (Tk overlay), click ripples, pen for the review page (draw on a frame to correct the agent)
+- [ ] Hanging cards on Windows / Linux (web/apps/overlays island.ts, crates/blurt-capture overlay.rs): bring over the
+      v0.9 Mac rules (BlurtCore CardRow.swift): newest first, at most 5 + a "+N" tile that opens an overview of every
+      card (no paging); a 180 ms dwell before they drop and 0.25 s to go up; Delete / Delete All with Undo instead of
+      none; "Sort with AI" on one card vs "Sort All with AI" in the island menu; the click's copy deferred past the
+      double-click interval; the hover note only when the card cuts its note short; keyboard + screen-reader access;
+      the first-card hint
+
 - [x] Documents from recordings (requirements / design doc with the marked frames): `reference/docs.md`
 - [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl
 - [ ] **Browser telemetry** (extension or injected script): console errors, failed network requests, URL changes,

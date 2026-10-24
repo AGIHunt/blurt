@@ -60,19 +60,25 @@ Items Blurt can't place go to **Unassigned**; move them later by dragging them o
 In Auto mode each snap or voice note hangs under the island on a thin thread, like a wind chime. They tuck away into
 the island when you're not looking (the number left of the notch counts them) and come back when you need them:
 
-- **Point at the island** (or open it): every card drops down with the island's details and moves with the island as
-  it opens. They stay while the pointer is on the island, on the cards or in the gap between them, and tuck away a
-  moment after it leaves all of that; come back while they're going up and they turn round.
+- **Rest the pointer on the island** for a moment (or open it): every card drops down with the island's details and
+  moves with the island as it opens. Just passing over the notch on the way to a menu drops nothing. They stay while
+  the pointer is on the island, on a card or on its thread, and tuck away a quarter of a second after it leaves; come
+  back while they're going up and they turn round.
 - **Click the count** left of the notch, press **`⌥⇧H`** (*Show hanging cards*), or use the menu's *Show N Hanging
-  Cards*: the cards come down and stay until you've pointed at them and moved away, or press `Esc`.
-- In the main window, the Inbox shows **Unfiled captures: N** at the top while cards are waiting; click it to bring them
-  all down under the island.
+  Cards*: the cards come down and stay until you've pointed at them and moved away, or press `Esc` while the pointer is
+  on them (an `Esc` meant for another app stays with that app).
+- **With the keyboard**: after `⌥⇧H` the keyboard is on the newest card. `←` `→` (or `Tab`) move between the cards and
+  the **+N** tile, `↩` or `⌘C` copies, `⌫` deletes, `Esc` sends them up. Typing anything else hands the keyboard back.
+  VoiceOver reads each card as a button.
+- In the main window, the Inbox shows **Cards waiting at the top: N** while cards are waiting; click it to bring them
+  all down.
 
 What you can do with a card:
 
 - **Drag a card onto a project** in the island's list to file it there and start processing.
-- Drag it onto **Unassigned** to process it without a project, or choose **Auto-sort** to process all the cards
-  and file each item into the project it is about.
+- Drag it onto **Unassigned** to process it without a project. *Sort with AI* in a card's right-click menu sends that
+  card to the AI, which files it into the project it is about; *Sort All with AI* in the island's right-click menu (or
+  **Auto-sort** in the island) does it for every card.
 - **Read it on the card**: a snap shows its note along the bottom of the picture — what you typed first, then what you
   said. The small mic mark means the words were spoken. While your words are still being written down the card says
   *Transcribing…*; if that fails it says *Couldn't transcribe* and the right-click menu has *Retry Transcription*. If
@@ -85,11 +91,12 @@ What you can do with a card:
   cards: each picture, then its note), and the island says *Picture + text pasted*. This works for 2 minutes after
   you click, as long as you haven't copied something else; the card copy is back on the clipboard afterwards, so `⌘V`
   works again. Terminals and the Finder get a normal paste. A voice note copies its words. Right-click for *Copy
-  Image* or *Copy Text* on their own.
+  Image* or *Copy Text* on their own. (The copy waits for the double-click interval, so double-clicking to edit a
+  note never replaces your clipboard first.)
 - **Copy several at once**: `⌘`-click cards to pick them (a coloured ring shows which); each `⌘`-click copies all the
-  picked cards as one — pictures and notes in the order they hang, like `⌘A` `⌘C` over a run of messages. A plain
-  click, or the cards tucking away, ends the selection. *Copy All N Cards* in a card's right-click menu (or *Copy All N
-  Hanging Cards* in the island's) does it for every card.
+  picked cards as one — pictures and notes in the order they hang (newest first), like `⌘A` `⌘C` over a run of
+  messages. A plain click, or the cards tucking away, ends the selection. *Copy All N Cards* in a card's right-click
+  menu (or *Copy All N Hanging Cards* in the island's) does it for every card, newest first.
 - **Drag it out** into any app: a snap brings its picture (`Screenshot-153012.png`, with your ink if you drew on it)
   and its note — the picture first, then the text:
 
@@ -126,8 +133,15 @@ What you can do with a card:
 - Optional: *Settings → General → Add the note under the picture when dragging* drops a copy of the picture with the
   note in a strip under it, for apps that take one picture and nothing else. Off by default; the capture itself stays
   clean.
-- Hover to read the note, double-click to edit it, or click × to throw it away.
-- Up to seven cards hang side by side; older ones stack up as **+N**. Click the stack to bring them forward.
+- Hover a card whose note is cut short to read all of it (a spoken note also shows a play button there); double-click
+  to edit the note.
+- **Delete**: click ×, choose *Delete*, or press `⌫` with the keyboard on it. Nothing asks first: the island says
+  *Deleted · Undo* for 5 seconds, and *Undo* puts the card back where it was. *Delete All N Cards* (in the island's
+  right-click menu) works the same way, with one *Undo* for all of them.
+- The newest five cards hang side by side, newest on the left; the others wait behind a **+N** tile at the end of the
+  row. Click it to see every card at once, newest first: click to copy, double-click to edit, right-click for the
+  card's menu, drag one out into any app or onto a project in the island, `⌫` to delete.
+- Your very first card says what to do with it: click to copy, or drag it into any app.
 - While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.
 
 While Blurt processes captures you see a small egg on the island; when it hatches, the new items are in your inbox.
@@ -352,16 +366,17 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 
 自动模式下，每张截图、每段语音用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
 
-- **鼠标移到岛上**（或者打开岛）：所有卡片跟着岛的详情一起垂下来，岛展开时跟着岛一起往下走。鼠标在岛上、卡片上或两者之间时一直挂着，全部离开片刻后才收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
-- **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走，或者按 `Esc`。
-- 主窗口「待处理」的顶部会显示「**未归类的捕获 N 条**」，点一下就把它们全部放到岛下面。
+- **鼠标在岛上停一下**（或者打开岛）：所有卡片跟着岛的详情一起垂下来，岛展开时跟着岛一起往下走。只是路过刘海去点菜单，卡片不会掉下来。鼠标在岛上、卡片上或卡片的线上时一直挂着，离开后很快收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
+- **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走，或者鼠标在卡片上时按 `Esc`（给别的 App 的 `Esc` 不会被拦下）。
+- **用键盘**：按 `⌥⇧H` 后键盘就在最新的那张卡片上。`←` `→`（或 `Tab`）在卡片和「+N」之间移动，`↩` 或 `⌘C` 复制，`⌫` 删除，`Esc` 收起。打别的字就把键盘还给原来的 App。旁白（VoiceOver）会把每张卡片读成一个按钮。
+- 主窗口「待处理」的顶部会显示「**顶部还挂着 N 张卡片**」，点一下就把它们全部放下来。
 
 卡片能做的事：
 
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
-- 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
-- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的应用，直接一起贴进去，就像复制一条图文消息。聊天应用——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的应用——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），岛上显示「图 + 文已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。终端和访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「拷贝图片」或「拷贝文字」。
-- **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按挂着的顺序排，就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「拷贝全部 N 张卡片」（或者岛的右键菜单里「拷贝全部 N 张挂着的卡片」）一次复制所有卡片。
+- 拖到「**未归类**」：先整理，稍后再选项目。卡片右键菜单里的「交给 AI 归类」只把这一张交给 AI，按内容归到对应的项目；岛的右键菜单里的「全部交给 AI 归类」（或者岛上的「**自动归类**」）把所有卡片一起交给 AI。
+- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的应用，直接一起贴进去，就像复制一条图文消息。聊天应用——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的应用——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），岛上显示「图 + 文已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。终端和访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「复制图片」或「复制文字」。（单击后会等一个双击的间隔再复制，所以双击改备注不会先把你的剪贴板换掉。）
+- **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按挂着的顺序排（最新的在前），就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「复制全部 N 张卡片」（或者岛的右键菜单里「复制全部 N 张挂着的卡片」）一次复制所有卡片，最新的在前。
 - **拖到别的应用里**：截图拖出去是图片（`截图-153012.png`，画过就带笔迹）连同备注——先图片，后文字：
 
   | 拖到 | 得到 |
@@ -375,8 +390,10 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天应用：先放图片，再贴备注」、应用没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，拷贝到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天应用：先放图片，再贴备注」。
 - **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一张都可以再拷贝（图片和备注一起，或者单独一样）、把图片再拖出去，或者放回线上。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的应用用。默认关闭；原来的截图不变。
-- 悬停看备注，双击改备注，点 × 扔掉。
-- 最多并排挂 7 张，更早的叠成「+N」，点一下就换到前面来。
+- 卡片上备注显示不全时，悬停可以看全文（语音备注那里还有播放按钮）；双击改备注。
+- **删除**：点 ×、右键「删除」，或者键盘在卡片上时按 `⌫`。不会先问你：岛上显示「已删除 · 撤销」5 秒，点「撤销」卡片就回到原处。岛的右键菜单里的「删除全部 N 张卡片」也一样，一次「撤销」全部回来。
+- 最新的 5 张并排挂着，最新的在最左边；其余的在这一排末尾的「+N」后面等着。点「+N」可以一次看到所有卡片（最新的在前）：单击复制，双击改备注，右键是卡片的菜单，拖到任意 App 或岛上的项目，`⌫` 删除。
+- 第一次挂上卡片时，它会提示一句怎么用：点一下复制，或拖进任意 App。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。
 
 整理时岛上会出现一个小蛋；蛋破壳了，新条目就出现在「待处理」里。

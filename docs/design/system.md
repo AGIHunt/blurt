@@ -215,7 +215,10 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Hanging-card threads | — | neutral hairline with an opposite-tone halo |
 | Clasps | M | ringed in the card surface |
 | Picked card border | M | 2.5 pt flat (thin, so no gradient) |
-| Voice card mic mark, stack "play" tip | I on the card face / M | |
+| Voice card mic mark | I on the card face | |
+| Hover note's play button | M | flat mint circle, `brand.on` glyph (white on mint was 1.9 : 1). The note itself only shows what the card can't: the rest of a cut-off note, the play button |
+| "+N" tile (the cards that don't hang) | — | the card surface, the next card's picture at 35 %, one offset edge behind, the count in `ink` (no pill, no colour); opens the overview |
+| Keyboard focus on a card / the tile (⌥⇧H) | `brand.accent` (native) | 2.5 pt ring, 4 pt outside the card (`BrandColor.accent`) |
 | Project folder icons | project colour | `ProjectLook`, minus `.systemMint` / `.systemTeal` |
 
 ### 3.3 Main window (AppKit) and the Tauri app
@@ -343,6 +346,7 @@ Reduce Motion: the still frame must still say the state.
 | Paused | `attn` dashed | No motion: stillness is the signal. |
 | Snap | white shutter / M ring | 320 / 450 ms, once |
 | Card hung | M clasp | The card swings in on the spring; the clasp does not animate. |
+| Cards come down | — | Only after the pointer rests 180 ms on the island (a brush past the notch drops nothing); up again 0.25 s after it leaves the cards and their threads. Reduce Motion: 0.2 s fades. |
 | blurt working | I spinner arc, M dot | Quarter arc, 1.1 s per turn |
 | Done | `ok` + ✓ | The check draws once (200 ms); the chick hops. The colour never pulses. |
 | Needs you | `attn` | One pulse when it appears, then still. |
