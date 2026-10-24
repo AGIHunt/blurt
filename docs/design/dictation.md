@@ -37,6 +37,8 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `commitSplit`) (`DictationSegmenterTests`, `DictationStitchTests`) |
 | The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
 | Insertion, fitting at the cursor, Return for a double tap | `Capture/Dictation/DictationInsert.swift`; the rules: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicy`, `DictationSendPolicy`; `DictationPastePolicyTests`), `BlurtCore/DictationFit.swift` (`DictationFitTests`) |
+| Styles: the router, categories, variants, the list renderer, history records, reformat's rules, learning (pure, unit-tested) | `BlurtCore/DictationStyle.swift`, `DictationList.swift`, `DictationStyleRecord.swift`, `DictationStyleLearn.swift`; `DictationStyleTests`, `DictationStyleLearnTests`, `tests/fixtures/dictation_lists.jsonl` (shared with `scripts/dictation_styles.py`, `tests/test_dictation_styles.py`) |
+| Styles in the app: ⇧ / the island, after-stitch styling, reformat-last, suggestions | `Capture/Dictation/DictationStyles.swift`; the ear's chip in `Island/Island.swift` / `Ears.swift`; Settings → Dictation → Style |
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
 | Polish model + guard + repair + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
@@ -62,6 +64,16 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   joining in cancels.
 - `Esc` cancels. `arm` on a clean key-down warms the models and opens the mic while the user starts talking
   (§Start of speech).
+- **⇧ is the style toggle** (§Styles): ⇧ pressed and released alone (within 1 s) while dictating says `.style`, in
+  push-to-talk too — the one key that joins a held press without cancelling it (⇧ with another key still cancels, as
+  any shortcut does). A click on the island while listening (`.islandClick`: `Dictation.handle` turns a mouse-down over
+  the island's frame into it) is the same toggle and never cancels. **Fn+⇧** — ⇧ held when Fn goes down, or pressed
+  while it is down — is still a clean press and starts in Structured (`startShift`); Fn+⇧+a key is a shortcut as
+  before. Only with Fn: with an ⌥ key ⇧ stays a modifier, so ⌥⇧V and Blurt's other ⌥⇧ shortcuts never start
+  anything. While a take listens (or its key is down) the Fn filter also keeps a lone ⇧ from the app in front (an input
+  method would switch between Chinese and English on it): only a ⇧ press with no other modifier, and its release only
+  when its press was kept. The listen-only tap and the monitor can't do that, so with an ⌥ key the ⇧ still reaches
+  the app.
 - **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「双击 Fn
   发送（回车）」 / "Double-tap Fn to send (Return)", named after whichever key is set. In chat apps the user presses
   Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within 300 ms
@@ -519,6 +531,73 @@ the output left out:
 - More than 40 % of the content put back → `dropped` (the raw text). The history keeps the spans (`repaired`).
 - Calibration: no reference output of either eval set gets anything put back; every over-deleting output of the
   over-deletion set gets its phrases back (`tests/test_polish.py::Repair`).
+
+## Styles
+
+The plan and the research behind it: `dictation-styles.md` (§3, build steps 1–4 and 6; step 5, spoken triggers, was
+dropped: the user dictates instructions to AI agents, where 「帮我列个清单」 / "make a list" is content). Light — the
+polish above — stays the default everywhere and never restructures.
+
+| Style | What is typed | How |
+|---|---|---|
+| Verbatim | the transcript (custom words fixed), its punctuation | polish skipped for the whole take (decided at the key-down) |
+| Light (default) | polish's text | unchanged |
+| Structured | Light + the ordinal points the speaker numbered as `1. …` lines, the sentence before them as a heading line ending in 「：」/ ":" | `DictationList` after the stitch guard (deterministic) |
+| Auto lists | Light, and the list only with ≥ 3 ordered markers | the same, stricter |
+
+- **Router** (`DictationStyleRouter`, rules): explicit this take (⇧, the island, Fn+⇧) > the app's own style
+  (`styles.apps`) > its category's > `styles.default` > light. Categories (`DictationAppCategory`, exact bundle ids,
+  then whole parts of the id — never substrings, so 1Password isn't Word): chat (WeChat, QQ, Slack, Telegram, Messages,
+  Discord, Feishu / Lark, DingTalk, WhatsApp, Teams…), code (Terminal, iTerm2, Warp, Ghostty, VS Code, Cursor, Xcode,
+  JetBrains, Zed…), mail, notes (Notes, Obsidian, Notion, Bear, Pages, Word…), other.
+- **Variants of light** (`DictationStyleVariant`, after the list, before the fit): chat keeps sentence-final particles
+  (polish's request carries `variant: "chat"` and `polish.repair(keep_particles=True)` puts back a 吧 / 呢 / 啊 / 哈 /
+  嘛 / 呀 … that ended a clause in the transcript and was dropped; the prompt — and so its cached prefix — is the same for
+  every variant) and drops the closing 。 / . of a one-sentence message (not ？！, an ellipsis or a decimal), and blank
+  lines become single ones; code and terminals get one line (a multi-line paste collapses into "[Pasted N lines]" in
+  Claude Code), unless a list was asked for; mail and notes as light.
+- **The list renderer** (`DictationList`, ported to `scripts/dictation_styles.py`, the shared fixture
+  `tests/fixtures/dictation_lists.jsonl`): markers at a clause start, in sequence from 1 — 第一/第二(个/点/条/步/项/件)
+  (是), 一是/二是, 一来/二来, 其一/其二, 一、二、, 1. / 1、, 首先 … 其次 / 再次 … 最后, first(ly) … finally / lastly,
+  number one…, one, two, — 最后 / finally may close any run. Never on their own: 以及, 其他, 另外, 还有, 然后, 接着,
+  also, then; those count only between 首先 and 最后 (first … finally) with nothing numbered in between. Never
+  markers: 第一次 / 第一天 / 第一时间 / 第一眼…, "first time", "at first", "last week". Every item needs ≥ 2 units (so the
+  idiom 一是一，二是二 stays prose). A later marker may sit where a seam lost its punctuation (a piece polish fell back
+  on is joined without a mark: 「…跑完第二，把文档…」) when it is followed by a comma (English: capitalised). Only marker
+  words go, only digits / ". " / line breaks are added (`testOnlyMarkerWordsGo`); no confident sequence → nothing
+  changes. < 1 ms on a long take (`style_ms` in the history event).
+- **At the cursor**: a rendered list skips `DictationFit`'s trimming and starts on a line of its own when the text
+  before the cursor doesn't end in a line break.
+- **⇧ during the take / Fn+⇧ / the island** (§Trigger): `Dictation.toggleStyle` flips Structured ↔ the take's own
+  style (`DictationStyleRouter.toggled`); the island's right ear shows a list mark beside the clock while Structured
+  (quotes while Verbatim, nothing for light), and a one-line toast names the switch. A take whose app is Verbatim stays
+  unpolished when ⇧ makes it Structured (polish was decided at the key-down); the list is rendered on the transcript.
+- **Reformat-last** (`⌥⇧L`, `record.hotkeys.reformat`, configurable in Settings → Shortcuts; no clash with Blurt's
+  ⌥⇧ keys, ⌥⌘D or the lab's ⌥⌘L): the last take in the next style of the cycle verbatim → light → structured →
+  verbatim that reads differently (a take without a list skips structured; light for a verbatim take is polished on
+  demand, off the dictation's path). It replaces the text in the field only while it is exactly as typed, between the
+  same 40-character anchors (`DictationReformat.span`; the field re-read, the span selected — the test pad's text
+  view, another app's field through Accessibility, read back — and pasted as a dictation is); otherwise, after 5
+  minutes, or in a field that can't be read (WeChat), the new version goes to the clipboard and the island says so.
+  The island offers **Undo** (back to the style it was typed in). The after-typing watch restarts on the new text.
+  After a light take that sounded like a list (≥ 2 markers), the island offers **Make a List** for 6 s
+  (`suggest_lists`).
+- **History** (§History): `style`, `style_source`, `style_router`, and `reformats` — every reformat, undo and
+  `revert` (the watch saw a rendered list taken apart: ≥ 2 numbered lines → < 2, ≥ 70 % of the words still there).
+- **Learning** (`DictationStyleLearn`, `learn_styles`): each take may say what the user wants in its app — a kept
+  reformat or an undo, ⇧ / the island / Fn+⇧, a revert, a list-like take left as prose. With ≥ 3 signals among the
+  app's last 10 and ≥ 70 % of them one way, different from the app's style now, the island asks once (「以后在 备忘录
+  里自动排清单？」 好 / 不用; lists → Auto lists, never Structured always) and remembers it asked (`style_asked`).
+  Yes sets `styles.apps[bundle]` and marks it learned; Settings → Dictation → Style shows it with Reset. Nothing ever
+  changes by itself.
+- **Settings → Dictation → Style**: one picker per category (Light (default) / Verbatim / Structured / Auto lists, each
+  category's variant described under it), the apps set on their own, *Offer a list when a take sounds like one*,
+  *Suggest an app's style from how I switch*, and the keys.
+- **Dictation Lab**: Compare has Style: Verbatim / Structured / Auto lists; `dictation_lab.py` takes `style=` and
+  `category=` (default: the case's app) and every run counts `listed` — a light (or verbatim) output with more numbered
+  lines than its truth — in `overall.listed`; `--fail-on-regression` fails on it.
+- Test hooks: `dictation keys … shift-down@… shift-up@… island@…`, `dictation style status | toggle [island] | reformat
+  | chip | undo | set CATEGORY|BUNDLE STYLE|- | app BUNDLE | suggest BUNDLE | answer yes|no | reset`.
 
 ## Custom words
 
@@ -979,8 +1058,13 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
   for after key-up), `load_ms` (model loads waited for), `total_ms` (key-up → paste), `segments` (pieces streamed)
   `repaired` (spans polish dropped that were put back) and `fitted` (how it was fitted into the field at the cursor: head / tail / punct / capital / space). Older lines lack them: read as unknown. `prune` rewrites
   lines through `DictationEntry.json`, which carries them;
+- since the styles: `style`, `style_source` (shift | island | chord | app | category | default) and `style_router`
+  (`category`, `base` — the app / category / default style —, `explicit`, `toggles`, `markers`, `list_likely`,
+  `rendered`, `variant`), `reformats` (§Styles);
 - edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`, `{"op":"correct","id",
-  "text"}` (the user's correction from the Dictation page: `corrected` on the entry; prune folds it into the line).
+  "text"}` (the user's correction from the Dictation page: `corrected` on the entry; prune folds it into the line),
+  `{"op":"style","id","action","from","to","replaced"}` (reformat-last, its undo, or `revert`: a rendered list taken
+  apart in the field; folded into `reformats`).
 
 Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
 (`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on.
@@ -1016,6 +1100,10 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
 | `lab_keep_next` | unset: the Dictation Lab's "keep the audio of my next dictations" — keep the audio of this many more (§Lab) |
 | `lab_mic` | unset (the default input): the Dictation Lab's microphone, by device name |
+| `styles` | unset = light everywhere (§Styles). `{"chat"\|"code"\|"mail"\|"notes"\|"other"\|"default": STYLE, "apps": {BUNDLE: STYLE}, "learned": [BUNDLE]}`, STYLE = `verbatim` \| `light` \| `structured` \| `auto`; written as one dictionary (bundle ids have dots) |
+| `suggest_lists` | `true`: after a take that sounds like a list but went in as prose, the island offers *Make a List* |
+| `learn_styles` | `true`: suggest an app's style from the user's switches (asks once; never switches by itself) |
+| `style_asked` | the suggestions already asked (`BUNDLE\|STYLE`), whatever the answer |
 
 ## Lab
 
@@ -1164,6 +1252,43 @@ by tag (`length:short`, `feature:correction` …).
 
 ## Verification
 
+- Styles (`promo/cases/v0.8-dictation-styles/`, not in git: `say` clips in `audio/`, `results/`, screenshots; isolated
+  test build `dev.blurt.recorder.stylestest`, scratch `BLURT_HOME`, launched through LaunchServices, models symlinked
+  read-only, no real mic, no tap, nothing posted, nothing pasted outside the test pad):
+  - `swift test` (219): `DictationStyleTests` (the shared list fixture — 15 lists, 20 that must stay prose: 以及 /
+    其他 / 然后 / 另外 / 第一次 / 第一时间 / 一是一，二是二 / 一是一是 / "at first" / "first time" / "also" / "last week"
+    — only marker words go, < 5 ms, instructions to an agent stay content, the router's precedence, the toggle, the
+    categories, the variants), `DictationStyleLearnTests` (replacement only while untouched, a list taken apart, the
+    signals, ≥ 3 at ≥ 70 % asked once, the window, the history's style and reformats through prune),
+    `DictationTriggerTests` (⇧ alone in hands-free, tap and push-to-talk; ⇧ with a key or a click; a long ⇧; Fn+⇧ tap
+    and hold; Fn+⇧+← is a shortcut; ⌥⇧ never starts; the island click); `pytest tests` (449): `test_dictation_styles.py`
+    (the same fixture, light never lists either polish eval set in any category, the chat particles in the repair
+    without touching the eval references or a self-correction, the lab's `style=` re-runs and `listed`).
+  - In the test build (`results/e2e.jsonl`): a light list-like take typed as prose with the *Make a List* chip, then
+    reformat → Structured replaced in the pad, Undo → back; ⇧ during a take, the island click, Fn+⇧ and ⇧ in
+    push-to-talk each typed the list; an edit inside the pasted text → reformat copied it instead (`edited`); chat kept
+    「吧」 and lost the one-sentence 「。」; verbatim skipped polish and reformat polished it on demand; three ⇧ takes in an
+    app → the island asked once, *好* set Auto lists there and the next take was a list.
+  - Latency, key-up → paste (the app's `total_ms`, release 0.1 s after the last word, warm models, M5 Max), the
+    ceefbaa6 build and scripts against this one, run in alternation (10 takes per clip each, light; the "after" column
+    includes 3 takes per clip in Structured):
+
+    | Clip | Before (median, range) | After | 
+    |---|---:|---:|
+    | 3 s, one sentence | 280 ms (263–323) | 274 ms (258–290) |
+    | 10 s, 2 pieces | 392 ms (328–441) | 394 ms (373–476) |
+    | 30 s, 3 pieces | 610 ms (590–624) | 605 ms (582–672) |
+    | zh list, 14 s | 450 ms (437–478) | 440 ms (429–461) |
+    | en list, 11 s | 448 ms (435–474) | 435 ms (422–482) |
+    | self-correction, 3.5 s | 277 ms (257–296) | 265 ms (253–283) |
+
+    The styling itself (`style_ms`) was 0 ms on every take; the differences are the run-to-run spread of ASR and
+    polish. Reformat-last's own work is ~1 ms; the replacement is a paste, confirmed when the clipboard comes back
+    (~0.63 s), off the dictation's path.
+- Only the user can check: a real ⇧ during a take (and that the Fn filter keeps it from their input method), Fn+⇧ on
+  their keyboard, a click on the real island, and ⌥⇧L replacing a dictation in real apps (Notes, Mail, browsers,
+  Electron editors, terminals: the selection is set through Accessibility; apps whose field can't be read — WeChat —
+  get the clipboard instead).
 - Dictation Lab (`promo/cases/v0.8-dictation-lab/`, not in git: `say` clips in `audio/`, screenshots in `shots/`;
   isolated test build `dev.blurt.recorder.labtest`, scratch `BLURT_HOME`, launched through LaunchServices, models
   symlinked read-only, no real mic — the `dictation wav` hook and an imported file —, nothing pasted, no tap):

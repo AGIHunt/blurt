@@ -201,6 +201,25 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   translate or answer. When its output looks like any of that, or it takes longer than the time limit (3 s), you
   get the words exactly as spoken. The first time, install a model in Settings; the recommended one depends on your
   Mac's memory. *Off* types the raw transcript.
+- **Styles.** By default every app gets *Light*: the tidy-up above, and nothing more. It never turns what you say into
+  a list and never changes your tone. A little of it depends on the app: in chat apps (WeChat, Slack, Feishu,
+  Telegram…) 吧 / 呢 / 啊 stay and a one-sentence message gets no full stop; in terminals and code editors the text
+  stays on one line. When you *want* a list:
+  - **press ⇧ on its own while you talk** (any time, even halfway through, and also while holding Fn). The island's
+    right ear shows a list mark; points you numbered out loud ("first … second … finally", 「第一……第二……」,
+    「首先……其次……最后」) become a numbered list, with the sentence before them kept as its heading. Press ⇧
+    again to go back. **Fn+⇧** starts a dictation in Structured. A click on the island while it listens does the same.
+    Words like 以及 / 其他 / 然后 or "also" never make a list on their own;
+  - **⌥⇧L reformats the last dictation**: Light → Structured → Verbatim (exactly what the speech model heard) → Light,
+    with **Undo** on the island. It replaces the text in the field only while it is exactly as it was typed; if you
+    have edited it, the new version goes to the clipboard instead, and your edits stay. When a dictation sounded like
+    a list but went in as prose, the island offers **Make a List** for a few seconds.
+  - Nothing you *say* switches the style: "make a list" or 「帮我列个清单」 is typed like any other words, because it is
+    often an instruction meant for an AI agent.
+  - *Settings → Dictation → Style* sets a style per kind of app (Chat, Code and terminals, Mail, Notes and documents,
+    Other): Light, Verbatim, Structured, or Auto lists (a list only when you clearly numbered three points or more).
+    When you keep switching the same way in one app (three times or more), the island asks once whether to make that
+    the app's style; it never changes anything by itself, and what it learned shows (and resets) in Settings.
 - **Custom words** (*Settings → Dictation*): the names and terms you say often — "Claude Code", "tmux", a project's
   name. Dictation writes them exactly the way they're listed, so "Claude" doesn't come out as "cloud" and "option"
   isn't cut to "op". Blurt starts the list for you with Claude Code, Codex, blurt / 口喷鸡 and your projects' names and
@@ -392,6 +411,11 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。「设置 → 听写」也会显示这项系统设置现在是什么；不是「不执行任何操作」时，点**去设置…**会打开键盘设置，并提示你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **润色**（默认「轻度」）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）、口吃和说错改口的部分（「周三，不对，周四」→「周四」），加标点、分段。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在设置里装一个模型，推荐哪个取决于这台 Mac 的内存。选「关」就直接输入识别原文。
+- **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。真想要清单时：
+  - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）。岛右侧会出现清单标记；你说出序号的要点（「第一……第二……」「首先……其次……最后」、first … second … finally）会排成编号清单，前面那句话留作标题。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。「以及、其他、然后」这类词本身永远不会让话变成清单。
+  - **⌥⇧L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，岛上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，新版本放进剪贴板，你的修改不动。听起来像清单、却按普通段落打进去时，岛上会出现几秒「排成清单」。
+  - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI agent 的指令。
+  - 「设置 → 听写 → 风格」可以按 App 类别（聊天、代码和终端、邮件、笔记和文档、其他应用）选：轻整理、原话、结构化，或「自动排清单」（只有明确说了三点以上才排）。如果你在某个 App 里总是同样地切换（三次以上），岛上会问一次要不要把它设成这个 App 的风格；它从不自己改，学到的设置在设置页里能看到，也能恢复默认。
 - **自定义词**（「设置 → 听写」）：你常说的名字和术语，比如「Claude Code」「tmux」、项目名。听写会照列表里的写法输出，「Claude」不会变成「cloud」，「option」也不会只剩「op」。口喷鸡会先帮你填好 Claude Code、Codex、blurt / 口喷鸡，以及你的项目名和项目代号（不想要的可以移除）。推荐的**识别模型**（Apple 芯片上用 Qwen3-ASR，下载约 1 GB）在识别时就会照顾这些词；用其他模型时，这些词在识别之后再改。
 - **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。拿不准的会作为建议留在设置里，由你决定添加还是忽略。
 - **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。只用于这一次听写，不会保存，也从不读密码框。这项和自动学习都可以在设置里关掉。

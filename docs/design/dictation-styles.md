@@ -27,6 +27,8 @@ docs and changelogs. Vendor and competitor blogs are marked as such. User statem
   6. 从用户的切换和还原里学偏好，但只提建议，从不自己悄悄改。
   7. 不做单独的分类器。
   先做 1–4，它们全部不增加延迟；5 不占听写的关键路径。
+- **已上线**（§3.6、§3.7）：第 1–4 步和第 6 步。第 5 步「口头触发词」（开头说「列个清单」）**放弃**：用户常对 AI agent
+  口述指令，「帮我列个清单」「写成邮件」是内容本身，当成命令会悄悄改掉原意；⇧、Fn+⇧、点岛、重排上一条已经够用。
 
 ---
 
@@ -127,7 +129,7 @@ applies the renderer only when the detector is confident (≥ 3 ordinal markers 
 | **A. ⇧ tapped during the take** toggles Structured for *this take*; Fn+⇧ as the start press = start in Structured | Lowest: one key, any time, even halfway through when the user notices they are listing | 0 | None: it is explicit | **Build first.** Trigger change: a lone ⇧ press and release while dictating is a style toggle, not a cancel. Typeless uses Fn+Left ⇧ for translation, so Typeless users get a familiar chord (Settings already warns when Typeless runs). |
 | **B. The island shows the style chip** (`轻整理` / `结构化 ≡`); a click toggles it | Low; also teaches A | 0 | None | **Build with A.** Clicks on Blurt's own island must not count as "a click cancels push-to-talk". The chip label shows ⇧ as the hint. |
 | **C. Per-app default style** | None | 0: the bundle ID is already read for the context | Wrong-style takes in mixed-use apps (Notes for prose and for lists) | **Build first, but every default stays Light** (chat / code / mail variants above). Users opt categories into Structured or Auto. |
-| **D. Spoken trigger at the start** (「列个清单」「分点说」「清单：」, "make a list") | None, but must be learned | 0: a regex on piece 1's ASR text, which is ready while the user still talks | Real risk: 「帮我列个清单」 can be content addressed to a colleague | **Second wave.** Strict rule: trigger at the very start, then a pause or a colon, from a short fixed list; dropped from the text; the island says 「已识别：清单」 so a miss is visible and one reformat away. |
+| **D. Spoken trigger at the start** (「列个清单」「分点说」「清单：」, "make a list") | None, but must be learned | 0: a regex on piece 1's ASR text, which is ready while the user still talks | Real risk: 「帮我列个清单」 can be content addressed to a colleague | **Dropped** (§3.6, step 5): the user dictates instructions to AI agents, where these phrases are content. |
 | **E. "Reformat last"** hotkey (proposed ⌥⇧L, configurable), plus the island chip ≡ after a paste when the take looked like a list but wasn't formatted | One key after the fact; the safety net that lets the default stay conservative | Light ↔ Structured: < 50 ms (stored texts plus the renderer). The Email LLM pass: 0.5–1.5 s, off the dictation path | None | **Second wave, high value.** The history already keeps `raw` and `polished`, and `DictationWatch` already tracks the pasted span with anchors for 60 s. Pressing again cycles Verbatim → Light → Structured → back. Replace only while the anchors still match (user edits never get overwritten); otherwise copy to the clipboard with a toast. |
 | F. Separate mode hotkeys (Superwhisper or VoiceInk style) | Higher: more keys to remember | 0 | None | Not needed beyond A and E. |
 
@@ -165,7 +167,7 @@ That is exactly what users call over-editing, so it goes under Reformat → Emai
 At key-down the router knows the app (category → default style). By stitch time it knows the explicit signals (⇧,
 the island click, a spoken trigger) and the content (the renderer's own detector: marker count, item lengths, total
 length). Order: **explicit this take > spoken trigger > app or category default > global default (Light)**.
-Spokenly uses the same order and it reads naturally.
+Spokenly uses the same order and it reads naturally. (Shipped without the spoken trigger: step 5 was dropped, §3.6.)
 
 - **Rules cost ~0 ms**, are deterministic, can be unit-tested, and explain themselves ("Structured, because you pressed
   ⇧").
@@ -197,16 +199,46 @@ can be reset in Settings → Dictation.
 
 | Order | Item | Why now | Latency on the dictation path |
 |---|---|---|---|
-| 1 | Style plumbing: `record.dictation.styles` (category → style), the app → category table, `style` / `style_source` in the history | Everything else hangs on it; it also gives the data for §3.4 | 0 |
-| 2 | Chat and code variants of Light (keep particles, no final 。, no newlines in terminals) | Answers the "robotic" and "[Pasted N lines]" complaints with no new UI | 0 (prompt and repair rule changes; check the eval sets still pass) |
-| 3 | The deterministic list renderer, plus ⇧ during the take, plus the island style chip | The user's main request: structure on demand, no extra model call | ≈ 0 (< 5 ms) |
-| 4 | Reformat-last and undo (⌥⇧L, the island ≡ suggestion) | The safety net in both directions; makes the conservative default painless | 0 on the dictation; < 50 ms on press (Light ↔ Structured) |
-| 5 | Spoken triggers (strict list) | Hands-free power users; needs real takes to tune false positives | 0 |
-| 6 | Preference suggestions from the signals | Needs 1–4 in the field first | 0 |
+| 1 | Style plumbing: `record.dictation.styles` (category → style), the app → category table, `style` / `style_source` in the history | Everything else hangs on it; it also gives the data for §3.4 | 0 — **shipped** |
+| 2 | Chat and code variants of Light (keep particles, no final 。, no newlines in terminals) | Answers the "robotic" and "[Pasted N lines]" complaints with no new UI | 0 (prompt and repair rule changes; check the eval sets still pass) — **shipped** |
+| 3 | The deterministic list renderer, plus ⇧ during the take, plus the island style chip | The user's main request: structure on demand, no extra model call | ≈ 0 (< 5 ms) — **shipped** |
+| 4 | Reformat-last and undo (⌥⇧L, the island ≡ suggestion) | The safety net in both directions; makes the conservative default painless | 0 on the dictation; < 50 ms on press (Light ↔ Structured) — **shipped** |
+| 5 | Spoken triggers (strict list) | Hands-free power users; needs real takes to tune false positives | **Dropped: conflicts with dictating instructions to AI.** The user often dictates to AI agents, and 「帮我列个清单」 / 「写成邮件」 / "make a list" are then real content; treating them as commands would silently change what was meant. ⇧, Fn+⇧, the island and reformat-last are enough. |
+| 6 | Preference suggestions from the signals | Needs 1–4 in the field first | 0 — **shipped** |
 | 7 | Email / Formal through an LLM pass, Reformat only; optionally a speculative pass on the text so far while talking, to cut the key-up cost to ~0.1–0.2 s | Heavy rewriting stays opt-in, so the speed advantage holds | +0.5–1.5 s only when asked |
 
 The default path stays at **≈ 0.3 s key-up → paste**. Steps 1–6 add nothing to it. Typeless is about 3 s in the one
 published comparison, and Wispr 0.5–1.8 s depending on who measured.
+
+### 3.7 What shipped (steps 1–4 and 6)
+
+The implementation is described in `dictation.md` §Styles; in short:
+
+- **1, plumbing**: `record.dictation.styles` (per category, per app, learned), the app → category table, and the
+  history's `style`, `style_source`, `style_router` (category, the app's own style, ⇧ / the island / Fn+⇧, toggles,
+  markers, `list_likely`, rendered, the variant) and `reformats`. Settings → Dictation → Style: one picker per category,
+  Light (default) everywhere unless the user picks something else; no prompt editor.
+- **2, variants of light**: chat keeps sentence-final particles (polish's repair puts back the ones the model dropped;
+  the prompt and its cached prefix are unchanged) and drops the closing 。 of a one-sentence message; code and terminals
+  get one line. Mail and notes as light.
+- **3, the list renderer, ⇧ and the island chip**: deterministic, < 1 ms (the history event's `style_ms` was 0 on
+  every take measured); ⇧ alone during a take (push-to-talk included), Fn+⇧ at the start, a click on the island; the
+  ear shows a list mark while Structured. The Fn filter keeps that lone ⇧ from the app in front (input methods
+  switch Chinese / English on it).
+- **4, reformat-last** (`⌥⇧L`, configurable; none of Blurt's keys, ⌥⌘D or the lab's ⌥⌘L clash) with Undo, and the
+  island's *Make a List* after a list-like take typed as prose. Replaces only untouched text, else the clipboard.
+- **5, spoken triggers: dropped** (conflicts with dictating instructions to AI; see §3.6).
+- **6, suggestions**: ≥ 3 consistent signals in an app (≥ 70 %) → asked once; never switched silently; learned apps
+  show in Settings with Reset.
+
+Found on the way, not changed here: on `say` clips that dictate a list piece by piece, the polish model (Gemma 4 E2B)
+repeats the polished text so far in front of the new piece, the guard's `copied` check rightly refuses it, and the take
+falls back to the transcript, which at short pauses has no mark at the seams (「…跑完第二，…」). The renderer copes
+with those seams; the polish behaviour itself is the same before and after this work (latency runs). The Dictation Lab's
+`style=` re-runs and its `listed` check are where to follow it up. Likewise the `say` clip of
+「把这个，不对，这两个拿到那一边去」: the model keeps 「这个」 (「把这个拿到那一边去」), the guard's `correction` check
+refuses it and the transcript is typed with the 不对 in it — before and after this work alike; the styles don't touch
+self-corrections (the chat variant only adds a particle back after them).
 
 ## 4. Other improvements the feedback points to
 
