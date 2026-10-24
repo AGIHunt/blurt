@@ -462,7 +462,7 @@ func renderMarked(_ img: CGImage, strokes: [[[Double]]], lineWidthPx: CGFloat) -
     ctx.setLineCap(.round)
     ctx.setLineJoin(.round)
     ctx.setLineWidth(lineWidthPx)
-    ctx.setStrokeColor(accent.cgColor)
+    ctx.setStrokeColor(BrandColor.markup.cgColor)        // the pen (same value light and dark)
     ctx.setShadow(offset: .zero, blur: lineWidthPx * 0.4, color: NSColor.black.withAlphaComponent(0.45).cgColor)
     for s in strokes where !s.isEmpty {
         let pts = s.map { CGPoint(x: CGFloat($0[0]) * CGFloat(w), y: (1 - CGFloat($0[1])) * CGFloat(h)) }
@@ -509,25 +509,45 @@ func shutterFlash(_ r: NSRect) {
     CATransaction.commit()
 }
 
-/// A bright ring just outside the recorded area — the area itself must not change, it is being recorded.
+/// Snap while recording: a 3 pt mint ring just outside the red frame with the gradient glow around it (450 ms, once)
+/// — the recorded area itself must not change, it is being recorded. No glow with Reduce Transparency.
 func borderFlash(around r: NSRect) {
-    let pad: CGFloat = 14
+    let pad: CGFloat = 40                       // room for the glow (24 pt blur) outside the ring
     let w = chromeWindow(r.insetBy(dx: -pad, dy: -pad))
-    let l = w.contentView!.layer!
-    let ring = CAShapeLayer()
+    let view = w.contentView!
+    view.layerUsesCoreImageFilters = true
+    let l = view.layer!
+    let group = CALayer()
+    group.frame = l.bounds
     let inner = NSRect(x: pad, y: pad, width: r.width, height: r.height)
-    let p = CGMutablePath()
-    p.addRoundedRect(in: inner.insetBy(dx: -5, dy: -5), cornerWidth: 6, cornerHeight: 6)
-    ring.path = p
+    let ringRect = inner.insetBy(dx: -6.5, dy: -6.5)   // outside the red frame (which reaches 4 pt out)
+    let path = CGPath(roundedRect: ringRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
+    if !reduceTransparency {
+        // gradient.glow: the base gradient (corner to corner) along the ring, blurred
+        let halo = CALayer()
+        halo.frame = l.bounds
+        let g = BrandGradient.linear(.diagonal)
+        g.frame = ringRect.insetBy(dx: -10, dy: -10)
+        let m = CAShapeLayer()
+        m.frame = g.bounds
+        m.path = CGPath(roundedRect: ringRect.offsetBy(dx: -g.frame.minX, dy: -g.frame.minY), cornerWidth: 6, cornerHeight: 6, transform: nil)
+        m.fillColor = nil
+        m.strokeColor = NSColor.black.cgColor
+        m.lineWidth = 8
+        g.mask = m
+        halo.addSublayer(g)
+        if let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: BrandGradient.glowBlur / 2]) { halo.filters = [blur] }
+        halo.opacity = Float(BrandGradient.glowOpacity)
+        group.addSublayer(halo)
+    }
+    let ring = CAShapeLayer()
+    ring.path = path
     ring.fillColor = nil
-    ring.strokeColor = NSColor.white.cgColor
-    ring.lineWidth = 5
-    ring.shadowColor = NSColor.white.cgColor
-    ring.shadowOpacity = 1
-    ring.shadowRadius = 6
-    ring.shadowOffset = .zero
-    ring.opacity = 0
-    l.addSublayer(ring)
+    ring.strokeColor = BrandColor.Island.fill.cgColor
+    ring.lineWidth = 3
+    group.addSublayer(ring)
+    group.opacity = 0
+    l.addSublayer(group)
     w.orderFrontRegardless()
     let a = CAKeyframeAnimation(keyPath: "opacity")
     a.values = [0, 1, 0]
@@ -535,7 +555,7 @@ func borderFlash(around r: NSRect) {
     a.duration = 0.45
     CATransaction.begin()
     CATransaction.setCompletionBlock { w.orderOut(nil) }
-    ring.add(a, forKey: "flash")
+    group.add(a, forKey: "flash")
     CATransaction.commit()
 }
 

@@ -88,6 +88,12 @@ final class Island: NSObject, IslandHosting {
     let content = IslandContent()
     private let clip = FlippedView()
     private var driver: MotionDriver?
+    /// The listening aura (gradient.glow) under the island while dictation or a voice note listens: fades in over
+    /// 200 ms and out when it stops, breathes ±10 % with the level (no faster than 0.6 s). Never while recording (red
+    /// owns that moment) or idle; none with Reduce Transparency; no breathing with Reduce Motion.
+    private var glow: CALayer?
+    private var glowAmount: CGFloat = 0
+    private var glowBreath: CGFloat = 0.5
 
     private var w = Spring(200, response: 0.42, damping: 0.78)
     private var h = Spring(32, response: 0.42, damping: 0.78)
@@ -305,6 +311,11 @@ final class Island: NSObject, IslandHosting {
         shape.shadowOpacity = 0
         shape.shadowRadius = 18
         shape.shadowOffset = CGSize(width: 0, height: 8)
+        if let g = GlowLayer.make(size: CGSize(width: 240, height: 10)) {     // under the shape: only its lower half shows
+            g.opacity = 0
+            root.addSublayer(g)
+            glow = g
+        }
         root.addSublayer(shape)
         ears.addSublayer(left.layer)
         ears.addSublayer(right.layer)
@@ -400,6 +411,7 @@ final class Island: NSObject, IslandHosting {
             ears.transform = CATransform3DIdentity
         }
         layoutEars(rect, now: now)
+        updateGlow(dt, under: rect)
         // the open content: from the top of the shape (home and the drawer use the ears row, beside the notch),
         // revealed as it grows, clipped to it — only the bottom corners round
         let cw = content.preferredWidth
@@ -423,7 +435,32 @@ final class Island: NSObject, IslandHosting {
         if shapeMoving && !moving { content.redrawAll() }
         shapeMoving = moving
         return moving || left.animating || right.animating || toastNow != nil || isRecording || VoiceInput.shared.active
-            || Dictation.shared.busy
+            || Dictation.shared.busy || glowAmount > 0
+    }
+
+    /// Dictation or a voice note hears you (not while the mic is still starting, not while recording).
+    private var listening: Bool {
+        !isRecording && (VoiceInput.shared.active || (Dictation.shared.phase == .listening && Dictation.shared.micLive))
+    }
+
+    /// The listening aura: centred on the island's bottom edge (inside a transaction without actions).
+    private func updateGlow(_ dt: CGFloat, under rect: CGRect) {
+        guard let g = glow else { return }
+        let on = listening && !reduceTransparency
+        let step = dt / CGFloat(BrandGradient.glowFadeIn)
+        glowAmount = on ? min(1, glowAmount + step) : max(0, glowAmount - step)
+        if reduceMotion {
+            glowBreath = 0.5
+        } else {
+            let lvl = CGFloat((VoiceInput.shared.active ? VoiceInput.shared.levels.last : Dictation.shared.levels.last) ?? 0)
+            glowBreath += (min(1, max(0, lvl)) - glowBreath) * min(1, dt / 0.6)
+        }
+        let opacity = glowAmount * BrandGradient.glowOpacity * (0.9 + 0.2 * glowBreath)
+        g.opacity = Float(opacity) * shape.opacity
+        guard glowAmount > 0 else { return }
+        let pad = BrandGradient.glowBlur * 4
+        g.bounds = CGRect(x: 0, y: 0, width: rect.width * 0.92 + pad, height: 10 + pad)
+        g.position = CGPoint(x: geo.cx, y: rect.maxY)
     }
 
     /// The island's outline: flush top (with small concave shoulders on a notch screen), rounded bottom corners;
@@ -789,6 +826,12 @@ final class Island: NSObject, IslandHosting {
             hatch.job = j.id
             if !j.isActive, hatch.ended == nil {
                 hatch.ended = (CACurrentMediaTime(), j.state == .done, j.items.count)
+                // the hand-off / AI sort finished: the spectrum ring blooms once around the island (special moment;
+                // nothing with Reduce Motion / Transparency — the chick hatching says it already)
+                if j.state == .done, let v = view {
+                    let box = CGRect(x: geo.cx - w.value / 2, y: geo.top, width: w.value, height: self.h.value)
+                    Celebration.play(in: v, around: box, cornerRadius: min(r.value, box.height / 2))
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + (j.state == .done ? EarSlot.hatchSeconds + 1.4 : 5)) { [weak self] in
                     self?.hatches.removeAll { $0 === hatch }
                     self?.refreshReviewCount()

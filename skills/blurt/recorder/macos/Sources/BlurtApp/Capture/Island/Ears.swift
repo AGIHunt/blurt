@@ -48,7 +48,7 @@ final class EarSlot {
         case egg(n: Int)
         case cracking(since: CFTimeInterval, ok: Bool, n: Int)
         case alert
-        /// dictation (Dictation.swift): our keyboard glyph + a mirrored mint level — not the voice note's coral wave
+        /// dictation (Dictation.swift): our keyboard glyph (mint) + a mirrored gradient level — not the voice note's wave
         case dictation([Float])
         /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand)
         case glyph(BlurtIcon, pulse: Bool)
@@ -73,7 +73,10 @@ final class EarSlot {
     private let icon = CALayer()
     private let label = CATextLayer()
     private let dot = CALayer()
-    private let bars = CAShapeLayer()
+    private let bars = CAShapeLayer()          // the working dots
+    /// level bars (recording, voice note, dictation): the base gradient, vertical, seen through the bars
+    private let level = CAGradientLayer()
+    private let levelMask = CAShapeLayer()
     private let chick = MascotLayer()
     /// How long the egg takes to crack and the chick to come out (the `hatching` clip).
     static var hatchSeconds: Double { MascotLibrary.shared.clip(.hatching)?.duration ?? 1.6 }
@@ -91,7 +94,13 @@ final class EarSlot {
         bars.fillColor = nil
         bars.lineCap = .round
         bars.lineWidth = 2.2
-        for l in [icon, label, dot, bars, chick] { layer.addSublayer(l); l.isHidden = true }
+        // the island's layers are y-down (a flipped view): green at the top of the group
+        BrandGradient.layer(BrandGradient.linearStops, .vertical, flipped: true, into: level)
+        levelMask.fillColor = nil
+        levelMask.strokeColor = NSColor.black.cgColor
+        levelMask.lineCap = .round
+        level.mask = levelMask
+        for l in [icon, label, dot, bars, level, chick] { layer.addSublayer(l); l.isHidden = true }
         icon.contentsGravity = .resizeAspect
         icon.contentsScale = 2
     }
@@ -117,7 +126,7 @@ final class EarSlot {
         content = c
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for l in [icon, label, dot, bars] {
+        for l in [icon, label, dot, bars, level] {
             l.isHidden = true
             l.opacity = 1
             l.setAffineTransform(.identity)
@@ -135,8 +144,9 @@ final class EarSlot {
             label.isHidden = false
             x += ceil(sz.width)
         }
+        // dictation's own glyphs (keyboard, wand) are mint: blurt is listening / working for you
         func glyph(_ ic: BlurtIcon, _ size: CGFloat) {
-            icon.contents = ic.cgImage(size: size, scale: 2, color: NSColor(white: 1, alpha: 0.92).cgColor, weight: 1.1)
+            icon.contents = ic.cgImage(size: size, scale: 2, color: BrandColor.Island.fill.cgColor, weight: 1.1)
             icon.frame = CGRect(x: x, y: -size / 2, width: size, height: size)
             icon.isHidden = false
             x += size + 4
@@ -152,11 +162,11 @@ final class EarSlot {
         switch c {
         case .none: break
         case .recording(let paused, let time):
-            dot.backgroundColor = (paused ? amber : NSColor.systemRed).cgColor
+            dot.backgroundColor = (paused ? BrandColor.Island.attn : BrandColor.Island.rec).cgColor
             dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
             dot.isHidden = false
             x = 13
-            text(time, color: paused ? amber : NSColor(white: 1, alpha: 0.95))
+            text(time, color: paused ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.95))
         case .count(let symbol, let n, let tint):
             sym(symbol, 11, color: tint ?? NSColor(white: 1, alpha: 0.8))
             text(Loc.number(n))
@@ -181,7 +191,7 @@ final class EarSlot {
             text(ok ? "+" + Loc.number(n) : "", color: NSColor(white: 1, alpha: 0.95))
             label.opacity = 0
         case .alert:
-            dot.backgroundColor = amber.cgColor
+            dot.backgroundColor = BrandColor.Island.attn.cgColor
             dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
             dot.isHidden = false
             x = 8
@@ -196,7 +206,7 @@ final class EarSlot {
             drawDots(t: 0)
             x = 20
         case .iconText(let ic, let s):
-            icon.contents = ic.cgImage(size: 12, scale: 2, color: EarSlot.dictationTint.cgColor, weight: 1.2)
+            icon.contents = ic.cgImage(size: 12, scale: 2, color: BrandColor.Island.fill.cgColor, weight: 1.2)
             icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
             icon.isHidden = false
             x = 16
@@ -207,6 +217,21 @@ final class EarSlot {
         CATransaction.commit()
     }
 
+    /// The bars (`p`, ear coordinates, round-capped strokes of `width`) as the mask of one vertical base gradient over
+    /// the whole 18 pt group box: each bar shows the slice at its height — short bars read mint, tall ones show green
+    /// tips and azure feet (gradient.vertical).
+    private func showLevel(_ p: CGPath, width lw: CGFloat) {
+        let box = CGRect(x: 0, y: -EarSlot.levelBox / 2, width: max(1, p.boundingBoxOfPath.maxX + lw), height: EarSlot.levelBox)
+        level.frame = box
+        levelMask.frame = level.bounds
+        var t = CGAffineTransform(translationX: -box.minX, y: -box.minY)
+        levelMask.path = p.copy(using: &t)
+        levelMask.lineWidth = lw
+        level.isHidden = false
+    }
+    static let levelBox: CGFloat = 18
+
+    /// Recording: the mic level (4 steps). Gradient too — blurt hears you — but no glow: red owns that moment.
     private func drawLevel(_ v: Float) {
         let p = CGMutablePath()
         for i in 0..<4 {
@@ -215,12 +240,10 @@ final class EarSlot {
             let x = CGFloat(i) * 5 + 1
             p.move(to: CGPoint(x: x, y: -hh / 2)); p.addLine(to: CGPoint(x: x, y: hh / 2))
         }
-        bars.path = p
-        bars.fillColor = nil
-        bars.strokeColor = NSColor.systemGreen.cgColor
-        bars.isHidden = false
+        showLevel(p, width: 2.2)
     }
 
+    /// The voice note's live waveform.
     private func drawWave(_ v: [Float]) {
         let p = CGMutablePath()
         let n = min(10, v.count)
@@ -229,16 +252,11 @@ final class EarSlot {
             let x = CGFloat(i) * 4 + 1
             p.move(to: CGPoint(x: x, y: -hh / 2)); p.addLine(to: CGPoint(x: x, y: hh / 2))
         }
-        bars.path = p
-        bars.fillColor = nil
-        bars.lineWidth = 2
-        bars.strokeColor = accent.cgColor
-        bars.isHidden = false
+        showLevel(p, width: 2)
     }
 
-    static let dictationTint = NSColor(calibratedRed: 0.38, green: 0.86, blue: 0.74, alpha: 1)   // mint
-
-    /// Dictation's level: 5 bars mirrored around the centre line, newest in the middle-right, mint.
+    /// Dictation's level: 5 bars mirrored around the centre line, newest in the middle-right; they settle to 2.5 pt
+    /// dots in silence.
     private func drawMirror(_ v: [Float], from x0: CGFloat) {
         let p = CGMutablePath()
         let last = Array(v.suffix(5))
@@ -248,11 +266,7 @@ final class EarSlot {
             let x = x0 + CGFloat(i) * 4 + 1
             p.move(to: CGPoint(x: x, y: -hh / 2)); p.addLine(to: CGPoint(x: x, y: hh / 2))
         }
-        bars.path = p
-        bars.fillColor = nil
-        bars.lineWidth = 2.2
-        bars.strokeColor = EarSlot.dictationTint.cgColor
-        bars.isHidden = false
+        showLevel(p, width: 2.2)
     }
 
     /// Three dots, each lifting in turn (static with Reduce Motion).

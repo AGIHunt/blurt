@@ -3,12 +3,16 @@
 import AppKit
 import BlurtCore
 
+/// The recorded area's frame: `rec` solid while the tape rolls, `attn` dashed while paused (the dashes are the shape
+/// twin of the colour: they still say "paused" in grayscale). Still in both states: stillness is the signal.
 final class BorderView: NSView {
-    var color: NSColor = accent { didSet { needsDisplay = true } }
+    var color: NSColor = BrandColor.Island.rec { didSet { if color != oldValue { needsDisplay = true } } }
+    var dashed = false { didSet { if dashed != oldValue { needsDisplay = true } } }
     override func draw(_ dirty: NSRect) {
         color.setStroke()
         let b = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 4, yRadius: 4)
         b.lineWidth = 2.5
+        if dashed { b.setLineDash([10, 6], count: 2, phase: 0) }
         b.stroke()
     }
 }
@@ -22,7 +26,7 @@ final class CountdownView: NSView {
         let r = NSRect(x: bounds.midX - d / 2, y: bounds.midY - d / 2, width: d, height: d)
         NSColor(white: 0.05, alpha: 0.72).setFill()
         NSBezierPath(ovalIn: r).fill()
-        accent.setStroke()
+        BrandColor.Island.rec.setStroke()            // the recording is committed
         let ring = NSBezierPath(ovalIn: r.insetBy(dx: 3, dy: 3))
         ring.lineWidth = 3
         ring.stroke()

@@ -416,7 +416,7 @@ final class InkCanvas: NSView {
 
     func style(_ l: CAShapeLayer) {
         l.fillColor = nil
-        l.strokeColor = accent.cgColor
+        l.strokeColor = BrandColor.Island.markup.cgColor      // the pen (BrandColor.markup, one value light and dark)
         l.lineWidth = 3.5
         l.lineCap = .round
         l.lineJoin = .round
@@ -517,7 +517,7 @@ final class LevelBars: NSView {
             let wob = (sin(phase + CGFloat(i) * 1.3) + 1) / 2
             let h = active ? 4 + (bounds.height - 6) * CGFloat(level) * (0.55 + 0.45 * wob) : 4
             let r = NSRect(x: x0 + CGFloat(i) * (w + gap), y: (bounds.height - h) / 2, width: w, height: h)
-            (active ? accent : NSColor.tertiaryLabelColor).setFill()
+            (active ? BrandColor.ink : NSColor.tertiaryLabelColor).setFill()      // listening (the bubble is light or dark)
             NSBezierPath(roundedRect: r, xRadius: 1.5, yRadius: 1.5).fill()
         }
     }
@@ -611,7 +611,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// "● 0:04 在听…": a red recording dot (BlurtIcon.recordFill) + the status text.
     private func recLabel(_ text: String) -> NSAttributedString {
         BlurtIcon.recordFill.label(text, font: status.font ?? .systemFont(ofSize: 11, weight: .medium), color: .secondaryLabelColor,
-                                   iconColor: .systemRed)
+                                   iconColor: BrandColor.rec)
     }
     private var bars = LevelBars(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
     private var icon = NSImageView()
@@ -722,7 +722,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         prevBtn = SymbolButton("chevron.left", tip: Loc.t("capture.note.prev", table: "Capture")) { [weak self] in self?.step(-1) }
         nextBtn = SymbolButton("chevron.right", tip: Loc.t("capture.note.next", table: "Capture")) { [weak self] in self?.step(1) }
         keepBtn = SymbolButton("checkmark.circle.fill", tip: Loc.t("capture.note.keep_tip", table: "Capture")) { [weak self] in self?.commit() }
-        keepBtn.contentTintColor = .controlAccentColor
+        keepBtn.contentTintColor = BrandColor.ink           // the bubble's primary: brand ink (light / dark / contrast)
         discardBtn = SymbolButton("trash", tip: Loc.t("capture.note.discard_tip", table: "Capture")) { [weak self] in self?.cancel() }
         [micBtn, playBtn, prevBtn, nextBtn, keepBtn, discardBtn].forEach { root.addSubview($0!) }
         panel = p
@@ -1076,8 +1076,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
         if flash, let p = p {
             status.attributedStringValue = BlurtIcon.check.label(Loc.t("capture.note.saved", table: "Capture"), font: status.font ?? .systemFont(ofSize: 11, weight: .medium),
-                                                                 color: .systemGreen, preferSymbol: true)
-            status.textColor = .systemGreen
+                                                                 color: BrandColor.ok, preferSymbol: true)
+            status.textColor = BrandColor.ok
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                 self.status.textColor = .secondaryLabelColor
                 self.fadeOut(p, then: done)

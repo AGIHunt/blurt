@@ -25,8 +25,8 @@ final class InkView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         halo.path = CGPath(ellipseIn: CGRect(x: -9, y: -9, width: 18, height: 18), transform: nil)
-        halo.fillColor = accent.withAlphaComponent(0.25).cgColor
-        halo.strokeColor = accent.cgColor
+        halo.fillColor = BrandColor.Island.markup.withAlphaComponent(0.25).cgColor     // the pen
+        halo.strokeColor = BrandColor.Island.markup.cgColor
         halo.lineWidth = 2
         halo.isHidden = true
         layer?.addSublayer(halo)
@@ -56,7 +56,7 @@ final class InkView: NSView {
     func shape() -> CAShapeLayer {
         let l = CAShapeLayer()
         l.fillColor = nil
-        l.strokeColor = accent.cgColor
+        l.strokeColor = BrandColor.Island.markup.cgColor
         l.lineWidth = 4
         l.lineCap = .round
         l.lineJoin = .round

@@ -219,9 +219,9 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     static func hinted(_ card: NSImage, frame: NSRect, hint: VoiceCardDrop.Hint?, flipped: Bool) -> (NSImage, NSRect) {
         guard let h = hint else { return (card, frame) }
         let text = NSAttributedString(string: hintText(h), attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold),
-                                                                         .foregroundColor: NSColor.white])
+                                                                         .foregroundColor: BrandColor.Island.on])
         let icon = NSImage(systemSymbolName: "text.insert", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold).applying(.init(paletteColors: [.white])))
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold).applying(.init(paletteColors: [BrandColor.Island.on])))
         let pillH: CGFloat = 24, gap: CGFloat = 6
         let pillW = ceil(text.size().width) + 20 + (icon != nil ? 18 : 0)
         let w = max(frame.width, pillW), hgt = frame.height + gap + pillH
@@ -230,7 +230,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
             let pill = NSRect(x: (w - pillW) / 2, y: 0, width: pillW, height: pillH)
             NSColor(white: 0, alpha: 0.25).setFill()
             NSBezierPath(roundedRect: pill.offsetBy(dx: 0, dy: -1), xRadius: pillH / 2, yRadius: pillH / 2).fill()
-            accent.setFill()
+            BrandColor.Island.fill.setFill()          // a flat mint chip, dark text: blurt is about to act for you
             NSBezierPath(roundedRect: pill, xRadius: pillH / 2, yRadius: pillH / 2).fill()
             var x = pill.minX + 10
             if let ic = icon {

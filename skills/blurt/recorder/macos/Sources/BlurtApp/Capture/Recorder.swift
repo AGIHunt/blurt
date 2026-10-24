@@ -214,6 +214,24 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         DispatchQueue.main.async { self.showChrome() }
     }
 
+    /// The frame around the recorded area: `rec` solid while it rolls, `attn` dashed while paused.
+    func showFrame() {
+        border = overlayWindow(toNS(region).insetBy(dx: -4, dy: -4), view: borderView)
+        border?.orderFrontRegardless()
+        ticker?.invalidate()
+        ticker = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.borderView.color = self.isPaused ? BrandColor.Island.attn : BrandColor.Island.rec
+            self.borderView.dashed = self.isPaused
+        }
+    }
+
+    /// Tests only (`fakerecording stop` never calls stop()): the fake recording's frame goes away.
+    func hideFrame() {
+        ticker?.invalidate()
+        border?.orderOut(nil)
+    }
+
     func showChrome() {
         let r = toNS(region)
         let iv = InkView(frame: NSRect(origin: .zero, size: r.size))
@@ -235,13 +253,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         snaps = RecordingSnaps(rec: self, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
         inkTicker = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.syncInk() }
         RunLoop.main.add(inkTicker!, forMode: .common)
-        border = overlayWindow(r.insetBy(dx: -4, dy: -4), view: borderView)
-        border?.orderFrontRegardless()
+        showFrame()
         island.recordingStarted(self, on: NSScreen.screens.first(where: { $0.frame.intersects(r) }))
-        ticker = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.borderView.color = self.isPaused ? amber : accent
-        }
         cursorTicker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self, !self.isPaused, self.sessionStart.isValid else { return }
             self.logCursor()

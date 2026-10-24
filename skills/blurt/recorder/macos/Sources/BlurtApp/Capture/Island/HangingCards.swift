@@ -236,7 +236,17 @@ final class HangingCards: NSObject {
     /// Extra thread per position, so the ends don't line up like a shelf (a wind chime, not a washing line).
     static let slacks: [CGFloat] = [0, 9, 3, 12, 5, 10, 2]
     static let claspSize: CGFloat = 7
+    static let voiceMicName = "voiceMic"
     static let panelH: CGFloat = 640
+
+    /// A dynamic brand colour resolved for the cards' appearance (they follow the app's light / dark — isDarkMode —
+    /// not the drawing appearance of whatever happens to be current when a layer is styled). Increase Contrast still
+    /// applies (BrandColor checks it itself).
+    static func cardColor(_ c: NSColor, dark: Bool) -> CGColor {
+        var out = c.cgColor
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance { out = c.cgColor }
+        return out
+    }
 
     private var panel: CardsPanel?
     private var view: CardsView!
@@ -360,7 +370,7 @@ final class HangingCards: NSObject {
         tip.backgroundColor = (dark ? NSColor(calibratedWhite: 0.16, alpha: 0.98) : NSColor(calibratedWhite: 1, alpha: 0.98)).cgColor
         tip.borderColor = (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.08)).cgColor
         tip.borderWidth = 0.5
-        tipPlay.backgroundColor = accent.cgColor
+        tipPlay.backgroundColor = BrandColor.fill.cgColor                 // the stack's "play" tip: flat mint
         styleThread(stackThread, stackClasp)
         CATransaction.commit()
         if !stack.isHidden { layout() }              // "+N" in the new text colour
@@ -383,7 +393,7 @@ final class HangingCards: NSObject {
         let d = HangingCards.claspSize
         k.bounds = CGRect(x: 0, y: 0, width: d, height: d)
         k.cornerRadius = d / 2
-        k.backgroundColor = accent.cgColor
+        k.backgroundColor = BrandColor.fill.cgColor                       // flat mint (one value light and dark)
         k.borderWidth = 1.5
         k.borderColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 1) : NSColor.white).cgColor
         k.shadowColor = NSColor.black.cgColor
@@ -416,6 +426,10 @@ final class HangingCards: NSObject {
             let text = words ?? HangingCards.statusText(note.status) ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
             setText(c.title, text, font: f,
                     color: words == nil ? NSColor(white: dark ? 1 : 0, alpha: 0.5) : (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1)))
+            // the mic mark: brand ink on the card face (deep mint on light, mint on dark)
+            if let mic = c.card.sublayers?.first(where: { $0.name == HangingCards.voiceMicName }) {
+                mic.contents = BlurtIcon.mic.cgImage(size: 11, scale: mic.contentsScale, color: HangingCards.cardColor(BrandColor.ink, dark: dark))
+            }
         } else {
             c.card.backgroundColor = NSColor(white: 0.5, alpha: 0.2).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.12)).cgColor
@@ -517,7 +531,8 @@ final class HangingCards: NSObject {
             c.title.isWrapped = true
             c.title.truncationMode = .end
             c.card.addSublayer(c.title)
-            let mic = BlurtIcon.mic.makeLayer(size: 11, color: accent.withAlphaComponent(0.85).cgColor)
+            let mic = BlurtIcon.mic.makeLayer(size: 11, color: HangingCards.cardColor(BrandColor.ink, dark: isDarkMode))
+            mic.name = HangingCards.voiceMicName           // style() recolours it with the appearance
             mic.position = CGPoint(x: w - 10 - 5.5, y: h - 8 - 5.5)
             c.card.addSublayer(mic)
         } else {
@@ -1479,7 +1494,7 @@ final class HangingCards: NSObject {
             return
         }
         c.card.borderWidth = 2.5
-        c.card.borderColor = accent.cgColor
+        c.card.borderColor = BrandColor.fill.cgColor                     // thin: flat mint, never the gradient
     }
 
     /// `cs` (in this order) on the clipboard as one rich copy; "Copied N cards" on `pill`, or in the island.

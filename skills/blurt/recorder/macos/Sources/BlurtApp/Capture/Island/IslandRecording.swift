@@ -4,6 +4,9 @@
 import AppKit
 import BlurtCore
 
+/// Tests only: the fake recording whose frame BLURT_TEST_FRAME showed (it never calls stop()).
+private var testFrameRecorder: Recorder?
+
 extension Island {
     func recordingStarted(_ r: Recorder, on s: NSScreen?) {
         if !started { start() }
@@ -13,9 +16,18 @@ extension Island {
         r.snaps?.onLanded = { [weak self] s in self?.snapLanded(s) }
         hanging.recordingStarted()
         recordingChanged()
+        // visual checks (test commands only): BLURT_TEST_FRAME=1 gives `fakerecording` the recorded area's frame too
+        // (`pause` / `resume` turn it into the paused dashes and back)
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_TEST_FRAME"] == "1", r.border == nil {
+            r.showFrame()
+            testFrameRecorder = r
+        }
     }
 
     func recordingStopping() {
+        testFrameRecorder?.hideFrame()
+        testFrameRecorder = nil
         watch?.stop()
         watch = nil
         if NoteBubble.shared.isOpen, NoteBubble.shared.mode == .recording { NoteBubble.shared.commit() }

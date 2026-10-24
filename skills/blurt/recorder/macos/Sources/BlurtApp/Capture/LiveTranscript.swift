@@ -52,6 +52,7 @@ final class LiveTranscript {
         avoid = caret
         hideToken += 1
         view.reset()
+        view.setListening(true)
         if shown { hide(animated: false) }
         return session
     }
@@ -78,6 +79,7 @@ final class LiveTranscript {
     /// The take is over: the panel goes after `after` seconds (now: at once).
     func end(session s: Int, after: Double = 0) {
         guard s == session else { return }
+        view.setListening(false)            // the line is committed: the caret goes, the hearing rule fades
         hideToken += 1
         let tok = hideToken
         let go = { [weak self] in
@@ -182,10 +184,17 @@ final class LiveTranscript {
 
     // MARK: tests
 
-    /// `live state | caret X,Y,W,H | caret - | set on|off`
+    /// `live state | caret X,Y,W,H | caret - | set on|off | show TEXT | end` — `show` puts TEXT up as a listening
+    /// voice note's words would (a take begins if none is on; no microphone), `end` commits it (the rule fades, the
+    /// panel goes 1.5 s later).
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first ?? "" {
+        case "show":
+            if source == nil { begin(.voice) }
+            update(String(arg.dropFirst(4)).trimmingCharacters(in: .whitespaces), session: session)
+        case "end":
+            end(session: session, after: 1.5)
         case "caret":
             let v = (a.count > 1 ? a[1] : "-").split(separator: ",").compactMap { Double($0) }
             testCaret = v.count == 4 ? toNS(CGRect(x: v[0], y: v[1], width: v[2], height: v[3])) : nil
@@ -203,11 +212,26 @@ private extension CGFloat {
     func clamped(_ lo: CGFloat, _ hi: CGFloat) -> CGFloat { hi < lo ? lo : Swift.min(Swift.max(self, lo), hi) }
 }
 
-/// The panel's face: a dark, slightly translucent rounded rect (a HUD blur under a black tint), the text on top.
+/// The 2 pt "hearing" rule under the words: the base gradient, horizontal (gradient.linear), while the take listens.
+final class HearingRule: NSView {
+    override func makeBackingLayer() -> CALayer { BrandGradient.linear(.horizontal) }
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 1
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// The panel's face: a dark, slightly translucent rounded rect (a HUD blur under a black tint), the text on top —
+/// neutral white (92 % the newest line, 60 % the one before), a flat mint caret after the words and a 2 pt gradient
+/// "hearing" rule along the bottom while the take listens; the rule fades when the line commits (the take ends).
 final class LiveTextView: NSView {
     private let blur = NSVisualEffectView()
     private let tint = NSView()
     private let text = LiveTextLines()
+    private let rule = HearingRule()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -228,9 +252,23 @@ final class LiveTextView: NSView {
             v.autoresizingMask = [.width, .height]
             addSubview(v)
         }
+        // in the bottom padding, under the last line (this view is not flipped: y from the bottom)
+        rule.frame = NSRect(x: LiveTextLines.pad.width, y: 5, width: max(0, bounds.width - LiveTextLines.pad.width * 2), height: 2)
+        rule.autoresizingMask = [.width]
+        rule.alphaValue = 0
+        addSubview(rule)
     }
     required init?(coder: NSCoder) { fatalError() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// The take listens (caret + hearing rule) or its line has committed (both go; the rule fades).
+    func setListening(_ on: Bool) {
+        text.listening = on
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = on ? BrandGradient.glowFadeIn : 0.3
+            rule.animator().alphaValue = on ? 1 : 0
+        }
+    }
 
     /// the lines drawn now (tests)
     var shownLines: [String] { text.lines }
@@ -252,6 +290,8 @@ final class LiveTextLines: NSView {
     private var fadeStart: CFTimeInterval = 0
     private var timer: Timer?
     private(set) var lines: [String] = []
+    /// the take listens: a flat 2 pt mint caret after the last word (steady: the rule and the island's level move)
+    var listening = false { didSet { if listening != oldValue { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -328,7 +368,7 @@ final class LiveTextLines: NSView {
     override func draw(_ dirty: NSRect) {
         let shown = Array(layout(width: bounds.width).suffix(2))
         lines = shown.map(\.1)
-        let ink = NSColor(white: 1, alpha: 0.93), dim = NSColor(white: 1, alpha: 0.5)
+        let ink = NSColor(white: 1, alpha: 0.92), dim = NSColor(white: 1, alpha: 0.6)      // neutral, never brand
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byClipping
         for (i, (range, line)) in shown.enumerated() {
@@ -343,8 +383,15 @@ final class LiveTextLines: NSView {
                                range: NSRange(location: newFrom, length: len - newFrom))
             }
             let y = LiveTextLines.pad.height + CGFloat(i) * LiveTextLines.lineH + 1
-            s.draw(with: NSRect(x: LiveTextLines.pad.width, y: y, width: bounds.width - LiveTextLines.pad.width * 2, height: LiveTextLines.lineH),
+            let room = bounds.width - LiveTextLines.pad.width * 2
+            s.draw(with: NSRect(x: LiveTextLines.pad.width, y: y, width: room, height: LiveTextLines.lineH),
                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            if listening && i == shown.count - 1 {
+                let tw = min(room, ceil(s.size().width))
+                BrandColor.Island.fill.setFill()
+                NSBezierPath(roundedRect: NSRect(x: LiveTextLines.pad.width + tw + 1.5, y: y + 1, width: 2, height: LiveTextLines.lineH - 3),
+                             xRadius: 1, yRadius: 1).fill()
+            }
         }
     }
 }

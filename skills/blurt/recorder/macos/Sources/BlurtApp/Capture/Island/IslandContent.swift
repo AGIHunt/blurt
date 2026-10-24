@@ -9,7 +9,7 @@
 //               will go — the words themselves hang under the island (LiveTranscript.swift)
 //   drawer      switcher (⌥⇧O): Auto, recent projects (≤ 8, "More…", type to filter), Open Folder… ⌘O
 //               drop (a card dragged in): recent projects, Unassigned, Let AI sort
-//               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on a 12 % accent wash
+//               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on the island's mint tint
 //   toast       one quiet line (K4), optionally with art (the mascot: done, fixed) and an action
 // Dark on black in both appearances (it is the notch); white text at 92 / 60 / 40 %.
 
@@ -20,22 +20,29 @@ private let ink = NSColor(white: 1, alpha: 0.92)
 private let ink2 = NSColor(white: 1, alpha: 0.6)
 private let ink3 = NSColor(white: 1, alpha: 0.38)
 
-/// A control on the island: a round icon button, or a pill with a title.
+/// A control on the island: a round icon button, or a pill with a title. The island's primary actions ("Hand to AI",
+/// AI sort, Done, a question's suggested answer) take `gradient` (BrandGradient.buttonStops) with a white title: hover is
+/// a white film (×1.04), pressed a black one (×0.92). `fg`: the title and symbol colour.
 final class IslandButton: NSView {
     var action: () -> Void
     var symbol: String { didSet { needsDisplay = true } }
     var title: String?
     var fill: NSColor?
+    var gradient: [(UInt32, CGFloat)]? { didSet { needsDisplay = true } }
+    var fg: NSColor = .white { didSet { needsDisplay = true } }
     var tip: String
     /// A project's key badge before the title — the current-project chip.
     var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize) } }
     private var hover = false, pressed = false
 
-    init(symbol: String, title: String? = nil, tip: String, fill: NSColor? = nil, action: @escaping () -> Void) {
+    init(symbol: String, title: String? = nil, tip: String, fill: NSColor? = nil, gradient: [(UInt32, CGFloat)]? = nil,
+         fg: NSColor = .white, action: @escaping () -> Void) {
         self.symbol = symbol
         self.title = title
         self.tip = tip
         self.fill = fill
+        self.gradient = gradient
+        self.fg = fg
         self.action = action
         super.init(frame: .zero)
         toolTip = tip
@@ -69,21 +76,38 @@ final class IslandButton: NSView {
     override func accessibilityPerformPress() -> Bool { action(); return true }
 
     override func draw(_ dirty: NSRect) {
-        let base = fill ?? NSColor(white: 1, alpha: 0.1)
-        let c = pressed ? base.blended(withFraction: 0.3, of: .white) ?? base : hover ? base.blended(withFraction: 0.16, of: .white) ?? base : base
-        c.setFill()
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2).fill()
+        let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        if let g = gradient, let ctx = NSGraphicsContext.current?.cgContext {
+            NSGraphicsContext.saveGraphicsState()
+            shape.addClip()
+            BrandGradient.draw(g, in: r, ctx: ctx, .diagonal, flipped: true)
+            if pressed {
+                NSColor(white: 0, alpha: 1 - BrandGradient.buttonPressed).setFill()
+                shape.fill()
+            } else if hover {
+                NSColor(white: 1, alpha: BrandGradient.buttonHover - 1).setFill()
+                shape.fill()
+            }
+            NSColor(white: 1, alpha: 0.18).setFill()             // the 1 pt inner highlight along the top
+            NSRect(x: r.minX + r.height * 0.3, y: r.minY, width: r.width - r.height * 0.6, height: 1).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        } else {
+            let base = fill ?? NSColor(white: 1, alpha: 0.1)
+            let c = pressed ? base.blended(withFraction: 0.3, of: .white) ?? base : hover ? base.blended(withFraction: 0.16, of: .white) ?? base : base
+            c.setFill()
+            shape.fill()
+        }
         var x: CGFloat = title == nil ? 0 : 14
         if !symbol.isEmpty, let img = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold).applying(.init(paletteColors: [.white]))) {
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold).applying(.init(paletteColors: [fg]))) {
             let s = img.size
             let ix = title == nil ? (bounds.width - s.width) / 2 : x
             img.draw(in: NSRect(x: ix, y: (bounds.height - s.height) / 2, width: s.width, height: s.height))
             x = ix + s.width + 6
         }
         if let t = title {
-            let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont, .foregroundColor: NSColor.white]
+            let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont, .foregroundColor: fg]
             let tx = symbol.isEmpty ? 13 : x
             guard let b = badge else {
                 let a = NSAttributedString(string: t, attributes: attrs)
@@ -151,7 +175,7 @@ final class IslandRow: NSView {
 
     override func draw(_ dirty: NSRect) {
         if selected {
-            accent.withAlphaComponent(0.12 * 1.6).setFill()      // 12 % of the accent's weight on black reads as ~19 %
+            BrandColor.Island.tint.setFill()                     // brand.tint, island value (mint @ 20 %)
             NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: 9, yRadius: 9).fill()
         }
         var x: CGFloat = 18
@@ -167,7 +191,7 @@ final class IslandRow: NSView {
         }
         var right = bounds.width - 18
         if checked, let c = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .bold).applying(.init(paletteColors: [accent]))) {
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .bold).applying(.init(paletteColors: [BrandColor.Island.fill]))) {
             right -= c.size.width
             c.draw(in: NSRect(x: right, y: (bounds.height - c.size.height) / 2, width: c.size.width, height: c.size.height))
             right -= 10
@@ -204,28 +228,43 @@ final class IslandRow: NSView {
             let track = NSRect(x: x, y: bounds.height - 4, width: bounds.width - x - 18, height: 2)
             NSColor(white: 1, alpha: 0.12).setFill()
             NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
-            accent.setFill()
+            BrandColor.Island.fill.setFill()
             NSBezierPath(roundedRect: NSRect(x: track.minX, y: track.minY, width: track.width * CGFloat(min(1, max(0, p))), height: 2), xRadius: 1, yRadius: 1).fill()
         }
     }
 }
 
-/// Bars that follow a level (recording: the mic) or a history (voice input: a scrolling waveform).
+/// Bars that follow a level (recording: the mic) or a history (voice input: a scrolling waveform). The live bars are one
+/// vertical base gradient across the whole group (gradient.vertical: each bar shows the slice at its height); quiet
+/// ones are a faint white. `gradient` nil: flat `color`.
 final class Bars: NSView {
     var values: [Float] = [] { didSet { needsDisplay = true } }
-    var color: NSColor = .systemGreen
+    var gradient: [(UInt32, CGFloat)]? = BrandGradient.linearStops
+    var color: NSColor = BrandColor.Island.fill
     var bar: CGFloat = 3, gap: CGFloat = 2.5
     override var isFlipped: Bool { true }
     override func draw(_ dirty: NSRect) {
         let n = max(1, Int((bounds.width + gap) / (bar + gap)))
         let vals = Array(values.suffix(n))
         let pad = n - vals.count
+        let live = NSBezierPath(), quiet = NSBezierPath()
         for i in 0..<n {
             let v = i < pad ? 0 : CGFloat(vals[i - pad])
             let hh = max(bar, v * bounds.height)
             let r = NSRect(x: CGFloat(i) * (bar + gap), y: (bounds.height - hh) / 2, width: bar, height: hh)
-            (v > 0.02 ? color : NSColor(white: 1, alpha: 0.18)).setFill()
-            NSBezierPath(roundedRect: r, xRadius: bar / 2, yRadius: bar / 2).fill()
+            (v > 0.02 ? live : quiet).appendRoundedRect(r, xRadius: bar / 2, yRadius: bar / 2)
+        }
+        NSColor(white: 1, alpha: 0.18).setFill()
+        quiet.fill()
+        guard !live.isEmpty else { return }
+        if let g = gradient, let ctx = NSGraphicsContext.current?.cgContext {
+            NSGraphicsContext.saveGraphicsState()
+            live.addClip()
+            BrandGradient.draw(g, in: bounds, ctx: ctx, .vertical, flipped: true)
+            NSGraphicsContext.restoreGraphicsState()
+        } else {
+            color.setFill()
+            live.fill()
         }
     }
 }
@@ -373,6 +412,12 @@ final class IslandContent: NSView {
             }
             r.progress = j.progress ?? step?.progress
             place(r, x: 0, y: y, w: w, h: 42)
+            if j.type == .process {
+                // AI is working on the hand-off / sort: the spectrum rim around its row (special moment only)
+                let g = AIGlowView(frame: r.frame.insetBy(dx: 6, dy: 1).insetBy(dx: -8, dy: -8))
+                g.cornerRadius = 9
+                addSubview(g, positioned: .above, relativeTo: r)
+            }
             y += 42
         }
         for j in i.sessionsNeedingYou {
@@ -386,7 +431,8 @@ final class IslandContent: NSView {
                 i?.setOpen(false)
                 AppEnvironment.mainWindow?.reveal(job: j.id)
             }
-            r.dot = st == .waitingInput ? amber : st == .error ? .systemRed : NSColor.systemGreen
+            r.dot = st == .waitingInput ? BrandColor.Island.attn : st == .error ? BrandColor.Island.err
+                : st == .running ? BrandColor.Island.fill : BrandColor.Island.ok
             place(r, x: 0, y: y, w: w, h: 40)
             y += 40
         }
@@ -414,9 +460,9 @@ final class IslandContent: NSView {
                 let b = cur.map { p in
                     IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
                                  tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
-                                 fill: accent.withAlphaComponent(0.9)) { snapper.handToAI(project: p.id) }
+                                 gradient: BrandGradient.buttonStops) { snapper.handToAI(project: p.id) }
                 } ?? IslandButton(symbol: "wand.and.stars", title: Loc.t("project.ai_sort"), tip: Loc.plural("capture.island.ai_sort_tip", table: "Capture", count: cards),
-                                  fill: accent.withAlphaComponent(0.9)) { snapper.handToAI() }
+                                  gradient: BrandGradient.buttonStops) { snapper.handToAI() }
                 place(b, x: w - 14 - b.frame.width, y: y + 4)
                 if review == 0 {
                     let l = label(Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards), size: 12.5, color: ink2)
@@ -486,7 +532,7 @@ final class IslandContent: NSView {
         let db = IslandButton(symbol: "trash", tip: Loc.t("capture.rec.discard_tip", table: "Capture")) { [weak i] in i?.confirmDiscard(true) }
         place(db, x: 90, y: y + 3)
         let fin = IslandButton(symbol: "stop.fill", title: Loc.t("capture.rec.finish", table: "Capture"), tip: tip("capture.rec.finish_tip", .finish),
-                               fill: NSColor.systemRed.withAlphaComponent(0.92)) { rec.stop() }
+                               fill: BrandColor.Island.rec.withAlphaComponent(0.92)) { rec.stop() }      // Stop: the tape
         place(fin, x: w - 14 - fin.frame.width, y: y + 4)
         let lv = Bars(frame: NSRect(x: 136, y: y + 8, width: 30, height: 20))
         lv.bar = 3; lv.gap = 3
@@ -499,7 +545,7 @@ final class IslandContent: NSView {
         if !paused {
             hint = rec.penKey.map { Loc.t("capture.rec.pen_hint", table: "Capture", $0.1) } ?? ""
         }
-        let h = label(hint, size: 11.5, color: paused ? amber : ink2)
+        let h = label(hint, size: 11.5, color: paused ? BrandColor.Island.attn : ink2)
         place(h, x: 18, y: y + 7, w: min(h.frame.width, w - 230))
         let sp = label("", size: 11.5, color: ink3)
         place(sp, x: h.frame.maxX + (hint.isEmpty ? 0 : 10), y: y + 7, w: 140)
@@ -545,11 +591,10 @@ final class IslandContent: NSView {
         let wx: CGFloat = 8 + 56 + 4
         // Done: the voice note ends when you say so (v0.8.6) — this button, the key again, or letting go of it
         let done = IslandButton(symbol: "checkmark", title: Loc.t("capture.voice.done", table: "Capture"),
-                                tip: tip("capture.voice.done_tip", .voice), fill: accent.withAlphaComponent(0.92)) { VoiceInput.shared.toggle() }
+                                tip: tip("capture.voice.done_tip", .voice), gradient: BrandGradient.buttonStops) { VoiceInput.shared.toggle() }
         done.isHidden = v.holding
         let wv = Bars(frame: NSRect(x: wx, y: y, width: w - wx - 18 - (v.holding ? 0 : done.frame.width + 12), height: 34))
-        wv.color = accent
-        wv.bar = 3; wv.gap = 2.5
+        wv.bar = 3; wv.gap = 2.5                // the gradient across the group (Bars' default)
         addSubview(wv)
         wave = wv
         place(done, x: w - 16 - done.frame.width, y: y + (34 - done.frame.height) / 2)
@@ -581,7 +626,7 @@ final class IslandContent: NSView {
         let head = label(Loc.t(d == .drop ? "capture.drawer.drop_title" : "capture.drawer.switch_title", table: "Capture"), size: 11, weight: .semibold, color: ink3)
         place(head, x: 20, y: (row - head.frame.height) / 2, w: min(head.frame.width, side(w) - 26))
         if !query.isEmpty {
-            let q = label("\u{201C}\(query)\u{201D}", size: 12, weight: .medium, color: accent)
+            let q = label("\u{201C}\(query)\u{201D}", size: 12, weight: .medium, color: BrandColor.Island.fill)
             q.alignment = .right
             place(q, x: w - 20 - min(q.frame.width, side(w) - 26), y: (row - q.frame.height) / 2, w: min(q.frame.width, side(w) - 26))
         }
@@ -605,7 +650,7 @@ final class IslandContent: NSView {
         let matches = store.projects.filter { q.isEmpty || $0.name.lowercased().contains(q) || $0.key.lowercased().hasPrefix(q) }
         let shown = q.isEmpty && !showAll ? Array(matches.prefix(8)) : matches
         for p in shown {
-            let r = IslandRow(icon: ic("folder.fill", NSColor(calibratedRed: 0.55, green: 0.72, blue: 1, alpha: 0.9)), title: p.name, height: 36)
+            let r = IslandRow(icon: ic("folder.fill", ProjectLook.color(p)), title: p.name, height: 36)     // the project's colour
             r.accessory = p.key
             r.accessoryIsKey = true
             r.checked = d == .switcher && store.currentID == p.id
@@ -630,7 +675,7 @@ final class IslandContent: NSView {
             add(r, .openFolder)
         } else {
             add(IslandRow(icon: ic("tray"), title: Loc.t("project.inbox"), subtitle: Loc.t("capture.drawer.inbox_sub", table: "Capture"), height: 44), .inbox)
-            add(IslandRow(icon: ic("wand.and.stars", accent), title: Loc.t("project.ai_sort"),
+            add(IslandRow(icon: ic("wand.and.stars", BrandColor.Island.fill), title: Loc.t("project.ai_sort"),
                           subtitle: Loc.plural("capture.drawer.ai_sub", table: "Capture", count: island?.cardCount ?? 0), height: 44), .aiSort)
         }
         if d == .switcher { select(rows.firstIndex { $0.checked } ?? 0) }
@@ -740,7 +785,7 @@ final class IslandContent: NSView {
         var right: CGFloat = 18
         var btn: IslandButton?
         if let a = t.actionTitle, let act = t.action {
-            let b = IslandButton(symbol: "", title: a, tip: a, fill: NSColor(white: 1, alpha: 0.14)) { [weak self] in
+            let b = IslandButton(symbol: "", title: a, tip: a, gradient: BrandGradient.buttonStops) { [weak self] in
                 act(); self?.island?.dismissToast()
             }
             btn = b
@@ -768,7 +813,8 @@ final class IslandContent: NSView {
         var y = top + 10 + h + 10
         for (title, act, filled) in [(t.secondTitle, t.second, false), (t.actionTitle, t.action, true)].reversed() {
             guard let title = title, let act = act else { continue }
-            let b = IslandButton(symbol: "", title: title, tip: title, fill: filled ? accent.withAlphaComponent(0.9) : NSColor(white: 1, alpha: 0.14)) {
+            let b = IslandButton(symbol: "", title: title, tip: title, fill: NSColor(white: 1, alpha: 0.14),
+                                 gradient: filled ? BrandGradient.buttonStops : nil) {
                 [weak self] in self?.island?.dismissToast(); act()
             }
             bx -= b.frame.width
