@@ -18,7 +18,7 @@
 "state.todo" = "要做";
 "state.handed_off" = "已交出";
 "state.handed_off.session" = "已交给 %@";
-"state.handed_off.external" = "已复制给你的 agent";
+"state.handed_off.external" = "已复制给你的 Agent";
 "state.in_progress" = "进行中";
 "state.to_verify" = "待验证";
 "state.done" = "完成";
@@ -29,7 +29,7 @@
 /* 每个状态下能做的：动词，和一句说明 */
 "action.keep" = "要做";
 "action.keep.hint" = "留下，放进要做";
-"action.hand_off" = "交给 agent…";
+"action.hand_off" = "交给 Agent…";
 "action.hand_off.hint" = "在口喷鸡里开始，或复制指令";
 "action.done" = "标为完成";
 "action.done.hint" = "已经处理好了";
@@ -37,7 +37,7 @@
 "action.send_back" = "退回";
 "action.send_back.hint" = "还没好，回到要做";
 "action.take_back" = "收回";
-"action.take_back.hint" = "不等 agent 了，回到要做";
+"action.take_back.hint" = "不等 Agent 了，回到要做";
 "action.reopen" = "重新打开";
 "action.reopen.hint" = "回到要做";
 "action.wontfix" = "不做了";

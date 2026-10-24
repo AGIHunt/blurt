@@ -29,7 +29,7 @@
 /* What you can do from a state: the verb, and one line saying what it does */
 "action.keep" = "Keep";
 "action.keep.hint" = "Add it to To do";
-"action.hand_off" = "Hand off…";
+"action.hand_off" = "Hand Off to Agent…";
 "action.hand_off.hint" = "Start it in Blurt, or copy an instruction";
 "action.done" = "Mark as done";
 "action.done.hint" = "It’s handled";
