@@ -322,6 +322,9 @@ enum SelfTests {
             m?.update()
             out(["items": m?.items.filter { !$0.isSeparatorItem }.map { "\($0.title) [\($0.keyEquivalent)]\($0.isEnabled ? "" : " (off)")" } ?? [],
                  "selected": c.list.selectedIDs.count])
+        case "mainreviewbatch":         // = the context menu's "Review the Whole Batch" on the selection
+            MainWindowController.shared.mReviewBatch()
+            out(["mode": MainWindowController.shared.detail.web?.url?.query ?? ""])
         case "mainstatemenu":           // the state menu of the selection, as titles + subtitles (what the ring offers)
             let c = MainWindowController.shared
             let m = StateMenu.menu(for: c.list.selectedItems, canHandOff: true, selector: #selector(MainWindowController.mState(_:)), target: c)

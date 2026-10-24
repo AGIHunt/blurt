@@ -9,7 +9,7 @@
 //
 // Host protocol v3 (C6 + next-round.md "审核组件宿主协议 v3"):
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
-//   doc start     window.blurtHostInfo = {host: "macos", methods: [...], accent: "#rrggbb", scope: {...}, sessionBanner: true}
+//   doc start     window.blurtHostInfo = {host: "macos", methods: [...], accent: "#rrggbb", scope: {...}, sessionBanner: mode == item}
 //   JS → native   webkit.messageHandlers.blurt.postMessage({id, method, params}); native → window.__blurtReply(id, result, error)
 //   requests      load {scope?} → {doc, etag}             items.py doc SESSION | --project P
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
@@ -122,11 +122,12 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl"]
     }
 
-    private func installHostInfo(_ scope: DocScope) {
+    /// sessionBanner only in item mode: the banner above the page exists only there, so a batch keeps the panel's own.
+    private func installHostInfo(_ scope: DocScope, mode: String) {
         let ucc = web.configuration.userContentController
         ucc.removeAllUserScripts()
         let info: [String: Any] = ["host": "macos", "methods": methods, "accent": Self.accentHex(), "scope": scope.json,
-                                   "lang": Loc.language, "inApp": true, "sessionBanner": true]
+                                   "lang": Loc.language, "inApp": true, "sessionBanner": mode == "item"]
         let json = (try? JSONSerialization.data(withJSONObject: info)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         ucc.addUserScript(WKUserScript(source: "window.blurtHostInfo = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
@@ -216,7 +217,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         loadedMode = mode
         overlay.set([])
         if case .session(let u) = scope { schemes.session = u } else { schemes.session = nil }
-        installHostInfo(scope)
+        installHostInfo(scope, mode: mode)
         var c = URLComponents()
         c.scheme = SchemeHandler.scheme
         c.host = "ui"

@@ -85,6 +85,8 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
 
     class H(BaseHTTPRequestHandler):
         last = time.time()  # the last request: main() closes a page nobody uses
+        busy = 0  # POSTs still being answered: main() never stops under one (a confirm writes batch.json first)
+        _busy = threading.Lock()
 
         def log_message(self, *_):
             pass
@@ -215,6 +217,15 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
                 pass
 
         def do_POST(self):
+            with H._busy:
+                H.busy += 1
+            try:
+                self._post()
+            finally:
+                with H._busy:
+                    H.busy -= 1
+
+        def _post(self):
             nonlocal confirmed
             path = self._route()
             if path is None:
@@ -432,7 +443,7 @@ def main():
     idle = float(os.environ.get("BLURT_REVIEW_IDLE") or IDLE)
     try:
         while not done.wait(1.0):
-            if not was_reviewed and reviewed(scope):
+            if not was_reviewed and reviewed(scope) and not handler.busy:
                 break  # confirmed in the Blurt app's window (its answer to api/done may not have come)
             if time.time() - max(handler.last, last_write(scope)) > idle:
                 print(f"(nobody used the review page for {round(idle / 60)} min — closing it)", file=sys.stderr, flush=True)

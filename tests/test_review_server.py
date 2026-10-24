@@ -78,6 +78,31 @@ class ReviewServer(Base):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue(self.summary(proc)["reviewed"])  # batch.json turned reviewed
 
+    def test_it_never_stops_under_a_confirm_it_is_answering(self):
+        """A browser confirm writes batch.json (reviewed) before it answers: main() must not exit in that gap."""
+        import threading
+        from http.server import ThreadingHTTPServer
+        from unittest import mock
+        self.assertEqual(self.run_script(SCRIPTS / "items.py", "ingest", self.session).returncode, 0)
+        with mock.patch.dict("os.environ", self.env.env(), clear=True):
+            scope = {"session": str(self.session)}
+            h = review.make_handler(scope, threading.Event())
+            srv = ThreadingHTTPServer(("127.0.0.1", 0), h)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            self.addCleanup(srv.shutdown)
+            slow = mock.patch.object(review.items_mod, "reindex_touched", lambda: time.sleep(1.0))  # after the write
+            with slow:
+                url = f"http://127.0.0.1:{srv.server_address[1]}/api/confirm"
+                t = threading.Thread(target=self.call, args=(url, {"ops": []}), kwargs={"Content-Type": "application/json"})
+                t.start()
+                deadline = time.time() + 5
+                while not review.reviewed(scope) and time.time() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(review.reviewed(scope))
+                self.assertGreater(h.busy, 0)  # the loop's condition: reviewed and not busy → keeps serving
+                t.join(10)
+            self.assertEqual(h.busy, 0)
+
     def test_a_page_nobody_uses_closes(self):
         proc, url = self.start(BLURT_REVIEW_IDLE="1.5")
         t = time.time()
