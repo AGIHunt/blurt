@@ -7,7 +7,8 @@
   dictation.py item ID [--project ID|inbox] [--lang en|zh]   turn one dictation into an item (items.py add, no agent)
                                                             → {"ok", "item": {"id","uid","title","kind","project","path"}}
   dictation.py prune [--days N]                             drop entries older than N days (record.dictation.retention_days,
-                                                            30), and their audio → {"ok", "removed"}
+                                                            30), and their audio, and any recording in audio/ no entry
+                                                            keeps that is over an hour old → {"ok", "removed"}
 
 The file is append-only: an entry per dictation, then edit lines applied in order —
 {"op":"delete","ids":[…]}, {"op":"item","id","item","uid"}, {"op":"clear"}, {"op":"correct","id","text"} (→ "corrected"). `prune` rewrites it compacted.
@@ -18,6 +19,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -90,8 +92,27 @@ def retention_days() -> int:
     return int(d) if isinstance(d, (int, float)) and d >= 0 else 30
 
 
+def prune_orphan_audio(entries: list[dict], path: Path = HISTORY, min_age: float = 3600,
+                       now: float | None = None) -> list[str]:
+    """Recordings in audio/ (a take's <id>.wav, its streamed pieces <id>-pN.wav) that no entry keeps: a take dropped,
+    cancelled, or cut short by a quit or a crash. Only those older than `min_age` (a take still running is never that
+    old); the Lab's own recordings (dictation/lab/) are not here. The same rule as DictationHistory.pruneOrphanAudio."""
+    audio = path.parent / "audio"
+    if not audio.is_dir():
+        return []
+    kept = {(path.parent / e["audio"]).resolve() for e in entries if isinstance(e.get("audio"), str)}
+    now = now or time.time()
+    gone = []
+    for f in sorted(audio.glob("*.wav")):
+        if f.resolve() not in kept and now - f.stat().st_mtime >= min_age:
+            f.unlink(missing_ok=True)
+            gone.append(f.name)
+    return gone
+
+
 def prune(days: int, path: Path = HISTORY, now: datetime | None = None) -> int:
     entries = load(path)
+    prune_orphan_audio(entries, path)
     if not path.exists():
         return 0
     cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=days)

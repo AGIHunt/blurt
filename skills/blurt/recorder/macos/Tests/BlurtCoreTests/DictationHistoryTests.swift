@@ -92,4 +92,40 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertEqual(h.prune(days: 30), 0)                             // prune keeps them
         XCTAssertEqual(h.load().first?.timing?["load_ms"], 0)
     }
+
+    func testOrphanedAudioGoesAtPrune() throws {
+        // dict025: a take dropped or cut short by a quit left its wav (and its streamed pieces) with no entry
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        let fm = FileManager.default
+        try fm.createDirectory(at: h.audioDir, withIntermediateDirectories: true)
+        let lab = dir.appendingPathComponent("lab")
+        try fm.createDirectory(at: lab, withIntermediateDirectories: true)
+        let old = Date().addingTimeInterval(-2 * 3600)
+        func wav(_ name: String, in d: URL? = nil, at t: Date = old) throws {
+            let f = (d ?? h.audioDir).appendingPathComponent(name)
+            try Data([0, 1, 2]).write(to: f)
+            try fm.setAttributes([.modificationDate: t], ofItemAtPath: f.path)
+        }
+        var kept = entry("d-kept", "kept", Date().timeIntervalSince1970)
+        kept.audio = "audio/d-kept.wav"                                   // keep_audio: its entry points at it
+        h.append(kept)
+        try wav("d-kept.wav")
+        try wav("d-lost.wav")                                             // a take whose result was dropped
+        try wav("d-lost-p1.wav")                                          // and a piece of it
+        try wav("d-now.wav", at: Date())                                  // a take still being recorded
+        try wav("lab-take.wav", in: lab)                                  // the Lab's own recordings
+        try Data("x".utf8).write(to: h.audioDir.appendingPathComponent("notes.txt"))
+        h.prune(days: 30)
+        let left = Set(try fm.contentsOfDirectory(atPath: h.audioDir.path))
+        XCTAssertEqual(left, ["d-kept.wav", "d-now.wav", "notes.txt"])
+        XCTAssertTrue(fm.fileExists(atPath: lab.appendingPathComponent("lab-take.wav").path))
+        // without a history file at all, an old wav is an orphan too
+        let h2 = DictationHistory(url: dir.appendingPathComponent("other/history.jsonl"))
+        try fm.createDirectory(at: h2.audioDir, withIntermediateDirectories: true)
+        try Data([0]).write(to: h2.audioDir.appendingPathComponent("d-x.wav"))
+        try fm.setAttributes([.modificationDate: old], ofItemAtPath: h2.audioDir.appendingPathComponent("d-x.wav").path)
+        XCTAssertEqual(h2.pruneOrphanAudio(), ["d-x.wav"])
+    }
 }

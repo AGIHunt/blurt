@@ -1332,7 +1332,11 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
   apart in the field, or `suggest`: the list chip shown; folded into `reformats`).
 
 Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
-(`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on.
+(`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on, and with the take whenever its
+result is dropped. A take cut short by a quit or a crash, or by a path that once forgot its file (dict025: five wavs
+no entry referenced), is caught at launch: retention also removes every wav in `audio/` (pieces included) that no
+entry points at and that is over an hour old (`DictationHistory.pruneOrphanAudio`, `dictation.py prune`). The Lab's
+recordings live in `dictation/lab/` and are never touched.
 
 *Turn into item* runs `dictation.py item ID --project <current|inbox>`. That calls `items.py add` with:
 - `title` = the first sentence, `quote` = the whole text;

@@ -12,8 +12,9 @@
 //                                      (action reformat | undo | revert); "reformats" on a rewritten line
 // Since the styles work: "style", "style_source", "style_router" (DictationStyleRecord: the router's inputs and decision).
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
-// removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio). dictation.py reads the
-// same file (list, turn into an item).
+// removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio), and any recording there
+// no entry points at that is over an hour old (a take dropped, cancelled, or cut short by a quit or a crash). It runs
+// at launch. dictation.py reads the same file (list, turn into an item).
 import Foundation
 
 public struct DictationEntry: Identifiable, Hashable {
@@ -234,11 +235,12 @@ public final class DictationHistory {
         return order.compactMap { byID[$0] }.sorted { $0.time > $1.time }
     }
 
-    /// Rewrites the file without entries older than `days` (and without the edit lines), removing their audio.
-    /// Returns how many entries went.
+    /// Rewrites the file without entries older than `days` (and without the edit lines), removing their audio — and
+    /// any recording in audio/ that no entry keeps (`pruneOrphanAudio`). Returns how many entries went.
     @discardableResult
     public func prune(days: Int, now: Date = Date()) -> Int {
         let all = load()
+        pruneOrphanAudio(keeping: all, now: now)
         let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
         let keep = all.filter { $0.time >= cutoff }
         let drop = all.filter { $0.time < cutoff }
@@ -258,5 +260,26 @@ public final class DictationHistory {
         lock.lock(); defer { lock.unlock() }
         try? out.write(to: url, options: .atomic)
         return drop.count
+    }
+
+    /// A take's audio (dictation/audio/<id>.wav, and its streamed pieces <id>-pN.wav) is kept only when its entry
+    /// says so (record.dictation.keep_audio, the Lab's "keep the next N"). A take that was dropped, cancelled, or cut
+    /// short by a quit or a crash left its recording behind with no entry pointing at it: those go once they are
+    /// older than `minAge` (no take still running is that old — dictation stops at 5 minutes). The Lab's own
+    /// recordings live in dictation/lab/ and are never touched. Returns the files removed.
+    @discardableResult
+    public func pruneOrphanAudio(keeping entries: [DictationEntry]? = nil, minAge: TimeInterval = 3600, now: Date = Date()) -> [String] {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: audioDir.path) else { return [] }
+        let kept = Set((entries ?? load()).compactMap { $0.audio.map { resolve($0).standardizedFileURL.path } })
+        var removed: [String] = []
+        for n in names where n.lowercased().hasSuffix(".wav") {
+            let f = audioDir.appendingPathComponent(n)
+            guard !kept.contains(f.standardizedFileURL.path),
+                  let m = (try? fm.attributesOfItem(atPath: f.path))?[.modificationDate] as? Date,
+                  now.timeIntervalSince(m) >= minAge else { continue }
+            if (try? fm.removeItem(at: f)) != nil { removed.append(n) }
+        }
+        return removed
     }
 }

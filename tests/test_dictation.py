@@ -6,7 +6,9 @@ dictation.py (edits applied, retention), and "Turn into item" (items.py add, no 
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -62,6 +64,20 @@ class History(TmpCase):
         cfg["record"]["dictation"] = {"retention_days": 0}
         (self.e.home / "config.json").write_text(json.dumps(cfg))
         self.assertEqual(ok("dictation.py", "prune", env=self.e.env())["removed"], 1)
+
+    def test_prune_removes_orphaned_audio(self):
+        # dict025: a dropped take's wav (and its pieces) with no entry goes once it is an hour old; a kept one and a
+        # take still running stay
+        audio = self.e.home / "dictation" / "audio"
+        audio.mkdir(parents=True)
+        old = time.time() - 2 * 3600
+        for n in ("d-kept.wav", "d-lost.wav", "d-lost-p1.wav", "d-now.wav"):
+            (audio / n).write_bytes(b"RIFF")
+            if n != "d-now.wav":
+                os.utime(audio / n, (old, old))
+        self.write([entry("d-kept", 1, audio="audio/d-kept.wav")])
+        ok("dictation.py", "prune", env=self.e.env())
+        self.assertEqual(sorted(p.name for p in audio.iterdir()), ["d-kept.wav", "d-now.wav"])
 
     def test_turn_into_item(self):
         repo = make_repo(self.tmp / "web-app")
