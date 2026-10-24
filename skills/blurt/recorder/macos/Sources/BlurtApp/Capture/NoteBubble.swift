@@ -10,9 +10,14 @@
 //    nothing to transcribe). A kept recording is always transcribed (Snapper.settled), also next to typed text.
 //  • ⏎ (or ✓) keeps the shot — with the note, or
 //    without one (then it hangs as a card); Esc (or the bin) discards the shot: Trash, "Discarded · Undo" for 3 s.
-//  • the shot is shown enlarged; drag (⌃-drag, as with the recorder's pen — or just drag) to circle things → the
-//    ink is burnt into shots/NNN.marked.png, the original stays as it was.
-//  • ⌥⇧A while it is open saves the note and takes the next shot.
+//  • the shot is shown enlarged; a plain drag circles things (the "Drag to circle" hint fades after a moment, so it
+//    never sits on the picture for long) → the ink is burnt into shots/NNN.marked.png, the original stays as it was.
+//  • ⌥⇧A while it is open saves the note and takes the next shot. Listening starts the warm speech server
+//    (VoiceInput.warmSpeechModel), so the note's words come back in well under a second, not a cold model load.
+// "Edit Note…" on a card (mode .edit) opens the same panel with the whole note as editable text — typed, then said —
+// so words heard wrong can be fixed (BlurtCore NoteEdit: an edited spoken note replaces its words). A voice card
+// has no picture: the bubble is text only. The mic re-records: the new take goes to shots/NNN.retake.wav
+// (VoiceRetake) and replaces the original only when it is kept; Esc, or no speech, leaves the original untouched.
 // The same panel, text-only, is the note popover for snaps taken while recording (the island's snap button,
 // the recording pauses while it is open).
 //
@@ -634,6 +639,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private var ticker: Timer?
     private var showWork: DispatchWorkItem?
     private var original: (text: String?, voice: String?, said: String?, strokes: [[[Double]]])?
+    /// where this bubble's recording goes: shots/NNN.wav (a fresh shot), shots/NNN.retake.wav (a re-record in an edit)
+    private var takeRel: String?
+    /// edit: a re-record was kept (it replaces the original on save, and is deleted on Esc)
+    private var retakeKept = false
+    private var retakeSeconds: Double = 0
+    /// the "Drag to circle" hint has faded for this bubble
+    private var penHintGone = false
     private var player: AVAudioPlayer?
     /// recording mode: which shots can be switched between, and what to do on close (resume).
     var recordingShots: [Shot] = []
@@ -660,6 +672,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         speechStarted = false
         voiceKept = false
         voiceSpeech = 0
+        takeRel = nil
+        retakeKept = false
+        retakeSeconds = 0
+        penHintGone = false
+        penHint.alphaValue = 1
         original = (s.text, s.voice, s.said, s.strokes)
         build()
         load(s)
@@ -729,14 +746,17 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     }
 
     private func load(_ s: Shot) {
-        let img = s.image()
-        canvas.image = img
+        canvas.image = s.kind == .voice ? nil : s.image()
         canvas.strokes = s.strokes
-        canvas.editable = mode != .recording
-        field.stringValue = mode == .listen ? "" : (s.text ?? "")
+        canvas.editable = mode != .recording && s.kind != .voice
+        // an edit shows the whole note — what was said too — so the words can be fixed (NoteEdit)
+        field.stringValue = mode == .listen ? "" : mode == .edit ? NoteEdit.field(typed: s.text, said: s.said) : (s.text ?? "")
         layout()
         refreshStatus()
     }
+
+    /// A voice card has no picture: the bubble is its words alone.
+    private var showsPicture: Bool { shot?.kind != .voice }
 
     private func previewSize() -> NSSize {
         let px = shot?.pixelSize ?? CGSize(width: 1600, height: 1000)
@@ -748,26 +768,28 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     }
 
     private func layout() {
-        let pv = previewSize()
+        let pic = showsPicture
+        let pv = pic ? previewSize() : .zero
         let pad: CGFloat = 12
         let width = max(mode == .recording ? 340 : 400, pv.width + pad * 2)
-        let fieldH = fieldHeight(width - pad * 2 - 40)
+        let fieldH = fieldHeight(width - pad * 2 - 40, max: pic ? 90 : 220)
         let c = BubbleBackground.caret
         let top = bg.caretUp ? c : 0
-        let height = c + pad + pv.height + 10 + fieldH + 4 + 16 + pad
+        let height = c + pad + (pic ? pv.height + 10 : 0) + fieldH + 4 + 16 + pad
         panel?.setContentSize(NSSize(width: width, height: height))
         bg.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        canvas.isHidden = !pic
         canvas.frame = NSRect(x: (width - pv.width) / 2, y: top + pad, width: pv.width, height: pv.height)
         penHint.stringValue = mode == .recording ? "" : "  " + Loc.t("capture.note.pen_hint", table: "Capture") + "  "
         penHint.sizeToFit()
         penHint.frame = NSRect(x: canvas.frame.minX + 8, y: canvas.frame.maxY - 26, width: penHint.frame.width, height: 18)
-        penHint.isHidden = mode == .recording || !canvas.strokes.isEmpty
+        penHint.isHidden = !pic || mode == .recording || !canvas.strokes.isEmpty || penHintGone
         undoBtn.frame.origin = NSPoint(x: canvas.frame.maxX - 32, y: canvas.frame.maxY - 32)
-        undoBtn.isHidden = canvas.strokes.isEmpty
+        undoBtn.isHidden = !pic || canvas.strokes.isEmpty
         undoBtn.wantsLayer = true
         undoBtn.layer?.backgroundColor = NSColor(white: 1, alpha: 0.85).cgColor
         undoBtn.layer?.cornerRadius = 13
-        let rowY = canvas.frame.maxY + 10
+        let rowY = pic ? canvas.frame.maxY + 10 : top + pad
         icon.frame = NSRect(x: pad + 2, y: rowY + 1, width: 22, height: 20)
         bars.frame = NSRect(x: pad, y: rowY, width: 26, height: 22)
         field.frame = NSRect(x: pad + 34, y: rowY + 1, width: width - pad * 2 - 34 - 6, height: fieldH)
@@ -785,18 +807,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
         if mode == .edit {
             micBtn.isHidden = false; micBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
-            if shot?.voiceURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
+            if playURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
                 playBtn.isHidden = false; playBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
             }
         }
         position()
     }
 
-    private func fieldHeight(_ w: CGFloat) -> CGFloat {
+    private func fieldHeight(_ w: CGFloat, max cap: CGFloat) -> CGFloat {
         let s = field.stringValue.isEmpty ? (field.placeholderString ?? "x") : field.stringValue
         let r = (s as NSString).boundingRect(with: NSSize(width: w, height: 400), options: [.usesLineFragmentOrigin],
                                              attributes: [.font: field.font!])
-        return min(90, max(20, ceil(r.height) + 2))
+        return min(cap, max(20, ceil(r.height) + 2))
     }
 
     private func position() {
@@ -842,6 +864,24 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
         ticker?.invalidate()
         ticker = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in self?.tick() }
+        fadePenHint(for: shot)
+    }
+
+    /// The pen hint says it once, then gets off the picture (it sits over what is being circled).
+    static let penHintSeconds: Double = 2.5
+    private func fadePenHint(for s: Shot?) {
+        guard let s = s, !penHint.isHidden else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + NoteBubble.penHintSeconds) { [weak self] in
+            guard let self = self, self.shot === s, !self.penHintGone else { return }
+            NSAnimationContext.runAnimationGroup({ c in
+                c.duration = reduceMotion ? 0 : 0.3
+                self.penHint.animator().alphaValue = 0
+            }, completionHandler: {
+                guard self.shot === s else { return }
+                self.penHintGone = true
+                self.penHint.isHidden = true
+            })
+        }
     }
 
     // MARK: listening
@@ -849,7 +889,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func startListening() {
         guard let s = shot, let dir = s.batch?.dir else { return }
         guard Dictation.shared.phase != .listening else { return refreshStatus() }    // dictation has the mic: type instead
-        let rel = "shots/\(ShotBatch.name(s.n)).wav"
+        // a re-record never writes over the note it replaces: it goes next to it until it is kept (VoiceRetake)
+        let rel = mode == .edit ? VoiceRetake.path(for: canonicalVoice(s)) : canonicalVoice(s)
+        takeRel = rel
         let v = NoteVoice(url: dir.appendingPathComponent(rel))
         v.onLevel = { [weak self] l in self?.bars.level = l }
         v.onSpeech = { [weak self] in self?.speechStarted = true; self?.refreshStatus() }
@@ -862,12 +904,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 self.voice = nil
                 self.voiceKept = true
                 self.voiceSpeech = v.speechSeconds
-                self.shot?.voice = rel
-                self.shot?.said = nil                    // a new recording (a re-record in edit): its words to come
+                if self.mode == .edit {
+                    self.retakeKept = true                   // it replaces the original when the edit is saved
+                    self.retakeSeconds = v.elapsed
+                } else {
+                    self.shot?.voice = rel
+                    self.shot?.said = nil                    // its words to come
+                }
                 if !self.typed { self.close(save: true, flash: true) }
             }
         }
         voice = v
+        VoiceInput.warmSpeechModel()            // its words come from the warm server, not a cold model load
         v.start { [weak self] ok in
             guard let self = self, self.voice === v else { return }
             if !ok { self.voice = nil; self.refreshStatus() }
@@ -877,7 +925,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func rerecord() {
         guard mode == .edit else { return }
-        voice?.stop(keep: false)
+        voice?.stop(keep: false)                // a retake in progress: only it goes
+        voice = nil
+        if retakeKept, let u = retakeURL { VoiceRetake.discard(u) }
+        retakeKept = false
+        // the words said will be the new take's: the field keeps what was typed (unless it was changed)
+        if let o = original, CardNote.clean(field.stringValue) == CardNote.clean(NoteEdit.field(typed: o.text, said: o.said)) {
+            field.stringValue = o.text ?? ""
+            layout()
+        }
         typed = !field.stringValue.isEmpty
         speechStarted = false
         let keepTyped = typed
@@ -986,8 +1042,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         load(recordingShots[j])
     }
 
+    /// shots/NNN.wav — where a capture's voice note lives (a kept re-record ends up there too).
+    private func canonicalVoice(_ s: Shot) -> String { s.voice ?? "shots/\(ShotBatch.name(s.n)).wav" }
+    /// this edit's re-record (shots/NNN.retake.wav)
+    private var retakeURL: URL? {
+        guard mode == .edit, let s = shot, let rel = takeRel else { return nil }
+        return s.batch?.dir.appendingPathComponent(rel)
+    }
+    /// What the play button plays: a kept re-record (what saving keeps), else the note as it is.
+    private var playURL: URL? { retakeKept ? retakeURL : shot?.voiceURL }
+
     private func play() {
-        guard let u = shot?.voiceURL else { return }
+        guard let u = playURL else { return }
         player = try? AVAudioPlayer(contentsOf: u)
         player?.play()
     }
@@ -1032,7 +1098,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         player?.stop()
         // Esc on a fresh shot discards it; what was said, typed and drawn goes with it, and comes back with Undo
         let discard = !save && mode == .listen
-        let rel = "shots/\(ShotBatch.name(s.n)).wav"
+        let rel = takeRel ?? canonicalVoice(s)
         // (a fresh shot only: in an edit the text was there before the re-record)
         let hadTyping = mode == .listen && typed && !field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if let v = voice {
@@ -1040,8 +1106,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             // word, a cough, the keyboard): then the voice was abandoned for typing, and it goes
             let keep = (save || discard) && speechStarted && !(hadTyping && v.speechSeconds < NoteBubble.abandonedSpeech)
             emit(["event": "note_voice_close", "n": s.n, "kept": keep, "speech": (v.speechSeconds * 100).rounded() / 100, "typed": hadTyping])
-            v.stop(keep: keep)
-            if keep { s.voice = rel; s.said = nil } else if s.voice == rel { s.voice = nil; s.said = nil }
+            v.stop(keep: keep)                  // (an edit's retake: not kept = only the retake goes)
+            if mode == .edit {
+                if keep { retakeKept = true; retakeSeconds = v.elapsed }
+            } else if keep { s.voice = rel; s.said = nil } else if s.voice == rel { s.voice = nil; s.said = nil }
             voice = nil
         } else if voiceKept, hadTyping, voiceSpeech < NoteBubble.abandonedSpeech, save || discard {
             // it had ended by itself (a pause), then the user typed the note instead
@@ -1050,12 +1118,36 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             s.said = nil
             emit(["event": "note_voice_close", "n": s.n, "kept": false, "speech": (voiceSpeech * 100).rounded() / 100, "typed": true])
         }
-        if save || discard {
+        if save, mode == .edit, let o = original {
+            var retaken = false
+            if retakeKept, let u = retakeURL, let dir = s.batch?.dir {
+                // the re-record takes the original's place; its words are to come
+                let target = canonicalVoice(s)
+                let ok = VoiceRetake.commit(u, over: dir.appendingPathComponent(target))
+                emit(["event": "note_retake", "n": s.n, "kept": ok])
+                if ok {
+                    retaken = true
+                    s.voice = target
+                    s.transcription = .idle
+                    if s.kind == .voice { s.duration = retakeSeconds }
+                }
+            }
+            // the field held the whole note: an edit of spoken words replaces them (NoteEdit)
+            let note = NoteEdit.apply(openedTyped: o.text, openedSaid: o.said, currentSaid: s.said, field: field.stringValue,
+                                      retaken: retaken)
+            s.text = note.typed
+            s.said = note.said
+            applyInk(s)
+            s.batch?.save(s)
+        } else if save || discard {
             let t = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             s.text = t.isEmpty ? nil : t
             if mode != .recording { applyInk(s) }
             s.batch?.save(s)
         } else if mode == .edit, let o = original {
+            // Esc: as it was — a re-record goes, the note it would have replaced was never touched
+            if let u = retakeURL { VoiceRetake.discard(u) }
+            emit(["event": "note_edit_cancel", "n": s.n, "retake": retakeKept])
             s.text = o.text; s.voice = o.voice; s.said = o.said; s.strokes = o.strokes
         } else if mode == .recording {
             // Esc = resume without saving the edit in the field

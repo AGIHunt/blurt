@@ -89,8 +89,14 @@ func backingScale(forDisplay id: CGDirectDisplayID) -> CGFloat {
 /// A full-resolution still of `rect` (global top-left points), without any of our own windows except `keep`
 /// (the pen's ink is part of what the user means, so a snap while recording keeps it).
 func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], completion: @escaping (CGImage?, CGFloat) -> Void) {
-    // tests: BLURT_TEST_STILL=<png> stands in for the screen (no Screen Recording grant, nothing private captured)
-    if let p = ProcessInfo.processInfo.environment["BLURT_TEST_STILL"], let img = loadCGImage(URL(fileURLWithPath: p)) {
+    // tests: BLURT_TEST_STILL=<png> stands in for the screen (no Screen Recording grant, nothing private captured);
+    // BLURT_TEST_STILL=none: the capture fails, as it does without the grant
+    let env = ProcessInfo.processInfo.environment
+    if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_TEST_STILL"] == "none" {
+        DispatchQueue.main.async { completion(nil, 2) }
+        return
+    }
+    if let p = env["BLURT_TEST_STILL"], let img = loadCGImage(URL(fileURLWithPath: p)) {
         DispatchQueue.main.async { completion(img, 2) }
         return
     }
@@ -162,7 +168,7 @@ final class OneShotCapture: NSObject, SCStreamOutput {
 
 // MARK: - Captures on disk
 
-/// A capture of a shots batch: a still (shot) or a voice input (voice) — K7.
+/// A capture of a shots batch: a still (shot) or a voice note (voice) — K7.
 enum CaptureKind: String { case shot, voice }
 
 final class Shot {
@@ -173,10 +179,10 @@ final class Shot {
     var t: Double?
     var wall: Double
     var region: [Double]
-    var voice: String?           // shots/NNN.wav: the note on a shot, or the voice input itself
+    var voice: String?           // shots/NNN.wav: the note on a shot, or the voice note itself
     var text: String?            // typed note
-    var said: String?            // transcript of `voice` (voice inputs)
-    var duration: Double?        // voice inputs
+    var said: String?            // transcript of `voice` (voice notes)
+    var duration: Double?        // voice notes
     var strokes: [[[Double]]] = []
     var deleted = false
     /// dragged out and taken by another app (seconds since 1970): off its thread, in "Recently Taken" for 7 days
@@ -199,7 +205,7 @@ final class Shot {
 
     var url: URL? { file.flatMap { batch?.dir.appendingPathComponent($0) } }
     var markedURL: URL? { marked.flatMap { batch?.dir.appendingPathComponent($0) } }
-    /// What gets copied / dragged: the inked version if there is one (a voice input: its wav).
+    /// What gets copied / dragged: the inked version if there is one (a voice note: its wav).
     var bestURL: URL? { markedURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } ?? url ?? voiceURL }
     var voiceURL: URL? { voice.flatMap { batch?.dir.appendingPathComponent($0) } }
     var hasNote: Bool { !(text ?? "").isEmpty || voice != nil }
@@ -293,7 +299,7 @@ final class ShotBatch {
         return s
     }
 
-    /// A voice input whose wav (shots/NNN.wav) is already written.
+    /// A voice note whose wav (shots/NNN.wav) is already written.
     @discardableResult
     func addVoice(n: Int, duration: Double, project: String?, wall: Date = Date()) -> Shot {
         let s = Shot(n: n, file: nil, wall: wall.timeIntervalSince1970, region: [])
