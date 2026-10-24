@@ -214,8 +214,13 @@ final class PermissionGuide: ObservableObject {
         let kinds = (r["kinds"] as? [String] ?? []).compactMap(PermissionKind.init(rawValue:))
         let flow = PermissionFlowKind(rawValue: r["flow"] as? String ?? "") ?? .all
         let src = Source(rawValue: r["source"] as? String ?? "") ?? .privacy
-        emit(["event": "perm_guide", "op": "resume", "steps": kinds.map(\.rawValue)])
-        if kinds.isEmpty { return finish(already: true) }
+        emit(["event": "perm_guide", "op": "resume", "steps": kinds.map(\.rawValue), "source": src.rawValue])
+        if kinds.isEmpty {
+            // Screen Recording was the walk's last step: the done line, back where the walk started
+            self.flow = flow
+            self.source = src
+            return finish(already: true)
+        }
         start(flow, only: kinds, source: src)
     }
 

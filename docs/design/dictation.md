@@ -229,13 +229,15 @@ Raycast or Loom do (`BlurtCore/PermissionFlow.swift` + `Onboarding/PermissionGui
   every permission it needs." / "Done for now — allow the rest here any time." (something skipped).
 - **Screen Recording** may need a relaunch: the panel's step and Settings → Privacy have *Restart Blurt*
   (`open -n` of our own bundle once this process has exited, then terminate; the rest of the walk is kept in
-  `app.permission_resume` and continues after the relaunch, within 10 minutes).
+  `app.permission_resume` and continues after the relaunch, within 10 minutes — with nothing left, as when Screen
+  Recording is the walk's last step, the relaunched Blurt shows the done line and brings back the window the walk
+  started from).
 - Blurt never clicks, scripts or writes anything in System Settings, and never writes `AppleFnUsageType`.
 - Test builds never register, never open a pane (unless `BLURT_TEST_OPEN_PANES=1`) and never relaunch; they emit
   `perm_request` / `perm_open_pane` / `perm_relaunch`. States are simulated with `BLURT_TEST_SCREEN_RECORDING`,
   `BLURT_TEST_MICROPHONE` (granted | denied | not_asked), `BLURT_TEST_ACCESSIBILITY`, `BLURT_TEST_INPUT_MONITORING`,
   `BLURT_TEST_FN_USAGE`, `BLURT_TEST_FN_APPS`, or the `perm …` hooks (`perm screen|mic|ax|im|fn …`, `perm guide`,
-  `perm skip|cancel|restart`, `perm standin …` — a window of the test app standing in for System Settings —, `perm drag
+  `perm skip|cancel|restart`, `perm resume KINDS|- FLOW SOURCE` (the relaunched side), `perm standin …` — a window of the test app standing in for System Settings —, `perm drag
   PB`, `perm status`).
 
 ## Streaming

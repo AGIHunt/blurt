@@ -107,15 +107,16 @@ enum SystemAccess {
     }
 
     /// Screen Recording granted while Blurt runs takes effect after a relaunch on some macOS versions: `open -n` our
-    /// own bundle once this process has gone, then quit. Test builds only say they would.
+    /// own bundle once this process has gone, then quit; the new one carries on with the walk (PermissionGuide
+    /// resumeIfNeeded). Test builds only say they would (`perm resume` plays the new one's side).
     static func relaunch(resume: [PermissionKind] = [], flow: PermissionFlowKind = .all, source: String = "") {
         let path = Bundle.main.bundlePath
         emit(["event": "perm_relaunch", "bundle": path, "resume": resume.map(\.rawValue), "test_mode": testMode])
         if testMode { return }
-        if !resume.isEmpty {
-            Config.shared.set("app.permission_resume", ["kinds": resume.map(\.rawValue), "flow": flow.rawValue, "source": source,
-                                                        "at": Date().timeIntervalSince1970])
-        }
+        // even with nothing left (Screen Recording is the walk's last step): the relaunched Blurt says it's done and
+        // comes back where the walk started
+        Config.shared.set("app.permission_resume", ["kinds": resume.map(\.rawValue), "flow": flow.rawValue, "source": source,
+                                                    "at": Date().timeIntervalSince1970])
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", "while kill -0 \(getpid()) 2>/dev/null; do sleep 0.1; done; /usr/bin/open -n \"$0\"", path]
