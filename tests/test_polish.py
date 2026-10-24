@@ -77,6 +77,25 @@ class Guard(unittest.TestCase):
         self.check("我们的API现在response time大概是两百毫秒", "我们的 API 现在响应时间大概是两百毫秒。", "translated")
         self.check("deadline是周五哦不对是下周一", "Deadline is next Monday.", "correction")
 
+    def test_a_correction_with_only_the_marker_dropped(self):
+        """The model dropped 不对 but kept what it took back, right before the restated version: unapplied."""
+        self.check("把这个文件，不对，这两个文件发给我", "把这个文件，这两个文件发给我。", "correction")
+        self.check("send it to Tom no wait to Jerry", "Send it to Tom, to Jerry.", "correction")
+        self.check("把这个文件，不对，这两个文件发给我", "把这两个文件发给我。", None)
+        self.check("我们下午两点不对三点开会", "我们下午三点开会。", None)
+
+    def test_a_lead_in_may_go_with_the_marker(self):
+        self.check("Let's meet at 2:30, no wait, make it 3:30", "Let's meet at 3:30.", None)
+        self.check("deadline是周五不对是下周一", "deadline 是下周一。", None)
+        self.check("send the report to Alice sorry I mean to Bob before Friday", "Send the report to Alice before Friday.",
+                   "correction")                                   # "to" is no lead-in: Bob must stay
+
+    def test_a_custom_word_said_only_in_the_taken_back_words_may_go(self):
+        g = polish.guard("用 Claude 写，不对，用 Codex 写这个脚本", "用 Codex 写这个脚本。", terms=["Claude", "Codex"])
+        self.assertTrue(g["pass"], g)
+        g = polish.guard("Claude 先写，不对，用 Codex 写，Claude 来审", "用 Codex 写。", terms=["Claude", "Codex"])
+        self.assertEqual(g["reason"], "term")                      # said again after the correction: it stays
+
     def test_wrong_side_of_a_correction(self):
         self.check("把这个文件发给小王哦不是发给小李", "把这个文件发给小王。", "correction")
         self.check("send the report to Alice sorry I mean to Bob before Friday", "Send the report to Alice before Friday.",
@@ -139,8 +158,16 @@ class Repair(unittest.TestCase):
                          ("报价是两万，不对，是两万五，含税的。", "报价是两万五，含税的。"),
                          ("嗯嗯那个我我我想说的是这个先放一放", "我想说的是，这个先放一放。"),
                          ("这个按钮的，这个按钮的颜色要再深一点", "这个按钮的颜色要再深一点。"),
-                         ("send it to Tom no wait to Jerry", "Send it to Jerry.")]:
+                         ("把这个，不对，这两个拿到那一边去", "把这两个拿到那一边去。"),
+                         ("先放到左边，不对，放到右边那个盒子里", "放到右边那个盒子里。"),
+                         ("send it to Tom no wait to Jerry", "Send it to Jerry."),
+                         # a cancelled span with its lead-in: never put back (the Dictation Lab's find)
+                         ("Let's meet at 2:30, no wait, make it 3:30", "Let's meet at 3:30."),
+                         ("let's meet at two thirty no wait make it three thirty", "Let's meet at three thirty."),
+                         ("把这个文件，不对，这两个文件发给我", "把这两个文件发给我。"),
+                         ("用 Claude 写，不对，用 Codex 写这个脚本", "用 Codex 写这个脚本。")]:
             self.assertEqual(polish.repair(raw, out)[1], [], raw)
+            self.assertTrue(polish.guard(raw, polish.repair(raw, out)[0])["pass"], raw)
         # "不是" that isn't a correction: what follows it was dropped too, so it goes back
         fixed, spans = polish.repair("这个接口不是每次都慢，只有在凌晨备份的时候才会慢。", "这个接口只有在备份的时候才会慢。")
         self.assertIn("不是每次都慢", fixed)

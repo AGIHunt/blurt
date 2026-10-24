@@ -134,7 +134,7 @@ final class DictationHistoryModel: ObservableObject {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return entries }
         return entries.filter { e in
-            [e.text, e.raw, e.polished ?? "", e.app ?? ""].contains { $0.lowercased().contains(q) }
+            [e.finalText, e.text, e.raw, e.polished ?? "", e.app ?? ""].contains { $0.lowercased().contains(q) }
                 || (extras[e.id]?.terms.contains { $0.lowercased().contains(q) } ?? false)
         }
     }
@@ -175,7 +175,7 @@ final class DictationHistoryModel: ObservableObject {
     }
 
     /// The text the list and ⌘C go by: what was heard while the detail shows the original, else what was typed.
-    func shownText(_ e: DictationEntry) -> String { mode == .raw ? e.raw : e.text }
+    func shownText(_ e: DictationEntry) -> String { mode == .raw ? e.raw : e.finalText }
 
     /// The selection's text, newest first, one per paragraph.
     func copySelection() {
@@ -237,6 +237,49 @@ final class DictationHistoryModel: ObservableObject {
                 emit(["event": "dictation_history", "action": "item", "id": e.id, "error": f.code])
             }
         }
+    }
+
+    // MARK: correcting a dictation (docs/design/dictation.md §Learning from corrections)
+
+    /// The dictation whose text is being edited, and the text so far.
+    @Published var editing: String?
+    @Published var draft = ""
+    /// After a save: the words learned from it (empty: saved, nothing to learn), shown under the text for a while.
+    @Published var savedNote: (id: String, learned: [String])?
+
+    func beginEdit(_ e: DictationEntry) {
+        draft = e.finalText
+        editing = e.id
+        savedNote = nil
+    }
+
+    func cancelEdit() { editing = nil }
+
+    /// Saves the user's corrected text (history `correct`) and learns what they fixed — at once, since they did it on
+    /// purpose (DictationVocabulary.learnCorrection). Returns the words learned.
+    @discardableResult
+    func saveCorrection(_ e: DictationEntry, _ text: String) -> [String] {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        editing = nil
+        guard !t.isEmpty, t != e.finalText else { return [] }
+        let before = e.finalText
+        DictationHistory.shared.correct(e.id, text: t)
+        let results = DictationVocabulary.shared.learnCorrection(typed: before, corrected: t)
+        var learned: [String] = []
+        for r in results {
+            switch r.result {
+            case .learned(let w)?, .known(let w)?, .suggested(let w)?: if !learned.contains(w) { learned.append(w) }
+            case nil: break
+            }
+        }
+        reload()
+        savedNote = (e.id, learned)
+        emit(["event": "dictation_history", "action": "correct", "id": e.id, "learned": learned,
+              "fixes": results.map { ["heard": $0.fix.heard, "fixed": $0.fix.fixed, "kind": $0.fix.kind.rawValue,
+                                      "result": $0.result.map { "\($0)" } ?? "ignored"] }])
+        let id = e.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.savedNote?.id == id { self?.savedNote = nil } }
+        return learned
     }
 
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
@@ -439,7 +482,7 @@ struct DictationListView: View {
         .contextMenu(forSelectionType: String.self) { ids in
             let es = m.entries.filter { ids.contains($0.id) }
             if !es.isEmpty {
-                Button(T("dictation.history.copy")) { m.copy(es.map(\.text).joined(separator: "\n\n")) }
+                Button(T("dictation.history.copy")) { m.copy(es.map(\.finalText).joined(separator: "\n\n")) }
                 if es.count == 1, let e = es.first {
                     Button(T("dictation.history.copy_raw")) { m.copy(e.raw) }
                     Divider()
@@ -635,30 +678,84 @@ struct DictationDetailView: View {
 
     @ViewBuilder func texts(_ e: DictationEntry, differs: Bool) -> some View {
         if !differs {
-            card(e.text, label: e.polished == nil || e.fellBack ? T("main.dictation.heard") : T("main.dictation.typed"),
-                 note: e.polished != nil && !e.fellBack ? T("main.dictation.same") : nil, copyID: "detail-text")
+            card(e.finalText, label: e.corrected != nil ? T("main.dictation.corrected")
+                    : e.polished == nil || e.fellBack ? T("main.dictation.heard") : T("main.dictation.typed"),
+                 note: e.corrected == nil && e.polished != nil && !e.fellBack ? T("main.dictation.same") : nil,
+                 copyID: "detail-text", edit: e)
         } else {
             switch m.mode {
-            case .polished: card(e.text, label: T("main.dictation.typed"), copyID: "detail-polished")
+            case .polished: card(e.finalText, label: typedLabel(e), copyID: "detail-polished", edit: e)
             case .raw: card(e.raw, label: T("main.dictation.heard"), secondary: true, copyID: "detail-raw")
             case .compare:
                 // what was heard on the left, what was typed on the right, the same height
                 HStack(alignment: .top, spacing: 12) {
                     card(e.raw, label: T("main.dictation.heard"), secondary: true, copyID: "detail-raw")
-                    card(e.text, label: T("main.dictation.typed"), copyID: "detail-polished")
+                    card(e.finalText, label: typedLabel(e), copyID: "detail-polished", edit: e)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
+        if let n = m.savedNote, n.id == e.id {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                glyph(.check, 11).foregroundStyle(Color(nsColor: StatusRing.keep))
+                Text(n.learned.isEmpty ? T("main.dictation.correct.saved")
+                     : T("main.dictation.correct.learned", n.learned.joined(separator: T("main.dictation.correct.sep"))))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        }
     }
 
-    /// A block of text with its label and its own copy button.
-    func card(_ text: String, label: String, note: String? = nil, secondary: Bool = false, copyID: String) -> some View {
+    func typedLabel(_ e: DictationEntry) -> String { e.corrected != nil ? T("main.dictation.corrected") : T("main.dictation.typed") }
+
+    /// A block of text with its label and its own copy button; `edit`: the text can be corrected here ("Correct" →
+    /// an editor with "Save correction", which also learns the misheard words).
+    @ViewBuilder
+    func card(_ text: String, label: String, note: String? = nil, secondary: Bool = false, copyID: String,
+              edit: DictationEntry? = nil) -> some View {
+        if let e = edit, m.editing == e.id {
+            editor(e, label: label)
+        } else {
+            plainCard(text, label: label, note: note, secondary: secondary, copyID: copyID, edit: edit)
+        }
+    }
+
+    func editor(_ e: DictationEntry, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            TextEditor(text: $m.draft)
+                .font(.system(size: 14))
+                .frame(minHeight: 80)
+                .scrollContentBackground(.hidden)
+                .accessibilityLabel(T("main.dictation.correct"))
+            HStack(spacing: 8) {
+                Text(T("main.dictation.correct.hint")).font(.system(size: 11)).foregroundStyle(.tertiary)
+                Spacer()
+                Button(T("main.dictation.correct.cancel")) { m.cancelEdit() }.keyboardShortcut(.cancelAction)
+                Button(T("main.dictation.correct.save")) { m.saveCorrection(e, m.draft) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(m.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .controlSize(.regular)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1))
+    }
+
+    func plainCard(_ text: String, label: String, note: String?, secondary: Bool, copyID: String, edit: DictationEntry?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                 if let n = note { Text("· " + n).font(.system(size: 11)).foregroundStyle(.tertiary) }
                 Spacer(minLength: 6)
+                if let e = edit {
+                    Button { m.beginEdit(e) } label: {
+                        HStack(spacing: 4) { Image(systemName: "pencil").font(.system(size: 11)); Text(T("main.dictation.correct")) }
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(T("main.dictation.correct.tip"))
+                }
                 Button { m.copy(text, from: copyID) } label: {
                     HStack(spacing: 4) {
                         glyph(m.copied == copyID ? .check : .copy, 11)
@@ -877,5 +974,18 @@ final class DictationHistoryWindow: NSObject {
         let m = page.model
         guard let e = m.entries.first(where: { $0.id == id }) ?? m.entries.first else { return }
         m.makeItem(e)
+    }
+    @MainActor func testEdit(_ id: String?) {
+        let m = page.model
+        guard let e = m.entries.first(where: { $0.id == id }) ?? m.entries.first else { return }
+        m.select(e.id)
+        m.beginEdit(e)
+        emit(["event": "dictation_history", "action": "edit", "id": e.id, "draft": m.draft])
+    }
+    @MainActor func testCorrect(_ id: String?, text: String) {
+        let m = page.model
+        guard let e = m.entries.first(where: { $0.id == id }) ?? m.entries.first else { return }
+        m.select(e.id)
+        m.saveCorrection(e, text)
     }
 }

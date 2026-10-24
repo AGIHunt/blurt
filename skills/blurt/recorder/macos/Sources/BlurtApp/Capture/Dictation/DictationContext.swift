@@ -101,6 +101,11 @@ struct DictationContext {
 
     var isEmpty: Bool { before.isEmpty && after.isEmpty && selection.isEmpty && title.isEmpty }
     var payload: [String: Any] { ["before": before, "after": after, "selection": selection, "title": title, "app": app] }
+    /// For the speech model's request: the title and 300 characters each side of the cursor. Only which custom words
+    /// appear in it is used (their order in the model's word list, the near-miss pass); none of it goes to the model.
+    var hint: String {
+        [title, String(before.suffix(300)), selection, String(after.prefix(300))].filter { !$0.isEmpty }.joined(separator: "\n")
+    }
     /// for the history, only with keep_audio (debugging)
     var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 

@@ -173,7 +173,8 @@ final class DictationStream {
         let (before, gaps) = lock.locked { (Array(pieces.prefix(p.index).map(\.raw)), pauses) }
         let prior = String(DictationStitch.joinPieces(before, pauses: gaps, names: names).suffix(200))
         let t0 = CACurrentMediaTime()
-        let r = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30)
+        let r = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
+                                     hint: lock.locked { context }?.hint ?? "")
         p.asrSpan = (t0, CACurrentMediaTime())
         p.loadMS += r?["load_ms"] as? Int ?? 0
         try? FileManager.default.removeItem(at: url)
@@ -319,7 +320,8 @@ final class DictationStream {
     /// The old path on the whole recording: one transcription, one polish.
     private func whole(_ n: Int) -> Result {
         let t0 = CACurrentMediaTime()
-        let r = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30) ?? [:]
+        let r = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
+                                     hint: lock.locked { context }?.hint ?? "") ?? [:]
         let t1 = CACurrentMediaTime()
         let raw = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let pol = opt.polish && !raw.isEmpty ? Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget,

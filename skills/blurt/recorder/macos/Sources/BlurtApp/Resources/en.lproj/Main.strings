@@ -380,6 +380,15 @@
 "main.dictation.heard" = "Heard";
 "main.dictation.same" = "polish changed nothing";
 "main.dictation.copied" = "Copied";
+"main.dictation.corrected" = "Corrected";
+"main.dictation.correct" = "Correct";
+"main.dictation.correct.tip" = "Fix what was misheard; Blurt learns the names you fix";
+"main.dictation.correct.hint" = "Misheard names you fix are learned for next time";
+"main.dictation.correct.save" = "Save Correction";
+"main.dictation.correct.cancel" = "Cancel";
+"main.dictation.correct.saved" = "Correction saved";
+"main.dictation.correct.learned" = "Correction saved · learned %@";
+"main.dictation.correct.sep" = ", ";
 "main.dictation.show_item" = "Show Item %@";
 "main.dictation.delete.tip" = "Delete this dictation (⌫, undo with ⌘Z)";
 "main.dictation.info.app" = "App";

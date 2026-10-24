@@ -10,7 +10,7 @@
                                                             30), and their audio → {"ok", "removed"}
 
 The file is append-only: an entry per dictation, then edit lines applied in order —
-{"op":"delete","ids":[…]}, {"op":"item","id","item","uid"}, {"op":"clear"}. `prune` rewrites it compacted.
+{"op":"delete","ids":[…]}, {"op":"item","id","item","uid"}, {"op":"clear"}, {"op":"correct","id","text"} (→ "corrected"). `prune` rewrites it compacted.
 """
 from __future__ import annotations
 
@@ -66,6 +66,9 @@ def load(path: Path = HISTORY) -> list[dict]:
         elif op == "item":
             if o.get("id") in by_id:
                 by_id[o["id"]].update({"item": o.get("item"), "item_uid": o.get("uid")})
+        elif op == "correct":       # the user's corrected text (the Dictation page): kept as "corrected" on the entry
+            if o.get("id") in by_id and isinstance(o.get("text"), str):
+                by_id[o["id"]]["corrected"] = o["text"]
         elif isinstance(o.get("id"), str) and isinstance(o.get("raw"), str):
             if o["id"] not in by_id:
                 order.append(o["id"])
@@ -120,7 +123,7 @@ def make_item(entry_id: str, project: str | None, lang: str | None) -> dict:
         raise Fail(f"no dictation {entry_id}", "not_found")
     if e.get("item"):
         return {"id": e["item"], "uid": e.get("item_uid"), "already": True}
-    text = (e.get("text") or e.get("raw") or "").strip()
+    text = (e.get("corrected") or e.get("text") or e.get("raw") or "").strip()
     if not text:
         raise Fail("this dictation has no text", "empty")
     fields = {"kind": captures.guess_kind(text), "title": captures.first_sentence(text), "quote": text,

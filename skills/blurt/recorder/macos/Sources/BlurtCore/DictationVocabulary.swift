@@ -83,6 +83,35 @@ public final class DictationVocabulary {
         ("GitHub", ["git hub"]),
         ("PR", []),
         ("worktree", ["work tree"]),
+        // The AI companies, models and people a Chinese speaker names inside Chinese (the names-in-Chinese eval,
+        // promo/cases/v0.8-dictation-names/: OpenAI → "open AI", Anthropic → "Asopic", Musk → 马斯克 without them).
+        // No sounds-likes: case and spacing variants are fixed anyway, and every misspelling seen there is either a
+        // real word ("deep sea", "whisper flow", "mosque") — which the deterministic pass must never rewrite — or one
+        // the speech model stops making once it is told the name. The near-miss pass and learning cover the rest.
+        ("OpenAI", []),
+        ("Anthropic", []),
+        ("GPT", []),
+        ("DeepSeek", []),
+        ("Kimi", []),
+        ("Qwen", []),
+        ("Grok", []),
+        ("xAI", []),
+        ("Llama", []),
+        ("Gemma", []),
+        ("Mistral", []),
+        ("Ollama", []),
+        ("Hugging Face", []),
+        ("Perplexity", []),
+        ("Copilot", []),
+        ("Windsurf", []),
+        ("Midjourney", []),
+        ("Sora", []),
+        ("MiniMax", []),
+        ("Nvidia", []),
+        ("Wispr Flow", []),
+        ("Sam Altman", []),
+        ("Dario", []),
+        ("Musk", []),
     ]
 
     // MARK: reading
@@ -217,10 +246,24 @@ public final class DictationVocabulary {
         case known(String)
     }
 
+    /// The user saved a corrected version of a dictation (the Dictation page's "Save correction"): every recognition
+    /// fix in it (DictationLearn.fixes — small spans that sound or look alike, never a rewrite) is learned at once,
+    /// since the user made it on purpose. This is how a name gets learned where the after-typing watch can't see the
+    /// field (WeChat). The same rules as `dictation_vocab.py learn`.
+    @discardableResult
+    public func learnCorrection(typed: String, corrected: String,
+                                isCommonWord: (String) -> Bool = DictationLearn.isCommonWord) -> [(fix: DictationLearn.Fix, result: Learned?)] {
+        DictationLearn.fixes(typed: typed, edited: corrected, isCommonWord: isCommonWord).map {
+            ($0, learn(heard: $0.heard, fixed: $0.fixed, explicit: true))
+        }
+    }
+
     /// The user changed `heard` into `fixed` in a dictation. A known word gets `heard` as a sounds-like; a new one is a
     /// suggestion, used at once when the fix is only case or spacing ("claude" → "Claude") or the second time the same
-    /// fix is seen. nil = nothing to learn (a word the user rejected or removed).
-    public func learn(heard: String, fixed: String) -> Learned? {
+    /// fix is seen. `explicit`: the user saved this correction themselves (the Dictation page, the lab) — a new word is
+    /// used at once. nil = nothing to learn (a word the user rejected or removed). scripts/dictation_vocab.py `learn`
+    /// is the same rules for tools outside the app.
+    public func learn(heard: String, fixed: String, explicit: Bool = false) -> Learned? {
         let h = heard.trimmingCharacters(in: .whitespacesAndNewlines), f = fixed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !h.isEmpty, !f.isEmpty, h != f else { return nil }
         let spelling = DictationVocabulary.key(h) == DictationVocabulary.key(f)
@@ -235,13 +278,14 @@ public final class DictationVocabulary {
                 case .suggested:
                     all[i].seen += 1
                     if !spelling && !all[i].soundsLike.contains(h) { all[i].soundsLike.append(h) }
-                    if all[i].seen >= 2 { all[i].state = .active; return .learned(f) }
+                    if all[i].seen >= 2 || explicit { all[i].state = .active; return .learned(f) }
                     return .suggested(f)
                 }
             }
+            let active = spelling || explicit
             all.append(VocabTerm(term: f, soundsLike: spelling ? [] : [h], source: .learned,
-                                 state: spelling ? .active : .suggested, seen: 1))
-            return spelling ? .learned(f) : .suggested(f)
+                                 state: active ? .active : .suggested, seen: 1))
+            return active ? .learned(f) : .suggested(f)
         }
     }
 }
