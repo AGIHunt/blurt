@@ -119,7 +119,7 @@
 "settings.general.smart_paste.hint" = "Browsers, Claude, Feishu, Slack, WeChat, QQ and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go; terminals and the Finder are left as they are. Needs Accessibility.";
 "settings.general.about" = "About";
 "settings.general.version" = "Version";
-"settings.general.help" = "Help";
+"settings.general.help" = "User Guide";
 
 "settings.kit.accessibility" = "Accessibility";
 "settings.kit.agents" = "Agents";

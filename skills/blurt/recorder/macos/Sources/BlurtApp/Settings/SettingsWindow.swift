@@ -1,6 +1,6 @@
 // The Settings window: a standard preferences toolbar (NSTabViewController, .toolbar style) whose panes are SwiftUI
-// grouped forms (Shortcuts is the AppKit recorder from HotkeySettings). System colours and controls only, so it follows
-// light / dark and the accent colour by itself. ⌘, from the menu; blurt://settings/<pane>.
+// grouped forms (Shortcuts hosts HotkeySettings' AppKit recorder fields in one). System colours and controls only, so
+// it follows light / dark and the accent colour by itself. ⌘, from the menu; blurt://settings/<pane>.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -38,7 +38,7 @@ enum SettingsPane: String, CaseIterable {
         let vc: NSViewController
         switch self {
         case .general: vc = NSHostingController(rootView: GeneralPane())
-        case .shortcuts: vc = ShortcutsPaneController()
+        case .shortcuts: vc = NSHostingController(rootView: ShortcutsPane())
         case .speech: vc = NSHostingController(rootView: SpeechPane())
         case .dictation: vc = NSHostingController(rootView: DictationPane())
         case .agents: vc = NSHostingController(rootView: AgentsPane())
@@ -131,55 +131,5 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         ShortcutField.active?.stop()
         if let p = visiblePane { Config.shared.set("app.settings_pane", p) }
-    }
-}
-
-/// Settings → Shortcuts: the recorder rows from HotkeySettings (WP4) — record-style fields, the three conflict layers
-/// shown inline (our own duplicates, macOS system shortcuts, RegisterEventHotKey / another Blurt holding it).
-final class ShortcutsPaneController: NSViewController {
-    /// The rows are taller than the pane (every pane is 660 × 560): they scroll, like the SwiftUI forms do.
-    private final class FlippedView: NSView { override var isFlipped: Bool { true } }
-
-    override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 660, height: 560))
-        let scroll = NSScrollView(frame: root.bounds)
-        scroll.autoresizingMask = [.width, .height]
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        let doc = FlippedView()
-        doc.translatesAutoresizingMaskIntoConstraints = false
-        let content = HotkeySettings.shared.makeContent()
-        content.translatesAutoresizingMaskIntoConstraints = false
-        let note = NSTextField(wrappingLabelWithString: T("settings.kit.conflicts_are_checked_three"))
-        note.font = .systemFont(ofSize: 11.5)
-        note.textColor = .secondaryLabelColor
-        note.translatesAutoresizingMaskIntoConstraints = false
-        doc.addSubview(content)
-        doc.addSubview(note)
-        scroll.documentView = doc
-        root.addSubview(scroll)
-        let clip = scroll.contentView
-        NSLayoutConstraint.activate([
-            doc.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
-            doc.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
-            doc.topAnchor.constraint(equalTo: clip.topAnchor),
-            content.topAnchor.constraint(equalTo: doc.topAnchor, constant: 8),
-            content.centerXAnchor.constraint(equalTo: doc.centerXAnchor),
-            note.topAnchor.constraint(equalTo: content.bottomAnchor, constant: 2),
-            note.leadingAnchor.constraint(equalTo: doc.leadingAnchor, constant: 34),
-            note.trailingAnchor.constraint(equalTo: doc.trailingAnchor, constant: -34),
-            note.bottomAnchor.constraint(equalTo: doc.bottomAnchor, constant: -20),
-        ])
-        view = root
-    }
-    override func viewWillAppear() {
-        super.viewWillAppear()
-        HotkeySettings.shared.refresh()
-    }
-    override func viewWillDisappear() {
-        super.viewWillDisappear()
-        ShortcutField.active?.stop()
     }
 }

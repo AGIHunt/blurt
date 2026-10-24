@@ -119,7 +119,7 @@
 "settings.general.smart_paste.hint" = "浏览器、Claude、飞书、Slack、微信、QQ 这类聊天应用，拖入或粘贴的内容里只要有图片，就只收图片。打开后，把卡片拖进去时先放下图片，口喷鸡接着把备注贴进同一个输入框；点卡片复制后的 2 分钟内，在这些应用里按 ⌘V 会先贴图片、再贴备注（多张卡片就一张图一段备注依次贴上），之后剪贴板里还是这份卡片，可以再贴。备忘录、邮件、文本编辑这类应用一次就能连图带字收下；终端和访达保持原样。需要「辅助功能」权限。";
 "settings.general.about" = "关于";
 "settings.general.version" = "版本";
-"settings.general.help" = "帮助";
+"settings.general.help" = "使用指南";
 
 "settings.kit.accessibility" = "辅助功能";
 "settings.kit.agents" = "Agent";

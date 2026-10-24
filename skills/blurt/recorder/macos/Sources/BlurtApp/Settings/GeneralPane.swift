@@ -202,7 +202,7 @@ struct GeneralPane: View {
             Section {
                 LabeledContent(T("settings.general.version"), value: Self.version)
                 HStack {
-                    Button(T("settings.general.help")) { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
+                    Button(T("settings.general.help")) { NSWorkspace.shared.open(Help.guideURL()) }
                     Button(T("settings.general.assistant")) { Onboarding.shared.show() }
                     Spacer()
                     if Updater.shared.available {

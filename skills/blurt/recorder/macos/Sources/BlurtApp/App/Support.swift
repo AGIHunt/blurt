@@ -115,3 +115,20 @@ func pill(_ text: String, font: NSFont, fg: NSColor, bg: NSColor, at p: NSPoint,
 
 /// Room an icon takes in a pill: the icon (1.2 × the font size) and a gap.
 func pillIconWidth(_ font: NSFont) -> CGFloat { (font.pointSize * 1.2).rounded() + 6 }
+
+/// The user guide (docs/guide.md on GitHub — its English half or its Chinese half, by the app's language): Help in the
+/// menus and Settings → General, and the lines that point to one of its sections.
+enum Help {
+    static let repo = "https://github.com/AGIHunt/blurt"
+
+    /// `section`: "update" (keeping the app and the skill current); nil = the top of the guide.
+    static func guideURL(section: String? = nil) -> URL {
+        let zh = Loc.language.hasPrefix("zh")
+        let anchor: String
+        switch section {
+        case "update": anchor = zh ? "9-更新" : "9-updating"        // GitHub's anchors for "### 9. Updating" / "### 9. 更新"
+        default: anchor = zh ? "中文" : "english"
+        }
+        return URL(string: "\(repo)/blob/main/docs/guide.md#" + (anchor.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? anchor))!
+    }
+}
