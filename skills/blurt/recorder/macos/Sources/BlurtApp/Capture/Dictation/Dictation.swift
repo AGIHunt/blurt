@@ -21,7 +21,9 @@
 //    stop — you end it. The mic opens on the clean key-down (`arm`; MicEngine prepared it at launch), before the
 //    trigger decides, and closes again if the press becomes a shortcut; the island says "listening" once audio
 //    arrives. The models are warmed on key-down (offline-first spawns, WarmSpawn): `transcribe.py serve --preload
-//    --purpose dictation` and, with polish on, `polish.py serve --preload`.
+//    --purpose dictation` and, with polish on, `polish.py serve --preload`; the speech model also a few seconds after
+//    launch (`prewarm`: dictation on, key heard, ≥ 16 GB, model installed). The servers end with Blurt (`--parent`)
+//    and after 10 idle minutes, which is what gives their memory back.
 //  • text: DictationStream cuts the audio at pauses while the user talks and transcribes + polishes each piece as it
 //    completes (the warm servers; a model still loading gets record.dictation.load_budget_ms, never counted against
 //    polish_timeout_ms); at key-up only the last piece is left. Any fall-back = that piece's raw text.
@@ -180,8 +182,33 @@ final class Dictation {
         seedVocabulary()
         DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.prewarm("launch") }
         // the mic's engine, set up but not started: the key-down only has to start it
         if Dictation.enabled { MicEngine.shared.prepare(builtIn: Dictation.useBuiltInMic) }
+    }
+
+    /// The speech model loaded a few seconds after launch (and when the key starts being heard), so the first
+    /// dictation doesn't wait ~6 s for it (newc008). Only when dictation is on and its key is heard, the Mac has 16 GB
+    /// or more, and the dictation model is installed (`transcribe.py dictation-models`: nothing is ever downloaded
+    /// for this). At utility priority; the server ends again after 10 idle minutes, and with Blurt.
+    func prewarm(_ why: String) {
+        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+        let skip: String? = !Dictation.enabled ? "off" : !keys.installed ? "key_not_heard" : gb < 15 ? "memory" :
+            WarmSpawn.testNoServers ? "test" : phase != .idle ? "busy" : nil
+        if let s = skip { return emit(["event": "dictation_prewarm", "why": why, "skipped": s]) }
+        Task.detached(priority: .utility) {
+            let r = try? await ScriptRunner.shared.json("transcribe.py", ["dictation-models"], timeout: 60)
+            let selected = r?["selected"] as? String
+            let rows = r?["models"] as? [[String: Any]] ?? []
+            let installed = rows.contains { $0["id"] as? String == selected && $0["installed"] as? Bool == true }
+            await MainActor.run {
+                guard installed, Dictation.enabled else {
+                    return emit(["event": "dictation_prewarm", "why": why, "skipped": "not_installed", "model": selected ?? NSNull()])
+                }
+                VoiceInput.warmSpeechModel(dictation: true)
+                emit(["event": "dictation_prewarm", "why": why, "model": selected ?? NSNull()])
+            }
+        }
     }
 
     /// Dictation listens with the Mac's own mic (DictationMicChoice: automatic = when the default input is Bluetooth).
@@ -292,6 +319,7 @@ final class Dictation {
         t.seconds = 5
         island.toast(t)
         emit(["event": "dictation_on"])
+        prewarm("key_on")
     }
 
     // MARK: the key can't be heard (DictationAccess decides; these act)
@@ -955,6 +983,8 @@ final class Dictation {
 /// packages, and once its index cache has expired it asks PyPI again (13 s here on the first try, 2.5 s cached), which
 /// made a cold server miss a whole dictation. With UV_OFFLINE=1 the cached packages are used as they are; only when
 /// that fails (nothing cached yet: the first use ever) does it start again online.
+/// Every server started here gets `--parent <this app>`: it ends when Blurt quits (or crashes), after answering a
+/// request in flight, and it ends by itself after 10 idle minutes — so the models' memory (~5 GB for both) goes back.
 enum WarmSpawn {
     /// Tests (test commands only): BLURT_TEST_NO_SERVERS=1 starts no warm server — nothing listens on a local port;
     /// the requests go through the CLI (which loads its model itself).
@@ -968,6 +998,7 @@ enum WarmSpawn {
             emit(["event": "warm_spawn_skipped", "script": script, "server": server])
             return nil
         }
+        let args = args.first == "serve" && !args.contains("--parent") ? args + ["--parent", "\(getpid())"] : args
         let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1"]) { _ in }
         p?.terminationHandler = { proc in
             guard proc.terminationStatus != 0, !WarmServer.running(server) else { return }

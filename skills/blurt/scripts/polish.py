@@ -11,8 +11,9 @@ text before the pass whenever the model rewrote, shortened, added or translated.
   polish.py models                          the registry (polish_models.json) + installed, selected, recommended
   polish.py setup --model ID                download a model (progress "  N/M MB" on stderr); ModelScope when the
                                             mirror is on (asr.hf_mirror / BLURT_HF_MIRROR) or Hugging Face fails
-  polish.py serve [--preload] [--idle 180]  keep the model warm (127.0.0.1, $BLURT_HOME/run/polish-serve.json);
-                                            unloads it after --idle s, exits after --exit-after s without a request
+  polish.py serve [--preload] [--idle 600] [--parent PID]   keep the model warm (127.0.0.1,
+                                            $BLURT_HOME/run/polish-serve.json); ends after --idle s unused (the
+                                            memory goes back), with the --parent app, or on "exit"
   polish.py run (--text T | --stdin) [--model ID] [--timeout S] [--no-server] [--context TEXT] [--no-vocab]
               [--variant chat] [--style structured]
         → {"ok","text","raw","polished","fell_back","reason","model","ms","terms"}   (uses a running `serve` when
@@ -44,7 +45,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
-from _common import BLURT_HOME, EXIT_CAP, MODELS_DIR, adaptive_idle, global_config, load_json, save_json  # noqa: E402
+from _common import BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, serve_exit_reason  # noqa: E402
 
 HERE = Path(__file__).parent
 RUN_DIR = BLURT_HOME / "run"
@@ -1132,8 +1133,9 @@ def _server_call(req: dict, timeout: float) -> dict | None:
 
 
 def cmd_serve(a):
-    """One warm polish model per machine. Protocol: one JSON line in ({"token","cmd":"ping"|"load"|"polish",…}),
-    one JSON line out — the same as transcribe.py serve."""
+    """One warm polish model per machine. Protocol: one JSON line in ({"token","cmd":"ping"|"load"|"polish"|
+    "structure"|"guard"|"exit",…}), one JSON line out — the same as transcribe.py serve, and it ends the same way
+    (serve_exit_reason: the model unused for --idle s, the --parent app gone, "exit")."""
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
         return emit({"ok": True, "already": True, "pid": r.get("pid"), "model": r.get("model")})
     ensure_mlx()
@@ -1145,7 +1147,7 @@ def cmd_serve(a):
     srv.listen(4)
     srv.settimeout(1.0)
     port = srv.getsockname()[1]
-    save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token,
+    save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token, "parent": a.parent,
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = Engine()
     if a.preload:
@@ -1157,11 +1159,14 @@ def cmd_serve(a):
     last = time.time()
     uses: list[float] = []
     tier = hardware()["tier"]
+    why = None
     try:
-        while time.time() - last < adaptive_idle(a.exit_after, uses, tier, cap=EXIT_CAP):
-            if eng.model is not None and time.time() - eng.last > adaptive_idle(a.idle, uses, tier):
-                eng.unload()
-                print("serve: idle, model unloaded", file=sys.stderr, flush=True)
+        while not why:
+            now = time.time()
+            why = serve_exit_reason(eng.model is not None, now - eng.last, now - last, uses, tier, a.idle,
+                                    a.exit_after, a.parent)
+            if why:
+                break
             try:
                 conn, _ = srv.accept()
             except socket.timeout:
@@ -1204,6 +1209,9 @@ def cmd_serve(a):
                         resp = {"ok": True, **stitch_guard(str(req.get("raw") or ""), clean_output(str(req.get("output") or "")),
                                                            allowed, [t["term"] for t in terms], context_all(ctx) or None,
                                                            req.get("fallback"))}
+                    elif req.get("cmd") == "exit":       # the app is quitting (or someone wants the memory back now)
+                        resp = {"ok": True, "pid": os.getpid()}
+                        why = "asked"
                     else:
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
@@ -1215,6 +1223,7 @@ def cmd_serve(a):
                 except OSError:
                     pass
     finally:
+        print(f"serve: exiting ({why or 'error'})", file=sys.stderr, flush=True)
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
@@ -1469,8 +1478,9 @@ def main():
     sv = sub.add_parser("serve")
     sv.add_argument("--preload", action="store_true")
     sv.add_argument("--model", "--model-id", dest="model_id")
-    sv.add_argument("--idle", type=float, default=180, help="unload the model after this many idle seconds")
-    sv.add_argument("--exit-after", type=float, default=1800, help="exit after this many seconds without a request")
+    sv.add_argument("--idle", type=float, default=SERVE_IDLE, help="end after the model went unused this many seconds")
+    sv.add_argument("--exit-after", type=float, default=1800, help="with no model loaded: end after this many seconds without a request")
+    sv.add_argument("--parent", type=int, help="end when this process (the app that started the server) is gone")
     sv.add_argument("--priority", choices=["utility", "background", "user-initiated", "default"])
     r = sub.add_parser("run")
     r.add_argument("--text")

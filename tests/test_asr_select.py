@@ -427,7 +427,7 @@ class Notes(unittest.TestCase):
         self.assertIsInstance(r["ms"], int)
 
     def test_warm_server(self):
-        args = Namespace(preload=True, idle=0.5, exit_after=4)
+        args = Namespace(preload=True, idle=0.8, exit_after=4, parent=None)
         out = io.StringIO()
         with config({"asr": {"auto": False, "backend": "sensevoice"}}):
             def serve():
@@ -442,16 +442,56 @@ class Notes(unittest.TestCase):
             self.assertTrue(T._server_call({"cmd": "ping"})["loaded"])
             r = T._server_call({"cmd": "note", "wav": str(write_wav(self.tmp / "s.wav", 2.0)), "language": "auto"})
             self.assertEqual((r["ok"], r["text"]), (True, "heard 2.0s"))
-            time.sleep(1.3)  # idle > 0.5 s: the model is unloaded, the server stays
-            self.assertFalse(T._server_call({"cmd": "ping"})["loaded"])
             info = json.loads(T.SERVE_FILE.read_text())
             import socket
             with socket.create_connection(("127.0.0.1", info["port"]), timeout=2) as s:  # wrong token
                 s.sendall(b'{"cmd": "ping", "token": "nope"}\n')
                 self.assertEqual(json.loads(s.recv(4096))["code"], "auth")
+            # the model unused for 0.8 s: the server ends — an unload kept most of the memory resident (arch091)
             th.join(10)
         self.assertFalse(th.is_alive())
         self.assertFalse(T.SERVE_FILE.exists())
+
+    def serve_in_thread(self, args):
+        out = io.StringIO()
+
+        def serve():
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                T.cmd_serve(args)
+        th = threading.Thread(target=serve, daemon=True)
+        th.start()
+        deadline = time.time() + 10
+        while not T.SERVE_FILE.exists() and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(T.SERVE_FILE.exists())
+        return th, out
+
+    def test_warm_server_exits_when_asked(self):
+        # dict026: Blurt quitting (or anyone) asks the server to go, and the memory comes back at once
+        with config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th, out = self.serve_in_thread(Namespace(preload=True, idle=600, exit_after=1800, parent=None))
+            self.assertEqual(T._server_call({"cmd": "exit"})["ok"], True)
+            th.join(5)
+        self.assertFalse(th.is_alive())
+        self.assertFalse(T.SERVE_FILE.exists())
+        self.assertIn("serve: exiting (asked)", out.getvalue())
+
+    def test_warm_server_ends_with_its_app(self):
+        # started by the app with --parent: once that process is gone (a quit, a crash), the server ends too
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            with config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                th, out = self.serve_in_thread(Namespace(preload=True, idle=600, exit_after=1800, parent=child.pid))
+                self.assertEqual(json.loads(T.SERVE_FILE.read_text())["parent"], child.pid)
+                self.assertTrue(T._server_call({"cmd": "ping"})["ok"])
+                child.kill()
+                child.wait()
+                th.join(5)
+        finally:
+            if child.poll() is None:
+                child.kill()
+        self.assertFalse(th.is_alive())
+        self.assertIn("serve: exiting (parent_gone)", out.getvalue())
 
 
 # ------------------------------------------------------------------ CLI

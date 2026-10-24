@@ -17,8 +17,9 @@ video, so any backend (even ones without timestamps) works.
                                                      dictation model (record.dictation.asr_model); --vocab: bias it
                                                      toward the custom words (dictation_vocab.py) where the model can
                                                      be biased, then fix exact sounds-likes → + "asr_text","terms","biased"
-  transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 300]   keep the voice-note (or dictation) model warm; unloads it after
-                                                     --idle s, exits after --exit-after s without a request
+  transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 600] [--parent PID]   keep the
+                                                     voice-note (or dictation) model warm; ends after --idle s unused
+                                                     (the memory goes back), with the --parent app, or on "exit"
   transcribe.py dictation-models                     the models dictation can use here: selected, recommended
   transcribe.py probe                                hardware → tier (pro / standard / light / minimal)
   transcribe.py recommend [--languages zh,en] [--purpose batch|live|note]
@@ -75,8 +76,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
-from _common import (BLURT_HOME, EXIT_CAP, IS_MAC, IS_WIN, MODELS_DIR, adaptive_idle, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
-                     load_json, probe_duration, save_json, update_global_config, use_system_certs)
+from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
+                     load_json, probe_duration, save_json, serve_exit_reason, update_global_config, use_system_certs)
 
 use_system_certs()
 
@@ -1910,18 +1911,6 @@ class NoteEngine:
             self.name, self.model_id, self.language = name, a.model_id, language or None
         return self
 
-    def unload(self):
-        if hasattr(self.backend, "close"):
-            self.backend.close()
-        self.backend = None
-        import gc
-        gc.collect()
-        try:
-            import mlx.core as mx
-            mx.clear_cache()
-        except Exception:  # noqa: BLE001 — not an MLX backend
-            pass
-
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
              purpose: str | None = None, prior: str | None = None, hint: str | None = None) -> dict:
         """vocab: None = no custom words; True = the file's; a list = these (strings or term dicts). The model is
@@ -2016,8 +2005,10 @@ def cmd_note(a):
 
 
 def cmd_serve(a):
-    """One warm voice-note model per machine. Protocol: one JSON line in ({"token","cmd":"note"|"ping",…}),
-    one JSON line out. Unloads the model after --idle s, exits after --exit-after s without a request."""
+    """One warm voice-note model per machine. Protocol: one JSON line in ({"token","cmd":"note"|"load"|"ping"|"exit",
+    …}), one JSON line out. Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
+    the memory resident, so the process goes and the app starts it again on the next key-down — when the app that
+    started it (--parent) is gone, on "exit", or after --exit-after s without a request while no model is loaded."""
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
         return emit({"ok": True, "already": True, "pid": r.get("pid")})
     throttle("note")
@@ -2028,7 +2019,7 @@ def cmd_serve(a):
     srv.listen(4)
     srv.settimeout(1.0)
     port = srv.getsockname()[1]
-    save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token,
+    save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token, "parent": a.parent,
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
     if a.preload:
@@ -2040,11 +2031,14 @@ def cmd_serve(a):
     last = time.time()
     uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
     tier = probe()["tier"]
+    why = None
     try:
-        while time.time() - last < adaptive_idle(a.exit_after, uses, tier, cap=EXIT_CAP):
-            if eng.backend is not None and time.time() - eng.last > adaptive_idle(a.idle, uses, tier):
-                eng.unload()
-                print("serve: idle, model unloaded", file=sys.stderr, flush=True)
+        while not why:
+            now = time.time()
+            why = serve_exit_reason(eng.backend is not None, now - eng.last, now - last, uses, tier, a.idle,
+                                    a.exit_after, a.parent)
+            if why:
+                break
             try:
                 conn, _ = srv.accept()
             except socket.timeout:
@@ -2076,6 +2070,9 @@ def cmd_serve(a):
                         eng.load(None, mid)
                         eng.last = time.time()
                         resp = {"ok": True, "model": eng.model_id}
+                    elif req.get("cmd") == "exit":       # the app is quitting (or someone wants the memory back now)
+                        resp = {"ok": True, "pid": os.getpid()}
+                        why = "asked"
                     else:
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
@@ -2087,6 +2084,7 @@ def cmd_serve(a):
                 except OSError:
                     pass
     finally:
+        print(f"serve: exiting ({why or 'error'})", file=sys.stderr, flush=True)
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
@@ -2486,8 +2484,9 @@ def main():
     sv.add_argument("--preload", action="store_true", help="load the voice-note model now (e.g. when recording starts)")
     sv.add_argument("--model-id", dest="model_id", metavar="ID", help="preload this model instead")
     sv.add_argument("--purpose", choices=["note", "dictation"], help="dictation: preload dictation's model")
-    sv.add_argument("--idle", type=float, default=300, help="unload the model after this many idle seconds")
-    sv.add_argument("--exit-after", type=float, default=1800, help="exit after this many seconds without a request")
+    sv.add_argument("--idle", type=float, default=SERVE_IDLE, help="end after the model went unused this many seconds")
+    sv.add_argument("--exit-after", type=float, default=1800, help="with no model loaded: end after this many seconds without a request")
+    sv.add_argument("--parent", type=int, help="end when this process (the app that started the server) is gone")
     sub.add_parser("probe")
     rc = sub.add_parser("recommend")
     rc.add_argument("--languages", help="comma-separated, e.g. zh,en,ja (default: asr.languages / the system's)")

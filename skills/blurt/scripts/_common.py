@@ -197,9 +197,12 @@ def fix_tcl_env() -> None:
 
 # ------------------------------------------------------------------ where things live (read at call time: tests and
 # the apps point BLURT_HOME / BLURT_WORKSPACE elsewhere after import)
-# the warm model servers (transcribe.py / polish.py serve)
-IDLE_CAP = 1800          # the longest a model stays loaded without a request (frequent use)
-EXIT_CAP = 4 * 3600      # … and the longest the server waits for one
+# the warm model servers (transcribe.py / polish.py serve). Unloading the model is ending the process: MLX keeps
+# ~1.8 GB of a 2.5 GB speech model resident after an unload (arch091), so a server idle this long exits, and the app
+# starts it again on the next key-down. It also ends with the app that started it (`--parent`), and on `exit`.
+SERVE_IDLE = 600         # a loaded model's server ends after this many seconds without a request (10 min)
+IDLE_CAP = 600           # … at most this long even with frequent use (it used to be 30 min, holding ~5 GB)
+EXIT_CAP = 4 * 3600      # a server with no model loaded waits at most this long for a request
 
 
 def adaptive_idle(base: float, uses: list[float], tier: str, cap: float = IDLE_CAP, now: float | None = None) -> float:
@@ -212,6 +215,34 @@ def adaptive_idle(base: float, uses: list[float], tier: str, cap: float = IDLE_C
     recent = sum(1 for t in uses if now - t < 1800)
     factor = 5 if recent >= 8 else 2 if recent >= 3 else 1
     return max(base, min(cap, base * factor))
+
+
+def parent_alive(pid: int | None) -> bool:
+    """The app that started a warm server is still running (no pid given: nobody to outlive)."""
+    if not pid:
+        return True
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OSError, ValueError):
+        return True
+    return True
+
+
+def serve_exit_reason(loaded: bool, model_idle: float, server_idle: float, uses: list[float], tier: str,
+                      idle: float, exit_after: float, parent: int | None = None) -> str | None:
+    """Why a warm model server should end now, or None. "parent_gone": the app that started it quit or crashed (a
+    request in flight is answered first: this is checked between requests); "idle": its model went unused for `idle`
+    s (adaptive, at most IDLE_CAP) — ending the process is what gives the memory back; "unused": no model loaded and
+    no request for `exit_after` s."""
+    if not parent_alive(parent):
+        return "parent_gone"
+    if loaded and model_idle > adaptive_idle(idle, uses, tier):
+        return "idle"
+    if not loaded and server_idle >= adaptive_idle(exit_after, uses, tier, cap=EXIT_CAP):
+        return "unused"
+    return None
 
 
 def blurt_home() -> Path:

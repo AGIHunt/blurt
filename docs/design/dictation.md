@@ -532,10 +532,16 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
 
 `polish.py serve --preload` keeps one MLX model warm:
 - 127.0.0.1 with a token, in `$BLURT_HOME/run/polish-serve.json`;
-- unloads after 180 s idle and exits after 30 min — longer while dictation is used often (`adaptive_idle` in
-  `_common.py`, also for `transcribe.py serve`'s dictation requests): ×2 at 3+ requests in the last 30 min, ×5 at
-  8+ (the model stays at most 30 min unused, the server 4 h). Only on the pro and standard tiers: on 8 GB Macs the
-  model is too large a share of memory to keep around;
+- **ends** after 10 minutes without a request (`SERVE_IDLE`, `serve_exit_reason` in `_common.py`; the same for
+  `transcribe.py serve`): unloading the model is ending the process. An "unload" (gc + `mx.clear_cache`) left most
+  of the memory resident — Qwen3-ASR 1.7B went from 2.5 GB to 1.8 GB and stayed there until the process exited
+  (arch091) — and the old rules kept the model up to 30 min and the server up to 4 h, ~5 GB for both, after Blurt
+  had quit (dict026). Now: it ends after 10 idle minutes (`IDLE_CAP`: frequent use no longer stretches it), when the
+  app that started it is gone (`--parent <pid>`, added by `WarmSpawn` to every server the app starts; checked
+  between requests, so a CLI or agent request in flight is answered first, and a crash counts too), and on
+  `{"cmd": "exit"}`. The next key-down starts it again (offline, `WarmSpawn`); the speech model is also warmed a few
+  seconds after launch (`Dictation.prewarm`: dictation on, key heard, ≥ 16 GB, the dictation model installed — the
+  first dictation took 5.9 s of ASR on a cold model, newc008), which costs its memory for those 10 minutes only;
 - uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
   Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
 

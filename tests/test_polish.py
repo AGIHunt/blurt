@@ -293,10 +293,25 @@ class Repair(unittest.TestCase):
         now = 10_000.0
         self.assertEqual(adaptive_idle(180, [], "pro", now=now), 180)
         self.assertEqual(adaptive_idle(180, [now - 60] * 3, "pro", now=now), 360)
-        self.assertEqual(adaptive_idle(180, [now - 60] * 8, "standard", now=now), 900)
-        self.assertEqual(adaptive_idle(600, [now - 60] * 9, "pro", now=now), 1800)        # capped
+        self.assertEqual(adaptive_idle(100, [now - 60] * 8, "standard", now=now), 500)
+        self.assertEqual(adaptive_idle(180, [now - 60] * 8, "standard", now=now), 600)     # capped: 10 min (IDLE_CAP)
+        self.assertEqual(adaptive_idle(600, [now - 60] * 9, "pro", now=now), 600)
         self.assertEqual(adaptive_idle(180, [now - 4000] * 9, "pro", now=now), 180)       # long ago doesn't count
         self.assertEqual(adaptive_idle(180, [now - 60] * 9, "light", now=now), 180)       # small Macs: memory first
+
+    def test_a_warm_server_ends_instead_of_unloading(self):
+        # arch091 / dict026: an unloaded MLX model left ~1.8 GB resident, so idle means the process ends; so does
+        # the app that started it going away, and a server with no model waits for --exit-after
+        from _common import serve_exit_reason
+        self.assertIsNone(serve_exit_reason(True, 30, 30, [], "pro", 600, 1800))
+        self.assertEqual(serve_exit_reason(True, 601, 601, [], "pro", 600, 1800), "idle")
+        self.assertEqual(serve_exit_reason(True, 601, 601, [], "light", 600, 1800), "idle")
+        self.assertIsNone(serve_exit_reason(False, 9999, 1000, [], "pro", 600, 1800))
+        self.assertEqual(serve_exit_reason(False, 9999, 1800, [], "pro", 600, 1800), "unused")
+        self.assertIsNone(serve_exit_reason(True, 1, 1, [], "pro", 600, 1800, parent=os.getpid()))
+        gone = subprocess.Popen([sys.executable, "-c", "pass"])
+        gone.wait()
+        self.assertEqual(serve_exit_reason(True, 1, 1, [], "pro", 600, 1800, parent=gone.pid), "parent_gone")
 
 
 class CleanOutput(unittest.TestCase):
