@@ -149,7 +149,7 @@ struct FinishView: View {
                 }
                 .font(.system(size: 12, design: .monospaced))
                 if let p = m.patch {
-                    Button(TL("finish.open_patch")) { NSWorkspace.shared.open(p) }.buttonStyle(.link).font(.callout).padding(.leading, 6)
+                    Button(TL("finish.open_patch")) { NSWorkspace.shared.open(p) }.buttonStyle(.link).foregroundStyle(Color.brandInk).font(.callout).padding(.leading, 6)
                 }
             }
             .padding(.bottom, 8)

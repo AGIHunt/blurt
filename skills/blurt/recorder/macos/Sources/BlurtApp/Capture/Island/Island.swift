@@ -311,7 +311,7 @@ final class Island: NSObject, IslandHosting {
         shape.shadowOpacity = 0
         shape.shadowRadius = 18
         shape.shadowOffset = CGSize(width: 0, height: 8)
-        if let g = GlowLayer.make(size: CGSize(width: 240, height: 10)) {     // under the shape: only its lower half shows
+        if let g = GlowLayer.make(size: CGSize(width: 240, height: 26), blur: 18) {     // under the shape: its lower part shows
             g.opacity = 0
             root.addSublayer(g)
             glow = g
@@ -458,9 +458,9 @@ final class Island: NSObject, IslandHosting {
         let opacity = glowAmount * BrandGradient.glowOpacity * (0.9 + 0.2 * glowBreath)
         g.opacity = Float(opacity) * shape.opacity
         guard glowAmount > 0 else { return }
-        let pad = BrandGradient.glowBlur * 4
-        g.bounds = CGRect(x: 0, y: 0, width: rect.width * 0.92 + pad, height: 10 + pad)
-        g.position = CGPoint(x: geo.cx, y: rect.maxY)
+        let pad: CGFloat = 18 * 4
+        g.bounds = CGRect(x: 0, y: 0, width: rect.width * 0.92 + pad, height: 26 + pad)
+        g.position = CGPoint(x: geo.cx, y: rect.maxY + 6)
     }
 
     /// The island's outline: flush top (with small concave shoulders on a notch screen), rounded bottom corners;

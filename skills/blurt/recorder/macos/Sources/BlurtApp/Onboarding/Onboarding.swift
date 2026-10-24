@@ -147,7 +147,7 @@ struct OnboardingView: View {
 
             Divider()
             HStack {
-                Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link)
+                Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link).foregroundStyle(Color.brandInk)
                 Spacer()
                 if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 }.disabled(m.celebrating) }
                 // the one primary: the brand button

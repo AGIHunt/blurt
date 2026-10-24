@@ -575,7 +575,7 @@ struct LabWorkbench: View {
                 Spacer()
                 if let out = lab.finalText {
                     Button(T("dictation.lab.corrected.from_output")) { lab.edit { $0.corrected = out } }
-                        .controlSize(.small).buttonStyle(.link)
+                        .controlSize(.small).buttonStyle(.link).foregroundStyle(Color.brandInk)
                 }
             }
             TextField(T("dictation.lab.corrected.placeholder"), text: text({ $0.corrected }, { $0.corrected = $1 }), axis: .vertical)
@@ -841,7 +841,7 @@ struct LabScriptCard: View {
                         .buttonStyle(.plain)
                         Spacer()
                         if ts.count > 1 {
-                            Button(T("dictation.lab.script.keep_only")) { lab.keepOnly(c.id) }.buttonStyle(.link).controlSize(.small)
+                            Button(T("dictation.lab.script.keep_only")) { lab.keepOnly(c.id) }.buttonStyle(.link).foregroundStyle(Color.brandInk).controlSize(.small)
                         }
                     }
                     .font(.system(size: 11.5))

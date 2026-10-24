@@ -243,7 +243,7 @@ struct HelperPanelView: View {
                         .help(T("settings.perm.restart_hint"))
                 }
                 Spacer()
-                Button(T("settings.perm.skip")) { g.skip() }.controlSize(.small).buttonStyle(.link)
+                Button(T("settings.perm.skip")) { g.skip() }.controlSize(.small).buttonStyle(.link).foregroundStyle(Color.brandInk)
             }
             if k == .screen && g.suggestRestart {
                 Text(T("settings.perm.restart_hint")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
