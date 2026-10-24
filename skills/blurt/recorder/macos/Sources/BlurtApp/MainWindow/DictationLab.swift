@@ -89,6 +89,10 @@ final class LabTake {
 
 @MainActor
 final class DictationLabModel: ObservableObject, DictationLabSink {
+    /// The lab is a developer tool (tuning recognition and polish against recorded cases): shown only when
+    /// Settings → General → "Show the Dictation Lab" is on (record.dictation.lab, off by default).
+    nonisolated static var enabled: Bool { Config.shared["record.dictation.lab"] as? Bool ?? false }
+
     enum Phase: String { case idle, starting, recording, processing }
     /// What the detail column shows: the take being made / a saved case, or the regression run.
     enum Pane: Equatable { case take, script, regression }

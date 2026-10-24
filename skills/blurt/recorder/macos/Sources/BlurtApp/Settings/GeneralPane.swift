@@ -23,6 +23,7 @@ final class GeneralModel: ObservableObject {
     @Published var dragCopyNote = true
     @Published var dragCaption = false
     @Published var smartPaste = true
+    @Published var dictationLab = DictationLabModel.enabled
     @Published var spotlight = true
     @Published var error: String?
 
@@ -94,6 +95,7 @@ final class GeneralModel: ObservableObject {
         smartPaste = v
         if !v { SmartPaste.shared.disarm("off") }
     }
+    func setDictationLab(_ v: Bool) { Config.shared.set("record.dictation.lab", v ? true : nil); dictationLab = v }
     func setSpotlight(_ v: Bool) {
         Config.shared.set("spotlight", v ? nil : false)
         spotlight = v
@@ -176,6 +178,8 @@ struct GeneralPane: View {
                 Hint(T("settings.general.drag_caption.hint"))
                 Toggle(T("settings.general.smart_paste"), isOn: Binding(get: { m.smartPaste }, set: { m.setSmartPaste($0) }))
                 Hint(T("settings.general.smart_paste.hint"))
+                Toggle(T("settings.general.dictation_lab"), isOn: Binding(get: { m.dictationLab }, set: { m.setDictationLab($0) }))
+                Hint(T("settings.general.dictation_lab.hint"))
             } header: { Text(T("settings.general.recording")) }
 
             Section {

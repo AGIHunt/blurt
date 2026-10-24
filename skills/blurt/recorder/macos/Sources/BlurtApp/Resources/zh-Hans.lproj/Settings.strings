@@ -204,3 +204,5 @@
 "onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。以后可以在「设置 → 听写」里改。";
 "onboarding.dictation_key.other" = "按一下%@开始听写，再按一下结束；也可以按住说话，松开结束。";
 "settings.perm.not_needed" = "不需要";
+"settings.general.dictation_lab" = "显示听写测试台（开发者用）";
+"settings.general.dictation_lab.hint" = "给开发者打磨听写效果用：照稿朗读、对比模型、标注错误、重跑保存的案例。在主窗口的「听写」页。";

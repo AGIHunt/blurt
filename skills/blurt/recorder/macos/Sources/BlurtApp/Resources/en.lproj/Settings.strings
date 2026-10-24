@@ -204,3 +204,5 @@
 "onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk. You can change it in Settings → Dictation.";
 "onboarding.dictation_key.other" = "Tap %@ to dictate hands-free and tap again to stop, or hold it and talk.";
 "settings.perm.not_needed" = "Not needed";
+"settings.general.dictation_lab" = "Show the Dictation Lab (for developers)";
+"settings.general.dictation_lab.hint" = "A testing bench for dictation: read prompts, compare models, mark mistakes, re-run saved cases. In the Dictation page.";

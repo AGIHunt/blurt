@@ -158,6 +158,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// The Dictation page's Lab tab (the Go menu, the palette, the test hooks).
     func showDictationLab() {
         showDictation()
+        guard DictationLabModel.enabled else { return }
         dictation.showLab()
     }
 

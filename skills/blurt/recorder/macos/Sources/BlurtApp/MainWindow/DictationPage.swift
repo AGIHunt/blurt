@@ -321,6 +321,7 @@ final class DictationPage {
 
     /// The Lab tab (the Go menu's "Dictation Lab", the palette, the test hooks).
     func showLab() {
+        guard DictationLabModel.enabled else { model.tab = .history; return }
         model.tab = .lab
     }
 
@@ -387,6 +388,9 @@ private struct LinkButton: View {
 struct DictationTabBar: View {
     @ObservedObject var m: DictationHistoryModel
     var body: some View {
+        if DictationLabModel.enabled { picker } else { Color.clear.frame(height: 0).onAppear { m.tab = .history } }
+    }
+    private var picker: some View {
         Picker("", selection: $m.tab) {
             Text(T("dictation.lab.tab.history")).tag(DictationHistoryModel.Tab.history)
             Text(T("dictation.lab.tab.lab")).tag(DictationHistoryModel.Tab.lab)
@@ -518,7 +522,7 @@ struct DictationListView: View {
                     Divider()
                     Button(e.item == nil ? T("dictation.history.make_item") : T("dictation.history.item_exists", e.item ?? "")) { m.makeItem(e) }
                         .disabled(e.item != nil || m.working.contains(e.id))
-                    Button(T("dictation.lab.add")) { m.addToLab?(e) }
+                    if DictationLabModel.enabled { Button(T("dictation.lab.add")) { m.addToLab?(e) } }
                 }
                 Divider()
                 Button(T("dictation.history.delete"), role: .destructive) { m.delete(es, undo: undo) }
@@ -766,8 +770,10 @@ struct DictationDetailView: View {
                     .disabled(m.working.contains(e.id))
                 if m.working.contains(e.id) { ProgressView().controlSize(.small) }
             }
-            Button { m.addToLab?(e) } label: { Text(T("dictation.lab.add")) }
-                .help(e.audio != nil ? T("dictation.lab.add.tip") : T("dictation.lab.add.tip_text"))
+            if DictationLabModel.enabled {
+                Button { m.addToLab?(e) } label: { Text(T("dictation.lab.add")) }
+                    .help(e.audio != nil ? T("dictation.lab.add.tip") : T("dictation.lab.add.tip_text"))
+            }
             Spacer()
             Button(role: .destructive) { m.delete([e], undo: undo) } label: {
                 HStack(spacing: 4) { glyph(.trash, 11); Text(T("dictation.history.delete")) }

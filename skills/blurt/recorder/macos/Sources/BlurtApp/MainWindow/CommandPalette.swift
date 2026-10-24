@@ -143,9 +143,8 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
             e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
             e(T("dictation.history.menu"), "character.cursor.ibeam", "⌥⌘D") { c.showDictation() },
-            e(T("dictation.lab.menu"), "waveform", "⌥⌘L") { c.showDictationLab() },
             e(T("menu.shortcuts"), "keyboard", "?") { c.showShortcuts() },
-        ]
+        ] + (DictationLabModel.enabled ? [e(T("dictation.lab.menu"), "waveform", "⌥⌘L") { c.showDictationLab() }] : [])
         // K3: what the selection can do from its state (hand off is above), with the hint as the detail
         out.insert(contentsOf: StateMenu.actions(for: items, canHandOff: false).map { a in
             Entry(title: StateMenu.title(a), detail: StateMenu.hint(a, items), image: Look.ring(StateMenu.target(a, items), size: 14),
