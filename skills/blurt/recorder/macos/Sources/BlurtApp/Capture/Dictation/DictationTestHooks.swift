@@ -162,7 +162,7 @@ extension App {
             emit(["event": "dictation_context_probe", "found": c != nil, "before": c?.before.count ?? 0, "after": c?.after.count ?? 0,
                   "selection": c?.selection.count ?? 0, "title": c?.title ?? NSNull(), "app": c?.app ?? NSNull()])
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)
-        case "polish": NotificationCenter.default.post(name: DictationPane.polishRequest, object: rest)
+        case "polish": MainActor.assumeIsolated { DictationModels.shared.testCommand(rest) }    // the model rows' buttons
         case "history":
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
             MainActor.assumeIsolated {

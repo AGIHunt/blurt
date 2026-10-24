@@ -81,15 +81,6 @@ final class DictationModels: ObservableObject {
     private var cancelled = Set<String>()
     private var loaded = false
 
-    init() {
-        // tests: `dictation polish install ID | cancel ID | use ID | state` — the model rows' buttons, then a
-        // "polish_settings" event with every row's state (works whichever pane is showing)
-        NotificationCenter.default.addObserver(forName: DictationPane.polishRequest, object: nil, queue: .main) { n in
-            let arg = n.object as? String ?? ""
-            MainActor.assumeIsolated { DictationModels.shared.testCommand(arg) }
-        }
-    }
-
     func load() async {
         loaded = true
         async let a = SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 120)
@@ -210,6 +201,8 @@ final class DictationModels: ObservableObject {
         emit(["event": "dictation_setting", "key": key, "value": value.map { "\($0)" } ?? "default"])
     }
 
+    /// tests: `dictation polish install ID | cancel ID | use ID | state` — the model rows' buttons, then a
+    /// "polish_settings" event with every row's state (whichever pane is showing)
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         Task {

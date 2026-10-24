@@ -174,8 +174,6 @@ final class DictationSettings: ObservableObject {
 struct DictationPane: View {
     /// tests: `dictation settings-scroll style|models|words|history|permissions` (a screenshot of a lower section)
     static let scrollRequest = Notification.Name("BlurtDictationPaneScroll")
-    /// tests: `dictation polish install ID | cancel ID | use ID | state` (DictationModels.testCommand)
-    static let polishRequest = Notification.Name("BlurtDictationPanePolish")
     @StateObject var m = DictationSettings()
     @StateObject var perms = Permissions()
     @ObservedObject var models = DictationModels.shared
