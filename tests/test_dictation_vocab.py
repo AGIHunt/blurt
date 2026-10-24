@@ -271,7 +271,7 @@ class BiasedNote(unittest.TestCase):
             T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
         self.assertEqual(r["text"], "然后跑一遍评测")
         self.assertEqual(len(Prior.seen), 2)                  # set, then cleared
-        self.assertEqual(len(Prior.seen[0]), 200)             # the last 200 characters
+        self.assertEqual(len(Prior.seen[0]), 80)              # the last 80 characters (transcribe.PRIOR_CHARS)
         self.assertTrue(Prior.seen[0].endswith("的配额"))
         self.assertEqual(Prior.seen[1], "")
         self.assertIn("load_ms", r)

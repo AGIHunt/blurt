@@ -1171,9 +1171,21 @@ class Qwen3Mlx(MlxBackend):
         text, lang = self._decode(x, ctx, prior)
         # The model now and then answers with the word list itself (seen on a noisy piece it couldn't make out:
         # "Claude Code、Codex、blurt、…"): once more with only the text so far as context.
+        dump = False
         if self.names and ctx != prior and dictation_vocab.context_dump(text, self.names):
             text, lang = self._decode(x, prior, prior)
+            dump = True
+        # The text so far written out again as this piece's words (dict023): once more without it, and the shorter
+        # answer is the piece when it is clearly shorter — a speaker who really repeats themself gets the same text.
+        echo = False
+        if prior and echoes_prior(text, prior, len(x) / SR):
+            redo, lang2 = self._decode(x, self.context, prior)
+            if redo.strip() and len(redo) < 0.8 * len(text):
+                text, lang, echo = redo, lang2, True
+        if dump:
             self.last["context_dump"] = True
+        if echo:
+            self.last["echo"] = True
         return [(0.0, len(x) / SR, text, lang)]
 
     def _decode(self, x, ctx: str, prior: str) -> tuple[str, str | None]:
@@ -1819,6 +1831,62 @@ def cmd_run(a):
 
 
 # --- voice notes: the fast path and the warm server
+
+# A streamed dictation's (or voice note's) text so far goes to the speech model as context, so a name is spelled the
+# same way in every piece. Long, it gets echoed: the model answers with the earlier text instead of, or before, the
+# new piece (dict023, measured on a 43 s take: a 5.5 s last piece with 200 characters of prior came back as 78–165
+# characters, with 80 or 40 as the right 24, every run). So only the tail goes, and with it only the most relevant
+# words of the list; `echoes_prior` is the meaning-free net behind that.
+PRIOR_CHARS = 80
+PRIOR_TERMS = 32
+# More than this many syllables a second is no one's speech (normal speech is 4–7 in every language measured).
+MAX_SYLLABLES_PER_SECOND = 10
+# A run this long (characters, spaces and punctuation aside) shared with the text so far is worth one more look.
+ECHO_RUN = 12
+
+
+def prior_tail(prior: str, n: int | None = None) -> str:
+    """The last `n` (PRIOR_CHARS) characters of the text so far, not starting inside a Latin word."""
+    n = n or PRIOR_CHARS
+    p = (prior or "").strip()
+    if len(p) <= n:
+        return p
+    tail = p[-n:]
+    if tail[0].isascii() and tail[0].isalnum() and p[-n - 1].isascii() and p[-n - 1].isalnum() and " " in tail:
+        tail = tail[tail.index(" ") + 1:]
+    return tail.strip()
+
+
+def _bare(text: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKC", text or "").lower()
+                   if not unicodedata.category(c).startswith(("P", "Z", "C", "S")))
+
+
+def longest_shared_run(a: str, b: str) -> int:
+    """The longest run of characters `a` and `b` share (spaces and punctuation aside)."""
+    a, b = _bare(a), _bare(b)
+    best, prev = 0, [0] * (len(b) + 1)
+    for ca in a:
+        cur = [0] * (len(b) + 1)
+        for j, cb in enumerate(b, 1):
+            if ca == cb:
+                cur[j] = prev[j - 1] + 1
+                best = max(best, cur[j])
+        prev = cur
+    return best
+
+
+def echoes_prior(text: str, prior: str, seconds: float) -> bool:
+    """A piece's answer that may be the context written out again, judged without reading it: more syllables than
+    `seconds` of speech can hold, or a long run of the prior in it. Only a reason to decode once more without the
+    prior (the caller keeps the shorter answer only when it is clearly shorter)."""
+    if not text or not prior:
+        return False
+    if seconds >= 1 and syllables(text) > MAX_SYLLABLES_PER_SECOND * seconds:
+        return True
+    return longest_shared_run(text, prior) >= ECHO_RUN
+
+
 def note_text(results: list) -> tuple[str, str | None]:
     results = sorted(results, key=lambda r: r[0])
     texts = [r[2] for r in results if r[2]]
@@ -1874,9 +1942,10 @@ class NoteEngine:
         terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
         biased = False
         if hasattr(self.backend, "set_vocab"):
-            biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or "", hint or "", dictation_vocab.QWEN_MAX_TERMS))
+            limit = min(PRIOR_TERMS, dictation_vocab.QWEN_MAX_TERMS) if prior else dictation_vocab.QWEN_MAX_TERMS
+            biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or "", hint or "", limit))
         if prior and hasattr(self.backend, "set_prior"):
-            self.backend.set_prior(prior[-200:])
+            self.backend.set_prior(prior_tail(prior))
         retried = False
         try:
             results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)

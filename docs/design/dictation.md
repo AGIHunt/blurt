@@ -275,8 +275,20 @@ utterances, slower on short ones). Now (`DictationStream`):
   starts 0.8 s earlier, and the words both pieces heard are dropped by `DictationStitch.dropOverlap` (the longest
   run of ≥ 2 units at the end of one that the other starts with, allowing one half-heard unit when ≥ 3 match).
 - **Each piece is transcribed as it completes** (a serial queue; the warm ASR server; its wav written from memory),
-  with `prior` = the last 200 characters of the text so far appended to the custom-word context: Qwen3-ASR keeps
-  a name spelled the same way all through. Measured below: it never leaked into the output, and it helped 1.7B.
+  with `prior` = the tail of the text so far appended to the custom-word context: Qwen3-ASR keeps a name spelled
+  the same way all through. Measured below: on short takes it never leaked into the output, and it helped 1.7B.
+  - **The echo (dict023, v0.9).** On a 43 s take whose speech repeats itself, the 5.5 s last piece came back as the
+    text so far written out again (78–165 characters for 24 spoken; ~40 % of the take typed twice, and polish's
+    correct de-duplication refused by the content-loss guard as `dropped`). Measured on that piece with 1.7B: 200
+    characters of prior echoed every run, with or without the 146-word list; 80 or 40 characters gave the right 24
+    every run, and the size of the word list made no difference. So `transcribe.py` sends only the last 80
+    characters (`PRIOR_CHARS`, never starting inside a Latin word) and, with a prior, only the 32 most relevant words
+    (`PRIOR_TERMS`, `dictation_vocab.ranked`). Behind that, a meaning-free net (`echoes_prior`): an answer with more
+    syllables than its audio can hold (10 a second) or a run of ≥ 12 characters of the prior in it (spaces and
+    punctuation aside) is decoded once more with the words only, and that answer is kept when it is clearly shorter
+    (< 80 %) — someone who really says the same thing again gets the same text back and keeps it (`tag.echo` in the
+    answer). With a forced 200-character prior the net turned 165 characters back into the right 24, three runs of
+    three; it costs one more decode (~0.2 s) only when it fires.
 - **…and polished right after** (a second serial queue): the polished text so far goes along as the request's
   `dictated` context, which polish shows as **the turn before** this one (§Polish windows: context, not output), so
   polish sees what came before but may not change or continue it (the guard's `copied` check, below).

@@ -4,7 +4,8 @@
 // to polish — 2–3 s after a 30 s dictation, more after a minute. Now the audio is cut at the pauses as it comes in
 // (BlurtCore's DictationSegmenter: ≥ 0.5 s of quiet, pieces of ≥ 3 s, at most 20 s), and each piece is
 //   1. transcribed as soon as it is complete (the warm speech server; the text so far goes along as context, so a name
-//      is spelled the same way all through), on one serial queue;
+//      is spelled the same way all through — transcribe.py keeps only its last 80 characters and decodes a piece
+//      that echoes it once more without it), on one serial queue;
 //   2. polished right after, on another (the polished text so far goes along as the turn before, so polish sees what
 //      came before without being allowed to change it).
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
