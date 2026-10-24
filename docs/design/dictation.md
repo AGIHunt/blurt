@@ -828,8 +828,8 @@ whole take), **(b)** kept as a mechanical safety net that doesn't interpret mean
 | Code-switch: `translated_glue`'s English function words (a / the / of / is …) and `common_word` | re-decoded an English answer "made of names and function words" | **(c)** for the word list (1 piece of 218 in the names eval); **(b)** kept: an English-tagged answer with Chinese characters in it (the script) is decoded again under the user's language; the language tag by probability threshold (`choose_tag`) stays |
 | `context_dump` separators (和 / 与 / 及 among the punctuation) | spotted the speech model writing its word list out | **(b)**, mechanical: listed names in the list's order with only punctuation / spaces between |
 | Near-miss name correction (`snap`: edit distance against the vocabulary, guarded by `/usr/share/dict/words` + `_MODERN_WORDS` + inflection rules) | Typless → Typeless, Asopic → Anthropic | **(a)**: polish gets the words and writes a misspelt name the listed way (in the names eval `snap` fired 0 times) |
-| Case-only respelling of a one-word term ("github" → "GitHub", guarded by `_MODERN_WORDS`) | spelled a term in the transcript | **(a)**: polish's call (it sees the sentence: Gemini the model or the sign); multi-word spacing / hyphen variants ("sense voice" → "SenseVoice") stay **(b)** |
-| Sounds-likes (`dictation_vocab.apply`) | the user's own aliases → the term | **(b)**: the user's data; a single-word sounds-like is skipped when it is a lower-case entry of macOS's lexicon (`/usr/share/dict/words` — data, not a list of ours) |
+| Case-only respelling of a one-word term ("github" → "GitHub", guarded by `_MODERN_WORDS`) | spelled a term in the transcript | **(a)**: polish's call (it sees the sentence: Gemini the model or the sign); a term written in pieces ("ba 12" → "BA-12") stays **(b)**, except when every piece is an ordinary word ("type less", "sense voice": the models' call) |
+| Sounds-likes (`dictation_vocab.apply`: the seed's "codec → Codex", "type less → Typeless", "cloud code → Claude Code", and every learned one) | rewrote what was heard into the term, also with polish off | **(a)** (v0.9, audit dict024 / arch088: "a better video codec" became "…video Codex", "you can type less" "you can Typeless"): a sounds-like only ranks the word as relevant, so the speech model and polish are told about it; nothing is substituted. The seed ships none |
 | English label ("Dictation (English: keep it in English)") | stops Gemma translating an English dictation | **(b)**: chosen by script (no CJK, some Latin), a note to the model |
 | `clean_output` label regex (Output: / Dictation: …), think blocks, code fences, quotes | the model's output format | **(b)**: format, not the speaker's words (the Chinese labels 输出 / 结果 / 润色后 … are gone) |
 | Numbers (`cn_number`, `same_number`, `_NUMERAL`) | "numbers stay as said" in the repair; Structured's `number` check | **(b)**: a notation compared by value |
@@ -847,25 +847,27 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
 `scripts/dictation_vocab.py`:
 
 ```json
-{"schema": 1, "terms": [{"term": "Claude Code", "sounds_like": ["cloud code"], "source": "project",
+{"schema": 2, "terms": [{"term": "Claude Code", "sounds_like": ["clod code"], "source": "default",
                          "state": "active", "added": "2026-10-23T13:00:00+08:00", "hits": 3, "seen": 0}]}
 ```
 
-- `source`: `manual` (Settings), `learned` (from a fix), `project` (Blurt's own seed and the projects), `default`
-  (the common product names). `state`: `active` (used), `suggested` (learned once), `rejected` (a suggestion the user
-  ignored: never suggested again), `removed` (a seed the user removed: never seeded again). A removed manual word just
-  goes.
-- The seed, once per launch and when Settings opens, adds what's missing: Claude Code, Codex, blurt, 口喷鸡 (with the
-  misrecognitions the eval found as sounds-likes) and each project's name and key (`project`); and, as `default`, the
-  AI / dev products nearly every user says: Gemini, Claude, ChatGPT, Cursor, Typeless, OpenClaw, MCP, tmux, GitHub,
-  PR, worktree (`DictationVocabulary.defaults`), and since the names work the AI companies, models and people a
-  Chinese speaker names inside Chinese: OpenAI, Anthropic, GPT, DeepSeek, Kimi, Qwen, Grok, xAI, Llama, Gemma,
-  Mistral, Ollama, Hugging Face, Perplexity, Copilot, Windsurf, Midjourney, Sora, MiniMax, Nvidia, Wispr Flow, Sam
-  Altman, Dario, Musk (§Names inside Chinese speech). Settings shows both seeds as "Automatic"; each is removable like
-  any word. Typeless has no "TTS" sounds-like on purpose: that would rewrite every real "TTS" — the biasing does it
-  instead. The new names have no sounds-likes at all: every misspelling the eval saw was either a real word ("deep
-  sea", "whisper flow", "mosque") or one the model stops making once it is told the name (a test keeps ordinary words
-  out of the defaults' sounds-likes).
+- The words are **hints to the models, never rules**: the speech model is told them where it can be, polish gets the
+  relevant ones as its word list. Nothing replaces one string with another (v0.9; the sounds-like substitution that
+  turned "a better video codec" into "…video Codex" is gone, §Rules vs model).
+- `source`: `manual` (the user's own), `learned` (from a fix), `project` (the projects' names and keys), `default`
+  (built in). `state`: `active` (used), `suggested` (learned once), `rejected` (a suggestion the user ignored: never
+  suggested again), `removed` (a seed the user removed: never seeded again). A removed manual word just goes.
+- `sounds_like`: what a speech model wrote instead, learned from the user's fixes. Only a hint that the word is
+  relevant when it is heard (`ranked` / `relevant` list it first, so the models hear about it); the seed has none.
+- The seed, once per launch and when the Words tab or Settings → Dictation opens, adds what's missing: each project's
+  name and key (`project`; 2–40 characters, at most three words) and, as `default`, a short list of the products this
+  app's users dictate about (`DictationVocabulary.builtIn`, 19): Claude Code, Claude, Codex, Cursor, Typeless, MCP,
+  GitHub, worktree, tmux, OpenAI, Anthropic, ChatGPT, DeepSeek, Qwen, Gemini, Kimi, Ollama, blurt, 口喷鸡. No people's
+  names. The Words tab shows the built-in ones on one folded line; each is removable like any word.
+- **Schema 1 → 2** (`DictationVocabulary.migrate`, once, in `seed`): the longer v0.8 seed (people's names among it:
+  Sam Altman, Dario, Musk; and Grok, xAI, Llama, Midjourney, Sora …) goes where the user never touched it (still
+  `default`, whatever its state); Claude Code, Codex, blurt and 口喷鸡 (`project` then) become `default`; the
+  sounds-likes the old seed shipped ("cloud code", "codec", "type less" …) are dropped, the learned ones stay.
 - Every dictation request carries the active words. What happens to them:
   1. **ASR biasing** where the model takes it: Qwen3-ASR (MLX) gets an English sentence as its `context` ("Notes
      about Claude Code, Codex, … and Whisper."), Whisper a comma list as `initial_prompt`, Qwen3-ASR (onnx)
@@ -877,12 +879,12 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
      that is the request's `hint` (the target window's title and 300 characters each side of the cursor,
      `DictationContext.hint`; only used to order the list, never sent to the model) and the dictation so far —, then
      manual before learned before seeded, then by hits.
-  2. **The deterministic pass** (`dictation_vocab.apply`, in the ASR server, so it also runs when polish is off): an
-     exact sounds-like match (the user's own data) becomes the term, and a spacing / hyphen variant of a term gets its
-     spelling ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). Not when the sounds-like is a single ordinary English
-     word ("cloud", "blur": a lower-case entry of macOS's own lexicon, `/usr/share/dict/words`) or a single CJK
-     character. One word in another case ("github", "gemini") is polish's call: whether it is the name or the ordinary
-     word takes the sentence (the hand-made `_MODERN_WORDS` list that used to decide it is gone, §Rules vs model).
+  2. **The spelling pass** (`dictation_vocab.apply`, in the ASR server, so it also runs when polish is off), the one
+     deterministic step left and a meaning-free one: a term written in pieces gets its spelling ("ba 12" → "BA-12",
+     "claude code" → "Claude Code") — not when every piece is an ordinary English word ("type less", "work tree",
+     "sense voice": a lower-case entry of macOS's own lexicon, `/usr/share/dict/words`), and nothing at all where the
+     system has no lexicon. Sounds-likes are not substituted. One word in another case ("github", "gemini") is polish's
+     call: whether it is the name or the ordinary word takes the sentence.
   2b. (The near-miss pass, `snap` — edit distance against the vocabulary plus word lists — is gone, §Rules vs model:
      polish gets the words and writes a misspelt name the listed way; in the names eval it had fired 0 times.)
   3. **Polish** gets `Words: …` and `Near the cursor: … ▮ …` lines before `Dictation: …` in the last message (the
@@ -890,8 +892,8 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
      way, never to add one that wasn't spoken, and never to copy the context. Two examples show it. The guard accepts
      units from the words and the context as not new, accepts a lost Latin word replaced by a similar listed one,
      and adds `term`: a word that was spoken must survive (the eval caught Gemma dropping "口喷鸡在" otherwise).
-- `terms_applied` in the history: the words the sounds-like pass or polish wrote, plus listed words in the text when
-  the speech model was told about them.
+- `terms_applied` in the history: the words the spelling pass or polish wrote, plus listed words in the text when the
+  speech model was told about them.
 
 ## Names inside Chinese speech (code-switching)
 
@@ -1055,7 +1057,8 @@ After a paste, `DictationWatch` follows the same AX element (the one focused jus
   (口喷机 → 口喷鸡, 克劳德 → Claude). One changed CJK character is learned with the unchanged ones before it. A fix
   to one ordinary word is learned as a phrase with its unchanged neighbour (pool request → pull request); fixes on
   function words (there → their) are grammar, not vocabulary.
-- `DictationVocabulary.learn`: a known word gains the sounds-like; a new one is a suggestion, accepted the second time
+- `DictationVocabulary.learn` learns words, never replacements: a known word gains the sounds-like (a relevance hint,
+  §Custom words); a new one is a suggestion, accepted the second time
   the same fix is seen, or at once when it is only case or spacing. The first time a word becomes active, the
   island says *Learned "pull request"* with **Undo** (记住了 pull request · 撤销). Never from secure fields; nothing of
   the surrounding text is kept; `record.dictation.learn` turns it off.
@@ -1082,7 +1085,7 @@ rewrite teaches nothing):
     `$BLURT_HOME/dictation/vocabulary.json` (read, change, atomic replace). `explicit=False` makes a suggestion, as
     the watch does. `fixes(raw, corrected)` only finds them.
   - CLI: `dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]`,
-    `dictation_vocab.py fixes --raw … --corrected …`, `dictation_vocab.py apply --text TEXT` (the sounds-like pass).
+    `dictation_vocab.py fixes --raw … --corrected …`, `dictation_vocab.py apply --text TEXT` (the spelling pass).
   - The app holds no lock another process can see: a tool writing while the app seeds or counts hits can lose one of
     the two writes. Call it while the user isn't dictating (a lab session).
 

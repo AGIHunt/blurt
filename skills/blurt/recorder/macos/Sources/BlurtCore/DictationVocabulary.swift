@@ -1,19 +1,25 @@
 // Dictation's custom words (docs/design/dictation.md §Custom words): $BLURT_HOME/dictation/vocabulary.json. The app
-// owns the file (Settings → Dictation adds and removes, the learner suggests, the seed adds the obvious ones);
-// scripts/dictation_vocab.py reads it for the speech model's biasing, the deterministic pass and polish.
+// owns the file (the Dictation page's Words tab adds and removes, the learner suggests, the seed adds the obvious
+// ones); scripts/dictation_vocab.py reads it. The words are hints to the models — the speech model's context / prompt /
+// hotwords and polish's word list — never rules: nothing replaces one string with another.
 //
-//   {"schema": 1, "terms": [{"term", "sounds_like": [...], "source": manual|learned|project,
+//   {"schema": 2, "terms": [{"term", "sounds_like": [...], "source": manual|learned|project|default,
 //                            "state": active|suggested|rejected|removed, "added", "hits", "seen"}]}
 //
-//   active      used (ASR biasing, polish, exact sounds-like replacement)
+//   sounds_like what a speech model wrote instead (learned from the user's fixes): it only says when a word is
+//               relevant (dictation_vocab.ranked / relevant), so it is one the models are told about
+//   active      used (the models get it)
 //   suggested   learned once from a fix; accepted by the user, or by itself the second time the same fix is seen
 //   rejected    a learned word the user turned down: never suggested again
 //   removed     a seeded word the user removed: never seeded again
+//
+// Schema 2 (`migrate`, run once by `seed`): the seed is a short list of product names; a word of the older, longer seed
+// the user never touched goes (people's names among them), and the sounds-likes the old seed shipped are dropped.
 import Foundation
 
 public struct VocabTerm: Equatable, Identifiable, Hashable {
-    /// manual (Settings), learned (from a fix), project (Blurt's own words and the projects' names), default (the AI /
-    /// dev product names nearly every user says: Gemini, Claude, Typeless, tmux, …) — both seeds, removable
+    /// manual (the user's own), learned (from a fix), project (the projects' names and keys), default (built in: the
+    /// product names nearly every user says, `DictationVocabulary.builtIn`) — both seeds, removable
     public enum Source: String { case manual, learned, project, builtIn = "default" }
     public enum State: String { case active, suggested, rejected, removed }
 
@@ -59,59 +65,28 @@ public final class DictationVocabulary {
     public init(url: URL? = nil) { fixedURL = url }
     public var url: URL { fixedURL ?? DictationVocabulary.defaultURL }
 
-    /// The seed: what every Blurt user obviously says (the agents, the app's own name), with what speech models
-    /// write instead (docs/design/dictation.md §Recognition model, the misses table). Projects are added on top.
-    public static let builtIn: [(String, [String])] = [
-        ("Claude Code", ["cloud code", "clock code", "claude co"]),
-        ("Codex", ["codec", "codecs", "kodex"]),
-        ("blurt", ["blurred", "blurr"]),
-        ("口喷鸡", ["口喷机", "口碰鸡"]),
+    /// The built-in words (source `default`): the agents, editors, AI labs and models this app's users dictate about
+    /// all day, and the app's own name. Short on purpose — no people, no sounds-likes: the speech model is told the
+    /// names (docs/design/dictation.md §Custom words). Removable: a removed one is never seeded again.
+    public static let builtIn: [String] = [
+        "Claude Code", "Claude", "Codex", "Cursor", "Typeless", "MCP", "GitHub", "worktree", "tmux",
+        "OpenAI", "Anthropic", "ChatGPT", "DeepSeek", "Qwen", "Gemini", "Kimi", "Ollama", "blurt", "口喷鸡",
     ]
 
-    /// Source `default`: the AI and developer products people dictate about all day, so the speech model is biased
-    /// toward them from the first dictation (docs/design/dictation.md §Custom words). Removable: a removed one is
-    /// never seeded again.
-    public static let defaults: [(String, [String])] = [
-        ("Gemini", []),
-        ("Claude", []),
-        ("ChatGPT", ["chat gpt"]),
-        ("Cursor", []),
-        ("Typeless", ["type less", "TypePlus"]),        // Qwen3-ASR 1.7B's miss in the v0.8 speed eval
-        ("OpenClaw", ["open claw"]),
-        ("MCP", []),
-        ("tmux", ["t mux"]),
-        ("GitHub", ["git hub"]),
-        ("PR", []),
-        ("worktree", ["work tree"]),
-        // The AI companies, models and people a Chinese speaker names inside Chinese (the names-in-Chinese eval,
-        // promo/cases/v0.8-dictation-names/: OpenAI → "open AI", Anthropic → "Asopic", Musk → 马斯克 without them).
-        // No sounds-likes: case and spacing variants are fixed anyway, and every misspelling seen there is either a
-        // real word ("deep sea", "whisper flow", "mosque") — which the deterministic pass must never rewrite — or one
-        // the speech model stops making once it is told the name. The near-miss pass and learning cover the rest.
-        ("OpenAI", []),
-        ("Anthropic", []),
-        ("GPT", []),
-        ("DeepSeek", []),
-        ("Kimi", []),
-        ("Qwen", []),
-        ("Grok", []),
-        ("xAI", []),
-        ("Llama", []),
-        ("Gemma", []),
-        ("Mistral", []),
-        ("Ollama", []),
-        ("Hugging Face", []),
-        ("Perplexity", []),
-        ("Copilot", []),
-        ("Windsurf", []),
-        ("Midjourney", []),
-        ("Sora", []),
-        ("MiniMax", []),
-        ("Nvidia", []),
-        ("Wispr Flow", []),
-        ("Sam Altman", []),
-        ("Dario", []),
-        ("Musk", []),
+    /// The file format this code writes; an older file is migrated once by `seed`.
+    public static let schema = 2
+
+    /// What the schema-1 seed added that `builtIn` no longer has, and the sounds-likes it shipped. Migration data
+    /// only: an untouched retired word goes, a shipped sounds-like is dropped.
+    static let retiredSeed: Set<String> = [
+        "GPT", "Grok", "xAI", "Llama", "Gemma", "Mistral", "Hugging Face", "Perplexity", "Copilot", "Windsurf",
+        "Midjourney", "Sora", "MiniMax", "Nvidia", "Wispr Flow", "OpenClaw", "PR", "Sam Altman", "Dario", "Musk",
+    ]
+    static let retiredSoundsLikes: [String: [String]] = [
+        "Claude Code": ["cloud code", "clock code", "claude co"], "Codex": ["codec", "codecs", "kodex"],
+        "blurt": ["blurred", "blurr"], "口喷鸡": ["口喷机", "口碰鸡"], "ChatGPT": ["chat gpt"],
+        "Typeless": ["type less", "TypePlus"], "OpenClaw": ["open claw"], "tmux": ["t mux"], "GitHub": ["git hub"],
+        "worktree": ["work tree"],
     ]
 
     // MARK: reading
@@ -121,26 +96,30 @@ public final class DictationVocabulary {
         return read()
     }
 
-    private func read() -> [VocabTerm] {
-        guard let d = try? Data(contentsOf: url), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [] }
-        return (o["terms"] as? [[String: Any]] ?? []).compactMap(VocabTerm.init(json:))
+    private func read() -> [VocabTerm] { readFile().terms }
+
+    /// The file's schema (nil: no file yet) and its terms.
+    private func readFile() -> (schema: Int?, terms: [VocabTerm]) {
+        guard let d = try? Data(contentsOf: url), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return (nil, []) }
+        return (o["schema"] as? Int ?? 1, (o["terms"] as? [[String: Any]] ?? []).compactMap(VocabTerm.init(json:)))
     }
 
-    private func write(_ terms: [VocabTerm]) {
-        let o: [String: Any] = ["schema": 1, "terms": terms.map(\.json)]
+    private func write(_ terms: [VocabTerm], schema: Int) {
+        let o: [String: Any] = ["schema": schema, "terms": terms.map(\.json)]
         guard let d = try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? d.write(to: url, options: .atomic)
     }
 
-    /// Read, change, write — under the lock. Returns what `change` returned.
+    /// Read, change, write — under the lock. Returns what `change` returned. A new file is written in this schema; an
+    /// older one keeps its own until `seed` migrates it.
     @discardableResult
     private func edit<T>(_ change: (inout [VocabTerm]) -> T) -> T {
         lock.lock(); defer { lock.unlock() }
-        var all = read()
-        let before = all
+        let file = readFile()
+        var all = file.terms
         let r = change(&all)
-        if all != before { write(all) }
+        if all != file.terms { write(all, schema: file.schema ?? DictationVocabulary.schema) }
         return r
     }
 
@@ -152,7 +131,7 @@ public final class DictationVocabulary {
         var terms = o["terms"] as? [[String: Any]] ?? []
         change(&terms)
         var out = o
-        out["schema"] = o["schema"] ?? 1
+        out["schema"] = o["schema"] ?? DictationVocabulary.schema
         out["terms"] = terms
         guard let d = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]) else { return }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -163,6 +142,10 @@ public final class DictationVocabulary {
     public func active() -> [VocabTerm] { load().filter { $0.state == .active }.sorted { $0.hits > $1.hits } }
     /// Learned once, waiting for the user (or a second sighting).
     public func suggestions() -> [VocabTerm] { load().filter { $0.state == .suggested } }
+    /// The active words the user sees as theirs (added, learned, their projects'), in the file's order.
+    public func userWords() -> [VocabTerm] { load().filter { $0.state == .active && $0.source != .builtIn } }
+    /// The active built-in words (the Words tab shows them on one folded line).
+    public func builtInWords() -> [VocabTerm] { load().filter { $0.state == .active && $0.source == .builtIn } }
 
     /// What a request to the speech / polish server carries: [{"term","sounds_like"}].
     public func payload() -> [[String: Any]] { active().map { ["term": $0.term, "sounds_like": $0.soundsLike] } }
@@ -175,7 +158,7 @@ public final class DictationVocabulary {
         all.firstIndex { $0.term == term } ?? all.firstIndex { key($0.term) == key(term) && $0.term.lowercased() == term.lowercased() }
     }
 
-    // MARK: the user's edits (Settings)
+    // MARK: the user's edits (the Words tab)
 
     /// Adds (or brings back) a word. false = empty, or already there and active.
     @discardableResult
@@ -230,23 +213,43 @@ public final class DictationVocabulary {
 
     // MARK: the seed
 
-    /// Adds the obvious words once: the built-in ones and each project's name and key (source `project`), then the
-    /// common product names (source `default`). A word the user removed stays removed; nothing already there is
-    /// touched. Returns the words added.
+    /// Adds the obvious words once: each project's name and key (source `project`; at most three words), then the
+    /// built-in ones (source `default`). A word the user removed stays removed; nothing already there is touched. An
+    /// older file is migrated first. Returns the words added.
     @discardableResult
     public func seed(projects: [(name: String, key: String)]) -> [String] {
-        var want = DictationVocabulary.builtIn.map { (term: $0.0, sounds: $0.1, source: VocabTerm.Source.project) }
+        var want: [(term: String, source: VocabTerm.Source)] = []
         for p in projects {
-            for t in [p.name, p.key] where t.count >= 2 && t.count <= 40 { want.append((t, [], .project)) }
+            for t in [p.name, p.key] where DictationVocabulary.seedable(project: t) { want.append((t, .project)) }
         }
-        want += DictationVocabulary.defaults.map { (term: $0.0, sounds: $0.1, source: VocabTerm.Source.builtIn) }
-        return edit { all in
-            var added: [String] = []
-            for (t, sounds, source) in want where DictationVocabulary.index(all, t) == nil && !added.contains(t) {
-                all.append(VocabTerm(term: t, soundsLike: sounds, source: source))
-                added.append(t)
-            }
-            return added
+        want += DictationVocabulary.builtIn.map { (term: $0, source: VocabTerm.Source.builtIn) }
+        lock.lock(); defer { lock.unlock() }
+        let file = readFile()
+        var all = file.terms
+        if let s = file.schema, s < DictationVocabulary.schema { DictationVocabulary.migrate(&all) }
+        var added: [String] = []
+        for (t, source) in want where DictationVocabulary.index(all, t) == nil && !added.contains(t) {
+            all.append(VocabTerm(term: t, source: source))
+            added.append(t)
+        }
+        if all != file.terms || file.schema != DictationVocabulary.schema { write(all, schema: DictationVocabulary.schema) }
+        return added
+    }
+
+    /// A project's name or key worth seeding: 2–40 characters, at most three words.
+    static func seedable(project t: String) -> Bool {
+        let words = t.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "_" })
+        return t.count >= 2 && t.count <= 40 && !words.isEmpty && words.count <= 3
+    }
+
+    /// Schema 1 → 2: a retired seed the user never touched (still source `default`) goes, whatever its state; the old
+    /// built-in words (source `project` then) become `default`; the sounds-likes the old seed shipped go (the ones
+    /// learned from the user's fixes stay).
+    static func migrate(_ all: inout [VocabTerm]) {
+        all.removeAll { $0.source == .builtIn && retiredSeed.contains($0.term) }
+        for i in all.indices {
+            if all[i].source == .project && builtIn.contains(all[i].term) { all[i].source = .builtIn }
+            if let old = retiredSoundsLikes[all[i].term] { all[i].soundsLike.removeAll { old.contains($0) } }
         }
     }
 
@@ -255,7 +258,7 @@ public final class DictationVocabulary {
     public enum Learned: Equatable {
         /// a new word, in use now: the island says "Learned …" once
         case learned(String)
-        /// a new suggestion (Settings shows it), or one seen again but not yet accepted
+        /// a new suggestion (the Words tab shows it), or one seen again but not yet accepted
         case suggested(String)
         /// already a word: its sounds-like list grew or it was used
         case known(String)
@@ -264,7 +267,7 @@ public final class DictationVocabulary {
     /// The user saved a corrected version of a dictation (the Dictation page's "Save correction"): every recognition
     /// fix in it (DictationLearn.fixes — small spans that sound or look alike, never a rewrite) is learned at once,
     /// since the user made it on purpose. This is how a name gets learned where the after-typing watch can't see the
-    /// field (WeChat). The same rules as `dictation_vocab.py learn`.
+    /// field (WeChat). It learns words, never replacements. The same rules as `dictation_vocab.py learn`.
     @discardableResult
     public func learnCorrection(typed: String, corrected: String,
                                 isCommonWord: (String) -> Bool = DictationLearn.isCommonWord) -> [(fix: DictationLearn.Fix, result: Learned?)] {
@@ -273,11 +276,12 @@ public final class DictationVocabulary {
         }
     }
 
-    /// The user changed `heard` into `fixed` in a dictation. A known word gets `heard` as a sounds-like; a new one is a
-    /// suggestion, used at once when the fix is only case or spacing ("claude" → "Claude") or the second time the same
-    /// fix is seen. `explicit`: the user saved this correction themselves (the Dictation page, the lab) — a new word is
-    /// used at once. nil = nothing to learn (a word the user rejected or removed). scripts/dictation_vocab.py `learn`
-    /// is the same rules for tools outside the app.
+    /// The user changed `heard` into `fixed` in a dictation. A known word gets `heard` as a sounds-like (a hint that the
+    /// word is relevant when it is heard; nothing rewrites it); a new one is a suggestion, used at once when the fix is
+    /// only case or spacing ("claude" → "Claude") or the second time the same fix is seen. `explicit`: the user saved
+    /// this correction themselves (the Dictation page, the lab) — a new word is used at once. nil = nothing to learn
+    /// (a word the user rejected or removed). scripts/dictation_vocab.py `learn` is the same rules for tools outside
+    /// the app.
     public func learn(heard: String, fixed: String, explicit: Bool = false) -> Learned? {
         let h = heard.trimmingCharacters(in: .whitespacesAndNewlines), f = fixed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !h.isEmpty, !f.isEmpty, h != f else { return nil }

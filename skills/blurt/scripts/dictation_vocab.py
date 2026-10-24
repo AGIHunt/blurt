@@ -4,14 +4,15 @@
   • ranked()        which terms matter for this utterance (sounds-like heard, in the context, used often), capped
   • ASR biasing     whisper_prompt() (initial_prompt), qwen_context() (Qwen3-ASR `context`), hotwords() (sherpa-onnx
                     Qwen3-ASR per-stream hotwords: "; "-joined, an ASCII comma is split and re-joined with spaces)
-  • apply()         the cheap deterministic pass, also when polish is off: an exact sounds-like match (the user's own
-                    data) becomes the term, and a spacing / hyphen variant of a term gets the term's spelling
-                    ("sense voice" → "SenseVoice"); a case-only or near-miss spelling is polish's call (it sees the
-                    sentence)
+  • apply()         the one deterministic pass left, meaning-free: a term written in pieces ("ba 12", "claude code")
+                    gets the term's spelling — never when every piece is an ordinary word ("type less" may be just
+                    that). Sounds-likes are never substituted: whether "cloud code" means Claude Code takes the
+                    sentence, so it is the models' call (the speech model is told the words, polish lists them)
   • allowed_units() what polish may add without the content-loss guard calling it new (terms + the context)
 
-A term: {"term", "sounds_like": [...], "source": manual|learned|project, "state": active|suggested|rejected|removed,
-"added", "hits", "seen"}. Only active terms are used. Requests may also pass the terms inline (a list of strings or
+A term: {"term", "sounds_like": [...], "source": manual|learned|project|default, "state": active|suggested|rejected|
+removed, "added", "hits", "seen"}. Only active terms are used; a sounds-like (what a speech model wrote instead, learned
+from the user's fixes) only ranks a term as relevant. Requests may also pass the terms inline (a list of strings or
 dicts), which wins over the file.
 """
 from __future__ import annotations
@@ -27,6 +28,7 @@ _CJK_RE = re.compile(rf"[{_CJK}]")
 _WORD = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z]+)?")
 MAX_TERMS = 40           # in an ASR prompt or the polish prompt (Whisper's prompt is ~224 tokens)
 QWEN_MAX_TERMS = 64      # Qwen3-ASR's context: ~2 tokens a word, prefilled with the audio (+64 words ≈ +6 ms)
+SCHEMA = 2               # the file's format (BlurtCore DictationVocabulary.schema; the app migrates older files)
 
 
 def vocab_file() -> Path:
@@ -65,10 +67,9 @@ def load(path: Path | None = None) -> list[dict]:
 _DICT: set[str] | None = None
 
 
-def common_word(w: str) -> bool:
-    """An ordinary English word (macOS's own lexicon, /usr/share/dict/words: its lower-case entries — data, not a list
-    of ours): a sounds-like on it would change real words ("cloud", "blur"), so the deterministic pass leaves those to
-    polish, which sees the sentence."""
+def _lexicon() -> set[str]:
+    """macOS's own lexicon, /usr/share/dict/words: its lower-case entries (data, not a list of ours). Empty where the
+    system has none (Windows, many Linux installs)."""
     global _DICT
     if _DICT is None:
         _DICT = set()
@@ -77,7 +78,13 @@ def common_word(w: str) -> bool:
                 _DICT = {ln.strip() for ln in f if ln.strip() and ln[0].islower()}
         except OSError:
             pass
-    return w.lower() in _DICT
+    return _DICT
+
+
+def common_word(w: str) -> bool:
+    """An ordinary English word (the lexicon): joining it with its neighbour into a term, or learning it as a name,
+    could change real words ("type less", "cloud"), so those are the models' call — they see the sentence."""
+    return w.lower() in _lexicon()
 
 
 def _key(s: str) -> str:
@@ -169,49 +176,31 @@ def hotwords(terms: list[dict]) -> str:
 
 
 # ------------------------------------------------------------------ the deterministic pass
-def _latin_pattern(phrase: str) -> re.Pattern:
-    parts = [re.escape(p) for p in re.split(r"\s+", phrase.strip()) if p]
-    return re.compile(r"(?<![A-Za-z0-9])" + r"\s+".join(parts) + r"(?![A-Za-z0-9])", re.I)
-
-
 def apply(text: str, terms: list[dict]) -> tuple[str, list[str]]:
-    """→ (text, the terms it wrote). Exact sounds-like matches become the term (not a lone ordinary English word, not
-    a single CJK character); a variant of a term that differs only in case, spaces or hyphens gets the term's spelling
-    (not when the term is one ordinary English word: "swift" stays)."""
+    """→ (text, the terms it wrote). Only a term written in pieces gets the term's spelling (_respell). Sounds-likes
+    are not substituted — not the seed's, not the ones learned from the user's fixes: "codec", "type less" and "cloud
+    code" are often just that, and only the sentence says which (docs/design/dictation.md §Custom words)."""
     out, applied = text or "", []
     if not out or not terms:
         return out, applied
     for t in sorted(terms, key=lambda t: -len(t["term"])):
         term = t["term"]
-        hit = False
-        for sl in sorted(t["sounds_like"], key=len, reverse=True):
-            if _key(sl) == _key(term) and sl != term:
-                continue  # a spelling variant: the case / spacing pass below handles it
-            if _CJK_RE.search(sl):
-                if len(sl) < 2 or sl not in out:
-                    continue
-                out = out.replace(sl, term)
-                hit = True
-            else:
-                if " " not in sl.strip() and (common_word(sl) or len(sl) < 2):
-                    continue
-                new = _latin_pattern(sl).sub(term, out)
-                if new != out:
-                    out, hit = new, True
-        if not _CJK_RE.search(term):
-            out, fixed = _respell(out, term)
-            hit = hit or fixed
-        if hit and term not in applied:
+        if _CJK_RE.search(term):
+            continue
+        out, fixed = _respell(out, term)
+        if fixed and term not in applied:
             applied.append(term)
     return out, applied
 
 
 def _respell(text: str, term: str) -> tuple[str, bool]:
     """Windows of 2–3 words (joined by single spaces / hyphens) whose spelling key equals the term's → the term
-    ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). One word that differs only in case ("github", "gemini") is
-    polish's call: whether it is the name or the ordinary word takes the sentence."""
+    ("ba 12" → "BA-12", "claude code" → "Claude Code") — unless every piece is an ordinary word ("type less",
+    "work tree", "sense voice": the words may mean just that), or the lexicon to tell is missing. One word that differs
+    only in case ("github", "gemini") is polish's call: whether it is the name or the ordinary word takes the
+    sentence."""
     key = _key(term)
-    if len(key) < 2:
+    if len(key) < 2 or not _lexicon():
         return text, False
     words = list(_WORD.finditer(text))
     out, last, changed = [], 0, False
@@ -228,7 +217,7 @@ def _respell(text: str, term: str) -> tuple[str, bool]:
             seg = text[s:e]
             if _key(seg) != key:
                 continue
-            if seg != term and n > 1:
+            if seg != term and n > 1 and not all(common_word(w.group()) for w in span):
                 out.append(text[last:s])
                 out.append(term)
                 last = e
@@ -563,8 +552,9 @@ def learn_fix(doc: dict, heard: str, fixed: str, explicit: bool = True) -> str |
 
 def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = None, dry_run: bool = False) -> dict:
     """The user corrected a dictation (`raw`: what was typed — or heard —; `corrected`: their version). The fixes found
-    (fixes()) go into the vocabulary file the app reads: a misheard name becomes a word with what was heard as its
-    sounds-like, so the next dictation is biased toward it and the sounds-like pass writes it.
+    (fixes()) go into the vocabulary file the app reads: a misheard name becomes a word, with what was heard as its
+    sounds-like, so the next dictation that sounds like it tells the models about the word (a word, never a
+    replacement rule).
     explicit (default): the user saved this correction, so a new word is used at once; False = a suggestion, as the
     after-typing watch makes. → {"ok", "fixes": [{"heard", "fixed", "kind", "result"}], "path", "written"}."""
     path = Path(path) if path else vocab_file()
@@ -577,7 +567,7 @@ def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = N
             doc = {}
     except (OSError, ValueError):
         doc = {}
-    doc.setdefault("schema", 1)
+    doc.setdefault("schema", SCHEMA)
     for fx in found:
         fx["result"] = learn_fix(doc, fx["heard"], fx["fixed"], explicit)
     written = any(fx["result"] for fx in found)
@@ -589,7 +579,7 @@ def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = N
 def main(argv=None) -> int:
     """dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]
     dictation_vocab.py fixes --raw TEXT --corrected TEXT          what would be learned; writes nothing
-    dictation_vocab.py apply --text TEXT [--file PATH]            the sounds-like / spelling pass"""
+    dictation_vocab.py apply --text TEXT [--file PATH]            the spelling pass (a term written in pieces)"""
     import argparse
     ap = argparse.ArgumentParser(prog="dictation_vocab.py", description=main.__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
