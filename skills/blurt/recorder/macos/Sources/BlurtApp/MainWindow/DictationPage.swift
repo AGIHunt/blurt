@@ -1,8 +1,10 @@
 // Dictation (听写): a page of the main window — the sidebar's Dictation place, ⌥⌘D, the menu-bar menu's "Dictation
-// History…", the command palette and Settings → Dictation all open it. The middle column lists every dictation, newest
+// History…", the command palette and Settings → Dictation all open it. Tabs: History | Words (DictationWords.swift: the
+// custom words, managed here only) | Lab (when on). History: the middle column lists every dictation, newest
 // first, grouped by day, with today's numbers on top and the toolbar's search field searching it; the detail column
 // shows one dictation: what was typed and what was heard (one at a time or side by side), copy each, turn it into an
-// item, delete it, and where and how it was typed.
+// item, delete it, and where and how it was typed — the style that actually ran, what polish did, and the models by
+// name (DictationModels), not their ids. The lists draw their selection as the brand wash (ListWash / RowWash).
 //
 // Keys (the list focused): ↑↓ (⇧/⌘-click for more), ⌫ deletes (⌘Z puts it back), ⌘C copies, ⌘F searches.
 //
@@ -101,8 +103,8 @@ struct DictationStats: Equatable {
 final class DictationHistoryModel: ObservableObject {
     /// What the detail shows of a dictation that polish changed.
     enum Mode: String, CaseIterable { case polished, raw, compare }
-    /// The page's two tabs: the history, and the Dictation Lab (DictationLab.swift).
-    enum Tab: String { case history, lab }
+    /// The page's tabs: the history, the custom words (DictationWords.swift), and the Dictation Lab (DictationLab.swift).
+    enum Tab: String { case history, words, lab }
 
     @Published var tab: Tab = .history
     /// "Add to Lab" on an entry (the page sets it: the lab takes it in and shows it)
@@ -340,8 +342,9 @@ final class DictationHistoryModel: ObservableObject {
 final class DictationPage {
     let model = DictationHistoryModel()
     let lab = DictationLabModel()
-    lazy var list: NSViewController = DictationPage.host(DictationPageList(m: model, lab: lab))
-    lazy var detail: NSViewController = DictationPage.host(DictationPageDetail(m: model, lab: lab))
+    let words = DictationWordsModel()
+    lazy var list: NSViewController = DictationPage.host(DictationPageList(m: model, lab: lab, words: words))
+    lazy var detail: NSViewController = DictationPage.host(DictationPageDetail(m: model, lab: lab, words: words))
     private var accessTimer: Timer?
     private var tabWatch: AnyCancellable?
     private(set) var visible = false
@@ -355,6 +358,7 @@ final class DictationPage {
                     guard let self = self else { return }
                     self.lab.visible = self.visible && t == .lab
                     if t == .lab { self.lab.reload() }
+                    if t == .words { self.words.reload() }
                     MainWindowController.shared.updateTitle()
                     emit(["event": "dictation_page", "tab": t.rawValue])
                 }
@@ -379,15 +383,24 @@ final class DictationPage {
         return h
     }
 
+    /// The Words tab (Settings → Dictation's "Manage…").
+    func showWords() { model.tab = .words }
+
     func didShow() {
         visible = true
         lab.visible = model.tab == .lab
         model.reload()
         model.selectFirstIfNone()
-        // granting Input Monitoring needs no restart: the header and the empty state follow it
+        words.reload()
+        DictationModels.shared.loadIfNeeded()          // the models' names in the detail
+        // granting Input Monitoring needs no restart: the header and the empty state follow it; a word learned
+        // meanwhile shows up in the Words tab
         accessTimer?.invalidate()
         accessTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.refreshAccess() }
+            MainActor.assumeIsolated {
+                self?.model.refreshAccess()
+                if self?.model.tab == .words { self?.words.reload() }
+            }
         }
     }
 
@@ -427,32 +440,36 @@ private struct LinkButton: View {
 
 // MARK: - the two tabs
 
-/// History | Lab, above the list column; each tab has both columns.
+/// History | Words (| Lab, when it is on), above the list column; each tab has both columns.
 struct DictationTabBar: View {
     @ObservedObject var m: DictationHistoryModel
     var body: some View {
-        if DictationLabModel.enabled { picker } else { Color.clear.frame(height: 0).onAppear { m.tab = .history } }
-    }
-    private var picker: some View {
         Picker("", selection: $m.tab) {
             Text(T("dictation.lab.tab.history")).tag(DictationHistoryModel.Tab.history)
-            Text(T("dictation.lab.tab.lab")).tag(DictationHistoryModel.Tab.lab)
+            Text(T("dictation.words.tab")).tag(DictationHistoryModel.Tab.words)
+            if DictationLabModel.enabled { Text(T("dictation.lab.tab.lab")).tag(DictationHistoryModel.Tab.lab) }
         }
         .pickerStyle(.segmented).labelsHidden().fixedSize()
         .accessibilityLabel(T("dictation.lab.tab.label"))
         .frame(maxWidth: .infinity)
         .padding(.top, 8).padding(.bottom, 6)
+        .onAppear { if m.tab == .lab && !DictationLabModel.enabled { m.tab = .history } }
     }
 }
 
 struct DictationPageList: View {
     @ObservedObject var m: DictationHistoryModel
     @ObservedObject var lab: DictationLabModel
+    @ObservedObject var words: DictationWordsModel
     var body: some View {
         VStack(spacing: 0) {
             DictationTabBar(m: m)
             Divider()
-            if m.tab == .lab { LabListView(lab: lab) } else { DictationListView(m: m) }
+            switch m.tab {
+            case .lab: LabListView(lab: lab)
+            case .words: DictationWordsList(w: words)
+            case .history: DictationListView(m: m)
+            }
         }
     }
 }
@@ -460,8 +477,53 @@ struct DictationPageList: View {
 struct DictationPageDetail: View {
     @ObservedObject var m: DictationHistoryModel
     @ObservedObject var lab: DictationLabModel
+    @ObservedObject var words: DictationWordsModel
     var body: some View {
-        if m.tab == .lab { LabDetailView(lab: lab) } else { DictationDetailView(m: m) }
+        switch m.tab {
+        case .lab: LabDetailView(lab: lab)
+        case .words: DictationWordsDetail(w: words)
+        case .history: DictationDetailView(m: m)
+        }
+    }
+}
+
+/// A SwiftUI List's selection drawn the way every Blurt list draws it (system.md §3.3: a rounded `brand.tint` wash,
+/// text stays ink; neutral when the window isn't key), not the filled accent: put `.background(ListWash())` on the
+/// List (its table stops drawing the highlight) and `.listRowBackground(RowWash(on: selected))` on each row.
+struct ListWash: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Finder() }
+    func updateNSView(_ v: NSView, context: Context) { (v as? Finder)?.apply() }
+
+    final class Finder: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+        /// the nearest table around this view: the List it is the background of
+        func apply() {
+            var v = superview
+            while let s = v {
+                if let t = DictationPage.firstTable(s) {
+                    if t.selectionHighlightStyle != .none { t.selectionHighlightStyle = .none }
+                    return
+                }
+                v = s.superview
+            }
+        }
+    }
+}
+
+struct RowWash: View {
+    var on: Bool
+    @Environment(\.controlActiveState) private var active
+    var body: some View {
+        if on {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(active == .key ? Color.brandTint : Color.primary.opacity(0.06))
+                .padding(.horizontal, 6).padding(.vertical, 1)
+        } else {
+            Color.clear
+        }
     }
 }
 
@@ -556,11 +618,14 @@ struct DictationListView: View {
         List(selection: $m.selection) {
             ForEach(m.days, id: \.day) { group in
                 Section(header: Text(DictationHistoryModel.dayTitle(group.day))) {
-                    ForEach(group.rows) { e in DictationRow(m: m, e: e).tag(e.id) }
+                    ForEach(group.rows) { e in
+                        DictationRow(m: m, e: e).tag(e.id).listRowBackground(RowWash(on: m.selection.contains(e.id)))
+                    }
                 }
             }
         }
         .listStyle(.inset)
+        .background(ListWash())
         .onDeleteCommand { m.delete(m.selected, undo: undo) }        // ⌫
         .onCopyCommand {                                             // ⌘C
             m.copySelection()
@@ -675,6 +740,8 @@ struct DictationEmptyView: View {
 
 struct DictationDetailView: View {
     @ObservedObject var m: DictationHistoryModel
+    /// the models' names (the history keeps their ids)
+    @ObservedObject var models = DictationModels.shared
     @Environment(\.undoManager) private var undo
 
     var body: some View {
@@ -895,16 +962,14 @@ struct DictationDetailView: View {
             row(T("main.dictation.info.length"), DictationHistoryModel.duration(e.duration))
             row(T("main.dictation.info.result"), e.insert == "pasted" ? T("main.dictation.info.pasted")
                 : e.insert == "copied" ? T("main.dictation.info.copied") : T("main.dictation.info.not_typed"))
-            row(T("main.dictation.info.polish"), e.polished == nil && !e.fellBack ? T("main.dictation.info.polish.off")
-                : e.fellBack ? T("dictation.history.badge.fell_back") + (e.model.map { " · \($0)" } ?? "")
-                : e.model ?? T("dictation.history.badge.polished"))
-            if let s = e.style {
-                // the style it was typed in, and how often reformat-last changed it (dictation-styles.md)
+            polishRow(e)
+            if let s = e.style, let ran = DictationEntryReport.styleRan(e) {
+                // the style the text is in (what ran, not only what was asked for), and how often reformat-last
+                // changed it (dictation-styles.md)
                 let n = s.reformats.filter { $0.action == "reformat" }.count
-                row(T("dictation.style.section"), Dictation.styleName(DictationStyle(rawValue: s.style) ?? .light)
-                    + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
+                row(T("dictation.style.section"), Dictation.styleName(ran) + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
             }
-            if let a = e.asrModel { row(T("main.dictation.info.asr"), a) }
+            if let a = e.asrModel { row(T("main.dictation.info.asr"), models.asrName(a)) }
             if let l = e.language { row(T("main.dictation.info.language"), Loc.locale.localizedString(forIdentifier: l) ?? l) }
             if let t = x?.terms, !t.isEmpty {
                 GridRow {
@@ -915,6 +980,24 @@ struct DictationDetailView: View {
             if let c = x?.context { row(T("main.dictation.info.context"), c) }
         }
         .font(.system(size: 12))
+    }
+
+    /// What polish did, with the model's name; "no polish model" links to where it is downloaded.
+    @ViewBuilder func polishRow(_ e: DictationEntry) -> some View {
+        switch DictationEntryReport.polish(e, hasModel: models.polish == nil || models.selectedPolish != nil) {
+        case .model(let id): row(T("main.dictation.info.polish"), id.isEmpty ? T("dictation.history.badge.polished") : models.polishName(id))
+        case .fellBack(let id): row(T("main.dictation.info.polish"), T("dictation.history.badge.fell_back") + (id.map { " · " + models.polishName($0) } ?? ""))
+        case .short: row(T("main.dictation.info.polish"), T("main.dictation.info.polish.short"))
+        case .off: row(T("main.dictation.info.polish"), T("main.dictation.info.polish.off"))
+        case .noModel:
+            GridRow {
+                label(T("main.dictation.info.polish"))
+                HStack(spacing: 8) {
+                    Text(T("main.dictation.info.polish.no_model"))
+                    LinkButton(title: T("main.dictation.info.polish.get")) { SpeechPane.showDictationModels() }
+                }
+            }
+        }
     }
 
     func label(_ s: String) -> some View {
@@ -979,6 +1062,21 @@ final class DictationHistoryWindow: NSObject {
         MainWindowController.shared.showDictation()
         emit(["event": "dictation_history", "action": "show", "window": MainWindowController.shared.window?.windowNumber ?? -1,
               "entries": page.model.entries.count, "page": true])
+    }
+
+    /// The page on its Words tab (Settings → Dictation's "Manage…").
+    @MainActor
+    func showWords() {
+        show()
+        page.showWords()
+    }
+
+    /// tests: `dictation history tab history|words|lab`, then what the Words tab shows ("dictation_words")
+    @MainActor func testTab(_ t: String) {
+        show()
+        if let tab = DictationHistoryModel.Tab(rawValue: t) { page.model.tab = tab == .lab && !DictationLabModel.enabled ? .history : tab }
+        page.words.reload()
+        page.words.report()
     }
 
     /// A dictation was added, or Settings cleared the history: the page follows when it is showing.

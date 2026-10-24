@@ -230,8 +230,8 @@ struct OnboardingView: View {
                         HStack {
                             StatusDot(tone: r.installed ? .good : .warn)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("SenseVoice Small").fontWeight(.medium)
-                                Text("\(Int(r.sizeMB)) MB · " + r.languages.joined(separator: " ")).font(.caption).foregroundStyle(.secondary)
+                                Text(r.title).fontWeight(.medium)
+                                Text(modelSize(r.sizeMB) + " · " + r.languages.joined(separator: " ")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if r.installed { Label(T("onboarding.downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandOk) }

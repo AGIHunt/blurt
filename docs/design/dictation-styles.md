@@ -219,8 +219,10 @@ The implementation is described in `dictation.md` §Styles; in short:
 
 - **1, plumbing**: `record.dictation.styles` (per category, per app, learned), the app → category table, and the
   history's `style`, `style_source`, `style_router` (category, the app's own style, ⇧ / the island / Fn+⇧, toggles,
-  markers, `list_likely`, rendered, the variant) and `reformats`. Settings → Dictation → Style: one picker per category,
-  Light (default) everywhere unless the user picks something else; no prompt editor.
+  markers, `list_likely`, rendered, the variant) and `reformats`. Settings → Dictation → Style: one choice (Verbatim =
+  no polish / Light / Structured / Auto, `DictationStyleChoice` over `polish` and the styles' default; it replaced the
+  separate polish Off / Light switch in v0.9), with a picker per category folded under *By kind of app*; Light
+  (default) everywhere unless the user picks something else; no prompt editor. The history reports the style that ran.
 - **2, variants of light**: chat keeps sentence-final particles (polish's repair puts back the ones the model dropped;
   the prompt and its cached prefix are unchanged) and drops the closing 。 of a one-sentence message; code and terminals
   get one line. Mail and notes as light.

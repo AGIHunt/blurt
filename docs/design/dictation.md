@@ -43,7 +43,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
 | Polish model (Light) + the structuring pass (Structured) + guard + repair + eval | `scripts/polish.py` (`Engine.polish`, `Engine.structure`, `guard`, `repair`), `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl` (Light references + `structured` expectations), `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
 | Dictation Lab (record, stages, compare, mark up, cases, scripts, regression) | §Lab: `MainWindow/DictationLab.swift`, `DictationLabViews.swift`; pure: `BlurtCore/DictationLab.swift` (`DictationLabTests`); `scripts/dictation_lab.py`, `scripts/lab_packs/`, `tests/test_dictation_lab.py`, `tests/fixtures/lab_metrics.jsonl` |
-| UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it) |
+| UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`: the essentials on one short page), dictation's models in Settings → Speech (`Settings/DictationModels.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it; tabs History / Words (`DictationWords.swift`) / Lab) |
 
 ## Trigger
 
@@ -132,9 +132,10 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
     changes from other apps this way can only be confirmed on a real machine (below).
   - One listener at a time (a Blurt-only tap next to the monitor would deliver Blurt's own keys twice), and the same
     flags change twice within 30 ms counts once while one listener replaces the other.
-  - "Dictation works" = the listener is global (`tap` or `monitor`). Settings → Dictation shows which listener runs
-    and *Last heard in another app: 13:46:57* — taken from the listener itself whenever the dictation key changes
-    while another app is in front. Only the user can make that line appear.
+  - "Dictation works" = the listener is global (`tap` or `monitor`). Settings → Dictation shows a status row only
+    when it doesn't (*Blurt can't hear Fn yet · Turn On…*); which listener runs and *Last heard in another app:
+    13:46:57* (taken from the listener itself whenever the dictation key changes while another app is in front) sit
+    under Permissions, folded to *All allowed* once everything is. Only the user can make that line appear.
 - Until the key is heard globally (BlurtCore `DictationAccess` decides; `DictationAccessTests`):
   - macOS is never asked at launch (≤ 0.8 called `CGRequestListenEventAccess()` once per version). The request APIs
     run when the user clicks Allow / Set Up (§Permissions);
@@ -744,9 +745,17 @@ polish above — stays the default everywhere and never restructures. Which styl
   (「以后在 备忘录 里自动排清单？」 好 / 不用; lists → Auto lists, never Structured always) and remembers it asked
   (`style_asked`). Yes sets `styles.apps[bundle]` and marks it learned; Settings → Dictation → Style shows it with
   Reset. Nothing ever changes by itself.
-- **Settings → Dictation → Style**: one picker per category (Light (default) / Verbatim / Structured / Auto lists, each
-  category's variant described under it), the apps set on their own, *Offer a list when a take sounds like one*,
-  *Suggest an app's style from how I switch*, and the keys.
+- **Settings → Dictation → Style** (v0.9: polish Off / Light and Style were two overlapping controls, audit newc010 /
+  dict027): **one** choice — Verbatim / Light / Structured / Auto — with one line on what it does
+  (`BlurtCore/DictationStyleChoice`, over the keys the engine already reads: Verbatim = `polish: "off"` plus
+  `styles.default: "verbatim"`, so its takes say Verbatim in the history; the others = `polish` unset plus their
+  style as `styles.default`, Light unset). Folded under *By kind of app* (not shown for Verbatim): one picker per
+  category (*Same as above (…)* or a style), the apps set on their own, *Offer a list when a take sounds like one*,
+  *Suggest an app's style from how I switch*, the polish time limit and the keys.
+- **History detail** reports the style that **ran** (`DictationEntryReport.styleRan`: Verbatim when nothing polished
+  the take — style, polish off, no model, a fall-back —, Light when Structured's pass gave nothing back or Auto made no
+  list) and what polish did (`DictationEntryReport.polish`: the model by name, typed as heard, too short, off, or *No
+  polish model · Download…*), and both models by their names (`DictationModels`), never their ids.
 - **Dictation Lab**: Compare has Style: Verbatim / Structured / Auto lists; `dictation_lab.py` takes `style=` and
   `category=` (default: the case's app); Structured / Auto call polish.py's `structure` on Light's stitched text, as the
   app does (rows carry `structured`: list, fell_back, reason, ms; timings `structure_ms`, `last_polish_ms`,
@@ -1092,7 +1101,13 @@ rewrite teaches nothing):
 ## Recognition model
 
 `record.dictation.asr_model` (unset = automatic: the recommended model when installed, else the voice-note model).
-`transcribe.py dictation-models` lists them for Settings → Dictation; nothing is downloaded until **Install**.
+`transcribe.py dictation-models` lists them for **Settings → Speech → Dictation** (`Settings/DictationModels.swift`,
+the one place dictation's speech and polish models are chosen: the recommended pair with its total size and one
+*Download (5.7 GB)* for what's missing; per model one verb — *Download* when it isn't on this Mac, *Use* when it is,
+the one in use marked; sizes from the catalogues' `size_mb`, whole MB below 1 GB, one decimal above; the selected,
+recommended and downloaded models shown, the rest under *Other models (n)*). Settings → Dictation shows the model in
+use with *Change…* (or *Not downloaded yet · Download…*), which opens it there. Nothing is downloaded until
+**Download**.
 
 Test set: 30 clips of 4.7–7 s made with `say`: 12 mixed Chinese + English terms, 8 Chinese, 10 English (Tingting,
 Reed and Eddy zh_CN, Samantha), with 52 expected terms (Claude Code, Codex, blurt, 口喷鸡, tmux, worktree, option,
@@ -1274,7 +1289,7 @@ of speech, like D), polished whole and piece by piece (with the polished text so
 | light | 8 GB | 2 GB | Qwen3 1.7B (2.1 GB peak; MLX's limit is relaxed, so it slightly overshoots instead of failing) |
 | minimal | < 8 GB | — | Gemma 3 1B (rarely harmful, rarely useful) |
 
-Nothing is downloaded until the user presses **Install** in Settings → Dictation. The size is shown, and the download
+Nothing is downloaded until the user presses **Download** in Settings → Speech → Dictation. The size is shown, and the download
 comes from Hugging Face, or from ModelScope when the download mirror is on (it mirrors mlx-community, and is fast from
 mainland China). Until then dictation types the raw transcript. `mlx-lm` is added with `uv run --with` on first use
 (through a PyPI mirror when the mirror is on).

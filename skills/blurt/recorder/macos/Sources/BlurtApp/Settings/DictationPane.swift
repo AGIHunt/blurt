@@ -1,54 +1,22 @@
-// Settings → Dictation (docs/design/dictation.md): on / off, the key (Fn first, right ⌥, either ⌥) and how it works
-// (auto / tap / hold), with Fn: keeping Fn from macOS and macOS's own "Press 🌐 key to" setting (read live, fixed by
-// the user through the permission guide), other Fn dictation apps running; which listener hears it and when it was
-// last heard in another app, the permissions it needs (Accessibility to paste, read the text around the cursor and
-// hear Fn; Input Monitoring for the other keys; the microphone) with "Set Up Permissions"; the recognition model (with its
-// download), custom words (add, remove, learned ones, suggestions to accept or ignore; reading the context and
-// learning can be turned off), polish (Off / Light, the model with its download), the polish time limit, history
-// retention, keeping audio, clearing the history.
+// Settings → Dictation (docs/design/dictation.md): the essentials on one short page —
+//   Dictation   on / off, the key (Fn first, right ⌥, either ⌥), how it works (auto / tap / hold: the one how-to line),
+//               double tap = Return, with Fn: keeping Fn from macOS and macOS's own "Press Globe key to" setting (only
+//               when it clashes), other Fn dictation apps running; a status row only when the key can't be heard
+//   Style       one choice: Verbatim (no polish) / Light / Structured / Auto (DictationStyleChoice: the polish key and
+//               the styles' default); per kind of app, apps set on their own, list suggestions, learning and the
+//               polish time limit folded under "By kind of app"
+//   Models      the speech and polish model in use, with Change… / Download… → Settings → Speech, where they are chosen
+//               (DictationModels.swift)
+//   Words       a one-line summary with Manage… → the Dictation page's Words tab; reading the context and learning
+//   History     retention, keeping audio, opening and clearing it
+//   Microphone  the Mac's own mic, the start sound
+//   Permissions folded to one line when all are allowed (with the listener and when the key was last heard in another
+//               app); otherwise the rows with Allow and "Set Up Permissions"
 // Everything is record.dictation.* in config.json; Dictation.shared.apply() picks changes up at once.
 // Strings: Resources/*.lproj/Dictation.strings (T("dictation.…")).
 import AppKit
 import SwiftUI
 import BlurtCore
-
-struct PolishModel: Decodable, Identifiable, Hashable {
-    var id: String
-    var name: String
-    var family: String
-    var sizeMB: Double
-    var installed: Bool
-    var recommended: Bool
-    enum CodingKeys: String, CodingKey { case id, name, family, installed, recommended, sizeMB = "size_mb" }
-}
-
-/// `transcribe.py dictation-models`: what dictation can use here.
-struct DictationASRModel: Decodable, Identifiable, Hashable {
-    var id: String
-    var name: String?
-    var sizeMB: Double
-    var installed: Bool
-    var recommended: Bool
-    /// none | prompt | context | hotwords: how the model takes the custom words
-    var vocab: String
-    enum CodingKeys: String, CodingKey { case id, name, installed, recommended, vocab, sizeMB = "size_mb" }
-}
-
-struct DictationASRState: Decodable {
-    var configured: String?
-    var recommended: String
-    var selected: String
-    var models: [DictationASRModel]
-}
-
-struct PolishState: Decodable {
-    var supported: Bool
-    var tier: String
-    var recommended: String
-    var selected: String?
-    var configured: String?
-    var models: [PolishModel]
-}
 
 @MainActor
 final class DictationSettings: ObservableObject {
@@ -56,7 +24,6 @@ final class DictationSettings: ObservableObject {
     @Published var key = Dictation.key
     @Published var mode = Dictation.mode
     @Published var doubleTap = Dictation.doubleTapSend
-    @Published var polishOn = Dictation.polishOn
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
     @Published var keepAudio = Dictation.keepAudio
@@ -70,30 +37,20 @@ final class DictationSettings: ObservableObject {
     @Published var fnFiltering = Dictation.shared.fnFiltering
     @Published var fnUsage: FnUsage? = SystemAccess.fnUsage
     @Published var fnApps: [String] = SystemAccess.fnClashApps
-    @Published var polish: PolishState?
-    @Published var download: [String: (done: Double, total: Double)] = [:]
-    @Published var failed: [String: Bool] = [:]
     @Published var historyCount = 0
     @Published var contextOn = Dictation.contextOn
     @Published var learnOn = Dictation.learnOn
-    @Published var words: [VocabTerm] = []
-    @Published var suggestions: [VocabTerm] = []
-    @Published var newWord = ""
-    @Published var asr: DictationASRState?
-    @Published var asrDownload: [String: (done: Double, total: Double)] = [:]
-    @Published var asrFailed: [String: Bool] = [:]
+    /// the Words summary: the user's own words, the built-in ones, suggestions waiting
+    @Published var wordCounts = (mine: 0, builtIn: 0, suggested: 0)
     private var timer: Timer?
-    private var procs: [String: Process] = [:]
-    private var cancelled = Set<String>()
 
     func start() {
         Dictation.shared.seedVocabulary()
         refresh()
         emit(["event": "dictation_pane", "tap": tap])
-        Task { await loadASR() }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in Task { @MainActor in self?.refresh() } }
-        Task { await loadModels() }
+        Task { await DictationModels.shared.load() }
     }
     func stop() { timer?.invalidate(); timer = nil }
 
@@ -117,30 +74,20 @@ final class DictationSettings: ObservableObject {
         if n != historyCount { historyCount = n }
         let st = Dictation.styleConfig          // a learned suggestion accepted on the island shows up here
         if st != styles { styles = st }
-        reloadWords()
-    }
-
-    // MARK: custom words
-
-    func reloadWords() {
+        let s = DictationStyleChoice.current(polishOff: !Dictation.polishOn, config: st)
+        if s != style { style = s }
         let all = DictationVocabulary.shared.load()
-        let w = all.filter { $0.state == .active }.sorted { ($0.source == .learned ? 0 : 1, $0.term.lowercased()) < ($1.source == .learned ? 0 : 1, $1.term.lowercased()) }
-        let sg = all.filter { $0.state == .suggested }
-        if w != words { words = w }
-        if sg != suggestions { suggestions = sg }
+        let wc = (mine: all.filter { $0.state == .active && $0.source != .builtIn }.count,
+                  builtIn: all.filter { $0.state == .active && $0.source == .builtIn }.count,
+                  suggested: all.filter { $0.state == .suggested }.count)
+        if wc != wordCounts { wordCounts = wc }
     }
 
-    func addWord() {
-        let t = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        DictationVocabulary.shared.add(t)
-        newWord = ""
-        reloadWords()
-        emit(["event": "dictation_vocab", "op": "add", "term": t])
-    }
-    func removeWord(_ t: VocabTerm) { DictationVocabulary.shared.remove(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "remove", "term": t.term]) }
-    func accept(_ t: VocabTerm) { DictationVocabulary.shared.accept(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "accept", "term": t.term]) }
-    func reject(_ t: VocabTerm) { DictationVocabulary.shared.reject(t.term); reloadWords(); emit(["event": "dictation_vocab", "op": "reject", "term": t.term]) }
+    /// Every permission dictation needs is there (the section folds to one line).
+    var allAllowed: Bool { accessibility && (inputMonitoring || (key == .fn && fnFiltering)) && mic == .granted }
+
+    // MARK: words, microphone
+
     func setContext(_ v: Bool) { contextOn = v; save("context", v ? nil : false) }
     func setLearn(_ v: Bool) { learnOn = v; save("learn", v ? nil : false) }
     /// automatic (unset) shows what it does now; flipping it stores the choice
@@ -152,48 +99,6 @@ final class DictationSettings: ObservableObject {
         MicEngine.shared.prepare(builtIn: v)
     }
     func setStartSound(_ v: Bool) { startSound = v; save("start_sound", v ? true : nil) }
-
-    // MARK: recognition model
-
-    func loadASR() async {
-        let r = try? await SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 120)
-        asr = r?.decode(DictationASRState.self)
-    }
-
-    func chooseASR(_ m: DictationASRModel) {
-        save("asr_model", m.id)
-        Task { await loadASR() }
-    }
-
-    /// `transcribe.py setup --model-id ID` (it adds its package through uv) — only when the user asks.
-    func installASR(_ m: DictationASRModel) {
-        guard asrDownload[m.id] == nil else { return }
-        asrFailed[m.id] = nil
-        asrDownload[m.id] = (0, m.sizeMB)
-        var env: [String: String] = [:]
-        if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
-        let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
-            ? ProcessInfo.processInfo.environment["BLURT_TEST_ASR_SETUP"] ?? "transcribe.py" : "transcribe.py"
-        let p = try? SkillCLI.shared.spawn(script, ["setup", "--model-id", m.id], env: env, onLine: { [weak self] line, _ in
-            let t = line.trimmingCharacters(in: .whitespaces)
-            if let r = t.range(of: #"^(\d+)/(\d+) MB"#, options: .regularExpression) {
-                let q = t[r].replacingOccurrences(of: " MB", with: "").split(separator: "/")
-                if q.count == 2, let a = Double(q[0]), let b = Double(q[1]), b > 0 { self?.asrDownload[m.id] = (a, b) }
-            }
-        }, onExit: { [weak self] st in
-            guard let self = self else { return }
-            self.asrDownload[m.id] = nil
-            if st != 0 { self.asrFailed[m.id] = true } else { self.save("asr_model", m.id) }
-            emit(["event": "asr_download", "model": m.id, "status": Int(st)])
-            Task { await self.loadASR() }
-        })
-        if p == nil { asrDownload[m.id] = nil; asrFailed[m.id] = true }
-    }
-
-    func loadModels() async {
-        let r = try? await SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
-        polish = r?.decode(PolishState.self)
-    }
 
     private func save(_ key: String, _ value: Any?) {
         Dictation.set(key, value)
@@ -207,7 +112,6 @@ final class DictationSettings: ObservableObject {
     func setMode(_ v: DictationTrigger.Mode) { mode = v; save("mode", v.rawValue) }
     func setDoubleTap(_ v: Bool) { doubleTap = v; save("double_tap_send", v ? nil : false) }
     func setFnCapture(_ v: Bool) { fnCapture = v; save("fn_capture", v ? nil : false); refresh() }
-    func setPolish(_ on: Bool) { polishOn = on; save("polish", on ? nil : "off") }
     func setTimeout(_ s: Double) { timeout = s; save("polish_timeout_ms", Int(s * 1000) == 3000 ? nil : Int(s * 1000)) }
     func setRetention(_ d: Int) {
         retention = d
@@ -219,12 +123,23 @@ final class DictationSettings: ObservableObject {
     // MARK: style (dictation-styles.md)
 
     @Published var styles = Dictation.styleConfig
+    @Published var style = DictationStyleChoice.current(polishOff: !Dictation.polishOn, config: Dictation.styleConfig)
     @Published var suggestLists = Dictation.suggestLists
     @Published var learnStyles = Dictation.learnStyles
-    /// a category's style; unset = the smart default (light with the category's variant)
+
+    /// The one Style choice: Verbatim turns polish off; the others turn it on with that style as the default.
+    func setStyle(_ s: DictationStyle) {
+        let r = DictationStyleChoice.apply(s, to: Dictation.styleConfig)
+        Dictation.setStyleConfig(r.config)
+        styles = r.config
+        style = s
+        save("polish", r.polish)
+        emit(["event": "dictation_setting", "key": "style", "value": s.rawValue])
+    }
+    /// a category's style; nil = the default above
     func setStyle(_ s: DictationStyle?, for c: DictationAppCategory) {
         var cfg = Dictation.styleConfig
-        cfg.categories[c] = s == DictationStyleConfig.smartDefault ? nil : s
+        cfg.categories[c] = s
         Dictation.setStyleConfig(cfg)
         styles = cfg
         emit(["event": "dictation_setting", "key": "styles.\(c.rawValue)", "value": s?.rawValue ?? "default"])
@@ -246,49 +161,8 @@ final class DictationSettings: ObservableObject {
         return FileManager.default.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: "")
     }
 
-    func choose(_ m: PolishModel) {
-        save("polish_model", m.id)
-        Dictation.shared.refreshPolishModel()
-        Task { await loadModels() }
-    }
-
     /// A row's Allow: the permission guide for that one (Blurt in the list, the pane, the helper panel).
     func allow(_ k: PermissionKind) { PermissionGuide.shared.start(.dictation, only: [k], source: .dictation) }
-
-    /// `polish.py setup --model ID --use` — only when the user asks; progress from its "  N/M MB" lines.
-    func install(_ m: PolishModel) {
-        guard procs[m.id] == nil else { return }
-        failed[m.id] = nil
-        cancelled.remove(m.id)
-        download[m.id] = (0, m.sizeMB)
-        var env: [String: String] = [:]
-        if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
-        // BLURT_TEST_POLISH_SETUP (test builds only): a script that stands in for polish.py and fakes the download
-        let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
-            ? ProcessInfo.processInfo.environment["BLURT_TEST_POLISH_SETUP"] ?? "polish.py" : "polish.py"
-        procs[m.id] = try? SkillCLI.shared.spawn(script, ["setup", "--model", m.id, "--use"], env: env, onLine: { [weak self] line, _ in
-            let t = line.trimmingCharacters(in: .whitespaces)
-            if let r = t.range(of: #"^(\d+)/(\d+) MB"#, options: .regularExpression) {
-                let p = t[r].replacingOccurrences(of: " MB", with: "").split(separator: "/")
-                if p.count == 2, let a = Double(p[0]), let b = Double(p[1]), b > 0 { self?.download[m.id] = (a, b) }
-            }
-        }, onExit: { [weak self] st in
-            guard let self = self else { return }
-            self.procs[m.id] = nil
-            self.download[m.id] = nil
-            if st != 0 && !self.cancelled.contains(m.id) { self.failed[m.id] = true }
-            self.cancelled.remove(m.id)
-            emit(["event": "polish_download", "model": m.id, "status": Int(st)])
-            Dictation.shared.refreshPolishModel()
-            Task { await self.loadModels() }
-        })
-        if procs[m.id] == nil { download[m.id] = nil; failed[m.id] = true }
-    }
-    func cancel(_ m: PolishModel) {
-        guard let p = procs[m.id] else { return }
-        cancelled.insert(m.id)
-        p.terminate()
-    }
 
     func clearHistory() {
         DictationHistory.shared.clear()
@@ -298,26 +172,24 @@ final class DictationSettings: ObservableObject {
 }
 
 struct DictationPane: View {
+    /// tests: `dictation settings-scroll style|models|words|history|permissions` (a screenshot of a lower section)
     static let scrollRequest = Notification.Name("BlurtDictationPaneScroll")
-    /// tests: `dictation polish install ID | cancel ID | use ID | state` — the model rows' buttons, then a
-    /// "polish_settings" event with every row's state
+    /// tests: `dictation polish install ID | cancel ID | use ID | state` (DictationModels.testCommand)
     static let polishRequest = Notification.Name("BlurtDictationPanePolish")
     @StateObject var m = DictationSettings()
     @StateObject var perms = Permissions()
+    @ObservedObject var models = DictationModels.shared
+    @ObservedObject var guide = PermissionGuide.shared
     @State var confirmClear = false
+    @State var showPermissions = false
+    @State var showByApp = false
 
     var body: some View {
         ScrollViewReader { proxy in PaneFrame {
             Section {
                 PermissionDoneBanner()          // the permission guide just finished: the first thing seen
-                Toggle(isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(T("dictation.settings.enable"))
-                        Text(T("dictation.settings.enable.detail", Dictation.keyInline(m.key)))
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                if m.enabled { keyStatus }
+                Toggle(T("dictation.settings.enable"), isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) }))
+                if m.enabled && !m.tap { keyStatus }
                 Picker(T("dictation.settings.key"), selection: Binding(get: { m.key }, set: { m.setKey($0) })) {
                     ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(Dictation.keyName(k)).tag(k) }    // Fn first
                 }
@@ -338,15 +210,6 @@ struct DictationPane: View {
                 .disabled(!m.enabled)
                 if m.key == .fn && m.enabled { fnRows }
                 Hint(T("dictation.settings.voice_note_hint", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice)))
-                Toggle(isOn: Binding(get: { m.builtInMic }, set: { m.setBuiltInMic($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(T("dictation.mic.builtin"))
-                        Text(T("dictation.mic.builtin.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .disabled(!m.enabled)
-                Toggle(T("dictation.mic.start_sound"), isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
-                    .disabled(!m.enabled)
             } header: { Text(T("dictation.settings.section")) }
 
             Section {
@@ -355,44 +218,14 @@ struct DictationPane: View {
             .id("style")
 
             Section {
-                PermissionSetupButton(flow: .dictation, source: .dictation, p: perms, banner: false)
-                permissionRow(.accessibility, T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"), granted: m.accessibility)
-                permissionRow(.inputMonitoring, T("dictation.perm.input_monitoring"),
-                              T(m.key == .fn && m.fnFiltering ? "dictation.perm.input_monitoring.why_fn" : "dictation.perm.input_monitoring.why", Dictation.keyInline(m.key)),
-                              granted: m.inputMonitoring || (m.key == .fn && m.fnFiltering), notNeeded: !m.inputMonitoring && m.key == .fn && m.fnFiltering)
-                permissionRow(.microphone, T("settings.perm.microphone"), T("dictation.perm.microphone.why"), granted: m.mic == .granted)
-                if m.enabled && m.inputMonitoring && m.listener != .tap { Hint(T("dictation.perm.restart_hint")) }
-            } header: { Text(T("dictation.perm.section")) }
+                modelRows
+            } header: { Text(T("dictation.models.section")) }
+            .id("models")
 
             Section {
-                asrModels
-            } header: { Text(T("dictation.asr.section")) }
-            .id("asr")
-
-            Section {
-                vocabulary
+                wordRows
             } header: { Text(T("dictation.vocab.section")) }
-            .id("vocab")
-
-            Section {
-                Picker(T("dictation.polish.title"), selection: Binding(get: { m.polishOn }, set: { m.setPolish($0) })) {
-                    Text(T("dictation.polish.off")).tag(false)
-                    Text(T("dictation.polish.light")).tag(true)
-                }
-                .pickerStyle(.segmented)
-                Hint(T("dictation.polish.detail"))
-                if m.polishOn { polishModels }
-                if m.polishOn {
-                    Stepper(value: Binding(get: { m.timeout }, set: { m.setTimeout($0) }), in: 1...10, step: 0.5) {
-                        HStack {
-                            Text(T("dictation.polish.timeout"))
-                            Spacer()
-                            Text(T("dictation.polish.seconds", seconds(m.timeout))).foregroundStyle(.secondary).monospacedDigit()
-                        }
-                    }
-                }
-            } header: { Text(T("dictation.polish.section")) }
-            .id("polish")
+            .id("words")
 
             Section {
                 Picker(T("dictation.history.keep"), selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
@@ -415,26 +248,30 @@ struct DictationPane: View {
                 }
             } header: { Text(T("dictation.history.section")) }
             .id("history")
-        }
-        // tests: `dictation settings-scroll polish|history` (a screenshot of the lower sections)
-        .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
-            if let id = n.object as? String { proxy.scrollTo(id, anchor: .top) }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: DictationPane.polishRequest)) { n in
-            let a = (n.object as? String ?? "").split(separator: " ").map(String.init)
-            if a.count == 2, let model = m.polish?.models.first(where: { $0.id == a[1] }) {
-                switch a[0] {
-                case "install": m.install(model)
-                case "cancel": m.cancel(model)
-                case "use": m.choose(model)
-                default: break
+
+            Section {
+                Toggle(isOn: Binding(get: { m.builtInMic }, set: { m.setBuiltInMic($0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(T("dictation.mic.builtin"))
+                        Text(T("dictation.mic.builtin.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-            }
-            emit(["event": "polish_settings", "selected": m.polish?.selected ?? NSNull(), "polish": m.polishOn,
-                  "models": (m.polish?.models ?? []).map { x -> String in
-                      let d = m.download[x.id].map { " \(Int($0.done))/\(Int($0.total))" } ?? ""
-                      return "\(x.id)\(x.installed ? " installed" : "")\(x.recommended ? " recommended" : "")\(d)\(m.failed[x.id] == true ? " failed" : "")"
-                  }])
+                .disabled(!m.enabled)
+                Toggle(T("dictation.mic.start_sound"), isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+                    .disabled(!m.enabled)
+            } header: { Text(T("dictation.mic.section")) }
+
+            Section {
+                permissionRows
+            } header: { Text(T("dictation.perm.section")) }
+            .id("permissions")
+        }
+        // tests: `dictation settings-scroll style|models|words|history|permissions`
+        .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
+            guard let id = n.object as? String else { return }
+            if id == "permissions" { showPermissions = true }
+            if id == "style" { showByApp = true }
+            DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
         }
         }
         .onAppear { m.start(); perms.start() }
@@ -447,17 +284,25 @@ struct DictationPane: View {
 
     // MARK: style
 
-    /// Per app category: light (the smart default, with the category's own variant), verbatim, structured, auto
-    /// lists; apps set on their own (learned ones, with Reset); the ≡ suggestion and learning switches; the keys.
+    /// The one choice with a line on what it does; per kind of app and the rest folded under "By kind of app".
     @ViewBuilder var styleRows: some View {
-        Hint(T("dictation.style.detail"))
+        Picker(T("dictation.style.section"), selection: Binding(get: { m.style }, set: { m.setStyle($0) })) {
+            ForEach([DictationStyle.verbatim, .light, .structured, .auto], id: \.self) { s in Text(Dictation.styleName(s)).tag(s) }
+        }
+        .pickerStyle(.segmented)
+        .disabled(!m.enabled)
+        Hint(T("dictation.style.\(m.style.rawValue).detail"))
+        if m.style != .verbatim {
+            DisclosureGroup(T("dictation.style.by_app"), isExpanded: $showByApp) { byApp }
+                .disabled(!m.enabled)
+        }
+    }
+
+    @ViewBuilder var byApp: some View {
         ForEach(DictationAppCategory.allCases, id: \.self) { c in
-            Picker(selection: Binding(get: { m.styles.categories[c] ?? DictationStyleConfig.smartDefault },
-                                      set: { m.setStyle($0, for: c) })) {
-                ForEach(DictationStyle.allCases, id: \.self) { s in
-                    Text(s == DictationStyleConfig.smartDefault ? T("dictation.style.default_suffix", Dictation.styleName(s))
-                                                                : Dictation.styleName(s)).tag(s)
-                }
+            Picker(selection: Binding(get: { m.styles.categories[c] }, set: { m.setStyle($0, for: c) })) {
+                Text(T("dictation.style.follow", Dictation.styleName(m.style))).tag(DictationStyle?.none)
+                ForEach(DictationStyle.allCases, id: \.self) { s in Text(Dictation.styleName(s)).tag(Optional(s)) }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(T("dictation.style.cat.\(c.rawValue)"))
@@ -465,7 +310,6 @@ struct DictationPane: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .disabled(!m.enabled)
         }
         if !m.styles.apps.isEmpty {
             Text(T("dictation.style.apps")).font(.callout).foregroundStyle(.secondary)
@@ -481,116 +325,62 @@ struct DictationPane: View {
             }
         }
         Toggle(T("dictation.style.suggest"), isOn: Binding(get: { m.suggestLists }, set: { m.setSuggestLists($0) }))
-            .disabled(!m.enabled)
         Toggle(isOn: Binding(get: { m.learnStyles }, set: { m.setLearnStyles($0) })) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(T("dictation.style.learn_toggle"))
                 Text(T("dictation.style.learn_toggle.detail")).font(.caption).foregroundStyle(.secondary)
             }
         }
-        .disabled(!m.enabled)
+        Stepper(value: Binding(get: { m.timeout }, set: { m.setTimeout($0) }), in: 1...10, step: 0.5) {
+            HStack {
+                Text(T("dictation.polish.timeout"))
+                Spacer()
+                Text(T("dictation.polish.seconds", seconds(m.timeout))).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
         Hint(hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat)))
     }
 
-    // MARK: recognition model
+    // MARK: models (chosen in Settings → Speech)
 
-    @ViewBuilder var asrModels: some View {
-        if let a = m.asr {
-            ForEach(a.models) { model in asrRow(model, selected: a.selected == model.id) }
-            if a.selected != a.recommended, let rec = a.models.first(where: { $0.id == a.recommended }), !rec.installed {
-                Hint(T("dictation.asr.recommend_hint", rec.name ?? rec.id))
+    @ViewBuilder var modelRows: some View {
+        modelRow(T("dictation.models.asr"), value: models.selectedASR.map { $0.name ?? $0.id }, loading: models.asr == nil)
+        if m.style != .verbatim {
+            if let p = models.polish, !p.supported {
+                LabeledContent(T("dictation.models.polish")) { Text(T("dictation.models.unsupported")).foregroundStyle(.secondary) }
+            } else {
+                modelRow(T("dictation.models.polish"), value: models.selectedPolish?.name, loading: models.polish == nil)
             }
-        } else {
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(T("dictation.polish.loading")).foregroundStyle(.secondary) }
         }
     }
 
-    func asrRow(_ model: DictationASRModel, selected: Bool) -> some View {
+    /// "Recognition model   Qwen3-ASR 1.7B   Change…" — or "Not downloaded yet   Download…"
+    func modelRow(_ title: String, value: String?, loading: Bool) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                if loading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(value ?? T("dictation.models.none")).foregroundStyle(.secondary)
+                    Button(value == nil ? T("dictation.models.get") : T("dictation.models.change")) { SpeechPane.showDictationModels() }
+                        .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    // MARK: words (managed on the Dictation page)
+
+    @ViewBuilder var wordRows: some View {
         HStack(spacing: 10) {
-            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(selected ? Color.brandInk : Color.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(model.name ?? model.id)
-                    if model.recommended { Badge(T("dictation.polish.recommended")) }
-                }
-                Group {
-                    if let d = m.asrDownload[model.id] {
-                        Text(T("dictation.polish.progress", byteString(Int64(d.done * 1_048_576)), byteString(Int64(max(d.total, model.sizeMB) * 1_048_576))))
-                            .monospacedDigit()
-                    } else {
-                        Text(T("dictation.asr.vocab.\(model.vocab == "none" ? "none" : "yes")") + " · " + byteString(Int64(model.sizeMB * 1_048_576)))
-                    }
-                }
-                .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("dictation.vocab.summary.title"))
+                Text(wordSummary).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if m.asrDownload[model.id] != nil {
-                ProgressView().controlSize(.small)
-            } else if model.installed {
-                if !selected { Button(T("dictation.polish.use")) { m.chooseASR(model) }.controlSize(.small) }
-            } else {
-                if m.asrFailed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(Color.brandErr) }
-                Button(T("dictation.polish.install")) { m.installASR(model) }.controlSize(.small)
-            }
+            Button(T("dictation.vocab.manage")) { DictationHistoryWindow.shared.showWords() }
         }
-        .choiceCard(selected)
-        .contentShape(Rectangle())
-        .onTapGesture { if model.installed && !selected { m.chooseASR(model) } }
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    // MARK: custom words
-
-    @ViewBuilder var vocabulary: some View {
-        Hint(T("dictation.vocab.detail"))
-        HStack {
-            TextField("", text: $m.newWord, prompt: Text(T("dictation.vocab.add.placeholder")))
-                .labelsHidden()
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { m.addWord() }
-            Button(T("dictation.vocab.add")) { m.addWord() }
-                .disabled(m.newWord.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        ForEach(m.suggestions) { t in
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) { Text(t.term); Badge(T("dictation.vocab.suggested"), tint: .brandAttnInk) }
-                    if !t.soundsLike.isEmpty {
-                        Text(T("dictation.vocab.heard_as", t.soundsLike.joined(separator: T("dictation.vocab.list_sep"))))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                Button(T("dictation.vocab.accept")) { m.accept(t) }.controlSize(.small)
-                Button(T("dictation.vocab.ignore")) { m.reject(t) }.controlSize(.small)
-            }
-            .accessibilityElement(children: .combine)
-        }
-        if m.words.isEmpty {
-            Text(T("dictation.vocab.empty")).font(.callout).foregroundStyle(.secondary)
-        }
-        ForEach(m.words) { t in
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) {
-                        Text(t.term)
-                        if t.source == .learned { Badge(T("dictation.vocab.learned")) }
-                        if t.source == .project || t.source == .builtIn { Badge(T("dictation.vocab.auto"), tint: .secondary) }
-                    }
-                    if !t.soundsLike.isEmpty {
-                        Text(T("dictation.vocab.heard_as", t.soundsLike.joined(separator: T("dictation.vocab.list_sep"))))
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                }
-                Spacer()
-                Button { m.removeWord(t) } label: { Image(systemName: "minus.circle") }
-                    .buttonStyle(.borderless).help(T("dictation.vocab.remove")).accessibilityLabel(T("dictation.vocab.remove"))
-            }
-            .accessibilityElement(children: .combine)
-        }
         Toggle(isOn: Binding(get: { m.contextOn }, set: { m.setContext($0) })) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(T("dictation.vocab.context"))
@@ -605,25 +395,61 @@ struct DictationPane: View {
         }
     }
 
-    /// Whether the key is heard right now — the event tap, not the permission rows below (they can say "allowed"
-    /// while the tap still isn't there, and the other way round).
+    /// "Yours: 12 · Built-in: 19 · To review: 3"
+    var wordSummary: String {
+        var parts = [T("dictation.vocab.summary.mine", m.wordCounts.mine)]
+        if m.wordCounts.builtIn > 0 { parts.append(T("dictation.vocab.summary.builtin", m.wordCounts.builtIn)) }
+        if m.wordCounts.suggested > 0 { parts.append(T("dictation.vocab.summary.suggested", m.wordCounts.suggested)) }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: the key, Fn, permissions
+
+    /// Only when the key isn't heard (the event tap, not the permission rows: they can say "allowed" while the tap
+    /// still isn't there, and the other way round).
     var keyStatus: some View {
         HStack(alignment: .center, spacing: 10) {
-            StatusDot(tone: m.tap ? .good : .warn)
+            StatusDot(tone: .warn)
             VStack(alignment: .leading, spacing: 2) {
-                Text(T(m.tap ? "dictation.status.on" : "dictation.status.off", Dictation.keyInline(m.key)))
-                Text(T(m.tap ? "dictation.status.on.\(m.mode.rawValue)" : "dictation.status.off.detail",
-                       Dictation.keyInline(m.key)))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                // which listener runs, and the one thing only the user can prove: the key heard while another app is in front
-                Text(T("dictation.listener.\(m.fnFiltering && m.listener == .tap ? "filter" : m.listener.rawValue)") + " " + (m.lastOther.map { T("dictation.heard.other", heardTime($0)) }
-                        ?? T("dictation.heard.never", Dictation.keyInline(m.key))))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(T("dictation.status.off", Dictation.keyInline(m.key)))
+                Text(T("dictation.status.off.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            if !m.tap { Button(T("dictation.status.fix")) { Dictation.shared.openSetup(from: "dictation") } }
+            Button(T("dictation.status.fix")) { Dictation.shared.openSetup(from: "dictation") }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// Which listener runs, and the one thing only the user can prove: the key heard while another app is in front.
+    var listenerLine: String {
+        let l = T("dictation.listener.\(m.fnFiltering && m.listener == .tap ? "filter" : m.listener.rawValue)")
+        let h = m.lastOther.map { T("dictation.heard.other", heardTime($0)) } ?? T("dictation.heard.never", Dictation.keyInline(m.key))
+        return l + (Loc.isChinese ? "" : " ") + h
+    }
+
+    @ViewBuilder var permissionRows: some View {
+        if m.allAllowed {
+            DisclosureGroup(isExpanded: $showPermissions) {
+                permissionList
+            } label: {
+                HStack(spacing: 10) { StatusDot(tone: .good); Text(T("dictation.perm.all_set")) }
+            }
+        } else {
+            if !guide.missing(.dictation).isEmpty {
+                PermissionSetupButton(flow: .dictation, source: .dictation, p: perms, banner: false)
+            }
+            permissionList
+        }
+    }
+
+    @ViewBuilder var permissionList: some View {
+        permissionRow(.accessibility, T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"), granted: m.accessibility)
+        permissionRow(.inputMonitoring, T("dictation.perm.input_monitoring"),
+                      T(m.key == .fn && m.fnFiltering ? "dictation.perm.input_monitoring.why_fn" : "dictation.perm.input_monitoring.why", Dictation.keyInline(m.key)),
+                      granted: m.inputMonitoring || (m.key == .fn && m.fnFiltering), notNeeded: !m.inputMonitoring && m.key == .fn && m.fnFiltering)
+        permissionRow(.microphone, T("settings.perm.microphone"), T("dictation.perm.microphone.why"), granted: m.mic == .granted)
+        if m.enabled && m.inputMonitoring && m.listener != .tap { Hint(T("dictation.perm.restart_hint")) }
+        if m.enabled { Text(listenerLine).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
     }
 
     private func heardTime(_ d: Date) -> String {
@@ -641,8 +467,9 @@ struct DictationPane: View {
         return f.string(from: s as NSNumber) ?? "\(s)"
     }
 
-    /// With Fn: keeping it from macOS (the filter, on Accessibility), macOS's own "Press 🌐 key to" setting (read live;
-    /// Fix… walks the user there with the helper panel — Blurt never changes it), other Fn dictation apps running.
+    /// With Fn: keeping it from macOS (the filter, on Accessibility), macOS's own "Press Globe key to" setting (read
+    /// live; shown only when it would react too — Fix… walks the user there with the helper panel, Blurt never changes
+    /// it), other Fn dictation apps running.
     @ViewBuilder var fnRows: some View {
         Toggle(isOn: Binding(get: { m.fnCapture }, set: { m.setFnCapture($0) })) {
             VStack(alignment: .leading, spacing: 2) {
@@ -651,20 +478,18 @@ struct DictationPane: View {
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
-        let clash = FnUsage.clashes(m.fnUsage)
-        HStack(alignment: .center, spacing: 10) {
-            StatusDot(tone: clash ? .warn : .good)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.fn.usage", T("dictation.fn_usage.\(m.fnUsage.map { "\($0.rawValue)" } ?? "default")")))
-                Text(T(clash ? "dictation.fn.usage.clash" : "dictation.fn.usage.ok"))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            if clash {
+        if FnUsage.clashes(m.fnUsage) {
+            HStack(alignment: .center, spacing: 10) {
+                StatusDot(tone: .warn)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(T("dictation.fn.usage", T("dictation.fn_usage.\(m.fnUsage.map { "\($0.rawValue)" } ?? "default")")))
+                    Text(T("dictation.fn.usage.clash")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
                 Button(T("dictation.fn.usage.fix")) { PermissionGuide.shared.start(.dictation, only: [.fnKey], source: .dictation) }
             }
+            .accessibilityElement(children: .combine)
         }
-        .accessibilityElement(children: .combine)
         if !m.fnApps.isEmpty {
             Hint(T("dictation.settings.fn_clash", m.fnApps.joined(separator: T("settings.perm.list_sep"))))
         }
@@ -688,63 +513,10 @@ struct DictationPane: View {
         }
         .accessibilityElement(children: .combine)
     }
-
-    @ViewBuilder var polishModels: some View {
-        if let p = m.polish {
-            if !p.supported {
-                Hint(T("dictation.polish.unsupported"))
-            } else {
-                // recommended first, then installed, then smallest
-                ForEach(p.models.sorted { ($0.recommended ? 0 : 1, $0.installed ? 0 : 1, $0.sizeMB) < ($1.recommended ? 0 : 1, $1.installed ? 0 : 1, $1.sizeMB) }) { model in modelRow(model, selected: p.selected == model.id, state: p) }
-                if p.selected == nil { Hint(T("dictation.polish.none_installed")) }
-            }
-        } else {
-            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(T("dictation.polish.loading")).foregroundStyle(.secondary) }
-        }
-    }
-
-    func modelRow(_ model: PolishModel, selected: Bool, state: PolishState) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(selected ? Color.brandInk : Color.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(model.name)
-                    if model.recommended { Badge(T("dictation.polish.recommended")) }
-                }
-                Group {
-                    if let d = m.download[model.id] {
-                        Text(T("dictation.polish.progress", byteString(Int64(d.done * 1_048_576)), byteString(Int64(max(d.total, model.sizeMB) * 1_048_576))))
-                            .monospacedDigit()
-                    } else {
-                        Text(T("dictation.polish.family.\(model.family == "qwen" ? "qwen" : "gemma")\(model.installed ? ".installed" : "")",
-                               byteString(Int64(model.sizeMB * 1_048_576))))
-                    }
-                }
-                .font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            if let d = m.download[model.id] {
-                ProgressView(value: min(d.done, d.total), total: max(d.total, 1)).frame(width: 90)
-                Button(T("dictation.cancel")) { m.cancel(model) }.controlSize(.small)
-            } else if model.installed {
-                if !selected { Button(T("dictation.polish.use")) { m.choose(model) }.controlSize(.small) }
-            } else {
-                if m.failed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(Color.brandErr) }
-                Button(T("dictation.polish.install")) { m.install(model) }.controlSize(.small)
-            }
-        }
-        .choiceCard(selected)
-        .contentShape(Rectangle())
-        .onTapGesture { if model.installed && !selected { m.choose(model) } }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
 }
 
 /// A small capsule label next to a name ("Recommended", "Learned"): brand ink on the brand tint (§3.4); with a `tint`,
-/// that colour as text on 15 % of itself (attention for "Suggested", secondary for "Auto").
+/// that colour as text on 15 % of itself.
 struct Badge: View {
     let text: String
     var tint: Color?

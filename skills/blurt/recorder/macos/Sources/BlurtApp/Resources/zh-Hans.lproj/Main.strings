@@ -367,7 +367,7 @@
 "main.dictation.stat.saved.tip" = "按每分钟打 50 字左右估算，减去说话的时间";
 "main.dictation.settings" = "听写设置…";
 "main.dictation.off" = "听写已关闭";
-"main.dictation.off.detail" = "可在 设置 → 听写 中打开。";
+"main.dictation.off.detail" = "可以在「设置」的「听写」里打开。";
 "main.dictation.deaf.short" = "听写还听不到按键";
 "main.dictation.ready" = "听写已开启";
 "main.dictation.unknown_app" = "未知 App";
@@ -410,3 +410,8 @@
 "main.dictation.none.empty" = "这里还是空的";
 "main.dictation.none.empty.detail" = "每次听写都会显示在这里：输入了什么、识别到什么、打到了哪里。";
 "main.dictation.copy_all" = "全部复制";
+
+/* 听写页详情：润色做了什么 */
+"main.dictation.info.polish.short" = "太短，不用整理";
+"main.dictation.info.polish.no_model" = "没有润色模型";
+"main.dictation.info.polish.get" = "下载…";

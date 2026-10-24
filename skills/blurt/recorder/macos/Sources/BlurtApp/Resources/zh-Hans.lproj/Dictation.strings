@@ -16,9 +16,6 @@
 "dictation.mode.hold" = "按住说话，松开结束";
 
 /* 岛上的提示 */
-"dictation.polish.family.gemma.installed" = "Gemma · 已安装，占用 %@";
-"dictation.polish.family.qwen.installed" = "Qwen · 已安装，占用 %@";
-"dictation.polish.progress" = "正在下载 · %1$@ / %2$@";
 "dictation.toast.needs_permission" = "要用%@ 键听写，还需要开启权限";
 "dictation.toast.set_up" = "去设置";
 "dictation.toast.on.tap" = "听写已开启：单按%@ 开始说话";
@@ -30,7 +27,7 @@
 "dictation.toast.pasted_unsure" = "已粘贴";
 "dictation.toast.copy_again" = "再复制一次";
 "dictation.mic.builtin" = "听写时使用 Mac 自带的麦克风";
-"dictation.mic.builtin.detail" = "AirPods 等蓝牙耳机要约一秒才开始收音（开头的话会丢），还会把音乐切到通话音质。Mac 自带的麦克风立刻就能听，但会收进更多环境声。自动：默认输入是蓝牙时开启。";
+"dictation.mic.builtin.detail" = "蓝牙耳机要约一秒才开始收音，开头的话会丢。自动：默认输入是蓝牙时开启。";
 "dictation.mic.start_sound" = "开始收音时提示音";
 
 /* 菜单 */
@@ -44,19 +41,15 @@
 "dictation.settings.tab" = "听写";
 "dictation.settings.section" = "听写";
 "dictation.settings.enable" = "在任意 App 里听写";
-"dictation.settings.enable.detail" = "单独按一下%@，说话，文字就打在光标处。按 Esc 取消。";
 "dictation.settings.key" = "按键";
 "dictation.settings.mode" = "方式";
-"dictation.settings.voice_note_hint" = "听写会把字打进当前 App。想把说的话留在口喷鸡里，用语音备注（%@）。";
+"dictation.settings.voice_note_hint" = "想把说的话存进口喷鸡，用语音备注（%@）。";
 "dictation.settings.voice_note_off" = "它的快捷键已关闭";
 "dictation.settings.either_hint" = "中间没按别的键、也没点鼠标，才算单按，所以 Option 组合键照常能用。";
 
 /* 按键现在能不能被听到（事件监听） */
-"dictation.status.on" = "已生效：口喷鸡能听到%@";
-"dictation.status.on.tap" = "在任意 App 里单按%@开始说话，再按一下结束。";
-"dictation.status.on.hold" = "在任意 App 里按住%@说话，松开结束。";
-"dictation.status.off" = "还没生效：口喷鸡听不到%@";
-"dictation.status.off.detail" = "点「开启…」：口喷鸡会打开「系统设置」里对应的位置，并告诉你打开哪个开关。马上生效，不用重启。";
+"dictation.status.off" = "口喷鸡还听不到%@";
+"dictation.status.off.detail" = "在系统设置里打开一个开关，马上生效，不用重启。";
 "dictation.status.fix" = "开启…";
 "dictation.listener.tap" = "在所有 App 里都能听到（输入监控）。";
 "dictation.listener.monitor" = "通过辅助功能在所有 App 里听（没有开启输入监控）。";
@@ -72,22 +65,8 @@
 "dictation.perm.accessibility.why" = "把文字粘贴到你正在用的 App，并读取光标附近的文字让名字写对（从不读密码框，也不保存）。用 Fn 时也靠它听到按键。没有这个权限时，文字会复制到剪贴板，由你自己粘贴。";
 "dictation.perm.restart_hint" = "已允许，几秒内自动生效，不用重启。";
 
-"dictation.polish.section" = "润色";
-"dictation.polish.title" = "润色";
-"dictation.polish.off" = "关";
-"dictation.polish.light" = "轻度";
-"dictation.polish.detail" = "本机的小模型整理文字：去掉语气词、口吃和说错又改口的部分，加上标点。它不改写、不缩短、不翻译；一旦它这么做，就照你说的原话输入。";
 "dictation.polish.timeout" = "润色最多等";
 "dictation.polish.seconds" = "%@ 秒";
-"dictation.polish.unsupported" = "润色需要 Apple 芯片的 Mac。听写照常输入你说的原话。";
-"dictation.polish.none_installed" = "这台 Mac 上还没有润色模型：安装之前，听写会照你说的原话输入。";
-"dictation.polish.loading" = "正在查找模型…";
-"dictation.polish.recommended" = "推荐";
-"dictation.polish.family.qwen" = "Qwen · 下载 %@";
-"dictation.polish.family.gemma" = "Gemma · 下载 %@";
-"dictation.polish.install" = "安装";
-"dictation.polish.use" = "使用";
-"dictation.polish.failed" = "下载失败";
 "dictation.cancel" = "取消";
 
 "dictation.history.section" = "历史";
@@ -143,35 +122,23 @@
 /* Custom words, recognition model */
 "dictation.toast.learned" = "记住了 %@";
 "dictation.toast.undo" = "撤销";
-"dictation.asr.section" = "识别模型";
-"dictation.asr.vocab.yes" = "能按你的自定义词来识别";
-"dictation.asr.vocab.none" = "自定义词在识别之后再改";
-"dictation.asr.recommend_hint" = "%@ 更容易把你的自定义词识别对。安装后就会用它来听写。";
-"dictation.vocab.section" = "自定义词";
-"dictation.vocab.detail" = "你常说的名字和术语。听写会照这里的写法输出；你改正一个写错的词时，它会学着记下来。";
-"dictation.vocab.add.placeholder" = "添加一个词，比如 Claude Code";
+"dictation.vocab.section" = "词库";
 "dictation.vocab.add" = "添加";
-"dictation.vocab.suggested" = "建议";
-"dictation.vocab.learned" = "学到的";
-"dictation.vocab.auto" = "自动添加";
-"dictation.vocab.heard_as" = "常被听成：%@";
 "dictation.vocab.list_sep" = "、";
 "dictation.vocab.accept" = "添加";
 "dictation.vocab.ignore" = "忽略";
 "dictation.vocab.remove" = "移除";
-"dictation.vocab.empty" = "还没有自定义词。";
 "dictation.vocab.context" = "参考光标附近的文字";
-"dictation.vocab.context.detail" = "让名字和文档里的写法一致。开始说话时读取，不会保存，也不读密码框。";
+"dictation.vocab.context.detail" = "名字照文档里的写法。只在开始说话时读，不保存，不读密码框。";
 "dictation.vocab.learn" = "从我的修改中学习";
-"dictation.vocab.learn.detail" = "听写后一分钟内，如果你改了口喷鸡打错的词，它会记下来，并在这里给出建议。";
+"dictation.vocab.learn.detail" = "你改正口喷鸡打错的名字时，它会记下这个词。";
 
 /* Fn 作为听写键：自动模式、不让 macOS 响应 Fn、macOS 的 🌐 键设置 */
 "dictation.mode.auto" = "按一下或按住";
-"dictation.mode.auto.detail" = "按一下%@开始，再按一下结束；也可以按住说话，松开就结束。";
-"dictation.mode.tap.detail" = "按一下%@开始，再按一下结束。";
-"dictation.mode.hold.detail" = "按住%@说话，松开结束。";
+"dictation.mode.auto.detail" = "按一下%@开始，再按一下结束；也可以按住说话，松开结束。Esc 取消。";
+"dictation.mode.tap.detail" = "按一下%@开始，再按一下结束。Esc 取消。";
+"dictation.mode.hold.detail" = "按住%@说话，松开结束。Esc 取消。";
 "dictation.toast.on.auto" = "听写已开启：单按%@ 开始说话，或按住说话";
-"dictation.status.on.auto" = "在任意 App 里单按%@开始说话，再按一下结束；也可以按住说话，松开结束。";
 "dictation.listener.filter" = "在所有 App 里都能听到，并且不让 macOS 响应 Fn（辅助功能）。";
 "dictation.perm.input_monitoring.why_fn" = "用 Fn 时不需要：口喷鸡通过「辅助功能」就能听到。换成别的键时才用它。";
 "dictation.perm.microphone.why" = "听你说话。";
@@ -179,21 +146,20 @@
 "dictation.fn.capture.on" = "口喷鸡在听 Fn 时，macOS 自己的 Fn 功能不会触发。";
 "dictation.fn.capture.needs_ax" = "需要「辅助功能」权限。开启之前，按 Fn 可能也会触发 macOS 自己的功能。";
 "dictation.fn.capture.detail" = "关闭后 Fn 也会传给 macOS，请把下面的设置改成「不执行任何操作」。";
-"dictation.fn.usage" = "macOS「按下 🌐 键时」：%@";
+"dictation.fn.usage" = "macOS「按下地球仪键时」：%@";
 "dictation.fn_usage.0" = "不执行任何操作";
 "dictation.fn_usage.1" = "更改输入法";
 "dictation.fn_usage.2" = "显示表情与符号";
 "dictation.fn_usage.3" = "开始听写";
 "dictation.fn_usage.default" = "系统默认";
 "dictation.fn.usage.clash" = "按 Fn 时可能也会触发它。建议设为「不执行任何操作」，口喷鸡不会替你改。";
-"dictation.fn.usage.ok" = "在 macOS 里 Fn 不会再做别的事。";
 "dictation.fn.usage.fix" = "去设置…";
 "dictation.settings.fn_clash" = "%@ 正在运行，也在用 Fn，两边都会响应。退出它，或者给其中一个换个键。";
 
 /* double tap = Return */
-"dictation.toast.sent" = "已发送 ↩︎";
+"dictation.toast.sent" = "已发送";
 "dictation.settings.double_tap" = "双击%@ 发送（回车）";
-"dictation.settings.double_tap.detail" = "快速连按两下，就是在前台 App 里按回车。刚说完时连按两下：先把文字填进去，再发送出去，聊天时很顺手。";
+"dictation.settings.double_tap.detail" = "说完连按两下：文字先填进去，再发送。";
 
 /* 听写测试台（听写页的“测试台”标签；MainWindow/DictationLab*.swift） */
 "dictation.lab.tab.history" = "历史";
@@ -411,7 +377,7 @@
 "dictation.style.verbatim" = "原话";
 "dictation.style.light" = "轻整理";
 "dictation.style.structured" = "结构化";
-"dictation.style.auto" = "自动排清单";
+"dictation.style.auto" = "自动";
 "dictation.style.toast.structured" = "%@：说完后整理清单和改口 · 再按 ⇧ 切回";
 "dictation.style.toast.back" = "已切回%@";
 "dictation.style.chip" = "这条像清单";
@@ -428,9 +394,8 @@
 "dictation.style.learn.verbatim" = "以后在 %@ 里只写原话，不整理？";
 "dictation.style.learn.yes" = "好";
 "dictation.style.learn.no" = "不用";
-"dictation.style.learn.done" = "好了，可以在 设置 → 听写 → 风格 里改";
+"dictation.style.learn.done" = "好了。可以在「设置」的「听写」里改。";
 "dictation.style.section" = "风格";
-"dictation.style.detail" = "说的话怎么整理。轻整理保留你说的每个词（改口也保留），不排清单，也不改语气。结构化会在说完后把整段再过一遍：只留你改口后的说法，把你一条条数出来的要点排成编号清单——只在你真的在列举时才排。";
 "dictation.style.keys" = "说话时单按一下 ⇧，这一条就改成结构化；也可以按 Fn+⇧ 开始。%@ 重排上一条。";
 "dictation.style.keys.no_hotkey" = "说话时单按一下 ⇧，这一条就改成结构化；也可以按 Fn+⇧ 开始。";
 "dictation.style.cat.chat" = "聊天";
@@ -442,8 +407,7 @@
 "dictation.style.cat.notes" = "笔记和文档";
 "dictation.style.cat.notes.detail" = "说成一条条要点时，提示可以排成清单";
 "dictation.style.cat.other" = "其他应用";
-"dictation.style.cat.other.detail" = "轻整理";
-"dictation.style.default_suffix" = "%@（默认）";
+"dictation.style.cat.other.detail" = "其余所有 App";
 "dictation.style.apps" = "单独设置的应用";
 "dictation.style.learned" = "学到的";
 "dictation.style.reset" = "恢复默认";
@@ -451,9 +415,55 @@
 "dictation.style.suggest" = "听起来像清单时，提示可以排成清单";
 "dictation.style.learn_toggle" = "根据我的切换习惯，建议应用的风格";
 "dictation.style.learn_toggle.detail" = "只会问你，不会自己改";
-"dictation.style.verbatim.detail" = "识别出来的原话和标点，不整理";
+"dictation.style.verbatim.detail" = "识别出的原话和标点，不润色。";
 "dictation.history.style" = "风格：%@";
 "dictation.history.style.reformatted" = "重排过 %ld 次";
 
 /* dictation styles (docs/design/dictation-styles.md) */
 "dictation.lab.compare.style" = "风格：%@";
+
+/* 设置 → 听写的风格、模型、词库摘要；听写页的「词库」标签（MainWindow/DictationWords.swift） */
+"dictation.style.light.detail" = "去掉嗯、啊和口吃，加标点；你说的每个词都保留，改口也保留。";
+"dictation.style.structured.detail" = "说完后整段再理一遍：只留改口后的说法，一条条说的要点排成清单。";
+"dictation.style.auto.detail" = "平时和轻整理一样；听起来在列举时，排成清单。";
+"dictation.style.by_app" = "按 App 类型";
+"dictation.style.follow" = "跟随上面（%@）";
+"dictation.models.section" = "模型";
+"dictation.models.asr" = "识别模型";
+"dictation.models.polish" = "润色模型";
+"dictation.models.none" = "还没有下载";
+"dictation.models.change" = "更换…";
+"dictation.models.get" = "下载…";
+"dictation.models.unsupported" = "需要 Apple 芯片";
+"dictation.vocab.summary.title" = "你常说的名字和术语";
+"dictation.vocab.summary.mine" = "你的词 %ld 个";
+"dictation.vocab.summary.builtin" = "内置 %ld 个";
+"dictation.vocab.summary.suggested" = "待确认 %ld 个";
+"dictation.vocab.manage" = "管理…";
+"dictation.perm.all_set" = "都已开启";
+"dictation.mic.section" = "麦克风";
+"dictation.words.tab" = "词库";
+"dictation.words.add.placeholder" = "添加一个词，比如 Claude Code";
+"dictation.words.filter" = "筛选";
+"dictation.words.mine" = "你的词 · %ld";
+"dictation.words.mine.empty" = "还没有。把常说的名字和术语加进来；在听写历史里改正一个词，口喷鸡也会记下来。";
+"dictation.words.suggested" = "待确认 · %ld";
+"dictation.words.builtin" = "内置词 %ld 个";
+"dictation.words.show" = "显示";
+"dictation.words.hide" = "隐藏";
+"dictation.words.show.ax" = "显示内置词";
+"dictation.words.hide.ax" = "隐藏内置词";
+"dictation.words.no_match" = "没有匹配的词";
+"dictation.words.remove" = "移除 %@";
+"dictation.words.about.title" = "词库";
+"dictation.words.about" = "听写时，识别和润色模型会参考这些词，把名字和术语写对。它们只是提示，不会替换你说的话。";
+"dictation.words.info.source" = "来源";
+"dictation.words.source.manual" = "你添加的";
+"dictation.words.source.learned" = "从你的改正里学到";
+"dictation.words.source.project" = "你的项目";
+"dictation.words.source.default" = "内置";
+"dictation.words.source.suggested" = "学到一次，待确认";
+"dictation.words.info.used" = "听写里用到";
+"dictation.words.info.used.value" = "%ld 次";
+"dictation.words.info.heard" = "常被听成";
+"dictation.words.info.added" = "添加时间";

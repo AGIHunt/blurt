@@ -3,7 +3,9 @@
 // the user meant, Compare, the marks, Save — or the regression run's table. Colours are BrandColor tokens (light, dark,
 // Increase Contrast; docs/design/system.md A.4), icons BlurtIcon / SF Symbols, words T("dictation.lab.*"). The one
 // primary per view is the brand button; while a take is processed the recorder card carries the AI-working hairline
-// (`.aiWorking`); Compare and the regression run show a spinner. Nothing blooms or glows.
+// (`.aiWorking`); Compare and the regression run show a spinner. Nothing blooms or glows. The list's selection is the
+// brand wash (ListWash / RowWash, as the history's); the workbench wraps (the scenario pickers, the hints) rather than
+// running past a narrow detail column's edges.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -62,8 +64,11 @@ struct LabListView: View {
             List(selection: selection) {
                 Section {
                     row(.plus, T("dictation.lab.new_take"), T("dictation.lab.new_take.detail", Dictation.keyShort)).tag("new")
+                        .listRowBackground(RowWash(on: selection.wrappedValue == "new"))
                     row(.document, T("dictation.lab.script"), scriptDetail).tag("script")
+                        .listRowBackground(RowWash(on: selection.wrappedValue == "script"))
                     row(.restart, T("dictation.lab.run_all"), runDetail).tag("regression")
+                        .listRowBackground(RowWash(on: selection.wrappedValue == "regression"))
                 }
                 Section(header: Text(T("dictation.lab.cases", lab.cases.count))) {
                     if lab.cases.isEmpty {
@@ -72,6 +77,7 @@ struct LabListView: View {
                     }
                     ForEach(lab.cases) { c in
                         LabCaseRow(c: c).tag(c.id)
+                            .listRowBackground(RowWash(on: selection.wrappedValue == c.id))
                             .contextMenu {
                                 Button(T("dictation.lab.delete")) { lab.delete(c.id) }
                             }
@@ -79,6 +85,7 @@ struct LabListView: View {
                 }
             }
             .listStyle(.inset)
+            .background(ListWash())
             Divider()
             footer
         }
@@ -387,8 +394,9 @@ struct LabWorkbench: View {
                     }
                 } else {
                     Text(T("dictation.lab.record.hint", Dictation.keyShort)).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr) }
+                if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 6) {
@@ -402,6 +410,7 @@ struct LabWorkbench: View {
                 Button { lab.importAudio() } label: { Text(T("dictation.lab.import")) }
                     .controlSize(.small).disabled(lab.phase != .idle)
             }
+            .fixedSize()            // the mic and Import keep their width; the status text wraps instead
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(cardFill))
@@ -424,9 +433,9 @@ struct LabWorkbench: View {
                 Text(T("dictation.lab.cursor.mark")).font(.system(size: 11)).foregroundStyle(.secondary)
                 TextField(T("dictation.lab.cursor.after"), text: $lab.after).textFieldStyle(.roundedBorder)
             }
-            HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
                 Toggle(T("dictation.lab.cursor.include"), isOn: $lab.includeContext).toggleStyle(.checkbox)
-                Text(T("dictation.lab.cursor.tip")).foregroundStyle(.secondary)
+                Text(T("dictation.lab.cursor.tip")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .font(.system(size: 11.5))
         }
@@ -434,7 +443,7 @@ struct LabWorkbench: View {
 
     var scenario: some View {
         LabSection(title: T("dictation.lab.scenario")) {
-            HStack(spacing: 10) {
+            LabFlowLayout(spacing: 10) {        // wraps in a narrow detail column instead of running past its edges
                 ForEach(LabScenario.keys, id: \.key) { k in
                     Picker(T("dictation.lab.scenario.\(k.key)"), selection: Binding(
                         get: { lab.draft.scenario[k.key] ?? "" },

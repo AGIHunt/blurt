@@ -1,7 +1,9 @@
 // Settings → Speech (K9): which speech model this Mac uses for recordings, live captions and voice notes, chosen
 // for its chip, memory and the languages the user speaks (`transcribe.py models`: hardware, tier, registry,
 // recommendation, what is installed and measured). Automatic by default (`transcribe.py auto --apply`); manual
-// per purpose. A comparison of the models that run here — accuracy for the user's languages, speed, memory, download
+// per purpose. Dictation's speech and polish models are chosen here too, in their own section (DictationModels.swift:
+// the recommended pair with its total size, one Download / Use per model; Settings → Dictation links here). A
+// comparison of the models that run here — accuracy for the user's languages, speed, memory, download
 // size — measured on this Mac when the user asks (`transcribe.py bench`), reference numbers otherwise. Resource caps
 // (asr.limits: threads, transcriptions at once, GPU memory share, lighter models on battery), cloud keys (never
 // stored or shown: only whether each variable is set), recognition language and the download mirror.
@@ -361,17 +363,32 @@ private let offeredLanguages = ["en", "zh", "yue", "ja", "ko", "es", "fr", "de",
 // MARK: - Pane
 
 struct SpeechPane: View {
+    /// Settings → Dictation's "Change…" / "Download…" (and tests): scroll to a section ("dictation").
+    static let scrollRequest = Notification.Name("BlurtSpeechPaneScroll")
     @ObservedObject var m = SpeechModel.shared
     @State var confirmRemove: ASRModel?
 
+    /// Settings → Speech scrolled to dictation's models.
+    @MainActor static func showDictationModels() {
+        AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(name: SpeechPane.scrollRequest, object: "dictation")
+        }
+    }
+
     var body: some View {
-        PaneFrame {
+        ScrollViewReader { proxy in PaneFrame {
             machineSection
+            DictationModelsSection()
             languagesSection
             modelsSection
             resourcesSection
             cloudSection
             advancedSection
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SpeechPane.scrollRequest)) { n in
+            if let id = n.object as? String { withAnimation { proxy.scrollTo(id, anchor: .top) } }
+        }
         }
         .task { await m.load() }
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
@@ -462,7 +479,7 @@ struct SpeechPane: View {
                 }
                 Spacer(minLength: 12)
                 if m.download[x.id] == nil {
-                    Button(S("speech.suggest.download", mb(x.sizeMB))) { m.startDownload(x) }
+                    Button(S("speech.suggest.download", modelSize(x.sizeMB))) { m.startDownload(x) }
                         .disabled(!(x.runsHere ?? true))
                 }
             }
@@ -552,7 +569,7 @@ struct SpeechPane: View {
                        measured: m.speed(x)?.measured).frame(minWidth: 112, alignment: .leading)
                 Metric(label: S("speech.metric.memory"), value: m.memory(x).map { mb($0.value) } ?? "—",
                        measured: m.memory(x)?.measured).frame(minWidth: 80, alignment: .leading)
-                Metric(label: S("speech.metric.size"), value: (x.approx == true ? "≈ " : "") + mb(x.sizeMB), measured: nil)
+                Metric(label: S("speech.metric.size"), value: (x.approx == true ? "≈ " : "") + modelSize(x.sizeMB), measured: nil)
             }
             .padding(.leading, 17)
             Text(coverage(x)).font(.caption).foregroundStyle(.secondary).padding(.leading, 17)

@@ -35,7 +35,7 @@
 "speech.purpose.live" = "Live captions";
 "speech.purpose.live.detail" = "While you record, so results are ready the moment you stop.";
 "speech.purpose.note" = "Voice notes";
-"speech.purpose.note.detail" = "Short notes on screenshots and voice input. Speed first.";
+"speech.purpose.note.detail" = "Spoken notes on snaps, and voice notes. Speed first.";
 "speech.suggest.title" = "%@ is recommended";
 "speech.suggest.for" = "Would be used for %@.";
 "speech.suggest.better" = "About %@ → %@ errors in your languages.";
@@ -103,3 +103,21 @@
 "speech.advanced.language" = "Recognition language";
 "speech.advanced.language.auto" = "Detect automatically";
 "speech.advanced.mirror" = "Download from hf-mirror.com (faster in mainland China)";
+
+/* Dictation's models (Settings/DictationModels.swift): the one place they are chosen */
+"speech.section.dictation" = "Dictation";
+"speech.dictation.loading" = "Looking for models…";
+"speech.dictation.asr" = "Recognition";
+"speech.dictation.polish" = "Polish";
+"speech.dictation.polish.unsupported" = "Polish needs a Mac with Apple silicon. Dictation types what you said.";
+"speech.dictation.more" = "Other models (%ld)";
+"speech.dictation.recommended" = "Recommended: %@";
+"speech.dictation.recommended.size" = "%@ in all";
+"speech.dictation.recommended.ready" = "On this Mac · %@";
+"speech.dictation.recommended.badge" = "Recommended";
+"speech.dictation.download" = "Download (%@)";
+"speech.dictation.use" = "Use";
+"speech.dictation.failed" = "Download failed";
+"speech.dictation.progress" = "%1$@ of %2$@";
+"speech.dictation.no_words" = "can’t take your words";
+"speech.dictation.footer" = "Both run on this Mac. Nothing is downloaded until you click Download.";
