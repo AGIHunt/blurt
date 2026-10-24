@@ -141,8 +141,8 @@
 "capture.service.image" = "Image";
 "capture.service.image_from" = "Image from %@";
 "capture.service.title" = "Collected notes";
-"capture.snap.no_permission" = "Couldn’t take the shot — Screen Recording permission needed";
-"capture.snap.failed" = "Couldn’t take the shot — try again";
+"capture.snap.no_permission" = "Couldn’t snap — Screen Recording permission needed";
+"capture.snap.failed" = "Couldn’t snap — try again";
 "capture.snap.open_settings" = "Open Settings";
 "capture.taken_out" = "Dragged out";
 "capture.taken_out_note" = "Dragged out · ⌘V to paste the note";
