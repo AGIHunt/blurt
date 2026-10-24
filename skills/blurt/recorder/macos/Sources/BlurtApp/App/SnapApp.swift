@@ -334,19 +334,19 @@ extension App {
         }
     }
 
-    /// ⌥⇧V (voice input), ⌥⇧O (the project switcher), Esc while listening — K7.
+    /// ⌥⇧V (voice note), ⌥⇧O (the project switcher), Esc while listening — K7.
     func captureHotkey(_ k: HK) {
         switch k {
         case .voice:
             VoiceInput.shared.pressed()
             Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
-        case .voiceEsc: VoiceInput.shared.cancel()
+        case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
         case .dictationEsc: Dictation.shared.cancel()
         case .project: if resident { island.toggleSwitcher() }
         case .cards: if resident { hanging.reveal(via: "hotkey") }
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥⇧L (dictation-styles.md)
-        // Esc while the cards are down on purpose (voice input's own Esc wins while it listens)
-        case .cardsEsc: if VoiceInput.shared.active { VoiceInput.shared.cancel() } else { hanging.dismiss() }
+        // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
+        case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }
         default: break
         }
     }
