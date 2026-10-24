@@ -171,7 +171,7 @@ final class DictationSettings: ObservableObject {
         asrFailed[m.id] = nil
         asrDownload[m.id] = (0, m.sizeMB)
         var env: [String: String] = [:]
-        if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
+        if ModelBundle.mirror { env["BLURT_HF_MIRROR"] = "1" }
         let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
             ? ProcessInfo.processInfo.environment["BLURT_TEST_ASR_SETUP"] ?? "transcribe.py" : "transcribe.py"
         let p = try? SkillCLI.shared.spawn(script, ["setup", "--model-id", m.id], env: env, onLine: { [weak self] line, _ in
@@ -262,7 +262,7 @@ final class DictationSettings: ObservableObject {
         cancelled.remove(m.id)
         download[m.id] = (0, m.sizeMB)
         var env: [String: String] = [:]
-        if Config.shared["asr.hf_mirror"] as? Bool == true { env["BLURT_HF_MIRROR"] = "1" }
+        if ModelBundle.mirror { env["BLURT_HF_MIRROR"] = "1" }
         // BLURT_TEST_POLISH_SETUP (test builds only): a script that stands in for polish.py and fakes the download
         let script = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
             ? ProcessInfo.processInfo.environment["BLURT_TEST_POLISH_SETUP"] ?? "polish.py" : "polish.py"

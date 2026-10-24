@@ -1,5 +1,5 @@
 // BlurtCore/ModelBundle.swift: the setup assistant's recommended models — the set, what is still missing and its size,
-// one progress bar over downloads that run one after another, and the scripts' progress lines.
+// one progress bar over downloads that run one after another, the scripts' progress lines, and the download mirror.
 import XCTest
 @testable import BlurtCore
 
@@ -11,16 +11,36 @@ final class ModelBundleTests: XCTestCase {
     let sense = Part(id: "sensevoice-small", kind: .note, name: "SenseVoice Small", sizeMB: 228, installed: false)
 
     func testPlanKeepsOrderAndEachModelOnce() {
-        XCTAssertEqual(ModelBundle.plan(dictation: qwen, polish: gemma, note: sense).map(\.id),
+        XCTAssertEqual(ModelBundle.plan(dictation: qwen, polish: gemma, polishRuns: true, note: sense)?.map(\.id),
                        ["qwen3-asr-1.7b-mlx", "gemma4-e2b", "sensevoice-small"])
         // a small Mac: dictation falls back to the voice-note model — it is downloaded once
         var small = sense
         small.kind = .dictation
-        XCTAssertEqual(ModelBundle.plan(dictation: small, polish: nil, note: sense).map(\.id), ["sensevoice-small"])
-        XCTAssertEqual(ModelBundle.plan(dictation: small, polish: nil, note: sense).first?.kind, .dictation)
+        XCTAssertEqual(ModelBundle.plan(dictation: small, polish: nil, polishRuns: false, note: sense)?.map(\.id), ["sensevoice-small"])
+        XCTAssertEqual(ModelBundle.plan(dictation: small, polish: nil, polishRuns: false, note: sense)?.first?.kind, .dictation)
         // no polish where it doesn't run (Intel): just the speech models
-        XCTAssertEqual(ModelBundle.plan(dictation: qwen, polish: nil, note: sense).map(\.kind), [.dictation, .note])
-        XCTAssertEqual(ModelBundle.plan(dictation: nil, polish: nil, note: nil), [])
+        XCTAssertEqual(ModelBundle.plan(dictation: qwen, polish: nil, polishRuns: false, note: sense)?.map(\.kind), [.dictation, .note])
+        XCTAssertEqual(ModelBundle.plan(dictation: qwen, polish: gemma, polishRuns: false, note: sense)?.map(\.kind), [.dictation, .note])
+    }
+
+    func testAListThatCouldNotBeReadLeavesNoSet() {
+        // polish.py models failed or timed out: not "no polish here" — the step offers Try Again
+        XCTAssertNil(ModelBundle.plan(dictation: qwen, polish: nil, polishRuns: nil, note: sense))
+        // it runs here, but its recommended model wasn't in the list
+        XCTAssertNil(ModelBundle.plan(dictation: qwen, polish: nil, polishRuns: true, note: sense))
+        // transcribe.py dictation-models / models failed
+        XCTAssertNil(ModelBundle.plan(dictation: nil, polish: gemma, polishRuns: true, note: sense))
+        XCTAssertNil(ModelBundle.plan(dictation: qwen, polish: gemma, polishRuns: true, note: nil))
+    }
+
+    func testMirror() {
+        // never set: the region decides
+        XCTAssertTrue(ModelBundle.mirror(setting: nil, region: "CN"))
+        XCTAssertFalse(ModelBundle.mirror(setting: nil, region: "US"))
+        XCTAssertFalse(ModelBundle.mirror(setting: nil, region: nil))
+        // the checkbox, either way, wins — turned off in China stays off
+        XCTAssertFalse(ModelBundle.mirror(setting: false, region: "CN"))
+        XCTAssertTrue(ModelBundle.mirror(setting: true, region: "US"))
     }
 
     func testPendingAndTotal() {

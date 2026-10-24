@@ -8,6 +8,9 @@
 //                 in that order (dictation first: it is what the user tries next).
 //   fallback      SenseVoice Small (228 MB): the voice-note model, and what dictation falls back to — offered alone
 //                 when the full set didn't download (offline, a slow network).
+//   unreadable    a list that couldn't be read leaves no set (Try Again), never a set without that model.
+//   mirror        the China-friendly mirrors first when Settings → Speech says so, or, never set, when the region is
+//                 CN — one answer for every download.
 //   progress      the scripts print "  N/M MB" on stderr; a part's share is N/M of its registry size, so the bar
 //                 moves evenly over parts whose own totals differ from the registry's.
 import Foundation
@@ -29,11 +32,25 @@ public enum ModelBundle {
     /// The voice-note model, and dictation's fallback.
     public static let fallbackID = "sensevoice-small"
 
-    /// The recommended set: dictation, polish, voice notes — nil ones left out, a model already in the set once.
-    public static func plan(dictation: Part?, polish: Part?, note: Part?) -> [Part] {
+    /// The recommended set: dictation, polish (where it runs), voice notes — a model already in the set once. nil when
+    /// a list couldn't be read (a script failed or timed out): the step says so and offers Try Again, rather than
+    /// quietly leaving that model out. `polishRuns` nil = `polish.py models` couldn't be read; false = no polish here.
+    public static func plan(dictation: Part?, polish: Part?, polishRuns: Bool?, note: Part?) -> [Part]? {
+        guard let dictation = dictation, let note = note, let runs = polishRuns else { return nil }
+        if runs && polish == nil { return nil }
         var out: [Part] = []
-        for p in [dictation, polish, note].compactMap({ $0 }) where !out.contains(where: { $0.id == p.id }) { out.append(p) }
+        for p in [dictation, runs ? polish : nil, note].compactMap({ $0 }) where !out.contains(where: { $0.id == p.id }) { out.append(p) }
         return out
+    }
+
+    /// Downloads from the China-friendly mirrors first (BLURT_HF_MIRROR=1): Settings → Speech's choice, else — never
+    /// set — a CN region. Every download (the assistant, Settings → Dictation and → Speech) asks this, so they agree
+    /// with the checkbox.
+    public static func mirror(setting: Bool?, region: String?) -> Bool { setting ?? (region == "CN") }
+
+    /// `mirror(setting:region:)` for this Mac (config asr.hf_mirror, the current locale's region).
+    public static var mirror: Bool {
+        mirror(setting: Config.shared["asr.hf_mirror"] as? Bool, region: Locale.current.region?.identifier)
     }
 
     /// What still has to be downloaded, in order.
