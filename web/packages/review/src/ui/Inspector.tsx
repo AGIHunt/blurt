@@ -42,7 +42,7 @@ function autosize(el: HTMLTextAreaElement | null, max: number) {
 
 /** One editable field. While it has focus it shows what the user typed, whatever the server sends meanwhile;
     after blur it shows the item's value again (which by then includes the user's edit). */
-function Field({ i, k, label, type = "area", cls, title, placeholder }: { i: Item; k: string; label?: string; type?: FieldType; cls?: string; title?: boolean; placeholder?: string }) {
+function Field({ i, k, label, type = "area", cls, title, placeholder, onFocus }: { i: Item; k: string; label?: string; type?: FieldType; cls?: string; title?: boolean; placeholder?: string; onFocus?: () => void }) {
   const s = useStore();
   const [draft, setDraft] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
@@ -70,8 +70,9 @@ function Field({ i, k, label, type = "area", cls, title, placeholder }: { i: Ite
     ref,
     value,
     "data-k": k,
-    placeholder: title ? undefined : (placeholder ?? "—"),
+    placeholder: title ? undefined : placeholder,
     onFocus: () => {
+      onFocus?.();
       atFocus.current = format(i, k, type);
       setDraft(atFocus.current);
     },
@@ -259,7 +260,9 @@ function Provenance({ i }: { i: Item }) {
     const ids = i.merged_from.map((u) => s.data.items.find((x) => x.uid === u)?.id || (u.length > 12 ? u.slice(0, 8) + "…" : u));
     rows.push([s.t("source.merged_from"), s.i18n.formatList(ids)]);
   }
-  if (!type && !rows.length && !i.project_by) return null;
+  // "captured in this project" says nothing on an item that has no project (Unassigned)
+  const by = i.project_by && p && !(i.project_by === "capture" && (i.project || "inbox") === "inbox") ? i.project_by : null;
+  if (!type && !rows.length && !by) return null;
   return (
     <section className="prov" id="provenance" aria-label={s.t("source.title")}>
       <h4>{s.t("source.title")}</h4>
@@ -270,10 +273,10 @@ function Provenance({ i }: { i: Item }) {
           {type === "recording" && i.time?.start != null ? <span className="mute">· {s.t("source.at", { time: s.clock(i.time.start) })}</span> : null}
         </div>
       )}
-      {i.project_by && p && (
+      {by && (
         <div className="prov-t">
-          <Icon name={i.project_by === "ai" ? "spark" : i.project_by === "user" ? "pencil" : i.project_by === "migrate" ? "restart" : "folder"} size={14} />
-          <span>{s.t(`project.by.${i.project_by}`, { pct: pct(s, i.project_confidence) })}</span>
+          <Icon name={by === "ai" ? "spark" : by === "user" ? "pencil" : by === "migrate" ? "restart" : "folder"} size={14} />
+          <span>{s.t(`project.by.${by}`, { pct: pct(s, i.project_confidence) })}</span>
         </div>
       )}
       {sug && i.project !== sug.id && s.canMove && (
@@ -299,71 +302,120 @@ function Provenance({ i }: { i: Item }) {
   );
 }
 
+/** One field of the inspector: key, label, editor type, class; `pair` sets two short ones side by side. */
+type Spec = { k: string; label: string; type?: FieldType; cls?: string; pair?: string };
+
+/** The kind's fields, in order. The first is the kind's body: shown even when empty, with a prompt for a placeholder. */
+function specsOf(i: Item, kind: string, s: ReviewStore): { body: Spec; prompt: string; rest: Spec[] } {
+  const t = (k: string) => s.t(k);
+  let body: Spec, prompt: string, rest: Spec[];
+  if (kind === "issue") {
+    body = { k: "actual", label: t("field.actual"), cls: "act-f" };
+    prompt = t("field.prompt.actual");
+    rest = [{ k: "module", label: t("field.module"), type: "text", pair: "who" }, { k: "owner", label: t("field.owner"), type: "text", pair: "who" },
+      { k: "expected", label: t("field.expected"), cls: "exp" }, { k: "steps", label: t("field.steps"), type: "list" }];
+  } else if (kind === "idea") {
+    body = { k: "summary", label: t("field.summary.idea"), cls: "big" };
+    prompt = t("field.prompt.idea");
+    rest = [{ k: "why", label: t("field.why") }, { k: "inspired_by", label: t("field.inspired_by") },
+      { k: "next_steps", label: t("field.next_steps"), type: "list" }, { k: "open_questions", label: t("field.open_questions"), type: "list" }];
+  } else if (kind === "task") {
+    body = { k: "details", label: t("field.details") };
+    prompt = t("field.prompt.task");
+    rest = [{ k: "owner", label: t("field.owner"), type: "text", pair: "when" }, { k: "due", label: t("field.due"), type: "text", pair: "when" }];
+  } else {
+    body = { k: "summary", label: t("field.summary"), cls: "big" };
+    prompt = t("field.prompt.note");
+    rest = [{ k: "details", label: t("field.details") }];
+  }
+  // anything else the lens added: shown generically so custom lenses just work
+  for (const [k, v] of Object.entries(i)) {
+    if (RESERVED.has(k) || SHOWN.has(k) || k.startsWith("_")) continue;
+    if (typeof v === "string") rest.push({ k, label: fieldLabel(k, s.i18n) });
+    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) rest.push({ k, label: fieldLabel(k, s.i18n), type: "list" });
+  }
+  rest.push({ k: "tags", label: t("field.tags"), type: "tags", pair: "end" }, { k: "source", label: t("field.source_url"), type: "src", pair: "end" });
+  return { body, prompt, rest };
+}
+
+/** The empty fields, as a quiet menu at the end: picking one shows it, focused. */
+function AddField({ specs, onAdd }: { specs: Spec[]; onAdd: (k: string) => void }) {
+  const s = useStore();
+  if (!specs.length) return null;
+  return (
+    <label className="pick btn sm ghost addf">
+      <Icon name="plus" size={14} />
+      <span className="pick-l">{s.t("field.add")}</span>
+      <select id="addField" value="" aria-label={s.t("field.add")} onChange={(e) => e.target.value && onAdd(e.target.value)}>
+        <option value="" disabled>
+          {s.t("field.add")}
+        </option>
+        {specs.map((f) => (
+          <option key={f.k} value={f.k}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function Inspector() {
   const s = useStore();
   const side = useRef<HTMLElement>(null);
   const i = s.item;
   const ik = i ? s.keyOf(i) : "";
+  // fields the user opened (from the add menu, or by focusing one): they stay while this item is showing, even emptied
+  const [opened, setOpened] = useState<{ ik: string; keys: string[]; focus?: string }>({ ik: "", keys: [] });
+  const open = (k: string, focus?: boolean) =>
+    setOpened((o) => (o.ik === ik && o.keys.includes(k) && !focus ? o : { ik, keys: o.ik === ik ? [...new Set([...o.keys, k])] : [k], focus: focus ? k : undefined }));
   useLayoutEffect(() => {
     if (side.current) side.current.scrollTop = 0;
   }, [ik]);
+  useEffect(() => {
+    if (!opened.focus || opened.ik !== ik) return;
+    side.current?.querySelector<HTMLElement>(`.fields [data-k="${opened.focus}"]`)?.focus();
+  }, [opened, ik]);
   if (!i) return <aside className="side insp scroll" id="side" ref={side} />;
   const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
   const kind = kindOf(i);
-  const F = (k: string, label: string, type: FieldType = "area", cls?: string) => <Field key={ik + k} i={i} k={k} label={label} type={type} cls={cls} />;
-  let body: React.ReactNode[] = [];
-  if (kind === "issue") {
-    body = [
-      <div className="grid2" key="g">
-        {F("module", s.t("field.module"), "text")}
-        {F("owner", s.t("field.owner"), "text")}
+  const F = (f: Spec, placeholder?: string) => (
+    <Field key={ik + f.k} i={i} k={f.k} label={f.label} type={f.type} cls={f.cls} placeholder={placeholder} onFocus={() => open(f.k)} />
+  );
+  // only what has something in it (or the user opened); the rest wait in the add menu
+  const { body: main, prompt, rest } = specsOf(i, kind, s);
+  const kept = opened.ik === ik ? opened.keys : [];
+  const shown = rest.filter((f) => kept.includes(f.k) || format(i, f.k, f.type ?? "area").trim() !== "");
+  const body: React.ReactNode[] = [F(main, prompt)];
+  if (kind === "issue" && (i.code_refs || []).length)
+    body.push(
+      <div className="f" key="code">
+        <label>{s.t("field.code_refs")}</label>
+        <div className="code">
+          {i.code_refs!.map((c) => (
+            <button key={c} data-copy={c} title={s.host.openCode ? s.t("media.open_code") : s.t("media.copy")}
+              onClick={() => (s.host.openCode ? s.host.openCode(c) : s.copy(c))}>
+              <span>{c}</span>
+              <em>{s.host.openCode ? <Icon name="code" size={13} /> : <Icon name="copy" size={13} />}</em>
+            </button>
+          ))}
+        </div>
       </div>,
-      F("actual", s.t("field.actual"), "area", "act-f"),
-      F("expected", s.t("field.expected"), "area", "exp"),
-      F("steps", s.t("field.steps"), "list"),
-    ];
-    if ((i.code_refs || []).length)
+    );
+  for (let n = 0; n < shown.length; n++) {
+    const f = shown[n];
+    const next = shown[n + 1];
+    if (f.pair && next?.pair === f.pair) {
       body.push(
-        <div className="f" key="code">
-          <label>{s.t("field.code_refs")}</label>
-          <div className="code">
-            {i.code_refs!.map((c) => (
-              <button key={c} data-copy={c} title={s.host.openCode ? s.t("media.open_code") : s.t("media.copy")}
-                onClick={() => (s.host.openCode ? s.host.openCode(c) : s.copy(c))}>
-                <span>{c}</span>
-                <em>{s.host.openCode ? <Icon name="code" size={13} /> : <Icon name="copy" size={13} />}</em>
-              </button>
-            ))}
-          </div>
+        <div className="grid2" key={"g" + f.pair}>
+          {F(f)}
+          {F(next)}
         </div>,
       );
-  } else if (kind === "idea") {
-    body = [F("summary", s.t("field.summary.idea"), "area", "big"), F("why", s.t("field.why")), F("inspired_by", s.t("field.inspired_by")), F("next_steps", s.t("field.next_steps"), "list")];
-    if (i.open_questions) body.push(F("open_questions", s.t("field.open_questions"), "list"));
-  } else if (kind === "task") {
-    body = [
-      F("details", s.t("field.details")),
-      <div className="grid2" key="g">
-        {F("owner", s.t("field.owner"), "text")}
-        {F("due", s.t("field.due"), "text")}
-      </div>,
-    ];
-  } else {
-    body = [F("summary", s.t("field.summary"), "area", "big")];
-    if (i.details !== undefined || kind === "note") body.push(F("details", s.t("field.details")));
+      n++;
+    } else body.push(F(f));
   }
-  // anything else the lens added: shown generically so custom lenses just work
-  for (const [k, v] of Object.entries(i)) {
-    if (RESERVED.has(k) || SHOWN.has(k) || k.startsWith("_")) continue;
-    if (typeof v === "string") body.push(F(k, fieldLabel(k, s.i18n)));
-    else if (Array.isArray(v) && v.every((x) => typeof x === "string")) body.push(F(k, fieldLabel(k, s.i18n), "list"));
-  }
-  body.push(
-    <div className="grid2" key="ts">
-      {F("tags", s.t("field.tags"), "tags")}
-      {F("source", s.t("field.source_url"), "src")}
-    </div>,
-  );
+  body.push(<AddField key="add" specs={rest.filter((f) => !shown.includes(f))} onAdd={(k) => open(k, true)} />);
 
   return (
     <aside className="side insp scroll" id="side" ref={side}>
@@ -399,7 +451,7 @@ export function Inspector() {
               {s.t("severity." + sev)}
             </button>
             <button className="chip" id="typeChip" onClick={s.cycleType}>
-              {i.type ? s.typeLabel(String(i.type)) : "—"}
+              {i.type ? s.typeLabel(String(i.type)) : s.t("chip.type")}
             </button>
           </>
         )}

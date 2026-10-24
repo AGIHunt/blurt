@@ -72,6 +72,11 @@
   "field.tags": "Tags",
   "field.source_url": "Source link",
   "field.answer": "Your answer…",
+  "field.add": "Add field",
+  "field.prompt.actual": "What happens?",
+  "field.prompt.idea": "What’s the idea?",
+  "field.prompt.task": "What needs doing?",
+  "field.prompt.note": "What’s it about?",
   "field.author": "Author",
   "field.reporter": "Reporter",
   "field.assignee": "Assignee",
@@ -118,6 +123,7 @@
   "ask.title": "Needs your input",
   "chip.low_confidence": "Not sure",
   "chip.low_confidence.hint": "The agent wasn’t confident about this one",
+  "chip.type": "Type",
 
   "severity.high": "High",
   "severity.medium": "Medium",
@@ -137,8 +143,8 @@
   "work.commit": "Commit {sha}",
   "work.pr": "Pull request",
 
-  "handoff.title": "Hand it off",
-  "handoff.dispatch": "Start in Blurt",
+  "handoff.title": "Hand off",
+  "handoff.dispatch": "Hand Off to Agent",
   "handoff.dispatch.hint": "Run Claude Code or Codex on it in an embedded terminal",
   "handoff.copy_instruction.hint": "One sentence pointing your own agent at a handoff file with every detail and screenshot",
   "handoff.copy_full.hint": "The whole handoff as Markdown, screenshots by path",
@@ -188,7 +194,7 @@
   "filter.all_kinds": "All kinds",
   "filter.state": "State",
   "filter.live": "All",
-  "filter.inbox": "Needs you",
+  "filter.inbox": "Inbox",
 
   "overview.kinds": "By kind",
 

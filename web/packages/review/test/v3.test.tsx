@@ -215,6 +215,41 @@ describe("v3 UI", () => {
     done();
   });
 
+  it("inspector: only filled fields are rows; the kind's body always, with a prompt; the rest in Add field", async () => {
+    const { el, s, done } = await mount(<Inspector />);
+    document.body.appendChild(el);
+    await act(async () => s.go(0)); // an issue: module, actual and a source link filled
+    const keys = () => [...el.querySelectorAll<HTMLElement>(".fields [data-k]")].map((f) => f.dataset.k);
+    expect(keys()).toEqual(["actual", "module", "source"]);
+    expect([...el.querySelectorAll(".fields [placeholder]")].map((f) => f.getAttribute("placeholder"))).not.toContain("—");
+    const add = el.querySelector("#addField") as HTMLSelectElement;
+    expect([...add.options].slice(1).map((o) => o.value)).toEqual(["owner", "expected", "steps", "tags"]);
+    // picking one shows it, focused; emptied or not, it stays while this item is showing
+    await act(async () => {
+      add.value = "expected";
+      add.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(keys()).toEqual(["actual", "module", "expected", "source"]);
+    expect(document.activeElement).toBe(el.querySelector('[data-k="expected"]'));
+    expect([...(el.querySelector("#addField") as HTMLSelectElement).options].map((o) => o.value)).not.toContain("expected");
+    // an idea with nothing written yet: its body, with a real prompt; nothing else
+    await act(async () => s.go(1));
+    expect(keys()).toEqual(["summary"]);
+    expect(el.querySelector('[data-k="summary"]')?.getAttribute("placeholder")).toBe("What’s the idea?");
+    expect(el.querySelector("#typeChip")).toBeNull();
+    el.remove();
+    done();
+  });
+
+  it("inspector: no 'captured in this project' on an item without a project", async () => {
+    const { el, s, done } = await mount(<Inspector />);
+    s.data.items[1].project_by = "capture"; // IN-3 is in the inbox (Unassigned)
+    await act(async () => s.go(1));
+    expect(el.querySelector("#provenance")?.textContent ?? "").not.toContain("Captured in this project");
+    expect(el.querySelector("#provenance")?.textContent).toContain("Voice note");
+    done();
+  });
+
   it("an inbox item shows the AI's suggestion; accepting moves it", async () => {
     vi.useFakeTimers();
     const { el, s, sent, done } = await mount(<Inspector />);
@@ -236,7 +271,7 @@ describe("v3 UI", () => {
     expect(cards.map((c) => c.querySelector(".sring")!.getAttribute("class"))).toEqual(["sring s-to_verify", "sring s-new",
       "sring s-handed_off", "sring s-new", "sring s-wontfix", "sring s-in_progress", "sring s-done"]);
     expect(cards[1].querySelector(".spill-ring")?.getAttribute("aria-label")).toBe("新 · 更改状态");
-    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给你的 agent");
+    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给你的 Agent");
     expect(cards[5].querySelector(".wk")?.textContent).toBe("进行中");
     await act(async () => (cards[0].querySelector(".pickbox") as HTMLButtonElement).click());
     await act(async () => (cards[2].querySelector(".pickbox") as HTMLButtonElement).click());

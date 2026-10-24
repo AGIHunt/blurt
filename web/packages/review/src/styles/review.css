@@ -978,6 +978,10 @@ button.chip:hover {
 .f {
   margin-bottom: 12px;
 }
+/* the empty fields wait in this quiet menu (only filled ones are rows) */
+.fields .addf {
+  margin: -2px 0 6px -10px;
+}
 .f label {
   display: flex;
   align-items: center;

@@ -70,7 +70,7 @@ export interface StatePillProps {
   canHandOff?: boolean;
   /** where Restore goes (a discarded item's restore_to); its ring is shown on the Restore row */
   restoreTo?: State;
-  /** the pill's text; default the state's name (e.g. "With Claude Code" for handed off) */
+  /** the pill's text; default the state's name (e.g. "Handed off to Claude Code") */
   label?: string;
   /** pill = ring + name + chevron (detail, inspector); ring = the ring alone (list rows) */
   variant?: "pill" | "ring";
