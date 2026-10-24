@@ -11,6 +11,7 @@
 // goes through dictation.py (items.py add). `DictationHistoryWindow` keeps the name the rest of the app (and the test
 // hooks) call: it opens this page.
 import AppKit
+import Combine
 import SwiftUI
 import BlurtCore
 
@@ -100,7 +101,12 @@ struct DictationStats: Equatable {
 final class DictationHistoryModel: ObservableObject {
     /// What the detail shows of a dictation that polish changed.
     enum Mode: String, CaseIterable { case polished, raw, compare }
+    /// The page's two tabs: the history, and the Dictation Lab (DictationLab.swift).
+    enum Tab: String { case history, lab }
 
+    @Published var tab: Tab = .history
+    /// "Add to Lab" on an entry (the page sets it: the lab takes it in and shows it)
+    var addToLab: ((DictationEntry) -> Void)?
     @Published var entries: [DictationEntry] = []
     @Published var extras: [String: DictationExtras] = [:]
     @Published var query = ""
@@ -290,10 +296,38 @@ final class DictationHistoryModel: ObservableObject {
 @MainActor
 final class DictationPage {
     let model = DictationHistoryModel()
-    lazy var list: NSViewController = DictationPage.host(DictationListView(m: model))
-    lazy var detail: NSViewController = DictationPage.host(DictationDetailView(m: model))
+    let lab = DictationLabModel()
+    lazy var list: NSViewController = DictationPage.host(DictationPageList(m: model, lab: lab))
+    lazy var detail: NSViewController = DictationPage.host(DictationPageDetail(m: model, lab: lab))
     private var accessTimer: Timer?
+    private var tabWatch: AnyCancellable?
     private(set) var visible = false
+
+    init() {
+        Dictation.shared.lab = lab
+        model.addToLab = { [weak self] e in self?.addToLab(e) }
+        tabWatch = model.$tab.sink { [weak self] t in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self = self else { return }
+                    self.lab.visible = self.visible && t == .lab
+                    if t == .lab { self.lab.reload() }
+                    MainWindowController.shared.updateTitle()
+                    emit(["event": "dictation_page", "tab": t.rawValue])
+                }
+            }
+        }
+    }
+
+    /// The Lab tab (the Go menu's "Dictation Lab", the palette, the test hooks).
+    func showLab() {
+        model.tab = .lab
+    }
+
+    /// "Add to Lab" on a history entry: a case made from it (with its audio when it was kept), shown in the lab.
+    func addToLab(_ e: DictationEntry) {
+        lab.add(fromHistory: e.id) { [weak self] in self?.model.tab = .lab }
+    }
 
     private static func host<V: View>(_ v: V) -> NSViewController {
         let h = NSHostingController(rootView: v)
@@ -303,6 +337,7 @@ final class DictationPage {
 
     func didShow() {
         visible = true
+        lab.visible = model.tab == .lab
         model.reload()
         model.selectFirstIfNone()
         // granting Input Monitoring needs no restart: the header and the empty state follow it
@@ -314,6 +349,7 @@ final class DictationPage {
 
     func didHide() {
         visible = false
+        lab.visible = false
         accessTimer?.invalidate()
         accessTimer = nil
     }
@@ -342,6 +378,43 @@ private struct LinkButton: View {
         Button(action: action) { Text(title).foregroundStyle(tint) }
             .buttonStyle(.plain)
             .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+    }
+}
+
+// MARK: - the two tabs
+
+/// History | Lab, above the list column; each tab has both columns.
+struct DictationTabBar: View {
+    @ObservedObject var m: DictationHistoryModel
+    var body: some View {
+        Picker("", selection: $m.tab) {
+            Text(T("dictation.lab.tab.history")).tag(DictationHistoryModel.Tab.history)
+            Text(T("dictation.lab.tab.lab")).tag(DictationHistoryModel.Tab.lab)
+        }
+        .pickerStyle(.segmented).labelsHidden().fixedSize()
+        .accessibilityLabel(T("dictation.lab.tab.label"))
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8).padding(.bottom, 6)
+    }
+}
+
+struct DictationPageList: View {
+    @ObservedObject var m: DictationHistoryModel
+    @ObservedObject var lab: DictationLabModel
+    var body: some View {
+        VStack(spacing: 0) {
+            DictationTabBar(m: m)
+            Divider()
+            if m.tab == .lab { LabListView(lab: lab) } else { DictationListView(m: m) }
+        }
+    }
+}
+
+struct DictationPageDetail: View {
+    @ObservedObject var m: DictationHistoryModel
+    @ObservedObject var lab: DictationLabModel
+    var body: some View {
+        if m.tab == .lab { LabDetailView(lab: lab) } else { DictationDetailView(m: m) }
     }
 }
 
@@ -445,6 +518,7 @@ struct DictationListView: View {
                     Divider()
                     Button(e.item == nil ? T("dictation.history.make_item") : T("dictation.history.item_exists", e.item ?? "")) { m.makeItem(e) }
                         .disabled(e.item != nil || m.working.contains(e.id))
+                    Button(T("dictation.lab.add")) { m.addToLab?(e) }
                 }
                 Divider()
                 Button(T("dictation.history.delete"), role: .destructive) { m.delete(es, undo: undo) }
@@ -692,6 +766,8 @@ struct DictationDetailView: View {
                     .disabled(m.working.contains(e.id))
                 if m.working.contains(e.id) { ProgressView().controlSize(.small) }
             }
+            Button { m.addToLab?(e) } label: { Text(T("dictation.lab.add")) }
+                .help(e.audio != nil ? T("dictation.lab.add.tip") : T("dictation.lab.add.tip_text"))
             Spacer()
             Button(role: .destructive) { m.delete([e], undo: undo) } label: {
                 HStack(spacing: 4) { glyph(.trash, 11); Text(T("dictation.history.delete")) }

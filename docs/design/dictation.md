@@ -39,6 +39,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
 | Polish model + guard + repair + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
+| Dictation Lab (record, stages, compare, mark up, cases, scripts, regression) | §Lab: `MainWindow/DictationLab.swift`, `DictationLabViews.swift`; pure: `BlurtCore/DictationLab.swift` (`DictationLabTests`); `scripts/dictation_lab.py`, `scripts/lab_packs/`, `tests/test_dictation_lab.py`, `tests/fixtures/lab_metrics.jsonl` |
 | UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it) |
 
 ## Trigger
@@ -825,9 +826,177 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | `context` | `true`: read the text around the cursor for polish |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
+| `lab_keep_next` | unset: the Dictation Lab's "keep the audio of my next dictations" — keep the audio of this many more (§Lab) |
+| `lab_mic` | unset (the default input): the Dictation Lab's microphone, by device name |
+
+## Lab
+
+The Dictation page's second tab (`MainWindow/DictationLab.swift` — the model, `LabTake`, the test hooks —,
+`DictationLabViews.swift`; Go → Dictation Lab, `⌥⌘L`, the palette). A testing tool for the user's own dictation: record
+a take, see what every stage made of it, mark it up and keep it as a **case**. The cases are a dataset for tuning the
+prompt and the strategy, for regression runs, and maybe fine-tuning later. Everything stays on the Mac; the page says
+so. Pure parts in BlurtCore `DictationLab.swift` (`LabMetrics`, `LabCase`, `LabStore`, `LabVocab`;
+`DictationLabTests`); the runner, export and packs in `scripts/dictation_lab.py` (`tests/test_dictation_lab.py`).
+
+| Piece | What it does |
+|---|---|
+| **Take** | The real pipeline, nothing typed: `NoteVoice` (the microphone the user picks — `AudioDevices.inputs()`, a `MicEngine.make(device:)` engine that is never the spare — or a file played in real time as the mic: *Import Audio…*) → `DictationStream` (cuts, ASR + polish per piece, the stitch guard; `Result.pieces` carries each piece: times, heard, after custom words, the polish window's input, what it committed, ms) → `DictationFit` against the lab's own *before / after the cursor* fields (also polish's context). Started by the Record button or the dictation key: while the lab is visible and the main window key, `Dictation.handle` hands start / stop / cancel to `DictationLabSink` (the trigger's modes unchanged, no paste, no history entry). Test builds never open the mic: the `dictation wav` hook / `BLURT_TEST_MIC_WAV`, or an imported file. |
+| **Stages** | Heard (stitched), polished (or polish off / fell back with the reason), typed (fitted); each piece's line; custom words applied, the guard, what the repair put back, the fit's changes, models, `asr / polish / load / total / fit` ms. |
+| **Mark up** | Reference (what the user meant, before or after the take), corrected text (the ground truth; *Start from the output*), error chips, a note, 1–5 stars and good / bad, scenario tags (app, languages, noise, speed). The diff and the metrics follow every keystroke. |
+| **Compare** | `dictation_lab.py rerun ID --config …` for a saved case: the installed ASR models (`transcribe.py dictation-models`), polish off / other installed polish models (`polish.py models`), no custom words, no context, the whole take at once. Rows show the diff against the truth, WER, terms, ms. |
+| **Learn** | Saving a corrected text calls `dictation_lab.py learn` → `dictation_vocab.learn(raw, corrected)` **when the module has it** (feature-detected: `getattr`), which reports the term-by-term changes to `vocabulary.json`. Without it the app's own learner runs (`DictationLearn.fixes` on heard vs corrected → `DictationVocabulary.learn`). Either way the page lists what was learned with **Undo** (`LabVocab.revert`: each changed term goes back to how it was, only while it still looks as the learning left it). |
+| **Run all cases** | `dictation_lab.py run --json [--config SPEC]` in the background; a table of before (the case's last run with the same configuration key) / after, the change, the text when it changed, an overall score and a breakdown by tag. |
+| **History** | *Add to Lab* (context menu and the detail): `dictation_lab.py from-history ID` — the audio when it was kept, else a reference-only case (the typed text as its reference). *Keep the audio of my next dictations* (`record.dictation.lab_keep_next`, counts down in `Dictation.deliver`): the audio only, never the text around the cursor. |
+| **Export** | `dictation_lab.py export --out FILE.zip`. |
+| **Delete** | *Move to Trash* (the case's folder; the CLI's `delete` removes it). |
+
+### Storage: `$BLURT_HOME/dictation/lab/`
+
+- `cases/<id>/audio.wav` (16 kHz mono 16-bit), `case.json`, `runs.jsonl` (every re-run: `{"at", "key", "label",
+  "config", "outputs", "metrics"}`). `tmp/` holds a take until it is saved. `packs/` the user's reading scripts.
+- `case.json`, schema 1 (unknown keys are kept by both writers):
+
+```json
+{"schema": 1, "id": "20261024-142037-85ed", "created": "…", "updated": "…",
+ "source": "take|import|script|history", "history_id": null, "audio": "audio.wav", "duration": 11.4,
+ "reference": "what the user meant", "corrected": "the ground truth", "errors": ["term", "punctuation"],
+ "scenario": {"app": "chat", "languages": "mixed", "noise": "quiet", "speed": "normal"},
+ "rating": {"stars": 3, "good": null}, "note": "",
+ "app": {"bundle": "com.tencent.xinWeChat"},
+ "context": {"included": false},
+ "config": {"asr_model": "qwen3-asr-1.7b-mlx", "polish": true, "polish_model": "gemma4-e2b", "vocab": true,
+            "context": false, "streaming": true, "language": "auto", "mic": "default", "vocab_terms": ["…"]},
+ "take": {"segments": [{"index", "start", "end", "hard", "pause_after", "asr_text", "raw", "asr_ms", "polish_in",
+                        "text", "polished", "polish_ms", "fell_back", "reason", "repaired", "load_ms"}],
+          "raw": "…", "asr_text": "…", "polished": "…", "text": "…", "fitted": "…", "fit": ["punct"],
+          "terms_applied": ["Codex"], "fell_back": false, "reason": null, "repaired": [],
+          "timings": {"asr_ms", "polish_ms", "load_ms", "total_ms", "segments", "asr_ms_all", "polish_ms_all", "fit_ms"},
+          "language": "zh", "asr_model": "…", "polish_model": "…", "context_used": false, "biased": true},
+ "expected_terms": ["Codex", "worktree"], "metrics": {"wer", "cer", "punct", "exact", "ref_units", "hyp_units",
+ "terms": {"expected", "hit", "missed", "accuracy"}}, "learned": [{"term", "before", "after"}],
+ "prompt": {"pack": "builtin-basics", "id": "b006", "read": "…", "tags": {…}} , "app_version": "0.5.0+…"}
+```
+
+- Error tags: `term`, `code_switch`, `punctuation`, `filler`, `dropped`, `made_up`, `segmentation`, `clipped`, `slow`.
+- Privacy: the app's bundle id only, never its name or the field's text. The text around the cursor is stored
+  (`context.before/after`) only when the user ticks *Keep this text in the case*; `validate` rejects a case that
+  carries it without `included`. A history import never takes the history's debug context.
+
+### Metrics (the same in Swift and Python; `tests/fixtures/lab_metrics.jsonl` checks both)
+
+- Tokens: each CJK character (and kana / hangul), each run of letters and digits (`'` inside a word) — the **units**;
+  each punctuation mark is a token for the diff, never a unit. Keys are NFKC + lower case, so full-width forms and
+  case don't count; 。.!?！？… compare as one "end" class, ，,、;；:： as one "pause" class.
+- **WER** = edit distance over units / reference units (a CJK character counts as a word: for Chinese this is the
+  CER, for English the WER, for mixed speech the "mixed error rate"). **CER** = over the characters of the units.
+  **Punctuation** = marks inside changed chunks / the reference's marks (at most 1). **Terms** = the custom words the
+  truth contains (`expected_terms`: the vocabulary's active terms found in it, a word inside a longer one not counted
+  twice), hit when their units appear in a row in the output ("T mux" is not tmux, case ignored).
+- The diff: a minimal edit script over all tokens (ties: substitution, then deletion, then insertion), consecutive
+  changes merged into replace / insert / delete chunks that join back to both texts, spacing included. The page tints
+  what was written instead and strikes through what is missing.
+- Rounding half up to 4 places (Python's `round` is half-to-even: 5/32 must be 0.1563 in both).
+- Not normalised: numbers written differently (3:30 vs three thirty count as errors); the `numbers` tag slices them.
+
+### The runner (`dictation_lab.py`)
+
+- Uses the app's own entry points: the warm servers (`transcribe.py serve`'s `note` with `purpose: dictation`,
+  `model_id`, the custom words, `prior`; `polish.py serve`'s `polish` with `model`, `vocab`, `context`), started
+  offline first when they aren't running (a fresh ASR server re-runs itself under `uv run --with` on its first request:
+  that request is retried).
+- `mode=pieces` (default) replays the take's cuts: each piece transcribed with the text so far as `prior`, joined
+  (`DictationStitch.join`'s space rule; a seam's 。，. dropped after a pause < 1.2 s), then polished once with the guard.
+  `mode=whole` transcribes the take in one go. The app's sliding polish windows and the fit at the cursor are not
+  replayed, so a re-run is compared with re-runs (the regression's "before" is the last run with the same key), never
+  with the live take.
+- Config SPEC: `current`, or overrides `asr=ID,polish=on|off|ID,vocab=on|off,context=on|off,mode=pieces|whole,
+  language=…` (or JSON); the key is canonical (`asr=current,polish=current,vocab=on,context=on,mode=pieces`).
+- `run`: rows `{id, truth, before, after, change (better|worse|same|new|error|n/a), text, raw, changed_text,
+  fell_back, timings, tags}`, `overall {cases, scored, wer, cer, term_accuracy, score = 100·(1 − mean WER), better,
+  worse, same, new, errors, fell_back}`, `by_tag`. Better / worse: WER moved by more than 0.5 points, else term
+  accuracy. `--fail-on-regression` exits 1 when anything got worse (CI); `--no-save` leaves `runs.jsonl` alone.
+
+```
+uv run skills/blurt/scripts/dictation_lab.py run [--config SPEC] [--cases A,B] [--json] [--no-save] [--fail-on-regression]
+uv run skills/blurt/scripts/dictation_lab.py rerun ID --config current --config polish=off --config asr=sensevoice-small
+uv run skills/blurt/scripts/dictation_lab.py score --ref "…" --hyp "…" [--terms "Claude Code,tmux"]
+uv run skills/blurt/scripts/dictation_lab.py add --wav FILE [--reference T] [--corrected T] [--tags term,punctuation]
+uv run skills/blurt/scripts/dictation_lab.py export [--out FILE.zip] [--include-context]
+```
+
+### Dataset export
+
+A zip: `dataset.json` (`{"name": "blurt-dictation-lab", "schema": 1, "created", "cases", "with_audio",
+"sample_rate": 16000, "channels": 1, "manifest": "manifest.jsonl"}`), `audio/<id>.wav` (16 kHz mono 16-bit) and
+`manifest.jsonl`, one line per case:
+
+```json
+{"schema": 1, "id": "…", "audio": "audio/<id>.wav" | null, "duration": 11.4,
+ "text": "the target: corrected, else reference", "reference": "…", "corrected": "…",
+ "asr_raw": "…", "asr_text": "…", "polished": "…", "final": "what was typed",
+ "language": "zh", "segments": [{"start": 0.0, "end": 5.8, "text": "…"}],
+ "errors": ["term"], "scenario": {…}, "rating": {"stars": 3, "good": null}, "note": "",
+ "terms": ["Codex"], "app_bundle": "com.tencent.xinWeChat", "asr_model": "…", "polish_model": "…",
+ "source": "take", "created": "…", "app_version": "…", "prompt": {…} | null, "tags": ["length:medium", …],
+ "context": {"before": "…", "after": "…"}}
+```
+
+`audio` + `text` is an ASR fine-tuning / eval pair; `asr_raw` (or `asr_text`) + `text` a polish pair; `tags`,
+`errors` and `scenario` slice the results. `context` only with `--include-context` and only for cases whose user
+included it. Reference-only cases (no audio) are polish / text cases.
+
+### Reading scripts
+
+*Read a Script*: a pack of prompts to read aloud. The prompt's `expected` text (what should be typed: fillers and
+corrected-away words gone; else what is read) becomes the take's reference, and the case carries `prompt`. Every take
+is saved as a case of its prompt (retakes pile up; *Keep only this* moves the others to the Trash); *Read Again*,
+*Previous*, *Next* (the next prompt not read yet); progress = prompts with at least one take. *Run All Cases* reports
+by tag (`length:short`, `feature:correction` …).
+
+- Packs: built-in `scripts/lab_packs/*.json` (`builtin.json`: 30 synthetic prompts covering every value of every
+  dimension) and the user's `$BLURT_HOME/dictation/lab/packs/*.json` (a user pack with a built-in's id wins).
+  *Import a Script…* = `dictation_lab.py import-pack FILE` (validated). Schema:
+
+```json
+{"schema": 1, "id": "typeless-history", "name": "…", "name_zh": "…", "description": "…", "source": "builtin|typeless-history|…",
+ "created": "…", "prompts": [{"id": "t001", "read": "what to say aloud", "expected": "what should be typed (optional)",
+   "tags": {"length": "short|medium|long|xlong", "scenario": "chat|coding|email|notes|meeting",
+            "languages": "zh|zh-terms|en",
+            "features": ["names", "numbers", "correction", "fillers", "enumeration", "question", "run_on"]},
+   "origin": "seed|variant|generated"}]}
+```
+
+- *Generate 10 More* = `dictation_lab.py generate --pack ID --n 10 [--engine auto|agent|local] [--focus TEXT]`: a
+  prompt with a dozen of the pack's own prompts as examples and the dimensions; the configured processing agent
+  (`agents.py`: the first ready one, headless, its processing model) answers, else the local polish model (MLX, loaded
+  for that one generation). The JSON array is cleaned (unknown tags dropped, duplicates skipped) and appended; a
+  built-in pack grows as the user's own copy.
+- A pack made from the user's own dictation history (e.g. Typeless's, read-only) is theirs: it lives in their
+  `packs/`, never in the repository.
 
 ## Verification
 
+- Dictation Lab (`promo/cases/v0.8-dictation-lab/`, not in git: `say` clips in `audio/`, screenshots in `shots/`;
+  isolated test build `dev.blurt.recorder.labtest`, scratch `BLURT_HOME`, launched through LaunchServices, models
+  symlinked read-only, no real mic — the `dictation wav` hook and an imported file —, nothing pasted, no tap):
+  - `swift test --filter DictationLabTests` (the shared metrics fixture, the case schema and store keeping unknown
+    keys, context only with consent, Undo of learning); `pytest tests/test_dictation_lab.py` (the fixture, units, WER
+    / CER by hand, term spelling, the diff joining back, the schema and `validate`, `add` with resampling,
+    `from-history` with and without audio, pieces replayed with `prior` and seams, configs, context only when
+    included, the regression's before / after / overall / by tag with a fake pipeline, a failing case, `run` with no
+    cases, export, `learn` feature-detected, packs: validation, import, progress, generation parsing);
+  - in the test build: a take (11 s mixed Chinese, Qwen3-ASR 1.7B + Gemma 4 E2B, 1.8 s after release cold) with
+    every stage, the fit against the lab's cursor fields, a corrected text → the app's learner (`dictation_vocab.learn`
+    isn't there yet) learned 要合进 ← 要合并, Undo put it back; Compare over current / 0.6B / SenseVoice / polish off /
+    no custom words; *Add to Lab* with and without audio; a script prompt read twice and by the dictation key (start
+    and stop routed to the lab, no history entry, nothing typed); Run All Cases (score, by tag); Export (5 WAVs +
+    manifest); Import Audio; a pack imported; `generate --engine local` wrote 5 prompts with Gemma 4 E2B;
+    `dictation_lab.py run` against the real servers from a cold start.
+  - What the lab found on the first takes: 「把这个文件，不对，这两个文件…」 polished to 「把这个文件，这两个文件…」 (the
+    corrected-away words kept, the guard passed), and "Let's meet at 2:30, no wait, make it 3:30" was polished right,
+    then the repair put "two thirty. No, wait. Make it" back.
+- Only the user can check: a take from the real microphone (and the picker's other inputs), the dictation key starting
+  and stopping a lab take with the main window in front, `dictation_vocab.learn` once it is merged.
 - Punctuation at the seams and double tap = Return (`promo/cases/v0.8-dictation-punct/`, not in git: clips, scripts,
   results; isolated test builds `dev.blurt.recorder.puncttest` — the old one and the new one side by side —, scratch
   `BLURT_HOME`, launched through LaunchServices, no real mic, no tap, nothing posted, nothing pasted outside the test

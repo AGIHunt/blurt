@@ -99,6 +99,7 @@ extension App {
                   "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
+        case "lab": MainActor.assumeIsolated { DictationLabModel.testCommand(rest) }    // the Dictation Lab (DictationLab.swift)
         case "vocab":
             // vocab add TERM[|SOUNDS,…] | remove TERM | accept TERM | reject TERM | list — the store Settings edits
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)

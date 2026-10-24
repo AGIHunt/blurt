@@ -242,6 +242,35 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - Dictation is off while a screen recording runs, because the recording is using the microphone. Dictation and the
   voice note never listen at the same time: whichever started first keeps the microphone until it's done.
 
+#### Dictation Lab
+
+The Dictation page has two tabs: **History** and **Lab** (also *Go → Dictation Lab*, `⌥⌘L`). The lab is where you
+find out why a dictation came out wrong and keep the evidence. Everything in it stays on this Mac.
+
+- **Record a take**: click the big button (or tap your dictation key while the lab is in front) and talk. Pick the
+  microphone next to it, or **Import Audio…** to play a file in as the microphone. Nothing is typed anywhere.
+- You see **each stage** side by side with its milliseconds: what the speech model heard for every piece, the stitched
+  transcript, the polished text and the text that would have been typed (fitted into the "text around the cursor"
+  you can fill in), plus the custom words used, the guard's verdict and anything it put back.
+- Write **what you meant** (before or after the take) or the **corrected text**, and the lab shows the difference
+  (Chinese by character, English by word) with WER, CER, punctuation and term accuracy. Mark what went wrong with the
+  chips (wrong name, Chinese turned into English, punctuation, filler kept, content dropped, made-up words, wrong
+  segmentation, start or end cut off, too slow), add a note and a rating, and **Save as Case**. A correction teaches
+  the custom words; the lab shows what it learned, with **Undo**.
+- **Compare** runs a saved case again through other settings: another speech model, polish off or another polish
+  model, no custom words, no context.
+- **Read a Script**: the lab shows a sentence, you read it aloud, and its text becomes the reference. Read it again if
+  you stumbled (every take is kept; *Keep only this* tidies up), then go to the next one. A built-in script covers
+  short and long sentences, chat, code, email and meetings, names, numbers, self-corrections, fillers and spoken lists.
+  *Import a Script…* adds your own; *Generate 10 More* writes more in the same style.
+- **Run All Cases** runs every saved case through the current pipeline in the background and shows what got better or
+  worse, with an overall score and a breakdown by dimension. Agents and CI can run the same check:
+  `uv run skills/blurt/scripts/dictation_lab.py run`.
+- **Add to Lab** on any dictation in History makes it a case (with its audio if it was kept, else text only). *Keep
+  the audio of my next dictations* keeps the audio of the next few real dictations so you can add them.
+- **Export…** saves every case as a dataset (`manifest.jsonl` + 16 kHz WAVs) for evaluation or fine-tuning. *Move to
+  Trash* deletes a case.
+
 ---
 
 ## 中文
@@ -370,3 +399,16 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」录屏权限有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
 - **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长和输入方式。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。
+
+#### 听写测试台
+
+听写页有两个标签：**历史**和**测试台**（也可以从菜单「前往 → 听写测试台」或 `⌥⌘L` 进入）。听写哪里出了错、为什么错，都可以在测试台里查清楚，并把证据留下来。这里的一切都只存在这台 Mac 上。
+
+- **录一段**：点大按钮（测试台在前面时也可以按听写键），然后说话。旁边可以选麦克风，也可以**导入音频**，把文件当作麦克风的声音放进来。不会往任何地方打字。
+- **每一步的结果**并排显示，各带耗时：每一段识别出的原文、拼接后的原文、润色结果，以及最终会输入的文字（按你填的「光标附近的文字」衔接过），还有用到的自定义词、检查的结论和补回的内容。
+- 写下**你想说的**（录之前或之后都行）或者**修正后的文字**，测试台会标出差别（中文按字、英文按词），给出词错率、字错率、标点和术语的准确率。用标签标出哪里错了（名字或术语错了、中文变成了英文、标点、口头禅没去掉、内容丢了、多出了没说的话、断句不对、开头或结尾被截掉、太慢），写备注、打分，然后**存为用例**。修正会让自定义词学到东西，测试台会显示学到了什么，可以**撤销**。
+- **对比**：把存好的用例换一种设置再跑一遍，比如换识别模型、不润色或换润色模型、不用自定义词、不看上下文。
+- **照稿朗读**：测试台给出一句话，你照着读，这句话自动成为参考文本。读错了就重读（每一遍都会留下，「只留这一遍」可以清理），然后读下一句。自带的稿子覆盖长短句、聊天、编程指令、邮件、会议纪要、名字、数字、说错改口、口头禅和口头列举。「导入稿子…」可以加你自己的，「再生成 10 句」会按同样的风格再写一些。
+- **全部重跑**：在后台把所有用例按现在的流程再跑一遍，标出哪些变好、哪些变差，给出总分，并按维度拆开看。智能体和 CI 也能跑同样的检查：`uv run skills/blurt/scripts/dictation_lab.py run`。
+- 在历史里任意一条听写上点**加到测试台**，就会生成一个用例（留了录音就带录音，没留就只有文字）。勾选「保留接下来几次听写的录音」，就能把接下来几次真实听写的录音留下来，再加进测试台。
+- **导出…**会把所有用例存成一个数据集（`manifest.jsonl` 加 16 kHz 的 WAV），可以拿去做评测或微调。「移到废纸篓」删除用例。

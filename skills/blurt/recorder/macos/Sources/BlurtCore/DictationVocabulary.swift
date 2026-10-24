@@ -115,6 +115,21 @@ public final class DictationVocabulary {
         return r
     }
 
+    /// The file's terms as JSON objects, changed under the lock (the Dictation Lab's Undo of what a correction taught:
+    /// every key of a term is kept, also ones this app doesn't know).
+    public func editRaw(_ change: (inout [[String: Any]]) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        let o = (try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        var terms = o["terms"] as? [[String: Any]] ?? []
+        change(&terms)
+        var out = o
+        out["schema"] = o["schema"] ?? 1
+        out["terms"] = terms
+        guard let d = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? d.write(to: url, options: .atomic)
+    }
+
     /// The words in use (what ASR and polish get), most used first.
     public func active() -> [VocabTerm] { load().filter { $0.state == .active }.sorted { $0.hits > $1.hits } }
     /// Learned once, waiting for the user (or a second sighting).

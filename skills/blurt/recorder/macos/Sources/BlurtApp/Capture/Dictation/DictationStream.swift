@@ -61,6 +61,8 @@ final class DictationStream {
         var asrSpan: (Double, Double) = (0, 0)
         var polishSpan: (Double, Double) = (0, 0)
         var loadMS = 0
+        /// the polish window's input (the carried clause + this piece): the Dictation Lab shows it
+        var polishInput = ""
         init(index: Int, start: Int, end: Int, hard: Bool, last: Bool = false) {
             self.index = index; self.start = start; self.end = end; self.hard = hard; self.last = last
         }
@@ -82,6 +84,9 @@ final class DictationStream {
         var repaired: [String]
         var segments: Int
         var timing: [String: Int]
+        /// each piece as the Dictation Lab shows it: index, start / end (s), hard, pause_after, asr_text, raw, asr_ms,
+        /// polish_in, text (what it committed), polished, polish_ms, fell_back, reason, repaired
+        var pieces: [[String: Any]] = []
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
@@ -229,6 +234,7 @@ final class DictationStream {
         var ctx = lock.locked { context }?.payload ?? [:]
         let so = DictationStitch.join(Array(done))
         if !so.isEmpty { ctx["before"] = DictationStitch.join(ctx["before"] as? String ?? "", so) }
+        p.polishInput = input
         let t0 = CACurrentMediaTime()
         let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
                                  context: ctx.isEmpty ? nil : ctx)
@@ -313,7 +319,21 @@ final class DictationStream {
                       asrModel: first["model"] as? String, language: first["language"] as? String,
                       biased: first["biased"] as? Bool ?? false, terms: terms,
                       contextUsed: pol.contains { $0["context"] as? Bool == true }, repaired: repaired,
-                      segments: ps.count, timing: timing(ps))
+                      segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
+    }
+
+    /// One piece for the Dictation Lab (what each stage made of it, and how long it took).
+    private func describe(_ p: Piece, _ gaps: [Double?]) -> [String: Any] {
+        let ms = { (s: (Double, Double)) in Int(max(0, s.1 - s.0) * 1000) }
+        var o: [String: Any] = ["index": p.index, "start": (Double(p.start) / NoteVoice.rate * 100).rounded() / 100,
+                                "end": (Double(p.end) / NoteVoice.rate * 100).rounded() / 100, "hard": p.hard,
+                                "asr_text": p.asrText, "raw": p.raw, "asr_ms": ms(p.asrSpan), "text": p.text,
+                                "polish_in": p.polishInput, "polished": p.polishedPart, "polish_ms": ms(p.polishSpan),
+                                "fell_back": p.polish?["fell_back"] as? Bool ?? false, "reason": p.polish?["reason"] ?? NSNull(),
+                                "repaired": p.polish?["repaired"] as? [String] ?? [], "load_ms": p.loadMS]
+        let g: Double? = p.index < gaps.count ? gaps[p.index] : nil
+        o["pause_after"] = g.map { ($0 * 100).rounded() / 100 as Any } ?? NSNull()
+        return o
     }
 
     /// The old path on the whole recording: one transcription, one polish.
@@ -334,7 +354,12 @@ final class DictationStream {
                       model: pol?["model"] as? String, asrModel: r["model"] as? String, language: r["language"] as? String,
                       biased: r["biased"] as? Bool ?? false, terms: (r["terms"] as? [String] ?? []) + (pol?["terms"] as? [String] ?? []),
                       contextUsed: pol?["context"] as? Bool ?? false, repaired: pol?["repaired"] as? [String] ?? [],
-                      segments: n, timing: timing)
+                      segments: n, timing: timing,
+                      pieces: [["index": 0, "start": 0, "end": NSNull(), "hard": false, "whole": true,
+                                "asr_text": r["asr_text"] as? String ?? raw, "raw": raw, "asr_ms": timing["asr_ms"] ?? 0,
+                                "text": text, "polish_in": raw, "polished": pol?["polished"] ?? NSNull(),
+                                "polish_ms": timing["polish_ms"] ?? 0, "fell_back": pol?["fell_back"] as? Bool ?? false,
+                                "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? []]])
     }
 
     /// What the user waited for after key-up (the work before it was hidden behind the talking), and the total.

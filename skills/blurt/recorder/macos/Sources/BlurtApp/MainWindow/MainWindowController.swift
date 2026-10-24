@@ -155,6 +155,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         focusList()
     }
 
+    /// The Dictation page's Lab tab (the Go menu, the palette, the test hooks).
+    func showDictationLab() {
+        showDictation()
+        dictation.showLab()
+    }
+
     /// The list that is showing: the items' table, or the Dictation page's.
     func focusList() {
         if model.scope == .dictation {
@@ -301,6 +307,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func updateTitle() {
         window?.title = model.scopeTitle
         if model.scope == .dictation {
+            if let p = page, p.model.tab == .lab {
+                window?.subtitle = T("dictation.lab.subtitle", T("dictation.lab.cases", p.lab.cases.count))
+                return
+            }
             let n = page?.model.entries.count ?? 0
             window?.subtitle = n > 0 ? TP("main.dictation.count", n) : ""
             return
