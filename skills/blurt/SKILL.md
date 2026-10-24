@@ -195,7 +195,9 @@ apply it with `items.py … --force` and close the page (`pkill -f "review.py <s
 **Unattended runs** (started by the Blurt app via the first usable agent CLI — `claude -p`, `codex exec`,
 `kimi -p`, `opencode run`, `gemini -p` (scripts/agents.json) — env `BLURT_APP=1` — or any other
 non-interactive mode): don't ask anything; do §2–§4 the same way (text first with `processing`, frames via
-`items.py`, `done`), then finish with a 2–3 sentence summary. With `BLURT_APP=1` don't start the review page — the
+`items.py`, `done`), then finish with a 2–3 sentence summary. The app's runs are sandboxed: the cwd is the session
+folder, the project's code (named in the prompt) is for reading, and the only commands allowed are the scripts as
+`uv run <skill-dir>/scripts/<name>.py …` with the path the prompt gives. With `BLURT_APP=1` don't start the review page — the
 app opens it; otherwise start it detached right after §3 (`nohup uv run …/review.py <session> >/dev/null 2>&1 &`).
 Never export to external systems unattended.
 

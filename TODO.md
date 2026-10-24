@@ -96,4 +96,7 @@
       a report stays in progress — say "Session ended without reporting back" with Open Session / Mark as Done (Take
       Back + Mark as Done when the job is gone), one Open Session per item, failed session actions toasted; an organizing
       run there should also set BLURT_NO_ROUTE and run `projects.py route --apply --session DIR` itself afterwards
-      (agents.json `run` is now least-privilege, `{writable}` = `--add-dir` per folder, Linux codex: landlock)
+      (agents.json `run` is now least-privilege, `{writable}` = `--add-dir` per folder, Linux codex: landlock). Also:
+      run it with cwd = the session folder (never the project), put `agents.py command`'s `env` (UV_CACHE_DIR,
+      BLURT_NO_INDEX) in its environment, name `uv run <scripts>/<name>.py` with its `scripts` path in the prompt
+      (Claude / Gemini may run nothing else), and re-index the batch afterwards
