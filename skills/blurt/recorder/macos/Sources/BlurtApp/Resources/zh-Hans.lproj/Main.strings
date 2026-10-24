@@ -252,6 +252,7 @@
 "main.project.remove.detail" = "文件夹和里面的条目都不会动，重新打开这个文件夹就能回来。";
 "main.project.remove.title" = "从口喷鸡移除「%@」？";
 "main.project.save_failed" = "没能保存项目";
+"main.project.use_failed" = "没能切换项目";
 "main.project.settings" = "项目设置…";
 "main.project.settings.title" = "「%@」设置";
 "main.project.use" = "设为当前项目";

@@ -252,6 +252,7 @@
 "main.project.remove.detail" = "The folder and its items stay where they are. Open the folder again to bring it back.";
 "main.project.remove.title" = "Remove “%@” from Blurt?";
 "main.project.save_failed" = "Couldn’t save the project";
+"main.project.use_failed" = "Couldn’t switch the project";
 "main.project.settings" = "Project Settings…";
 "main.project.settings.title" = "%@ Settings";
 "main.project.use" = "Make Current Project";

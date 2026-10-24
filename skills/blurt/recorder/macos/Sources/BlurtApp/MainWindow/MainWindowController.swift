@@ -644,7 +644,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func useProject(_ id: String?) {
-        Task { @MainActor in try? await ProjectStore.shared.use(id) }
+        Task { @MainActor in
+            do { try await ProjectStore.shared.use(id) } catch { appDelegate?.toast(T("main.project.use_failed")) }
+        }
     }
 
     // MARK: handing off (K5 in Blurt, K6 to your own agent)
