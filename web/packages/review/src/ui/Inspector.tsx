@@ -365,17 +365,25 @@ export function Inspector() {
   const side = useRef<HTMLElement>(null);
   const i = s.item;
   const ik = i ? s.keyOf(i) : "";
-  // fields the user opened (from the add menu, or by focusing one): they stay while this item is showing, even emptied
-  const [opened, setOpened] = useState<{ ik: string; keys: string[]; focus?: string }>({ ik: "", keys: [] });
-  const open = (k: string, focus?: boolean) =>
-    setOpened((o) => (o.ik === ik && o.keys.includes(k) && !focus ? o : { ik, keys: o.ik === ik ? [...new Set([...o.keys, k])] : [k], focus: focus ? k : undefined }));
+  // fields the user opened (from the add menu, or by focusing one): they stay while this item is showing, even emptied;
+  // leaving the item forgets them. The focus request is one-shot, so coming back never puts the caret in a field (J/K would type).
+  const [opened, setOpened] = useState<{ ik: string; keys: string[] }>({ ik: "", keys: [] });
+  const focusNext = useRef<string | undefined>(undefined);
+  const open = (k: string, focus?: boolean) => {
+    if (focus) focusNext.current = k;
+    setOpened((o) => (o.ik === ik && o.keys.includes(k) ? o : { ik, keys: o.ik === ik ? [...o.keys, k] : [k] }));
+  };
   useLayoutEffect(() => {
     if (side.current) side.current.scrollTop = 0;
+    focusNext.current = undefined;
+    setOpened((o) => (o.ik === ik ? o : { ik, keys: [] }));
   }, [ik]);
   useEffect(() => {
-    if (!opened.focus || opened.ik !== ik) return;
-    side.current?.querySelector<HTMLElement>(`.fields [data-k="${opened.focus}"]`)?.focus();
-  }, [opened, ik]);
+    const k = focusNext.current;
+    if (!k) return;
+    focusNext.current = undefined;
+    side.current?.querySelector<HTMLElement>(`.fields [data-k="${k}"]`)?.focus();
+  });
   if (!i) return <aside className="side insp scroll" id="side" ref={side} />;
   const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
   const kind = kindOf(i);

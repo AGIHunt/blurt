@@ -66,7 +66,7 @@ export interface StatePillProps {
   /** strings: state.<s>, state.menu, action.<a>, action.<a>.hint, action.done.hint_verify */
   t: T;
   onPick: (action: Action) => void;
-  /** the host can start or hand off work: the menu offers "Hand off…" (it opens the host's panel) */
+  /** the host can start or hand off work: the menu offers "Hand off to agent…" (it opens the host's panel) */
   canHandOff?: boolean;
   /** where Restore goes (a discarded item's restore_to); its ring is shown on the Restore row */
   restoreTo?: State;

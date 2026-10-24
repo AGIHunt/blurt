@@ -63,6 +63,9 @@ class Glossary(unittest.TestCase):
         for c in (zh["Common.strings"], zh["common"]):
             self.assertEqual(c["state.handed_off"], "已交给 Agent")
             self.assertEqual(c["action.hand_off"], "交给 Agent…")
+        for c in (en["Common.strings"], en["common"]):
+            self.assertEqual(c["action.hand_off"], "Hand off to agent…")  # menus title-case it: "Hand Off to Agent…"
+        self.assertEqual(en["review"]["keys.hand_off"], en["common"]["action.hand_off"])
         self.assertEqual(en["Common.strings"]["state.handed_off.session"], "Handed off to %@")
         self.assertEqual(en["common"]["state.handed_off.session"], "Handed off to {agent}")
 

@@ -16,7 +16,7 @@
   "state.menu": "Change state",
   "action.keep": "Keep",
   "action.keep.hint": "Add it to To do",
-  "action.hand_off": "Hand off…",
+  "action.hand_off": "Hand off to agent…",
   "action.hand_off.hint": "Hand it to an agent in Blurt, or copy an instruction",
   "action.done": "Mark as done",
   "action.done.hint": "It’s handled",

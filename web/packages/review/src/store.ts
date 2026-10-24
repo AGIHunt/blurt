@@ -241,7 +241,7 @@ export class ReviewStore {
   }
   stateOf = (i: Item): State => stateOf(i);
   restoreTo = (i: Item): State | undefined => migrate(i).restore_to;
-  /** the menu offers "Hand off…" (dispatch in an app window, a copied instruction where review.py can write one) */
+  /** the menu offers "Hand off to agent…" (dispatch in an app window, a copied instruction where review.py can write one) */
   get canHandOff() {
     return !!this.host.dispatch || this.canHandoff;
   }

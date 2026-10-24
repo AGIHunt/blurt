@@ -427,7 +427,8 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 
 /// The line above an item that tells you what it is waiting for, with the one or two things you can do about it (K3
 /// actions; the detail's state pill has the rest, and its work panel asks about an item waiting to be verified):
-///   with an agent  "With Claude Code · Needs your input"                         [Open Session]
+///   with an agent  "Handed off to Claude Code · Needs your input"                [Open Session]
+///                  "Handed off to Claude Code" (no live session)
 ///   handed out     "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
 ///   suggested      "Looks like it belongs in bug-agent (58%)."                  [Move]
 final class ItemBanner: NSView {

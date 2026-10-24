@@ -218,7 +218,7 @@
   "keys.back": "Send back · take back · reopen · restore",
   "keys.wontfix": "Won’t do",
   "keys.state": "Change state…",
-  "keys.hand_off": "Hand off…",
+  "keys.hand_off": "Hand off to agent…",
   "keys.select": "Select (in the list)",
 
   "finish.title": "Hand this back to your agent?",

@@ -33,6 +33,12 @@ enum JobLook {
         return f.date(from: String(name.prefix(15))).map(Loc.dateTime) ?? name
     }
 
+    /// A failed job's reason in words, naming its agent when it has one: the detail and the failure notification say
+    /// the same thing.
+    static func errorText(_ j: Job) -> String? {
+        j.error.map { errorText($0, agent: j.agent.map { AgentHub.shared.def($0.agent)?.name ?? $0.agent } ?? j.usage?.agent.map(AgentNames.name)) }
+    }
+
     /// A failed job's reason in words: its hint, else the known code ("Claude Code isn’t logged in." when the agent is
     /// known), else the raw message.
     static func errorText(_ e: JobError, agent: String?) -> String {
@@ -304,8 +310,8 @@ final class JobDetailView: NSView {
         // AI fill-in has no recording to transcribe, no frames to cut, nothing to file: just prepare and write
         if j.type == .process, j.session == nil { ids = ids.filter { !["transcribe", "frames", "route"].contains($0.id) } }
         for (k, s) in ids.enumerated() { steps.addArrangedSubview(StepRow(s, last: k == ids.count - 1, failed: j.state == .failed)) }
-        if let e = j.error {
-            error.stringValue = JobLook.errorText(e, agent: j.agent.map { AgentHub.shared.def($0.agent)?.name ?? $0.agent } ?? j.usage?.agent.map(AgentNames.name))
+        if let why = JobLook.errorText(j) {
+            error.stringValue = why
             error.isHidden = false
         } else { error.isHidden = true }
         buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }

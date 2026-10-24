@@ -232,6 +232,12 @@ describe("v3 UI", () => {
     expect(keys()).toEqual(["actual", "module", "expected", "source"]);
     expect(document.activeElement).toBe(el.querySelector('[data-k="expected"]'));
     expect([...(el.querySelector("#addField") as HTMLSelectElement).options].map((o) => o.value)).not.toContain("expected");
+    // the focus was one-shot: away and back, nothing is focused (J/K would type into it) and the emptied field is gone
+    await act(async () => (document.activeElement as HTMLElement).blur());
+    await act(async () => s.go(1));
+    await act(async () => s.go(0));
+    expect(document.activeElement?.tagName).not.toBe("TEXTAREA");
+    expect(keys()).toEqual(["actual", "module", "source"]);
     // an idea with nothing written yet: its body, with a real prompt; nothing else
     await act(async () => s.go(1));
     expect(keys()).toEqual(["summary"]);
