@@ -5,9 +5,11 @@ import AppKit
 import BlurtCore
 
 enum ProjectLook {
-    /// Hues that hold up on the island's black, distinct from each other and from the coral accent.
-    static let palette: [NSColor] = [.systemBlue, .systemTeal, .systemGreen, .systemPurple, .systemPink, .systemIndigo,
-                                     .systemMint, .systemYellow]
+    /// Hues that hold up on the island's black, distinct from each other and from the brand mint: no .systemTeal /
+    /// .systemMint (they read as brand). The index is hashed from the id, so projects that had teal or mint changed
+    /// colour once, in v0.8.
+    static let palette: [NSColor] = [.systemBlue, .systemOrange, .systemGreen, .systemPurple, .systemPink, .systemIndigo,
+                                     .systemBrown, .systemYellow]
 
     static func color(_ p: Project) -> NSColor {
         guard !p.isInbox else { return .systemGray }

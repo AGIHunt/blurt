@@ -359,6 +359,7 @@ enum BrandGradient {
     static func colors(_ st: [(UInt32, CGFloat)]) -> [NSColor] { st.map { BrandColor.srgb($0.0) } }
 
     /// A CAGradientLayer for `st`. `flipped`: the layer's geometry is flipped (y down), e.g. inside a flipped view.
+    @discardableResult
     static func layer(_ st: [(UInt32, CGFloat)], _ dir: Direction = .diagonal, flipped: Bool = false,
                       into l: CAGradientLayer = CAGradientLayer()) -> CAGradientLayer {
         l.colors = st.map { BrandColor.srgb($0.0).cgColor }

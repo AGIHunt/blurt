@@ -1,8 +1,8 @@
 // K8: an item's K3 state as a small ring (14 pt in lists, 18 pt in the detail, 1.5 pt line):
-//   new         dashed ring (16 equal parts from 12 o'clock, butt ends), accent
-//   todo        empty ring, secondary text colour        handed_off  ring + 4 pt centre dot, accent
-//   in_progress ring + right half filled, accent          to_verify   filled disc with a "!" shape, attention amber
-//   done        filled disc with a check, green           wontfix     ring + a 45° slash, tertiary text colour
+//   new         dashed ring (16 equal parts from 12 o'clock, butt ends), brand ink
+//   todo        empty ring, secondary text colour        handed_off  ring + 4 pt centre dot, brand ink
+//   in_progress ring + right half filled, brand ink         to_verify   filled disc with a "!" shape, attention amber
+//   done        filled disc with a check, ok green          wontfix     ring + a 45° slash, tertiary text colour
 //   discarded   ring + an ×, tertiary text colour
 // Drawn, not glyphs: the "!", the check and the × are paths. Same geometry and colours as web/packages/ui (kinds.ts
 // ringShapes, base.css .sring). The image carries the localized state (`state.<state>`) for VoiceOver.
@@ -12,12 +12,13 @@ import BlurtCore
 enum StatusRing {
     static let states = Lifecycle.states
 
-    /// Brand coral (--accent), attention (--warn), keep (--keep): tokens.css, light / dark
-    static let accent = KindStyle.dynamic(KindStyle.rgb(0xF55B3E), KindStyle.rgb(0xFF7A5C))
-    static let attention = KindStyle.dynamic(KindStyle.rgb(0xB86E00), KindStyle.rgb(0xF5A524))
-    static let keep = KindStyle.dynamic(KindStyle.rgb(0x15965F), KindStyle.rgb(0x2B9466))
-    /// the "!" on the attention disc: white on light amber, deep brown on the dark theme's brighter amber
-    static let attentionGlyph = KindStyle.dynamic(.white, KindStyle.rgb(0x2A1A00))
+    /// brand ink (--brand-ink), attention (--attn), done (--ok): the generated BrandColor (assets/color/tokens.json)
+    static let accent = BrandColor.ink
+    static let attention = BrandColor.attn
+    static let keep = BrandColor.ok
+    /// the "!" on the attention disc and the check on the done disc
+    static let attentionGlyph = BrandColor.onAttn
+    static let keepGlyph = BrandColor.onOk
 
     static func color(_ state: String) -> NSColor {
         switch state {
@@ -89,7 +90,7 @@ enum StatusRing {
             disc(c, c + 2.85 * u, 0.95 * u).fill()
         case "done":
             disc(c, c, R + 0.75).fill()
-            NSColor.white.set()
+            keepGlyph.set()
             let p = NSBezierPath()
             p.move(to: pt(c - 2.9 * u, c + 0.1 * u))
             p.line(to: pt(c - 0.9 * u, c + 2 * u))

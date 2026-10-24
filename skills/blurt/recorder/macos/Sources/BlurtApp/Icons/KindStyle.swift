@@ -1,7 +1,7 @@
 // K8: one icon and one colour per item kind — issue (bug), idea (lightbulb), note (document), task (checklist), a
 // custom lens (tag, hue from its name). On macOS the SF Symbol, like every native list; the colour is dynamic
-// (light / dark). Same values as web/packages/ui (tokens.css --kind-*, kinds.ts customKindColor); tests/test_icons.py
-// keeps the two in step.
+// (light / dark). Values from assets/color/tokens.json (generated BrandColor.Kind; web: tokens.css --kind-*, kinds.ts
+// customKindColor), so the two can't drift.
 import AppKit
 import BlurtCore
 
@@ -18,13 +18,8 @@ enum KindStyle {
         }
     }
 
-    /// light / dark sRGB, ≥ 3:1 on every surface of the app (web: tokens.css)
-    static let palette: [String: (UInt32, UInt32)] = [
-        "issue": (0xD93D42, 0xFF6B6B),
-        "idea": (0xA8710A, 0xFFC53D),
-        "note": (0x3E63DD, 0x8DA4EF),
-        "task": (0x218358, 0x3DD68C),
-    ]
+    /// light / dark sRGB, ≥ 3:1 on every surface of the app: generated from assets/color/tokens.json (kind.*)
+    static let palette = BrandColor.Kind.palette
 
     static func color(_ kind: String) -> NSColor {
         if let (l, d) = palette[kind] { return dynamic(rgb(l), rgb(d)) }
@@ -56,10 +51,17 @@ enum KindStyle {
         kind.utf16.reduce(0) { ($0 * 31 + Int($1)) % 360 }
     }
 
+    /// The lens hue, moved 60° on when it lands in the brand / success band (BrandColor.Kind.customHueGap, inclusive),
+    /// so no lens reads as mint or done. Same as kinds.ts customKindHue.
+    static func customHue(_ kind: String) -> Int {
+        let h = hue(kind)
+        return BrandColor.Kind.customHueGap.contains(h) ? h + 60 : h
+    }
+
     /// HSL(h, 55%, 42%) light / HSL(h, 70%, 68%) dark, stepped 2% darker / lighter until it has 3:1 on the lightest /
     /// darkest surface (#EAEAEA / #383838).
     static func customColor(_ kind: String, dark: Bool) -> UInt32 {
-        let h = Double(hue(kind))
+        let h = Double(customHue(kind))
         if dark {
             var l = 68.0
             while l < 95, contrast(hsl(h, 70, l), 0x383838) < 3 { l += 2 }
