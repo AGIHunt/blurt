@@ -412,7 +412,7 @@
 "dictation.style.light" = "轻整理";
 "dictation.style.structured" = "结构化";
 "dictation.style.auto" = "自动排清单";
-"dictation.style.toast.structured" = "%@：说出的序号会排成清单 · 再按 ⇧ 切回";
+"dictation.style.toast.structured" = "%@：说完后整理清单和改口 · 再按 ⇧ 切回";
 "dictation.style.toast.back" = "已切回%@";
 "dictation.style.chip" = "这条像清单";
 "dictation.style.chip.key" = "这条像清单 · %@";
@@ -430,7 +430,7 @@
 "dictation.style.learn.no" = "不用";
 "dictation.style.learn.done" = "好了，可以在 设置 → 听写 → 风格 里改";
 "dictation.style.section" = "风格";
-"dictation.style.detail" = "说的话怎么整理。轻整理不会把话排成清单，也不改语气。结构化只把你说出序号的要点（第一、第二…… / first, second…）排成编号清单。";
+"dictation.style.detail" = "说的话怎么整理。轻整理保留你说的每个词（改口也保留），不排清单，也不改语气。结构化会在说完后把整段再过一遍：只留你改口后的说法，把你一条条数出来的要点排成编号清单——只在你真的在列举时才排。";
 "dictation.style.keys" = "说话时单按一下 ⇧，这一条就改成结构化；也可以按 Fn+⇧ 开始。%@ 重排上一条。";
 "dictation.style.keys.no_hotkey" = "说话时单按一下 ⇧，这一条就改成结构化；也可以按 Fn+⇧ 开始。";
 "dictation.style.cat.chat" = "聊天";

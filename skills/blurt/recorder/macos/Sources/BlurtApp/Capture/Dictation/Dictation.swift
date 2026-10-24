@@ -116,6 +116,8 @@ final class Dictation {
     static var polishOn: Bool { (settings["polish"] as? String ?? "light") != "off" }
     static var polishTimeout: Double { max(0.5, (settings["polish_timeout_ms"] as? Double ?? 3000) / 1000) }
     /// how long a cold model (server start + load) may take: never counted against polish_timeout_ms
+    /// Structured's one pass over the whole take (record.dictation.structure_timeout_ms; the generation alone)
+    static var structureTimeout: Double { max(1, (settings["structure_timeout_ms"] as? Double ?? 10000) / 1000) }
     static var loadBudget: Double { max(1, (settings["load_budget_ms"] as? Double ?? 12000) / 1000) }
     /// transcribe and polish while talking (DictationStream); off = everything after key-up, the old way
     static var streaming: Bool { settings["streaming"] as? Bool ?? true }
@@ -499,13 +501,14 @@ final class Dictation {
             if e == .noSpeech { self.discard(quietly: false) } else { self.finish(ended: true) }
         }
         // the style: the app in front decides the base now (verbatim skips polish for the whole take); ⇧ or the
-        // island can still make it Structured — the list is rendered after the stitch, so that is free
+        // island can still make it Structured — the structuring pass runs once at key-up, on the stitched text
         beginStyle(bundle: DictationInsert.testMode ? testStyleBundle ?? front?.bundleIdentifier : front?.bundleIdentifier)
         let base = styleDecision?.base ?? .light
         var opt = DictationStream.Options()
         opt.language = Config.shared["asr.language"] as? String ?? "auto"
         opt.streaming = Dictation.streaming
         opt.polishTimeout = Dictation.polishTimeout
+        opt.structureTimeout = Dictation.structureTimeout
         opt.loadBudget = Dictation.loadBudget
         opt.vocab = DictationVocabulary.shared.payload()
         opt.polish = Dictation.polishOn && polishModel != nil && base.polishes
@@ -686,7 +689,9 @@ final class Dictation {
             guard let self = self, gen == self.generation, self.phase != .idle else { return }
             self.phase = stage == "polish" ? .polishing : .transcribing
         }
-        s.finish(keyUp: keyUp) { [weak self] r in
+        // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
+        let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && Dictation.polishOn && polishModel != nil
+        s.finish(keyUp: keyUp, structure: structure) { [weak self] r in
             guard let self = self, gen == self.generation else { return }
             guard !r.empty else {
                 try? FileManager.default.removeItem(at: url)
@@ -750,14 +755,25 @@ final class Dictation {
         return r
     }
 
+    /// The warm polish server's structuring pass (Structured): the whole take, its self-corrections resolved and what
+    /// was enumerated laid out — or nil (no server: Light's text is typed). Blocking: off the main thread.
+    static func structure(_ text: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]]) -> [String: Any]? {
+        let until = Date().addingTimeInterval(loadBudget)
+        while !WarmServer.running("polish-serve") && Date() < until { usleep(50_000) }
+        guard WarmServer.running("polish-serve") else { return nil }
+        let req: [String: Any] = ["cmd": "structure", "text": text, "timeout": timeout, "vocab": vocab]
+        guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1), r["ok"] as? Bool == true else { return nil }
+        return r
+    }
+
     private func deliver(id: String, r: DictationStream.Result, polishTried: Bool, app: NSRunningApplication?, started: Date,
                          duration: Double, wav: URL, context: DictationContext?, keyUp: CFTimeInterval) {
         // the custom words this dictation wrote: fixed by the sounds-like pass or polish, or (when the speech model was
         // told the words) written by the model itself
         var terms = r.terms
         if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where r.text.contains(t) && !terms.contains(t) { terms.append(t) } }
-        // the take's style: the category's variant of light, the list when Structured asked for one (DictationStyles.swift;
-        // deterministic, a few ms)
+        // the take's style: the structured text when Structured asked for it (the model's pass at key-up), the category's
+        // variant of light (DictationStyles.swift)
         let styled = styleText(r)
         var text = styled.text
         let styleRecord = styled.record
@@ -841,7 +857,7 @@ final class Dictation {
                                       "terms": terms, "context_used": r.contextUsed, "asr_model": r.asrModel ?? NSNull(),
                                       "biased": r.biased, "repaired": r.repaired, "fitted": fitted,
                                       "style": styleRecord.style, "style_source": styleRecord.source,
-                                      "category": styleRecord.category, "markers": styleRecord.markers,
+                                      "category": styleRecord.category, "structure_reason": r.structureReason ?? NSNull(),
                                       "rendered": styleRecord.rendered, "variant": styleRecord.variant,
                                       "style_ms": styled.ms]
             for (k, v) in timing { out[k] = v }

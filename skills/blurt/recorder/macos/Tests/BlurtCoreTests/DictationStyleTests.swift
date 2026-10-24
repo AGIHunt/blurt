@@ -1,66 +1,33 @@
-// Dictation styles (BlurtCore/DictationStyle.swift, DictationList.swift; docs/design/dictation-styles.md §3): the list
-// renderer against the fixture the Python port is checked against too, what it must never turn into a list, that it
-// only ever takes marker words out, the router's precedence, the category variants, and that instructions stay content.
+// Dictation styles (BlurtCore/DictationStyle.swift; docs/design/dictation-styles.md §3): which text a style types
+// (Structured: the polish model's structuring pass; Auto: only when it is a list), the router's precedence, the
+// category variants, and that instructions stay content. No rule-based list renderer: whether and how a take is
+// structured is the model's call (polish.py `structure`, tests/test_polish.py).
 import XCTest
 @testable import BlurtCore
 
 final class DictationStyleTests: XCTestCase {
-    /// tests/fixtures/dictation_lists.jsonl, from the repository root
-    static var fixture: URL {
-        var u = URL(fileURLWithPath: #filePath)
-        for _ in 0..<7 { u.deleteLastPathComponent() }
-        return u.appendingPathComponent("tests/fixtures/dictation_lists.jsonl")
-    }
+    // MARK: which text a style types
 
-    static func rows() throws -> [[String: Any]] {
-        try String(contentsOf: fixture, encoding: .utf8).split(separator: "\n")
-            .compactMap { try JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
-    }
-
-    // MARK: the renderer
-
-    func testListsMatchTheSharedFixture() throws {
-        let rows = try DictationStyleTests.rows()
-        XCTAssertGreaterThanOrEqual(rows.count, 30)
-        for r in rows {
-            let name = r["name"] as! String, text = r["text"] as! String, min = r["min"] as! Int
-            XCTAssertEqual(DictationList.markers(text), r["markers"] as? Int, name)
-            XCTAssertEqual(DictationList.render(text, minMarkers: min), r["expect"] as? String, name)
-        }
-    }
-
-    func testOnlyMarkerWordsGo() throws {
-        // every unit of the input that isn't a marker word is in the list, in order; the only units added are the
-        // items' numbers ("1. " at a line start)
-        var checked = 0
-        for r in try DictationStyleTests.rows() {
-            let text = r["text"] as! String
-            guard let out = DictationList.render(text), let d = DictationList.detect(text) else { continue }
-            let ns = NSMutableString(string: text)
-            for range in d.removedRanges.reversed() { ns.deleteCharacters(in: range) }
-            let unnumbered = out.components(separatedBy: "\n")
-                .map { $0.replacingOccurrences(of: #"^[0-9]+\. "#, with: "", options: .regularExpression) }.joined(separator: "\n")
-            XCTAssertEqual(DictationStitch.units(unnumbered).map(\.value), DictationStitch.units(ns as String).map(\.value), r["name"] as! String)
-            XCTAssertEqual(d.removed.count, d.markers)
-            checked += 1
-        }
-        XCTAssertGreaterThanOrEqual(checked, 14)
-    }
-
-    func testEnumerationWordsInNormalSpeechStayProse() {
-        // the words that make Typeless over-fire: never a list on their own, under any style
-        for t in ["以及我们的其他同事", "然后呢，然后我们就走了", "另外，还有一个问题", "这是第一次，也是第一天",
-                  "一是一，二是二", "一是一是，对对对", "We also need this, and then that.", "Then we left, and then we came back."] {
-            XCTAssertNil(DictationList.render(t, minMarkers: 2), t)
-            XCTAssertNil(DictationList.render(t, minMarkers: 3), t)
-        }
-    }
-
-    func testRendererIsFast() {
-        let long = String(repeating: "明天要做三件事。第一，把测试全部跑完。第二，把文档更新一下。第三，提交代码。", count: 20)
-        let t0 = Date()
-        for _ in 0..<20 { _ = DictationList.render(long) }
-        XCTAssertLessThan(Date().timeIntervalSince(t0) / 20, 0.005)      // < 5 ms for a long take
+    func testPick() {
+        let light = "明天要做三件事，第一跑测试，第二更新文档。"
+        let listed = "明天要做三件事：\n1. 跑测试\n2. 更新文档"
+        XCTAssertEqual(DictationStyle.light.pick(light: light, structured: listed).text, light)          // never a list
+        XCTAssertEqual(DictationStyle.verbatim.pick(light: light, structured: listed).text, light)
+        let s = DictationStyle.structured.pick(light: light, structured: listed)
+        XCTAssertEqual(s.text, listed)
+        XCTAssertTrue(s.list)
+        // Structured that stayed a paragraph (a correction resolved): typed as the model wrote it
+        let p = DictationStyle.structured.pick(light: "我们周五交，哦不，下周一交。", structured: "我们下周一交。")
+        XCTAssertEqual(p.text, "我们下周一交。")
+        XCTAssertFalse(p.list)
+        // Auto: only a list
+        XCTAssertEqual(DictationStyle.auto.pick(light: light, structured: listed).text, listed)
+        XCTAssertEqual(DictationStyle.auto.pick(light: "我们周五交，哦不，下周一交。", structured: "我们下周一交。").text, "我们周五交，哦不，下周一交。")
+        // no structured text (the pass refused, or never ran): Light's
+        XCTAssertEqual(DictationStyle.structured.pick(light: light, structured: nil).text, light)
+        XCTAssertEqual(DictationStyle.structured.pick(light: light, structured: "  ").text, light)
+        XCTAssertTrue(DictationStyle.structured.structures && DictationStyle.auto.structures)
+        XCTAssertFalse(DictationStyle.light.structures || DictationStyle.verbatim.structures)
     }
 
     // MARK: the router
@@ -134,9 +101,6 @@ final class DictationStyleTests: XCTestCase {
         XCTAssertEqual(DictationStyle.structured.next, .verbatim)
         XCTAssertEqual(DictationStyle.auto.next, .verbatim)
         XCTAssertFalse(DictationStyle.verbatim.polishes)
-        XCTAssertNil(DictationStyle.light.listMarkers)
-        XCTAssertEqual(DictationStyle.structured.listMarkers, 2)
-        XCTAssertEqual(DictationStyle.auto.listMarkers, 3)
     }
 
     // MARK: the category variants of light
@@ -170,7 +134,7 @@ final class DictationStyleTests: XCTestCase {
     func testInstructionsStayContent() {
         for t in ["帮我列个清单，把这周要做的事情整理一下。", "列个清单：买牛奶，取快递。", "写成邮件发给小王。",
                   "Make a list of the files that changed.", "分点说一下这个方案的优缺点。"] {
-            XCTAssertNil(DictationList.render(t), t)                                              // no list made of it
+            XCTAssertEqual(DictationStyle.light.pick(light: t, structured: nil).text, t)
             XCTAssertEqual(DictationStyleVariant.apply(t, category: .notes, structured: false).text, t)
             XCTAssertEqual(DictationStyleVariant.apply(t, category: .code, structured: false).text, t)
         }

@@ -52,8 +52,10 @@ final class DictationFitTests: XCTestCase {
         XCTAssertEqual(fit("send the report to the team.", "Please ", " to the team."), "send the report")
         // one word is an overlap in English
         XCTAssertEqual(fit("Review the PR before lunch.", "Can you review", ""), " the PR before lunch.")
-        // mid-sentence: no capital the speech model gave, no closing full stop before a lower-case word
-        XCTAssertEqual(fit("Then we deploy.", "Fix the tests and", "on Friday"), " then we deploy ")
+        // mid-sentence: no closing full stop before a lower-case word; the case stays as polish wrote it (no list of
+        // ordinary words decides whether a capital is a name's: polish saw the text around the cursor)
+        XCTAssertEqual(fit("Then we deploy.", "Fix the tests and", "on Friday"), " Then we deploy ")
+        XCTAssertEqual(fit("then we deploy.", "Fix the tests and", "on Friday"), " then we deploy ")
         // a new sentence after a full stop keeps its capital and its full stop
         XCTAssertEqual(fit("Then we deploy.", "Fix the tests.", " The rest can wait."), " Then we deploy.")
     }

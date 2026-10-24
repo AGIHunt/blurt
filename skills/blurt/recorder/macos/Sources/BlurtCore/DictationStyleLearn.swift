@@ -16,11 +16,12 @@ public enum DictationStyleLearn {
     ///  • a take that sounded like a list, left as prose (the ≡ suggestion ignored) → light.
     public static func signal(_ r: DictationStyleRecord) -> DictationStyle? {
         func norm(_ s: String) -> DictationStyle? { DictationStyle(rawValue: s).map { $0 == .auto ? .structured : $0 } }
-        if let last = r.reformats.last(where: { $0.action != "revert" }) {
-            if r.reformats.contains(where: { $0.action == "revert" && $0.time > last.time }) { return .light }
+        let acts = r.reformats.filter { $0.action != "suggest" }          // an offer is no choice of the user's
+        if let last = acts.last(where: { $0.action != "revert" }) {
+            if acts.contains(where: { $0.action == "revert" && $0.time > last.time }) { return .light }
             return norm(last.to)            // an undo goes back `to` the style the take had
         }
-        if r.reformats.contains(where: { $0.action == "revert" }) { return .light }
+        if acts.contains(where: { $0.action == "revert" }) { return .light }
         if ["shift", "island", "chord"].contains(r.source) { return norm(r.style) }
         if r.listLikely, r.style == DictationStyle.light.rawValue { return .light }
         return nil

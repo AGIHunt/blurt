@@ -69,7 +69,7 @@ public struct DictationEntry: Identifiable, Hashable {
         self.timing = timing; self.repaired = repaired; self.fitted = fitted
     }
 
-    public static let timingKeys = ["asr_ms", "polish_ms", "load_ms", "total_ms", "segments"]
+    public static let timingKeys = ["asr_ms", "polish_ms", "structure_ms", "load_ms", "total_ms", "segments"]
 
     static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()

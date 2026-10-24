@@ -74,6 +74,14 @@ final class DictationStyleLearnTests: XCTestCase {
         XCTAssertEqual(DictationStyleLearn.signal(r), .light)
         // auto counts as a wish for lists
         XCTAssertEqual(DictationStyleLearn.signal(DictationStyleRecord(style: "auto", source: "shift", category: "notes", base: "light")), .structured)
+        // the island offered a list (the structuring pass found one) and it was left as prose: a vote for light; taken:
+        // its style. The offer itself is no choice of the user's.
+        var o = DictationStyleRecord(style: "light", source: "default", category: "notes", base: "light")
+        o.reformats = [DictationReformatRecord(action: "suggest", from: "light", to: "structured", replaced: false)]
+        XCTAssertTrue(o.listLikely)
+        XCTAssertEqual(DictationStyleLearn.signal(o), .light)
+        o.reformats.append(DictationReformatRecord(action: "reformat", from: "light", to: "structured", replaced: true))
+        XCTAssertEqual(DictationStyleLearn.signal(o), .structured)
         // a rendered list taken apart in the field
         var v = DictationStyleRecord(style: "structured", source: "app", category: "notes", base: "structured", markers: 3, rendered: true)
         v.reformats = [DictationReformatRecord(action: "revert", from: "structured", to: "light", replaced: false)]

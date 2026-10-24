@@ -39,15 +39,6 @@ final class DictationStitchTests: XCTestCase {
         XCTAssertEqual(DictationStitch.units("我们的API v2 don't").map(\.value), ["我", "们", "的", "api", "v", "2", "don't"])
     }
 
-    func testCorrectionAtTheStartOfAPiece() {
-        XCTAssertTrue(DictationStitch.startsWithCorrection("不对，是周四"))
-        XCTAssertTrue(DictationStitch.startsWithCorrection("嗯，我是说下周"))
-        XCTAssertTrue(DictationStitch.startsWithCorrection("No wait, the right side"))
-        XCTAssertFalse(DictationStitch.startsWithCorrection("不对称的布局要改一下"))
-        XCTAssertFalse(DictationStitch.startsWithCorrection("然后把 PR 合并"))
-        XCTAssertFalse(DictationStitch.startsWithCorrection("sorted by date"))
-    }
-
     // MARK: a seam is a pause, not a sentence end (synthetic sentences shaped like the user's reports)
 
     typealias S = DictationStitch
@@ -69,55 +60,34 @@ final class DictationStitchTests: XCTestCase {
                        "我在 Claude Code 里面让它写了一个 Python 脚本。")
     }
 
-    func testALongPauseAfterAWholeSentenceEndsIt() {
+    func testALongPauseKeepsTheSpeechModelsMark() {
         XCTAssertEqual(S.joinPieces(["回到办公室以后再慢慢整理也来得及。", "下午我们再开会。"], pauses: [1.4]),
                        "回到办公室以后再慢慢整理也来得及。下午我们再开会。")
         XCTAssertEqual(S.joinPieces(["The report looks good overall.", "Thanks for your help."], pauses: [1.5]),
                        "The report looks good overall. Thanks for your help.")
-        // long, but the sentence isn't whole: a comma (when there was punctuation), never a full stop
-        XCTAssertEqual(S.joinPieces(["最好在设置页面里也。", "加上一个开关。"], pauses: [1.5]), "最好在设置页面里也，加上一个开关。")
-        XCTAssertEqual(S.joinPieces(["但是呢。", "它识别出来的文字有问题。"], pauses: [1.3]), "但是呢，它识别出来的文字有问题。")
-        XCTAssertEqual(S.joinPieces(["The only problem is.", "That the page is old."], pauses: [1.4]),
-                       "The only problem is, that the page is old.")
+        // no stop words second-guess it (that is polish's call, over a window spanning the seam): the mark as heard
+        XCTAssertEqual(S.joinPieces(["最好在设置页面里也，", "加上一个开关。"], pauses: [1.5]), "最好在设置页面里也，加上一个开关。")
+        XCTAssertEqual(S.joinPieces(["First run the tests;", "then ship it."], pauses: [1.4]), "First run the tests; then ship it.")
         // exactly the threshold counts as long; just under it doesn't
         XCTAssertEqual(S.joinPieces(["我们明天上午十点开会。", "下午修问题。"], pauses: [S.longPause]), "我们明天上午十点开会。下午修问题。")
         XCTAssertEqual(S.joinPieces(["我们明天上午十点开会。", "下午修问题。"], pauses: [1.19]), "我们明天上午十点开会下午修问题。")
+        XCTAssertEqual(S.mark("。", after: "Done"), ".")
+        XCTAssertEqual(S.mark("，", after: "好的"), "，")
+        XCTAssertEqual(S.mark("", after: "好的"), "")
     }
 
-    func testEnglishLosesTheCapitalTheCutGaveIt() {
-        XCTAssertEqual(S.joinPieces(["I tried the new build this morning.", "And it was a lot faster.", "Than the old one."],
-                                    pauses: [0.7, 0.8]),
-                       "I tried the new build this morning and it was a lot faster than the old one.")
-        // names, acronyms and "I" keep theirs
+    func testTheCaseIsLeftAlone() {
+        // no list of ordinary words decides whether a capital is a name's: the words stay as the speech model wrote
+        // them (polish, when on, fixes the case seeing the sentence)
         XCTAssertEqual(S.joinPieces(["We should move the meeting to.", "Thursday afternoon."], pauses: [0.7]),
                        "We should move the meeting to Thursday afternoon.")
         XCTAssertEqual(S.joinPieces(["Yesterday,", "I fixed the login bug."], pauses: [0.7]), "Yesterday I fixed the login bug.")
-        XCTAssertEqual(S.decapitalize("API keys rotate daily"), "API keys rotate daily")
-        XCTAssertEqual(S.decapitalize("GitHub is down"), "GitHub is down")
-        XCTAssertEqual(S.decapitalize("I'm on it"), "I'm on it")
-        XCTAssertEqual(S.decapitalize("Than the old one"), "than the old one")
-        XCTAssertEqual(S.decapitalize("Don't merge yet"), "don't merge yet")
-        XCTAssertEqual(S.decapitalize("Send it"), "send it")
-        XCTAssertEqual(S.decapitalize("Send it", names: ["Send"]), "Send it")        // a custom word
-        XCTAssertEqual(S.decapitalize("下午再说"), "下午再说")
     }
 
-    func testPlausiblyFinal() {
-        XCTAssertTrue(S.plausiblyFinal("回到办公室以后再整理也来得及", end: "。"))
-        XCTAssertTrue(S.plausiblyFinal("你能帮我看一下这个问题吗", end: "？"))
-        XCTAssertTrue(S.plausiblyFinal("The report looks good overall", end: "."))
-        XCTAssertTrue(S.plausiblyFinal("I will add it to the shared folder, myself", end: "."))   // the sentence counts
-        XCTAssertFalse(S.plausiblyFinal("这个功能确实很顺手。但是呢", end: "。"))               // only the last sentence
-        XCTAssertFalse(S.plausiblyFinal("回到办公室以后再整理也来得及", end: "，"))     // a comma isn't an end
-        XCTAssertFalse(S.plausiblyFinal("回到办公室以后再整理也来得及", end: ""))
-        XCTAssertFalse(S.plausiblyFinal("我们出门的时候", end: "。"))                   // a time clause waits for more
-        XCTAssertFalse(S.plausiblyFinal("好像它是", end: "。"))
-        XCTAssertFalse(S.plausiblyFinal("如果是这样的话", end: "。"))
-        XCTAssertFalse(S.plausiblyFinal("但是呢", end: "。"))                           // a stub
-        XCTAssertFalse(S.plausiblyFinal("所以说呢", end: "。"))
-        XCTAssertFalse(S.plausiblyFinal("I think the problem is", end: "."))
-        XCTAssertFalse(S.plausiblyFinal("and then", end: "."))
-        XCTAssertFalse(S.plausiblyFinal("it was faster than the", end: "."))
+    func testListLines() {
+        XCTAssertEqual(S.listLines("明天要做三件事：\n1. 跑测试\n2. 写文档"), 2)
+        XCTAssertEqual(S.listLines("- a\n- b\n3、c"), 3)
+        XCTAssertEqual(S.listLines("1.5 GB is fine\n第一，跑测试。"), 0)
     }
 
     func testCommitSplitKeepsTheUnfinishedClause() {
@@ -171,19 +141,11 @@ final class DictationStitchTests: XCTestCase {
             case "fallbackSeam":
                 XCTAssertEqual(S.fallbackSeam(r["previous"] as! String, r["next"] as! String, pause: r["pause"] as? Double,
                                               heardEnd: r["heard"] as! String), r["want"] as? String, "\(r)")
-            case "commaJoin":
-                XCTAssertEqual(S.commaJoin(r["a"] as! String, r["b"] as! String), r["want"] as? String, "\(r)")
             case "commitSplit":
                 let s = S.commitSplit(r["text"] as! String)
                 XCTAssertEqual([s.commit, s.carry, s.end], r["want"] as? [String], "\(r)")
-            case "decapitalize":
-                XCTAssertEqual(S.decapitalize(r["text"] as! String), r["want"] as? String, "\(r)")
             case "midSentence":
                 XCTAssertEqual(S.midSentence(r["text"] as! String), r["want"] as? Bool, "\(r)")
-            case "startsWithCorrection":
-                XCTAssertEqual(S.startsWithCorrection(r["text"] as! String), r["want"] as? Bool, "\(r)")
-            case "endsWithCorrection":
-                XCTAssertEqual(S.endsWithCorrection(r["text"] as! String), r["want"] as? Bool, "\(r)")
             case "keepCase":
                 XCTAssertEqual(S.keepCase(input: r["input"] as! String, output: r["output"] as! String), r["want"] as? String, "\(r)")
             default:
@@ -196,9 +158,8 @@ final class DictationStitchTests: XCTestCase {
         // the bug: a refused window typed 「…跑完第二，…」
         XCTAssertEqual(S.fallbackSeam("第一，把测试全部跑完", "第二把文档更新一下", pause: 0.7, heardEnd: "。"),
                        "第一，把测试全部跑完，第二把文档更新一下")
-        XCTAssertEqual(S.fallbackSeam("我们把", "测试跑完", pause: 0.7, heardEnd: "，"), "我们把测试跑完")   // 把 binds
-        XCTAssertTrue(S.binds("send it to the"))
-        XCTAssertFalse(S.binds("把测试全部跑完"))
+        // no list of words that "bind" to the next: where the speech model heard a boundary, the comma goes in
+        XCTAssertEqual(S.fallbackSeam("把测试全部跑完", "第二把文档更新一下", pause: 0.7, heardEnd: ""), "把测试全部跑完第二把文档更新一下")
     }
 
     func testTerminatorFollowsTheScript() {

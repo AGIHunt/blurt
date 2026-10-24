@@ -7,14 +7,13 @@
 //    second — the longest run of ≥ 2 units at the end of the first that the second starts with (allowing 1
 //    half-heard unit in front of it, a word cut in half, when ≥ 3 units match). Units as polish.py's guard counts them: each CJK character,
 //    each Latin word, each digit; case, spaces and punctuation ignored.
-//  • a piece that starts with a self-correction ("不对…", "no wait…") is polished together with the one before, so the
-//    corrected-away words can still go.
 //  • a seam is a pause, not a sentence end: each piece was transcribed (and polished) as if it were a whole utterance,
-//    so it ended in 。 and the next began with a capital — a full stop at every breath. `boundary` takes the piece's
-//    trailing punctuation off (。.!?！？ and ，,) unless the pause was long (`longPause`, 1.2 s) and the text before it
-//    is plausibly a whole sentence (`plausiblyFinal`); in English the next piece's first word loses the capital the
-//    cut gave it (`decapitalize`). Polish then decides over a window that spans the seam: `commitSplit` keeps the
-//    last, unfinished clause of a window to be polished again with the next piece.
+//    so it ended in 。 and the next began with a capital — a full stop at every breath. `seam` takes the piece's
+//    trailing punctuation off after a breath and keeps the speech model's own mark after a long pause (`longPause`,
+//    1.2 s). Mechanical only (docs/design/dictation.md §Rules vs model): no stop words, no list of ordinary words, no
+//    correction markers — whether a sentence is complete, a capital belongs to a name, or a piece corrects the one
+//    before is the polish model's call, made over a window that spans the seam (`commitSplit` keeps the last,
+//    unfinished clause of a window to be polished again with the next piece).
 // Pure: DictationStitchTests.
 import Foundation
 
@@ -105,30 +104,12 @@ public enum DictationStitch {
         }
         return next
     }
-
-    /// The piece opens with a self-correction: polish it together with the piece before it.
-    public static func startsWithCorrection(_ text: String) -> Bool {
-        var t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        // fillers and punctuation in front don't count
-        while let c = t.first, !c.isLetter, !c.isNumber { t.removeFirst() }
-        for f in ["嗯", "呃", "啊", "额", "哦", "噢", "um", "uh", "er"] where t.hasPrefix(f) {
-            t = String(t.dropFirst(f.count))
-            while let c = t.first, !c.isLetter, !c.isNumber { t.removeFirst() }
-        }
-        let zh = ["不对", "不是不是", "哦不是", "我是说", "我的意思是", "更正", "算了", "说错了", "应该是"]
-        let en = ["no wait", "wait no", "i mean", "sorry", "actually", "scratch that", "make that", "rather"]
-        // 不对称 / 不对劲 / 不对外 are words, not "no wait"
-        let words = ["不对称", "不对劲", "不对外", "不对应", "不对头", "不对付", "不是很", "不是所有", "不是每"]
-        if words.contains(where: { t.hasPrefix($0) }) { return false }
-        if zh.contains(where: { t.hasPrefix($0) }) { return true }
-        return en.contains { e in t.hasPrefix(e) && (t.count == e.count || !(t[t.index(t.startIndex, offsetBy: e.count)].isLetter)) }
-    }
 }
 
 // MARK: seams are pauses, not sentence ends
 
 extension DictationStitch {
-    /// A pause at least this long after a whole sentence ends it; anything shorter is a breath.
+    /// A pause at least this long may have ended a sentence; anything shorter is a breath.
     public static let longPause = 1.2
     /// What a pause leaves at the end of a piece: the sentence ends and commas the speech model or polish put there.
     static let trailing: Set<Character> = ["。", ".", "!", "?", "！", "？", "，", ",", "、", "；", ";", "…"]
@@ -164,100 +145,28 @@ extension DictationStitch {
         }
     }
 
-    /// The last sentence: what follows the last sentence end inside the text.
-    static func lastSentence(_ core: String) -> String {
-        if let i = core.lastIndex(where: { terminators.contains($0) }) { return String(core[core.index(after: i)...]) }
-        return core
+    /// The one mark a pause leaves: the sentence end in `end` (in the text's script), else its semicolon or comma.
+    public static func mark(_ end: String, after text: String) -> String {
+        if end.contains(where: { terminators.contains($0) }) { return terminator(end, after: text) }
+        if end.isEmpty { return "" }
+        if end.contains(where: { $0 == "；" || $0 == ";" }) { return endsCJK(text) ? "；" : ";" }
+        return endsCJK(text) ? "，" : ","
     }
 
-    // words a sentence doesn't end on: a connective, a preposition, an article, a pronoun waiting for its verb
-    static let openEndsZH = ["的时候", "时候", "以后", "之后", "之前", "的话", "因为", "所以", "但是", "可是", "然后", "而且",
-                             "如果", "还是", "或者", "就是", "还有", "以及", "比如", "不过", "那么", "这个", "那个", "一个",
-                             "我们", "你们", "他们", "也", "都", "就", "还", "又", "再", "才", "把", "被", "给", "从",
-                             "向", "往", "在", "是", "和", "跟", "与", "或", "而", "但", "且", "让", "将", "比", "为", "若",
-                             "嗯", "呃", "额"]
-    static let openStartsZH = ["但是", "可是", "所以", "因为", "然后", "而且", "如果", "不过", "那么", "就是"]
-    static let openEndsEN = Set<String>(["and", "or", "but", "so", "because", "the", "a", "an", "to", "of", "in", "on",
-                                          "at", "for", "with", "from", "that", "which", "who", "whose", "if", "when",
-                                          "while", "where", "is", "are", "was", "were", "be", "been", "am", "i", "we",
-                                          "you", "they", "he", "she", "my", "your", "our", "their", "his", "her", "its",
-                                          "this", "these", "those", "than", "as", "by", "about", "into", "then", "also",
-                                          "just", "like", "um", "uh", "er", "very", "really", "not", "until", "since",
-                                          "although", "though", "whether", "both", "either", "neither", "some", "any"])
-    static let openStartsEN: Set<String> = ["but", "so", "and", "because", "then", "or", "if", "when"]
-
-    /// Could the text before a pause be a whole sentence? It had a sentence end (。!? from the speech model), its last
-    /// sentence isn't a stub (「但是呢」, "and so"), and it doesn't stop on a word that needs more (的时候, 是, also, the …).
-    /// "…to the shared folder, myself." is whole: the length is the sentence's, not its last clause's.
-    public static func plausiblyFinal(_ core: String, end: String) -> Bool {
-        guard end.contains(where: { terminators.contains($0) }) else { return false }
-        let sentence = lastSentence(core).trimmingCharacters(in: .whitespaces)
-        let u = units(sentence).map(\.value)
-        guard let last = u.last else { return false }
-        if endsCJK(sentence) {
-            if u.count < 4 { return false }
-            if openEndsZH.contains(where: { sentence.hasSuffix($0) }) { return false }
-            if u.count <= 5, openStartsZH.contains(where: { sentence.hasPrefix($0) }) { return false }
-        } else {
-            if u.count < 3 { return false }
-            if openEndsEN.contains(last) { return false }
-            if u.count <= 4, let f = u.first, openStartsEN.contains(f) { return false }
-        }
-        return true
-    }
-
-    // ordinary words a speech model capitalises only because the piece started there
-    static let ordinary = Set<String>([
-        "the", "a", "an", "and", "or", "but", "so", "because", "then", "also", "just", "that", "this", "these", "those",
-        "there", "here", "it", "its", "it's", "we", "we're", "we'll", "you", "you're", "they", "they're", "he", "she",
-        "me", "us", "them", "my", "your", "our", "their", "his", "her", "what", "which", "who", "when", "where", "why",
-        "how", "if", "is", "are", "was", "were", "be", "been", "am", "do", "does", "did", "don't", "doesn't", "didn't",
-        "have", "has", "had", "will", "would", "can", "could", "should", "may", "might", "must", "won't", "can't",
-        "not", "no", "yes", "to", "of", "in", "on", "at", "for", "with", "from", "by", "about", "as", "than", "like",
-        "into", "after", "before", "while", "until", "since", "all", "some", "any", "each", "every", "more", "most",
-        "much", "many", "very", "really", "maybe", "still", "even", "only", "well", "now", "later", "today",
-        "tomorrow", "make", "made", "take", "get", "got", "go", "going", "see", "look", "let", "send", "add", "use",
-        "try", "want", "need", "know", "think", "say", "said", "tell", "ask", "give", "keep", "put", "set", "run",
-        "move", "check", "fix", "write", "read", "start", "finish", "open", "close", "show", "find", "work", "please",
-        "thanks", "thank", "okay", "ok", "one", "two", "three", "first", "next", "last", "other", "another", "same",
-        "both", "either", "neither", "whether", "though", "although", "once", "again", "too", "already", "always",
-        "never", "sometimes", "something", "anything", "everything", "nothing", "someone", "everyone", "anyone",
-        "otherwise", "instead", "actually", "probably", "definitely", "especially", "myself", "yourself", "itself",
-        "ourselves", "themselves", "don’t", "it’s", "we’re", "you’re", "they’re", "being",
-        // a list's markers, after a seam ("First, run the tests, Second, …")
-        "second", "third", "fourth", "fifth", "finally", "lastly", "firstly", "secondly"])
-
-    /// The first word without the capital the cut gave it ("Than the one…" after "a lot faster" → "than the one…"):
-    /// only an ordinary word written as a capital and lower-case letters; never "I", a custom word (`names`), an
-    /// acronym or a name in the middle of the sentence (Thursday, GitHub).
-    public static func decapitalize(_ text: String, names: Set<String> = []) -> String {
-        guard let first = text.first, first.isUppercase, isWordChar(first) else { return text }
-        var end = text.startIndex
-        while end < text.endIndex, text[end].isLetter || "'’".contains(text[end]) { end = text.index(after: end) }
-        let word = String(text[..<end])
-        guard word != "I", !word.hasPrefix("I'"), !word.hasPrefix("I’"), !names.contains(word),
-              word.dropFirst().allSatisfy({ !$0.isUppercase }), ordinary.contains(word.lowercased()) else { return text }
-        return word.lowercased() + text[end...]
-    }
-
-    /// What a pause between two pieces leaves: the first piece's ending and the second one's start.
-    ///  • `pause` ≥ `longPause` and the first is plausibly a whole sentence → its sentence end stays;
-    ///  • `pause` ≥ `longPause`, not a whole sentence, but it ended in punctuation → a comma;
-    ///  • otherwise (a breath, or not known) → no punctuation: polish, or the reader, decides.
-    /// The second piece loses the capital the cut gave it unless the sentence really ended.
-    public static func seam(_ previous: String, _ next: String, pause: Double?, names: Set<String> = []) -> (String, String) {
+    /// What a pause between two pieces leaves. Mechanical — the pause's length and the speech model's own mark, no
+    /// word lists: after a long pause (≥ `longPause`) the mark the speech model ended the piece with stays; after a
+    /// breath (or a pause not known) it goes. Words and case are left as they are; with polish on, the model decides
+    /// over a window that spans the seam.
+    public static func seam(_ previous: String, _ next: String, pause: Double?) -> (String, String) {
         let (core, end) = splitTrailing(previous)
         guard !core.isEmpty else { return (previous, next) }
-        if let p = pause, p >= longPause {
-            if plausiblyFinal(core, end: end) { return (core + terminator(end, after: core), next) }
-            if !end.isEmpty { return (core + (endsCJK(core) ? "，" : ","), decapitalize(next, names: names)) }
-        }
-        return (core, decapitalize(next, names: names))
+        if let p = pause, p >= longPause, !end.isEmpty { return (core + mark(end, after: core), next) }
+        return (core, next)
     }
 
     /// The pieces' texts joined with the seam rule. `pauses[i]`: the pause after piece i (nil: not known — a short
     /// one). The last piece keeps its ending: that is where the dictation ended.
-    public static func joinPieces(_ texts: [String], pauses: [Double?], names: Set<String> = []) -> String {
+    public static func joinPieces(_ texts: [String], pauses: [Double?]) -> String {
         var acc = ""
         var after: Double?
         for (i, t) in texts.enumerated() {
@@ -268,7 +177,7 @@ extension DictationStitch {
                 continue
             }
             if acc.isEmpty { acc = t } else {
-                let (a, b) = seam(acc, t, pause: after, names: names)
+                let (a, b) = seam(acc, t, pause: after)
                 acc = join(a, b)
             }
             after = pause
@@ -276,41 +185,24 @@ extension DictationStitch {
         return acc
     }
 
-    // a fall-back's seam: no comma after a word that binds to what follows
-    static let bindingZH = ["把", "被", "给", "从", "向", "往", "在", "是", "和", "跟", "与", "或", "让", "将", "比", "为", "对",
-                            "的", "这个", "那个", "一个", "我们", "你们", "他们", "也", "都", "就", "还", "又", "再", "才",
-                            "嗯", "呃", "额"]
-
-    /// The text ends on a word that needs what comes next (把, 的, to, the …).
-    public static func binds(_ text: String) -> Bool {
-        let t = text.trimmingCharacters(in: .whitespaces)
-        if endsCJK(t) { return bindingZH.contains { t.hasSuffix($0) } }
-        guard let last = units(t).last?.value else { return false }
-        return openEndsEN.contains(last)
-    }
-
     /// Where a polish window fell back to the transcript, its seam (the pause before the piece) still gets
     /// punctuation: after a long pause the seam rule's; after a short one a comma where the speech model heard a
-    /// boundary (`heardEnd`: the mark it ended the piece with), unless the text before binds to the next words. Without
-    /// it a fall-back read 「…跑完第二，把文档…」.
-    public static func fallbackSeam(_ previous: String, _ next: String, pause: Double?, heardEnd: String,
-                                    names: Set<String> = []) -> String {
+    /// boundary (`heardEnd`: the mark it ended the piece with). Without it a fall-back read 「…跑完第二，把文档…」.
+    public static func fallbackSeam(_ previous: String, _ next: String, pause: Double?, heardEnd: String) -> String {
         let (core, end) = splitTrailing(previous)
         guard !core.isEmpty else { return join(previous, next) }
-        let mark = end.isEmpty ? heardEnd : end
+        let m = end.isEmpty ? heardEnd : end
         if let p = pause, p >= longPause {
-            let (a, b) = seam(core + mark, next, pause: p, names: names)
+            let (a, b) = seam(core + m, next, pause: p)
             return join(a, b)
         }
-        let rest = decapitalize(next.trimmingCharacters(in: .whitespacesAndNewlines), names: names)
-        if !mark.isEmpty, !binds(core) {
-            return core + (endsCJK(core) ? "，" : ", ") + rest
-        }
+        let rest = next.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !m.isEmpty { return core + (endsCJK(core) ? "，" : ", ") + rest }
         return join(core, rest)
     }
 
     /// The pieces' texts joined as a fall-back types them: `joinPieces`, with `fallbackSeam` at every seam.
-    public static func joinPiecesForFallback(_ texts: [String], pauses: [Double?], names: Set<String> = []) -> String {
+    public static func joinPiecesForFallback(_ texts: [String], pauses: [Double?]) -> String {
         var acc = ""
         var after: Double?
         var afterEnd = ""
@@ -321,37 +213,11 @@ extension DictationStitch {
                 if let a = after, let p = pause { after = a + p }
                 continue
             }
-            acc = acc.isEmpty ? t : fallbackSeam(acc, t, pause: after, heardEnd: afterEnd, names: names)
+            acc = acc.isEmpty ? t : fallbackSeam(acc, t, pause: after, heardEnd: afterEnd)
             after = pause
             afterEnd = splitTrailing(t).end
         }
         return acc
-    }
-
-    /// Two parts with a pause between them that ended nothing (a piece that opens with 「不对…」 after the one before):
-    /// a comma unless the first already ends in punctuation — the corrections pass reads the marker by its pause.
-    public static func commaJoin(_ a: String, _ b: String) -> String {
-        let a = a.trimmingCharacters(in: .whitespacesAndNewlines), b = b.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let last = a.last else { return b }
-        if b.isEmpty || trailing.contains(last) { return join(a, b) }
-        return a + (endsCJK(a) ? "，" : ", ") + b
-    }
-
-    /// The piece ends on a self-correction marker (「资料我晚上发群里，不对。」 + a pause + 「下午就发」): the restated words
-    /// are in the next piece, so this window is carried whole instead of polished (polish dropped the 不对 and kept both).
-    public static func endsWithCorrection(_ text: String) -> Bool {
-        var t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        while let c = t.last, !c.isLetter, !c.isNumber { t.removeLast() }
-        for f in ["嗯", "呃", "啊", "额"] where t.hasSuffix(f) { t = String(t.dropLast(f.count)) }
-        while let c = t.last, !c.isLetter, !c.isNumber { t.removeLast() }
-        let zh = ["不对", "不是不是", "哦不是", "哦不", "我是说", "我的意思是", "更正", "说错了", "算了"]
-        let en = ["no wait", "wait no", "no, wait", "i mean", "scratch that", "make that", "or rather", "sorry"]
-        if zh.contains(where: { t.hasSuffix($0) }) { return true }
-        return en.contains { e in
-            guard t.hasSuffix(e) else { return false }
-            let before = t.dropLast(e.count)
-            return before.last.map { !$0.isLetter } ?? true
-        }
     }
 
     /// The window's output with the case its first word had in the input: polish capitalises a window as a sentence of
@@ -399,5 +265,13 @@ extension DictationStitch {
         let commit = String(core[..<commitEnd]).trimmingCharacters(in: .whitespaces)
         let carry = String(core[commitEnd...]).trimmingCharacters(in: .whitespaces)
         return (commit, carry, end)
+    }
+
+    /// Numbered or bulleted lines ("1. …", "2、…", "- …" at a line start): Light must never write one; a structured
+    /// text with ≥ 2 of them is a list.
+    public static func listLines(_ text: String) -> Int {
+        text.components(separatedBy: "\n").filter {
+            $0.range(of: #"^[ \t]*(?:[0-9]{1,2}(?:[.)）](?![0-9])|、)|[-•*](?=[ \t]))[ \t]*\S"#, options: .regularExpression) != nil
+        }.count
     }
 }

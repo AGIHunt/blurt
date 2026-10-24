@@ -63,7 +63,8 @@ class Apply(unittest.TestCase):
         self.assertEqual(self.fix("口喷机现在支持了")[0], "口喷鸡现在支持了")
 
     def test_case_and_spacing_variants_of_a_term(self):
-        self.assertEqual(self.fix("ask claude about sense voice on github")[0], "ask Claude about SenseVoice on GitHub")
+        # one word in another case ("claude", "github") is polish's call: the sentence says whether it is the name
+        self.assertEqual(self.fix("ask claude about sense voice on github")[0], "ask claude about SenseVoice on github")
         self.assertEqual(self.fix("see ba 12")[0], "see BA-12")
 
     def test_ordinary_words_are_left_alone(self):
@@ -112,7 +113,7 @@ class GuardWithVocab(unittest.TestCase):
     def test_a_fix_toward_a_listed_term_is_not_new_words(self):
         raw = "我刚才用cloud code在t mux里开了一个work tree然后跑了一下pie test和kodex"
         out = "我刚才用 Claude Code 在 tmux 里开了一个 worktree，然后跑了一下 pytest 和 Codex。"
-        self.assertEqual(polish.guard(raw, out)["reason"], "novel")            # without the words: refused
+        self.assertFalse(polish.guard(raw, out)["pass"])                       # without the words: refused
         g = polish.guard(raw, out, self.allowed(["Claude Code", "tmux", "worktree", "pytest", "Codex"]))
         self.assertTrue(g["pass"], g)
         self.assertIn("claude", g["stats"]["vocab_units"])
@@ -124,7 +125,7 @@ class GuardWithVocab(unittest.TestCase):
         self.assertTrue(polish.guard(raw, out, self.allowed([], ctx))["pass"])
         # a word that is in neither the list nor the context is still new
         bad = "So the Gemma model and the Qwen model both run on MLX, and the tool is called Ollama Turbo Studio Pro Max Ultra."
-        self.assertEqual(polish.guard(raw, bad, self.allowed([], ctx))["reason"], "novel")
+        self.assertFalse(polish.guard(raw, bad, self.allowed([], ctx))["pass"])
 
     def test_misheard_cjk_to_term(self):
         g = polish.guard("口喷机现在可以用了吗", "口喷鸡现在可以用了吗？", self.allowed(["口喷鸡"]))
@@ -132,7 +133,7 @@ class GuardWithVocab(unittest.TestCase):
 
     def test_vocab_does_not_excuse_other_failures(self):
         allowed = self.allowed(["Claude Code"])
-        self.assertEqual(polish.guard("为什么cloud code会超时", "因为网络慢。", allowed)["reason"], "answered")
+        self.assertFalse(polish.guard("为什么cloud code会超时", "因为网络慢。", allowed)["pass"])          # an answer
         long_in = "嗯那个我们先用cloud code把登录页面的按钮颜色改一下然后再把设置页的保存逻辑重新写一遍最后跑一下测试"
         self.assertEqual(polish.guard(long_in, "用 Claude Code 改按钮。", allowed)["reason"], "shrunk")
 
@@ -371,9 +372,9 @@ class CodeSwitch(unittest.TestCase):
         names = ["OpenAI", "Anthropic", "Dario", "Sam Altman", "Musk", "Grok"]
         # Chinese characters left in an English answer: the model switched mid-sentence (the WeChat case, paraphrased)
         self.assertTrue(V.translated_glue("念几个名字：open AI and Musk's Grok, and呃，CEO是Dario的Asopic", names))
-        # nothing but names and function words: 「Anthropic 的 CEO 是 Dario」 written in English
-        self.assertTrue(V.translated_glue("Anthropic, the CEO, Dario.", names))
-        self.assertTrue(V.translated_glue("OpenAI, the CEO, Sam Altman.", names))
+        # nothing but names and function words is no longer second-guessed (that took a list of English function
+        # words): an all-English answer is the speech model's call
+        self.assertFalse(V.translated_glue("Anthropic, the CEO, Dario.", names))
         # real English sentences
         for t in ["DeepSeek and Kimi both shipped new models.", "I asked Claude and Gemini the same question.",
                   "Please send the Cursor invoice to finance.", "Musk said Grok will be open source next month."]:
@@ -466,80 +467,25 @@ class TaggedDecode(unittest.TestCase):
         self.assertTrue(b.last.get("context_dump"))
 
 
-class NearMiss(unittest.TestCase):
-    """dictation_vocab.snap: a Latin non-word in Chinese text that nearly spells a listed term. Conservative and
-    context-aware; ordinary words are never rewritten."""
-
-    def test_close_misses_in_chinese_text(self):
-        terms = V.normalize(["Typeless", "Midjourney", "Windsurf", "Anthropic", "Claude"])
-        self.assertEqual(V.snap("用Typless听写的时候", terms)[0], "用Typeless听写的时候")
-        self.assertEqual(V.snap("Midjurney 出了新版本，画得更好了", terms)[0], "Midjourney 出了新版本，画得更好了")
-        # a term that is also an ordinary word (to windsurf) needs the context to name it
-        self.assertEqual(V.snap("Winsurf 被收购以后很多人走了", terms)[0], "Winsurf 被收购以后很多人走了")
-        self.assertEqual(V.snap("Winsurf 被收购以后很多人走了", terms, "Windsurf")[0], "Windsurf 被收购以后很多人走了")
-
-    def test_a_weak_miss_needs_the_context(self):
-        terms = V.normalize(["Anthropic"])
-        heard = "后来他去了Asopic那边做研究"
-        self.assertEqual(V.snap(heard, terms)[0], heard)                       # no support: left alone
-        text, done = V.snap(heard, terms, "群聊：Anthropic 研究小组")
-        self.assertEqual(text, "后来他去了Anthropic那边做研究")
-        self.assertEqual(done, [{"heard": "Asopic", "term": "Anthropic", "context": True}])
-
-    def test_english_text_is_left_alone(self):
-        terms = V.normalize(["Typeless"])
-        self.assertEqual(V.snap("I use Typless every day", terms)[0], "I use Typless every day")
-
-    def test_ordinary_words_and_ambiguous_misses_stay(self):
-        terms = V.normalize(["Claude", "Cursor", "Codex", "Mistral", "Gemma", "Gemini"])
-        for t in ["今天 cloud 上的服务挂了", "把 cursor 移到最后", "这个 codec 不支持", "我用 Mixtral 跑了一下",
-                  "这个 Gemmi 是什么"]:
-            self.assertEqual(V.snap(t, terms)[0], t, t)
+class FalseCorrections(unittest.TestCase):
+    """The deterministic pass only applies the user's own sounds-likes and spacing variants: sentences that use the
+    ordinary words a term looks like (cloud, open, cursor, code, gemini the sign, grok the verb, musk the scent …) come
+    through untouched. The near-miss pass (edit distance + word lists) is gone: polish fixes a misspelt name, seeing
+    the sentence and the words."""
 
     def test_no_false_corrections_with_the_seeded_vocabulary(self):
-        """Sentences that use the ordinary words a term looks like (cloud, open, cursor, code, gemini the sign, grok
-        the verb, musk the scent …): neither the sounds-like / spelling pass nor the near-miss pass may touch them,
-        even with a context naming every term."""
         terms = seeded_vocabulary()
         self.assertGreater(len(terms), 30)
-        everything = " ".join(t["term"] for t in terms)
         rows = [json.loads(ln) for ln in FALSE_CORRECTIONS.read_text(encoding="utf-8").splitlines() if ln.strip()]
         self.assertGreaterEqual(len(rows), 40)
-        changed = []
-        for r in rows:
-            for ctx in ("", everything):
-                out, _ = V.apply(r["text"], terms)
-                out, _ = V.snap(out, terms, ctx)
-                if out != r["text"]:
-                    changed.append((r["text"], out))
+        changed = [(r["text"], out) for r in rows if (out := V.apply(r["text"], terms)[0]) != r["text"]]
         self.assertEqual(changed, [])
 
-    def test_note_reports_what_was_snapped(self):
-        import test_asr_select as A
-        T = A.T
-
-        class Typo(A.FakeBackend):
-            def set_vocab(self, terms):
-                return bool(terms)
-
-            def transcribe(self, x):
-                return [(0.0, len(x) / A.SR, "我每天用Typless听写", "zh")]
-
-        old = T.BACKENDS
-        T.BACKENDS = {**T.BACKENDS, "sensevoice": Typo}
-        oldvad = T.vad_segments
-        T.vad_segments = lambda x, max_speech=25: [(0.0, len(x) / A.SR)]
-        real = A.fake_installed("sensevoice-small")
-        try:
-            with tempfile.TemporaryDirectory() as d, A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
-                wav = A.write_wav(Path(d) / "n.wav", 1.5)
-                r = T.NoteEngine().note(wav, vocab=["Typeless"], hint="Typeless — 设置")
-        finally:
-            T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
-        self.assertEqual(r["text"], "我每天用Typeless听写")
-        self.assertEqual(r["asr_text"], "我每天用Typless听写")
-        self.assertEqual(r["terms"], ["Typeless"])
-        self.assertEqual(r["snapped"][0]["heard"], "Typless")
+    def test_no_near_miss_pass(self):
+        for name in ("snap", "near_miss", "_ordinary", "_MODERN_WORDS", "FUNCTION_WORDS"):
+            self.assertFalse(hasattr(V, name), name)
+        terms = V.normalize(["Typeless"])
+        self.assertEqual(V.apply("用Typless听写的时候", terms)[0], "用Typless听写的时候")      # polish's to fix
 
 
 class LearnFromCorrection(unittest.TestCase):
@@ -600,7 +546,7 @@ class LearnFromCorrection(unittest.TestCase):
             r = json.loads(out)
             self.assertTrue(r["ok"] and r["written"])
             self.assertEqual(V.load(path)[0]["term"], "Typeless")
-            out = subprocess.run([sys.executable, str(SCRIPTS / "dictation_vocab.py"), "snap", "--text", "我用Typles听写",
+            out = subprocess.run([sys.executable, str(SCRIPTS / "dictation_vocab.py"), "apply", "--text", "我用Typless听写",
                                   "--file", str(path)], capture_output=True, text=True, check=True).stdout
             self.assertEqual(json.loads(out)["text"], "我用Typeless听写")
 

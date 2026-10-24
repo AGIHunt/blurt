@@ -5,7 +5,7 @@
 {"id": "od-05", "lang": "zh", "tags": ["number"], "input": "我们这周新增了三千五百个用户，留存大概是百分之四十二点五。", "reference": "我们这周新增了三千五百个用户，留存大概是百分之四十二点五。", "keep": ["三千五百", "四十二点五"], "bad": "我们这周新增了三千五个用户，留存大概是百分之四十二。"}
 {"id": "od-06", "lang": "zh", "tags": ["alternative"], "input": "你可以先看一下日志，或者直接问一下运维那边，嗯，看是谁改的配置。", "reference": "你可以先看一下日志，或者直接问一下运维那边，看是谁改的配置。", "keep": ["或者直接问一下运维那边"], "bad": "你可以先看一下日志，看是谁改的配置。"}
 {"id": "od-07", "lang": "zh", "tags": ["condition", "restart"], "input": "就是数据量小的时候，呃，用内存缓存就够了，数据量大的时候就，就要上 Redis。", "reference": "数据量小的时候，用内存缓存就够了，数据量大的时候就要上 Redis。", "keep": ["数据量小的时候", "数据量大的时候", "Redis"], "bad": "用内存缓存就够了，数据量大的时候就要上 Redis。"}
-{"id": "od-08", "lang": "zh", "tags": ["number", "correction"], "input": "报价是两万，不对，是两万五，含税的。", "reference": "报价是两万五，含税的。", "keep": ["两万五", "含税"], "bad": "报价是两万五。"}
+{"id": "od-08", "lang": "zh", "tags": ["number", "correction"], "input": "报价是两万，不对，是两万五，含税的。", "reference": "报价是两万，不对，是两万五，含税的。", "keep": ["两万", "不对", "两万五", "含税"], "bad": "报价是两万五。", "structured": {"reference": "报价是两万五，含税的。", "keep": ["两万五", "含税"]}}
 {"id": "od-09", "lang": "zh", "tags": ["negation"], "input": "这个接口不是每次都慢，只有在凌晨备份的时候才会慢。", "reference": "这个接口不是每次都慢，只有在凌晨备份的时候才会慢。", "keep": ["不是每次都慢", "凌晨备份的时候"], "bad": "这个接口只有在备份的时候才会慢。"}
 {"id": "od-10", "lang": "zh", "tags": ["alternative", "terms"], "input": "让 Codex 或者 Claude Code 帮忙写测试，呃，哪个快用哪个。", "reference": "让 Codex 或者 Claude Code 帮忙写测试，哪个快用哪个。", "keep": ["Codex", "或者 Claude Code", "哪个快用哪个"], "bad": "让 Codex 帮忙写测试。"}
 {"id": "od-11", "lang": "zh", "tags": ["condition"], "input": "嗯，除非客户那边主动提，否则这个功能先不做。", "reference": "除非客户那边主动提，否则这个功能先不做。", "keep": ["除非客户那边主动提", "否则"], "bad": "这个功能先不做。"}

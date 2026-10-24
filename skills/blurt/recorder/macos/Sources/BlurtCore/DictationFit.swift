@@ -8,7 +8,8 @@
 //    punctuation. At least 2 units, or 1 when both end the same way (「的。」 before 「的。」).
 //  • punctuation: the text after the cursor starts with punctuation → the insertion ends without any; it continues the
 //    sentence (a CJK character, a lower-case word, a digit) while the text before ends mid-sentence → no closing
-//    。.!?！？. The text before ends mid-sentence → no leading 「，」 and (English) no capital the speech model gave.
+//    。.!?！？. The text before ends mid-sentence → no leading 「，」 (the case is polish's: it saw the text around the
+//    cursor).
 //  • spacing: a space between two Latin words at either seam; between CJK and Latin the way the field already does it
 //    (else the way the dictation does, else spaced, as polish writes).
 // Conservative by construction: only the inserted text is trimmed — nothing in the field is ever touched — and a fit
@@ -19,7 +20,7 @@ import Foundation
 public enum DictationFit {
     public struct Result: Equatable {
         public var text: String
-        /// what changed: "head" (overlap before), "tail" (overlap after), "punct", "capital", "space"
+        /// what changed: "head" (overlap before), "tail" (overlap after), "punct", "space"
         public var changes: [String]
         public var trimmed: Bool { !changes.isEmpty }
     }
@@ -32,7 +33,7 @@ public enum DictationFit {
     static func isLatinWordChar(_ c: Character) -> Bool { DictationStitch.isWordChar(c) }
 
     /// `text` fitted between `before` and `after` (the field's text on each side of the cursor or selection).
-    public static func fit(_ text: String, before: String, after: String, names: Set<String> = []) -> Result {
+    public static func fit(_ text: String, before: String, after: String) -> Result {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var changes: [String] = []
         guard !t.isEmpty else { return Result(text: text, changes: []) }
@@ -76,8 +77,8 @@ public enum DictationFit {
             var s = Substring(t)
             while let c = s.first, leadingCommas.contains(c) || c.isWhitespace { s.removeFirst() }
             if s.count != t.count, !s.isEmpty { t = String(s); if !changes.contains("punct") { changes.append("punct") } }
-            let d = DictationStitch.decapitalize(t, names: names)
-            if d != t { t = d; changes.append("capital") }
+            // a capital is left as polish wrote it: whether "Thursday" or "We" starts a name or only a sentence takes
+            // the words (polish sees the text around the cursor; no list of ordinary words decides it here)
         }
 
         // 4. spacing at the seams

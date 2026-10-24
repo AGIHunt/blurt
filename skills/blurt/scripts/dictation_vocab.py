@@ -4,8 +4,10 @@
   • ranked()        which terms matter for this utterance (sounds-like heard, in the context, used often), capped
   • ASR biasing     whisper_prompt() (initial_prompt), qwen_context() (Qwen3-ASR `context`), hotwords() (sherpa-onnx
                     Qwen3-ASR per-stream hotwords: "; "-joined, an ASCII comma is split and re-joined with spaces)
-  • apply()         the cheap deterministic pass, also when polish is off: an exact sounds-like match becomes the term,
-                    and a case / spacing variant of a term gets the term's spelling ("sense voice" → "SenseVoice")
+  • apply()         the cheap deterministic pass, also when polish is off: an exact sounds-like match (the user's own
+                    data) becomes the term, and a spacing / hyphen variant of a term gets the term's spelling
+                    ("sense voice" → "SenseVoice"); a case-only or near-miss spelling is polish's call (it sees the
+                    sentence)
   • allowed_units() what polish may add without the content-loss guard calling it new (terms + the context)
 
 A term: {"term", "sounds_like": [...], "source": manual|learned|project, "state": active|suggested|rejected|removed,
@@ -61,18 +63,12 @@ def load(path: Path | None = None) -> list[dict]:
 
 # ------------------------------------------------------------------ helpers
 _DICT: set[str] | None = None
-# Ordinary words /usr/share/dict/words (Webster's 1934) doesn't have, that people dictate and that a custom word can
-# look like: "我 grok 了" is the verb, not xAI's Grok.
-_MODERN_WORDS = {"grok", "groks", "grokked", "grokking", "app", "apps", "email", "emails", "online", "offline", "blog",
-                 "blogs", "logout", "wifi", "emoji", "selfie", "podcast", "website", "webpage", "username", "chatbot",
-                 "smartphone", "laptop", "inbox", "hashtag", "meme", "vlog", "download", "downloads", "backend",
-                 "frontend", "google", "googled", "googling", "windsurf", "windsurfs", "windsurfer", "windsurfing",
-                 "gemini"}       # the zodiac sign, written in lower case often enough
 
 
 def common_word(w: str) -> bool:
-    """An ordinary English word (macOS's /usr/share/dict/words, lower-case entries): a sounds-like or a case fix on it
-    would change real words ("cloud", "swift"), so the deterministic pass leaves those to polish, which sees context."""
+    """An ordinary English word (macOS's own lexicon, /usr/share/dict/words: its lower-case entries — data, not a list
+    of ours): a sounds-like on it would change real words ("cloud", "blur"), so the deterministic pass leaves those to
+    polish, which sees the sentence."""
     global _DICT
     if _DICT is None:
         _DICT = set()
@@ -81,9 +77,6 @@ def common_word(w: str) -> bool:
                 _DICT = {ln.strip() for ln in f if ln.strip() and ln[0].islower()}
         except OSError:
             pass
-        _DICT |= {"a", "an", "the", "and", "or", "of", "to", "in", "on", "it", "is", "be", "code", "cloud", "blur", "option"}
-        _DICT |= _MODERN_WORDS
-
     return w.lower() in _DICT
 
 
@@ -214,11 +207,12 @@ def apply(text: str, terms: list[dict]) -> tuple[str, list[str]]:
 
 
 def _respell(text: str, term: str) -> tuple[str, bool]:
-    """Windows of 1–3 words (joined by single spaces / hyphens) whose spelling key equals the term's → the term."""
+    """Windows of 2–3 words (joined by single spaces / hyphens) whose spelling key equals the term's → the term
+    ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). One word that differs only in case ("github", "gemini") is
+    polish's call: whether it is the name or the ordinary word takes the sentence."""
     key = _key(term)
     if len(key) < 2:
         return text, False
-    single_common = " " not in term and "-" not in term and common_word(term)
     words = list(_WORD.finditer(text))
     out, last, changed = [], 0, False
     i = 0
@@ -234,7 +228,7 @@ def _respell(text: str, term: str) -> tuple[str, bool]:
             seg = text[s:e]
             if _key(seg) != key:
                 continue
-            if seg != term and not (n == 1 and single_common):
+            if seg != term and n > 1:
                 out.append(text[last:s])
                 out.append(term)
                 last = e
@@ -249,10 +243,6 @@ def _respell(text: str, term: str) -> tuple[str, bool]:
 
 
 # ------------------------------------------------------------------ code-switching (docs/design/dictation.md)
-# English function words: what Qwen3-ASR writes for 和 / 的 / 是 when it decodes a Chinese sentence as English.
-FUNCTION_WORDS = {"a", "an", "the", "and", "or", "but", "of", "to", "in", "on", "at", "for", "with", "by", "from", "as",
-                  "is", "are", "was", "were", "be", "been", "s", "its", "his", "her", "their", "this", "that", "so",
-                  "also", "both", "than", "then", "i", "we", "you", "he", "she", "it", "they", "uh", "um"}
 # The tag goes to English only when the model is this sure: English speech measured ≥ 0.9985, the mixed pieces it
 # translated 0.95–1.0 (names-in-Chinese eval, promo/cases/v0.8-dictation-names/).
 EN_TAG_THRESHOLD = 0.995
@@ -273,39 +263,14 @@ def choose_tag(p_en: float, p_pref: float, prefer: str, threshold: float = EN_TA
     return "English" if total > 0 and p_en / total > threshold else prefer
 
 
-def _name_words(names) -> set[str]:
-    return {w.lower() for n in names or () for w in _LATIN_WORD.findall(n)}
-
-
 def translated_glue(text: str, names=()) -> bool:
-    """English text that is really Chinese translated around names: Chinese characters in it ("open AI and Musk's
-    Grok, and…CEO是Dario的…"), or nothing but names, acronyms and function words ("Anthropic, the CEO, Dario.").
-    A name: one of `names`' words, an acronym, or a capitalised word that isn't an ordinary word or that sits inside a
-    sentence."""
-    if not text or not text.strip():
-        return False
-    if _CJK_RE.search(text):
-        return True
-    known = _name_words(names)
-    words = list(_LATIN_WORD.finditer(text))
-    if not words:
-        return False
-    for m in words:
-        w = m.group()
-        base = re.split(r"['’]", w)[0]
-        lw = base.lower()
-        if lw in FUNCTION_WORDS or lw in known:
-            continue
-        if base.isupper() and len(base) >= 2:
-            continue
-        starts_sentence = not text[:m.start()].strip() or text[:m.start()].rstrip()[-1:] in ".!?。！？"
-        if base[:1].isupper() and (not starts_sentence or not common_word(lw)):
-            continue
-        return False
-    return True
+    """An English answer that still has Chinese characters in it ("open AI and Musk's Grok, and…CEO是Dario的…"): the
+    model switched languages mid-sentence, so the piece is decoded once more under the user's language. The script
+    alone decides (no list of English function words): an all-English answer is the speech model's own call."""
+    return bool(text and _CJK_RE.search(text))
 
 
-_SEP = re.compile(r"(?:[\s,，、;；/|·]|和|与|及)*")
+_SEP = re.compile(r"[\s,，、;；/|·]*")
 
 
 def context_dump(text: str, names, run: int = 4) -> bool:
@@ -335,101 +300,6 @@ def context_dump(text: str, names, run: int = 4) -> bool:
         cur = cur + 1 if k1 > k0 and len(gap) <= 3 and _SEP.fullmatch(gap) else 1
         best = max(best, cur)
     return best >= run
-
-
-# ------------------------------------------------------------------ the near-miss pass
-def _ordinary(w: str) -> bool:
-    """An ordinary English word, inflections included (the dictionary lists stems: models → model)."""
-    w = w.lower()
-    if common_word(w):
-        return True
-    for suf, add in (("s", ""), ("es", ""), ("ed", ""), ("ed", "e"), ("ing", ""), ("ing", "e"), ("ly", ""), ("er", ""),
-                     ("ies", "y"), ("'s", ""), ("’s", "")):
-        if w.endswith(suf) and len(w) > len(suf) + 2 and common_word(w[: -len(suf)] + add):
-            return True
-    return False
-
-
-def _affix(a: str, b: str, rev: bool = False) -> int:
-    if rev:
-        a, b = a[::-1], b[::-1]
-    n = 0
-    for x, y in zip(a, b):
-        if x != y:
-            break
-        n += 1
-    return n
-
-
-STRONG_MISS = 0.75   # edit-distance similarity that needs no support from the context
-
-
-def near_miss(heard: str, term: str) -> float:
-    """How likely `heard` is the speech model's misspelling of `term` (0 = not at all): the normalised edit-distance
-    similarity when it is ≥ 0.75 (Typless → Typeless, Winsurf → Windsurf), or ≥ 0.55 with the same first letter and
-    ≥ 3 letters shared at either end (a weak miss: Asopic → Anthropic, 0.56). Deterministic, no word pairs of its own."""
-    h, t = _key(heard), _key(term)
-    if len(h) < 4 or len(t) < 4 or h == t:
-        return 0.0
-    r = 1 - _lev(h, t) / max(len(h), len(t))
-    if r >= STRONG_MISS:
-        return r
-    if r >= 0.55 and h[0] == t[0] and len(h) >= 5 and max(_affix(h, t), _affix(h, t, True)) >= 3:
-        return r
-    return 0.0
-
-
-def snap(text: str, terms: list[dict], context: str = "") -> tuple[str, list[dict]]:
-    """The near-miss pass: a Latin word the speech model wrote in Chinese text that is no real word but nearly a listed
-    term becomes the term. Conservative, and context-aware:
-      • only in mostly-Chinese text (there a Latin run is nearly always a name); English text is left alone;
-      • no word of the run is an ordinary English word (inflections included: "cloud", "open", "cursor", "code",
-        "models" are never touched), an acronym, a number, a term or a sounds-like;
-      • the target term has no ordinary word in it either (Cursor, Meta, Claude Code stay the speech model's call);
-      • close enough: similarity ≥ 0.75 and ≥ 5 letters, or a weak near miss only when the term appears in `context`
-        (the window title, the text around the cursor, the dictation so far);
-      • one term clearly closest.
-    → (text, [{"heard", "term", "context"}]). Biasing the speech model is the main fix; this catches what slips by."""
-    if not text or not terms or cjk_share(text) < 0.5:
-        return text, []
-    cands = [t["term"] for t in terms if not _CJK_RE.search(t["term"]) and len(_key(t["term"])) >= 4]
-    if not cands:
-        return text, []
-    ctx = _key(context or "")
-    keys = {_key(t["term"]) for t in terms} | {_key(s) for t in terms for s in t["sounds_like"]}
-    words = list(_LATIN_WORD.finditer(text))
-    out, last, done, i = [], 0, [], 0
-    while i < len(words):
-        took = False
-        for n in (2, 1):
-            span = words[i:i + n]
-            if len(span) < n or any(text[a.end():b.start()] != " " for a, b in zip(span, span[1:])):
-                continue
-            s, e = span[0].start(), span[-1].end()
-            seg = text[s:e]
-            if _key(seg) in keys or any(_ordinary(w.group()) or w.group().isupper() or re.search(r"\d", w.group())
-                                        for w in span):
-                continue
-            scored = sorted(((near_miss(seg, c), c) for c in cands), reverse=True)
-            best, term = scored[0]
-            if best <= 0 or (len(scored) > 1 and scored[1][0] > 0 and scored[1][0] >= best - 0.1):
-                continue
-            supported = bool(ctx) and _key(term) in ctx
-            # a weak miss, a short word, or a term that is itself an ordinary word (Cursor, Meta, Apple): only when the
-            # window or the text around the cursor names the term
-            plain_term = any(common_word(w) for w in re.split(r"[\s\-]+", term) if w)
-            if not supported and (best < STRONG_MISS or len(_key(seg)) < 5 or plain_term):
-                continue
-            out += [text[last:s], term]
-            last = e
-            done.append({"heard": seg, "term": term, "context": supported})
-            i += n
-            took = True
-            break
-        if not took:
-            i += 1
-    out.append(text[last:])
-    return "".join(out), done
 
 
 # ------------------------------------------------------------------ the guard's allowance
@@ -719,7 +589,7 @@ def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = N
 def main(argv=None) -> int:
     """dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]
     dictation_vocab.py fixes --raw TEXT --corrected TEXT          what would be learned; writes nothing
-    dictation_vocab.py snap  --text TEXT [--file PATH]             the sounds-like and near-miss passes"""
+    dictation_vocab.py apply --text TEXT [--file PATH]            the sounds-like / spelling pass"""
     import argparse
     ap = argparse.ArgumentParser(prog="dictation_vocab.py", description=main.__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -732,17 +602,14 @@ def main(argv=None) -> int:
         if name == "learn":
             p.add_argument("--suggest", action="store_true", help="a new word only as a suggestion (as the watch does)")
             p.add_argument("--dry-run", action="store_true")
-    p = sub.add_parser("snap")
+    p = sub.add_parser("apply")
     p.add_argument("--text", required=True)
-    p.add_argument("--context", help="window title / text around the cursor: lets a weaker near miss through")
     p.add_argument("--file")
     a = ap.parse_args(argv)
     path = Path(a.file) if getattr(a, "file", None) else None
-    if a.cmd == "snap":
-        terms = load(path)
-        t, applied = apply(a.text, terms)
-        t, snapped = snap(t, terms, a.context or "")
-        out = {"ok": True, "text": t, "terms": applied, "snapped": snapped}
+    if a.cmd == "apply":
+        t, applied = apply(a.text, load(path))
+        out = {"ok": True, "text": t, "terms": applied}
     else:
         out = learn(a.raw, a.corrected, explicit=not getattr(a, "suggest", False), path=path,
                     dry_run=a.cmd == "fixes" or getattr(a, "dry_run", False))

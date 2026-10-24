@@ -1,4 +1,4 @@
-# Dictation (听写) — v0.8, macOS (with the v0.8 speed work: streaming, start of speech, paste, repair)
+# Dictation (听写) — v0.8, macOS (with the v0.8 speed work: streaming, start of speech, paste, repair; and the model-first work: §Rules vs model)
 
 Typeless-style dictation: you talk, and the words are typed into **whichever app has the focus**. It is separate from
 the voice note: `⌥⇧V` still files what you say into Blurt, and the two never share a key.
@@ -32,16 +32,16 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Custom words: store, seed, learning (pure, unit-tested) | `BlurtCore/DictationVocabulary.swift`, `BlurtCore/DictationLearn.swift`, `DictationVocabularyTests`, selftest `dictation_vocab` |
 | Context, the after-typing watch | `Capture/Dictation/DictationContext.swift` |
 | Custom words in ASR and polish | `scripts/dictation_vocab.py`, `transcribe.py` (`note --dictation --vocab`, `dictation-models`), `polish.py`, `tests/test_dictation_vocab.py` |
-| Names inside Chinese speech: the language tag, the near-miss pass, learning from a correction (`learn`, the lab's API) | `transcribe.py` (`Qwen3Mlx._decode_tagged`, `switch_language`), `dictation_vocab.py` (`choose_tag`, `translated_glue`, `context_dump`, `snap`, `fixes`, `learn`), `tests/test_dictation_vocab.py` (`CodeSwitch`, `TaggedDecode`, `NearMiss`, `LearnFromCorrection`), `tests/fixtures/dictation_false_corrections.jsonl`; the page's **Correct**: `MainWindow/DictationPage.swift`, `DictationVocabulary.learnCorrection`, `DictationHistory.correct` |
+| Names inside Chinese speech: the language tag, learning from a correction (`learn`, the lab's API) | `transcribe.py` (`Qwen3Mlx._decode_tagged`, `switch_language`), `dictation_vocab.py` (`choose_tag`, `translated_glue`, `context_dump`, `fixes`, `learn`), `tests/test_dictation_vocab.py` (`CodeSwitch`, `TaggedDecode`, `FalseCorrections`, `LearnFromCorrection`), `tests/fixtures/dictation_false_corrections.jsonl`; the page's **Correct**: `MainWindow/DictationPage.swift`, `DictationVocabulary.learnCorrection`, `DictationHistory.correct` |
 | Controller (capture → ASR → polish → insert → history) | `Capture/Dictation/Dictation.swift` |
-| Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `commitSplit`, `fallbackSeam`, `commaJoin`, `keepCase`) (`DictationSegmenterTests`, `DictationStitchTests`); its Python port for the lab, `scripts/dictation_stitch.py` (`tests/test_dictation_stitch.py`; `tests/fixtures/dictation_seams.jsonl` is shared by both) |
+| Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `mark`, `commitSplit`, `fallbackSeam`, `keepCase`, `listLines`) (`DictationSegmenterTests`, `DictationStitchTests`); its Python port for the lab, `scripts/dictation_stitch.py` (`tests/test_dictation_stitch.py`; `tests/fixtures/dictation_seams.jsonl` is shared by both) |
 | The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
 | Insertion, fitting at the cursor, Return for a double tap | `Capture/Dictation/DictationInsert.swift`; the rules: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicy`, `DictationSendPolicy`; `DictationPastePolicyTests`), `BlurtCore/DictationFit.swift` (`DictationFitTests`) |
-| Styles: the router, categories, variants, the list renderer, history records, reformat's rules, learning (pure, unit-tested) | `BlurtCore/DictationStyle.swift`, `DictationList.swift`, `DictationStyleRecord.swift`, `DictationStyleLearn.swift`; `DictationStyleTests`, `DictationStyleLearnTests`, `tests/fixtures/dictation_lists.jsonl` (shared with `scripts/dictation_styles.py`, `tests/test_dictation_styles.py`) |
-| Styles in the app: ⇧ / the island, after-stitch styling, reformat-last, suggestions | `Capture/Dictation/DictationStyles.swift`; the ear's chip in `Island/Island.swift` / `Ears.swift`; Settings → Dictation → Style |
+| Styles: the router, categories, which text a style types (`DictationStyle.pick`), variants, history records, reformat's rules, learning (pure, unit-tested) | `BlurtCore/DictationStyle.swift`, `DictationStyleRecord.swift`, `DictationStyleLearn.swift`; `DictationStyleTests`, `DictationStyleLearnTests`; `scripts/dictation_styles.py`, `tests/test_dictation_styles.py` |
+| Styles in the app: ⇧ / the island, the structuring pass at key-up (`DictationStream.finish(structure:)`), reformat-last, the list chip, suggestions | `Capture/Dictation/DictationStyles.swift`, `DictationStream.swift`, `Dictation.structure`; the ear's chip in `Island/Island.swift` / `Ears.swift`; Settings → Dictation → Style |
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
-| Polish model + guard + repair + eval; spoken self-corrections resolved before it | `scripts/polish.py`, `scripts/dictation_corrections.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
+| Polish model (Light) + the structuring pass (Structured) + guard + repair + eval | `scripts/polish.py` (`Engine.polish`, `Engine.structure`, `guard`, `repair`), `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl` (Light references + `structured` expectations), `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
 | Dictation Lab (record, stages, compare, mark up, cases, scripts, regression) | §Lab: `MainWindow/DictationLab.swift`, `DictationLabViews.swift`; pure: `BlurtCore/DictationLab.swift` (`DictationLabTests`); `scripts/dictation_lab.py`, `scripts/lab_packs/`, `tests/test_dictation_lab.py`, `tests/fixtures/lab_metrics.jsonl` |
 | UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it) |
 
@@ -256,13 +256,13 @@ utterances, slower on short ones). Now (`DictationStream`):
 - **…and polished right after** (a second serial queue): the polished text so far goes along as the request's
   `dictated` context, which polish shows as **the turn before** this one (§Polish windows: context, not output), so
   polish sees what came before but may not change or continue it (the guard's `copied` check, below).
-  A piece that opens with a self-correction (不对 / 我是说 / no wait …; not 不对称 & co.) is polished together with
-  the one before it, so the corrected-away words can still go; one that **ends** on a marker (「…晚上发群里，不对。」
-  + a pause) is carried whole into the next window, where its restatement is.
+  No piece is merged or held back for what it says (the v0.8.x correction merge and end-marker carry are gone:
+  §Rules vs model): Light keeps a self-correction as said, and Structured resolves it over the whole take at key-up.
 - **A cut is a pause, not a sentence end** (§Punctuation at the seams): a piece's own ending isn't final, and polish
   works over a window that spans the seam.
 - **At key-up only the last piece is left** (polished together with the clause carried from the window before);
-  with a pause ≥ 0.5 s before the release there is nothing left at all.
+  with a pause ≥ 0.5 s before the release there is nothing left at all. Structured then runs the structuring pass
+  once over the joined text (§Styles).
   The pieces are joined (`DictationStitch.join`: a space only between Latin words), and the joined polish is
   checked once more against the joined transcript (`polish.py serve`'s `guard` command; `stitch_<reason>` falls
   back to the transcript).
@@ -296,29 +296,28 @@ kept it (polish only saw `before ▮` and the piece). Now (`DictationStitch`, `D
 
 - **The segmenter measures each pause** (`DictationSegmenter.pauses`: from the last speech frame before a cut to the
   first one after it, known once speech resumes; 0 for a hard cut).
-- **A piece's trailing punctuation isn't final** (`seam`, `joinPieces`): 。.!?！？ and ，, at a seam are taken off,
-  unless the pause was long (`longPause`, ≥ 1.2 s) **and** the text is plausibly a whole sentence
-  (`plausiblyFinal`: the speech model ended it with 。!?, its last sentence has ≥ 4 CJK units / 3 words, it isn't a
-  stub that opens with a connective — 「但是呢」, "and so" — and it doesn't stop on a word that needs more:
-  的时候 / 以后 / 的话 / 因为 / 是 / 也 / 在 …, the / and / to / is / that …). Long but not whole → a comma (when there
-  was punctuation). In English the next piece's first word loses the capital the cut gave it (`decapitalize`: only
-  ordinary words; never "I", a custom word, an acronym or a name — Thursday, GitHub). This is what polish-off
+- **A piece's trailing punctuation isn't final** (`seam`, `joinPieces`): 。.!?！？ and ，, at a seam are taken off
+  after a breath; after a long pause (`longPause`, ≥ 1.2 s) the speech model's own mark stays (`mark`: its sentence
+  end, else its comma). Mechanical: the v0.8.x stop-word test (`plausiblyFinal`: 的时候 / 是 / 也 / the / is … never
+  end a sentence) and the ordinary-word list that lowered the capital a cut gave (`decapitalize`) are gone (§Rules vs
+  model) — with polish on, the model decides both over a window that spans the seam. This is what polish-off
   dictation types, what a fall-back types, the joined transcript the stitch guard checks against, and the ASR's
-  `prior`.
+  `prior`; there a long pause keeps the speech model's mark as it is, and a capital stays.
 - **Polish decides over a sliding window** (`DictationStream.polish`): the window is the clause carried from the
   window before + the new piece (its ending taken off). What polish writes up to its last sentence end **or comma**
   is committed (`commitSplit`); the clause after it is carried and polished again with the next piece, so the
   punctuation across the pause is decided with both sides in view. Every comma inside a window was written with the
   words on both sides in view; only the window's own end wasn't, and that is what is carried. Carrying the whole
   unfinished sentence (the first version) made the window at key-up as long as the sentence: polish after key-up
-  went from 150 to 302 ms (median) on these clips; one clause costs ~25 ms. After a long pause that follows a whole
-  sentence, the carried clause is committed as it is (with its sentence end). The last piece's window keeps its
-  ending: the dictation ended there. A carried clause left when the dictation ends (nothing after the last cut) is
+  went from 150 to 302 ms (median) on these clips; one clause costs ~25 ms. After a long pause the carried clause
+  goes into the next window **with the mark it ended in**: the model sees the pause's full stop and the words on both
+  sides, and keeps it or turns it into a comma (v0.8.x committed it as it was when a stop-word test judged the
+  sentence whole). The last piece's window keeps its ending: the dictation ended there. A carried clause left when the dictation ends (nothing after the last cut) is
   typed with the punctuation polish gave it — no work after key-up.
 - **The prompt** says it too: "fix punctuation across what are just pauses in speech; don't end a sentence at a pause
-  unless the sentence is complete" (with a synthetic example). A self-correction piece is still polished together
-  with what came before it (that piece's committed text + the carry).
-- `dictation_window` events: units in, committed, carried, ms (`deferred: correction` for a window carried whole).
+  unless the sentence is complete … and a capital the recognizer gave a word only because a pause came before it goes
+  too" (with a synthetic example).
+- `dictation_window` events: units in, committed, carried, ms.
 - **Found on the way: the last words could vanish.** Qwen3-ASR now and then answers nothing for a short last piece
   that follows a whole sentence of `prior` ("…on Wednesday." + 1.4 s of quiet + "and won't be back in time"): in a
   repro, 2 of 6 takes on the old build and 3–5 of 6 on this one lost it (the prior differs only in the seams; the
@@ -399,14 +398,14 @@ message as the new words. Now (`polish.py`, `DictationStream`, `scripts/dictatio
 - **One window falls back, not the take**: a refused window types its own transcript and the other windows keep their
   polish (as before), and now its seam — the pause before the piece — still gets punctuation
   (`DictationStitch.fallbackSeam`): the seam rule after a long pause; after a short one a comma where the speech model
-  heard a boundary (it ended the piece with a mark), unless the text before binds to the next words (把 / 的 / to /
-  the …). When the joined result fails the stitch guard, the take types `joinPiecesForFallback` (the same commas) with
-  its self-corrections resolved (`fallback_text` from polish.py's `guard`), not the bare transcript.
+  heard a boundary (it ended the piece with a mark) — no longer second-guessed by a list of words that "bind" to the
+  next (把 / 的 / to / the: gone, §Rules vs model; the price, a rare 「把，」 in a refused window). When the joined
+  result fails the stitch guard, the take types `joinPiecesForFallback` (the same commas) as said.
 - **The capital a window gave itself goes** (`keepCase`): the input's first word was lower case (the sentence goes on),
-  so "Update the docs" → "update the docs"; ordinary words as at the seams (`decapitalize`, now with second / third /
-  finally …).
-- **A list's ordinal is kept by the repair**: "…by Friday. Second, they asked…" lost its "Second" (one unit, inside the
-  slack); first / second / third / finally … are now never dropped on their own.
+  so "Update the docs" → "update the docs" — mechanical (the input's own case); the ordinary-word list
+  (`decapitalize`) is gone.
+- (v0.8.x kept a list's ordinals — first / second / finally — from being dropped by the repair with a word list; the
+  repair is mechanical now, §Repair.)
 
 Measured with the lab's replay of the windows (`dictation_lab.py run --config mode=windows`, below) on 60 synthetic
 `say` cases (`promo/cases/v0.8-dictation-polish-fix/`, not in git: the 30 prompts of the built-in pack, 16 list-like /
@@ -529,10 +528,12 @@ The fixed prompt prefix (rules + 4 examples) is prefilled once and its KV cache 
 `run` is the one-shot form (it uses the server when there is one).
 
 Rules, from the user:
-- **Allowed:** remove fillers, stutters and repeats; apply self-corrections, keeping only the corrected version; add
-  punctuation and paragraphs; fix obvious homophones.
-- **Not allowed:** rewrite, summarize, translate, change the tone, answer or carry out the text, or drop content.
-  Mixed Chinese and English stays as spoken. **Numbers stay as said** (一点二万 never becomes 一万二).
+- **Allowed (Light):** remove hesitations, fillers, stutters and repeats; add punctuation and paragraphs; fix obvious
+  homophones. **Self-corrections stay as said** (since the model-first work): "use the model's intelligence, not
+  hard-coded rules … if a self-correction isn't resolved, leaving the original wording is fine; resolve corrections
+  in Structured, in Light don't adjust them." Structured is where a correction is resolved (§Styles).
+- **Not allowed:** rewrite, summarize, translate, change the tone, answer or carry out the text, turn it into a list,
+  or drop content. Mixed Chinese and English stays as spoken. **Numbers stay as said** (一点二万 never becomes 一万二).
 - The prompt says it in so many words since the user's dictations lost a condition clause (turning "faster when
   short, slower when long" into "faster, slower when long") and an "or …" alternative, and wrote 「一点二万」 as
   「一万二」: "Apart from the
@@ -542,184 +543,303 @@ Rules, from the user:
   97 % → 88 %). A first version that also said "When unsure, keep it" left a correction unapplied as well, so that
   sentence went.
 
+**The model-first prompt** (Light): the fillers are described as "words that only fill a pause and carry no meaning
+here" (examples given, not a list the code applies), and "Self-corrections are not fillers: … keep what they said
+first, the words with which they corrected themselves, and the new version". What it cost on the 41-case eval (Gemma
+4 E2B, `results/polish-polish_eval-*.json` in `promo/cases/v0.8-dictation-model-first/`; the correction cases now
+expect every word kept): fillers removed 91.2 % → 73.5 %, similarity 0.974 → 0.969, fall-backs 0 → 1 (en-04: the
+model resolved "Alice, sorry, I mean to Bob", the repair put back more than 40 %, the transcript was typed — every
+word), untouched sentences 100 % both, warm 127 → 138 ms median. The over-deletion set: every phrase kept after the
+repair both (100 %), fillers removed 87.5 → 81.2 %. Where the fillers went: the model now leaves some 就是说 / 那个 / 啊
+(it was told every other word stays), and the mechanical repair puts back a three-unit filler run the model did drop
+mid-sentence (就是那个, "you know it just", 呢然后): without a filler list it can't tell those from three words of
+content. A prompt that repeated "always remove them, wherever they are" won one more filler of 31 (adopted); an extra
+filler-heavy example made the model translate an English sentence (not adopted).
+
 A prompt variant with a "translate this to Japanese" example primed the models to translate and formalize: fall-backs
 went 7 % → 22 % (Qwen3 4B) and 12 % → 63 % (Gemma 3 4B). So the examples avoid instruction-shaped sentences.
 
 ### Content-loss guard
 
 Every output is checked. On any failure the dictation types the **raw** text, and the history marks it "fell back"
-with the reason. Units counted: each CJK character, each Latin word, each digit. Fillers are stripped from the input
-before comparing.
+with the reason. Units counted: each CJK character, each Latin word, each digit. What was said twice in a row is
+counted once (a stutter is no content). **Mechanical only** (§Rules vs model): alignment, counts, scripts, layout —
+no filler, correction-marker, question or preface word lists; what the words mean is the model's job.
 
 | Check | Falls back when |
 |---|---|
 | `empty` | the output has no units |
-| `chatty` | the output starts like an assistant ("好的", "以下是", "Sure", "Here is"…) or says "hope this helps" (and the input didn't) |
-| `answered` | the input is a question (a wh-word + auxiliary, a leading auxiliary + subject, 为什么/怎么/吗/…), the output isn't |
-| `correction` | the first 4 units after a correction marker (不对, 不是, 我是说, 算了, no wait, I mean, sorry, actually…) aren't all in the output: the model kept the wrong version (up to two lead-in words — make it, 是, 改 — may go with the marker); or a cancelling marker (不对, 我是说, no wait, I mean, scratch that …) was dropped while the words it took back stayed right before the restated version (§Names inside Chinese speech → Polish) |
+| `term` | a custom word that was spoken (any case or spacing) is missing from the output |
 | `translated` | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
-| `shrunk` | loss > max(8 units, 25 % of the filler-free input) + 6 per correction (at most 2) |
+| `shrunk` | loss > max(8 units, 25 % of the input); Structured: max(12, 40 %) |
 | `grew` | output > 1.25 × input + 8 units |
-| `novel` | more than max(4, 15 % of output) units that aren't in the input (digits exempt: 五零零 → 500), the custom words or the context |
-| `term` | a custom word that was spoken (any case or spacing) is missing from the output, unless it was said only in words a cancelling marker took back |
+| `chatty` | ≥ 3 units in a row at the start or the end of the output that follow nothing that was said (each unit and the next were never said one after the other, and neither is a custom or context word): a preface ("好的，下面是…", "Sure, here is…"), a sign-off ("Hope this helps"), an answer |
+| `novel` | more than max(4, 15 % of output) units that aren't in the input (digits exempt: 五零零 → 500), the custom words or the context — or more than half of the output |
+| `listed` | Light: more numbered / bulleted lines than the input had |
+| `dropped` (Structured) | one run of the input left out (not moved) is longer than 12 units: content, not a taken-back phrase |
+| `number` (Structured) | a number it wrote wasn't said (as said, or the same value in digits): 「三百，三百五」 → 「三百三十五」 |
 | `copied` | 6 units in a row of the context (the text around the cursor, or a streamed dictation's polished text so far) that weren't spoken: the model continued the document |
 | `dropped` | the repair (below) had to put back more than 40 % of the content: the polish was bad |
 | `timeout` | no answer within `record.dictation.polish_timeout_ms` (3000) after the model is loaded; the server stops generating at the deadline |
 | `error` / `unavailable` | the model raised, or the server never came up within the load budget |
 
 Why these thresholds:
-- Every hand-written reference output in the eval set passes. The largest legitimate shrink is
-  "颜色改成蓝色算了还是改成绿色吧" → "颜色改成绿色吧" (−8 units of 15, allowed 20 with its two corrections).
-  Without a correction the largest is a few units of fillers and stutters, inside the flat 8.
+- Every hand-written reference output in the eval set passes (Light's, and the structured references through the
+  structured guard). Light keeps corrections now, so its largest legitimate shrink is a few units of fillers and
+  stutters, inside the flat 8; Structured's — a correction resolved in a short sentence plus the counting words that
+  became numbers — gets max(12, 40 %), with the 12-unit run and the number check keeping a summary out.
 - A summary or a list rewrite loses 30–60 % of a long input, well past 25 %.
 - Short inputs get the flat 8, because one dropped clause in a 12-unit sentence is still a meaningful loss, and a
   pure ratio would allow almost nothing there.
 - Homophone fixes add 1–2 new characters (部署, 再), under the novel slack of 4.
 
-On all 410 model outputs of the final run, the guard caught 61 of the 88 outputs that the scripted check marks as
-losing a key term or touching an untouched sentence. It fell back on 7 of 322 good outputs (2 %). The 27 it missed
-are small losses that stay within the slack: a dropped 我觉得 or 请, an un-fixed homophone. It also misses a model
-that leaves a correction unapplied but keeps both versions (no loss).
+(v0.8: on all 410 model outputs of the final run, the guard caught 61 of the 88 outputs that the scripted check
+marks as losing a key term or touching an untouched sentence, and fell back on 7 of 322 good outputs.) Without the
+question pattern, a short answer that reuses the question's words ("what's the capital of France" → "The capital of
+France is Paris.") can pass: `answered` was a regex on the language; the prompt forbids answering, and longer answers
+are `chatty` / `novel`.
 
 ### Repair: dropped words go back in
 
 The guard counts totals, so one dropped clause in a long dictation stayed inside its slack (D's condition clause
 passed).
 `polish.repair` (before the guard) aligns the transcript with the output (difflib over units) and looks at every span
-the output left out:
-- **may go**: fillers (嗯 呃 那个 就是说 um uh …) and discourse words (然后 呢 就是 so and …); a stutter or a
-  repetition (the same words right after or before); a restart (its end said again right after); the corrected-away
-  part of a self-correction (a marker — 不对 / 不是 / 我是说 / no wait … — inside the span with ≤ 4 units after it
-  that the output kept, or a strong marker right after the span); words that were only moved (they are in the
-  output); a single unimportant unit (上面 → 上) — but never a lone 不 / 没 / 或 / 只 / 也 / 都 / not / or / only …;
-- **anything else carries meaning: it is put back where it was said** (after the punctuation that preceded it in the
-  transcript, fillers taken out), instead of throwing the whole polish away;
-- **numbers**: a number run written differently is replaced by the spoken one unless it is the same value in
-  digits (三十 → 30, 十七点二 → 17.2, 五零零 → 500, 二点三点一 → 2.3.1) or the corrected value of a correction
-  (周三…不对周四 → 周四). 一点二万 → 一万二 and 三千五百 → 三千五 go back.
+the output left out. **Mechanical** (§Rules vs model) — no filler, discourse-word, marker or "always keep" lists:
+- **may go**: what was said twice (a stutter, a repetition right before or after, a restart that says the same words
+  again); words that were only moved (they appear where the output has words the transcript doesn't); and a span of
+  at most `DROP_MAX` = 2 units once its repetitions are out (3 at the very start of the text, where hesitations pile
+  up: 嗯那个…, um so…) — the size of a hesitation or a filler, which the model removes on the prompt's say-so;
+- **anything else is put back where it was said**, as said (punctuation from the transcript before and after it),
+  instead of throwing the whole polish away — **a self-correction's corrected-away words included**: Light keeps them
+  (the prompt says so; this makes sure). A restart that says something different the second time (改成十四，改成十六)
+  is a restatement, never a stutter. Words said elsewhere written in a span's place ("thirty seconds, no, make it
+  sixty" → "sixty seconds") are a substitution: what was said there goes back, whatever its size;
+- **numbers**: a number run written differently — or with numerals left out of it — is replaced by the spoken one
+  unless it is the same value in digits (三十 → 30, 十七点二 → 17.2, 五零零 → 500, 二点三点一 → 2.3.1) or a value said
+  elsewhere in the dictation. 一点二万 → 一万二, 三千五百 → 三千五 and 四十二点五 → 四十二 go back. (Numerals are a
+  notation compared by value, not words read for meaning.)
 - More than 40 % of the content put back → `dropped` (the raw text). The history keeps the spans (`repaired`).
-- Calibration: no reference output of either eval set gets anything put back; every over-deleting output of the
-  over-deletion set gets its phrases back (`tests/test_polish.py::Repair`).
+- Calibration (`tests/test_polish.py::Repair`): every over-deleting output of the over-deletion set gets its phrases
+  back but one — 「凌晨」 (two units on their own, a filler's size: the one loss a size rule can't tell from a
+  hesitation). Four references of the 41-case set drop a three-unit filler mid-sentence (就是说, 就是那个, "you know it
+  just", 呢然后): the repair puts those words back (with no filler list it can't tell 就是说 from 或辅导); the model
+  itself mostly keeps those fillers now anyway.
 
-### Self-corrections: resolved before the model (v0.8.x)
+### Self-corrections: the speaker's words in Light, the model's call in Structured (model-first)
 
-The user's case: 「把这个，不对，这两个拿到那一边去」 should be typed 「把这两个拿到那一边去」. On the `say` clip the speech model
-wrote 「把这个不对，这两个拿到那一边去。」, Gemma 4 E2B kept 「这个」 (or dropped 「把」), the guard's `correction` check
-refused it and the transcript was typed — 不对 and all. Related: 「先放到左边，不对，放到右边」 (kept whole by the model),
-"2:30, no wait, 3:30", 「周三，不对，周四」, 「发给张三，哦不，发给李四」 (the repair put 「张三，不，发给」 back: `dropped`).
+The user's principle: "use the model's intelligence, not hard-coded rules … if a self-correction isn't resolved,
+leaving the original wording is fine. Resolve corrections in the Structured style; in Light, don't adjust them." And
+「不对」 was only their example: nothing may be built around particular words, in either direction.
 
-`dictation_corrections.resolve` runs in `Engine.polish` after the custom words and before the model, deterministic,
-< 1 ms. The model gets the corrected text, and so does a fall-back; the repair and the guard compare against it; the
-stitch guard passes a joined output that the transcript with its corrections resolved explains. The answer carries
-`corrections` ([{marker, cancelled, said, how}]) and `corrected`. It resolves only two shapes, and only where the
-marker can't be content:
+- **Light keeps them.** The prompt says so in words ("Self-corrections are not fillers: … keep what they said first,
+  the words with which they corrected themselves, and the new version — all of it, just punctuated; the reader
+  decides which version counts, not you"), and two of its examples keep a correction, in different words (哦不,
+  "actually no"). Nothing forces a correction: the guard has no correction check, and when the model resolves one
+  anyway the repair puts the corrected-away words back (they are more than a hesitation's size, §Repair); a restart
+  that says something different the second time (改成十四，改成十六) is never taken for a stutter.
+- **Structured resolves them**, in the same model pass that lays out lists (polish.py `structure`, §Styles): "when the
+  speaker takes something back or restates it — in whatever words, or just by saying it again differently — keep only
+  the version they settled on … When you can't tell whether something was taken back, keep it." Its examples use
+  哦不是, 算了还是, a bare restatement ("twenty thousand, twenty-five thousand") and a postposed "I mean". Unresolved is
+  fine: the text keeps what was said. Its guard lets a taken-back phrase go (≤ 12 units in a run, ≤ max(12, 40 %) in
+  all) but not a clause, a custom word (`term`) or a number that wasn't said (`number`): then Light's text is typed.
+- **Gone** (v0.8.x, §Rules vs model): `dictation_corrections.py` (the deterministic pass before the model — its marker
+  table, the shapes it resolved, the two extra prompt examples for unresolved markers), the stream's correction merge
+  and end-marker carry (`startsWithCorrection`, `endsWithCorrection`, `commaJoin`), the guard's `correction` check and
+  marker / lead-in lists, the repair's marker lists, the stitch guard's "passes with the corrections resolved".
 
-- **The restated phrase begins with a word of the cancelled one** (the shared head): 「把这个，不对，这两个…」 → 这个 is
-  replaced; 「发给张三，哦不，发给李四」; 「先放到左边，不对，放到右边」. When the restatement ends on the unit the cancelled
-  phrase ended on and the clause went on, only that part is swapped (「订一张去上海的票，不对，去杭州的」 → 订一张去杭州的票;
-  「晚上发群里，不对，下午就发」 → 下午就发群里).
-- **A value of the same kind**: weekday, day (明天 / tomorrow), part of the day, time (两点, 2:30, two thirty), date,
-  number (两万五, three), direction (左边 / right), a this / these phrase, an English name: "2:30, no wait, 3:30";
-  「周三开会，不对，周四」 → 周四开会 (the restated value alone keeps the rest of the clause).
-- **Where a marker counts**: strong ones anywhere (我是说, 我的意思是, 说错了, 更正, 哦不 / 「哦，不，」, 不不, no wait /
-  "No, wait,", scratch that, make that, or rather); 不对 / 错了 after a pause (a mark before them), with no mark before
-  them only for a value at the end of an unfinished phrase — the object of 把 / 给 / 放到 / 改成 …, or a time / number /
-  weekday after a short subject (「把这个不对，这两个…」, 「我们周三不对，周四开会」, 「我们下午两点不对三点开会」) — or the
-  same frame said again with one part swapped (「用 Claude 写不对，用 Codex 写」); 不是 only between two marks; 应该是,
-  算了, actually, I mean, sorry only after a mark (the last four only for a value right before them).
-- **Never**: 「这个不对」, 「我不是故意的」, 「是不是」, 「答案是三不是四」, 「这个方案不对，这个方案要改」 (restated word for word
-  and more: nothing taken back), 「我觉得这个不对，那个对」, 「你文档里写的周三不对，应该是周四」, 「这个颜色不对，这个要改成
-  红色」, 「你这样写不对，你应该这样写」, "It's fine, actually, it's great", "Sorry, I'm late" (`tests/test_polish.py::
-  Corrections`: 39 resolved, 37 left alone, the eval sets' and `dictation_false_corrections.jsonl`'s other sentences
-  untouched).
-- What goes is the cancelled span (≤ 8 units, back to the sentence start at most), the marker and a lead-in (是, 改成,
-  还是, make it, to …); words may move (周三开会 … 周四 → 周四开会) but nothing else is lost and nothing new comes in
-  (checked unit by unit in the tests).
-- **What it can't resolve goes to the model as said**, with two more examples after the cached prefix only then (a
-  correction with no marks around it, an English "I mean"); the guard and the repair handle it as before.
-- In the stream: a piece that opens with a marker is joined to the one before **with a comma** (the pause is a mark:
-  `DictationStitch.commaJoin`), and one that ends on a marker is carried whole into the next window (§Streaming).
+Measured with the Dictation Lab's replay of the windows (`mode=windows`), the 60 cases of
+`promo/cases/v0.8-dictation-polish-fix/` + 28 new ones (`promo/cases/v0.8-dictation-model-first/`: 20 self-corrections
+in varied words — 哦不, 我是说, 改成…改成, 算了还是, 应该是…应该是, 错了, 啊不是, a bare restatement, 等一下, 不，, 换成, I mean,
+actually, no make it, or rather, wait, scratch that, sorry, an implicit "the left, um, the right" — and 8 sentences
+where 我说的不是 / 我是说过 / 算了 / 错了 / I mean it / Actually / No, wait for me / Sorry are content), Tingting /
+Samantha, Qwen3-ASR 1.7B + Gemma 4 E2B, two rounds each, before = the scripts of 85783513 (the deterministic pass +
+the old prompt; Structured = the rule-based list renderer), interleaved. 34 takes with a correction (14 old + 20 new):
 
-Measured on the 14 self-correction clips + the pack's 4 (b006 / b013 / b022 / b030), windows replayed, the same ASR:
-| 14 takes with a spoken correction (10 clips + b006 / b013 / b022 / b030), × 3 rounds | Before | Now |
+| | Before | Now |
 |---|---:|---:|
-| Typed with the correction unapplied or mangled | **18 / 42** (6 every round) | **0 / 28** (rounds 2–3; 1 / 14 in round 1, before the end-marker carry) |
-| … the user's 「把这个，不对，这两个拿到那一边去」 | 「不对，这两个拿到那一边去。」 (3 / 3) | 「把这两个拿到那一边去。」 (3 / 3) |
-| 4 sentences where 不对 / 不是 is content: changed | 0 | 0 |
+| Light: every word of the correction typed (first version, the correcting words, the new version) | 20 / 68 (29 %) | **66 / 68 (97 %)** |
+| Structured: resolved (only the settled version) | 46 / 68 (68 %) | **56 / 68 (82 %)** |
+| Structured: left as said (fine) | 22 / 68 | 10 / 68 |
+| Structured: the settled version lost | 0 / 68 | 2 / 68 |
+| Sentences where the same words are content (12 × 2), kept | 22 / 24 | **24 / 24** |
 
-The six before: 「不对，这两个…」 (the model dropped 「把」, kept 不对), 「先放到左边，不对，放到右边…」 and "Send it to Tom.
-Sorry, to Jerry…" (kept whole), 「发给张三。不，发给李四」, 「改成蓝色，还是改成绿色吧」, 「…晚上发群里，不对下午就发」 (the
-stitch guard's `correction`: the transcript typed). In the app (above) the 6 `correction` fall-backs of the old build
-— zh-corr and c01 among them — are gone. Left as they were, not corrections: "three thirty" written in words (the speech
-model's), one 「的 / 得」 the model fixed in a sentence where 不对 is content (the guard's `correction`, the transcript
-typed: the same words).
+- Light's two misses are one case twice: 「把这个文件，不对，这两个文件…」 — the model wrote the first version as 「这两个文件」
+  too (a word added, not dropped: the repair doesn't see it).
+- Structured's two losses are one case twice: 「把这一段删掉，不，保留，只改第一句」 → 「只改第一句。」 (8 units gone — within
+  the guard's allowance for a taken-back phrase). Its refusals (4) typed Light's text: 「三百，三百五」 written 「三百三十五」
+  (`number`), and 「用 Claude 写，不对，用 Codex 写」, which drops a custom word (`term`).
+- Before, Light resolved most corrections itself (the deterministic pass and the old prompt), and some went wrong
+  without a refusal: 「这个接口应该是 POST，呃，应该是 PUT 才对」 → 「…应该是 PUT，应该是 POST 才对。」 (swapped),
+  「颜色用蓝色，算了还是用灰色」 → 「颜色用蓝色，还是用灰色？」, "I mean it, this is the best version" → "This is the best
+  version" (content dropped). None of those now.
+- The 41-case polish eval (its correction cases' references now keep every word for Light; a `structured` block holds
+  the resolved ones): Structured resolves all 8 of its corrections (`polish.py eval --style structured`).
 
 ## Styles
 
 The plan and the research behind it: `dictation-styles.md` (§3, build steps 1–4 and 6; step 5, spoken triggers, was
 dropped: the user dictates instructions to AI agents, where 「帮我列个清单」 / "make a list" is content). Light — the
-polish above — stays the default everywhere and never restructures.
+polish above — stays the default everywhere and never restructures. Which style a take gets is the user's choice
+(settings, ⇧, the island); what a style does with the words is the polish model's (§Rules vs model).
 
 | Style | What is typed | How |
 |---|---|---|
 | Verbatim | the transcript (custom words fixed), its punctuation | polish skipped for the whole take (decided at the key-down) |
-| Light (default) | polish's text | unchanged |
-| Structured | Light + the ordinal points the speaker numbered as `1. …` lines, the sentence before them as a heading line ending in 「：」/ ":" | `DictationList` after the stitch guard (deterministic) |
-| Auto lists | Light, and the list only with ≥ 3 ordered markers | the same, stricter |
+| Light (default) | polish's text: every word said, self-corrections included; never a list | unchanged |
+| Structured | Light's text after one more pass of the same model: self-corrections resolved, and what the speaker enumerated as `1. …` lines (the sentence before them a line ending in 「：」/ ":") — or a paragraph when nothing was enumerated | polish.py `structure` on the stitched text at key-up (`DictationStream.finish(structure:)`); its own guard; a refusal types Light's |
+| Auto lists | Light, and the structured text only when the model made it a list (≥ 2 list lines) | the same pass |
 
-- **Router** (`DictationStyleRouter`, rules): explicit this take (⇧, the island, Fn+⇧) > the app's own style
-  (`styles.apps`) > its category's > `styles.default` > light. Categories (`DictationAppCategory`, exact bundle ids,
-  then whole parts of the id — never substrings, so 1Password isn't Word): chat (WeChat, QQ, Slack, Telegram, Messages,
-  Discord, Feishu / Lark, DingTalk, WhatsApp, Teams…), code (Terminal, iTerm2, Warp, Ghostty, VS Code, Cursor, Xcode,
-  JetBrains, Zed…), mail, notes (Notes, Obsidian, Notion, Bear, Pages, Word…), other.
-- **Variants of light** (`DictationStyleVariant`, after the list, before the fit): chat keeps sentence-final particles
-  (polish's request carries `variant: "chat"` and `polish.repair(keep_particles=True)` puts back a 吧 / 呢 / 啊 / 哈 /
-  嘛 / 呀 … that ended a clause in the transcript and was dropped; the prompt — and so its cached prefix — is the same for
-  every variant) and drops the closing 。 / . of a one-sentence message (not ？！, an ellipsis or a decimal), and blank
-  lines become single ones; code and terminals get one line (a multi-line paste collapses into "[Pasted N lines]" in
-  Claude Code), unless a list was asked for; mail and notes as light.
-- **The list renderer** (`DictationList`, ported to `scripts/dictation_styles.py`, the shared fixture
-  `tests/fixtures/dictation_lists.jsonl`): markers at a clause start, in sequence from 1 — 第一/第二(个/点/条/步/项/件)
-  (是), 一是/二是, 一来/二来, 其一/其二, 一、二、, 1. / 1、, 首先 … 其次 / 再次 … 最后, first(ly) … finally / lastly,
-  number one…, one, two, — 最后 / finally may close any run. Never on their own: 以及, 其他, 另外, 还有, 然后, 接着,
-  also, then; those count only between 首先 and 最后 (first … finally) with nothing numbered in between. Never
-  markers: 第一次 / 第一天 / 第一时间 / 第一眼…, "first time", "at first", "last week". Every item needs ≥ 2 units (so the
-  idiom 一是一，二是二 stays prose). A later marker may sit where a seam lost its punctuation (a piece polish fell back
-  on is joined without a mark: 「…跑完第二，把文档…」) when it is followed by a comma (English: capitalised). Only marker
-  words go, only digits / ". " / line breaks are added (`testOnlyMarkerWordsGo`); no confident sequence → nothing
-  changes. < 1 ms on a long take (`style_ms` in the history event).
-- **At the cursor**: a rendered list skips `DictationFit`'s trimming and starts on a line of its own when the text
-  before the cursor doesn't end in a line break.
+- **Router** (`DictationStyleRouter`, the user's choices): explicit this take (⇧, the island, Fn+⇧) > the app's own
+  style (`styles.apps`) > its category's > `styles.default` > light. Categories (`DictationAppCategory`, exact bundle
+  ids, then whole parts of the id — never substrings, so 1Password isn't Word): chat (WeChat, QQ, Slack, Telegram,
+  Messages, Discord, Feishu / Lark, DingTalk, WhatsApp, Teams…), code (Terminal, iTerm2, Warp, Ghostty, VS Code,
+  Cursor, Xcode, JetBrains, Zed…), mail, notes (Notes, Obsidian, Notion, Bear, Pages, Word…), other.
+- **Variants of light** (`DictationStyleVariant`, before the fit): chat — polish's request carries `variant: "chat"`,
+  and the last message says "a chat message: keep its tone words and sentence-final particles" (after the cached
+  prefix, which is the same for every variant; the v0.8 particle list in the repair is gone) — and the closing 。 / .
+  of a one-sentence message goes (not ？！, an ellipsis or a decimal), blank lines become single ones; code and
+  terminals get one line (a multi-line paste collapses into "[Pasted N lines]" in Claude Code), unless a list was
+  typed; mail and notes as light. Layout only.
+- **The structuring pass** (`polish.py` `Engine.structure`, `SYSTEM_STRUCTURE` + 8 examples, its own cached prefix):
+  1. resolve self-corrections (§Self-corrections); 2. lists only when the speaker really enumerates — counts off points
+  or steps, or announces several items and names them — with the counting words (第一, 首先, first …) becoming the
+  numbers; otherwise the text comes back as it is. Never rewrite, summarize, add headings or words, translate, answer.
+  The examples are varied on purpose: two Chinese lists (首先…其次…最后 with a correction inside; 第一个是…第二个是…),
+  an English one, an implicit one (「三点进展：…，…，…」), prose with a correction, a bare restatement, and two
+  sentences that look like lists but aren't (「我第一次用…」, "At first I thought…"). Output: Markdown emphasis and
+  heading marks taken off (`clean_structured`); the guard in structured mode (§Guard: numbers aren't words, a run
+  > 12 units lost is `dropped`, a number not said is `number`).
+- **At key-up** the windows finish as for Light (the last one included), the stitch guard checks the joined text, then
+  the structuring pass runs once on it (`structure_timeout_ms`, 10 s); the island stays on "polishing". Tried and
+  measured, not kept: feeding the last piece to the structuring pass as heard (skipping its Light window) saved
+  ~120 ms after key-up but resolved fewer corrections (25 vs 28 of 34 on one round) — the model had to tidy and
+  structure at once.
+- **At the cursor**: a list skips `DictationFit`'s trimming and starts on a line of its own when the text before the
+  cursor doesn't end in a line break; a structured paragraph is fitted like Light.
 - **⇧ during the take / Fn+⇧ / the island** (§Trigger): `Dictation.toggleStyle` flips Structured ↔ the take's own
   style (`DictationStyleRouter.toggled`); the island's right ear shows a list mark beside the clock while Structured
   (quotes while Verbatim, nothing for light), and a one-line toast names the switch. A take whose app is Verbatim stays
-  unpolished when ⇧ makes it Structured (polish was decided at the key-down); the list is rendered on the transcript.
+  unpolished when ⇧ makes it Structured (polish was decided at the key-down); the structuring pass runs on the
+  transcript (its prompt also tidies hesitations and punctuation).
 - **Reformat-last** (`⌥⇧L`, `record.hotkeys.reformat`, configurable in Settings → Shortcuts; no clash with Blurt's
   ⌥⇧ keys, ⌥⌘D or the lab's ⌥⌘L): the last take in the next style of the cycle verbatim → light → structured →
-  verbatim that reads differently (a take without a list skips structured; light for a verbatim take is polished on
-  demand, off the dictation's path). It replaces the text in the field only while it is exactly as typed, between the
-  same 40-character anchors (`DictationReformat.span`; the field re-read, the span selected — the test pad's text
-  view, another app's field through Accessibility, read back — and pasted as a dictation is); otherwise, after 5
-  minutes, or in a field that can't be read (WeChat), the new version goes to the clipboard and the island says so.
-  The island offers **Undo** (back to the style it was typed in). The after-typing watch restarts on the new text.
-  After a light take that sounded like a list (≥ 2 markers), the island offers **Make a List** for 6 s
-  (`suggest_lists`).
-- **History** (§History): `style`, `style_source`, `style_router`, and `reformats` — every reformat, undo and
-  `revert` (the watch saw a rendered list taken apart: ≥ 2 numbered lines → < 2, ≥ 70 % of the words still there).
+  verbatim that reads differently. Light for a verbatim take and the structured text for a light one are made on demand
+  by the same model passes (`withLight`, `withStructured`; off the dictation's path; a take that was typed Structured
+  keeps its pass's text). It replaces the text in the field only while it is exactly as typed, between the same
+  40-character anchors (`DictationReformat.span`; the field re-read, the span selected — the test pad's text view,
+  another app's field through Accessibility, read back — and pasted as a dictation is); otherwise, after 5 minutes, or
+  in a field that can't be read (WeChat), the new version goes to the clipboard and the island says so. The island
+  offers **Undo** (back to the style it was typed in). The after-typing watch restarts on the new text.
+- **The list chip** (`suggest_lists`): after a light take of ≥ 24 units is pasted, the structuring pass runs in the
+  background; when the model made it a list, the island offers **Make a List** for 6 s (one click types the list it
+  already has) and the history records `suggest`. Nothing on the dictation's path waits for it. (v0.8 offered it when
+  the rule-based renderer counted ≥ 2 ordinal markers.)
+- **History** (§History): `style`, `style_source`, `style_router`, and `reformats` — every reformat, undo, `revert`
+  (the watch saw a typed list taken apart: ≥ 2 numbered lines → < 2, ≥ 70 % of the words still there) and `suggest`;
+  `structure_ms` in the timings, `dictation_structure` events (ms, list, fell_back, reason).
 - **Learning** (`DictationStyleLearn`, `learn_styles`): each take may say what the user wants in its app — a kept
-  reformat or an undo, ⇧ / the island / Fn+⇧, a revert, a list-like take left as prose. With ≥ 3 signals among the
-  app's last 10 and ≥ 70 % of them one way, different from the app's style now, the island asks once (「以后在 备忘录
-  里自动排清单？」 好 / 不用; lists → Auto lists, never Structured always) and remembers it asked (`style_asked`).
-  Yes sets `styles.apps[bundle]` and marks it learned; Settings → Dictation → Style shows it with Reset. Nothing ever
-  changes by itself.
+  reformat or an undo, ⇧ / the island / Fn+⇧, a revert, a list the island offered and the user left as prose. With ≥ 3
+  signals among the app's last 10 and ≥ 70 % of them one way, different from the app's style now, the island asks once
+  (「以后在 备忘录 里自动排清单？」 好 / 不用; lists → Auto lists, never Structured always) and remembers it asked
+  (`style_asked`). Yes sets `styles.apps[bundle]` and marks it learned; Settings → Dictation → Style shows it with
+  Reset. Nothing ever changes by itself.
 - **Settings → Dictation → Style**: one picker per category (Light (default) / Verbatim / Structured / Auto lists, each
   category's variant described under it), the apps set on their own, *Offer a list when a take sounds like one*,
   *Suggest an app's style from how I switch*, and the keys.
 - **Dictation Lab**: Compare has Style: Verbatim / Structured / Auto lists; `dictation_lab.py` takes `style=` and
-  `category=` (default: the case's app) and every run counts `listed` — a light (or verbatim) output with more numbered
-  lines than its truth — in `overall.listed`; `--fail-on-regression` fails on it.
+  `category=` (default: the case's app); Structured / Auto call polish.py's `structure` on Light's stitched text, as the
+  app does (rows carry `structured`: list, fell_back, reason, ms; timings `structure_ms`, `last_polish_ms`,
+  `after_keyup_ms`), and every run counts `listed` — a light (or verbatim) output with more numbered lines than its
+  truth — in `overall.listed`; `--fail-on-regression` fails on it.
 - Test hooks: `dictation keys … shift-down@… shift-up@… island@…`, `dictation style status | toggle [island] | reformat
   | chip | undo | set CATEGORY|BUNDLE STYLE|- | app BUNDLE | suggest BUNDLE | answer yes|no | reset`.
+
+Measured (the lab's replay of the windows, the 88 cases above, two rounds each, interleaved, before = 85783513):
+
+| Lab, `mode=windows` | Before | Now |
+|---|---:|---:|
+| Light: a list typed | 0 / 176 | 0 / 176 |
+| Light: words (WER vs the truth, cases without a correction) | 1.26 % | 1.35 % |
+| Light: punctuation errors (marks in changed chunks / the truth's marks) | 14.1 % | 16.7 % |
+| Light: fall-backs | 4 (2 `dropped`, 2 `correction`) | 4 (`dropped`: the transcript typed, every word) |
+| Light: what is left after key-up (the last window's polish), median / p90 | 111 / 184 ms | 120 / 191 ms |
+| … multi-piece takes | 134 / 225 ms | 140 / 214 ms |
+| Structured: list decisions right (21 takes whose truth clearly is / isn't a list, × 2) | 18 / 24 | 18 / 24 |
+| Structured: words kept in the list takes (counting words and numbers aside) | 99.4 % | 97.4 % |
+| Structured: refused (Light's text typed) | — | 4 / 176 (`number` 2, `term` 2) |
+| Structured: after key-up (last window + the pass), median / p90 | 131 / 198 ms (renderer ≈ 0) | 277 / 553 ms |
+| … the structuring pass alone | — | 130 / 367 ms |
+
+- Lists: the misses moved. Before, the renderer missed lists where a seam had lost its comma or "first, …" lacked the
+  capital it wanted (l01, l06, l16); now the model leaves three enumerations as prose — 首先…其次…最后 in one breath
+  (b010), 「第一个问题是…第二个问题是…第三个问题是…」 inside one long sentence (l13), and 第一期 / 第二期 (l16). Prompt
+  variants that insisted ("counting off two or more points is always a list", one more example) didn't move them.
+- Words kept in lists: the model drops counting phrases with the ordinals (一个是…，一个是…，还有 → items), which the
+  measure counts as loss, and once a word.
+- Latency is the price of a model pass, paid only when Structured is asked for: +~0.15 s median, +~0.35 s p90 after
+  key-up on these 3–15 s takes (the 41-case eval: 148 ms median for the pass). Light's own latency is unchanged (the
+  +9 ms median is within the rounds' spread: the same code path, one prompt longer by a few tokens).
+
+In the app (`results/app-e2e.jsonl`): the isolated test build of this change, 10 `say` WAVs fed in real time as the
+mic (`dictation wav`, released 0.1 s after the last word), each typed in Light and in Structured back to back, two
+rounds, warm models (M5 Max). Key-up → paste (`total_ms`):
+
+| | Median | p90 |
+|---|---:|---:|
+| Light (20 takes) | 342 ms | 382 ms |
+| Structured (20 takes) | 477 ms | 647 ms |
+| Structured − Light, paired | +148 ms | max +501 ms (a 25 s English take: the pass wrote ~90 words) |
+| the structuring pass (`structure_ms`) | 151 ms | — |
+
+- Lists typed: list-l01 (第一…第二…第三) and list-l02 (First … second … finally) both rounds; list-l13 (第一个问题是…
+  inside one sentence) and lab-b026 (an English run-on plan) stayed prose. Corrections resolved in Structured: vc01
+  哦不, vc10 等一下, vc17 I mean, vc22 scratch that; left as said: corr-c01 (heard 「把这个不对，这两个…」, no mark
+  before 不对) and lab-b030.
+- Light kept every correction's words in 5 of the 6 correction clips; in lab-b030 (「资料我晚上发群里，不对，下午就发」)
+  the model dropped 「不对」 in both rounds and the repair let it go — two units, a filler's size (§Repair: the price of
+  having no marker list; `DROP_MAX` = 1 would keep it but, on the 41-case eval, cut the fillers removed from 73.5 % to
+  50 %). The lab replay of the same clip kept it.
+- Not measured in the app: a before build side by side (the Light path is the same code; the lab's paired rounds
+  above show its latency unchanged).
+
+## Rules vs model
+
+The user's principle (the model-first work): "use the model's intelligence, not hard-coded rules. Regexes and word
+lists for understanding language shouldn't appear." Every hard-coded language rule the dictation pipeline had, and
+what became of it: **(a)** replaced with the model (the polish pass already sees the window; the structuring pass the
+whole take), **(b)** kept as a mechanical safety net that doesn't interpret meaning, **(c)** removed.
+
+| Rule (where) | What it did | Decision |
+|---|---|---|
+| Self-correction pass (`dictation_corrections.py`: marker table 不对 / 我是说 / 哦不 / no wait / I mean …, the shapes it resolved, two extra prompt examples when a marker was left) | resolved corrections before the model | **(c)**: deleted. Light keeps corrections; Structured's model pass resolves them (§Self-corrections) |
+| Stream: `startsWithCorrection` / `endsWithCorrection` / `commaJoin` (marker lists; 不对称 & co. exceptions) | merged a correction piece with the window before, carried a piece ending on a marker | **(c)**: no piece is merged or held back for its words |
+| Guard: `correction` check, `_CORRECTION` / `_CANCEL` markers, `cancelled`, `_LEAD_IN` words, `CORRECTION_SLACK`, the taken-back custom word | refused an unapplied correction; allowed more shrink per marker | **(c)**: Light keeps corrections; Structured's guard allows a taken-back run by size (≤ 12 units) |
+| Repair: `_MARKERS`, `_STRONG_MARKERS`, `_SOFT` discourse words, `_KEEP_ALWAYS` (不 / 没 / 或 / only … and first / second …) | decided which dropped spans "carry meaning" | **(b)**, made mechanical: a dropped span goes back unless it was said twice, moved, or ≤ 2 units (3 at the start) once repetitions are out; a substitution always goes back (§Repair) |
+| Filler lists (`_FILLERS_ZH` / `_FILLERS_EN` in the guard and the repair's put-back cleaning) | stripped fillers before comparing; cleaned put-back spans | **(a)** + **(b)**: the model removes fillers (the prompt describes them); the guard collapses only what was said twice; a put-back span comes back as said |
+| Guard `chatty` (`_CHATTY` phrase regexes: 好的 / 以下是 / Sure / here is / hope this helps …) | caught a preface or sign-off | **(b)**, made mechanical: a run of ≥ 3 units at either end that follows nothing said (unit pairs never said in sequence) |
+| Guard `answered` (`_QUESTION_ZH` / `_QUESTION_EN`: wh-words, auxiliaries, 吗 / 呢 / 为什么 …) | caught an answer to a dictated question | **(c)**: answers are `novel` / `chatty` (words nobody said); a short answer reusing the question's words can pass (the prompt forbids answering) |
+| Boundary stop words (`plausiblyFinal`: 的时候 / 以后 / 是 / 也 / 在 …, the / and / is / that …; `openStarts` 但是呢 / and so) | decided "sentence complete?" after a long pause | **(a)**: after a long pause the carried clause goes into the next window with its mark, and the model decides; polish off / a fall-back keep the speech model's mark (`seam`, `mark`) |
+| Ordinary English words (`DictationStitch.ordinary`, `decapitalize`; DictationFit's capital rule) | lowered the capital a cut (or the cursor) gave | **(a)** with polish (windows span the seam; the prompt says to drop a capital a pause caused; `keepCase` restores the input's own case, mechanically); **(c)** without polish and at the cursor (the case stays as written) |
+| `binds` / `bindingZH` (把 / 的 / to / the …) | no comma at a refused window's seam after such a word | **(c)**: a comma where the speech model heard a boundary (a rare 「把，」 in a refused window) |
+| List renderer (`DictationList.swift`, `dictation_styles.py`: ordinal tables 第一 / 首先 / 一是 / first / number one …, never-markers 以及 / 其他 / 然后 / also, 第一次 exceptions; `tests/fixtures/dictation_lists.jsonl`) | made Structured's lists | **(a)**: the structuring pass (§Styles); "reformat last" and the island's chip use it too; the chip's trigger (≥ 2 markers) is the pass finding a list |
+| Chat particles (`CHAT_PARTICLES` 吧 / 呢 / 啊 … put back by the repair; `DictationStyleVariant.chatParticles`) | kept a chat message's tone | **(a)**: the request says it is a chat message whose tone words and sentence-final particles stay |
+| Repair `_STARTERS` (It / The / This …) | lowered a sentence start after a span put back at the front | **(b)**, mechanical: lowered only when the transcript had that word in lower case |
+| Code-switch: `translated_glue`'s English function words (a / the / of / is …) and `common_word` | re-decoded an English answer "made of names and function words" | **(c)** for the word list (1 piece of 218 in the names eval); **(b)** kept: an English-tagged answer with Chinese characters in it (the script) is decoded again under the user's language; the language tag by probability threshold (`choose_tag`) stays |
+| `context_dump` separators (和 / 与 / 及 among the punctuation) | spotted the speech model writing its word list out | **(b)**, mechanical: listed names in the list's order with only punctuation / spaces between |
+| Near-miss name correction (`snap`: edit distance against the vocabulary, guarded by `/usr/share/dict/words` + `_MODERN_WORDS` + inflection rules) | Typless → Typeless, Asopic → Anthropic | **(a)**: polish gets the words and writes a misspelt name the listed way (in the names eval `snap` fired 0 times) |
+| Case-only respelling of a one-word term ("github" → "GitHub", guarded by `_MODERN_WORDS`) | spelled a term in the transcript | **(a)**: polish's call (it sees the sentence: Gemini the model or the sign); multi-word spacing / hyphen variants ("sense voice" → "SenseVoice") stay **(b)** |
+| Sounds-likes (`dictation_vocab.apply`) | the user's own aliases → the term | **(b)**: the user's data; a single-word sounds-like is skipped when it is a lower-case entry of macOS's lexicon (`/usr/share/dict/words` — data, not a list of ours) |
+| English label ("Dictation (English: keep it in English)") | stops Gemma translating an English dictation | **(b)**: chosen by script (no CJK, some Latin), a note to the model |
+| `clean_output` label regex (Output: / Dictation: …), think blocks, code fences, quotes | the model's output format | **(b)**: format, not the speaker's words (the Chinese labels 输出 / 结果 / 润色后 … are gone) |
+| Numbers (`cn_number`, `same_number`, `_NUMERAL`) | "numbers stay as said" in the repair; Structured's `number` check | **(b)**: a notation compared by value |
+| CJK–Latin spacing, no space between two CJK characters, overlap trim at the cursor (`DictationFit`), echo strip (`strip_echo`), hard-cut overlap (`dropOverlap`), commit split at marks, `keepCase`, list-line counting | layout and alignment | **(b)** |
+| Learning from the user's fixes (`DictationLearn.fixes`, `dictation_vocab.fixes`: function-word list, pinyin / consonant similarity) | which edits become vocabulary | kept for now: not on the typed text's path (it only suggests words, the user confirms); a candidate for the same treatment |
+| Eval-only lists (`polish.py score`'s `_EVAL_FILLERS`, the lab scorer's) | measuring | kept: measurement, not the pipeline |
+
+Tests that hold the line: `tests/test_polish.py::Guard::test_no_language_rules_in_the_guard` (none of the old lists in
+polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::test_no_word_lists_left`,
+`tests/test_dictation_styles.py::test_no_list_renderer_left`, `tests/test_dictation_vocab.py::FalseCorrections`.
 
 ## Custom words
 
@@ -758,15 +878,13 @@ polish above — stays the default everywhere and never restructures.
      `DictationContext.hint`; only used to order the list, never sent to the model) and the dictation so far —, then
      manual before learned before seeded, then by hits.
   2. **The deterministic pass** (`dictation_vocab.apply`, in the ASR server, so it also runs when polish is off): an
-     exact sounds-like match becomes the term, and a case / spacing / hyphen variant of a term gets its spelling
-     ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). Not when the sounds-like is a single ordinary English word
-     ("cloud", "blur") or a single CJK character, and no case fix of a term that is itself an ordinary word ("swift"):
-     those are polish's call, since it sees the sentence. Ordinary = a lower-case entry of `/usr/share/dict/words`,
-     plus a few words that 1934 list lacks and a term can look like (grok, gemini the sign, windsurf, app, email …:
-     `_MODERN_WORDS`).
-  2b. **The near-miss pass** (`dictation_vocab.snap`, in the ASR server after 2): a Latin word that is no real word
-     but nearly spells a listed term becomes the term (Typless → Typeless). No word pairs anywhere; deterministic and
-     conservative (§Names inside Chinese speech).
+     exact sounds-like match (the user's own data) becomes the term, and a spacing / hyphen variant of a term gets its
+     spelling ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). Not when the sounds-like is a single ordinary English
+     word ("cloud", "blur": a lower-case entry of macOS's own lexicon, `/usr/share/dict/words`) or a single CJK
+     character. One word in another case ("github", "gemini") is polish's call: whether it is the name or the ordinary
+     word takes the sentence (the hand-made `_MODERN_WORDS` list that used to decide it is gone, §Rules vs model).
+  2b. (The near-miss pass, `snap` — edit distance against the vocabulary plus word lists — is gone, §Rules vs model:
+     polish gets the words and writes a misspelt name the listed way; in the names eval it had fired 0 times.)
   3. **Polish** gets `Words: …` and `Near the cursor: … ▮ …` lines before `Dictation: …` in the last message (the
      cached prefix is unchanged). The prompt says to write a word that sounds or looks like a listed one the listed
      way, never to add one that wasn't spoken, and never to copy the context. Two examples show it. The guard accepts
@@ -804,9 +922,10 @@ probabilities of " English" and of the user's language are read, and the tag is
 - the user's language (Chinese for a user whose languages — `asr.languages`, else the system's — include zh; also when
   the dictation so far is ≥ 30 % Chinese) unless English has > 99.5 % of the two (`EN_TAG_THRESHOLD`);
 - the model's own when it picks neither (None: noise; another language) — as before;
-- an English answer that still reads like translated Chinese — Chinese characters in it, or nothing but names,
-  acronyms and function words ("Anthropic, the CEO, Dario.") — is decoded once more under the user's language and
-  that is kept when it has Chinese in it (1 piece of 218 in the eval; ~one more decode, only then).
+- an English answer with Chinese characters still in it is decoded once more under the user's language and that is
+  kept when it has Chinese in it (~one more decode, only then). The script decides; the v0.8 check for "nothing but
+  names and English function words" ("Anthropic, the CEO, Dario." — a list of function words) is gone (§Rules vs
+  model; it caught 1 piece of 218 in the names eval).
 - English-only users, or a language set in Settings (`asr.language`), keep the plain decode. If the library changes
   under it, the first failure switches back to the library's `transcribe` for good (`TaggedDecode` tests).
 - Cost: none — it is the same one decode (the probe is the tag step the model would run anyway).
@@ -822,20 +941,13 @@ so far as context.
   empty because none of the names was in the vocabulary. The `default` seed now has the AI names (§Custom words), and
   the ASR request carries a `hint` (title + text around the cursor) so words seen there are listed first. Qwen3-ASR
   gets up to 64 words (`QWEN_MAX_TERMS`).
-- `snap` — the near-miss pass, after the sounds-like / spelling pass, in the ASR server (so also with polish off):
-  a Latin run in mostly-Chinese text that is no real word and nearly spells one listed term becomes it. Strict on
-  purpose; no word pairs anywhere, nothing learned:
-  - never an ordinary English word (inflections included; `/usr/share/dict/words` + `_MODERN_WORDS`), an acronym, a
-    number, a term or a sounds-like; never in English text;
-  - similarity ≥ 0.75 and ≥ 5 letters on its own (Typless → Typeless); a weaker miss (≥ 0.55, same first letter, ≥ 3
-    letters shared at an end: Asopic → Anthropic) or a term that is itself a word (Cursor, Windsurf, Mistral) only when
-    the window title / the text around the cursor / the dictation so far names the term; one term clearly closest.
-  - **False corrections: 0** on `tests/fixtures/dictation_false_corrections.jsonl` — 40 sentences (Chinese and English)
-    that use cloud, open, cursor, code, gemini (the sign), grok (the verb), musk (the scent), llama, mistral (the wind),
-    copilot, windsurf, perplexity, codex (the book), apple, meta …, through both passes with the whole seeded
-    vocabulary, with no context and with a context naming every term. Two pre-existing case fixes it caught
-    ("gemini" → "Gemini", "windsurf" → "Windsurf") are gone (`_MODERN_WORDS`).
-  - In the eval the biasing already wrote the names, so it fired 0 times there: it is a safety net.
+- (v0.8 had `snap`, a near-miss pass — edit distance against the vocabulary, guarded by English word lists — in
+  the ASR server. Removed in the model-first work, §Rules vs model: it fired 0 times in the names eval, and polish,
+  given the words, writes a misspelt name the listed way.)
+- **False corrections: 0** on `tests/fixtures/dictation_false_corrections.jsonl` — 40 sentences (Chinese and English)
+  that use cloud, open, cursor, code, gemini (the sign), grok (the verb), musk (the scent), llama, mistral (the wind),
+  copilot, windsurf, perplexity, codex (the book), apple, meta …, through the deterministic pass with the whole seeded
+  vocabulary.
 - The user's WeChat fix: §Learning from corrections (the page's **Correct**, and `dictation_vocab.learn` for the lab).
 
 ### Polish
@@ -845,8 +957,8 @@ so far as context.
   "Near the cursor: …" before "Dictation: …"):
   - Gemma 4 E2B **translated English dictations into Chinese** once a word list was there (6 of 12 English clips; 2
     without the list): an English dictation is now labelled "Dictation (English: keep it in English): " → 0 of 12.
-  - It **left spoken self-corrections in** (「把这个，不对，这两个…」 typed as said; 2 of 8 applied with the words and a
-    title, 5 of 8 bare). Now polish lists only the words this dictation may need (`dictation_vocab.relevant`: heard,
+  - (v0.8.x, before the model-first work made Light keep self-corrections:) it **left spoken self-corrections in**
+    (「把这个，不对，这两个…」 typed as said; 2 of 8 applied with the words and a title, 5 of 8 bare). Now polish lists only the words this dictation may need (`dictation_vocab.relevant`: heard,
     spelled alike, or in the field — the speech model already had them all), a title alone is no "Near the cursor"
     line (the guard still accepts its words), the first words example has a correction in it, and the rules say the
     corrections still apply with a word list → 14 of 16 typed right, old code 8 of 16 (8 cases × with / without words, `results/selfcorr-*.txt`; the one left is
@@ -854,15 +966,9 @@ so far as context.
   - The 41-case eval with the new prompt: fall-backs 0 / 0, kept 97.6 % / 97.6 %, unwanted words dropped 90.2 → 97.6 %,
     fillers removed 88 → 94 %, similarity 0.958 → 0.971; the over-deletion set: kept 100 % after the repair both
     (the model's own 95.5 % both), repairs 4.5 → 9.1 % of cases (`results/polish-*.json`).
-- Self-corrections in the guard and the repair (found by the Dictation Lab):
-  - a cancelling marker (不对, 我是说, 我的意思是, 更正, 说错了, no wait, wait no, I mean, scratch that, make that)
-    takes back the clause before it (`cancelled`, ≤ 8 units). An output that dropped the marker but kept those words
-    right before the restated version (「把这个文件，这两个文件」) fails `correction`;
-  - the repair never puts back a span with such a marker in it when the words after the span were kept ("Let's meet
-    at 2:30, no wait, make it 3:30" → "Let's meet at 3:30." stays; it used to get "2:30, no wait, make it" back);
-  - the guard's tail check lets up to two lead-in words go with the marker (make it, it's, 是, 改, 换 …; never "to
-    Bob"), and a custom word said only in the taken-back words may go ("用 Claude 写，不对，用 Codex 写" → `term` no
-    more).
+- (v0.8.x had correction-marker lists in the guard and the repair — `cancelled`, the `correction` check, lead-in
+  words, a custom word "said only in the taken-back words" — all gone in the model-first work: §Rules vs model,
+  §Self-corrections.)
 
 ### Eval
 
@@ -976,7 +1082,7 @@ rewrite teaches nothing):
     `$BLURT_HOME/dictation/vocabulary.json` (read, change, atomic replace). `explicit=False` makes a suggestion, as
     the watch does. `fixes(raw, corrected)` only finds them.
   - CLI: `dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]`,
-    `dictation_vocab.py fixes --raw … --corrected …`, `dictation_vocab.py snap --text TEXT [--context TEXT]`.
+    `dictation_vocab.py fixes --raw … --corrected …`, `dictation_vocab.py apply --text TEXT` (the sounds-like pass).
   - The app holds no lock another process can see: a tool writing while the app seeds or counts hits can lose one of
     the two writes. Call it while the user isn't dictating (a lab session).
 
@@ -1181,12 +1287,13 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
   `repaired` (spans polish dropped that were put back) and `fitted` (how it was fitted into the field at the cursor: head / tail / punct / capital / space). Older lines lack them: read as unknown. `prune` rewrites
   lines through `DictationEntry.json`, which carries them;
 - since the styles: `style`, `style_source` (shift | island | chord | app | category | default) and `style_router`
-  (`category`, `base` — the app / category / default style —, `explicit`, `toggles`, `markers`, `list_likely`,
-  `rendered`, `variant`), `reformats` (§Styles);
+  (`category`, `base` — the app / category / default style —, `explicit`, `toggles`, `list_likely`, `rendered` (a list
+  was typed), `variant`; `markers` only on entries from before the model-first styles), `reformats` (§Styles; since
+  the model-first styles also `suggest`: the island offered a list), `structure_ms` in the timings;
 - edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`, `{"op":"correct","id",
   "text"}` (the user's correction from the Dictation page: `corrected` on the entry; prune folds it into the line),
-  `{"op":"style","id","action","from","to","replaced"}` (reformat-last, its undo, or `revert`: a rendered list taken
-  apart in the field; folded into `reformats`).
+  `{"op":"style","id","action","from","to","replaced"}` (reformat-last, its undo, `revert`: a rendered list taken
+  apart in the field, or `suggest`: the list chip shown; folded into `reformats`).
 
 Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
 (`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on.
@@ -1208,6 +1315,7 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | `polish` | `light` \| `off` |
 | `polish_model` | by tier |
 | `polish_timeout_ms` | `3000` (the generation only, once the model is loaded) |
+| `structure_timeout_ms` | `10000`: Structured's one pass over the whole take (the generation only) |
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
 | `streaming` | `true`: transcribe and polish pieces while talking |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
@@ -1223,7 +1331,7 @@ Retention (`record.dictation.retention_days`, 30) rewrites the file at launch an
 | `lab_keep_next` | unset: the Dictation Lab's "keep the audio of my next dictations" — keep the audio of this many more (§Lab) |
 | `lab_mic` | unset (the default input): the Dictation Lab's microphone, by device name |
 | `styles` | unset = light everywhere (§Styles). `{"chat"\|"code"\|"mail"\|"notes"\|"other"\|"default": STYLE, "apps": {BUNDLE: STYLE}, "learned": [BUNDLE]}`, STYLE = `verbatim` \| `light` \| `structured` \| `auto`; written as one dictionary (bundle ids have dots) |
-| `suggest_lists` | `true`: after a take that sounds like a list but went in as prose, the island offers *Make a List* |
+| `suggest_lists` | `true`: after a light take of ≥ 24 units, the structuring pass runs in the background (after the paste); when the model made it a list, the island offers *Make a List* |
 | `learn_styles` | `true`: suggest an app's style from the user's switches (asks once; never switches by itself) |
 | `style_asked` | the suggestions already asked (`BUNDLE\|STYLE`), whatever the answer |
 
@@ -1375,6 +1483,30 @@ by tag (`length:short`, `feature:correction` …).
   `packs/`, never in the repository.
 
 ## Verification
+
+(Each entry describes the code of its time; later work may have replaced what it checked — the model-first entry says
+what went.)
+
+- Model first (`promo/cases/v0.8-dictation-model-first/`, not in git: `audio/` the 28 new `say` cases (`vc*.wav`),
+  `results/` the lab rounds `before-*-r{1,2}.json` / `after-*-r{1,2}.json`, the polish evals `polish-*.json`,
+  `app-e2e.jsonl`; the scripts — the case generator, the scorer, the prompt experiments, the e2e driver — under
+  `scripts/`):
+  - `pytest tests`: `test_polish.py` — `Guard` (every Light reference and every structured reference passes; no
+    language lists left; `listed`, `dropped`, `number`, `chatty` by unit pairs), `LightKeepsCorrections` (13 phrasings,
+    zh and en, explicit and implicit: the guard accepts every word kept, the repair puts back a correction the model
+    resolved anyway, the structured guard accepts it resolved; the prompts say so), `Repair` (mechanical: hesitations
+    and stutters go, restatements and substitutions come back, numbers), `EngineLight` / `EngineStructure` (stubbed
+    models: the words reach the model as said; a list from Light falls back; chat is a note in the request; the
+    structuring pass, its refusals, its own prefix); `test_dictation_stitch.py` (the shared seam fixture, no word
+    lists, a long pause's mark goes to the model, the structuring pass on Light's stitched text, a refusal types
+    Light's); `test_dictation_styles.py` (`pick`, Auto, no renderer, the lab's style runs); `test_dictation_vocab.py`
+    (`FalseCorrections`: no near-miss pass, 0 false corrections); `test_dictation_lab.py` (the fake pipeline's
+    structuring pass);
+  - `swift test`: `DictationStitchTests` (the shared fixture, `mark`, the case left alone, `listLines`),
+    `DictationStyleTests.testPick`, `DictationStyleLearnTests` (the `suggest` record), `DictationFitTests`;
+  - the lab rounds and the polish evals in §Self-corrections, §Styles and §Polish; the isolated test build
+    (`dev.blurt.recorder.modelfirstcur`, scratch `BLURT_HOME`, LaunchServices, `BLURT_ALLOW_MULTI`, the `dictation wav`
+    hook as the mic, nothing posted or pasted outside the test pad), unregistered afterwards (§Styles: in the app).
 
 - Polish windows and self-corrections (`promo/cases/v0.8-dictation-polish-fix/`, not in git: `audio/` the 60 `say`
   cases, `results/` the lab rounds `before-r*.json` / `after-r*.json`, the polish evals, `app-e2e.jsonl`, the prompt
