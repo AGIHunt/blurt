@@ -18,6 +18,9 @@
 // so words heard wrong can be fixed (BlurtCore NoteEdit: an edited spoken note replaces its words). A voice card
 // has no picture: the bubble is text only. The mic re-records: the new take goes to shots/NNN.retake.wav
 // (VoiceRetake) and replaces the original only when it is kept; Esc, or no speech, leaves the original untouched.
+// While it records, the field holds only what was typed (the take brings new words); a take not kept puts the words
+// said back, and they stay. A kept take's words are fresh: words still coming for the old take are dropped
+// (Snapper.voiceReplaced). Retakes left behind by a quit are swept when the cards come back (Snapper.restore).
 // The same panel, text-only, is the note popover for snaps taken while recording (the island's snap button,
 // the recording pauses while it is open).
 //
@@ -644,6 +647,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// edit: a re-record was kept (it replaces the original on save, and is deleted on Esc)
     private var retakeKept = false
     private var retakeSeconds: Double = 0
+    /// edit: the field still shows the words said (false once a re-record left only the typed part in it)
+    private var fieldHoldsSaid = true
     /// the "Drag to circle" hint has faded for this bubble
     private var penHintGone = false
     private var player: AVAudioPlayer?
@@ -675,6 +680,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         takeRel = nil
         retakeKept = false
         retakeSeconds = 0
+        fieldHoldsSaid = true
         penHintGone = false
         penHint.alphaValue = 1
         original = (s.text, s.voice, s.said, s.strokes)
@@ -899,7 +905,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             guard let self = self, self.voice === v else { return }
             if e == .noSpeech {
                 self.voice = nil
-                if !self.typed { self.close(save: true, flash: false) }
+                self.retakeFell()
+                if !self.typed { self.close(save: true, flash: false) } else { self.refreshStatus() }
             } else {
                 self.voice = nil
                 self.voiceKept = true
@@ -911,20 +918,21 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                     self.shot?.voice = rel
                     self.shot?.said = nil                    // its words to come
                 }
-                if !self.typed { self.close(save: true, flash: true) }
+                if !self.typed { self.close(save: true, flash: true) } else { self.refreshStatus() }
             }
         }
         voice = v
         VoiceInput.warmSpeechModel()            // its words come from the warm server, not a cold model load
         v.start { [weak self] ok in
             guard let self = self, self.voice === v else { return }
-            if !ok { self.voice = nil; self.refreshStatus() }
+            if !ok { self.voice = nil; self.retakeFell(); self.refreshStatus() }
         }
         refreshStatus()
     }
 
     private func rerecord() {
         guard mode == .edit else { return }
+        guard Dictation.shared.phase != .listening else { return refreshStatus() }    // dictation has the mic
         voice?.stop(keep: false)                // a retake in progress: only it goes
         voice = nil
         if retakeKept, let u = retakeURL { VoiceRetake.discard(u) }
@@ -932,6 +940,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // the words said will be the new take's: the field keeps what was typed (unless it was changed)
         if let o = original, CardNote.clean(field.stringValue) == CardNote.clean(NoteEdit.field(typed: o.text, said: o.said)) {
             field.stringValue = o.text ?? ""
+            fieldHoldsSaid = false
             layout()
         }
         typed = !field.stringValue.isEmpty
@@ -940,6 +949,16 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         startListening()
         typed = keepTyped
         refreshStatus()
+    }
+
+    /// A re-record ended without a take (no speech, the mic didn't start): the words said stay, so the field shows
+    /// them again — unless the user changed what was typed meanwhile.
+    private func retakeFell() {
+        guard mode == .edit, !fieldHoldsSaid, !retakeKept, let o = original,
+              CardNote.clean(field.stringValue) == CardNote.clean(o.text) else { return }
+        field.stringValue = NoteEdit.field(typed: o.text, said: o.said)
+        fieldHoldsSaid = true
+        layout()
     }
 
     private func refreshStatus() {
@@ -1134,9 +1153,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             }
             // the field held the whole note: an edit of spoken words replaces them (NoteEdit)
             let note = NoteEdit.apply(openedTyped: o.text, openedSaid: o.said, currentSaid: s.said, field: field.stringValue,
-                                      retaken: retaken)
+                                      fieldHoldsSaid: fieldHoldsSaid, retaken: retaken)
             s.text = note.typed
             s.said = note.said
+            if retaken { snapper.voiceReplaced(s) }     // words still coming for the old take are not the new take's
             applyInk(s)
             s.batch?.save(s)
         } else if save || discard {

@@ -59,11 +59,42 @@ final class CaptureEditsTests: XCTestCase {
         XCTAssertNil(NoteEdit.apply(openedTyped: nil, openedSaid: "old", currentSaid: "old", field: "", retaken: true).typed)
     }
 
+    func testAReRecordNotKeptLeavesTheWordsSaid() {
+        // the re-record left only the typed part in the field; the take was not kept (nothing said, ⏎ before speaking,
+        // the mic busy, the swap failed) — the note stays as it was
+        let r = NoteEdit.apply(openedTyped: "header", openedSaid: "the logo is cut off", currentSaid: "the logo is cut off",
+                               field: "header", fieldHoldsSaid: false, retaken: false)
+        XCTAssertEqual(r.typed, "header")
+        XCTAssertEqual(r.said, "the logo is cut off")
+        // the typed part changed meanwhile: that is the typed note now, the words said stay
+        let t = NoteEdit.apply(openedTyped: "header", openedSaid: "the logo is cut off", currentSaid: "the logo is cut off",
+                               field: "page header", fieldHoldsSaid: false, retaken: false)
+        XCTAssertEqual(t.typed, "page header")
+        XCTAssertEqual(t.said, "the logo is cut off")
+        // a voice card (nothing typed): its field was emptied for the take
+        let v = NoteEdit.apply(openedTyped: nil, openedSaid: "the logo", currentSaid: "the logo", field: "",
+                               fieldHoldsSaid: false, retaken: false)
+        XCTAssertNil(v.typed)
+        XCTAssertEqual(v.said, "the logo")
+    }
+
     // MARK: VoiceRetake
 
     func testTheRetakeGoesNextToTheOriginal() {
         XCTAssertEqual(VoiceRetake.path(for: "shots/005.wav"), "shots/005.retake.wav")
         XCTAssertEqual(VoiceRetake.path(for: "shots/012"), "shots/012.retake")
+    }
+
+    func testRetakesLeftBehindAreSwept() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-sweep-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for f in ["005.wav", "005.retake.wav", "005.png", "006.marked.png"] {
+            try Data([1, 2, 3]).write(to: dir.appendingPathComponent(f))
+        }
+        VoiceRetake.sweep(dir)
+        let left = try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted()
+        XCTAssertEqual(left, ["005.png", "005.wav", "006.marked.png"])
     }
 
     func testCancellingAReRecordKeepsTheOriginalByteForByte() throws {

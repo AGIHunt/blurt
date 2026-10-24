@@ -203,6 +203,7 @@ final class Snapper {
         let key = ObjectIdentifier(s)
         if pendingWords[key] != nil { pendingWords[key]?.append(then); return }
         pendingWords[key] = [then]
+        let take = wordsTake[key] ?? 0
         s.transcription = .pending
         hanging.update(s)
         if let st = streamed.removeValue(forKey: key) {
@@ -213,27 +214,32 @@ final class Snapper {
                 emit(["event": "voice_stream_done", "n": s.n, "ok": text != nil, "chars": t?.count ?? 0,
                       "ms": Int((CACurrentMediaTime() - t0) * 1000)])
                 guard let self = self else { return }
-                if let t = t, !t.isEmpty { self.wordsArrived(s, t, key: key, via: "stream") } else { self.transcribeWhole(s, wav, key: key) }
+                if let t = t, !t.isEmpty { self.wordsArrived(s, t, key: key, take: take, via: "stream") }
+                else { self.transcribeWhole(s, wav, key: key, take: take) }
             }
             return
         }
-        transcribeWhole(s, wav, key: key)
+        transcribeWhole(s, wav, key: key, take: take)
     }
 
     /// The whole wav → its words: the warm speech server when it runs or is starting (the snap's note bubble and ⌥⇧V
     /// start it as they begin listening: VoiceInput.warmSpeechModel), else `transcribe.py note` (a cold model load).
-    private func transcribeWhole(_ s: Shot, _ wav: URL, key: ObjectIdentifier) {
+    private func transcribeWhole(_ s: Shot, _ wav: URL, key: ObjectIdentifier, take: Int) {
         let fail = Snapper.testFailWords()
         DispatchQueue.global(qos: .userInitiated).async {
             if let d = Snapper.testWordsDelay { Thread.sleep(forTimeInterval: d) }
             let r = fail ? nil : VoiceInput.transcribePiece(wav, prior: "")
             let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            DispatchQueue.main.async { self.wordsArrived(s, text, key: key, via: "whole") }
+            DispatchQueue.main.async { self.wordsArrived(s, text, key: key, take: take, via: "whole") }
         }
     }
 
-    /// The words of `s` are in (nil: transcription failed; "": no speech in it).
-    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, via: String) {
+    /// The words of `s` are in (nil: transcription failed; "": no speech in it). `take`: which recording they are of
+    /// (the words of a take since replaced by a re-record are dropped: voiceReplaced).
+    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, take: Int, via: String) {
+        guard take == wordsTake[key] ?? 0 else {
+            return emit(["event": "voice_text_stale", "n": s.n, "via": via])
+        }
         emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false, "via": via,
               "wall": Date().timeIntervalSince1970])
         if !s.deleted {
@@ -254,6 +260,20 @@ final class Snapper {
         for f in pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
     }
     private var pendingWords: [ObjectIdentifier: [(String?) -> Void]] = [:]
+    /// how many times a capture's recording was replaced (Edit Note's re-record): words of an older take are stale
+    private var wordsTake: [ObjectIdentifier: Int] = [:]
+
+    /// An edit kept a re-record over `s`'s voice (its `said` is nil again). Words still coming for the old take are
+    /// dropped when they land, and whoever waited for them gets the new take's words instead.
+    func voiceReplaced(_ s: Shot) {
+        let key = ObjectIdentifier(s)
+        wordsTake[key, default: 0] += 1
+        streamed.removeValue(forKey: key)
+        s.transcription = .idle
+        guard let waiting = pendingWords.removeValue(forKey: key) else { return }
+        emit(["event": "voice_replaced", "n": s.n, "waiting": waiting.count])
+        transcribe(s) { t in waiting.forEach { $0(t) } }
+    }
     /// voice notes whose pieces were transcribed while they were said (VoiceNoteStream), until their words are in
     private var streamed: [ObjectIdentifier: VoiceNoteStream] = [:]
     /// Scripted checks (test commands only): BLURT_TEST_WORDS_DELAY=SECS holds every transcription back that long, so
@@ -616,6 +636,7 @@ final class Snapper {
                   let b = ShotBatch.load(d), b.live.contains(where: { $0.isCard || $0.taken != nil }) else { continue }
             b.onChange = { hanging.refresh() }
             cardBatches.append(b)
+            VoiceRetake.sweep(d.appendingPathComponent("shots"))
         }
         hanging.refresh(quiet: true)
         expireTaken()

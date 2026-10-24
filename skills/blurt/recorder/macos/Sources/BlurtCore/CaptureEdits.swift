@@ -19,12 +19,15 @@ public enum NoteEdit {
 
     /// The note after the edit bubble was saved. `opened…`: the note when the bubble opened; `currentSaid`: its words
     /// now (they may have arrived while it was open); `retaken`: a new recording was kept (its words are to come).
+    /// `fieldHoldsSaid`: the field still shows the words said — false once a re-record set it to the typed part (the
+    /// new take's words were to replace them); if that take was not kept, the words said stay as they were.
     public static func apply(openedTyped: String?, openedSaid: String?, currentSaid: String?, field: String,
-                             retaken: Bool) -> (typed: String?, said: String?) {
+                             fieldHoldsSaid: Bool = true, retaken: Bool) -> (typed: String?, said: String?) {
         let edited = CardNote.clean(field)
         if retaken { return (edited, nil) }
-        if edited == CardNote.clean(self.field(typed: openedTyped, said: openedSaid)) { return (openedTyped, currentSaid) }
-        if CardNote.clean(openedSaid) != nil {
+        let base = fieldHoldsSaid ? self.field(typed: openedTyped, said: openedSaid) : (openedTyped ?? "")
+        if edited == CardNote.clean(base) { return (openedTyped, currentSaid) }
+        if fieldHoldsSaid, CardNote.clean(openedSaid) != nil {
             // the words were in the field: the edited text is the note's words now
             guard let e = edited else { return (nil, openedSaid) }
             return (nil, e)
@@ -54,6 +57,14 @@ public enum VoiceRetake {
     /// Esc, or nothing said: the retake goes, the original stays as it was.
     public static func discard(_ retake: URL, fileManager fm: FileManager = .default) {
         try? fm.removeItem(at: retake)
+    }
+
+    /// Retakes an edit left behind when Blurt quit with its bubble open (never saved, so never the note): they go.
+    public static func sweep(_ shots: URL, fileManager fm: FileManager = .default) {
+        for f in (try? fm.contentsOfDirectory(at: shots, includingPropertiesForKeys: nil)) ?? []
+        where (f.deletingPathExtension().lastPathComponent as NSString).pathExtension == "retake" {
+            try? fm.removeItem(at: f)
+        }
     }
 }
 
