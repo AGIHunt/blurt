@@ -79,12 +79,13 @@ final class DictationVocabularyTests: XCTestCase {
             t("Musk", [], "default", hits: 2), t("Sam Altman", [], "default"), t("Sora", [], "default", "removed"),
             t("Grok", [], "manual"),                                          // the user added it: theirs
             t("Bug Agent", [], "project"), t("Asopic", [], "learned"),
+            t("e2e test project with a long name", [], "project"),         // seeded before the three-word limit
         ]]
         try JSONSerialization.data(withJSONObject: old).write(to: v.url)
         v.seed(projects: [(name: "Bug Agent", key: "BA")])
         let all = v.load()
         let names = all.map(\.term)
-        for gone in ["Musk", "Sam Altman", "Sora"] { XCTAssertFalse(names.contains(gone), gone) }
+        for gone in ["Musk", "Sam Altman", "Sora", "e2e test project with a long name"] { XCTAssertFalse(names.contains(gone), gone) }
         for kept in ["Grok", "Bug Agent", "Asopic", "BA"] { XCTAssertTrue(names.contains(kept), kept) }
         let cc = all.first { $0.term == "Claude Code" }
         XCTAssertEqual(cc?.soundsLike, ["clod code"])                       // only what the user's fixes taught

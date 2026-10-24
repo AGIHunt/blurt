@@ -242,11 +242,12 @@ public final class DictationVocabulary {
         return t.count >= 2 && t.count <= 40 && !words.isEmpty && words.count <= 3
     }
 
-    /// Schema 1 → 2: a retired seed the user never touched (still source `default`) goes, whatever its state; the old
-    /// built-in words (source `project` then) become `default`; the sounds-likes the old seed shipped go (the ones
-    /// learned from the user's fixes stay).
+    /// Schema 1 → 2: a retired seed the user never touched (still source `default`) goes, whatever its state, and so
+    /// does a project name too long to seed now; the old built-in words (source `project` then) become `default`; the
+    /// sounds-likes the old seed shipped go (the ones learned from the user's fixes stay).
     static func migrate(_ all: inout [VocabTerm]) {
         all.removeAll { $0.source == .builtIn && retiredSeed.contains($0.term) }
+        all.removeAll { $0.source == .project && !seedable(project: $0.term) }
         for i in all.indices {
             if all[i].source == .project && builtIn.contains(all[i].term) { all[i].source = .builtIn }
             if let old = retiredSoundsLikes[all[i].term] { all[i].soundsLike.removeAll { old.contains($0) } }
