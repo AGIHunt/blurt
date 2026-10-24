@@ -155,7 +155,7 @@
 "settings.perm.done.some" = "Done for now — allow the rest here any time.";
 "onboarding.permissions_detail" = "Dictation needs the microphone, and Accessibility to type at the cursor. Blurt opens each switch in System Settings for you.";
 "onboarding.dictation_key" = "Dictation key";
-"onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk. You can change it in Settings → Dictation.";
+"onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk. You can change it later in Settings.";
 "onboarding.dictation_key.other" = "Tap %@ to dictate hands-free and tap again to stop, or hold it and talk.";
 "settings.perm.not_needed" = "Not needed";
 "settings.general.dictation_lab" = "Show the Dictation Lab (for developers)";
@@ -170,7 +170,7 @@
 "onboarding.use.snap" = "Snap";
 "onboarding.use.voice" = "Voice Note";
 "onboarding.use.record" = "Record";
-"onboarding.use.hint" = "You can change the shortcuts in Settings → Shortcuts.";
+"onboarding.use.hint" = "You can change these shortcuts in Settings.";
 "onboarding.skip_for_now" = "Skip for Now";
 "onboarding.permissions.screen_later" = "Screen Recording is asked the first time you snap or record.";
 "onboarding.models" = "Speech models";
@@ -178,7 +178,7 @@
 "onboarding.models.checking" = "Checking this Mac…";
 "onboarding.models.kind.dictation" = "Dictation";
 "onboarding.models.kind.polish" = "Polish";
-"onboarding.models.kind.note" = "Voice Notes";
+"onboarding.models.kind.note" = "Voice Note";
 "onboarding.models.download" = "Download Recommended Models";
 "onboarding.models.total" = "%@ in all, kept on this Mac";
 "onboarding.models.progress" = "%@ of %@";
@@ -189,7 +189,11 @@
 "onboarding.models.retry" = "Try Again";
 "onboarding.models.small" = "Small Model Only (%@)";
 "onboarding.models.unavailable" = "Couldn’t read the models.";
-"onboarding.models.later" = "You can change models later in Settings → Dictation and Settings → Speech.";
+"onboarding.warm.failed" = "Blurt couldn’t finish setting up its speech tools. Check your connection and try again.";
+"onboarding.models.stop" = "Stop";
+"onboarding.models.failed_toast" = "The model download stopped";
+"onboarding.models.failed_open" = "Show";
+"onboarding.models.later" = "You can change models later in Settings, under Dictation and Speech.";
 "onboarding.uv.needed" = "Blurt needs a small helper, uv, to run its speech models.";
 "onboarding.uv.failed" = "uv didn’t install. Check your connection and try again.";
 "onboarding.try" = "Try it";

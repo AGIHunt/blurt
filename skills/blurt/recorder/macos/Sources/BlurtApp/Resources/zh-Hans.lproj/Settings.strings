@@ -155,7 +155,7 @@
 "settings.perm.done.some" = "先到这里，剩下的随时可以在这里开启。";
 "onboarding.permissions_detail" = "听写要用麦克风，还要「辅助功能」把字打到光标处。口喷鸡会帮你打开「系统设置」里对应的开关。";
 "onboarding.dictation_key" = "听写键";
-"onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。以后可以在「设置 → 听写」里改。";
+"onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。以后可以在设置里改。";
 "onboarding.dictation_key.other" = "按一下%@开始听写，再按一下结束；也可以按住说话，松开结束。";
 "settings.perm.not_needed" = "不需要";
 "settings.general.dictation_lab" = "显示听写测试台（开发者用）";
@@ -170,7 +170,7 @@
 "onboarding.use.snap" = "截图";
 "onboarding.use.voice" = "语音备注";
 "onboarding.use.record" = "录屏";
-"onboarding.use.hint" = "快捷键可以在「设置 → 快捷键」里改。";
+"onboarding.use.hint" = "快捷键可以在设置里改。";
 "onboarding.skip_for_now" = "以后再说";
 "onboarding.permissions.screen_later" = "截图和录屏要用的「录屏」权限，第一次用时再开。";
 "onboarding.models" = "语音模型";
@@ -189,7 +189,11 @@
 "onboarding.models.retry" = "重试";
 "onboarding.models.small" = "只下载小模型（%@）";
 "onboarding.models.unavailable" = "读不到模型列表。";
-"onboarding.models.later" = "以后可以在「设置 → 听写」和「设置 → 语音」里换模型。";
+"onboarding.warm.failed" = "语音工具没装好。检查一下网络再试。";
+"onboarding.models.stop" = "停止";
+"onboarding.models.failed_toast" = "模型下载中断了";
+"onboarding.models.failed_open" = "查看";
+"onboarding.models.later" = "以后可以在设置的「听写」和「语音」里换模型。";
 "onboarding.uv.needed" = "口喷鸡要用一个小工具 uv 来运行语音模型。";
 "onboarding.uv.failed" = "uv 没装上。检查一下网络再试。";
 "onboarding.try" = "试一下";

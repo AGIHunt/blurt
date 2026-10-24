@@ -3,16 +3,18 @@
 //      fix it) and their keys;
 //   2. permissions — what dictation needs: the microphone and Accessibility, live, and "Set Up Permissions" (the brand
 //      button while anything is missing): the permission guide's dictation walk (PermissionGuide.swift) with the
-//      helper panel next to System Settings; Input Monitoring shows only when it is needed (Accessibility still off
-//      after a walk, or a key other than Fn), the 🌐 key is part of the walk. The step moves on by itself when the
+//      helper panel next to System Settings; Input Monitoring shows only when it is needed (still missing with
+//      Accessibility on or after a walk, or a key other than Fn); with Fn the 🌐 key's row shows (the walk asks for it). The step moves on by itself when the
 //      walk ends with everything on. The dictation key (Fn first) is picked here too. Screen Recording is not asked
 //      here: the first snap or recording asks for it (the toast's Allow… / the alert start the guide for it);
 //   3. models — one "Download recommended models" for this Mac (ModelSetup.swift: dictation, polish, voice notes) with
-//      the total size and one progress bar; it carries on in the background. uv is found, or — one sentence and a
-//      button — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
-//      dependencies are warmed up in the background as soon as uv is there (only a failure shows);
+//      the total size and one progress bar (and Stop); it carries on in the background. uv is found, or — one sentence
+//      and a button — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
+//      dependencies are warmed up in the background as soon as uv is there (only a failure shows: one sentence and
+//      Try Again);
 //   4. try it — a text box ("tap Fn and say something") that shows a check once the first dictation lands, and "Open
-//      Blurt at login" (on here: dictation needs Blurt running); Done applies it and closes.
+//      Blurt at login" (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies
+//      it and closes.
 // Connecting agents (the blurt skill + MCP) is not in the assistant: Settings → Agents.
 // Shown once on first launch (config app.onboarded), again from Settings → General or blurt://onboarding.
 //
@@ -22,7 +24,7 @@
 // own action while it is still to do, with "Skip for Now" in the footer; else Next / Done). Done closes (the chick is
 // already happy on the last step; no bloom).
 // Test builds never register a login item (an event says what would have happened) and never ask macOS for anything
-// (SystemAccess.swift).
+// (SystemAccess.swift); BLURT_TEST_WARM_FAIL names a script that stands in for the warm-up's first one (a failure).
 import AppKit
 import ServiceManagement
 import SwiftUI
@@ -34,12 +36,13 @@ final class OnboardingModel: ObservableObject {
     @Published var uv: String? = ScriptRunner.shared.uvPath
     @Published var installingUV = false
     @Published var uvFailed = false
-    @Published var warm: String?            // nil | "running" | "done" | error text
+    @Published var warm: String?            // nil | "running" | "done" | "failed" (the script's output: the event only)
     @Published var dictationKey = Dictation.key
     /// a dictation walk started here (Input Monitoring's row shows once Accessibility stays off after it)
     @Published var walked = false
-    /// "Open Blurt at login" on the last step: on by default (dictation needs Blurt running)
-    @Published var openAtLogin = true
+    /// "Open Blurt at login" on the last step: on the first time (dictation needs Blurt running); opened again later,
+    /// as it is now — Done never turns back on what the user turned off in Settings → General
+    @Published var openAtLogin = Onboarding.needed ? true : LoginItem.enabled
     @Published var tryText = ""
     /// the first dictation landed while the last step showed
     @Published var tried = false
@@ -66,11 +69,13 @@ final class OnboardingModel: ObservableObject {
         finish()
     }
 
-    /// The assistant opened (or uv just arrived): the dependencies warm up and the models are read, in the background.
+    /// The assistant opened (or uv just arrived): the dependencies warm up and the models are read, in the background —
+    /// each time, so models installed from Settings meanwhile show as installed (load() skips while a download runs).
     func appear() {
+        uv = ScriptRunner.shared.uvPath
         guard uv != nil else { return }
         warmUp()
-        Task { if !ModelSetup.shared.loaded { await ModelSetup.shared.load() } }
+        Task { await ModelSetup.shared.load() }
     }
 
     static let heroWidth: CGFloat = 200
@@ -105,17 +110,21 @@ final class OnboardingModel: ObservableObject {
     }
 
     /// Pre-installs the scripts' dependencies (numpy, sherpa-onnx…) and builds the search index — quietly: only a
-    /// failure shows (on the models step).
+    /// failure shows (on the models step: one sentence and Try Again; the script's output goes to the event).
     func warmUp() {
         guard warm != "running", warm != "done" else { return }
         warm = "running"
         Task {
+            var error: String?
             do {
-                let a = try await SkillCLI.shared.run("transcribe.py", ["backends"], timeout: 600)
+                let test = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+                let fail = test ? ProcessInfo.processInfo.environment["BLURT_TEST_WARM_FAIL"] : nil
+                let a = try await SkillCLI.shared.run(fail ?? "transcribe.py", ["backends"], timeout: 600)
                 let b = try await SkillCLI.shared.run("index.py", ["scan"], timeout: 300)
-                warm = a.ok && b.ok ? "done" : (a.ok ? b.errorText : a.errorText)
-            } catch { warm = "\(error)" }
-            emit(["event": "onboarding_warm", "result": warm ?? NSNull()])
+                if !(a.ok && b.ok) { error = a.ok ? b.errorText : a.errorText }
+            } catch let e { error = "\(e)" }
+            warm = error == nil ? "done" : "failed"
+            emit(["event": "onboarding_warm", "result": warm ?? NSNull(), "error": error ?? NSNull()])
         }
     }
 
@@ -288,13 +297,14 @@ struct OnboardingView: View {
 
     // MARK: 2 permissions
 
-    /// The microphone and Accessibility; Input Monitoring only when dictation needs it: a key other than Fn, or after a
-    /// walk it still isn't satisfied (with Fn, Accessibility alone hears the key — Input Monitoring is what's left when
-    /// Accessibility was turned down).
+    /// The microphone and Accessibility; Input Monitoring only when dictation needs it: a key other than Fn, or it still
+    /// isn't satisfied once Accessibility is on or a walk got past it (with Fn, Accessibility alone hears the key —
+    /// Input Monitoring is what's left when Accessibility was turned down or its tap was refused). With Fn, the 🌐 key's
+    /// row too. So whatever the walk still asks for has its row here.
     var permissionKinds: [PermissionKind] {
-        let pastAccessibility = m.walked && !(guide.running && guide.current == .accessibility)
+        let pastAccessibility = (m.walked || perms.accessibility == .granted) && !(guide.running && guide.current == .accessibility)
         let im = !guide.satisfied(.inputMonitoring) && (m.dictationKey != .fn || pastAccessibility)
-        return [.microphone, .accessibility] + (im ? [.inputMonitoring] : [])
+        return [.microphone, .accessibility] + (im ? [.inputMonitoring] : []) + (m.dictationKey == .fn ? [.fnKey] : [])
     }
 
     var setupButton: some View {
@@ -356,8 +366,12 @@ struct OnboardingView: View {
                     } else {
                         modelRows
                     }
-                    if let e = m.warm, e != "running", e != "done" {
-                        Text(e).font(.caption).foregroundStyle(Color.brandErr).lineLimit(3)
+                    if m.warm == "failed" {
+                        HStack(spacing: 10) {
+                            Text(T("onboarding.warm.failed")).font(.callout).foregroundStyle(Color.brandErr)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button(T("onboarding.models.retry")) { m.warmUp() }
+                        }
                     }
                 }
                 .padding(6)
@@ -369,19 +383,24 @@ struct OnboardingView: View {
 
     @ViewBuilder var modelRows: some View {
         ForEach(models.parts, id: \.id) { p in
+            let have = p.installed || models.finished.contains(p.id)
             HStack(spacing: 10) {
-                StatusDot(tone: p.installed || models.finished.contains(p.id) ? .good : .warn)
+                StatusDot(tone: have ? .good : .warn)
                 Text(T("onboarding.models.kind.\(p.kind.rawValue)"))
                 Text(p.name).foregroundStyle(.secondary)
                 Spacer()
-                Text(size(p.sizeMB)).foregroundStyle(.secondary).monospacedDigit()
+                // only what is still to come down has a size (the total counts just these)
+                if !have { Text(size(p.sizeMB)).foregroundStyle(.secondary).monospacedDigit() }
             }
             .accessibilityElement(children: .combine)
         }
         if models.downloading {
             let pr = models.progress
-            ProgressView(value: pr.done, total: max(pr.total, 1)) {
-                Text(T("onboarding.models.progress", size(pr.done), size(pr.total))).font(.caption).monospacedDigit()
+            HStack(alignment: .bottom, spacing: 10) {
+                ProgressView(value: pr.done, total: max(pr.total, 1)) {
+                    Text(T("onboarding.models.progress", size(pr.done), size(pr.total))).font(.caption).monospacedDigit()
+                }
+                Button(T("onboarding.models.stop")) { models.cancel() }.controlSize(.small)
             }
             Text(T("onboarding.models.background")).font(.caption).foregroundStyle(.secondary)
         } else if models.ready {
@@ -509,6 +528,11 @@ final class Onboarding: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         Config.shared.set("app.onboarded", true)     // closing it counts as "skip"
+        // the view's onDisappear doesn't come when the window closes: from now on the island says how the models went
+        MainActor.assumeIsolated {
+            ModelSetup.shared.shown = false
+            model?.stopTry()
+        }
         window = nil
         model = nil
     }
@@ -532,6 +556,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
         case "step": m.step = Int(a.count > 1 ? a[1] : "") ?? m.step
         case "setup": m.walked = true; PermissionGuide.shared.start(.dictation, source: .onboarding)
         case "download": ModelSetup.shared.start()
+        case "stop": ModelSetup.shared.cancel()
+        case "warm": m.warmUp()
         case "small": if let f = ModelSetup.shared.fallback { ModelSetup.shared.start(only: [f]) }
         case "reload": Task { await ModelSetup.shared.load() }
         case "login": m.openAtLogin = a.count > 1 && a[1] == "on"

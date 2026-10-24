@@ -103,6 +103,8 @@ final class Permissions: ObservableObject {
     @Published var accessibility: State = .notAsked
     /// Input Monitoring: dictation notices its key with it (with Fn, Accessibility alone does).
     @Published var inputMonitoring: State = .notAsked
+    /// the 🌐 key set to "Do Nothing" (not a permission: System Settings → Keyboard), so its row updates too
+    @Published var fnKey: State = .notAsked
     private var timer: Timer?
     private var observers: [Any] = []
 
@@ -129,7 +131,7 @@ final class Permissions: ObservableObject {
         case .microphone: return mic
         case .accessibility: return accessibility
         case .inputMonitoring: return inputMonitoring
-        case .fnKey: return SystemAccess.state(.fnKey)
+        case .fnKey: return fnKey
         }
     }
 
@@ -140,6 +142,8 @@ final class Permissions: ObservableObject {
         if m != mic { mic = m }
         if a != accessibility { accessibility = a }
         if i != inputMonitoring { inputMonitoring = i }
+        let f = SystemAccess.state(.fnKey)
+        if f != fnKey { fnKey = f }
         emitOnChange()
     }
 

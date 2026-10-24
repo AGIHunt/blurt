@@ -1,13 +1,16 @@
 // The setup assistant's models step (Onboarding.swift, docs/design/desktop-app.md §2.2): one "Download recommended
 // models" for this Mac — dictation's recogniser, the polish model and the voice-note model (BlurtCore ModelBundle) —
-// with the total size and one progress bar. The downloads run one after another and carry on when the assistant
-// closes (a toast says when they're in). When the set didn't come down, SenseVoice Small alone is offered.
+// with the total size and one progress bar (Stop ends it). The downloads run one after another and carry on when the
+// assistant closes (a toast says when they're in, or that they stopped — its Show opens this step again). When the set
+// didn't come down, SenseVoice Small alone is offered. A list that couldn't be read shows "Couldn't read the models"
+// and Try Again — never a set with a model quietly left out. Read again each time the assistant opens.
 //   reads      `transcribe.py dictation-models`, `polish.py models`, `transcribe.py models` (SpeechModel)
 //   downloads  `transcribe.py setup --model-id ID` / `polish.py setup --model ID`, nothing pinned: dictation and polish
 //              stay automatic (the recommended model runs once it is installed); voice notes are re-picked with
 //              `transcribe.py auto --apply`.
-//   mirror     the China-friendly mirrors first when Settings → Speech says so, or, unset, when the region is CN (both
-//              scripts still try the other source when one fails).
+//   mirror     ModelBundle.mirror, like Settings → Dictation and → Speech: the China-friendly mirrors first when
+//              Settings → Speech says so, or, never set, when the region is CN (both scripts still try the other source
+//              when one fails).
 // Test builds: BLURT_TEST_ASR_SETUP / BLURT_TEST_POLISH_SETUP stand in for the two setup scripts (fake downloads).
 import AppKit
 import BlurtCore
@@ -29,6 +32,8 @@ final class ModelSetup: ObservableObject {
     @Published private(set) var settled = false
     private var only = false
     private var proc: Process?
+    /// Stop was pressed: however the script exits, the set stops here
+    private var stopping = false
     /// the assistant is showing (else a toast says the models are in)
     var shown = false
 
@@ -57,13 +62,16 @@ final class ModelSetup: ObservableObject {
         let dictation = asr.flatMap { s in s.models.first { $0.id == s.recommended } }.map {
             ModelBundle.Part(id: $0.id, kind: .dictation, name: $0.name ?? $0.id, sizeMB: $0.sizeMB, installed: $0.installed)
         }
-        let pm = polish.flatMap { s in s.supported ? s.models.first { $0.id == s.recommended } : nil }.map {
+        let pm = polish.flatMap { s in s.models.first { $0.id == s.recommended } }.map {
             ModelBundle.Part(id: $0.id, kind: .polish, name: $0.name, sizeMB: $0.sizeMB, installed: $0.installed)
         }
         let note = speech.recommended(.note).map { part($0, .note) }
-        parts = ModelBundle.plan(dictation: dictation, polish: pm, note: note)
+        // a list that couldn't be read: no set ("Couldn't read the models" + Try Again), never a set without that model
+        let plan = ModelBundle.plan(dictation: dictation, polish: pm, polishRuns: polish?.supported, note: note)
+        parts = plan ?? []
         loaded = true
-        emit(["event": "onboarding_models", "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
+        emit(["event": "onboarding_models", "read": ["dictation": asr != nil, "polish": polish != nil, "note": note != nil],
+              "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
                                                                    "installed": $0.installed] },
               "total_mb": totalMB])
     }
@@ -82,6 +90,7 @@ final class ModelSetup: ObservableObject {
         running = todo
         finished = []
         failed = false
+        stopping = false
         self.only = only != nil
         emit(["event": "onboarding_models", "op": "start", "models": todo.map(\.id), "total_mb": todo.reduce(0) { $0 + $1.sizeMB }])
         next()
@@ -97,15 +106,18 @@ final class ModelSetup: ObservableObject {
             ? ((test ? env["BLURT_TEST_POLISH_SETUP"] : nil) ?? "polish.py", ["setup", "--model", p.id])
             : ((test ? env["BLURT_TEST_ASR_SETUP"] : nil) ?? "transcribe.py", ["setup", "--model-id", p.id])
         var extra: [String: String] = [:]
-        if ModelSetup.mirror { extra["BLURT_HF_MIRROR"] = "1" }
+        if ModelBundle.mirror { extra["BLURT_HF_MIRROR"] = "1" }
         do {
             proc = try SkillCLI.shared.spawn(script, args, env: extra, onLine: { [weak self] l, _ in
                 if let q = ModelBundle.parseProgress(l) { self?.line = q }
             }, onExit: { [weak self] st in
                 guard let self = self else { return }
                 self.proc = nil
-                emit(["event": "onboarding_models", "op": "part", "model": p.id, "status": Int(st)])
-                if st == 0 {
+                emit(["event": "onboarding_models", "op": "part", "model": p.id, "status": Int(st), "stopped": self.stopping])
+                if self.stopping {
+                    self.stopping = false
+                    self.stop(failed: false)
+                } else if st == 0 {
                     self.finished.insert(p.id)
                     self.next()
                 } else {
@@ -120,6 +132,12 @@ final class ModelSetup: ObservableObject {
         line = nil
         failed = f
         Task { await refresh() }
+        // the assistant was closed: say so, and its Show opens the models step again (Try Again, Small Model Only)
+        if f && !shown {
+            AppEnvironment.island?.toast(T("onboarding.models.failed_toast"), actionTitle: T("onboarding.models.failed_open")) {
+                Onboarding.shared.show(step: 2)
+            }
+        }
     }
 
     private func done() {
@@ -140,11 +158,11 @@ final class ModelSetup: ObservableObject {
         await load()
     }
 
-    func cancel() { proc?.terminate() }
-
-    /// The China-friendly mirrors first: Settings → Speech's choice, else (unset) a CN region.
-    static var mirror: Bool {
-        if let on = Config.shared["asr.hf_mirror"] as? Bool { return on }
-        return Locale.current.region?.identifier == "CN"
+    /// The progress bar's Stop: the current download ends (what came down is kept), the set stays on offer.
+    func cancel() {
+        guard let p = proc else { return }
+        emit(["event": "onboarding_models", "op": "stop", "model": current ?? NSNull()])
+        stopping = true
+        p.terminate()
     }
 }
