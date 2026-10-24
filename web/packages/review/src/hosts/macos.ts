@@ -22,6 +22,8 @@ export interface HostInfo {
   scope?: Scope;
   /** v2: the session dir (same as scope {session}) */
   session?: string;
+  /** the native banner above the page has the item's Open Session (BlurtHost.sessionBanner) */
+  sessionBanner?: boolean;
 }
 type W = Window & {
   webkit?: { messageHandlers?: { blurt?: Handler } };
@@ -119,7 +121,8 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
   if (has.has("openCode")) host.openCode = (ref) => notify("openCode", { ref });
   if (has.has("dispatch")) host.dispatch = (uids) => notify("dispatch", { uids });
   if (has.has("handoff")) host.handoff = (uids, what) => call<HandoffResult>("handoff", { uids, what });
-  if (has.has("openSession")) host.openSession = (job) => notify("openSession", { job });
+  if (has.has("openSession")) host.openSession = (job) => notify("openSession", { job });  // WebHostController reads {job}
+  if (info.sessionBanner) host.sessionBanner = true;
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });
   if (has.has("download")) host.download = (path) => notify("download", { path });
   return host;

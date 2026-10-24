@@ -65,7 +65,14 @@ describe("macos host (WKWebView bridge, protocol v3)", () => {
     (win as unknown as Reply).__blurtReply(sent[4].id, { id: "H-0012", path: "/h/H-0012.md", text: "Please handle BA-12 …" });
     await expect(ho).resolves.toMatchObject({ id: "H-0012" });
     h.openSession!("j-20261022-101500-ab12");
+    // the exact payload WebHostController reads (ReviewHostParams.job; Swift WorkSessionTests.testOpenSessionPayload)
     expect(sent[5]).toEqual({ id: 0, method: "openSession", params: { job: "j-20261022-101500-ab12" } });
+    expect(h.sessionBanner).toBeUndefined();
+  });
+  it("sessionBanner: the native banner has the item's Open Session", () => {
+    const post = { postMessage: () => {} };
+    const h = createMacosHost(fakeWindow({ webkit: { messageHandlers: { blurt: post } }, blurtHostInfo: { sessionBanner: true } }) as never);
+    expect(h.sessionBanner).toBe(true);
   });
   it("takes the scope from blurtHostInfo first, a session from the URL otherwise", () => {
     const post = { postMessage: () => {} };
