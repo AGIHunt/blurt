@@ -352,7 +352,13 @@ def _keeps_work(j: dict) -> bool:
     only way back to it (Review changes), so it stays."""
     a = j.get("agent") or {}
     wt = a.get("worktree")
-    return bool(wt) and not a.get("finish") and Path(wt).is_dir()
+    wt = wt.get("path") if isinstance(wt, dict) else wt  # sessions.py stores {path, branch, base, …}
+    if not wt or not isinstance(wt, str) or a.get("finish"):
+        return False
+    try:
+        return Path(wt).is_dir()
+    except OSError:
+        return False
 
 
 def gc(live_windows: set[str] | None = None, now: float | None = None, referenced: set[str] | None = None) -> list[str]:

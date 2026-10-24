@@ -131,9 +131,13 @@ def test_gc_keeps_what_items_and_worktrees_still_need(home, tmp_path):
     wt = tmp_path / "wt"
     wt.mkdir()
     ids = {}
-    for name, agent in (("referenced", {}), ("worktree", {"worktree": str(wt), "finish": None}),
-                        ("merged", {"worktree": str(wt), "finish": {"action": "merge"}}),
-                        ("wt_gone", {"worktree": str(tmp_path / "removed"), "finish": None}), ("plain", {})):
+    def worktree(p):  # the shape sessions.py dispatch writes
+        return {"path": str(p), "branch": "blurt/b", "base": "main", "base_sha": "0" * 40, "repo": str(tmp_path)}
+    for name, agent in (("referenced", {}), ("worktree", {"worktree": worktree(wt), "finish": None}),
+                        ("legacy", {"worktree": str(wt), "finish": None}),
+                        ("merged", {"worktree": worktree(wt), "finish": {"action": "merge"}}),
+                        ("wt_gone", {"worktree": worktree(tmp_path / "removed"), "finish": None}),
+                        ("wt_none", {"worktree": None}), ("plain", {})):
         jid = jobs.create("agent")["id"]
         ids[name] = jid
 
@@ -149,8 +153,9 @@ def test_gc_keeps_what_items_and_worktrees_still_need(home, tmp_path):
     finally:
         jobs.KEEP_LAST = orig
     # an unfinished item's session and an unmerged worktree stay reachable; the rest goes
-    assert sorted(removed) == sorted([ids["merged"], ids["wt_gone"], ids["plain"]])
-    assert (home / "jobs" / f"{ids['referenced']}.json").exists() and (home / "jobs" / f"{ids['worktree']}.json").exists()
+    assert sorted(removed) == sorted([ids["merged"], ids["wt_gone"], ids["wt_none"], ids["plain"]])
+    for kept in ("referenced", "worktree", "legacy"):
+        assert (home / "jobs" / f"{ids[kept]}.json").exists()
 
 
 def test_referenced_jobs_reads_the_index(home, monkeypatch):
