@@ -21,7 +21,7 @@ final class DictationVocabularyTests: XCTestCase {
         XCTAssertEqual(v.active().map(\.term).sorted(), ["Claude Code", "tmux"])
         // the file python reads: schema + terms with snake_case keys
         let o = try JSONSerialization.jsonObject(with: Data(contentsOf: v.url)) as? [String: Any]
-        XCTAssertEqual(o?["schema"] as? Int, 1)
+        XCTAssertEqual(o?["schema"] as? Int, DictationVocabulary.schema)
         let first = (o?["terms"] as? [[String: Any]])?.first { $0["term"] as? String == "Claude Code" }
         XCTAssertEqual(first?["sounds_like"] as? [String], ["cloud code"])
         XCTAssertEqual(first?["source"] as? String, "manual")
@@ -33,18 +33,20 @@ final class DictationVocabularyTests: XCTestCase {
     }
 
     func testSeedOnceAndRemovedStaysRemoved() {
-        let added = v.seed(projects: [(name: "Bug Agent", key: "BA"), (name: "X", key: "X")])
-        let defaults = DictationVocabulary.defaults.map(\.0)
-        XCTAssertEqual(added, ["Claude Code", "Codex", "blurt", "口喷鸡", "Bug Agent", "BA"] + defaults)   // 1-letter ones skipped
-        XCTAssertTrue(v.load().filter { !defaults.contains($0.term) }.allSatisfy { $0.source == .project })
-        // the common product names are their own source ("default"), removable like the rest
-        XCTAssertTrue(defaults.contains("Typeless") && defaults.contains("Gemini") && defaults.contains("OpenClaw"))
-        XCTAssertEqual(v.load().first { $0.term == "Typeless" }?.source, .builtIn)
+        let added = v.seed(projects: [(name: "Bug Agent", key: "BA"), (name: "X", key: "X"),
+                                      (name: "e2e test project with a long name", key: "e2e-test-project-long")])
+        let builtIn = DictationVocabulary.builtIn
+        XCTAssertEqual(added, ["Bug Agent", "BA"] + builtIn)        // 1-letter and > 3-word project names skipped
+        XCTAssertEqual(v.userWords().map(\.term), ["Bug Agent", "BA"])
+        XCTAssertTrue(v.userWords().allSatisfy { $0.source == .project })
+        XCTAssertEqual(v.builtInWords().map(\.term), builtIn)
+        // built-in words are their own source ("default"), removable like the rest, and carry no sounds-likes
+        XCTAssertTrue(v.load().allSatisfy { $0.soundsLike.isEmpty })
         XCTAssertTrue(String(data: try! Data(contentsOf: v.url), encoding: .utf8)!.contains("\"source\" : \"default\""))
         v.remove("Typeless")
         XCTAssertEqual(v.load().first { $0.term == "Typeless" }?.state, .removed)
         XCTAssertFalse(v.payload().contains { $0["term"] as? String == "Typeless" })
-        XCTAssertEqual(v.load().first { $0.term == "口喷鸡" }?.soundsLike, ["口喷机", "口碰鸡"])
+        XCTAssertFalse(v.builtInWords().map(\.term).contains("Typeless"))
         v.remove("Codex")
         XCTAssertEqual(v.load().first { $0.term == "Codex" }?.state, .removed)
         XCTAssertEqual(v.seed(projects: [(name: "Bug Agent", key: "BA")]), [])   // nothing comes back
@@ -53,14 +55,66 @@ final class DictationVocabularyTests: XCTestCase {
         XCTAssertEqual(v.load().first { $0.term == "Codex" }?.source, .manual)
     }
 
-    func testTheSeedHasTheAINamesChineseSpeakersSay() {
-        let d = DictationVocabulary.defaults.map(\.0)
-        for t in ["OpenAI", "Anthropic", "DeepSeek", "Kimi", "Qwen", "Grok", "Musk", "Dario"] { XCTAssertTrue(d.contains(t), t) }
-        XCTAssertEqual(Set(d).count, d.count)                               // no duplicates
-        // no sounds-like that is an ordinary word: the deterministic pass would rewrite real words
-        for (_, sl) in DictationVocabulary.defaults {
-            for s in sl where !s.contains(" ") { XCTAssertFalse(DictationLearn.isCommonWord(s), s) }
+    func testTheSeedIsAShortListOfProductNames() {
+        let d = DictationVocabulary.builtIn
+        for t in ["Claude Code", "Codex", "Cursor", "Typeless", "MCP", "GitHub", "OpenAI", "Anthropic", "DeepSeek", "Qwen"] {
+            XCTAssertTrue(d.contains(t), t)
         }
+        XCTAssertEqual(Set(d).count, d.count)                               // no duplicates
+        XCTAssertLessThanOrEqual(d.count, 20)
+        XCTAssertTrue(DictationVocabulary.retiredSeed.isDisjoint(with: d))
+    }
+
+    /// An install seeded by schema 1 (the long seed with people's names and shipped sounds-likes) is migrated once:
+    /// untouched retired words go, the user's own words and what they taught stay.
+    func testSchemaOneIsMigrated() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        func t(_ term: String, _ sl: [String], _ source: String, _ state: String = "active", hits: Int = 0) -> [String: Any] {
+            ["term": term, "sounds_like": sl, "source": source, "state": state, "hits": hits, "seen": 0, "added": "2026-10-01T10:00:00Z"]
+        }
+        let old: [String: Any] = ["schema": 1, "terms": [
+            t("Claude Code", ["cloud code", "clock code", "claude co", "clod code"], "project", hits: 4),
+            t("Codex", ["codec", "codecs", "kodex"], "project"),
+            t("Typeless", ["type less", "TypePlus"], "default"),
+            t("Musk", [], "default"), t("Sam Altman", [], "default"), t("Sora", [], "default", "removed"),
+            t("Grok", [], "manual"),                                          // the user added it: theirs
+            t("Bug Agent", [], "project"), t("Asopic", [], "learned"),
+            t("e2e test project with a long name", [], "project"),         // seeded before the three-word limit
+            // retired seeds the user touched: a sounds-like taught by a correction, used, or both
+            t("Mistral", ["mistrial"], "default"), t("Nvidia", [], "default", hits: 2),
+            t("OpenClaw", ["open claw", "open clore"], "default"),
+            t("a long project name the user dictates", [], "project", hits: 3),
+            t("Midjourney", [], "default", "removed", hits: 1),             // removed by the user: stays gone
+        ]]
+        try JSONSerialization.data(withJSONObject: old).write(to: v.url)
+        v.seed(projects: [(name: "Bug Agent", key: "BA")])
+        let all = v.load()
+        let names = all.map(\.term)
+        for gone in ["Musk", "Sam Altman", "Sora", "e2e test project with a long name", "Midjourney"] {
+            XCTAssertFalse(names.contains(gone), gone)
+        }
+        for kept in ["Grok", "Bug Agent", "Asopic", "BA"] { XCTAssertTrue(names.contains(kept), kept) }
+        // what the user taught stays, as their own word, with its hints and hits (only the shipped sounds-like goes)
+        let mistral = all.first { $0.term == "Mistral" }
+        XCTAssertEqual(mistral?.source, .learned)
+        XCTAssertEqual(mistral?.state, .active)
+        XCTAssertEqual(mistral?.soundsLike, ["mistrial"])
+        XCTAssertEqual(all.first { $0.term == "Nvidia" }?.hits, 2)
+        XCTAssertEqual(all.first { $0.term == "Nvidia" }?.source, .learned)
+        XCTAssertEqual(all.first { $0.term == "OpenClaw" }?.soundsLike, ["open clore"])
+        XCTAssertEqual(all.first { $0.term == "a long project name the user dictates" }?.source, .learned)
+        let cc = all.first { $0.term == "Claude Code" }
+        XCTAssertEqual(cc?.soundsLike, ["clod code"])                       // only what the user's fixes taught
+        XCTAssertEqual(cc?.source, .builtIn)
+        XCTAssertEqual(cc?.hits, 4)
+        XCTAssertEqual(all.first { $0.term == "Codex" }?.soundsLike, [])
+        XCTAssertEqual(all.first { $0.term == "Typeless" }?.soundsLike, [])
+        let o = try JSONSerialization.jsonObject(with: Data(contentsOf: v.url)) as? [String: Any]
+        XCTAssertEqual(o?["schema"] as? Int, 2)
+        // once: a sounds-like learned after the migration stays
+        _ = v.learn(heard: "codec", fixed: "Codex")
+        v.seed(projects: [])
+        XCTAssertEqual(v.load().first { $0.term == "Codex" }?.soundsLike, ["codec"])
     }
 
     func testAnExplicitCorrectionIsLearnedAtOnce() {
@@ -94,7 +148,7 @@ final class DictationVocabularyTests: XCTestCase {
 
     func testCaseOrSpacingFixIsUsedAtOnce() {
         XCTAssertEqual(v.learn(heard: "github", fixed: "GitHub"), .learned("GitHub"))
-        XCTAssertEqual(v.active().first?.soundsLike, [])                  // the deterministic pass does case itself
+        XCTAssertEqual(v.active().first?.soundsLike, [])                  // a case fix teaches the spelling, nothing more
         XCTAssertEqual(v.learn(heard: "Sense Voice", fixed: "SenseVoice"), .learned("SenseVoice"))
     }
 

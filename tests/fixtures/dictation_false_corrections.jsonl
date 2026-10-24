@@ -38,3 +38,18 @@
 {"text": "Open the cloud console and check the logs.", "word": "cloud"}
 {"text": "The codex was written on vellum.", "word": "codex"}
 {"text": "A sora in Japanese is the sky.", "word": "sora"}
+{"text": "I need a better video codec for these clips.", "word": "codec"}
+{"text": "Both codecs ship with the system.", "word": "codecs"}
+{"text": "With a template you can type less every day.", "word": "type less"}
+{"text": "Our cloud code runs on Lambda.", "word": "cloud code"}
+{"text": "The clock code on the oven is wrong.", "word": "clock code"}
+{"text": "Claude co-founded the club with me.", "word": "claude co"}
+{"text": "The photo came out blurred.", "word": "blurred"}
+{"text": "Draw the work tree on the whiteboard.", "word": "work tree"}
+{"text": "这张照片有点 blurred，再拍一张。", "word": "blurred"}
+{"text": "npm install @anthropic-ai/claude-code", "word": "claude-code"}
+{"text": "cd ~/src/claude-code and run make", "word": "claude-code"}
+{"text": "run claude-code --help to see the flags", "word": "claude-code"}
+{"text": "pip install open-ai-tools", "word": "open-ai"}
+{"text": "the branch is fix/work-tree-cleanup", "word": "work-tree"}
+{"text": "import deep_seek from ./vendor/deep-seek.js", "word": "deep-seek"}

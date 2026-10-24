@@ -1,4 +1,4 @@
-"""Dictation's custom words (docs/design/dictation.md §Custom words): the deterministic pass, ranking, the ASR prompt
+"""Dictation's words (docs/design/dictation.md §Custom words): no rewriting, ranking, the ASR prompt
 formats, the content-loss guard with vocabulary and context, the polish prompt's shape, and the biased note path
 (a fake backend stands in for the model). No model, no network.
 
@@ -53,33 +53,51 @@ class Store(unittest.TestCase):
             self.assertEqual(V.load(Path(d) / "missing.json"), [])
 
 
-class Apply(unittest.TestCase):
-    def fix(self, text):
-        return V.apply(text, TERMS)
+def heard(texts, vocab):
+    """What transcribe.NoteEngine.note(vocab=…) hands on for each text a (fake) speech model writes: with the words
+    asked for, the model is biased, and nothing after it rewrites the text."""
+    import test_asr_select as A
+    T = A.T
+    queue = list(texts)
 
-    def test_sounds_like_and_spacing(self):
-        self.assertEqual(self.fix("我用cloud code在t mux里开了一个work tree"),
-                         ("我用Claude Code在tmux里开了一个worktree", ["Claude Code", "worktree", "tmux"]))
-        self.assertEqual(self.fix("口喷机现在支持了")[0], "口喷鸡现在支持了")
+    class Model(A.FakeBackend):
+        def set_vocab(self, terms):
+            return bool(terms)
 
-    def test_case_and_spacing_variants_of_a_term(self):
-        # one word in another case ("claude", "github") is polish's call: the sentence says whether it is the name
-        self.assertEqual(self.fix("ask claude about sense voice on github")[0], "ask claude about SenseVoice on github")
-        self.assertEqual(self.fix("see ba 12")[0], "see BA-12")
+        def transcribe(self, x):
+            return [(0.0, len(x) / A.SR, queue.pop(0), "zh")]
 
-    def test_ordinary_words_are_left_alone(self):
-        # "blur" / "cloud" are English words: a sounds-like on them is polish's call (it sees the context);
-        # "swift" is the term "Swift" in lower case but also a word; a single CJK character is too ambiguous
-        for s in ("the blur effect in swift", "upload it to the cloud", "我要吃鸡"):
-            self.assertEqual(self.fix(s), (s, []))
+    old, oldvad = T.BACKENDS, T.vad_segments
+    T.BACKENDS = {**T.BACKENDS, "sensevoice": Model}
+    T.vad_segments = lambda x, max_speech=25: [(0.0, len(x) / A.SR)]
+    real = A.fake_installed("sensevoice-small")
+    try:
+        with tempfile.TemporaryDirectory() as d, A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            wav = A.write_wav(Path(d) / "n.wav", 1.0)
+            eng = T.NoteEngine()
+            return [eng.note(wav, vocab=vocab)["text"] for _ in texts]
+    finally:
+        T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
 
-    def test_already_right_is_not_counted(self):
-        self.assertEqual(self.fix("Claude Code is great"), ("Claude Code is great", []))
-        self.assertEqual(self.fix(""), ("", []))
-        self.assertEqual(V.apply("cloud code", []), ("cloud code", []))
 
-    def test_word_boundaries(self):
-        self.assertEqual(self.fix("cloudcode and cloud coder")[0], "cloudcode and cloud coder")
+class NoRewriting(unittest.TestCase):
+    """The words are hints for the models, never a rewrite of what was said (audit dict024 / arch088, and the review
+    after it): not a sounds-like ("cloud code", "type less", "codec"), and not a term written in pieces or in another
+    case — "claude-code" in a path or a package name is what the user meant, and nothing but the sentence says so."""
+
+    def test_there_is_no_deterministic_pass(self):
+        for name in ("apply", "_respell", "snap", "near_miss", "_ordinary", "_MODERN_WORDS", "FUNCTION_WORDS"):
+            self.assertFalse(hasattr(V, name), name)
+
+    def test_the_text_comes_back_as_heard(self):
+        said = ["我用cloud code在t mux里开了一个work tree", "口喷机现在支持了", "see ba 12", "ask claude code on github",
+                "npm install @anthropic-ai/claude-code", "cd ~/src/claude-code", "run claude-code --help"]
+        self.assertEqual(heard(said, TERMS), said)
+
+    def test_short_text_comes_back_as_said(self):
+        for s in ("cloud code", "claude code", "claude-code"):
+            r = polish.Engine().polish(s, terms=[{"term": "Claude Code", "sounds_like": ["cloud code"]}])
+            self.assertEqual((r["text"], r["raw"], r["reason"], r["terms"]), (s, s, "short", []))
 
 
 class Ranking(unittest.TestCase):
@@ -198,13 +216,10 @@ class Prompt(unittest.TestCase):
         self.assertEqual(polish.clean_output("Dictation: 我用 Claude Code。"), "我用 Claude Code。")
         self.assertEqual(polish.clean_output("Dictation (English: keep it in English): Send it."), "Send it.")
 
-    def test_short_text_still_gets_the_deterministic_pass(self):
-        r = polish.Engine().polish("cloud code", terms=["Claude Code"] and [{"term": "Claude Code", "sounds_like": ["cloud code"]}])
-        self.assertEqual((r["text"], r["reason"], r["terms"]), ("Claude Code", "short", ["Claude Code"]))
-
 
 class BiasedNote(unittest.TestCase):
-    """transcribe.NoteEngine.note(vocab=…): set_vocab before decoding, cleared after, exact fixes applied."""
+    """transcribe.NoteEngine.note(vocab=…): set_vocab before decoding, cleared after; the words are hints, so what the
+    model wrote is what comes back (no sounds-like is substituted)."""
 
     def test_note_with_vocab(self):
         import test_asr_select as A
@@ -232,9 +247,9 @@ class BiasedNote(unittest.TestCase):
                 plain = T.NoteEngine().note(wav)
         finally:
             T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
-        self.assertEqual(r["text"], "我用Claude Code开了worktree")
+        self.assertEqual(r["text"], "我用cloud code开了work tree")
         self.assertEqual(r["asr_text"], "我用cloud code开了work tree")
-        self.assertEqual(r["terms"], ["Claude Code", "worktree"])
+        self.assertNotIn("terms", r)
         self.assertTrue(r["biased"])
         self.assertEqual(Biasable.seen[0][:2], ["Claude Code", "worktree"])
         self.assertEqual(Biasable.seen[1], [])                # cleared: the next voice note isn't biased
@@ -350,12 +365,12 @@ FALSE_CORRECTIONS = ROOT / "tests/fixtures/dictation_false_corrections.jsonl"
 
 
 def seeded_vocabulary() -> list[dict]:
-    """What a new user's vocabulary.json holds: the app's built-in seed and its `default` list (read from the Swift
-    source, so the two can't drift apart)."""
+    """What a new user's vocabulary.json holds: the app's built-in words (DictationVocabulary.builtIn, read from the
+    Swift source, so the two can't drift apart). No sounds-likes."""
     import re
     src = SWIFT_VOCAB.read_text(encoding="utf-8")
-    return V.normalize([{"term": m.group(1), "sounds_like": re.findall(r'"([^"]+)"', m.group(2))}
-                        for m in re.finditer(r'\("([^"]+)",\s*\[([^\]]*)\]\)', src)])
+    block = re.search(r"static let builtIn: \[String\] = \[(.*?)\]", src, re.S).group(1)
+    return V.normalize(re.findall(r'"([^"]+)"', block))
 
 
 class CodeSwitch(unittest.TestCase):
@@ -468,24 +483,32 @@ class TaggedDecode(unittest.TestCase):
 
 
 class FalseCorrections(unittest.TestCase):
-    """The deterministic pass only applies the user's own sounds-likes and spacing variants: sentences that use the
-    ordinary words a term looks like (cloud, open, cursor, code, gemini the sign, grok the verb, musk the scent …) come
-    through untouched. The near-miss pass (edit distance + word lists) is gone: polish fixes a misspelt name, seeing
-    the sentence and the words."""
+    """Sentences that use the ordinary words a term looks like (cloud, open, cursor, code, gemini the sign, codec, type
+    less …), and paths / package names with a term in them, come through the speech step as the model wrote them —
+    with the seed, and with the sounds-likes older seeds shipped. Polish fixes a misheard name, seeing the sentence
+    and the words."""
+
+    def rows(self):
+        rows = [json.loads(ln) for ln in FALSE_CORRECTIONS.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        self.assertGreaterEqual(len(rows), 45)
+        return [r["text"] for r in rows]
 
     def test_no_false_corrections_with_the_seeded_vocabulary(self):
         terms = seeded_vocabulary()
-        self.assertGreater(len(terms), 30)
-        rows = [json.loads(ln) for ln in FALSE_CORRECTIONS.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        self.assertGreaterEqual(len(rows), 40)
-        changed = [(r["text"], out) for r in rows if (out := V.apply(r["text"], terms)[0]) != r["text"]]
-        self.assertEqual(changed, [])
+        self.assertGreaterEqual(len(terms), 15)
+        self.assertTrue(all(not t["sounds_like"] for t in terms))
+        rows = self.rows()
+        self.assertEqual(heard(rows, terms), rows)
 
-    def test_no_near_miss_pass(self):
-        for name in ("snap", "near_miss", "_ordinary", "_MODERN_WORDS", "FUNCTION_WORDS"):
-            self.assertFalse(hasattr(V, name), name)
-        terms = V.normalize(["Typeless"])
-        self.assertEqual(V.apply("用Typless听写的时候", terms)[0], "用Typless听写的时候")      # polish's to fix
+    def test_no_false_corrections_with_the_old_seeds_sounds_likes(self):
+        """A schema-1 file the app hasn't migrated yet (or a learned sounds-like that is a real phrase)."""
+        old = V.normalize([{"term": "Claude Code", "sounds_like": ["cloud code", "clock code", "claude co"]},
+                           {"term": "Codex", "sounds_like": ["codec", "codecs", "kodex"]},
+                           {"term": "Typeless", "sounds_like": ["type less", "TypePlus"]},
+                           {"term": "worktree", "sounds_like": ["work tree"]}, {"term": "GitHub", "sounds_like": ["git hub"]},
+                           {"term": "blurt", "sounds_like": ["blurred", "blurr"]}])
+        rows = self.rows()
+        self.assertEqual(heard(rows, old), rows)
 
 
 class LearnFromCorrection(unittest.TestCase):
@@ -513,7 +536,10 @@ class LearnFromCorrection(unittest.TestCase):
             terms = V.load(path)
             a = next(t for t in terms if t["term"] == "Anthropic")
             self.assertEqual(a["sounds_like"], ["Asopic"])
-            self.assertEqual(V.apply("CEO 是 Dario 的 Asopic 吧", terms)[0], "CEO 是 Dario 的 Anthropic 吧")
+            # a word, not a rule: the next dictation that sounds like it lists the word to the models first, and
+            # nothing rewrites the text by itself
+            self.assertEqual(V.ranked(terms, "CEO 是 Dario 的 Asopic 吧")[0]["term"], "Anthropic")
+            self.assertEqual(heard(["CEO 是 Dario 的 Asopic 吧"], terms), ["CEO 是 Dario 的 Asopic 吧"])
             # the same fix again: known, hits counted, nothing duplicated
             self.assertEqual(V.learn("Asopic 的模型", "Anthropic 的模型", path=path)["fixes"][0]["result"], "known")
             doc = json.loads(path.read_text())
@@ -546,9 +572,7 @@ class LearnFromCorrection(unittest.TestCase):
             r = json.loads(out)
             self.assertTrue(r["ok"] and r["written"])
             self.assertEqual(V.load(path)[0]["term"], "Typeless")
-            out = subprocess.run([sys.executable, str(SCRIPTS / "dictation_vocab.py"), "apply", "--text", "我用Typless听写",
-                                  "--file", str(path)], capture_output=True, text=True, check=True).stdout
-            self.assertEqual(json.loads(out)["text"], "我用Typeless听写")
+            self.assertEqual(json.loads(path.read_text())["schema"], V.SCHEMA)
 
 
 if __name__ == "__main__":

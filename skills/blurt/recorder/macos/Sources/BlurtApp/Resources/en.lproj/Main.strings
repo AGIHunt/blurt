@@ -367,7 +367,7 @@
 "main.dictation.stat.saved.tip" = "Compared with typing the same text at about 40 words a minute";
 "main.dictation.settings" = "Dictation Settings…";
 "main.dictation.off" = "Dictation is off";
-"main.dictation.off.detail" = "Turn it on in Settings → Dictation.";
+"main.dictation.off.detail" = "Turn it on in Settings, under Dictation.";
 "main.dictation.deaf.short" = "Dictation can’t hear its key yet";
 "main.dictation.ready" = "Dictation is on";
 "main.dictation.unknown_app" = "Unknown app";
@@ -410,3 +410,8 @@
 "main.dictation.none.empty" = "Nothing here yet";
 "main.dictation.none.empty.detail" = "Each dictation shows here: what was typed, what was heard, and where it went.";
 "main.dictation.copy_all" = "Copy All";
+
+/* The Dictation page's detail: what polish did */
+"main.dictation.info.polish.short" = "Too short to tidy";
+"main.dictation.info.polish.no_model" = "No polish model";
+"main.dictation.info.polish.get" = "Download…";

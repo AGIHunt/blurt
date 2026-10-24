@@ -4,14 +4,14 @@
   • ranked()        which terms matter for this utterance (sounds-like heard, in the context, used often), capped
   • ASR biasing     whisper_prompt() (initial_prompt), qwen_context() (Qwen3-ASR `context`), hotwords() (sherpa-onnx
                     Qwen3-ASR per-stream hotwords: "; "-joined, an ASCII comma is split and re-joined with spaces)
-  • apply()         the cheap deterministic pass, also when polish is off: an exact sounds-like match (the user's own
-                    data) becomes the term, and a spacing / hyphen variant of a term gets the term's spelling
-                    ("sense voice" → "SenseVoice"); a case-only or near-miss spelling is polish's call (it sees the
-                    sentence)
+  • no rewriting   nothing here changes what was said: not a sounds-like ("cloud code" may be just that), not a term
+                    written in pieces or in another case ("claude-code" in a path, "ba 12"). Only the sentence says
+                    which, so the words are the models' hints (the speech model is told them, polish lists them)
   • allowed_units() what polish may add without the content-loss guard calling it new (terms + the context)
 
-A term: {"term", "sounds_like": [...], "source": manual|learned|project, "state": active|suggested|rejected|removed,
-"added", "hits", "seen"}. Only active terms are used. Requests may also pass the terms inline (a list of strings or
+A term: {"term", "sounds_like": [...], "source": manual|learned|project|default, "state": active|suggested|rejected|
+removed, "added", "hits", "seen"}. Only active terms are used; a sounds-like (what a speech model wrote instead, learned
+from the user's fixes) only ranks a term as relevant. Requests may also pass the terms inline (a list of strings or
 dicts), which wins over the file.
 """
 from __future__ import annotations
@@ -27,6 +27,7 @@ _CJK_RE = re.compile(rf"[{_CJK}]")
 _WORD = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z]+)?")
 MAX_TERMS = 40           # in an ASR prompt or the polish prompt (Whisper's prompt is ~224 tokens)
 QWEN_MAX_TERMS = 64      # Qwen3-ASR's context: ~2 tokens a word, prefilled with the audio (+64 words ≈ +6 ms)
+SCHEMA = 2               # the file's format (BlurtCore DictationVocabulary.schema; the app migrates older files)
 
 
 def vocab_file() -> Path:
@@ -65,10 +66,9 @@ def load(path: Path | None = None) -> list[dict]:
 _DICT: set[str] | None = None
 
 
-def common_word(w: str) -> bool:
-    """An ordinary English word (macOS's own lexicon, /usr/share/dict/words: its lower-case entries — data, not a list
-    of ours): a sounds-like on it would change real words ("cloud", "blur"), so the deterministic pass leaves those to
-    polish, which sees the sentence."""
+def _lexicon() -> set[str]:
+    """macOS's own lexicon, /usr/share/dict/words: its lower-case entries (data, not a list of ours). Empty where the
+    system has none (Windows, many Linux installs)."""
     global _DICT
     if _DICT is None:
         _DICT = set()
@@ -77,7 +77,12 @@ def common_word(w: str) -> bool:
                 _DICT = {ln.strip() for ln in f if ln.strip() and ln[0].islower()}
         except OSError:
             pass
-    return w.lower() in _DICT
+    return _DICT
+
+
+def common_word(w: str) -> bool:
+    """An ordinary English word (the lexicon): a fix to one is usually grammar, not a name to learn (fixes())."""
+    return w.lower() in _lexicon()
 
 
 def _key(s: str) -> str:
@@ -166,80 +171,6 @@ def qwen_context(terms: list[dict]) -> str:
 def hotwords(terms: list[dict]) -> str:
     """sherpa-onnx Qwen3-ASR hotwords: "; "-joined (it splits on ASCII commas and re-joins with spaces)."""
     return "; ".join(t["term"].replace(",", " ") for t in terms[:MAX_TERMS])
-
-
-# ------------------------------------------------------------------ the deterministic pass
-def _latin_pattern(phrase: str) -> re.Pattern:
-    parts = [re.escape(p) for p in re.split(r"\s+", phrase.strip()) if p]
-    return re.compile(r"(?<![A-Za-z0-9])" + r"\s+".join(parts) + r"(?![A-Za-z0-9])", re.I)
-
-
-def apply(text: str, terms: list[dict]) -> tuple[str, list[str]]:
-    """→ (text, the terms it wrote). Exact sounds-like matches become the term (not a lone ordinary English word, not
-    a single CJK character); a variant of a term that differs only in case, spaces or hyphens gets the term's spelling
-    (not when the term is one ordinary English word: "swift" stays)."""
-    out, applied = text or "", []
-    if not out or not terms:
-        return out, applied
-    for t in sorted(terms, key=lambda t: -len(t["term"])):
-        term = t["term"]
-        hit = False
-        for sl in sorted(t["sounds_like"], key=len, reverse=True):
-            if _key(sl) == _key(term) and sl != term:
-                continue  # a spelling variant: the case / spacing pass below handles it
-            if _CJK_RE.search(sl):
-                if len(sl) < 2 or sl not in out:
-                    continue
-                out = out.replace(sl, term)
-                hit = True
-            else:
-                if " " not in sl.strip() and (common_word(sl) or len(sl) < 2):
-                    continue
-                new = _latin_pattern(sl).sub(term, out)
-                if new != out:
-                    out, hit = new, True
-        if not _CJK_RE.search(term):
-            out, fixed = _respell(out, term)
-            hit = hit or fixed
-        if hit and term not in applied:
-            applied.append(term)
-    return out, applied
-
-
-def _respell(text: str, term: str) -> tuple[str, bool]:
-    """Windows of 2–3 words (joined by single spaces / hyphens) whose spelling key equals the term's → the term
-    ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). One word that differs only in case ("github", "gemini") is
-    polish's call: whether it is the name or the ordinary word takes the sentence."""
-    key = _key(term)
-    if len(key) < 2:
-        return text, False
-    words = list(_WORD.finditer(text))
-    out, last, changed = [], 0, False
-    i = 0
-    while i < len(words):
-        done = False
-        for n in (3, 2, 1):
-            if i + n > len(words):
-                continue
-            span = words[i:i + n]
-            if any(re.fullmatch(r"[ \-]", text[a.end():b.start()]) is None for a, b in zip(span, span[1:])):
-                continue
-            s, e = span[0].start(), span[-1].end()
-            seg = text[s:e]
-            if _key(seg) != key:
-                continue
-            if seg != term and n > 1:
-                out.append(text[last:s])
-                out.append(term)
-                last = e
-                changed = True
-            i += n
-            done = True
-            break
-        if not done:
-            i += 1
-    out.append(text[last:])
-    return "".join(out), changed
 
 
 # ------------------------------------------------------------------ code-switching (docs/design/dictation.md)
@@ -563,8 +494,9 @@ def learn_fix(doc: dict, heard: str, fixed: str, explicit: bool = True) -> str |
 
 def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = None, dry_run: bool = False) -> dict:
     """The user corrected a dictation (`raw`: what was typed — or heard —; `corrected`: their version). The fixes found
-    (fixes()) go into the vocabulary file the app reads: a misheard name becomes a word with what was heard as its
-    sounds-like, so the next dictation is biased toward it and the sounds-like pass writes it.
+    (fixes()) go into the vocabulary file the app reads: a misheard name becomes a word, with what was heard as its
+    sounds-like, so the next dictation that sounds like it tells the models about the word (a word, never a
+    replacement rule).
     explicit (default): the user saved this correction, so a new word is used at once; False = a suggestion, as the
     after-typing watch makes. → {"ok", "fixes": [{"heard", "fixed", "kind", "result"}], "path", "written"}."""
     path = Path(path) if path else vocab_file()
@@ -577,7 +509,7 @@ def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = N
             doc = {}
     except (OSError, ValueError):
         doc = {}
-    doc.setdefault("schema", 1)
+    doc.setdefault("schema", SCHEMA)
     for fx in found:
         fx["result"] = learn_fix(doc, fx["heard"], fx["fixed"], explicit)
     written = any(fx["result"] for fx in found)
@@ -588,8 +520,7 @@ def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = N
 
 def main(argv=None) -> int:
     """dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]
-    dictation_vocab.py fixes --raw TEXT --corrected TEXT          what would be learned; writes nothing
-    dictation_vocab.py apply --text TEXT [--file PATH]            the sounds-like / spelling pass"""
+    dictation_vocab.py fixes --raw TEXT --corrected TEXT          what would be learned; writes nothing"""
     import argparse
     ap = argparse.ArgumentParser(prog="dictation_vocab.py", description=main.__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -602,17 +533,10 @@ def main(argv=None) -> int:
         if name == "learn":
             p.add_argument("--suggest", action="store_true", help="a new word only as a suggestion (as the watch does)")
             p.add_argument("--dry-run", action="store_true")
-    p = sub.add_parser("apply")
-    p.add_argument("--text", required=True)
-    p.add_argument("--file")
     a = ap.parse_args(argv)
-    path = Path(a.file) if getattr(a, "file", None) else None
-    if a.cmd == "apply":
-        t, applied = apply(a.text, load(path))
-        out = {"ok": True, "text": t, "terms": applied}
-    else:
-        out = learn(a.raw, a.corrected, explicit=not getattr(a, "suggest", False), path=path,
-                    dry_run=a.cmd == "fixes" or getattr(a, "dry_run", False))
+    path = Path(a.file) if a.file else None
+    out = learn(a.raw, a.corrected, explicit=not getattr(a, "suggest", False), path=path,
+                dry_run=a.cmd == "fixes" or getattr(a, "dry_run", False))
     print(json.dumps(out, ensure_ascii=False))
     return 0
 

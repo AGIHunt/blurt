@@ -35,7 +35,7 @@
 "speech.purpose.live" = "实时字幕";
 "speech.purpose.live.detail" = "边录边转写，停止录制时结果就已就绪。";
 "speech.purpose.note" = "语音备注";
-"speech.purpose.note.detail" = "截图上的短备注和语音输入，速度优先。";
+"speech.purpose.note.detail" = "截图上的口述备注和语音备注，速度优先。";
 "speech.suggest.title" = "推荐使用 %@";
 "speech.suggest.for" = "将用于%@。";
 "speech.suggest.better" = "你的语言错误率约从 %@ 降到 %@。";
@@ -64,7 +64,7 @@
 "speech.note.whisper_turbo_q4" = "准确率几乎不变，体积只有三分之一，适合 8 GB 内存的 Mac。";
 "speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo，用 NVIDIA GPU 运行。";
 "speech.note.qwen3_cpu" = "三十种语言，用处理器运行，任何电脑都能用。";
-"speech.note.qwen3_mlx" = "用 GPU 运行，速度快，能按你的自定义词来识别。推荐 16–24 GB 内存的 Mac 用于听写。";
+"speech.note.qwen3_mlx" = "用 GPU 运行，速度快，能参考词库里的词来识别。推荐 16–24 GB 内存的 Mac 用于听写。";
 "speech.note.qwen3_mlx_17" = "更大的 Qwen3-ASR：专有名词和嘈杂环境下错得更少，每句慢约 25 毫秒，占 3 GB 内存。推荐 32 GB 及以上内存的 Mac 用于听写。";
 "speech.note.cloud" = "在云端运行，使用你自己的密钥。";
 
@@ -103,3 +103,21 @@
 "speech.advanced.language" = "识别语言";
 "speech.advanced.language.auto" = "自动检测";
 "speech.advanced.mirror" = "从 hf-mirror.com 下载（中国大陆更快）";
+
+/* 听写的模型（Settings/DictationModels.swift）：只在这里选 */
+"speech.section.dictation" = "听写";
+"speech.dictation.loading" = "正在查找模型…";
+"speech.dictation.asr" = "识别";
+"speech.dictation.polish" = "润色";
+"speech.dictation.polish.unsupported" = "润色需要 Apple 芯片的 Mac。听写会照你说的原话输入。";
+"speech.dictation.more" = "其他模型（%ld）";
+"speech.dictation.recommended" = "推荐：%@";
+"speech.dictation.recommended.size" = "共 %@";
+"speech.dictation.recommended.ready" = "已在这台 Mac 上 · %@";
+"speech.dictation.recommended.badge" = "推荐";
+"speech.dictation.download" = "下载（%@）";
+"speech.dictation.use" = "使用";
+"speech.dictation.failed" = "下载失败";
+"speech.dictation.progress" = "%1$@ / %2$@";
+"speech.dictation.no_words" = "不参考词库";
+"speech.dictation.footer" = "两个模型都在本机运行。点「下载」之前不会下载任何东西。";

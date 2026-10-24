@@ -31,8 +31,8 @@
 //    on; DictationStream.onHeard) — out of the way of the caret (read once at the start), gone once the text is in.
 //  • insert: DictationInsert (pasteboard → ⌘V into the app in front, DictationPastePolicy → pasteboard back).
 //    History: DictationHistory (history.jsonl, with asr / polish / load / total ms).
-//  • custom words (DictationVocabulary, vocabulary.json): sent with every request — the speech model is biased toward
-//    them where it can be and exact sounds-likes are fixed (transcribe.py), polish gets them as spelling hints with
+//  • words (DictationVocabulary, vocabulary.json): sent with every request as hints, never rewrites — the speech
+//    model is biased toward them where it can be (transcribe.py), polish gets them as spelling hints with
 //    the text around the cursor (DictationContext, read at the start, never stored). After the text goes in, the
 //    field is watched for a minute (DictationWatch) and the user's own fixes become words (DictationLearn).
 //  • off while a screen recording runs (it owns the mic) and while a voice note listens.
@@ -823,10 +823,10 @@ final class Dictation {
 
     /// The warm server (no process start; waiting up to `budget` for one starting), else `transcribe.py note` (it
     /// starts the model itself). Dictation's model (record.dictation.asr_model, else the recommended one when
-    /// installed), biased toward the custom words, with `prior` (the text so far) as context; the answer's `text` has
-    /// the exact sounds-likes fixed, `asr_text` is what the model wrote. Blocking: off the main thread.
+    /// installed), biased toward the words, with `prior` (the text so far) as context; the answer's `text` is what the
+    /// model wrote (`asr_text`, when present, the same). Blocking: off the main thread.
     /// `hint`: the target window's title and the text around the cursor (DictationContext.hint) — words seen there go
-    /// to the model first, and let the near-miss pass correct a weaker miss (docs/design/dictation.md §Code-switching).
+    /// to the model first (docs/design/dictation.md §Code-switching).
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
                            hint: String = "") -> [String: Any]? {
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab]
@@ -880,8 +880,7 @@ final class Dictation {
 
     private func deliver(id: String, r: DictationStream.Result, polishTried: Bool, app: NSRunningApplication?, started: Date,
                          duration: Double, wav: URL, context: DictationContext?, keyUp: CFTimeInterval) {
-        // the custom words this dictation wrote: fixed by the sounds-like pass or polish, or (when the speech model was
-        // told the words) written by the model itself
+        // the words this dictation wrote: by polish, or (when the speech model was told the words) by the model itself
         var terms = r.terms
         if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where r.text.contains(t) && !terms.contains(t) { terms.append(t) } }
         // the take's style: the structured text when Structured asked for it (the model's pass at key-up), the category's

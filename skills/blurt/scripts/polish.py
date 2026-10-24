@@ -1012,9 +1012,9 @@ class Engine:
         t0 = time.perf_counter()
         timeout = timeout or timeout_s()
         all_terms = vocab.load() if terms is None else vocab.normalize(terms)
-        raw, applied = vocab.apply((text or "").strip(), all_terms)     # exact sounds-like / spelling fixes first
+        raw = (text or "").strip()     # the words are hints: nothing rewrites what was said before the model
         res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None,
-               "model": None, "terms": applied,
+               "model": None, "terms": [],
                "context": bool(context_text(context) or (isinstance(context, dict) and context.get("dictated")))}
         if len(units(raw)) <= 2:          # nothing to tidy
             res["reason"] = "short"
@@ -1055,8 +1055,8 @@ class Engine:
                 out = fixed
                 res["text"] = out
                 low, before = out.lower(), raw.lower()
-                res["terms"] = list(dict.fromkeys(applied + [t["term"] for t in use if t["term"].lower() in low
-                                                             and t["term"].lower() not in before]))
+                res["terms"] = list(dict.fromkeys(t["term"] for t in use if t["term"].lower() in low
+                                                  and t["term"].lower() not in before))
             else:
                 res.update(fell_back=True, reason=g["reason"])
         return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
@@ -1256,9 +1256,8 @@ def cmd_run(a):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
             return emit({**r, "server": True})
     if len(units(text)) <= 2:
-        fixed, applied = vocab.apply(text.strip(), vocab.load() if terms is None else [])
-        return emit({"ok": True, "raw": fixed, "text": fixed, "polished": None, "fell_back": False,
-                     "reason": "short", "model": None, "ms": 0, "terms": applied})
+        return emit({"ok": True, "raw": text.strip(), "text": text.strip(), "polished": None, "fell_back": False,
+                     "reason": "short", "model": None, "ms": 0, "terms": []})
     want = a.model_id or selected()
     if not want or not entry(want) or not model_path(entry(want)):
         raise Fail(f"{want or 'no polish model'} is not installed (polish.py setup --model ID)", "model_missing")
