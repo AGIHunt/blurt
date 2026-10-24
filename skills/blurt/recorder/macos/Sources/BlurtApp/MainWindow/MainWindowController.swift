@@ -593,7 +593,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             case .success(let o):
                 let n = (o["moved"] as? [Any])?.count ?? items.count
                 let name = project == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: project)?.name ?? project
-                appDelegate?.toast(TP("main.move.done", n, name))
+                appDelegate?.toast(TP("main.move.done", n, name), icon: .check)
                 self?.wrote(items)
             case .failure(let f): self?.alert(T("main.move.failed"), f.localized)
             }
@@ -699,7 +699,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 let text = (what == "full" ? o["full"] : o["instruction"]) as? String ?? ""
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
-                appDelegate?.toast(T(what == "full" ? "main.handoff.copied_full" : "main.handoff.copied"))
+                appDelegate?.toast(T(what == "full" ? "main.handoff.copied_full" : "main.handoff.copied"), icon: .check)
                 self?.wrote(items)
                 reply(["id": o["id"] ?? "", "path": o["path"] ?? "", "text": text])
             case .failure(let f):

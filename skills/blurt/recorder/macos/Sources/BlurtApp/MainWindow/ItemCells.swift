@@ -13,8 +13,9 @@ enum Look {
     static let monoSub = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     static let smallFont = NSFont.systemFont(ofSize: 11, weight: .medium)
 
-    /// Brand coral, only for the primary action, new items and selection accents: #F55B3E light, #FF7A5C dark.
-    static let brand = StatusRing.accent
+    /// Brand ink (deep mint #0B735E light, mint #61DBBD dark): brand as text, icons and state rings
+    /// (docs/design/system.md §2.1). Selection is `BrandColor.tint` (BrandRowView), primaries are BrandButton.
+    static let brand = BrandColor.ink
 
     static func kindName(_ k: String) -> String {
         KindStyle.builtIn.contains(k) ? T("kind.\(k)") : k.replacingOccurrences(of: "_", with: " ").capitalized
@@ -30,9 +31,9 @@ enum Look {
     /// The state's text colour next to its ring: the ring's own colour where it asks for you, quiet otherwise.
     static func stateColor(_ s: String) -> NSColor {
         switch s {
-        case "new", "handed_off", "in_progress": return StatusRing.accent
-        case "to_verify": return StatusRing.attention
-        case "done": return StatusRing.keep
+        case "new", "handed_off", "in_progress": return BrandColor.ink
+        case "to_verify": return BrandColor.attnInk
+        case "done": return BrandColor.ok
         case "wontfix", "discarded": return .tertiaryLabelColor
         default: return .secondaryLabelColor
         }
@@ -344,7 +345,39 @@ final class MetaCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-/// Row view: VoiceOver reads the whole row as one sentence (kind, title, id, state, project, time).
-final class ItemRowView: NSTableRowView {
+/// Row view: VoiceOver reads the whole row as one sentence (kind, title, id, state, project, time). Selection is the
+/// brand tint (BrandRowView).
+final class ItemRowView: BrandRowView {
     var label = "" { didSet { setAccessibilityLabel(label) } }
+}
+
+/// The selection blurt draws in its own lists (§3.3): a rounded `BrandColor.tint` wash (r 6), a neutral 6 % wash when the
+/// window isn't key; never emphasized, so the text on it stays `labelColor`.
+class BrandRowView: NSTableRowView {
+    /// The table still tells us when its window gains or loses key (it sets this): redraw the selection then.
+    override var isEmphasized: Bool { get { false } set { if isSelected { needsDisplay = true } } }
+    private var keyObservers: [NSObjectProtocol] = []
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        guard selectionHighlightStyle != .none else { return }
+        let key = window?.isKeyWindow == true && NSApp.isActive
+        (key ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
+        // the inset / source-list styles inset the row itself; a row as wide as its table keeps a margin like theirs
+        let pad: CGFloat = frame.minX < 1 && abs(frame.width - (superview?.bounds.width ?? 0)) < 1 ? 10 : 0
+        NSBezierPath(roundedRect: bounds.insetBy(dx: pad, dy: 0), xRadius: 6, yRadius: 6).fill()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        keyObservers.forEach(NotificationCenter.default.removeObserver)
+        keyObservers = []
+        guard let w = window else { return }
+        for n in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            keyObservers.append(NotificationCenter.default.addObserver(forName: n, object: w, queue: .main) { [weak self] _ in
+                if self?.isSelected == true { self?.needsDisplay = true }
+            })
+        }
+    }
+
+    deinit { keyObservers.forEach(NotificationCenter.default.removeObserver) }
 }

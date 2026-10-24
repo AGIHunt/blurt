@@ -13,7 +13,7 @@ enum StatusRing {
     static let states = Lifecycle.states
 
     /// brand ink (--brand-ink), attention (--attn), done (--ok): the generated BrandColor (assets/color/tokens.json)
-    static let accent = BrandColor.ink
+    static let brand = BrandColor.ink
     static let attention = BrandColor.attn
     static let keep = BrandColor.ok
     /// the "!" on the attention disc and the check on the done disc
@@ -22,7 +22,7 @@ enum StatusRing {
 
     static func color(_ state: String) -> NSColor {
         switch state {
-        case "new", "handed_off", "in_progress": return accent
+        case "new", "handed_off", "in_progress": return brand
         case "to_verify": return attention
         case "done": return keep
         case "wontfix", "discarded": return .tertiaryLabelColor

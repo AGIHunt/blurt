@@ -1,7 +1,9 @@
 // The Dictation Lab's two columns (DictationLab.swift has the model): the list of cases with "New Take" and "Run All
 // Cases" on top, and the workbench — record, every stage side by side with its milliseconds, the diff against what
-// the user meant, Compare, the marks, Save — or the regression run's table. Colours are the system's (light and
-// dark), icons BlurtIcon / SF Symbols, words T("dictation.lab.*").
+// the user meant, Compare, the marks, Save — or the regression run's table. Colours are BrandColor tokens (light, dark,
+// Increase Contrast; docs/design/system.md A.4), icons BlurtIcon / SF Symbols, words T("dictation.lab.*"). The one
+// primary per view is the brand button; the spectrum rim (`.aiGlow`) shows while a take is processed, Compare runs or
+// the regression runs, and a finished run blooms once (`.celebrate`).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -12,7 +14,7 @@ private func labGlyph(_ i: BlurtIcon, _ size: CGFloat = 12) -> Image {
 
 private let cardFill = Color(nsColor: .textBackgroundColor).opacity(0.6)
 private let chipFill = Color(nsColor: .quaternaryLabelColor).opacity(0.4)
-private let keepGreen = Color(nsColor: StatusRing.keep)
+private let okColor = Color.brandOk
 
 private func pct(_ v: Double?) -> String {
     guard let v = v else { return "—" }
@@ -145,11 +147,11 @@ struct LabCaseRow: View {
                 if let d = c.duration { Text(DictationHistoryModel.duration(d)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary) }
                 Spacer(minLength: 6)
                 if !c.errors.isEmpty {
-                    Text(T("dictation.lab.errors.count", c.errors.count)).font(.system(size: 10.5)).foregroundStyle(.orange)
+                    Text(T("dictation.lab.errors.count", c.errors.count)).font(.system(size: 10.5)).foregroundStyle(Color.brandAttnInk)
                 }
                 if let w = wer {
                     Text(T("dictation.lab.metric.wer.short", pct(w))).font(.system(size: 10.5, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(w == 0 ? keepGreen : .secondary)
+                        .foregroundStyle(w == 0 ? okColor : .secondary)
                 }
             }
             Text((c.truth ?? c.finalText ?? T("dictation.lab.untitled")).trimmingCharacters(in: .whitespacesAndNewlines))
@@ -211,7 +213,7 @@ private struct StageCard: View {
                 Text(empty).font(.system(size: 12)).foregroundStyle(.tertiary)
             }
             if let w = warn {
-                HStack(spacing: 4) { labGlyph(.undo, 10); Text(w) }.font(.system(size: 11)).foregroundStyle(.orange)
+                HStack(spacing: 4) { labGlyph(.undo, 10); Text(w) }.font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
             }
         }
         .padding(12)
@@ -240,16 +242,16 @@ struct LabDiffText: View {
                 if c.op == .replace {
                     var d = AttributedString(c.ref)
                     d.strikethroughStyle = .single
-                    d.foregroundColor = Color(nsColor: .systemRed)
+                    d.foregroundColor = Color.brandErr
                     out += d
                 }
                 var a = AttributedString(c.hyp)
-                a.backgroundColor = Color(nsColor: .systemOrange).opacity(0.28)
+                a.backgroundColor = Color.brandAttn.opacity(0.28)      // a diff is not brand
                 out += a
             case .delete:
                 var d = AttributedString(c.ref)
                 d.strikethroughStyle = .single
-                d.foregroundColor = Color(nsColor: .systemRed)
+                d.foregroundColor = Color.brandErr
                 out += d
             }
         }
@@ -271,7 +273,7 @@ private struct MetricBadges: View {
     func badge(_ k: String, _ v: String, _ good: Bool) -> some View {
         HStack(spacing: 4) {
             Text(k).foregroundStyle(.secondary)
-            Text(v).fontWeight(.semibold).monospacedDigit().foregroundStyle(good ? keepGreen : .primary)
+            Text(v).fontWeight(.semibold).monospacedDigit().foregroundStyle(good ? okColor : .primary)
         }
         .font(.system(size: 11))
         .padding(.horizontal, 7).padding(.vertical, 3)
@@ -290,8 +292,8 @@ private struct Chip: View {
         }
         .font(.system(size: 11))
         .padding(.horizontal, 8).padding(.vertical, 3)
-        .background(Capsule().fill(on ? Color.accentColor.opacity(0.22) : chipFill))
-        .overlay(Capsule().strokeBorder(on ? Color.accentColor.opacity(0.6) : .clear, lineWidth: 0.8))
+        .background(Capsule().fill(on ? Color.brandTint : chipFill))
+        .overlay(Capsule().strokeBorder(on ? Color.brandInk : .clear, lineWidth: 0.8))
         if let a = action { Button(action: a) { label }.buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : []) } else { label }
     }
 }
@@ -308,7 +310,7 @@ struct LabWorkbench: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if lab.pane == .script { LabScriptCard(lab: lab).id("top") } else { title.id("top") }
-                    recorder
+                    recorder.aiGlow(lab.phase == .processing, cornerRadius: 12)
                     if lab.pane != .script {
                         LabSection(title: T("dictation.lab.reference")) {
                             TextField(T("dictation.lab.reference.placeholder"), text: text({ $0.reference }, { $0.reference = $1 }), axis: .vertical)
@@ -362,11 +364,12 @@ struct LabWorkbench: View {
         HStack(alignment: .center, spacing: 16) {
             Button { lab.toggleRecord() } label: {
                 ZStack {
-                    Circle().fill(lab.phase == .recording ? Color(nsColor: .systemRed) : Color.accentColor)
+                    Circle().fill(lab.phase == .recording ? Color.brandRec : Color.brandInk)
                     if lab.phase == .processing || lab.phase == .starting {
-                        ProgressView().controlSize(.small).tint(.white)
+                        ProgressView().controlSize(.small).tint(lab.phase == .recording ? .white : Color(nsColor: BrandColor.onInk))
                     } else {
-                        labGlyph(lab.phase == .recording ? .stopFill : .mic, 20).foregroundStyle(.white)
+                        labGlyph(lab.phase == .recording ? .stopFill : .mic, 20)
+                            .foregroundStyle(lab.phase == .recording ? .white : Color(nsColor: BrandColor.onInk))
                     }
                 }
                 .frame(width: 58, height: 58)
@@ -385,7 +388,7 @@ struct LabWorkbench: View {
                 } else {
                     Text(T("dictation.lab.record.hint", Dictation.keyShort)).font(.system(size: 11.5)).foregroundStyle(.secondary)
                 }
-                if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(.orange) }
+                if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr) }
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 6) {
@@ -560,7 +563,7 @@ struct LabWorkbench: View {
                     }
                     LabDiffText(ref: truth, hyp: out)
                     if let m = lab.score?.terms?.missed, !m.isEmpty {
-                        Text(T("dictation.lab.terms.missed", m.joined(separator: ", "))).font(.system(size: 11.5)).foregroundStyle(.orange)
+                        Text(T("dictation.lab.terms.missed", m.joined(separator: ", "))).font(.system(size: 11.5)).foregroundStyle(Color.brandAttnInk)
                     }
                 }
                 .padding(12)
@@ -594,7 +597,7 @@ struct LabWorkbench: View {
                     ForEach(1...5, id: \.self) { n in
                         Button { lab.edit { $0.stars = $0.stars == n ? nil : n } } label: {
                             Image(systemName: (lab.draft.stars ?? 0) >= n ? "star.fill" : "star")
-                                .foregroundStyle((lab.draft.stars ?? 0) >= n ? Color.orange : Color.secondary)
+                                .foregroundStyle((lab.draft.stars ?? 0) >= n ? Color.brandAttn : Color.secondary)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(T("dictation.lab.stars", n))
@@ -614,7 +617,7 @@ struct LabWorkbench: View {
 
     var learned: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            labGlyph(.spark, 11).foregroundStyle(keepGreen)
+            labGlyph(.spark, 11).foregroundStyle(okColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(T("dictation.lab.learned")).font(.system(size: 12, weight: .medium))
                 Text(lab.learned.map(\.summary).joined(separator: "; ")).font(.system(size: 12)).foregroundStyle(.secondary)
@@ -624,7 +627,7 @@ struct LabWorkbench: View {
             Button(T("dictation.lab.learn.undo")) { lab.undoLearned() }.controlSize(.small)
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 9).fill(keepGreen.opacity(0.10)))
+        .background(RoundedRectangle(cornerRadius: 9).fill(okColor.opacity(0.10)))
     }
 
     // MARK: compare
@@ -635,6 +638,7 @@ struct LabWorkbench: View {
                 if lab.rerunning { ProgressView().controlSize(.small) }
                 Button(T("dictation.lab.compare.run")) { lab.rerun() }.disabled(lab.rerunning || lab.chosen.isEmpty || lab.dirty)
                     .help(lab.dirty ? T("dictation.lab.compare.save_first") : T("dictation.lab.compare.tip"))
+                    .aiGlow(lab.rerunning, cornerRadius: 6)
             }.controlSize(.small))) {
             FlowRow(items: lab.options.map { o in
                 Chip(text: o.label, on: lab.chosen.contains(o.spec)) {
@@ -659,7 +663,7 @@ struct LabWorkbench: View {
             Text(r.label).font(.system(size: 11.5, weight: .medium)).frame(width: 150, alignment: .leading)
             VStack(alignment: .leading, spacing: 3) {
                 if let e = r.error {
-                    Text(e).font(.system(size: 11.5)).foregroundStyle(.orange)
+                    Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr)
                 } else if let t = lab.truth {
                     LabDiffText(ref: t, hyp: r.text)
                 } else {
@@ -667,14 +671,14 @@ struct LabWorkbench: View {
                 }
                 if r.outputs["fell_back"] as? Bool == true {
                     Text(T("dictation.lab.fell_back", DictationHistoryModel.reasonText(r.outputs["reason"] as? String)))
-                        .font(.system(size: 11)).foregroundStyle(.orange)
+                        .font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 2) {
                 if let s = lab.score(of: r.text) {
                     Text(T("dictation.lab.metric.wer.short", pct(s.wer))).font(.system(size: 11, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(s.wer == 0 ? keepGreen : .primary)
+                        .foregroundStyle(s.wer == 0 ? okColor : .primary)
                     if let t = s.terms { Text(T("dictation.lab.metric.terms.short", t.hit, t.expected)).font(.system(size: 10.5)).foregroundStyle(.secondary) }
                 }
                 Text(T("dictation.lab.ms", r.ms)).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.tertiary)
@@ -688,15 +692,16 @@ struct LabWorkbench: View {
     var saveBar: some View {
         HStack(spacing: 10) {
             if let n = lab.notice {
-                HStack(spacing: 4) { labGlyph(.check, 11).foregroundStyle(keepGreen); Text(n) }.font(.system(size: 12)).foregroundStyle(.secondary)
+                HStack(spacing: 4) { labGlyph(.check, 11).foregroundStyle(okColor); Text(n) }.font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Spacer()
             if lab.isNew && lab.draft.take != nil {
                 Button(T("dictation.lab.discard")) { lab.newTake() }.disabled(lab.phase != .idle)
             }
+            // the workbench's primary, except while reading a script: there "Next" is
             Button(lab.isNew ? T("dictation.lab.save") : T("dictation.lab.save_changes")) { lab.save() }
                 .keyboardShortcut("s", modifiers: .command)
-                .buttonStyle(.borderedProminent)
+                .primaryButton(lab.pane != .script)
                 .disabled(!lab.canSave)
         }
         .controlSize(.regular)
@@ -712,7 +717,7 @@ private struct LabLevelBars: View {
             let xs = Array(levels.suffix(n))
             HStack(alignment: .center, spacing: 1) {
                 ForEach(Array(xs.enumerated()), id: \.offset) { _, l in
-                    Capsule().fill(Color.accentColor.opacity(0.8)).frame(width: 2, height: max(2, CGFloat(l) * g.size.height))
+                    Capsule().fill(Color.brandInk.opacity(0.8)).frame(width: 2, height: max(2, CGFloat(l) * g.size.height))
                 }
             }
             .frame(maxHeight: .infinity)
@@ -808,7 +813,7 @@ struct LabScriptCard: View {
                         Button(T("dictation.lab.script.retry")) { lab.record(file: nil, via: "retry") }.disabled(lab.phase != .idle)
                     }
                     Button { lab.nextUnread() } label: { HStack(spacing: 4) { Text(T("dictation.lab.script.next")); labGlyph(.chevronRight, 10) } }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.brand)
                         .disabled(lab.phase != .idle || lab.promptIndex >= pr.total - 1)
                 }
             } else {
@@ -826,10 +831,10 @@ struct LabScriptCard: View {
                     HStack(spacing: 8) {
                         Button { lab.open(c.id, keepPane: true) } label: {
                             HStack(spacing: 6) {
-                                if c.id == lab.draft.id { labGlyph(.check, 10).foregroundStyle(Color.accentColor) }
+                                if c.id == lab.draft.id { labGlyph(.check, 10).foregroundStyle(Color.brandInk) }
                                 Text(DictationHistoryModel.time(c.created)).monospacedDigit()
                                 Text(T("dictation.lab.metric.wer.short", pct(c.metrics?["wer"] as? Double))).monospacedDigit()
-                                    .foregroundStyle((c.metrics?["wer"] as? Double) == 0 ? keepGreen : .secondary)
+                                    .foregroundStyle((c.metrics?["wer"] as? Double) == 0 ? okColor : .secondary)
                                 Text(c.finalText ?? "").lineLimit(1).foregroundStyle(.secondary)
                             }
                         }
@@ -866,14 +871,15 @@ struct LabRegressionView: View {
                     }
                     .frame(maxWidth: 360)
                     Button(T("dictation.lab.run_all.run")) { lab.runAll() }
-                        .buttonStyle(.borderedProminent).disabled(lab.running || lab.cases.allSatisfy { !$0.hasAudio })
+                        .buttonStyle(.brand).disabled(lab.running || lab.cases.allSatisfy { !$0.hasAudio })
+                        .aiGlow(lab.running, cornerRadius: 7)
                     if lab.running {
                         ProgressView().controlSize(.small)
                         Text(T("dictation.lab.run_all.running")).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
                 if let r = lab.runResult { result(r) }
-                if let e = lab.error { Text(e).font(.system(size: 12)).foregroundStyle(.orange) }
+                if let e = lab.error { Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr) }
                 Text(T("dictation.lab.run_all.cli")).font(.system(size: 11)).foregroundStyle(.secondary)
                 Text("uv run skills/blurt/scripts/dictation_lab.py run --json").font(.system(size: 11, design: .monospaced))
                     .textSelection(.enabled).foregroundStyle(.secondary)
@@ -889,7 +895,10 @@ struct LabRegressionView: View {
         let rows = r["rows"] as? [[String: Any]] ?? []
         HStack(alignment: .firstTextBaseline, spacing: 18) {
             VStack(alignment: .leading, spacing: 0) {
+                // the hero number: gradient text (flat ink with Increase Contrast); it blooms once when a run lands
                 Text((o["score"] as? Double).map { String(format: "%.1f", $0) } ?? "—").font(.system(size: 30, weight: .semibold)).monospacedDigit()
+                    .brandGradientText()
+                    .celebrate(on: lab.runsFinished, cornerRadius: 10)
                 Text(T("dictation.lab.run_all.score")).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 3) {
@@ -899,8 +908,8 @@ struct LabRegressionView: View {
                     Text(T("dictation.lab.metric.terms")).foregroundStyle(.secondary); Text(pct(o["term_accuracy"] as? Double)).monospacedDigit()
                 }
                 GridRow {
-                    Text(T("dictation.lab.change.better")).foregroundStyle(keepGreen); Text("\(o["better"] as? Int ?? 0)").monospacedDigit()
-                    Text(T("dictation.lab.change.worse")).foregroundStyle(.red); Text("\(o["worse"] as? Int ?? 0)").monospacedDigit()
+                    Text(T("dictation.lab.change.better")).foregroundStyle(okColor); Text("\(o["better"] as? Int ?? 0)").monospacedDigit()
+                    Text(T("dictation.lab.change.worse")).foregroundStyle(Color.brandErr); Text("\(o["worse"] as? Int ?? 0)").monospacedDigit()
                     Text(T("dictation.lab.change.same")).foregroundStyle(.secondary); Text("\(o["same"] as? Int ?? 0)").monospacedDigit()
                 }
             }
@@ -936,7 +945,7 @@ struct LabRegressionView: View {
                     }
                     .font(.system(size: 11))
                     .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill((v["worse"] as? Int ?? 0) > 0 ? Color.red.opacity(0.15) : chipFill))
+                    .background(Capsule().fill((v["worse"] as? Int ?? 0) > 0 ? Color.brandErr.opacity(0.15) : chipFill))
                 }
             }
         }
@@ -962,7 +971,7 @@ struct LabRegressionView: View {
                     if let t = row["text"] as? String, let truth = row["truth"] as? String {
                         LabDiffText(ref: truth, hyp: t).lineLimit(2)
                     } else if let e = row["error"] as? String {
-                        Text(e).font(.system(size: 11)).foregroundStyle(.orange)
+                        Text(e).font(.system(size: 11)).foregroundStyle(Color.brandErr)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -970,7 +979,7 @@ struct LabRegressionView: View {
                 Text(pct(a?["wer"] as? Double)).frame(width: 70, alignment: .trailing)
                 Text(terms.map { "\($0["hit"] as? Int ?? 0)/\($0["expected"] as? Int ?? 0)" } ?? "—").frame(width: 50, alignment: .trailing)
                 Text(T("dictation.lab.change.\(change == "n/a" ? "na" : change)"))
-                    .foregroundStyle(change == "better" ? keepGreen : change == "worse" || change == "error" ? .red : .secondary)
+                    .foregroundStyle(change == "better" ? okColor : change == "worse" || change == "error" ? Color.brandErr : .secondary)
                     .fontWeight(change == "better" || change == "worse" ? .semibold : .regular)
                     .frame(width: 80, alignment: .trailing)
             }

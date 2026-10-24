@@ -7,6 +7,11 @@
 //   3. a speech model — the recommended one for the user's language, downloaded with progress;
 //   4. agents — which are installed / logged in, and the blurt skill + MCP installed into one (preview first).
 // Shown once on first launch (config app.onboarded), again from Settings → General or blurt://onboarding.
+//
+// Look (docs/design/system.md §3.4): a fixed-width hero panel on the left — the field (light) / deep (dark) with grain,
+// a soft still spectrum glow behind the mascot (none with Reduce Transparency) — then the steps as before: the welcome
+// title in gradient text, step bars in brand ink, Next / Done as the brand primary. Done blooms the spectrum once
+// around the chick (the completion moment) and closes; with Reduce Motion / Transparency it just closes.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -28,11 +33,28 @@ final class OnboardingModel: ObservableObject {
     }
     let steps = 4
     var close: () -> Void = {}
+    /// Bumped when setup completes with Done: the hero's chick hops and the spectrum blooms around it once.
+    @Published var celebrated = 0
+    @Published var celebrating = false
 
     func finish() {
         Config.shared.set("app.onboarded", true)
         close()
     }
+
+    /// Done on the last step: the celebration (0.9 s), then close. Skip / the close box don't celebrate.
+    func done() {
+        guard !celebrating else { return }
+        emit(["event": "onboarding", "done": true])
+        if reduceMotion || reduceTransparency { return finish() }
+        celebrating = true
+        celebrated += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in self?.finish() }
+    }
+
+    static let heroWidth: CGFloat = 200
+    static let contentWidth: CGFloat = 640
+    static let height: CGFloat = 600
 
     static let uvInstallCommand = "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=\"$HOME/.blurt/bin\" UV_NO_MODIFY_PATH=1 sh"
 
@@ -81,14 +103,24 @@ struct OnboardingView: View {
     @ObservedObject var agents = AgentsModel.shared
 
     var body: some View {
+        HStack(spacing: 0) {
+            OnboardingHero(m: m)
+                .frame(width: OnboardingModel.heroWidth)
+                .ignoresSafeArea()          // up under the transparent title bar
+            content
+                .frame(width: OnboardingModel.contentWidth)
+        }
+        .frame(width: OnboardingModel.heroWidth + OnboardingModel.contentWidth, height: OnboardingModel.height)
+        .onAppear { perms.start() }
+        .onDisappear { perms.stop() }
+    }
+
+    var content: some View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
-                // the chick hatches to say hello, and hops when everything is set up (the mascot, Icons/Mascot.swift)
-                MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 64)
-                    .frame(width: 64, height: 64).padding(-6)
-                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(T("onboarding.welcome_blurt")).font(.title2.weight(.semibold))
+                    // a large headline: gradient text (flat brand ink with Increase Contrast)
+                    Text(T("onboarding.welcome_blurt")).font(.system(size: 24, weight: .bold)).brandGradientText()
                     Text(T("onboarding.four_quick_steps_talk"))
                         .foregroundStyle(.secondary)
                 }
@@ -98,7 +130,7 @@ struct OnboardingView: View {
 
             HStack(spacing: 6) {
                 ForEach(0..<m.steps, id: \.self) { i in
-                    Capsule().fill(i <= m.step ? Color.accentColor : Color(nsColor: .quaternaryLabelColor)).frame(height: 4)
+                    Capsule().fill(i <= m.step ? Color.brandInk : Color(nsColor: .quaternaryLabelColor)).frame(height: 4)
                 }
             }.padding(.horizontal, 28)
 
@@ -117,17 +149,17 @@ struct OnboardingView: View {
             HStack {
                 Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link)
                 Spacer()
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
+                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 }.disabled(m.celebrating) }
+                // the one primary: the brand button
                 Button(m.step == m.steps - 1 ? T("onboarding.done") : T("onboarding.next")) {
-                    if m.step == m.steps - 1 { m.finish() } else { m.step += 1 }
+                    if m.step == m.steps - 1 { m.done() } else { m.step += 1 }
                 }
+                .buttonStyle(.brand)
                 .keyboardShortcut(.defaultAction)
+                .disabled(m.celebrating)
             }
             .padding(.horizontal, 28).padding(.vertical, 14)
         }
-        .frame(width: 640, height: 600)
-        .onAppear { perms.start() }
-        .onDisappear { perms.stop() }
     }
 
     func title(_ n: Int, _ t: String, _ sub: String) -> some View {
@@ -154,7 +186,7 @@ struct OnboardingView: View {
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if m.dictationKey == .fn, !SystemAccess.fnClashApps.isEmpty {
                 Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
-                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    .font(.caption).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -184,8 +216,8 @@ struct OnboardingView: View {
                             case nil: Button(T("onboarding.warm_up_dependencies")) { m.warmUp() }
                                       Text(T("onboarding.fetches_scripts_packages_now")).font(.caption).foregroundStyle(.secondary)
                             case "running"?: ProgressView().controlSize(.small); Text(T("onboarding.preparing_about_minute_first")).foregroundStyle(.secondary)
-                            case "done"?: Label(T("onboarding.dependencies_ready_index_built"), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                            case let e?: Label(e, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(3)
+                            case "done"?: Label(T("onboarding.dependencies_ready_index_built"), systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandOk)
+                            case let e?: Label(e, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.brandErr).lineLimit(3)
                             }
                         }
                     }
@@ -211,7 +243,7 @@ struct OnboardingView: View {
                                 Text("\(Int(r.sizeMB)) MB · " + r.languages.joined(separator: " ")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if r.installed { Label(T("onboarding.downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
+                            if r.installed { Label(T("onboarding.downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandOk) }
                             else if speech.download[r.id] == nil { Button(T("onboarding.download")) { speech.startDownload(r) } }
                         }
                         if let d = speech.download[r.id] {
@@ -222,7 +254,7 @@ struct OnboardingView: View {
                     } else {
                         HStack { ProgressView().controlSize(.small); Text(T("onboarding.reading_models")).foregroundStyle(.secondary) }
                     }
-                    if let e = speech.error { Text(e).font(.caption).foregroundStyle(.orange) }
+                    if let e = speech.error { Text(e).font(.caption).foregroundStyle(Color.brandErr) }
                 }.padding(6)
             }
             Hint(T("onboarding.you_can_switch_models"))
@@ -261,6 +293,33 @@ struct OnboardingView: View {
     }
 }
 
+/// The hero side panel (§3.4): the field with grain, a soft still spectrum glow, the mascot on it. Flat field (no grain,
+/// no glow) with Reduce Transparency. The chick hatches to say hello, hops on the last step, and the spectrum blooms
+/// around it once when setup completes.
+struct OnboardingHero: View {
+    @ObservedObject var m: OnboardingModel
+
+    var body: some View {
+        ZStack {
+            BrandField()
+            VStack(spacing: 0) {
+                Spacer()
+                ZStack {
+                    SpectrumGlow(size: 150, opacity: 0.5)
+                    MascotImage(clip: m.celebrated > 0 || m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 96)
+                        .frame(width: 96, height: 96)
+                }
+                .frame(width: 128, height: 128)
+                .celebrate(on: m.celebrated, cornerRadius: 64)
+                Spacer()
+                Spacer()
+            }
+        }
+        .clipped()
+        .accessibilityHidden(true)
+    }
+}
+
 final class Onboarding: NSObject, NSWindowDelegate {
     static let shared = Onboarding()
     private var window: NSWindow?
@@ -280,7 +339,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
         }
         let m = OnboardingModel()
         m.step = step
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 600), styleMask: [.titled, .closable, .fullSizeContentView],
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: OnboardingModel.heroWidth + OnboardingModel.contentWidth,
+                                             height: OnboardingModel.height), styleMask: [.titled, .closable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
@@ -305,6 +365,14 @@ final class Onboarding: NSObject, NSWindowDelegate {
     }
 
     var windowNumber: Int? { window?.windowNumber }
+
+    /// Tests (wp6 `onboardingdone`): Done on the last step — the celebration, then the window closes.
+    @MainActor
+    func testDone() {
+        guard let m = model else { return }
+        m.step = m.steps - 1
+        m.done()
+    }
 
     /// Back to the front as it was (the permission guide finished), without changing the step.
     @MainActor

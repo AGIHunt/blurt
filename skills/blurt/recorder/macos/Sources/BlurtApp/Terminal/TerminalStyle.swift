@@ -28,13 +28,14 @@ extension AgentSessionStatus {
     /// K10 common words: Working / Needs your input / Turn finished / Exited / Error
     var title: String { Loc.t("session.\(rawValue)") }
 
+    /// Running brand ink, waiting attention, done ok, error err (docs/design/system.md A.1).
     var nsColor: NSColor {
         switch self {
-        case .running: return .controlAccentColor
-        case .waitingInput: return NSColor(name: nil) { $0.isDark ? NSColor(hex: 0xFFC53D) : NSColor(hex: 0xE5A000) }
-        case .turnDone: return NSColor(name: nil) { $0.isDark ? NSColor(hex: 0x3DD68C) : NSColor(hex: 0x218358) }
+        case .running: return BrandColor.ink
+        case .waitingInput: return BrandColor.attn
+        case .turnDone: return BrandColor.ok
         case .exited: return .tertiaryLabelColor
-        case .error: return NSColor(name: nil) { $0.isDark ? NSColor(hex: 0xFF6B6B) : NSColor(hex: 0xD93D42) }
+        case .error: return BrandColor.err
         }
     }
     var color: Color { Color(nsColor: nsColor) }

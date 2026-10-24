@@ -107,6 +107,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         accentObserver.map(NotificationCenter.default.removeObserver)
     }
 
+    /// The page's focus colour: the system's (focus follows the user's accent, §1.4; with Multicolor that is the app's
+    /// AccentColor asset). The focus indicator is the accent at partial alpha; only its hue is passed on.
     static func accentHex() -> String {
         let c = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? .systemBlue
         return String(format: "#%02x%02x%02x", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
@@ -346,7 +348,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         do {
             try FileManager.default.copyItem(at: f, to: dest)
             DistributedNotificationCenter.default().post(name: .init("com.apple.DownloadFileFinished"), object: dest.path)
-            appDelegate?.toast(T("main.toast.downloaded", dest.lastPathComponent))
+            appDelegate?.toast(T("main.toast.downloaded", dest.lastPathComponent), icon: .check)
         } catch {
             appDelegate?.toast(T("main.toast.download_failed", error.localizedDescription))
         }
@@ -424,6 +426,8 @@ final class ItemBanner: NSView {
     private var tint: NSColor = .clear
     /// The process job the "still organising" line points at.
     private(set) var processingJob: String?
+    /// The spectrum rim while the batch is still being organised (AI at work, §4)
+    private let glow = AIGlowView(frame: .zero)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -444,11 +448,20 @@ final class ItemBanner: NSView {
             buttons.leadingAnchor.constraint(greaterThanOrEqualTo: text.trailingAnchor, constant: 12),
             buttons.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14), buttons.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        glow.cornerRadius = 8
+        glow.alphaValue = 0
+        glow.isHidden = true
+        addSubview(glow)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         isHidden = true
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        glow.frame = bounds.insetBy(dx: 3 - glow.outset, dy: 3 - glow.outset)     // the rim 3 pt inside the edges
+    }
 
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
@@ -458,14 +471,28 @@ final class ItemBanner: NSView {
     func set(_ it: ItemRow?, suggested: ProjectEntry? = nil) {
         buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }
         func button(_ t: String, _ a: String, primary: Bool = false) {
-            let b = NSButton(title: t, target: self, action: #selector(tap(_:)))
+            let b: NSButton
+            if primary {
+                // the banner's one primary: the brand button (bezelColor can't carry the gradient)
+                let p = BrandButton(title: t, target: self, action: #selector(tap(_:)))
+                p.fontSize = 11.5
+                p.hPad = 11
+                p.radius = 6
+                p.keyEquivalent = "\r"
+                p.keyEquivalentModifierMask = [.command, .shift]
+                b = p
+            } else {
+                b = NSButton(title: t, target: self, action: #selector(tap(_:)))
+                b.bezelStyle = .rounded
+                b.controlSize = .small
+            }
             b.identifier = .init(a)
-            b.bezelStyle = .rounded
-            b.controlSize = .small
-            if primary { b.bezelColor = .controlAccentColor; b.keyEquivalent = "\r"; b.keyEquivalentModifierMask = [.command, .shift] }
             buttons.addArrangedSubview(b)
         }
         processingJob = nil
+        icon.contentTintColor = nil
+        var organising = false
+        defer { setGlow(organising) }
         guard let it = it, !it.discarded else { return hide() }
         let agent = it.workAgent.flatMap { AgentHub.shared.def($0)?.name } ?? it.workAgent
         let active = it.state == "handed_off" || it.state == "in_progress"
@@ -474,13 +501,13 @@ final class ItemBanner: NSView {
         case "to_verify":
             return hide()       // the detail's own work panel asks (Mark as done / Send back), next to the state pill
         case "session":
-            tint = StatusRing.accent
+            tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
             let st = it.workJob.flatMap { JobStore.shared.job($0)?.agent?.status }.map { T("session.\($0.rawValue)") } ?? Look.stateName(it.state)
             text.stringValue = T("main.banner.with_agent", agent ?? T("main.banner.agent"), st)
             if it.workJob != nil { button(T("main.banner.open_session"), "session", primary: true) }
         case "external":
-            tint = StatusRing.accent
+            tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
             text.stringValue = T("main.banner.external")
             button(StateMenu.title("wontfix"), "wontfix")
@@ -488,14 +515,17 @@ final class ItemBanner: NSView {
         default:
             // the batch it came from is still being organised: the item fills in as the agent goes
             if let dir = it.sessionDir, let j = JobStore.shared.active.first(where: { $0.type == .process && $0.session?.path == dir }) {
-                tint = .controlAccentColor
+                tint = BrandColor.ink
                 icon.image = Look.symbol("wand.and.sparkles", "", size: 13)
+                icon.contentTintColor = BrandColor.ink
                 text.stringValue = T("main.banner.organizing", JobLook.status(j))
                 processingJob = j.id
+                organising = true
                 button(T("main.banner.show_progress"), "progress", primary: true)
             } else if let s = suggested, it.projectID == "inbox" {
-                tint = .controlAccentColor
+                tint = BrandColor.ink
                 icon.image = Look.symbol("folder.badge.questionmark", "", size: 13)
+                icon.contentTintColor = BrandColor.ink
                 text.stringValue = T("main.banner.suggested", s.name, Loc.percent(it.suggestedConfidence ?? 0))
                 button(T("main.banner.move"), "move", primary: true)
             } else {
@@ -511,6 +541,13 @@ final class ItemBanner: NSView {
     private func hide() {
         isHidden = true
         height.constant = 0
+    }
+
+    private var glowing = false
+    private func setGlow(_ on: Bool) {
+        guard on != glowing else { return }
+        glowing = on
+        glow.set(active: on)
     }
 
     @objc func tap(_ b: NSButton) { b.identifier.map { onAction?($0.rawValue) } }

@@ -508,7 +508,7 @@ struct DictationPane: View {
     func asrRow(_ model: DictationASRModel, selected: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                .foregroundStyle(selected ? Color.brandInk : Color.secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
@@ -531,10 +531,11 @@ struct DictationPane: View {
             } else if model.installed {
                 if !selected { Button(T("dictation.polish.use")) { m.chooseASR(model) }.controlSize(.small) }
             } else {
-                if m.asrFailed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(.orange) }
+                if m.asrFailed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(Color.brandErr) }
                 Button(T("dictation.polish.install")) { m.installASR(model) }.controlSize(.small)
             }
         }
+        .choiceCard(selected)
         .contentShape(Rectangle())
         .onTapGesture { if model.installed && !selected { m.chooseASR(model) } }
         .accessibilityElement(children: .combine)
@@ -556,7 +557,7 @@ struct DictationPane: View {
         ForEach(m.suggestions) { t in
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) { Text(t.term); Badge(T("dictation.vocab.suggested"), tint: .orange) }
+                    HStack(spacing: 6) { Text(t.term); Badge(T("dictation.vocab.suggested"), tint: .brandAttnInk) }
                     if !t.soundsLike.isEmpty {
                         Text(T("dictation.vocab.heard_as", t.soundsLike.joined(separator: T("dictation.vocab.list_sep"))))
                             .font(.caption).foregroundStyle(.secondary)
@@ -705,7 +706,7 @@ struct DictationPane: View {
     func modelRow(_ model: PolishModel, selected: Bool, state: PolishState) -> some View {
         HStack(spacing: 10) {
             Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                .foregroundStyle(selected ? Color.brandInk : Color.secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
@@ -730,10 +731,11 @@ struct DictationPane: View {
             } else if model.installed {
                 if !selected { Button(T("dictation.polish.use")) { m.choose(model) }.controlSize(.small) }
             } else {
-                if m.failed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(.orange) }
+                if m.failed[model.id] == true { Text(T("dictation.polish.failed")).font(.caption).foregroundStyle(Color.brandErr) }
                 Button(T("dictation.polish.install")) { m.install(model) }.controlSize(.small)
             }
         }
+        .choiceCard(selected)
         .contentShape(Rectangle())
         .onTapGesture { if model.installed && !selected { m.choose(model) } }
         .accessibilityElement(children: .combine)
@@ -741,14 +743,16 @@ struct DictationPane: View {
     }
 }
 
-/// A small capsule label next to a name ("Recommended", "Learned").
+/// A small capsule label next to a name ("Recommended", "Learned"): brand ink on the brand tint (§3.4); with a `tint`,
+/// that colour as text on 15 % of itself (attention for "Suggested", secondary for "Auto").
 struct Badge: View {
     let text: String
-    var tint: Color = .accentColor
-    init(_ text: String, tint: Color = .accentColor) { self.text = text; self.tint = tint }
+    var tint: Color?
+    init(_ text: String, tint: Color? = nil) { self.text = text; self.tint = tint }
     var body: some View {
         Text(text).font(.caption2.weight(.semibold))
             .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(Capsule().fill(tint.opacity(0.15))).foregroundStyle(tint)
+            .background(Capsule().fill(tint.map { $0.opacity(0.15) } ?? Color.brandTint))
+            .foregroundStyle(tint ?? Color.brandInk)
     }
 }

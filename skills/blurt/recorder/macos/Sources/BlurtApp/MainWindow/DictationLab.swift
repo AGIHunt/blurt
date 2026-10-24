@@ -141,6 +141,8 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
     @Published var runSpec = "current"
     @Published var running = false
     @Published var runResult: [String: Any]?
+    /// Counts the runs that came back with a result: the score blooms once each time (the completion celebration).
+    @Published var runsFinished = 0
     @Published var keepNext = 0
     private var take: LabTake?
     private var pendingAudio: URL?
@@ -576,6 +578,7 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
             switch r {
             case .success(let o):
                 self.runResult = o
+                self.runsFinished += 1
                 emit(["event": "dictation_lab", "action": "run_all_done", "overall": o["overall"] ?? NSNull()])
             case .failure(let f):
                 self.error = f.localized
@@ -885,6 +888,25 @@ extension DictationLabModel {
         case "keep-only": lab.keepOnly(rest.isEmpty ? lab.draft.id : rest)
         case "import-pack": lab.importPack(URL(fileURLWithPath: rest))
         case "generate": lab.generateMore()
+        // the brand moments without real audio or scripts (screenshots): fake run | done | stop, fake processing | idle,
+        // fake rerun on|off — the AI glow on Run / the recorder / Compare, the score and its bloom
+        case "fake":
+            switch rest {
+            case "run": lab.pane = .regression; lab.running = true
+            case "done":
+                lab.pane = .regression
+                lab.running = false
+                lab.runResult = ["overall": ["score": 92.4, "wer": 0.041, "cer": 0.022, "term_accuracy": 0.95, "better": 6, "worse": 1, "same": 9] as [String: Any],
+                                 "rows": [[String: Any]](), "by_tag": ["app:chat": ["wer": 0.03, "cases": 5, "worse": 0] as [String: Any],
+                                                                       "noise:noisy": ["wer": 0.12, "cases": 3, "worse": 1] as [String: Any]]]
+                lab.runsFinished += 1
+            case "stop": lab.running = false
+            case "processing": lab.phase = .processing
+            case "idle": lab.phase = .idle
+            case "rerun on": lab.rerunning = true
+            case "rerun off": lab.rerunning = false
+            default: break
+            }
         default: break
         }
         emit(["event": "dictation_lab_status", "cmd": parts.first ?? "status", "tab": page.model.tab.rawValue, "phase": lab.phase.rawValue,

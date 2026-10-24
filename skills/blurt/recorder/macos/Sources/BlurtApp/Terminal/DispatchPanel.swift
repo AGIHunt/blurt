@@ -207,8 +207,8 @@ struct DispatchView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "paperplane").font(.system(size: 20, weight: .regular)).foregroundStyle(Color.accentColor)
-                    .frame(width: 34, height: 34).background(Circle().fill(Color.accentColor.opacity(0.12)))
+                Image(systemName: "paperplane").font(.system(size: 20, weight: .regular)).foregroundStyle(Color.brandInk)
+                    .frame(width: 34, height: 34).background(Circle().fill(Color.brandTint))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(TL("dispatch.title")).font(.title3.weight(.semibold))
                     Text(m.count == 0 ? TL("dispatch.subtitle.none")
@@ -281,7 +281,7 @@ struct DispatchView: View {
             if m.concurrent != nil && !m.worktreeOn { concurrentCallout }
 
             if case .failed(let why) = m.phase {
-                Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).font(.callout).textSelection(.enabled)
+                Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(Color.brandAttnInk).font(.callout).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

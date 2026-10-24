@@ -84,7 +84,9 @@ final class Spotlight {
     /// CSSearchQuery over our own index (the acceptance test: an item's title is found).
     func search(_ text: String, completion: @escaping ([String]) -> Void) {
         let esc = text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-        let q = CSSearchQuery(queryString: "title == \"*\(esc)*\"cd", attributes: ["title"])
+        let ctx = CSSearchQueryContext()
+        ctx.fetchAttributes = ["title"]
+        let q = CSSearchQuery(queryString: "title == \"*\(esc)*\"cd", queryContext: ctx)
         var found: [String] = []
         q.foundItemsHandler = { items in found += Spotlight.ours(items.map { ($0.uniqueIdentifier, $0.domainIdentifier) }) }
         q.completionHandler = { _ in

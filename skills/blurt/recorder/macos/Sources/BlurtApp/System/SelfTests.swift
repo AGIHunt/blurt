@@ -11,11 +11,20 @@
 //   peck TITLE | peckframes DIR [dark] | perms
 //   menuglyph DIR                the menu-bar chick: the template glyph (rest / listen / hop; 1x / 2x) and the real
 //                                status button with a count of 3 (aqua / dark; rest / open) as PNGs
+//   design system v2 moments (screenshots, no real work behind them):
+//   onboardingdone               Done on the onboarding's last step: the spectrum bloom, then it closes
+//   mainempty KIND               one main-window empty state (ItemListController.testEmpty: first | inbox_zero | …)
+//   mainfakejob process|route|record [SESSION] | done | clear   a running job in the list's jobs section (the AI glow
+//                                on process / route; SESSION: the "organising" banner over that batch's items)
+//   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the glow)
+//   toastdone TEXT               the small toast with the done check (ok)
 import AppKit
 import Carbon.HIToolbox
 import BlurtCore
 
 enum SelfTests {
+    /// The jobs `mainfakejob` started (finished by `mainfakejob done|clear`).
+    @MainActor static var fakeJobs: [JobWriter] = []
     static var channel: String { "dev.blurt.recorder.wp6" + (ProcessInfo.processInfo.environment["BLURT_TEST_CHANNEL"].map { ".\($0)" } ?? "") }
 
     static func install() {
@@ -44,6 +53,30 @@ enum SelfTests {
         case "settingsscroll":          // settingsscroll top|bottom|POINTS: scroll the visible pane
             out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
         case "onboarding": Onboarding.shared.show(step: Int(arg) ?? 0)
+        case "onboardingdone": Onboarding.shared.testDone()
+        case "mainempty":
+            let c = MainWindowController.shared
+            c.show()
+            c.list.testEmpty(arg)
+            out(["empty": arg])
+        case "mainfakejob":
+            let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            switch a.first ?? "process" {
+            case "done": fakeJobs.forEach { $0.finish(.done) }; fakeJobs = []
+            case "clear": fakeJobs.forEach { $0.finish(.cancelled) }; fakeJobs = []
+            default:
+                let type = JobType(rawValue: a.first ?? "process") ?? .process
+                let j = JobWriter(type: type, project: ProjectStore.shared.currentID, session: a.count > 1 ? URL(fileURLWithPath: a[1]) : nil,
+                                  title: "Test \(type.rawValue)")
+                if let first = jobSteps[type]?.first { j.step(first, .running, progress: 0.4) }
+                fakeJobs.append(j)
+                out(["job": j.id])
+            }
+        case "dictationworking":
+            let m = MainWindowController.shared.dictation.model
+            if arg == "off" || arg.isEmpty { m.working = [] } else { m.working.insert(arg == "first" ? m.entries.first?.id ?? "" : arg) }
+            out(["working": Array(m.working)])
+        case "toastdone": appDelegate?.toast(arg.isEmpty ? T("app.toast.saved", Loc.duration(42)) : arg, icon: .check)
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
             let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber : arg == "fix" || arg == "dispatch" ? MainActor.assumeIsolated { DispatchPanel.windowNumber }

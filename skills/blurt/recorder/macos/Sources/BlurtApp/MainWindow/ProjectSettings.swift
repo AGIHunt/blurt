@@ -15,7 +15,8 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     private let agent = NSPopUpButton()
     private let worktree = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let keyNote = NSTextField(labelWithString: "")
-    private let save = NSButton()
+    /// the sheet's one primary (§3.3): the brand button, ↩
+    private let save = BrandButton()
     /// projects.py set refuses a new key once the store has items (their ids carry it): the field is read-only then.
     private let keyLocked: Bool
 
@@ -141,7 +142,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         save.isEnabled = (keyLocked || keyValid) && !name.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
         keyNote.stringValue = keyLocked ? T("main.project.key.locked", project.key)
             : keyValid ? T("main.project.key.note", key.stringValue) : T("main.project.key.invalid")
-        keyNote.textColor = keyLocked || keyValid ? .secondaryLabelColor : .systemRed
+        keyNote.textColor = keyLocked || keyValid ? .secondaryLabelColor : BrandColor.err
     }
 
     @objc func cancelTapped() { panel.sheetParent?.endSheet(panel) }

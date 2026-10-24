@@ -436,7 +436,7 @@ func renderMenuIconPreviews(into dir: URL) -> [URL] {
         .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .regular))
     var out: [URL] = []
     for (theme, bar, ink) in [("light", NSColor(white: 0.93, alpha: 1), NSColor(white: 0, alpha: 0.85)),
-                              ("dark", NSColor(calibratedRed: 0.16, green: 0.16, blue: 0.17, alpha: 1), NSColor.white)] {
+                              ("dark", NSColor(srgbRed: 0.16, green: 0.16, blue: 0.17, alpha: 1), NSColor.white)] {
         for scale in [1, 2] {
             let size = NSSize(width: 96, height: 24)
             guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * scale, pixelsHigh: Int(size.height) * scale,

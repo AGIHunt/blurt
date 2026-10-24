@@ -42,8 +42,8 @@ enum JobLook {
     }
 
     static func statusColor(_ j: Job) -> NSColor {
-        if j.state == .failed || j.agent?.status == .error { return .systemRed }
-        if j.agent?.status == .waitingInput { return StatusRing.attention }
+        if j.state == .failed || j.agent?.status == .error { return BrandColor.err }
+        if j.agent?.status == .waitingInput { return BrandColor.attnInk }
         return .secondaryLabelColor
     }
 
@@ -142,9 +142,15 @@ final class JobRow: NSView {
     let bar = NSProgressIndicator()
     private var hover = false { didSet { needsDisplay = true } }
     var selected = false { didSet { needsDisplay = true; setAccessibilitySelected(selected) } }
+    /// The spectrum rim while AI works on this job (processing a recording into items, auto-sort): design system §4.
+    private let glow = AIGlowView(frame: .zero)
+    private var glowing = false
 
     init() {
         super.init(frame: .zero)
+        glow.cornerRadius = 6
+        glow.alphaValue = 0
+        glow.isHidden = true
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -182,8 +188,14 @@ final class JobRow: NSView {
         status.textColor = JobLook.statusColor(j)
         let waiting = j.agent?.status == .waitingInput
         let busy = j.state == .running && j.type != .agent && j.state != .failed
+        let ai = busy && (j.type == .process || j.type == .route)
+        if ai != glowing {
+            glowing = ai
+            if ai, glow.superview == nil { addSubview(glow) }
+            glow.set(active: ai)
+        }
         icon.image = Look.symbol(waiting ? "exclamationmark.bubble" : JobLook.symbol(j), JobLook.title(j), size: 13)
-        icon.contentTintColor = waiting ? StatusRing.attention : .secondaryLabelColor
+        icon.contentTintColor = waiting ? BrandColor.attn : .secondaryLabelColor
         icon.isHidden = busy
         busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
         if let p = j.progress ?? j.currentStep?.progress { bar.isIndeterminate = false; bar.doubleValue = p; bar.isHidden = false }
@@ -191,9 +203,14 @@ final class JobRow: NSView {
         setAccessibilityLabel("\(title.stringValue), \(status.stringValue)")
     }
 
+    override func layout() {
+        super.layout()
+        glow.frame = bounds.insetBy(dx: -glow.outset, dy: -glow.outset)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard hover || selected else { return }
-        (selected ? NSColor.controlAccentColor.withAlphaComponent(0.14) : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
+        (selected ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
     }
     override func mouseEntered(with event: NSEvent) { hover = true }
@@ -228,7 +245,7 @@ final class JobDetailView: NSView {
         steps.alignment = .leading
         steps.spacing = 0
         error.font = .systemFont(ofSize: 12)
-        error.textColor = .systemRed
+        error.textColor = BrandColor.err
         buttons.orientation = .horizontal
         buttons.spacing = 8
         stack.orientation = .vertical
@@ -342,7 +359,7 @@ final class StepRow: NSView {
         let marker = StepMarker(state: s.state)
         let name = NSTextField(labelWithString: label ?? T("job.step.\(s.id)"))
         name.font = .systemFont(ofSize: 13, weight: s.state == .running ? .semibold : .regular)
-        name.textColor = s.state == .pending || s.state == .skipped ? .tertiaryLabelColor : s.state == .failed ? .systemRed : .labelColor
+        name.textColor = s.state == .pending || s.state == .skipped ? .tertiaryLabelColor : s.state == .failed ? BrandColor.err : .labelColor
         let extra = NSTextField(labelWithString: s.state == .running ? s.progress.map { Loc.percent($0) } ?? "" : s.state == .skipped ? T("main.job.skipped") : "")
         extra.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         extra.textColor = .secondaryLabelColor
@@ -387,7 +404,7 @@ final class StepMarker: NSView {
         r.frame = bounds
         r.path = CGPath(ellipseIn: bounds.insetBy(dx: 1.5, dy: 1.5), transform: nil)
         r.fillColor = nil
-        r.strokeColor = StatusRing.accent.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { r.strokeColor = BrandColor.ink.cgColor }
         r.lineWidth = 1.75
         r.strokeStart = 0
         r.strokeEnd = 0.3
@@ -406,19 +423,24 @@ final class StepMarker: NSView {
         }
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance { ring?.strokeColor = BrandColor.ink.cgColor }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 1.5, dy: 1.5)
         switch state {
         case .done:
-            StatusRing.keep.setFill()
+            BrandColor.ok.setFill()
             NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
-            NSColor.white.setStroke()
+            BrandColor.onOk.setStroke()
             let p = NSBezierPath()
             p.move(to: NSPoint(x: 4, y: 7.2)); p.line(to: NSPoint(x: 6.2, y: 5)); p.line(to: NSPoint(x: 10.2, y: 9.2))
             p.lineWidth = 1.6; p.lineCapStyle = .round; p.lineJoinStyle = .round
             p.stroke()
         case .failed:
-            NSColor.systemRed.setFill()
+            BrandColor.err.setFill()
             NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
             NSColor.white.setStroke()
             let p = NSBezierPath()

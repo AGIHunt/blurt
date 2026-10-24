@@ -10,20 +10,48 @@ import BlurtCore
 
 enum Tone { case good, warn, bad, off }
 
+/// A state as a small disc: good (ok, with a check: done is always a check shape, §2.3), warn (attention), bad (error),
+/// off (quiet).
 struct StatusDot: View {
     var tone: Tone
     var body: some View {
         Circle().fill(color).frame(width: 9, height: 9)
             .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 0.5))
+            .overlay {
+                if tone == .good {
+                    Path { p in
+                        p.move(to: CGPoint(x: 2.6, y: 4.7)); p.addLine(to: CGPoint(x: 4, y: 6.1)); p.addLine(to: CGPoint(x: 6.5, y: 3.1))
+                    }
+                    .stroke(Color.brandOnOk, style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 9, height: 9)
+                }
+            }
             .accessibilityHidden(true)
     }
     var color: Color {
         switch tone {
-        case .good: return .green
-        case .warn: return .yellow
-        case .bad: return .red
+        case .good: return .brandOk
+        case .warn: return .brandAttn
+        case .bad: return .brandErr
         case .off: return Color(nsColor: .tertiaryLabelColor)
         }
+    }
+}
+
+extension View {
+    /// A selected choice (a model, a style): a brand-ink border with a brand-tint ring outside it (§3.4), never a
+    /// filled card. Unselected rows get the same padding, so nothing moves when the choice changes.
+    func choiceCard(_ selected: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return padding(.vertical, 5).padding(.horizontal, 7)
+            .overlay {
+                if selected {
+                    shape.strokeBorder(Color.brandInk, lineWidth: 1)
+                        .background(shape.stroke(Color.brandTint, lineWidth: 6))
+                        .allowsHitTesting(false)
+                }
+            }
+            .padding(.horizontal, -7)
     }
 }
 
@@ -146,7 +174,8 @@ struct PermissionRows: View {
     func row(_ k: PermissionKind, _ st: Permissions.State) -> some View {
         let now = guide.running && guide.current == k
         return HStack(alignment: .center, spacing: 10) {
-            StatusDot(tone: st == .granted ? .good : st == .denied ? .bad : .warn)
+            // granted: ok with a check; missing (not set or turned down): the attention dot (§3.4)
+            StatusDot(tone: st == .granted ? .good : .warn)
             VStack(alignment: .leading, spacing: 2) {
                 Text(PermissionGuide.name(k))
                 Text(PermissionGuide.why(k)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

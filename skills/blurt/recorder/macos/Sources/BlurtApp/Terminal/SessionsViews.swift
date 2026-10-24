@@ -154,7 +154,7 @@ struct SessionHeader: View {
                             }
                             if r.isAppRunner {
                                 Text("·").foregroundStyle(.tertiary)
-                                Text(TL("header.app_runner")).foregroundStyle(.orange).help(TL("header.app_runner.help"))
+                                Text(TL("header.app_runner")).foregroundStyle(Color.brandAttnInk).help(TL("header.app_runner.help"))
                             }
                         }
                         .font(.system(size: 11))
@@ -182,7 +182,7 @@ struct SessionHeader: View {
             if r.awaitsFinish && !r.alive {
                 Button(TL("header.review")) { actions?.review(r.id) }
                     .controlSize(.small)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.brand)
                     .help(TL("header.review.help"))
             }
             if r.alive && !r.isAppRunner {
@@ -274,7 +274,7 @@ struct SessionOverlay: View {
                 }
             case .failed(let why):
                 card {
-                    Image(systemName: "exclamationmark.triangle").font(.system(size: 20)).foregroundStyle(.orange)
+                    Image(systemName: "exclamationmark.triangle").font(.system(size: 20)).foregroundStyle(Color.brandAttn)
                     Text(why).font(.callout).multilineTextAlignment(.center).textSelection(.enabled)
                     Button(TL("overlay.retry")) { actions?.reconnect() }
                 }
@@ -283,12 +283,13 @@ struct SessionOverlay: View {
                     card { Text(TL("overlay.pick")).foregroundStyle(.secondary) }
                 } else {
                     card {
-                        Image(systemName: "apple.terminal").font(.system(size: 30, weight: .ultraLight)).foregroundStyle(.tertiary)
+                        // first launch of the sessions window: the empty-state art (§3.5)
+                        BrandArtTile(icon: .terminal, side: 104).padding(.bottom, 6)
                         Text(TL("overlay.empty.title")).font(.title3.weight(.semibold))
                         Text(TL("overlay.empty.body")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                             .frame(maxWidth: 380)
                         Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }
-                            .buttonStyle(.borderedProminent).padding(.top, 4)
+                            .buttonStyle(.brand).padding(.top, 4)
                     }
                 }
             }
@@ -319,7 +320,7 @@ struct SessionOverlay: View {
         }
         if r.awaitsFinish {
             Text(TL("overlay.ended.review_hint")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
         } else {
             Text(TL("overlay.ended.verify_hint")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
         }

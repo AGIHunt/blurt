@@ -239,7 +239,7 @@ struct PermissionDoneBanner: View {
     var body: some View {
         if let f = g.finished {
             HStack(spacing: 8) {
-                Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 13, weight: .semibold)).foregroundStyle(.green)
+                Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 13, weight: .semibold)).foregroundStyle(Color.brandOk)
                 Text(f).fixedSize(horizontal: false, vertical: true)
                 Spacer()
             }

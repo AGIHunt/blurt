@@ -31,16 +31,17 @@ final class ShortcutField: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
-        (recording ? NSColor.controlAccentColor.withAlphaComponent(0.12) : NSColor.controlBackgroundColor).setFill()
+        // listening for keys: brand ink on the brand tint; a conflict: attention (§3.4)
+        (recording ? BrandColor.tint : NSColor.controlBackgroundColor).setFill()
         path.fill()
-        (recording ? NSColor.controlAccentColor : conflict ? NSColor.systemOrange : NSColor.separatorColor).setStroke()
+        (recording ? BrandColor.ink : conflict ? BrandColor.attnInk : NSColor.separatorColor).setStroke()
         path.lineWidth = recording || conflict ? 1.5 : 1
         path.stroke()
         let s = Hotkeys.shared.shortcut(action)
         let text: String
         let color: NSColor
-        if let r = refuse { text = r; color = .systemOrange }
-        else if recording { text = live.isEmpty ? Loc.t("capture.keys.type", table: "Capture") : live; color = .controlAccentColor }
+        if let r = refuse { text = r; color = BrandColor.attnInk }
+        else if recording { text = live.isEmpty ? Loc.t("capture.keys.type", table: "Capture") : live; color = BrandColor.ink }
         else if let s = s { text = s.label; color = .labelColor }
         else { text = Loc.t("capture.keys.off", table: "Capture"); color = .tertiaryLabelColor }
         let font = recording || s == nil || refuse != nil ? NSFont.systemFont(ofSize: 12, weight: .medium)
@@ -347,11 +348,11 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
             guard let n = notes[a] else { continue }
             if let bad = hk.invalid[a] {
                 n.stringValue = Loc.t("capture.keys.unreadable", table: "Capture", bad)
-                n.textColor = .systemOrange
+                n.textColor = BrandColor.attnInk
             } else if st.isConflict {
-                n.attributedStringValue = BlurtIcon.warning.label(st.text, font: n.font ?? .systemFont(ofSize: 11), color: .systemOrange,
+                n.attributedStringValue = BlurtIcon.warning.label(st.text, font: n.font ?? .systemFont(ofSize: 11), color: BrandColor.attnInk,
                                                                   preferSymbol: true)
-                n.textColor = .systemOrange
+                n.textColor = BrandColor.attnInk
             } else if st == .notHere {
                 n.stringValue = Loc.t("capture.keys.menu_bar_only", table: "Capture")
                 n.textColor = .tertiaryLabelColor

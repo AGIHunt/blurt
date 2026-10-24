@@ -262,14 +262,15 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { entries[row].enabled }
 }
 
-/// The chosen row stays accent-coloured even though the panel never activates the app's main window.
+/// The chosen row: the brand tint (§3.3), text stays `labelColor`. The panel never takes key from the main window, so
+/// it doesn't fall back to the neutral not-key wash.
 final class PaletteRowView: NSTableRowView {
-    override var isEmphasized: Bool { get { true } set {} }
+    override var isEmphasized: Bool { get { false } set {} }
     override func drawSelection(in dirtyRect: NSRect) {
-        NSColor.controlAccentColor.withAlphaComponent(0.85).setFill()
+        BrandColor.tint.setFill()
         NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 1), xRadius: 6, yRadius: 6).fill()
     }
-    override var interiorBackgroundStyle: NSView.BackgroundStyle { isSelected ? .emphasized : .normal }
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
 }
 
 final class PaletteCell: NSTableCellView {

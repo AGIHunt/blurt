@@ -416,7 +416,7 @@ private func glyph(_ i: BlurtIcon, _ size: CGFloat = 12) -> Image {
 /// A small quiet button that reads as a link (the header's "Dictation Settings…").
 private struct LinkButton: View {
     let title: String
-    var tint: Color = .accentColor
+    var tint: Color = .brandInk
     let action: () -> Void
     var body: some View {
         Button(action: action) { Text(title).foregroundStyle(tint) }
@@ -476,16 +476,16 @@ struct DictationListView: View {
             header
             Divider()
             if let e = m.error {
-                Text(e).font(.caption).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading)
+                Text(e).font(.caption).foregroundStyle(Color.brandErr).frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.vertical, 6)
                 Divider()
             }
             if m.entries.isEmpty {
                 DictationEmptyView(m: m)
             } else if m.filtered.isEmpty {
-                VStack(spacing: 6) {
-                    glyph(.search, 24).foregroundStyle(.tertiary)
-                    Text(T("dictation.history.no_match")).font(.headline)
+                VStack(spacing: 12) {
+                    BrandArtTile(icon: .search, side: 96)
+                    Text(T("dictation.history.no_match")).font(.system(size: 13, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -518,9 +518,9 @@ struct DictationListView: View {
             if !quiet && (!m.enabled || m.needsSetup) {
                 // dictation can't work right now: say so where the settings link was
                 HStack(spacing: 5) {
-                    Circle().fill(Color.orange).frame(width: 6, height: 6)
+                    Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
                     if m.enabled {
-                        LinkButton(title: T("dictation.menu.turn_on"), tint: .orange) { m.turnOn() }
+                        LinkButton(title: T("dictation.menu.turn_on"), tint: .brandAttnInk) { m.turnOn() }
                     } else {
                         Text(T("main.dictation.off")).foregroundStyle(.secondary)
                         LinkButton(title: T("main.dictation.settings")) { m.openSettings() }
@@ -538,8 +538,23 @@ struct DictationListView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// One of today's numbers: the number itself is a small hero (15 pt bold, gradient text; flat ink with Increase
+    /// Contrast), the words around it stay quiet.
     func stat(_ s: String) -> some View {
-        Text(s).monospacedDigit().foregroundStyle(.primary.opacity(0.85))
+        let (before, number, after) = Self.splitNumber(s)
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
+            if !before.isEmpty { Text(before).foregroundStyle(.primary.opacity(0.85)) }
+            if !number.isEmpty { Text(number).font(.system(size: 15, weight: .bold)).monospacedDigit().brandGradientText() }
+            if !after.isEmpty { Text(after).foregroundStyle(.primary.opacity(0.85)) }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(s)
+    }
+
+    /// "12 dictations" → ("", "12", " dictations"); "约省 5 分钟" → ("约省 ", "5", " 分钟"); no digits → ("", "", s).
+    static func splitNumber(_ s: String) -> (String, String, String) {
+        guard let r = s.range(of: "[0-9][0-9,.\u{00A0}\u{202F}]*[0-9]|[0-9]", options: .regularExpression) else { return ("", "", s) }
+        return (String(s[..<r.lowerBound]), String(s[r]), String(s[r.upperBound...]))
     }
 
     var list: some View {
@@ -604,14 +619,14 @@ struct DictationRow: View {
     @ViewBuilder func marks(_ x: DictationExtras?) -> some View {
         HStack(spacing: 4) {
             if e.fellBack {
-                mark(.undo, .orange, DictationHistoryModel.reasonText(e.reason))
+                mark(.undo, .brandAttn, DictationHistoryModel.reasonText(e.reason))
             } else if DictationHistoryModel.differs(e) {
                 mark(.wand, .secondary, T("dictation.history.badge.polished"))
             }
             if let t = x?.terms, !t.isEmpty { mark(.tag, .secondary, T("main.dictation.mark.terms", t.joined(separator: ", "))) }
             if e.insert == "copied" { mark(.copy, .secondary, T("main.dictation.info.copied")) }
             if let it = e.item {
-                Text(it).font(.system(size: 10, weight: .semibold)).monospacedDigit().foregroundStyle(Color(nsColor: StatusRing.keep))
+                Text(it).font(.system(size: 10, weight: .semibold)).monospacedDigit().foregroundStyle(Color.brandOk)
                     .help(T("dictation.history.item_exists", it))
             }
         }
@@ -628,7 +643,7 @@ struct DictationEmptyView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            glyph(.keyboard, 30).foregroundStyle(.tertiary)
+            BrandArtTile(icon: .keyboard, side: 104).padding(.bottom, 6)
             Text(T("dictation.history.empty.title")).font(.system(size: 15, weight: .semibold))
             Text(T("dictation.history.empty.body", Dictation.keyInline)).font(.system(size: 12)).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).frame(maxWidth: 320).fixedSize(horizontal: false, vertical: true)
@@ -646,17 +661,19 @@ struct DictationEmptyView: View {
             }
         } else if m.needsSetup {
             VStack(spacing: 8) {
-                pill(T("dictation.menu.turn_on.tip", Dictation.keyInline), .orange)
-                Button(T("dictation.menu.turn_on")) { m.turnOn() }.controlSize(.regular).keyboardShortcut(.defaultAction)
+                pill(T("dictation.menu.turn_on.tip", Dictation.keyInline), .brandAttn)
+                // the one thing standing in the way: this view's primary
+                Button(T("dictation.menu.turn_on")) { m.turnOn() }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
             }
         } else {
-            pill(T("main.dictation.ready"), .green)
+            pill(T("main.dictation.ready"), .brandOk, check: true)
         }
     }
 
-    func pill(_ s: String, _ c: Color) -> some View {
+    /// A status line in a pill: a dot (attention), or a check (ready: ok is always a check shape).
+    func pill(_ s: String, _ c: Color, check: Bool = false) -> some View {
         HStack(spacing: 6) {
-            Circle().fill(c).frame(width: 6, height: 6)
+            if check { glyph(.check, 10).foregroundStyle(c) } else { Circle().fill(c).frame(width: 6, height: 6) }
             Text(s).font(.system(size: 11.5)).foregroundStyle(.secondary).multilineTextAlignment(.leading)
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -724,7 +741,7 @@ struct DictationDetailView: View {
                 texts(e, differs: differs)
                 if e.fellBack {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        glyph(.undo, 11).foregroundStyle(.orange)
+                        glyph(.undo, 11).foregroundStyle(Color.brandAttnInk)
                         Text(DictationHistoryModel.reasonText(e.reason)).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
@@ -775,7 +792,7 @@ struct DictationDetailView: View {
         }
         if let n = m.savedNote, n.id == e.id {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                glyph(.check, 11).foregroundStyle(Color(nsColor: StatusRing.keep))
+                glyph(.check, 11).foregroundStyle(Color.brandOk)
                 Text(n.learned.isEmpty ? T("main.dictation.correct.saved")
                      : T("main.dictation.correct.learned", n.learned.joined(separator: T("main.dictation.correct.sep"))))
                     .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -817,7 +834,7 @@ struct DictationDetailView: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.brandInk.opacity(0.6), lineWidth: 1))
     }
 
     func plainCard(_ text: String, label: String, note: String?, secondary: Bool, copyID: String, edit: DictationEntry?) -> some View {
@@ -840,7 +857,7 @@ struct DictationDetailView: View {
                         Text(m.copied == copyID ? T("main.dictation.copied") : T("dictation.history.copy"))
                     }
                     .font(.system(size: 11))
-                    .foregroundStyle(m.copied == copyID ? Color(nsColor: StatusRing.keep) : .secondary)
+                    .foregroundStyle(m.copied == copyID ? Color.brandOk : .secondary)
                 }
                 .buttonStyle(.borderless)
                 .help(T("dictation.history.copy"))
@@ -863,8 +880,10 @@ struct DictationDetailView: View {
             if let it = e.item, let uid = e.itemUID {
                 Button { AppEnvironment.mainWindow?.reveal(uid: uid) } label: { Text(T("main.dictation.show_item", it)) }
             } else {
+                // the AI writes the item: the spectrum rim while it works
                 Button { m.makeItem(e) } label: { Text(T("dictation.history.make_item")) }
                     .disabled(m.working.contains(e.id))
+                    .aiGlow(m.working.contains(e.id), cornerRadius: 6)
                 if m.working.contains(e.id) { ProgressView().controlSize(.small) }
             }
             if DictationLabModel.enabled {

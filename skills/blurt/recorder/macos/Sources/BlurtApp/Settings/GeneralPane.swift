@@ -152,13 +152,13 @@ struct GeneralPane: View {
                     Spacer()
                     Button(T("settings.general.open_unassigned")) { NSWorkspace.shared.open(ProjectStore.shared.inbox.store) }
                 }
-                if let e = m.error { Text(e).font(.caption).foregroundStyle(.orange) }
+                if let e = m.error { Text(e).font(.caption).foregroundStyle(Color.brandErr) }
                 Hint(T("settings.general.projects.hint"))
             } header: { Text(T("main.sidebar.projects")) }
 
             Section {
                 Toggle(T("settings.general.login"), isOn: Binding(get: { m.openAtLogin }, set: { m.setLogin($0) }))
-                if let e = m.loginError { Text(e).font(.caption).foregroundStyle(.orange) }
+                if let e = m.loginError { Text(e).font(.caption).foregroundStyle(Color.brandErr) }
                 Picker(T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
                     Text(T("settings.general.language.system")).tag("auto")
                     Text("English").tag("en")

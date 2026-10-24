@@ -182,6 +182,11 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         return v
     }
 
+    /// The brand selection (a rounded tint, text stays `labelColor`), not the source list's accent-coloured one.
+    func outlineView(_ o: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        BrandRowView()
+    }
+
     func outlineViewSelectionDidChange(_ notification: Notification) {
         guard !reloading, let s = selectedScope else { return }
         actions?.sidebarSelected(s)
@@ -244,7 +249,7 @@ final class SourceCell: NSTableCellView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
     let key = NSTextField(labelWithString: "")
-    let badge = NSTextField(labelWithString: "")
+    let badge = CountPill()
 
     init(id: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -255,9 +260,8 @@ final class SourceCell: NSTableCellView {
         key.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         key.textColor = .tertiaryLabelColor
         key.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-        badge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        badge.alignment = .right
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
+        badge.setContentHuggingPriority(.required, for: .horizontal)
         imageView = icon
         textField = title
         NSLayoutConstraint.activate([
@@ -283,8 +287,39 @@ final class SourceCell: NSTableCellView {
         icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.contentTintColor = n.dimmed ? .tertiaryLabelColor : nil
         icon.alphaValue = 1
-        badge.stringValue = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
-        badge.textColor = n.alert ? Look.brand : .secondaryLabelColor
-        setAccessibilityLabel([n.accessibility ?? n.title, badge.stringValue.isEmpty ? nil : badge.stringValue].compactMap { $0 }.joined(separator: ", "))
+        badge.text = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
+        badge.mint = n.alert
+        setAccessibilityLabel([n.accessibility ?? n.title, badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))
     }
+}
+
+/// A count at the end of a sidebar row. What's new for you (the Inbox, a project's inbox) is a mint pill with
+/// `BrandColor.on` digits (§3.3 "New counts and badges"); plain counts are quiet secondary digits.
+final class CountPill: NSView {
+    var text = "" { didSet { if text != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true } } }
+    var mint = false { didSet { if mint != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true } } }
+    private let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+    private let pillFont = NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold)
+
+    private var attributed: NSAttributedString {
+        NSAttributedString(string: text, attributes: [.font: mint ? pillFont : font,
+                                                      .foregroundColor: mint ? BrandColor.on : NSColor.secondaryLabelColor])
+    }
+    override var intrinsicContentSize: NSSize {
+        guard !text.isEmpty else { return NSSize(width: 0, height: 16) }
+        let w = ceil(attributed.size().width)
+        return NSSize(width: mint ? max(18, w + 10) : w, height: 16)
+    }
+    override var allowsVibrancy: Bool { false }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
+    override func draw(_ dirty: NSRect) {
+        guard !text.isEmpty else { return }
+        let s = attributed, ts = s.size()
+        if mint {
+            BrandColor.fill.setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        }
+        s.draw(at: NSPoint(x: bounds.midX - ts.width / 2, y: bounds.midY - ts.height / 2))
+    }
+    override func isAccessibilityElement() -> Bool { false }      // the row says the count
 }

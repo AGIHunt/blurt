@@ -191,7 +191,7 @@ struct HelperPanelView: View {
                 stepView(k)
             } else if let f = g.finished {
                 HStack(spacing: 8) {
-                    Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 15, weight: .semibold)).foregroundStyle(.green)
+                    Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 15, weight: .semibold)).foregroundStyle(Color.brandOk)
                     Text(f).font(.headline).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -209,12 +209,12 @@ struct HelperPanelView: View {
     @ViewBuilder func stepView(_ k: PermissionKind) -> some View {
         HStack(alignment: .center, spacing: 8) {
             if g.stepDone {
-                Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 15, weight: .semibold)).foregroundStyle(.green)
+                Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 15, weight: .semibold)).foregroundStyle(Color.brandOk)
             } else if (g.dock == .right || g.dock == .left) && !(k == .microphone && SystemAccess.state(.microphone) == .notAsked) {
                 // toward the list in the System Settings window
                 Image(nsImage: BlurtIcon.arrowLeft.symbolImage(pointSize: 15, weight: .semibold))
                     .rotationEffect(.degrees(g.dock == .left ? 180 : 0))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Color.brandInk)
                     .accessibilityHidden(true)
             }
             Text(g.headline(k)).font(.headline).fixedSize(horizontal: false, vertical: true)

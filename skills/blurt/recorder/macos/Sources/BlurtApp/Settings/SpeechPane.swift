@@ -405,7 +405,7 @@ struct SpeechPane: View {
                 if m.loading && m.state != nil { ProgressView().controlSize(.mini) }
             }
         } footer: {
-            if let e = m.error { Text(e).font(.caption).foregroundStyle(.orange) }
+            if let e = m.error { Text(e).font(.caption).foregroundStyle(Color.brandErr) }
         }
     }
 
@@ -454,7 +454,7 @@ struct SpeechPane: View {
     func suggestionRow(_ x: ASRModel, purposes: [ASRPurpose]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "sparkles").foregroundStyle(Color.accentColor).frame(width: 22).accessibilityHidden(true)
+                Image(systemName: "sparkles").foregroundStyle(Color.brandInk).frame(width: 22).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(S("speech.suggest.title", x.title)).fontWeight(.medium)
                     Text(suggestionDetail(x, purposes)).font(.caption).foregroundStyle(.secondary)
@@ -467,7 +467,7 @@ struct SpeechPane: View {
                 }
             }
             if let d = m.download[x.id] { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 32) }
-            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(.orange).padding(.leading, 32) }
+            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 32) }
         }
         .padding(.vertical, 4)
     }
@@ -538,9 +538,9 @@ struct SpeechPane: View {
                 Text(x.title).fontWeight(uses.isEmpty ? .regular : .semibold)
                 if !uses.isEmpty {
                     Text(uses.map(\.title).joined(separator: " · "))
-                        .font(.caption2.weight(.medium)).foregroundStyle(Color.accentColor)
+                        .font(.caption2.weight(.medium)).foregroundStyle(Color.brandInk)
                         .padding(.horizontal, 6).padding(.vertical, 1.5)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                        .background(Capsule().fill(Color.brandTint))
                 }
                 Spacer(minLength: 8)
                 actions(x, inUse: !uses.isEmpty)
@@ -558,8 +558,8 @@ struct SpeechPane: View {
             Text(coverage(x)).font(.caption).foregroundStyle(.secondary).padding(.leading, 17)
                 .fixedSize(horizontal: false, vertical: true)
             if let d = m.download[x.id] { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 17) }
-            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(.orange).padding(.leading, 17) }
-            if let b = m.bench[x.id], let e = b.error { Text(e).font(.caption).foregroundStyle(.orange).padding(.leading, 17) }
+            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
+            if let b = m.bench[x.id], let e = b.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
         }
         .padding(.vertical, 3)
     }
@@ -676,9 +676,9 @@ private struct MachineRow: View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: hw.gpu.kind == "apple" ? "cpu" : "memorychip")
                 .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color.brandInk)
                 .frame(width: 34, height: 34)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.accentColor.opacity(0.12)))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.brandTint))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(hw.chip ?? S("speech.machine.unknown")).font(.headline)
@@ -717,7 +717,7 @@ private struct Metric: View {
             HStack(spacing: 3) {
                 Text(value).font(.callout.weight(.medium)).monospacedDigit()
                 if measured == true {
-                    Image(systemName: "checkmark.seal.fill").font(.system(size: 9)).foregroundStyle(.green)
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 9)).foregroundStyle(Color.brandOk)
                         .help(S("speech.metric.measured"))
                         .accessibilityLabel(S("speech.metric.measured"))
                 }

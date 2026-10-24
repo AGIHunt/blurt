@@ -362,7 +362,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if autoProcess {
             process(dir, project: project?.id)
         } else {
-            toast(T("app.toast.saved", Loc.duration(dur)))
+            toast(T("app.toast.saved", Loc.duration(dur)), icon: .check)
         }
         refreshStatus()
     }
@@ -371,10 +371,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let b = statusItem?.button else { return }
         if let r = rec, r.sessionStart.isValid {
             let s = r.elapsed()
-            b.image = (r.isPaused ? BlurtIcon.pauseFill : BlurtIcon.recordFill).image(size: 11, color: r.isPaused ? amber : .systemRed)
+            // the tape is rolling: the rec dot and time; paused: attention (§3.6)
+            b.image = (r.isPaused ? BlurtIcon.pauseFill : BlurtIcon.recordFill).image(size: 11, color: r.isPaused ? BrandColor.attn : BrandColor.rec)
             b.imagePosition = .imageLeft
             b.attributedTitle = NSAttributedString(string: " " + Loc.duration(s), attributes: [
-                .foregroundColor: r.isPaused ? amber : NSColor.systemRed, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
+                .foregroundColor: r.isPaused ? BrandColor.attn : BrandColor.rec, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
             return
         }
         MenuGlyph.shared.listening = VoiceInput.shared.active
@@ -385,7 +386,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         b.attributedTitle = badge.count > 0
             ? NSAttributedString(string: " " + Loc.number(badge.count), attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: badge.urgent ? StatusRing.attention : NSColor.labelColor])
+                .foregroundColor: badge.urgent ? BrandColor.attn : NSColor.labelColor])
             : NSAttributedString(string: "")
         b.toolTip = badge.tooltip
         b.setAccessibilityLabel(badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name"))
@@ -514,12 +515,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mSettings() { AppEnvironment.settings?.show(pane: nil) }
     @objc func mDictationSetup() { Dictation.shared.openSetup(from: "menu") }
 
-    /// The menu row's small warning sign (BlurtIcon.warning), in the system's orange so it stands out from the rows.
+    /// The menu row's small warning sign (BlurtIcon.warning), in attention amber so it stands out from the rows.
     static let warningImage: NSImage = {
         let w = BlurtIcon.warning.menuImage
         let im = NSImage(size: w.size, flipped: false) { r in
             w.draw(in: r)
-            NSColor.systemOrange.set()
+            BrandColor.attn.set()
             r.fill(using: .sourceAtop)
             return true
         }
@@ -547,14 +548,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // tiny, non-blocking toast under the menu bar (no notification permission needed)
     var toastWin: NSWindow?
-    /// Several lines ("\n") are fine: the first is the headline, the rest a quieter detail.
+    /// Several lines ("\n") are fine: the first is the headline, the rest a quieter detail. `icon: .check` is the done
+    /// toast: the check in ok green (done is always ok + a check, §2.3); other icons are white like the text.
     func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil) {
         let seconds = max(seconds, Double(ProcessInfo.processInfo.environment["BLURT_TOAST_MIN_SECONDS"] ?? "") ?? 0)   // tests: time to screenshot
         toastWin?.orderOut(nil)
         emit(["event": "toast", "text": text])
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let lines = text.components(separatedBy: "\n")
-        let body = NSMutableAttributedString(attributedString: icon.map { $0.label(lines[0], font: f, color: .white) }
+        let body = NSMutableAttributedString(attributedString: icon.map { $0.label(lines[0], font: f, color: .white,
+                                                                                  iconColor: $0 == .check ? BrandColor.Island.ok : nil) }
                                              ?? NSAttributedString(string: lines[0], attributes: [.font: f, .foregroundColor: NSColor.white]))
         if lines.count > 1 {
             let para = NSMutableParagraphStyle()

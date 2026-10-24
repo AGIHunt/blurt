@@ -96,10 +96,6 @@ func activateApp() {
 
 func hostNow() -> CMTime { CMClockGetTime(CMClockGetHostTimeClock()) }
 
-@available(*, deprecated, message: "the coral is retired: BrandColor.Island.fill / .rec, or BrandColor.markup for the pen")
-let accent = NSColor(calibratedRed: 1.0, green: 0.36, blue: 0.24, alpha: 1)   // coral
-@available(*, deprecated, message: "BrandColor.Island.attn (or BrandColor.attn on app surfaces)")
-let amber = NSColor(calibratedRed: 1.0, green: 0.76, blue: 0.24, alpha: 1)
 
 func pill(_ text: String, font: NSFont, fg: NSColor, bg: NSColor, at p: NSPoint, pad: CGFloat = 8, icon: BlurtIcon? = nil) -> NSRect {
     let s = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: fg])

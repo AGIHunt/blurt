@@ -181,7 +181,7 @@ struct AgentsPane: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(TL("agents.footer"))
-                    if let e = m.error { Text(e).foregroundStyle(.orange) }
+                    if let e = m.error { Text(e).foregroundStyle(Color.brandErr) }
                 }.font(.caption).foregroundStyle(.secondary)
             }
 
@@ -256,7 +256,7 @@ struct AgentsPane: View {
                     HStack(spacing: 6) {
                         Text(a.name).fontWeight(.medium).foregroundStyle(on || !ordered ? .primary : .secondary)
                         if let v = a.version { Text(shortVersion(v)).font(.caption).foregroundStyle(.tertiary) }
-                        if ordered && a.id == m.pick { badge(TL("agents.runs_first"), Color.accentColor) }
+                        if ordered && a.id == m.pick { badge(TL("agents.runs_first"), nil) }
                         if a.installed && m.sessions(a) {
                             badge(TL("agents.sessions_badge"), Color.secondary).help(TL("agents.sessions_badge.help"))
                         }
@@ -286,7 +286,7 @@ struct AgentsPane: View {
             }
             if let t = m.tests[a.id] {
                 Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                    .font(.caption).foregroundStyle(t.ok ? .green : .red).padding(.leading, ordered ? 44 : 17)
+                    .font(.caption).foregroundStyle(t.ok ? Color.brandOk : Color.brandErr).padding(.leading, ordered ? 44 : 17)
             }
         }
         .padding(.vertical, 2)
@@ -324,9 +324,11 @@ struct AgentsPane: View {
         .help(TL("agents.processing.help"))
     }
 
-    func badge(_ s: String, _ c: Color) -> some View {
+    /// `c` nil: the brand badge ("Runs first"), brand ink on the brand tint (§3.4)
+    func badge(_ s: String, _ c: Color?) -> some View {
         Text(s).font(.caption2.weight(.semibold)).padding(.horizontal, 5).padding(.vertical, 1)
-            .background(Capsule().fill(c.opacity(0.16)))
+            .foregroundStyle(c == nil ? Color.brandInk : Color.primary)
+            .background(Capsule().fill(c.map { $0.opacity(0.16) } ?? Color.brandTint))
     }
 
     func stateText(_ a: CoreAgent) -> String {
@@ -383,7 +385,7 @@ struct InstallSheet: View {
                         Text(Self.summary(c)).font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let e = c.error { Text(e).font(.caption).foregroundStyle(.red).padding(.leading, 22) }
+                    if let e = c.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 22) }
                 }
             }
             .padding(10)
@@ -415,11 +417,11 @@ struct InstallSheet: View {
         }
     }
     func color(_ c: InstallChange) -> Color {
-        if c.ok == false || c.action == "error" { return .red }
+        if c.ok == false || c.action == "error" { return .brandErr }
         switch c.action {
-        case "conflict", "manual": return .orange
+        case "conflict", "manual": return .brandAttn
         case "exists": return .secondary
-        default: return applied ? .green : .accentColor
+        default: return applied ? .brandOk : .brandInk
         }
     }
 }

@@ -71,12 +71,35 @@ def test_blurt_glyph_is_the_chick_with_two_arc_layers():
 def test_brand_sources_are_generated_and_rendered():
     """assets/brand/*.svg come from chick.swift; the bitmaps build.py writes exist."""
     brand = ROOT / "assets/brand"
-    for f in ("app-icon.svg", "app-icon-small.svg", "app-icon-16.svg", "logo.svg", "chick-line.svg", "chick-filled.svg"):
+    for f in ("app-icon.svg", "app-icon-small.svg", "app-icon-16.svg", "app-icon-dark.svg", "logo.svg", "chick-line.svg",
+              "chick-filled.svg"):
         assert "chick.swift" in (brand / f).read_text(), f
     assert '<g id="tile">' in (brand / "app-icon.svg").read_text()
     for rel in ("skills/blurt/assets/icon.png", "skills/blurt/assets/icon-16.png", "skills/blurt/assets/icon-32.png",
-                "assets/logo.png", "assets/logo-v0.8a.png", "site/assets/favicon.png", "apps/desktop/src-tauri/icons/icon.icns"):
+                "assets/logo.png", "assets/logo-v0.8a.png", "apps/desktop/src-tauri/icons/icon.icns"):
         assert (ROOT / rel).stat().st_size > 0, rel
+
+
+def test_app_icon_tile_is_the_token_gradient():
+    """The icon tile's colours come from assets/color/tokens.json (§6): gradient.field (+ grain) on the master,
+    gradient.deep on the dark variant, plain gradient.linear (no radial layers, no grain) at 32 / 16 px."""
+    import json
+    g = json.loads((ROOT / "assets/color/tokens.json").read_text())["gradient"]
+    brand = ROOT / "assets/brand"
+    for f, field in (("app-icon.svg", "field"), ("app-icon-dark.svg", "deep")):
+        s = (brand / f).read_text().lower()
+        assert 'id="tile-field"' in s and 'id="tile-grain"' in s and "mix-blend-mode:overlay" in s, f
+        assert f'basefrequency="{g["grain"]["iconFrequency"]:g}"' in s, f
+        assert f'intercept="{g["grain"]["icon"]:g}"' in s, f
+        assert s.count("<radialgradient") == sum(l["type"] == "radial" for l in g[field]["layers"]), f
+        for layer in g[field]["layers"]:
+            for colour, *_ in layer["stops"]:
+                assert colour.lower() in s, (f, colour)
+    for f in ("app-icon-small.svg", "app-icon-16.svg"):
+        s = (brand / f).read_text().lower()
+        assert "<radialgradient" not in s and "tile-grain" not in s, f
+        for name, _ in g["linear"]["stops"]:
+            assert g["stops"][name].lower() in s, (f, name)
 
 
 def test_tk_recorder_uses_png_icons_not_emoji():
@@ -105,21 +128,37 @@ def test_glyph_check_catches_what_it_should():
     assert "https://x" in check_glyphs.strip_comments('let u = "https://x"', ".swift")
 
 
-def test_kind_and_ring_colours_match_between_web_and_swift():
-    """K8: KindStyle.swift / StatusRing.swift use the same light / dark values as web/packages/ui/src/tokens.css."""
-    css = (ROOT / "web/packages/ui/src/tokens.css").read_text()
-    light, dark = css.split('[data-theme="dark"] {', 1)
-
-    def tok(block, name):
-        return re.search(rf"{name}:\s*#([0-9a-f]{{6}})", block, re.I).group(1).upper()
-
+def test_colour_outputs_are_generated_from_tokens():
+    """assets/color/tokens.json is the one source of colour: BrandColor.swift, the CSS blocks in tokens.css /
+    theme.css and the AccentColor asset are generated from it and up to date, and every contrast floor holds
+    (build.py --check). The Swift kinds and state rings read the generated values."""
+    r = subprocess.run([sys.executable, str(ROOT / "assets/color/build.py"), "--check"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
     icons = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Icons"
-    kinds = (icons / "KindStyle.swift").read_text()
-    for k in ("issue", "idea", "note", "task"):
-        assert f'"{k}": (0x{tok(light, "--kind-" + k)}, 0x{tok(dark, "--kind-" + k)})' in kinds, k
+    assert "BrandColor.Kind.palette" in (icons / "KindStyle.swift").read_text()
     ring = (icons / "StatusRing.swift").read_text()
-    for swift, token in (("accent", "--accent"), ("attention", "--warn"), ("keep", "--keep")):
-        assert f"static let {swift} = KindStyle.dynamic(KindStyle.rgb(0x{tok(light, token)}), KindStyle.rgb(0x{tok(dark, token)}))" in ring, swift
+    assert "BrandColor.ink" in ring and "BrandColor.ok" in ring and "BrandColor.attn" in ring
+    plist = (ROOT / "skills/blurt/recorder/macos/Info.plist").read_text()
+    assert "<key>NSAccentColorName</key>" in plist
+    assert "Assets.car" in (ROOT / "skills/blurt/scripts/record.py").read_text()
+
+
+def test_no_hard_coded_colours_outside_the_tokens():
+    """The coral `accent` / `amber` globals are gone, and app code takes brand colours from BrandColor, not from
+    calibrated RGB or the system accent (native controls follow the AccentColor asset by themselves). The one
+    exception: WebHostController.accentHex hands the system focus colour to the web canvas (--sys-accent)."""
+    app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+    bad = re.compile(r"calibratedRed|\bcontrolAccentColor\b|Color\.accentColor|\.accentColor\b|"
+                     r"(?<![\w.])(accent|amber)(?=[\s.,)\]])")
+    hits = []
+    for p in app.rglob("*.swift"):
+        if p.name in ("BrandColor.swift", "BlurtIconPaths.swift"):
+            continue
+        for i, line in enumerate(p.read_text().splitlines(), 1):
+            code = line.split("//", 1)[0]
+            if bad.search(code) and not ("accentHex" in p.read_text() and "controlAccentColor.usingColorSpace" in code):
+                hits.append(f"{p.relative_to(app)}:{i}: {line.strip()}")
+    assert hits == []
 
 
 def test_mascot_outputs_are_copied_from_assets_mascot():

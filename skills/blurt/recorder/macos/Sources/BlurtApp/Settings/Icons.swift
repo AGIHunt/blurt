@@ -42,12 +42,12 @@ enum UIIcon {
 
     var color: Color {
         switch self {
-        case .ok: return .green
-        case .failed: return .red
-        case .warning: return .orange
+        case .ok: return .brandOk
+        case .failed: return .brandErr
+        case .warning: return .brandAttn
         case .tool, .log: return .secondary
-        case .edit: return .accentColor
-        case .peck: return .green
+        case .edit: return .brandInk
+        case .peck: return .brandOk
         default: return .primary
         }
     }

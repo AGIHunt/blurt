@@ -84,8 +84,8 @@ struct FinishView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: "arrow.triangle.branch").font(.system(size: 17)).foregroundStyle(Color.accentColor)
-                    .frame(width: 32, height: 32).background(Circle().fill(Color.accentColor.opacity(0.12)))
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 17)).foregroundStyle(Color.brandInk)
+                    .frame(width: 32, height: 32).background(Circle().fill(Color.brandTint))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(TL("finish.title")).font(.title3.weight(.semibold))
                     if !m.branch.isEmpty {
@@ -99,7 +99,7 @@ struct FinishView: View {
                 HStack { ProgressView().controlSize(.small); Text(TL("finish.loading")).foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, minHeight: 120)
             case .failed(let why):
-                Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).textSelection(.enabled)
+                Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(Color.brandAttnInk).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Spacer()
