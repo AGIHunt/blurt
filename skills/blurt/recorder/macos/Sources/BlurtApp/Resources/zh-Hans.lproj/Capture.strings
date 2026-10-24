@@ -180,3 +180,14 @@
 
 /* dictation styles (docs/design/dictation-styles.md) */
 "capture.action.reformat" = "重排上一条听写";
+"capture.voice.hint_key" = "在听 · 再按 %@ 结束 · Esc 取消";
+"capture.voice.hint_done" = "在听 · 点「完成」结束 · Esc 取消";
+"capture.voice.done" = "完成";
+"capture.voice.done_tip" = "结束这段语音";
+"capture.voice.time_left" = "还剩 %@";
+"capture.voice.maxed" = "已到 %@ 上限，语音已保存";
+"capture.live.ax" = "已识别的文字";
+"capture.voice_drop.hint_paste" = "松手粘贴到 %@";
+"capture.voice_drop.hint_copy" = "松手后在 %@ 里按 ⌘V";
+"capture.voice_drop.pasted" = "已粘贴到 %@";
+"capture.voice_drop.copied" = "已复制，在 %@ 里按 ⌘V 粘贴";

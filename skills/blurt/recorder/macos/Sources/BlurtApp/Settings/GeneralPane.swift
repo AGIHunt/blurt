@@ -2,7 +2,9 @@
 // language, Spotlight; recording (what happens after one, countdown, system audio, collecting macOS screenshots, and
 // what dragging a card out does: copy its note too where it didn't go in — record.drag_copy_note, on — also attach the
 // note as a .md file — record.drag_note_file, off — and burn the note under the dragged picture — record.drag_caption,
-// off; chat apps get picture and note in two pastes — record.smart_paste, on: Capture/SmartPaste.swift);
+// off; chat apps get picture and note in two pastes — record.smart_paste, on: Capture/SmartPaste.swift); voice notes
+// (whether a pause ends one — record.voice.end_on_pause, off: Capture/VoiceInput.swift) and the words while you talk
+// (record.live_text, on: Capture/LiveTranscript.swift);
 // about (version, help, updates). The menu-bar menu stays short because these live here.
 import AppKit
 import ServiceManagement
@@ -24,6 +26,8 @@ final class GeneralModel: ObservableObject {
     @Published var dragNoteFile = false
     @Published var dragCaption = false
     @Published var smartPaste = true
+    @Published var voiceEndOnPause = false
+    @Published var liveText = true
     @Published var dictationLab = DictationLabModel.enabled
     @Published var spotlight = true
     @Published var error: String?
@@ -46,6 +50,8 @@ final class GeneralModel: ObservableObject {
         dragNoteFile = CardExport.attachNoteFile
         dragCaption = CardExport.burnCaption
         smartPaste = SmartPaste.enabled
+        voiceEndOnPause = VoiceInput.endOnPause
+        liveText = LiveTranscript.enabled
         spotlight = Config.shared["spotlight"] as? Bool ?? true
     }
 
@@ -98,6 +104,8 @@ final class GeneralModel: ObservableObject {
         smartPaste = v
         if !v { SmartPaste.shared.disarm("off") }
     }
+    func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
+    func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
     func setDictationLab(_ v: Bool) { Config.shared.set("record.dictation.lab", v ? true : nil); dictationLab = v }
     func setSpotlight(_ v: Bool) {
         Config.shared.set("spotlight", v ? nil : false)
@@ -175,6 +183,10 @@ struct GeneralPane: View {
                 Toggle(T("settings.general.system_audio"), isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
                 Toggle(T("settings.general.collect"), isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
                 Hint(T("settings.general.collect.hint"))
+                Toggle(T("settings.general.voice_end_on_pause"), isOn: Binding(get: { m.voiceEndOnPause }, set: { m.setVoiceEndOnPause($0) }))
+                Hint(T("settings.general.voice_end_on_pause.hint"))
+                Toggle(T("settings.general.live_text"), isOn: Binding(get: { m.liveText }, set: { m.setLiveText($0) }))
+                Hint(T("settings.general.live_text.hint"))
                 Toggle(T("settings.general.smart_paste"), isOn: Binding(get: { m.smartPaste }, set: { m.setSmartPaste($0) }))
                 Hint(T("settings.general.smart_paste.hint"))
                 Toggle(T("settings.general.drag_copy_note"), isOn: Binding(get: { m.dragCopyNote }, set: { m.setDragCopyNote($0) }))

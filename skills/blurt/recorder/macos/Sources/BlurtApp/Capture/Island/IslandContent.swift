@@ -4,8 +4,9 @@
 //               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Let AI sort"
 //   recording   pause / resume · snap + note (pauses) · discard (asks first: keep / restart / discard) · mic level ·
 //               finish · "hold ⌃ to draw" · how many items were spotted so far · the project (changeable)
-//   voice       the listening chick (mascot), the live waveform, the words if any, "pause to finish · Esc to cancel",
-//               where it will go
+//   voice       the listening chick (mascot), the live waveform, Done, how it ends ("press ⌥⇧V again to finish · Esc to
+//               cancel"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
+//               will go — the words themselves hang under the island (LiveTranscript.swift)
 //   drawer      switcher (⌥⇧O): Auto, recent projects (≤ 8, "More…", type to filter), Open Folder… ⌘O
 //               drop (a card dragged in): recent projects, Unassigned, Let AI sort
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on a 12 % accent wash
@@ -513,6 +514,26 @@ final class IslandContent: NSView {
 
     // MARK: voice input
 
+    /// How the voice note ends, said on the island: "press ⌥⇧V again to finish · Esc to cancel" (the user's key; the
+    /// Done button without one), "pause to finish" with record.voice.end_on_pause, "let go to finish" while held —
+    /// and in its last minute, the time left.
+    static func voiceHint() -> String {
+        let v = VoiceInput.shared
+        var s: String
+        if v.holding {
+            s = Loc.t("capture.voice.hold_hint", table: "Capture")
+        } else if v.endsOnPause {
+            s = Loc.t("capture.voice.hint", table: "Capture")
+        } else if !Hotkeys.shared.label(.voice).isEmpty {
+            s = Loc.t("capture.voice.hint_key", table: "Capture", Hotkeys.shared.label(.voice))
+        } else {
+            s = Loc.t("capture.voice.hint_done", table: "Capture")
+        }
+        let left = v.maxSeconds - v.elapsed
+        if v.active, left <= 60 { s += " · " + Loc.t("capture.voice.time_left", table: "Capture", Island.clock(max(0, left))) }
+        return s
+    }
+
     private func buildVoice(_ w: CGFloat, top: CGFloat) -> CGFloat {
         let v = VoiceInput.shared
         var y: CGFloat = top + 8
@@ -522,15 +543,19 @@ final class IslandContent: NSView {
         addSubview(chick)
         chick.play(.listening)
         let wx: CGFloat = 8 + 56 + 4
-        let wv = Bars(frame: NSRect(x: wx, y: y, width: w - wx - 18, height: 34))
+        // Done: the voice note ends when you say so (v0.8.6) — this button, the key again, or letting go of it
+        let done = IslandButton(symbol: "checkmark", title: Loc.t("capture.voice.done", table: "Capture"),
+                                tip: tip("capture.voice.done_tip", .voice), fill: accent.withAlphaComponent(0.92)) { VoiceInput.shared.toggle() }
+        done.isHidden = v.holding
+        let wv = Bars(frame: NSRect(x: wx, y: y, width: w - wx - 18 - (v.holding ? 0 : done.frame.width + 12), height: 34))
         wv.color = accent
         wv.bar = 3; wv.gap = 2.5
         addSubview(wv)
         wave = wv
+        place(done, x: w - 16 - done.frame.width, y: y + (34 - done.frame.height) / 2)
         y += 44
-        let words = v.liveText
-        let tx = label(words ?? Loc.t(v.holding ? "capture.voice.hold_hint" : "capture.voice.hint", table: "Capture"), size: 12.5,
-                       color: words == nil ? ink2 : ink)
+        // the words themselves show under the island (LiveTranscript); here: how it ends
+        let tx = label(IslandContent.voiceHint(), size: 12.5, color: ink2)
         place(tx, x: 18, y: y, w: w - 36)
         voiceText = tx
         y += 24
@@ -767,7 +792,8 @@ final class IslandContent: NSView {
         } else if VoiceInput.shared.active {
             wave?.values = VoiceInput.shared.levels
             time?.stringValue = Island.clock(VoiceInput.shared.elapsed)
-            if let t = VoiceInput.shared.liveText, voiceText?.stringValue != t { voiceText?.stringValue = t; voiceText?.textColor = ink }
+            let hint = IslandContent.voiceHint()
+            if voiceText?.stringValue != hint { voiceText?.stringValue = hint }
         }
     }
 }

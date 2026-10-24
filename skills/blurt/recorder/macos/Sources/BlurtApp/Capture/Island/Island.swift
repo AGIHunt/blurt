@@ -416,6 +416,7 @@ final class Island: NSObject, IslandHosting {
         CATransaction.commit()
         content.tick(now)
         hanging.islandMoved()
+        LiveTranscript.shared.islandMoved()
         let moving = !w.resting || !h.resting || !r.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
         // While the shape grows, AppKit draws the open content piece by piece as the clip uncovers it; the seams of
         // those pieces show through translucent fills (the Let AI sort and Finish pills). Once it rests: whole again.

@@ -224,6 +224,14 @@ enum DictationTestPad {
             }
             return emit(["event": "dictation_testpad", "replaced": r.location != NSNotFound, "text": tv.string])
         }
+        // at X,Y: the pad's top-left corner there (global top-left points) — e.g. under the island, where the live
+        // transcript has to make way for its caret
+        if arg.hasPrefix("at "), let w = window {
+            let v = arg.dropFirst(3).split(separator: ",").compactMap { Double($0) }
+            guard v.count == 2 else { return }
+            w.setFrameTopLeftPoint(NSPoint(x: v[0], y: primaryHeight - v[1]))
+            return emit(["event": "dictation_testpad", "frame": [w.frame.minX, primaryHeight - w.frame.maxY, w.frame.width, w.frame.height]])
+        }
         switch arg {
         case "close":
             window?.orderOut(nil)

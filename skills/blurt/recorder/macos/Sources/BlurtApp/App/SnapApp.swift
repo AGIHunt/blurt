@@ -105,6 +105,17 @@ extension App {
             }
             let f = toCG(island.frameOnScreen)
             emit(["event": "island", "rect": [f.minX, f.minY, f.width, f.height], "open": island.open, "cards": hanging.count])
+        case "voice" where arg.hasPrefix("set "):         // voice set KEY true|false|NUMBER|-: record.voice.KEY
+            let a = arg.split(separator: " ").map(String.init)
+            guard a.count == 3 else { return }
+            var v: Any? = Double(a[2]) ?? a[2]
+            if a[2] == "-" { v = nil } else if a[2] == "true" { v = true } else if a[2] == "false" { v = false }
+            Config.shared.set("record.voice.\(a[1])", v)
+            emit(["event": "voice_test_set", "key": a[1], "value": v.map { "\($0)" } ?? "default"])
+        case "voice" where arg == "esc": captureHotkey(.voiceEsc)       // = Esc while it listens (its Carbon hotkey)
+        case "voice" where arg == "state":
+            emit(["event": "voice_state", "active": VoiceInput.shared.active, "holding": VoiceInput.shared.holding,
+                  "elapsed": VoiceInput.shared.elapsed, "hint": IslandContent.voiceHint(), "live": VoiceInput.shared.liveText ?? NSNull()])
         case "voice":
             if arg != "up" { Hotkeys.shared.simulate(.voice, released: false) }
             if arg == "tap" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Hotkeys.shared.simulate(.voice, released: true) } }
@@ -314,6 +325,7 @@ extension App {
             }
             emit(["event": "ax", "elements": els])
         case "dictation": dictationCommand(arg)
+        case "live": LiveTranscript.shared.testCommand(arg)          // live state | caret X,Y,W,H | caret - | set on|off
         case "perm": permCommand(arg)                  // the permission guide (Onboarding/PermissionTestHooks.swift)
         case "menuicon":
             let dir = URL(fileURLWithPath: arg.isEmpty ? NSTemporaryDirectory() : arg)

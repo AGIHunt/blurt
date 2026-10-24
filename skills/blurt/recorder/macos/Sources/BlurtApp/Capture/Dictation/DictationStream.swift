@@ -109,6 +109,9 @@ final class DictationStream {
     let wholeWav: URL
     /// stage changes after key-up (transcribing → polishing), on the main queue
     var onStage: ((String) -> Void)?
+    /// what has been heard so far (the pieces' transcripts, joined), on the main queue after each piece — the words
+    /// shown while talking (LiveTranscript); nothing else reads it
+    var onHeard: ((String) -> Void)?
 
     private var segmenter = DictationSegmenter(sampleRate: NoteVoice.rate)
     private var audio: [Float] = []             // main thread
@@ -199,6 +202,12 @@ final class DictationStream {
         }
         p.raw = text
         p.asrText = heard
+        if let f = onHeard {
+            // the live transcript (LiveTranscript): what was heard so far, joined as the transcript is
+            let (all, gaps) = lock.locked { (pieces.prefix(p.index + 1).map(\.raw), pauses) }
+            let so = DictationStitch.joinPieces(all, pauses: gaps, names: names)
+            DispatchQueue.main.async { f(so) }
+        }
         emit(["event": "dictation_piece_text", "id": id, "index": p.index, "ms": Int((p.asrSpan.1 - p.asrSpan.0) * 1000),
               "chars": text.count, "ok": r != nil])
         polishQ.async { self.polish(p) }

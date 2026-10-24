@@ -3,7 +3,8 @@
 //  • listens right away (the user usually starts talking as they let go of the mouse); ~1.8 s of silence after
 //    speech ends the note, 8 s without speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono). "Silence" is
 //    relative to the room (BlurtCore NoteEndpointer: an adaptive noise floor — v0.7's floor froze at the mic's quiet
-//    first moments, so a normal room never counted as silence and the note never ended).
+//    first moments, so a normal room never counted as silence and the note never ended). Since v0.8.6 the voice note
+//    (⌥⇧V) ends when you say so; this one keeps ending on the pause — it is a sentence about one picture.
 //  • typing before speaking switches to a text note (the mic stops). Typing after speaking keeps listening until the
 //    pause; if less than 1 s of it was talking, the recording was abandoned for typing and is dropped (no mic mark,
 //    nothing to transcribe). A kept recording is always transcribed (Snapper.settled), also next to typed text.

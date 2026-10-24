@@ -208,3 +208,7 @@
 "settings.perm.not_needed" = "不需要";
 "settings.general.dictation_lab" = "显示听写测试台（开发者用）";
 "settings.general.dictation_lab.hint" = "给开发者打磨听写效果用：照稿朗读、对比模型、标注错误、重跑保存的案例。在主窗口的「听写」页。";
+"settings.general.voice_end_on_pause" = "停顿时结束语音";
+"settings.general.voice_end_on_pause.hint" = "关闭时：语音（⌥⇧V）不会因为你停下来想一想就结束，再按一次快捷键或点「完成」才结束，最长 10 分钟；Esc 取消。打开后：安静 1.5 秒就结束。截图的语音备注始终是停顿即结束。";
+"settings.general.live_text" = "边说边显示文字";
+"settings.general.live_text.hint" = "语音或听写在听的时候，已经识别出的文字显示在岛下方的小面板里，最新的字淡入。它不会抢焦点，会避开你正在输入的位置，也不会被录进屏幕录制。";

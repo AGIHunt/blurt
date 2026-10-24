@@ -287,6 +287,7 @@ final class TakenThumb: NSImageView, NSDraggingSource {
             return di
         }
         emit(["event": "taken_drag", "n": shot.n, "items": items.count])
+        if let img = image { drag.setBase(image: img, frame: bounds, in: self) }
         let session = beginDraggingSession(with: items, event: e, source: self)
         session.draggingFormation = .none
         session.animatesToStartingPositionsOnCancelOrFail = true
@@ -303,6 +304,11 @@ final class TakenThumb: NSImageView, NSDraggingSource {
         emit(["event": "taken_drag_end", "n": shot.n, "operation": Int(operation.rawValue)])
         let drag = cardDrag
         cardDrag = nil
+        // a voice note over a chat app's window: its words go into that composer, wherever it was let go of
+        if let t = drag?.voiceTarget(at: p) {
+            snapper.takeOutVoice(shot, fromPanel: true, landed: t, at: p, accepted: !operation.isEmpty)
+            return
+        }
         // taken again: its 7 days start over, and the note goes on the clipboard as after any drag-out
         if !operation.isEmpty {
             let got = drag?.delivered(at: p)
