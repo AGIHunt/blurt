@@ -15,6 +15,42 @@
   --font: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', 'Cantarell', 'Noto Sans', 'Microsoft YaHei UI',
     'PingFang SC', sans-serif;
 }
+/* @generated colour: assets/color/build.py from assets/color/tokens.json. Do not edit by hand. */
+/* island values: overlays sit on top of anything, so they are always dark */
+:root {
+  accent-color: var(--brand);
+  --brand: #61dbbd;
+  --brand-ink: #61dbbd;
+  --brand-tint: rgba(97, 219, 189, 0.20);
+  --brand-glow: rgba(97, 219, 189, 0.35);
+  --on-brand: #04261e;
+  --rec: #ff453a;
+  --attn: #ffc23d;
+  --ok: #8acb4e;
+  --err: #ff6b6b;
+  --info: #8da4ef;
+  --markup: #ff5c3d;
+  --g-green: #66d97a;
+  --g-mint: #61dbbd;
+  --g-blue: #4aabe2;
+  --brand-gradient: linear-gradient(to bottom right, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-gradient-v: linear-gradient(180deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-gradient-h: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-button: linear-gradient(to bottom right, #028932 0%, #02866f 45%, #087eb3 100%);
+  --on-brand-button: #ffffff;
+  --brand-text: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-spectrum: linear-gradient(90deg, #ffd54f 0%, #66d97a 24%, #61dbbd 46%, #4aabe2 70%, #9d7bf7 100%);
+  --brand-spectrum-conic: conic-gradient(from var(--spin, 0deg), #ffd54f 0deg, #66d97a 79.488deg, #61dbbd 152.352deg, #4aabe2 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg);
+  --glow-opacity: 0.45;
+  --ai-glow-opacity: 0.55;
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glow-opacity: 0;
+    --ai-glow-opacity: 0;
+  }
+}
+/* @end generated colour */
 :root[data-platform='win'] {
   --s1: #202020;
   --s2: #2b2b2b;

@@ -619,6 +619,11 @@ def native_binary(build: bool = True) -> Path | None:
         shutil.copytree(mascot, APP_BUNDLE / "Contents" / "Resources" / "Mascot", dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
+    # the AccentColor (Info.plist NSAccentColorName): compiled by assets/color/build.py with Xcode's actool and
+    # committed, so this build needs the Command Line Tools only
+    car = SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Assets.car"
+    if car.exists():
+        shutil.copy(car, APP_BUNDLE / "Contents" / "Resources" / "Assets.car")
     stamp.write_text(digest)          # before signing: the signature seals Resources/
     sign_app(APP_BUNDLE)
     ensure_app_installed(force=True)
