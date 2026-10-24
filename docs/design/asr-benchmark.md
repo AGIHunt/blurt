@@ -98,6 +98,17 @@ through the `taskpolicy -c utility` clamp: threads that onnxruntime or CTranslat
 
 Starting `serve --preload` when the user begins a voice note means the model loads while they speak.
 
+**The Chinese script (desi065).** Whisper turbo wrote a zh-Hans user's note half in traditional characters
+(「登录頁面周五之前要上線，記得把按鈕顏色改深一點」, `say -v Tingting`). Whisper has no setting for the script (its
+language token is `zh`), so the usual trick was tried first: an initial prompt in simplified Chinese. It fixed the
+characters, but on an English note in the same run it once looped (「段段段…」 for a whole sentence) and it glued English
+names to the Chinese around them, so it was dropped. Every transcript now passes `to_user_script` (in
+`decode_slice`: voice notes, recordings, live captions and dictation alike): for a user whose first Chinese system
+language is zh-Hans (or `asr.chinese_script: "hans"`), text heard as Chinese (or with no language tagged, and no
+kana) is converted character by character with OpenCC's t2s tables (`opencc-python-reimplemented`, a pinned
+dependency) — a script mapping, no meaning read. zh-Hant users (zh-TW / zh-HK / zh-MO, yue, or `"hant"`) keep what the
+model wrote, Japanese is never touched. On the three test clips: all simplified, English unchanged.
+
 ### Live captions with the recordings model (pro Mac)
 
 `live.py simulate` fed 80 s of English followed by Chinese in real time, using Whisper turbo as the live model:

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["sounddevice", "numpy"]
+# dependencies = ["sounddevice==0.5.6", "numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'"]
 # ///
 """Screen + microphone recorder (macOS, Windows, Linux/X11) with a proper recording UI.
 

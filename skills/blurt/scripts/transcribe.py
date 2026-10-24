@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["numpy", "sherpa-onnx>=1.13,<2", "truststore"]
+# dependencies = ["numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'", "sherpa-onnx==1.13.8", "truststore==0.10.5", "opencc-python-reimplemented==0.1.7"]
 # ///
 """Speech-to-text with timestamps, adapted to the machine it runs on (docs/design/next-round.md K9).
 Always VAD-first: silence is dropped, speech is chunked, and every chunk keeps its offset in the original
@@ -35,6 +35,9 @@ video, so any backend (even ones without timestamps) works.
 Which model: --model ID / --backend B win; else config asr (auto: per purpose from `recommend`, only what is
 installed; asr.auto false: asr.models / the legacy asr.backend + asr.model). Resource caps (asr.limits): threads,
 one batch job at a time ($BLURT_HOME/run/asr.lock, the rest queue), low priority for batch work, an MLX memory cap.
+Chinese comes back in the user's script: for zh-Hans users (or asr.chinese_script "hans") traditional characters
+become simplified (OpenCC t2s, `to_user_script`); zh-Hant users keep what the model wrote.
+Dependencies are pinned (here and in every `--with`, PACKAGE_PINS): a new release is taken on purpose, per release.
 
 Backends (models: asr_models.json; measured: docs/design/asr-benchmark.md)
   sensevoice      local CPU, sherpa-onnx + SenseVoice-Small int8 (~230 MB). zh/en/ja/ko/yue.
@@ -299,6 +302,20 @@ def probe(refresh: bool = False) -> dict:
 # ------------------------------------------------------------------ languages
 def system_languages() -> list[str]:
     """The OS's preferred languages as ISO 639-1 codes (zh-Hant-HK → zh, yue stays yue), first = most preferred."""
+    out: list[str] = []
+    for tag in system_language_tags():
+        code = re.split(r"[-_.@]", tag)[0].lower()
+        if code in ("c", "posix", ""):
+            continue
+        if tag.lower().startswith(("zh-hk", "zh_hk", "yue")):
+            code = "yue" if tag.lower().startswith("yue") else "zh"
+        if code not in out:
+            out.append(code)
+    return out
+
+
+def system_language_tags() -> list[str]:
+    """The OS's preferred languages as it names them (zh-Hans-CN, en-US …), first = most preferred."""
     raw: list[str] = []
     try:
         if IS_MAC:
@@ -315,16 +332,55 @@ def system_languages() -> list[str]:
             raw = [p for p in (os.environ.get("LANGUAGE") or os.environ.get("LC_ALL") or os.environ.get("LANG") or "").split(":") if p]
     except (OSError, subprocess.TimeoutExpired, AttributeError):
         pass
-    out: list[str] = []
-    for tag in raw:
-        code = re.split(r"[-_.@]", tag)[0].lower()
-        if code in ("c", "posix", ""):
-            continue
-        if tag.lower().startswith(("zh-hk", "zh_hk", "yue")):
-            code = "yue" if tag.lower().startswith("yue") else "zh"
-        if code not in out:
-            out.append(code)
-    return out
+    return raw
+
+
+# The Chinese script the user reads (desi065): Whisper large-v3-turbo writes Mandarin in traditional characters, or
+# a mix ("登录頁面周五之前要上線"), for a zh-Hans user. Whisper has no setting for the script (its language token is
+# just "zh"), and the usual trick — an initial prompt in simplified Chinese — was measured and dropped: it fixed the
+# characters, but on an English note it once sent the model into a loop ("段段段…") and it glued English names to
+# the Chinese around them. So text heard as Chinese is converted character by character to the user's script
+# (OpenCC's t2s tables: a mechanical script mapping that reads no meaning). zh-Hant users (zh-TW / zh-HK / zh-MO, or
+# asr.chinese_script "hant") keep what the model wrote: nothing is converted for them. Qwen3-ASR (dictation) and
+# SenseVoice write simplified already; the conversion changes nothing there.
+_HANT_TAGS = ("zh-hant", "zh_hant", "zh-tw", "zh_tw", "zh-hk", "zh_hk", "zh-mo", "zh_mo", "yue")
+_script: dict = {}
+
+
+def chinese_script(cfg: dict | None = None) -> str | None:
+    """"hans" | "hant" | None: asr.chinese_script, else the first Chinese entry of the OS's preferred languages
+    (zh-Hans-CN, zh-CN, zh → hans; zh-Hant-*, zh-TW, zh-HK, zh-MO, yue → hant); None without Chinese. Read once a
+    process."""
+    cfg = asr_config() if cfg is None else cfg
+    if cfg.get("chinese_script") in ("hans", "hant"):
+        return cfg["chinese_script"]
+    if "system" not in _script:
+        tag = next((t.lower() for t in system_language_tags() if t.lower().startswith(("zh", "yue"))), None)
+        _script["system"] = None if tag is None else "hant" if tag.startswith(_HANT_TAGS) else "hans"
+    return _script["system"]
+
+
+_KANA = re.compile(r"[぀-ヿ]")
+
+
+def to_user_script(text: str, lang: str | None, script: str | None = None) -> str:
+    """Text the speech model heard as Chinese (or with no language said), in a zh-Hans user's script: traditional
+    characters → simplified, one by one. Japanese (kana, or tagged ja) and everyone else's text are left alone."""
+    script = script if script is not None else chinese_script()
+    if script != "hans" or not text or (lang and lang not in ("zh", "yue")) or _KANA.search(text):
+        return text
+    if not re.search(r"[㐀-鿿]", text):
+        return text
+    conv = _script.get("t2s")
+    if conv is None:
+        try:
+            from opencc import OpenCC
+            conv = OpenCC("t2s").convert
+        except Exception as e:  # noqa: BLE001 — the package missing must not cost the words
+            print(f"script conversion unavailable: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            conv = False
+        _script["t2s"] = conv
+    return conv(text) if conv else text
 
 
 SWITCH_LANGUAGES = {"zh": "Chinese", "yue": "Cantonese", "ja": "Japanese", "ko": "Korean"}
@@ -855,7 +911,7 @@ def ensure_package(m: dict | str) -> None:
     os.environ["BLURT_ASR_REEXEC"] = ",".join(tried + [pkg])
     sys.stdout.flush()
     sys.stderr.flush()
-    withs = [x for p in tried + [pkg] for x in ("--with", p)]
+    withs = [x for p in tried + [pkg] for x in ("--with", PACKAGE_PINS.get(p, p))]
     os.execvp(uv, [uv, "run", "-q", *withs, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
 
 
@@ -1394,6 +1450,9 @@ BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper"
 LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "faster-whisper"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
                   "qwen3-asr-mlx": "mlx-qwen3-asr"}  # backend → `uv run --with` package
+# The exact version each `--with` installs (arch101: no release is picked up by itself; bumped on purpose, per Blurt
+# release, like the script header's). faster-whisper (NVIDIA, Windows / Linux) is pinned when it is next verified.
+PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4"}
 API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
 
 
@@ -1605,11 +1664,13 @@ def model_label(name: str, backend, a) -> str | None:
 # ------------------------------------------------------------------ shared pipeline (also used by live.py)
 def decode_slice(backend, x: np.ndarray, s: float, e: float) -> list[tuple]:
     """Transcribe x (= the samples of chunk s..e seconds) → segments on the original timeline:
-    (start, end, text) or (start, end, text, language) when the backend says which language it heard."""
+    (start, end, text) or (start, end, text, language) when the backend says which language it heard. Chinese comes
+    back in the user's script (to_user_script) whichever model wrote it: voice notes, recordings, live captions and
+    dictation all pass here."""
     out = []
     for r in backend.transcribe(x):
         rs, re_, t, *lg = r
-        seg = (s + rs, s + min(re_, e - s), t)
+        seg = (s + rs, s + min(re_, e - s), to_user_script(t, lang_code(lg[0]) if lg and lg[0] else None))
         out.append(seg + (lg[0],) if lg and lg[0] else seg)
     return out
 

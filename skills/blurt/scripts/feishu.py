@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["truststore"]
+# dependencies = ["truststore==0.10.5"]
 # ///
 """Export a session's (or a project's) issues to a Feishu / Lark Bitable (多维表格).
 

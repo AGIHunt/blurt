@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["numpy", "sherpa-onnx>=1.12", "truststore"]
+# dependencies = ["numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'", "sherpa-onnx==1.13.8", "truststore==0.10.5", "opencc-python-reimplemented==0.1.7"]
 # ///
 """Live pipeline while a recording runs: transcript (L1) and rolling item drafts (L2). docs/design/snap-and-live.md §4.
 

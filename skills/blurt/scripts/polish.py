@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["numpy", "truststore"]
+# dependencies = ["numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'", "truststore==0.10.5"]
 # ///
 """Dictation polish (docs/design/dictation.md): a small local LLM (MLX, Apple Silicon) tidies what the speech model
 heard — hesitations, stutters, punctuation, paragraphs, obvious homophones — and nothing else (Light: every word the
@@ -51,7 +51,7 @@ HERE = Path(__file__).parent
 RUN_DIR = BLURT_HOME / "run"
 SERVE_FILE = RUN_DIR / "polish-serve.json"
 POLISH_DIR = MODELS_DIR / "polish"
-MLX_PACKAGE = "mlx-lm>=0.32.2"
+MLX_PACKAGE = "mlx-lm==0.32.2"   # pinned (arch101): bumped on purpose, per release
 DEFAULT_TIMEOUT = 3.0
 
 

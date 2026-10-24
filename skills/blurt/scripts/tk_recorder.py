@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["sounddevice", "numpy"]
+# dependencies = ["sounddevice==0.5.6", "numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'"]
 # ///
 """Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / snap / discard / stop).
 
