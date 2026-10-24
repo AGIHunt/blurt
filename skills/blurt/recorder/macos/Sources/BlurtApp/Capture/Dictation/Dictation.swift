@@ -370,7 +370,7 @@ final class Dictation {
         var t = Island.Toast(text: Loc.t("dictation.toast.needs_permission", table: "Dictation", Dictation.keyShort),
                              actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation"), action: { Dictation.shared.openSetup(from: "island") })
         t.seconds = 8               // the island's line is quiet and brief by default; this one must be read
-        island.toast(t)
+        if reason == "launch" { LaunchMessages.shared.post(.permission, t) } else { island.toast(t) }    // one message at launch
     }
 
     /// The key's name for a picker or a field ("Right Option", "Fn", "Either Option Key").

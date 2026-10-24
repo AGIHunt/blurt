@@ -74,6 +74,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickFull: picker?.fullScreen()
         case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
+        // voice input started or stopped: the chick pulses now, not at the idle timer's next tick
+        if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
     }
 
     func command(_ c: String) {
@@ -123,6 +125,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.begin(region)
         }
         rec = r
+        refreshStatus()                 // the clock's timer (twice a second) from here
         r.prepare { err in
             if let err = err {
                 sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription])
@@ -171,6 +174,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: menu-bar app
 
     func startResident() {
+        LaunchMessages.shared.start()   // at most one island message at launch: everything below posts through it
+        for (name, active) in [(NSApplication.didBecomeActiveNotification, true), (NSApplication.didResignActiveNotification, false)] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in App.activeSince = active ? Date() : nil }
+        }
+        FilePrivacy.lockDown()          // Blurt's data is this account's alone (0700 / 0600)
+        Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
         writeAppInfo()
@@ -193,8 +202,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self = self, self.rec == nil, let b = self.statusItem?.button else { return }
             b.image = img ?? self.menuIcon
         }
-        refreshStatus()
-        statusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.refreshStatus() }
+        refreshStatus()                 // and schedules its own timer (scheduleStatusTimer)
         sessionEnded = { [weak self] code, event in
             emit(event)
             self?.takeEnded(code, event)
@@ -208,10 +216,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            // the menu-bar chick: where to find blurt, and the two keys to start with (dictation first)
-            toast(T("app.toast.welcome", Dictation.keyShort(Dictation.key), hk(.snap)), icon: .blurt)
+            // where Blurt lives, and the two things to try first: dictation and a snap
+            var t = Island.Toast(text: Dictation.enabled ? T("app.toast.welcome", Dictation.keyShort, hk(.snap))
+                                                         : T("app.toast.welcome_no_dictation", hk(.snap), hk(.toggleRecord)),
+                                 actionTitle: nil, action: nil)
+            t.seconds = 6
+            LaunchMessages.shared.post(.welcome, t)
         } else {
-            Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
+            // a shortcut another app holds: the first line, and the way to change it (the reason is in Settings)
+            Hotkeys.shared.warnOnce { text in
+                var t = Island.Toast(text: text.components(separatedBy: "\n")[0], actionTitle: T("app.toast.change_shortcut")) {
+                    AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
+                }
+                t.seconds = 8
+                LaunchMessages.shared.post(.shortcuts, t)
+            }
         }
         // `--process <session dir> [--agent <id>]`: process an existing recording (also handy for testing);
         // `--review <url> --review-session <dir>`: review.py asked for its batch (we weren't running) → the main window
@@ -293,11 +312,30 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for u in urls where u.scheme == "blurt" || u.scheme == "blurt-app" {
             if AppEnvironment.openURL?(u) == true { continue }
             switch u.host {
-            case "record": if resident && !busy { startRecording(useLast: false) }
-            case "snap": if resident { snapper.hotkey() }
+            case "record": if resident && !busy { confirmFromURL("record") { $0.startRecording(useLast: false) } }
+            case "snap": if resident { confirmFromURL("snap") { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } } }
             default: break
             }
         }
+    }
+
+    /// When Blurt last became the active app (nil while it isn't): confirmFromURL.
+    static var activeSince: Date?
+
+    /// blurt://record and blurt://snap can come from any link (a web page, a document): unless Blurt itself was in front
+    /// already (its own windows, a shortcut run from Blurt), the island asks first — one click to go ahead. "Already":
+    /// opening a URL can bring Blurt to the front just before it arrives, so being active only counts from a second
+    /// before the URL.
+    func confirmFromURL(_ what: String, _ go: @escaping (App) -> Void) {
+        if NSApp.isActive, let s = App.activeSince, Date().timeIntervalSince(s) > 1 { go(self); return }
+        emit(["event": "url_confirm", "what": what])
+        guard island.started else { return }       // no island to ask in: nothing starts from a link
+        island.ask(T("app.url.ask_\(what)"), T(what == "record" ? "app.menu.record" : "app.url.snap"), { [weak self] in
+            emit(["event": "url_confirmed", "what": what])
+            if let self = self { go(self) }
+        }, T("settings.privacy.cancel"), {
+            emit(["event": "url_declined", "what": what])
+        })
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -369,29 +407,55 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
+    /// The status item: the clock while recording, the chick (moving while voice input listens) and the count of what
+    /// waits for you otherwise. It only touches the button when something it shows changed, and its timer runs twice
+    /// a second only while a recording's clock or voice input needs it — every 2 s otherwise (an idle menu-bar app
+    /// shouldn't keep the CPU awake).
     func refreshStatus() {
+        defer { scheduleStatusTimer() }
         guard let b = statusItem?.button else { return }
+        let image: NSImage, title: NSAttributedString, tip: String?, ax: String
         if let r = rec, r.sessionStart.isValid {
-            let s = r.elapsed()
             // the tape is rolling: the rec dot and time; paused: attention (§3.6)
-            b.image = (r.isPaused ? BlurtIcon.pauseFill : BlurtIcon.recordFill).image(size: 11, color: r.isPaused ? BrandColor.attn : BrandColor.rec)
-            b.imagePosition = .imageLeft
-            b.attributedTitle = NSAttributedString(string: " " + Loc.duration(s), attributes: [
+            image = r.isPaused ? App.pausedImage : App.recordingImage
+            title = NSAttributedString(string: " " + Loc.duration(r.elapsed()), attributes: [
                 .foregroundColor: r.isPaused ? BrandColor.attn : BrandColor.rec, .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
-            return
+            tip = nil
+            ax = T("app.name")
+        } else {
+            MenuGlyph.shared.listening = VoiceInput.shared.active
+            image = MenuGlyph.shared.current ?? menuIcon
+            let badge = MenuBadge.shared
+            // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing
+            title = badge.count > 0
+                ? NSAttributedString(string: " " + Loc.number(badge.count), attributes: [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                    .foregroundColor: badge.urgent ? BrandColor.attn : NSColor.labelColor])
+                : NSAttributedString(string: "")
+            tip = badge.tooltip
+            ax = badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name")
         }
-        MenuGlyph.shared.listening = VoiceInput.shared.active
-        b.image = MenuGlyph.shared.current ?? menuIcon
-        b.imagePosition = .imageLeft
-        let badge = MenuBadge.shared
-        // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing
-        b.attributedTitle = badge.count > 0
-            ? NSAttributedString(string: " " + Loc.number(badge.count), attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: badge.urgent ? BrandColor.attn : NSColor.labelColor])
-            : NSAttributedString(string: "")
-        b.toolTip = badge.tooltip
-        b.setAccessibilityLabel(badge.count > 0 ? T("app.status.ax_count", badge.tooltip) : T("app.name"))
+        if b.image !== image { b.image = image }
+        if b.imagePosition != .imageLeft { b.imagePosition = .imageLeft }
+        if shownTitle != title { b.attributedTitle = title; shownTitle = title }
+        if b.toolTip != tip { b.toolTip = tip }
+        if shownAX != ax { b.setAccessibilityLabel(ax); shownAX = ax }
+    }
+    private var shownTitle: NSAttributedString?
+    private var shownAX: String?
+
+    static let recordingImage = BlurtIcon.recordFill.image(size: 11, color: BrandColor.rec)
+    static let pausedImage = BlurtIcon.pauseFill.image(size: 11, color: BrandColor.attn)
+
+    func scheduleStatusTimer() {
+        guard statusItem != nil else { return }
+        let want: TimeInterval = rec != nil || VoiceInput.shared.active ? 0.5 : 2
+        guard statusTimer?.timeInterval != want else { return }
+        statusTimer?.invalidate()
+        let t = Timer(timeInterval: want, repeats: true) { [weak self] _ in self?.refreshStatus() }
+        t.tolerance = want / 5
+        RunLoop.main.add(t, forMode: .common)
+        statusTimer = t
     }
 
     /// The menu-bar icon at rest: the monochrome template chick (below), like every other menu-bar icon. The recording
@@ -432,6 +496,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             _ = add(T("app.menu.restart"), #selector(mRestart))
             _ = add(T("app.menu.discard"), #selector(mDiscard))
             addSnapMenuItems(menu, recording: true)
+            App.giveSymbols(menu)
             return
         }
         if busy { _ = add(T("app.menu.selecting"), nil); return }
@@ -462,21 +527,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // what waits for you, and what is running — each opens the main window there (nothing opens by itself)
         if AppEnvironment.mainWindow != nil {
             add(T("app.menu.open"), #selector(mOpenMain)).showHotkey(.openMain)
+            // the inbox in one row: "Inbox · 9 new · 6 to verify"
             let badge = MenuBadge.shared
-            if badge.new > 0 {
-                let i = add(TP("app.menu.new", badge.new), #selector(mOpenInbox))
-                i.image = Look.ring("new", size: 13)
-                i.indentationLevel = 1
-            }
-            if badge.verify > 0 {
-                let i = add(TP("app.menu.to_verify", badge.verify), #selector(mOpenInbox))
-                i.image = Look.ring("to_verify", size: 13)
-                i.indentationLevel = 1
-            }
+            let counts = (badge.new > 0 ? [T("main.inbox.new", badge.new)] : []) + (badge.verify > 0 ? [T("main.inbox.verify", badge.verify)] : [])
+            if !counts.isEmpty { add(([T("main.place.inbox")] + counts).joined(separator: " · "), #selector(mOpenInbox)) }
             for j in JobStore.shared.active.prefix(5) {
-                let i = add("\(JobLook.title(j))  ·  \(JobLook.status(j))", #selector(mOpenJob(_:)), obj: j.id)
-                i.image = Look.symbol(j.agent?.status == .waitingInput ? "exclamationmark.bubble" : JobLook.symbol(j), "", size: 13)
-                i.indentationLevel = 1
+                let i = add("\(JobLook.title(j)) · \(JobLook.status(j))", #selector(mOpenJob(_:)), obj: j.id)
+                i.image = App.menuSymbol(j.agent?.status == .waitingInput ? "exclamationmark.bubble" : JobLook.symbol(j))
             }
             menu.addItem(.separator())
         }
@@ -487,15 +544,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let pMenu = NSMenu()
         let auto = add(T("project.auto"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
         auto.toolTip = T("app.menu.project.auto_tip")
+        auto.image = App.menuSymbol("sparkles")         // like the island's chip
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
             let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
-            i.image = Look.symbol(p.exists ? "folder" : "questionmark.folder", "", size: 13)
+            i.image = App.menuSymbol(p.exists ? "folder" : "questionmark.folder")
             i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
         }
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
         _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)
+        App.giveSymbols(pMenu)
         pItem.submenu = pMenu
         menu.addItem(pItem)
         menu.addItem(.separator())
@@ -506,10 +565,38 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if Updater.shared.available {
             let u = add(T("app.menu.updates"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
             u.target = Updater.shared
+            u.image = App.menuSymbol("arrow.down.circle")   // with no action giveSymbols can't tell which row it is
         }
         menu.addItem(.separator())
         _ = add(T("app.menu.quit"), #selector(mQuit), key: "q")
+        App.giveSymbols(menu)
     }
+
+    /// Every row of the menu carries a symbol, so every title starts at the same inset: AppKit lines a group's titles
+    /// up past the image column as soon as one row in it has an image, which left some rows at the edge and others an
+    /// icon's width in. By action (the snap rows are added in SnapApp.swift); rows that set their own image keep it.
+    static func giveSymbols(_ menu: NSMenu) {
+        let symbols = [
+            "mStart": "record.circle", "mStartLast": "record.circle", "mStop": "stop.circle", "mPause": "playpause",
+            "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
+            "mLiveCaption": "captions.bubble", "mDictationHistory": "character.cursor.ibeam", "mShowCards": "rectangle.stack",
+            "mShowTaken": "clock.arrow.circlepath", "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
+            "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
+            "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",
+        ]
+        for it in menu.items where !it.isSeparatorItem && it.image == nil {
+            if it.submenu != nil { it.image = menuSymbol("folder"); continue }      // Project: …
+            if let a = it.action, let s = symbols[NSStringFromSelector(a)] { it.image = menuSymbol(s) }
+            if it.image == nil { it.image = blankSymbol }   // a row no symbol names still starts where the others do
+        }
+    }
+
+    static func menuSymbol(_ name: String) -> NSImage? { NSImage(systemSymbolName: name, accessibilityDescription: nil) }
+    /// An empty image a symbol's size: holds a row's title in line when it has no symbol of its own.
+    static let blankSymbol: NSImage = {
+        let size = menuSymbol("circle")?.size ?? NSSize(width: 16, height: 16)
+        return NSImage(size: size, flipped: false) { _ in true }
+    }()
 
     @objc func mOpenMain() { AppEnvironment.mainWindow?.show() }
     @objc func mOpenInbox() { AppEnvironment.mainWindow?.showInbox() }
@@ -548,11 +635,35 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mShortcuts() { if let s = AppEnvironment.settings { s.show(pane: "shortcuts") } else { HotkeySettings.shared.show() } }
     @objc func mQuit() { NSApp.terminate(nil) }
 
-    // tiny, non-blocking toast under the menu bar (no notification permission needed)
-    var toastWin: NSWindow?
-    /// Several lines ("\n") are fine: the first is the headline, the rest a quieter detail. `icon: .check` is the done
-    /// toast: the check in ok green (done is always ok + a check, §2.3); other icons are white like the text.
+    /// One toast system: the island's quiet line (K4), whenever the island runs — one line, so several lines join
+    /// with " · ". The small HUD under the menu bar below is only for a build without the island (the one-shot
+    /// recorder a chat starts); there several lines are fine: the first is the headline, the rest a quieter detail.
+    /// `icon: .check` is the HUD's done toast: the check in ok green (§2.3).
     func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil) {
+        if island.started {
+            emit(["event": "toast", "text": text, "via": "island"])
+            var t = Island.Toast(text: text.components(separatedBy: "\n").filter { !$0.isEmpty }.joined(separator: " · "),
+                                 actionTitle: nil, action: nil)
+            t.seconds = seconds
+            island.toast(t)
+            return
+        }
+        hudToast(text, seconds: seconds, icon: icon)
+    }
+
+    /// Settings can't be saved: config.json doesn't parse (a hand edit?). It was copied aside; the file stays as it is.
+    static func configUnreadable(_ backup: URL) {
+        emit(["event": "config_unreadable", "backup": backup.path])
+        var t = Island.Toast(text: T("app.config.unreadable"), actionTitle: T("action.reveal_in_finder")) {
+            NSWorkspace.shared.activateFileViewerSelecting([BlurtPaths.config])
+        }
+        t.seconds = 10
+        LaunchMessages.shared.post(.config, t)
+    }
+
+    // tiny, non-blocking toast under the menu bar (no notification permission needed) — only without the island
+    var toastWin: NSWindow?
+    func hudToast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil) {
         let seconds = max(seconds, Double(ProcessInfo.processInfo.environment["BLURT_TOAST_MIN_SECONDS"] ?? "") ?? 0)   // tests: time to screenshot
         toastWin?.orderOut(nil)
         emit(["event": "toast", "text": text])

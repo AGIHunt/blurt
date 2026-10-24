@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import BLURT_HOME, IS_LINUX, IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
+from _common import BLURT_HOME, CONTRACT, IS_LINUX, IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
 import sessions  # noqa: E402
 
 
@@ -137,6 +137,7 @@ def main():
     info = system_info()
     ff = shutil.which("ffmpeg")
     report = {
+        "contract": CONTRACT,  # the skill's side of the app ↔ scripts handshake (_common.CONTRACT)
         "system": info,
         "ffmpeg": run([ff, "-version"]).stdout.splitlines()[0] if ff else None,
         "uv": shutil.which("uv"),

@@ -66,14 +66,16 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             if !frontmost, ran >= 20, setting("done") { post("done", title: text, body: JobLook.title(j), job: j) }
         case (_, .failed):
             let why = JobLook.errorText(j) ?? ""
-            quiet(T("notify.failed", JobLook.title(j)), action: T("notify.show")) { AppEnvironment.mainWindow?.reveal(job: j.id) }
+            quiet(T("notify.failed", JobLook.title(j)), action: T("notify.show"),
+                  launch: j.error?.hintKey == "main.job.hint.interrupted" ? .job : nil) { AppEnvironment.mainWindow?.reveal(job: j.id) }
             if !frontmost { post("failed", title: T("notify.failed", JobLook.title(j)), body: why, job: j) }
         default: break
         }
     }
 
     /// The island's quiet line; before the island exists, the same small non-activating toast the app always had.
-    private func quiet(_ text: String, action: String, art: MascotClip? = nil, _ run: @escaping () -> Void) {
+    /// `launch`: a launch message too (one at launch: LaunchMessages) — a job the last run left unfinished.
+    private func quiet(_ text: String, action: String, art: MascotClip? = nil, launch: LaunchRank? = nil, _ run: @escaping () -> Void) {
         if AppEnvironment.island != nil, let clip = art {
             // done: the chick hops beside the line (the mascot, Icons/Mascot.swift)
             let chick = MascotView(clip: clip, size: 50)
@@ -83,6 +85,8 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             t.seconds = max(2.4, (MascotLibrary.shared.clip(clip)?.duration ?? 1.5) + 0.8)
             Island.shared.toast(t)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { chick.play(clip) }
+        } else if let r = launch, AppEnvironment.island != nil {
+            LaunchMessages.shared.post(r, Island.Toast(text: text, actionTitle: action, action: run))
         } else if let island = AppEnvironment.island {
             island.toast(text, actionTitle: action, action: run)
         } else {

@@ -24,9 +24,11 @@ func canonicalPath(_ u: URL) -> String {
     return String(cString: r)
 }
 
+/// A snap batch: a -shots folder, or snaps with no video — unless meta.json says it's a recording whose video was
+/// deleted (VideoRetention.stamp).
 func isShotsSession(_ dir: URL) -> Bool {
     dir.lastPathComponent.hasSuffix("-shots") || FileManager.default.fileExists(atPath: dir.appendingPathComponent("shots.jsonl").path)
-        && !FileManager.default.fileExists(atPath: dir.appendingPathComponent("recording.mp4").path)
+        && !FileManager.default.fileExists(atPath: dir.appendingPathComponent("recording.mp4").path) && !VideoRetention.isRecording(dir)
 }
 
 /// The prompt for an unattended run on a shots session (nil for recordings: App.process keeps its own).

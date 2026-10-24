@@ -29,9 +29,25 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>%ld session</string>
+			<string>%ld folder</string>
 			<key>other</key>
-			<string>%ld sessions</string>
+			<string>%ld folders</string>
+		</dict>
+	</dict>
+	<key>settings.storage.videos.count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld video</string>
+			<key>other</key>
+			<string>%ld videos</string>
 		</dict>
 	</dict>
 </dict>

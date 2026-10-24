@@ -1,6 +1,8 @@
-// Settings → Export: where confirmed items go by default — per project (<repo>/.blurt/config.json → export, the same
-// key the skill's exporters read; SKILL reference/export-*.md), or globally for ~/Blurt (config export). Shows whether
-// each exporter's tool is ready (lark-cli / a Feishu app, gh) without ever showing a credential.
+// Settings → Export: where items go when the agent exports them — per project (<repo>/.blurt/config.json → export, the
+// same key the skill's exporters read; SKILL reference/export-*.md), or globally for ~/Blurt (config export). One row
+// per destination in plain words — Feishu / Lark, GitHub Issues, Markdown and CSV — each Ready, Checking or Not set up
+// with the one command that sets it up; which tool it uses (lark-cli or a Feishu app, gh) is in the row's tooltip.
+// Never shows a credential.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -14,7 +16,7 @@ final class ExportModel: ObservableObject {
     @Published var feishuApp = false
     @Published var gh: String?
     @Published var ghAuthed: Bool?
-    @Published var checking = false
+    @Published var checking = true          // until the first look: no "Not set up" flash
     /// The current project's folder; nil = Unassigned (Blurt's own config.json). Read again each time the pane shows.
     @Published var ws: URL? = ProjectStore.shared.current?.path
 
@@ -68,7 +70,7 @@ struct ExportPane: View {
                     Text(T("settings.export.ask_each_time")).tag("ask")
                     Text(T("settings.export.feishu_lark_bitable")).tag("feishu")
                     Text("GitHub Issues").tag("github")
-                    Text("Markdown + CSV").tag("local")
+                    Text(T("settings.export.local")).tag("local")
                 }
                 if m.target == "feishu" {
                     TextField(T("settings.export.table_url"), text: $m.url, prompt: Text("https://….feishu.cn/base/…?table=…"))
@@ -88,36 +90,38 @@ struct ExportPane: View {
             } header: { Text(T("settings.export.default_destination")) }
 
             Section {
-                tool(T("settings.export.feishu_lark_cli"), ok: m.lark != nil,
-                     detail: m.lark.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? T("settings.export.not_installed_exports_as"),
-                     fix: m.lark == nil ? "npx @larksuite/cli@latest install" : nil)
-                tool(T("settings.export.feishu_self_built_app"), ok: m.feishuApp,
-                     detail: m.feishuApp ? T("settings.export.feishu_app_id_set") : T("settings.export.optional_used_without_lark"), fix: nil)
-                tool("GitHub: gh", ok: m.gh != nil && m.ghAuthed == true,
-                     detail: m.gh == nil ? T("settings.export.not_installed")
-                         : m.ghAuthed == nil ? T("settings.export.checking")      // `gh auth status` takes a moment
-                         : (m.ghAuthed == true ? T("settings.export.logged") : T("settings.export.not_logged")),
+                // Feishu / Lark: lark-cli (exports as you), or a Feishu app (FEISHU_APP_ID) when there is no lark-cli
+                let larkReady = m.lark != nil || m.feishuApp
+                tool(T("settings.export.feishu"), state: m.checking && !larkReady ? .checking : larkReady ? .ready : .notSetUp,
+                     tip: m.lark.map { "lark-cli · " + ($0 as NSString).abbreviatingWithTildeInPath }
+                         ?? (m.feishuApp ? T("settings.export.feishu_app_id_set") : nil),
+                     fix: larkReady ? nil : "npx @larksuite/cli@latest install")
+                // GitHub Issues: gh, signed in (`gh auth status` takes a moment)
+                tool("GitHub Issues", state: m.gh == nil ? (m.checking ? .checking : .notSetUp)
+                                         : m.ghAuthed == nil ? .checking : m.ghAuthed == true ? .ready : .signedOut,
+                     tip: m.gh.map { "gh · " + ($0 as NSString).abbreviatingWithTildeInPath },
                      fix: m.gh == nil ? "brew install gh" : (m.ghAuthed == false ? "gh auth login" : nil))
-                tool("Markdown + CSV", ok: true, detail: T("settings.export.nothing_install"), fix: nil)
-            } header: {
-                HStack { Text(T("settings.export.exporters")); Spacer(); if m.checking { ProgressView().controlSize(.mini) } }
-            } footer: {
-                Text(T("settings.export.exports_run_from_review"))
-                    .font(.caption).foregroundStyle(.secondary)
+                tool(T("settings.export.local"), state: .ready, tip: nil, fix: nil)
+            } header: { Text(T("settings.export.exporters")) } footer: {
+                Text(T("settings.export.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .task { await m.load() }
     }
 
-    func tool(_ name: String, ok: Bool, detail: String, fix: String?) -> some View {
+    enum ToolState { case ready, checking, notSetUp, signedOut }
+
+    func tool(_ name: String, state: ToolState, tip: String?, fix: String?) -> some View {
         HStack {
-            StatusDot(tone: ok ? .good : .off)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
+            StatusDot(tone: state == .ready ? .good : .off)
+            Text(name)
             Spacer()
+            if state == .checking { ProgressView().controlSize(.mini) }
+            Text(T(state == .ready ? "settings.export.ready" : state == .checking ? "settings.export.checking"
+                   : state == .signedOut ? "settings.export.not_logged" : "settings.export.not_set_up"))
+                .foregroundStyle(.secondary)
             if let f = fix { CommandText(text: f) }
         }
+        .help(tip ?? "")
     }
 }

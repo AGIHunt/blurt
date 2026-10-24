@@ -146,7 +146,7 @@ extension MainWindowController {
     @objc func mShortcuts() { showShortcuts() }
     @objc func mDictationHistory() { showDictation() }
     @objc func mDictationLab() { showDictationLab() }
-    @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
+    @objc func mHelp() { NSWorkspace.shared.open(Help.guideURL()) }      // the user guide, in the app's language
 }
 
 /// A section title in a menu (NSMenuItem.sectionHeader on macOS 14+, a disabled item before).

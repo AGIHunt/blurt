@@ -670,7 +670,12 @@ export interface BlurtHost {
 Sources/BlurtCore/      (library; everything the app uses from it is public — app files `import BlurtCore`)
    Paths.swift      public enum BlurtPaths { static var home, config, indexDB, workspace, skillDir, scripts: URL }
    Config.swift     public final class Config { static let shared; subscript(key: String) -> Any? { get set }   // dotted keys: "record.hotkeys"
-                      func set(_ key: String, _ value: Any?); var all, record: [String: Any] }                // ~/.blurt/config.json, read fresh each time
+                      func set(_ key: String, _ value: Any?) -> Bool; var all, record: [String: Any]       // ~/.blurt/config.json, re-parsed when it changes
+                      var onUnreadable: ((URL) -> Void)? }   // set(): under $BLURT_HOME/.config.lock (flock, shared with _common.update_global_config),
+                                                             // atomic, 0600; a file that doesn't parse is copied to config.json.bad-<time> and never overwritten
+   FilePrivacy.swift  public enum FilePrivacy { static func lockDown(); writePrivate(_:to:) }   // $BLURT_HOME + data folders 0700, history / tokens 0600
+   SkillContract.swift public enum SkillContract { static let expected; skillVersion(); check(skill:) }   // _common.CONTRACT ↔ the app
+   VideoRetention.swift public enum VideoRetention { static var autoDays; candidates(roots:olderThan:) }   // organized recordings' videos that may go
                     public enum BlurtLocale { static var lang }                                               // the app sets it from --lang
    Script.swift     public enum ShellEnv { static func agentEnvironment() -> [String: String]; findExecutable(_:); runCapture(…)
                       isAgentSessionVar(_:)  // strips agent-session vars, keeps CODEX_HOME / CLAUDE_CONFIG_DIR / KIMI_CODE_HOME / *_HOME / *_CONFIG_DIR
@@ -765,7 +770,8 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   - `blurt://open`：打开主窗口（和菜单「打开口喷鸡」一样；Tauri 也认，见 C8）
 
 细则（WP6 实现时补充，以代码为准）：
-- **URL 安全**：任何网页都能打开 `blurt://`，所以 URL 只做「打开、定位」，不启动 agent，不写数据。`item` / `session` 先交给
+- **URL 安全**：任何网页都能打开 `blurt://`，所以 URL 只做「打开、定位」，不启动 agent，不写数据。`record` / `snap` 只在口喷鸡
+  自己在最前面时直接开始；从别处（网页、文档里的链接）来的，先在刘海里问一句「一个链接想开始录屏 / 截图」，点一下才开始。`item` / `session` 先交给
   `mainWindow`（`show()` 后 `reveal(uid:)` / `reveal(session:)`），没有主窗口时打开该会话的审核窗口。
 - **Agent 运行记录**：每次后台运行写 `$BLURT_HOME/runs/<run_id>.json`
   `{id, agent, repo, items: [uid], state: running|done|failed|cancelled, started, ended?, exit?, cost_usd?, summary?, log}`，
@@ -781,7 +787,17 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
 - **WP6 用到的配置键**（都在 `$BLURT_HOME/config.json`）：`lang`（和 record.py 共用）、`app.onboarded`、`app.settings_pane`、
   `app.asked_screen`、`fix.agent`、`fix.mode`（background | interactive）、`spotlight`（false = 关）、`privacy.local_asr`
   （只能选本地识别）、`privacy.keep_live_audio`（默认 false：转写完成、录屏文件在、10 分钟没写入后删 `live/audio.pcm`）、
-  `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`；设置 → 语音的勾选框写 true / false，从没选过时按区域：中国大陆算开。设置助手、设置 → 听写、设置 → 语音都用 `ModelBundle.mirror` 这一个答案）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
+  `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`；设置 → 语音的勾选框写 true / false，从没选过时按区域：中国大陆算开。设置助手、设置 → 听写、设置 → 语音都用 `ModelBundle.mirror` 这一个答案）、`record.delete_videos_after_days`（设置 → 存储「自动删除视频」，默认没有 = 从不；
+  只删已整理录屏的 `recording.mp4` / `recording.scan.npz`，移到废纸篓；删之前在会话的 `meta.json` 写 `"mode": "video"`，删完写
+  `"video_removed"`，这样录屏时截的图（`shots.jsonl`）不会让 index.py / items.py / `isShotsSession` 把它当成截图批次；
+  打开它的那一刻已有更早的视频时先确认）、`app.contract_warned`（skill 和 App 契约版本不一致的提示，
+  每个 App 版本 × skill 契约只说一次）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
+- **启动时只说一句**：启动时想在刘海里说话的（设置文件读不了、欢迎、快捷键冲突、skill 版本、听写权限、迁移来的项目、上次没做完的任务、
+  推荐模型；这也是从高到低的顺序，规则在 BlurtCore `LaunchQueue`，有单元测试）都交给 `LaunchMessages`：前 3 秒先收着，只显示排第一的，
+  其余丢掉（下次启动或菜单、设置里都还在）。skill 契约在任何脚本运行之前就检查，落在这 3 秒里。所有提示都走刘海，
+  菜单栏下的小 HUD 只在没有刘海的构建里用。
+- **隐私**：`$BLURT_HOME` 和里面放数据的文件夹 0700，听写历史、模型服务的 token、config.json 0600（App 启动时 `FilePrivacy.lockDown`，
+  脚本写 `$BLURT_HOME` 下的 JSON 时 `_common.save_json` 也是 0600）；默认工作区 `~/Blurt` 0700。
   导出默认去向：项目写 `<repo>/.blurt/config.json` → `export`，默认工作区写全局 `export`。
 - **index.db 只读打开的坑**（C3 的读者都要注意）：WAL 库在最后一个连接关闭后 SQLite 会删掉 `-wal` / `-shm`，这时
   `?mode=ro` 打开会在 prepare 时报 `SQLITE_CANTOPEN`。读者先试 `mode=ro`，失败就用 READWRITE（不带 CREATE）加

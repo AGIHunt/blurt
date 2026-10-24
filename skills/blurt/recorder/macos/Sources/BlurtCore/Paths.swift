@@ -1,13 +1,14 @@
 // Where things live. Same rules as record.py / _common.py: BLURT_HOME relocates ~/.blurt (tests, CI),
-// BLURT_WORKSPACE relocates ~/Blurt.
+// BLURT_WORKSPACE relocates ~/Blurt. Read with getenv on each access — cheap (no copy of the whole environment, which
+// the status item's timer used to make twice a second), and a changed variable is still honoured.
 import Foundation
 
 public enum BlurtPaths {
-    static var env: [String: String] { ProcessInfo.processInfo.environment }
+    static func env(_ k: String) -> String? { getenv(k).map { String(cString: $0) }.flatMap { $0.isEmpty ? nil : $0 } }
 
     /// ~/.blurt, or $BLURT_HOME
     public static var home: URL {
-        env["BLURT_HOME"].map { URL(fileURLWithPath: $0) }
+        env("BLURT_HOME").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".blurt")
     }
     /// ~/.blurt/config.json (shared with record.py)
@@ -16,7 +17,7 @@ public enum BlurtPaths {
     public static var indexDB: URL { home.appendingPathComponent("index.db") }
     /// The default workspace: ~/Blurt, or $BLURT_WORKSPACE
     public static var workspace: URL {
-        env["BLURT_WORKSPACE"].map { URL(fileURLWithPath: $0) }
+        env("BLURT_WORKSPACE").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Blurt")
     }
     /// The blurt skill (SKILL.md, scripts/, agents.json): config `skill_dir` (record.py writes it on every run), else

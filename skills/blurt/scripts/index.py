@@ -439,6 +439,8 @@ def index_file(con, p: Path, now: float, reg: dict, s: st.Store | None = None, f
 def _mode(d: Path, meta: dict) -> str:
     if meta.get("mode") == "voice" or d.name.endswith("-voice"):
         return "voice"
+    if meta.get("mode") == "video" or meta.get("video_removed"):  # a recording whose video was deleted (Settings → Storage)
+        return "video"
     if meta.get("mode") == "shots" or (not (d / "recording.mp4").exists() and
                                        ((d / "shots.jsonl").exists() or d.name.endswith("-shots"))):
         return "shots"

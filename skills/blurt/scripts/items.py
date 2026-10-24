@@ -473,7 +473,7 @@ def _source_type(session: Path, meta: dict) -> str:
         return "voice"
     if meta.get("mode") == "shots" or session.name.endswith("-shots"):
         return "snap"
-    if (session / "recording.mp4").exists() or meta.get("video"):
+    if (session / "recording.mp4").exists() or meta.get("video") or meta.get("mode") == "video":
         return "recording"
     return "import"
 

@@ -25,6 +25,11 @@ MODELS_DIR = BLURT_HOME / "models"
 GLOBAL_CONFIG = BLURT_HOME / "config.json"
 STATE_FILE = BLURT_HOME / "recording.json"
 
+# The version of the contracts between these scripts and the apps that run them (items.py's documents, jobs, the
+# transcribe / polish serve protocols, the CLIs' JSON). Bump it when one changes in a way an older app or skill can't
+# follow; the Mac app reads this line (BlurtCore/SkillContract.swift) and says once when the two don't match.
+CONTRACT = 1
+
 
 def ensure_utf8_stdio() -> None:
     # Windows consoles default to a legacy code page; keep CJK output intact.
@@ -87,10 +92,39 @@ def load_json(path: Path, default=None):
         return default
 
 
-def save_json(path: Path, data) -> None:
+def _under_home(path: Path) -> bool:
+    try:
+        return Path(os.path.abspath(path)).is_relative_to(os.path.abspath(blurt_home()))
+    except (OSError, ValueError):
+        return False
+
+
+def private_dir(path: Path) -> Path:
+    """Make a folder that holds the user's own data (under $BLURT_HOME): 0700, so other accounts on the Mac can't read
+    it (BlurtCore/FilePrivacy.swift does the same for the app's folders at launch). No-op for the mode on Windows."""
     path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+    if not IS_WIN:
+        try:
+            if path.stat().st_mode & 0o777 != 0o700:
+                path.chmod(0o700)
+        except OSError:
+            pass
+    return path
+
+
+def save_json(path: Path, data) -> None:
+    """Atomic. Under $BLURT_HOME (config, the model servers' tokens, jobs) the file is 0600 and a folder it makes is
+    0700: only this account can read them."""
+    path = Path(path)
+    private = _under_home(path)
+    if private and not path.parent.exists():
+        private_dir(path.parent)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    if private and not IS_WIN:
+        os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
+        tmp.chmod(0o600)  # an older leftover tmp keeps its mode otherwise
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     for attempt in range(20):  # Windows: replace fails while a reader has the target open
         try:
@@ -111,13 +145,17 @@ def global_config() -> dict:
 
 
 def update_global_config(patch: dict) -> dict:
-    cfg = global_config()
-    for k, v in patch.items():
-        if isinstance(v, dict) and isinstance(cfg.get(k), dict):
-            cfg[k].update(v)
-        else:
-            cfg[k] = v
-    save_json(_config_path(), cfg)
+    """Read-modify-write under $BLURT_HOME/.config.lock — the lock the app's Config.set takes too, so neither loses the
+    other's change. An unreadable config.json raises (json.JSONDecodeError) and is left as it is."""
+    path = _config_path()
+    with file_lock(path.parent / ".config.lock"):
+        cfg = global_config()
+        for k, v in patch.items():
+            if isinstance(v, dict) and isinstance(cfg.get(k), dict):
+                cfg[k].update(v)
+            else:
+                cfg[k] = v
+        save_json(path, cfg)
     return cfg
 
 

@@ -1,4 +1,7 @@
 // What the menu-bar app does in the background at launch (v0.7 contract), silently, in this order:
+//   the skill's contract     scripts/_common.py CONTRACT against the app's (BlurtCore SkillContract), before any script
+//                            runs: when they differ, one line in the island says which to update (once per app
+//                            version and skill contract)
 //   projects.py migrate      v0.6 record.workspace(s) → projects.json (K2; idempotent)
 //   items.py migrate --all   v1/v2 sessions (items.json, no batch.json) → Markdown stores (K1; idempotent)
 //   jobs.py gc               jobs that ended 14+ days ago, beyond the last 300 (K4)
@@ -7,6 +10,10 @@
 //   Snapper.expireTaken      captures dragged out into another app 7+ days ago (Recently Taken) go to the Trash —
 //                            also hourly while the app runs
 //                            (BlurtCore TakenCaptures; the app's own, no script)
+//   videos                   only when the user turned it on (Settings → Storage, record.delete_videos_after_days):
+//                            organized recordings' videos older than that go to the Trash (BlurtCore VideoRetention) —
+//                            also daily while the app runs
+// Whatever wants a word in the island at launch goes through LaunchMessages: only one is shown.
 // and keeps one `sessions.py monitor` running while it lives (K5: tmux windows → session status; it takes its own lock,
 // so a second copy just exits). Any of them missing (an older skill) is skipped.
 import AppKit
@@ -20,6 +27,7 @@ enum Housekeeping {
         let launched = Date()
         Task.detached(priority: .utility) {
             let r = ScriptRunner.shared
+            await MainActor.run { checkSkillContract() }   // first: before any of the skill's scripts run, inside the hold
             await finishInterruptedJobs(launchedAt: launched)
             for (script, args) in [("projects.py", ["migrate"]), ("items.py", ["migrate", "--all"]), ("jobs.py", ["gc"])] {
                 guard (try? r.scriptURL(script)) != nil else { continue }
@@ -31,8 +39,62 @@ enum Housekeeping {
                 startMonitor()
                 snapper.expireTaken()
                 askAboutCarriedOverProject()
+                deleteOldVideos()
+                Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in deleteOldVideos() }
             }
             await speechModels()
+        }
+    }
+
+    /// The app and the skill scripts it runs speak the same contract (SkillContract), or one line says which side to
+    /// update — once per app version and skill contract (app.contract_warned).
+    static func checkSkillContract() {
+        let skill = SkillContract.skillVersion()
+        guard let m = SkillContract.check(skill: skill) else { return }
+        let app = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let sig = "\(app)/\(skill ?? -1)"
+        guard Config.shared["app.contract_warned"] as? String != sig else { return }
+        emit(["event": "skill_contract", "skill": skill ?? -1, "app": SkillContract.expected])
+        var t: Island.Toast
+        switch m {
+        case .skillOlder:
+            t = Island.Toast(text: T("app.contract.skill_older"), actionTitle: T("app.contract.how")) {
+                NSWorkspace.shared.open(Help.guideURL(section: "update"))
+            }
+        case .appOlder:
+            t = Island.Toast(text: T("app.contract.app_older"), actionTitle: Updater.shared.canCheck ? T("app.menu.updates") : nil) {
+                Updater.shared.checkForUpdates(nil)
+            }
+        }
+        t.seconds = 8
+        LaunchMessages.shared.post(.skill, t) { Config.shared.set("app.contract_warned", sig) }   // said once it was seen
+    }
+
+    /// Settings → Storage's "Delete videos automatically" (off unless the user chose an age): organized recordings'
+    /// videos older than that go to the Trash. The recording in progress is never touched.
+    static func deleteOldVideos() {
+        guard let days = VideoRetention.autoDays else { return }
+        let current = (NSApp.delegate as? App)?.lastSession.map { Set([$0.standardizedFileURL.path]) } ?? []
+        DispatchQueue.global(qos: .utility).async {
+            let c = VideoRetention.candidates(roots: StorageModel.roots(), olderThan: days, excluding: current)
+            guard !c.isEmpty else { return }
+            DispatchQueue.main.async { trashVideos(c, auto: true) }
+        }
+    }
+
+    /// The candidates' videos to the Trash. Each session is stamped a recording first (VideoRetention.stamp), so with
+    /// its video gone it doesn't turn into a snap batch, and stamped video_removed for each video that went.
+    static func trashVideos(_ c: [VideoRetention.Candidate], auto: Bool, then: (() -> Void)? = nil) {
+        for s in c { VideoRetention.stamp(s.session) }
+        NSWorkspace.shared.recycle(c.flatMap(\.files)) { done, _ in
+            let gone = Set(done.keys.map { $0.standardizedFileURL.path })
+            let now = Date()
+            for s in c where gone.contains(s.session.appendingPathComponent("recording.mp4").standardizedFileURL.path) {
+                VideoRetention.stamp(s.session, removed: now)
+            }
+            emit(["event": "videos_deleted", "auto": auto, "sessions": c.count, "files": done.count,
+                  "bytes": c.reduce(Int64(0)) { $0 + $1.bytes }])
+            then?()
         }
     }
 
@@ -47,9 +109,10 @@ enum Housekeeping {
         let size = ByteCountFormatter.string(fromByteCount: Int64(mb * 1_000_000), countStyle: .file)
         await MainActor.run {
             emit(["event": "asr_suggest", "models": need.compactMap { $0["model"] as? String }, "size_mb": mb])
-            AppEnvironment.island?.toast(T("main.speech.recommended", size), actionTitle: T("main.speech.recommended.action")) {
+            guard AppEnvironment.island != nil else { return }
+            LaunchMessages.shared.post(.model, Island.Toast(text: T("main.speech.recommended", size), actionTitle: T("main.speech.recommended.action")) {
                 AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
-            }
+            })
         }
     }
 
@@ -59,13 +122,18 @@ enum Housekeeping {
         let store = ProjectStore.shared
         guard store.currentBy == "migrate", let p = store.current else { return }
         emit(["event": "ask_current_project", "project": p.id])
-        island.ask(T("app.migrate.ask", p.name), T("app.migrate.keep", p.name), {
+        // Island.ask's question, through LaunchMessages (not shown or not answered: asked again next launch)
+        var t = Island.Toast(text: T("app.migrate.ask", p.name), actionTitle: T("app.migrate.keep", p.name)) {
             emit(["event": "current_project_answer", "keep": true])
             use(p.id)
-        }, T("app.migrate.auto"), {
+        }
+        t.secondTitle = T("app.migrate.auto")
+        t.second = {
             emit(["event": "current_project_answer", "keep": false])
             use(nil)
-        })
+        }
+        t.seconds = .infinity
+        LaunchMessages.shared.post(.project, t)
         func use(_ id: String?) {
             Task {
                 do { try await store.use(id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }

@@ -21,16 +21,16 @@
 "app.menu.countdown" = "倒计时";
 "app.menu.countdown.none" = "不倒计时";
 "app.menu.countdown.seconds" = "%ld 秒";
-"app.menu.discard" = "放弃这次录制";
-"app.menu.finish" = "完成录制";
+"app.menu.discard" = "放弃这次录屏";
+"app.menu.finish" = "完成录屏";
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";
 "app.menu.project" = "当前项目：%@";
 "app.menu.project.auto_tip" = "按内容自动归到对应项目";
 "app.menu.quit" = "退出口喷鸡";
-"app.menu.record" = "开始录制";
-"app.menu.record_last" = "录制上次的区域";
-"app.menu.restart" = "重新录制";
+"app.menu.record" = "开始录屏";
+"app.menu.record_last" = "录上次的区域";
+"app.menu.restart" = "重新录屏";
 "app.menu.resume" = "继续";
 "app.menu.selecting" = "正在选择区域…";
 "app.menu.shortcuts" = "快捷键…";
@@ -50,11 +50,11 @@
 
 "app.status.ax_count" = "口喷鸡 · %@";
 
-"app.toast.saved" = "录屏已保存（%@）\n随时可以在主窗口里整理。";
-"app.toast.welcome" = "口喷鸡在菜单栏\n按%@ 听写 · %@ 截图";
+"app.toast.saved" = "录屏已保存（%@）";
+"app.toast.welcome" = "口喷鸡在菜单栏里 · 按 %1$@ 听写 · %2$@ 截图";
 
 "app.url.no_item" = "索引里找不到这个条目（%@）";
-"app.url.no_session" = "这批素材已经不在了：%@";
+"app.url.no_session" = "这条录屏或截图已经不在了：%@";
 
 "main.action.record" = "录制";
 "main.action.snap" = "截图";
@@ -348,7 +348,7 @@
 
 "menu.undo" = "撤销";
 
-"menu.website" = "口喷鸡主页";
+"menu.website" = "口喷鸡使用指南";
 
 "menu.window" = "窗口";
 
@@ -421,3 +421,12 @@
 "main.dictation.info.polish.short" = "太短，不用整理";
 "main.dictation.info.polish.no_model" = "没有润色模型";
 "main.dictation.info.polish.get" = "下载…";
+"app.toast.welcome_no_dictation" = "口喷鸡在菜单栏里 · %1$@ 截图 · %2$@ 录屏";
+"app.toast.change_shortcut" = "更换…";
+"app.config.unreadable" = "口喷鸡读不了设置文件，改动不会被保存";
+"app.contract.skill_older" = "口喷鸡 skill 比 App 旧";
+"app.contract.app_older" = "口喷鸡 skill 比 App 新";
+"app.contract.how" = "怎么更新";
+"app.url.ask_record" = "一个链接想开始录屏";
+"app.url.ask_snap" = "一个链接想截图";
+"app.url.snap" = "截图";

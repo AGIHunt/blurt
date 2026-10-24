@@ -50,11 +50,11 @@
 
 "app.status.ax_count" = "Blurt — %@";
 
-"app.toast.saved" = "Recording saved (%@)\nOrganize it from the main window whenever you like.";
-"app.toast.welcome" = "Blurt is in your menu bar\nTap %@ to dictate · %@ to snap";
+"app.toast.saved" = "Recording saved (%@)";
+"app.toast.welcome" = "Blurt is in the menu bar · %1$@ to dictate · %2$@ to snap";
 
 "app.url.no_item" = "That item isn’t in the index (%@)";
-"app.url.no_session" = "That capture is gone: %@";
+"app.url.no_session" = "That recording or snap is gone: %@";
 
 "main.action.record" = "Record";
 "main.action.snap" = "Snap";
@@ -348,7 +348,7 @@
 
 "menu.undo" = "Undo";
 
-"menu.website" = "Blurt Website";
+"menu.website" = "Blurt User Guide";
 
 "menu.window" = "Window";
 
@@ -421,3 +421,12 @@
 "main.dictation.info.polish.short" = "Too short to tidy";
 "main.dictation.info.polish.no_model" = "No polish model";
 "main.dictation.info.polish.get" = "Download…";
+"app.toast.welcome_no_dictation" = "Blurt is in the menu bar · %1$@ to snap · %2$@ to record";
+"app.toast.change_shortcut" = "Change…";
+"app.config.unreadable" = "Blurt can’t read its settings file, so changes aren’t saved";
+"app.contract.skill_older" = "The Blurt skill is older than this app";
+"app.contract.app_older" = "The Blurt skill is newer than this app";
+"app.contract.how" = "How to Update";
+"app.url.ask_record" = "A link wants to start a screen recording";
+"app.url.ask_snap" = "A link wants to take a snap";
+"app.url.snap" = "Snap";
