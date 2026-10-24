@@ -41,7 +41,12 @@ final class Dictation {
     static let shared = Dictation()
 
     enum Phase: String { case idle, listening, transcribing, polishing }
-    private(set) var phase: Phase = .idle { didSet { if phase != oldValue { island.dictationChanged() } } }
+    private(set) var phase: Phase = .idle {
+        didSet {
+            if phase != oldValue { island.dictationChanged() }
+            updateShiftFilter()
+        }
+    }
     private(set) var levels: [Float] = []
     private(set) var lastResult: [String: Any]?
     var busy: Bool { phase != .idle }
@@ -50,7 +55,7 @@ final class Dictation {
     private let keys = DictationKeys()
     private var voice: NoteVoice?
     private var wav: URL?
-    private var entryID = ""
+    private(set) var entryID = ""
     private var startedAt = Date()
     private var heardSpeech = false
     /// pieces transcribed and polished while the user talks (DictationStream)
@@ -80,6 +85,21 @@ final class Dictation {
     private var sendAfterPaste = false
     /// the paste is under way (⌘V posted, the clipboard not back yet)
     private var inserting = false
+
+    // the style of this take (DictationStyles.swift; docs/design/dictation-styles.md)
+    /// the router's decision so far: the app's style at the key-down, then ⇧ / the island / Fn+⇧
+    var styleDecision: DictationStyleRouter.Decision?
+    /// ⇧ / the island / Fn+⇧ this take (the last choice wins), and how often it was switched
+    var explicitStyle: (style: DictationStyle, source: DictationStyleSource)?
+    var styleToggles = 0
+    /// the bundle id the take goes into (the app in front at the key-down)
+    var styleBundle: String?
+    /// tests (`dictation style app BUNDLE`): the app a take counts as going into (the pad is always the field)
+    var testStyleBundle: String?
+    /// what reformat-last works on: the last paste, its versions and where it went
+    var lastPaste: DictationLastPaste?
+    /// the style the island's ear shows while listening (nil: light, the quiet default)
+    var listeningStyle: DictationStyle? { phase == .listening ? styleDecision?.style : nil }
 
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
 
@@ -115,6 +135,13 @@ final class Dictation {
     static var learnOn: Bool { settings["learn"] as? Bool ?? true }
     /// a double tap of the key presses Return ("send"; after a dictation, once it is pasted)
     static var doubleTapSend: Bool { settings["double_tap_send"] as? Bool ?? true }
+    /// per-category / per-app styles (unset = light everywhere, with the category's variant)
+    static var styleConfig: DictationStyleConfig { DictationStyleConfig(json: settings["styles"] as? [String: Any]) }
+    static func setStyleConfig(_ c: DictationStyleConfig) { set("styles", c.json) }
+    /// after a take that sounds like a list but was typed as prose, the island offers to make it one
+    static var suggestLists: Bool { settings["suggest_lists"] as? Bool ?? true }
+    /// suggest an app's style from how the user switches there (never switches by itself)
+    static var learnStyles: Bool { settings["learn_styles"] as? Bool ?? true }
 
     // MARK: launch / settings changed
 
@@ -343,8 +370,14 @@ final class Dictation {
     /// The lab stopped its take itself (its Stop button): the key's next press starts again.
     func labReset() { trigger.reset(active: false) }
 
-    func handle(_ e: DictationTrigger.Event) {
+    func handle(_ event: DictationTrigger.Event) {
         guard Dictation.enabled else { return }
+        var e = event
+        // a click on Blurt's own island while dictating is the style chip, not "a click joined in" (it never cancels
+        // push-to-talk; the island itself ignores it then)
+        if case let .mouseDown(t) = e, trigger.active, phase == .listening, island.frameOnScreen.contains(NSEvent.mouseLocation) {
+            e = .islandClick(time: t)
+        }
         if let l = lab, phase == .idle, voice == nil, MainActor.assumeIsolated({ l.wantsKey }) {
             for out in trigger.handle(e) {
                 switch out {
@@ -352,12 +385,13 @@ final class Dictation {
                 case .stop: MainActor.assumeIsolated { l.keyStop() }
                 case .cancel: MainActor.assumeIsolated { l.keyCancel() }
                 case .arm: warm()
-                case .send: break
+                case .send, .style: break
                 }
             }
             scheduleHoldTick()
             return
         }
+        let wasIsland: Bool = { if case .islandClick = e { return true }; return false }()
         for out in trigger.handle(e) {
             switch out {
             case .arm: arm()
@@ -365,12 +399,20 @@ final class Dictation {
             case .stop: stop()
             case .cancel: cancel()
             case .send: send()
+            case .style: toggleStyle(via: wasIsland ? .island : .shift)
             }
         }
         // the press became a shortcut (Fn-←, ⌥A), a click joined in, or it was let go too early / too late: the mic
         // opened on the key-down closes again, and nothing is kept
         if precaptured, phase == .idle, !trigger.armedDown { dropPrecapture() }
+        updateShiftFilter()
         scheduleHoldTick()
+    }
+
+    /// While a take listens (or its key is down), a lone ⇧ is the style toggle: the Fn filter keeps it from the app
+    /// in front too (an input method would switch between Chinese and English on it).
+    func updateShiftFilter() {
+        keys.swallowShift = trigger.active || trigger.armedDown || phase == .listening
     }
 
     private func scheduleHoldTick() {
@@ -456,13 +498,18 @@ final class Dictation {
             if self.phase != .listening { return self.dropPrecapture() }
             if e == .noSpeech { self.discard(quietly: false) } else { self.finish(ended: true) }
         }
+        // the style: the app in front decides the base now (verbatim skips polish for the whole take); ⇧ or the
+        // island can still make it Structured — the list is rendered after the stitch, so that is free
+        beginStyle(bundle: DictationInsert.testMode ? testStyleBundle ?? front?.bundleIdentifier : front?.bundleIdentifier)
+        let base = styleDecision?.base ?? .light
         var opt = DictationStream.Options()
         opt.language = Config.shared["asr.language"] as? String ?? "auto"
         opt.streaming = Dictation.streaming
         opt.polishTimeout = Dictation.polishTimeout
         opt.loadBudget = Dictation.loadBudget
         opt.vocab = DictationVocabulary.shared.payload()
-        opt.polish = Dictation.polishOn && polishModel != nil
+        opt.polish = Dictation.polishOn && polishModel != nil && base.polishes
+        opt.variant = styleDecision?.category == .chat ? "chat" : nil
         let s = DictationStream(id: entryID, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)
         v.onSamples = { [weak s] x in s?.append(x) }
         voice = v
@@ -527,6 +574,7 @@ final class Dictation {
         precaptured = false
         if !adopted { beginCapture() }
         voice?.noSpeechTimeout = trigger.pushToTalk ? .infinity : 30     // push-to-talk ends when the key comes up
+        if trigger.startShift { explicitStyle = (.structured, .chord); routeStyle() }      // Fn+⇧: start in Structured
         phase = .listening
         captureContext()
         if !keys.installed {        // without the tap, Esc comes as a Carbon hotkey (as for the voice note)
@@ -535,7 +583,8 @@ final class Dictation {
         }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
-              "precaptured": adopted, "mic_live": micLive])
+              "precaptured": adopted, "mic_live": micLive, "style": styleDecision?.style.rawValue ?? "light",
+              "style_source": styleDecision?.source.rawValue ?? "default", "category": styleDecision?.category.rawValue ?? "other"])
         if micLive, Dictation.startSound { NSSound(named: "Tink")?.play() }
     }
 
@@ -682,7 +731,8 @@ final class Dictation {
     /// The warm polish server. A model still coming up (the server starting, the weights loading) gets `loadBudget`
     /// — that time never counts against `timeout`, which the server applies to the generation alone once the model is
     /// loaded. nil = no polish (raw text, not a fall-back). Blocking: off the main thread.
-    static func polish(_ raw: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]], context: [String: Any]?) -> [String: Any]? {
+    static func polish(_ raw: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]], context: [String: Any]?,
+                       variant: String? = nil) -> [String: Any]? {
         let t0 = Date()
         let until = t0.addingTimeInterval(loadBudget)
         while !WarmServer.running("polish-serve") && Date() < until { usleep(50_000) }
@@ -690,7 +740,8 @@ final class Dictation {
             return ["ok": true, "text": raw, "fell_back": true, "reason": "unavailable", "load_ms": Int(Date().timeIntervalSince(t0) * 1000)]
         }
         let waited = Int(Date().timeIntervalSince(t0) * 1000)
-        let req: [String: Any] = ["cmd": "polish", "text": raw, "timeout": timeout, "vocab": vocab, "context": context ?? NSNull()]
+        var req: [String: Any] = ["cmd": "polish", "text": raw, "timeout": timeout, "vocab": vocab, "context": context ?? NSNull()]
+        if let v = variant { req["variant"] = v }       // "chat": sentence-final particles stay (dictation-styles.md §3.1)
         guard var r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1) else {
             return ["ok": true, "text": raw, "fell_back": true, "reason": "timeout", "load_ms": waited]
         }
@@ -701,11 +752,15 @@ final class Dictation {
 
     private func deliver(id: String, r: DictationStream.Result, polishTried: Bool, app: NSRunningApplication?, started: Date,
                          duration: Double, wav: URL, context: DictationContext?, keyUp: CFTimeInterval) {
-        var text = r.text
         // the custom words this dictation wrote: fixed by the sounds-like pass or polish, or (when the speech model was
         // told the words) written by the model itself
         var terms = r.terms
-        if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where text.contains(t) && !terms.contains(t) { terms.append(t) } }
+        if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where r.text.contains(t) && !terms.contains(t) { terms.append(t) } }
+        // the take's style: the category's variant of light, the list when Structured asked for one (DictationStyles.swift;
+        // deterministic, a few ms)
+        let styled = styleText(r)
+        var text = styled.text
+        let styleRecord = styled.record
         phase = .idle
         // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes, and
         // the text on either side of the cursor the dictation is fitted into (DictationFit: the words that repeat the
@@ -721,15 +776,15 @@ final class Dictation {
             let len = min(max(0, f.selection.length), ns.length - loc)
             let before = String(ns.substring(to: loc).suffix(500))
             let after = String(ns.substring(from: loc + len).prefix(500))
-            let names = Set(DictationVocabulary.shared.active().map(\.term).flatMap { $0.split(separator: " ").map(String.init) })
-            let fit = DictationFit.fit(text, before: before, after: after, names: names)
-            if fit.trimmed {
+            let fit = Dictation.fit(text, before: before, after: after, list: styleRecord.rendered)
+            if fit.changes.count > 0 {
                 emit(["event": "dictation_fit", "id": id, "changes": fit.changes, "from": text.count, "to": fit.text.count])
                 text = fit.text
                 fitted = fit.changes
             }
         }
         let pasteAt = CACurrentMediaTime()
+        let bundle = styleBundle ?? app?.bundleIdentifier      // the app the take went into (tests: `dictation style app`)
         var timing = r.timing
         timing["total_ms"] = Int((pasteAt - keyUp) * 1000)
         inserting = true
@@ -749,7 +804,7 @@ final class Dictation {
             if labKeep { Dictation.set("lab_keep_next", Dictation.labKeepNext - 1) }
             let keep = Dictation.keepAudio || labKeep
             if !keep { try? FileManager.default.removeItem(at: wav) }
-            let e = DictationEntry(id: id, time: started, app: app?.localizedName, bundle: app?.bundleIdentifier, duration: duration,
+            let e = DictationEntry(id: id, time: started, app: bundle == app?.bundleIdentifier ? app?.localizedName : bundle, bundle: bundle, duration: duration,
                                    raw: r.asrText, polished: r.polished, text: text,
                                    model: r.model, fellBack: r.fellBack, reason: r.reason,
                                    insert: result.rawValue, audio: keep ? "audio/\(wav.lastPathComponent)" : nil,
@@ -758,9 +813,14 @@ final class Dictation {
                                    context: Dictation.keepAudio && r.contextUsed ? context?.debugText : nil,
                                    timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                    repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
-            DictationHistory.shared.append(e)
+            var entry = e
+            entry.style = styleRecord
+            DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
+            // reformat-last's material: the versions, and where the text went (only while it stays untouched)
+            self.rememberPaste(id: id, app: app, bundle: bundle, r: r, record: styleRecord, typed: text, result: result,
+                               field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
             if result == .copied {
                 island.toast(Loc.t("dictation.toast.copied", table: "Dictation"), actionTitle: nil, action: nil)
@@ -779,7 +839,11 @@ final class Dictation {
                                       "polished": r.polished ?? NSNull(), "model": r.model ?? NSNull(),
                                       "insert": result.rawValue, "polish_tried": polishTried, "asr_text": r.asrText,
                                       "terms": terms, "context_used": r.contextUsed, "asr_model": r.asrModel ?? NSNull(),
-                                      "biased": r.biased, "repaired": r.repaired, "fitted": fitted]
+                                      "biased": r.biased, "repaired": r.repaired, "fitted": fitted,
+                                      "style": styleRecord.style, "style_source": styleRecord.source,
+                                      "category": styleRecord.category, "markers": styleRecord.markers,
+                                      "rendered": styleRecord.rendered, "variant": styleRecord.variant,
+                                      "style_ms": styled.ms]
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)

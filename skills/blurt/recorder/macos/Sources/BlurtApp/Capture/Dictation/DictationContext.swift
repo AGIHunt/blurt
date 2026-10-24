@@ -65,6 +65,20 @@ final class DictationField {
         return (text, NSRange(location: range.location, length: range.length))
     }
 
+    /// Selects `range` (UTF-16) — reformat-last's replacement; true only when the field then reports that selection.
+    func select(_ range: NSRange) -> Bool {
+        if let tv = textView {
+            guard NSMaxRange(range) <= (tv.string as NSString).length else { return false }
+            tv.setSelectedRange(range)
+            return tv.selectedRange() == range
+        }
+        guard let el = element else { return false }
+        var cf = CFRange(location: range.location, length: range.length)
+        guard let v = AXValueCreate(.cfRange, &cf),
+              AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, v) == .success else { return false }
+        return read()?.selection == range
+    }
+
     /// The focused window's title.
     var windowTitle: String? {
         if let tv = textView { return tv.window?.title }
@@ -164,6 +178,8 @@ final class DictationWatch {
     private(set) var watching = false
     /// a fix was turned into a word (the island says so; tests read it)
     var onLearned: ((String) -> Void)?
+    /// the list the take was typed as was taken apart in the field (a style-learning signal, dictation-styles.md §3.5)
+    var onReverted: (() -> Void)?
 
     /// `location`: where the cursor was when the text went in (UTF-16), read just before pasting.
     func start(field: DictationField, inserted: String, location: Int) {
@@ -215,6 +231,7 @@ final class DictationWatch {
 
     private func learn(_ edited: String) {
         guard edited != baseline, !edited.isEmpty else { return }
+        if DictationReformat.reverted(typed: baseline, edited: edited) { onReverted?() }
         let fixes = DictationLearn.fixes(typed: baseline, edited: edited, isCommonWord: DictationLearn.isCommonWord)
         baseline = edited
         for fx in fixes {

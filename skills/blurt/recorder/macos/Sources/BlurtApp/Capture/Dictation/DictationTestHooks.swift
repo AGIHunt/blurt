@@ -19,6 +19,7 @@ extension App {
                     case let .flags(c, f, t): return (t, .flags(keyCode: c, flags: f, time: base + t))
                     case let .keyDown(c, t): return (t, .keyDown(keyCode: c, time: base + t))
                     case let .mouseDown(t): return (t, .mouseDown(time: base + t))
+                    case let .islandClick(t): return (t, .islandClick(time: base + t))
                     case let .tick(t): return (t, .tick(time: base + t))
                     }
                 }()
@@ -99,6 +100,38 @@ extension App {
                   "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
+        case "style":
+            // style status | toggle [island] | reformat | chip | undo | set CATEGORY|BUNDLE STYLE|- | suggest BUNDLE |
+            // answer yes|no (the island's open question) | reset — dictation styles (DictationStyles.swift)
+            let a = rest.split(separator: " ").map(String.init)
+            switch a.first ?? "status" {
+            case "toggle": d.toggleStyle(via: a.count > 1 && a[1] == "island" ? .island : .shift)
+            case "reformat": d.reformatLast(via: "test")
+            case "chip": d.reformat(to: .structured, action: "reformat", via: "chip")
+            case "undo": if let lp = d.lastPaste { d.reformat(to: lp.original, action: "undo", via: "test") }
+            case "set" where a.count > 2:
+                var c = Dictation.styleConfig
+                let st = DictationStyle(rawValue: a[2])
+                if let cat = DictationAppCategory(rawValue: a[1]) { c.categories[cat] = st } else { c.apps[a[1]] = st }
+                Dictation.setStyleConfig(c)
+            case "reset": Dictation.set("styles", nil); Dictation.set("style_asked", nil)
+            case "app": d.testStyleBundle = a.count > 1 && a[1] != "-" ? a[1] : nil
+            case "suggest" where a.count > 1: d.checkStyleSuggestion(bundle: a[1])
+            case "answer":
+                if let t = island.currentToast {
+                    island.dismissToast()
+                    if a.count > 1 && a[1] == "no" { t.second?() } else { t.action?() }
+                }
+            default: break
+            }
+            let lp = d.lastPaste
+            emit(["event": "dictation_style_status", "style": d.styleDecision?.style.rawValue ?? NSNull(),
+                  "source": d.styleDecision?.source.rawValue ?? NSNull(), "base": d.styleDecision?.base.rawValue ?? NSNull(),
+                  "category": d.styleDecision?.category.rawValue ?? NSNull(), "toggles": d.styleToggles,
+                  "config": Dictation.styleConfig.json ?? NSNull(), "asked": Dictation.settings["style_asked"] ?? NSNull(),
+                  "last": lp.map { ["id": $0.id, "original": $0.original.rawValue, "current": $0.current.rawValue, "typed": $0.typed,
+                                    "location": $0.location ?? -1] as [String: Any] } ?? NSNull(),
+                  "toast": island.currentToast?.text ?? NSNull()])
         case "lab": MainActor.assumeIsolated { DictationLabModel.testCommand(rest) }    // the Dictation Lab (DictationLab.swift)
         case "vocab":
             // vocab add TERM[|SOUNDS,…] | remove TERM | accept TERM | reject TERM | list — the store Settings edits

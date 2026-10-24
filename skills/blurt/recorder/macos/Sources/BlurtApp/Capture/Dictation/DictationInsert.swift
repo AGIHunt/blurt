@@ -124,6 +124,20 @@ enum DictationInsert {
 
     static func copy(_ text: String) { put(text, transient: false) }
 
+    /// Reformat-last: `text` in place of `range` of the field the last take went into — the range selected (the
+    /// test pad's text view; another app's field through Accessibility, read back to be sure), then the same paste as
+    /// a dictation. `done(false)`: the field isn't focused any more or wouldn't take the selection (the caller copies).
+    static func replace(_ text: String, in field: DictationField, range: NSRange, done: @escaping (Bool) -> Void) {
+        guard field.isFocused(), field.select(range) else {
+            emit(["event": "dictation_replace", "result": "refused"])
+            return done(false)
+        }
+        insert(text) { r in
+            emit(["event": "dictation_replace", "result": r.rawValue])
+            done(r == .pasted)
+        }
+    }
+
     private static func put(_ text: String, transient: Bool) {
         let pb = NSPasteboard.general
         pb.clearContents()

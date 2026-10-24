@@ -472,7 +472,13 @@ final class Island: NSObject, IslandHosting {
                 right.set(.dots)
             case .listening:
                 left.set(.dictation(Dictation.shared.levels))
-                right.set(.text(Island.clock(Dictation.shared.elapsed), mono: true))
+                // the style chip: a list glyph while Structured, quotes while Verbatim, nothing for light (the default)
+                let clock = Island.clock(Dictation.shared.elapsed)
+                switch Dictation.shared.listeningStyle {
+                case .structured?: right.set(.iconText(.list, clock))
+                case .verbatim?: right.set(.iconText(.quote, clock))
+                default: right.set(.text(clock, mono: true))
+                }
             case .polishing:
                 left.set(.glyph(.wand, pulse: true))
                 right.set(.dots)
@@ -590,6 +596,12 @@ final class Island: NSObject, IslandHosting {
     }
 
     func clicked(at p: NSPoint) {
+        // while a dictation listens the island is its style chip: the click went to Dictation as `.islandClick`
+        // (through the key listener, which sees it first) — here it opens nothing
+        if Dictation.shared.phase == .listening {
+            if DictationInsert.testMode { Dictation.shared.handle(.islandClick(time: CACurrentMediaTime())) }   // no listener in tests
+            return
+        }
         // the left ear's count: the cards come down and stay (until the pointer has come and gone, or Esc)
         if earHit(p) { hanging.reveal(via: "ear"); return }
         // a click on the collapsed island opens it right away

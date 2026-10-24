@@ -323,6 +323,7 @@ extension App {
         case .dictationEsc: Dictation.shared.cancel()
         case .project: if resident { island.toggleSwitcher() }
         case .cards: if resident { hanging.reveal(via: "hotkey") }
+        case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥⇧L (dictation-styles.md)
         // Esc while the cards are down on purpose (voice input's own Esc wins while it listens)
         case .cardsEsc: if VoiceInput.shared.active { VoiceInput.shared.cancel() } else { hanging.dismiss() }
         default: break

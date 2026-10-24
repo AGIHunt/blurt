@@ -8,6 +8,9 @@
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
 //   {"op":"correct","id","text","t"}  the user's corrected text (the Dictation page's "Save correction"); "corrected"
 //                                      on a rewritten line
+//   {"op":"style","id","action","from","to","replaced","t"}  reformat-last, its undo, or a list the user took apart
+//                                      (action reformat | undo | revert); "reformats" on a rewritten line
+// Since the styles work: "style", "style_source", "style_router" (DictationStyleRecord: the router's inputs and decision).
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio). dictation.py reads the
 // same file (list, turn into an item).
@@ -52,6 +55,8 @@ public struct DictationEntry: Identifiable, Hashable {
     public var corrected: String?
     /// the text as it stands: the correction when there is one, else what was typed
     public var finalText: String { corrected ?? text }
+    /// the style the take was typed in, why, and what reformat-last did with it (nil: an older entry)
+    public var style: DictationStyleRecord?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -91,6 +96,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let r = repaired, !r.isEmpty { o["repaired"] = r }
         if let f = fitted, !f.isEmpty { o["fitted"] = f }
         if let c = corrected { o["corrected"] = c }
+        style?.write(into: &o)
         return o
     }
 
@@ -120,6 +126,7 @@ public struct DictationEntry: Identifiable, Hashable {
         repaired = o["repaired"] as? [String]
         fitted = o["fitted"] as? [String]
         corrected = o["corrected"] as? String
+        style = DictationStyleRecord(json: o)
     }
 }
 
@@ -162,6 +169,14 @@ public final class DictationHistory {
         appendLine(["op": "correct", "id": id, "text": text, "t": DictationEntry.iso.string(from: Date())])
     }
 
+    /// Reformat-last (or its undo, or a list taken apart in the field): folded into the entry's `reformats`.
+    public func restyle(_ id: String, _ r: DictationReformatRecord) {
+        var o = r.json
+        o["op"] = "style"
+        o["id"] = id
+        appendLine(o)
+    }
+
     /// Everything goes: the file is emptied and the audio removed.
     public func clear() {
         lock.lock(); defer { lock.unlock() }
@@ -201,6 +216,12 @@ public final class DictationHistory {
             case "clear": byID = [:]; order = []
             case "correct":
                 if let i = o["id"] as? String, var e = byID[i], let t = o["text"] as? String { e.corrected = t; byID[i] = e }
+            case "style":
+                if let i = o["id"] as? String, var e = byID[i], let r = DictationReformatRecord(json: o) {
+                    if e.style == nil { e.style = DictationStyleRecord(style: "light", source: "default", category: "other", base: "light") }
+                    e.style?.reformats.append(r)
+                    byID[i] = e
+                }
             case "item":
                 if let i = o["id"] as? String, var e = byID[i] { e.item = o["item"] as? String; e.itemUID = o["uid"] as? String; byID[i] = e }
             default:

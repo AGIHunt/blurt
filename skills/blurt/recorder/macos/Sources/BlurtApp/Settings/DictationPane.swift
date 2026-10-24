@@ -115,6 +115,8 @@ final class DictationSettings: ObservableObject {
         }
         let n = DictationHistory.shared.load().count
         if n != historyCount { historyCount = n }
+        let st = Dictation.styleConfig          // a learned suggestion accepted on the island shows up here
+        if st != styles { styles = st }
         reloadWords()
     }
 
@@ -213,6 +215,36 @@ final class DictationSettings: ObservableObject {
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: d) }
     }
     func setKeepAudio(_ v: Bool) { keepAudio = v; save("keep_audio", v ? true : nil) }
+
+    // MARK: style (dictation-styles.md)
+
+    @Published var styles = Dictation.styleConfig
+    @Published var suggestLists = Dictation.suggestLists
+    @Published var learnStyles = Dictation.learnStyles
+    /// a category's style; unset = the smart default (light with the category's variant)
+    func setStyle(_ s: DictationStyle?, for c: DictationAppCategory) {
+        var cfg = Dictation.styleConfig
+        cfg.categories[c] = s == DictationStyleConfig.smartDefault ? nil : s
+        Dictation.setStyleConfig(cfg)
+        styles = cfg
+        emit(["event": "dictation_setting", "key": "styles.\(c.rawValue)", "value": s?.rawValue ?? "default"])
+    }
+    /// an app set on its own (by a learned suggestion) back to its category's style
+    func resetApp(_ bundle: String) {
+        var cfg = Dictation.styleConfig
+        cfg.apps[bundle] = nil
+        cfg.learned.remove(bundle)
+        Dictation.setStyleConfig(cfg)
+        styles = cfg
+        emit(["event": "dictation_setting", "key": "styles.apps", "value": "reset \(bundle)"])
+    }
+    func setSuggestLists(_ v: Bool) { suggestLists = v; save("suggest_lists", v ? nil : false) }
+    func setLearnStyles(_ v: Bool) { learnStyles = v; save("learn_styles", v ? nil : false) }
+    /// an app's name from its bundle id (installed apps only; else the id)
+    func appName(_ bundle: String) -> String {
+        guard let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else { return bundle }
+        return FileManager.default.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: "")
+    }
 
     func choose(_ m: PolishModel) {
         save("polish_model", m.id)
@@ -318,6 +350,11 @@ struct DictationPane: View {
             } header: { Text(T("dictation.settings.section")) }
 
             Section {
+                styleRows
+            } header: { Text(T("dictation.style.section")) }
+            .id("style")
+
+            Section {
                 PermissionSetupButton(flow: .dictation, source: .dictation, p: perms, banner: false)
                 permissionRow(.accessibility, T("dictation.perm.accessibility"), T("dictation.perm.accessibility.why"), granted: m.accessibility)
                 permissionRow(.inputMonitoring, T("dictation.perm.input_monitoring"),
@@ -406,6 +443,53 @@ struct DictationPane: View {
             Button(T("dictation.history.clear.confirm"), role: .destructive) { m.clearHistory() }
             Button(T("dictation.cancel"), role: .cancel) {}
         } message: { Text(T("dictation.history.clear.message", m.historyCount)) }
+    }
+
+    // MARK: style
+
+    /// Per app category: light (the smart default, with the category's own variant), verbatim, structured, auto
+    /// lists; apps set on their own (learned ones, with Reset); the ≡ suggestion and learning switches; the keys.
+    @ViewBuilder var styleRows: some View {
+        Hint(T("dictation.style.detail"))
+        ForEach(DictationAppCategory.allCases, id: \.self) { c in
+            Picker(selection: Binding(get: { m.styles.categories[c] ?? DictationStyleConfig.smartDefault },
+                                      set: { m.setStyle($0, for: c) })) {
+                ForEach(DictationStyle.allCases, id: \.self) { s in
+                    Text(s == DictationStyleConfig.smartDefault ? T("dictation.style.default_suffix", Dictation.styleName(s))
+                                                                : Dictation.styleName(s)).tag(s)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(T("dictation.style.cat.\(c.rawValue)"))
+                    Text(T("dictation.style.cat.\(c.rawValue).detail")).font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .disabled(!m.enabled)
+        }
+        if !m.styles.apps.isEmpty {
+            Text(T("dictation.style.apps")).font(.callout).foregroundStyle(.secondary)
+            ForEach(m.styles.apps.keys.sorted(), id: \.self) { b in
+                HStack(spacing: 8) {
+                    Text(m.appName(b))
+                    if m.styles.learned.contains(b) { Badge(T("dictation.style.learned")) }
+                    Spacer()
+                    Text(Dictation.styleName(m.styles.apps[b] ?? .light)).foregroundStyle(.secondary)
+                    Button(T("dictation.style.reset")) { m.resetApp(b) }.controlSize(.small).help(T("dictation.style.reset.help"))
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        Toggle(T("dictation.style.suggest"), isOn: Binding(get: { m.suggestLists }, set: { m.setSuggestLists($0) }))
+            .disabled(!m.enabled)
+        Toggle(isOn: Binding(get: { m.learnStyles }, set: { m.setLearnStyles($0) })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("dictation.style.learn_toggle"))
+                Text(T("dictation.style.learn_toggle.detail")).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .disabled(!m.enabled)
+        Hint(hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat)))
     }
 
     // MARK: recognition model

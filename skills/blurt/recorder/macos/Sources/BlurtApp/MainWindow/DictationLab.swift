@@ -526,6 +526,10 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
                     Option(spec: "vocab=off", label: T("dictation.lab.compare.vocab_off")),
                     Option(spec: "context=off", label: T("dictation.lab.compare.context_off")),
                     Option(spec: "mode=whole", label: T("dictation.lab.compare.whole"))]
+            // the dictation styles: the same case per style (dictation_styles.py, the app's rules)
+            out += [DictationStyle.verbatim, .structured, .auto].map {
+                Option(spec: "style=\($0.rawValue)", label: T("dictation.lab.compare.style", Dictation.styleName($0)))
+            }
             self.options = [Option(spec: "current", label: T("dictation.lab.compare.current"))] + out
             if self.chosen.isEmpty { self.chosen = ["current", "polish=off"] }
         }

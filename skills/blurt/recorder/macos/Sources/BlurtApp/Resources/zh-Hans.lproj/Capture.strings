@@ -177,3 +177,6 @@
 "capture.voice.no_mic" = "麦克风用不了";
 "capture.voice.nothing" = "没听到声音";
 "capture.voice.recording_busy" = "录屏已经在录音了";
+
+/* dictation styles (docs/design/dictation-styles.md) */
+"capture.action.reformat" = "重排上一条听写";

@@ -54,6 +54,12 @@ final class DictationKeys {
     private var filterRefusedWithAX = false
     /// Read on the filter's thread: drop Fn presses (true while the filter runs for dictation).
     fileprivate var swallowFn = false
+    /// Read on the filter's thread: while a dictation listens (or its key is down), a lone ⇧ is Blurt's style toggle
+    /// (docs/design/dictation-styles.md §3.2) and is kept from the app in front too — an input method would otherwise
+    /// switch between Chinese and English on it. Only ⇧ changes with no other modifier held, and a release only when
+    /// its press was kept (the app never sees half of a ⇧).
+    var swallowShift = false
+    fileprivate var shiftKept = false
     /// How many Fn presses / releases the filter kept from macOS (tests and Settings).
     fileprivate(set) var swallowed = 0
 
@@ -238,6 +244,8 @@ final class DictationKeys {
 
     /// Test builds: what the filter does with a key change (`dictation filter-event CODE`): dropped or passed.
     func testFilterDecision(keyCode: Int) -> Bool {
+        // a ⇧ press then its release, as the filter sees them: kept while a dictation listens (`swallowShift`)
+        if keyCode == 56 || keyCode == 60 { return swallowFn && swallowShift }
         let drop = swallowFn && keyCode == 63
         if drop { swallowed += 1 }
         return drop
@@ -321,7 +329,13 @@ private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, 
     let now = CACurrentMediaTime()
     let code = type == .flagsChanged || type == .keyDown ? Int(event.getIntegerValueField(.keyboardEventKeycode)) : 0
     let raw = event.flags.rawValue
-    let drop = type == .flagsChanged && code == 63 && keys.swallowFn
+    var drop = type == .flagsChanged && code == 63 && keys.swallowFn
+    if type == .flagsChanged, code == 56 || code == 60, keys.swallowFn {
+        let down = raw & 0x2_0000 != 0
+        let others: UInt64 = 0x10_0000 | 0x4_0000 | 0x8_0000       // ⌘ ⌃ ⌥ (Fn is the dictation key itself)
+        if down, !keys.shiftKept, keys.swallowShift, raw & others == 0 { keys.shiftKept = true; drop = true }
+        else if !down, keys.shiftKept { keys.shiftKept = false; drop = true }
+    }
     DispatchQueue.main.async {
         if drop { keys.swallowed += 1 }
         keys.received(type, code: code, flags: raw, at: now)

@@ -21,6 +21,13 @@
 //                           presses Return once the paste has landed — "dictate, then send";
 //                         • it did nothing (hold mode, a tap too short to start) → the second one sends.
 //                       The second press opens no mic when it can only send; held instead, it is push-to-talk as usual.
+//   style               (docs/design/dictation-styles.md §3.2) ⇧ pressed and released alone while dictating says
+//                       `.style`: the app toggles Structured for this take. In push-to-talk too: a lone ⇧ is the one
+//                       key that joins in without cancelling (⇧ with another key still cancels, as any shortcut does).
+//                       A click on Blurt's own island (`.islandClick`: the app tells which clicks land there) is the
+//                       same toggle and never cancels. Fn+⇧ as the start press (⇧ held when Fn goes down, or pressed
+//                       while it is down) starts in Structured: `startShift`. Only with Fn: with an ⌥ key, ⇧ stays a
+//                       modifier (⌥⇧V and Blurt's other ⌥⇧ shortcuts never start anything).
 import Foundation
 
 public struct DictationTrigger {
@@ -55,17 +62,26 @@ public struct DictationTrigger {
         case arm, start, stop, cancel
         /// a double tap: press Return in the app in front (after the paste, when a dictation just stopped)
         case send
+        /// ⇧ alone (or a click on the island) while dictating: toggle Structured for this take
+        case style
     }
     public enum Event: Equatable {
         /// a modifier changed (CGEvent flagsChanged): its keyCode and the flags after the change
         case flags(keyCode: Int, flags: UInt64, time: Double)
         case keyDown(keyCode: Int, time: Double)
         case mouseDown(time: Double)
+        /// a click on Blurt's own island (the app checks where a mouse-down landed): never cancels push-to-talk
+        case islandClick(time: Double)
         /// the caller's timer, at or after `deadline`
         case tick(time: Double)
     }
 
     public static let escape = 53
+    /// kVK_Shift, kVK_RightShift
+    public static let shiftCodes: Set<Int> = [56, 60]
+    static let shiftMask: UInt64 = 0x2_0000
+    /// a lone ⇧ held longer than this is not a toggle (a finger resting on it)
+    public var shiftTapMax = 1.0
 
     public var key: Key
     public var mode: Mode
@@ -92,6 +108,12 @@ public struct DictationTrigger {
     private var lastTap: (did: TapDid, up: Double)?
     /// The press now down is the second tap of a double tap (if it comes up quickly): what the first one did.
     private var second: TapDid?
+    /// ⇧ went down while dictating, alone so far: its release toggles the style
+    private var shiftDownAt: Double?
+    /// the press now down has ⇧ with it (Fn+⇧)
+    private var chord = false
+    /// The dictation in progress was started with Fn+⇧: it starts in Structured.
+    public private(set) var startShift = false
     /// Dictating, as far as the trigger knows (the app calls `reset` when it ends one itself).
     public private(set) var active = false
     /// The dictation in progress was started by holding the key (hold mode, or auto held past `autoHold`): it ends
@@ -131,6 +153,8 @@ public struct DictationTrigger {
     public mutating func reset(active a: Bool) {
         active = a
         pushToTalk = false
+        startShift = false
+        shiftDownAt = nil
         lastTap = nil
         second = nil
         if !a { settle() }
@@ -144,6 +168,9 @@ public struct DictationTrigger {
     public mutating func handle(_ e: Event) -> [Output] {
         switch e {
         case let .flags(code, flags, t):
+            if DictationTrigger.shiftCodes.contains(code) {
+                return shiftChanged(down: flags & DictationTrigger.shiftMask != 0, t)
+            }
             if key.keyCodes.contains(code) {
                 // either-⌥: the other side going down or up while one is held is another key, not this one
                 if case let .down(_, _, held) = state, held != code { return otherInput(t) }
@@ -162,6 +189,8 @@ public struct DictationTrigger {
             return otherInput(t)
         case let .mouseDown(t):
             return otherInput(t)
+        case .islandClick:
+            return active ? [.style] : []
         case let .tick(t):
             return tick(t)
         }
@@ -169,11 +198,15 @@ public struct DictationTrigger {
 
     private mutating func keyDown(_ code: Int, _ flags: UInt64, _ t: Double) -> [Output] {
         if state == .holding || state == .waitRelease { return [] }        // a repeat of what we know
-        let alone = flags & Key.otherMods(code) == 0
+        // Fn+⇧ (⇧ held when Fn goes down) is still a clean press: it starts in Structured
+        let withShift = key == .fn && !active && flags & DictationTrigger.shiftMask != 0
+        let alone = flags & (Key.otherMods(code) & (withShift ? ~DictationTrigger.shiftMask : ~UInt64(0))) == 0
         state = .down(at: t, clean: alone, code: code)
         holdingCode = code
         second = nil
-        if doubleTap, alone, let l = lastTap, t - l.up <= doubleTapWindow { second = l.did }
+        shiftDownAt = nil                   // the key joined a ⇧ that was down: no toggle when ⇧ comes up
+        chord = withShift && alone
+        if doubleTap, alone, !chord, let l = lastTap, t - l.up <= doubleTapWindow { second = l.did }
         lastTap = nil
         // the second tap after a stop (or after a tap that did nothing) can only send: no mic for it
         if second == .stopped || second == .nothing { return [] }
@@ -208,23 +241,27 @@ public struct DictationTrigger {
             guard clean, t - at <= tapMax else { return [] }
             active.toggle()
             lastTap = (active ? .started : .stopped, t)
+            if active { startShift = chord } else { shiftDownAt = nil }
             return [active ? .start : .stop]
         case let (.auto, .down(at, clean, _)):
             guard clean else { return [] }
             if active {                     // hands-free: the next clean press stops it, however long
                 active = false
                 pushToTalk = false
+                shiftDownAt = nil
                 lastTap = (.stopped, t)
                 return [.stop]
             }
             guard t - at < autoHold else { return [] }      // held past the threshold with no tick: never started
             active = true
             pushToTalk = false
+            startShift = chord
             lastTap = (.started, t)
             return [.start]
         case (.hold, .holding), (.auto, .holding):
             active = false
             pushToTalk = false
+            shiftDownAt = nil
             lastTap = (.stopped, t)
             return [.stop]
         case let (.hold, .down(at, clean, _)):
@@ -240,6 +277,7 @@ public struct DictationTrigger {
     /// next tap the second of a double tap.
     private mutating func otherInput(_ t: Double) -> [Output] {
         lastTap = nil
+        shiftDownAt = nil                   // ⇧ with another key: a shortcut (or a capital), not the style toggle
         switch state {
         case let .down(at, _, code):
             if holdThreshold != nil, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined
@@ -267,19 +305,44 @@ public struct DictationTrigger {
         state = .holding
         active = true
         pushToTalk = true
+        startShift = chord
         return [.start]
+    }
+
+    /// ⇧ went down or up. While dictating, alone and let go within `shiftTapMax`: the style toggle (push-to-talk is
+    /// not cancelled by it). While the Fn start press is down: Fn+⇧, a Structured start. Otherwise ⇧ is any other
+    /// modifier.
+    private mutating func shiftChanged(down: Bool, _ t: Double) -> [Output] {
+        if case let .down(_, clean, _) = state, !active, key == .fn {
+            // the start press with ⇧ joining in (Fn+⇧): still clean; a key after it makes it a shortcut, as before
+            if down && clean { chord = true }
+            return []
+        }
+        if active, state == .holding || state == .idle {
+            if down {
+                lastTap = nil
+                shiftDownAt = t
+                return []
+            }
+            defer { shiftDownAt = nil }
+            if let d = shiftDownAt, t - d <= shiftTapMax { return [.style] }
+            return []
+        }
+        if state == .waitRelease { return [] }
+        return otherInput(t)
     }
 }
 
 extension DictationTrigger {
     /// A compact script of events for tests and the app's test hook (`dictation keys …`), one token per event,
     /// times in ms: "ropt-down@0 ropt-up@120", "fn-down@0 tick@300 fn-up@900", "ropt-down@0 key:9@50 ropt-up@90",
-    /// "click@40", "esc@500", "shift-down@0 shift-up@10". Modifier tokens: ropt, lopt, fn, shift, cmd, ctrl.
+    /// "click@40", "island@40" (a click on Blurt's island), "esc@500", "shift-down@0 shift-up@10". Modifier tokens:
+    /// ropt, lopt, fn, shift, rshift, cmd, ctrl.
     public static func parse(_ script: String, holding: Set<String> = []) -> [Event] {
         var held = holding
         let bits: [String: (code: Int, mask: UInt64)] = [
             "ropt": (61, 0x80000 | 0x40), "lopt": (58, 0x80000 | 0x20), "fn": (63, 0x80_0000),
-            "shift": (56, 0x2_0000), "cmd": (55, 0x10_0000), "ctrl": (59, 0x4_0000),
+            "shift": (56, 0x2_0000), "rshift": (60, 0x2_0000), "cmd": (55, 0x10_0000), "ctrl": (59, 0x4_0000),
         ]
         func flags() -> UInt64 { held.reduce(0) { $0 | (bits[$1]?.mask ?? 0) } }
         var out: [Event] = []
@@ -288,6 +351,7 @@ extension DictationTrigger {
             guard parts.count == 2, let ms = Double(parts[1]) else { continue }
             let t = ms / 1000, name = String(parts[0])
             if name == "tick" { out.append(.tick(time: t)) } else if name == "click" { out.append(.mouseDown(time: t)) }
+            else if name == "island" { out.append(.islandClick(time: t)) }
             else if name == "esc" { out.append(.keyDown(keyCode: escape, time: t)) }
             else if name.hasPrefix("key:"), let c = Int(name.dropFirst(4)) { out.append(.keyDown(keyCode: c, time: t)) }
             else {

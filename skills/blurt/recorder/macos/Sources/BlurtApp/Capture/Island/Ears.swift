@@ -54,6 +54,8 @@ final class EarSlot {
         case glyph(BlurtIcon, pulse: Bool)
         /// three dots taking turns: working on it
         case dots
+        /// one of our icons before a short text: dictation's style chip with the clock (list = Structured)
+        case iconText(BlurtIcon, String)
 
         /// Same kind of thing (so a changing number doesn't rebuild the layers)
         func sameKind(_ o: Content) -> Bool {
@@ -61,6 +63,7 @@ final class EarSlot {
             case (.none, .none), (.recording, .recording), (.count, .count), (.level, .level), (.wave, .wave), (.text, .text),
                  (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots): return true
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
+            case (.iconText(let a, _), .iconText(let b, _)): return a == b
             default: return false
             }
         }
@@ -192,6 +195,12 @@ final class EarSlot {
         case .dots:
             drawDots(t: 0)
             x = 20
+        case .iconText(let ic, let s):
+            icon.contents = ic.cgImage(size: 12, scale: 2, color: EarSlot.dictationTint.cgColor, weight: 1.2)
+            icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
+            icon.isHidden = false
+            x = 16
+            text(s)
         }
         width = x
         layer.bounds = CGRect(x: 0, y: -10, width: max(1, x), height: 20)

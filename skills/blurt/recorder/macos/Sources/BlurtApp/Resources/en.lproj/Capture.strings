@@ -177,3 +177,6 @@
 "capture.voice.no_mic" = "The microphone isn’t available";
 "capture.voice.nothing" = "Didn’t hear anything";
 "capture.voice.recording_busy" = "The recording already has the microphone";
+
+/* dictation styles (docs/design/dictation-styles.md) */
+"capture.action.reformat" = "Reformat last dictation";

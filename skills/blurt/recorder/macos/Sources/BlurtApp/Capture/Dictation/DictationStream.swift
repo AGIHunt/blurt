@@ -37,6 +37,8 @@ final class DictationStream {
         var language = "auto"
         /// cut while talking (record.dictation.streaming); off = one piece at key-up, the old path
         var streaming = true
+        /// the category's variant of light for polish.py ("chat": sentence-final particles the model dropped go back)
+        var variant: String?
     }
 
     /// One piece of the recording and what became of it.
@@ -238,7 +240,7 @@ final class DictationStream {
         p.polishInput = input
         let t0 = CACurrentMediaTime()
         let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
-                                 context: ctx.isEmpty ? nil : ctx)
+                                 context: ctx.isEmpty ? nil : ctx, variant: opt.variant)
         p.polishSpan = (t0, CACurrentMediaTime())
         p.loadMS += r?["load_ms"] as? Int ?? 0
         p.polish = r
@@ -345,7 +347,8 @@ final class DictationStream {
         let t1 = CACurrentMediaTime()
         let raw = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let pol = opt.polish && !raw.isEmpty ? Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget,
-                                                               vocab: opt.vocab, context: lock.locked { context }?.payload) : nil
+                                                               vocab: opt.vocab, context: lock.locked { context }?.payload,
+                                                               variant: opt.variant) : nil
         let t2 = CACurrentMediaTime()
         let text = (pol?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? raw
         var timing = ["asr_ms": Int((t1 - t0) * 1000), "polish_ms": Int((t2 - t1) * 1000), "segments": n,

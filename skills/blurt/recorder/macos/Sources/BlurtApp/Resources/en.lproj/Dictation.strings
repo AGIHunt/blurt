@@ -406,3 +406,54 @@
 "dictation.lab.tag.features.enumeration" = "Spoken list";
 "dictation.lab.tag.features.question" = "Question";
 "dictation.lab.tag.features.run_on" = "Run-on";
+
+/* dictation styles (docs/design/dictation-styles.md) */
+"dictation.style.verbatim" = "Verbatim";
+"dictation.style.light" = "Light";
+"dictation.style.structured" = "Structured";
+"dictation.style.auto" = "Auto lists";
+"dictation.style.toast.structured" = "%@: spoken points become a list · ⇧ to go back";
+"dictation.style.toast.back" = "Back to %@";
+"dictation.style.chip" = "Sounds like a list";
+"dictation.style.chip.key" = "Sounds like a list · %@";
+"dictation.style.chip.action" = "Make a List";
+"dictation.style.reformat.nothing" = "No dictation to reformat yet";
+"dictation.style.reformat.same" = "This one reads the same in every style";
+"dictation.style.reformatted" = "Reformatted as %@";
+"dictation.style.copied" = "Copied as %@ — the text in the field was left alone";
+"dictation.style.undone" = "Back to %@";
+"dictation.style.learn.auto" = "Format spoken lists in %@ from now on?";
+"dictation.style.learn.structured" = "Format spoken lists in %@ from now on?";
+"dictation.style.learn.light" = "Stop making lists in %@?";
+"dictation.style.learn.verbatim" = "Type exactly what you say in %@, without tidying?";
+"dictation.style.learn.yes" = "Yes";
+"dictation.style.learn.no" = "No";
+"dictation.style.learn.done" = "Done — change it in Settings → Dictation → Style";
+"dictation.style.section" = "Style";
+"dictation.style.detail" = "How your words are tidied up. Light never turns speech into a list and never changes your tone. Structured turns points you number out loud (first, second… / 第一、第二…) into a numbered list.";
+"dictation.style.keys" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧. %@ reformats the last dictation.";
+"dictation.style.keys.no_hotkey" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧.";
+"dictation.style.cat.chat" = "Chat";
+"dictation.style.cat.chat.detail" = "Keeps 吧, 呢, 啊; no full stop after a one-sentence message";
+"dictation.style.cat.code" = "Code and terminals";
+"dictation.style.cat.code.detail" = "One line, no line breaks";
+"dictation.style.cat.mail" = "Mail";
+"dictation.style.cat.mail.detail" = "Keeps paragraphs; adds no greeting or sign-off";
+"dictation.style.cat.notes" = "Notes and documents";
+"dictation.style.cat.notes.detail" = "Offers to make a list when you speak in points";
+"dictation.style.cat.other" = "Other apps";
+"dictation.style.cat.other.detail" = "Light";
+"dictation.style.default_suffix" = "%@ (default)";
+"dictation.style.apps" = "Apps set on their own";
+"dictation.style.learned" = "Learned";
+"dictation.style.reset" = "Reset";
+"dictation.style.reset.help" = "Back to its category's style";
+"dictation.style.suggest" = "Offer a list when a take sounds like one";
+"dictation.style.learn_toggle" = "Suggest an app's style from how I switch";
+"dictation.style.learn_toggle.detail" = "It only asks; it never changes a style by itself";
+"dictation.style.verbatim.detail" = "What the speech model heard, with its punctuation; no tidying";
+"dictation.history.style" = "Style: %@";
+"dictation.history.style.reformatted" = "reformatted %ld×";
+
+/* dictation styles (docs/design/dictation-styles.md) */
+"dictation.lab.compare.style" = "Style: %@";

@@ -203,7 +203,9 @@ final class DictationTriggerTests: XCTestCase {
 
     func testHoldCancelsWhenAnotherKeyJoins() {
         XCTAssertEqual(run("ropt-down@0 tick@260 key:0@900 ropt-up@1000", mode: .hold), [.arm, .start, .cancel])
-        XCTAssertEqual(run("ropt-down@0 tick@260 shift-down@900 shift-up@950 ropt-up@1000", mode: .hold), [.arm, .start, .cancel])
+        // ⇧ with a key is a shortcut: cancelled; ⇧ alone is the style toggle (testShiftAloneTogglesTheStyle)
+        XCTAssertEqual(run("ropt-down@0 tick@260 shift-down@900 key:0@920 shift-up@950 ropt-up@1000", mode: .hold), [.arm, .start, .cancel])
+        XCTAssertEqual(run("ropt-down@0 tick@260 shift-down@900 shift-up@950 ropt-up@1000", mode: .hold), [.arm, .start, .style, .stop])
         // a key before the threshold: a shortcut, never a start
         XCTAssertEqual(run("ropt-down@0 key:0@100 tick@260 ropt-up@400", mode: .hold), [.arm])
     }
@@ -302,6 +304,78 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(t.run("fn-down@0 fn-up@90"), [.arm, .start])
         t.reset(active: false)               // the app couldn't start (a recording has the mic)
         XCTAssertEqual(t.run("fn-down@200 fn-up@280"), [.arm, .start])
+    }
+
+    // MARK: the style toggle (dictation-styles.md §3.2): ⇧ during a take, the island, Fn+⇧
+
+    func testShiftAloneTogglesTheStyle() {
+        // hands-free (auto tap): ⇧ tapped twice while talking → two toggles; the dictation goes on and stops normally
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 shift-up@1080 shift-down@2000 shift-up@2060 fn-down@3000 fn-up@3080"),
+                       [.arm, .start, .style, .style, .stop])
+        // the right ⇧ too
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 rshift-down@1000 rshift-up@1080"), [.arm, .start, .style])
+        // tap mode, right ⌥
+        XCTAssertEqual(run("ropt-down@0 ropt-up@100 shift-down@500 shift-up@560 ropt-down@900 ropt-up@1000"), [.arm, .start, .style, .stop])
+    }
+
+    func testShiftInPushToTalkTogglesWithoutCancelling() {
+        // auto held past 300 ms: push-to-talk; a lone ⇧ while held is the toggle, and letting go still stops
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0 tick@300"), [.arm, .start])
+        XCTAssertTrue(t.pushToTalk)
+        XCTAssertEqual(t.run("shift-down@800 shift-up@870"), [.style])
+        XCTAssertTrue(t.active)
+        XCTAssertEqual(t.run("fn-up@2000"), [.stop])
+        // hold mode the same
+        XCTAssertEqual(run("ropt-down@0 tick@260 shift-down@600 shift-up@650 ropt-up@1500", mode: .hold), [.arm, .start, .style, .stop])
+    }
+
+    func testShiftWithAnotherKeyIsNoToggle() {
+        // ⇧A (a capital) while hands-free: no toggle, nothing cancelled
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 key:0@1050 shift-up@1100"), [.arm, .start])
+        // ⇧ with a click
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 click@1050 shift-up@1100"), [.arm, .start])
+        // push-to-talk: ⇧ + a key is a shortcut → cancelled, as before
+        XCTAssertEqual(auto("fn-down@0 tick@300 shift-down@800 key:0@820 shift-up@870 fn-up@2000"), [.arm, .start, .cancel])
+        // ⇧ held for a long time (a resting finger) is no toggle
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 shift-up@2500"), [.arm, .start])
+        // not dictating: ⇧ is just a key
+        XCTAssertEqual(auto("shift-down@0 shift-up@60"), [])
+    }
+
+    func testFnShiftStartsInStructured() {
+        // ⇧ held when Fn goes down (a tap): starts, and says it was Fn+⇧
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("shift-down@0 fn-down@20 fn-up@110 shift-up@150"), [.arm, .start])
+        XCTAssertTrue(t.startShift)
+        XCTAssertEqual(t.run("fn-down@2000 fn-up@2080"), [.stop])
+        XCTAssertFalse(t.startShift == true && t.active)
+        // ⇧ pressed while Fn is down, then push-to-talk
+        var h = DictationTrigger()
+        XCTAssertEqual(h.run("fn-down@0 shift-down@50 shift-up@120 tick@300"), [.arm, .start])
+        XCTAssertTrue(h.startShift)
+        XCTAssertTrue(h.pushToTalk)
+        // a plain start isn't
+        var p = DictationTrigger()
+        XCTAssertEqual(p.run("fn-down@0 fn-up@90"), [.arm, .start])
+        XCTAssertFalse(p.startShift)
+        // Fn+⇧+← (select to the line start) is a shortcut, not a start
+        XCTAssertEqual(auto("fn-down@0 shift-down@30 key:123@60 shift-up@90 fn-up@120"), [.arm])
+        XCTAssertEqual(auto("shift-down@0 fn-down@20 key:123@60 fn-up@120 shift-up@150"), [.arm])
+        // with an ⌥ key ⇧ stays a modifier: ⌥⇧V and Blurt's ⌥⇧ shortcuts never start anything
+        XCTAssertEqual(run("shift-down@0 ropt-down@20 ropt-up@90 shift-up@120"), [])
+        XCTAssertEqual(auto("shift-down@0 lopt-down@20 lopt-up@90 shift-up@120", key: .eitherOption), [])
+        // while dictating, ⇧ + Fn is neither a stop nor a toggle (a press that turned into a shortcut)
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 fn-down@1050 fn-up@1120 shift-up@1200"), [.arm, .start])
+    }
+
+    func testIslandClickTogglesAndNeverCancels() {
+        // push-to-talk: a click elsewhere cancels it, a click on the island is the style chip
+        XCTAssertEqual(auto("fn-down@0 tick@300 island@800 fn-up@2000"), [.arm, .start, .style, .stop])
+        XCTAssertEqual(auto("fn-down@0 tick@300 click@800 fn-up@2000"), [.arm, .start, .cancel])
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 island@500 island@900"), [.arm, .start, .style, .style])
+        // not dictating: nothing
+        XCTAssertEqual(auto("island@100"), [])
     }
 
     func testParseFlags() {

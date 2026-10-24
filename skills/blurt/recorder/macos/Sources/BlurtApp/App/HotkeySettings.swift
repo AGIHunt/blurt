@@ -227,7 +227,10 @@ final class HotkeySettings: NSObject, NSWindowDelegate {
         for a in [HotAction.toggleRecord, .snap, .voice, .project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]) {
             stack.addArrangedSubview(row(a))
         }
-        if AppEnvironment.settings != nil { stack.addArrangedSubview(dictationRow()) }
+        if AppEnvironment.settings != nil {
+            stack.addArrangedSubview(dictationRow())
+            stack.addArrangedSubview(row(.reformat))        // ⌥⇧L: the last dictation in another style
+        }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(header(Loc.t("capture.keys.while_recording", table: "Capture")))
         for a in [HotAction.pause, .marker, .pen, .finish] { stack.addArrangedSubview(row(a)) }

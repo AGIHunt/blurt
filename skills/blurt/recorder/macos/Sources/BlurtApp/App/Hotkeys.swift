@@ -23,6 +23,7 @@ extension HotkeyCenter.Action {
         case .voice: return .voice
         case .project: return .project
         case .cards: return .cards
+        case .reformat: return .reformat
         }
     }
 }

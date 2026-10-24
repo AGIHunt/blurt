@@ -195,6 +195,8 @@ public final class HotkeyCenter {
         case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main", voice, project
         /// ⌥⇧H: every hanging card comes down and stays (K7; macOS only — the island's cards)
         case cards
+        /// ⌥⇧L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
+        case reformat
 
         /// nil = off unless the user sets one
         public var defaultKey: String? {
@@ -210,6 +212,7 @@ public final class HotkeyCenter {
             case .voice: return "V"
             case .project: return "O"
             case .cards: return "H"
+            case .reformat: return "L"
             }
         }
         public var title: String {
@@ -225,10 +228,11 @@ public final class HotkeyCenter {
             case .voice: return Loc.t("capture.action.voice", table: "Capture")
             case .project: return Loc.t("capture.action.project", table: "Capture")
             case .cards: return Loc.t("capture.action.cards", table: "Capture")
+            case .reformat: return Loc.t("capture.action.reformat", table: "Capture")
             }
         }
         /// Only the menu-bar app registers these (a recording started from the chat has no menu or window to open).
-        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project, .cards].contains(self) }
+        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project, .cards, .reformat].contains(self) }
         public var defaultCombo: KeyCombo? { defaultKey.flatMap { KeyCombo(mods: defaultHotkeyMods, key: $0) } }
         var carbonID: UInt32 { 100 + UInt32(Action.allCases.firstIndex(of: self)!) }
     }
@@ -411,8 +415,8 @@ public final class HotkeyCenter {
                let list = o["hotkeys"] as? [String] {
                 return (app.processIdentifier, Set(list.compactMap(KeyCombo.parse)))
             }
-            // an older build: it holds the ⌥⇧ defaults (it had no "cards" action yet)
-            let legacy = Action.allCases.filter { $0 != .cards }.compactMap { a in a.defaultKey.flatMap { KeyCombo(mods: optionKey | shiftKey, key: $0) } }
+            // an older build: it holds the ⌥⇧ defaults (it had no "cards" or "reformat" action yet)
+            let legacy = Action.allCases.filter { $0 != .cards && $0 != .reformat }.compactMap { a in a.defaultKey.flatMap { KeyCombo(mods: optionKey | shiftKey, key: $0) } }
             return (app.processIdentifier, Set(legacy))
         }
     }

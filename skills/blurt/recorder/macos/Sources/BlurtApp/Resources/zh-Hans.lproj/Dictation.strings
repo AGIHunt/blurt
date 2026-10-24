@@ -406,3 +406,54 @@
 "dictation.lab.tag.features.enumeration" = "口头列举";
 "dictation.lab.tag.features.question" = "问句";
 "dictation.lab.tag.features.run_on" = "一口气长句";
+
+/* dictation styles (docs/design/dictation-styles.md) */
+"dictation.style.verbatim" = "原话";
+"dictation.style.light" = "轻整理";
+"dictation.style.structured" = "结构化";
+"dictation.style.auto" = "自动排清单";
+"dictation.style.toast.structured" = "%@：说出的序号会排成清单 · 再按 ⇧ 切回";
+"dictation.style.toast.back" = "已切回%@";
+"dictation.style.chip" = "这条像清单";
+"dictation.style.chip.key" = "这条像清单 · %@";
+"dictation.style.chip.action" = "排成清单";
+"dictation.style.reformat.nothing" = "还没有可以重排的听写";
+"dictation.style.reformat.same" = "这一条换样式也一样";
+"dictation.style.reformatted" = "已重排为%@";
+"dictation.style.copied" = "已按%@复制，原文没有动";
+"dictation.style.undone" = "已还原为%@";
+"dictation.style.learn.auto" = "以后在 %@ 里自动排清单？";
+"dictation.style.learn.structured" = "以后在 %@ 里自动排清单？";
+"dictation.style.learn.light" = "以后在 %@ 里不再排清单？";
+"dictation.style.learn.verbatim" = "以后在 %@ 里只写原话，不整理？";
+"dictation.style.learn.yes" = "好";
+"dictation.style.learn.no" = "不用";
+"dictation.style.learn.done" = "好了，可以在 设置 → 听写 → 风格 里改";
+"dictation.style.section" = "风格";
+"dictation.style.detail" = "说的话怎么整理。轻整理不会把话排成清单，也不改语气。结构化只把你说出序号的要点（第一、第二…… / first, second…）排成编号清单。";
+"dictation.style.keys" = "说话时单按一下 ⇧，这一条就改成结构化；也可以按 Fn+⇧ 开始。%@ 重排上一条。";
+"dictation.style.keys.no_hotkey" = "说话时单按一下 ⇧，这一条就改成结构化；也可以按 Fn+⇧ 开始。";
+"dictation.style.cat.chat" = "聊天";
+"dictation.style.cat.chat.detail" = "保留「吧、呢、啊」这类语气词；只有一句话时不加句号";
+"dictation.style.cat.code" = "代码和终端";
+"dictation.style.cat.code.detail" = "一行，不换行";
+"dictation.style.cat.mail" = "邮件";
+"dictation.style.cat.mail.detail" = "保留分段；不加称呼和落款";
+"dictation.style.cat.notes" = "笔记和文档";
+"dictation.style.cat.notes.detail" = "说成一条条要点时，提示可以排成清单";
+"dictation.style.cat.other" = "其他应用";
+"dictation.style.cat.other.detail" = "轻整理";
+"dictation.style.default_suffix" = "%@（默认）";
+"dictation.style.apps" = "单独设置的应用";
+"dictation.style.learned" = "学到的";
+"dictation.style.reset" = "恢复默认";
+"dictation.style.reset.help" = "改回它所属类别的风格";
+"dictation.style.suggest" = "听起来像清单时，提示可以排成清单";
+"dictation.style.learn_toggle" = "根据我的切换习惯，建议应用的风格";
+"dictation.style.learn_toggle.detail" = "只会问你，不会自己改";
+"dictation.style.verbatim.detail" = "识别出来的原话和标点，不整理";
+"dictation.history.style" = "风格：%@";
+"dictation.history.style.reformatted" = "重排过 %ld 次";
+
+/* dictation styles (docs/design/dictation-styles.md) */
+"dictation.lab.compare.style" = "风格：%@";

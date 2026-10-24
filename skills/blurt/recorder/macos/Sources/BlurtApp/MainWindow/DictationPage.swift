@@ -891,6 +891,12 @@ struct DictationDetailView: View {
             row(T("main.dictation.info.polish"), e.polished == nil && !e.fellBack ? T("main.dictation.info.polish.off")
                 : e.fellBack ? T("dictation.history.badge.fell_back") + (e.model.map { " · \($0)" } ?? "")
                 : e.model ?? T("dictation.history.badge.polished"))
+            if let s = e.style {
+                // the style it was typed in, and how often reformat-last changed it (dictation-styles.md)
+                let n = s.reformats.filter { $0.action == "reformat" }.count
+                row(T("dictation.style.section"), Dictation.styleName(DictationStyle(rawValue: s.style) ?? .light)
+                    + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
+            }
             if let a = e.asrModel { row(T("main.dictation.info.asr"), a) }
             if let l = e.language { row(T("main.dictation.info.language"), Loc.locale.localizedString(forIdentifier: l) ?? l) }
             if let t = x?.terms, !t.isEmpty {
