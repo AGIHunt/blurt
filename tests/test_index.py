@@ -173,14 +173,22 @@ def test_search_trigram_like_and_filters(env):
     assert cli("search", 'a"b OR (')["total"] == 0  # FTS syntax in the query is just text
 
 
+def cpu_ms(f):
+    """→ (f(), the CPU milliseconds it took). Wall-clock time here was flaky: SQLite's commit waits for the disk, and a
+    disk busy with something else (a `swift build` just before the suite, other agents) made a 5 ms update take
+    75–1400 ms. What these tests promise is that an update is incremental — little work — not how busy the disk is."""
+    t0 = time.process_time()
+    out = f()
+    return out, (time.process_time() - t0) * 1000
+
+
 def test_updates_are_fast_and_track_changes(env):
     migrated(env)
     md = next((env["repo"] / ".blurt" / "items").glob("REP-7-*.md"))
     item = st.read_item(md)
     st.write_item(md, {**item, "title": "全新的标题 zebra"})
-    t0 = time.perf_counter()
-    out = index.update_paths([md])
-    assert (time.perf_counter() - t0) * 1000 < 50, out
+    out, ms = cpu_ms(lambda: index.update_paths([md]))
+    assert ms < 50, (ms, out)
     assert out["updated"] == 1
     assert cli("search", "zebra")["total"] == 1 and cli("search", "全新")["total"] == 1
     md.unlink()  # a file that went away loses its row
@@ -260,12 +268,8 @@ def test_items_py_write_updates_index(env):
     assert p.returncode == 0, p.stderr
     assert cli("search", "walrus", "--work", "to_verify")["total"] == 1
     md = Path(hit["items"][0]["path"])
-    times = []
-    for _ in range(5):
-        t0 = time.perf_counter()
-        index.update_paths([md])
-        times.append((time.perf_counter() - t0) * 1000)
-    print("reindex ms", [round(t, 1) for t in times])
+    times = [cpu_ms(lambda: index.update_paths([md]))[1] for _ in range(5)]
+    print("reindex cpu ms", [round(t, 1) for t in times])
     assert sorted(times)[2] < 50, times
 
 

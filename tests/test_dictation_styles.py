@@ -76,10 +76,10 @@ def test_light_never_lists_the_polish_eval_sets():
 
 def test_renderer_is_fast():
     long = "明天要做三件事。第一，把测试全部跑完。第二，把文档更新一下。第三，提交代码。" * 20
-    t0 = time.perf_counter()
+    t0 = time.process_time()          # CPU time: a busy machine must not fail a pure function's budget
     for _ in range(20):
         S.render(long)
-    assert (time.perf_counter() - t0) / 20 < 0.02
+    assert (time.process_time() - t0) / 20 < 0.02
 
 
 # ------------------------------------------------------------------ styles, variants, categories

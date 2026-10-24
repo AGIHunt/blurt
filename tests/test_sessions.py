@@ -273,6 +273,8 @@ def test_app_runner_returns_the_launch(p2):
     assert p2.job(jid)["agent"]["runner"] == "app" and not p2.tmux("list-sessions")
     # the app runs it in its pty; the hooks report as usual, then the app reports the exit
     hook = [sys.executable, str(p2.scripts / "sessions.py"), "hook", "--job", jid, "--agent", "claude"]
+    # quick, not instant: a fresh interpreter (~50 ms here) on a machine busy with a build can take a second; 3 s still
+    # tells a hook that blocks (network, a lock) from one that returns
     subprocess.run(hook, input=json.dumps({"hook_event_name": "SessionStart", "session_id": "s"}), text=True,
                    env=p2.env, check=True)
     assert p2.status(jid) == "running"
@@ -299,14 +301,16 @@ def test_hook_is_fast_silent_and_harmless(p2):
     it = p2.item(proj["id"])
     jid = dispatch(p2, it["uid"], agent="claude", runner="app")["launch"][0]["job"]
     hook = [sys.executable, str(p2.scripts / "sessions.py"), "hook", "--job", jid, "--agent", "claude"]
+    # quick, not instant: a fresh interpreter (~50 ms here) on a machine busy with a build can take a second; 3 s still
+    # tells a hook that blocks (network, a lock) from one that returns
     for payload in ('{"hook_event_name": "Stop"}', "not json", "", '{"hook_event_name": "Unknown"}'):
         t = time.monotonic()
         p = subprocess.run(hook, input=payload, capture_output=True, text=True, env=p2.env, timeout=5)
-        assert time.monotonic() - t < 1.0 and p.returncode == 0 and p.stdout == "", payload
+        assert time.monotonic() - t < 3.0 and p.returncode == 0 and p.stdout == "", payload
     t = time.monotonic()
     p = subprocess.run([*hook[:4], "--job", "j-nope", "--agent", "codex", '{"type": "agent-turn-complete"}'],
                        capture_output=True, text=True, env=p2.env, timeout=5)
-    assert time.monotonic() - t < 1.0 and p.returncode == 0 and p.stdout == ""
+    assert time.monotonic() - t < 3.0 and p.returncode == 0 and p.stdout == ""
     log = (p2.home / "jobs" / f"{jid}.log").read_text()
     assert '"Stop"' in log
 
