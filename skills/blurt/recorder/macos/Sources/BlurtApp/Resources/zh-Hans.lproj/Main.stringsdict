@@ -55,7 +55,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>未归类的捕获 %ld 条</string>
+			<string>顶部还挂着 %ld 张卡片</string>
 		</dict>
 	</dict>
 	<key>main.detail.multi</key>

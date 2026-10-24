@@ -86,5 +86,23 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Picture + text pasted</string><key>other</key><string>%d pictures + text pasted</string></dict>
   </dict>
+  <key>capture.card.deleted_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Deleted</string><key>other</key><string>Deleted %d cards</string></dict>
+  </dict>
+  <key>capture.cards.more_ax</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the card</string><key>other</key><string>Show all %d cards</string></dict>
+  </dict>
+  <key>capture.cards.overview_title</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Hanging Card</string><key>other</key><string>Hanging Cards (%d)</string></dict>
+  </dict>
 </dict>
 </plist>

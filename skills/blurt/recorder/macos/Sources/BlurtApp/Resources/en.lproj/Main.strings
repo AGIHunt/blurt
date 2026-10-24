@@ -68,8 +68,8 @@
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
 "main.banner.with_agent" = "With %@ · %@";
 
-"main.captures.show" = "Show under the island";
-"main.captures.tip" = "Captures hanging under the island, waiting for a project: click to bring them all down";
+"main.captures.show" = "Show at the top";
+"main.captures.tip" = "Snaps and voice notes waiting at the top of the screen: click to bring them all down";
 "main.captures.taken" = "Recently taken: %ld";
 "main.captures.taken.show" = "Show";
 "main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back";

@@ -4,9 +4,10 @@
 // Geometry — on a screen with a notch (safeAreaInsets.top > 0) the island *is* the notch: pure black, flush with the
 // top edge, 10 pt bottom corners, with concave shoulders into the screen edge. When there is something to show it grows
 // "ears" (56 pt each side). Without a notch it is a capsule 6 pt under the menu bar (30 high, ≥ 120 wide) that hides
-// when idle and appears after the pointer rests 250 ms in the top-middle 320 × 8 pt. Hovering 150 ms (or a hotkey)
+// when idle and appears after the pointer rests 250 ms in the top-middle 320 × 8 pt. Hovering 180 ms (or a hotkey)
 // opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves it and
-// the hanging cards (HangingCards.swift), which drop as soon as the pointer arrives. Resting on the cards' count: 450 ms.
+// the hanging cards (HangingCards.swift), which drop after the same rest (CardReveal.dwell, 180 ms: a brush past the
+// notch drops nothing). Resting on the cards' count opens the island after 450 ms (the cards are down by then).
 //
 // Collapsed (ears)        left                         right
 //   idle                  cards waiting (n) — a click   hatching egg (the mascot) + n processing, else captures to review (n)
@@ -131,6 +132,9 @@ final class Island: NSObject, IslandHosting {
         var art: NSView?
         var seconds: Double = 2.4
         var since: CFTimeInterval = 0
+        /// Shown at once, also over the open island (an Undo for something just done on the cards under it); other
+        /// toasts wait until the island closes.
+        var overOpen = false
         /// A project's key badge before the text ("Filed to …").
         var badge: (text: String, color: NSColor)?
         /// A question: the text wraps, two answers under it, and it stays until one is chosen (also over the open
@@ -177,8 +181,11 @@ final class Island: NSObject, IslandHosting {
         return NSRect(x: p.frame.minX + geo.cx - w.value / 2, y: p.frame.maxY - geo.top - h.value, width: w.value, height: h.value)
     }
 
-    /// The pointer is on the island: the hanging cards come down with its detail.
+    /// The pointer is on the island (the hanging cards stay down meanwhile).
     var pointerInside: Bool { hoverSince != nil }
+    /// …and has rested there CardReveal.dwell: the cards come down (brushing past the notch drops nothing).
+    var pointerDwelled: Bool { CardReveal.dwelled(since: hoverSince, now: CACurrentMediaTime()) }
+    private var cardsCalled = false
     /// The cards stay down whatever the pointer does: the island is open by a key or a command (until the pointer has
     /// come and gone), a drawer is open, or a card is being dragged.
     var holdsCards: Bool { (open && sticky) || dragActive || drawer != nil }
@@ -589,12 +596,11 @@ final class Island: NSObject, IslandHosting {
         if inside && !busyElsewhere {
             awaySince = nil
             sticky = false                    // the pointer has arrived: from now on, leaving closes it
-            if hoverSince == nil {
-                hoverSince = now
-                hanging.islandAttention()     // the cards come down with the island's detail
-            }
+            if hoverSince == nil { hoverSince = now; cardsCalled = false }
+            // the cards come down with the island's detail, once the pointer has rested on it (not on a brush past)
+            if !cardsCalled, pointerDwelled { cardsCalled = true; hanging.islandAttention() }
             // resting on the ear's count opens it a little later, so the count can still be clicked
-            let dwell = earHit(local) ? 0.45 : 0.15
+            let dwell = earHit(local) ? 0.45 : CardReveal.dwell
             if !open, drawer == nil, !Dictation.shared.busy, now - hoverSince! >= dwell { setOpen(true) }
         } else {
             hoverSince = nil
@@ -788,7 +794,7 @@ final class Island: NSObject, IslandHosting {
             toastNow = nil
             content.rebuild()
         }
-        if toastNow == nil, !open, drawer == nil, !toasts.isEmpty {
+        if toastNow == nil, !open || toasts.first?.overOpen == true, drawer == nil, !toasts.isEmpty {
             var t = toasts.removeFirst()
             t.since = now
             toastNow = t

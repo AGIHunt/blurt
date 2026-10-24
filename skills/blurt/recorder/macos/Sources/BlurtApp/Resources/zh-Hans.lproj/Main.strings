@@ -68,8 +68,8 @@
 "main.banner.suggested" = "看起来属于「%@」（把握 %@）。";
 "main.banner.with_agent" = "已交给 %@ · %@";
 
-"main.captures.show" = "在刘海岛下展开";
-"main.captures.tip" = "刘海岛下挂着还没归类的捕获，点一下全部放下来";
+"main.captures.show" = "放下来";
+"main.captures.tip" = "屏幕顶部挂着还没归类的截图和语音备注，点一下全部放下来";
 "main.captures.taken" = "最近拖走的：%ld 张";
 "main.captures.taken.show" = "查看";
 "main.captures.taken.tip" = "最近 7 天拖进别的应用的卡片：可以再拷贝、再拖出去，或者放回线上";
