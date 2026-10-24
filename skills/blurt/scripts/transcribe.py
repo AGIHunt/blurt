@@ -80,7 +80,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
-                     load_json, probe_duration, save_json, serve_exit_reason, update_global_config, use_system_certs)
+                     load_json, probe_duration, save_json, serve_exit_reason, serve_said, update_global_config,
+                     use_system_certs)
 
 use_system_certs()
 
@@ -2150,11 +2151,11 @@ def cmd_serve(a):
                 except OSError:
                     pass
     finally:
-        print(f"serve: exiting ({why or 'error'})", file=sys.stderr, flush=True)
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
         srv.close()
+        serve_said(f"serve: exiting ({why or 'error'})")
 
 
 # --- probe / recommend / auto / models / setup

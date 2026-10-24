@@ -456,11 +456,11 @@ class Notes(unittest.TestCase):
         self.assertFalse(th.is_alive())
         self.assertFalse(T.SERVE_FILE.exists())
 
-    def serve_in_thread(self, args):
+    def serve_in_thread(self, args, stderr=None):
         out = io.StringIO()
 
         def serve():
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(stderr or out):
                 T.cmd_serve(args)
         th = threading.Thread(target=serve, daemon=True)
         th.start()
@@ -496,6 +496,24 @@ class Notes(unittest.TestCase):
                 child.kill()
         self.assertFalse(th.is_alive())
         self.assertIn("serve: exiting (parent_gone)", out.getvalue())
+        self.assertFalse(T.SERVE_FILE.exists())
+
+    def test_warm_server_cleans_up_when_its_app_pipe_is_gone(self):
+        # the app's stderr pipe closes with it: the server's last word must not stop it removing its run file
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        dead = io.StringIO()
+        try:
+            with config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                th, _out = self.serve_in_thread(Namespace(preload=True, idle=600, exit_after=1800, parent=child.pid), dead)
+                dead.close()                                   # writes now raise, as on a closed pipe
+                child.kill()
+                child.wait()
+                th.join(5)
+        finally:
+            if child.poll() is None:
+                child.kill()
+        self.assertFalse(th.is_alive())
+        self.assertFalse(T.SERVE_FILE.exists())
 
 
 # ------------------------------------------------------------------ CLI

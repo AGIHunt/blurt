@@ -45,7 +45,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
-from _common import BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, serve_exit_reason  # noqa: E402
+from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, serve_exit_reason,  # noqa: E402
+                     serve_said)
 
 HERE = Path(__file__).parent
 RUN_DIR = BLURT_HOME / "run"
@@ -1223,11 +1224,11 @@ def cmd_serve(a):
                 except OSError:
                     pass
     finally:
-        print(f"serve: exiting ({why or 'error'})", file=sys.stderr, flush=True)
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
         srv.close()
+        serve_said(f"serve: exiting ({why or 'error'})")
 
 
 # ------------------------------------------------------------------ commands

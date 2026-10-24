@@ -230,6 +230,15 @@ def parent_alive(pid: int | None) -> bool:
     return True
 
 
+def serve_said(line: str) -> None:
+    """A warm server's last word on stderr — which is the app's pipe, closed when the app quit or crashed: a write
+    there must not stop the server from cleaning up after itself."""
+    try:
+        print(line, file=sys.stderr, flush=True)
+    except (OSError, ValueError):
+        pass
+
+
 def serve_exit_reason(loaded: bool, model_idle: float, server_idle: float, uses: list[float], tier: str,
                       idle: float, exit_after: float, parent: int | None = None) -> str | None:
     """Why a warm model server should end now, or None. "parent_gone": the app that started it quit or crashed (a
