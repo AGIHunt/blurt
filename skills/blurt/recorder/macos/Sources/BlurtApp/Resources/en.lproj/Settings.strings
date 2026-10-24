@@ -69,27 +69,19 @@
 
 "settings.export.ask_each_time" = "Ask each time";
 "settings.export.blurt_config_json_shared" = "For %@ (.blurt/config.json), shared with your team.";
-"settings.export.checking" = "checking…";
+"settings.export.checking" = "Checking…";
 "settings.export.choose" = "Choose";
 "settings.export.choose_2" = "Choose…";
 "settings.export.default_destination" = "Default destination";
 "settings.export.default_workspace_blurt" = "For Unassigned items. Each project keeps its own choice in its .blurt/config.json.";
-"settings.export.exporters" = "Exporters";
-"settings.export.exports_run_from_review" = "Exports run from the review page or your agent; re-exporting never creates duplicates.";
+"settings.export.exporters" = "Destinations";
 "settings.export.feishu_app_id_set" = "FEISHU_APP_ID is set";
-"settings.export.feishu_lark_bitable" = "Lark Base (Feishu Bitable)";
-"settings.export.feishu_lark_cli" = "Lark: lark-cli";
-"settings.export.feishu_self_built_app" = "Lark: a custom app";
-"settings.export.logged" = "logged in";
-"settings.export.not_installed" = "not installed";
-"settings.export.not_installed_exports_as" = "not installed — exports as you, no app needed";
-"settings.export.not_logged" = "not logged in";
-"settings.export.nothing_install" = "nothing to install";
+"settings.export.feishu_lark_bitable" = "Feishu / Lark Base";
+"settings.export.not_logged" = "Not signed in";
 "settings.export.open_table_browser_copy" = "Open the table in the browser and copy the address. Columns are matched by meaning; missing ones are created.";
-"settings.export.optional_used_without_lark" = "optional; used without lark-cli";
 "settings.export.save" = "Save to";
-"settings.export.send_confirmed_items" = "Send confirmed items to";
-"settings.export.session_folder" = "the session’s folder";
+"settings.export.send_confirmed_items" = "Export to";
+"settings.export.session_folder" = "the recording’s folder";
 "settings.export.table_url" = "Table URL";
 
 "settings.general.after_recording" = "After a recording";
@@ -236,3 +228,8 @@
 "settings.storage.videos.confirm_title" = "Move these videos to the Trash?";
 "settings.storage.videos.confirm" = "Their items, frames and transcripts stay.";
 "settings.storage.videos.freed" = "Moved %@ of videos to the Trash";
+"settings.export.feishu" = "Feishu / Lark";
+"settings.export.local" = "Markdown and CSV";
+"settings.export.ready" = "Ready";
+"settings.export.not_set_up" = "Not set up";
+"settings.export.footer" = "Ask your agent to export, for example “export the to-dos to GitHub”. Exporting again never makes duplicates.";

@@ -416,3 +416,6 @@
 "app.contract.skill_older" = "The Blurt skill is older than this app";
 "app.contract.app_older" = "The Blurt skill is newer than this app";
 "app.contract.how" = "How to Update";
+"app.url.ask_record" = "A link wants to start a screen recording";
+"app.url.ask_snap" = "A link wants to take a snap";
+"app.url.snap" = "Snap";

@@ -308,11 +308,25 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for u in urls where u.scheme == "blurt" || u.scheme == "blurt-app" {
             if AppEnvironment.openURL?(u) == true { continue }
             switch u.host {
-            case "record": if resident && !busy { startRecording(useLast: false) }
-            case "snap": if resident { snapper.hotkey() }
+            case "record": if resident && !busy { confirmFromURL("record") { $0.startRecording(useLast: false) } }
+            case "snap": if resident { confirmFromURL("snap") { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } } }
             default: break
             }
         }
+    }
+
+    /// blurt://record and blurt://snap can come from any link (a web page, a document): unless Blurt itself is in front
+    /// (its own windows, Services, a shortcut run from Blurt), the island asks first — one click to go ahead.
+    func confirmFromURL(_ what: String, _ go: @escaping (App) -> Void) {
+        if NSApp.isActive { go(self); return }
+        emit(["event": "url_confirm", "what": what])
+        guard island.started else { return }       // no island to ask in: nothing starts from a link
+        island.ask(T("app.url.ask_\(what)"), T(what == "record" ? "app.menu.record" : "app.url.snap"), { [weak self] in
+            emit(["event": "url_confirmed", "what": what])
+            if let self = self { go(self) }
+        }, T("settings.privacy.cancel"), {
+            emit(["event": "url_declined", "what": what])
+        })
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

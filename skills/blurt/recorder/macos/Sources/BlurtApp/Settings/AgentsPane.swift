@@ -1,7 +1,10 @@
-// Settings → Agents: which coding agents process recordings (record.agents, in order — drag to reorder, untick to
-// leave one out) and which can run in Blurt's sessions (sessions.py doctor), each one's state with the reason and the
-// command that fixes it (agents.py detect); installing the blurt skill + MCP server into an agent (agents.py install:
-// a --dry-run preview first, applied only after the user confirms); the current project's default agent for sessions
+// Settings → Agents: which coding agents Blurt uses — organizing recordings and snaps, auto-sort, AI fill-in —
+// (record.agents, in order — drag to reorder, untick to leave one out) and which can run in Blurt's sessions
+// (sessions.py doctor), each one's state (agents.py detect). The rows are there at once (agents.json, "Checking…"),
+// then a quick look, then the sign-in check. Only what stops Blurt is red; the command that fixes an agent shows only
+// where it matters (a ticked agent tried before the one that runs). Connect installs the blurt skill + MCP server into
+// an agent (agents.py install: a --dry-run preview first, applied only after the user confirms) and is offered only
+// while they are missing (a dry run per installed agent says so). The current project's default agent for sessions
 // (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart.
 import AppKit
 import SwiftUI
@@ -29,6 +32,50 @@ final class AgentsModel: ObservableObject {
     var manual: [CoreAgent] { rows.filter { !$0.headless } }
     var project: Project? { ProjectStore.shared.current }
     func sessions(_ a: CoreAgent) -> Bool { doctor?.agents[a.id] ?? false }
+
+    /// Their skill + MCP are in place (agents.py install --dry-run would change nothing): no Connect button. nil = not
+    /// checked yet.
+    @Published var connected: [String: Bool] = [:]
+
+    /// The pane opens at once: before the first check, the registry's agents in the saved order, each "Checking…";
+    /// then the quick look (no sign-in probe), then the full one. Later opens show what the last check found.
+    func open() async {
+        if rows.isEmpty {
+            rows = Self.registry()
+            enabled = Set(Agents.shared.order ?? rows.filter(\.headless).map(\.id))
+            await load(login: false)
+        }
+        await load()
+        await checkConnected()
+    }
+
+    /// agents.json (the skill's, else the copy in the app) as placeholder rows.
+    static func registry() -> [CoreAgent] {
+        var urls = [BlurtPaths.scripts.appendingPathComponent("agents.json")]
+        if let u = Bundle.main.url(forResource: "agents", withExtension: "json") { urls.append(u) }
+        for u in urls {
+            guard let d = try? Data(contentsOf: u), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let list = o["agents"] as? [[String: Any]] else { continue }
+            let rows = list.compactMap { a -> CoreAgent? in
+                guard let id = a["id"] as? String else { return nil }
+                var r = CoreAgent(id: id, name: a["name"] as? String ?? id, installed: false, state: "checking")
+                r.headless = a["headless"] as? Bool != false
+                return r
+            }
+            let order = Agents.shared.order ?? []
+            return rows.sorted { (order.firstIndex(of: $0.id) ?? 1000) < (order.firstIndex(of: $1.id) ?? 1000) }
+        }
+        return []
+    }
+
+    /// For each installed agent: would installing the skill + MCP change anything? (a dry run, one at a time)
+    func checkConnected() async {
+        for a in rows where a.installed && connected[a.id] == nil {
+            if let p = try? await Agents.shared.install(a.id, dryRun: true) {
+                connected[a.id] = !p.changes.contains(where: \.changesSomething)
+            }
+        }
+    }
 
     func load(login: Bool = true) async {
         loading = true
@@ -129,6 +176,7 @@ final class AgentsModel: ObservableObject {
         do {
             let p = try await Agents.shared.install(cur.agent.id, dryRun: false)
             plan = (cur.agent, p, true)
+            connected[cur.agent.id] = p.applied ? true : nil
             emit(["event": "install_applied", "agent": cur.agent.id, "applied": p.applied])
         } catch { self.error = "\(error)" }
     }
@@ -175,7 +223,7 @@ struct AgentsPane: View {
                     Text(TL("agents.header"))
                     Spacer()
                     if m.loading { ProgressView().controlSize(.mini) }
-                    Button { Task { await m.load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless)
+                    Button { Task { m.connected = [:]; await m.load(); await m.checkConnected() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless)
                         .help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
                 }
             } footer: {
@@ -195,7 +243,7 @@ struct AgentsPane: View {
                 }
             }
         }
-        .task { await m.load() }
+        .task { await m.open() }
         .sheet(isPresented: Binding(get: { m.plan != nil }, set: { if !$0 { m.plan = nil } })) {
             if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied) }
         }
@@ -233,13 +281,25 @@ struct AgentsPane: View {
         } header: { Text(TL("agents.sessions.header")) }
     }
 
+    /// Red only for a problem that stops Blurt: a ticked agent that can't run while no agent can. An agent the user
+    /// doesn't use (not installed, not signed in, a fallback below the one that runs) is a quiet grey.
     func tone(_ a: CoreAgent) -> Tone {
         switch a.state {
         case "ready": return .good
         case "configured", "unknown": return a.installed ? .warn : .off
-        case "logged_out": return .bad
+        case "logged_out": return m.enabled.contains(a.id) && m.pick == nil ? .bad : .off
         default: return .off
         }
+    }
+
+    /// The fix (sign in, install) only where it matters: a ticked agent tried before the one that runs, or any
+    /// ticked one while none can run. Fallbacks below the one that runs say their state and nothing more.
+    func showsFix(_ a: CoreAgent, ordered: Bool) -> Bool {
+        guard !a.fix.isEmpty else { return false }
+        guard ordered else { return true }
+        guard m.enabled.contains(a.id) else { return false }
+        guard let pick = m.pick, let p = m.headless.firstIndex(where: { $0.id == pick }) else { return true }
+        return (m.headless.firstIndex(where: { $0.id == a.id }) ?? Int.max) < p
     }
 
     @ViewBuilder
@@ -264,16 +324,18 @@ struct AgentsPane: View {
                     Text(stateText(a)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if a.installed || !a.headless {
+                if a.state == "checking" { ProgressView().controlSize(.mini) }
+                // the blurt skill + MCP: Connect only while they are missing (manual agents: always offered)
+                if (a.installed && m.connected[a.id] == false) || !a.headless {
                     if m.installing == a.id { ProgressView().controlSize(.small) }
-                    else { Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small) }
+                    else { Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small).help(TL("agents.install.help")) }
                 }
                 if a.headless && a.installed {
                     if m.testing == a.id { ProgressView().controlSize(.small) }
                     else { Button(TL("agents.test")) { Task { await m.test(a) } }.controlSize(.small).help(TL("agents.test.help")) }
                 }
             }
-            if !a.fix.isEmpty {
+            if showsFix(a, ordered: ordered) {
                 HStack(spacing: 6) {
                     Text(TL(a.installed ? "agents.fix" : "agents.install_hint")).font(.caption).foregroundStyle(.secondary)
                     if looksLikeCommand(a.fix) { CommandText(text: commandPart(a.fix)) }
@@ -337,6 +399,7 @@ struct AgentsPane: View {
             switch a.state {
             case "not_installed": return TL("agents.state.not_installed")
             case "ready": return TL("agents.state.ready")
+            case "checking": return TL("agents.state.checking")
             default: return a.state
             }
         }

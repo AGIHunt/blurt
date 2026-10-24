@@ -416,3 +416,6 @@
 "app.contract.skill_older" = "口喷鸡 skill 比 App 旧";
 "app.contract.app_older" = "口喷鸡 skill 比 App 新";
 "app.contract.how" = "怎么更新";
+"app.url.ask_record" = "一个链接想开始录屏";
+"app.url.ask_snap" = "一个链接想截图";
+"app.url.snap" = "截图";

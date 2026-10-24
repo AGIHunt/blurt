@@ -77,5 +77,32 @@ class Contract(unittest.TestCase):
         self.assertIn(f"\nCONTRACT = {_common.CONTRACT}\n", src)
 
 
+class ShellRules(unittest.TestCase):
+    """Rules of the Mac app shell that are easy to undo by accident (read from the sources)."""
+    APP = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+
+    def test_record_and_snap_from_a_link_ask_first(self):
+        src = (self.APP / "App/AppDelegate.swift").read_text()
+        body = src[src.index("func application(_ application: NSApplication, open urls: [URL])"):]
+        body = body[:body.index("\n    }\n")]
+        self.assertIn('confirmFromURL("record")', body)
+        self.assertIn('confirmFromURL("snap")', body)
+        self.assertNotIn("startRecording(useLast: false) }\n", body.replace("$0.startRecording", ""))
+
+    def test_one_toast_system_and_one_launch_message(self):
+        src = (self.APP / "App/AppDelegate.swift").read_text()
+        toast = src[src.index("    func toast(_ text: String"):]
+        self.assertIn("island.toast(t)", toast[:toast.index("hudToast(text")])
+        house = (self.APP / "App/Housekeeping.swift").read_text()
+        self.assertNotIn("island?.toast(", house, "launch messages go through LaunchMessages")
+        self.assertNotIn("island.ask(", house, "launch messages go through LaunchMessages")
+
+    def test_each_setting_in_one_pane(self):
+        general = (self.APP / "Settings/GeneralPane.swift").read_text()
+        privacy = (self.APP / "Settings/PrivacyStoragePanes.swift").read_text()
+        self.assertNotIn("spotlight", general.lower().replace("spotlight is in privacy", ""))
+        self.assertIn("setSpotlight", privacy)
+
+
 if __name__ == "__main__":
     unittest.main()

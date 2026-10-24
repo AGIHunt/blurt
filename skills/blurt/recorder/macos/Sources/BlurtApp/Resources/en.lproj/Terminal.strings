@@ -13,7 +13,7 @@
 "agents.processing.cheapest_named" = "Cheapest (%@)";
 "agents.processing.default" = "The CLI’s setting";
 "agents.processing.default_named" = "The CLI’s setting (%@)";
-"agents.processing.help" = "Used for organizing recordings and screenshots, auto-sort and AI fill-in. A small model at low effort is plenty and uses far fewer tokens.";
+"agents.processing.help" = "Used for organizing recordings and snaps, auto-sort and AI fill-in. A small model at low effort is plenty and uses far fewer tokens.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";
@@ -179,14 +179,14 @@
 "error.nothing" = "The branch has no commits to merge yet.";
 
 /* Settings → Agents */
-"agents.header" = "Agents that process recordings (tried in order)";
-"agents.footer" = "Drag to reorder. The first usable one runs; on a login or quota problem the next one takes over. Unticked agents are never used.";
+"agents.header" = "Agents Blurt uses, in order";
+"agents.footer" = "For organizing recordings and snaps, auto-sort and AI fill-in. Drag to reorder: the first that works runs, and the next takes over on a sign-in or quota problem. Unticked ones are never used.";
 "agents.check_again" = "Check Again";
 "agents.drag" = "Drag to reorder";
 "agents.runs_first" = "Runs first";
 "agents.sessions_badge" = "Sessions";
 "agents.sessions_badge.help" = "Can work on items in a Blurt session";
-"agents.install" = "Install Skill + MCP…";
+"agents.install" = "Connect…";
 "agents.test" = "Test";
 "agents.test.help" = "Sends a one-line prompt to check it runs (uses a few tokens)";
 "agents.test.no_command" = "No command-line mode";
@@ -228,3 +228,5 @@
 "finish.state.pr" = "Pull request opened";
 "finish.state.pushed" = "Pushed";
 "finish.state.discard" = "Discarded";
+"agents.install.help" = "Installs the blurt skill and MCP server into this agent, after showing what changes";
+"agents.state.checking" = "Checking…";

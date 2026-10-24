@@ -83,7 +83,12 @@ enum SelfTests {
                         : SettingsController.shared.windowNumber
             out(["window": n ?? -1])
         case "route": out(["route": URL(string: arg).map { "\(URLRouter.route($0))" } ?? "bad url"])
-        case "url": if let u = URL(string: arg) { out(["handled": URLRouter.handle(u)]) }
+        case "url":                     // url URL: as if it came from outside (the shell's record / snap included)
+            if let u = URL(string: arg) {
+                let handled = URLRouter.handle(u)
+                if !handled { appDelegate?.application(NSApp, open: [u]) }
+                out(["handled": handled])
+            }
         case "mainstub":
             AppEnvironment.mainWindow = StubMainWindow.shared
             out(["ok": true])

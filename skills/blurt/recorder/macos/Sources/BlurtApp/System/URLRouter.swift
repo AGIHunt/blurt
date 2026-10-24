@@ -4,7 +4,8 @@
 //   blurt://settings[/<pane>]              → Settings (general, shortcuts, speech, agents, export, privacy, storage)
 //   blurt://onboarding                     → the setup assistant
 //   blurt://open                           → the main window (same as the menu's "Open Blurt"; the Tauri app has it too)
-//   blurt://record, blurt://snap           → not handled here (false): the shell starts them
+//   blurt://record, blurt://snap           → not handled here (false): the shell starts them — from a link (Blurt not
+//                                            in front) only after one click on the island's question (App.confirmFromURL)
 // Anything that would start an agent or change data is deliberately not reachable from a URL: any web page can open
 // one.
 import AppKit

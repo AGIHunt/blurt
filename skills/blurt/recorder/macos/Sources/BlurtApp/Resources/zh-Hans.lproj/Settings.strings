@@ -74,22 +74,14 @@
 "settings.export.choose_2" = "选择…";
 "settings.export.default_destination" = "默认去向";
 "settings.export.default_workspace_blurt" = "这是「未归类」条目的设置。每个项目的设置在它自己的 .blurt/config.json 里。";
-"settings.export.exporters" = "导出工具";
-"settings.export.exports_run_from_review" = "导出由 agent 或审核页完成；重复导出不会建重复的记录。";
+"settings.export.exporters" = "导出去处";
 "settings.export.feishu_app_id_set" = "FEISHU_APP_ID 已设置";
 "settings.export.feishu_lark_bitable" = "飞书多维表格";
-"settings.export.feishu_lark_cli" = "飞书：lark-cli";
-"settings.export.feishu_self_built_app" = "飞书：自建应用";
-"settings.export.logged" = "已登录";
-"settings.export.not_installed" = "没装";
-"settings.export.not_installed_exports_as" = "没装 — 用自己的身份导出，不用建应用";
-"settings.export.not_logged" = "没登录";
-"settings.export.nothing_install" = "不需要任何工具";
+"settings.export.not_logged" = "未登录";
 "settings.export.open_table_browser_copy" = "在浏览器里打开那张表，复制地址栏。列按含义自动对应，缺的列会自动建。";
-"settings.export.optional_used_without_lark" = "可选；没装 lark-cli 时用";
 "settings.export.save" = "保存到";
-"settings.export.send_confirmed_items" = "确认后的条目导出到";
-"settings.export.session_folder" = "会话文件夹里";
+"settings.export.send_confirmed_items" = "导出到";
+"settings.export.session_folder" = "录屏所在的文件夹";
 "settings.export.table_url" = "表格链接";
 
 "settings.general.after_recording" = "录完之后";
@@ -236,3 +228,8 @@
 "settings.storage.videos.confirm_title" = "把这些视频移到废纸篓？";
 "settings.storage.videos.confirm" = "条目、画面和文字稿都会保留。";
 "settings.storage.videos.freed" = "已把 %@ 视频移到废纸篓";
+"settings.export.feishu" = "飞书";
+"settings.export.local" = "Markdown 和 CSV";
+"settings.export.ready" = "可用";
+"settings.export.not_set_up" = "未设置";
+"settings.export.footer" = "让 Agent 导出就行，比如「把待办导出到 GitHub」。重复导出不会产生重复记录。";

@@ -179,14 +179,14 @@
 "error.nothing" = "这个分支上还没有可以合并的提交。";
 
 /* 设置 → Agent */
-"agents.header" = "整理录屏用的 agent（按顺序试）";
-"agents.footer" = "拖动调整顺序；第一个能用的来干活，没登录、额度用完时自动换下一个。取消勾选的不会被用到。";
+"agents.header" = "Agent（按顺序使用）";
+"agents.footer" = "用于整理录屏和截图、自动归类和 AI 补全。拖动调整顺序：第一个能用的来干活，没登录或额度用完时自动换下一个。取消勾选的不会被用到。";
 "agents.check_again" = "重新检查";
 "agents.drag" = "拖动排序";
 "agents.runs_first" = "当前首选";
 "agents.sessions_badge" = "会话";
 "agents.sessions_badge.help" = "可以在口喷鸡的会话里处理条目";
-"agents.install" = "安装 skill + MCP…";
+"agents.install" = "连接…";
 "agents.test" = "测试";
 "agents.test.help" = "发一句极短的提示词，确认能跑（花很少的 token）";
 "agents.test.no_command" = "没有命令行模式";
@@ -197,7 +197,7 @@
 "agents.install_hint" = "安装：";
 "agents.codex_trust" = "Codex 会把它处理过的项目记为受信任（写在它自己的设置里）。";
 "agents.state.ready" = "已登录";
-"agents.state.not_installed" = "没安装";
+"agents.state.not_installed" = "未安装";
 "agents.state.manual" = "已安装 · 手动接入";
 "agents.manual.header" = "只接 skill + MCP";
 "agents.manual.footer" = "这些没有命令行，不会在口喷鸡里运行。在它们自己的设置里导入 blurt skill 和 MCP 一次即可，用「复制指令」把条目交给它们。";
@@ -228,3 +228,5 @@
 "finish.state.pr" = "已开 PR";
 "finish.state.pushed" = "已推送";
 "finish.state.discard" = "已丢弃";
+"agents.install.help" = "把 blurt skill 和 MCP 装进这个 Agent，装之前先列出要改的地方";
+"agents.state.checking" = "正在检查…";
