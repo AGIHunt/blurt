@@ -140,7 +140,7 @@ Windows/Linux: Blurt（Tauri 2）
 
 **Python 怎么交付**：
 - 应用**不打包** uv。本机的 uv 二进制有 44 MB，打进去会让安装包从约 1 MB 涨到约 20 MB。
-- 引导时检测 uv；没有的话，经用户同意后用官方安装器装到 `~/.blurt/bin/uv`，然后在后台预装依赖和 Python。
+- 引导时检测 uv；找到就在后台预装依赖和 Python；没有的话，经用户同意后用官方安装器装到 `~/.blurt/bin/uv`，再预装。
   这样也解决了 TODO 里「第一次跑 frames.py 要等 59 秒」的问题。
 - uv 没装好之前，主窗口只读已有的 `index.db`；没有索引时只列出会话目录，写入操作置灰。
 
@@ -188,15 +188,30 @@ Windows/Linux: Blurt（Tauri 2）
 
 ### 2.2 引导
 
-已实现 4 步（macOS `Onboarding/Onboarding.swift`），每步都能跳过；首次启动出现一次（config `app.onboarded`），之后可从
-设置 → 通用或 `blurt://onboarding` 再打开：
+已实现 4 步，以听写为先（macOS `Onboarding/Onboarding.swift`、`Onboarding/ModelSetup.swift`），每步都能跳过；首次启动
+出现一次（config `app.onboarded`），之后可从设置 → 通用或 `blurt://onboarding` 再打开：
 
-1. **权限**：屏幕录制、麦克风、辅助功能（画笔需要），实时显示授权状态。
-2. **uv 和 Python**：检测，经用户同意后安装到 `~/.blurt/bin`，再预热依赖、建好索引。
-3. **语音模型**：根据语言和硬件推荐一个，下载（可选走 hf-mirror）。
-4. **Agent**：探测是否安装、是否登录，一键安装 skill 和 MCP，先预览要改动的文件，用户确认后才写。
+1. **欢迎**：一句话讲清三种用法（按 Fn 随处听写；截图和语音备注存成卡片；录屏交给 Agent 去修），下面列出各自的按键。
+2. **权限**：只要听写需要的——麦克风和辅助功能，实时显示状态。缺权限时「设置权限…」是本步的主按钮（权限向导的听写流程：
+   辅助功能、输入监控、麦克风、🌐 键），底部按钮变成「以后再说」；向导走完、权限齐了自动进入下一步。输入监控只在需要时出现
+   （没开辅助功能，或听写键不是 Fn）；听写键是 Fn 时也列出「🌐 键」一行（系统设置 → 键盘里「按下 🌐 键时」要设成「不执行任何操作」），
+   这样向导还差什么，页面上都看得到。听写键也在这一步选。**录屏权限不在引导里问**：第一次截图或录屏时再问（截图失败的
+   提示上有「允许…」，录屏的提示框按钮也走权限向导）。
+3. **语音模型**：一个「下载推荐模型」按钮，按这台 Mac 的档位下载一整套：听写识别（`transcribe.py dictation-models` 的推荐，
+   Apple Silicon 上是 Qwen3-ASR）、润色（`polish.py models` 的推荐，只在能跑润色的机器上）、语音备注（SenseVoice Small），
+   显示总大小和一个进度条（旁边「停止」），一个接一个下载，关掉引导也会在后台继续（下好后岛上提示一次；中断了也提示，
+   「查看」重新打开这一步）。下载失败时可重试，或只下载小模型 SenseVoice Small（228 MB，听写也能先用它）。哪个模型列表读不到
+   （脚本失败或超时）就显示「读不到模型列表」和「重试」，不会悄悄少下一个。每次打开引导都重新读一遍。镜像和设置 → 语音的
+   勾选框一致（从没选过时，区域是中国大陆就优先走国内镜像）。不固定模型：
+   听写和润色保持「自动」，装好推荐的就用推荐的。uv：找到就在后台静默预热依赖、建索引，失败时只显示一句话和「重试」（原始
+   输出只进事件日志）；没找到时只显示一句话
+   和「安装 uv」按钮，经用户同意后用官方安装器装到 `~/.blurt/bin`（按钮的提示里是完整命令）。
+4. **试一下**：一个输入框，「按一下 Fn 说句话」，第一次听写成功后显示对勾；一个「登录时打开口喷鸡」开关，这里默认打开
+   （听写需要口喷鸡一直在运行；以后从设置里再打开引导时，按现在的登录项状态显示），点「完成」时生效。测试版不会真的注册登录项，只发事件。
 
 不在引导里、以后按需做的（可选）：
+
+- **接入 Agent**（装 blurt skill 和 MCP）：设置 → Agent，先预览要改动的文件，用户确认后才写。
 
 - **绑定项目**：菜单「绑定一个项目文件夹…」或设置 → 通用「绑定项目文件夹…」，创建 `<项目>/.blurt/`，建议 gitignore；
   不绑定也能用，录屏放在默认工作区 `~/Blurt/recordings`。
@@ -766,7 +781,7 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
 - **WP6 用到的配置键**（都在 `$BLURT_HOME/config.json`）：`lang`（和 record.py 共用）、`app.onboarded`、`app.settings_pane`、
   `app.asked_screen`、`fix.agent`、`fix.mode`（background | interactive）、`spotlight`（false = 关）、`privacy.local_asr`
   （只能选本地识别）、`privacy.keep_live_audio`（默认 false：转写完成、录屏文件在、10 分钟没写入后删 `live/audio.pcm`）、
-  `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
+  `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`；设置 → 语音的勾选框写 true / false，从没选过时按区域：中国大陆算开。设置助手、设置 → 听写、设置 → 语音都用 `ModelBundle.mirror` 这一个答案）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
   导出默认去向：项目写 `<repo>/.blurt/config.json` → `export`，默认工作区写全局 `export`。
 - **index.db 只读打开的坑**（C3 的读者都要注意）：WAL 库在最后一个连接关闭后 SQLite 会删掉 `-wal` / `-shm`，这时
   `?mode=ro` 打开会在 prepare 时报 `SQLITE_CANTOPEN`。读者先试 `mode=ro`，失败就用 READWRITE（不带 CREATE）加

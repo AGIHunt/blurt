@@ -3,69 +3,21 @@
 
 "onboarding.back" = "Back";
 
-"onboarding.blurt_hands_recordings_agent" = "Blurt hands recordings to the agent you already use. With the blurt skill + MCP installed it can read items and report fixes back.";
-
-"onboarding.blurt_records_area_you" = "Blurt records the area you pick; files stay on your Mac. The status below updates live.";
-
-"onboarding.coding_agent" = "Coding agent";
-
-"onboarding.dependencies_ready_index_built" = "Dependencies ready, index built";
-
 "onboarding.done" = "Done";
-
-"onboarding.download" = "Download";
-
-"onboarding.download_via_hf_mirror" = "Download via hf-mirror.com (mainland China)";
-
-"onboarding.downloaded" = "Downloaded";
-
-"onboarding.fetches_scripts_packages_now" = "Fetches the scripts' packages now so the first run doesn’t wait";
-
-"onboarding.four_quick_steps_talk" = "Four quick steps: talk while you record, let your agent fix it.";
-
-"onboarding.install_skill_mcp" = "Install skill + MCP…";
 
 "onboarding.install_uv" = "Install uv";
 
-"onboarding.looking_agents" = "Looking for agents…";
-
-"onboarding.needs_uv_first_previous" = "Needs uv first (previous step).";
-
 "onboarding.next" = "Next";
 
-"onboarding.no_claude_code_codex" = "No Claude Code, Codex, Kimi Code… found. Install one, then connect it in Settings → Agents.";
-
 "onboarding.permissions" = "Permissions";
-
-"onboarding.preparing_about_minute_first" = "Preparing… (about a minute the first time)";
-
-"onboarding.processing_search_speech_recognition" = "Processing, search and speech recognition are Python scripts that ship with the skill; uv runs them — no Python setup needed.";
-
-"onboarding.python_uv" = "Python (uv)";
-
-"onboarding.reading_models" = "Reading models…";
 
 "onboarding.set_up_blurt" = "Set up Blurt";
 
 "onboarding.skip_setup" = "Skip setup";
 
-"onboarding.speech_model" = "Speech model";
-
 "onboarding.step" = "Step %@ · ";
 
-"onboarding.turns_your_narration_into" = "Turns your narration into text on this Mac — nothing is uploaded. The recommended model covers Chinese, English, Japanese, Korean and Cantonese.";
-
-"onboarding.uv_found" = "uv found: ";
-
-"onboarding.uv_not_found" = "uv not found";
-
-"onboarding.warm_up_dependencies" = "Warm up dependencies";
-
 "onboarding.welcome_blurt" = "Welcome to Blurt";
-
-"onboarding.you_can_switch_models" = "You can switch models or use cloud recognition later in Settings → Speech.";
-
-"onboarding.your_ok_blurt_runs" = "With your OK, Blurt runs uv’s official installer into ~/.blurt/bin (your shell config is not touched):";
 
 "settings.export.ask_each_time" = "Ask each time";
 "settings.export.blurt_config_json_shared" = "For %@ (.blurt/config.json), shared with your team.";
@@ -201,9 +153,9 @@
 "settings.perm.done.dictation" = "Done — dictation works in every app now.";
 "settings.perm.done.all" = "Done — Blurt has every permission it needs.";
 "settings.perm.done.some" = "Done for now — allow the rest here any time.";
-"onboarding.permissions_detail" = "Click Set Up Permissions: Blurt opens each switch in System Settings for you, and a small panel beside it shows what to turn on.";
+"onboarding.permissions_detail" = "Dictation needs the microphone, and Accessibility to type at the cursor. Blurt opens each switch in System Settings for you.";
 "onboarding.dictation_key" = "Dictation key";
-"onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk. You can change it in Settings → Dictation.";
+"onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk. You can change it later in Settings.";
 "onboarding.dictation_key.other" = "Tap %@ to dictate hands-free and tap again to stop, or hold it and talk.";
 "settings.perm.not_needed" = "Not needed";
 "settings.general.dictation_lab" = "Show the Dictation Lab (for developers)";
@@ -212,3 +164,42 @@
 "settings.general.voice_end_on_pause.hint" = "Off: a voice note (⌥⇧V) goes on through your thinking pauses until you press the key again or click Done, up to 10 minutes; Esc cancels. On: 1.5 seconds of silence ends it. A screenshot’s spoken note always ends when you pause.";
 "settings.general.live_text" = "Show text while I talk";
 "settings.general.live_text.hint" = "While a voice note or a dictation listens, the words recognised so far show in a small panel under the island, the newest fading in. It never takes the focus, moves out of the way of where you type, and is never recorded.";
+
+"onboarding.subtitle" = "Dictate anywhere with %@, snap and leave voice notes as cards, record and let an Agent fix it.";
+"onboarding.use.dictation" = "Dictation";
+"onboarding.use.snap" = "Snap";
+"onboarding.use.voice" = "Voice Note";
+"onboarding.use.record" = "Record";
+"onboarding.use.hint" = "You can change these shortcuts in Settings.";
+"onboarding.skip_for_now" = "Skip for Now";
+"onboarding.permissions.screen_later" = "Screen Recording is asked the first time you snap or record.";
+"onboarding.models" = "Speech models";
+"onboarding.models.detail" = "They turn your speech into tidy text on this Mac. Nothing is uploaded.";
+"onboarding.models.checking" = "Checking this Mac…";
+"onboarding.models.kind.dictation" = "Dictation";
+"onboarding.models.kind.polish" = "Polish";
+"onboarding.models.kind.note" = "Voice Note";
+"onboarding.models.download" = "Download Recommended Models";
+"onboarding.models.total" = "%@ in all, kept on this Mac";
+"onboarding.models.progress" = "%@ of %@";
+"onboarding.models.background" = "You can go on: the download carries on in the background.";
+"onboarding.models.ready" = "Models ready";
+"onboarding.models.ready_toast" = "Speech models are ready";
+"onboarding.models.failed" = "The download stopped. Check your connection and try again.";
+"onboarding.models.retry" = "Try Again";
+"onboarding.models.small" = "Small Model Only (%@)";
+"onboarding.models.unavailable" = "Couldn’t read the models.";
+"onboarding.warm.failed" = "Blurt couldn’t finish setting up its speech tools. Check your connection and try again.";
+"onboarding.models.stop" = "Stop";
+"onboarding.models.failed_toast" = "The model download stopped";
+"onboarding.models.failed_open" = "Show";
+"onboarding.models.later" = "You can change models later in Settings, under Dictation and Speech.";
+"onboarding.uv.needed" = "Blurt needs a small helper, uv, to run its speech models.";
+"onboarding.uv.failed" = "uv didn’t install. Check your connection and try again.";
+"onboarding.try" = "Try it";
+"onboarding.try.detail" = "Click the box, tap %@ and say something. Tap it again when you’re done.";
+"onboarding.try.placeholder" = "Your words appear here";
+"onboarding.try.works" = "Dictation works.";
+"onboarding.try.needs_permissions" = "Dictation needs its permissions first.";
+"onboarding.try.downloading" = "The models are still downloading. Try it once they’re in.";
+"onboarding.login.detail" = "So the dictation key always works.";

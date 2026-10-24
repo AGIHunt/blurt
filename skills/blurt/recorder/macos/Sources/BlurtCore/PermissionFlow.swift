@@ -2,10 +2,12 @@
 // which steps a flow walks and in what order, what macOS's 🌐-key setting means, and where the helper panel docks next
 // to the System Settings window. Unit-tested in Tests/BlurtCoreTests/PermissionFlowTests.
 //
-//   the flow     one "Set up permissions" walk through what's missing, in order: the setup assistant and Settings →
-//                Privacy walk everything, dictation (Settings → Dictation, the menu row, the island) walks what
-//                dictation needs. A step is skipped when it is already satisfied (the app decides what that means:
-//                Input Monitoring is satisfied once the key is heard by a tap, e.g. the Fn filter on Accessibility).
+//   the flow     one "Set up permissions" walk through what's missing, in order: Settings → Privacy walks
+//                everything, Screen Recording last (it may want Blurt restarted, which shouldn't cut the walk short);
+//                dictation (the setup assistant, Settings → Dictation, the menu row, the island) walks what dictation
+//                needs — Screen Recording is asked the first time a snap or a recording needs it. A step is skipped
+//                when it is already satisfied (the app decides what that means: Input Monitoring is satisfied once
+//                the key is heard by a tap, e.g. the Fn filter on Accessibility).
 //   the 🌐 key   `defaults read com.apple.HIToolbox AppleFnUsageType` (System Settings → Keyboard → "Press 🌐 key
 //                to"): 0 Do Nothing, 1 Change Input Source, 2 Show Emoji & Symbols, 3 Start Dictation (macOS 26 shows
 //                "Start Dictation (Press 🌐 Twice)"). Read only — Blurt never writes it. Unset = macOS's default, which
@@ -36,16 +38,17 @@ public enum PermissionKind: String, CaseIterable, Equatable {
 }
 
 public enum PermissionFlowKind: String, Equatable {
-    /// everything Blurt uses (the setup assistant, Settings → Privacy)
+    /// everything Blurt uses (Settings → Privacy; a row's Allow, e.g. Screen Recording at the first snap)
     case all
-    /// what dictation needs (Settings → Dictation, the menu row, the island's reminder)
+    /// what dictation needs (the setup assistant, Settings → Dictation, the menu row, the island's reminder)
     case dictation
 
-    /// The order the guide walks. Dictation: Accessibility first (it pastes, and with Fn it alone hears the key),
-    /// then Input Monitoring (the key in every app when it isn't Fn), the microphone, the 🌐 key.
+    /// The order the guide walks. Everything: dictation's first, Screen Recording last (it may need a restart).
+    /// Dictation: Accessibility first (it pastes, and with Fn it alone hears the key), then Input Monitoring (the key
+    /// in every app when it isn't Fn), the microphone, the 🌐 key.
     public var order: [PermissionKind] {
         switch self {
-        case .all: return [.screen, .microphone, .accessibility, .inputMonitoring, .fnKey]
+        case .all: return [.microphone, .accessibility, .inputMonitoring, .fnKey, .screen]
         case .dictation: return [.accessibility, .inputMonitoring, .microphone, .fnKey]
         }
     }

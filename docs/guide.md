@@ -210,6 +210,12 @@ fits) · `W` won't do · `X` discard · `S` open the menu.
 Dictation types what you say into **whichever app has the focus**: a chat box, an email, your editor, a terminal.
 It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and dictation puts it where you're typing.
 
+- **Setting up.** The setup assistant (first launch, again from Settings → General) gets dictation ready in four
+  short steps: what Blurt does and its keys; the permissions dictation needs (the microphone and Accessibility, with
+  the permission guide below); *Download Recommended Models* — speech recognition, polish and voice notes picked for
+  this Mac, one progress bar, carrying on in the background (if it fails, *Small Model Only* gets SenseVoice Small,
+  228 MB); and a box to try it in, with *Open Blurt at login* (on, so the key always works). Screen Recording isn't
+  asked there: the first snap or recording asks for it. Connecting an agent is in Settings → Agents.
 - **Tap Fn** (🌐, alone), talk, **tap it again**. Or **hold Fn** while you talk and let go to stop: anything held
   longer than about 0.3 s is push-to-talk. The island's ears show a keyboard and a mint level while it listens, then
   a few dots while it transcribes and polishes. `Esc` cancels. Fn used with another key (`Fn`-arrow, `Fn`-F-keys…)
@@ -244,8 +250,9 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   the corrected one. A pause to breathe in the
   middle of a sentence doesn't end it: the full stop comes where the sentence does. It doesn't rewrite, summarize,
   translate or answer. When its output looks like any of that, or it takes longer than the time limit (3 s), you
-  get the words exactly as spoken. The first time, download a model in Settings → Speech; the recommended one depends
-  on your Mac's memory. *Verbatim* types the raw transcript.
+  get the words exactly as spoken. The model comes with *Download Recommended Models* in the setup assistant (or
+  download it in Settings → Speech); the recommended one depends on your Mac's memory. *Verbatim* types the raw
+  transcript.
 - **Styles.** By default every app gets *Light*: the tidy-up above, and nothing more. It never turns what you say into
   a list, never drops a correction you made, and never changes your tone. A little of it depends on the app: in chat
   apps (WeChat, Slack, Feishu, Telegram…) the model is asked to keep 吧 / 呢 / 啊 and a one-sentence message gets no
@@ -299,8 +306,9 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   next to the System Settings window says what to do — usually just "Turn on Blurt here". If Blurt isn't in the list,
   drag the Blurt icon from the panel into it. The panel follows the window, shows every step's state, and moves on by
   itself as soon as a switch is on; *Skip* leaves one for later. At the end Blurt comes back to the front with a check
-  mark: "Done — dictation works in every app now." Screen Recording sometimes needs Blurt restarted; the panel and
-  Settings → Privacy have a **Restart Blurt** button for that. Blurt never clicks or changes anything in System
+  mark: "Done — dictation works in every app now." Screen Recording is asked when a snap or a recording first needs
+  it (*Allow…* on the snap's message), and sometimes needs Blurt restarted; the panel and Settings → Privacy have a
+  **Restart Blurt** button for that. Blurt never clicks or changes anything in System
   Settings itself.
 - **Dictation** is a place in the main window's sidebar, under All Items (also menu bar → *Dictation History…*,
   `⌥⌘D`, or the command palette). It lists every dictation by day: the app it went into, the time, the text, and small
@@ -469,13 +477,14 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
+- **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下，还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
 - **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方（每次停顿后更新一两行）；那是原始转写，真正输入的是润色后的文字。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
 - **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。岛上会显示「已发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **风格**（「设置 → 听写」）只有一个选项：**原话**（语音模型听到的原样，不润色）、**轻整理**（默认）、**结构化**或**自动**。它们用的润色模型和识别模型都在「设置 → 语音 → 听写」里选：推荐组合会写明一共多大，一个**下载**按钮就好；「设置 → 听写」显示正在用哪个，可以点「更换…」。
-- **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。第一次用要在「设置 → 语音」里下载一个模型，推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
+- **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。模型在设置助手的「下载推荐模型」里一起装好（也可以在「设置 → 语音」里下载），推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：
   - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，岛右侧会出现清单标记。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。
   - **⌥⇧L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，岛上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，新版本放进剪贴板，你的修改不动。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，岛上会出现几秒「排成清单」。
@@ -485,7 +494,7 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。它记下的是这个词，不是替换规则。拿不准的会作为建议留在「词库」里，由你决定添加还是忽略。
 - **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。只用于这一次听写，不会保存，也从不读密码框。这项和自动学习都可以在设置里关掉。
 - **权限**：「辅助功能」用来粘贴、读取光标附近的文字和听到 Fn；「输入监控」用来听到其他按键；还有麦克风。按键还听不到时，「设置 → 听写」最上面会提示；「权限」一栏列出每一项的状态（都开好时收成一行「都已开启」），以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次。这两处和设置里的「开启…」都会打开**权限向导**（见下）；开关打开后几秒内自动生效，不用重启。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
-- **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」录屏权限有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
+- **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」录屏权限在第一次截图或录屏需要时才问（截图失败的提示上有「允许…」），有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
 - **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。
 

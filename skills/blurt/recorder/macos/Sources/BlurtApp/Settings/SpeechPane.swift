@@ -173,7 +173,7 @@ final class SpeechModel: ObservableObject {
 
     init() {
         language = Config.shared["asr.language"] as? String ?? "auto"
-        mirror = Config.shared["asr.hf_mirror"] as? Bool ?? false
+        mirror = ModelBundle.mirror
     }
 
     func model(_ id: String?) -> ASRModel? { id.flatMap { i in models.first { $0.id == i } } }
@@ -224,7 +224,7 @@ final class SpeechModel: ObservableObject {
     }
 
     func setLanguage(_ l: String) { language = l; Config.shared.set("asr.language", l == "auto" ? nil : l) }
-    func setMirror(_ on: Bool) { mirror = on; Config.shared.set("asr.hf_mirror", on ? true : nil) }
+    func setMirror(_ on: Bool) { mirror = on; Config.shared.set("asr.hf_mirror", on) }     // explicit either way: off stays off in China
     func setLimit(_ key: String, _ value: Any?) { Config.shared.set("asr.limits.\(key)", value); Task { await load() } }
     var onBattery: String { Config.shared["asr.on_battery"] as? String ?? "lighter" }
     func setOnBattery(_ lighter: Bool) { Config.shared.set("asr.on_battery", lighter ? nil : "same"); objectWillChange.send() }

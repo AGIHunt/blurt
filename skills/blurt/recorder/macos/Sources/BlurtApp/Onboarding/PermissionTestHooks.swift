@@ -4,6 +4,7 @@
 //   perm screen on|off|clear · perm mic granted|denied|not_asked|clear · perm ax on|off|clear · perm im on|off|clear
 //   perm fn 0|1|2|3|unset|clear (AppleFnUsageType) · perm fnapps Typeless,…|clear (other Fn apps running)
 //   perm guide all|dictation [KIND,…] [SOURCE] · perm skip · perm cancel · perm restart · perm poll
+//   perm resume KIND,…|- FLOW SOURCE (what a relaunch for Screen Recording leaves behind, then the launch's resume)
 //   perm standin show [x,y,w,h] | move x,y | hide | off (a window of ours standing in for System Settings)
 //   perm drag PASTEBOARD (what dragging the Blurt tile carries) · perm status
 import AppKit
@@ -30,6 +31,11 @@ extension App {
             case "skip": g.skip()
             case "cancel": g.cancel()
             case "restart": g.restartForScreen()
+            case "resume":
+                let kinds = v == "-" ? [] : v.split(separator: ",").map(String.init)
+                Config.shared.set("app.permission_resume", ["kinds": kinds, "flow": a.count > 2 ? a[2] : "all",
+                                                            "source": a.count > 3 ? a[3] : "privacy", "at": Date().timeIntervalSince1970])
+                g.resumeIfNeeded()
             case "poll": g.poll()
             case "standin":
                 HelperPanel.StandIn.command(a.dropFirst().joined(separator: " "))

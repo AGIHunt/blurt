@@ -5,8 +5,10 @@ import XCTest
 
 final class PermissionFlowTests: XCTestCase {
     func testWalksOnlyWhatIsMissingInOrder() {
-        XCTAssertEqual(PermissionPlan.steps(.all, satisfied: []), [.screen, .microphone, .accessibility, .inputMonitoring, .fnKey])
+        // everything: dictation's first, Screen Recording last (it may want a restart, which shouldn't cut the walk)
+        XCTAssertEqual(PermissionPlan.steps(.all, satisfied: []), [.microphone, .accessibility, .inputMonitoring, .fnKey, .screen])
         XCTAssertEqual(PermissionPlan.steps(.all, satisfied: [.screen, .accessibility, .fnKey]), [.microphone, .inputMonitoring])
+        XCTAssertEqual(PermissionPlan.steps(.all, satisfied: [.microphone, .accessibility, .inputMonitoring]), [.fnKey, .screen])
         // dictation: Accessibility first; Input Monitoring is skipped once the Fn filter hears the key
         XCTAssertEqual(PermissionPlan.steps(.dictation, satisfied: []), [.accessibility, .inputMonitoring, .microphone, .fnKey])
         XCTAssertEqual(PermissionPlan.steps(.dictation, satisfied: [.inputMonitoring, .microphone]), [.accessibility, .fnKey])
@@ -19,6 +21,9 @@ final class PermissionFlowTests: XCTestCase {
         XCTAssertEqual(PermissionPlan.steps(.all, only: [.inputMonitoring], satisfied: []), [.inputMonitoring])
         XCTAssertEqual(PermissionPlan.steps(.dictation, only: [.microphone, .accessibility], satisfied: []), [.accessibility, .microphone])
         XCTAssertEqual(PermissionPlan.steps(.dictation, only: [.fnKey], satisfied: [.fnKey]), [])
+        // the first snap / recording asks for Screen Recording alone
+        XCTAssertEqual(PermissionPlan.steps(.all, only: [.screen], satisfied: []), [.screen])
+        XCTAssertEqual(PermissionPlan.steps(.all, only: [.screen], satisfied: [.screen]), [])
         // a kind outside the flow still comes (after the flow's own)
         XCTAssertEqual(PermissionPlan.steps(.dictation, only: [.screen], satisfied: []), [.screen])
     }

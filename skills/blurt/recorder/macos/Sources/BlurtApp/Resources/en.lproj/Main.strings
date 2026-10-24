@@ -51,7 +51,7 @@
 "app.status.ax_count" = "Blurt — %@";
 
 "app.toast.saved" = "Recording saved (%@)\nOrganize it from the main window whenever you like.";
-"app.toast.welcome" = "Blurt is in your menu bar\n%@ starts and finishes a recording · %@ opens this menu";
+"app.toast.welcome" = "Blurt is in your menu bar\nTap %@ to dictate · %@ to snap";
 
 "app.url.no_item" = "That item isn’t in the index (%@)";
 "app.url.no_session" = "That capture is gone: %@";

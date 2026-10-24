@@ -1,6 +1,7 @@
 // The permission guide (docs/design/dictation.md §Permissions): one "Set up permissions" walk through what's missing,
 // used by the setup assistant, Settings → Privacy, Settings → Dictation ("Turn On…"), the menu-bar "Turn On
-// Dictation…" row and the island's reminder. For each step, in order (BlurtCore PermissionPlan):
+// Dictation…" row, the island's reminder, and Screen Recording the first time a snap or a recording needs it (the
+// toast's Allow…, the recording's alert). For each step, in order (BlurtCore PermissionPlan):
 //   1. register Blurt in the list (SystemAccess.register: macOS's own prompt the first time), so the user only flips
 //      a switch; the microphone just asks with macOS's dialog;
 //   2. open the exact pane;
@@ -18,7 +19,7 @@ import BlurtCore
 final class PermissionGuide: ObservableObject {
     static let shared = PermissionGuide()
 
-    enum Source: String { case onboarding, privacy, dictation, menu, island, page, test }
+    enum Source: String { case onboarding, privacy, dictation, menu, island, page, capture, test }
 
     @Published private(set) var running = false
     @Published private(set) var flow: PermissionFlowKind = .all
@@ -194,12 +195,14 @@ final class PermissionGuide: ObservableObject {
 
     /// Blurt to the front, where the walk started.
     private func bringBack() {
+        // a snap / recording asked: no window to come back to (the user snaps again where they were)
+        guard source != .capture else { return }
         activateApp()
         switch source {
         case .onboarding: Onboarding.shared.bringToFront()
         case .privacy: AppEnvironment.settings?.show(pane: "privacy")
         case .dictation, .menu, .island, .page: AppEnvironment.settings?.show(pane: "dictation")
-        case .test: break
+        case .capture, .test: break
         }
     }
 
@@ -211,8 +214,13 @@ final class PermissionGuide: ObservableObject {
         let kinds = (r["kinds"] as? [String] ?? []).compactMap(PermissionKind.init(rawValue:))
         let flow = PermissionFlowKind(rawValue: r["flow"] as? String ?? "") ?? .all
         let src = Source(rawValue: r["source"] as? String ?? "") ?? .privacy
-        emit(["event": "perm_guide", "op": "resume", "steps": kinds.map(\.rawValue)])
-        if kinds.isEmpty { return finish(already: true) }
+        emit(["event": "perm_guide", "op": "resume", "steps": kinds.map(\.rawValue), "source": src.rawValue])
+        if kinds.isEmpty {
+            // Screen Recording was the walk's last step: the done line, back where the walk started
+            self.flow = flow
+            self.source = src
+            return finish(already: true)
+        }
         start(flow, only: kinds, source: src)
     }
 

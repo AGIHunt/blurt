@@ -51,7 +51,7 @@
 "app.status.ax_count" = "口喷鸡 · %@";
 
 "app.toast.saved" = "录屏已保存（%@）\n随时可以在主窗口里整理。";
-"app.toast.welcome" = "口喷鸡已在菜单栏\n%@ 开始 / 结束录制 · %@ 打开菜单";
+"app.toast.welcome" = "口喷鸡在菜单栏\n按%@ 听写 · %@ 截图";
 
 "app.url.no_item" = "索引里找不到这个条目（%@）";
 "app.url.no_session" = "这批素材已经不在了：%@";

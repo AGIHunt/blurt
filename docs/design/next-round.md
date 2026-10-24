@@ -1164,7 +1164,7 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
   `probe` 另给 `core_levels`、`fingerprint`（芯片 | 内存 | GPU），`fingerprint` 变了即「硬件变化」。
 - 注册表每个本地模型另有 `name`、`install`（`files` 单文件 / `archive` 解压后只留 `keep` / `hf` 仓库，走 Hugging Face 缓存）、`package`（需要的 Python 包；
   缺了 `transcribe.py` 自己用 `uv run --with` 重跑，调用方不用管）、`rtf_ref` / `error_ref` / `ram_mb`（参考机实测）、`quality_note_key`（`Speech.strings`）。
-  `default: true` 只标在 `sensevoice-small` 上：引导页下载的是它，更好的模型在设置 → 语音里推荐。
+  `default: true` 只标在 `sensevoice-small` 上：语音备注用它，引导页的「下载推荐模型」里有它（下载失败时也可以只下它），更好的模型在设置 → 语音里推荐。
 - **选择顺序**：`--model-id` / `--backend` 显式参数 > `asr.auto: false` 时的 `asr.models[用途]` > 旧键 `asr.backend` / `asr.model` > 自动。
   `asr.auto` 缺省为 true，但旧配置里写了非 SenseVoice 的 `asr.backend` 视为用户已选（auto 缺省 false）。自动时只用**已安装**的模型：
   `asr.models[用途]`（`auto --apply` 写的）> 推荐 > 推荐列表里第一个已装且覆盖语言的 > SenseVoice。设置页里手动选某个用途的模型 = `asr.auto: false`
