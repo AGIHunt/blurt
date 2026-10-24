@@ -3,7 +3,11 @@
 // every SVG source in assets/brand/ (build.py renders the bitmaps from those):
 //
 //     swift assets/brand/chick.swift                 # → chick-line.svg, chick-filled.svg, app-icon*.svg, glyph.svg
-//     swift assets/brand/chick.swift --alts DIR      # also the three tile treatments (a / b / c), for comparing
+//     swift assets/brand/chick.swift --alts DIR      # also the three v0.8 yellow / dark / white tile treatments
+//
+// The icon tile's colour is not here: it is `gradient.field` (and `gradient.linear` for 32 / 16 px, `gradient.deep`
+// for the dark variant, `gradient.grain` for the grain) in assets/color/tokens.json, read at run time, so colour stays
+// single-sourced (docs/design/system.md §2.2, §6).
 //
 // Why code: the outline is a union (body ∪ tuft) and the wings are the part of their loop outside the body, which
 // CoreGraphics computes exactly (CGPath.union / lineSubtracting, macOS 13+); the menu-bar glyph is the line art turned
@@ -172,6 +176,26 @@ func transformed(_ p: CGPath, _ t: CGAffineTransform) -> CGPath {
     return p.copy(using: &t) ?? p
 }
 
+// MARK: - tiles
+
+/// A gradient stop: colour, alpha, position (0…1).
+struct GStop { var hex: String; var alpha: CGFloat = 1; var at: CGFloat }
+
+/// One layer of a field, as in tokens.json: centre and radius are fractions of the tile's box, y down; a linear
+/// layer's angle is CSS's (180 = top → bottom).
+enum FieldLayer {
+    case linear(angle: CGFloat, stops: [GStop])
+    case radial(centre: CGPoint, radius: CGSize, stops: [GStop])
+}
+
+/// A tile fill: a plain vertical gradient over the 824 box (32 / 16 px, and the v0.8 alternatives), or a layered
+/// field (bottom → top) with monochrome grain on top (`grain` = its opacity, 0 = none; `frequency` per unit of the
+/// 1024 canvas, so the grain scales with the art).
+enum Tile {
+    case vertical([GStop])
+    case field(layers: [FieldLayer], grain: CGFloat, frequency: CGFloat)
+}
+
 // MARK: - looks
 
 struct Look {
@@ -181,19 +205,20 @@ struct Look {
     var arcs: String            // arc colour
     var eyes: String
     var glint: String?          // eye highlight colour (nil = none)
-    var tile: (String, String)? // tile gradient top → bottom (nil = no tile)
-    var rim: String = "#000"    // hairline on the tile edge
+    var tile: Tile?             // the tile's fill (nil = no tile)
+    var rim: String = "#000"    // line on the tile edge
     var rimOpacity: CGFloat = 0.06
+    var rimWidth: CGFloat = 2
     var halo: String? = nil     // a sticker edge around the art (transparent logo)
     var title: String
 }
 
 let cream = Look(name: "a", line: "#17140f", fill: "#ffffff", arcs: "#17140f", eyes: "#17140f", glint: "#ffffff",
-                 tile: ("#ffe36b", "#ffc93a"), title: "black line chick, white body, on a warm yellow tile")
+                 tile: .vertical([GStop(hex: "#ffe36b", at: 0), GStop(hex: "#ffc93a", at: 1)]), title: "black line chick, white body, on a warm yellow tile")
 let dark = Look(name: "b", line: "#ffffff", fill: nil, arcs: "#ffffff", eyes: "#ffffff", glint: "#1b1b1f",
-                tile: ("#2b2b30", "#121214"), rim: "#fff", rimOpacity: 0.10, title: "white line chick on a near-black tile")
+                tile: .vertical([GStop(hex: "#2b2b30", at: 0), GStop(hex: "#121214", at: 1)]), rim: "#fff", rimOpacity: 0.10, title: "white line chick on a near-black tile")
 let white = Look(name: "c", line: "#17140f", fill: "#ffd43b", arcs: "#ff5a36", eyes: "#17140f", glint: "#ffffff",
-                 tile: ("#ffffff", "#f1f0ec"), title: "black line chick with a yellow body and coral sound arcs, on a white tile")
+                 tile: .vertical([GStop(hex: "#ffffff", at: 0), GStop(hex: "#f1f0ec", at: 1)]), title: "black line chick with a yellow body and coral sound arcs, on a white tile")
 
 // The superellipse tile on the macOS 26 grid (824 px at (100, 100) in 1024), cubic fit to |x|^5 + |y|^5 = 1.
 let tilePath = "M924 512C924 483.3 924 452.4 924 422.3C923.9 392.7 923.7 360 922.7 332.7C921.6 303 919.4 271.4 913.7 243C910.6 227.6 906.5 212.7 900.3 198.2C893.3 181.8 884 166.6 870.7 153.3C857.4 140 842.2 130.7 825.8 123.7C811.3 117.5 796.4 113.4 781 110.3C752.6 104.6 721 102.4 691.3 101.3C664 100.3 631.3 100.1 601.7 100C571.6 100 540.7 100 512 100C483.3 100 452.4 100 422.3 100C392.7 100.1 360 100.3 332.7 101.3C303 102.4 271.4 104.6 243 110.3C227.6 113.4 212.7 117.5 198.2 123.7C181.8 130.7 166.6 140 153.3 153.3C140 166.6 130.7 181.8 123.7 198.2C117.5 212.7 113.4 227.6 110.3 243C104.6 271.4 102.4 303 101.3 332.7C100.3 360 100.1 392.7 100 422.3C100 452.4 100 483.3 100 512C100 540.7 100 571.6 100 601.7C100.1 631.3 100.3 664 101.3 691.3C102.4 721 104.6 752.6 110.3 781C113.4 796.4 117.5 811.3 123.7 825.8C130.7 842.2 140 857.4 153.3 870.7C166.6 884 181.8 893.3 198.2 900.3C212.7 906.5 227.6 910.6 243 913.7C271.4 919.4 303 921.6 332.7 922.7C360 923.7 392.7 923.9 422.3 924C452.4 924 483.3 924 512 924C540.7 924 571.6 924 601.7 924C631.3 923.9 664 923.7 691.3 922.7C721 921.6 752.6 919.4 781 913.7C796.4 910.6 811.3 906.5 825.8 900.3C842.2 893.3 857.4 884 870.7 870.7C884 857.4 893.3 842.2 900.3 825.8C906.5 811.3 910.6 796.4 913.7 781C919.4 752.6 921.6 721 922.7 691.3C923.7 664 923.9 631.3 924 601.7C924 571.6 924 540.7 924 512Z"
@@ -252,19 +277,76 @@ let shadowDefs = """
   <filter id="tile-shadow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dy="12"/><feComponentTransfer><feFuncA type="linear" slope=".3"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 """
 
+/// The tile's box on the 1024 canvas (the superellipse's bounds); field centres and radii are fractions of it.
+let tileBox = CGRect(x: 100, y: 100, width: 824, height: 824)
+
+func stopsSVG(_ stops: [GStop]) -> String {
+    stops.map { st in
+        "<stop offset=\"\(fmt(st.at, 3))\" stop-color=\"\(st.hex)\"" + (st.alpha < 1 ? " stop-opacity=\"\(fmt(st.alpha, 3))\"" : "") + "/>"
+    }.joined()
+}
+
+/// A CSS-style linear gradient (angle 0 = up, 90 = right, 180 = down) across the tile box, in user space.
+func linearDef(_ id: String, angle: CGFloat, _ stops: [GStop]) -> String {
+    let a = angle * .pi / 180, dx = sin(a), dy = -cos(a)
+    let half = (tileBox.width * abs(dx) + tileBox.height * abs(dy)) / 2
+    let x1 = tileBox.midX - dx * half, y1 = tileBox.midY - dy * half, x2 = tileBox.midX + dx * half, y2 = tileBox.midY + dy * half
+    return "  <linearGradient id=\"\(id)\" gradientUnits=\"userSpaceOnUse\" x1=\"\(fmt(x1, 1))\" y1=\"\(fmt(y1, 1))\" x2=\"\(fmt(x2, 1))\" y2=\"\(fmt(y2, 1))\">\(stopsSVG(stops))</linearGradient>\n"
+}
+
+/// An elliptical radial gradient (CSS `radial-gradient(rx ry at cx cy)` in fractions of the tile box), in user space.
+func radialDef(_ id: String, centre: CGPoint, radius: CGSize, _ stops: [GStop]) -> String {
+    let x = tileBox.minX + centre.x * tileBox.width, y = tileBox.minY + centre.y * tileBox.height
+    let rx = radius.width * tileBox.width, ry = radius.height * tileBox.height
+    return "  <radialGradient id=\"\(id)\" cx=\"0\" cy=\"0\" r=\"1\" gradientUnits=\"userSpaceOnUse\" gradientTransform=\"translate(\(fmt(x, 2)) \(fmt(y, 2))) scale(\(fmt(rx, 2)) \(fmt(ry, 2)))\">\(stopsSVG(stops))</radialGradient>\n"
+}
+
+/// Monochrome fractal noise, 2 octaves, contrast ×3, at `opacity` (drawn with mix-blend-mode overlay) — the brand grain.
+func grainFilter(_ id: String, opacity: CGFloat, frequency: CGFloat) -> String {
+    let f = ["R", "G", "B"].map { "<feFunc\($0) type=\"linear\" slope=\"3\" intercept=\"-1\"/>" }.joined()
+    return "  <filter id=\"\(id)\" filterUnits=\"userSpaceOnUse\" x=\"\(fmt(tileBox.minX, 0))\" y=\"\(fmt(tileBox.minY, 0))\" width=\"\(fmt(tileBox.width, 0))\" height=\"\(fmt(tileBox.height, 0))\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"\(fmt(frequency, 3))\" numOctaves=\"2\" stitchTiles=\"stitch\"/><feColorMatrix type=\"saturate\" values=\"0\"/><feComponentTransfer>\(f)<feFuncA type=\"linear\" slope=\"0\" intercept=\"\(fmt(opacity, 3))\"/></feComponentTransfer></filter>\n"
+}
+
+/// The tile: defs and the `#tile` group. `#tile-bg` is the base gradient (the whole tile for a vertical tile; the
+/// bottom layer of a field). A field is drawn as `#tile-field`, a group clipped to the superellipse: the base again,
+/// each layer as a box-sized rect, then the grain rect `#tile-grain` (overlay). The base sits inside the group too, so
+/// the overlay blends with the whole field whether or not the renderer isolates the clipped group. build.py drops
+/// `#tile-grain` below 64 px and turns `#tile-field` into the full-bleed square.
+func tileSVG(_ look: Look) -> (defs: String, body: String) {
+    guard let tile = look.tile else { return ("", "") }
+    let rect = "<rect x=\"\(fmt(tileBox.minX, 0))\" y=\"\(fmt(tileBox.minY, 0))\" width=\"\(fmt(tileBox.width, 0))\" height=\"\(fmt(tileBox.height, 0))\""
+    var defs = "", field = ""
+    switch tile {
+    case .vertical(let stops):
+        defs += linearDef("tile-bg", angle: 180, stops)
+    case .field(let layers, let grain, let frequency):
+        defs += "  <clipPath id=\"tile-clip\"><path d=\"\(tilePath)\"/></clipPath>\n"
+        field += "  <g id=\"tile-field\" clip-path=\"url(#tile-clip)\">\n"
+        for (i, layer) in layers.enumerated() {
+            let id = i == 0 ? "tile-bg" : "tile-l\(i)"
+            switch layer {
+            case .linear(let angle, let stops): defs += linearDef(id, angle: angle, stops)
+            case .radial(let c, let r, let stops): defs += radialDef(id, centre: c, radius: r, stops)
+            }
+            field += "    \(rect) fill=\"url(#\(id))\"/>\n"
+        }
+        if grain > 0 {
+            defs += grainFilter("tile-noise", opacity: grain, frequency: frequency)
+            field += "    \(rect) id=\"tile-grain\" filter=\"url(#tile-noise)\" style=\"mix-blend-mode:overlay\"/>\n"
+        }
+        field += "  </g>\n"
+    }
+    var body = "<g id=\"tile\">\n  <path d=\"\(tilePath)\" fill=\"url(#tile-bg)\" filter=\"url(#tile-shadow)\"/>\n" + field
+    body += "  <path d=\"\(tilePath)\" fill=\"none\" stroke=\"\(look.rim)\" stroke-opacity=\"\(fmt(look.rimOpacity, 2))\" stroke-width=\"\(fmt(look.rimWidth, 2))\"/>\n</g>\n"
+    return (defs, body)
+}
+
 func iconSVG(_ c: Chick, _ look: Look, w: CGFloat, artWidth: CGFloat, nudge: CGPoint = .zero, title: String, desc: String,
              arcW: CGFloat? = nil) -> String {
     let t = place(c, w: w, width: artWidth, centre: CGPoint(x: 512, y: 512), nudge: nudge)
+    let tile = tileSVG(look)
     var s = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1024 1024\" width=\"1024\" height=\"1024\">\n"
-    s += "<title>\(title)</title>\n<desc>\(desc)</desc>\n<defs>\n" + shadowDefs
-    if let (a, b) = look.tile {
-        s += "  <linearGradient id=\"tile-bg\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"\(a)\"/><stop offset=\"1\" stop-color=\"\(b)\"/></linearGradient>\n"
-    }
-    s += "</defs>\n"
-    if look.tile != nil {
-        s += "<g id=\"tile\">\n  <path d=\"\(tilePath)\" fill=\"url(#tile-bg)\" filter=\"url(#tile-shadow)\"/>\n"
-        s += "  <path d=\"\(tilePath)\" fill=\"none\" stroke=\"\(look.rim)\" stroke-opacity=\"\(fmt(look.rimOpacity, 2))\" stroke-width=\"2\"/>\n</g>\n"
-    }
+    s += "<title>\(title)</title>\n<desc>\(desc)</desc>\n<defs>\n" + shadowDefs + "\n" + tile.defs + "</defs>\n" + tile.body
     s += "<g id=\"chick\">\n" + artSVG(c, look, t, w: w, arcW: arcW) + "</g>\n</svg>\n"
     return s
 }
@@ -347,20 +429,76 @@ func write(_ s: String, _ name: String, dir: URL = here) {
     print("wrote", dir.appendingPathComponent(name).path)
 }
 
-// the chosen tile (see README): a
-let chosen = cream
+// MARK: - the tile's colour, from assets/color/tokens.json
+
+let tokens: [String: Any] = {
+    let url = here.deletingLastPathComponent().appendingPathComponent("color/tokens.json")
+    guard let data = try? Data(contentsOf: url), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { fatalError("can't read \(url.path)") }
+    return json
+}()
+let gradientTokens = tokens["gradient"] as! [String: Any]
+
+func num(_ v: Any?) -> CGFloat { CGFloat((v as! NSNumber).doubleValue) }
+
+/// Stops as tokens.json writes them: [colour, at] or [colour, alpha, at]; a colour is a hex or a name in gradient.stops.
+func tokenStops(_ v: Any?, names: [String: String]) -> [GStop] {
+    (v as! [[Any]]).map { s in
+        let c = s[0] as! String
+        let hex = (c.hasPrefix("#") ? c : names[c]!).lowercased()
+        return s.count == 3 ? GStop(hex: hex, alpha: num(s[1]), at: num(s[2])) : GStop(hex: hex, at: num(s[1]))
+    }
+}
+
+/// gradient.<name> as an icon tile: its layers, then the icon grain (gradient.grain.icon at iconFrequency).
+func fieldTile(_ name: String) -> Tile {
+    let g = gradientTokens[name] as! [String: Any]
+    let names = (g["stops"] ?? gradientTokens["stops"]) as! [String: String]
+    let layers: [FieldLayer] = (g["layers"] as! [[String: Any]]).map { l in
+        let stops = tokenStops(l["stops"], names: names)
+        switch l["type"] as! String {
+        case "linear": return .linear(angle: num(l["angle"]), stops: stops)
+        case "radial":
+            let c = (l["center"] as! [Any]).map(num), r = (l["radius"] as! [Any]).map(num)
+            return .radial(centre: CGPoint(x: c[0], y: c[1]), radius: CGSize(width: r[0], height: r[1]), stops: stops)
+        case let t: fatalError("tokens.json gradient.\(name): unknown layer type \(t)")
+        }
+    }
+    let grain = gradientTokens["grain"] as! [String: Any]
+    return .field(layers: layers, grain: num(grain["icon"]), frequency: num(grain["iconFrequency"]))
+}
+
+/// gradient.linear's stops, top → bottom (the 32 / 16 px tile: no radial layers, no grain).
+let linearTile = Tile.vertical(tokenStops((gradientTokens["linear"] as! [String: Any])["stops"],
+                                          names: gradientTokens["stops"] as! [String: String]))
+
+// The chosen icon (see README): variant A, the 4A chick as drawn (white body, #17140f line, white glints) on the
+// brand gradient field, with a 3 px white 22 % rim.
+func iconLook(_ tile: Tile) -> Look {
+    var l = cream
+    l.tile = tile
+    l.rim = "#ffffff"; l.rimOpacity = 0.22; l.rimWidth = 3
+    l.title = "black line chick, white body, on the brand gradient field"
+    return l
+}
+let chosen = iconLook(fieldTile("field"))
+let chosenSmall = iconLook(linearTile)
+let chosenDark = iconLook(fieldTile("deep"))
 let iconW: CGFloat = 30            // line, 1024 canvas
 let iconArtW: CGFloat = 604        // art width on the 824 tile
 let iconNudge = CGPoint(x: -8, y: 10)
 
-let descMaster = "Master app icon, 1024 canvas on the macOS 26 grid: 824 px superellipse tile at (100,100), soft shadow; group #chick is the logo. Generated by assets/brand/chick.swift; rendered by assets/brand/build.py."
+let descMaster = "Master app icon, 1024 canvas on the macOS 26 grid: 824 px superellipse tile at (100,100), soft shadow, 3 px white 22 % rim. The tile is gradient.field from assets/color/tokens.json (#tile-field: the base, the radial layers, the grain #tile-grain); group #chick is the logo. Generated by assets/brand/chick.swift; rendered by assets/brand/build.py."
 write(iconSVG(master, chosen, w: iconW, artWidth: iconArtW, nudge: iconNudge, title: "blurt app icon (口喷鸡) — the 4A line chick", desc: descMaster), "app-icon.svg")
-write(iconSVG(small, chosen, w: 54, artWidth: 690, nudge: CGPoint(x: -4, y: 10), title: "blurt app icon — 32 px",
-              desc: "The 32 px slot (16@2x) and the favicon: a heavier line, one sound arc, a filled beak, no glints. Generated by chick.swift."),
+write(iconSVG(small, chosenSmall, w: 54, artWidth: 690, nudge: CGPoint(x: -4, y: 10), title: "blurt app icon — 32 px",
+              desc: "The 32 px slot (16@2x) and the favicon: a heavier line, one sound arc, a filled beak, no glints; the tile is plain gradient.linear (green → mint → azure, top → bottom), no radial layers, no grain. Generated by chick.swift."),
       "app-icon-small.svg")
-write(iconSVG(tiny, chosen, w: 76, artWidth: 640, nudge: CGPoint(x: 0, y: 14), title: "blurt app icon — 16 px",
-              desc: "The 16 px slot: no sound arcs, chunkier line, eyes and beak. Generated by chick.swift."),
+write(iconSVG(tiny, chosenSmall, w: 76, artWidth: 640, nudge: CGPoint(x: 0, y: 14), title: "blurt app icon — 16 px",
+              desc: "The 16 px slot: no sound arcs, chunkier line, eyes and beak; the plain gradient.linear tile. Generated by chick.swift."),
       "app-icon-16.svg")
+write(iconSVG(master, chosenDark, w: iconW, artWidth: iconArtW, nudge: iconNudge, title: "blurt app icon — dark appearance",
+              desc: "The master on gradient.deep: the icon's optional dark appearance (macOS 26 shows it only from an asset-catalog / Icon Composer app icon, not from the .icns). Generated by chick.swift."),
+      "app-icon-dark.svg")
 
 // line + filled masters, transparent, 1024
 let lineLook = Look(name: "line", line: "#000", fill: nil, arcs: "#000", eyes: "#000", glint: nil, tile: nil, title: "")
