@@ -15,8 +15,8 @@ video, so any backend (even ones without timestamps) works.
                                                      one voice note, fast path → {"ok","text","language","ms","model"}
                                                      (uses a running `serve` when there is one). --dictation: the
                                                      dictation model (record.dictation.asr_model); --vocab: bias it
-                                                     toward the custom words (dictation_vocab.py) where the model can
-                                                     be biased, then fix exact sounds-likes → + "asr_text","terms","biased"
+                                                     toward the words (dictation_vocab.py) where the model can be
+                                                     biased; they are hints, the text is as heard → + "asr_text","biased"
   transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 300]   keep the voice-note (or dictation) model warm; unloads it after
                                                      --idle s, exits after --exit-after s without a request
   transcribe.py dictation-models                     the models dictation can use here: selected, recommended
@@ -1010,7 +1010,7 @@ class SenseVoice:
         return [(0.0, len(x) / SR, st.result.text.strip(), lang_code(getattr(st.result, "lang", None)))]
 
     # No set_vocab: sherpa-onnx can't bias SenseVoice (greedy CTC only; create_stream(hotwords=…) aborts the process
-    # with "Only transducer models support contextual biasing"). Its custom words go to polish / dictation_vocab.apply.
+    # with "Only transducer models support contextual biasing"). Its words go to polish.
 
 
 class Qwen3Onnx:
@@ -1856,10 +1856,10 @@ class NoteEngine:
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
              purpose: str | None = None, prior: str | None = None, hint: str | None = None) -> dict:
-        """vocab: None = no custom words; True = the file's; a list = these (strings or term dicts). The model is
-        biased toward them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords), then exact
-        sounds-likes are fixed (dictation_vocab.apply): `text` has the fixes, `asr_text` is what the model wrote. A
-        near miss of a listed name is polish's to fix (it gets the words; no edit-distance pass guesses it here).
+        """vocab: None = no words; True = the file's; a list = these (strings or term dicts). The model is biased toward
+        them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords); they are hints, so `text` (and
+        `asr_text`, the same) is what the model wrote. A misheard name is polish's to fix: it gets the words and sees
+        the sentence.
         hint: the target app's window title and the text around the cursor — words seen there are listed to the model
         first."""
         t0 = time.perf_counter()
@@ -1901,8 +1901,7 @@ class NoteEngine:
         if tag:
             out["tag"] = tag      # the language tag chosen and the model's English / preferred probabilities
         if vocab is not None:
-            fixed, applied = dictation_vocab.apply(text, terms)
-            out.update(text=fixed, asr_text=text, terms=applied, biased=biased)
+            out.update(asr_text=text, biased=biased)
         self.last = time.time()
         return out
 
@@ -2412,7 +2411,7 @@ def main():
     n.add_argument("--model-id", dest="model_id", metavar="ID")
     n.add_argument("--no-server", action="store_true", help="always transcribe in this process")
     n.add_argument("--dictation", action="store_true", help="dictation's model (record.dictation.asr_model)")
-    n.add_argument("--vocab", action="store_true", help="the custom words: bias the model, fix exact sounds-likes")
+    n.add_argument("--vocab", action="store_true", help="the dictation words: bias the model toward them (hints only)")
     sv = sub.add_parser("serve")
     sv.add_argument("--preload", action="store_true", help="load the voice-note model now (e.g. when recording starts)")
     sv.add_argument("--model-id", dest="model_id", metavar="ID", help="preload this model instead")

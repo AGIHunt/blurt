@@ -837,7 +837,7 @@ whole take), **(b)** kept as a mechanical safety net that doesn't interpret mean
 | Code-switch: `translated_glue`'s English function words (a / the / of / is …) and `common_word` | re-decoded an English answer "made of names and function words" | **(c)** for the word list (1 piece of 218 in the names eval); **(b)** kept: an English-tagged answer with Chinese characters in it (the script) is decoded again under the user's language; the language tag by probability threshold (`choose_tag`) stays |
 | `context_dump` separators (和 / 与 / 及 among the punctuation) | spotted the speech model writing its word list out | **(b)**, mechanical: listed names in the list's order with only punctuation / spaces between |
 | Near-miss name correction (`snap`: edit distance against the vocabulary, guarded by `/usr/share/dict/words` + `_MODERN_WORDS` + inflection rules) | Typless → Typeless, Asopic → Anthropic | **(a)**: polish gets the words and writes a misspelt name the listed way (in the names eval `snap` fired 0 times) |
-| Case-only respelling of a one-word term ("github" → "GitHub", guarded by `_MODERN_WORDS`) | spelled a term in the transcript | **(a)**: polish's call (it sees the sentence: Gemini the model or the sign); a term written in pieces ("ba 12" → "BA-12") stays **(b)**, except when every piece is an ordinary word ("type less", "sense voice": the models' call) |
+| Respelling a term (`dictation_vocab.apply`: "github" → "GitHub", guarded by `_MODERN_WORDS`; later only a term written in pieces, "ba 12" → "BA-12", "claude code" → "Claude Code", guarded by `/usr/share/dict/words`) | spelled a term in the transcript, also with polish off | **(a)** (v0.9 review): polish's call, it sees the sentence. The join rewrote paths and package names dictated into a terminal ("npm install @anthropic-ai/claude-code" → "…/Claude Code", "cd ~/src/claude-code") and needed a word list to tell "type less" from a name; nothing rewrites the transcript now |
 | Sounds-likes (`dictation_vocab.apply`: the seed's "codec → Codex", "type less → Typeless", "cloud code → Claude Code", and every learned one) | rewrote what was heard into the term, also with polish off | **(a)** (v0.9, audit dict024 / arch088: "a better video codec" became "…video Codex", "you can type less" "you can Typeless"): a sounds-like only ranks the word as relevant, so the speech model and polish are told about it; nothing is substituted. The seed ships none |
 | English label ("Dictation (English: keep it in English)") | stops Gemma translating an English dictation | **(b)**: chosen by script (no CJK, some Latin), a note to the model |
 | `clean_output` label regex (Output: / Dictation: …), think blocks, code fences, quotes | the model's output format | **(b)**: format, not the speaker's words (the Chinese labels 输出 / 结果 / 润色后 … are gone) |
@@ -875,8 +875,10 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
   names. The Words tab shows the built-in ones on one folded line; each is removable like any word.
 - **Schema 1 → 2** (`DictationVocabulary.migrate`, once, in `seed`): the longer v0.8 seed (people's names among it:
   Sam Altman, Dario, Musk; and Grok, xAI, Llama, Midjourney, Sora …) goes where the user never touched it (still
-  `default`, whatever its state); Claude Code, Codex, blurt and 口喷鸡 (`project` then) become `default`; the
-  sounds-likes the old seed shipped ("cloud code", "codec", "type less" …) are dropped, the learned ones stay.
+  `default`, never used, no sounds-like of the user's own); Claude Code, Codex, blurt and 口喷鸡 (`project` then)
+  become `default`; the sounds-likes the old seed shipped ("cloud code", "codec", "type less" …) are dropped, the
+  learned ones stay. A retired seed or a too-long project name the user did touch (used, or taught a sounds-like by a
+  correction) stays as the user's own word (`learned`, active), with its hints and hits.
 - Every dictation request carries the active words. What happens to them:
   1. **ASR biasing** where the model takes it: Qwen3-ASR (MLX) gets an English sentence as its `context` ("Notes
      about Claude Code, Codex, … and Whisper."), Whisper a comma list as `initial_prompt`, Qwen3-ASR (onnx)
@@ -888,21 +890,18 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
      that is the request's `hint` (the target window's title and 300 characters each side of the cursor,
      `DictationContext.hint`; only used to order the list, never sent to the model) and the dictation so far —, then
      manual before learned before seeded, then by hits.
-  2. **The spelling pass** (`dictation_vocab.apply`, in the ASR server, so it also runs when polish is off), the one
-     deterministic step left and a meaning-free one: a term written in pieces gets its spelling ("ba 12" → "BA-12",
-     "claude code" → "Claude Code") — not when every piece is an ordinary English word ("type less", "work tree",
-     "sense voice": a lower-case entry of macOS's own lexicon, `/usr/share/dict/words`), and nothing at all where the
-     system has no lexicon. Sounds-likes are not substituted. One word in another case ("github", "gemini") is polish's
-     call: whether it is the name or the ordinary word takes the sentence.
-  2b. (The near-miss pass, `snap` — edit distance against the vocabulary plus word lists — is gone, §Rules vs model:
-     polish gets the words and writes a misspelt name the listed way; in the names eval it had fired 0 times.)
+  2. **Nothing rewrites the transcript.** What the speech model wrote is what polish gets, and what is typed when
+     polish is off (Verbatim): no sounds-like substitution, no spelling pass. Whether "claude-code" is a path, "cloud
+     code" a product or "github" the name takes the sentence (v0.9 review: the spelling pass turned
+     "npm install @anthropic-ai/claude-code" into "…/Claude Code"). The near-miss pass (`snap`, edit distance plus
+     word lists) went before it, §Rules vs model.
   3. **Polish** gets `Words: …` and `Near the cursor: … ▮ …` lines before `Dictation: …` in the last message (the
      cached prefix is unchanged). The prompt says to write a word that sounds or looks like a listed one the listed
      way, never to add one that wasn't spoken, and never to copy the context. Two examples show it. The guard accepts
      units from the words and the context as not new, accepts a lost Latin word replaced by a similar listed one,
      and adds `term`: a word that was spoken must survive (the eval caught Gemma dropping "口喷鸡在" otherwise).
-- `terms_applied` in the history: the words the spelling pass or polish wrote, plus listed words in the text when the
-  speech model was told about them.
+- `terms_applied` in the history: the words polish wrote, plus listed words in the text when the speech model was
+  told about them.
 
 ## Names inside Chinese speech (code-switching)
 
@@ -1094,7 +1093,7 @@ rewrite teaches nothing):
     `$BLURT_HOME/dictation/vocabulary.json` (read, change, atomic replace). `explicit=False` makes a suggestion, as
     the watch does. `fixes(raw, corrected)` only finds them.
   - CLI: `dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]`,
-    `dictation_vocab.py fixes --raw … --corrected …`, `dictation_vocab.py apply --text TEXT` (the spelling pass).
+    `dictation_vocab.py fixes --raw … --corrected …`.
   - The app holds no lock another process can see: a tool writing while the app seeds or counts hits can lose one of
     the two writes. Call it while the user isn't dictating (a lab session).
 
@@ -1130,7 +1129,7 @@ Raw ASR, biased where the engine allows:
 | Fun-ASR-Nano int8 | hotwords (rebuild per list) | 69 / 38 % | 77 % | 10.6 % | 4.5 % | 520 / 572 ms | 1.9 s | |
 | zipformer zh-en transducer | hotwords fail to encode | 19 / 0 % | 23 % | 24.7 % | 21 % | 58 / 68 ms | | |
 
-The whole dictation: those outputs → the sounds-like pass → Gemma 4 E2B polish with the 21 words (the seed's
+The whole dictation (v0.8, measured with the sounds-like pass, gone since v0.9): those outputs → the sounds-like pass → Gemma 4 E2B polish with the 21 words (the seed's
 sounds-likes, the rest by hand) and, for "+ctx", a release-notes paragraph as the text around the cursor.
 `e2e_vocab.py`; Whisper's CER is after converting its traditional characters to simplified (13.1 % as typed).
 
@@ -1150,13 +1149,14 @@ eval below made the 1.7B the pro tier's default):
 - it never hallucinated on silence or noise, while Whisper's prompt leaked into one output and looped for 3–5 s
   with a sentence-style prompt, and it writes traditional Chinese.
 - Whisper turbo is offered (the best CER after conversion, 3.5 GB); SenseVoice stays the fallback (no biasing, but
-  the words still help through the sounds-like pass and polish: 50 → 64 %); Qwen3-ASR onnx for Macs without MLX is
+  the words still help through polish: 50 → 64 % with v0.8's sounds-like pass); Qwen3-ASR onnx for Macs without MLX is
   too slow for dictation here (0.64 s before polish).
 
 What the misses look like without biasing: Claude → cloud / cloth, blurt → Blur / blt, option → op (in Chinese
 speech), 口喷鸡 → 口喷机 / 鲲机, tmux → mux / Tmox, worktree → work tree, Codex → Codec / Kodex, Qwen → Qu / 坤,
-Gemma → jamer, pytest → pi dust, BA-12 → "B A twelve", GitHub → jitop. With biasing what remains: 口喷鸡 → 口喷机
-(the sounds-like pass fixes it), Qwen inside Chinese speech, "Sense Voice" as two words (the spelling pass fixes it).
+Gemma → jamer, pytest → pi dust, BA-12 → "B A twelve", GitHub → jitop. With biasing what remains: 口喷鸡 → 口喷机,
+Qwen inside Chinese speech, "Sense Voice" as two words (v0.8's sounds-like and spelling passes fixed these; since v0.9
+polish does, seeing the sentence).
 
 The 41-case polish eval with the new prompt (no words, no context, so the same path as before): Gemma 4 E2B 2.4 %
 fall-backs, similarity 0.946 (model) / 0.970 (final), every untouched sentence kept, fillers removed 91 % (97 %
@@ -1603,7 +1603,7 @@ what went.)
     users keep the plain decode, a failing decoder falls back for good, a context dump is decoded again), `NearMiss`
     (close misses, a weak miss needs the context, English text untouched, **0 false corrections** on the 40-sentence
     fixture with the seeded vocabulary read from the Swift source), `LearnFromCorrection` (`fixes`, `learn` writes the
-    app's file and the next dictation's sounds-like pass uses it, suggestions / rejected / dry run, the CLI), the
+    app's file and the next dictation lists the word first, suggestions / rejected / dry run, the CLI), the
     polish message (`relevant`, no title line, the English label); `test_polish.py` — the two Dictation Lab cases, lead-in
     words, a custom word in the taken-back words, the repair keeping spoken corrections out;
   - `swift test`: `DictationVocabularyTests` (the AI names in the seed with no ordinary-word sounds-likes; an explicit
@@ -1664,7 +1664,7 @@ Earlier rounds:
 
 - `swift test --filter DictationTriggerTests` (14 cases), and the `--selftest` checks `dictation_trigger` and
   `dictation_history` (no XCTest needed).
-- `pytest tests/test_polish.py tests/test_dictation.py tests/test_dictation_vocab.py` (the sounds-like pass, ranking,
+- `pytest tests/test_polish.py tests/test_dictation.py tests/test_dictation_vocab.py` (no rewriting, ranking,
   prompt formats, the guard with words and context, the biased note path with a fake backend, dictation-models).
 - `swift test --filter 'DictationListenerTests|DictationVocabularyTests|DictationLearnTests|DictationHistoryTests'`
   (recreate plans, the store, learn-from-diff, the new history fields surviving prune), selftest `dictation_listener`,

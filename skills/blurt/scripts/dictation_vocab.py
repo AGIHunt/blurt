@@ -4,10 +4,9 @@
   • ranked()        which terms matter for this utterance (sounds-like heard, in the context, used often), capped
   • ASR biasing     whisper_prompt() (initial_prompt), qwen_context() (Qwen3-ASR `context`), hotwords() (sherpa-onnx
                     Qwen3-ASR per-stream hotwords: "; "-joined, an ASCII comma is split and re-joined with spaces)
-  • apply()         the one deterministic pass left, meaning-free: a term written in pieces ("ba 12", "claude code")
-                    gets the term's spelling — never when every piece is an ordinary word ("type less" may be just
-                    that). Sounds-likes are never substituted: whether "cloud code" means Claude Code takes the
-                    sentence, so it is the models' call (the speech model is told the words, polish lists them)
+  • no rewriting   nothing here changes what was said: not a sounds-like ("cloud code" may be just that), not a term
+                    written in pieces or in another case ("claude-code" in a path, "ba 12"). Only the sentence says
+                    which, so the words are the models' hints (the speech model is told them, polish lists them)
   • allowed_units() what polish may add without the content-loss guard calling it new (terms + the context)
 
 A term: {"term", "sounds_like": [...], "source": manual|learned|project|default, "state": active|suggested|rejected|
@@ -82,8 +81,7 @@ def _lexicon() -> set[str]:
 
 
 def common_word(w: str) -> bool:
-    """An ordinary English word (the lexicon): joining it with its neighbour into a term, or learning it as a name,
-    could change real words ("type less", "cloud"), so those are the models' call — they see the sentence."""
+    """An ordinary English word (the lexicon): a fix to one is usually grammar, not a name to learn (fixes())."""
     return w.lower() in _lexicon()
 
 
@@ -173,62 +171,6 @@ def qwen_context(terms: list[dict]) -> str:
 def hotwords(terms: list[dict]) -> str:
     """sherpa-onnx Qwen3-ASR hotwords: "; "-joined (it splits on ASCII commas and re-joins with spaces)."""
     return "; ".join(t["term"].replace(",", " ") for t in terms[:MAX_TERMS])
-
-
-# ------------------------------------------------------------------ the deterministic pass
-def apply(text: str, terms: list[dict]) -> tuple[str, list[str]]:
-    """→ (text, the terms it wrote). Only a term written in pieces gets the term's spelling (_respell). Sounds-likes
-    are not substituted — not the seed's, not the ones learned from the user's fixes: "codec", "type less" and "cloud
-    code" are often just that, and only the sentence says which (docs/design/dictation.md §Custom words)."""
-    out, applied = text or "", []
-    if not out or not terms:
-        return out, applied
-    for t in sorted(terms, key=lambda t: -len(t["term"])):
-        term = t["term"]
-        if _CJK_RE.search(term):
-            continue
-        out, fixed = _respell(out, term)
-        if fixed and term not in applied:
-            applied.append(term)
-    return out, applied
-
-
-def _respell(text: str, term: str) -> tuple[str, bool]:
-    """Windows of 2–3 words (joined by single spaces / hyphens) whose spelling key equals the term's → the term
-    ("ba 12" → "BA-12", "claude code" → "Claude Code") — unless every piece is an ordinary word ("type less",
-    "work tree", "sense voice": the words may mean just that), or the lexicon to tell is missing. One word that differs
-    only in case ("github", "gemini") is polish's call: whether it is the name or the ordinary word takes the
-    sentence."""
-    key = _key(term)
-    if len(key) < 2 or not _lexicon():
-        return text, False
-    words = list(_WORD.finditer(text))
-    out, last, changed = [], 0, False
-    i = 0
-    while i < len(words):
-        done = False
-        for n in (3, 2, 1):
-            if i + n > len(words):
-                continue
-            span = words[i:i + n]
-            if any(re.fullmatch(r"[ \-]", text[a.end():b.start()]) is None for a, b in zip(span, span[1:])):
-                continue
-            s, e = span[0].start(), span[-1].end()
-            seg = text[s:e]
-            if _key(seg) != key:
-                continue
-            if seg != term and n > 1 and not all(common_word(w.group()) for w in span):
-                out.append(text[last:s])
-                out.append(term)
-                last = e
-                changed = True
-            i += n
-            done = True
-            break
-        if not done:
-            i += 1
-    out.append(text[last:])
-    return "".join(out), changed
 
 
 # ------------------------------------------------------------------ code-switching (docs/design/dictation.md)
@@ -578,8 +520,7 @@ def learn(raw: str, corrected: str, explicit: bool = True, path: Path | None = N
 
 def main(argv=None) -> int:
     """dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]
-    dictation_vocab.py fixes --raw TEXT --corrected TEXT          what would be learned; writes nothing
-    dictation_vocab.py apply --text TEXT [--file PATH]            the spelling pass (a term written in pieces)"""
+    dictation_vocab.py fixes --raw TEXT --corrected TEXT          what would be learned; writes nothing"""
     import argparse
     ap = argparse.ArgumentParser(prog="dictation_vocab.py", description=main.__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -592,17 +533,10 @@ def main(argv=None) -> int:
         if name == "learn":
             p.add_argument("--suggest", action="store_true", help="a new word only as a suggestion (as the watch does)")
             p.add_argument("--dry-run", action="store_true")
-    p = sub.add_parser("apply")
-    p.add_argument("--text", required=True)
-    p.add_argument("--file")
     a = ap.parse_args(argv)
-    path = Path(a.file) if getattr(a, "file", None) else None
-    if a.cmd == "apply":
-        t, applied = apply(a.text, load(path))
-        out = {"ok": True, "text": t, "terms": applied}
-    else:
-        out = learn(a.raw, a.corrected, explicit=not getattr(a, "suggest", False), path=path,
-                    dry_run=a.cmd == "fixes" or getattr(a, "dry_run", False))
+    path = Path(a.file) if a.file else None
+    out = learn(a.raw, a.corrected, explicit=not getattr(a, "suggest", False), path=path,
+                dry_run=a.cmd == "fixes" or getattr(a, "dry_run", False))
     print(json.dumps(out, ensure_ascii=False))
     return 0
 

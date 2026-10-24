@@ -37,7 +37,7 @@ public struct DictationEntry: Identifiable, Hashable {
     /// set once it was turned into an item: its id ("BA-12") and uid
     public var item: String?
     public var itemUID: String?
-    /// the custom words this dictation wrote (biasing, the sounds-like pass or polish); nil in older entries
+    /// the words this dictation wrote (the biased speech model or polish); nil in older entries
     public var termsApplied: [String]?
     /// whether the text around the cursor went to polish; nil in older entries
     public var contextUsed: Bool?

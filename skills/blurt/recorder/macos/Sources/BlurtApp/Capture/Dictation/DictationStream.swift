@@ -51,7 +51,7 @@ final class DictationStream {
         /// it began at a hard cut (overlapping the piece before)
         let hard: Bool
         var asr: [String: Any]?
-        /// the text after the sounds-like pass (what polish gets), the overlap with the piece before removed
+        /// the transcript (what polish gets), the overlap with the piece before removed
         var raw = ""
         /// what the speech model itself wrote (the history's "heard")
         var asrText = ""
@@ -74,7 +74,7 @@ final class DictationStream {
     }
 
     struct Result {
-        var raw: String           // the transcript (sounds-like pass applied), joined
+        var raw: String           // the transcript polish got, joined
         var asrText: String       // what the speech model wrote, joined
         var text: String          // what gets typed
         var polished: String?     // polish's own output, joined (nil: no polish)
