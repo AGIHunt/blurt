@@ -11,7 +11,8 @@ session — is a job (contract K4). One JSON file per job, written only by its o
   jobs.py get J                                     → {"ok","job": <effective state>}
   jobs.py list [--active] [--type T] [--project P] [--limit 50]   → {"ok","jobs":[…]} (newest first)
   jobs.py watch [--interval 0.5]                    one line of effective state per changed job, until killed
-  jobs.py gc                                        → {"ok","removed":[ids]}
+  jobs.py gc                                        → {"ok","removed":[ids]} (never an agent job an unfinished
+                                                    item points at, or whose worktree waits to be finished)
 
 Files, in $BLURT_HOME/jobs/: <id>.json (the job; owner only, atomic replace, under <id>.lock when several owner
 processes may write it), <id>.events.jsonl (everyone else: one O_APPEND line each, < 4 KB), <id>.log (raw output),
@@ -329,9 +330,35 @@ def list_jobs(active: bool = False, type: str | None = None, project: str | None
     return rows[:limit] if limit else rows
 
 
-def gc(live_windows: set[str] | None = None, now: float | None = None) -> list[str]:
+def referenced_jobs() -> set[str] | None:
+    """Job ids that unfinished items still point at (work.job of an item handed off, in progress or to verify), from
+    index.db; None when the index can't be read."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import index
+        con = index.connect(readonly=True)
+        try:
+            rows = con.execute("SELECT DISTINCT work_job FROM items WHERE work_job IS NOT NULL"
+                               " AND state IN ('handed_off', 'in_progress', 'to_verify')").fetchall()
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001 — no index yet / another schema: keep every agent job
+        return None
+    return {r[0] for r in rows}
+
+
+def _keeps_work(j: dict) -> bool:
+    """An agent's worktree that still exists and was never merged, turned into a PR or discarded: the job is the
+    only way back to it (Review changes), so it stays."""
+    a = j.get("agent") or {}
+    wt = a.get("worktree")
+    return bool(wt) and not a.get("finish") and Path(wt).is_dir()
+
+
+def gc(live_windows: set[str] | None = None, now: float | None = None, referenced: set[str] | None = None) -> list[str]:
     """Remove jobs that ended more than 14 days ago and aren't among the newest 300. Never an agent job whose tmux
-    window is still there (live_windows = job ids that have one; None = ask sessions.py). Hand-off notes stay."""
+    window is still there (live_windows = job ids that have one; None = ask sessions.py), whose worktree waits to be
+    finished, or that an unfinished item still points at (referenced; None = ask index.db). Hand-off notes stay."""
     if live_windows is None:
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -339,6 +366,8 @@ def gc(live_windows: set[str] | None = None, now: float | None = None) -> list[s
             live_windows = set(sessions.live_jobs())
         except Exception:  # noqa: BLE001 — no tmux / not importable: keep every agent job
             live_windows = None
+    if referenced is None:
+        referenced = referenced_jobs()
     now = time.time() if now is None else now
     jobs = all_jobs()
     keep = {j["id"] for j in jobs[:KEEP_LAST]}
@@ -349,7 +378,8 @@ def gc(live_windows: set[str] | None = None, now: float | None = None) -> list[s
         ended = parse_iso(j.get("ended")) or parse_iso(j.get("updated"))
         if ended is None or now - ended < KEEP_DAYS * 86400:
             continue
-        if j.get("type") == "agent" and (live_windows is None or j["id"] in live_windows):
+        if j.get("type") == "agent" and (live_windows is None or j["id"] in live_windows or referenced is None
+                                         or j["id"] in referenced or _keeps_work(j)):
             continue
         for suffix in ATTACHED:
             with contextlib.suppress(OSError):

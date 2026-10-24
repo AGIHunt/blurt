@@ -141,6 +141,16 @@ class Registry(TmpCase):
         rows = ok("projects.py", "list", env=self.e.env())["projects"]
         self.assertEqual([(r["id"], r["path"], r["open_items"]) for r in rows], [(pa["id"], str(b.resolve()), 1)])
         self.assertEqual(ok("items.py", "list", "--project", pa["id"], env=self.e.env())["items"][0]["title"], "first")
+        # opened once more at its new place (Open Folder again, a drop, the launch migration): still that project
+        twice = ok("projects.py", "add", b, env=self.e.env())
+        self.assertEqual((twice["created"], twice["project"]["id"]), (False, pa["id"]))
+        self.assertEqual(len(ok("projects.py", "list", env=self.e.env())["projects"]), 1)
+        cfg = json.loads((self.e.home / "config.json").read_text())
+        cfg["record"].update(workspaces=[str(b)], workspace=str(b))
+        (self.e.home / "config.json").write_text(json.dumps(cfg))
+        self.assertEqual(ok("projects.py", "migrate", env=self.e.env())["added"], 0)
+        self.assertEqual([r["id"] for r in ok("projects.py", "list", env=self.e.env())["projects"]], [pa["id"]])
+        ok("projects.py", "use", "auto", env=self.e.env())
         # removed, then opened again (at yet another path): the store's id and key come back with it
         ok("projects.py", "remove", pa["id"], env=self.e.env())
         c = self.tmp / "billing"
