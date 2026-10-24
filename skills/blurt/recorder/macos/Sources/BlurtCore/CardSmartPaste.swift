@@ -227,9 +227,13 @@ public enum DragFollowUp {
     /// `delivered`: the class whose payload the app got (nil: not sure — it may have read another class's layout, the
     /// rich one with the note in it, so no second note); `enabled`: record.smart_paste; `accessibility`: a posted ⌘V
     /// would arrive.
-    public static func plan(delivered: DropClass?, card: CardPasteboard.Card, enabled: Bool, accessibility: Bool, secureInput: Bool) -> Plan {
+    /// `kind`: the composer kind of the app it landed in — a code editor never gets a paste of Blurt's own (the
+    /// focus may be source code): the note goes on the clipboard instead.
+    public static func plan(delivered: DropClass?, card: CardPasteboard.Card, enabled: Bool, accessibility: Bool, secureInput: Bool,
+                            kind: ComposerKind? = nil) -> Plan {
         guard let d = delivered else { return .none("not_sure") }
         guard d == .chat else { return .none(d == .rich ? "rich_app" : "other_app") }
+        guard kind != .editor else { return .none("code_editor") }
         guard card.image != nil, let note = CardNote.clean(card.note) else { return .none("nothing_more") }
         guard enabled else { return .none("off") }
         guard accessibility else { return .none("no_accessibility") }
@@ -253,7 +257,8 @@ public enum CaretKey: String, Equatable {
 ///  • the focus is in that window (when Accessibility can tell);
 ///  • web content and Qt: then always, like dictation (their editors often aren't an Accessibility text role, and
 ///    many pages route a paste to their composer) — the paste counts only if the app read the note;
-///  • a native app we don't know: only into an editable text focus (an image editor would make a paste a text layer).
+///  • a native app we don't know: only into an editable text focus (an image editor would make a paste a text layer);
+///  • a code editor: never (the focus may be source code).
 /// The caret: Qt → ⌘↓ (its dropped picture is selected, and Qt's Accessibility can't say); else a selection → →
 /// (collapse it after the picture: a paste over it would replace the picture); a caret → nothing (the picture is an
 /// attachment, the caret is where the user left it); can't tell → ⌘↓ (in a composer that is the end of what is typed;
@@ -289,6 +294,7 @@ public enum FollowUpFocus {
         if f.secureInput || f.focusSecure { return .skip("secure_input") }
         if f.sameWindow == false { return .skip("other_window") }
         switch f.kind {
+        case .editor: return .skip("code_editor")
         case .qt: return .paste(caret: [.end])
         case .native where f.editable != true: return .skip("not_text")
         case .native, .web: break
