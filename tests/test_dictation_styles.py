@@ -1,6 +1,7 @@
-"""Dictation styles (docs/design/dictation-styles.md §3): the list renderer's Python port against the fixture the app's
-DictationList.swift is checked against too, what must never become a list, the category variants, the chat variant's
-particles in polish.py's repair, and the Dictation Lab's style dimension with its "light never lists" check.
+"""Dictation styles (docs/design/dictation-styles.md §3): which text a style types (Structured: the polish model's
+structuring pass; Auto: only when that is a list), what Light must never do (lists, in any category), the category
+variants, the chat variant asking the model to keep its particles, and the Dictation Lab's style dimension with its
+"light never lists" check.
 
   uv run --with pytest pytest tests/test_dictation_styles.py -q
 """
@@ -9,7 +10,6 @@ from __future__ import annotations
 import json
 import re
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -20,43 +20,14 @@ sys.path.insert(0, str(SCRIPTS))
 import dictation_styles as S  # noqa: E402
 import polish  # noqa: E402
 
-FIXTURE = ROOT / "tests" / "fixtures" / "dictation_lists.jsonl"
 
-
-def rows():
-    return [json.loads(ln) for ln in FIXTURE.read_text(encoding="utf-8").splitlines() if ln.strip()]
-
-
-# ------------------------------------------------------------------ the renderer
-@pytest.mark.parametrize("row", rows(), ids=lambda r: r["name"])
-def test_lists_match_the_shared_fixture(row):
-    assert S.markers(row["text"]) == row["markers"]
-    assert S.render(row["text"], row["min"]) == row["expect"]
-
-
-def test_fixture_covers_both_ways():
-    rs = rows()
-    assert sum(1 for r in rs if r["expect"]) >= 14 and sum(1 for r in rs if r["expect"] is None) >= 16
-
-
-@pytest.mark.parametrize("row", [r for r in rows() if r["expect"]], ids=lambda r: r["name"])
-def test_only_marker_words_go(row):
-    d = S.detect(row["text"])
-    text = row["text"]
-    for m in reversed(S.best_run(S.candidates(text))):
-        text = text[:m["start"]] + text[m["end"]:]
-    out = "\n".join(re.sub(r"^[0-9]+\. ", "", ln) for ln in S.render(row["text"]).split("\n"))
-    assert S.units(out) == S.units(text)
-    assert len(d["removed"]) == d["markers"]
-
-
-@pytest.mark.parametrize("text", ["以及我们的其他同事", "然后呢，然后我们就走了", "另外，还有一个问题", "这是第一次，也是第一天",
-                                  "一是一，二是二", "一是一是，对对对", "We also need this, and then that.",
-                                  "Then we left, and then we came back.", "帮我列个清单，把这周要做的事情整理一下。",
-                                  "写成邮件发给小王。", "Make a list of the files that changed."])
-def test_enumeration_words_and_instructions_stay_prose(text):
-    assert S.render(text, 2) is None and S.render(text, 3) is None
-    assert S.apply_style(text, "light", "notes")["text"] == text
+# ------------------------------------------------------------------ no rule-based renderer
+def test_no_list_renderer_left():
+    """Lists are the model's call (polish.py `structure`): no ordinal-marker tables in the scripts or the app."""
+    for name in ("render", "detect", "candidates", "best_run", "markers", "_PATTERNS", "_EN_ORD", "ASKED_MARKERS"):
+        assert not hasattr(S, name), name
+    assert not (ROOT / "tests/fixtures/dictation_lists.jsonl").exists()
+    assert not (ROOT / "skills/blurt/recorder/macos/Sources/BlurtCore/DictationList.swift").exists()
 
 
 def test_light_never_lists_the_polish_eval_sets():
@@ -74,23 +45,34 @@ def test_light_never_lists_the_polish_eval_sets():
     assert n >= 100
 
 
-def test_renderer_is_fast():
-    long = "明天要做三件事。第一，把测试全部跑完。第二，把文档更新一下。第三，提交代码。" * 20
-    t0 = time.process_time()          # CPU time: a busy machine must not fail a pure function's budget
-    for _ in range(20):
-        S.render(long)
-    assert (time.process_time() - t0) / 20 < 0.02
+@pytest.mark.parametrize("text", ["帮我列个清单，把这周要做的事情整理一下。", "写成邮件发给小王。", "Make a list of the files that changed."])
+def test_instructions_stay_content(text):
+    """「帮我列个清单」 / "make a list" said to an agent is content: Light types it as said, and it never switches a style."""
+    assert S.apply_style(text, "light", "notes")["text"] == text
 
 
 # ------------------------------------------------------------------ styles, variants, categories
 def test_apply_style():
-    t = "明天要做三件事。第一，跑测试。第二，更新文档。第三，提交。"
-    assert S.apply_style(t, "light")["text"] == t and not S.apply_style(t, "light")["rendered"]
-    st = S.apply_style(t, "structured", "notes")
-    assert st["rendered"] and st["text"].startswith("明天要做三件事：\n1. 跑测试") and st["markers"] == 3
-    assert S.apply_style("我说两点：一是贵，二是慢。", "auto")["rendered"] is False         # Auto needs three
+    light = "明天要做三件事，第一跑测试，第二更新文档。"
+    listed = "明天要做三件事：\n1. 跑测试\n2. 更新文档"
+    assert S.apply_style(light, "light", structured=listed) == {"text": light, "rendered": False, "variant": []}
+    assert S.apply_style(light, "structured", "notes", listed) == {"text": listed, "rendered": True, "variant": []}
+    # Structured that stayed a paragraph (a correction resolved, no list) is typed too
+    assert S.apply_style("我们周五交，哦不，下周一交。", "structured", structured="我们下周一交。")["text"] == "我们下周一交。"
+    # Auto: only a list
+    assert S.apply_style(light, "auto", structured=listed)["rendered"] is True
+    assert S.apply_style("我们周五交，哦不，下周一交。", "auto", structured="我们下周一交。")["text"] == "我们周五交，哦不，下周一交。"
+    # no structured text (the pass refused, or never ran): Light's
+    assert S.apply_style(light, "structured")["text"] == light
     with pytest.raises(ValueError):
-        S.apply_style(t, "email")
+        S.apply_style(light, "email")
+
+
+def test_list_lines():
+    assert S.list_lines("intro:\n1. a\n2. b") == 2
+    assert S.list_lines("- a\n- b") == 2
+    assert S.list_lines("1.5 GB is fine\n2024 was long") == 0
+    assert S.list_lines("第一，跑测试。第二，提交。") == 0
 
 
 def test_variants():
@@ -123,36 +105,21 @@ def test_categories_match_the_app():
 def test_cli():
     import subprocess
     r = subprocess.run([sys.executable, str(SCRIPTS / "dictation_styles.py"), "style", "--text", "第一，跑测试。第二，提交代码。",
-                        "--style", "structured"], capture_output=True, text=True)
+                        "--style", "structured", "--structured", "1. 跑测试\n2. 提交代码"], capture_output=True, text=True)
     assert json.loads(r.stdout)["text"] == "1. 跑测试\n2. 提交代码"
 
 
-# ------------------------------------------------------------------ chat keeps its particles (polish.py's repair)
-def test_chat_puts_back_the_final_particles_polish_dropped():
-    out, spans = polish.repair("好的那我们晚上七点见吧", "好的，那我们晚上七点见。", keep_particles=True)
-    assert out == "好的，那我们晚上七点见吧。" and spans == ["particle:吧"]
-    out, _ = polish.repair("呃我我我刚才试了一下登录然后呢然后就卡住了啊", "我刚才试了一下登录，然后就卡住了。", keep_particles=True)
-    assert out.endswith("卡住了啊。")
-    out, _ = polish.repair("你今天来不来呢", "你今天来不来？", keep_particles=True)
-    assert out == "你今天来不来呢？"
-    # not chat: as before (the eval sets' references stay untouched)
+# ------------------------------------------------------------------ chat keeps its particles: the model is told
+def test_chat_asks_the_model_to_keep_its_particles():
+    """No particle list: the chat variant is a note in the request ("a chat message: keep its tone words and
+    sentence-final particles"); the cached prefix is the same for every variant."""
+    m = polish.messages("好的那我们晚上七点见吧", variant="chat")
+    assert "chat message" in m[-1]["content"] and m[-1]["content"].endswith("好的那我们晚上七点见吧")
+    plain = polish.messages("好的那我们晚上七点见吧")
+    assert plain[-1]["content"] == "好的那我们晚上七点见吧"
+    assert m[:-1] == plain[:-1]
+    # a particle the model dropped anyway is one unit: the repair leaves it (the model's call)
     assert polish.repair("好的那我们晚上七点见吧", "好的，那我们晚上七点见。") == ("好的，那我们晚上七点见。", [])
-    # a filler in the middle is still a filler; a stutter of particles isn't put back
-    out, _ = polish.repair("嗯我觉得啊这个方案还行", "我觉得这个方案还行。", keep_particles=True)
-    assert "啊这" not in out
-    # a particle put back is tone, not lost content
-    assert polish.repaired_share("好的那我们晚上七点见吧", ["particle:吧"]) == 0
-
-
-def test_chat_particles_keep_the_eval_references_and_self_corrections():
-    # the self-correction still goes; only the particle at the end comes back
-    out, _ = polish.repair("把这个，不对，这两个拿到那一边去吧", "把这两个拿到那一边去。", keep_particles=True)
-    assert out == "把这两个拿到那一边去吧。"
-    for ln in (ROOT / "tests" / "fixtures" / "polish_eval.jsonl").read_text(encoding="utf-8").splitlines():
-        c = json.loads(ln)
-        fixed, spans = polish.repair(c["input"], c["reference"], keep_particles=True)
-        assert all(s.startswith("particle:") for s in spans), (c["id"], spans)
-        assert polish.guard(c["input"], fixed)["pass"] or not polish.guard(c["input"], c["reference"])["pass"], c["id"]
 
 
 # ------------------------------------------------------------------ the Dictation Lab's style dimension
@@ -174,12 +141,23 @@ def test_lab_reruns_a_case_per_style_and_light_never_lists(tmp_path, monkeypatch
     (h / "dictation").mkdir(parents=True)
     monkeypatch.setenv("BLURT_HOME", str(h))
     said = "明天要做三件事。第一，跑测试。第二，更新文档。第三，提交。"
+    listed = "明天要做三件事：\n1. 跑测试\n2. 更新文档\n3. 提交"
     c = make_case(h, "c1", 1.0, said)
     light = L.run_case(c, L.parse_spec("current"), FakePipeline({1.0: said}))
     assert light["outputs"]["text"] == said and light["outputs"]["listed"] is False
-    assert light["outputs"]["style"]["markers"] == 3 and not light["outputs"]["style"]["rendered"]
-    st = L.run_case(c, L.parse_spec("style=structured"), FakePipeline({1.0: said}))
-    assert st["outputs"]["text"].split("\n")[1] == "1. 跑测试" and st["outputs"]["style"]["rendered"]
+    assert not light["outputs"]["style"]["rendered"] and "structured" not in light["outputs"]
+    fake = FakePipeline({1.0: said}, structure=lambda t: listed)
+    st = L.run_case(c, L.parse_spec("style=structured"), fake)
+    assert st["outputs"]["text"] == listed and st["outputs"]["style"]["rendered"]
+    assert [x["structure"] for x in fake.calls if "structure" in x] == [said]           # Light's text, once
+    assert st["outputs"]["structured"]["list"] is True
+    # windows mode: the same, on the stitched windows
+    fake = FakePipeline({1.0: said}, structure=lambda t: listed)
+    st = L.run_case(c, L.parse_spec("mode=windows,style=structured"), fake)
+    assert st["outputs"]["text"] == listed and st["outputs"]["timings"]["structure_ms"] >= 0
+    # a refusal types Light's text
+    refused = FakePipeline({1.0: said}, structure=lambda t: None)
+    assert L.run_case(c, L.parse_spec("style=structured"), refused)["outputs"]["text"] == said
     verb = FakePipeline({1.0: said})
     L.run_case(c, L.parse_spec("style=verbatim"), verb)
     assert not [x for x in verb.calls if "polish" in x]                                 # verbatim: no polish

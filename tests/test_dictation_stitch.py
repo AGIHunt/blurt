@@ -30,18 +30,10 @@ def run(r: dict):
         return S.join_pieces(r["texts"], r["pauses"], fallback=True)
     if fn == "fallbackSeam":
         return S.fallback_seam(r["previous"], r["next"], r["pause"], r["heard"])
-    if fn == "commaJoin":
-        return S.comma_join(r["a"], r["b"])
     if fn == "commitSplit":
         return list(S.commit_split(r["text"]))
-    if fn == "decapitalize":
-        return S.decapitalize(r["text"])
     if fn == "midSentence":
         return S.mid_sentence(r["text"])
-    if fn == "startsWithCorrection":
-        return S.starts_with_correction(r["text"])
-    if fn == "endsWithCorrection":
-        return S.ends_with_correction(r["text"])
     if fn == "keepCase":
         return S.keep_case(r["input"], r["output"])
     raise AssertionError(fn)
@@ -52,6 +44,15 @@ def test_shared_fixture():
     assert len(rs) >= 30
     for r in rs:
         assert run(r) == r["want"], r
+
+
+def test_no_word_lists_left():
+    """Seams are pauses and marks (docs/design/dictation.md §Rules vs model): no stop words, no correction markers,
+    no ordinary-word list."""
+    for name in ("OPEN_ENDS_ZH", "OPEN_ENDS_EN", "OPEN_STARTS_ZH", "OPEN_STARTS_EN", "BINDING_ZH", "ORDINARY",
+                 "plausibly_final", "decapitalize", "binds", "starts_with_correction", "ends_with_correction",
+                 "comma_join", "_SC_ZH", "_EC_ZH"):
+        assert not hasattr(S, name), name
 
 
 def scripted(answers: dict):
@@ -79,10 +80,6 @@ def test_the_text_so_far_goes_as_its_own_key():
     S.stream(LIST, PAUSES, fn)
     assert calls[0][1] is None
     assert all("dictated" in c[1] and "before" not in c[1] for c in calls[1:])
-    # legacy (the lab's "before"): appended to the field's text before the cursor
-    fn, calls = scripted({})
-    S.stream(LIST, PAUSES, fn, legacy=True)
-    assert all("before" in c[1] and "dictated" not in c[1] for c in calls[1:])
 
 
 def test_one_window_falls_back_and_only_it():
@@ -94,19 +91,29 @@ def test_one_window_falls_back_and_only_it():
     assert r["pieces"][1]["fell_back"] and not r["pieces"][2]["fell_back"]
     assert "第一，把测试全部跑完" in r["text"], r["text"]            # the seam inside the refused window
     assert r["text"].startswith("明天要做三件事，")
-    # before: no punctuation at that seam
-    fn, _ = scripted({"第一把测试全部跑完": refuse})
-    assert "第一把测试全部跑完" in S.stream(LIST, PAUSES, fn, legacy=True)["text"]
 
 
-def test_a_correction_piece_is_joined_with_a_comma():
-    pieces = [{"raw": "把这个，"}, {"raw": "不对，这两个拿到那一边去。"}]
+def test_a_correction_across_a_pause_is_just_words():
+    """No piece is merged or held back because of what it says: 「不对」 is polished like any other words (Light keeps
+    them; Structured resolves them at key-up, over the whole take)."""
+    pieces = [{"raw": "资料我晚上发群里，不对。"}, {"raw": "下午就发。"}]
     fn, calls = scripted({})
-    S.stream(pieces, [0.8, None], fn)
-    assert calls[-1][0] == "把这个，不对，这两个拿到那一边去。"
-    fn, calls = scripted({})
-    S.stream(pieces, [0.8, None], fn, legacy=True)
-    assert calls[-1][0] == "把这个不对，这两个拿到那一边去。"
+    r = S.stream(pieces, [0.7, None], fn)
+    assert [c[0] for c in calls] == ["资料我晚上发群里，不对", "下午就发。"] or \
+        [c[0] for c in calls][0].startswith("资料我晚上发群里，不对"), calls
+    assert "不对" in r["text"] and not any(q.get("deferred") for q in r["pieces"])
+
+
+def test_a_long_pause_keeps_its_mark_for_the_model():
+    """After a long pause the carried clause goes into the next window with the mark it ended in: the model sees the
+    pause's full stop and both sides, and decides (no stop-word list)."""
+    pieces = [{"raw": "我们先开个短会。"}, {"raw": "下午修问题。"}]
+    fn, calls = scripted({"我们先开个短会": {"text": "我们先开个短会。"}})
+    S.stream(pieces, [1.5, None], fn)
+    assert calls[-1][0] == "我们先开个短会。下午修问题。", calls
+    fn, calls = scripted({"我们先开个短会": {"text": "我们先开个短会。"}})
+    S.stream(pieces, [0.6, None], fn)
+    assert calls[-1][0] == "我们先开个短会下午修问题。", calls       # a breath: no mark
 
 
 def test_a_window_that_continues_a_sentence_loses_the_models_capital():
@@ -116,8 +123,6 @@ def test_a_window_that_continues_a_sentence_loses_the_models_capital():
         t = text[0].upper() + text[1:]
         return {"text": t if t.endswith(".") else t + ".", "fell_back": False}
     r = S.stream(pieces, [0.7, None], fn)
-    assert r["text"] == "I looked at the new build this morning. and the onboarding still feels long." or \
-        "morning and the onboarding" in r["text"] or "morning, and the onboarding" in r["text"], r["text"]
     assert "And the" not in r["text"], r["text"]
 
 
@@ -141,7 +146,7 @@ def test_the_real_guard_with_an_echoing_model():
             self.model, self.model_id = object(), "fake"
             return self
 
-        def generate(self, text, deadline, terms=None, context=None):
+        def generate(self, text, deadline, terms=None, context=None, mode="light", variant=None):
             so = (context or {}).get("dictated") or ""
             return (so + text + "。"), False
     e = Echoing()
@@ -150,10 +155,24 @@ def test_the_real_guard_with_an_echoing_model():
     assert r["text"].count("明天要做三件事") == 1, r["text"]
 
 
-def test_a_piece_that_ends_on_a_correction_waits_for_the_next():
-    """「…晚上发群里，不对。」 + a pause + 「下午就发。」: polished alone, the model dropped the 不对 and kept both versions."""
-    pieces = [{"raw": "资料我晚上发群里，不对。"}, {"raw": "下午就发。"}]
+def test_structured_runs_once_on_lights_stitched_text():
+    """Structured at key-up: the windows (polished while talking, the last one included) are stitched as Light's text,
+    and that goes through one structuring pass."""
     fn, calls = scripted({})
-    r = S.stream(pieces, [0.7, None], fn)
-    assert [c[0] for c in calls] == ["资料我晚上发群里，不对，下午就发。"]
-    assert r["pieces"][0].get("deferred")
+    seen = []
+
+    def structure(text):
+        seen.append(text)
+        return {"text": "明天要做三件事：\n1. 把测试全部跑完\n2. 把文档更新一下\n3. 提交代码，然后发给小王看看", "list": True,
+                "fell_back": False, "ms": 5}
+    r = S.stream(LIST, PAUSES, fn, structure=structure)
+    light = S.stream(LIST, PAUSES, scripted({})[0])
+    assert len(calls) == 4 and seen == [light["text"]]
+    assert r["text"].startswith("明天要做三件事：\n1.") and r["structured"]["list"] and r["light"] == light["text"]
+
+
+def test_a_refused_structure_types_light():
+    fn, _calls = scripted({})
+    r = S.stream(LIST, PAUSES, fn, structure=lambda t: {"text": t, "fell_back": True, "reason": "dropped"})
+    assert r["text"] == S.stream(LIST, PAUSES, scripted({})[0])["text"]
+    assert r["structured"]["fell_back"] and r["structured"]["reason"] == "dropped"

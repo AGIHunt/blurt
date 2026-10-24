@@ -29,6 +29,9 @@ docs and changelogs. Vendor and competitor blogs are marked as such. User statem
   先做 1–4，它们全部不增加延迟；5 不占听写的关键路径。
 - **已上线**（§3.6、§3.7）：第 1–4 步和第 6 步。第 5 步「口头触发词」（开头说「列个清单」）**放弃**：用户常对 AI agent
   口述指令，「帮我列个清单」「写成邮件」是内容本身，当成命令会悄悄改掉原意；⇧、Fn+⇧、点岛、重排上一条已经够用。
+- **之后改为「模型优先」**（§3.8）：用户要求「用模型的智能，不要硬编码规则」。第 3 步的确定性清单渲染器（序数词表）和
+  听写前的改口规则一起删掉：结构化改成说完后让本地润色模型（Gemma 4 E2B）把整段再过一遍，由它决定要不要排清单、怎么排，
+  并处理改口；轻整理不再处理改口，原话照留。结构化因此多花约 0.15 秒（中位数），只在用户要求时才付。
 
 ---
 
@@ -104,7 +107,7 @@ What we learn:
 |---|---|---|---|
 | **原话 Verbatim** | ASR text with punctuation only; no LLM | The polish step is skipped (raw text) | −0.1 s (no polish) |
 | **轻整理 Light** (default everywhere) | Today's polish: fillers, stutters, self-corrections, punctuation and paragraphs. **Never lists, never tone changes** | Unchanged | 0 |
-| **结构化 Structured** | Light, plus spoken ordinal enumerations become a list, with any intro line kept ("有三点：" + 1. 2. 3.) | **Deterministic renderer** after stitch and guard (§3.3) | ≈ 0 (< 5 ms) |
+| **结构化 Structured** | Light, plus spoken ordinal enumerations become a list, with any intro line kept ("有三点：" + 1. 2. 3.) | **Deterministic renderer** after stitch and guard (§3.3) — *since replaced by a model pass, §3.8* | ≈ 0 (< 5 ms); the model pass: +~0.15 s median |
 | (later) 邮件 Email / 正式 Formal | Greeting, paragraphs, sign-off; tone | LLM pass over the whole text, explicit only | +0.5–1.5 s, accepted because the user asked |
 
 Category variants of Light. They are part of the per-app default, not separate styles:
@@ -133,7 +136,7 @@ applies the renderer only when the detector is confident (≥ 3 ordinal markers 
 | **E. "Reformat last"** hotkey (proposed ⌥⇧L, configurable), plus the island chip ≡ after a paste when the take looked like a list but wasn't formatted | One key after the fact; the safety net that lets the default stay conservative | Light ↔ Structured: < 50 ms (stored texts plus the renderer). The Email LLM pass: 0.5–1.5 s, off the dictation path | None | **Second wave, high value.** The history already keeps `raw` and `polished`, and `DictationWatch` already tracks the pasted span with anchors for 60 s. Pressing again cycles Verbatim → Light → Structured → back. Replace only while the anchors still match (user edits never get overwritten); otherwise copy to the clipboard with a toast. |
 | F. Separate mode hotkeys (Superwhisper or VoiceInk style) | Higher: more keys to remember | 0 | None | Not needed beyond A and E. |
 
-### 3.3 The renderer (why Structured needs no extra model call)
+### 3.3 The renderer (why Structured needs no extra model call) — superseded, §3.8
 
 Spoken lists almost always come with **ordinal markers** at clause starts, and the speaker usually pauses between
 items. Blurt's segmenter already cuts there, so items line up with pieces. Every piece is already polished, so the
@@ -238,9 +241,32 @@ to the transcript, which at short pauses had no mark at the seams (「…跑完�
 before the new piece (not a line of context), an echo is trimmed before the guard, and a refused window keeps a comma
 at its seam: on the lab's replay of the windows, list-like takes fell back 75 % → 0 %. Likewise the `say` clip of
 「把这个，不对，这两个拿到那一边去」: the model kept 「这个」 (or dropped 「把」), the guard refused it and the transcript was
-typed with the 不对 in it; a deterministic pass now resolves such corrections before polish (「把这两个拿到那一边去」 on
-every round). The styles themselves don't touch self-corrections (the chat variant only adds a particle back after
-them). The renderer still copes with an unpunctuated seam.
+typed with the 不对 in it; a deterministic pass then resolved such corrections before polish (「把这两个拿到那一边去」 on
+every round) — since removed (§3.8): Light keeps a correction as said, Structured's model pass resolves it.
+
+### 3.8 Model first: the model structures, Light keeps corrections
+
+The user, after §3.7 shipped: "use the model's intelligence, not hard-coded rules. Regexes and word lists for
+understanding language shouldn't appear. If a self-correction isn't resolved, leaving the original wording is fine.
+Resolve corrections in the Structured style; in Light, don't adjust them." So (dictation.md §Rules vs model,
+§Self-corrections, §Styles):
+
+- **The renderer is gone** (`DictationList.swift`, the Python port, the shared list fixture). Structured is one more
+  pass of the polish model (Gemma 4 E2B, the server that is already warm) over the stitched Light text at key-up:
+  `polish.py structure`, its own prompt and cached prefix. It resolves self-corrections and lays out what the speaker
+  enumerated — only when they really did; otherwise a paragraph. Its guard keeps the content (no run > 12 units lost,
+  no number that wasn't said, no custom word dropped); a refusal types Light's text. Reformat-last and the island's
+  *Make a List* chip use the same pass, off the dictation's path; the chip's trigger is now the pass finding a list
+  in a longer light take (after the paste), not a marker count.
+- **Light keeps self-corrections** as said; the deterministic correction pass before the model, the stream's
+  correction merge, and every marker list in the guard and the repair are gone.
+- **§3.4's choice is unchanged for the router** — which style a take gets is still the user's (settings, ⇧, the
+  island), never a classifier; what was a rule *inside* a style (lists, corrections, particles) is now the model's.
+- **Cost, measured** (the Dictation Lab's replay, 88 synthetic takes × 2 rounds): Structured after key-up 131 → 277 ms
+  median (198 → 553 ms p90): the pass itself 130 ms median; Light unchanged (111 → 120 ms median, within the spread).
+  Lists right 18 / 24 both (different misses: the model leaves three spoken enumerations as prose); corrections
+  resolved 68 → 82 %; words kept in the list takes 99.4 → 97.4 %. §3.0's estimate (+0.5–1.5 s for a whole-take pass)
+  was pessimistic for takes this long: the pass writes as many tokens as the take has, ~0.1–0.4 s here.
 
 ## 4. Other improvements the feedback points to
 

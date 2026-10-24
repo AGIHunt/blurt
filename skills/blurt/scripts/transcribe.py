@@ -1858,9 +1858,10 @@ class NoteEngine:
              purpose: str | None = None, prior: str | None = None, hint: str | None = None) -> dict:
         """vocab: None = no custom words; True = the file's; a list = these (strings or term dicts). The model is
         biased toward them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords), then exact
-        sounds-likes are fixed (dictation_vocab.apply) and near misses snapped (dictation_vocab.snap): `text` has the
-        fixes, `asr_text` is what the model wrote. hint: the target app's window title and the text around the cursor
-        — words seen there are listed to the model first, and let a weaker near miss through."""
+        sounds-likes are fixed (dictation_vocab.apply): `text` has the fixes, `asr_text` is what the model wrote. A
+        near miss of a listed name is polish's to fix (it gets the words; no edit-distance pass guesses it here).
+        hint: the target app's window title and the text around the cursor — words seen there are listed to the model
+        first."""
         t0 = time.perf_counter()
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
@@ -1901,11 +1902,7 @@ class NoteEngine:
             out["tag"] = tag      # the language tag chosen and the model's English / preferred probabilities
         if vocab is not None:
             fixed, applied = dictation_vocab.apply(text, terms)
-            fixed, snapped = dictation_vocab.snap(fixed, terms, (hint or "") + "\n" + (prior or ""))
-            applied += [s["term"] for s in snapped if s["term"] not in applied]
             out.update(text=fixed, asr_text=text, terms=applied, biased=biased)
-            if snapped:
-                out["snapped"] = snapped
         self.last = time.time()
         return out
 

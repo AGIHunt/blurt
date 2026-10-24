@@ -395,8 +395,7 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
         let t0 = CACurrentMediaTime()
         var fitted: [String] = []
         if Dictation.contextOn, !(before.isEmpty && after.isEmpty) {
-            let names = Set(active.flatMap { $0.split(separator: " ").map(String.init) })
-            let f = DictationFit.fit(text, before: String(before.suffix(500)), after: String(after.prefix(500)), names: names)
+            let f = DictationFit.fit(text, before: String(before.suffix(500)), after: String(after.prefix(500)))
             if f.trimmed { text = f.text; fitted = f.changes }
         }
         var timing: [String: Any] = r.timing

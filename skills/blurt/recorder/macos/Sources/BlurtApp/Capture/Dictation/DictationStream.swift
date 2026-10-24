@@ -5,18 +5,19 @@
 // (BlurtCore's DictationSegmenter: ≥ 0.5 s of quiet, pieces of ≥ 3 s, at most 20 s), and each piece is
 //   1. transcribed as soon as it is complete (the warm speech server; the text so far goes along as context, so a name
 //      is spelled the same way all through), on one serial queue;
-//   2. polished right after, on another (the polished text so far goes along as the text before the cursor, so polish
-//      sees what came before without being allowed to change it). A piece that opens with a self-correction ("不对…")
-//      is polished together with the one before it.
+//   2. polished right after, on another (the polished text so far goes along as the turn before, so polish sees what
+//      came before without being allowed to change it).
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
 //
 // A cut is a pause, not a sentence end (each piece used to come back as a whole utterance: a full stop at every
 // breath). So a piece's own ending isn't final: its trailing 。/，is taken off before polish, and polish works over a
 // sliding window — the last, unfinished clause of the window before (`carry`) is polished again together with the
-// new piece, and only the text up to the window's last sentence end or comma is committed (DictationStitch.commitSplit).
-// After a long pause (≥ 1.2 s) that follows a whole sentence, the carried clause is committed as it is. Without polish
-// the transcripts are joined with the same rule (DictationStitch.joinPieces). At key-up the last window is the carried
-// clause + the last piece: a few units more than before.
+// new piece (after a long pause, ≥ 1.2 s, with the mark it ended in: the model decides whether the sentence ended),
+// and only the text up to the window's last sentence end or comma is committed (DictationStitch.commitSplit). Without
+// polish the transcripts are joined with the seam rule (DictationStitch.joinPieces). At key-up the last window is the
+// carried clause + the last piece. Structured then runs one structuring pass over the joined text (`finish(structure:)`).
+// Nothing here reads the words for meaning: no correction markers, no stop words (docs/design/dictation.md §Rules vs
+// model).
 //
 // Safety: a piece the speech model failed on → the whole recording is transcribed (and polished) in one go, the old
 // way. A hard cut (no pause for 20 s) overlaps the pieces by 0.8 s and DictationStitch drops the doubled words. Each
@@ -37,8 +38,10 @@ final class DictationStream {
         var language = "auto"
         /// cut while talking (record.dictation.streaming); off = one piece at key-up, the old path
         var streaming = true
-        /// the category's variant of light for polish.py ("chat": sentence-final particles the model dropped go back)
+        /// the category's variant of light for polish.py ("chat": the request asks the model to keep the tone words)
         var variant: String?
+        /// Structured's one pass over the whole take (polish.py structure_timeout_ms)
+        var structureTimeout = 10.0
     }
 
     /// One piece of the recording and what became of it.
@@ -89,6 +92,10 @@ final class DictationStream {
         /// each piece as the Dictation Lab shows it: index, start / end (s), hard, pause_after, asr_text, raw, asr_ms,
         /// polish_in, text (what it committed), polished, polish_ms, fell_back, reason, repaired
         var pieces: [[String: Any]] = []
+        /// Structured: the structuring pass's text (nil: not asked, or it refused — then `text` is typed)
+        var structured: String?
+        /// why the structuring pass refused (nil: it didn't, or wasn't asked)
+        var structureReason: String?
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
@@ -118,12 +125,9 @@ final class DictationStream {
     /// polishQ only: the last window's unfinished clause (the typed text and polish's own output) and the
     /// punctuation it ended in — polished again with the next piece
     private var carry = "", carryPolished = "", carryEnd = ""
-    /// custom words keep their capital at a seam
-    private let names: Set<String>
 
     init(id: String, dir: URL, wholeWav: URL, options: Options) {
         self.id = id; self.dir = dir; self.wholeWav = wholeWav; self.opt = options
-        names = Set(options.vocab.compactMap { $0["term"] as? String }.flatMap { $0.split(separator: " ").map(String.init) })
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 
@@ -178,7 +182,7 @@ final class DictationStream {
         DictationStream.writeWav(samples, to: url)
         // the text so far, as context: the speech model keeps names consistent across pieces
         let (before, gaps) = lock.locked { (Array(pieces.prefix(p.index).map(\.raw)), pauses) }
-        let prior = String(DictationStitch.joinPieces(before, pauses: gaps, names: names).suffix(200))
+        let prior = String(DictationStitch.joinPieces(before, pauses: gaps).suffix(200))
         let t0 = CACurrentMediaTime()
         let r = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
                                      hint: lock.locked { context }?.hint ?? "")
@@ -207,55 +211,25 @@ final class DictationStream {
 
     /// One polish window: the carried, unfinished clause + this piece (its own ending taken off unless it is the
     /// last). What the window says up to its last sentence end or comma is committed; the rest is carried to the next
-    /// window.
+    /// window. After a long pause the carried clause keeps the mark it ended in: the pause may have ended a sentence,
+    /// and the model decides with both sides in view (no stop-word list does).
     private func polish(_ p: Piece) {
         guard !cancelled else { return }
         // without polish the transcripts are joined with the seam rule at the end (assemble)
         guard opt.polish, !p.raw.isEmpty else { return }
         let core = p.last ? p.raw : DictationStitch.splitTrailing(p.raw).core
-        var input = carry
-        var prefix = "", prefixPolished = ""            // committed ahead of the window
-        var merged: Piece?
-        if let prev = previous(p), DictationStitch.startsWithCorrection(p.raw), !(prev.text.isEmpty && carry.isEmpty) {
-            // a piece that opens with "不对…" / "no wait…": what the one before committed is polished again with it,
-            // so the corrected-away words can go
-            input = DictationStitch.join(prev.text, carry)
-            merged = prev
-        } else if !carry.isEmpty, let g = pause(after: p.index - 1), g >= DictationStitch.longPause,
-                  // the carry is only the last clause: judge the whole sentence it ends ("…folder, myself.")
-                  DictationStitch.plausiblyFinal(DictationStitch.join(lock.locked { pieces.prefix(p.index).map(\.text) } + [carry]),
-                                                 end: carryEnd.isEmpty ? "。" : carryEnd) {
-            // a long pause after a whole sentence: it ended there
-            prefix = carry + DictationStitch.terminator(carryEnd, after: carry)
-            prefixPolished = carryPolished + DictationStitch.terminator(carryEnd, after: carryPolished)
-            input = ""
+        var carried = carry
+        if !carry.isEmpty, let g = pause(after: p.index - 1), g >= DictationStitch.longPause {
+            carried += DictationStitch.mark(carryEnd, after: carry)
         }
-        let carried = input
         carry = ""; carryPolished = ""; carryEnd = ""
-        if merged != nil || DictationStitch.endsWithCorrection(carried) {
-            // the pause before or after 「不对」 is a mark: the corrections pass in polish.py reads the marker by it
-            input = DictationStitch.commaJoin(input, core)
-        } else {
-            input = DictationStitch.join(input, input.isEmpty ? core : DictationStitch.decapitalize(core, names: names))
-        }
-        let upTo = merged?.index ?? p.index
-        let done = lock.locked { pieces.prefix(upTo).map(\.text) } + [prefix]
+        let input = DictationStitch.join(carried, core)
         var ctx = lock.locked { context }?.payload ?? [:]
-        let so = DictationStitch.join(Array(done))
+        let so = DictationStitch.join(lock.locked { pieces.prefix(p.index).map(\.text) })
         // the dictation's own text so far goes as its own key: polish.py shows it as the turn before this one, so the
         // model continues it instead of repeating it (appended to "before", it was repeated in 8 of 15 list windows)
         if !so.isEmpty { ctx["dictated"] = so }
         p.polishInput = input
-        if !p.last, merged == nil, DictationStitch.endsWithCorrection(input) {
-            // 「…晚上发群里，不对。」 + a pause: what it takes back is restated in the next piece — carried whole and
-            // polished with it (polished now, the model dropped the 不对 and kept both versions)
-            p.text = prefix; p.polishedPart = prefixPolished
-            carry = input; carryPolished = input; carryEnd = ""
-            emit(["event": "dictation_window", "id": id, "index": p.index, "in_units": DictationStitch.units(input).count,
-                  "committed": DictationStitch.units(p.text).count, "carry": DictationStitch.units(carry).count, "ms": 0,
-                  "deferred": "correction"])
-            return
-        }
         let t0 = CACurrentMediaTime()
         let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
                                  context: ctx.isEmpty ? nil : ctx, variant: opt.variant)
@@ -265,23 +239,22 @@ final class DictationStream {
         var out = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? input
         if r?["fell_back"] as? Bool == true {
             // only this window falls back, and its seam (the pause before this piece) still gets its punctuation
-            if merged == nil, !carried.isEmpty, out.hasPrefix(carried), let prev = previous(p) {
+            if !carried.isEmpty, out.hasPrefix(carried), let prev = previous(p) {
                 out = DictationStitch.fallbackSeam(carried, String(out.dropFirst(carried.count)), pause: pause(after: p.index - 1),
-                                                   heardEnd: DictationStitch.splitTrailing(prev.raw).end, names: names)
+                                                   heardEnd: DictationStitch.splitTrailing(prev.raw).end)
             }
         } else if DictationStitch.midSentence(so) {
             // the model capitalised a window that continues a sentence
-            out = DictationStitch.decapitalize(DictationStitch.keepCase(input: input, output: out), names: names)
+            out = DictationStitch.keepCase(input: input, output: out)
         }
         let model = (r?["polished"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? out
-        if let m = merged { m.text = ""; m.polishedPart = "" }
         if p.last {
-            p.text = DictationStitch.join(prefix, out)
-            p.polishedPart = DictationStitch.join(prefixPolished, model)
+            p.text = out
+            p.polishedPart = model
         } else {
             let s = DictationStitch.commitSplit(out), sm = DictationStitch.commitSplit(model)
-            p.text = DictationStitch.join(prefix, s.commit)
-            p.polishedPart = DictationStitch.join(prefixPolished, sm.commit)
+            p.text = s.commit
+            p.polishedPart = sm.commit
             carry = s.carry; carryEnd = s.end; carryPolished = sm.carry
         }
         emit(["event": "dictation_window", "id": id, "index": p.index, "in_units": DictationStitch.units(input).count,
@@ -291,8 +264,9 @@ final class DictationStream {
 
     // MARK: key-up
 
-    /// The last piece, then everything joined. `done` runs on the main queue.
-    func finish(keyUp: CFTimeInterval, _ done: @escaping (Result) -> Void) {
+    /// The last piece, then everything joined; `structure` (Structured / Auto at key-up): the joined text then goes
+    /// through the polish model's structuring pass once. `done` runs on the main queue.
+    func finish(keyUp: CFTimeInterval, structure: Bool = false, _ done: @escaping (Result) -> Void) {
         self.keyUp = keyUp
         let n = lock.locked { pieces.count }
         let tail = audio.count - pieceStart
@@ -303,15 +277,31 @@ final class DictationStream {
         // both queues are serial: this runs after every piece's transcription, and what it queues after every polish
         // (strong captures: the controller has let go of the stream by now; the queues hold it until it is done)
         asrQ.async {
-            if self.opt.polish { DispatchQueue.main.async { self.onStage?("polish") } }
+            if self.opt.polish || structure { DispatchQueue.main.async { self.onStage?("polish") } }
             self.polishQ.async {
                 guard !self.cancelled else { return }
-                let r = self.assemble()
+                var r = self.assemble()
+                if structure, !r.empty { self.structure(&r) }
                 DispatchQueue.main.async { done(r) }
             }
         }
     }
 
+    /// Structured: the stitched text through polish.py's `structure` (it resolves self-corrections and lays out what
+    /// was enumerated, or leaves a paragraph; its guard keeps the content). A refusal keeps Light's text.
+    private func structure(_ r: inout Result) {
+        let t0 = CACurrentMediaTime()
+        let s = Dictation.structure(r.text, timeout: opt.structureTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab)
+        let ms = Int((CACurrentMediaTime() - t0) * 1000)
+        r.timing["structure_ms"] = ms
+        r.timing["total_ms"] = Int((CACurrentMediaTime() - keyUp) * 1000)
+        r.structureReason = s?["fell_back"] as? Bool == true ? (s?["reason"] as? String ?? "error") : nil
+        if let t = s?["text"] as? String, !t.isEmpty, s?["fell_back"] as? Bool != true {
+            r.structured = t
+        }
+        emit(["event": "dictation_structure", "id": id, "ms": ms, "list": s?["list"] as? Bool ?? false,
+              "fell_back": s?["fell_back"] as? Bool ?? (s == nil), "reason": s?["reason"] ?? NSNull()])
+    }
     private func assemble() -> Result {
         let ps = lock.locked { pieces }
         // the safety path: a piece the speech model failed on → the whole recording, the old way
@@ -320,8 +310,8 @@ final class DictationStream {
             return whole(ps.count)
         }
         let gaps = lock.locked { pauses }
-        let raw = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps, names: names)
-        let heard = DictationStitch.joinPieces(ps.map(\.asrText), pauses: gaps, names: names)
+        let raw = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps)
+        let heard = DictationStitch.joinPieces(ps.map(\.asrText), pauses: gaps)
         // polish's windows, then the clause still carried (the dictation ended in it: its ending stays)
         var text = opt.polish ? DictationStitch.join(ps.map(\.text) + [carry + carryEnd]) : raw
         let pol = ps.compactMap(\.polish)
@@ -330,9 +320,8 @@ final class DictationStream {
         let polished: String? = pol.isEmpty ? nil
             : DictationStitch.join(ps.map(\.polishedPart) + [carryPolished + carryEnd])
         // the joined result once more against the joined transcript: pieces that each passed can still add up wrong
-        // a refusal types the transcript with a comma where a boundary was heard, its self-corrections resolved
-        // (`fallback_text`), never 「…，不对，…」 as said
-        let fallback = DictationStitch.joinPiecesForFallback(ps.map(\.raw), pauses: gaps, names: names)
+        // a refusal types the transcript with a comma where a boundary was heard (`fallback_text`)
+        let fallback = DictationStitch.joinPiecesForFallback(ps.map(\.raw), pauses: gaps)
         if opt.polish, ps.count > 1, !pol.isEmpty, text != raw,
            let g = WarmServer.call("polish-serve", ["cmd": "guard", "raw": raw, "output": text, "vocab": opt.vocab,
                                                     "context": lock.locked { context }?.payload ?? NSNull(),

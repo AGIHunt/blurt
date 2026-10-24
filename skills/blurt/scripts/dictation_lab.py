@@ -31,8 +31,8 @@ configurations and run them all again after a change (a regression run). Everyth
 
 SPEC: "current" (the app's settings) or comma-separated overrides on it: asr=MODEL_ID, polish=on|off|MODEL_ID,
 vocab=on|off, context=on|off, mode=pieces|windows|whole, language=auto|zh|en…, style=verbatim|light|structured|auto (the
-dictation styles, docs/design/dictation-styles.md: the list renderer and the app category's variant of light, from
-dictation_styles.py — the same rules as the app), category=chat|code|mail|notes|other (default: the case's app)
+dictation styles, docs/design/dictation-styles.md: Structured and Auto run polish.py's structuring pass on Light's
+stitched text, as the app does at key-up, then the app category's variant of light from dictation_styles.py), category=chat|code|mail|notes|other (default: the case's app)
 e.g. --config asr=qwen3-asr-0.6b-mlx,polish=off   rerun ID --config style=light --config style=structured
 Every run checks that light (the default) never typed a list: a row whose output has more numbered lines than its
 truth is `listed`, counted in overall.listed, and --fail-on-regression fails on it too.
@@ -637,10 +637,27 @@ class Servers:
             raise Fail((r or {}).get("error") or "speech model failed", (r or {}).get("code") or "asr_failed")
         return r
 
-    def polish(self, text: str, model: str | None, vocab: bool, context: dict | None, timeout: float) -> dict:
+    def structure(self, text: str, model: str | None, vocab: bool, timeout: float | None = None) -> dict:
+        """polish.py serve's structuring pass (Structured, Auto), as the app calls it at key-up."""
+        if not self.ensure("polish-serve", "polish.py", ["serve", "--idle", "300", "--exit-after", "900"]):
+            return {"ok": True, "text": text, "fell_back": True, "reason": "unavailable"}
+        req = {"cmd": "structure", "text": text, "vocab": None if vocab else []}
+        if timeout:
+            req["timeout"] = timeout
+        if model:
+            req["model"] = model
+        r = self.call("polish-serve", req, (timeout or 10) + 120)
+        if not r or not r.get("ok"):
+            return {"ok": True, "text": text, "fell_back": True, "reason": (r or {}).get("code") or "timeout"}
+        return r
+
+    def polish(self, text: str, model: str | None, vocab: bool, context: dict | None, timeout: float,
+               variant: str | None = None) -> dict:
         if not self.ensure("polish-serve", "polish.py", ["serve", "--idle", "300", "--exit-after", "900"]):
             return {"ok": True, "text": text, "fell_back": True, "reason": "unavailable"}
         req = {"cmd": "polish", "text": text, "timeout": timeout, "vocab": None if vocab else [], "context": context}
+        if variant:
+            req["variant"] = variant
         if model:
             req["model"] = model
         r = self.call("polish-serve", req, timeout + 120)
@@ -748,30 +765,43 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
     out = {"segments": pieces, "raw": raw, "asr_text": heard, "polished": None, "text": raw, "fell_back": False,
            "reason": None, "repaired": [], "terms_applied": terms, "asr_model": model, "polish_model": None,
            "language": language}
-    polish_ms = 0
+    polish_ms = structure_ms = 0
     style = cfg.get("style") or "light"
     cat = cfg.get("category") or styles.category((c.get("app") or {}).get("bundle"))
-    if cfg.get("polish") and raw.strip() and style != "verbatim" and cfg.get("mode") == "windows" and len(pieces) > 1:
-        t1 = time.perf_counter()
-        ctx = context_payload(c) if cfg.get("context") else None
-        timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)
-        extra = {"variant": "chat"} if cat == "chat" else {}
-        answers: list[dict] = []
+    ctx = context_payload(c) if cfg.get("context") else None
+    timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)
+    extra = {"variant": "chat"} if cat == "chat" else {}
+    answers: list[dict] = []
+    structured: dict | None = None
+    can_structure = hasattr(backend, "structure")
 
-        def one(text: str, wctx: dict | None) -> dict:
-            r = backend.polish(text, cfg.get("polish_model"), bool(cfg.get("vocab")), wctx, timeout, **extra)
-            answers.append(r)
-            return r
+    def one(text: str, wctx: dict | None) -> dict:
+        r = backend.polish(text, cfg.get("polish_model"), bool(cfg.get("vocab")), wctx, timeout, **extra)
+        answers.append(r)
+        return r
+
+    def structure(text: str) -> dict:
+        # Structured / Auto: the polish model's structuring pass over the whole take (polish.py `structure`)
+        nonlocal structure_ms
+        t1 = time.perf_counter()
+        r = backend.structure(text, cfg.get("polish_model"), bool(cfg.get("vocab")))
+        structure_ms = int((time.perf_counter() - t1) * 1000)
+        return r
+    if cfg.get("polish") and raw.strip() and style != "verbatim" and cfg.get("mode") == "windows" and \
+            (len(pieces) > 1 or (style == "structured" and can_structure)):
+        t1 = time.perf_counter()
         guard = getattr(backend, "guard", None)
         w = stitch.stream([{"raw": q["raw"]} for q in pieces], [q["pause_after"] for q in pieces], one,
-                          (lambda r_, o_, f_: guard(r_, o_, f_, bool(cfg.get("vocab")), ctx)) if guard else None, ctx)
-        polish_ms = int((time.perf_counter() - t1) * 1000)
+                          (lambda r_, o_, f_: guard(r_, o_, f_, bool(cfg.get("vocab")), ctx)) if guard else None, ctx,
+                          structure=structure if style == "structured" and can_structure else None)
+        polish_ms = int((time.perf_counter() - t1) * 1000) - structure_ms
+        structured = w.get("structured")
         load_ms += sum(int(a.get("load_ms") or 0) for a in answers)
         for q, wp in zip(pieces, w["pieces"]):
             q.update(polish_in=wp["polish_in"], text=wp["text"], fell_back=wp["fell_back"], reason=wp["reason"],
-                     polish_ms=wp["ms"], echo=wp.get("echo"), corrections=wp.get("corrections"))
-        out.update(text=w["text"] or raw, fell_back=w["fell_back"], reason=w["reason"], stitch=w["stitch"],
-                   polished=stitch.join_all([a.get("polished") or "" for a in answers]),
+                     polish_ms=wp["ms"], echo=wp.get("echo"))
+        out.update(text=w["text"] or raw, light=w.get("light"), fell_back=w["fell_back"], reason=w["reason"],
+                   stitch=w["stitch"], polished=stitch.join_all([a.get("polished") or "" for a in answers]),
                    repaired=[x for a in answers for x in a.get("repaired") or []],
                    polish_model=next((a.get("model") for a in answers if a.get("model")), None),
                    windows_fell_back=sum(1 for wp in w["pieces"] if wp["fell_back"]),
@@ -780,23 +810,30 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
         out["terms_applied"] += [t for a in answers for t in a.get("terms") or [] if t not in out["terms_applied"]]
     elif cfg.get("polish") and raw.strip() and style != "verbatim":
         t1 = time.perf_counter()
-        ctx = context_payload(c) if cfg.get("context") else None
-        timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)
-        extra = {"variant": "chat"} if cat == "chat" else {}
-        r = backend.polish(raw, cfg.get("polish_model"), bool(cfg.get("vocab")), ctx, timeout, **extra)
+        r = one(raw, ctx)
         polish_ms = int((time.perf_counter() - t1) * 1000)
         load_ms += int(r.get("load_ms") or 0)
         out.update(polished=r.get("polished"), text=(r.get("text") or raw), fell_back=bool(r.get("fell_back")),
                    reason=r.get("reason") if r.get("fell_back") else None, repaired=r.get("repaired") or [],
-                   polish_model=r.get("model"), context_used=bool(r.get("context")))
+                   polish_model=r.get("model"), context_used=bool(r.get("context")), last_polish_ms=polish_ms)
         out["terms_applied"] += [t for t in r.get("terms") or [] if t not in out["terms_applied"]]
-    # the style: the list (structured / auto) and the app category's variant of light — the app's own rules
+    if style in ("structured", "auto") and structured is None and can_structure and (out["text"] or "").strip():
+        # Auto (and a take that wasn't streamed): Light's text, then the structuring pass on it
+        s_ = structure(out["text"])
+        structured = {**s_, "input": out["text"]}
+    if structured is not None:
+        out["structured"] = {k: structured.get(k) for k in ("text", "structured", "list", "fell_back", "reason", "ms",
+                                                              "input")}
+    # the style: the structured text (Structured; Auto only when it is a list) and the app category's variant of light
     t2 = time.perf_counter()
-    st = styles.apply_style(out["text"], style, cat)
-    out.update(text=st["text"], style={"style": style, "category": cat, "rendered": st["rendered"],
-                                       "markers": st["markers"], "variant": st["variant"]})
-    out["timings"] = {"asr_ms": asr_ms, "polish_ms": polish_ms, "load_ms": load_ms,
+    light_text = out.get("light") or out["text"]
+    s_text = structured.get("text") if structured and not structured.get("fell_back") else None
+    st = styles.apply_style(light_text if s_text is not None else out["text"], style, cat, s_text)
+    out.update(text=st["text"], style={"style": style, "category": cat, "rendered": st["rendered"], "variant": st["variant"]})
+    out["timings"] = {"asr_ms": asr_ms, "polish_ms": polish_ms, "structure_ms": structure_ms, "load_ms": load_ms,
                       "style_ms": int((time.perf_counter() - t2) * 1000),
+                      "last_polish_ms": out.get("last_polish_ms", 0),
+                      "after_keyup_ms": out.get("last_polish_ms", 0) + structure_ms,
                       "total_ms": int((time.perf_counter() - t0) * 1000), "segments": len(pieces)}
     t = truth(c)
     # light never makes a list (the check the styles promise): more numbered lines than the truth has
@@ -852,6 +889,9 @@ def regression(cfg: dict, backend, ids: list[str] | None = None, save: bool = Tr
                        fell_back=r["outputs"]["fell_back"], reason=r["outputs"]["reason"],
                        timings=r["outputs"]["timings"], change=compare(row["before"], r["metrics"]),
                        listed=r["outputs"].get("listed", False), style=r["outputs"].get("style"))
+            if r["outputs"].get("structured"):
+                st = r["outputs"]["structured"]
+                row["structured"] = {k: st.get(k) for k in ("list", "fell_back", "reason", "ms")}
             row["changed_text"] = row["before_text"] is not None and row["before_text"] != row["text"]
             if save:
                 add_run(c["id"], {"at": now_iso(), "key": cfg["key"], "label": cfg.get("label"), **r})

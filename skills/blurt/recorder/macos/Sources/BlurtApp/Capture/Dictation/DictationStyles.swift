@@ -1,16 +1,21 @@
 // Dictation styles in the app (docs/design/dictation-styles.md §3; the rules are BlurtCore's DictationStyle /
-// DictationList / DictationStyleLearn):
+// DictationStyleLearn; the language work is the polish model's):
 //
 //  • at the key-down the app in front gives the take its style (record.dictation.styles; light everywhere unless the
 //    user chose otherwise); verbatim skips polish for the whole take;
 //  • while talking: ⇧ alone, or a click on the island, toggles Structured for this take (the trigger's `.style`);
 //    Fn+⇧ as the start press starts in Structured. No spoken commands ("make a list" is content: people dictate
 //    instructions to AI agents). The island's right ear shows the list glyph while Structured; a toast names the switch;
-//  • after the stitch: the list (Structured: ≥ 2 ordinal markers, Auto: ≥ 3) and the category's variant (chat: no
-//    final 。 on one sentence; code: one line) — deterministic, a few ms, nothing added to the wait;
+//  • at key-up, Structured (and Auto): one pass of the polish model over the stitched text (polish.py `structure`,
+//    DictationStream.finish): it resolves self-corrections and lays out what was enumerated, or leaves a paragraph.
+//    Light never resolves a correction and never lists. Then the category's variant (chat: no final 。 on one
+//    sentence; code: one line);
 //  • reformat-last (⌥⇧L, the island's suggestion chip): the last take in the next style — verbatim → light →
-//    structured → verbatim — replacing it in the field only while it is exactly as it was typed (else the clipboard),
-//    with Undo. History: the style, the router's inputs, every reformat / undo / revert;
+//    structured → verbatim — with the same model passes (made on demand, off the dictation's path), replacing it in the
+//    field only while it is exactly as it was typed (else the clipboard), with Undo. History: the style, the router's
+//    inputs, every reformat / undo / revert / suggestion;
+//  • the list chip: after a light take long enough to hold a list, the structuring pass runs in the background (after
+//    the paste); when the model made it a list, the island offers it;
 //  • learning only suggests: ≥ 3 consistent signals in an app → the island asks once.
 // Test hooks: `dictation style …` (DictationTestHooks.swift).
 import AppKit
@@ -22,13 +27,16 @@ final class DictationLastPaste {
     let bundle: String?
     let app: String?
     let category: DictationAppCategory
-    /// the style it was typed in (auto: structured when a list was rendered, else light)
+    /// the style it was typed in (auto: structured when a list was typed, else light)
     let original: DictationStyle
     var current: DictationStyle
     /// the transcript (custom words fixed): verbatim's text
     let raw: String
-    /// light's text (polish's, before the list and the variant); nil: the take wasn't polished (made on demand)
+    /// light's text (polish's, before the variant); nil: the take wasn't polished (made on demand)
     var light: String?
+    /// the structuring pass's text (nil: not made yet, or it refused — `structuredTried` tells which)
+    var structured: String?
+    var structuredTried = false
     /// what is in the field now, as typed (fitted), and where
     var typed: String
     /// the styled text of `current` (before the fit at the cursor)
@@ -45,14 +53,15 @@ final class DictationLastPaste {
         self.field = field; self.location = location
     }
 
-    /// The text of `style` (nil: it has none — no list in the take, or light not made yet).
+    /// The text of `style` (nil: it has none yet — light or the structured pass not made).
     func version(_ style: DictationStyle) -> String? {
         switch style {
         case .verbatim: return DictationStyleVariant.apply(raw, category: category, structured: false).text
         case .light: return light.map { DictationStyleVariant.apply($0, category: category, structured: false).text }
         case .structured, .auto:
-            guard let list = DictationList.render(light ?? raw, minMarkers: style.listMarkers ?? 2) else { return nil }
-            return DictationStyleVariant.apply(list, category: category, structured: true).text
+            guard let s = structured else { return nil }
+            let p = style.pick(light: light ?? raw, structured: s)
+            return DictationStyleVariant.apply(p.text, category: category, structured: p.list).text
         }
     }
 
@@ -75,6 +84,9 @@ final class DictationLastPaste {
 }
 
 extension Dictation {
+    /// a light take this long (units) may hold a list: the structuring pass runs after its paste for the chip
+    static let chipMinUnits = 24
+
     // MARK: the router
 
     /// A take begins (the key-down, or the start): the app in front gives the base style.
@@ -108,22 +120,16 @@ extension Dictation {
 
     // MARK: after the stitch (deliver)
 
-    /// The take's text in its style, and the record for the history. Deterministic; a few ms (`style_ms`).
+    /// The take's text in its style, and the record for the history: the structured text Structured asked for (made at
+    /// key-up by the stream), the category's variant.
     func styleText(_ r: DictationStream.Result) -> (text: String, record: DictationStyleRecord, ms: Int) {
         let t0 = CACurrentMediaTime()
         let d = styleDecision ?? DictationStyleRouter.decide(config: Dictation.styleConfig, bundle: styleBundle)
-        var text = r.text
-        let markers = DictationList.markers(text)
-        var rendered = false
-        if let m = d.style.listMarkers, let list = DictationList.render(text, minMarkers: m) {
-            text = list
-            rendered = true
-        }
-        let v = DictationStyleVariant.apply(text, category: d.category, structured: rendered)
+        let pick = d.style.pick(light: r.text, structured: r.structured)
+        let v = DictationStyleVariant.apply(pick.text, category: d.category, structured: pick.list)
         let rec = DictationStyleRecord(style: d.style.rawValue, source: d.source.rawValue, category: d.category.rawValue,
                                        base: d.base.rawValue, explicit: explicitStyle?.style.rawValue,
-                                       toggles: styleToggles, markers: markers,
-                                       rendered: rendered, variant: v.changes)
+                                       toggles: styleToggles, rendered: pick.list, variant: v.changes)
         return (v.text, rec, Int((CACurrentMediaTime() - t0) * 1000))
     }
 
@@ -133,12 +139,11 @@ extension Dictation {
             let b = before.trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
             return !b.isEmpty && !b.hasSuffix("\n") ? ("\n" + text, ["list_line"]) : (text, [])
         }
-        let names = Set(DictationVocabulary.shared.active().map(\.term).flatMap { $0.split(separator: " ").map(String.init) })
-        let fit = DictationFit.fit(text, before: before, after: after, names: names)
+        let fit = DictationFit.fit(text, before: before, after: after)
         return fit.trimmed ? (fit.text, fit.changes) : (text, [])
     }
 
-    /// After the paste: what reformat-last needs, the ≡ suggestion for a take that sounded like a list, and the
+    /// After the paste: what reformat-last needs, the ≡ suggestion for a take the model finds a list in, and the
     /// learning check.
     func rememberPaste(id: String, app: NSRunningApplication?, bundle: String?, r: DictationStream.Result, record: DictationStyleRecord,
                        typed: String, result: DictationInsert.Result, field: DictationField?, location: Int?) {
@@ -150,6 +155,8 @@ extension Dictation {
         let lp = DictationLastPaste(id: id, bundle: bundle, app: bundle == app?.bundleIdentifier ? app?.localizedName : bundle, category: cat,
                                     original: original, raw: r.raw, light: r.polished != nil || r.fellBack ? r.text : nil,
                                     typed: typed, currentVersion: "", field: field, location: location)
+        lp.structured = r.structured
+        lp.structuredTried = style.structures && (r.structured != nil || r.structureReason != nil)
         lp.currentVersion = lp.version(original) ?? typed
         lp.anchor()
         lastPaste = lp
@@ -160,16 +167,22 @@ extension Dictation {
             emit(["event": "dictation_style", "action": "revert", "id": lp.id])
             self.checkStyleSuggestion(bundle: lp.bundle)
         }
-        // the ≡ chip: it sounded like a list, it went in as prose — one key (or this click) away
-        if Dictation.suggestLists, result != .none, original == .light, record.listLikely, lp.version(.structured) != nil {
-            let key = hk(.reformat)
-            var t = Island.Toast(text: Loc.t(key.isEmpty ? "dictation.style.chip" : "dictation.style.chip.key", table: "Dictation", key),
-                                 actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self] in
-                self?.reformat(to: .structured, action: "reformat", via: "chip")
-            })
-            t.seconds = 6
-            island.toast(t)
-            emit(["event": "dictation_style", "action": "suggest_list", "id": id, "markers": record.markers])
+        // the ≡ chip: the model finds a list in a take that went in as prose — one key (or this click) away. The pass
+        // runs after the paste, so the dictation never waits for it.
+        if Dictation.suggestLists, result != .none, original == .light, DictationStitch.units(lp.light ?? lp.raw).count >= Dictation.chipMinUnits {
+            withStructured(lp) { [weak self] in
+                guard let self = self, self.lastPaste === lp, self.phase == .idle, lp.current == .light,
+                      let s = lp.structured, DictationStitch.listLines(s) >= 2 else { return }
+                DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: "suggest", from: "light", to: "structured", replaced: false))
+                let key = hk(.reformat)
+                var t = Island.Toast(text: Loc.t(key.isEmpty ? "dictation.style.chip" : "dictation.style.chip.key", table: "Dictation", key),
+                                     actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self] in
+                    self?.reformat(to: .structured, action: "reformat", via: "chip")
+                })
+                t.seconds = 6
+                island.toast(t)
+                emit(["event": "dictation_style", "action": "suggest_list", "id": id, "lines": DictationStitch.listLines(s)])
+            }
         }
         checkStyleSuggestion(bundle: lp.bundle)
     }
@@ -186,12 +199,14 @@ extension Dictation {
         }
         let order = [lp.current.next, lp.current.next.next]
         withLight(lp) { [weak self] in
-            guard let self = self, self.lastPaste === lp else { return }
-            for s in order {
-                if let t = lp.version(s), t != lp.currentVersion { return self.apply(lp, to: s, text: t, action: "reformat", via: via) }
+            self?.withStructured(lp) { [weak self] in
+                guard let self = self, self.lastPaste === lp else { return }
+                for s in order {
+                    if let t = lp.version(s), t != lp.currentVersion { return self.apply(lp, to: s, text: t, action: "reformat", via: via) }
+                }
+                island.toast(Loc.t("dictation.style.reformat.same", table: "Dictation"), actionTitle: nil, action: nil)
+                emit(["event": "dictation_reformat", "result": "same", "via": via, "id": lp.id])
             }
-            island.toast(Loc.t("dictation.style.reformat.same", table: "Dictation"), actionTitle: nil, action: nil)
-            emit(["event": "dictation_reformat", "result": "same", "via": via, "id": lp.id])
         }
     }
 
@@ -199,8 +214,10 @@ extension Dictation {
     func reformat(to style: DictationStyle, action: String, via: String) {
         guard phase == .idle, let lp = lastPaste else { return }
         withLight(lp) { [weak self] in
-            guard let self = self, self.lastPaste === lp, let t = lp.version(style), t != lp.currentVersion else { return }
-            self.apply(lp, to: style, text: t, action: action, via: via)
+            self?.withStructured(lp) { [weak self] in
+                guard let self = self, self.lastPaste === lp, let t = lp.version(style), t != lp.currentVersion else { return }
+                self.apply(lp, to: style, text: t, action: action, via: via)
+            }
         }
     }
 
@@ -214,6 +231,28 @@ extension Dictation {
             let text = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             DispatchQueue.main.async {
                 if r?["fell_back"] as? Bool != true, let t = text { lp.light = t }
+                then()
+            }
+        }
+    }
+
+    /// The structuring pass for the last take, once (reformat-last, the chip): the same model pass Structured runs at
+    /// key-up, on Light's text (the transcript when there is none). Off the dictation's path.
+    func withStructured(_ lp: DictationLastPaste, _ then: @escaping () -> Void) {
+        guard lp.structured == nil, !lp.structuredTried, Dictation.polishOn, polishModel != nil else { return then() }
+        lp.structuredTried = true
+        let src = lp.light ?? lp.raw
+        guard !src.isEmpty else { return then() }
+        let vocab = DictationVocabulary.shared.payload()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let t0 = CACurrentMediaTime()
+            let r = Dictation.structure(src, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab)
+            let text = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            DispatchQueue.main.async {
+                if r?["fell_back"] as? Bool != true, let t = text { lp.structured = t }
+                emit(["event": "dictation_structure", "id": lp.id, "on_demand": true, "ms": Int((CACurrentMediaTime() - t0) * 1000),
+                      "list": r?["list"] as? Bool ?? false, "fell_back": r?["fell_back"] as? Bool ?? (r == nil),
+                      "reason": r?["reason"] ?? NSNull()])
                 then()
             }
         }
@@ -258,7 +297,7 @@ extension Dictation {
         let ns = now as NSString
         let before = String(ns.substring(to: span.location).suffix(500))
         let after = String(ns.substring(from: NSMaxRange(span)).prefix(500))
-        let fitted = Dictation.fit(text, before: before, after: after, list: style == .structured || style == .auto).text
+        let fitted = Dictation.fit(text, before: before, after: after, list: DictationStitch.listLines(text) >= 2).text
         DictationWatch.shared.stop("reformat")
         DictationInsert.replace(fitted, in: f, range: span) { ok in
             guard ok else {

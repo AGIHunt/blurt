@@ -412,7 +412,7 @@
 "dictation.style.light" = "Light";
 "dictation.style.structured" = "Structured";
 "dictation.style.auto" = "Auto lists";
-"dictation.style.toast.structured" = "%@: spoken points become a list · ⇧ to go back";
+"dictation.style.toast.structured" = "%@: lists and corrections tidied when you finish · ⇧ to go back";
 "dictation.style.toast.back" = "Back to %@";
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";
@@ -430,11 +430,11 @@
 "dictation.style.learn.no" = "No";
 "dictation.style.learn.done" = "Done — change it in Settings → Dictation → Style";
 "dictation.style.section" = "Style";
-"dictation.style.detail" = "How your words are tidied up. Light never turns speech into a list and never changes your tone. Structured turns points you number out loud (first, second… / 第一、第二…) into a numbered list.";
+"dictation.style.detail" = "How your words are tidied up. Light keeps every word you said — corrections included — never makes a list and never changes your tone. Structured goes over the whole take once more when you finish: it keeps the version you settled on and makes a numbered list of points you counted off — only when you really did.";
 "dictation.style.keys" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧. %@ reformats the last dictation.";
 "dictation.style.keys.no_hotkey" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧.";
 "dictation.style.cat.chat" = "Chat";
-"dictation.style.cat.chat.detail" = "Keeps 吧, 呢, 啊; no full stop after a one-sentence message";
+"dictation.style.cat.chat.detail" = "Asks polish to keep 吧, 呢, 啊; no full stop after a one-sentence message";
 "dictation.style.cat.code" = "Code and terminals";
 "dictation.style.cat.code.detail" = "One line, no line breaks";
 "dictation.style.cat.mail" = "Mail";

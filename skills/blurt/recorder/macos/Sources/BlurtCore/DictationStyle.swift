@@ -1,10 +1,12 @@
-// Dictation styles (docs/design/dictation-styles.md §3): a small fixed set, picked per take by rules, never by a model.
+// Dictation styles (docs/design/dictation-styles.md §3): a small fixed set. Which style a take gets is picked by the
+// user's choices (the router below: settings, ⇧, the island); what a style does with the words is the polish model's.
 //
 //   verbatim     the speech model's text with its punctuation; no polish
-//   light        the default everywhere: today's polish (fillers, stutters, self-corrections, punctuation). Never a
-//                list, never a tone change
-//   structured   light + spoken ordinal enumerations rendered as a numbered list (DictationList, deterministic, < 5 ms)
-//   auto         light, and the list only when the renderer is confident (≥ 3 ordinal markers in order). Ships off
+//   light        the default everywhere: polish (hesitations, stutters, punctuation). Every word the speaker said
+//                stays — self-corrections included. Never a list, never a tone change
+//   structured   light, then one pass of the polish model over the whole take at key-up (polish.py `structure`): it
+//                resolves self-corrections and lays out what the speaker enumerated, or leaves a paragraph
+//   auto         light, and the structured text only when the model made it a list. Ships off
 //
 // The app's category (chat / code / mail / notes) shapes light a little (DictationStyleVariant): chat keeps
 // sentence-final particles and drops the full stop of a one-sentence message, code and terminals get one line.
@@ -20,13 +22,16 @@ public enum DictationStyle: String, CaseIterable, Hashable {
 
     /// polish runs for it (verbatim types what the speech model wrote)
     public var polishes: Bool { self != .verbatim }
-    /// the list renderer runs, and how many ordinal markers it needs (nil: never)
-    public var listMarkers: Int? {
-        switch self {
-        case .structured: return DictationList.askedMarkers
-        case .auto: return DictationList.autoMarkers
-        default: return nil
-        }
+    /// the structuring pass runs at key-up
+    public var structures: Bool { self == .structured || self == .auto }
+
+    /// The text this style types, given Light's text and the structuring pass's (nil: it refused, or didn't run):
+    /// Structured types the structured text; Auto only when it is a list; else Light's. → (text, a list was typed).
+    public func pick(light: String, structured: String?) -> (text: String, list: Bool) {
+        guard structures, let s = structured?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return (light, false) }
+        let list = DictationStitch.listLines(s) >= 2
+        if self == .auto && !list { return (light, false) }
+        return (s, list)
     }
     /// Reformat-last's cycle: verbatim → light → structured → verbatim (auto reformats as structured)
     public var next: DictationStyle {
@@ -156,11 +161,9 @@ public enum DictationStyleRouter {
     }
 }
 
-/// Category variants of light (§3.1). Deterministic, after polish and the stitch guard, before the fit at the cursor.
+/// Category variants of light (§3.1), after polish and the stitch guard, before the fit at the cursor. Layout only
+/// (marks and line breaks); chat's tone words are the model's to keep — polish's request says it is a chat message.
 public enum DictationStyleVariant {
-    /// sentence-final particles chat keeps (polish.py's repair puts back the ones polish dropped: variant "chat")
-    public static let chatParticles: Set<Character> = ["吧", "呢", "啊", "哈", "嘛", "呀", "啦", "哦", "噢", "咯", "呗"]
-
     /// → the text for this category, and what changed ("final_stop", "blank_lines", "one_line").
     public static func apply(_ text: String, category: DictationAppCategory, structured: Bool) -> (text: String, changes: [String]) {
         var t = text

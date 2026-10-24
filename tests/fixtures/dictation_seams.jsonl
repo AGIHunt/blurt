@@ -1,47 +1,32 @@
 {"fn": "joinPieces", "texts": ["我刚才看了一下日志，好像是因为。", "网络断开以后没有重新连接。", "所以后面的请求都失败了。"], "pauses": [0.7, 0.8], "want": "我刚才看了一下日志，好像是因为网络断开以后没有重新连接所以后面的请求都失败了。"}
 {"fn": "joinPieces", "texts": ["这个新功能确实挺顺手，", "出门的时候不用带电脑了。"], "pauses": [0.6], "want": "这个新功能确实挺顺手出门的时候不用带电脑了。"}
 {"fn": "joinPieces", "texts": ["回到办公室以后再慢慢整理也来得及。", "下午我们再开会。"], "pauses": [1.4], "want": "回到办公室以后再慢慢整理也来得及。下午我们再开会。"}
-{"fn": "joinPieces", "texts": ["最好在设置页面里也。", "加上一个开关。"], "pauses": [1.5], "want": "最好在设置页面里也，加上一个开关。"}
-{"fn": "joinPieces", "texts": ["I tried the new build this morning.", "And it was a lot faster.", "Than the old one."], "pauses": [0.7, 0.8], "want": "I tried the new build this morning and it was a lot faster than the old one."}
+{"fn": "joinPieces", "texts": ["最好在设置页面里也。", "加上一个开关。"], "pauses": [1.5], "want": "最好在设置页面里也。加上一个开关。"}
+{"fn": "joinPieces", "texts": ["I tried the new build this morning.", "And it was a lot faster.", "Than the old one."], "pauses": [0.7, 0.8], "want": "I tried the new build this morning And it was a lot faster Than the old one."}
 {"fn": "joinPieces", "texts": ["We should move the meeting to.", "Thursday afternoon."], "pauses": [0.7], "want": "We should move the meeting to Thursday afternoon."}
 {"fn": "joinPiecesForFallback", "texts": ["明天要做三件事，第一，把测试全部跑完。", "第二，把文档更新一下。", "第三，提交代码，然后发给小王看看。"], "pauses": [0.7, 0.8], "want": "明天要做三件事，第一，把测试全部跑完，第二，把文档更新一下，第三，提交代码，然后发给小王看看。"}
-{"fn": "joinPiecesForFallback", "texts": ["For the release, we need three things. First, run all the tests.", "Second, update the docs."], "pauses": [0.7], "want": "For the release, we need three things. First, run all the tests, second, update the docs."}
-{"fn": "joinPiecesForFallback", "texts": ["我们先把这个。", "文件发给他。"], "pauses": [0.7], "want": "我们先把这个文件发给他。"}
-{"fn": "joinPiecesForFallback", "texts": ["We should move the meeting to.", "Thursday afternoon."], "pauses": [0.7], "want": "We should move the meeting to Thursday afternoon."}
+{"fn": "joinPiecesForFallback", "texts": ["For the release, we need three things. First, run all the tests.", "Second, update the docs."], "pauses": [0.7], "want": "For the release, we need three things. First, run all the tests, Second, update the docs."}
+{"fn": "joinPiecesForFallback", "texts": ["我们先把这个。", "文件发给他。"], "pauses": [0.7], "want": "我们先把这个，文件发给他。"}
+{"fn": "joinPiecesForFallback", "texts": ["We should move the meeting to.", "Thursday afternoon."], "pauses": [0.7], "want": "We should move the meeting to, Thursday afternoon."}
 {"fn": "joinPiecesForFallback", "texts": ["回到办公室以后再慢慢整理也来得及。", "下午我们再开会。"], "pauses": [1.4], "want": "回到办公室以后再慢慢整理也来得及。下午我们再开会。"}
 {"fn": "joinPiecesForFallback", "texts": ["好像是因为", "网络断开了。"], "pauses": [0.7], "want": "好像是因为网络断开了。"}
 {"fn": "fallbackSeam", "previous": "第一，把测试全部跑完", "next": "第二把文档更新一下", "pause": 0.7, "heard": "。", "want": "第一，把测试全部跑完，第二把文档更新一下"}
-{"fn": "fallbackSeam", "previous": "first, run all the tests", "next": "Second update the docs", "pause": 0.7, "heard": ".", "want": "first, run all the tests, second update the docs"}
+{"fn": "fallbackSeam", "previous": "first, run all the tests", "next": "Second update the docs", "pause": 0.7, "heard": ".", "want": "first, run all the tests, Second update the docs"}
 {"fn": "fallbackSeam", "previous": "把测试全部跑完", "next": "第二把文档更新一下", "pause": 0.7, "heard": "", "want": "把测试全部跑完第二把文档更新一下"}
-{"fn": "fallbackSeam", "previous": "我们把", "next": "测试跑完", "pause": 0.7, "heard": "，", "want": "我们把测试跑完"}
+{"fn": "fallbackSeam", "previous": "我们把", "next": "测试跑完", "pause": 0.7, "heard": "，", "want": "我们把，测试跑完"}
 {"fn": "fallbackSeam", "previous": "我们先开个短会", "next": "下午修问题", "pause": 1.5, "heard": "。", "want": "我们先开个短会。下午修问题"}
-{"fn": "commaJoin", "a": "把这个", "b": "不对，这两个拿到那一边去", "want": "把这个，不对，这两个拿到那一边去"}
-{"fn": "commaJoin", "a": "Let's meet at 2:30", "b": "no wait, 3:30", "want": "Let's meet at 2:30, no wait, 3:30"}
-{"fn": "commaJoin", "a": "把这个，", "b": "不对，这两个", "want": "把这个，不对，这两个"}
-{"fn": "commaJoin", "a": "", "b": "不对，这两个", "want": "不对，这两个"}
 {"fn": "commitSplit", "text": "明天上午开个短会，把内容再过一遍。下午的时间", "want": ["明天上午开个短会，把内容再过一遍。", "下午的时间", ""]}
 {"fn": "commitSplit", "text": "我们先开个短会。", "want": ["", "我们先开个短会", "。"]}
 {"fn": "commitSplit", "text": "It costs 1,000 dollars at 10:30, and then we", "want": ["It costs 1,000 dollars at 10:30,", "and then we", ""]}
 {"fn": "commitSplit", "text": "他说：“好的。”然后就走了，", "want": ["他说：“好的。”", "然后就走了", "，"]}
-{"fn": "decapitalize", "text": "Than the old one", "want": "than the old one"}
-{"fn": "decapitalize", "text": "GitHub is down", "want": "GitHub is down"}
-{"fn": "decapitalize", "text": "I'm on it", "want": "I'm on it"}
-{"fn": "decapitalize", "text": "And the second thing is the onboarding flow", "want": "and the second thing is the onboarding flow"}
 {"fn": "midSentence", "text": "明天要做三件事，", "want": true}
 {"fn": "midSentence", "text": "明天要做三件事。", "want": false}
 {"fn": "midSentence", "text": "", "want": false}
-{"fn": "startsWithCorrection", "text": "不对，是周四", "want": true}
-{"fn": "startsWithCorrection", "text": "嗯，我是说下周", "want": true}
-{"fn": "startsWithCorrection", "text": "No wait, the right side", "want": true}
-{"fn": "startsWithCorrection", "text": "不对称的布局要改一下", "want": false}
-{"fn": "startsWithCorrection", "text": "sorted by date", "want": false}
-{"fn": "endsWithCorrection", "text": "资料我晚上发群里，不对。", "want": true}
-{"fn": "endsWithCorrection", "text": "Let's meet at 2:30, no wait,", "want": true}
-{"fn": "endsWithCorrection", "text": "把这个文件发给他", "want": false}
-{"fn": "endsWithCorrection", "text": "我们的方案是对的。", "want": false}
-{"fn": "endsWithCorrection", "text": "it's not what I mean.", "want": true}
 {"fn": "keepCase", "input": "update the docs finally", "output": "Update the docs finally.", "want": "update the docs finally."}
 {"fn": "keepCase", "input": "turn on the shortcut", "output": "Turn on the shortcut.", "want": "turn on the shortcut."}
 {"fn": "keepCase", "input": "github is down", "output": "GitHub is down.", "want": "GitHub is down."}
 {"fn": "keepCase", "input": "Update the docs", "output": "Update the docs.", "want": "Update the docs."}
 {"fn": "keepCase", "input": "把文档更新一下", "output": "把文档更新一下。", "want": "把文档更新一下。"}
+{"fn": "joinPieces", "texts": ["最好在设置页面里也，", "加上一个开关。"], "pauses": [1.5], "want": "最好在设置页面里也，加上一个开关。"}
+{"fn": "joinPieces", "texts": ["First run the tests;", "then ship it."], "pauses": [1.4], "want": "First run the tests; then ship it."}
+{"fn": "joinPieces", "texts": ["我们先开个短会！", "下午修问题。"], "pauses": [1.3], "want": "我们先开个短会！下午修问题。"}

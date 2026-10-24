@@ -2,15 +2,15 @@
 // Pure: DictationStyleLearnTests.
 //
 //  • DictationStyleRecord: the history's `style`, `style_source`, `style_router` (the router's inputs and decision:
-//    category, the app's own style, ⇧ / the island / Fn+⇧, toggles, list markers, rendered, the category
-//    variant's changes) and `reformats` (reformat-last, its undo, a list the user took apart in the field) — the data
-//    to check the rules against real takes before anyone trains anything.
+//    category, the app's own style, ⇧ / the island / Fn+⇧, toggles, rendered, the category variant's changes) and
+//    `reformats` (reformat-last, its undo, a list the user took apart in the field, the island's list suggestion).
 //  • DictationReformat: the pasted text is replaced only while it is exactly as it was typed, between the same
 //    anchors (the user's own edits are never overwritten); otherwise the new version goes to the clipboard.
 import Foundation
 
 public struct DictationReformatRecord: Hashable {
-    /// reformat | undo | revert (the list was taken apart in the field)
+    /// reformat | undo | revert (the list was taken apart in the field) | suggest (the island offered a list: the
+    /// structuring pass found one in a take typed as prose)
     public var action: String
     public var from: String
     public var to: String
@@ -45,14 +45,16 @@ public struct DictationStyleRecord: Hashable {
     /// ⇧ / the island / Fn+⇧ during this take (its last choice)
     public var explicit: String?
     public var toggles: Int
-    /// ordered list markers the renderer found (0: none) — `list_likely` is markers ≥ 2
+    /// ordered list markers the old rule-based renderer found (entries before the model-first styles; 0 now)
     public var markers: Int
     public var rendered: Bool
     /// the category variant's changes (final_stop, blank_lines, one_line)
     public var variant: [String]
     public var reformats: [DictationReformatRecord] = []
 
-    public var listLikely: Bool { markers >= DictationList.askedMarkers }
+    /// the take sounded like a list: the island offered one (the structuring pass found it), or — older entries — the
+    /// old renderer counted ≥ 2 markers
+    public var listLikely: Bool { markers >= 2 || reformats.contains { $0.action == "suggest" } }
 
     public init(style: String, source: String, category: String, base: String, explicit: String? = nil,
                 toggles: Int = 0, markers: Int = 0, rendered: Bool = false, variant: [String] = []) {
@@ -64,8 +66,9 @@ public struct DictationStyleRecord: Hashable {
     public func write(into o: inout [String: Any]) {
         o["style"] = style
         o["style_source"] = source
-        var r: [String: Any] = ["category": category, "base": base, "toggles": toggles, "markers": markers,
-                                "list_likely": listLikely, "rendered": rendered]
+        var r: [String: Any] = ["category": category, "base": base, "toggles": toggles, "list_likely": listLikely,
+                                "rendered": rendered]
+        if markers > 0 { r["markers"] = markers }
         if let e = explicit { r["explicit"] = e }
         if !variant.isEmpty { r["variant"] = variant }
         o["style_router"] = r

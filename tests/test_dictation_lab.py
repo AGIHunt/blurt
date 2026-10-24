@@ -162,8 +162,8 @@ def test_from_history_with_and_without_audio(home):
 class FakePipeline:
     """A speech model that answers from a table by audio length (seconds, 1 decimal), and a polish that capitalises."""
 
-    def __init__(self, heard: dict[float, str], polish=None):
-        self.heard, self.calls, self.polish_fn = heard, [], polish
+    def __init__(self, heard: dict[float, str], polish=None, structure=None):
+        self.heard, self.calls, self.polish_fn, self.structure_fn = heard, [], polish, structure
 
     def asr(self, wav, model, vocab, prior, language):
         with wave.open(str(wav)) as w:
@@ -172,10 +172,19 @@ class FakePipeline:
         return {"ok": True, "text": self.heard.get(secs, ""), "asr_text": self.heard.get(secs, ""), "model": model or "m-current",
                 "language": "zh", "terms": []}
 
-    def polish(self, text, model, vocab, context, timeout):
+    def polish(self, text, model, vocab, context, timeout, variant=None):
         self.calls.append({"polish": text, "model": model, "context": context})
         out = self.polish_fn(text) if self.polish_fn else text
         return {"ok": True, "text": out, "polished": out, "fell_back": False, "model": model or "p-current", "context": bool(context)}
+
+    def structure(self, text, model, vocab, timeout=None):
+        """polish.py's structuring pass: `structure(text)` → the structured text (None: refused)."""
+        self.calls.append({"structure": text})
+        out = self.structure_fn(text) if self.structure_fn else text
+        if out is None:
+            return {"ok": True, "text": text, "fell_back": True, "reason": "dropped", "list": False, "ms": 1}
+        return {"ok": True, "text": out, "structured": out, "fell_back": False, "ms": 1,
+                "list": len([ln for ln in out.split("\n") if ln[:1].isdigit()]) >= 2}
 
 
 def make_case(home: Path, cid: str, seconds: float, corrected: str, segments=None, context=None) -> dict:
