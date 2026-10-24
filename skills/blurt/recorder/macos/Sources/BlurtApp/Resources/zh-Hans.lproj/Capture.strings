@@ -80,7 +80,7 @@
 "capture.keys.turn_off" = "关闭这个快捷键";
 "capture.keys.type" = "按下新的快捷键…";
 "capture.keys.unreadable" = "配置里的「%@」看不懂，用了默认";
-"capture.keys.while_recording" = "录制中";
+"capture.keys.while_recording" = "录屏时";
 "capture.keys.why" = "%1$@：%2$@";
 "capture.keys.wont_work" = "快捷键 %@ 用不了";
 "capture.menu.live_caption" = "实时字幕";

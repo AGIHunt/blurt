@@ -143,6 +143,9 @@ struct ShortcutRecorder: NSViewRepresentable {
         f.conflict = Hotkeys.shared.states[action]?.isConflict ?? false
         f.needsDisplay = true
     }
+    /// Its own size, so the form row stays one line high with the field beside the name.
+    @available(macOS 13.0, *)
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: ShortcutField, context: Context) -> CGSize? { ShortcutField.size }
 }
 
 /// The pane's state: it redraws when a binding or a conflict changes (Hotkeys.onChange) and keeps the fields for the
@@ -264,6 +267,9 @@ struct ShortcutsPane: View {
         return LabeledContent {
             ShortcutRecorder(action: a, model: m)
                 .frame(width: ShortcutField.size.width, height: ShortcutField.size.height)
+                // an NSView has no text baseline: line its middle up with the name's, as the form does for its controls
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                .alignmentGuide(.lastTextBaseline) { $0[VerticalAlignment.center] + 4 }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(a.title)

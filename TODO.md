@@ -92,3 +92,12 @@
 - [ ] Linux Wayland (PipeWire portal); global hotkeys on Linux
 - [ ] More exporters as scripts where CLIs are awkward (Linear, Jira, Notion)
 - [ ] Hosted ASR API (paid, with free trial minutes) — later
+
+## Windows / Linux app (Tauri) — counterparts of the Mac shell fixes (audit E2)
+- [ ] `settings.rs` `write_config`: take `$BLURT_HOME/.config.lock` (the lock `_common.update_global_config` and the Mac
+      `Config.set` share) and never overwrite a config.json that doesn't parse (copy it to `config.json.bad-<time>`, say
+      so once) — BlurtCore/Config.swift
+- [ ] `blurt://record` / `blurt://snap` from outside: ask in the app first unless it is in front (Mac: App.confirmFromURL)
+- [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
+- [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
+- [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)

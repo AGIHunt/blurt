@@ -7,8 +7,15 @@
 ## English
 
 Blurt turns what you say, snap and record into items — bugs, ideas, notes, tasks — files them into your projects,
-and hands them to a coding agent. This page covers everything you do in the app. Shortcuts are the macOS defaults;
-on Windows and Linux read `⌥` as `Alt` and `⇧` as `Shift`. Every shortcut can be changed in Settings.
+and hands them to a coding agent. On a Mac it also types what you say wherever your cursor is (**dictation**, `Fn`).
+This page covers everything you do in the app; *Help → Blurt User Guide* and *Settings → General → User Guide* open
+it. Shortcuts are the macOS defaults; on Windows and Linux read `⌥` as `Alt` and `⇧` as `Shift`. Every shortcut can be
+changed in *Settings → Shortcuts*.
+
+**First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through the permissions
+(Screen Recording, Microphone, Accessibility, Input Monitoring) and a speech model; after that, try `Fn` in any text
+field to dictate and `⌥⇧A` to snap. The island at the top of the screen says one short line when there is something
+to know — at most one at launch.
 
 ### 1. Capture
 
@@ -18,7 +25,7 @@ Linux) is where capture starts. Hover it to see your current project and the thr
 | | Shortcut | What happens |
 |---|---|---|
 | **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong; stop talking for about 2 s and it's saved (room noise doesn't keep it open). Hold `⌃` and drag to circle the exact spot. |
-| **Voice** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* on the island) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels. The words show under the island as you talk. |
+| **Voice note** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* on the island) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels. The words show under the island as you talk. |
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* on the island) stops. |
 
 While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
@@ -36,9 +43,12 @@ click, moves to the bottom of the screen when it would cover the line you're dic
 a recording. Because a voice note is transcribed piece by piece while you talk, its card has its words about as soon
 as you stop. Turn it off in *Settings → General → Show text while I talk*.
 
-In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The countdown, system audio and
-what happens after a recording are in *Settings → General*. The menu-bar icon is the line chick in monochrome, like
-the other icons up there: its sound arcs pulse while voice input listens, and it hops when something is done.
+In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The menu is short: capture
+(record, snap, voice note, dictation history), *Open Blurt* and one *Inbox* row with what waits for you, the current
+project, Settings and Quit. The countdown, system audio and what happens after a recording are in *Settings → General*.
+The menu-bar icon is the line chick in monochrome, like the other icons up there: its sound arcs pulse while a voice
+note listens, and it hops when something is done. A `blurt://record` or `blurt://snap` link opened from another app
+asks on the island first — one click — unless Blurt itself is in front.
 
 Speech is transcribed on your computer. Nothing leaves it unless you choose a cloud speech service.
 
@@ -280,10 +290,11 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - Dictation is off while a screen recording runs, because the recording is using the microphone. Dictation and the
   voice note never listen at the same time: whichever started first keeps the microphone until it's done.
 
-#### Dictation Lab
+#### Dictation Lab (developer option)
 
-The Dictation page has two tabs: **History** and **Lab** (also *Go → Dictation Lab*, `⌥⌘L`). The lab is where you
-find out why a dictation came out wrong and keep the evidence. Everything in it stays on this Mac.
+The lab is hidden until you turn on *Settings → General → Show the Dictation Lab (for developers)*. Then the Dictation
+page has two tabs, **History** and **Lab** (also *Go → Dictation Lab*, `⌥⌘L`). The lab is where you find out why a
+dictation came out wrong and keep the evidence. Everything in it stays on this Mac.
 
 - **Record a take**: click the big button (or tap your dictation key while the lab is in front) and talk. Pick the
   microphone next to it, or **Import Audio…** to play a file in as the microphone. Nothing is typed anywhere.
@@ -309,31 +320,58 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **Export…** saves every case as a dataset (`manifest.jsonl` + 16 kHz WAVs) for evaluation or fine-tuning. *Move to
   Trash* deletes a case.
 
+### 8. Settings, storage and privacy
+
+- **Agents** lists the coding agents Blurt uses to organize recordings and snaps, auto-sort and fill in with AI, in
+  order: the first that works runs, and the next takes over on a sign-in or quota problem. Untick the ones you don't
+  use. Only a problem that stops Blurt shows in red; *Connect…* (the blurt skill and MCP for that agent) appears only
+  while they are missing, and shows what it will change before it does.
+- **Export** sets where your agent sends items when you ask it to export (Feishu / Lark, GitHub Issues, Markdown and
+  CSV) and says which of them are ready. Exporting again never makes duplicates.
+- **Storage** shows what takes space: recordings and snaps per folder, every model with its size (*In use* or not),
+  dictation history and audio, and Blurt's own files. A model nothing uses can go to the Trash. Videos are most of the
+  space (about 9 MB a minute): *Delete* removes the videos of organized recordings older than 30, 90 or 180 days, or
+  all of them, and *Delete videos automatically* does it for you. It is off by default — Blurt never deletes what you
+  made unless you ask. Only the video goes, to the Trash: items, frames and transcripts stay.
+- **Privacy** has the one full list of permissions, local-only speech recognition and Spotlight. Blurt's own data
+  (`~/.blurt`, `~/Blurt`) can only be read by your macOS account.
+
+### 9. Updating
+
+The Mac app updates itself (*Check for Updates…* in the menu and in *Settings → General*). The agent skill updates
+with the command you installed it with, for example `npx skills add AGIHunt/blurt`. The app runs the skill's scripts,
+so the two must speak the same version: when one is older than the other, the island says which one to update, once.
+
 ---
 
 ## 中文
 
-口喷鸡把你说的、截的、录的整理成一条条事情——问题、想法、笔记、任务——归到对应的项目，再交给写代码的 agent 去做。
-这页讲的是在 App 里怎么用。下面的快捷键是 macOS 的默认值；Windows 和 Linux 上 `⌥` 是 `Alt`，`⇧` 是 `Shift`。所有快捷键都能在设置里改。
+口喷鸡把你说的、截的、录的整理成一条条事情——问题、想法、笔记、任务——归到对应的项目，再交给写代码的 Agent 去做。
+在 Mac 上，它还能把你说的话直接打在光标处（**听写**，按 `Fn`）。这页讲的是在 App 里怎么用；菜单「帮助 → 口喷鸡使用指南」和
+「设置 → 通用 → 使用指南」都会打开这一页。下面的快捷键是 macOS 的默认值；Windows 和 Linux 上 `⌥` 是 `Alt`，`⇧` 是 `Shift`。
+所有快捷键都能在「设置 → 快捷键」里改。
 
-### 1. 捕获
+**第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好权限（录屏、麦克风、辅助功能、输入监控）、下好语音模型；
+之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。
 
-屏幕顶部的**刘海岛**（MacBook 上围着刘海；其它屏幕、Windows 和 Linux 上是一个小胶囊）是捕获的入口。鼠标移上去，能看到当前项目和三种捕获方式。
+### 1. 截图、语音备注和录屏
+
+屏幕顶部的**刘海**（MacBook 上围着刘海；其它屏幕、Windows 和 Linux 上是一个小胶囊）是截图、语音备注和录屏的入口。鼠标移上去，能看到当前项目和这三种方式。
 
 | | 快捷键 | 做什么 |
 |---|---|---|
 | **截图** | `⌥⇧A` | 框一块区域，松手，接着说（或者打字）哪里不对。按住 `⌃` 拖动可以圈出具体位置。 |
-| **语音** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点岛上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。`Esc` 取消。说的时候，识别出的文字显示在岛下方。 |
+| **语音备注** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点岛上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。`Esc` 取消。说的时候，识别出的文字显示在岛下方。 |
 | **录屏** | `⌥⇧R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥⇧R`（或岛上的「完成」）结束。 |
 
 录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
-操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音。
+操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
-**长语音。** 语音不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；岛上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音」，安静 1.5 秒就结束。截图的语音备注仍然是停顿即结束——它只是关于一张图的一句话。
+**长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；岛上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
-**边说边显示文字。** 语音或听写在听的时候，已经识别出的文字会显示在岛下方的深色小面板里：最后一两行，最新的字淡入。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
+**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在岛下方的深色小面板里：最后一两行，最新的字淡入。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
-菜单栏菜单里按住 `⌥`，「开始录制」会变成「录制上次的区域」。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的小鸡，和菜单栏里其它图标一致；想要彩色的，打开「设置 → 通用 → 彩色菜单栏图标」。
+菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的线条小鸡，和菜单栏里其它图标一致：语音备注在听时它的声波会跳动，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
 
 语音在你的电脑上转写。除非你选了云端语音服务，内容不会离开这台电脑。
 
@@ -342,26 +380,26 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 **项目**就是你电脑上的一个文件夹，跟编辑器打开文件夹一样：在主窗口里「打开文件夹…」（`⌘O`），或者把文件夹拖进来。
 条目存在这个文件夹的 `.blurt/` 里，口喷鸡会自动让它不进 git。
 
-**当前项目**决定新捕获去哪。按 `⌥⇧O`（或点岛上的项目名）切换：
-- **某个项目**：截图和语音直接进这个项目，马上开始整理。
-- **自动**：捕获先挂成卡片（见下），等你决定放哪。
+**当前项目**决定新的截图和语音备注去哪。按 `⌥⇧O`（或点刘海上的项目名）切换：
+- **某个项目**：截图和语音备注直接进这个项目，马上开始整理。
+- **自动**：它们先挂成卡片（见下），等你决定放哪。
 
 录屏不会挂卡片：结束就开始整理，每一条按内容归到对应的项目。归不了类的进「**未归类**」，之后在侧栏里拖到项目上就行。
 
 ### 3. 挂着的卡片
 
-自动模式下，每张截图、每段语音用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
+自动模式下，每张截图、每段语音备注用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
 
 - **鼠标移到岛上**（或者打开岛）：所有卡片跟着岛的详情一起垂下来，岛展开时跟着岛一起往下走。鼠标在岛上、卡片上或两者之间时一直挂着，全部离开片刻后才收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
 - **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走，或者按 `Esc`。
-- 主窗口「待处理」的顶部会显示「**未归类的捕获 N 条**」，点一下就把它们全部放到岛下面。
+- 主窗口「待处理」的顶部会显示还没归类的卡片有几张，点一下就把它们全部放到岛下面。
 
 卡片能做的事：
 
 - **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
 - 拖到「**未归类**」：先整理，稍后再选项目；或者点「**自动归类**」：把所有卡片一起整理，每一条按内容归到对应的项目。
-- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的应用，直接一起贴进去，就像复制一条图文消息。聊天应用——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的应用——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），岛上显示「图 + 文已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。终端和访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「拷贝图片」或「拷贝文字」。
-- **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按挂着的顺序排，就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「拷贝全部 N 张卡片」（或者岛的右键菜单里「拷贝全部 N 张挂着的卡片」）一次复制所有卡片。
+- **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的应用，直接一起贴进去，就像复制一条图文消息。聊天应用——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的应用——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），岛上显示「图 + 文已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。终端和访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「复制图片」或「复制文字」。
+- **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按挂着的顺序排，就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「复制全部 N 张卡片」（或者岛的右键菜单里「复制全部 N 张挂着的卡片」）一次复制所有卡片。
 - **拖到别的应用里**：截图拖出去是图片（`截图-153012.png`，画过就带笔迹）连同备注——先图片，后文字：
 
   | 拖到 | 得到 |
@@ -371,9 +409,9 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
   | 终端、iTerm2、Ghostty、Warp、kitty、WezTerm、Alacritty | 图片和一个写着备注的 Markdown 小文件（`截图-153012-备注.md`）的路径，Claude Code、Codex 能看到图片、读到备注（备注文字本身不会打进命令行） |
   | 访达或桌面 | 图片文件 |
 
-  备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天应用和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天应用——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些应用只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
-- **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天应用：先放图片，再贴备注」、应用没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，拷贝到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天应用：先放图片，再贴备注」。
-- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一张都可以再拷贝（图片和备注一起，或者单独一样）、把图片再拖出去，或者放回线上。7 天后移到废纸篓。
+  备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天应用和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音备注本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天应用——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些应用只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音备注还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
+- **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天应用：先放图片，再贴备注」、应用没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，复制到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天应用：先放图片，再贴备注」。
+- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一张都可以再复制（图片和备注一起，或者单独一样）、把图片再拖出去，或者放回线上。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的应用用。默认关闭；原来的截图不变。
 - 悬停看备注，双击改备注，点 × 扔掉。
 - 最多并排挂 7 张，更早的叠成「+N」，点一下就换到前面来。
@@ -386,18 +424,18 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 主窗口（`⌥⇧B` →「打开口喷鸡」）侧栏最上面是**待处理**，下面是你的项目。
 
 「待处理」里是需要你看的，标题会直接告诉你：「需要你看的：3 条新的 · 2 条待验证」。选中一条，右边是它的全部内容——原话、截图、步骤、
-可能相关的代码——每个字段都能改，边打边保存。刚整理好的一次捕获想快速过一遍，就打开它，用键盘：`J` / `K` 下一条 / 上一条，
+可能相关的代码——每个字段都能改，边打边保存。刚整理好的一次录屏或一批截图想快速过一遍，就打开它，用键盘：`J` / `K` 下一条 / 上一条，
 `A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键。
 
-### 5. 交给 agent
+### 5. 交给 Agent
 
 选中一条或几条，选一种交法：
 
 - **在口喷鸡里开始**（`⌘↩`）：在口喷鸡内置的终端里、在项目文件夹中运行 Claude Code 或 Codex。几条可以放进一个对话（**一起处理**），
   也可以每条一个（**并行**，各自在独立的 git worktree 里，互不改到同一个文件）。关掉窗口会话也继续跑；需要你回答、或者一轮做完了，口喷鸡会提醒你。
-- **复制指令**：一句话的指令，指向一份交接单，agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 agent 就行。「**复制全文**」复制的是交接单本身。
+- **复制指令**：一句话的指令，指向一份交接单，Agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 Agent 就行。「**复制全文**」复制的是交接单本身。
 
-装了口喷鸡 MCP 的 agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
+装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
 
 ### 6. 条目状态
 
@@ -410,13 +448,13 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
                └── 退回 ─────────────────────────────┘
 ```
 
-- **新**：刚捕获，你还没看。**要做**：你留下了。
-- **已交出** → **进行中**：agent 接手了，正在做。
-- **待验证**：agent 说做好了。看一眼：没问题就「**标为完成**」，不对就「**退回**」。
+- **新**：刚记下，你还没看。**要做**：你留下了。
+- **已交出** → **进行中**：Agent 接手了，正在做。
+- **待验证**：Agent 说做好了。看一眼：没问题就「**标为完成**」，不对就「**退回**」。
 - **完成**：你确认过了。**不做**：你决定不做（没结束的条目都能标）。两者都能重新打开。
 - **已丢弃**：垃圾桶；「**恢复**」会把条目放回丢弃前的状态。
 
-待处理 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻从待处理里消失。agent 永远不能把条目标为完成——agent 说「修好了」，一律是待验证。
+待处理 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻从待处理里消失。Agent 永远不能把条目标为完成——Agent 说「修好了」，一律是待验证。
 
 点条目前面的状态圆环就能改状态，菜单里只列现在说得通的几步。列表里的快捷键：`A` 要做 · `D` 标为完成 ·
 `R` 往回（退回、收回、重新打开或恢复，哪个适用就是哪个）· `W` 不做 · `X` 丢弃 · `S` 打开菜单。
@@ -434,7 +472,7 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：
   - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，岛右侧会出现清单标记。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。
   - **⌥⇧L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，岛上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，新版本放进剪贴板，你的修改不动。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，岛上会出现几秒「排成清单」。
-  - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI agent 的指令。
+  - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI Agent 的指令。
   - 「设置 → 听写 → 风格」可以按 App 类别（聊天、代码和终端、邮件、笔记和文档、其他应用）选：轻整理、原话、结构化，或「自动排清单」（只有模型排成了清单才用结构化的版本）。如果你在某个 App 里总是同样地切换（三次以上），岛上会问一次要不要把它设成这个 App 的风格；它从不自己改，学到的设置在设置页里能看到，也能恢复默认。
 - **自定义词**（「设置 → 听写」）：你常说的名字和术语，比如「Claude Code」「tmux」、项目名。听写会照列表里的写法输出，「Claude」不会变成「cloud」，「option」也不会只剩「op」。口喷鸡会先帮你填好 Claude Code、Codex、blurt / 口喷鸡，以及你的项目名和项目代号（不想要的可以移除）。推荐的**识别模型**（Apple 芯片上用 Qwen3-ASR，下载约 1 GB）在识别时就会照顾这些词；用其他模型时，这些词在识别之后再改。
 - **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。拿不准的会作为建议留在设置里，由你决定添加还是忽略。
@@ -444,9 +482,9 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长和输入方式。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。
 
-#### 听写测试台
+#### 听写测试台（开发者选项）
 
-听写页有两个标签：**历史**和**测试台**（也可以从菜单「前往 → 听写测试台」或 `⌥⌘L` 进入）。听写哪里出了错、为什么错，都可以在测试台里查清楚，并把证据留下来。这里的一切都只存在这台 Mac 上。
+测试台默认隐藏，打开「设置 → 通用 → 显示听写测试台（开发者用）」后才出现。打开后听写页有两个标签：**历史**和**测试台**（也可以从菜单「前往 → 听写测试台」或 `⌥⌘L` 进入）。听写哪里出了错、为什么错，都可以在测试台里查清楚，并把证据留下来。这里的一切都只存在这台 Mac 上。
 
 - **录一段**：点大按钮（测试台在前面时也可以按听写键），然后说话。旁边可以选麦克风，也可以**导入音频**，把文件当作麦克风的声音放进来。不会往任何地方打字。
 - **每一步的结果**并排显示，各带耗时：每一段识别出的原文、拼接后的原文、润色结果，以及最终会输入的文字（按你填的「光标附近的文字」衔接过），还有用到的自定义词、检查的结论和补回的内容。
@@ -456,3 +494,14 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **全部重跑**：在后台把所有用例按现在的流程再跑一遍，标出哪些变好、哪些变差，给出总分，并按维度拆开看。智能体和 CI 也能跑同样的检查：`uv run skills/blurt/scripts/dictation_lab.py run`。
 - 在历史里任意一条听写上点**加到测试台**，就会生成一个用例（留了录音就带录音，没留就只有文字）。勾选「保留接下来几次听写的录音」，就能把接下来几次真实听写的录音留下来，再加进测试台。
 - **导出…**会把所有用例存成一个数据集（`manifest.jsonl` 加 16 kHz 的 WAV），可以拿去做评测或微调。「移到废纸篓」删除用例。
+
+### 8. 设置、存储和隐私
+
+- **Agent**：口喷鸡用来整理录屏和截图、自动归类、AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。只有会让口喷鸡用不了的问题才标红；「连接…」（给这个 Agent 装上 blurt skill 和 MCP）只在还没装时出现，装之前先列出要改的地方。
+- **导出**：你让 Agent 导出时条目发到哪（飞书、GitHub Issues、Markdown 和 CSV），以及哪些已经可用。重复导出不会产生重复记录。
+- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。
+- **隐私**：完整的权限列表、只用本地语音识别、Spotlight 都在这里。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。
+
+### 9. 更新
+
+Mac App 会自己更新（菜单和「设置 → 通用」里的「检查更新…」）。Agent skill 用你安装时的命令更新，比如 `npx skills add AGIHunt/blurt`。App 会调用 skill 里的脚本，两边的版本要对得上：哪边旧了，刘海里会提示一次该更新哪边。

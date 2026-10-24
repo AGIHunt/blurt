@@ -75,7 +75,7 @@ enum Housekeeping {
         guard let days = VideoRetention.autoDays else { return }
         let current = (NSApp.delegate as? App)?.lastSession.map { Set([$0.standardizedFileURL.path]) } ?? []
         DispatchQueue.global(qos: .utility).async {
-            let c = VideoRetention.candidates(roots: FixWatcher.sessionRoots(), olderThan: days, excluding: current)
+            let c = VideoRetention.candidates(roots: StorageModel.roots(), olderThan: days, excluding: current)
             guard !c.isEmpty else { return }
             let files = c.flatMap(\.files)
             DispatchQueue.main.async {

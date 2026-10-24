@@ -230,3 +230,6 @@
 "finish.state.discard" = "已丢弃";
 "agents.install.help" = "把 blurt skill 和 MCP 装进这个 Agent，装之前先列出要改的地方";
 "agents.state.checking" = "正在检查…";
+"agents.state.unknown" = "已安装 · 未确认登录";
+"agents.state.configured" = "已安装 · 已配置";
+"agents.state.logged_out" = "未登录";

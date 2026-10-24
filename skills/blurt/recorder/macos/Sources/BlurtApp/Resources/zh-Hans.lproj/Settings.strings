@@ -88,7 +88,7 @@
 "settings.general.app" = "应用";
 "settings.general.assistant" = "重新运行设置助手…";
 "settings.general.auto" = "自动：按内容归到各项目";
-"settings.general.capture_into" = "新的捕获归到";
+"settings.general.capture_into" = "截图和语音备注归到";
 "settings.general.language" = "语言";
 "settings.general.language.restart" = "下次打开口喷鸡时生效。";
 "settings.general.language.system" = "跟随系统";
@@ -100,7 +100,7 @@
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
 "settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";
-"settings.general.drag_copy_note" = "拖进去后备注没贴上时，拷贝到剪贴板";
+"settings.general.drag_copy_note" = "拖进去后备注没贴上时，复制到剪贴板";
 "settings.general.drag_copy_note.hint" = "口喷鸡没法把备注贴在图片后面时（没有「辅助功能」权限、上面的开关关了、应用没到前台，或者拖进了访达），备注会放进剪贴板，⌘V 就能贴上。会替换剪贴板里原来的内容；点岛上的「撤销」可以还原。";
 "settings.general.drag_note_file.hint" = "拖进聊天应用或访达时，再附一个只写着备注的 Markdown 小文件（截图-153012-备注.md）。终端总会拿到这个文件的路径，方便 Claude Code、Codex 读到备注。";
 "settings.general.drag_note_file" = "同时附上备注的 .md 文件";
@@ -117,7 +117,7 @@
 "settings.kit.allow" = "允许…";
 "settings.kit.allowed" = "已允许";
 "settings.kit.conflicts_are_checked_three" = "快捷键和口喷鸡自己的其它快捷键、macOS 系统快捷键或别的 App 冲突时，这里会提示。改动立即生效。";
-"settings.kit.copy" = "拷贝";
+"settings.kit.copy" = "复制";
 "settings.kit.export" = "导出";
 "settings.kit.general" = "通用";
 "settings.kit.hold_pen_reads_modifier" = "听写时把字粘贴进去；按住 ⌃ 画图也要用";
@@ -135,7 +135,7 @@
 "settings.kit.your_narration_recording_works" = "录你的讲解；不开也能录屏，只是没声音";
 
 "settings.privacy.agent_runs" = "Agent 运行记录";
-"settings.privacy.audio_never_goes_cloud" = "打开后录音不会发给任何云端识别服务。整理和修复由你选的 agent 完成，它们按各自的方式处理数据。";
+"settings.privacy.audio_never_goes_cloud" = "打开后录音不会发给任何云端识别服务。整理和修复由你选的 Agent 完成，它们按各自的方式处理数据。";
 "settings.privacy.benchmark_samples" = "测速样本";
 "settings.privacy.blurt_own_files" = "口喷鸡自己的文件";
 "settings.privacy.build_cache" = "构建缓存";

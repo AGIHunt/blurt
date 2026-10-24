@@ -230,3 +230,6 @@
 "finish.state.discard" = "Discarded";
 "agents.install.help" = "Installs the blurt skill and MCP server into this agent, after showing what changes";
 "agents.state.checking" = "Checking…";
+"agents.state.unknown" = "Installed · sign-in not checked";
+"agents.state.configured" = "Installed · set up";
+"agents.state.logged_out" = "Not signed in";

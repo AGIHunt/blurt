@@ -89,6 +89,8 @@ final class AgentsModel: ObservableObject {
                 // check found, or every row turns into "unknown"
                 let known = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
                 for i in fresh.indices {
+                    // still being checked: the quick look can't tell who is signed in, so it stays "Checking…"
+                    if known[fresh[i].id]?.state == "checking", fresh[i].installed, fresh[i].state == "unknown" { fresh[i].state = "checking"; continue }
                     guard let old = known[fresh[i].id], old.installed == fresh[i].installed, old.state != "unknown" else { continue }
                     fresh[i].state = old.state
                     fresh[i].why = old.why
@@ -105,7 +107,10 @@ final class AgentsModel: ObservableObject {
             enabled = Set(Agents.shared.order ?? d.agents.filter(\.headless).map(\.id))
             if enabled.isEmpty { enabled = Set(d.order) }
             error = nil
-        } catch { self.error = "\(error)" }
+        } catch {
+            self.error = "\(error)"
+            rows = rows.map { var r = $0; if r.state == "checking" { r.state = "unknown" }; return r }    // no spinner for good
+        }
         doctor = await doc
         projectAgent = project?.defaultAgent ?? ""
         for a in rows where a.headless && a.installed {
@@ -400,6 +405,9 @@ struct AgentsPane: View {
             case "not_installed": return TL("agents.state.not_installed")
             case "ready": return TL("agents.state.ready")
             case "checking": return TL("agents.state.checking")
+            case "unknown": return TL("agents.state.unknown")
+            case "configured": return TL("agents.state.configured")
+            case "logged_out": return TL("agents.state.logged_out")
             default: return a.state
             }
         }

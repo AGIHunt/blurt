@@ -158,12 +158,14 @@ final class StorageModel: ObservableObject {
         let current = (NSApp.delegate as? App)?.lastSession.map { Set([$0.standardizedFileURL.path]) } ?? []
         let r = await Task.detached { () -> ([Row], [VideoRetention.Candidate], [Row], [Row], [Row], (Int, Int64)) in
             let fm = FileManager.default
-            let roots = FixWatcher.sessionRoots()
+            let roots = StorageModel.roots()
             var rows: [Row] = []
             for root in roots where fm.fileExists(atPath: root.path) {
                 let n = ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.count
                 let ws = root.lastPathComponent == "recordings" ? root.deletingLastPathComponent() : root.deletingLastPathComponent().deletingLastPathComponent()
-                rows.append(Row(name: isDefaultWorkspace(ws) ? "~/Blurt" : ws.lastPathComponent, path: root, bytes: diskSize(root),
+                // ~/Blurt holds two: its Unassigned store (inbox/sessions) and v0.6's recordings/ — name them apart
+                let name = isDefaultWorkspace(ws) ? "~/Blurt/" + (root.path.dropFirst(ws.path.count + 1).split(separator: "/").first.map(String.init) ?? "") : ws.lastPathComponent
+                rows.append(Row(name: name, path: root, bytes: diskSize(root),
                                 detail: TP("settings.privacy.sessions", n) + " · " + (root.path as NSString).abbreviatingWithTildeInPath))
             }
             let videos = VideoRetention.candidates(roots: roots, olderThan: nil, excluding: current)
@@ -195,6 +197,14 @@ final class StorageModel: ObservableObject {
         } + models.filter { $0.family != nil && !r.2.map(\.id).contains($0.id) && !$0.path.path.hasPrefix(BlurtPaths.home.path) }
         autoDelete = VideoRetention.autoDays
         await annotateModels()
+    }
+
+    /// Where recordings and snaps are: every store's sessions/ (FixWatcher.sessionRoots), plus ~/Blurt/recordings —
+    /// where v0.6 kept them, still there (and often the biggest folder) on Macs that had it.
+    nonisolated static func roots() -> [URL] {
+        let legacy = defaultWorkspace.appendingPathComponent("recordings").standardizedFileURL
+        let r = FixWatcher.sessionRoots()
+        return r.contains(legacy) || !FileManager.default.fileExists(atPath: legacy.path) ? r : r + [legacy]
     }
 
     /// $BLURT_HOME/models: asr/ and polish/ hold one model per folder; anything else at the top is one model (or a

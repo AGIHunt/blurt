@@ -18,7 +18,7 @@ your agent does the rest:
 - picks the right frame for each one and boxes the exact spot, using where your mouse actually was. Want it exact?
   **Hold ⌃ and circle it on screen**
 - writes it up: actual vs. expected, repro steps, owner, and **the code that's probably responsible**
-- lets you triage it in a review page, one item at a time with the keyboard
+- lets you triage it one item at a time with the keyboard (in the Blurt app on a Mac, a review page elsewhere)
 - files it to Feishu/Lark, GitHub, Linear or Markdown, or goes straight to fixing it
 
 > What used to take two days of screenshots, red boxes and spreadsheet rows is now a 30-minute walkthrough.
@@ -45,40 +45,48 @@ npx skills add AGIHunt/blurt
 <sub>Claude Code: <code>/plugin marketplace add AGIHunt/blurt</code> · or just paste this repo's URL to your agent and ask it to install the skill.</sub>
 
 Then, in any project, tell your agent **"start blurt"** / **「开始口喷」**.
-The first run picks a speech model for your machine and installs the **Blurt** menu-bar app.
+The first run picks a speech model for your machine and installs the **Blurt** menu-bar app. Its setup assistant walks
+you through the permissions (Screen Recording, Microphone, Accessibility, Input Monitoring); then press `Fn` in any
+text field to dictate, or `⌥⇧A` to snap. The [user guide](docs/guide.md) covers the whole app.
 
 ## How it feels
 
 1. **Draw the area** to record: drag a region, click a window, or go full screen. Tabs, bookmarks and everything
    else stay out of the video.
-2. **3-2-1**, then talk. A tiny floating bar shows time and mic level, with ⏸ pause, ↺ redo and **Finish**. The bar
-   itself is never recorded. Shortcuts: `⌥⇧P` pause, `⌥⇧A` snap, `⌥⇧S` finish (Windows: `Alt+Shift+P` / `A` / `S`).
+2. **3-2-1**, then talk. On a Mac the island at the top of the screen shows the time and the mic level, with pause,
+   snap, discard and **Finish**; it is never recorded (Windows and Linux: a small floating bar).
+   Shortcuts: `⌥⇧P` pause, `⌥⇧A` snap, `⌥⇧R` or `⌥⇧S` finish (Windows: `Alt+Shift+P` / `A` / `S`).
    When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
-   your agent sees exactly what you meant. To keep the pen on, click ✎ on the bar or press `⌥⇧D`; while it's on,
-   clicks draw instead of reaching your app, and **`Esc`**, `⌥⇧D` or ✎ again turns it off.
+   your agent sees exactly what you meant. To keep the pen on, press `⌥⇧D`; while it's on, clicks draw instead of
+   reaching your app, and **`Esc`** or `⌥⇧D` again turns it off.
 3. Click **Finish** and get back to work. Speech is transcribed locally while you talk, so the transcript is done when
-   you stop; your agent writes the items as text and the review page opens in about a minute, with frames and code
-   pointers streaming in while you review.
+   you stop; your agent writes the items as text and they show up in about a minute (in Blurt's main window on a Mac,
+   on the review page elsewhere), with frames and code pointers streaming in while you review.
 4. **Triage like a feed**: `A` keep · `X` discard · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
    or say "fix them".
 
-**Snap mode:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go: the shot
-hangs on a little perch at the top of the screen, and you just say what's wrong (or type it, or circle it with `⌃`).
-Click **🐔 Process** when you've collected a few. Snapping during a recording (`⌥⇧A`, or 📸 on the bar) grabs a
-full-resolution still of that exact moment without pausing. Use video for flows, animations and timing.
+**Snaps and voice notes:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go,
+then say what's wrong (or type it, or circle it with `⌃`). With a current project the snap goes straight into it;
+on *Auto* it hangs as a **card** under the island until you drag it onto a project or click **Auto-sort**. Cards also
+copy and drag into any app — a chat, a terminal, Notes — picture and note together. `⌥⇧V` does the same with just
+your voice. Snapping during a recording (`⌥⇧A`) grabs a full-resolution still of that exact moment without pausing.
+Use video for flows, animations and timing.
 
 **Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
-finishes it; `⌥⇧B` opens the menu. Recordings go to a workspace: `~/Blurt` by default, or a project you bind, so
-your agent can process them with the code. With *Settings → General → After a recording* set to *Organize into
-Items*, every recording gets processed in the background (Claude Code first; if it isn't installed or logged in,
-Codex, then Kimi Code, OpenCode or Gemini CLI), with the review page opening in its own Blurt window when it's ready.
-Every shortcut can be changed in *Settings → Shortcuts* (`⌘,` in the menu).
+finishes it; `⌥⇧B` opens the menu. Recordings are filed into your projects (folders you open in Blurt), or kept in
+`~/Blurt` when they aren't about one. With *Settings → General → After a recording* set to *Organize into Items*,
+every recording gets processed in the background (Claude Code first; if it isn't installed or logged in, Codex, then
+Kimi Code, OpenCode or Gemini CLI), and the items land in Blurt's Inbox when they're ready. Every shortcut can be
+changed in *Settings → Shortcuts* (`⌘,` in the menu). *Settings → Storage* shows what takes space and can delete the
+videos of organized recordings (never by default).
 
 **Dictation (macOS):** tap **Fn** in any app, talk, and tap it again (or hold Fn while you talk). What you said is typed where your
-cursor is: SenseVoice transcribes it on your Mac, then a small local model (Gemma 4 or Qwen, via MLX) removes fillers, stutters
-and self-corrections and adds punctuation, in under half a second once it's warm. It never rewrites, summarizes or
-translates. If the polish tries to, you get exactly what you said. `Esc` cancels. You can switch to Fn or to hold-to-talk
-in *Settings → Dictation*. Dictation needs Input Monitoring (for the key) and Accessibility (to paste); without
+cursor is: a local speech model (Qwen3-ASR on Apple silicon) transcribes it on your Mac, then a small local model (Gemma 4
+or Qwen, via MLX) removes fillers and stutters and adds punctuation, in under half a second once it's warm. It never
+rewrites, summarizes or translates. If the polish tries to, you get exactly what you said. Press `⇧` while you talk for
+the *Structured* style (a list when you listed things, only the version you settled on when you corrected yourself);
+`⌥⇧L` reformats the last dictation. `Esc` cancels. You can switch to right Option or to hold-to-talk in
+*Settings → Dictation*, and give each kind of app its own style there. Dictation needs Input Monitoring (for the key) and Accessibility (to paste); without
 Accessibility the text lands on your clipboard. Everything you dictate is kept in *Dictation History* for 30 days,
 and any entry can be turned into an item. The voice note (`⌥⇧V`) still files what you say into Blurt instead.
 
@@ -114,7 +122,8 @@ More in the [user guide](docs/guide.md).
 
 - **Solo:** record → your agent in the same repo processes and fixes. No forms, no copy-paste.
 - **Team:** teammates without a repo just [download Blurt for macOS](https://github.com/AGIHunt/blurt/releases/latest)
-  (unzip, then right-click → Open the first time) and press `⌥⇧R`. Anyone records with the app, then uses *Recent recordings → Copy video* and pastes it into
+  (if macOS says it can't check the app the first time: *System Settings → Privacy & Security → Open Anyway*) and
+  press `⌥⇧R`. Anyone records with the app, then uses *Recent recordings → Copy video* and pastes it into
   Slack/Feishu. Or bind a shared project folder. Items keep the recorder's name, and exports land in the team's
   existing tables with your column names.
 
@@ -126,7 +135,7 @@ More in the [user guide](docs/guide.md).
 - **Native recorder.** ScreenCaptureKit on macOS with audio and video in sync to within one frame. Turn on system
   audio for calls and demos: it goes on its own track, so the transcript tells your words from the other side's. Tk + ffmpeg on
   Windows and Linux (X11).
-- **Deterministic tools, flexible model.** Scripts handle the recording, speech-to-text, frames, the review page
+- **Deterministic tools, flexible model.** Scripts handle the recording, speech-to-text, frames, the items
   and exports. All the judgement is left to your agent (see [SKILL.md](skills/blurt/SKILL.md)), so it adapts to your
   product, your language and your team.
 - **Any language in, same language out.** SenseVoice covers Chinese, English, Japanese, Korean and Cantonese; for
