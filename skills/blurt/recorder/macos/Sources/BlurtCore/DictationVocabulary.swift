@@ -14,7 +14,8 @@
 //   removed     a seeded word the user removed: never seeded again
 //
 // Schema 2 (`migrate`, run once by `seed`): the seed is a short list of product names; a word of the older, longer seed
-// the user never touched goes (people's names among them), and the sounds-likes the old seed shipped are dropped.
+// the user never touched goes (people's names among them; one they used or corrected stays as theirs), and the
+// sounds-likes the old seed shipped are dropped.
 import Foundation
 
 public struct VocabTerm: Equatable, Identifiable, Hashable {
@@ -242,15 +243,22 @@ public final class DictationVocabulary {
         return t.count >= 2 && t.count <= 40 && !words.isEmpty && words.count <= 3
     }
 
-    /// Schema 1 → 2: a retired seed the user never touched (still source `default`) goes, whatever its state, and so
-    /// does a project name too long to seed now; the old built-in words (source `project` then) become `default`; the
-    /// sounds-likes the old seed shipped go (the ones learned from the user's fixes stay).
+    /// Schema 1 → 2: the old built-in words (source `project` then) become `default`; the sounds-likes the old seed
+    /// shipped go (the ones learned from the user's fixes stay). A retired seed (still source `default`) and a project
+    /// name too long to seed now go when the user never touched them; one the user did touch — used it, or taught it
+    /// a sounds-like by a correction — stays as their own word (`learned`, with its hints and hits).
     static func migrate(_ all: inout [VocabTerm]) {
-        all.removeAll { $0.source == .builtIn && retiredSeed.contains($0.term) }
-        all.removeAll { $0.source == .project && !seedable(project: $0.term) }
         for i in all.indices {
             if all[i].source == .project && builtIn.contains(all[i].term) { all[i].source = .builtIn }
             if let old = retiredSoundsLikes[all[i].term] { all[i].soundsLike.removeAll { old.contains($0) } }
+        }
+        all = all.compactMap { t in
+            let retired = (t.source == .builtIn && retiredSeed.contains(t.term)) || (t.source == .project && !seedable(project: t.term))
+            guard retired else { return t }
+            guard t.state == .active, t.hits > 0 || !t.soundsLike.isEmpty else { return nil }
+            var kept = t
+            kept.source = .learned
+            return kept
         }
     }
 

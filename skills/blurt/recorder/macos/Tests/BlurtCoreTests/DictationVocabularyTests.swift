@@ -76,17 +76,33 @@ final class DictationVocabularyTests: XCTestCase {
             t("Claude Code", ["cloud code", "clock code", "claude co", "clod code"], "project", hits: 4),
             t("Codex", ["codec", "codecs", "kodex"], "project"),
             t("Typeless", ["type less", "TypePlus"], "default"),
-            t("Musk", [], "default", hits: 2), t("Sam Altman", [], "default"), t("Sora", [], "default", "removed"),
+            t("Musk", [], "default"), t("Sam Altman", [], "default"), t("Sora", [], "default", "removed"),
             t("Grok", [], "manual"),                                          // the user added it: theirs
             t("Bug Agent", [], "project"), t("Asopic", [], "learned"),
             t("e2e test project with a long name", [], "project"),         // seeded before the three-word limit
+            // retired seeds the user touched: a sounds-like taught by a correction, used, or both
+            t("Mistral", ["mistrial"], "default"), t("Nvidia", [], "default", hits: 2),
+            t("OpenClaw", ["open claw", "open clore"], "default"),
+            t("a long project name the user dictates", [], "project", hits: 3),
+            t("Midjourney", [], "default", "removed", hits: 1),             // removed by the user: stays gone
         ]]
         try JSONSerialization.data(withJSONObject: old).write(to: v.url)
         v.seed(projects: [(name: "Bug Agent", key: "BA")])
         let all = v.load()
         let names = all.map(\.term)
-        for gone in ["Musk", "Sam Altman", "Sora", "e2e test project with a long name"] { XCTAssertFalse(names.contains(gone), gone) }
+        for gone in ["Musk", "Sam Altman", "Sora", "e2e test project with a long name", "Midjourney"] {
+            XCTAssertFalse(names.contains(gone), gone)
+        }
         for kept in ["Grok", "Bug Agent", "Asopic", "BA"] { XCTAssertTrue(names.contains(kept), kept) }
+        // what the user taught stays, as their own word, with its hints and hits (only the shipped sounds-like goes)
+        let mistral = all.first { $0.term == "Mistral" }
+        XCTAssertEqual(mistral?.source, .learned)
+        XCTAssertEqual(mistral?.state, .active)
+        XCTAssertEqual(mistral?.soundsLike, ["mistrial"])
+        XCTAssertEqual(all.first { $0.term == "Nvidia" }?.hits, 2)
+        XCTAssertEqual(all.first { $0.term == "Nvidia" }?.source, .learned)
+        XCTAssertEqual(all.first { $0.term == "OpenClaw" }?.soundsLike, ["open clore"])
+        XCTAssertEqual(all.first { $0.term == "a long project name the user dictates" }?.source, .learned)
         let cc = all.first { $0.term == "Claude Code" }
         XCTAssertEqual(cc?.soundsLike, ["clod code"])                       // only what the user's fixes taught
         XCTAssertEqual(cc?.source, .builtIn)
