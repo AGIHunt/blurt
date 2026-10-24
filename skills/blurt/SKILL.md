@@ -139,9 +139,10 @@ Unassigned with your suggestion for the user to accept. Unsure → leave `projec
 Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
 picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). Then `items.py ingest
 <session>` turns it into one Markdown item per entry (any later `items.py` command on the session does it too).
-**Right away** start `review.py <session>` **in the background** (on macOS it opens in a Blurt app window when the
-app is installed, else the browser; exits when the user finishes; prints `REVIEW <url>` — give the user that URL if
-no browser can open where you run: SSH, container) and tell the user in one short message:
+**Right away** start `review.py <session>` **in the background** (on macOS it opens in the Blurt app's main window when
+the app is installed, else the browser; exits when the user confirms — in either — or after 30 minutes nobody used
+the page, `"reviewed": false` then; prints `REVIEW <url>`, a private local address with a token in it — give the user
+that URL if no browser can open where you run: SSH, container) and tell the user in one short message:
 - ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
   items, open questions; screenshots are still filling in;
 - two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;

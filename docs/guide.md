@@ -153,7 +153,9 @@ Select one or more items and choose how they get done:
   included). Paste it into the agent you already use. **Copy full text** copies the note itself.
 
 Agents that have the Blurt MCP installed (Blurt offers it when you set it up) report back on their own: you'll see the item move to
-*In progress*, then *To verify*.
+*In progress*, then *To verify*. If a session ends without the agent reporting back (it quit, crashed, or the Mac
+restarted), the item stays *In progress* and says *Session ended without reporting back*: **Open Session** to see what
+it did, then **Mark as Done** or take it back. **Open Session** is also in the Item menu and the item's context menu.
 
 ### 6. Item states
 
@@ -398,6 +400,8 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 - **复制指令**：一句话的指令，指向一份交接单，agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 agent 就行。「**复制全文**」复制的是交接单本身。
 
 装了口喷鸡 MCP 的 agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
+如果会话结束了 agent 却没回报（它退出了、崩溃了，或者 Mac 重启过），条目会留在「进行中」，上方写着「会话已结束，未报告完成」：
+点「**打开会话**」看看它做了什么，再「**标为完成**」或收回。「条目」菜单和右键菜单里也有「打开会话」。
 
 ### 6. 条目状态
 
