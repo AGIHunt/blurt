@@ -219,7 +219,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let p = arg("--process") {
             process(URL(fileURLWithPath: p), only: arg("--agent"))
         } else if let s = arg("--review-session") {
-            AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: s))
+            ReviewHandoff.show(url: arg("--review"), session: s)
         } else if !args.contains("--background") && !App.launchedAtLogin {
             openFromLaunch()
         }
@@ -240,13 +240,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }()
 
     /// review.py started by an agent in a terminal asks for its batch (dev.blurt.recorder.review {url, session, home}):
-    /// the user asked for that review, so the batch opens in the main window — the only window that ever shows one.
+    /// the user asked for that review, so the batch opens in the main window — the only window that ever shows one —
+    /// and review.py hears back that it did, and later that it was confirmed (ReviewHandoff).
     func listenForReviews() {
         DistributedNotificationCenter.default().addObserver(forName: .init("dev.blurt.recorder.review"), object: nil, queue: .main) { n in
             guard let info = n.userInfo, let s = info["session"] as? String else { return }
             if let home = info["home"] as? String, !home.isEmpty,
                URL(fileURLWithPath: home).standardizedFileURL.path != blurtHome.standardizedFileURL.path { return }
-            AppEnvironment.mainWindow?.reveal(session: URL(fileURLWithPath: s))
+            ReviewHandoff.show(url: info["url"] as? String, session: s)
         }
     }
 

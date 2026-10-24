@@ -2,23 +2,28 @@
 # requires-python = ">=3.10"
 # ///
 """Local review page for a session's items (or a whole project's). Blocks until the user clicks "Confirm" on the page
-(or Ctrl+C), then exits — run it in the background and continue when it finishes.
+(or in the Blurt app's window), or Ctrl+C, or nobody has used the page for 30 minutes ($BLURT_REVIEW_IDLE seconds);
+then prints the summary and exits — run it in the background and continue when it finishes.
 
   review.py SESSION_DIR [--port 0] [--open app|browser|none] [--no-open]
   review.py --project P|inbox [--port 0] [--open …]
 
-Where the page opens (--open, else config review.open_in, else "app" on macOS / "browser" elsewhere): "app" = a window
-of the Blurt menu-bar app when it is installed (asked via a distributed notification if it is running, launched with
---background otherwise), falling back to the browser if no app window has loaded the page within a few seconds.
+Where the page opens (--open, else config review.open_in, else "app" on macOS / "browser" elsewhere): "app" = the main
+window of the Blurt menu-bar app when it is installed (asked via a distributed notification if it is running, launched
+with --background otherwise). The app answers GET api/attached when it shows the batch — else, after a few seconds,
+the browser opens — and POST api/done when the user confirms it there (review.py also sees batch.json turn reviewed).
 
 Start it as soon as items.json has text (frames can follow): it ingests items.json, and while the batch is still
 "processing" the page polls and shows new frames / items as items.py writes them; the user's edits always win.
 
-HTTP (contract K1): GET /api/items → the doc (`items.py doc`, ETag; 304 on If-None-Match); POST /api/items {ops} and
-POST /api/confirm {ops} → the merged doc (same code path as `items.py user-ops`); POST /api/handoff {uids, what} →
-{id, path, text} (handoff.py create --mark; the doc's `_caps` says so); GET /files/<percent-encoded absolute
-path> for files in a known store, a session dir or $BLURT_HOME/handoff (the old /files/<path relative to the session>
-works too).
+The server listens on 127.0.0.1 only and serves everything under a per-run token path, printed as
+`REVIEW http://127.0.0.1:<port>/r/<token>/` — nothing without the token, nothing for a Host that isn't this address
+(DNS rebinding), and a POST only with Content-Type application/json from this origin (or none: the app).
+HTTP under that path (contract K1): GET api/items → the doc (`items.py doc`, ETag; 304 on If-None-Match); POST
+api/items {ops} and POST api/confirm {ops} → the merged doc (same code path as `items.py user-ops`); POST api/handoff
+{uids, what} → {id, path, text} (handoff.py create --mark; the doc's `_caps` says so); GET files/<percent-encoded
+absolute path> for files in a known store, a session dir or $BLURT_HOME/handoff (the old files/<path relative to the
+session> works too), streamed from disk, at most 8 MiB per Range answer; GET api/attached, POST api/done (the app).
 """
 from __future__ import annotations
 
@@ -26,9 +31,12 @@ import argparse
 import json
 import mimetypes
 import os
+import secrets
+import shutil
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -40,6 +48,8 @@ import items as items_mod  # noqa: E402
 import store as st  # noqa: E402
 
 HTML = Path(__file__).with_name("review.html")
+RANGE_CAP = 8 * 2**20
+IDLE = 30 * 60  # seconds without a request or a write to the batch: the page is gone, so is this server
 
 
 def etag(raw: bytes) -> str:
@@ -56,7 +66,10 @@ def allowed_roots(scope: dict) -> list[Path]:
     return list(dict.fromkeys(roots))
 
 
-def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.Event | None = None):
+def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.Event | None = None,
+                 token: str | None = None):
+    """The request handler. token: serve only under /r/<token>/, to this address, JSON POSTs from this origin (the
+    server main() runs); None: no such checks (the handler used as a library, in tests)."""
     if not isinstance(scope, dict):
         scope = {"session": str(real(scope))}
     write_lock = threading.Lock()
@@ -71,8 +84,32 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
         return doc, tag
 
     class H(BaseHTTPRequestHandler):
+        last = time.time()  # the last request: main() closes a page nobody uses
+
         def log_message(self, *_):
             pass
+
+        def _origins(self) -> tuple[str, ...]:
+            port = self.server.server_address[1]
+            return f"127.0.0.1:{port}", f"localhost:{port}"
+
+        def _route(self) -> str | None:
+            """The request's path below the token (still percent-encoded), or None when it was turned away."""
+            u = urlparse(self.path)
+            if token is None:
+                return u.path
+            if self.headers.get("Host") not in self._origins():  # DNS rebinding: another name for this address
+                self._send(403, b"forbidden", "text/plain")
+                return None
+            parts = u.path.split("/", 3)  # "", "r", token, rest
+            if len(parts) < 3 or parts[1] != "r" or not secrets.compare_digest(parts[2], token):
+                self._send(404, b"not found", "text/plain")
+                return None
+            if len(parts) == 3:  # /r/<token>: the page's relative URLs need the slash
+                self._send(301, b"", "text/plain", {"Location": f"/r/{token}/"})
+                return None
+            H.last = time.time()
+            return "/" + parts[3]
 
         def _send(self, code: int, body: bytes, ctype: str, extra: dict | None = None):
             self.send_response(code)
@@ -92,19 +129,26 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
             return self._send(code, json.dumps(obj, ensure_ascii=False).encode(), "application/json", extra)
 
         def do_GET(self):
-            u = urlparse(self.path)
-            path = unquote(u.path)
+            sub = self._route()
+            if sub is None:
+                return
+            query = parse_qs(urlparse(self.path).query)
+            path = unquote(sub)
             if path in ("/", "/index.html"):
-                if app_seen is not None and parse_qs(u.query).get("in") == ["app"]:
+                if app_seen is not None and query.get("in") == ["app"]:
                     app_seen.set()  # the Blurt app's window has the page: no browser needed
                 return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
+            if path == "/api/attached":  # the Blurt app shows this batch in its main window: no browser needed
+                if app_seen is not None:
+                    app_seen.set()
+                return self._json(200, {"ok": True})
             if path in ("/icon.png", "/favicon.ico"):
                 icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
                 return self._send(200, icon.read_bytes(), "image/png") if icon.exists() else self._send(404, b"", "text/plain")
             if path == "/api/items":
                 return self._items()
-            if u.path.startswith("/files/"):
-                return self._file(unquote(u.path[len("/files/"):]), download=parse_qs(u.query).get("download") == ["1"])
+            if sub.startswith("/files/"):
+                return self._file(unquote(sub[len("/files/"):]), download=query.get("download") == ["1"])
             self._send(404, b"not found", "text/plain")
 
         do_HEAD = do_GET
@@ -135,23 +179,59 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
             if download:  # the page's download button: a name that says where it came from
                 origin = session.name if session else f.parent.name
                 name = f"{origin}-{f.name}".replace('"', "")
-                return self._send(200, f.read_bytes(), ctype, {"Content-Disposition": f'attachment; filename="{name}"'})
+                return self._stream(200, f, ctype, 0, size, {"Content-Disposition": f'attachment; filename="{name}"'})
             rng = self.headers.get("Range")
             if rng and rng.startswith("bytes="):  # video seeking needs range requests
-                a, _, b = rng[6:].partition("-")
-                start = int(a or 0)
-                end = min(int(b) if b else size - 1, start + 8 * 2**20, size - 1)
+                r = byte_range(rng, size)
+                if r is None:
+                    return self._send(416, b"", ctype, {"Content-Range": f"bytes */{size}"})
+                start, end = r
+                return self._stream(206, f, ctype, start, end - start + 1, {"Content-Range": f"bytes {start}-{end}/{size}",
+                                                                            "Accept-Ranges": "bytes"})
+            self._stream(200, f, ctype, 0, size, {"Accept-Ranges": "bytes"})
+
+        def _stream(self, code: int, f: Path, ctype: str, start: int, length: int, extra: dict):
+            """A file's bytes [start, start + length) straight from disk, a chunk at a time."""
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(length))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in extra.items():
+                self.send_header(k, v)
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            try:
                 with open(f, "rb") as fh:
                     fh.seek(start)
-                    body = fh.read(end - start + 1)
-                return self._send(206, body, ctype, {"Content-Range": f"bytes {start}-{end}/{size}",
-                                                     "Accept-Ranges": "bytes"})
-            self._send(200, f.read_bytes(), ctype, {"Accept-Ranges": "bytes"})
+                    left = length
+                    while left > 0:
+                        chunk = fh.read(min(left, 2**20))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        left -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):  # the browser dropped a video range request
+                pass
 
         def do_POST(self):
             nonlocal confirmed
-            path = urlparse(self.path).path
+            path = self._route()
+            if path is None:
+                return
+            if token is not None:
+                # a write only from this page (or the app, which sends no Origin), as JSON — not a form another
+                # site's page could post here (a "simple" cross-site request)
+                origin = self.headers.get("Origin")
+                if origin is not None and origin not in tuple("http://" + o for o in self._origins()):
+                    return self._send(403, b"forbidden", "text/plain")
+                if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+                    return self._send(415, b"send application/json", "text/plain")
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            if path == "/api/done":  # the user confirmed this batch in the Blurt app's window (items.py wrote it)
+                self._json(200, {"ok": True})
+                done.set()
+                return
             if path not in ("/api/items", "/api/confirm", "/api/handoff"):
                 return self._send(404, b"not found", "text/plain")
             try:
@@ -199,6 +279,40 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
                                     "text": h["full"] if what == "full" else h["instruction"]})
 
     return H
+
+
+def byte_range(header: str, size: int, cap: int = RANGE_CAP) -> tuple[int, int] | None:
+    """A Range header → (start, end) inclusive, at most `cap` bytes (a player asks for the next part); None = 416."""
+    a, _, b = header[6:].split(",")[0].strip().partition("-")
+    try:
+        if not a:  # bytes=-N: the last N
+            start, end = max(0, size - int(b)), size - 1
+        else:
+            start = int(a)
+            end = int(b) if b else size - 1
+    except ValueError:
+        return None
+    end = min(end, size - 1, start + cap - 1)
+    return (start, end) if 0 <= start < size and end >= start else None
+
+
+def last_write(scope: dict) -> float:
+    """When the batch (or the project's items) last changed: edits in the Blurt app's window count as use."""
+    try:
+        if scope.get("session"):
+            return items_mod.batch_path(Path(scope["session"])).stat().st_mtime
+        return (items_mod.store_for_project(scope["project"]).root / "items").stat().st_mtime
+    except (OSError, items_mod.ItemsError):
+        return 0.0
+
+
+def reviewed(scope: dict) -> bool:
+    if not scope.get("session"):
+        return False
+    try:
+        return bool((items_mod.load_batch(Path(scope["session"])) or {}).get("reviewed"))
+    except items_mod.ItemsError:
+        return False
 
 
 def open_mode(arg: str | None, cfg: dict | None = None) -> str:
@@ -296,8 +410,10 @@ def main():
     finally:
         items_mod.reindex_touched()
     done, app_seen = threading.Event(), threading.Event()
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(scope, done, app_seen))
-    url = f"http://127.0.0.1:{srv.server_address[1]}/"
+    token = secrets.token_urlsafe(18)
+    handler = make_handler(scope, done, app_seen, token=token)
+    srv = ThreadingHTTPServer(("127.0.0.1", a.port), handler)
+    url = f"http://127.0.0.1:{srv.server_address[1]}/r/{token}/"
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print(f"REVIEW {url}", flush=True)
     mode = "none" if a.no_open else open_mode(a.open)
@@ -312,8 +428,15 @@ def main():
     has_gui = not IS_LINUX or os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
     if mode == "browser" and has_gui:
         webbrowser.open(url)
+    was_reviewed = reviewed(scope)
+    idle = float(os.environ.get("BLURT_REVIEW_IDLE") or IDLE)
     try:
-        done.wait()
+        while not done.wait(1.0):
+            if not was_reviewed and reviewed(scope):
+                break  # confirmed in the Blurt app's window (its answer to api/done may not have come)
+            if time.time() - max(handler.last, last_write(scope)) > idle:
+                print(f"(nobody used the review page for {round(idle / 60)} min — closing it)", file=sys.stderr, flush=True)
+                break
     except KeyboardInterrupt:
         pass
     srv.shutdown()

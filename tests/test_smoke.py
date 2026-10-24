@@ -109,7 +109,8 @@ class ReviewServer(Base):
             with self.assertRaises(urllib.error.HTTPError, msg=bad):  # only known stores, sessions, handoff
                 get(bad)
         ops = [{"op": "set", "id": doc["items"][0]["uid"], "set": {"status": "deleted"}}]
-        req = urllib.request.Request(url + "api/confirm", data=json.dumps({"ops": ops}).encode(), method="POST")
+        req = urllib.request.Request(url + "api/confirm", data=json.dumps({"ops": ops}).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})  # as the page sends it
         merged = json.load(urllib.request.urlopen(req, timeout=5))
         self.assertTrue(merged["reviewed"])
         summary = json.loads(proc.communicate(timeout=10)[0].strip().splitlines()[-1])

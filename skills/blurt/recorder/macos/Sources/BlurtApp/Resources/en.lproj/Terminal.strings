@@ -71,9 +71,10 @@
 "overlay.ended.error" = "Session ended with an error (exit %ld)";
 "overlay.ended.review_hint" = "The agent worked on its own branch. Review the changes to merge them, open a pull request or discard them.";
 "overlay.ended.verify_hint" = "Its items are now waiting for you to verify. Mark them done once you’ve checked.";
+"overlay.ended.unreported_hint" = "The agent didn’t report back, so its items are still in progress. Once you’ve looked, mark them done or take them back.";
 
 /* Dispatch panel */
-"dispatch.title" = "Hand Off to an Agent";
+"dispatch.title" = "Hand Off to Agent";
 "dispatch.subtitle.none" = "Choose the items to work on";
 "dispatch.agent" = "Agent";
 "dispatch.agent.logged_out" = "%@ (not logged in)";
@@ -142,6 +143,8 @@
 /* An item reached "to verify" (the chicken pecks it) */
 "verify.by" = "%@ says it’s fixed";
 "verify.by.wontfix" = "%@ suggests not doing it";
+"verify.by.none" = "%@ handed it back";
+"verify.merged" = "Changes merged";
 "verify.notification" = "Ready to verify: %@";
 
 /* Errors from sessions.py (by code) */
@@ -173,7 +176,7 @@
 "error.no_git" = "This folder isn’t a git repository, so there’s no branch to review.";
 "error.no_terminal" = "None of the supported terminal apps is installed.";
 "error.no_tmux" = "tmux 3.2 or later isn’t installed.";
-"error.gone" = "The session’s folder no longer exists.";
+"error.gone" = "This session has ended, or its folder is gone.";
 "error.running" = "The agent’s session is still open in this worktree. End it first, then merge.";
 "error.uncommitted" = "The worktree has uncommitted changes. Ask the agent to commit them, or commit them yourself, then try again.";
 "error.nothing" = "The branch has no commits to merge yet.";

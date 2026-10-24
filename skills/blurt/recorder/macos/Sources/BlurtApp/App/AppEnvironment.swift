@@ -9,7 +9,8 @@ import AppKit
 protocol MainWindowHosting: AnyObject {
     func show()
     func reveal(uid: String)
-    func reveal(session: URL)
+    /// false: no such batch (nothing to show — review.py then opens its page in the browser)
+    @discardableResult func reveal(session: URL) -> Bool
     func reveal(job: String)
     func reveal(project: String)
     func showInbox()

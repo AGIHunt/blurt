@@ -59,7 +59,8 @@
 "main.action.record" = "录制";
 "main.action.snap" = "截图";
 
-"main.banner.agent" = "agent";
+"main.banner.agent" = "Agent";
+"main.banner.ended" = "会话已结束，未报告完成";
 "main.banner.external" = "已复制给你的 agent。做完后在这里标为完成。";
 "main.banner.move" = "移过去";
 "main.banner.open_session" = "打开会话";
@@ -207,6 +208,7 @@
 "main.menu.rename" = "改标题…";
 "main.menu.review_batch" = "审核整批捕获";
 "main.menu.start_session" = "在口喷鸡里开始";
+"main.menu.open_session" = "打开会话";
 
 "main.misc.by_codex" = "由 codex 修复";
 "main.misc.drag_finder_terminal" = "拖到访达或终端";
@@ -285,6 +287,7 @@
 "main.state.ax" = "状态：%@。点按可更改。";
 "main.toast.download_failed" = "没能保存：%@";
 "main.toast.downloaded" = "已存到「下载」：%@";
+"main.toast.session_gone" = "这个会话已结束，记录已清理。";
 "main.speech.recommended" = "推荐这台 Mac 使用的语音识别模型 · %@";
 "main.speech.recommended.action" = "查看";
 

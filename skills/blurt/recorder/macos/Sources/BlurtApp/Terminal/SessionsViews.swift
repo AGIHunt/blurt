@@ -317,8 +317,17 @@ struct SessionOverlay: View {
         if r.awaitsFinish {
             Text(TL("overlay.ended.review_hint")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
-        } else {
-            Text(TL("overlay.ended.verify_hint")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
+        } else if let hint = Self.endedHint(r) {
+            Text(hint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
         }
+    }
+
+    /// What the session's items are waiting for now (an exit moves nothing; only the agent's report does): still in
+    /// progress (it never reported back), to verify, or nothing at all when they are done.
+    static func endedHint(_ r: AgentSessionRow) -> String? {
+        let states = r.job.items.compactMap { IndexLookup.item(uid: $0)?.state }
+        if states.contains(where: { $0 == "handed_off" || $0 == "in_progress" }) { return TL("overlay.ended.unreported_hint") }
+        if states.contains("to_verify") { return TL("overlay.ended.verify_hint") }
+        return nil
     }
 }

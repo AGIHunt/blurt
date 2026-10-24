@@ -217,7 +217,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func reveal(uid: String) {
         show()
-        guard let row = model.itemRow(uid: uid) else { return }
+        guard let row = model.itemRow(uid: uid) else {
+            // a link, notification or job for an item that was deleted or moved out of every store
+            appDelegate?.toast(T("app.url.no_item", String(uid.prefix(12))))
+            return
+        }
         model.text = ""
         searchItem?.searchField.stringValue = ""
         model.state = row.discarded ? "discarded" : nil
@@ -232,21 +236,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window?.makeFirstResponder(list.table)
     }
 
-    /// A capture batch: its items, with the whole batch in the detail to triage.
-    func reveal(session: URL) {
+    /// A capture batch: its items, with the whole batch in the detail to triage. false: not a batch the index or the
+    /// jobs know (the window still comes up).
+    @discardableResult
+    func reveal(session: URL) -> Bool {
         show()
-        let dir = session.resolvingSymlinksInPath().standardizedFileURL.path
+        // realpath, not resolvingSymlinksInPath: that drops /private from /private/tmp, and index.py keeps it
+        let dir = FixWatcher.real(session.standardizedFileURL.path)
         if let s = (try? model.reader?.session(dir: dir)) ?? nil {
             go(.session(s.id))
             if s.itemCount > 0, !s.legacy { detail.show(session: s.url) }
-        } else if let j = JobStore.shared.jobs.first(where: { $0.session?.standardizedFileURL.path == dir }) {
+            return true
+        } else if let j = JobStore.shared.jobs.first(where: { $0.session.map { FixWatcher.real($0.path) } == dir }) {
             reveal(job: j.id)       // still being captured or processed: its progress
+            return true
         }
+        return false
     }
 
     func reveal(job: String) {
         show()
-        guard let j = JobStore.shared.job(job) else { return }
+        guard let j = JobStore.shared.job(job) else {
+            // a session whose record is gone (a v0.6 run, a removed job): say so rather than doing nothing
+            appDelegate?.toast(T("main.toast.session_gone"))
+            return
+        }
         if !model.scope.showsJobs || !model.jobs.contains(where: { $0.id == job }) {
             go(j.project.map { $0 == "inbox" ? .unassigned : .project($0) } ?? .inProgress)
             if !model.jobs.contains(where: { $0.id == job }) { go(.inProgress) }
@@ -737,6 +751,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
         _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
+        if n == 1, sessionJob(items[0]) != nil { _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal") }
         m.addItem(.separator())
         m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
         m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items)))
@@ -822,6 +837,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     @objc func mHandOff() { handOffSelection() }
+    /// The one selected item's agent session, when there is one to open (the banner's Open Session, from the menus).
+    func sessionJob(_ it: ItemRow) -> String? {
+        guard let j = it.workJob, WorkSession.of(state: it.state, to: it.workTo, job: j, lookup: JobStore.shared.job)?.canOpen == true
+        else { return nil }
+        return j
+    }
+    @objc func mOpenSession() { list.selectedItems.first.flatMap(sessionJob).map(revealJob) }
     @objc func mMove(_ i: NSMenuItem) { (i.representedObject as? String).map { move(uids: list.selectedItems.map(\.uid), to: $0) } }
     @objc func mSetKind(_ i: NSMenuItem) { (i.representedObject as? String).map(setKind) }
     @objc func mRename() { renameSelection() }
@@ -889,6 +911,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mMove(_:)):
             guard let p = item.representedObject as? String else { return false }
             return Scripts.canWrite && items.contains { $0.projectID != p && !$0.legacy }
+        case #selector(mOpenSession):
+            return items.count == 1 && sessionJob(items[0]) != nil
         case #selector(mRename), #selector(mSetKind(_:)):
             return Scripts.canWrite && items.contains { !$0.legacy }
         case #selector(mReveal), #selector(mCopyPath), #selector(mCopyLink), #selector(mQuickLook), #selector(mOpenInEditor):
@@ -917,10 +941,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             else if !job.items.isEmpty { (NSApp.delegate as? App)?.enrich(job.items, project: job.project == "inbox" ? nil : job.project) }   // AI fill-in
         case "items":
             if let first = job.items.first { reveal(uid: first) }
+        // a failure is said, never dropped (the Sessions pane says the same for the same calls)
         case "external":
-            Task { try? await AgentSessions.shared.openExternal(job: job.id, terminal: nil) }
+            Task { @MainActor in
+                do { try await AgentSessions.shared.openExternal(job: job.id, terminal: nil) }
+                catch { appDelegate?.toast(sessionsErrorText(error)) }
+            }
         case "stop":
-            Task { try? await AgentSessions.shared.stop(job: job.id, kill: false) }
+            Task { @MainActor in
+                do { try await AgentSessions.shared.stop(job: job.id, kill: false) }
+                catch { appDelegate?.toast(sessionsErrorText(error)) }
+            }
         default: break
         }
     }

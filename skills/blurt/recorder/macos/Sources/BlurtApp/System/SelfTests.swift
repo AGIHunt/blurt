@@ -386,7 +386,7 @@ final class StubMainWindow: MainWindowHosting {
         let it = IndexLookup.item(uid: uid)
         emit(["event": "mainwindow", "call": "reveal_uid", "uid": uid, "found": it != nil, "title": it?.title ?? "", "session": it?.sessionDir ?? ""])
     }
-    func reveal(session: URL) { emit(["event": "mainwindow", "call": "reveal_session", "session": session.path]) }
+    func reveal(session: URL) -> Bool { emit(["event": "mainwindow", "call": "reveal_session", "session": session.path]); return true }
     func reveal(job: String) { emit(["event": "mainwindow", "call": "reveal_job", "job": job]) }
     func reveal(project: String) { emit(["event": "mainwindow", "call": "reveal_project", "project": project]) }
     func showInbox() { emit(["event": "mainwindow", "call": "show_inbox"]) }

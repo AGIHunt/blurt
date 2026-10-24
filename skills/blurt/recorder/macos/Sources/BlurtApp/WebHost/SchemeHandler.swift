@@ -6,7 +6,8 @@
 //                                  registered project stores, the inbox store, legacy recordings, the session the page
 //                                  shows, $BLURT_HOME/handoff — nothing else, and never through a symlink out
 //   blurt-app://session/<rel>      a file of the current session (v2 pages)
-// Files are served with Range support (<video> needs 206s).
+// Files are served with Range support (<video> needs 206s), at most 8 MiB per answer (ByteRange); a large file asked
+// for whole is streamed from disk a chunk at a time — a file is never read into memory whole.
 import AppKit
 import BlurtCore
 import CryptoKit
@@ -97,23 +98,48 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
 
     func file(_ task: WKURLSchemeTask, _ f: URL) {
         guard let h = try? FileHandle(forReadingFrom: f) else { return fail(task, 404) }
-        defer { try? h.close() }
         let size = (try? FileManager.default.attributesOfItem(atPath: f.path)[.size] as? Int) ?? 0
         let mime = UTType(filenameExtension: f.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
         if let range = task.request.value(forHTTPHeaderField: "Range"), range.hasPrefix("bytes=") {
-            let parts = range.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false)
-            var start = Int(parts.first ?? "") ?? 0
-            var end = parts.count > 1 && !parts[1].isEmpty ? Int(parts[1]) ?? size - 1 : size - 1
-            if parts.first?.isEmpty == true, let suffix = parts.count > 1 ? Int(parts[1]) : nil {   // bytes=-N
-                start = max(0, size - suffix); end = size - 1
-            }
-            end = min(end, size - 1)
-            guard start < size, end >= start else { return respond(task, 416, Data(), mime, ["Content-Range": "bytes */\(size)"]) }
-            try? h.seek(toOffset: UInt64(start))
-            let d = h.readData(ofLength: end - start + 1)
-            return respond(task, 206, d, mime, ["Content-Range": "bytes \(start)-\(end)/\(size)", "Accept-Ranges": "bytes"])
+            defer { try? h.close() }
+            // at most ByteRange.cap per answer (as review.py): a player asks for the next part, and a 400 MB
+            // recording never sits in memory whole because of an open-ended "bytes=0-"
+            guard let r = ByteRange.plan(range, size: size) else { return respond(task, 416, Data(), mime, ["Content-Range": "bytes */\(size)"]) }
+            try? h.seek(toOffset: UInt64(r.lowerBound))
+            let d = h.readData(ofLength: r.count)
+            return respond(task, 206, d, mime, ["Content-Range": "bytes \(r.lowerBound)-\(r.upperBound)/\(size)", "Accept-Ranges": "bytes"])
         }
-        respond(task, 200, h.readDataToEndOfFile(), mime, ["Accept-Ranges": "bytes"])
+        guard size > ByteRange.cap else {
+            defer { try? h.close() }
+            return respond(task, 200, h.readDataToEndOfFile(), mime, ["Accept-Ranges": "bytes"])
+        }
+        stream(task, h, size: size, mime: mime)
+    }
+
+    /// A large file without a Range: read off the main thread a chunk at a time and handed over as it goes, so
+    /// only one chunk is in memory; a task the page stopped stops the reading.
+    private func stream(_ task: WKURLSchemeTask, _ h: FileHandle, size: Int, mime: String) {
+        guard let url = task.request.url else { try? h.close(); return }
+        task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
+            "Content-Type": mime, "Content-Length": "\(size)", "Cache-Control": "no-store", "Accept-Ranges": "bytes"])!)
+        let id = ObjectIdentifier(task)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            defer { try? h.close() }
+            while true {
+                let chunk = autoreleasepool { h.readData(ofLength: 1 << 20) }
+                let more: Bool = DispatchQueue.main.sync {
+                    guard let self = self, self.live.contains(id) else { return false }
+                    if chunk.isEmpty {
+                        task.didFinish()
+                        self.live.remove(id)
+                        return false
+                    }
+                    task.didReceive(chunk)
+                    return true
+                }
+                if !more { return }
+            }
+        }
     }
 
     // MARK: responses
