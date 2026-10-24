@@ -6,6 +6,11 @@
 // The first one that is installed and not known to be logged out runs. If it fails before items.json exists for a
 // reason another agent wouldn't share (login, quota, model), the next one gets the recording. Every attempt and every
 // skipped agent is written to <session>/agent.log and meta.json → "agent"; the toasts say the same in one line.
+// Every run here is unattended on recording-derived text, so it gets the least privilege (BlurtCore UnattendedRun):
+// cwd = the session folder (AI fill-in: a scratch folder under $BLURT_HOME/tmp), never the project, whose code the
+// prompt names for reading only; Claude / Gemini may run only the skill's scripts by absolute path; Codex's sandbox
+// may write the item stores and its own uv cache, nothing in $BLURT_HOME — so the app re-indexes and records the
+// job's items itself after the run.
 // BLURT_AGENT_PATH (tests): directories searched for agent CLIs before the user's PATH.
 
 import AppKit
@@ -46,11 +51,17 @@ struct AgentDef {
     var fixText: String { Loc.pick(fix) ?? "" }
     var installText: String { Loc.pick(install) ?? "" }
 
-    /// The headless command line for the shell (cwd = the workspace); `extra` goes after the run arguments.
-    func command(bin: String, prompt: String, extra: [String] = []) -> String {
-        ([bin] + run.map { $0 == "{prompt}" ? prompt : $0.replacingOccurrences(of: "{prompt}", with: prompt) } + extra)
-            .map(shq).joined(separator: " ")
+    /// The headless command line for the shell (cwd = the session or a scratch folder); `extra` goes after the run
+    /// arguments. Every headless run is unattended on recording-derived text, so `run` asks for the least privilege
+    /// (agents.json, UnattendedRun.args): "{scripts}" = the only scripts it may run, "{writable}" = one `--add-dir` per
+    /// folder it may write besides its cwd (AgentHub.writableDirs; codex's sandbox).
+    func command(bin: String, prompt: String, extra: [String] = [], writable: [String] = AgentHub.writableDirs()) -> String {
+        let args = UnattendedRun.args(run, prompt: prompt, scripts: BlurtPaths.scripts.path, writable: writable)
+        return ([bin] + args + extra).map(shq).joined(separator: " ")
     }
+
+    /// Runs in a sandbox that keeps $BLURT_HOME read-only (codex): it needs its own uv cache and no index writes.
+    var sandboxEnv: [String: String] { run.contains("{writable}") ? UnattendedRun.sandboxEnv(home: BlurtPaths.home) : [:] }
 
     // MARK: the processing model (same rules as agents.py processing / models / parse_usage)
 
@@ -221,15 +232,31 @@ final class AgentHub {
     static let fallback: [[String: Any]] = [
         ["id": "claude", "name": "Claude Code", "bins": ["claude"],
          "status": ["args": ["auth", "status", "--json"], "json_key": "loggedIn", "logged_out": ["not logged in"]],
-         "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+         "run": ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--allowedTools", "Bash(uv run {scripts}/transcribe.py:*)",
+                 "Bash(uv run {scripts}/frames.py:*)", "Bash(uv run {scripts}/items.py:*)", "Bash(uv run {scripts}/projects.py list:*)",
+                 "Bash(uv run {scripts}/index.py search:*)", "Read", "Glob", "Grep"],
          "fix": ["zh": "在终端运行 claude，然后输入 /login", "en": "run `claude` in a terminal and /login"]],
         ["id": "codex", "name": "Codex", "bins": ["codex"],
          "status": ["args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"]],
-         "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],
+         "run": ["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true",
+                 "{writable}", "{prompt}"],
          "fix": ["zh": "在终端运行 codex login", "en": "run `codex login` in a terminal"]],
     ]
 
     func def(_ id: String) -> AgentDef? { defs.first { $0.id == id } }
+
+    /// What an unattended run may write besides its cwd (agents.json "{writable}", the same list as agents.py
+    /// writable_dirs): the inbox store, every project's store that exists, its own uv cache — not $BLURT_HOME.
+    static func writableDirs() -> [String] {
+        let ps = ProjectStore.shared
+        return UnattendedRun.writableDirs(inbox: ps.inbox.store, projectStores: ps.projects.map(\.store), home: BlurtPaths.home)
+    }
+
+    /// The project's code, for the prompt: the agent may read it (code_refs), but its cwd and writes are elsewhere.
+    static func codeHint(_ project: Project?) -> String {
+        guard let p = project, !p.isInbox, p.exists else { return "" }
+        return "\nThe project's code (read it, change nothing there): \(p.path.path)"
+    }
 
     /// record.agents, else the registry order with a legacy record.process = "claude" | "codex" first.
     func order() -> [AgentDef] {
@@ -451,24 +478,25 @@ extension App {
     }
 
     /// The agent's instructions for an unattended run (English: agents read it, the user never does).
-    func processPrompt(_ dir: URL, captures: [Int]?) -> String {
+    func processPrompt(_ dir: URL, captures: [Int]?, project: String? = nil) -> String {
         let what = isShotsSession(dir)
             ? "Use the blurt skill to process this batch of captures: \(dir.path)\nIt is a shots session (no video): each shot "
               + "anchors one item and is that item's primary frame; voice notes are transcribed first; .marked.png files carry the user's ink."
             : "Use the blurt skill to process this recording: \(dir.path)"
         let only = captures.map { "\nOnly these captures (shots.jsonl n): " + $0.map(String.init).joined(separator: ", ") + "." } ?? ""
-        let skill = (readConfig()["skill_dir"] as? String).map { "\nThe blurt skill: \($0)/SKILL.md" } ?? ""
+        let skill = "\nThe blurt skill: \(BlurtPaths.skillDir.path)/SKILL.md" + UnattendedRun.scriptsHint(BlurtPaths.scripts.path)
         return what + only + "\nThis is an unattended background run started by the Blurt app: don't ask questions and don't start the "
             + "review page. Write items.json and run items.py ingest as SKILL.md says, then summarise in 2–3 sentences." + skill
+            + AgentHub.codeHint(project.flatMap { ProjectStore.shared.project(id: $0) } ?? ProjectStore.shared.project(containing: dir))
     }
 
     /// Run queue[0]; on a failure another agent wouldn't share (login, quota, model), move on to the next.
     func attempt(_ dir: URL, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter, captures: [Int]?, project: String?) {
         guard let a = queue.first, let bin = a.bin else { return noAgent(dir, queue, job: job) }
-        let cwd = ProjectStore.shared.project(containing: dir).flatMap { $0.isInbox ? nil : $0.path } ?? defaultWorkspace
+        let cwd = dir  // never the project: what an injected run could change there is the user's code
         // v0.7: organising is a small job — the processing model (cheap, low effort) unless the user chose otherwise
         let pa = a.def.processingArgs(env: agentEnvironment())
-        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures), extra: pa.args)
+        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures, project: project), extra: pa.args)
         let log = dir.appendingPathComponent("agent.log")
         appendLog(log, "── blurt \(nowStamp()) · processing with \(a.def.name) (\(bin))"
                   + " · model \(pa.model ?? "CLI default")" + (pa.effort.map { ", effort \($0)" } ?? "")
@@ -481,7 +509,10 @@ extension App {
         }
         job.step("transcribe", .running)
         refreshStatus()
-        var env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]
+        // routing the inbox items asks a model and moves files between projects: the app does it after the run, not
+        // the sandboxed agent (BLURT_NO_ROUTE; routeAfter)
+        var env = a.def.sandboxEnv.merging(["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id,
+                                            "BLURT_NO_ROUTE": "1"]) { _, n in n }
         if let p = project { env["BLURT_PROJECT"] = p }
         shell(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
             guard let self = self else { return }
@@ -497,10 +528,16 @@ extension App {
                 updateMeta(dir) { m in m["agent"] = (m["agent"] as? [String: Any] ?? [:]).merging(["result": "ok", "done_at": nowStamp()]) { _, n in n } }
                 appendLog(log, "── blurt \(nowStamp()) · \(a.def.name) done" + (status == 0 ? "" : " (exit \(status))") + "\n")
                 for s in ["transcribe", "write", "frames"] { job.step(s, .done) }
-                // a filed capture needs no routing; otherwise ingest has handed the inbox items to their own route job
+                // a sandboxed run can't append to its job (ingest's event names the items): the batch does
+                if let uids = (try? Data(contentsOf: dir.appendingPathComponent("batch.json")))
+                    .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })?["items"] as? [String], !uids.isEmpty {
+                    job.setItems(uids)
+                }
+                // a filed capture needs no routing; otherwise its inbox items get their own route job, started here
                 job.step("route", project != nil ? .skipped : .done)
                 job.finish(.done)
                 Scripts.indexUpdate([dir])
+                if project == nil { self.routeAfter(dir) }
                 self.refreshStatus()
                 return
             }
@@ -526,6 +563,14 @@ extension App {
         }
     }
 
+    /// Auto mode: the batch's items still in the inbox get a project (projects.py route --apply --session, its own
+    /// route job), outside the organizing run's sandbox. A failure leaves them in the inbox, where they are anyway.
+    func routeAfter(_ dir: URL) {
+        Scripts.run("projects.py", ["route", "--apply", "--session", dir.path], timeout: 300) { r in
+            if case .failure(let e) = r { emit(["event": "route_after", "session": dir.path, "error": "\(e)"]) }
+        }
+    }
+
     // MARK: AI fill-in: items filed from the user's own notes, enriched in one run
 
     /// "AI fill-in" for some items (the ones a note became without an agent carry `enrich: pending`): one agent run
@@ -547,21 +592,27 @@ extension App {
             job.step("prepare", .done)
             job.step("write", .running)
             let pa = a.def.processingArgs(env: agentEnvironment())
-            let cwd = project.flatMap { ProjectStore.shared.project(id: $0) }.flatMap { $0.isInbox ? nil : $0.path } ?? defaultWorkspace
-            let items = (readConfig()["skill_dir"] as? String).map { "\($0)/scripts/items.py" } ?? "items.py"
+            // a scratch cwd: never the project (the prompt names its code for reading)
+            let cwd = BlurtPaths.home.appendingPathComponent("tmp/\(job.id)")
+            try? FileManager.default.createDirectory(at: cwd, withIntermediateDirectories: true)
+            let items = "uv run \(BlurtPaths.scripts.path)/items.py"
             let prompt = "Use the blurt skill. These items were filed straight from the user's own notes, without an agent "
                 + "(they carry `enrich: pending`): " + uids.joined(separator: ", ") + ".\nFor each one: `\(items) get <uid>`, "
                 + "read it and look at its frames; then set the right kind (issue / idea / note / task), a clear title, and "
-                + "what that kind's lens asks for (for an issue: steps, expected / actual, code_refs found in this folder) with "
+                + "what that kind's lens asks for (for an issue: steps, expected / actual, code_refs found in the project's code) with "
                 + "`\(items) patch <uid> --set key=VALUE … --unset enrich`. Keep the user's words in quote; don't change status, "
                 + "project or work. This is an unattended background run started by the Blurt app: don't ask questions and "
-                + "don't open the review page. Finish with one sentence."
+                + "don't open the review page. Finish with one sentence." + UnattendedRun.scriptsHint(BlurtPaths.scripts.path)
+                + AgentHub.codeHint(project.flatMap { ProjectStore.shared.project(id: $0) })
             let log = JobFiles.log(job.id)
             appendLog(log, "── blurt \(nowStamp()) · AI fill-in with \(a.def.name) · model \(pa.model ?? "CLI default")\n")
             let cmd = a.def.command(bin: bin, prompt: prompt, extra: pa.args)
-            let env = ["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]
+            let env = a.def.sandboxEnv.merging(["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]) { _, n in n }
             emit(["event": "enrich", "job": job.id, "items": uids, "agent": a.def.id, "model": pa.model ?? NSNull()])
+            let files = ((try? IndexReader(url: BlurtPaths.indexDB)).flatMap { try? $0.items(uids: uids) } ?? []).map { URL(fileURLWithPath: $0.path) }
             shell(cmd, cwd: cwd, log: log, append: true, env: env) { status in
+                try? FileManager.default.removeItem(at: cwd)
+                Scripts.indexUpdate(files)  // the sandboxed run doesn't touch index.db
                 let tokens = a.def.tokensUsed(in: (try? String(contentsOf: log, encoding: .utf8)) ?? "")
                 job.setUsage(tokens: tokens, agent: a.def.id, model: pa.model, effort: pa.effort)
                 emit(["event": "process_usage", "job": job.id, "agent": a.def.id, "model": pa.model ?? NSNull(), "tokens": tokens ?? NSNull()])

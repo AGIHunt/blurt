@@ -114,8 +114,9 @@ def test_gc(home):
     orig = jobs.KEEP_LAST
     jobs.KEEP_LAST = 0
     try:
-        assert jobs.gc(live_windows={live_agent}) == [gone]  # its window is still open
-        assert jobs.gc() == [live_agent]  # asks sessions.py: no tmux server on this socket, so no window
+        assert jobs.gc(live_windows={live_agent}, referenced=set()) == [gone]  # its window is still open
+        assert jobs.gc() == []  # no index.db to ask which jobs items point at: every agent job stays
+        assert jobs.gc(referenced=set()) == [live_agent]  # asks sessions.py: no tmux server on this socket
     finally:
         jobs.KEEP_LAST = orig
     names = sorted(p.name for p in (home / "jobs").iterdir())
@@ -123,3 +124,47 @@ def test_gc(home):
     assert (home / "handoff" / "H-0001.md").exists()
     jobs.create("record")
     assert jobs.gc(live_windows=set()) == []  # within the newest 300
+
+
+def test_gc_keeps_what_items_and_worktrees_still_need(home, tmp_path):
+    old = time.time() - 20 * 86400
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    ids = {}
+    def worktree(p):  # the shape sessions.py dispatch writes
+        return {"path": str(p), "branch": "blurt/b", "base": "main", "base_sha": "0" * 40, "repo": str(tmp_path)}
+    for name, agent in (("referenced", {}), ("worktree", {"worktree": worktree(wt), "finish": None}),
+                        ("legacy", {"worktree": str(wt), "finish": None}),
+                        ("merged", {"worktree": worktree(wt), "finish": {"action": "merge"}}),
+                        ("wt_gone", {"worktree": worktree(tmp_path / "removed"), "finish": None}),
+                        ("wt_none", {"worktree": None}), ("plain", {})):
+        jid = jobs.create("agent")["id"]
+        ids[name] = jid
+
+        def end(j, agent=agent):
+            jobs.finish(j, "done")
+            j["ended"] = jobs.now_iso(old)
+            j["agent"] = {**(j.get("agent") or {}), **agent}
+        jobs.update(jid, end)
+    orig = jobs.KEEP_LAST
+    jobs.KEEP_LAST = 0
+    try:
+        removed = jobs.gc(live_windows=set(), referenced={ids["referenced"]})
+    finally:
+        jobs.KEEP_LAST = orig
+    # an unfinished item's session and an unmerged worktree stay reachable; the rest goes
+    assert sorted(removed) == sorted([ids["merged"], ids["wt_gone"], ids["wt_none"], ids["plain"]])
+    for kept in ("referenced", "worktree", "legacy"):
+        assert (home / "jobs" / f"{ids[kept]}.json").exists()
+
+
+def test_referenced_jobs_reads_the_index(home, monkeypatch):
+    import sqlite3
+    import index
+    assert jobs.referenced_jobs() is None  # no index.db yet: the caller keeps every agent job
+    con = sqlite3.connect(":memory:")
+    con.execute("CREATE TABLE items (uid TEXT, state TEXT, work_job TEXT)")
+    con.executemany("INSERT INTO items VALUES (?, ?, ?)", [("a", "in_progress", "j-1"), ("b", "to_verify", "j-2"),
+                                                           ("c", "done", "j-3"), ("d", "todo", None)])
+    monkeypatch.setattr(index, "connect", lambda readonly=False: con)
+    assert jobs.referenced_jobs() == {"j-1", "j-2"}

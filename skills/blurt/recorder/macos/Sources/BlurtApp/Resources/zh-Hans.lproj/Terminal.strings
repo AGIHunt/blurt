@@ -29,7 +29,7 @@
 "list.new" = "新建会话…";
 "list.new.help" = "把一个项目里的条目交给 Claude Code 或 Codex，开一个新会话";
 "list.empty.title" = "还没有会话";
-"list.empty.body" = "交给 agent 的任务会出现在这里，按项目分组。";
+"list.empty.body" = "交给 Agent 的任务会出现在这里，按项目分组。";
 "row.ready_to_review" = "可以查看改动";
 "session.items.more" = "%1$@ 等 %2$ld 条";
 
@@ -53,7 +53,7 @@
 
 /* 结束会话 */
 "end.title" = "结束这个会话？";
-"end.body" = "agent 会停下，它的终端窗口会关闭。已经做出的改动保持原样。";
+"end.body" = "Agent 会停下，它的终端窗口会关闭。已经做出的改动保持原样。";
 "end.confirm" = "结束会话";
 
 /* 没有可显示的终端时 */
@@ -65,19 +65,20 @@
 "overlay.elsewhere.title" = "在另一个窗口中显示";
 "overlay.elsewhere.body" = "这个会话在口喷鸡里运行，正显示在另一个窗口中。";
 "overlay.pick" = "选择一个会话来查看它的终端。";
-"overlay.empty.title" = "agent 在这里干活";
+"overlay.empty.title" = "Agent 在这里干活";
 "overlay.empty.body" = "把条目交给 Claude Code 或 Codex，每个会话都有自己的终端。你可以看着、随时接手打字，也可以走开——需要你的时候口喷鸡会提醒。";
 "overlay.ended.title" = "会话已结束";
 "overlay.ended.error" = "会话出错结束（退出码 %ld）";
-"overlay.ended.review_hint" = "agent 在单独的分支上干活。查看改动后，可以合并、开 PR 或丢弃。";
+"overlay.ended.review_hint" = "Agent 在单独的分支上干活。查看改动后，可以合并、开 PR 或丢弃。";
 "overlay.ended.verify_hint" = "相关条目现在等你验证，确认没问题后标为已完成。";
+"overlay.ended.unreported_hint" = "Agent 没有报告做完，条目还在进行中。看过之后，在条目上标为完成或收回。";
 
 /* 派发面板 */
-"dispatch.title" = "交给 agent";
+"dispatch.title" = "交给 Agent";
 "dispatch.subtitle.none" = "选择要处理的条目";
 "dispatch.agent" = "Agent";
 "dispatch.agent.logged_out" = "%@（未登录）";
-"dispatch.agent.none" = "还没有装能跑会话的 agent。装好 Claude Code 或 Codex 后，到「设置 → Agent」重新检查。";
+"dispatch.agent.none" = "还没有装能跑会话的 Agent。装好 Claude Code 或 Codex 后，到「设置 → Agent」重新检查。";
 "dispatch.mode" = "方式";
 "dispatch.mode.together" = "一起处理";
 "dispatch.mode.parallel" = "并行";
@@ -87,7 +88,7 @@
 "dispatch.worktree.on" = "在项目旁边建一个 git worktree。做完后由你选择合并、开 PR 或丢弃。";
 "dispatch.worktree.on.branch" = "在分支 %@ 上做，worktree 放在项目旁边。做完后由你选择合并、开 PR 或丢弃。";
 "dispatch.worktree.on.parallel" = "每条各在自己的分支上做，worktree 放在项目旁边。哪条做完了，由你选择合并、开 PR 或丢弃。";
-"dispatch.worktree.off" = "直接改 %@ 里的文件，agent 不会提交。";
+"dispatch.worktree.off" = "直接改 %@ 里的文件，Agent 不会提交。";
 "dispatch.project" = "项目";
 "dispatch.pick.empty" = "这个项目里没有待处理的条目。";
 "dispatch.pick.failed" = "没能列出这个项目的条目。";
@@ -97,7 +98,7 @@
 "warning.concurrent_edit" = "%@ 里已经有一个会话在直接改文件。同时改同一批文件可能冲突，建议放到单独的分支上做。";
 "warning.concurrent_edit.use_worktree" = "用单独的分支";
 "warning.concurrent_edit.continue" = "继续";
-"warning.no_git" = "这个文件夹不是 git 仓库，agent 会直接在里面改。";
+"warning.no_git" = "这个文件夹不是 git 仓库，Agent 会直接在里面改。";
 "warning.no_tmux" = "没有安装 tmux：会话在口喷鸡里运行，退出口喷鸡就会结束。";
 "warning.draft_confirmed" = "其中还没审的条目会标为「要做」。";
 
@@ -142,6 +143,8 @@
 /* 条目到了「待验证」（鸡来啄一下） */
 "verify.by" = "%@ 说已经修好";
 "verify.by.wontfix" = "%@ 建议不处理";
+"verify.by.none" = "%@ 交回来了";
+"verify.merged" = "改动已合并";
 "verify.notification" = "待验证：%@";
 
 /* sessions.py 的错误（按 code） */
@@ -157,7 +160,7 @@
 "error.needs_project" = "这些条目还没归到有文件夹的项目里，先把它们移到一个项目。";
 "error.mixed_projects" = "这些条目属于不同的项目，请一次交出一个项目的条目。";
 "error.deleted" = "已丢弃的条目不能交出。";
-"error.bad_agent" = "这个 agent 还不能用来跑会话。";
+"error.bad_agent" = "这个 Agent 还不能用来跑会话。";
 "error.tmux" = "tmux 没能启动这个会话。";
 "error.git" = "git 没能准备好 worktree。";
 "error.conflict" = "合并遇到冲突，已经撤回，分支没有变化。可以在 worktree 里解决冲突，或者开 PR。";
@@ -169,17 +172,17 @@
 "error.app_runner" = "这个会话在口喷鸡里运行，请在口喷鸡自己的窗口中打开。";
 "error.bad_args" = "会话命令的调用方式不对。";
 "error.bad_job" = "这个会话的记录损坏了。";
-"error.no_agent" = "没有已安装并登录、能跑会话的 agent。";
+"error.no_agent" = "没有已安装并登录、能跑会话的 Agent。";
 "error.no_git" = "这个文件夹不是 git 仓库，没有可以查看的分支。";
 "error.no_terminal" = "没有装受支持的终端 App。";
 "error.no_tmux" = "没有安装 tmux 3.2 或更新的版本。";
-"error.gone" = "这个会话的文件夹已经不在了。";
-"error.running" = "agent 的会话还开在这个 worktree 里，先结束会话再合并。";
-"error.uncommitted" = "worktree 里有未提交的改动，让 agent 提交或自己提交后再试。";
+"error.gone" = "这个会话已经结束，或者它的文件夹已经不在了。";
+"error.running" = "Agent 的会话还开在这个 worktree 里，先结束会话再合并。";
+"error.uncommitted" = "worktree 里有未提交的改动，让 Agent 提交或自己提交后再试。";
 "error.nothing" = "这个分支上还没有可以合并的提交。";
 
 /* 设置 → Agent */
-"agents.header" = "整理录屏用的 agent（按顺序试）";
+"agents.header" = "整理录屏用的 Agent（按顺序试）";
 "agents.footer" = "拖动调整顺序；第一个能用的来干活，没登录、额度用完时自动换下一个。取消勾选的不会被用到。";
 "agents.check_again" = "重新检查";
 "agents.drag" = "拖动排序";
@@ -207,7 +210,7 @@
 "agents.tmux.missing" = "没有安装 tmux";
 "agents.tmux.old" = "tmux 版本太旧（需要 3.2 或更新）";
 "agents.tmux.missing.detail" = "会话仍然可用，但在口喷鸡里运行，退出口喷鸡就会结束。";
-"agents.project_agent" = "%@ 的默认 agent";
+"agents.project_agent" = "%@ 的默认 Agent";
 "agents.project_agent.default" = "上面排第一的";
 "agents.project_agent.hint" = "交出这个项目的条目时默认用它，每次仍可另选。";
 "agents.move_up" = "往前挪";

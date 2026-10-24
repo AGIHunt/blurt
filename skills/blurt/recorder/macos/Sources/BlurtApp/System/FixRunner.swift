@@ -1,6 +1,7 @@
 // "Hand to an agent" used to open a panel that ran the agent in the background (`-p`). That is gone (v0.7, K5): items
 // go to an interactive agent session in tmux through the dispatch panel (Terminal/DispatchPanel.swift). What stays here:
-//   FixRunner.announceFixed(…)     → an item reached "to verify": the chick pecks it, and a notification
+//   FixRunner.announceFixed(…)     → an item reached "to verify": a notification that says only what the agent
+//                                    claimed, and the chick pecks it when it claimed something
 //   enum Notify                    → system notifications (unchanged)
 import AppKit
 import UserNotifications
@@ -11,18 +12,30 @@ final class FixRunner {
 
     // MARK: the "to verify" moment
 
-    /// An agent says it is done with an item (work.state → to_verify, K3). `item` is the item's front-matter.
+    /// An item reached "to verify" (K3). `item` is the item's front-matter. Only what the agent claimed is said for
+    /// it: "fixed" / "won't fix" (and the chick pecks); a merge of its branch says so; anything else is neutral.
     func announceFixed(uid: String, item: [String: Any], session: URL) {
         let title = item["title"] as? String ?? uid
         let work = item["work"] as? [String: Any] ?? [:]
-        let agent = (work["agent"] as? String).map { AgentNames.name($0) }
-        let note = work["note"] as? String ?? ""
-        let claim = work["claim"] as? String
-        let by = agent.map { claim == "wontfix" ? TL("verify.by.wontfix", $0) : TL("verify.by", $0) }
-        let detail = [by, note.isEmpty ? nil : note].compactMap { $0 }.joined(separator: " · ")
+        let detail = Self.verifyDetail(work)
         emit(["event": "to_verify", "uid": uid, "title": title, "detail": detail])
-        PeckCard.shared.play(title: title, detail: detail, uid: uid)
+        if ["fixed", "wontfix"].contains(work["claim"] as? String ?? "") { PeckCard.shared.play(title: title, detail: detail, uid: uid) }
         Notify.post(title: TL("verify.notification", title), body: detail, uid: uid)
+    }
+
+    /// "Claude Code says it's fixed · <note>"; "Changes merged"; "Codex handed it back"; or just the note.
+    static func verifyDetail(_ work: [String: Any]) -> String {
+        let agent = (work["agent"] as? String).flatMap { $0 == "human" ? nil : AgentNames.name($0) }
+        let note = work["note"] as? String ?? ""
+        let by: String?
+        switch work["claim"] as? String {
+        case "fixed": by = agent.map { TL("verify.by", $0) }
+        case "wontfix": by = agent.map { TL("verify.by.wontfix", $0) }
+        default:
+            let merged = work["by"] as? String == "app" && (work["commit"] as? String != nil || work["pr"] as? String != nil)
+            by = merged ? TL("verify.merged") : work["by"] as? String == "agent" ? agent.map { TL("verify.by.none", $0) } : nil
+        }
+        return [by, note.isEmpty ? nil : note].compactMap { $0 }.joined(separator: " · ")
     }
 }
 

@@ -139,9 +139,10 @@ Unassigned with your suggestion for the user to accept. Unsure → leave `projec
 Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
 picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). Then `items.py ingest
 <session>` turns it into one Markdown item per entry (any later `items.py` command on the session does it too).
-**Right away** start `review.py <session>` **in the background** (on macOS it opens in a Blurt app window when the
-app is installed, else the browser; exits when the user finishes; prints `REVIEW <url>` — give the user that URL if
-no browser can open where you run: SSH, container) and tell the user in one short message:
+**Right away** start `review.py <session>` **in the background** (on macOS it opens in the Blurt app's main window when
+the app is installed, else the browser; exits when the user confirms — in either — or after 30 minutes nobody used
+the page, `"reviewed": false` then; prints `REVIEW <url>`, a private local address with a token in it — give the user
+that URL if no browser can open where you run: SSH, container) and tell the user in one short message:
 - ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
   items, open questions; screenshots are still filling in;
 - two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
@@ -194,7 +195,9 @@ apply it with `items.py … --force` and close the page (`pkill -f "review.py <s
 **Unattended runs** (started by the Blurt app via the first usable agent CLI — `claude -p`, `codex exec`,
 `kimi -p`, `opencode run`, `gemini -p` (scripts/agents.json) — env `BLURT_APP=1` — or any other
 non-interactive mode): don't ask anything; do §2–§4 the same way (text first with `processing`, frames via
-`items.py`, `done`), then finish with a 2–3 sentence summary. With `BLURT_APP=1` don't start the review page — the
+`items.py`, `done`), then finish with a 2–3 sentence summary. The app's runs are sandboxed: the cwd is the session
+folder, the project's code (named in the prompt) is for reading, and the only commands allowed are the scripts as
+`uv run <skill-dir>/scripts/<name>.py …` with the path the prompt gives. With `BLURT_APP=1` don't start the review page — the
 app opens it; otherwise start it detached right after §3 (`nohup uv run …/review.py <session> >/dev/null 2>&1 &`).
 Never export to external systems unattended.
 

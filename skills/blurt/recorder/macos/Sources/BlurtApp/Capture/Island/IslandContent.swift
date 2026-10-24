@@ -720,7 +720,10 @@ final class IslandContent: NSView {
             let id: String? = { if case .project(let i) = t { return i }; return nil }()
             island?.closeSwitcher()
             island?.setOpen(false)
-            Task { try? await ProjectStore.shared.use(id); await MainActor.run { island?.projectChanged() } }
+            Task {
+                do { try await ProjectStore.shared.use(id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }
+                await MainActor.run { island?.projectChanged() }
+            }
         case .inbox, .aiSort:
             perform(t, shot: nil)
         }

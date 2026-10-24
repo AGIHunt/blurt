@@ -60,6 +60,7 @@
 "main.action.snap" = "Snap";
 
 "main.banner.agent" = "an agent";
+"main.banner.ended" = "Session ended without reporting back";
 "main.banner.external" = "Copied to your agent. Mark it done when it is.";
 "main.banner.move" = "Move There";
 "main.banner.open_session" = "Open Session";
@@ -207,6 +208,7 @@
 "main.menu.rename" = "Rename…";
 "main.menu.review_batch" = "Review the Whole Capture";
 "main.menu.start_session" = "Start in Blurt";
+"main.menu.open_session" = "Open Session";
 
 "main.misc.by_codex" = "by codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
@@ -250,6 +252,7 @@
 "main.project.remove.detail" = "The folder and its items stay where they are. Open the folder again to bring it back.";
 "main.project.remove.title" = "Remove “%@” from Blurt?";
 "main.project.save_failed" = "Couldn’t save the project";
+"main.project.use_failed" = "Couldn’t switch the project";
 "main.project.settings" = "Project Settings…";
 "main.project.settings.title" = "%@ Settings";
 "main.project.use" = "Make Current Project";
@@ -285,6 +288,7 @@
 "main.state.ax" = "State: %@. Click to change it.";
 "main.toast.download_failed" = "Couldn’t save it: %@";
 "main.toast.downloaded" = "Saved to Downloads: %@";
+"main.toast.session_gone" = "This session has ended and its record was cleared.";
 "main.speech.recommended" = "Recommended speech model for this Mac · %@";
 "main.speech.recommended.action" = "Review";
 

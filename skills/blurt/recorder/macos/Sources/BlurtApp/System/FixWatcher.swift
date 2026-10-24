@@ -1,7 +1,8 @@
 // Watches every item store (each project's .blurt/ and the inbox — K1) for item files whose state becomes
-// "to_verify" (K3) — whoever wrote it: an agent in a Blurt session (mark_fixed / items.py state), the session monitor
-// when the agent exited, a worktree merge, an agent outside Blurt with the MCP. Then the chicken pecks the item and
-// a notification says so (FixRunner.announceFixed). A file seen for the first time is only a baseline.
+// "to_verify" (K3) — whoever wrote it: an agent in a Blurt session (mark_fixed / items.py state), a worktree merge,
+// an agent outside Blurt with the MCP (a session that just exits moves nothing). Then a notification says what the
+// agent claimed, and the chicken pecks the item when it claimed something (FixRunner.announceFixed). A file seen
+// for the first time is only a baseline.
 import AppKit
 import CoreServices
 import BlurtCore

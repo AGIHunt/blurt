@@ -493,7 +493,19 @@ Swift、Rust、live.py 不各自拼命令。
     // app-ux 的字段（Agents.swift 和 live.py 依赖，含义不变）
     "status": { "args": ["login", "status"], "logged_out": ["not logged in"], "ok_if": ["logged in"],
                 "env_any": ["OPENAI_API_KEY"] },   // 另有 json_key、creds_json{path,keys}、configured_if、files_any、otherwise
-    "run": ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "{prompt}"],   // headless，bin 后面的参数
+    "run": ["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=true",
+            "{writable}", "{prompt}"],   // headless，bin 后面的参数。只用于无人值守的运行（整理录屏、AI 补全、归类、草稿），
+                                         // 输入来自屏幕和语音，所以权限最小。cwd 是会话文件夹（AI 补全：$BLURT_HOME/tmp/<job>），
+                                         // 不是项目；prompt 写明项目代码的路径，只读。codex 只能写 cwd 和 {writable}（每个一条
+                                         // --add-dir：收件箱、各项目现存的 .blurt、它自己的 uv 缓存 $BLURT_HOME/sandbox/uv-cache；
+                                         // env UV_CACHE_DIR + BLURT_NO_INDEX），$BLURT_HOME（config.json、任务和它们的 hook 设置、
+                                         // index.db）和共用的 uv 缓存都不可写——沙箱里写下的东西不会在沙箱外被执行；网络开着给 uv
+                                         // 解析依赖。claude / gemini 只能改 cwd 里的文件（acceptEdits / auto_edit），命令只放行整理
+                                         // 要用的几个脚本，按绝对路径钉死（"Bash(uv run {scripts}/items.py:*)"，{scripts} = skill 的
+                                         // scripts 目录，prompt 里写同一路径），别的命令、别的脚本都不行。kimi / opencode 用各自默认
+                                         // （参数未验证）。用户自己发起的交给 Agent 走 interactive.session，权限不变。
+                                         // 归类（会再调模型、跨项目搬文件）由 App 在运行结束后自己跑：BLURT_NO_ROUTE +
+                                         // projects.py route --session；索引和任务的条目也由 App 在结束后补（沙箱里写不了）。
     "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
     // WP2 加的字段
     "version": ["--version"],
@@ -514,8 +526,8 @@ Swift、Rust、live.py 不各自拼命令。
 
 **顺序**（app-ux 已实现，WP2 沿用）：`record.agents` 是**排他**列表——只用列出的 id，按列出的顺序，未知 id 忽略，全部无效时退回默认；
 没设时用注册表顺序，旧的 `record.process`（`"claude"` / `"codex"`）提到最前；`record.agent_defs` 增加或覆盖条目。`"headless": false` 的条目（zcode）永远不进 order（默认顺序和 `record.agents` 都一样，Python `agent_order()` 和 Swift `AgentHub.order()` 同一规则）。
-读 `$BLURT_HOME/config.json`；Python 侧带 `--repo` 时，`<repo>/.blurt/config.json` 里的 `record.agents` / `record.process` 优先，
-`agent_defs` 合并（应用没有项目上下文时不用管）。
+读 `$BLURT_HOME/config.json`；Python 侧带 `--repo` 时，`<repo>/.blurt/config.json` 里的 `record.agents` / `record.process` 优先。
+项目里的 `agent_defs` 不生效：定义就是 Blurt 之后要执行的命令，而项目的 `.blurt/` 对沙箱里的整理运行可写。
 
 **探测**：`status` / `detect` 在去掉调用方 agent 会话变量（`CLAUDE*`、`ANTHROPIC_*`、`CODEX_*`、`MCP_*`、`OTEL_*` 等，
 和 `isAgentSessionVar` 一致）的环境里跑，但保留 `CODEX_HOME`、`CLAUDE_CONFIG_DIR`、`KIMI_CODE_HOME`（用户的配置位置）。

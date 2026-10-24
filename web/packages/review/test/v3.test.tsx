@@ -179,6 +179,21 @@ describe("v3 UI", () => {
     return { s, el, ...h, done: () => (act(() => root.unmount()), s.dispose()) };
   }
 
+  it("work panel: one Open Session per item — the host's banner has it while the item is with the agent", async () => {
+    const openSession = vi.fn();
+    const at = (s: ReviewStore, id: string) => s.data.items.findIndex((i) => i.id === id);
+    for (const banner of [false, true]) {
+      const { el, s, done } = await mount(<Inspector />, { openSession, sessionBanner: banner });
+      await act(async () => s.go(at(s, "BA-15"))); // in progress, with a session
+      expect(el.querySelector("#workSession") === null).toBe(banner);
+      await act(async () => s.go(at(s, "BA-12"))); // to verify: no banner above it, so the panel has the button
+      expect(el.querySelector("#workSession")).not.toBeNull();
+      await act(async () => (el.querySelector("#workSession") as HTMLButtonElement).click());
+      expect(openSession).toHaveBeenLastCalledWith("j-20261022-101500-ab12");
+      done();
+    }
+  });
+
   it("inspector: project picker, state pill, work panel with Mark as done, provenance, handoff buttons", async () => {
     const handoff = vi.fn(async () => ({ id: "H-0013", path: "/h/H-0013.md", text: "Please handle BA-12 …" }));
     const dispatch = vi.fn();

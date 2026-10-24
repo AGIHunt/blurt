@@ -49,7 +49,9 @@ Every session is a job of type `agent` in `$BLURT_HOME/jobs/` (see `jobs.py`). I
 - Agents without hooks: `interactive.waiting_patterns` (agents.json) on the bottom lines of the window mean
   *waiting for you*; 8 s without output after running means *turn finished*.
 - `sessions.py monitor` (the app keeps one running) also notices windows that exited and moves items along:
-  the first sign of life → *in progress*; the agent exited → items still in progress go to *to verify*.
+  the first sign of life → *in progress*. An exit moves nothing: only your own report (`items.py state … --state
+  to_verify --claim fixed|wontfix`, MCP `mark_fixed`) takes an item to *to verify*. Exit without it and the item
+  stays *in progress*; the app tells the user the session ended without reporting back.
 
 ## Finishing
 

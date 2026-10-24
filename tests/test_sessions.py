@@ -58,7 +58,9 @@ def test_claude_session_walks_every_status(p2):
     j = p2.wait(lambda: (lambda j: j if j["agent"].get("exit") == 0 else None)(p2.job(jid)), what="exit code")
     assert j["state"] == "done" and [s["state"] for s in j["steps"]] == ["done", "done", "pending"]
     item = p2.get(it["uid"])
-    assert item["state"] == "to_verify" and item["work"]["claim"] in (None, "")  # exited: to_verify, claim null
+    # an exit is not a claim: the agent never said it was done, so the item stays in progress (the app says the
+    # session ended without reporting back) and the job notes it saw the exit
+    assert item["state"] == "in_progress" and item["work"]["job"] == jid and j["agent"]["closed"] is True
     rows = p2.run("sessions.py", "list")["sessions"]
     assert [r["job"] for r in rows] == [jid] and rows[0]["status"] == "exited" and rows[0]["exit"] == 0  # window kept
 
@@ -75,6 +77,7 @@ def test_agent_exit_code_means_error(p2):
     p2.wait(lambda: p2.status(jid) == "error", what="error")
     j = p2.job(jid)
     assert j["state"] == "failed" and j["agent"]["exit"] == 3
+    assert p2.get(it["uid"])["state"] == "in_progress"  # a crash claims nothing either
 
 
 def test_codex_notify_and_hooks(p2):
@@ -181,7 +184,7 @@ def test_parallel_worktrees_diff_merge_discard(p2):
     assert m["removed"] and not wa.exists() and (repo / "src" / "login.txt").read_text() == "button: blue\n"
     assert p2.git(repo, "log", "-1", "--format=%P").count(" ") == 1  # --no-ff: a merge commit
     assert ja["branch"] not in p2.git(repo, "branch", "--list")
-    assert p2.get(a["uid"])["state"] == "to_verify" and m["items"] == []  # stopping already moved it
+    assert p2.get(a["uid"])["state"] == "to_verify" and m["items"] == [a["uid"]]  # stopping moved nothing; merging did
     disc = p2.run("sessions.py", "finish", jb["id"], "--action", "discard")
     assert disc["removed"] and not wb.exists() and jb["branch"] not in p2.git(repo, "branch", "--list")
     assert p2.git(repo, "worktree", "list").count("\n") == 0

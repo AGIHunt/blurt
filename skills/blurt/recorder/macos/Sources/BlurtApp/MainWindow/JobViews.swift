@@ -307,9 +307,10 @@ final class JobDetailView: NSView {
             b.controlSize = .regular
             buttons.addArrangedSubview(b)
         }
-        if j.type == .agent {
-            button(T("main.job.open_terminal_app"), "external")
-            if j.isActive { button(T("main.job.stop"), "stop") }
+        if j.type == .agent, j.isActive {
+            // only while there is a live window to open: an ended session has its log and the terminal's summary
+            if let a = j.agent, a.status != .exited, a.status != .error { button(T("main.job.open_terminal_app"), "external") }
+            button(T("main.job.stop"), "stop")
         }
         if j.state == .failed, j.type == .process, j.session != nil || !j.items.isEmpty { button(T("action.retry"), "retry") }
         if FileManager.default.fileExists(atPath: JobFiles.log(j.id).path) { button(T("main.job.show_log"), "log") }

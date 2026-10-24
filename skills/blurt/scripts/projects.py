@@ -17,7 +17,8 @@ is its only writer (lock $BLURT_HOME/.projects.lock, atomic replace). The apps r
                                            current_by: "user" (chosen in Blurt) | "migrate" (carried over from
                                            v0.6's record.workspace — the app asks once whether to keep it) | null
   projects.py resolve PATH                 the (deepest) project PATH is in → {"ok","project":Row|null}
-  projects.py route --items REF … [--apply] [--threshold X] [--agent ID] [--no-llm]
+  projects.py route (--items REF … | --session DIR) [--apply] [--threshold X] [--agent ID] [--no-llm]
+             --session: that batch's inbox items with no suggestion yet (the app, after an organizing run)
                                            suggest a project per item: rules first, then a small model →
                                            {"ok","suggestions":[{uid, project, confidence, reason, by}],"moved":[uid]}
   projects.py migrate                      v0.6 config record.workspace(s) → projects → {"ok","added","current"}
@@ -294,6 +295,19 @@ def cmd_list() -> dict:
             "projects": _sorted([row(e) for e in entries()]), "inbox": row(inbox_entry())}
 
 
+def _same_folder(registered, folder: Path) -> bool:
+    try:
+        return bool(registered) and real(registered) == folder
+    except OSError:
+        return False
+
+
+def by_path(folder) -> dict | None:
+    """The registered project of a folder, whatever its id (a project moved on disk keeps the id of its old path)."""
+    f = real(os.path.expanduser(folder))
+    return next((e for e in entries() if _same_folder(e.get("path"), f)), None)
+
+
 def cmd_add(path: str, name=None, key=None, description=None) -> dict:
     folder = Path(os.path.expanduser(path))
     if not folder.exists():
@@ -311,6 +325,8 @@ def cmd_add(path: str, name=None, key=None, description=None) -> dict:
     sid = own.meta.get("project") if own.exists else None
     with editing() as reg:
         e = next((p for p in reg["projects"] if p.get("id") == pid), None)
+        # the folder is registered already (moved here earlier: its id is the old path's): that project, not a twin
+        e = e or next((p for p in reg["projects"] if _same_folder(p.get("path"), folder)), None)
         if e is None and isinstance(sid, str) and sid and sid != st.INBOX and sid != pid:
             old = next((p for p in reg["projects"] if p.get("id") == sid), None)
             if old is not None and not Path(old["path"]).is_dir():
@@ -415,18 +431,19 @@ def cmd_migrate() -> dict:
     for w in rec.get("workspaces") or []:
         if not isinstance(w, str) or not os.path.isdir(os.path.expanduser(w)):
             continue
-        if by_id(project_id(w)) is None:
+        if by_id(project_id(w)) is None and by_path(w) is None:
             cmd_add(w)
             added += 1
     cur = load().get("current") or "auto"
     w = rec.get("workspace")
     if isinstance(w, str) and os.path.isdir(os.path.expanduser(w)) and real(w) != real(blurt_workspace()) \
             and cur == "auto" and not load().get("_migrated"):
-        if by_id(project_id(w)) is None:
-            cmd_add(w)
+        e = by_id(project_id(w)) or by_path(w)
+        if e is None:
+            e = cmd_add(w)["project"]
             added += 1
-        cmd_use(project_id(w), by="migrate")
-        cur = project_id(w)
+        cmd_use(e["id"], by="migrate")
+        cur = e["id"]
     with editing() as reg:
         # an earlier v0.7 build migrated without saying who chose the current project: treat it as carried over,
         # so the app asks once instead of filing captures there silently
@@ -593,6 +610,15 @@ def cmd_route(refs: list[str], apply: bool, threshold: float | None, agent: str 
     return {"ok": True, "suggestions": out, "moved": moved}
 
 
+def session_unrouted(session: str) -> list[str]:
+    """A batch's items still in the inbox with no project suggested — what ingest routes in the background, and what
+    the app routes itself after an organizing run (that run doesn't: it is sandboxed, BLURT_NO_ROUTE)."""
+    import items as items_mod  # noqa: PLC0415 — items imports projects
+    rows, _ = items_mod.scope_items({"session": str(real(session))})
+    return [it["uid"] for _, it in rows if (it.get("project") or st.INBOX) == st.INBOX and not it.get("suggested_project")
+            and it.get("state") != "discarded" and it.get("uid")]
+
+
 def route_job(refs: list[str], apply: bool, threshold: float | None, agent: str | None, no_llm: bool) -> dict:
     """cmd_route; with --apply (the background run after ingest) also a K4 route job this process owns, so the
     island and the main window show the inbox being sorted and what it moved. A preview (no --apply) writes none."""
@@ -656,7 +682,9 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("resolve")
     s.add_argument("path")
     s = sub.add_parser("route")
-    s.add_argument("--items", nargs="+", required=True, metavar="REF")
+    g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--items", nargs="+", metavar="REF")
+    g.add_argument("--session", metavar="DIR")
     s.add_argument("--apply", action="store_true")
     s.add_argument("--threshold", type=float)
     s.add_argument("--agent")
@@ -684,7 +712,8 @@ def main(argv: list[str] | None = None) -> None:
             e = resolve(a.path)
             out = {"ok": True, "project": row(e) if e else None}
         elif a.cmd == "route":
-            out = route_job(a.items, a.apply, a.threshold, a.agent, a.no_llm)
+            refs = a.items or session_unrouted(a.session)
+            out = route_job(refs, a.apply, a.threshold, a.agent, a.no_llm) if refs else {"ok": True, "suggestions": [], "moved": []}
         else:
             out = cmd_migrate()
     except ProjectError as e:

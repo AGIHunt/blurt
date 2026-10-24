@@ -131,7 +131,9 @@ function WorkPanel({ i }: { i: Item }) {
   if (!rec || st === "new" || st === "discarded") return null;
   const who = rec.by === "user" ? s.t("work.by_you") : rec.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(rec.agent) }) : "";
   const when = rec.at ? s.i18n.formatRelative(rec.at) : "";
-  const session = rec.to === "session" && rec.job && s.host.openSession && st !== "done" && st !== "wontfix" ? rec.job : null;
+  // one Open Session per item: while it is with the agent a host banner may have it (the Mac app), else it is here
+  const banner = s.host.sessionBanner && (st === "handed_off" || st === "in_progress");
+  const session = rec.to === "session" && rec.job && s.host.openSession && st !== "done" && st !== "wontfix" && !banner ? rec.job : null;
   const verify = st === "to_verify";
   const meta = who || when || rec.commit || rec.pr;
   if (!meta && !verify && !rec.note && !session) return null;

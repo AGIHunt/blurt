@@ -31,7 +31,8 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   doc        SESSION | --project P|inbox [--state S]… [--kind K]…   what the review page shows
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm]           the user's edits (apps)
-  migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items
+  migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items; --all also
+             forgets the sessions unfinished items point at that no longer exist ("repaired": their files)
   path       REF                                       → {"path","store","project","uid","id"}
   ensure-uids SESSION                                  a v2 session not ingested yet: write the missing uids
 
@@ -1380,6 +1381,52 @@ def migrate(sessions: list[Path], dry_run: bool) -> dict:
             **({"dry_run": True} if dry_run else {})}
 
 
+def dangling_work(con=None) -> list[tuple[Path, str]]:
+    """(item file, work.job) for the unfinished items whose session no longer exists: a v0.6 headless run's id
+    (r-…, removed with $BLURT_HOME/runs), a job file that is gone. From index.db; [] without one."""
+    import index  # noqa: PLC0415
+    try:
+        own = con is None
+        con = con or index.connect(readonly=True)
+        try:
+            rows = con.execute("SELECT path, work_job FROM items WHERE work_job IS NOT NULL AND work_job != ''"
+                               " AND state IN ('handed_off', 'in_progress', 'to_verify')").fetchall()
+        finally:
+            if own:
+                con.close()
+    except Exception:  # noqa: BLE001 — no index (yet): the next launch repairs them
+        return []
+    jobs_dir = blurt_home() / "jobs"
+    return [(Path(p), j) for p, j in rows if p.endswith(".md") and "/" not in j  # a legacy row is read-only
+            and not (jobs_dir / f"{j}.json").is_file()]
+
+
+def repair_work(dry_run: bool = False) -> list[str]:
+    """Once per dangling reference (items.py migrate --all, at every app launch; idempotent): forget the session id
+    so nothing offers to open it. The item keeps its state — the app says the session ended without reporting back,
+    and the user takes it back or marks it done. A v0.6 run was a session Blurt started, so `to` says so."""
+    fixed = []
+    for path, job in dangling_work():
+        if not path.is_file():
+            continue
+        if dry_run:
+            fixed.append(str(path))
+            continue
+
+        def forget(it, job=job):
+            w = it.get("work") if isinstance(it.get("work"), dict) else None
+            if not w or w.get("job") != job:
+                return {"_write": False}  # changed since the index saw it
+            it["work"] = {**{k: w.get(k) for k in WORK_KEYS}, "job": None, "to": w.get("to") or "session"}
+            return {}
+        try:
+            mutate(path, forget)
+        except (ItemsError, Unparseable, OSError):
+            continue
+        fixed.append(str(path))
+    return fixed
+
+
 def ensure_uids(session: Path) -> dict:
     """A v2 session nobody ingested yet: persist the legacy uid of every item (as v2 did). Ingested: nothing to do."""
     src = session / "items.json"
@@ -1617,8 +1664,9 @@ def run(a) -> dict:
             import projects  # noqa: PLC0415
             if not a.dry_run:
                 projects.cmd_migrate()
-            sessions = migrate_candidates()
-        elif a.root:
+            out = migrate(migrate_candidates(), a.dry_run)
+            return {**out, "repaired": repair_work(a.dry_run)}
+        if a.root:
             sessions = migrate_candidates(Path(a.root))
         elif a.sessions:
             sessions = [Path(s) for s in a.sessions]

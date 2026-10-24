@@ -190,6 +190,40 @@ class Migrate(TmpCase):
         self.assertEqual(counts, {str(self.v1): 3, str(self.v2): 5, str(self.shots): 2})
 
 
+class DanglingWork(TmpCase):
+    """Items that point at a session that no longer exists (a v0.6 run id, a removed job) lose that pointer once, so
+    nothing offers to open it; they keep their state."""
+
+    def test_migrate_all_forgets_sessions_that_are_gone(self):
+        env = self.e.env(BLURT_NO_INDEX="")
+        env.pop("BLURT_NO_INDEX", None)
+        (self.e.home / "jobs").mkdir()
+        (self.e.home / "jobs" / "j-20261024-100000-live.json").write_text(json.dumps({"id": "j-20261024-100000-live"}))
+        made = {}
+        for name, state, job in (("legacy", "in_progress", "r-20261021-212222-xw1r"), ("gone", "to_verify", "j-20260901-1-gone"),
+                                 ("live", "in_progress", "j-20261024-100000-live"), ("done", "done", "j-20260901-2-gone")):
+            it = ok("items.py", "add", "--project", "inbox", "--json", json.dumps({"kind": "issue", "title": name}), env=env)
+            ok("items.py", "state", it["uid"], "--state", "in_progress", "--job", job, "--by", "agent", env=env)
+            if state != "in_progress":
+                ok("items.py", "state", it["uid"], "--state", state, "--by", "user" if state == "done" else "agent",
+                   *(["--claim", "fixed"] if state == "to_verify" else []), env=env)
+            made[name] = it["uid"]
+        ok("index.py", "scan", env=env)
+        dry = ok("items.py", "migrate", "--all", "--dry-run", env=env)
+        self.assertEqual(len(dry["repaired"]), 2)
+        out = ok("items.py", "migrate", "--all", env=env)
+        self.assertEqual(len(out["repaired"]), 2)
+
+        def work(name):
+            it = ok("items.py", "get", made[name], env=env)["item"]
+            return it["state"], it["work"]["job"], it["work"]["to"]
+        self.assertEqual(work("legacy"), ("in_progress", None, "session"))  # still in progress: the user decides
+        self.assertEqual(work("gone"), ("to_verify", None, "session"))
+        self.assertEqual(work("live"), ("in_progress", "j-20261024-100000-live", None))  # its job is there
+        self.assertEqual(work("done")[1], "j-20260901-2-gone")  # finished: nothing offers it any more
+        self.assertEqual(ok("items.py", "migrate", "--all", env=env)["repaired"], [])  # once
+
+
 if __name__ == "__main__":
     import unittest
     unittest.main()

@@ -1,20 +1,23 @@
 // The detail column. Reviewing happens here — there is no separate review window and nothing opens by itself:
 //   an item     the shared review component (web/packages/review → review.html) in a WKWebView, mode=item, with a
-//               native banner above it when the item waits for you (to verify), is with an agent, or has a suggested
-//               project;
+//               native banner above it when the item is with an agent (its session live, ended without reporting
+//               back, or gone — WorkSession), is being organised, or has a suggested project. The banner holds the
+//               item's one Open Session button (blurtHostInfo.sessionBanner: the page leaves its own out then);
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
 //   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
 //   nothing     a quiet placeholder.
 //
 // Host protocol v3 (C6 + next-round.md "审核组件宿主协议 v3"):
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
-//   doc start     window.blurtHostInfo = {host: "macos", methods: [...], accent: "#rrggbb", scope: {...}}
+//   doc start     window.blurtHostInfo = {host: "macos", methods: [...], accent: "#rrggbb", scope: {...}, sessionBanner: mode == item}
 //   JS → native   webkit.messageHandlers.blurt.postMessage({id, method, params}); native → window.__blurtReply(id, result, error)
 //   requests      load {scope?} → {doc, etag}             items.py doc SESSION | --project P
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
 //                 sendOps {ops, confirm, scope?} → {ok, etag, doc}   items.py user-ops … --stdin [--confirm]
 //                 handoff {uids, what} → {id, path, text}  handoff.py create --items … --mark (copied to the clipboard)
-//   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {jobId}, registerDragRects {rects}, download {path|rel}, confirmed {}
+//   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {job} (older
+//                 pages: jobId), registerDragRects {rects}, download {path|rel}, confirmed {scope} (a batch confirmed:
+//                 review.py, if it asked for this batch, hears it — ReviewHandoff)
 import AppKit
 import BlurtCore
 import WebKit
@@ -119,11 +122,12 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl"]
     }
 
-    private func installHostInfo(_ scope: DocScope) {
+    /// sessionBanner only in item mode: the banner above the page exists only there, so a batch keeps the panel's own.
+    private func installHostInfo(_ scope: DocScope, mode: String) {
         let ucc = web.configuration.userContentController
         ucc.removeAllUserScripts()
         let info: [String: Any] = ["host": "macos", "methods": methods, "accent": Self.accentHex(), "scope": scope.json,
-                                   "lang": Loc.language, "inApp": true]
+                                   "lang": Loc.language, "inApp": true, "sessionBanner": mode == "item"]
         let json = (try? JSONSerialization.data(withJSONObject: info)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         ucc.addUserScript(WKUserScript(source: "window.blurtHostInfo = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
@@ -213,7 +217,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         loadedMode = mode
         overlay.set([])
         if case .session(let u) = scope { schemes.session = u } else { schemes.session = nil }
-        installHostInfo(scope)
+        installHostInfo(scope, mode: mode)
         var c = URLComponents()
         c.scheme = SchemeHandler.scheme
         c.host = "ui"
@@ -236,6 +240,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         switch a {
         case "done", "wontfix": actions?.applyState(a, uids: [it.uid])
         case "session": if let j = it.workJob { actions?.revealJob(j) }
+        case "take_back": actions?.applyState("take_back", uids: [it.uid])
         case "progress": if let j = banner.processingJob { actions?.revealJob(j) }
         case "move": if let p = it.suggestedProject { actions?.move(uids: [it.uid], to: p) }
         default: break
@@ -314,7 +319,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
                 reply(r, r == nil ? "handoff failed" : nil)
             }
         case "openSession":
-            if let j = p["jobId"] as? String { actions?.revealJob(j) }
+            if let j = ReviewHostParams.job(p) { actions?.revealJob(j) }
             reply(nil, nil)
         case "registerDragRects":
             let rects = (p["rects"] as? [[String: Any]] ?? []).compactMap { r -> DragRect? in
@@ -329,6 +334,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             reply(nil, nil)
         case "confirmed":
             actions?.webWrote()
+            if case .session(let u)? = scope(p) { ReviewHandoff.confirmed(session: u) }
             reply(nil, nil)
         default:
             reply(nil, "unknown method \(method)")
@@ -415,7 +421,9 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 /// The line above an item that tells you what it is waiting for, with the one or two things you can do about it (K3
 /// actions; the detail's state pill has the rest, and its work panel asks about an item waiting to be verified):
 ///   with an agent  "With Claude Code · Needs your input"                         [Open Session]
-///   handed out     "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
+///   session ended  "With Claude Code · Session ended without reporting back"     [Open Session] [Mark as Done]
+///   session gone   (the same line; nothing left to open)                         [Take Back] [Mark as Done]
+///   handed out    "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
 ///   suggested      "Looks like it belongs in bug-agent (58%)."                  [Move]
 final class ItemBanner: NSView {
     var onAction: ((String) -> Void)?
@@ -499,9 +507,21 @@ final class ItemBanner: NSView {
         case "session":
             tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
-            let st = it.workJob.flatMap { JobStore.shared.job($0)?.agent?.status }.map { T("session.\($0.rawValue)") } ?? Look.stateName(it.state)
-            text.stringValue = T("main.banner.with_agent", agent ?? T("main.banner.agent"), st)
-            if it.workJob != nil { button(T("main.banner.open_session"), "session", primary: true) }
+            let who = agent ?? T("main.banner.agent")
+            switch WorkSession.of(state: it.state, to: it.workTo ?? "session", job: it.workJob, lookup: JobStore.shared.job) ?? .gone {
+            case .live(let st):
+                text.stringValue = T("main.banner.with_agent", who, T("session.\(st.rawValue)"))
+                button(T("main.banner.open_session"), "session", primary: true)
+            case .ended:
+                // the agent never said it was done: see what it did, then decide (Take Back is in the state pill)
+                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
+                button(T("main.banner.open_session"), "session")
+                button(StateMenu.title("done"), "done", primary: true)
+            case .gone:
+                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
+                button(StateMenu.title("take_back"), "take_back")
+                button(StateMenu.title("done"), "done", primary: true)
+            }
         case "external":
             tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)

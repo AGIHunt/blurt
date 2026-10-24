@@ -59,8 +59,9 @@
 "main.action.record" = "录制";
 "main.action.snap" = "截图";
 
-"main.banner.agent" = "agent";
-"main.banner.external" = "已复制给你的 agent。做完后在这里标为完成。";
+"main.banner.agent" = "Agent";
+"main.banner.ended" = "会话已结束，未报告完成";
+"main.banner.external" = "已复制给你的 Agent。做完后在这里标为完成。";
 "main.banner.move" = "移过去";
 "main.banner.open_session" = "打开会话";
 "main.banner.organizing" = "还在整理 · %@";
@@ -95,9 +96,9 @@
 "main.dispatch.concurrent.title" = "这次放到单独的分支上做吗？";
 "main.dispatch.failed" = "没能开始会话";
 "main.dispatch.needs_project" = "先把这些条目移到一个项目里";
-"main.dispatch.needs_project.detail" = "agent 需要在项目文件夹里工作。用「移到项目」之后再开会话。";
+"main.dispatch.needs_project.detail" = "Agent 需要在项目文件夹里工作。用「移到项目」之后再开会话。";
 "main.dispatch.one_project" = "请选同一个项目里的条目";
-"main.dispatch.one_project.detail" = "一个 agent 会话只在一个项目文件夹里工作，请按项目分别交出。";
+"main.dispatch.one_project.detail" = "一个 Agent 会话只在一个项目文件夹里工作，请按项目分别交出。";
 "main.dispatch.use_worktree" = "用单独的分支";
 
 "main.empty.all_filed" = "都已归类";
@@ -150,7 +151,7 @@
 "main.filter.only_kind" = "只看%@（%ld）";
 
 "main.filter.state" = "按状态筛选";
-"main.handoff.copied" = "指令已复制，粘贴到 Claude Code、Codex 或其它 agent 里";
+"main.handoff.copied" = "指令已复制，粘贴到 Claude Code、Codex 或其它 Agent 里";
 "main.handoff.copied_full" = "全文已复制，截图用路径引用";
 "main.handoff.failed" = "没能准备交接内容";
 
@@ -159,12 +160,12 @@
 "main.inbox.verify" = "%ld 条待验证";
 "main.item.untitled" = "无标题";
 
-"main.job.error.auth" = "agent 没有登录。";
+"main.job.error.auth" = "Agent 没有登录。";
 "main.job.error.conflict" = "改动和你的冲突了。";
 "main.job.error.git" = "git 操作没完成。";
 "main.job.error.model" = "模型不可用。";
 "main.job.error.network" = "网络断了。";
-"main.job.error.quota" = "agent 的额度用完了。";
+"main.job.error.quota" = "Agent 的额度用完了。";
 "main.job.error.tmux" = "没装 tmux，可以用 Homebrew 安装（brew install tmux）。";
 "main.job.hint.no_agent" = "还没有能用的 agent。在「设置 → Agent」里安装或登录 Claude Code、Codex。";
 "main.job.hint.interrupted" = "口喷鸡在它完成前退出了。点重试再来一次。";
@@ -207,6 +208,7 @@
 "main.menu.rename" = "改标题…";
 "main.menu.review_batch" = "审核整批捕获";
 "main.menu.start_session" = "在口喷鸡里开始";
+"main.menu.open_session" = "打开会话";
 
 "main.misc.by_codex" = "由 codex 修复";
 "main.misc.drag_finder_terminal" = "拖到访达或终端";
@@ -250,14 +252,15 @@
 "main.project.remove.detail" = "文件夹和里面的条目都不会动，重新打开这个文件夹就能回来。";
 "main.project.remove.title" = "从口喷鸡移除「%@」？";
 "main.project.save_failed" = "没能保存项目";
+"main.project.use_failed" = "没能切换项目";
 "main.project.settings" = "项目设置…";
 "main.project.settings.title" = "「%@」设置";
 "main.project.use" = "设为当前项目";
 "main.project.use.tip" = "新的录屏、截图和语音都归当前项目";
 "main.project.use_auto" = "不指定项目（自动归类）";
 "main.project.worktree" = "每次交出都用单独的 worktree";
-"main.project.worktree.no_git" = "不是 git 仓库：agent 直接在文件夹里改。";
-"main.project.worktree.note" = "agent 在你工作区旁边的分支上改，之后由你合并、开 PR 或丢弃。";
+"main.project.worktree.no_git" = "不是 git 仓库：Agent 直接在文件夹里改。";
+"main.project.worktree.note" = "Agent 在你工作区旁边的分支上改，之后由你合并、开 PR 或丢弃。";
 
 "main.rename.title" = "改标题";
 
@@ -278,19 +281,20 @@
 "main.missing.locate.message" = "选择「%@」现在所在的文件夹。";
 "main.sidebar.not_opened" = "还没作为项目打开";
 "main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
-"main.sidebar.progress.ax" = "进行中：交给 agent 的条目和正在运行的任务";
+"main.sidebar.progress.ax" = "进行中：交给 Agent 的条目和正在运行的任务";
 "main.sidebar.projects" = "项目";
 "main.sidebar.unassigned.ax" = "未归类：还没归到项目的条目";
 
 "main.state.ax" = "状态：%@。点按可更改。";
 "main.toast.download_failed" = "没能保存：%@";
 "main.toast.downloaded" = "已存到「下载」：%@";
+"main.toast.session_gone" = "这个会话已结束，记录已清理。";
 "main.speech.recommended" = "推荐这台 Mac 使用的语音识别模型 · %@";
 "main.speech.recommended.action" = "查看";
 
 "main.toolbar.handoff" = "交出";
-"main.toolbar.handoff.own" = "给你自己的 agent";
-"main.toolbar.handoff.tip" = "在口喷鸡里开一个 agent 会话，或复制指令给你自己的 agent";
+"main.toolbar.handoff.own" = "给你自己的 Agent";
+"main.toolbar.handoff.tip" = "在口喷鸡里开一个 Agent 会话，或复制指令给你自己的 Agent";
 "main.toolbar.move" = "移动";
 "main.toolbar.move.tip" = "把选中的条目移到某个项目";
 "main.toolbar.record.tip" = "录制屏幕和讲解 %@";

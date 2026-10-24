@@ -719,7 +719,10 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
   hook 进程（`sessions.py hook`）：从 stdin（Claude）或最后一个 argv（Codex）读 JSON，往 `jobs/<id>.events.jsonl` 追加一行
   `{"t","source":"hook","event","status","detail":{"notification_type"?, "message"?（≤ 200 字）, "agent_session_id"?}}`，
   原文写进 `<id>.log`；**stdout 不输出任何东西**、总是退出 0、1 秒内结束，绝不影响 agent。状态没变（例如连续的 PostToolUse）时不追加。
-  `exited` 时还没到 to_verify 的条目由 monitor 推到 to_verify（K3）。
+  `exited` / `error` 不移动条目：只有 agent 自己报告（`items.py state --state to_verify --claim …`、MCP `mark_fixed`）才到
+  to_verify。退出或崩溃却没报告的会话，条目留在进行中，App 在条目上方说「会话已结束，未报告完成」，给「打开会话 / 标为完成」
+  （会话记录不在了就是「收回 / 标为完成」）。`jobs.py gc` 不删未完成条目还指着的会话和没收尾的 worktree；`items.py migrate --all`
+  一次性忘掉指向不存在会话的 `work.job`（v0.6 的 r-… 运行、已删的任务）。
 - **agent 任务的 `agent` 对象**：
   `{"id": "claude", "mode": "together|parallel", "runner": "tmux|app", "tmux": {"socket", "session", "window": "@12", "name": "BA-12"} | null,
   "cwd": abs, "worktree": {"path", "branch", "base", "base_sha"} | null, "status", "status_at", "status_source", "exit": null|n,
@@ -1103,8 +1106,9 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
     `sendOps {ops, confirm, scope}`、`confirmed {scope}`；返回值同 v2（`{doc, etag}` / `{etag, doc?}` / `{ok, etag, doc?}`，sendOps 可以只确认）。
     scope 来自 `blurtHostInfo.scope`，没有就看 URL 的 `?project=` / `?session=`。
   - 可选方法（`blurtHostInfo.methods` 列出才出现）：`reveal {path}`、`quickLook {path}`、`openCode {ref}`、`dispatch {uids}`、
-    `handoff {uids, what: "instruction"|"full"}` → `{id, path, text}`（要回复；宿主复制 `text` 并调 `handoff.py --mark`）、`openSession {job}`、
-    `registerDragRects {rects}`、`download {path}`。`fixWithAgent` 删除。`path` 是 doc 里的原样路径（v3 绝对，v2 相对会话）。
+    `handoff {uids, what: "instruction"|"full"}` → `{id, path, text}`（要回复；宿主复制 `text` 并调 `handoff.py --mark`）、`openSession {job}`（Mac 早期读 `jobId`，现在两个都认）、
+    `registerDragRects {rects}`、`download {path}`。`blurtHostInfo.sessionBanner: true`（Mac）= 宿主在页面上方的横幅里放了「打开会话」，
+    已交出 / 进行中的条目工作面板就不再放第二个。`fixWithAgent` 删除。`path` 是 doc 里的原样路径（v3 绝对，v2 相对会话）。
   - `fileUrl`：v3 的绝对路径——浏览器 `files/` + `encodeURIComponent(绝对路径)`（**整个路径一个段**，`/` 编成 `%2F`；review.py 解码后只放行
     已登记的 store、会话目录和 `$BLURT_HOME/handoff`）；macOS `blurt-app://file/` + `encodeURIComponent(绝对路径)`；Tauri `convertFileSrc(绝对路径)`。
     v2 的相对路径照旧（`files/<逐段编码>`、`blurt-app://session/<rel>`）。

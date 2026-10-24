@@ -14,7 +14,9 @@ described (contract C5): the apps and live.py run what this returns instead of b
                    [--no-mcp] [--processing]
                                    → {"id","mode","argv","cwd","env","url","events","terminal","clipboard","open_app",
                                       "retry_exit","prompt_file"}; --processing (an unattended organising run): the
-                                      processing model + effort and the usage flags → also "processing", "usage"
+                                      processing model + effort and the usage flags → also "processing", "usage";
+                                      "scripts" = the folder the run may call (`uv run <scripts>/<name>.py`: name it
+                                      so in the prompt), env = what a sandboxed run needs (sandbox_env)
   agents.py models ID              → {"ok","id","models":[{id,name,description,cheap}],"cheapest","cli_default",
                                       "efforts","processing":{model,effort}}   (no network, no tokens)
   agents.py usage ID FILE [--offset N]   tokens a run reported in its output (from byte N) → {"ok","usage"|null}
@@ -29,7 +31,8 @@ hooks (Claude: a --settings file; Codex: -c notify and hooks.*) and the blurt MC
 The registry is agents.json next to this file (also bundled into Blurt.app, which implements the same rules in
 Agents.swift). Config ($BLURT_HOME/config.json → record): agents = ["claude", "codex", …] (order; agents not listed are
 not used), agent_defs = {"<id>": {…same fields as agents.json…}} to add or override one. With --repo, the repo's
-.blurt/config.json record.agents / record.process / record.agent_defs win over the global ones.
+.blurt/config.json record.agents / record.process win over the global ones — never its agent_defs: a definition is a
+command line Blurt runs, and a project's .blurt/ is writable by the sandboxed organizing run (writable_dirs).
 
 Probes (status / detect) run with the agent-session variables of whoever called us removed (CLAUDECODE,
 CLAUDE_CODE_*, CODEX_*… — like the app's agentEnvironment()), so a call from inside Claude Code reports what the
@@ -208,7 +211,8 @@ def clean_env(env: dict | None = None) -> dict:
 
 
 def config(repo: str | Path | None = None) -> dict:
-    """Global config, with the repo's .blurt/config.json record.agents / process / agent_defs on top."""
+    """Global config, with the repo's .blurt/config.json record.agents / process on top. Not its agent_defs: an
+    unattended run may write the project's .blurt/ (writable_dirs), and a definition is a command Blurt runs later."""
     cfg = json.loads(json.dumps(global_config()))
     if repo:
         try:
@@ -220,8 +224,6 @@ def config(repo: str | Path | None = None) -> dict:
         for k in ("agents", "process"):
             if k in lrec:
                 rec[k] = lrec[k]
-        if isinstance(lrec.get("agent_defs"), dict):
-            rec["agent_defs"] = {**(rec.get("agent_defs") or {}), **lrec["agent_defs"]}
     return cfg
 
 
@@ -236,12 +238,47 @@ def expand(path: str, env: dict | None = None) -> Path:
     return Path(os.path.expanduser(s))
 
 
+def sandbox_uv_cache() -> Path:
+    """uv's cache for sandboxed runs only. The shared one stays read-only to them: an environment planted there would
+    run, unsandboxed, the next time the app calls a script."""
+    from _common import blurt_home  # noqa: PLC0415
+    return blurt_home() / "sandbox" / "uv-cache"
+
+
+def sandbox_env() -> dict:
+    """What a sandboxed run ("{writable}" in run) needs: its own uv cache (created here — its parent isn't writable
+    to the run) and no index writes ($BLURT_HOME isn't writable to it; the app re-indexes what changed)."""
+    c = sandbox_uv_cache()
+    c.mkdir(parents=True, exist_ok=True)
+    return {"UV_CACHE_DIR": str(c), "BLURT_NO_INDEX": "1"}
+
+
+def writable_dirs() -> list[str]:
+    """What an unattended organizing run may write besides its cwd (the session folder) — "{writable}" in run: one
+    `--add-dir` each, for codex's workspace-write sandbox: the inbox store and every project's .blurt store that
+    exists (ingest files an item straight into the project the agent is sure of; set-frames / patch follow it) and
+    its own uv cache. Never $BLURT_HOME (config.json and its agent_defs, the jobs' hook settings, the index) nor the
+    shared uv cache: a write there would run outside the sandbox later. Mirrors UnattendedRun.writableDirs (Swift)."""
+    import projects  # noqa: PLC0415 — projects imports agents
+    import store as st  # noqa: PLC0415
+    dirs = [str(st.inbox_root())]
+    try:
+        dirs += [str(Path(e["path"]) / ".blurt") for e in projects.entries()]
+    except Exception:  # noqa: BLE001 — no registry yet: the inbox
+        pass
+    dirs = [d for d in dirs if Path(d).is_dir()] + [str(sandbox_uv_cache())]  # a moved project's old path: nothing
+    return list(dict.fromkeys(dirs))
+
+
 def _fill(args: list, vals: dict) -> list[str]:
     out = []
     for a in args:
-        if isinstance(a, str):
-            for k, v in vals.items():
-                a = a.replace("{" + k + "}", str(v))
+        if a == "{writable}":  # a list, not a string: one --add-dir per folder (writable_dirs)
+            for d in vals.get("writable") or []:
+                out += ["--add-dir", str(d)]
+            continue
+        if isinstance(a, str):  # one pass: a "{scripts}" inside the prompt text stays as it is
+            a = re.sub(r"\{(\w+)\}", lambda m: str(vals[m.group(1)]) if m.group(1) in vals else m.group(0), a)
         out.append(a)
     return out
 
@@ -365,7 +402,12 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
     if mode == "headless":
         if not is_headless(d) or not bin_:
             raise ValueError(f"{agent} has no headless mode")
-        vals = {**vars, "prompt": prompt, "repo": repo}
+        # {scripts}: claude / gemini may run only `uv run <scripts>/<name>.py` — the caller's prompt names that path
+        vals = {**vars, "prompt": prompt, "repo": repo, "scripts": str(SCRIPTS)}
+        out["scripts"] = str(SCRIPTS)
+        if "{writable}" in d["run"]:  # sandboxed: only an organizing run writes the item stores; the rest only cwd
+            vals["writable"] = writable_dirs() if processing_run else []
+            env_add.update(sandbox_env())
         argv = [bin_, *_fill(d["run"], vals)]
         hm = d.get("headless_mcp") or {}
         if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run

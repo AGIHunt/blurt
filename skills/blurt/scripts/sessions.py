@@ -312,9 +312,11 @@ def _items_in(uids: list[str], states: tuple[str, ...]) -> list[str]:
 
 
 def _advance_items(job: dict, running: bool) -> None:
-    """K3 for a session: first running → handed_off items become in_progress; exited → in_progress ones go to
-    to_verify (claim null). Each happens once per job (agent.started / agent.closed). running = the agent is known
-    to be up (a hook or the terminal said so, or it has no hooks and its window is alive)."""
+    """K3 for a session: first running → handed_off items become in_progress (once per job: agent.started). An
+    exit moves nothing: only the agent says an item is done (items.py state --state to_verify --claim …, MCP
+    mark_fixed), so one that exited or crashed without saying so leaves its items in progress and the app says the
+    session ended without reporting back (agent.closed marks that the exit was seen). running = the agent is known to
+    be up (a hook or the terminal said so, or it has no hooks and its window is alive)."""
     import handoff
     a = job.get("agent") or {}
     uids = job.get("items") or []
@@ -326,9 +328,6 @@ def _advance_items(job: dict, running: bool) -> None:
                 handoff.set_work(todo, "in_progress", **common)
             a["started"] = True
         if a.get("status") in ("exited", "error") and not a.get("closed"):
-            doing = _items_in(uids, ("in_progress",))
-            if doing:
-                handoff.set_work(doing, "to_verify", **common)
             a["closed"] = True
     except handoff.CliError as e:
         a["items_error"] = {"code": e.code, "message": str(e)[:300]}

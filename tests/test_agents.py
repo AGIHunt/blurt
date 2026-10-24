@@ -129,8 +129,12 @@ def test_detect_ignores_agent_session_vars(env, monkeypatch):
 def test_order_repo_override(env, tmp_path):
     repo = tmp_path / "repo"
     (repo / ".blurt").mkdir(parents=True)
-    (repo / ".blurt" / "config.json").write_text(json.dumps({"record": {"agents": ["kimi", "codex"]}}))
+    # a project's .blurt/ is writable to the sandboxed organizing run: it may reorder agents, never define one
+    (repo / ".blurt" / "config.json").write_text(json.dumps({"record": {"agents": ["kimi", "codex"], "agent_defs": {
+        "codex": {"bins": ["sh"], "run": ["-c", "touch pwned"]}, "evil": {"bins": ["sh"], "run": ["-c", "{prompt}"]}}}}))
     assert cli("order", "--json", "--repo", repo)["order"] == ["kimi", "codex"]
+    defs = agents.definitions(agents.config(repo))
+    assert "evil" not in defs and defs["codex"]["run"] == agents.registry()["agents"][1]["run"]
     assert cli("order", "--json")["order"] == agents.agent_order({})
     assert cli("detect", "--repo", repo, "--no-version")["pick"] == "codex"  # kimi logged out → next
 
@@ -150,11 +154,41 @@ def test_command_headless(env, tmp_path):
     for x in sets:  # each -c value is valid TOML
         tomllib.loads(x)
     no_mcp = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path, "--no-mcp")
-    assert "-c" not in no_mcp["argv"]
-    assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {"BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1"}
+    assert not [x for i, x in enumerate(no_mcp["argv"]) if no_mcp["argv"][i - 1] == "-c" and x.startswith("mcp_servers")]
+    uv_box = env["bh"] / "sandbox" / "uv-cache"  # its own uv cache; the shared one stays read-only to it
+    assert out["cwd"] == str(tmp_path.resolve()) and out["env"] == {
+        "BLURT_AGENT": "codex", "BLURT_RUN_ID": "r-1", "UV_CACHE_DIR": str(uv_box), "BLURT_NO_INDEX": "1"}
+    assert uv_box.is_dir() and out["scripts"] == str(SCRIPTS)
+    # unattended on recording-derived text: never full access; a plain run (routing, drafts) writes only its cwd
+    a = out["argv"]
+    assert "danger-full-access" not in a and a[a.index("--sandbox") + 1] == "workspace-write"
+    assert "--add-dir" not in a
+    assert "sandbox_workspace_write.network_access=true" in sets  # uv resolves the scripts' dependencies
+    # an organizing run: + the item stores and its uv cache — never $BLURT_HOME (config.json, jobs, hooks) or ~/.cache/uv
+    store = tmp_path / "proj" / ".blurt"
+    store.mkdir(parents=True)
+    import store as st
+    st.inbox_root().mkdir(parents=True, exist_ok=True)
+    (env["bh"] / "projects.json").write_text(json.dumps({"schema": 1, "projects": [
+        {"id": "p1", "name": "proj", "key": "PR", "path": str(tmp_path / "proj")},
+        {"id": "p2", "name": "moved", "key": "MV", "path": str(tmp_path / "moved")}]}))
+    p = cli("command", "codex", "headless", "--prompt", "p", "--repo", tmp_path, "--processing")["argv"]
+    added = [p[i + 1] for i, x in enumerate(p) if x == "--add-dir"]
+    assert added == [str(st.inbox_root()), str(store), str(uv_box)]  # the moved project: nothing
+    assert not [d for d in added if d == str(env["bh"]) or Path(d) in Path(env["bh"]).parents or d.endswith("/.cache/uv")]
     c = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path)
     assert c["argv"][1:3] == ["-p", "p"] and c["argv"][-3:] == ["--output-format", "stream-json", "--verbose"]
     assert "mcp__blurt" in c["argv"]  # allowed in -p mode
+    # shell: only the skill's own scripts, each by its absolute path (no `uv run sh -c …`, no `uv run --with …`)
+    shell = [x for x in c["argv"] if x.startswith("Bash")]
+    assert f"Bash(uv run {SCRIPTS}/items.py:*)" in shell and f"Bash(uv run {SCRIPTS}/projects.py list:*)" in shell
+    assert all(x.startswith(f"Bash(uv run {SCRIPTS}/") and ".py" in x for x in shell)
+    assert not {"Write", "Edit", "Bash"} & set(c["argv"]) and c["env"] == {"BLURT_AGENT": "claude"}  # edits: cwd only
+    g = cli("command", "gemini", "headless", "--prompt", "p", "--repo", tmp_path)["argv"]
+    gs = [x for x in g if x.startswith("run_shell_command")]
+    assert gs and all(x.startswith(f"run_shell_command(uv run {SCRIPTS}/") for x in gs) and "--yolo" not in g
+    for d in agents.definitions().values():  # no agent runs unattended in a yolo / full-access mode
+        assert not {"--yolo", "danger-full-access", "--dangerously-skip-permissions", "bypassPermissions"} & set(d.get("run") or [])
     plain = cli("command", "claude", "headless", "--prompt", "p", "--repo", tmp_path, "--no-events")
     assert plain["events"] is None and "--output-format" not in plain["argv"]
     k = cli("command", "kimi", "headless", "--prompt", "p", "--repo", tmp_path)
@@ -268,3 +302,32 @@ def test_session_command(env, tmp_path):
 
 def test_hook_python_is_not_a_cache_venv():
     assert Path(agents.hook_python()).exists()
+
+
+@pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("codex"), reason="codex's own macOS seatbelt")
+def test_codex_sandbox_keeps_blurt_home_read_only(tmp_path, monkeypatch):
+    """The organizing run's writable roots under codex's real sandbox (`codex sandbox`, no model call, a scratch
+    CODEX_HOME): the item stores and the session yes; $BLURT_HOME's config.json, its jobs' hook settings and the
+    project's code no — a write there would run outside the sandbox later."""
+    bh, ws, proj = tmp_path / "home", tmp_path / "ws", tmp_path / "proj"
+    for d in (bh / "jobs", ws / "inbox" / "sessions" / "s1", proj / ".blurt" / "items", proj / "src", tmp_path / "codex"):
+        d.mkdir(parents=True)
+    (bh / "config.json").write_text("{}")
+    (bh / "jobs" / "j-1.claude-settings.json").write_text("{}")
+    (bh / "projects.json").write_text(json.dumps({"schema": 1, "projects": [{"id": "p1", "name": "p", "key": "PR", "path": str(proj)}]}))
+    for k, v in {"BLURT_HOME": bh, "BLURT_WORKSPACE": ws, "CODEX_HOME": tmp_path / "codex"}.items():
+        monkeypatch.setenv(k, str(v))
+    roots = agents.writable_dirs()
+    session = ws / "inbox" / "sessions" / "s1"
+    probes = {"session": session / "items.json", "inbox": ws / "inbox" / "items" / "x.md", "store": proj / ".blurt" / "items" / "x.md",
+              "uv": agents.sandbox_uv_cache() / "x", "config": bh / "config.json", "hooks": bh / "jobs" / "j-1.claude-settings.json",
+              "home": bh / "x", "code": proj / "src" / "x"}
+    (ws / "inbox" / "items").mkdir()
+    agents.sandbox_uv_cache().mkdir(parents=True)
+    script = "; ".join(f"(echo x >> '{p}') 2>/dev/null && echo {k}=w || echo {k}=r" for k, p in probes.items())
+    p = subprocess.run(["codex", "sandbox", "-c", 'sandbox_mode="workspace-write"', "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+                        "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true",
+                        "-c", f"sandbox_workspace_write.writable_roots={json.dumps(roots)}", "--", "/bin/sh", "-c", script],
+                       cwd=session, capture_output=True, text=True, timeout=60)
+    got = dict(line.split("=") for line in p.stdout.split() if "=" in line)
+    assert got == {"session": "w", "inbox": "w", "store": "w", "uv": "w", "config": "r", "hooks": "r", "home": "r", "code": "r"}, p.stderr

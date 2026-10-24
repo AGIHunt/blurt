@@ -61,11 +61,17 @@ enum Housekeeping {
         emit(["event": "ask_current_project", "project": p.id])
         island.ask(T("app.migrate.ask", p.name), T("app.migrate.keep", p.name), {
             emit(["event": "current_project_answer", "keep": true])
-            Task { try? await store.use(p.id); await MainActor.run { island.projectChanged() } }
+            use(p.id)
         }, T("app.migrate.auto"), {
             emit(["event": "current_project_answer", "keep": false])
-            Task { try? await store.use(nil); await MainActor.run { island.projectChanged() } }
+            use(nil)
         })
+        func use(_ id: String?) {
+            Task {
+                do { try await store.use(id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }
+                await MainActor.run { island.projectChanged() }
+            }
+        }
     }
 
     static func startMonitor() {

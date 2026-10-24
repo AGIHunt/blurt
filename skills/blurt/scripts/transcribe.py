@@ -518,7 +518,8 @@ def cap_mlx_memory(fraction: float) -> int | None:
 class AsrSlot:
     """At most N concurrent batch transcriptions machine-wide: byte-range locks on $BLURT_HOME/run/asr.lock
     (released by the OS when a process dies). Waiting = queued: said on stderr and, under a job ($BLURT_JOB),
-    as events in jobs/<id>.events.jsonl (K4)."""
+    as events in jobs/<id>.events.jsonl (K4). A run that can't write $BLURT_HOME (an organizing agent in its
+    sandbox) transcribes without a slot."""
 
     _held: set[int] = set()       # slots this process holds (record locks are per process, not per thread)
     _guard = threading.Lock()
@@ -553,8 +554,12 @@ class AsrSlot:
     def __enter__(self):
         with AsrSlot._guard:
             if AsrSlot._file is None:
-                RUN_DIR.mkdir(parents=True, exist_ok=True)
-                AsrSlot._file = open(RUN_DIR / "asr.lock", "a+b")
+                try:
+                    RUN_DIR.mkdir(parents=True, exist_ok=True)
+                    AsrSlot._file = open(RUN_DIR / "asr.lock", "a+b")
+                except PermissionError:
+                    print("asr: $BLURT_HOME/run is read-only here (a sandboxed run): not queued", file=sys.stderr, flush=True)
+                    return self
         self.fh = AsrSlot._file
         t0 = time.time()
         queued = False

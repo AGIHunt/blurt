@@ -81,7 +81,8 @@ enum MainMenu {
         displayKey(changeState, "s")
         _ = menu(T("menu.item"), [item(T("main.menu.start_session"), #selector(MainWindowController.mHandOff), "\r"),
                                   item(T("main.cmd.copy_instruction"), #selector(MainWindowController.mCopyInstruction), "c", [.command, .shift]),
-                                  item(T("main.cmd.copy_full"), #selector(MainWindowController.mCopyFull)), .separator(),
+                                  item(T("main.cmd.copy_full"), #selector(MainWindowController.mCopyFull)),
+                                  item(T("main.menu.open_session"), #selector(MainWindowController.mOpenSession)), .separator(),
                                   changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
                                   state("discard", "\u{8}"), .separator(),
                                   move,
