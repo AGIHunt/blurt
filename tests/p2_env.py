@@ -194,7 +194,7 @@ class P2:
         win = self.job(jid)["agent"]["tmux"]["window"]
         self.tmux("send-keys", "-t", win, "Enter")
 
-    def wait(self, fn, timeout: float = 10, what: str = "condition"):
+    def wait(self, fn, timeout: float = 30, what: str = "condition"):  # generous: hooks run `uv` under load
         deadline = time.monotonic() + timeout
         last = None
         while time.monotonic() < deadline:
