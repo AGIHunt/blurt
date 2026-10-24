@@ -208,3 +208,7 @@
 "settings.perm.not_needed" = "Not needed";
 "settings.general.dictation_lab" = "Show the Dictation Lab (for developers)";
 "settings.general.dictation_lab.hint" = "A testing bench for dictation: read prompts, compare models, mark mistakes, re-run saved cases. In the Dictation page.";
+"settings.general.voice_end_on_pause" = "End a voice note when I pause";
+"settings.general.voice_end_on_pause.hint" = "Off: a voice note (⌥⇧V) goes on through your thinking pauses until you press the key again or click Done, up to 10 minutes; Esc cancels. On: 1.5 seconds of silence ends it. A screenshot’s spoken note always ends when you pause.";
+"settings.general.live_text" = "Show text while I talk";
+"settings.general.live_text.hint" = "While a voice note or a dictation listens, the words recognised so far show in a small panel under the island, the newest fading in. It never takes the focus, moves out of the way of where you type, and is never recorded.";

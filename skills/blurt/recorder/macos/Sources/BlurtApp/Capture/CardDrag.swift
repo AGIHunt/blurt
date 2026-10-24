@@ -5,6 +5,10 @@
 // one line); every chat app (browsers, Electron apps, WeChat, QQ, anything else) and the Finder the picture alone —
 // the note is pasted after the drop (Captures.takeOut → DragNoteFollowUp); a terminal both paths. The .md rides as the
 // second item only for a terminal, or with record.drag_note_file on.
+// v0.8.6: a voice card (its words, one item) over a chat app's window — BlurtCore VoiceCardDrop — gets our own hint
+// drawn under the card in the drag image ("松手粘贴到 Claude": the app shows none for text) and doesn't fly back when
+// the app refuses the drop; the caller (HangingCards / TakenPanel) then has the words pasted into that window's
+// composer (voiceTarget(at:) → Snapper.takeOutVoice).
 //
 // How, and why this way (measured with our own stand-in apps — an NSTextView, a WKWebView page, logging pads):
 //  • The items are lazily provided (NSPasteboardItemDataProvider): when an app asks for a type, we look at where the
@@ -82,6 +86,22 @@ enum DropProbe {
         return nil
     }
 
+    private static var names: [pid_t: String] = [:]
+
+    /// The app's name, for the island and a voice card's drop hint ("Claude", "微信"): the running app's own name; a
+    /// test stand-in's is the name of the app it stands in for, when that is installed (read from its bundle).
+    static func appName(_ t: DropTarget) -> String? {
+        if let n = names[t.pid] { return n }
+        var n: String?
+        if testMode, testMap[t.pid] != nil || testFixed != nil, let id = t.bundleID,
+           let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+            n = (FileManager.default.displayName(atPath: u.path) as NSString).deletingPathExtension
+        }
+        if n == nil { n = NSRunningApplication(processIdentifier: t.pid)?.localizedName }
+        if let n = n { names[t.pid] = n }
+        return n
+    }
+
     /// `droptarget map PID=BUNDLE,… | fixed BUNDLE | clear` (test command)
     static func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
@@ -96,6 +116,7 @@ enum DropProbe {
         default: break
         }
         cache = [:]
+        names = [:]
         emit(["event": "droptarget", "map": Dictionary(uniqueKeysWithValues: testMap.map { ("\($0.key)", $0.value) }),
               "fixed": testFixed ?? NSNull()])
     }
@@ -155,6 +176,75 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         CardExport.flavours(it, copy: false, tag: tag).map(CardExport.type)
     }
 
+    // MARK: a voice card's own drop hint (VoiceCardDrop)
+
+    var isVoice: Bool { shot.kind == .voice }
+    /// what the drag image says now ("松手粘贴到 Claude"; nil: the card alone)
+    private(set) var hint: VoiceCardDrop.Hint?
+    /// the drag image as it started, its frame (in `source`'s coordinates) and that view
+    private var base: (image: NSImage, frame: NSRect, view: NSView)?
+
+    /// The card's own image and frame, for the hint to be drawn under it.
+    func setBase(image: NSImage, frame: NSRect, in view: NSView) { base = (image, frame, view) }
+
+    /// Over a window whose app gets the words pasted wherever it is let go of: the drag image says so (the app shows
+    /// nothing for text), and a refused drop doesn't fly back to the card. Over Blurt, nothing or another app: the card.
+    private func updateHint(_ t: DropTarget?) {
+        guard isVoice else { return }
+        let h = t.flatMap {
+            VoiceCardDrop.hint(cls: $0.cls, kind: $0.kind, app: DropProbe.appName($0), enabled: SmartPaste.enabled,
+                               accessibility: SmartPaste.accessibility)
+        }
+        guard h != hint else { return }
+        hint = h
+        session?.animatesToStartingPositionsOnCancelOrFail = h == nil
+        if let b = base, let s = session {
+            let (img, frame) = CardDrag.hinted(b.image, frame: b.frame, hint: h, flipped: b.view.isFlipped)
+            s.enumerateDraggingItems(options: [], for: b.view, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, i, _ in
+                if i == 0 { item.setDraggingFrame(frame, contents: img) }
+            }
+        }
+        let text: String? = h.map { CardDrag.hintText($0) }
+        emit(["event": "voice_drag_hint", "n": shot.n, "hint": text ?? NSNull(), "pid": Int(t?.pid ?? 0), "bundle": t?.bundleID ?? NSNull()])
+    }
+
+    static func hintText(_ h: VoiceCardDrop.Hint) -> String {
+        switch h {
+        case .paste(let app): return Loc.t("capture.voice_drop.hint_paste", table: "Capture", app)
+        case .copy(let app): return Loc.t("capture.voice_drop.hint_copy", table: "Capture", app)
+        }
+    }
+
+    /// The card with the hint under it: a small pill in the brand colour, the card above it as it was.
+    static func hinted(_ card: NSImage, frame: NSRect, hint: VoiceCardDrop.Hint?, flipped: Bool) -> (NSImage, NSRect) {
+        guard let h = hint else { return (card, frame) }
+        let text = NSAttributedString(string: hintText(h), attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                                                                         .foregroundColor: NSColor.white])
+        let icon = NSImage(systemSymbolName: "text.insert", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold).applying(.init(paletteColors: [.white])))
+        let pillH: CGFloat = 24, gap: CGFloat = 6
+        let pillW = ceil(text.size().width) + 20 + (icon != nil ? 18 : 0)
+        let w = max(frame.width, pillW), hgt = frame.height + gap + pillH
+        let img = NSImage(size: NSSize(width: w, height: hgt), flipped: false) { _ in
+            card.draw(in: NSRect(x: (w - frame.width) / 2, y: pillH + gap, width: frame.width, height: frame.height))
+            let pill = NSRect(x: (w - pillW) / 2, y: 0, width: pillW, height: pillH)
+            NSColor(white: 0, alpha: 0.25).setFill()
+            NSBezierPath(roundedRect: pill.offsetBy(dx: 0, dy: -1), xRadius: pillH / 2, yRadius: pillH / 2).fill()
+            accent.setFill()
+            NSBezierPath(roundedRect: pill, xRadius: pillH / 2, yRadius: pillH / 2).fill()
+            var x = pill.minX + 10
+            if let ic = icon {
+                ic.draw(in: NSRect(x: x, y: pill.midY - ic.size.height / 2, width: ic.size.width, height: ic.size.height))
+                x += 18
+            }
+            text.draw(at: NSPoint(x: x, y: pill.midY - text.size().height / 2))
+            return true
+        }
+        // the card stays where it was under the pointer; the pill hangs below it
+        let f = NSRect(x: frame.midX - w / 2, y: flipped ? frame.minY : frame.maxY - hgt, width: w, height: hgt)
+        return (img, f)
+    }
+
     /// The pointer moved: into an app of another class, the pasteboard is written again for it.
     func moved(to p: NSPoint) {
         let now = CACurrentMediaTime()
@@ -162,7 +252,9 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         let dt = now - lastProbe.time
         guard dt > 0.25 || (dt >= 0.03 && hypot(p.x - lastProbe.at.x, p.y - lastProbe.at.y) >= 3) else { return }
         lastProbe = (p, now)
-        guard let t = DropProbe.target(at: p) else { return }     // over our own windows: as it was
+        let under = DropProbe.target(at: p)
+        updateHint(under)
+        guard let t = under else { return }     // over our own windows: as it was
         let changedApp = t.pid != target?.pid
         target = t
         // the same layout for another class (chat ↔ finder): no rewrite
@@ -186,6 +278,13 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
               "kind": t?.kind.rawValue ?? NSNull(), "written": written.rawValue, "delivered": got?.rawValue ?? NSNull(),
               "note_file": got.map(noteFile(_:)) ?? false])
         return got
+    }
+
+    /// A voice card let go of over a window whose app gets the words pasted (VoiceCardDrop.pastes) — whether or not
+    /// the app took the drop: that app.
+    func voiceTarget(at p: NSPoint) -> DropTarget? {
+        guard isVoice, let t = DropProbe.target(at: p), VoiceCardDrop.pastes(cls: t.cls, kind: t.kind) else { return nil }
+        return t
     }
 
     /// The .md is in the layout for `c`.

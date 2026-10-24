@@ -157,9 +157,12 @@ final class Snapper {
 
     /// A finished voice input (VoiceInput.swift): its wav is at shots/NNN.wav of `batch`. The words are its note:
     /// with a project it is filed once they are transcribed; without words (or a project) it hangs as a card.
-    func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?) {
+    /// `stream`: the pieces transcribed while it was said — its last piece is all that is left (else the whole wav).
+    func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream: VoiceNoteStream? = nil) {
         let s = b.addVoice(n: n, duration: duration, project: project)
-        emit(["event": "voice", "n": n, "session": b.dir.path, "duration": duration, "project": project ?? NSNull()])
+        if let st = stream { streamed[ObjectIdentifier(s)] = st }
+        emit(["event": "voice", "n": n, "session": b.dir.path, "duration": duration, "project": project ?? NSNull(),
+              "streamed": stream != nil])
         if project == nil {
             hanging.catchCapture(s, from: island.frameOnScreen)
             transcribe(s) { _ in }
@@ -185,34 +188,57 @@ final class Snapper {
         pendingWords[key] = [then]
         s.transcription = .pending
         hanging.update(s)
+        if let st = streamed.removeValue(forKey: key) {
+            // a voice note transcribed while it was said: only its last piece is left
+            let t0 = CACurrentMediaTime()
+            st.finish { [weak self] text in
+                let t = text?.trimmingCharacters(in: .whitespacesAndNewlines)
+                emit(["event": "voice_stream_done", "n": s.n, "ok": text != nil, "chars": t?.count ?? 0,
+                      "ms": Int((CACurrentMediaTime() - t0) * 1000)])
+                guard let self = self else { return }
+                if let t = t, !t.isEmpty { self.wordsArrived(s, t, key: key, via: "stream") } else { self.transcribeWhole(s, wav, key: key) }
+            }
+            return
+        }
+        transcribeWhole(s, wav, key: key)
+    }
+
+    /// `transcribe.py note` on the whole wav (the warm server answers it when it runs).
+    private func transcribeWhole(_ s: Shot, _ wav: URL, key: ObjectIdentifier) {
         Task {
             if let d = Snapper.testWordsDelay { try? await Task.sleep(nanoseconds: UInt64(d * 1e9)) }
             var r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
             if Snapper.testFailWords() { r = nil }
             let ok = r.map { ($0["ok"] as? Bool) ?? true } ?? false
             let text = ok ? (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-            await MainActor.run {
-                emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false])
-                if !s.deleted {
-                    if let t = text, !t.isEmpty {
-                        s.said = t
-                        s.transcription = .idle
-                        s.batch?.save(s)
-                    } else if text != nil {
-                        s.transcription = .idle
-                        if s.kind == .shot { self.dropVoice(s, reason: "no_speech") } else { s.said = ""; s.batch?.save(s) }
-                    } else {
-                        s.transcription = .failed
-                    }
-                    hanging.update(s)
-                } else if s.transcription == .pending {
-                    s.transcription = .idle
-                }
-                for f in self.pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
-            }
+            await MainActor.run { self.wordsArrived(s, text, key: key, via: "whole") }
         }
     }
+
+    /// The words of `s` are in (nil: transcription failed; "": no speech in it).
+    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, via: String) {
+        emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false, "via": via,
+              "wall": Date().timeIntervalSince1970])
+        if !s.deleted {
+            if let t = text, !t.isEmpty {
+                s.said = t
+                s.transcription = .idle
+                s.batch?.save(s)
+            } else if text != nil {
+                s.transcription = .idle
+                if s.kind == .shot { dropVoice(s, reason: "no_speech") } else { s.said = ""; s.batch?.save(s) }
+            } else {
+                s.transcription = .failed
+            }
+            hanging.update(s)
+        } else if s.transcription == .pending {
+            s.transcription = .idle
+        }
+        for f in pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
+    }
     private var pendingWords: [ObjectIdentifier: [(String?) -> Void]] = [:]
+    /// voice notes whose pieces were transcribed while they were said (VoiceNoteStream), until their words are in
+    private var streamed: [ObjectIdentifier: VoiceNoteStream] = [:]
     /// Scripted checks (test commands only): BLURT_TEST_WORDS_DELAY=SECS holds every transcription back that long, so
     /// a voice card can be dragged before its words are there.
     static let testWordsDelay: Double? = {
@@ -420,6 +446,45 @@ final class Snapper {
             return
         }
         tookOut(s, b, fromPanel: fromPanel, delivered: delivered, noteFile: noteFile, notePasted: false)
+    }
+
+    /// A voice card let go of over a chat app's window (VoiceCardDrop): the app took the drop (its message box), or
+    /// Blurt pastes the words into that window's composer — the shot cards' follow-up (DragNoteFollowUp: the window
+    /// forward, the composer focused, one paste, the clipboard back). Can't: the words on the clipboard. Either way the
+    /// card has been used ("Pasted into Claude · Undo").
+    func takeOutVoice(_ s: Shot, fromPanel: Bool = false, landed t: DropTarget, at p: NSPoint, accepted: Bool) {
+        guard let b = s.batch, !s.deleted else { return }
+        if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+        if !fromPanel { hanging.takeAway(s) }
+        b.take(s, at: Snapper.now)
+        takenChanged()
+        let app = DropProbe.appName(t) ?? "App"
+        let plan = VoiceCardDrop.plan(cls: t.cls, kind: t.kind, accepted: accepted, words: s.copyText, enabled: SmartPaste.enabled,
+                                      accessibility: SmartPaste.accessibility,
+                                      secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled())
+        emit(["event": "voice_drop_plan", "n": s.n, "bundle": t.bundleID ?? NSNull(), "kind": t.kind.rawValue, "app": app,
+              "accepted": accepted, "plan": "\(plan)"])
+        let done = { [weak self] (pasted: Bool, copy: String?) in
+            guard let self = self else { return }
+            let saved = copy.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
+            let key = saved != nil ? "capture.voice_drop.copied" : pasted ? "capture.voice_drop.pasted" : "capture.taken_out"
+            emit(["event": "take_out", "n": s.n, "session": b.dir.path, "voice": true, "pasted": pasted, "note_copied": saved != nil,
+                  "accepted": accepted, "from_panel": fromPanel, "app": app, "toast": key])
+            var toast = Island.Toast(text: Loc.t(key, table: "Capture", app),
+                                     actionTitle: fromPanel ? nil : Loc.t("capture.undo", table: "Capture")) { [weak self] in
+                saved?.restore(capturePasteboard)
+                self?.putBack(s)
+            }
+            if fromPanel { toast.action = nil }
+            toast.seconds = saved != nil ? 5 : 4
+            island.toast(toast)
+        }
+        switch plan {
+        case .none: done(accepted, nil)
+        case .copy(let w): done(false, w)
+        case .paste(let w):
+            DragNoteFollowUp.run(note: w, target: t, at: p) { pasted in done(pasted, pasted ? nil : w) }
+        }
     }
 
     /// The rest of a take-out: the safety-net copy of the note, and the toast saying what went in.

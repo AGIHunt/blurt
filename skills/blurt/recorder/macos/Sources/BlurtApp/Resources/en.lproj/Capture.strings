@@ -180,3 +180,14 @@
 
 /* dictation styles (docs/design/dictation-styles.md) */
 "capture.action.reformat" = "Reformat last dictation";
+"capture.voice.hint_key" = "Listening — press %@ again to finish · Esc to cancel";
+"capture.voice.hint_done" = "Listening — Done to finish · Esc to cancel";
+"capture.voice.done" = "Done";
+"capture.voice.done_tip" = "Finish the voice note";
+"capture.voice.time_left" = "%@ left";
+"capture.voice.maxed" = "Reached %@ — the voice note is saved";
+"capture.live.ax" = "What you’ve said so far";
+"capture.voice_drop.hint_paste" = "Let go to paste into %@";
+"capture.voice_drop.hint_copy" = "Let go, then ⌘V in %@";
+"capture.voice_drop.pasted" = "Pasted into %@";
+"capture.voice_drop.copied" = "Copied — ⌘V to paste into %@";

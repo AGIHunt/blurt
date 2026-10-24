@@ -96,6 +96,11 @@
 //  • a voice card is a text card: up to two lines of its words and a small mic mark (it was spoken). Dragged before
 //    its words are written down, the drag waits for them (up to 1 s, while the pointer keeps moving), else it stays
 //    and says "The words aren't ready yet" under the card. Its hover note keeps the small play button.
+//    v0.8.6 — into a chat app it drops anywhere in the window (BlurtCore VoiceCardDrop: Electron and browser pages take
+//    dropped text only on their message box, and show their drop overlay only for files): over such a window the drag
+//    image says "松手粘贴到 Claude" (CardDrag draws the hint under the card; a refused drop doesn't fly back), and let
+//    go of anywhere there, Blurt pastes the words into that window's composer (Snapper.takeOutVoice → the shot cards'
+//    DragNoteFollowUp). Notes, TextEdit, terminals: the normal text drop (one line; never a Return).
 //  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the thread reels the card up
 //    into the island, which swallows it with a small bump.
 //  • at most 7 cards show, centred on the island, 12 pt apart, tilted ±2° in turn; older ones stack into "+N".
@@ -862,7 +867,8 @@ final class HangingCards: NSObject {
     /// The pointer arrived on the island (or it opened): every card comes down with its detail. Pushed by the island,
     /// so it never waits for the cards' own (idle) poll.
     func islandAttention() {
-        guard !cards.isEmpty, !island.isRecording else { return }
+        // (a voice note opens the island to listen, not to show the cards: its words show under the island)
+        guard !cards.isEmpty, !island.isRecording, !VoiceInput.shared.active else { return }
         show()
     }
 
@@ -923,6 +929,14 @@ final class HangingCards: NSObject {
 
     /// Down right now (tests, the main window).
     var isShown: Bool { shown }
+
+    /// The lowest edge of the cards hanging now (global Cocoa y), nil when they are up: the live transcript goes
+    /// below them.
+    var shownBottom: CGFloat? {
+        guard shown else { return nil }
+        let ys = cards.suffix(shownCount).filter { !$0.flying }.map { screenRect(of: $0, at: $0.grip.target).minY }
+        return ys.min()
+    }
 
     func screenRect(of s: Shot) -> NSRect? {
         guard let c = cards.first(where: { $0.shot === s }) else { return nil }
@@ -1574,6 +1588,7 @@ final class HangingCards: NSObject {
         c.tether = (CGPoint(x: c.x.value - c.size.width / 2 + c.gripX, y: c.grip.value), nil, .zero)
         dragging = c
         island.dragBegan()
+        drag.setBase(image: img, frame: frame, in: v)      // a voice card's drop hint is drawn under it
         let session = v.beginDraggingSession(with: dis, event: event, source: v)
         session.animatesToStartingPositionsOnCancelOrFail = true
         session.draggingFormation = .none
@@ -1614,6 +1629,14 @@ final class HangingCards: NSObject {
         c.dragging = false
         if taken || !c.shot.isCard {
             remove(c, fall: false)
+            return
+        }
+        // a voice card let go of anywhere over a chat app's window: its words go into that window's composer, whether
+        // the app took the drop (its message box itself) or refused it (VoiceCardDrop)
+        if !ourWindow(at: p), let t = drag?.voiceTarget(at: p) {
+            emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue), "voice_target": t.bundleID ?? ""])
+            snapper.takeOutVoice(c.shot, landed: t, at: p, accepted: !operation.isEmpty)
+            show(peek: 1.0)
             return
         }
         // dropped in another app, which took it: the card has done its job — it leaves (restorable: "Dragged out · Undo")

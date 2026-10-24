@@ -20,6 +20,8 @@
 //  • text: DictationStream cuts the audio at pauses while the user talks and transcribes + polishes each piece as it
 //    completes (the warm servers; a model still loading gets record.dictation.load_budget_ms, never counted against
 //    polish_timeout_ms); at key-up only the last piece is left. Any fall-back = that piece's raw text.
+//    The pieces' transcripts so far show under the island while the user talks (LiveTranscript, record.live_text,
+//    on; DictationStream.onHeard) — out of the way of the caret (read once at the start), gone once the text is in.
 //  • insert: DictationInsert (pasteboard → ⌘V into the app in front, DictationPastePolicy → pasteboard back).
 //    History: DictationHistory (history.jsonl, with asr / polish / load / total ms).
 //  • custom words (DictationVocabulary, vocabulary.json): sent with every request — the speech model is biased toward
@@ -44,6 +46,8 @@ final class Dictation {
     private(set) var phase: Phase = .idle {
         didSet {
             if phase != oldValue { island.dictationChanged() }
+            // the words shown while talking go a moment after the text is in (or at once when nothing was kept)
+            if phase == .idle, oldValue != .idle { LiveTranscript.shared.end(session: liveSession, after: 0.6) }
             updateShiftFilter()
         }
     }
@@ -79,6 +83,8 @@ final class Dictation {
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
     private(set) var polishModel: String?
     private var generation = 0
+    /// this take's live transcript (LiveTranscript's session)
+    private var liveSession = 0
     /// the text around the cursor when this dictation started (polish's hints; never stored unless debugging)
     private var context: DictationContext?
     /// a double tap came while the text was still on its way: Return once it has been pasted
@@ -512,6 +518,10 @@ final class Dictation {
         opt.variant = styleDecision?.category == .chat ? "chat" : nil
         let s = DictationStream(id: entryID, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)
         v.onSamples = { [weak s] x in s?.append(x) }
+        // the words while talking: the pieces' transcripts as they come in (shown from the first one on)
+        let live = LiveTranscript.shared.begin(.dictation)
+        liveSession = live
+        s.onHeard = { t in LiveTranscript.shared.update(t, session: live) }
         voice = v
         stream = s
         wav = url
@@ -560,7 +570,20 @@ final class Dictation {
         stream?.cancel()
         stream = nil
         micLive = false
+        LiveTranscript.shared.end(session: liveSession)
         emit(["event": "dictation_precapture_dropped"])
+    }
+
+    /// Where the text goes in, so the live transcript can stay off it (read once, off the main thread; the test pad
+    /// on it).
+    private func readCaret() {
+        guard LiveTranscript.enabled else { return }
+        let live = liveSession
+        if DictationInsert.testMode { return LiveTranscript.shared.setAvoid(DictationField.focused()?.caretRect(), session: live) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = DictationField.focused()?.caretRect()
+            DispatchQueue.main.async { LiveTranscript.shared.setAvoid(r, session: live) }
+        }
     }
 
     private func start() {
@@ -577,6 +600,7 @@ final class Dictation {
         if trigger.startShift { explicitStyle = (.structured, .chord); routeStyle() }      // Fn+⇧: start in Structured
         phase = .listening
         captureContext()
+        readCaret()
         if !keys.installed {        // without the tap, Esc comes as a Carbon hotkey (as for the voice note)
             registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0)
             escRegistered = true
@@ -856,7 +880,18 @@ final class Dictation {
 /// made a cold server miss a whole dictation. With UV_OFFLINE=1 the cached packages are used as they are; only when
 /// that fails (nothing cached yet: the first use ever) does it start again online.
 enum WarmSpawn {
+    /// Tests (test commands only): BLURT_TEST_NO_SERVERS=1 starts no warm server — nothing listens on a local port;
+    /// the requests go through the CLI (which loads its model itself).
+    static let testNoServers: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_NO_SERVERS"] == "1"
+    }()
+
     static func start(_ script: String, _ args: [String], server: String) -> Process? {
+        if testNoServers {
+            emit(["event": "warm_spawn_skipped", "script": script, "server": server])
+            return nil
+        }
         let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1"]) { _ in }
         p?.terminationHandler = { proc in
             guard proc.terminationStatus != 0, !WarmServer.running(server) else { return }

@@ -79,6 +79,31 @@ final class DictationField {
         return read()?.selection == range
     }
 
+    /// Where the caret is (global Cocoa points), for the live transcript to stay off it: the selection's bounds, else
+    /// the field itself when it is a small one (a search box, a chat line). nil: can't tell. Read-only.
+    func caretRect() -> NSRect? {
+        if let tv = textView {
+            guard tv.window != nil else { return nil }
+            let r = tv.firstRect(forCharacterRange: tv.selectedRange(), actualRange: nil)
+            return r.isEmpty && r.origin == .zero ? nil : r.insetBy(dx: 0, dy: -2)
+        }
+        guard let el = element else { return nil }
+        var v: CFTypeRef?
+        if AXUIElementCopyAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, &v) == .success, let range = v,
+           CFGetTypeID(range) == AXValueGetTypeID() {
+            var b: CFTypeRef?
+            if AXUIElementCopyParameterizedAttributeValue(el, kAXBoundsForRangeParameterizedAttribute as CFString, range, &b) == .success,
+               let bv = b, CFGetTypeID(bv) == AXValueGetTypeID() {
+                var r = CGRect.zero
+                if AXValueGetValue(bv as! AXValue, .cgRect, &r), r.width >= 0, r.height > 0 {   // swiftlint:disable:this force_cast
+                    return toNS(CGRect(x: r.minX, y: r.minY, width: max(r.width, 2), height: r.height))
+                }
+            }
+        }
+        let f = AXProbe.frame(el)
+        return f.height > 1 && f.height < 160 ? toNS(f) : nil
+    }
+
     /// The focused window's title.
     var windowTitle: String? {
         if let tv = textView { return tv.window?.title }
