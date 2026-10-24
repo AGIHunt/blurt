@@ -1,22 +1,24 @@
 // What a shot card hands to other apps (v0.8.1; BlurtCore CardFiles has the why): the files a drag or a copy carries,
 // written next to the capture, and the pasteboard items built from BlurtCore CardPasteboard's layout (a drag's items
-// follow the app under the pointer: CardDrag.swift). v0.8.3: the first item is rich — the pictures and notes as HTML,
-// RTFD and RTF (CardRich), like a WeChat or Notes copy of a picture-and-text message — so ⌘V or a drop into Feishu,
-// Claude or Notes brings both. The flavours and their order on an item are one list (CardExport.flavours), to
-// match a real app's copy if one is measured. WeChat and QQ take one thing per paste or drop (the picture): there
-// the note goes in as a second paste (SmartPaste.swift; a copy is armed for it here).
+// follow the app under the pointer: CardDrag.swift). A copy is rich — the pictures and notes as HTML, RTFD and RTF
+// (CardRich), like a WeChat or Notes copy of a picture-and-text message — so ⌘V into Notes or Mail brings both at
+// once; in a chat app (browsers, Electron apps, WeChat, QQ…) the ⌘V becomes picture, then note (SmartPaste.swift; a
+// copy is armed for it here). The flavours and their order on an item are one list (CardExport.flavours), to match a
+// real app's copy if one is measured.
 //
 //   <batch>/out/<NNN>/截图-153012.png       the picture (inked if marked) with the note in its PNG Description — and,
 //                                            with record.drag_caption on, the note burned in as a strip under it (a
 //                                            copy: the capture itself stays clean)
-//   <batch>/out/<NNN>/截图-153012-备注.md   the note, and nothing else (v0.8.2)
+//   <batch>/out/<NNN>/截图-153012-备注.md   the note, and nothing else (v0.8.2): what a terminal gets next to the
+//                                            picture's path, and — record.drag_note_file, off — a chat app or the
+//                                            Finder too
 // Written again on every drag / copy (the note may have been edited); they live as long as the capture does — taken
 // captures keep them for their 7 days (an app that took the file may read it late) and they go to the Trash with it.
 //
 // After a drop that another app took, the note also goes on the clipboard (record.drag_copy_note, default on) where
-// that app may have kept only the picture (BlurtCore DragReceipt.copiesNote: not a text app, not a terminal): ⌘V
-// brings the words back. The clipboard as it was is kept, and Undo puts it back while nothing else has been copied
-// since (DragClipboard).
+// it didn't go in (BlurtCore DragReceipt.copiesNote: the picture alone — the paste after it couldn't run — or not
+// sure): ⌘V brings the words back. The clipboard as it was is kept, and Undo puts it back while nothing else has been
+// copied since (DragClipboard).
 
 import AppKit
 import BlurtCore
@@ -27,8 +29,12 @@ enum CardExport {
 
     /// record.drag_caption: the dragged / copied picture gets the note burned in under it (off by default).
     static var burnCaption: Bool { recordConfig()["drag_caption"] as? Bool ?? false }
-    /// record.drag_copy_note: after a card with a note is dragged out, the note goes on the clipboard (on by default).
+    /// record.drag_copy_note: after a card with a note is dragged out and its note didn't go in, the note goes on the
+    /// clipboard (on by default).
     static var copyNoteAfterDrag: Bool { recordConfig()["drag_copy_note"] as? Bool ?? true }
+    /// record.drag_note_file: a card dragged into a chat app or the Finder also carries its note as a .md file (off by
+    /// default; a terminal always gets the .md's path).
+    static var attachNoteFile: Bool { recordConfig()["drag_note_file"] as? Bool ?? false }
 
     /// The picture and the note's .md for `s` (a shot), freshly written; a voice card has none (it is its words).
     static func prepare(_ s: Shot) -> Files {
@@ -131,13 +137,14 @@ enum CardExport {
     /// for tests (`carddrag`); a real drag is lazy and follows the pointer (CardDrag).
     static func dragItems(_ s: Shot, for target: DropClass) -> [NSPasteboardItem] {
         let (c, part) = card(s)
-        let items = pasteboardItems(CardPasteboard.drag(for: target, card: c), rich: CardRich([part]), copy: false, tag: tag(s))
+        let items = pasteboardItems(CardPasteboard.drag(for: target, card: c, attachNote: attachNoteFile), rich: CardRich([part]),
+                                    copy: false, tag: tag(s))
         return items.isEmpty ? [{ let p = NSPasteboardItem(); if let t = tag(s) { p.setString(t, forType: capturePasteboardType) }; return p }()] : items
     }
 
     /// A copy of `shots`, in order (a click: one; a ⌘-click selection or Copy All: several) — one rich item with every
     /// picture and note, the notes as text with their line breaks (CardPasteboard.copy). Returns the items written.
-    /// On the clipboard, the copy is armed for smart paste (SmartPaste.swift): ⌘V in WeChat / QQ within 2 minutes pastes
+    /// On the clipboard, the copy is armed for smart paste (SmartPaste.swift): ⌘V in a chat app within 2 minutes pastes
     /// each picture and then its note, and writes this copy back afterwards.
     @discardableResult
     static func copy(_ shots: [Shot], to pb: NSPasteboard = capturePasteboard) -> [NSPasteboardItem]? {

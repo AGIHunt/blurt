@@ -1,5 +1,6 @@
-// BlurtCore/CardSmartPaste.swift: picture and note into WeChat / QQ, which take one thing per paste or drop. The
-// report: a card dragged into WeChat, or copied and pasted there, arrived as the picture alone.
+// BlurtCore/CardSmartPaste.swift: picture, then note, into every chat app — they take one thing per paste or drop.
+// The reports: a card dragged into WeChat, or copied and pasted there, arrived as the picture alone (v0.8.4); one
+// dragged into DeepSeek in a browser as the picture and a .md file (v0.8.5).
 import XCTest
 @testable import BlurtCore
 
@@ -16,8 +17,11 @@ final class CardSmartPasteTests: XCTestCase {
             XCTAssertFalse(SingleFlavourApps.contains(id), id)
         }
         XCTAssertFalse(SingleFlavourApps.contains(nil))
-        // still text-class for a drag: the rich item (the picture lands); the note comes in a second step
-        for id in SingleFlavourApps.bundles { XCTAssertEqual(DropTargets.classify(bundleID: id, appURL: nil), .text, id) }
+        // chat apps like any other: the picture lands, the note comes in a second step (after ⌘↓)
+        for id in SingleFlavourApps.bundles {
+            XCTAssertEqual(DropTargets.classify(bundleID: id), .chat, id)
+            XCTAssertEqual(DropTargets.composer(bundleID: id, appURL: nil), .qt, id)
+        }
     }
 
     // MARK: the sequence
@@ -33,7 +37,8 @@ final class CardSmartPasteTests: XCTestCase {
             CardPasteboard.Card(image: a, note: "first"),
             CardPasteboard.Card(image: b, note: "second"),
         ])
-        XCTAssertEqual(steps, [.image(a), .text("first"), .image(b), .text("second")])
+        XCTAssertEqual(steps, [.image(a), .text("first\n"), .image(b), .text("second")],
+                       "a note with more after it ends its line (attachments in a web composer; a new line in WeChat)")
     }
 
     func testTextNextToTextIsOnePasteAndAPictureWithoutANoteStandsAlone() {
@@ -43,7 +48,7 @@ final class CardSmartPasteTests: XCTestCase {
             CardPasteboard.Card(image: b, note: nil),
             CardPasteboard.Card(image: nil, note: "   "),
         ])
-        XCTAssertEqual(steps, [.image(a), .text("first\n\na voice card's words"), .image(b)])
+        XCTAssertEqual(steps, [.image(a), .text("first\n\na voice card's words\n"), .image(b)])
     }
 
     func testOneThingNeedsNoSequence() {
@@ -93,20 +98,30 @@ final class CardSmartPasteTests: XCTestCase {
         return i
     }
 
-    func testCommandVInWeChatRunsTheSequence() {
-        XCTAssertEqual(SmartPastePolicy.decide(input()), .sequence)
-        XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = "com.tencent.qq" }), .sequence)
+    /// Every chat app: browsers (DeepSeek, ChatGPT, Claude on the web), Electron apps, WeChat, QQ, apps we don't know.
+    func testCommandVInAChatAppRunsTheSequence() {
+        for id in ["com.tencent.xinWeChat", "com.tencent.qq", "com.google.Chrome", "com.apple.Safari", "com.anthropic.claudefordesktop",
+                   "com.electron.lark", "com.tinyspeck.slackmacgap", "com.example.SomethingElse"] {
+            XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = id }), .sequence, id)
+            XCTAssertTrue(SmartPastePolicy.sequences(frontBundle: id), id)
+        }
     }
 
     func testEverythingElsePassesUntouched() {
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.enabled = false }), .pass("off"))
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.arm = nil }), .pass("not_armed"))
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.now = 121 }), .pass("expired"))
-        XCTAssertEqual(SmartPastePolicy.decide(input { $0.changeCount = 6 }), .pass("clipboard_changed"))
-        for id in ["com.electron.lark", "com.apple.Notes", "com.anthropic.claudefordesktop", "com.apple.Terminal"] {
-            XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = id }), .pass("other_app"), id)
+        XCTAssertEqual(SmartPastePolicy.decide(input { $0.changeCount = 6 }), .pass("clipboard_changed"), "something else copied since")
+        // one rich paste brings both there; a terminal and the Finder keep their own paste
+        for id in ["com.apple.Notes", "com.apple.TextEdit", "com.apple.mail", "com.apple.iWork.Pages"] {
+            XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = id }), .pass("rich_app"), id)
         }
-        XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = nil }), .pass("other_app"))
+        XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = "com.apple.Terminal" }), .pass("terminal"))
+        XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = "com.apple.finder" }), .pass("finder"))
+        XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontBundle = nil }), .pass("no_app"))
+        XCTAssertEqual(SmartPastePolicy.decide(input { $0.frontIsBlurt = true }), .pass("blurt"))
+        for id in ["com.apple.Notes", "com.apple.Terminal", "com.apple.finder"] { XCTAssertFalse(SmartPastePolicy.sequences(frontBundle: id), id) }
+        XCTAssertFalse(SmartPastePolicy.sequences(frontBundle: nil))
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.arm?.steps = [.image(self.a)] }), .pass("one_thing"))
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.accessibility = false }), .pass("no_accessibility"))
         XCTAssertEqual(SmartPastePolicy.decide(input { $0.secureInput = true }), .pass("secure_input"))
@@ -157,30 +172,49 @@ final class CardSmartPasteTests: XCTestCase {
 
     // MARK: after a drop
 
-    func testADropIntoWeChatGetsItsNoteTypedInAfterThePicture() {
+    func testADropIntoAChatAppGetsItsNotePastedAfterThePicture() {
         let card = CardPasteboard.Card(image: a, note: "the logo\noverlaps")
-        func plan(_ id: String?, enabled: Bool = true, ax: Bool = true, secure: Bool = false, card c: CardPasteboard.Card? = nil) -> DragFollowUp.Plan {
-            DragFollowUp.plan(bundleID: id, card: c ?? card, enabled: enabled, accessibility: ax, secureInput: secure)
+        func plan(_ d: DropClass?, enabled: Bool = true, ax: Bool = true, secure: Bool = false, card c: CardPasteboard.Card? = nil) -> DragFollowUp.Plan {
+            DragFollowUp.plan(delivered: d, card: c ?? card, enabled: enabled, accessibility: ax, secureInput: secure)
         }
-        XCTAssertEqual(plan("com.tencent.xinWeChat"), .typeNote("the logo\noverlaps"))
-        XCTAssertEqual(plan("com.tencent.qq"), .typeNote("the logo\noverlaps"))
-        XCTAssertEqual(plan("com.apple.Notes"), .none("other_app"), "Notes took both from the RTFD")
-        XCTAssertEqual(plan("com.electron.lark"), .none("other_app"))
-        XCTAssertEqual(plan(nil), .none("other_app"))
-        XCTAssertEqual(plan("com.tencent.xinWeChat", card: CardPasteboard.Card(image: a, note: nil)), .none("nothing_more"))
-        XCTAssertEqual(plan("com.tencent.xinWeChat", card: CardPasteboard.Card(image: nil, note: "words")), .none("nothing_more"),
+        XCTAssertEqual(plan(.chat), .pasteNote("the logo\noverlaps"), "line breaks kept: it is one paste")
+        XCTAssertEqual(plan(.rich), .none("rich_app"), "Notes took both from the RTFD")
+        XCTAssertEqual(plan(.terminal), .none("other_app"), "never text at a prompt")
+        XCTAssertEqual(plan(.finder), .none("other_app"))
+        XCTAssertEqual(plan(nil), .none("not_sure"), "it may have read the rich layout: no second note")
+        XCTAssertEqual(plan(.chat, card: CardPasteboard.Card(image: a, note: nil)), .none("nothing_more"))
+        XCTAssertEqual(plan(.chat, card: CardPasteboard.Card(image: nil, note: "words")), .none("nothing_more"),
                        "a voice card dropped its words already")
-        XCTAssertEqual(plan("com.tencent.xinWeChat", enabled: false), .none("off"))
-        XCTAssertEqual(plan("com.tencent.xinWeChat", ax: false), .none("no_accessibility"))
-        XCTAssertEqual(plan("com.tencent.xinWeChat", secure: true), .none("secure_input"))
+        XCTAssertEqual(plan(.chat, enabled: false), .none("off"))
+        XCTAssertEqual(plan(.chat, ax: false), .none("no_accessibility"))
+        XCTAssertEqual(plan(.chat, secure: true), .none("secure_input"))
     }
 
-    /// Picture only (the note couldn't be typed in): the safety net copies the note and the toast says so.
-    func testAPictureOnlyDropCopiesTheNote() {
-        XCTAssertTrue(DragReceipt.copiesNote(delivered: .text, pictureOnly: true))
-        XCTAssertFalse(DragReceipt.copiesNote(delivered: .text, pictureOnly: false), "Notes & co. took both")
-        XCTAssertEqual(DragReceipt.toastKey(delivered: .text, hasNote: true, noteCopied: true, pictureOnly: true), "capture.taken_out_picture_note")
-        XCTAssertEqual(DragReceipt.toastKey(delivered: .text, hasNote: true, noteCopied: false, pictureOnly: true), "capture.taken_out_picture")
-        XCTAssertEqual(DragReceipt.toastKey(delivered: .text, hasNote: false, noteCopied: false, pictureOnly: true), "capture.taken_out")
+    /// Where the note's paste goes, and how the caret gets after the picture.
+    func testThePasteGoesIntoTheComposerThatReceivedTheDrop() {
+        typealias F = FollowUpFocus.Facts
+        // WeChat / QQ: ⌘↓ first (the dropped picture is selected; Qt's Accessibility can't say)
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .qt)), .paste(caret: [.end]))
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .qt, editable: false, selection: 0)), .paste(caret: [.end]))
+        // a web composer: the picture became an upload, the caret is where it was — nothing to press
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .web, sameWindow: true, editable: true, selection: 0)), .paste(caret: []))
+        // an editor that put the picture inline and selected it: → collapses the selection after it
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .web, sameWindow: true, editable: true, selection: 1)), .paste(caret: [.right]))
+        // can't tell (no Accessibility tree yet, or a composer we just focused): still paste, like dictation, at the end
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .web)), .paste(caret: [.end]))
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .web, editable: false)), .paste(caret: [.end]),
+                       "a page often routes a paste to its composer; it counts only if the app reads it")
+        // a native app we don't know: only into editable text (an image editor would make it a text layer)
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .native, editable: true, selection: 1)), .paste(caret: [.right]))
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .native, editable: false)), .skip("not_text"))
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .native)), .skip("not_text"))
+        // never elsewhere
+        for k in ComposerKind.allCases {
+            XCTAssertEqual(FollowUpFocus.decide(F(kind: k, frontIsTarget: false)), .skip("not_front"), "\(k)")
+            XCTAssertEqual(FollowUpFocus.decide(F(kind: k, frontIsBlurt: true)), .skip("blurt_in_front"), "\(k)")
+            XCTAssertEqual(FollowUpFocus.decide(F(kind: k, secureInput: true)), .skip("secure_input"), "\(k)")
+            XCTAssertEqual(FollowUpFocus.decide(F(kind: k, focusSecure: true, editable: true)), .skip("secure_input"), "\(k)")
+            XCTAssertEqual(FollowUpFocus.decide(F(kind: k, sameWindow: false, editable: true, selection: 0)), .skip("other_window"), "\(k)")
+        }
     }
 }

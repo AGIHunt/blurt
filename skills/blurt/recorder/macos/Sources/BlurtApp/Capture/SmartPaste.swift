@@ -1,25 +1,33 @@
-// Picture *and* note into WeChat / QQ (v0.8.4; BlurtCore CardSmartPaste.swift has the why, the table and the model).
-// These apps take one thing per paste or drop — the picture wins — so Blurt pastes twice:
+// Picture, then note — two pastes — into every chat app (v0.8.4 for WeChat / QQ; v0.8.5 everywhere it helps;
+// BlurtCore CardSmartPaste.swift has the why and the model, CardDropTarget.swift the table). Browsers, Electron apps,
+// WeChat and QQ take one thing per paste or drop — the picture wins, as an upload or an inline image — so Blurt
+// pastes twice:
 //
 //  • SmartPaste: a card copy (CardExport.copy) is armed for 2 minutes. While it is, and only then, an active event tap
-//    (Accessibility; on its own thread, keyDown only) looks at ⌘V. In WeChat or QQ, with the card copy still on the
-//    clipboard, it keeps that ⌘V from the app and runs the sequence instead (PasteRunner): each step — a picture
-//    alone (PNG + TIFF), a note alone — goes on the clipboard as its own lazily provided item, a ⌘V is posted, and the
-//    next step follows once the app has asked for the data (or after 1.5 s); then the card copy is written back and
-//    armed again. Any other ⌘V, any other app, or anything copied since: the event passes untouched. If the main
-//    thread then finds it shouldn't run after all (the clipboard changed a moment ago), the ⌘V is posted again as it
-//    was, so the user's paste is never lost. The island says "图 + 文已粘贴".
-//  • DragNoteFollowUp: a card dropped into WeChat / QQ brought its picture; the app is brought forward at the window
-//    it landed on (Accessibility: raise that window, make the app frontmost), ⌘↓ puts the caret at the end (after the
-//    picture; a paste over a selected picture would replace it), and the note goes in as one paste — the user's
-//    clipboard is saved first and put back after. Can't (no Accessibility, setting off, secure input, the app didn't
-//    come forward): the drag_copy_note safety net instead.
+//    (Accessibility; on its own thread, keyDown only) looks at ⌘V. In a chat app (DropTargets.classify == .chat: not a
+//    rich text app, a terminal, the Finder or Blurt), with the card copy still on the clipboard, it keeps that ⌘V from
+//    the app and runs the sequence instead (PasteRunner): each step — a picture alone (PNG + TIFF), a note alone — goes
+//    on the clipboard as its own lazily provided item, a ⌘V is posted, and the next step follows once the app has
+//    asked for the data (or after 1.5 s); then the card copy is written back and armed again. Any other ⌘V, any other
+//    app, or anything copied since: the event passes untouched. If the main thread then finds it shouldn't run after
+//    all (the clipboard changed a moment ago), the ⌘V is posted again as it was, so the user's paste is never lost.
+//    The island says "图 + 文已粘贴".
+//  • DragNoteFollowUp: a card dropped into a chat app brought its picture as the only file; the app is brought
+//    forward at the window it landed on (Accessibility: raise that window, make the app frontmost); the composer that
+//    received the drop gets the focus if it hasn't (the editable text under the drop point, else the nearest one in
+//    that window: ComposerPick — a chat page's drop zone is often all of it); FollowUpFocus decides whether to paste
+//    and how to put the caret after the picture (WeChat / QQ ⌘↓; a selection →; a caret nothing; can't tell ⌘↓); the
+//    note goes in as one paste — the user's clipboard is saved first and put back after. It counts only if the app
+//    read the note. Can't (no Accessibility, setting off, secure input, the app didn't come forward, the focus is in
+//    another window, an unknown native app without a text focus, the note never read): the drag_copy_note safety net
+//    instead — the note on the clipboard, "⌘V to paste the note".
 // The posted events carry a marker (eventSourceUserData) so the tap lets them through.
 //
-// Test builds (DictationInsert.testMode) never install a tap and never post an event: `smartpaste key PID` stands in
-// for the user's ⌘V with process PID in front (its bundle as `droptarget map` says), and every ⌘V / ⌘↓ the sequence
-// would post goes to that process as a distributed notification (dev.blurt.test.standin {pid, do, pasteboard}) —
-// our own stand-in app pastes from the private test pasteboard. No app is activated.
+// Test builds (DictationInsert.testMode) never install a tap, never post an event and read no Accessibility:
+// `smartpaste key PID` stands in for the user's ⌘V with process PID in front (its bundle as `droptarget map` says),
+// every ⌘V / ⌘↓ / → the sequence would post goes to that process as a distributed notification
+// (dev.blurt.test.standin {pid, do, pasteboard}) — our own stand-in app pastes from the private test pasteboard — and
+// `followup facts …` says what Accessibility would have found. No app is activated.
 
 import AppKit
 import ApplicationServices
@@ -32,7 +40,10 @@ enum PasteKeys {
     static let marker: Int64 = 0x426C_7572_7453_5021     // "BlurtSP!"
     static let standInNote = Notification.Name("dev.blurt.test.standin")
 
-    enum Key: String { case paste, end }
+    enum Key: String {
+        case paste, end, right
+        init(_ c: CaretKey) { self = c == .end ? .end : .right }
+    }
 
     static func post(_ k: Key, to pid: pid_t?, pasteboard: NSPasteboard) {
         emit(["event": "paste_key", "key": k.rawValue, "pid": Int(pid ?? 0), "test": DictationInsert.testMode])
@@ -43,11 +54,11 @@ enum PasteKeys {
                 deliverImmediately: true)
             return
         }
-        let code = CGKeyCode(k == .paste ? kVK_ANSI_V : kVK_DownArrow)
+        let code = CGKeyCode(k == .paste ? kVK_ANSI_V : k == .end ? kVK_DownArrow : kVK_RightArrow)
         let src = CGEventSource(stateID: .hidSystemState)
         for down in [true, false] {
             guard let e = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: down) else { continue }
-            e.flags = .maskCommand
+            e.flags = k == .right ? [] : .maskCommand
             e.setIntegerValueField(.eventSourceUserData, value: marker)
             e.post(tap: .cghidEventTap)
         }
@@ -116,7 +127,7 @@ final class PasteRunner {
         self.restore = restore
     }
 
-    /// `prelude`: keys first (a drag's follow-up: ⌘↓, the caret to the end).
+    /// `prelude`: keys first (a drag's follow-up: ⌘↓ or →, the caret after the picture).
     func start(prelude: [PasteKeys.Key] = []) {
         for k in prelude { PasteKeys.post(k, to: pid, pasteboard: pb) }
         let go = { [self] in perform(model.start()) }
@@ -189,17 +200,18 @@ final class SmartPasteGate {
         if let r { running = r }
     }
 
-    /// The tap's quick check: armed, an app of the table in front, no sequence running.
+    /// The tap's quick check: armed, a chat app in front (not Blurt), no sequence running.
     func intercepts() -> Bool {
         lock.lock(); defer { lock.unlock() }
-        return armed && !running && SingleFlavourApps.contains(front)
+        return armed && !running && front != SmartPasteGate.me && SmartPastePolicy.sequences(frontBundle: front)
     }
+    static let me = Bundle.main.bundleIdentifier
 }
 
 final class SmartPaste {
     static let shared = SmartPaste()
 
-    /// record.smart_paste (on by default): smart paste after a copy, and the note typed in after a drop.
+    /// record.smart_paste (on by default): smart paste after a copy, and the note pasted in after a drop.
     static var enabled: Bool { recordConfig()["smart_paste"] as? Bool ?? true }
     static var accessibility: Bool { DictationKeys.accessibility }
     static var now: Double { Snapper.now }
@@ -309,7 +321,7 @@ final class SmartPaste {
         let decision = SmartPastePolicy.decide(.init(
             enabled: SmartPaste.enabled, arm: arm, now: SmartPaste.now, changeCount: pasteboard.changeCount, frontBundle: frontBundle,
             accessibility: SmartPaste.accessibility, secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(),
-            running: runner != nil))
+            running: runner != nil, frontIsBlurt: frontPID == getpid()))
         emit(["event": "smart_paste_key", "bundle": frontBundle ?? NSNull(), "decision": "\(decision)"])
         guard decision == .sequence, let a = arm else {
             PasteKeys.post(.paste, to: frontPID, pasteboard: pasteboard)       // the user's own paste, as it was
@@ -339,7 +351,7 @@ final class SmartPaste {
 
     // MARK: tests
 
-    /// `smartpaste key PID | state | set on|off`
+    /// `smartpaste key PID | state | set on|off | notefile on|off`
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first ?? "" {
@@ -355,6 +367,9 @@ final class SmartPaste {
         case "set":
             setRecordConfig("smart_paste", a.count > 1 ? a[1] == "on" : nil)
             emit(["event": "smart_paste_set", "on": SmartPaste.enabled])
+        case "notefile":
+            setRecordConfig("drag_note_file", a.count > 1 && a[1] == "on" ? true : nil)
+            emit(["event": "drag_note_file_set", "on": CardExport.attachNoteFile])
         default:
             emit(["event": "smart_paste_state", "armed": arm != nil, "steps": arm?.steps.map(PasteRunner.describe) ?? [],
                   "left": arm.map { max(0, $0.until - SmartPaste.now) } ?? 0,
@@ -364,7 +379,7 @@ final class SmartPaste {
     }
 }
 
-/// The smart-paste tap, on FilterThread: a quick look at each key press; only a ⌘V into WeChat / QQ while a card copy
+/// The smart-paste tap, on FilterThread: a quick look at each key press; only a ⌘V into a chat app while a card copy
 /// is armed is kept (and handed to the main thread). Everything else — and our own posted events — passes at once.
 private func smartPasteTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     guard let r = refcon else { return Unmanaged.passUnretained(event) }
@@ -391,49 +406,55 @@ private func smartPasteTapCallback(proxy: CGEventTapProxy, type: CGEventType, ev
 // MARK: - the note after a drop
 
 enum DragNoteFollowUp {
-    /// Bring the app forward at the drop point, ⌘↓, paste the note, give the clipboard back. `done(true)`: typed in.
-    static func run(note: String, pid: pid_t, at p: NSPoint, done: @escaping (Bool) -> Void) {
+    /// tests: what Accessibility would have said (`followup facts editable=1,selection=0,window=same,secure=0`)
+    static var testFacts: [String: String] = [:]
+
+    /// Bring the app forward at the drop point, find the composer, put the caret after the picture, paste the note,
+    /// give the clipboard back. `done(true)`: pasted, and the app read it.
+    static func run(note: String, target t: DropTarget, at p: NSPoint, done: @escaping (Bool) -> Void) {
         // the drop has to finish in the app first
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            bringForward(pid: pid, at: p) { ok in
+            bringForward(pid: t.pid, at: p) { ok, window in
                 guard ok else {
                     emit(["event": "drag_note_follow_up", "result": "not_front"])
                     return done(false)
                 }
-                let pb = capturePasteboard
-                let saved = DictationInsert.Saved.take(pb)
-                // (the runner restores only while the clipboard still holds its own step: nothing copied since)
-                var r: PasteRunner? = PasteRunner(steps: [.text(note)], pasteboard: pb, pid: pid) { saved.restore(pb) }
-                r?.done = { run in
-                    emit(["event": "drag_note_follow_up", "result": "\(run.state)", "read": run.read])
-                    done(run.state == .done)
-                    r = nil
+                focus(target: t, at: p, window: window) { facts in
+                    let decision = FollowUpFocus.decide(facts)
+                    emit(["event": "drag_note_focus", "kind": t.kind.rawValue, "front": facts.frontIsTarget,
+                          "same_window": facts.sameWindow.map { $0 as Any } ?? NSNull(),
+                          "editable": facts.editable.map { $0 as Any } ?? NSNull(),
+                          "selection": facts.selection.map { $0 as Any } ?? NSNull(), "decision": "\(decision)"])
+                    guard case .paste(let caret) = decision else { return done(false) }
+                    let pb = capturePasteboard
+                    let saved = DictationInsert.Saved.take(pb)
+                    // (the runner restores only while the clipboard still holds its own step: nothing copied since)
+                    var r: PasteRunner? = PasteRunner(steps: [.text(note)], pasteboard: pb, pid: t.pid) { saved.restore(pb) }
+                    r?.done = { run in
+                        emit(["event": "drag_note_follow_up", "result": "\(run.state)", "read": run.read])
+                        done(run.state == .done && run.read > 0)
+                        r = nil
+                    }
+                    r?.start(prelude: caret.map(PasteKeys.Key.init))
                 }
-                r?.start(prelude: [.end])
             }
         }
     }
 
-    /// The window under `p` raised and its app frontmost (Accessibility), then wait until it is (up to 1.2 s). Test
-    /// builds activate nothing: the stand-in is told what to do by notification.
-    static func bringForward(pid: pid_t, at p: NSPoint, _ then: @escaping (Bool) -> Void) {
+    /// The window under `p` raised and its app frontmost (Accessibility), then wait until it is (up to 1.2 s); `then`
+    /// gets that window too. Test builds activate nothing: the stand-in is told what to do by notification.
+    static func bringForward(pid: pid_t, at p: NSPoint, _ then: @escaping (Bool, AXUIElement?) -> Void) {
         if DictationInsert.testMode {
             emit(["event": "drag_note_activate", "pid": Int(pid), "test": true])
-            return then(true)
+            return then(true, nil)
         }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.3)
+        let window = AXProbe.element(app, at: p).flatMap { AXProbe.element($0, kAXWindowAttribute) }
         if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
-            let app = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(app, 0.3)
-            let top = NSScreen.screens.first?.frame.maxY ?? 0
-            var el: AXUIElement?
-            if AXUIElementCopyElementAtPosition(app, Float(p.x), Float(top - p.y), &el) == .success, let e = el {
-                var w: CFTypeRef?
-                if AXUIElementCopyAttributeValue(e, kAXWindowAttribute as CFString, &w) == .success, let win = w,
-                   CFGetTypeID(win) == AXUIElementGetTypeID() {
-                    let window = win as! AXUIElement      // swiftlint:disable:this force_cast
-                    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-                    AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-                }
+            if let w = window {
+                AXUIElementPerformAction(w, kAXRaiseAction as CFString)
+                AXUIElementSetAttributeValue(w, kAXMainAttribute as CFString, kCFBooleanTrue)
             }
             AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             NSRunningApplication(processIdentifier: pid)?.activate(options: [])
@@ -442,11 +463,175 @@ enum DragNoteFollowUp {
         func wait() {
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid {
                 // a moment for its window to take the key focus
-                return DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { then(true) }
+                return DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { then(true, window) }
             }
-            guard CACurrentMediaTime() - start < 1.2 else { return then(false) }
+            guard CACurrentMediaTime() - start < 1.2 else { return then(false, window) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: wait)
         }
         wait()
+    }
+
+    /// What has the focus now, after giving it to the composer that received the drop if it isn't there: the
+    /// editable text under the drop point, else (the focus isn't editable text in that window) the nearest editable
+    /// text area in the window (ComposerPick). WeChat / QQ: nothing is moved (the drop went into their composer, and
+    /// Qt's Accessibility can't say). Test builds: `testFacts`.
+    static func focus(target t: DropTarget, at p: NSPoint, window: AXUIElement?, _ then: @escaping (FollowUpFocus.Facts) -> Void) {
+        var f = FollowUpFocus.Facts(kind: t.kind)
+        if DictationInsert.testMode {
+            let x = testFacts
+            func flag(_ k: String) -> Bool? { x[k].map { ["1", "true", "yes"].contains($0) } }
+            f.editable = flag("editable")
+            f.selection = x["selection"].flatMap { Int($0) }
+            f.sameWindow = x["window"].map { $0 == "same" }
+            f.focusSecure = flag("secure") ?? false
+            f.frontIsTarget = x["front"].map { $0 != "other" } ?? true
+            return then(f)
+        }
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        f.frontIsBlurt = front == getpid()
+        f.frontIsTarget = front == t.pid
+        f.secureInput = IsSecureEventInputEnabled()
+        guard AXIsProcessTrusted(), f.frontIsTarget, t.kind != .qt else { return then(f) }
+        let app = AXUIElementCreateApplication(t.pid)
+        AXUIElementSetMessagingTimeout(app, 0.3)
+        let read = { (moved: Bool) -> FollowUpFocus.Facts in
+            var g = f
+            guard let el = AXProbe.element(app, kAXFocusedUIElementAttribute) else { return g }
+            let a = AXProbe.Focus(el)
+            g.editable = a.editable
+            g.focusSecure = a.secure
+            // a composer we just focused: its old caret may be anywhere — "can't tell" puts it at the end
+            g.selection = moved ? nil : a.selection
+            if let w = window, let fw = AXProbe.element(el, kAXWindowAttribute) { g.sameWindow = CFEqual(w, fw) }
+            return g
+        }
+        let now = read(false)
+        let atDrop = AXProbe.element(app, at: p).flatMap(AXProbe.composer)
+        var target: AXUIElement?
+        if let c = atDrop {
+            if let el = AXProbe.element(app, kAXFocusedUIElementAttribute), AXProbe.same(el, c) { return then(now) }
+            target = c
+        } else if now.editable != true || now.sameWindow == false, let w = window {
+            target = AXProbe.nearestComposer(in: w, to: p)
+        }
+        guard let c = target else { return then(now) }
+        AXUIElementSetAttributeValue(c, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        emit(["event": "drag_note_composer", "role": AXProbe.string(c, kAXRoleAttribute) ?? NSNull(), "at_drop": atDrop != nil])
+        // web content takes the focus asynchronously
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { then(read(true)) }
+    }
+
+    /// `followup facts K=V,… | clear`
+    static func testCommand(_ arg: String) {
+        let a = arg.split(separator: " ").map(String.init)
+        switch a.first ?? "" {
+        case "facts":
+            testFacts = [:]
+            for kv in (a.count > 1 ? a[1] : "").split(separator: ",") {
+                let p = kv.split(separator: "=", maxSplits: 1).map(String.init)
+                if p.count == 2 { testFacts[p[0]] = p[1] }
+            }
+        default: testFacts = [:]
+        }
+        emit(["event": "followup_facts", "facts": testFacts])
+    }
+}
+
+/// Small Accessibility reads for the follow-up (another app's elements; every call bounded by the app element's
+/// messaging timeout).
+enum AXProbe {
+    static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox"]
+
+    static func element(_ el: AXUIElement, _ attr: String) -> AXUIElement? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success, let r = v,
+              CFGetTypeID(r) == AXUIElementGetTypeID() else { return nil }
+        return (r as! AXUIElement)     // swiftlint:disable:this force_cast
+    }
+
+    static func string(_ el: AXUIElement, _ attr: String) -> String? {
+        var v: CFTypeRef?
+        return AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success ? v as? String : nil
+    }
+
+    /// The element of `app` at a global Cocoa point.
+    static func element(_ app: AXUIElement, at p: NSPoint) -> AXUIElement? {
+        let top = NSScreen.screens.first?.frame.maxY ?? 0
+        var el: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(app, Float(p.x), Float(top - p.y), &el) == .success else { return nil }
+        return el
+    }
+
+    static func same(_ a: AXUIElement, _ b: AXUIElement) -> Bool { CFEqual(a, b) }
+
+    /// `el` as a composer: a text area / field itself, or the editable root it is inside (a web contenteditable).
+    static func composer(_ el: AXUIElement) -> AXUIElement? {
+        if textRoles.contains(string(el, kAXRoleAttribute) ?? "") { return el }
+        return element(el, "AXHighestEditableAncestor") ?? element(el, "AXEditableAncestor")
+    }
+
+    /// The focused element as the follow-up sees it.
+    struct Focus {
+        var editable = false
+        var secure = false
+        var selection: Int?
+        init(_ el: AXUIElement) {
+            let role = AXProbe.string(el, kAXRoleAttribute)
+            let sub = AXProbe.string(el, kAXSubroleAttribute)
+            secure = role == "AXSecureTextField" || sub == "AXSecureTextField"
+            var range: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, &range) == .success, let r = range,
+               CFGetTypeID(r) == AXValueGetTypeID() {
+                var cf = CFRange()
+                if AXValueGetValue(r as! AXValue, .cfRange, &cf) { selection = cf.length }     // swiftlint:disable:this force_cast
+            }
+            editable = AXProbe.textRoles.contains(role ?? "") || AXProbe.element(el, "AXEditableAncestor") != nil
+                || (selection != nil && role != "AXStaticText" && role != "AXWebArea")
+        }
+    }
+
+    /// The editable text area nearest to `p` in `window`: web areas are asked for their text fields (the search
+    /// predicate Chromium and WebKit answer for VoiceOver), the rest is walked breadth-first — at most 200 elements and
+    /// 0.4 s, never into a web area's own tree.
+    static func nearestComposer(in window: AXUIElement, to p: NSPoint) -> AXUIElement? {
+        let start = CACurrentMediaTime()
+        var found: [AXUIElement] = []
+        var queue = [window]
+        var seen = 0
+        while !queue.isEmpty, seen < 200, CACurrentMediaTime() - start < 0.4 {
+            let el = queue.removeFirst()
+            seen += 1
+            let role = string(el, kAXRoleAttribute) ?? ""
+            if textRoles.contains(role) { found.append(el); continue }
+            if role == "AXWebArea" { found += search(el); continue }
+            var kids: CFTypeRef?
+            if AXUIElementCopyAttributeValue(el, kAXChildrenAttribute as CFString, &kids) == .success, let k = kids as? [AXUIElement] {
+                queue += k
+            }
+        }
+        let top = NSScreen.screens.first?.frame.maxY ?? 0
+        let frames = found.map(frame)
+        return ComposerPick.nearest(frames, to: CGPoint(x: p.x, y: top - p.y)).map { found[$0] }
+    }
+
+    /// A web area's editable text fields (AXUIElementsForSearchPredicate, AXTextFieldSearchKey).
+    static func search(_ web: AXUIElement) -> [AXUIElement] {
+        let q: [String: Any] = ["AXSearchKey": "AXTextFieldSearchKey", "AXResultsLimit": 20, "AXDirection": "AXDirectionNext",
+                                "AXVisibleOnly": true]
+        var v: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(web, "AXUIElementsForSearchPredicate" as CFString, q as CFDictionary, &v) == .success,
+              let list = v as? [AXUIElement] else { return [] }
+        return list.compactMap(composer)
+    }
+
+    /// An element's frame, top-left screen coordinates.
+    static func frame(_ el: AXUIElement) -> CGRect {
+        var pos = CGPoint.zero, size = CGSize.zero
+        var v: CFTypeRef?
+        if AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &v) == .success, let r = v,
+           CFGetTypeID(r) == AXValueGetTypeID() { AXValueGetValue(r as! AXValue, .cgPoint, &pos) }      // swiftlint:disable:this force_cast
+        if AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &v) == .success, let r = v,
+           CFGetTypeID(r) == AXValueGetTypeID() { AXValueGetValue(r as! AXValue, .cgSize, &size) }      // swiftlint:disable:this force_cast
+        return CGRect(origin: pos, size: size)
     }
 }
