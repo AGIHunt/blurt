@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["numpy", "sherpa-onnx>=1.13", "truststore"]
+# dependencies = ["numpy", "sherpa-onnx>=1.13,<2", "truststore"]
 # ///
 """Speech-to-text with timestamps, adapted to the machine it runs on (docs/design/next-round.md K9).
 Always VAD-first: silence is dropped, speech is chunked, and every chunk keeps its offset in the original

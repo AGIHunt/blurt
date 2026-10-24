@@ -205,7 +205,7 @@ final class DictationStream {
         if let f = onHeard {
             // the live transcript (LiveTranscript): what was heard so far, joined as the transcript is
             let (all, gaps) = lock.locked { (pieces.prefix(p.index + 1).map(\.raw), pauses) }
-            let so = DictationStitch.joinPieces(all, pauses: gaps, names: names)
+            let so = DictationStitch.joinPieces(all, pauses: gaps)
             DispatchQueue.main.async { f(so) }
         }
         emit(["event": "dictation_piece_text", "id": id, "index": p.index, "ms": Int((p.asrSpan.1 - p.asrSpan.0) * 1000),
