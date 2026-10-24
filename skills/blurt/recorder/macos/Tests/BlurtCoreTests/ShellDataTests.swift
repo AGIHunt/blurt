@@ -1,6 +1,7 @@
 // The app shell's data rules: Config (cached reads, refusing to overwrite an unreadable file, the lock shared with
-// _common.update_global_config), FilePrivacy (0700 / 0600), SkillContract (the app ↔ skill handshake) and
-// VideoRetention (which videos Settings → Storage may delete).
+// _common.update_global_config), FilePrivacy (0700 / 0600), SkillContract (the app ↔ skill handshake),
+// VideoRetention (which videos Settings → Storage may delete), ModelUsage (which models it may offer for the Trash) and
+// LaunchQueue (one message at launch).
 import Foundation
 import XCTest
 @testable import BlurtCore
@@ -54,6 +55,14 @@ final class ShellDataTests: XCTestCase {
         XCTAssertEqual(told.count, 1, "one backup, one notice per bad version")
         XCTAssertEqual(try String(contentsOf: told[0], encoding: .utf8), broken)
         XCTAssertTrue(told[0].lastPathComponent.hasPrefix("config.json.bad-"))
+        // the next launch (a new Config) finds the same file still broken: it is told again, but no second copy
+        let next = Config(url: u)
+        var toldNext: [URL] = []
+        next.onUnreadable = { toldNext.append($0) }
+        XCTAssertFalse(next.set("app.welcomed", true))
+        XCTAssertEqual(toldNext.map(\.lastPathComponent), told.map(\.lastPathComponent))
+        let copies = try! FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix("config.json.bad-") }
+        XCTAssertEqual(copies.count, 1)
         // fixed by hand: writes work again
         try! #"{"lang": "en"}"#.write(to: u, atomically: true, encoding: .utf8)
         XCTAssertTrue(c.set("app.settings_pane", "general"))
@@ -159,5 +168,90 @@ final class ShellDataTests: XCTestCase {
         XCTAssertEqual(c.first?.files.map(\.lastPathComponent), ["recording.mp4", "recording.scan.npz"])
         XCTAssertEqual(Set(VideoRetention.candidates(roots: [root], olderThan: nil).map { $0.session.lastPathComponent }), ["old", "recent"])
         XCTAssertEqual(VideoRetention.candidates(roots: [root], olderThan: nil, excluding: [old.standardizedFileURL.path]).count, 1)
+    }
+
+    /// A recording with snaps taken while recording, its video deleted: meta.json still says recording, other keys kept.
+    func testStampKeepsARecordingARecording() throws {
+        let s = session("snapped", organized: true, age: 100)
+        try #"{"video": "recording.mp4", "duration": 42.5, "author": "A"}"#.write(to: s.appendingPathComponent("meta.json"), atomically: true, encoding: .utf8)
+        FileManager.default.createFile(atPath: s.appendingPathComponent("shots.jsonl").path, contents: Data("{\"n\": 1}\n".utf8))
+        XCTAssertFalse(VideoRetention.isRecording(s))
+        XCTAssertTrue(VideoRetention.stamp(s))
+        XCTAssertTrue(VideoRetention.isRecording(s))
+        try FileManager.default.removeItem(at: s.appendingPathComponent("recording.mp4"))
+        XCTAssertTrue(VideoRetention.stamp(s, removed: Date(timeIntervalSince1970: 0)))
+        let m = try JSONSerialization.jsonObject(with: Data(contentsOf: s.appendingPathComponent("meta.json"))) as! [String: Any]
+        XCTAssertEqual(m["mode"] as? String, "video")
+        XCTAssertEqual(m["video_removed"] as? String, "1970-01-01T00:00:00Z")
+        XCTAssertEqual(m["duration"] as? Double, 42.5)
+        XCTAssertEqual(m["author"] as? String, "A")
+        XCTAssertTrue(VideoRetention.isRecording(s))
+    }
+
+    // MARK: ModelUsage
+
+    func asrModels() -> [String: Any] {
+        ["models": [
+            ["id": "qwen3-asr-1.7b-mlx", "name": "Qwen3-ASR 1.7B", "installed": true, "path": "/h/models/asr/qwen17", "purposes": [String]()],
+            ["id": "sensevoice", "name": "SenseVoice", "installed": true, "path": "/h/models/asr/sv", "purposes": ["batch", "live", "note"]],
+            ["id": "turbo", "name": "Turbo", "installed": true, "path": "/h/models/asr/turbo", "purposes": [String]()],
+            ["id": "hf", "name": "HF", "installed": true, "path": "/c/hub/models--org--name/snapshots/abc", "purposes": [String]()],
+            ["id": "silero-vad", "name": "Silero VAD", "role": "vad", "installed": true, "path": "/h/models/silero_vad.onnx", "purposes": [String]()],
+            ["id": "gone", "installed": false, "path": "/h/models/asr/gone", "purposes": [String]()],
+        ]]
+    }
+
+    /// The model Fn dictation runs is in use even when no recording, live-caption or voice-note pick names it.
+    func testDictationModelIsInUse() {
+        let u = ModelUsage.merge(asr: asrModels(), dictation: ["selected": "qwen3-asr-1.7b-mlx"],
+                                 polish: ["selected": "p1", "models": [["id": "p1", "name": "P1", "installed": true, "path": "/h/models/polish/p1"],
+                                                                       ["id": "p2", "name": "P2", "installed": true, "path": "/h/models/polish/p2"]]])
+        XCTAssertEqual(u["/h/models/asr/qwen17"], .init(name: "Qwen3-ASR 1.7B", kind: .asr, inUse: true, removable: false))
+        XCTAssertEqual(u["/h/models/asr/sv"]?.inUse, true)
+        XCTAssertEqual(u["/h/models/asr/turbo"], .init(name: "Turbo", kind: .asr, inUse: false, removable: true))
+        XCTAssertEqual(u["/h/models/silero_vad.onnx"]?.kind, .vad)
+        XCTAssertEqual(u["/h/models/silero_vad.onnx"]?.removable, false)
+        XCTAssertEqual(u["/c/hub/models--org--name"]?.name, "HF")
+        XCTAssertNil(u["/h/models/asr/gone"])
+        XCTAssertEqual(u["/h/models/polish/p1"]?.inUse, true)
+        XCTAssertEqual(u["/h/models/polish/p2"]?.removable, true)
+    }
+
+    /// Without dictation's answer no speech model is offered for the Trash: the one it runs can't be told apart.
+    func testNoDictationAnswerRemovesNothing() {
+        let u = ModelUsage.merge(asr: asrModels(), dictation: nil, polish: nil)
+        XCTAssertEqual(u["/h/models/asr/turbo"]?.inUse, false)
+        XCTAssertFalse(u.values.contains { $0.removable })
+    }
+}
+
+// MARK: LaunchQueue
+
+final class LaunchQueueTests: XCTestCase {
+    var shown: [String] = []
+    var dropped: [String] = []
+    lazy var q = LaunchQueue<String>(hold: 3, window: 90, show: { self.shown.append($0) }, dropped: { m, _ in self.dropped.append(m) })
+    let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    func testHoldShowsOnlyTheHighest() {
+        q.start(now: t0)
+        XCTAssertEqual(q.post(1, "model", now: t0), .held)
+        XCTAssertEqual(q.post(7, "welcome", now: t0 + 1), .held)
+        XCTAssertEqual(q.post(4, "permission", now: t0 + 2), .held)
+        XCTAssertEqual(q.post(7, "welcome again", now: t0 + 2), .held)
+        XCTAssertTrue(shown.isEmpty)
+        q.flush()
+        XCTAssertEqual(shown, ["welcome"], "the highest; between equals the first posted")
+        XCTAssertEqual(Set(dropped), ["model", "permission", "welcome again"])
+    }
+
+    func testOneShownThenDropsUntilTheWindowEnds() {
+        q.start(now: t0)
+        q.flush()                                       // nothing held: nothing shown yet
+        XCTAssertEqual(q.post(2, "job", now: t0 + 10), .shown)
+        XCTAssertEqual(q.post(8, "config", now: t0 + 20), .dropped)
+        XCTAssertEqual(q.post(1, "later", now: t0 + 91), .shown, "after the window it is an ordinary toast")
+        XCTAssertEqual(shown, ["job", "later"])
+        XCTAssertEqual(dropped, ["config"])
     }
 }

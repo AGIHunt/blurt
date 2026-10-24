@@ -564,6 +564,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if Updater.shared.available {
             let u = add(T("app.menu.updates"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
             u.target = Updater.shared
+            u.image = App.menuSymbol("arrow.down.circle")   // with no action giveSymbols can't tell which row it is
         }
         menu.addItem(.separator())
         _ = add(T("app.menu.quit"), #selector(mQuit), key: "q")
@@ -585,10 +586,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for it in menu.items where !it.isSeparatorItem && it.image == nil {
             if it.submenu != nil { it.image = menuSymbol("folder"); continue }      // Project: …
             if let a = it.action, let s = symbols[NSStringFromSelector(a)] { it.image = menuSymbol(s) }
+            if it.image == nil { it.image = blankSymbol }   // a row no symbol names still starts where the others do
         }
     }
 
     static func menuSymbol(_ name: String) -> NSImage? { NSImage(systemSymbolName: name, accessibilityDescription: nil) }
+    /// An empty image a symbol's size: holds a row's title in line when it has no symbol of its own.
+    static let blankSymbol: NSImage = {
+        let size = menuSymbol("circle")?.size ?? NSSize(width: 16, height: 16)
+        return NSImage(size: size, flipped: false) { _ in true }
+    }()
 
     @objc func mOpenMain() { AppEnvironment.mainWindow?.show() }
     @objc func mOpenInbox() { AppEnvironment.mainWindow?.showInbox() }

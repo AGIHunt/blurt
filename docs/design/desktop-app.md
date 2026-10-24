@@ -761,10 +761,13 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   `app.asked_screen`、`fix.agent`、`fix.mode`（background | interactive）、`spotlight`（false = 关）、`privacy.local_asr`
   （只能选本地识别）、`privacy.keep_live_audio`（默认 false：转写完成、录屏文件在、10 分钟没写入后删 `live/audio.pcm`）、
   `asr.hf_mirror`（下载时传 `BLURT_HF_MIRROR=1`）、`record.delete_videos_after_days`（设置 → 存储「自动删除视频」，默认没有 = 从不；
-  只删已整理录屏的 `recording.mp4` / `recording.scan.npz`，移到废纸篓）、`app.contract_warned`（skill 和 App 契约版本不一致的提示，
+  只删已整理录屏的 `recording.mp4` / `recording.scan.npz`，移到废纸篓；删之前在会话的 `meta.json` 写 `"mode": "video"`，删完写
+  `"video_removed"`，这样录屏时截的图（`shots.jsonl`）不会让 index.py / items.py / `isShotsSession` 把它当成截图批次；
+  打开它的那一刻已有更早的视频时先确认）、`app.contract_warned`（skill 和 App 契约版本不一致的提示，
   每个 App 版本 × skill 契约只说一次）；`asr.backend`、`asr.language`、`record.agents`、`review.open_in` 沿用。
-- **启动时只说一句**：启动时想在刘海里说话的（设置文件读不了、欢迎、快捷键冲突、听写权限、迁移来的项目、skill 版本、上次没做完的任务、
-  推荐模型）都交给 `LaunchMessages`：前 3 秒先收着，只显示排第一的，其余丢掉（下次启动或菜单、设置里都还在）。所有提示都走刘海，
+- **启动时只说一句**：启动时想在刘海里说话的（设置文件读不了、欢迎、快捷键冲突、skill 版本、听写权限、迁移来的项目、上次没做完的任务、
+  推荐模型；这也是从高到低的顺序，规则在 BlurtCore `LaunchQueue`，有单元测试）都交给 `LaunchMessages`：前 3 秒先收着，只显示排第一的，
+  其余丢掉（下次启动或菜单、设置里都还在）。skill 契约在任何脚本运行之前就检查，落在这 3 秒里。所有提示都走刘海，
   菜单栏下的小 HUD 只在没有刘海的构建里用。
 - **隐私**：`$BLURT_HOME` 和里面放数据的文件夹 0700，听写历史、模型服务的 token、config.json 0600（App 启动时 `FilePrivacy.lockDown`，
   脚本写 `$BLURT_HOME` 下的 JSON 时 `_common.save_json` 也是 0600）；默认工作区 `~/Blurt` 0700。

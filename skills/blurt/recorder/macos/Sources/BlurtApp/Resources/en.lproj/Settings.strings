@@ -228,6 +228,9 @@
 "settings.storage.videos.confirm_title" = "Move these videos to the Trash?";
 "settings.storage.videos.confirm" = "Their items, frames and transcripts stay.";
 "settings.storage.videos.freed" = "Moved %@ of videos to the Trash";
+"settings.storage.videos.auto_confirm_title" = "Delete videos after %ld days?";
+"settings.storage.videos.auto_confirm" = "Older ones go to the Trash now:";
+"settings.storage.videos.auto_on" = "Turn On";
 "settings.export.feishu" = "Feishu / Lark";
 "settings.export.local" = "Markdown and CSV";
 "settings.export.ready" = "Ready";

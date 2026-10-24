@@ -331,8 +331,8 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
 - **Storage** shows what takes space: recordings and snaps per folder, every model with its size (*In use* or not),
   dictation history and audio, and Blurt's own files. A model nothing uses can go to the Trash. Videos are most of the
   space (about 9 MB a minute): *Delete* removes the videos of organized recordings older than 30, 90 or 180 days, or
-  all of them, and *Delete videos automatically* does it for you. It is off by default — Blurt never deletes what you
-  made unless you ask. Only the video goes, to the Trash: items, frames and transcripts stay.
+  all of them, and *Delete videos automatically* does it for you (it asks first if that would delete videos right
+  away). It is off by default — Blurt never deletes what you made unless you ask. Only the video goes, to the Trash: items, frames and transcripts stay.
 - **Privacy** has the one full list of permissions, local-only speech recognition and Spotlight. Blurt's own data
   (`~/.blurt`, `~/Blurt`) can only be read by your macOS account.
 
@@ -499,7 +499,7 @@ so the two must speak the same version: when one is older than the other, the is
 
 - **Agent**：口喷鸡用来整理录屏和截图、自动归类、AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。只有会让口喷鸡用不了的问题才标红；「连接…」（给这个 Agent 装上 blurt skill 和 MCP）只在还没装时出现，装之前先列出要改的地方。
 - **导出**：你让 Agent 导出时条目发到哪（飞书、GitHub Issues、Markdown 和 CSV），以及哪些已经可用。重复导出不会产生重复记录。
-- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。
+- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。
 - **隐私**：完整的权限列表、只用本地语音识别、Spotlight 都在这里。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。
 
 ### 9. 更新

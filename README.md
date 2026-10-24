@@ -123,7 +123,7 @@ More in the [user guide](docs/guide.md).
 - **Solo:** record → your agent in the same repo processes and fixes. No forms, no copy-paste.
 - **Team:** teammates without a repo just [download Blurt for macOS](https://github.com/AGIHunt/blurt/releases/latest)
   (if macOS says it can't check the app the first time: *System Settings → Privacy & Security → Open Anyway*) and
-  press `⌥⇧R`. Anyone records with the app, then uses *Recent recordings → Copy video* and pastes it into
+  press `⌥⇧R`. Anyone records with the app, then drags the video from Finder into
   Slack/Feishu. Or bind a shared project folder. Items keep the recorder's name, and exports land in the team's
   existing tables with your column names.
 

@@ -51,7 +51,7 @@
 "app.status.ax_count" = "口喷鸡 · %@";
 
 "app.toast.saved" = "录屏已保存（%@）";
-"app.toast.welcome" = "口喷鸡在菜单栏里 · 按%1$@ 听写 · %2$@ 截图";
+"app.toast.welcome" = "口喷鸡在菜单栏里 · 按 %1$@ 听写 · %2$@ 截图";
 
 "app.url.no_item" = "索引里找不到这个条目（%@）";
 "app.url.no_session" = "这条录屏或截图已经不在了：%@";

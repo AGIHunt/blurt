@@ -1,4 +1,7 @@
 // What the menu-bar app does in the background at launch (v0.7 contract), silently, in this order:
+//   the skill's contract     scripts/_common.py CONTRACT against the app's (BlurtCore SkillContract), before any script
+//                            runs: when they differ, one line in the island says which to update (once per app
+//                            version and skill contract)
 //   projects.py migrate      v0.6 record.workspace(s) → projects.json (K2; idempotent)
 //   items.py migrate --all   v1/v2 sessions (items.json, no batch.json) → Markdown stores (K1; idempotent)
 //   jobs.py gc               jobs that ended 14+ days ago, beyond the last 300 (K4)
@@ -10,8 +13,6 @@
 //   videos                   only when the user turned it on (Settings → Storage, record.delete_videos_after_days):
 //                            organized recordings' videos older than that go to the Trash (BlurtCore VideoRetention) —
 //                            also daily while the app runs
-//   the skill's contract     scripts/_common.py CONTRACT against the app's (BlurtCore SkillContract): when they differ,
-//                            one line in the island says which to update (once per app version and skill contract)
 // Whatever wants a word in the island at launch goes through LaunchMessages: only one is shown.
 // and keeps one `sessions.py monitor` running while it lives (K5: tmux windows → session status; it takes its own lock,
 // so a second copy just exits). Any of them missing (an older skill) is skipped.
@@ -26,6 +27,7 @@ enum Housekeeping {
         let launched = Date()
         Task.detached(priority: .utility) {
             let r = ScriptRunner.shared
+            await MainActor.run { checkSkillContract() }   // first: before any of the skill's scripts run, inside the hold
             await finishInterruptedJobs(launchedAt: launched)
             for (script, args) in [("projects.py", ["migrate"]), ("items.py", ["migrate", "--all"]), ("jobs.py", ["gc"])] {
                 guard (try? r.scriptURL(script)) != nil else { continue }
@@ -37,7 +39,6 @@ enum Housekeeping {
                 startMonitor()
                 snapper.expireTaken()
                 askAboutCarriedOverProject()
-                checkSkillContract()
                 deleteOldVideos()
                 Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in deleteOldVideos() }
             }
@@ -77,13 +78,23 @@ enum Housekeeping {
         DispatchQueue.global(qos: .utility).async {
             let c = VideoRetention.candidates(roots: StorageModel.roots(), olderThan: days, excluding: current)
             guard !c.isEmpty else { return }
-            let files = c.flatMap(\.files)
-            DispatchQueue.main.async {
-                NSWorkspace.shared.recycle(files) { done, _ in
-                    emit(["event": "videos_deleted", "auto": true, "sessions": c.count, "files": done.count,
-                          "bytes": c.reduce(Int64(0)) { $0 + $1.bytes }])
-                }
+            DispatchQueue.main.async { trashVideos(c, auto: true) }
+        }
+    }
+
+    /// The candidates' videos to the Trash. Each session is stamped a recording first (VideoRetention.stamp), so with
+    /// its video gone it doesn't turn into a snap batch, and stamped video_removed for each video that went.
+    static func trashVideos(_ c: [VideoRetention.Candidate], auto: Bool, then: (() -> Void)? = nil) {
+        for s in c { VideoRetention.stamp(s.session) }
+        NSWorkspace.shared.recycle(c.flatMap(\.files)) { done, _ in
+            let gone = Set(done.keys.map { $0.standardizedFileURL.path })
+            let now = Date()
+            for s in c where gone.contains(s.session.appendingPathComponent("recording.mp4").standardizedFileURL.path) {
+                VideoRetention.stamp(s.session, removed: now)
             }
+            emit(["event": "videos_deleted", "auto": auto, "sessions": c.count, "files": done.count,
+                  "bytes": c.reduce(Int64(0)) { $0 + $1.bytes }])
+            then?()
         }
     }
 

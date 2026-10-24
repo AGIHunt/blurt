@@ -104,5 +104,27 @@ class ShellRules(unittest.TestCase):
         self.assertIn("setSpotlight", privacy)
 
 
+class VideoRemoved(unittest.TestCase):
+    """Settings → Storage deletes an organized recording's video and stamps meta.json (VideoRetention.stamp); with
+    snaps taken while recording (shots.jsonl) the session must still read as a recording, not a snap batch."""
+
+    def session(self, meta: dict) -> Path:
+        d = Path(tempfile.mkdtemp(prefix="blurt-vid-")) / "2026-01-01_10-00-00"
+        d.mkdir()
+        (d / "shots.jsonl").write_text('{"n": 1}\n')
+        (d / "meta.json").write_text(json.dumps(meta))
+        return d
+
+    def test_index_and_items_keep_it_a_recording(self):
+        import index
+        import items
+        meta = {"video": "recording.mp4", "duration": 42.0, "mode": "video", "video_removed": "2026-02-01T00:00:00Z"}
+        d = self.session(meta)
+        self.assertEqual(index._mode(d, meta), "video")
+        self.assertEqual(items._source_type(d, meta), "recording")
+        # without the stamp, the same folder is taken for snaps — what the stamp is for
+        self.assertEqual(index._mode(d, {}), "shots")
+
+
 if __name__ == "__main__":
     unittest.main()

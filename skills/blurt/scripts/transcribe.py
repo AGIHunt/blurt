@@ -1770,7 +1770,7 @@ def cmd_run(a):
     if src.is_dir():  # a session dir: a shots session, or the recording inside it
         meta = load_json(src / "meta.json", {}) or {}
         recs = sorted(src.glob("recording.*"))
-        if meta.get("mode") == "shots" or (not recs and (src / "shots.jsonl").exists()):
+        if meta.get("mode") == "shots" or (not recs and meta.get("mode") != "video" and (src / "shots.jsonl").exists()):
             throttle("batch", a.threads)
             return transcribe_shots(src, a)
         if not recs:

@@ -228,6 +228,9 @@
 "settings.storage.videos.confirm_title" = "把这些视频移到废纸篓？";
 "settings.storage.videos.confirm" = "条目、画面和文字稿都会保留。";
 "settings.storage.videos.freed" = "已把 %@ 视频移到废纸篓";
+"settings.storage.videos.auto_confirm_title" = "%ld 天后自动删除视频？";
+"settings.storage.videos.auto_confirm" = "已经超过的会马上移到废纸篓：";
+"settings.storage.videos.auto_on" = "打开";
 "settings.export.feishu" = "飞书";
 "settings.export.local" = "Markdown 和 CSV";
 "settings.export.ready" = "可用";

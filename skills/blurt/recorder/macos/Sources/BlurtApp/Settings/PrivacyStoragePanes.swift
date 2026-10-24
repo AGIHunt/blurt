@@ -120,7 +120,7 @@ struct PrivacyPane: View {
 /// recordings, which can go), the models (one row per model, each with its size, "In use", and Move to Trash for one
 /// Blurt downloaded that nothing uses), dictation (history, kept audio, Lab), and Blurt's own files (index, caches,
 /// agent runs, jobs). Rows show up from the file system at once; which model is in use comes from the scripts
-/// (transcribe.py models, polish.py models) a moment later. Nothing is deleted without the user asking, and what is
+/// (transcribe.py models and dictation-models, polish.py models) a moment later. Nothing is deleted without the user asking, and what is
 /// deleted goes to the Trash.
 @MainActor
 final class StorageModel: ObservableObject {
@@ -227,60 +227,38 @@ final class StorageModel: ObservableObject {
         return out
     }
 
-    /// Which model is which and what uses it: transcribe.py models (speech recognition: recordings, live captions,
-    /// voice notes, dictation) and polish.py models (dictation's clean-up). Models of theirs in the shared Hugging Face
-    /// cache are listed too, with their size, but never removed here: other apps may use that cache.
+    /// Which model is which and what uses it (BlurtCore ModelUsage): transcribe.py models and dictation-models (speech
+    /// recognition: recordings, live captions, voice notes, dictation) and polish.py models (dictation's clean-up).
+    /// Models of theirs in the shared Hugging Face cache are listed too, with their size, but never removed here: other
+    /// apps may use that cache.
     func annotateModels() async {
         checkingModels = true
         defer { checkingModels = false }
         async let asr = try? SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
+        async let dictation = try? SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 180)
         async let polish = try? SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
-        var known: [String: (name: String, family: String, inUse: Bool)] = [:]
-        if let o = await asr?.json, let ms = o["models"] as? [[String: Any]] {
-            for m in ms where m["installed"] as? Bool == true {
-                guard let p = m["path"] as? String else { continue }
-                let vad = m["role"] as? String == "vad"
-                known[Self.modelRoot(p)] = (m["name"] as? String ?? p, T(vad ? "settings.storage.model.vad" : "settings.storage.model.asr"),
-                                            vad || !((m["purposes"] as? [String]) ?? []).isEmpty)
-            }
-        }
-        if let o = await polish?.json, let ms = o["models"] as? [[String: Any]] {
-            let sel = o["selected"] as? String
-            for m in ms where m["installed"] as? Bool == true {
-                guard let p = m["path"] as? String else { continue }
-                known[Self.modelRoot(p)] = (m["name"] as? String ?? p, T("settings.storage.model.polish"), m["id"] as? String == sel)
-            }
-        }
+        let known = await ModelUsage.merge(asr: asr?.json, dictation: dictation?.json, polish: polish?.json)
         guard !known.isEmpty else { return }
+        func family(_ k: ModelUsage.Kind) -> String {
+            T(k == .vad ? "settings.storage.model.vad" : k == .polish ? "settings.storage.model.polish" : "settings.storage.model.asr")
+        }
         let own = BlurtPaths.home.appendingPathComponent("models").standardizedFileURL.path
         var rows = models.filter { $0.path.standardizedFileURL.path.hasPrefix(own) }
         for i in rows.indices {
             guard let k = known[rows[i].path.standardizedFileURL.path] else { continue }
             rows[i].name = k.name
-            rows[i].family = k.family
+            rows[i].family = family(k.kind)
             rows[i].inUse = k.inUse
-            rows[i].removable = !k.inUse
+            rows[i].removable = k.removable
         }
         // the shared Hugging Face cache: its repo folders (the snapshots are links into them)
         for (p, k) in known.sorted(by: { $0.key < $1.key }) where !p.hasPrefix(own) {
             let u = URL(fileURLWithPath: p)
             let bytes = await Task.detached { diskSize(u) }.value
             rows.append(Row(name: k.name, path: u, bytes: bytes, detail: T("settings.storage.model.shared_cache"),
-                            family: k.family, inUse: k.inUse, removable: false))
+                            family: family(k.kind), inUse: k.inUse, removable: false))
         }
         models = rows
-    }
-
-    /// A model's folder as the Storage rows list it: ours as they are; in the Hugging Face cache, the repo folder
-    /// (…/hub/models--org--name), not the snapshot inside it.
-    nonisolated static func modelRoot(_ p: String) -> String {
-        let u = URL(fileURLWithPath: p).standardizedFileURL
-        var c = u
-        while c.path != "/" {
-            if c.lastPathComponent.hasPrefix("models--") { return c.path }
-            c.deleteLastPathComponent()
-        }
-        return u.path
     }
 
     func dropLive() async {
@@ -302,11 +280,12 @@ final class StorageModel: ObservableObject {
     func deleteVideos(olderThan days: Int?) {
         let c = videos(olderThan: days)
         guard !c.isEmpty else { return }
-        emit(["event": "videos_deleted", "auto": false, "sessions": c.count, "bytes": c.reduce(Int64(0)) { $0 + $1.bytes }])
         message = T("settings.storage.videos.freed", byteString(c.reduce(0) { $0 + $1.bytes }))
-        trash(c.flatMap(\.files))
+        Housekeeping.trashVideos(c, auto: false) { Task { @MainActor in await self.load() } }
     }
 
+    /// "Delete videos automatically". Turning it on deletes what is already older at once (Housekeeping), so the pane
+    /// asks first when that is anything (StoragePane's .auto).
     func setAutoDelete(_ d: Int?) {
         autoDelete = d
         VideoRetention.autoDays = d
@@ -317,7 +296,10 @@ final class StorageModel: ObservableObject {
 struct StoragePane: View {
     @StateObject var m = StorageModel()
     /// What the confirmation is about.
-    enum Ask: Identifiable { case videos(Int?), trash(StorageModel.Row); var id: String { switch self { case .videos(let d): return "v\(d ?? 0)"; case .trash(let r): return r.id } } }
+    enum Ask: Identifiable {
+        case videos(Int?), auto(Int), trash(StorageModel.Row)
+        var id: String { switch self { case .videos(let d): return "v\(d ?? 0)"; case .auto(let d): return "a\(d)"; case .trash(let r): return r.id } }
+    }
     @State var ask: Ask?
 
     var body: some View {
@@ -328,7 +310,7 @@ struct StoragePane: View {
                     row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) }
                 }
                 videosRow
-                Picker(T("settings.storage.videos.auto"), selection: Binding(get: { m.autoDelete ?? 0 }, set: { m.setAutoDelete($0 == 0 ? nil : $0) })) {
+                Picker(T("settings.storage.videos.auto"), selection: Binding(get: { m.autoDelete ?? 0 }, set: { setAuto($0) })) {
                     Text(T("settings.storage.videos.never")).tag(0)
                     ForEach(VideoRetention.choices, id: \.self) { d in Text(T("settings.storage.videos.after", d)).tag(d) }
                 }
@@ -379,9 +361,10 @@ struct StoragePane: View {
         }
         .task { await m.load() }
         .alert(alertTitle, isPresented: Binding(get: { ask != nil }, set: { if !$0 { ask = nil } }), presenting: ask) { a in
-            Button(T("settings.privacy.move_trash"), role: .destructive) {
+            Button({ if case .auto = a { return T("settings.storage.videos.auto_on") }; return T("settings.privacy.move_trash") }(), role: .destructive) {
                 switch a {
                 case .videos(let d): m.deleteVideos(olderThan: d)
+                case .auto(let d): m.setAutoDelete(d)
                 case .trash(let r): m.trash([r.path])
                 }
                 ask = nil
@@ -392,14 +375,26 @@ struct StoragePane: View {
             case .videos(let d):
                 let c = m.videos(olderThan: d)
                 Text(TP("settings.storage.videos.count", c.count) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + "). " + T("settings.storage.videos.confirm"))
+            case .auto(let d):
+                let c = m.videos(olderThan: d)
+                Text(T("settings.storage.videos.auto_confirm") + " " + TP("settings.storage.videos.count", c.count) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + "). " + T("settings.storage.videos.confirm"))
             case .trash(let r): Text((r.path.path as NSString).abbreviatingWithTildeInPath)
             }
         }
     }
 
     var alertTitle: String {
-        if case .videos = ask { return T("settings.storage.videos.confirm_title") }
-        return T("settings.privacy.move_trash_2")
+        switch ask {
+        case .videos: return T("settings.storage.videos.confirm_title")
+        case .auto(let d): return T("settings.storage.videos.auto_confirm_title", d)
+        default: return T("settings.privacy.move_trash_2")
+        }
+    }
+
+    /// Never applies at once; an age does too when no video is that old yet, else it asks first — choosing it moves
+    /// those videos to the Trash right away.
+    func setAuto(_ d: Int) {
+        if d == 0 { m.setAutoDelete(nil) } else if m.videos(olderThan: d).isEmpty { m.setAutoDelete(d) } else { ask = .auto(d) }
     }
 
     /// The videos of organized recordings: how much they take, and a menu to send the older ones to the Trash.

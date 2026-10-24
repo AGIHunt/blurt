@@ -1280,7 +1280,11 @@ def cmd_inbox(_a) -> None:
     def is_shots(d: Path) -> bool:  # snap mode: screenshots + voice notes, no video
         return (load_json(d / "meta.json", {}) or {}).get("mode") == "shots"
 
-    dirs = [d for r in recording_roots() for d in r.glob("*/") if (d / "recording.mp4").exists() or is_shots(d)]
+    def video_removed(d: Path) -> bool:  # a recording whose video was deleted in Settings → Storage
+        return bool((load_json(d / "meta.json", {}) or {}).get("video_removed"))
+
+    dirs = [d for r in recording_roots() for d in r.glob("*/")
+            if (d / "recording.mp4").exists() or is_shots(d) or video_removed(d)]
     for d in sorted(dirs, key=lambda x: x.name, reverse=True):
         meta = load_json(d / "meta.json", {}) or {}
         out = load_json(d / "batch.json") or load_json(d / "items.json")
@@ -1293,7 +1297,8 @@ def cmd_inbox(_a) -> None:
             row = {"session": str(d), "mode": "shots", "shots": len(list((d / "shots").glob("[0-9]*.png")))
                    - len(list((d / "shots").glob("*.marked.png"))), **{k: v for k, v in row.items() if k != "session"}}
         else:
-            row["duration"] = meta.get("duration") or round(probe_duration(d / "recording.mp4"), 1)
+            row["duration"] = meta.get("duration") or ((d / "recording.mp4").exists() and
+                                                       round(probe_duration(d / "recording.mp4"), 1)) or None
         rows.append(row)
     print(json.dumps({"roots": [str(r) for r in recording_roots()], "recordings": rows}, ensure_ascii=False, indent=2))
 

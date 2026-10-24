@@ -5,8 +5,9 @@
 // Writes are read-modify-write under $BLURT_HOME/.config.lock — an flock, the same lock _common.update_global_config
 // takes, so the app and the scripts never lose each other's changes — and atomic (pretty, sorted keys, like
 // _common.save_json; 0600). A config.json that exists but doesn't parse (a hand edit gone wrong) is never overwritten:
-// it is copied once to config.json.bad-<time>, the write is refused, and `onUnreadable` says so (the app: one line in
-// the island). Reads of such a file give {} (every setting at its default) until it is fixed.
+// it is copied once to config.json.bad-<time> (not again on later launches while it stays the same), the write is
+// refused, and `onUnreadable` says so (the app: one line in the island). Reads of such a file give {} (every setting
+// at its default) until it is fixed.
 import Foundation
 
 public final class Config {
@@ -102,15 +103,24 @@ public final class Config {
         return fd
     }
 
-    /// The file doesn't parse: keep a copy of it (once per version) and leave it alone.
+    /// The file doesn't parse: keep a copy of it (once per version — also across launches: a config.json.bad-* with
+    /// the same bytes is that copy) and leave it alone.
     private func refuse() {
         guard let sig = FileSig(url), sig != backedUp else { return }
         backedUp = sig
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+        let bytes = try? Data(contentsOf: url)
+        let same = ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix(url.lastPathComponent + ".bad-") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .first { bytes != nil && (try? Data(contentsOf: $0)) == bytes }
+        if let bak = same { onUnreadable?(bak); return }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
-        let bak = url.deletingLastPathComponent().appendingPathComponent("config.json.bad-\(f.string(from: Date()))")
-        try? FileManager.default.copyItem(at: url, to: bak)
+        let bak = dir.appendingPathComponent("\(url.lastPathComponent).bad-\(f.string(from: Date()))")
+        try? fm.copyItem(at: url, to: bak)
         onUnreadable?(bak)
     }
 
