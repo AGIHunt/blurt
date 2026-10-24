@@ -316,5 +316,226 @@ class CLI(unittest.TestCase):
             self.assertIsNone(o["selected"])
 
 
+import dictation_corrections as corrections  # noqa: E402
+
+# (what the speech model wrote, what the corrections pass makes of it): the user's case first, then the shapes the
+# pass resolves — the speech model's own punctuation as on the `say` clips (「把这个不对，…」, "No, wait,", 「。哦，不，」)
+RESOLVED = [
+    ("把这个，不对，这两个拿到那一边去", "把这两个拿到那一边去"),
+    ("把这个不对，这两个拿到那一边去。", "把这两个拿到那一边去。"),
+    ("先放到左边，不对，放到右边", "先放到右边"),
+    ("先放到左边，不对，放到右边那个盒子里。", "先放到右边那个盒子里。"),
+    ("先放到左边，不对，右边那个盒子里", "先放到右边那个盒子里"),
+    ("Let's meet at 2:30, no wait, 3:30.", "Let's meet at 3:30."),
+    ("Let's meet at 2:30, no wait, make it 3:30, in the small room.", "Let's meet at 3:30, in the small room."),
+    ("Let's meet at two thirty. No, wait, three thirty.", "Let's meet at three thirty."),
+    ("2:30, no wait, 3:30", "3:30"),
+    ("周三，不对，周四", "周四"),
+    ("我们周三，不对，周四开会", "我们周四开会"),
+    ("我们周三不对，周四开会。", "我们周四开会。"),
+    ("我们周三开会，不对，周四", "我们周四开会"),
+    ("我们明天去北京，不对，是后天", "我们后天去北京"),
+    ("我们下午两点不对三点开会", "我们下午三点开会"),
+    ("我们下午两点不对，三点开会。", "我们下午三点开会。"),
+    ("发给张三，哦不，发给李四", "发给李四"),
+    ("这个文件发给张三。哦，不，发给李四。", "这个文件发给李四。"),
+    ("把文件发给小王哦不是发给小李", "把文件发给小李"),
+    ("把这个文件发给小王哦不是发给小李让他明天之前看完", "把这个文件发给小李让他明天之前看完"),
+    ("帮我订一张去上海的票，不对，去杭州的", "帮我订一张去杭州的票"),
+    ("帮我订一张去上海的票。不对，去杭州的。", "帮我订一张去杭州的票。"),
+    ("把这个文件，不对，这两个文件都拷到桌面上。", "把这两个文件都拷到桌面上。"),
+    ("把这个文件，不对，这两个", "把这两个文件"),
+    ("两万，不对，两万五", "两万五"),
+    ("报价是两万，不对，是两万五，含税的。", "报价是两万五，含税的。"),
+    ("预算大概是五万我是说八万块左右", "预算大概是八万块左右"),
+    ("deadline是周五哦不对是下周一", "deadline是下周一"),
+    ("用 Claude 写，不对，用 Codex 写这个脚本", "用 Codex 写这个脚本"),
+    ("用 Claude 写不对，用 Codex 写这个脚本。", "用 Codex 写这个脚本。"),
+    ("颜色改成蓝色，算了，还是改成绿色吧", "颜色改成绿色吧"),
+    ("资料我晚上发群里，不对下午就发。", "资料我下午就发群里。"),
+    ("我想吃苹果和香蕉，不对，我想吃梨", "我想吃梨"),
+    ("send it to Tom no wait to Jerry", "send it to Jerry"),
+    ("Send it to Tom. Sorry, to Jerry before lunch.", "Send it to Jerry before lunch."),
+    ("let's meet on Tuesday no wait Wednesday at three", "let's meet on Wednesday at three"),
+    ("We need two, I mean, three people.", "We need three people."),
+    ("ok so the new logo goes on the left side no wait the right side of the header",
+     "ok so the new logo goes on the right side of the header"),
+    ("Version 3.5, no wait, 3.6 is out.", "Version 3.6 is out."),
+]
+# 不对 / 不是 / 算了 / sorry … as content, or a correction too loose to resolve without the model: left as said
+UNCHANGED = [
+    "这个不对", "这个不对。", "这个不对称", "感觉有点不对劲", "我不是故意的", "我不是故意的，你别生气了。", "是不是", "你是不是忘了带钥匙？",
+    "答案是三不是四", "答案是三不对，是四", "这个方案不对，这个方案要改", "这个方案不对，我们得重新想一下。",
+    "我觉得这个不对，那个对", "我觉得这个不对，那个是对的。", "这个不对，那个对", "他的说法不对，他说的是周三",
+    "这个颜色不对，这个要改成红色", "你这样写不对，你应该这样写", "这么做不对，那么做才对", "你文档里写的周三不对，应该是周四",
+    "你文档里写的周三不对，周四才对", "我不想去了，算了，你们去吧。", "哦，不，我没事。", "No, wait, I think it is fine.",
+    "It's fine, actually, it's great.", "I mean it.", "Sorry, I'm late.", "I'd rather stay home.", "不是我说你，你这样不行",
+    "应该是这样的", "他明天来，应该是下午", "他说错了", "我错了", "这道题错了，要重做", "把model换成GPT不对换成Claude Opus",
+    "我们周三开会讨论这个方案不对周四周四下午三点", "",
+]
+
+
+class Corrections(unittest.TestCase):
+    """The deterministic self-correction pass before polish (dictation_corrections.py): the plain shapes resolved,
+    never content, nothing outside the cancelled span lost; the guard and the repair accept what it did."""
+
+    def test_resolved(self):
+        for raw, want in RESOLVED:
+            got, fixes = corrections.resolve(raw)
+            self.assertEqual(got, want, raw)
+            self.assertTrue(fixes and fixes[0]["cancelled"], raw)
+
+    def test_content_is_left_alone(self):
+        for raw in UNCHANGED:
+            self.assertEqual(corrections.resolve(raw), (raw, []), raw)
+
+    def test_only_the_cancelled_span_and_the_marker_go(self):
+        """Nothing new comes in, and what goes is only the cancelled span, the marker and a lead-in (counted unit by
+        unit: words may move — 周三开会，不对，周四 → 周四开会 — but not vanish)."""
+        from collections import Counter
+        for raw, _want in RESOLVED:
+            got, fixes = corrections.resolve(raw)
+            r, o = Counter(polish.units(raw)), Counter(polish.units(got))
+            self.assertEqual(o - r, Counter(), f"{raw} → {got}: new words")
+            may = Counter()
+            for f in fixes:
+                may += Counter(polish.units(f["cancelled"])) + Counter(polish.units(f["marker"]))
+            may += Counter(["是", "make", "it", "to", "还", "the", "at", "on", "in"])     # lead-ins
+            self.assertEqual((r - o) - may, Counter(), f"{raw} → {got}: lost more than the cancelled words")
+            self.assertLessEqual(sum(len(polish.units(f["cancelled"])) for f in fixes), 8 * len(fixes), raw)
+
+    def test_guard_and_repair_accept_a_resolved_correction(self):
+        for raw, want in RESOLVED:
+            out = want.rstrip("。.") + ("。" if polish._is_cjk(want.rstrip("。.")[-1:] or "a") else ".")
+            g = polish.guard(raw, out)
+            self.assertTrue(g["pass"], f"{raw} → {out}: {g}")
+            fixed, spans = polish.repair(corrections.resolve(raw)[0], out)
+            self.assertEqual(spans, [], raw)
+            # the stitch guard (the joined pieces against the joined transcript) too
+            self.assertTrue(polish.stitch_guard(raw, out, None, [], None)["pass"], raw)
+
+    def test_fixtures_without_a_correction_are_untouched(self):
+        for c in cases() + [json.loads(ln) for ln in OVERDELETE.read_text(encoding="utf-8").splitlines() if ln.strip()]:
+            if "correction" not in c.get("tags", []):
+                self.assertEqual(corrections.resolve(c["input"])[1], [], c["id"])
+        false = ROOT / "tests" / "fixtures" / "dictation_false_corrections.jsonl"
+        for ln in false.read_text(encoding="utf-8").splitlines():
+            if ln.strip():
+                t = json.loads(ln).get("text") or ""
+                self.assertEqual(corrections.resolve(t)[1], [], t)
+
+    def test_fast(self):
+        import time
+        long = "，".join(r for r, _ in RESOLVED + [(u, u) for u in UNCHANGED]) * 3
+        t0 = time.process_time()
+        corrections.resolve(long)
+        self.assertLess(time.process_time() - t0, 0.25)
+        t0 = time.process_time()
+        for raw, _ in RESOLVED:
+            corrections.resolve(raw)
+        self.assertLess((time.process_time() - t0) / len(RESOLVED), 0.002)
+
+
+def test_no_space_between_two_cjk_characters():
+    assert polish.clean_output("二 是改一下合同里的付款条款，三 是约设计师。") == "二是改一下合同里的付款条款，三是约设计师。"
+    assert polish.clean_output("用 Claude Code 写一个 PR") == "用 Claude Code 写一个 PR"
+
+
+class FakeEngine(polish.Engine):
+    """Engine.polish with a scripted model: what it was asked, and what it answers."""
+
+    def __init__(self, reply):
+        super().__init__()
+        self.reply, self.asked = reply, []
+
+    def load(self, model_id=None):
+        self.model, self.model_id = object(), model_id or "fake"
+        return self
+
+    def generate(self, text, deadline, terms=None, context=None):
+        self.asked.append((text, polish.messages(text, terms, context)))
+        return (self.reply(text) if callable(self.reply) else self.reply), False
+
+
+class EngineCorrections(unittest.TestCase):
+    def test_the_model_gets_the_corrected_text(self):
+        e = FakeEngine(lambda t: t + "。")
+        r = e.polish("把这个，不对，这两个拿到那一边去", "fake", 3, [], None)
+        self.assertEqual(e.asked[0][0], "把这两个拿到那一边去")
+        self.assertEqual((r["text"], r["fell_back"]), ("把这两个拿到那一边去。", False))
+        self.assertEqual(r["corrections"][0]["cancelled"], "这个")
+
+    def test_a_fall_back_types_the_corrected_text(self):
+        """The bug: the model kept 「这个」, the guard refused it, and 「把这个，不对，这两个…」 was typed."""
+        e = FakeEngine("好的，这是整理后的文字：把这个拿到那一边去。")      # refused (chatty)
+        r = e.polish("把这个，不对，这两个拿到那一边去", "fake", 3, [], None)
+        self.assertTrue(r["fell_back"])
+        self.assertEqual(r["text"], "把这两个拿到那一边去")
+        self.assertNotIn("不对", r["text"])
+
+    def test_an_unresolved_marker_gets_the_correction_examples(self):
+        e = FakeEngine(lambda t: t)
+        e.polish("把model换成GPT不对换成Claude Opus", "fake", 3, [], None)
+        e.polish("帮我把这个 PR 合并一下", "fake", 3, [], None)
+        with_ex = [m["content"] for m in e.asked[0][1]]
+        without = [m["content"] for m in e.asked[1][1]]
+        self.assertIn(polish.CORRECTION_EXAMPLES[0][0], with_ex)
+        self.assertNotIn(polish.CORRECTION_EXAMPLES[0][0], without)
+        # the cached prefix (system + examples) is the same either way
+        n = 1 + 2 * len(polish.EXAMPLES)
+        self.assertEqual(with_ex[:n], without[:n])
+
+
+class Echo(unittest.TestCase):
+    """A sliding window's polish repeated the text so far in front of the new piece (the guard's `copied`, the
+    transcript typed with no marks at the pauses): the repetition goes before the guard."""
+
+    def test_strip(self):
+        before = "明天要做三件事，第一，把测试全部跑完，"
+        self.assertEqual(polish.strip_echo("明天要做三件事，第一，把测试全部跑完，第二，把文档更新一下。", before, "第二把文档更新一下"),
+                         ("第二，把文档更新一下。", 16))
+        # near-exact: re-punctuated
+        self.assertEqual(polish.strip_echo("明天要做三件事：第一，把测试全部跑完；第二，把文档更新一下。", before, "第二把文档更新一下")[0],
+                         "第二，把文档更新一下。")
+        self.assertEqual(polish.strip_echo("For the release, we need three things. First, run all the tests. Second, update the docs.",
+                                           "For the release, we need three things. First, run all the tests,",
+                                           "second update the docs")[0], "Second, update the docs.")
+        # only the tail it repeated: an echo of the context ends where the context ends
+        self.assertEqual(polish.strip_echo("明天要做三件事，第一把测试全部跑完。", "明天要做三件事，", "第一把测试全部跑完"),
+                         ("第一把测试全部跑完。", 7))
+
+    def test_words_said_again_stay(self):
+        # the speaker did say them again
+        self.assertEqual(polish.strip_echo("第一，把测试全部跑完。", "第一，", "第一把测试全部跑完"), ("第一，把测试全部跑完。", 0))
+        self.assertEqual(polish.strip_echo("我们明天去公园。", "我们明天", "我们明天去公园"), ("我们明天去公园。", 0))
+        self.assertEqual(polish.strip_echo("第二，把文档更新一下。", "", "第二把文档更新一下"), ("第二，把文档更新一下。", 0))
+        # a single unit is never an echo
+        self.assertEqual(polish.strip_echo("好，走吧。", "我说好", "好走吧"), ("好，走吧。", 0))
+
+    def test_engine_strips_it_before_the_guard(self):
+        e = FakeEngine("明天要做三件事，第一，把测试全部跑完，第二，把文档更新一下。")
+        r = e.polish("第二把文档更新一下", "fake", 3, [], {"dictated": "明天要做三件事，第一，把测试全部跑完，"})
+        self.assertEqual((r["text"], r["fell_back"], r["echo"]), ("第二，把文档更新一下。", False, 16))
+
+    def test_the_text_so_far_is_the_turn_before(self):
+        m = polish.messages("第二把文档更新一下", None, {"dictated": "明天要做三件事，第一，把测试全部跑完，", "title": "Notes"})
+        self.assertEqual([x["role"] for x in m[-3:]], ["assistant", "assistant", "user"][:0] + ["user", "assistant", "user"])
+        self.assertEqual(m[-3]["content"], "明天要做三件事，第一，把测试全部跑完，")
+        self.assertEqual(m[-2]["content"], "明天要做三件事，第一，把测试全部跑完，")
+        self.assertEqual(m[-1]["content"], "第二把文档更新一下")       # a title alone is no "Near the cursor" line
+        # only its end, from a clause start
+        long = "，".join(f"第{i}件事做完了" for i in range(40))
+        tail = polish.dictated_tail(long)
+        self.assertLessEqual(len(tail), polish.DICTATED_CHARS)
+        self.assertTrue(long.endswith(tail) and tail.startswith("第"))
+        # the guard still accepts its words and refuses a copy of them (`copied`)
+        self.assertIn("跑完", polish.context_all({"dictated": "把测试全部跑完"}))
+
+    def test_stitch_guard_types_a_fall_back_with_its_corrections_resolved(self):
+        g = polish.stitch_guard("把这个，不对，这两个拿到那一边去", "当然可以！", None, [], None, "把这个，不对，这两个拿到那一边去")
+        self.assertFalse(g["pass"])
+        self.assertEqual(g["fallback_text"], "把这两个拿到那一边去")
+
+
 if __name__ == "__main__":
     unittest.main()

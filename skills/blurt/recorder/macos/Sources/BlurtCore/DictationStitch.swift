@@ -223,7 +223,9 @@ extension DictationStitch {
         "both", "either", "neither", "whether", "though", "although", "once", "again", "too", "already", "always",
         "never", "sometimes", "something", "anything", "everything", "nothing", "someone", "everyone", "anyone",
         "otherwise", "instead", "actually", "probably", "definitely", "especially", "myself", "yourself", "itself",
-        "ourselves", "themselves", "don’t", "it’s", "we’re", "you’re", "they’re", "being"])
+        "ourselves", "themselves", "don’t", "it’s", "we’re", "you’re", "they’re", "being",
+        // a list's markers, after a seam ("First, run the tests, Second, …")
+        "second", "third", "fourth", "fifth", "finally", "lastly", "firstly", "secondly"])
 
     /// The first word without the capital the cut gave it ("Than the one…" after "a lot faster" → "than the one…"):
     /// only an ordinary word written as a capital and lower-case letters; never "I", a custom word (`names`), an
@@ -272,6 +274,100 @@ extension DictationStitch {
             after = pause
         }
         return acc
+    }
+
+    // a fall-back's seam: no comma after a word that binds to what follows
+    static let bindingZH = ["把", "被", "给", "从", "向", "往", "在", "是", "和", "跟", "与", "或", "让", "将", "比", "为", "对",
+                            "的", "这个", "那个", "一个", "我们", "你们", "他们", "也", "都", "就", "还", "又", "再", "才",
+                            "嗯", "呃", "额"]
+
+    /// The text ends on a word that needs what comes next (把, 的, to, the …).
+    public static func binds(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if endsCJK(t) { return bindingZH.contains { t.hasSuffix($0) } }
+        guard let last = units(t).last?.value else { return false }
+        return openEndsEN.contains(last)
+    }
+
+    /// Where a polish window fell back to the transcript, its seam (the pause before the piece) still gets
+    /// punctuation: after a long pause the seam rule's; after a short one a comma where the speech model heard a
+    /// boundary (`heardEnd`: the mark it ended the piece with), unless the text before binds to the next words. Without
+    /// it a fall-back read 「…跑完第二，把文档…」.
+    public static func fallbackSeam(_ previous: String, _ next: String, pause: Double?, heardEnd: String,
+                                    names: Set<String> = []) -> String {
+        let (core, end) = splitTrailing(previous)
+        guard !core.isEmpty else { return join(previous, next) }
+        let mark = end.isEmpty ? heardEnd : end
+        if let p = pause, p >= longPause {
+            let (a, b) = seam(core + mark, next, pause: p, names: names)
+            return join(a, b)
+        }
+        let rest = decapitalize(next.trimmingCharacters(in: .whitespacesAndNewlines), names: names)
+        if !mark.isEmpty, !binds(core) {
+            return core + (endsCJK(core) ? "，" : ", ") + rest
+        }
+        return join(core, rest)
+    }
+
+    /// The pieces' texts joined as a fall-back types them: `joinPieces`, with `fallbackSeam` at every seam.
+    public static func joinPiecesForFallback(_ texts: [String], pauses: [Double?], names: Set<String> = []) -> String {
+        var acc = ""
+        var after: Double?
+        var afterEnd = ""
+        for (i, t) in texts.enumerated() {
+            let pause = i < pauses.count ? pauses[i] : nil
+            let t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty {
+                if let a = after, let p = pause { after = a + p }
+                continue
+            }
+            acc = acc.isEmpty ? t : fallbackSeam(acc, t, pause: after, heardEnd: afterEnd, names: names)
+            after = pause
+            afterEnd = splitTrailing(t).end
+        }
+        return acc
+    }
+
+    /// Two parts with a pause between them that ended nothing (a piece that opens with 「不对…」 after the one before):
+    /// a comma unless the first already ends in punctuation — the corrections pass reads the marker by its pause.
+    public static func commaJoin(_ a: String, _ b: String) -> String {
+        let a = a.trimmingCharacters(in: .whitespacesAndNewlines), b = b.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = a.last else { return b }
+        if b.isEmpty || trailing.contains(last) { return join(a, b) }
+        return a + (endsCJK(a) ? "，" : ", ") + b
+    }
+
+    /// The piece ends on a self-correction marker (「资料我晚上发群里，不对。」 + a pause + 「下午就发」): the restated words
+    /// are in the next piece, so this window is carried whole instead of polished (polish dropped the 不对 and kept both).
+    public static func endsWithCorrection(_ text: String) -> Bool {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while let c = t.last, !c.isLetter, !c.isNumber { t.removeLast() }
+        for f in ["嗯", "呃", "啊", "额"] where t.hasSuffix(f) { t = String(t.dropLast(f.count)) }
+        while let c = t.last, !c.isLetter, !c.isNumber { t.removeLast() }
+        let zh = ["不对", "不是不是", "哦不是", "哦不", "我是说", "我的意思是", "更正", "说错了", "算了"]
+        let en = ["no wait", "wait no", "no, wait", "i mean", "scratch that", "make that", "or rather", "sorry"]
+        if zh.contains(where: { t.hasSuffix($0) }) { return true }
+        return en.contains { e in
+            guard t.hasSuffix(e) else { return false }
+            let before = t.dropLast(e.count)
+            return before.last.map { !$0.isLetter } ?? true
+        }
+    }
+
+    /// The window's output with the case its first word had in the input: polish capitalises a window as a sentence of
+    /// its own (「…, update the docs」 → "Update the docs") when it continues one.
+    public static func keepCase(input: String, output: String) -> String {
+        let i = input.trimmingCharacters(in: .whitespaces), o = output.trimmingCharacters(in: .whitespaces)
+        guard let a = i.first, let b = o.first, a.isLowercase, b.isUppercase, isWordChar(b) else { return output }
+        let wi = i.prefix { $0.isLetter || "'’".contains($0) }, wo = o.prefix { $0.isLetter || "'’".contains($0) }
+        guard !wi.isEmpty, wi.count == wo.count, wi.lowercased() == wo.lowercased(), wo.dropFirst() == wi.dropFirst() else { return output }
+        return String(wi) + o.dropFirst(wo.count)
+    }
+
+    /// The text stops inside a sentence (no sentence end, no line break at its end).
+    public static func midSentence(_ text: String) -> Bool {
+        guard let last = text.trimmingCharacters(in: .whitespaces).last else { return false }
+        return !terminators.contains(last) && last != "\n"
     }
 
     /// A polish window's output split for committing: everything up to its last sentence end — or, with `atClauses`

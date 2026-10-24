@@ -152,6 +152,55 @@ final class DictationStitchTests: XCTestCase {
         XCTAssertEqual(S.commitSplit("").commit, "")
     }
 
+    // MARK: the fixture shared with scripts/dictation_stitch.py (the Dictation Lab's replay of the windows)
+
+    func testSharedSeamFixture() throws {
+        var u = URL(fileURLWithPath: #filePath)
+        for _ in 0..<7 { u.deleteLastPathComponent() }
+        let rows = try String(contentsOf: u.appendingPathComponent("tests/fixtures/dictation_seams.jsonl"), encoding: .utf8)
+            .split(separator: "\n").compactMap { try JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+        XCTAssertGreaterThanOrEqual(rows.count, 30)
+        for r in rows {
+            let fn = r["fn"] as! String
+            let pauses = (r["pauses"] as? [Any])?.map { $0 as? Double }
+            switch fn {
+            case "joinPieces":
+                XCTAssertEqual(S.joinPieces(r["texts"] as! [String], pauses: pauses!), r["want"] as? String, "\(r)")
+            case "joinPiecesForFallback":
+                XCTAssertEqual(S.joinPiecesForFallback(r["texts"] as! [String], pauses: pauses!), r["want"] as? String, "\(r)")
+            case "fallbackSeam":
+                XCTAssertEqual(S.fallbackSeam(r["previous"] as! String, r["next"] as! String, pause: r["pause"] as? Double,
+                                              heardEnd: r["heard"] as! String), r["want"] as? String, "\(r)")
+            case "commaJoin":
+                XCTAssertEqual(S.commaJoin(r["a"] as! String, r["b"] as! String), r["want"] as? String, "\(r)")
+            case "commitSplit":
+                let s = S.commitSplit(r["text"] as! String)
+                XCTAssertEqual([s.commit, s.carry, s.end], r["want"] as? [String], "\(r)")
+            case "decapitalize":
+                XCTAssertEqual(S.decapitalize(r["text"] as! String), r["want"] as? String, "\(r)")
+            case "midSentence":
+                XCTAssertEqual(S.midSentence(r["text"] as! String), r["want"] as? Bool, "\(r)")
+            case "startsWithCorrection":
+                XCTAssertEqual(S.startsWithCorrection(r["text"] as! String), r["want"] as? Bool, "\(r)")
+            case "endsWithCorrection":
+                XCTAssertEqual(S.endsWithCorrection(r["text"] as! String), r["want"] as? Bool, "\(r)")
+            case "keepCase":
+                XCTAssertEqual(S.keepCase(input: r["input"] as! String, output: r["output"] as! String), r["want"] as? String, "\(r)")
+            default:
+                XCTFail("unknown fn \(fn)")
+            }
+        }
+    }
+
+    func testAFallBackSeamGetsAComma() {
+        // the bug: a refused window typed 「…跑完第二，…」
+        XCTAssertEqual(S.fallbackSeam("第一，把测试全部跑完", "第二把文档更新一下", pause: 0.7, heardEnd: "。"),
+                       "第一，把测试全部跑完，第二把文档更新一下")
+        XCTAssertEqual(S.fallbackSeam("我们把", "测试跑完", pause: 0.7, heardEnd: "，"), "我们把测试跑完")   // 把 binds
+        XCTAssertTrue(S.binds("send it to the"))
+        XCTAssertFalse(S.binds("把测试全部跑完"))
+    }
+
     func testTerminatorFollowsTheScript() {
         XCTAssertEqual(S.terminator(".", after: "我们下午开会"), "。")
         XCTAssertEqual(S.terminator("？", after: "Can you check"), "?")

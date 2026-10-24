@@ -231,14 +231,16 @@ The implementation is described in `dictation.md` §Styles; in short:
 - **6, suggestions**: ≥ 3 consistent signals in an app (≥ 70 %) → asked once; never switched silently; learned apps
   show in Settings with Reset.
 
-Found on the way, not changed here: on `say` clips that dictate a list piece by piece, the polish model (Gemma 4 E2B)
-repeats the polished text so far in front of the new piece, the guard's `copied` check rightly refuses it, and the take
-falls back to the transcript, which at short pauses has no mark at the seams (「…跑完第二，…」). The renderer copes
-with those seams; the polish behaviour itself is the same before and after this work (latency runs). The Dictation Lab's
-`style=` re-runs and its `listed` check are where to follow it up. Likewise the `say` clip of
-「把这个，不对，这两个拿到那一边去」: the model keeps 「这个」 (「把这个拿到那一边去」), the guard's `correction` check
-refuses it and the transcript is typed with the 不对 in it — before and after this work alike; the styles don't touch
-self-corrections (the chat variant only adds a particle back after them).
+Found on the way, and fixed since (dictation.md §Polish windows: context, not output, and §Self-corrections: resolved
+before the model): on `say` clips that dictate a list piece by piece, the polish model (Gemma 4 E2B) repeated the
+polished text so far in front of the new piece, the guard's `copied` check rightly refused it, and the take fell back
+to the transcript, which at short pauses had no mark at the seams (「…跑完第二，…」). The text so far is now the turn
+before the new piece (not a line of context), an echo is trimmed before the guard, and a refused window keeps a comma
+at its seam: on the lab's replay of the windows, list-like takes fell back 75 % → 0 %. Likewise the `say` clip of
+「把这个，不对，这两个拿到那一边去」: the model kept 「这个」 (or dropped 「把」), the guard refused it and the transcript was
+typed with the 不对 in it; a deterministic pass now resolves such corrections before polish (「把这两个拿到那一边去」 on
+every round). The styles themselves don't touch self-corrections (the chat variant only adds a particle back after
+them). The renderer still copes with an unpunctuated seam.
 
 ## 4. Other improvements the feedback points to
 

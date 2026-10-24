@@ -202,6 +202,21 @@ def test_pieces_replay_the_cuts_with_prior_and_seams(home):
     assert whole["outputs"]["timings"]["segments"] == 1
 
 
+def test_windows_replay_the_apps_polish_windows(home):
+    """mode=windows: each piece polished in a window (the carried clause + the piece), the text so far as `dictated`
+    context — what the app does while the user talks (dictation_stitch.stream)."""
+    segs = [{"start": 0, "end": 1.0, "pause_after": 0.7}, {"start": 1.0, "end": 3.0, "pause_after": None}]
+    c = make_case(home, "w1", 3.0, "明天要做三件事，第一，把测试全部跑完。", segs)
+    fake = FakePipeline({1.0: "明天要做三件事，第一，", 2.0: "把测试全部跑完。"}, polish=lambda t: t if t.endswith("。") else t + "。")
+    r = L.run_case(c, L.parse_spec("mode=windows"), fake)
+    pol = [x for x in fake.calls if "polish" in x]
+    assert [x["polish"] for x in pol] == ["明天要做三件事，第一", "第一把测试全部跑完。"]
+    assert pol[0]["context"] is None and pol[1]["context"] == {"dictated": "明天要做三件事，"}
+    assert r["outputs"]["text"] == "明天要做三件事，第一把测试全部跑完。"
+    assert r["outputs"]["windows"] == 2 and r["outputs"]["windows_fell_back"] == 0
+    assert L.parse_spec("mode=windows")["key"].endswith("mode=windows")
+
+
 def test_config_specs():
     cfg = L.parse_spec("asr=qwen3-asr-0.6b-mlx,polish=off,vocab=off")
     assert (cfg["asr"], cfg["polish"], cfg["vocab"], cfg["context"]) == ("qwen3-asr-0.6b-mlx", False, False, True)

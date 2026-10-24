@@ -30,7 +30,7 @@ configurations and run them all again after a change (a regression run). Everyth
                                                       agent (agents.py), else the local polish model
 
 SPEC: "current" (the app's settings) or comma-separated overrides on it: asr=MODEL_ID, polish=on|off|MODEL_ID,
-vocab=on|off, context=on|off, mode=pieces|whole, language=auto|zh|en…, style=verbatim|light|structured|auto (the
+vocab=on|off, context=on|off, mode=pieces|windows|whole, language=auto|zh|en…, style=verbatim|light|structured|auto (the
 dictation styles, docs/design/dictation-styles.md: the list renderer and the app category's variant of light, from
 dictation_styles.py — the same rules as the app), category=chat|code|mail|notes|other (default: the case's app)
 e.g. --config asr=qwen3-asr-0.6b-mlx,polish=off   rerun ID --config style=light --config style=structured
@@ -40,8 +40,10 @@ truth is `listed`, counted in overall.listed, and --fail-on-regression fails on 
 The pipeline is the app's own entry points: the warm servers of transcribe.py (`note`, purpose dictation, the custom
 words, `prior` = the text so far) and polish.py (`polish`: the guard and the repair), started here when they are not
 running. "pieces" replays the cuts the take made (each piece transcribed with the text so far as context, joined, the
-seam's punctuation dropped after a short pause), then polishes the joined text once; "whole" transcribes the whole
-take. The app's sliding polish windows and the fit at the cursor are not replayed: compare re-runs with re-runs.
+seam's punctuation dropped after a short pause), then polishes the joined text once; "windows" replays the cuts and
+polishes them the way the app does while the user talks (DictationStream's sliding windows, ported in
+dictation_stitch.py: the carried clause, the text so far as context, the stitch guard); "whole" transcribes the whole
+take. The fit at the cursor is not replayed: compare re-runs with re-runs.
 
 Storage: $BLURT_HOME/dictation/lab/cases/<id>/ {audio.wav, case.json, runs.jsonl}.
 """
@@ -66,6 +68,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import blurt_home, global_config  # noqa: E402
+import dictation_stitch as stitch  # noqa: E402
 import dictation_styles as styles  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -496,8 +499,8 @@ def parse_spec(spec: str | dict | None) -> dict:
         elif k in ("vocab", "context"):
             cfg[k] = onoff(v)
         elif k == "mode":
-            if v not in ("pieces", "whole"):
-                raise Fail(f"mode must be pieces or whole, not {v}", "usage")
+            if v not in ("pieces", "windows", "whole"):
+                raise Fail(f"mode must be pieces, windows or whole, not {v}", "usage")
             cfg["mode"] = v
         elif k == "language":
             cfg["language"] = None if v in ("", "auto", None) else v
@@ -651,6 +654,23 @@ class Servers:
             return {"ok": True, "text": text, "fell_back": True, "reason": r.get("code") or "error", "error": r.get("error")}
         return r
 
+    def guard(self, raw: str, output: str, fallback: str | None, vocab: bool, context: dict | None) -> dict | None:
+        """polish.py serve's stitch guard (the joined pieces against the joined transcript), as the app calls it."""
+        req = {"cmd": "guard", "raw": raw, "output": output, "vocab": self.vocab_terms() if vocab else [],
+               "context": context}
+        if fallback is not None:
+            req["fallback"] = fallback
+        r = self.call("polish-serve", req, 10)
+        return r if r and r.get("ok") else None
+
+    @staticmethod
+    def vocab_terms() -> list[dict]:
+        try:
+            import dictation_vocab  # noqa: PLC0415
+            return dictation_vocab.load()
+        except Exception:  # noqa: BLE001
+            return []
+
 
 _SEAM_TRAIL = re.compile(r"[。.!！?？，,、]+$")
 _LATIN_END = re.compile(r"[A-Za-z0-9]$")
@@ -696,7 +716,7 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
     x = read_samples(wav)
     segs = (c.get("take") or {}).get("segments") or []
     cuts = []
-    if cfg.get("mode", "pieces") == "pieces" and len(segs) > 1:
+    if cfg.get("mode", "pieces") in ("pieces", "windows") and len(segs) > 1:
         for s in segs:
             a, b = int(float(s.get("start", 0)) * SR), int(float(s.get("end", 0)) * SR)
             if b > a:
@@ -731,7 +751,34 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
     polish_ms = 0
     style = cfg.get("style") or "light"
     cat = cfg.get("category") or styles.category((c.get("app") or {}).get("bundle"))
-    if cfg.get("polish") and raw.strip() and style != "verbatim":
+    if cfg.get("polish") and raw.strip() and style != "verbatim" and cfg.get("mode") == "windows" and len(pieces) > 1:
+        t1 = time.perf_counter()
+        ctx = context_payload(c) if cfg.get("context") else None
+        timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)
+        extra = {"variant": "chat"} if cat == "chat" else {}
+        answers: list[dict] = []
+
+        def one(text: str, wctx: dict | None) -> dict:
+            r = backend.polish(text, cfg.get("polish_model"), bool(cfg.get("vocab")), wctx, timeout, **extra)
+            answers.append(r)
+            return r
+        guard = getattr(backend, "guard", None)
+        w = stitch.stream([{"raw": q["raw"]} for q in pieces], [q["pause_after"] for q in pieces], one,
+                          (lambda r_, o_, f_: guard(r_, o_, f_, bool(cfg.get("vocab")), ctx)) if guard else None, ctx)
+        polish_ms = int((time.perf_counter() - t1) * 1000)
+        load_ms += sum(int(a.get("load_ms") or 0) for a in answers)
+        for q, wp in zip(pieces, w["pieces"]):
+            q.update(polish_in=wp["polish_in"], text=wp["text"], fell_back=wp["fell_back"], reason=wp["reason"],
+                     polish_ms=wp["ms"], echo=wp.get("echo"), corrections=wp.get("corrections"))
+        out.update(text=w["text"] or raw, fell_back=w["fell_back"], reason=w["reason"], stitch=w["stitch"],
+                   polished=stitch.join_all([a.get("polished") or "" for a in answers]),
+                   repaired=[x for a in answers for x in a.get("repaired") or []],
+                   polish_model=next((a.get("model") for a in answers if a.get("model")), None),
+                   windows_fell_back=sum(1 for wp in w["pieces"] if wp["fell_back"]),
+                   windows=sum(1 for wp in w["pieces"] if wp["polish_in"]),
+                   last_polish_ms=next((wp["ms"] for wp in reversed(w["pieces"]) if wp["polish_in"]), 0))
+        out["terms_applied"] += [t for a in answers for t in a.get("terms") or [] if t not in out["terms_applied"]]
+    elif cfg.get("polish") and raw.strip() and style != "verbatim":
         t1 = time.perf_counter()
         ctx = context_payload(c) if cfg.get("context") else None
         timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)

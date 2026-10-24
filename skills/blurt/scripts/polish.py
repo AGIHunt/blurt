@@ -39,6 +39,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import dictation_corrections as corrections  # noqa: E402
 import dictation_vocab as vocab  # noqa: E402
 from _common import BLURT_HOME, EXIT_CAP, MODELS_DIR, adaptive_idle, global_config, load_json, save_json  # noqa: E402
 
@@ -154,7 +155,9 @@ def clean_output(text: str) -> str:
     for a, b in (('"', '"'), ("“", "”"), ("「", "」"), ("'", "'")):
         if len(t) > 2 and t.startswith(a) and t.endswith(b) and t.count(a) == 1 and t.count(b) == 1:
             t = t[1:-1].strip()
-    return t
+    # Gemma 4 E2B writes 「二 是改一下…，三 是…」 for a window that starts with a numeral: never a space between two CJK
+    # characters (the speech model writes none; mixed-script spacing is untouched)
+    return re.sub(rf"(?<=[{_CJK}]) +(?=[{_CJK}])", "", t)
 
 
 def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] | None = None,
@@ -270,7 +273,9 @@ _MARKERS = [units(m) for m in ("不对", "不是", "我是说", "我的意思是
 # single units that always carry meaning: negations, alternatives, "only", "also" — never dropped on their own
 _KEEP_ALWAYS = {"不", "没", "别", "非", "未", "无", "否", "或", "但", "只", "才", "也", "都", "还", "再", "又", "很", "太", "最",
                 "更", "not", "no", "never", "or", "but", "only", "also", "too", "don't", "can't", "won't", "isn't", "didn't",
-                "doesn't", "without", "except", "unless"}
+                "doesn't", "without", "except", "unless",
+                # a list's markers: "…by Friday. Second, they asked…" lost its "Second" (the lists eval)
+                "first", "second", "third", "fourth", "fifth", "finally", "lastly", "firstly", "secondly", "thirdly"}
 # a marker that is only ever a correction (还是 / 不是 / sorry are ordinary words too)
 _STRONG_MARKERS = [units(m) for m in ("不对", "我是说", "我的意思是", "更正", "说错了", "no wait", "wait no", "i mean",
                                       "scratch that", "make that")]
@@ -629,15 +634,84 @@ def context_all(context: dict | str | None) -> str:
         return ""
     if isinstance(context, str):
         return context
-    return " ".join(str(context.get(k) or "") for k in ("before", "selection", "after", "title", "app"))
+    return " ".join(str(context.get(k) or "") for k in ("before", "dictated", "selection", "after", "title", "app"))
+
+
+def context_before(context: dict | str | None) -> str:
+    """The text right before the cursor: the field's, then what this dictation has typed so far."""
+    if not isinstance(context, dict):
+        return ""
+    return " ".join(str(context.get(k) or "") for k in ("before", "dictated")).strip()
+
+
+DICTATED_CHARS = 120       # of a streamed dictation's text so far, as the turn before this one
+
+
+def dictated_tail(text: str | None, n: int = DICTATED_CHARS) -> str:
+    """The end of the text so far, from a clause start: what the turn before shows the model."""
+    t = " ".join((text or "").split())
+    if len(t) <= n:
+        return t
+    t = t[-n:]
+    m = re.search(r"[，。、；：！？,.;:!?]\s*", t)
+    return t[m.end():] if m and m.end() < len(t) - 8 else t
+
+
+# Shown only when a correction marker is still in the text after corrections.resolve (the shapes it can't resolve),
+# after the cached prefix, so the prefix stays the same for every request.
+CORRECTION_EXAMPLES = [
+    ("这个按钮放在顶部不对放在底部吧", "这个按钮放在底部吧。"),
+    ("tell them the meeting is at the office I mean it's on zoom this time", "Tell them the meeting is on Zoom this time."),
+]
 
 
 def messages(text: str, terms: list[dict] | None = None, context: dict | str | None = None) -> list[dict]:
     m = [{"role": "system", "content": SYSTEM}]
     for q, a in EXAMPLES:
         m += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    if _CANCEL.search(unicodedata.normalize("NFKC", text or "").lower()):
+        for q, a in CORRECTION_EXAMPLES:
+            m += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+    # a streamed dictation's text so far is the turn before this one (docs/design/dictation.md §Streaming): as a line
+    # of context ("Near the cursor: …▮") Gemma 4 E2B repeated it in front of the new piece in 8 of 15 list-like
+    # windows (the guard's `copied`, the transcript typed); as the previous exchange, in 0 of 15
+    so = dictated_tail(context.get("dictated")) if isinstance(context, dict) else ""
+    if so:
+        m += [{"role": "user", "content": so}, {"role": "assistant", "content": so}]
     m.append({"role": "user", "content": user_message(text, terms, context)})
     return m
+
+
+ECHO_MIN = 2           # units: an echo of the context shorter than this is left alone
+ECHO_RATIO = 0.85      # near-exact: polish re-punctuated or dropped a filler in what it repeated
+
+
+def strip_echo(out: str, before: str, raw: str) -> tuple[str, int]:
+    """The model's output without a repetition of the text before the cursor that it put in front of the new words
+    (DictationFit's overlap trim, applied to polish's own output) → (out, units removed). Only what wasn't spoken
+    again: when the transcript itself starts with those words, they stay."""
+    import difflib
+    o = unit_spans(out)
+    c = [u for u, _, _ in unit_spans(before)][-200:]
+    r = [u for u, _, _ in unit_spans(raw)]
+    ov = [u for u, _, _ in o]
+    if len(o) < ECHO_MIN or len(c) < ECHO_MIN:
+        return out, 0
+    for k in range(min(len(o), len(c) + 2), ECHO_MIN - 1, -1):
+        head = ov[:k]
+        if k <= 4:
+            hit = k <= len(c) and c[-k:] == head
+        elif head[-1] != c[-1]:
+            continue                 # an echo of the text before ends where that text ends
+        else:
+            hit = any(difflib.SequenceMatcher(None, head, c[-n:], autojunk=False).ratio() >= ECHO_RATIO
+                      for n in range(max(1, k - 2), min(len(c), k + 2) + 1))
+        if not hit:
+            continue
+        if difflib.SequenceMatcher(None, head, r[:k], autojunk=False).ratio() >= 0.6:
+            return out, 0            # said again: the speaker repeated it
+        return out[o[k - 1][2]:].lstrip(" ，。、；：！？,.;:!?\n"), k
+    return out, 0
 
 
 # ------------------------------------------------------------------ registry, hardware, config
@@ -889,7 +963,9 @@ class Engine:
     def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
                terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
         """terms: the custom words (None = $BLURT_HOME/dictation/vocabulary.json, [] = none); context: the text around
-        the cursor ({"before","after","selection","title","app"}) — in the prompt and the guard's allowance only.
+        the cursor ({"before","after","selection","title","app"}) — in the prompt and the guard's allowance only — and
+        "dictated": a streamed dictation's own text so far (shown as the turn before this one; an echo of it is trimmed).
+        Spoken self-corrections of a plain shape are resolved before the model (dictation_corrections.resolve).
         variant: the app category's variant of light — "chat" keeps sentence-final particles (the repair puts back the
         ones the model dropped). The prompt is the same for every variant, so its cached prefix is too."""
         t0 = time.perf_counter()
@@ -897,7 +973,13 @@ class Engine:
         all_terms = vocab.load() if terms is None else vocab.normalize(terms)
         raw, applied = vocab.apply((text or "").strip(), all_terms)     # exact sounds-like / spelling fixes first
         res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None,
-               "model": None, "terms": applied, "context": bool(context_text(context))}
+               "model": None, "terms": applied,
+               "context": bool(context_text(context) or (isinstance(context, dict) and context.get("dictated")))}
+        # spoken self-corrections of a plain shape (「把这个，不对，这两个…」, "2:30, no wait, 3:30") are resolved here,
+        # deterministically: the model gets the corrected text, and so does a fall-back (dictation_corrections.py)
+        raw, fixes = corrections.resolve(raw)
+        if fixes:
+            res.update(text=raw, corrected=raw, corrections=fixes)
         if len(units(raw)) <= 2:          # nothing to tidy
             res["reason"] = "short"
             return {**res, "ms": 0}
@@ -921,6 +1003,10 @@ class Engine:
         self.last = time.time()
         out = clean_output(reply)
         res["polished"] = out
+        # a repetition of the text before the cursor (the stream's text so far) in front of the new words goes
+        out, echo = strip_echo(out, context_before(context), raw)
+        if echo:
+            res["echo"] = echo
         if cut:
             res.update(fell_back=True, reason="timeout")
         else:
@@ -1029,8 +1115,9 @@ def cmd_serve(a):
                         terms = vocab.normalize(req.get("vocab") or [])
                         ctx = req.get("context")
                         allowed = vocab.allowed_units(terms, context_all(ctx)) if (terms or ctx) else None
-                        resp = {"ok": True, **guard(str(req.get("raw") or ""), clean_output(str(req.get("output") or "")),
-                                                    allowed, [t["term"] for t in terms], context_all(ctx) or None)}
+                        resp = {"ok": True, **stitch_guard(str(req.get("raw") or ""), clean_output(str(req.get("output") or "")),
+                                                           allowed, [t["term"] for t in terms], context_all(ctx) or None,
+                                                           req.get("fallback"))}
                     else:
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
@@ -1072,11 +1159,28 @@ def cmd_run(a):
     emit(Engine().polish(text, want, timeout, terms, a.context, a.variant))
 
 
+def stitch_guard(raw: str, out: str, allowed: set[str] | None, terms: list[str], context: str | None,
+                 fallback: str | None = None) -> dict:
+    """The guard for a streamed dictation's joined pieces against the joined transcript. Each piece's polish had its
+    self-corrections resolved first (dictation_corrections), so the joined output is also checked against the
+    transcript with them resolved; either passing is a pass. `fallback` (the transcript as a fall-back would type it)
+    comes back with its corrections resolved ("fallback_text"), so a refused take is not typed with 不对 in it."""
+    g = guard(raw, out, allowed, terms, context)
+    fixed, fixes = corrections.resolve(raw)
+    if not g["pass"] and fixes:
+        g2 = guard(fixed, out, allowed, terms, context)
+        if g2["pass"]:
+            g = {**g2, "resolved": True}
+    if fallback is not None:
+        g["fallback_text"] = corrections.resolve(fallback)[0]
+    return g
+
+
 def cmd_guard(a):
     out = clean_output(a.output)
     terms = vocab.normalize([t for t in (a.terms or "").split(",") if t.strip()])
     allowed = vocab.allowed_units(terms, a.context or "") if (terms or a.context) else None
-    emit({"ok": True, **guard(a.raw, out, allowed, [t["term"] for t in terms]), "cleaned": out})
+    emit({"ok": True, **stitch_guard(a.raw, out, allowed, [t["term"] for t in terms], None), "cleaned": out})
 
 
 def cmd_models(_a):

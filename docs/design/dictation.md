@@ -34,14 +34,14 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Custom words in ASR and polish | `scripts/dictation_vocab.py`, `transcribe.py` (`note --dictation --vocab`, `dictation-models`), `polish.py`, `tests/test_dictation_vocab.py` |
 | Names inside Chinese speech: the language tag, the near-miss pass, learning from a correction (`learn`, the lab's API) | `transcribe.py` (`Qwen3Mlx._decode_tagged`, `switch_language`), `dictation_vocab.py` (`choose_tag`, `translated_glue`, `context_dump`, `snap`, `fixes`, `learn`), `tests/test_dictation_vocab.py` (`CodeSwitch`, `TaggedDecode`, `NearMiss`, `LearnFromCorrection`), `tests/fixtures/dictation_false_corrections.jsonl`; the page's **Correct**: `MainWindow/DictationPage.swift`, `DictationVocabulary.learnCorrection`, `DictationHistory.correct` |
 | Controller (capture → ASR → polish → insert → history) | `Capture/Dictation/Dictation.swift` |
-| Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `commitSplit`) (`DictationSegmenterTests`, `DictationStitchTests`) |
+| Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `commitSplit`, `fallbackSeam`, `commaJoin`, `keepCase`) (`DictationSegmenterTests`, `DictationStitchTests`); its Python port for the lab, `scripts/dictation_stitch.py` (`tests/test_dictation_stitch.py`; `tests/fixtures/dictation_seams.jsonl` is shared by both) |
 | The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
 | Insertion, fitting at the cursor, Return for a double tap | `Capture/Dictation/DictationInsert.swift`; the rules: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicy`, `DictationSendPolicy`; `DictationPastePolicyTests`), `BlurtCore/DictationFit.swift` (`DictationFitTests`) |
 | Styles: the router, categories, variants, the list renderer, history records, reformat's rules, learning (pure, unit-tested) | `BlurtCore/DictationStyle.swift`, `DictationList.swift`, `DictationStyleRecord.swift`, `DictationStyleLearn.swift`; `DictationStyleTests`, `DictationStyleLearnTests`, `tests/fixtures/dictation_lists.jsonl` (shared with `scripts/dictation_styles.py`, `tests/test_dictation_styles.py`) |
 | Styles in the app: ⇧ / the island, after-stitch styling, reformat-last, suggestions | `Capture/Dictation/DictationStyles.swift`; the ear's chip in `Island/Island.swift` / `Ears.swift`; Settings → Dictation → Style |
 | Warm-server client (no `uv run` per request) | `BlurtCore/WarmServer.swift` |
 | History file | `BlurtCore/DictationHistory.swift`, `scripts/dictation.py` (list / prune / turn into item) |
-| Polish model + guard + repair + eval | `scripts/polish.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
+| Polish model + guard + repair + eval; spoken self-corrections resolved before it | `scripts/polish.py`, `scripts/dictation_corrections.py`, `scripts/polish_models.json`, `tests/fixtures/polish_eval.jsonl`, `tests/fixtures/polish_overdelete.jsonl`, `tests/test_polish.py` |
 | Dictation Lab (record, stages, compare, mark up, cases, scripts, regression) | §Lab: `MainWindow/DictationLab.swift`, `DictationLabViews.swift`; pure: `BlurtCore/DictationLab.swift` (`DictationLabTests`); `scripts/dictation_lab.py`, `scripts/lab_packs/`, `tests/test_dictation_lab.py`, `tests/fixtures/lab_metrics.jsonl` |
 | UI | island ears (`Island/Ears.swift`), Settings → Dictation (`Settings/DictationPane.swift`), the main window's Dictation page (`MainWindow/DictationPage.swift`: a sidebar place; the menu-bar menu, `⌥⌘D` and the palette open it) |
 
@@ -253,10 +253,12 @@ utterances, slower on short ones). Now (`DictationStream`):
 - **Each piece is transcribed as it completes** (a serial queue; the warm ASR server; its wav written from memory),
   with `prior` = the last 200 characters of the text so far appended to the custom-word context: Qwen3-ASR keeps
   a name spelled the same way all through. Measured below: it never leaked into the output, and it helped 1.7B.
-- **…and polished right after** (a second serial queue): the polished text so far is appended to "Near the cursor"
-  (before ▮), so polish sees what came before but may not change or continue it (the guard's `copied` check, below).
+- **…and polished right after** (a second serial queue): the polished text so far goes along as the request's
+  `dictated` context, which polish shows as **the turn before** this one (§Polish windows: context, not output), so
+  polish sees what came before but may not change or continue it (the guard's `copied` check, below).
   A piece that opens with a self-correction (不对 / 我是说 / no wait …; not 不对称 & co.) is polished together with
-  the one before it, so the corrected-away words can still go.
+  the one before it, so the corrected-away words can still go; one that **ends** on a marker (「…晚上发群里，不对。」
+  + a pause) is carried whole into the next window, where its restatement is.
 - **A cut is a pause, not a sentence end** (§Punctuation at the seams): a piece's own ending isn't final, and polish
   works over a window that spans the seam.
 - **At key-up only the last piece is left** (polished together with the clause carried from the window before);
@@ -316,7 +318,7 @@ kept it (polish only saw `before ▮` and the piece). Now (`DictationStitch`, `D
 - **The prompt** says it too: "fix punctuation across what are just pauses in speech; don't end a sentence at a pause
   unless the sentence is complete" (with a synthetic example). A self-correction piece is still polished together
   with what came before it (that piece's committed text + the carry).
-- `dictation_window` events: units in, committed, carried, ms.
+- `dictation_window` events: units in, committed, carried, ms (`deferred: correction` for a window carried whole).
 - **Found on the way: the last words could vanish.** Qwen3-ASR now and then answers nothing for a short last piece
   that follows a whole sentence of `prior` ("…on Wednesday." + 1.4 s of quiet + "and won't be back in time"): in a
   repro, 2 of 6 takes on the old build and 3–5 of 6 on this one lost it (the prior differs only in the seams; the
@@ -375,6 +377,73 @@ the last word), so the last piece is always still to do — the worst case:
   punctuation polish gave it.
 - These absolute numbers are above the speed eval's (287 / 375 / 538 ms) because the machine was busy (a render on
   the GPU throughout); the paired differences are what to read.
+
+### Polish windows: context, not output (v0.8.x)
+
+What the `say` list clips showed (dictation-styles.md §3.7): on a list-like or longer take Gemma 4 E2B **repeated the
+text so far in front of the new piece** (「明天要做三件事，第一，明天要做三件事，第一，把测试全部跑完…」), or answered with
+the text so far alone; the guard rightly refused it (`copied`, `grew`), the window typed its transcript, and at a short
+pause a transcript has no mark (「…跑完第二，把文档…」). The text so far was a "Near the cursor: …▮" line in the same
+message as the new words. Now (`polish.py`, `DictationStream`, `scripts/dictation_stitch.py` for the lab):
+
+- **The text so far is the previous exchange** (`context.dictated`, its last ~120 characters from a clause start):
+  user → that text, assistant → that text, then the new piece. The model has just "answered" it, so it continues
+  instead of repeating. On 15 hand-made list windows: repeated or refused 8 → 0 (`results/variants-*.txt`); a labelled
+  "Already typed (context only — don't repeat it):" line with an example only got to 2–4. The field's own text stays
+  "Near the cursor"; the cached prefix (rules + examples) is unchanged, and the extra turn is fewer tokens than the
+  300 characters of context it replaces.
+- **An echo is trimmed before the repair and the guard** (`polish.strip_echo`, DictationFit's overlap trim on polish's
+  own output): the longest run at the start of the output that repeats the end of the text before the cursor —
+  exactly, or ≥ 85 % alike (re-punctuated) for more than 4 units, and ending where that text ends — goes, unless the
+  transcript itself starts with those words (said again). `echo` (units trimmed) in the answer.
+- **One window falls back, not the take**: a refused window types its own transcript and the other windows keep their
+  polish (as before), and now its seam — the pause before the piece — still gets punctuation
+  (`DictationStitch.fallbackSeam`): the seam rule after a long pause; after a short one a comma where the speech model
+  heard a boundary (it ended the piece with a mark), unless the text before binds to the next words (把 / 的 / to /
+  the …). When the joined result fails the stitch guard, the take types `joinPiecesForFallback` (the same commas) with
+  its self-corrections resolved (`fallback_text` from polish.py's `guard`), not the bare transcript.
+- **The capital a window gave itself goes** (`keepCase`): the input's first word was lower case (the sentence goes on),
+  so "Update the docs" → "update the docs"; ordinary words as at the seams (`decapitalize`, now with second / third /
+  finally …).
+- **A list's ordinal is kept by the repair**: "…by Friday. Second, they asked…" lost its "Second" (one unit, inside the
+  slack); first / second / third / finally … are now never dropped on their own.
+
+Measured with the lab's replay of the windows (`dictation_lab.py run --config mode=windows`, below) on 60 synthetic
+`say` cases (`promo/cases/v0.8-dictation-polish-fix/`, not in git: the 30 prompts of the built-in pack, 16 list-like /
+long takes, 14 self-corrections and sentences where 不对 / 不是 is content; Tingting / Samantha, the fragments joined
+by 0.6–0.9 s pauses, 1.3 s at sentence ends, cut where the segmenter would), Qwen3-ASR 1.7B + Gemma 4 E2B, the same
+cases and servers, before = the scripts of a02db2de with the old windows (`legacy`):
+
+| Lab, `mode=windows`, 3 rounds | Before (a02db2de) | Now |
+|---|---:|---:|
+| List-like / long takes (16 × 3): fell back | **36 / 48 (75 %)** — `copied` 24, `grew` 12 | **0 / 48** |
+| The pack's prompts of ≥ 2 pieces (18 × 3) | 15 / 54 (28 %) — `copied` 12, `stitch_correction` 3 | **0 / 54** |
+| The pack's one-piece prompts (12 × 3) | 0 / 36 | 0 / 36 |
+| WER, list-like takes / everything else | 2.1 % / 8.6 % | 0.2 % / 2.7 % |
+| Polish's 41-case eval: fall-backs, kept, unwanted words dropped, similarity | 0 %, 97.6 %, 95.1 %, 0.969 | 0 %, 97.6 %, 97.6 %, 0.974 |
+| The over-deletion set (22): kept after the repair | 100 % | 100 % |
+
+In the app itself (`results/app-e2e.jsonl`): the isolated test builds of a02db2de and of this change side by side,
+the same models, 19 `say` WAVs fed in real time as the mic (`dictation wav`, released 0.1 s after the last word),
+interleaved, two rounds — the styles eval's zh-list / en-list / zh-corr, 8 list-like clips, 3 corrections, 4 long
+prompts of the pack, one plain sentence:
+
+| In the app | Before | Now |
+|---|---:|---:|
+| Takes that fell back (any reason) | **28 / 38 (74 %)** — `copied` 15, `grew` 7, `correction` 6 | **0 / 38** |
+| … of the multi-piece takes | 24 / 28 | 0 / 30 |
+| Key-up → paste (`total_ms`), median / p90 | 462 / 631 ms | 382 / 477 ms |
+| Paired difference, all takes / takes both polished (n = 8) | | **−58 ms / −24 ms** |
+| Polish after key-up (the last window), median, multi-piece takes | 299 ms | 190 ms |
+| Every window's polish (`polish_ms_all`, mostly while talking), median | 856 ms | 700 ms |
+
+- It got faster, not slower: a model that repeated the text so far wrote twice the tokens, and a refusal had already
+  paid for them. With both polished the turn costs nothing measurable (−24 ms paired, within the run's spread).
+- Seen in the app run and fixed after it: Gemma 4 E2B wrote 「二 是改一下…，三 是…」 for a window that starts with a
+  numeral; `clean_output` now never leaves a space between two CJK characters. A third round after that fix
+  (`results/app-e2e-r2.jsonl`, 19 takes each): fell back 15 / 19 → 0 / 19, key-up → paste 413 → 346 ms median
+  (paired −49 ms; −7 ms on the 4 takes both polished), no stray spaces.
+- What the lab replay can't show: the fit at the cursor; real voices and rooms (only the user can check those).
 
 ## Insert
 
@@ -531,6 +600,59 @@ the output left out:
 - More than 40 % of the content put back → `dropped` (the raw text). The history keeps the spans (`repaired`).
 - Calibration: no reference output of either eval set gets anything put back; every over-deleting output of the
   over-deletion set gets its phrases back (`tests/test_polish.py::Repair`).
+
+### Self-corrections: resolved before the model (v0.8.x)
+
+The user's case: 「把这个，不对，这两个拿到那一边去」 should be typed 「把这两个拿到那一边去」. On the `say` clip the speech model
+wrote 「把这个不对，这两个拿到那一边去。」, Gemma 4 E2B kept 「这个」 (or dropped 「把」), the guard's `correction` check
+refused it and the transcript was typed — 不对 and all. Related: 「先放到左边，不对，放到右边」 (kept whole by the model),
+"2:30, no wait, 3:30", 「周三，不对，周四」, 「发给张三，哦不，发给李四」 (the repair put 「张三，不，发给」 back: `dropped`).
+
+`dictation_corrections.resolve` runs in `Engine.polish` after the custom words and before the model, deterministic,
+< 1 ms. The model gets the corrected text, and so does a fall-back; the repair and the guard compare against it; the
+stitch guard passes a joined output that the transcript with its corrections resolved explains. The answer carries
+`corrections` ([{marker, cancelled, said, how}]) and `corrected`. It resolves only two shapes, and only where the
+marker can't be content:
+
+- **The restated phrase begins with a word of the cancelled one** (the shared head): 「把这个，不对，这两个…」 → 这个 is
+  replaced; 「发给张三，哦不，发给李四」; 「先放到左边，不对，放到右边」. When the restatement ends on the unit the cancelled
+  phrase ended on and the clause went on, only that part is swapped (「订一张去上海的票，不对，去杭州的」 → 订一张去杭州的票;
+  「晚上发群里，不对，下午就发」 → 下午就发群里).
+- **A value of the same kind**: weekday, day (明天 / tomorrow), part of the day, time (两点, 2:30, two thirty), date,
+  number (两万五, three), direction (左边 / right), a this / these phrase, an English name: "2:30, no wait, 3:30";
+  「周三开会，不对，周四」 → 周四开会 (the restated value alone keeps the rest of the clause).
+- **Where a marker counts**: strong ones anywhere (我是说, 我的意思是, 说错了, 更正, 哦不 / 「哦，不，」, 不不, no wait /
+  "No, wait,", scratch that, make that, or rather); 不对 / 错了 after a pause (a mark before them), with no mark before
+  them only for a value at the end of an unfinished phrase — the object of 把 / 给 / 放到 / 改成 …, or a time / number /
+  weekday after a short subject (「把这个不对，这两个…」, 「我们周三不对，周四开会」, 「我们下午两点不对三点开会」) — or the
+  same frame said again with one part swapped (「用 Claude 写不对，用 Codex 写」); 不是 only between two marks; 应该是,
+  算了, actually, I mean, sorry only after a mark (the last four only for a value right before them).
+- **Never**: 「这个不对」, 「我不是故意的」, 「是不是」, 「答案是三不是四」, 「这个方案不对，这个方案要改」 (restated word for word
+  and more: nothing taken back), 「我觉得这个不对，那个对」, 「你文档里写的周三不对，应该是周四」, 「这个颜色不对，这个要改成
+  红色」, 「你这样写不对，你应该这样写」, "It's fine, actually, it's great", "Sorry, I'm late" (`tests/test_polish.py::
+  Corrections`: 39 resolved, 37 left alone, the eval sets' and `dictation_false_corrections.jsonl`'s other sentences
+  untouched).
+- What goes is the cancelled span (≤ 8 units, back to the sentence start at most), the marker and a lead-in (是, 改成,
+  还是, make it, to …); words may move (周三开会 … 周四 → 周四开会) but nothing else is lost and nothing new comes in
+  (checked unit by unit in the tests).
+- **What it can't resolve goes to the model as said**, with two more examples after the cached prefix only then (a
+  correction with no marks around it, an English "I mean"); the guard and the repair handle it as before.
+- In the stream: a piece that opens with a marker is joined to the one before **with a comma** (the pause is a mark:
+  `DictationStitch.commaJoin`), and one that ends on a marker is carried whole into the next window (§Streaming).
+
+Measured on the 14 self-correction clips + the pack's 4 (b006 / b013 / b022 / b030), windows replayed, the same ASR:
+| 14 takes with a spoken correction (10 clips + b006 / b013 / b022 / b030), × 3 rounds | Before | Now |
+|---|---:|---:|
+| Typed with the correction unapplied or mangled | **18 / 42** (6 every round) | **0 / 28** (rounds 2–3; 1 / 14 in round 1, before the end-marker carry) |
+| … the user's 「把这个，不对，这两个拿到那一边去」 | 「不对，这两个拿到那一边去。」 (3 / 3) | 「把这两个拿到那一边去。」 (3 / 3) |
+| 4 sentences where 不对 / 不是 is content: changed | 0 | 0 |
+
+The six before: 「不对，这两个…」 (the model dropped 「把」, kept 不对), 「先放到左边，不对，放到右边…」 and "Send it to Tom.
+Sorry, to Jerry…" (kept whole), 「发给张三。不，发给李四」, 「改成蓝色，还是改成绿色吧」, 「…晚上发群里，不对下午就发」 (the
+stitch guard's `correction`: the transcript typed). In the app (above) the 6 `correction` fall-backs of the old build
+— zh-corr and c01 among them — are gone. Left as they were, not corrections: "three thirty" written in words (the speech
+model's), one 「的 / 得」 the model fixed in a sentence where 不对 is content (the guard's `correction`, the transcript
+typed: the same words).
 
 ## Styles
 
@@ -1182,10 +1304,12 @@ so. Pure parts in BlurtCore `DictationLab.swift` (`LabMetrics`, `LabCase`, `LabS
   that request is retried).
 - `mode=pieces` (default) replays the take's cuts: each piece transcribed with the text so far as `prior`, joined
   (`DictationStitch.join`'s space rule; a seam's 。，. dropped after a pause < 1.2 s), then polished once with the guard.
-  `mode=whole` transcribes the take in one go. The app's sliding polish windows and the fit at the cursor are not
-  replayed, so a re-run is compared with re-runs (the regression's "before" is the last run with the same key), never
-  with the live take.
-- Config SPEC: `current`, or overrides `asr=ID,polish=on|off|ID,vocab=on|off,context=on|off,mode=pieces|whole,
+  `mode=windows` replays the cuts and polishes them as the app does while the user talks: DictationStream's sliding
+  windows ported in `dictation_stitch.py` (the carried clause, the text so far as `dictated`, a correction piece
+  merged, a fall-back's seam, the stitch guard; §Polish windows). `mode=whole` transcribes the take in one go. The fit
+  at the cursor is not replayed, so a re-run is compared with re-runs (the regression's "before" is the last run with
+  the same key), never with the live take.
+- Config SPEC: `current`, or overrides `asr=ID,polish=on|off|ID,vocab=on|off,context=on|off,mode=pieces|windows|whole,
   language=…` (or JSON); the key is canonical (`asr=current,polish=current,vocab=on,context=on,mode=pieces`).
 - `run`: rows `{id, truth, before, after, change (better|worse|same|new|error|n/a), text, raw, changed_text,
   fell_back, timings, tags}`, `overall {cases, scored, wer, cer, term_accuracy, score = 100·(1 − mean WER), better,
@@ -1252,6 +1376,19 @@ by tag (`length:short`, `feature:correction` …).
 
 ## Verification
 
+- Polish windows and self-corrections (`promo/cases/v0.8-dictation-polish-fix/`, not in git: `audio/` the 60 `say`
+  cases, `results/` the lab rounds `before-r*.json` / `after-r*.json`, the polish evals, `app-e2e.jsonl`, the prompt
+  variants; `scripts/`): `tests/test_polish.py` (`Corrections`: 39 shapes resolved, 37 left alone, nothing but the
+  cancelled span lost, the guard / repair / stitch guard accept them; `EngineCorrections`; `Echo`),
+  `tests/test_dictation_stitch.py` and `DictationStitchTests.testSharedSeamFixture` (the same
+  `dictation_seams.jsonl`), `tests/test_dictation_lab.py::test_windows_replay_the_apps_polish_windows`; the isolated
+  test builds `dev.blurt.recorder.polishfixbase` / `polishfixcur` (scratch homes, LaunchServices, `BLURT_ALLOW_MULTI`,
+  the `dictation wav` hook as the mic, nothing posted or pasted outside the test pad), unregistered afterwards.
+- Found on the way, the flaky test (`uv run pytest tests -q`, 1 run in 2 after a `swift build`): `test_index.py`'s
+  `test_updates_are_fast_and_track_changes` / `test_items_py_write_updates_index` timed one SQLite update by the
+  wall clock (< 50 ms); with the disk busy (a build, other agents) one took 75–1400 ms — reproduced 3 of 8 runs with
+  `dd` + busy loops beside it, 0 of 8 once the budget counts CPU time (`time.process_time`). The renderer's budget
+  counts CPU time too, and the session hook's 1 s wall clock is 3 s.
 - Styles (`promo/cases/v0.8-dictation-styles/`, not in git: `say` clips in `audio/`, `results/`, screenshots; isolated
   test build `dev.blurt.recorder.stylestest`, scratch `BLURT_HOME`, launched through LaunchServices, models symlinked
   read-only, no real mic, no tap, nothing posted, nothing pasted outside the test pad):

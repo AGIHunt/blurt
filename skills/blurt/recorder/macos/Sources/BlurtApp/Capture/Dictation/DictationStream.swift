@@ -230,21 +230,49 @@ final class DictationStream {
             prefixPolished = carryPolished + DictationStitch.terminator(carryEnd, after: carryPolished)
             input = ""
         }
+        let carried = input
         carry = ""; carryPolished = ""; carryEnd = ""
-        input = DictationStitch.join(input, input.isEmpty ? core : DictationStitch.decapitalize(core, names: names))
+        if merged != nil || DictationStitch.endsWithCorrection(carried) {
+            // the pause before or after 「不对」 is a mark: the corrections pass in polish.py reads the marker by it
+            input = DictationStitch.commaJoin(input, core)
+        } else {
+            input = DictationStitch.join(input, input.isEmpty ? core : DictationStitch.decapitalize(core, names: names))
+        }
         let upTo = merged?.index ?? p.index
         let done = lock.locked { pieces.prefix(upTo).map(\.text) } + [prefix]
         var ctx = lock.locked { context }?.payload ?? [:]
         let so = DictationStitch.join(Array(done))
-        if !so.isEmpty { ctx["before"] = DictationStitch.join(ctx["before"] as? String ?? "", so) }
+        // the dictation's own text so far goes as its own key: polish.py shows it as the turn before this one, so the
+        // model continues it instead of repeating it (appended to "before", it was repeated in 8 of 15 list windows)
+        if !so.isEmpty { ctx["dictated"] = so }
         p.polishInput = input
+        if !p.last, merged == nil, DictationStitch.endsWithCorrection(input) {
+            // 「…晚上发群里，不对。」 + a pause: what it takes back is restated in the next piece — carried whole and
+            // polished with it (polished now, the model dropped the 不对 and kept both versions)
+            p.text = prefix; p.polishedPart = prefixPolished
+            carry = input; carryPolished = input; carryEnd = ""
+            emit(["event": "dictation_window", "id": id, "index": p.index, "in_units": DictationStitch.units(input).count,
+                  "committed": DictationStitch.units(p.text).count, "carry": DictationStitch.units(carry).count, "ms": 0,
+                  "deferred": "correction"])
+            return
+        }
         let t0 = CACurrentMediaTime()
         let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
                                  context: ctx.isEmpty ? nil : ctx, variant: opt.variant)
         p.polishSpan = (t0, CACurrentMediaTime())
         p.loadMS += r?["load_ms"] as? Int ?? 0
         p.polish = r
-        let out = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? input
+        var out = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? input
+        if r?["fell_back"] as? Bool == true {
+            // only this window falls back, and its seam (the pause before this piece) still gets its punctuation
+            if merged == nil, !carried.isEmpty, out.hasPrefix(carried), let prev = previous(p) {
+                out = DictationStitch.fallbackSeam(carried, String(out.dropFirst(carried.count)), pause: pause(after: p.index - 1),
+                                                   heardEnd: DictationStitch.splitTrailing(prev.raw).end, names: names)
+            }
+        } else if DictationStitch.midSentence(so) {
+            // the model capitalised a window that continues a sentence
+            out = DictationStitch.decapitalize(DictationStitch.keepCase(input: input, output: out), names: names)
+        }
         let model = (r?["polished"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? out
         if let m = merged { m.text = ""; m.polishedPart = "" }
         if p.last {
@@ -302,12 +330,16 @@ final class DictationStream {
         let polished: String? = pol.isEmpty ? nil
             : DictationStitch.join(ps.map(\.polishedPart) + [carryPolished + carryEnd])
         // the joined result once more against the joined transcript: pieces that each passed can still add up wrong
+        // a refusal types the transcript with a comma where a boundary was heard, its self-corrections resolved
+        // (`fallback_text`), never 「…，不对，…」 as said
+        let fallback = DictationStitch.joinPiecesForFallback(ps.map(\.raw), pauses: gaps, names: names)
         if opt.polish, ps.count > 1, !pol.isEmpty, text != raw,
            let g = WarmServer.call("polish-serve", ["cmd": "guard", "raw": raw, "output": text, "vocab": opt.vocab,
-                                                    "context": lock.locked { context }?.payload ?? NSNull()], timeout: 2),
+                                                    "context": lock.locked { context }?.payload ?? NSNull(),
+                                                    "fallback": fallback], timeout: 2),
            g["pass"] as? Bool == false {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "stitch_guard", "reason": g["reason"] ?? NSNull()])
-            text = raw
+            text = (g["fallback_text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? fallback
             fellBack = true
             reason = "stitch_" + (g["reason"] as? String ?? "guard")
         }
