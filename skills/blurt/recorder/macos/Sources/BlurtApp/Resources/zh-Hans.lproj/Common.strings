@@ -70,7 +70,7 @@
 "job.type.voice" = "语音输入";
 "job.type.process" = "整理";
 "job.type.route" = "自动归类";
-"job.type.agent" = "agent 会话";
+"job.type.agent" = "Agent 会话";
 
 /* 任务步骤 */
 "job.step.capture" = "采集";
