@@ -289,7 +289,10 @@ final class StorageModel: ObservableObject {
     func setAutoDelete(_ d: Int?) {
         autoDelete = d
         VideoRetention.autoDays = d
-        if d != nil { Housekeeping.deleteOldVideos(); Task { try? await Task.sleep(nanoseconds: 1_500_000_000); await load() } }
+        if d != nil {
+            Housekeeping.deleteOldVideos()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Task { @MainActor in await self.load() } }
+        }
     }
 }
 
