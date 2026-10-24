@@ -357,10 +357,14 @@ class BrandRowView: NSTableRowView {
     /// The table still tells us when its window gains or loses key (it sets this): redraw the selection then.
     override var isEmphasized: Bool { get { false } set { if isSelected { needsDisplay = true } } }
     private var keyObservers: [NSObjectProtocol] = []
+    /// Screenshots of a test build launched in the background (test commands only): BLURT_TEST_KEY_LOOK=1 draws the
+    /// selection as in a key window.
+    static let testKeyLook = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+        && ProcessInfo.processInfo.environment["BLURT_TEST_KEY_LOOK"] == "1"
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
-        let key = window?.isKeyWindow == true && NSApp.isActive
+        let key = window?.isKeyWindow == true && NSApp.isActive || BrandRowView.testKeyLook
         (key ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
         // the inset / source-list styles inset the row itself; a row as wide as its table keeps a margin like theirs
         let pad: CGFloat = frame.minX < 1 && abs(frame.width - (superview?.bounds.width ?? 0)) < 1 ? 10 : 0
