@@ -11,7 +11,7 @@
 "capture.action.snap" = "截图";
 "capture.action.stop" = "完成录制";
 "capture.action.voice" = "语音备注";
-"capture.card.ax_help" = "按下复制 · 操作：编辑备注、移到项目、删除";
+"capture.card.ax_help" = "按下复制 · 操作：编辑备注、移到项目、自动归类、删除";
 "capture.card.ax_move" = "移到 %@";
 "capture.card.ax_shot" = "截图";
 "capture.card.ax_shot_n" = "截图 %d";
@@ -28,8 +28,11 @@
 "capture.card.transcribe_failed" = "没能转成文字";
 "capture.card.transcribing" = "正在转文字…";
 "capture.card.words_pending" = "文字还没转好，稍等一下";
+"capture.card.ai_sort" = "自动归类";
+"capture.card.deleted" = "已删除";
+"capture.card.first_hint" = "点一下复制，或拖进任意 App";
 "capture.cards.ax" = "还没归类的卡片";
-"capture.cards.none" = "没有未归类的卡片";
+"capture.cards.none" = "没有挂着的卡片";
 "capture.countdown.finish" = "完成";
 "capture.countdown.pause" = "暂停 / 继续";
 "capture.countdown.ready" = "准备，开喷";
@@ -88,6 +91,7 @@
 "capture.menu.snap" = "截图";
 "capture.menu.switch_project" = "切换项目…";
 "capture.menu.voice" = "语音备注";
+"capture.menu.ai_sort_all" = "自动归类全部卡片";
 "capture.note.discard_tip" = "丢弃这张截图（Esc）";
 "capture.note.goes_to" = "归入 %@";
 "capture.note.keep_discard" = "⏎ 不写备注直接留下 · Esc 丢弃";

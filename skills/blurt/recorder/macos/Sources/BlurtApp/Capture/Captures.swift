@@ -7,8 +7,10 @@
 //    says where it went ("Filed to ordo-platform · OP-14"). The item carries `enrich: pending` for a later AI fill-in.
 //  • no note (or no project: current = auto) → it hangs from the island on a thread, as a card, until the user drags
 //    it onto a project in the island (filed there the same way, no agent), onto "Unassigned", or hands the cards to
-//    the AI: "Organize" (into the current project) / "Let AI sort" — one agent run with the processing model.
+//    the AI: "Organize" (into the current project) / "Auto-sort" (one card, its menu) / "Auto-sort All Cards" (the
+//    island's menu) — one agent run per batch with the processing model.
 //  • Esc in the note bubble discards the capture (Trash, with Undo for 3 s); ⏎ keeps it without a note (→ a card).
+//  • Delete / Delete All on cards: no question, "Deleted · Undo" for 5 s; the files stay until then (CardDelete).
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 
 import AppKit
@@ -405,9 +407,10 @@ final class Snapper {
     }
 
     /// The cards, to an agent — one run per batch, with the processing model. `project` set ("Organize"): they all
-    /// go there; nil ("Let AI sort"): routed per item (K2).
-    func handToAI(project: String? = nil) {
-        let all = cards
+    /// go there; nil ("Auto-sort"): routed per item (K2). `shots`: just these (a card's own "Auto-sort"); nil:
+    /// every hanging card (the island's "Auto-sort All Cards").
+    func handToAI(project: String? = nil, shots: [Shot]? = nil) {
+        let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
         NoteBubble.shared.commit()
         var by: [ObjectIdentifier: (ShotBatch, [Int])] = [:]
@@ -424,11 +427,53 @@ final class Snapper {
         }
     }
 
-    func delete(_ s: Shot) {
-        if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
-        guard !s.deleted else { return }        // a fresh shot's bubble discards it itself (with Undo)
-        hanging.drop(s)
-        s.batch?.delete(s)
+    /// Delete (a card's ×, its menu, ⌫ on a card with the keyboard on it): no question first — it falls off its thread
+    /// and the island says "Deleted · Undo" for a few seconds. Its files stay where they are a little longer than that
+    /// (CardDelete.recycleAfter), then go to the Trash; Undo puts the card back on its thread. Deletes while that Undo
+    /// is offered join it (BlurtCore CardUndo): "Deleted N cards · Undo" brings back every one of them.
+    func delete(_ s: Shot) { delete([s]) }
+
+    /// "Delete All N Cards" (the island's menu, the overview): every hanging card, one Undo for all of them.
+    func deleteAllCards() {
+        NoteBubble.shared.cancel()
+        delete(cards)
+    }
+
+    private static let deleteToast = "cards.delete"
+    /// What the delete Undo showing now would bring back, and where each one's files went in the Trash.
+    private var undoable = CardUndo<Shot>()
+    private var trashedFiles: [ObjectIdentifier: [URL: URL]] = [:]
+
+    private func delete(_ shots: [Shot]) {
+        for s in shots where NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
+        // (a fresh shot's bubble discards it itself, with its own Undo)
+        let gone = shots.filter { !$0.deleted && $0.batch != nil }
+        guard !gone.isEmpty else { return }
+        let live = island.toastLive(key: Snapper.deleteToast)
+        if !live { trashedFiles = [:] }
+        let all = undoable.add(gone, live: live)
+        for s in gone {
+            hanging.drop(s)
+            s.batch?.delete(s, recycleAfter: CardDelete.recycleAfter) { [weak self] moved in self?.trashedFiles[ObjectIdentifier(s)] = moved }
+        }
+        emit(["event": "delete", "captures": gone.map(\.n), "undo": all.map(\.n),
+              "sessions": Array(Set(gone.compactMap { $0.batch?.dir.path }))])
+        let text = all.count == 1 ? Loc.t("capture.card.deleted", table: "Capture")
+                                  : Loc.plural("capture.card.deleted_n", table: "Capture", count: all.count)
+        var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) { [weak self] in self?.undelete() }
+        t.seconds = CardDelete.undoSeconds
+        t.overOpen = true               // the island may be open over the cards: the Undo shows at once all the same
+        t.key = Snapper.deleteToast     // a delete while it shows joins it, and the toast says so
+        island.toast(t)
+    }
+
+    /// Undo of a delete: back on their threads, where they hung (the cards keep the order they were taken in).
+    private func undelete() {
+        let back = undoable.take().filter(\.deleted)
+        for s in back { s.batch?.undelete(s, from: trashedFiles.removeValue(forKey: ObjectIdentifier(s)) ?? [:]) }
+        emit(["event": "undo_delete", "captures": back.map(\.n)])
+        hanging.refresh()
+        hanging.show(peek: 2.5)
     }
 
     /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 3 s brings it back (with what
@@ -602,13 +647,6 @@ final class Snapper {
         emit(["event": "undo_discard", "n": s.n, "session": b.dir.path])
         hanging.catchCapture(s, from: nil)
         settled(s)
-    }
-
-    func deleteAllCards() {
-        NoteBubble.shared.cancel()
-        for (i, s) in cards.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06 * Double(i)) { self.delete(s) }
-        }
     }
 
     private func process(_ b: ShotBatch, _ ns: [Int], project: String?) {

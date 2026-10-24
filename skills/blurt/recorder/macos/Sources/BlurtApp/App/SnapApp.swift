@@ -89,8 +89,9 @@ extension App {
             if arg == "show" { hanging.show(peek: 8) }
             if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥⇧H / the ear's count / the menu
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
-            if arg == "older" { hanging.showOlder() }               // = a click on the "+N" stack
+            if arg == "older" || arg == "all" { hanging.openOverview() }   // = a click on the "+N" tile
             if arg.hasPrefix("hover") { hanging.testHover(n: Int(arg.dropFirst(5).trimmingCharacters(in: .whitespaces))) }  // hover N | hover
+            hanging.testCommand(arg)                                // row | focus | key K | click N [2] | overview …
             emit(["event": "cards_state", "shown": hanging.isShown, "count": hanging.count, "island_open": island.open])
             emit(["event": "swing", "degrees": hanging.swing.map { Double(($0 * 100).rounded() / 100) }])
             emit(["event": "cards", "captures": snapper.cards.map { "\($0.n)@\(ObjectIdentifier($0).hashValue % 10000)/\(ObjectIdentifier($0.batch!).hashValue % 10000)" }])
@@ -343,7 +344,7 @@ extension App {
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
         case .dictationEsc: Dictation.shared.cancel()
         case .project: if resident { island.toggleSwitcher() }
-        case .cards: if resident { hanging.reveal(via: "hotkey") }
+        case .cards: if resident { hanging.reveal(via: "hotkey", keyboard: true) }     // the keyboard on the cards too
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥⇧L (dictation-styles.md)
         // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
         case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }

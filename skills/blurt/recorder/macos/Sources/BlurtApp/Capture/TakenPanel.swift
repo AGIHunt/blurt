@@ -118,14 +118,12 @@ final class TakenPanel: NSObject, NSWindowDelegate {
 
     // MARK: the island's right-click menu
 
-    /// "Show N Hanging Cards", "Copy All N Hanging Cards" (one rich copy, pictures and notes in order), then "Recently
-    /// Taken (N)" with each capture's actions, and "Show All…".
+    /// What concerns every hanging card (HangingCards.islandMenuItems: Show, Copy All, Sort All with AI, Delete All),
+    /// then "Recently Taken (N)" with each capture's actions, and "Show All…".
     static func islandMenu() -> NSMenu {
         let m = NSMenu()
-        if hanging.count > 0 {
-            m.addItem(ClosureMenuItem(Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count)) { hanging.reveal(via: "island_menu") })
-            m.addItem(ClosureMenuItem(Loc.plural("capture.menu.copy_cards", table: "Capture", count: hanging.count)) { hanging.copyAll() })
-        }
+        for (t, f) in hanging.islandMenuItems() { m.addItem(ClosureMenuItem(t, f)) }
+        if hanging.count > 0 { m.addItem(.separator()) }
         let taken = snapper.recentlyTaken
         let head = NSMenuItem(title: Loc.t("capture.taken.menu", table: "Capture", taken.count), action: nil, keyEquivalent: "")
         if taken.isEmpty {

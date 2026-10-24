@@ -282,7 +282,7 @@ final class IslandContent: NSView {
     private(set) var toastWidth: CGFloat = 300
     var preferredWidth: CGFloat {
         guard let i = island else { return Island.openW }
-        return i.drawer == nil && i.currentToast.map { !i.open || $0.isQuestion } == true ? toastWidth : Island.openW
+        return i.drawer == nil && i.currentToast.map { !i.open || $0.isQuestion || $0.overOpen } == true ? toastWidth : Island.openW
     }
 
     enum Target: Equatable { case project(String), inbox, aiSort, auto, openFolder, more }
@@ -338,7 +338,7 @@ final class IslandContent: NSView {
         if let d = i.drawer {
             usesRow = true
             y = buildDrawer(d, w)
-        } else if let t = i.currentToast, !i.open || t.isQuestion {
+        } else if let t = i.currentToast, !i.open || t.isQuestion || t.overOpen {
             y = t.isQuestion ? buildQuestion(t, top: row) : buildToast(t, w, top: row)
         } else if i.isRecording {
             y = buildRecording(w, top: row)
