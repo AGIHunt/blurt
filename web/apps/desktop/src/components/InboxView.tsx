@@ -28,7 +28,9 @@ export function InboxView({ batches, summary, verify, onReview, onUnassigned, on
   if (summary && batches && !batches.length && !fresh && !toVerify && !unassigned) {
     return (
       <div className="hero-empty" data-testid="inbox-empty">
-        <Mascot clip="happy" size={80} />
+        <span className="art g-field" aria-hidden="true">
+          <Mascot clip="happy" size={80} />
+        </span>
         <h2>{t('inbox.empty.title')}</h2>
         <p>{t('inbox.empty.body')}</p>
       </div>

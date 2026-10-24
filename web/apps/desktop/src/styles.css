@@ -1,10 +1,10 @@
 /* The main window. Colours, type, radii and focus come from @blurt/ui (tokens.css, data-platform = win | gnome | mac
    and data-theme = light | dark on <html>); kind icons, state rings and the state menu are @blurt/ui's .kind-ic /
    .sring / .spill / .smenu. Class names
-   avoid the ones the review canvas styles globally (.schip .done .dot .egg .keys .search .sev .nm .toast .toolbar …). */
+   avoid the ones the review canvas styles globally (.schip .done .dot .egg .keys .search .sev .nm .toast .toolbar …).
+   Brand colour (system.md §3.3): the one primary button per view is --brand-button with white text; selection,
+   drop targets and chips are --brand-tint with --brand-ink marks; --rec / --attn / --ok come from the generated block. */
 :root {
-  --rec: #e5484d;
-  --attn: #f5a524;
   --side-w: 236px;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -47,13 +47,25 @@ body {
   outline-offset: 1px;
 }
 .app button.primary {
-  background: var(--accent);
+  background: var(--brand-button);
   border-color: transparent;
-  color: var(--accent-ink);
+  color: var(--on-brand-button);
   font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(4 38 30 / 0.25);
 }
 .app button.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 88%, black);
+  background: var(--brand-button);
+  filter: brightness(1.04);
+}
+.app button.primary:active:not(:disabled) {
+  background: var(--brand-button);
+  filter: brightness(0.92);
+}
+.app button.primary:disabled {
+  background: var(--chip);
+  color: var(--faint);
+  box-shadow: none;
+  opacity: 1;
 }
 .app button.danger {
   background: var(--drop);
@@ -131,7 +143,7 @@ body {
   background: none;
 }
 .app mark {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
   color: inherit;
   border-radius: 2px;
 }
@@ -147,10 +159,10 @@ body {
   font-size: 12px;
 }
 .ok {
-  color: var(--keep-ink);
+  color: var(--ok);
 }
 .warn {
-  color: var(--warn);
+  color: var(--attn-ink);
 }
 .spacer,
 .grow {
@@ -168,8 +180,8 @@ body {
 .badge {
   font-size: 11px;
   font-weight: 600;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--brand-tint);
+  color: var(--brand-ink);
   border-radius: 10px;
   padding: 1px 7px;
 }
@@ -298,16 +310,16 @@ body {
   background: var(--hover);
 }
 .sidebar a.sel {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
   color: var(--ink);
   font-weight: 560;
 }
 .sidebar a.sel svg {
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 .sidebar a.drop {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background: var(--brand-tint);
+  box-shadow: inset 0 0 0 1.5px var(--brand-ink);
 }
 .sidebar a.missing {
   opacity: 0.55;
@@ -321,7 +333,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--brand-ink);
 }
 .sidebar .attn {
   width: 8px;
@@ -360,6 +372,9 @@ body {
   padding: 10px;
   border-radius: var(--r);
   background: var(--panel-2);
+}
+.sidebar .jobs.ai-glow {
+  --ai-glow-plate: var(--panel); /* organizing: the box lifts onto the panel surface while the rim turns */
 }
 .sidebar .job {
   display: flex;
@@ -450,7 +465,7 @@ body {
   border-radius: var(--r);
 }
 .banner svg:first-child {
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 .batches {
   list-style: none;
@@ -486,8 +501,8 @@ body {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--brand-tint);
+  color: var(--brand-ink);
   flex: none;
 }
 .batch .mode.m-shots {
@@ -506,8 +521,8 @@ body {
 .batch .pill {
   font-size: 12px;
   font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--brand-ink);
+  background: var(--brand-tint);
   border-radius: 10px;
   padding: 2px 8px;
 }
@@ -527,10 +542,23 @@ body {
   color: var(--mute);
 }
 .hero-empty svg {
-  color: var(--accent);
+  color: var(--mute);
 }
 .hero-empty .mascot {
   margin-bottom: -6px;
+}
+/* empty-state art (system.md §3.5): the field with grain, the mascot on it */
+.hero-empty .art {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 34px;
+  margin-bottom: 4px;
+}
+.hero-empty .art .mascot {
+  margin: 0;
+  filter: drop-shadow(0 3px 6px rgb(4 38 30 / 0.3));
 }
 .hero-empty h2 {
   margin: 6px 0 0;
@@ -651,7 +679,7 @@ body {
   opacity: 0.55;
 }
 .app .fchip.on {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
   color: var(--ink);
   border-color: transparent;
 }
@@ -660,7 +688,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--accent-soft);
+  background: var(--brand-tint);
   border-bottom: 1px solid var(--line);
 }
 .table {
@@ -683,10 +711,10 @@ body {
   background: var(--hover);
 }
 .table .row.sel {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
 }
 .table .row.cur-row {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-ink) 40%, transparent);
 }
 .iid {
   font: 500 11.5px var(--mono);
@@ -723,13 +751,13 @@ body {
 }
 .wnote.s-in_progress,
 .wnote.s-handed_off {
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 .wnote.s-to_verify {
-  color: var(--warn);
+  color: var(--attn-ink);
 }
 .wnote.s-done {
-  color: var(--keep-ink);
+  color: var(--ok);
 }
 .suggest {
   font-size: 11.5px;
@@ -817,7 +845,7 @@ body {
   padding: 6px 10px;
 }
 .app .srow.sel {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
 }
 .ids {
   margin-left: 7px;
@@ -829,7 +857,7 @@ body {
   height: 8px;
   border-radius: 50%;
   flex: none;
-  background: var(--accent);
+  background: var(--brand);
 }
 .sdot.s-running {
   animation: breathe 1.6s ease-in-out infinite alternate;
@@ -886,12 +914,12 @@ body {
   color: var(--mute);
 }
 .schip.s-waiting_input {
-  background: color-mix(in srgb, var(--attn) 18%, transparent);
-  color: var(--warn);
+  background: var(--attn-soft);
+  color: var(--attn-ink);
 }
 .schip.s-running {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--brand-tint);
+  color: var(--brand-ink);
 }
 .term-wrap {
   flex: 1;
@@ -947,11 +975,11 @@ body {
   flex: 1;
 }
 .stat .add {
-  color: var(--keep-ink);
+  color: var(--ok);
   font: 12px var(--mono);
 }
 .stat .del {
-  color: var(--drop-ink);
+  color: var(--err);
   font: 12px var(--mono);
 }
 
@@ -989,17 +1017,17 @@ table.grid th {
 }
 .app .settings .tabs button.sel {
   color: var(--ink);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--brand-ink);
 }
 .note {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
   padding: 9px 12px;
   border-radius: var(--r-sm);
   max-width: 980px;
   margin: 8px 0;
 }
 tr.conflict td:first-child {
-  color: var(--warn);
+  color: var(--attn-ink);
 }
 .app .key-recorder {
   min-width: 150px;
@@ -1007,8 +1035,8 @@ tr.conflict td:first-child {
   justify-content: center;
 }
 .app .key-recorder.rec {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--brand-ink);
+  color: var(--brand-ink);
 }
 .kv > div {
   display: flex;
@@ -1086,7 +1114,7 @@ tr.conflict td:first-child {
   color: var(--mute);
 }
 .palette li.sel {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
 }
 .palette img {
   width: 36px;
@@ -1118,8 +1146,7 @@ tr.conflict td:first-child {
   justify-self: start;
   min-height: 0;
   width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
+  height: 18px; /* its colour is the native accent-color (the brand accent, set on :root) */
 }
 .dispatch .switch .hint {
   grid-column: 2;
@@ -1145,8 +1172,8 @@ tr.conflict td:first-child {
   font-size: 12px;
 }
 .app .choice.on {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  border-color: var(--brand-ink);
+  box-shadow: 0 0 0 2px var(--brand-tint);
 }
 .app .seg button[aria-checked='true'] {
   background: var(--raise);
@@ -1160,11 +1187,11 @@ tr.conflict td:first-child {
   margin: 4px 0 14px;
   padding: 12px 14px;
   border-radius: var(--r);
-  background: color-mix(in srgb, var(--attn) 12%, transparent);
+  background: var(--attn-soft);
   border: 1px solid color-mix(in srgb, var(--attn) 34%, transparent);
 }
 .reminder svg {
-  color: var(--warn);
+  color: var(--attn-ink);
   margin-top: 2px;
 }
 .reminder p {

@@ -34,7 +34,10 @@ textarea {
   color: inherit;
 }
 a {
-  color: var(--accent);
+  color: inherit;
+  text-decoration-color: var(--brand-ink);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
 }
 ::selection {
   background: var(--focus-soft);
@@ -129,17 +132,30 @@ kbd {
 [data-platform="gnome"] .btn {
   font-weight: 700;
 }
+/* the one primary action per view: white bold text on the deeper button gradient (system.md §3.3, §5.2) */
 .btn.primary {
-  background: var(--accent);
+  background: var(--brand-button);
   border-color: transparent;
-  color: var(--accent-ink);
-  box-shadow: none;
+  color: var(--on-brand-button);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(4 38 30 / 0.25);
 }
 .btn.primary:hover {
-  filter: brightness(1.06);
+  background: var(--brand-button);
+  filter: brightness(1.04);
+}
+.btn.primary:active {
+  filter: brightness(0.92);
+}
+.btn.primary:disabled {
+  background: var(--chip);
+  color: var(--faint);
+  box-shadow: none;
+  filter: none;
+  cursor: default;
 }
 .btn.primary kbd {
-  background: rgba(0, 0, 0, 0.14);
+  background: rgb(255 255 255 / 0.16);
   border-color: transparent;
   color: inherit;
 }
@@ -232,12 +248,13 @@ kbd {
 .sring.s-todo { color: var(--mute); }
 .sring.s-new,
 .sring.s-handed_off,
-.sring.s-in_progress { color: var(--accent); }
-.sring.s-to_verify { color: var(--warn); }
-.sring.s-done { color: var(--keep); }
+.sring.s-in_progress { color: var(--brand-ink); }
+.sring.s-to_verify { color: var(--attn); }
+.sring.s-done { color: var(--ok); }
 .sring.s-wontfix,
 .sring.s-discarded { color: var(--faint); }
-[data-theme="dark"] .sring.s-to_verify { --ring-cut: #2a1a00; }
+.sring.s-to_verify { --ring-cut: var(--on-attn); }
+.sring.s-done { --ring-cut: var(--on-ok); }
 
 /* ---------- K3: the state pill (ring + name + chevron), the bare ring button, and their action menu ---------- */
 .spill,
@@ -277,10 +294,10 @@ button.spill:hover,
 }
 .spill.s-new .spill-l,
 .spill.s-handed_off .spill-l,
-.spill.s-in_progress .spill-l { color: var(--accent); }
-.spill.s-to_verify { background: color-mix(in srgb, var(--warn) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 30%, transparent); }
-.spill.s-to_verify .spill-l { color: color-mix(in srgb, var(--warn), var(--ink) 25%); }
-.spill.s-done .spill-l { color: var(--keep-ink); }
+.spill.s-in_progress .spill-l { color: var(--brand-ink); }
+.spill.s-to_verify { background: var(--attn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--attn) 30%, transparent); }
+.spill.s-to_verify .spill-l { color: var(--attn-ink); }
+.spill.s-done .spill-l { color: var(--ok); }
 .spill.s-wontfix .spill-l,
 .spill.s-discarded .spill-l { color: var(--mute); }
 .spill-ring {
@@ -362,4 +379,106 @@ button.spill:hover,
   padding: 2px 4px;
   min-width: 17px;
 }
-.smenu-i.a-discard .smenu-v { color: var(--drop-ink); }
+.smenu-i.a-discard .smenu-v { color: var(--err); }
+
+/* ---------- brand utilities (system.md §2.2, §5.2) ---------- */
+/* Gradient text: large headlines and hero numbers only (≥ 20 px, or ≥ 14 px bold), never body or small text.
+   Flat --ink where background-clip: text is missing, under Increase Contrast (the generated block sets
+   --brand-text: none there) and in forced colours. */
+.g-text {
+  color: var(--ink);
+}
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .g-text {
+    background: var(--brand-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  .g-text {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/* The field: the large gradient surface (light field / deep in dark mode, both in --brand-field) with grain.
+   Only on boxes ≥ 64 px in both dimensions (onboarding hero, empty-state art); never buttons, bars, text.
+   (Not called .field: that name is taken by form rows in the Tauri app.) */
+.g-field {
+  position: relative;
+  isolation: isolate;
+  background: var(--brand-field);
+}
+.g-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--grain) 0 0 / 200px;
+  mix-blend-mode: overlay;
+  opacity: var(--grain-opacity);
+}
+
+/* "AI is working": a soft spectrum rim that turns once every 3.2 s, only while blurt's AI runs (organizing).
+   `.ai-glow.once` is the completion celebration: one turn, then it fades. Still under Reduce Motion (the rules above
+   stop animations), gone under Reduce Transparency (--ai-glow-opacity: 0). ::before draws the rim, ::after an
+   opaque plate (--ai-glow-plate) so the rim shows only outside the element's rounded shape; the element must not
+   use its own ::before / ::after. */
+@property --spin {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.ai-glow {
+  position: relative;
+  isolation: isolate;
+}
+.ai-glow::before,
+.ai-glow::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.ai-glow::before {
+  inset: -3px;
+  /* --brand-spectrum-conic can't turn here (its var(--spin) is resolved on :root), so the gradient is composed at
+     the use site; the fallback stops are the generated spectrum's */
+  background: conic-gradient(
+    from var(--spin),
+    var(--brand-spectrum-stops, #ffd54f 0deg, var(--g-green) 79.488deg, var(--g-mint) 152.352deg, var(--g-blue) 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg)
+  );
+  filter: blur(6px);
+  opacity: var(--ai-glow-opacity);
+  animation: ai-glow-spin 3.2s linear infinite;
+}
+.ai-glow::after {
+  inset: 0;
+  background: var(--ai-glow-plate, var(--raise, var(--panel)));
+}
+.ai-glow.once::before {
+  opacity: 0;
+  animation: ai-glow-once 1.6s cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+@keyframes ai-glow-spin {
+  to {
+    --spin: 360deg;
+  }
+}
+@keyframes ai-glow-once {
+  from {
+    --spin: 0deg;
+    opacity: var(--ai-glow-opacity);
+  }
+  70% {
+    opacity: var(--ai-glow-opacity);
+  }
+  to {
+    --spin: 360deg;
+    opacity: 0;
+  }
+}

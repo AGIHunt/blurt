@@ -10,23 +10,33 @@ import { api, listen } from '../api';
 const DARK: ITheme = {
   background: '#141416',
   foreground: '#e6e6e9',
-  cursor: '#ff7a5c',
+  cursor: '#e6e6e9',
   cursorAccent: '#141416',
-  selectionBackground: 'rgba(255, 122, 92, 0.28)',
   black: '#1e1e22', red: '#ff6b6b', green: '#3dd68c', yellow: '#ffc53d', blue: '#8da4ef', magenta: '#d19dff', cyan: '#4ccce6', white: '#d4d4d8',
   brightBlack: '#5c5c66', brightRed: '#ff8f8f', brightGreen: '#6be3a8', brightYellow: '#ffd76b', brightBlue: '#adbff5', brightMagenta: '#e0bbff', brightCyan: '#7fdcef', brightWhite: '#fafafa',
 };
 const LIGHT: ITheme = {
   background: '#fbfbfa',
   foreground: '#1f1f23',
-  cursor: '#e5482c',
+  cursor: '#1f1f23',
   cursorAccent: '#fbfbfa',
-  selectionBackground: 'rgba(245, 91, 62, 0.2)',
   black: '#1f1f23', red: '#d93d42', green: '#218358', yellow: '#a8710a', blue: '#3e63dd', magenta: '#8e4ec6', cyan: '#0d7c8c', white: '#6f6f78',
   brightBlack: '#8b8b94', brightRed: '#e5484d', brightGreen: '#2b9a66', brightYellow: '#b86e00', brightBlue: '#3358d4', brightMagenta: '#9e5bd6', brightCyan: '#0e8a9b', brightWhite: '#3a3a40',
 };
 
-const theme = () => (document.documentElement.dataset.theme === 'dark' ? DARK : LIGHT);
+/** The selection: the focus / selection accent (@blurt/ui --focus, the brand accent) at 36 % dark / 22 % light, as
+    SwiftTerm does on macOS. The cursor is neutral and the ANSI palette is a terminal theme, not brand. */
+function selection(dark: boolean): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue('--focus').trim();
+  const m = v.match(/^#([0-9a-f]{6})$/i);
+  const n = m ? parseInt(m[1], 16) : 0x0b735e;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${dark ? 0.36 : 0.22})`;
+}
+
+const theme = (): ITheme => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  return { ...(dark ? DARK : LIGHT), selectionBackground: selection(dark) };
+};
 
 function bytes(b64: string): Uint8Array {
   const s = atob(b64);

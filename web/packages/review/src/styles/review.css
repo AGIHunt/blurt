@@ -1,7 +1,7 @@
 /* The review canvas. One layout for every platform and theme: the screenshot is the frame (it hugs its own aspect
    ratio on a tray between page and screenshot in brightness, never letterboxed in black), the inspector is a
-   document whose fields only show a box on hover/focus, and colour is spent only on coral (primary, selection) and
-   the keep / drop / ask states. Surfaces, type, radii and focus come from @blurt/ui tokens. */
+   document whose fields only show a box on hover/focus, and colour is spent only on brand mint (the primary button,
+   selection, the current item) and the keep / drop / ask states (docs/design/system.md §3.7). Surfaces, type, radii and focus come from @blurt/ui tokens. */
 
 :root {
   --vh: 100vh;
@@ -79,7 +79,7 @@ body {
   transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .bar .k {
-  background: var(--keep);
+  background: var(--ok);
 }
 .bar .d {
   background: var(--drop);
@@ -108,7 +108,7 @@ body {
   background: var(--line-2);
 }
 .dot.keep {
-  background: var(--keep);
+  background: var(--ok);
 }
 .dot.drop {
   background: var(--drop);
@@ -140,7 +140,7 @@ body {
   white-space: nowrap;
 }
 .saved.err {
-  color: var(--drop-ink);
+  color: var(--err);
 }
 .in-app .top {
   height: calc(var(--top-h) - 4px);
@@ -195,7 +195,7 @@ body {
   bottom: 9px;
   width: 3px;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--brand-ink);
 }
 [data-platform="mac"] .qi.cur::before,
 [data-platform="gnome"] .qi.cur::before {
@@ -230,10 +230,10 @@ body {
   font: 600 10.5px/16px var(--mono);
 }
 .qi.cur .qm .n {
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 .qi .q {
-  color: var(--amber);
+  color: var(--attn-ink);
   font-weight: 600;
 }
 .qi.drop .t {
@@ -250,7 +250,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 9px;
-  background: var(--amber);
+  background: var(--attn);
   vertical-align: 1px;
   margin-right: 2px;
 }
@@ -442,7 +442,7 @@ body {
 }
 .th.on {
   opacity: 1;
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: 0 0 0 2px var(--brand-ink);
 }
 .th .lbl {
   position: absolute;
@@ -469,7 +469,7 @@ body {
   color: var(--ink);
 }
 .th.vid .ic {
-  color: var(--accent);
+  color: var(--mute);
   width: 15px;
   height: 15px;
 }
@@ -522,25 +522,25 @@ body {
   background: var(--drop-soft);
 }
 .act.keep {
-  background: var(--keep);
+  background: var(--ok);
   box-shadow: none;
-  color: #fff;
+  color: var(--on-ok);
   padding: 0 26px;
 }
 [data-theme="dark"] .act.keep {
-  background: var(--keep);
+  background: var(--ok);
 }
 .act.keep kbd {
   color: inherit;
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
 }
 .act.keep:hover {
   filter: brightness(1.08);
 }
 .act.keep.on,
 [data-theme="dark"] .act.keep.on {
-  background: var(--keep-soft);
-  color: var(--keep-ink);
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 .act.keep.on kbd {
   border-color: currentColor;
@@ -655,16 +655,16 @@ button.chip:hover {
   background: currentColor;
 }
 .chip.sev-high {
-  color: var(--sev-high);
-  background: color-mix(in srgb, var(--sev-high) 12%, transparent);
+  color: var(--kind-issue);
+  background: color-mix(in srgb, var(--kind-issue) 12%, transparent);
 }
 .chip.sev-medium {
-  color: var(--sev-medium);
-  background: color-mix(in srgb, var(--sev-medium) 13%, transparent);
+  color: var(--attn-ink);
+  background: var(--attn-soft);
 }
 .chip.sev-low {
-  color: var(--sev-low);
-  background: color-mix(in srgb, var(--sev-low) 13%, transparent);
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 13%, transparent);
 }
 .chip code {
   font: 600 11px/1 var(--mono);
@@ -672,8 +672,8 @@ button.chip:hover {
 }
 
 .chip.low {
-  color: var(--amber);
-  background: var(--amber-soft);
+  color: var(--attn-ink);
+  background: var(--attn-soft);
 }
 .chip.kind-chip .kind-ic {
   margin-left: -2px;
@@ -687,10 +687,10 @@ button.chip:hover {
   background: var(--panel-2);
 }
 .work.s-to_verify {
-  background: color-mix(in srgb, var(--warn) 11%, transparent);
+  background: var(--attn-soft);
 }
 .work.s-done {
-  background: var(--keep-soft);
+  background: var(--ok-soft);
 }
 .work-h {
   display: flex;
@@ -733,8 +733,8 @@ button.chip:hover {
   margin: 10px 0 0;
 }
 .btn.keep .sring {
-  color: #fff;
-  --ring-cut: var(--keep);
+  color: var(--on-ok);
+  --ring-cut: var(--ok);
 }
 .handoff {
   display: flex;
@@ -766,9 +766,9 @@ button.chip:hover {
   color: var(--ink);
 }
 .btn.keep {
-  background: var(--keep);
+  background: var(--ok);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-ok);
   box-shadow: none;
 }
 .btn.keep:hover {
@@ -801,13 +801,13 @@ button.chip:hover {
 .worklog .s-new,
 .worklog .s-handed_off,
 .worklog .s-in_progress {
-  --wl: var(--accent);
+  --wl: var(--brand-ink);
 }
 .worklog .s-to_verify {
-  --wl: var(--warn);
+  --wl: var(--attn);
 }
 .worklog .s-done {
-  --wl: var(--keep);
+  --wl: var(--ok);
 }
 .worklog .wls {
   color: var(--ink-2);
@@ -867,12 +867,12 @@ button.chip:hover {
   margin: 8px 0 6px;
   padding: 7px 8px 7px 10px;
   border-radius: var(--r);
-  background: var(--accent-soft);
+  background: var(--brand-tint);
   color: var(--ink);
   font-weight: 600;
 }
 .prov-sug .ico {
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 .prov-sug .btn {
   margin-left: auto;
@@ -1041,7 +1041,7 @@ button.chip:hover {
   width: 7px;
   height: 7px;
   border-radius: 9px;
-  background: var(--keep);
+  background: var(--ok);
 }
 .f.act-f label::before {
   background: var(--drop);
@@ -1070,7 +1070,7 @@ button.chip:hover {
   top: 3px;
   width: 16px;
   height: 16px;
-  color: var(--accent);
+  color: var(--mute);
 }
 .quote .meta {
   display: flex;
@@ -1081,7 +1081,7 @@ button.chip:hover {
   font: 600 11.5px/1 var(--mono);
 }
 .linkbtn {
-  color: var(--accent);
+  color: var(--brand-ink);
   font-weight: 600;
   font-size: 12px;
   display: inline-flex;
@@ -1093,7 +1093,7 @@ button.chip:hover {
   font-family: var(--font);
 }
 .linkbtn:hover {
-  background: var(--accent-soft);
+  background: var(--brand-tint);
 }
 .ask {
   margin: 0 0 16px;
@@ -1108,7 +1108,7 @@ button.chip:hover {
 .ask .h {
   font-size: 12px;
   font-weight: 700;
-  color: var(--amber);
+  color: var(--attn-ink);
   margin-bottom: 6px;
   display: flex;
   gap: 6px;
@@ -1131,7 +1131,7 @@ button.chip:hover {
 }
 .ask input:focus {
   outline: none;
-  border-color: var(--amber);
+  border-color: var(--attn);
 }
 .code {
   display: flex;
@@ -1383,13 +1383,13 @@ button.chip:hover {
   font-weight: 600;
 }
 .sev.sev-high {
-  color: var(--sev-high);
+  color: var(--kind-issue);
 }
 .sev.sev-medium {
-  color: var(--sev-medium);
+  color: var(--attn-ink);
 }
 .sev.sev-low {
-  color: var(--sev-low);
+  color: var(--info);
 }
 .card.drop {
   opacity: 0.5;
@@ -1422,13 +1422,13 @@ button.chip:hover {
 }
 .wk {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 .wk.s-to_verify {
-  color: var(--amber);
+  color: var(--attn-ink);
 }
 .wk.s-done {
-  color: var(--keep-ink);
+  color: var(--ok);
 }
 .wk.s-wontfix,
 .wk.s-discarded {
@@ -1462,18 +1462,18 @@ button.chip:hover {
   opacity: 1;
 }
 .pickbox.on {
-  background: var(--accent);
+  background: var(--brand);
   box-shadow: none;
-  color: var(--accent-ink);
+  color: var(--on-brand);
 }
 .card.sel {
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: 0 0 0 2px var(--brand-ink);
 }
 [data-theme="dark"] .card.sel {
-  box-shadow: 0 0 0 2px var(--accent);
+  box-shadow: 0 0 0 2px var(--brand-ink);
 }
 .card.sel:hover {
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+  box-shadow: 0 0 0 2px var(--brand-ink), var(--shadow);
 }
 .selbar {
   position: sticky;
@@ -1551,15 +1551,15 @@ button.chip:hover {
 }
 .dz.over {
   transform: scale(1.02);
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--brand-tint);
+  border-color: var(--brand-ink);
   border-style: solid;
 }
 .dz .ico {
   color: var(--mute);
 }
 .dz.over .ico {
-  color: var(--accent);
+  color: var(--brand-ink);
 }
 
 /* ---------- embedded (the app's main window): fills its pane, no chrome of its own ---------- */
@@ -1625,20 +1625,21 @@ button.chip:hover {
   transform: translate(-50%, 0);
   pointer-events: auto;
 }
+/* the toast is dark in both themes, so the light theme's state colours are lifted toward white on it */
 .toast .ti-check {
-  color: var(--keep);
+  color: color-mix(in srgb, var(--ok) 55%, #fff);
 }
 .toast .ti-x {
   color: var(--drop);
 }
 [data-theme="dark"] .toast .ti-check {
-  color: var(--keep-ink);
+  color: var(--ok);
 }
 [data-theme="dark"] .toast .ti-x {
-  color: var(--drop-ink);
+  color: var(--err);
 }
 .toast button {
-  color: var(--accent);
+  color: var(--brand);
   font-weight: 700;
   white-space: pre;
 }
@@ -1720,10 +1721,10 @@ button.chip:hover {
   color: var(--ink);
 }
 .sum b.k {
-  color: var(--keep-ink);
+  color: var(--ok);
 }
 .sum b.d {
-  color: var(--drop-ink);
+  color: var(--err);
 }
 .kor {
   color: var(--faint);
@@ -1735,7 +1736,7 @@ button.chip:hover {
   margin: -4px 0 14px;
   padding: 10px 12px;
   border-radius: var(--r);
-  background: var(--amber-soft);
+  background: var(--attn-soft);
   color: var(--ink-2);
   font-size: 13px;
 }
@@ -1743,7 +1744,7 @@ button.chip:hover {
   margin-top: 2px;
   width: 16px;
   height: 16px;
-  color: var(--amber);
+  color: var(--attn-ink);
 }
 .lightbox {
   position: fixed;
@@ -1783,6 +1784,13 @@ button.chip:hover {
   margin: 10px 0 6px;
   font-size: 24px;
 }
+.done .cel {
+  display: block;
+  width: 88px;
+  margin: 0 auto;
+  border-radius: 22px;
+  --ai-glow-plate: transparent;
+}
 .done p {
   color: var(--mute);
 }
@@ -1813,14 +1821,18 @@ button.chip:hover {
 .proc .hatching {
   width: 15px;
   height: 15px;
-  color: var(--amber);
+  color: var(--attn-ink); /* the egg's colour (illustration), not a state */
+}
+.proc.ai-glow {
+  --ai-glow-plate: var(--raise, var(--panel));
+  background: transparent; /* the plate is the surface while the glow runs */
 }
 .proc.stalled .hatching {
   animation: none;
   opacity: 0.6;
 }
 .proc.fin {
-  color: var(--keep-ink);
+  color: var(--ok);
 }
 .proc.fin .ico {
   width: 14px;

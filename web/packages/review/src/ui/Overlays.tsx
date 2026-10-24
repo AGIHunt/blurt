@@ -132,8 +132,12 @@ export function Done() {
   return (
     <div className={cx("done", s.confirmed && "show")} id="done">
       <div>
-        {!s.embedded && <Logo className="big" />}
-        <h2>{s.t("done.title")}</h2>
+        {!s.embedded && (
+          <span className={cx("cel", s.confirmed && "ai-glow once")}>
+            <Logo className="big" />
+          </span>
+        )}
+        <h2 className="g-text">{s.t("done.title")}</h2>
         <p>{s.host.inApp ? s.t("done.body_app") : s.t("done.body")}</p>
       </div>
     </div>

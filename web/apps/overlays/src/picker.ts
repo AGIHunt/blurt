@@ -13,7 +13,9 @@ const btn = (a: string) => bar.querySelector<HTMLElement>(`[data-a=${a}]`)!;
 
 const purpose = params.get('purpose') === 'screenshot' ? 'screenshot' : 'record';
 hint.textContent = t(`picker.hint.${purpose}`);
-btn('ok').innerHTML = `<span></span><kbd>↩</kbd>`;
+btn('ok').innerHTML = `${purpose === 'record' ? '<i class="rdot" aria-hidden="true"></i>' : ''}<span></span><kbd>↩</kbd>`;
+const outline = sel.querySelectorAll<SVGRectElement>('.outline rect');
+const grad = sel.querySelector<SVGLinearGradientElement>('.outline linearGradient');
 btn('ok').querySelector('span')!.textContent = t(`picker.ok.${purpose}`);
 btn('cancel').textContent = t('picker.cancel');
 btn('full').textContent = t('picker.full');
@@ -27,10 +29,20 @@ let done = false;
 
 function render() {
   document.body.classList.toggle('has-sel', !!rect);
+  document.body.classList.toggle('dragging', !!drag);
   sel.hidden = !rect;
   bar.hidden = !rect || !!drag;
   if (!rect) return;
   Object.assign(sel.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` });
+  // the outline's svg sits 2 px outside the area: the 2 px strokes run centred 1 px in, the gradient corner to corner
+  for (const r of outline) {
+    r.setAttribute('width', String(rect.w + 2));
+    r.setAttribute('height', String(rect.h + 2));
+  }
+  grad?.setAttribute('x2', String(rect.w + 3));
+  grad?.setAttribute('y2', String(rect.h + 3));
+  grad?.setAttribute('x1', '1');
+  grad?.setAttribute('y1', '1');
   size.textContent = sizeLabel(rect, devicePixelRatio);
   size.style.top = rect.y < 30 ? '6px' : '-26px';
   size.style.left = rect.y < 30 ? '6px' : '0';

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { contrast } from "./contrast";
-import { customKindColor, kindHue, kindIcon, ringShapes, statusRingSvg } from "./kinds";
+import { CUSTOM_HUE_GAP, customKindColor, customKindHue, kindHue, kindIcon, ringShapes, statusRingSvg } from "./kinds";
 import { STATES } from "./lifecycle";
 import { KindIcon, StatusRing } from "./react";
 
@@ -19,7 +19,7 @@ describe("kinds (K8)", () => {
     expect(["issue", "idea", "note", "task", "perf"].map(kindIcon)).toEqual(["bug", "lightbulb", "document", "checklist", "tag"]);
   });
   it.each(["light", "dark"] as const)("%s: kind colours and the to-verify colour have 3:1 on every surface", (t) => {
-    for (const name of ["--kind-issue", "--kind-idea", "--kind-note", "--kind-task", "--warn"])
+    for (const name of ["--kind-issue", "--kind-idea", "--kind-note", "--kind-task", "--attn"])
       for (const s of SURFACES[t]) expect(contrast(val(t, name), s), `${name} on ${s}`).toBeGreaterThanOrEqual(3);
   });
   it("custom lens colours are stable per name and readable in both themes", () => {
@@ -27,6 +27,20 @@ describe("kinds (K8)", () => {
     for (const k of ["perf", "competitor", "a11y", "copy", "legal", "研究", "y"]) {
       for (const t of ["light", "dark"] as const)
         for (const s of SURFACES[t]) expect(contrast(customKindColor(k, t), s), `${k} ${t}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+  it("custom lenses skip the brand / success hues: 145°–190° (inclusive) move 60° on", () => {
+    const tokens = JSON.parse(readFileSync(new URL("../../../../assets/color/tokens.json", import.meta.url), "utf8"));
+    expect([...CUSTOM_HUE_GAP]).toEqual(tokens.kind.customHueGap);
+    const at = (h: number) => String.fromCharCode(h); // a one-character name hashes to its code unit
+    expect([144, 145, 160, 190, 191].map((h) => customKindHue(at(h)))).toEqual([144, 205, 220, 250, 191]);
+    for (let h = 0; h < 360; h++) {
+      const k = at(h);
+      expect(kindHue(k)).toBe(h);
+      const hh = customKindHue(k);
+      expect(hh >= 145 && hh <= 190, `hue ${h}`).toBe(false);
+      // same hue → same colour as the shifted name would get
+      if (h >= 145 && h <= 190) expect(customKindColor(k, "light")).toBe(customKindColor(at(h + 60), "light"));
     }
   });
   it("<KindIcon> carries the kind class and an accessible name when given", () => {

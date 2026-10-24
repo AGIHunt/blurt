@@ -593,8 +593,13 @@ def css_vars(mode: str, island: bool = False) -> list[str]:
     add("brand-text", css_lin(stops(tx["stops"]), "90deg"))
     add("brand-spectrum", css_lin(stops(G["spectrum"]["stops"]), "90deg"))
     sp = stops(G["spectrum"]["stops"])
-    add("brand-spectrum-conic", "conic-gradient(from var(--spin, 0deg), " +
-        ", ".join(f"{c.lower()} {at * 360 * 0.92:g}deg" for c, at in sp) + f", {sp[0][0].lower()} 360deg)")
+    # the conic stops on their own, so a rotating rim can compose `conic-gradient(from var(--spin), var(--brand-spectrum-
+    # stops))` where --spin is animated (a var() inside --brand-spectrum-conic is resolved on :root and can't turn)
+    add("brand-spectrum-stops", ", ".join(f"{c.lower()} {at * 360 * 0.92:g}deg" for c, at in sp) + f", {sp[0][0].lower()} 360deg")
+    add("brand-spectrum-conic", "conic-gradient(var(--brand-spectrum-stops))")
+    if island:
+        # overlay cards can have a light face (voice card): brand ink for light surfaces
+        add("brand-ink-light", css_color(B["ink"]["light"]))
     if not island:
         layers = G["deep" if mode == "dark" else "field"]["layers"]
         add("brand-field", "\n    " + css_field(layers))

@@ -32,10 +32,21 @@ export function hslHex(h: number, s: number, l: number): string {
   return "#" + [f(0), f(8), f(4)].map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("");
 }
 
-/** A custom lens's colour: HSL(h, 55%, 42%) light / HSL(h, 70%, 68%) dark, darkened / lightened in 2% steps until
-    it has 3:1 against every surface (yellows and greens would not otherwise). */
+/** Hashed hues in this band (HSL degrees, inclusive) move 60° on, so no lens reads as brand mint or success green
+    (assets/color/tokens.json kind.customHueGap; Swift KindStyle does the same). */
+export const CUSTOM_HUE_GAP = [145, 190] as const;
+
+/** The hue a custom lens is drawn in: kindHue, moved out of CUSTOM_HUE_GAP. */
+export function customKindHue(kind: string): number {
+  let h = kindHue(kind);
+  if (h >= CUSTOM_HUE_GAP[0] && h <= CUSTOM_HUE_GAP[1]) h += 60;
+  return h;
+}
+
+/** A custom lens's colour: HSL(h, 55%, 42%) light / HSL(h, 70%, 68%) dark (h = customKindHue), darkened / lightened
+    in 2% steps until it has 3:1 against every surface (yellows and greens would not otherwise). */
 export function customKindColor(kind: string, theme: "light" | "dark"): string {
-  const h = kindHue(kind);
+  const h = customKindHue(kind);
   if (theme === "light") {
     for (let l = 42; l > 10; l -= 2) {
       const c = hslHex(h, 55, l);

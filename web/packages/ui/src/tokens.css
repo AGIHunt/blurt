@@ -1,14 +1,20 @@
-/* Blurt design tokens.
+/* Blurt design tokens (docs/design/system.md).
    Two attributes on <html> pick a set: data-platform = mac | win | gnome, data-theme = light | dark.
-   The canvas sits inside a native window on each platform, so surfaces, type, radii and focus follow that platform;
-   the brand coral is spent only on the primary button and the selected state (design doc §2.4).
+   The canvas sits inside a native window on each platform, so surfaces, type and radii follow that platform.
+
+   Colour: the @generated block below (assets/color/build.py from assets/color/tokens.json) owns brand, semantic and
+   kind colours. Brand mint means "blurt is listening / acting", the one primary action per view and the selection;
+   everything else is neutral. Use --brand (fill, with --on-brand text), --brand-ink (text, icons, rings, 1–2 px
+   lines), --brand-tint (selected row, drop target, chip background), --brand-button + --on-brand-button (the primary
+   button), --ok / --attn / --attn-ink / --err / --rec / --info for states, --kind-* for kind icons.
 
    Dark mode: hierarchy by lighter surfaces, not shadows (mac #1E1E1E / #2A2A2A / #323232, win #202020 / #2B2B2B,
-   GNOME #242424 / #303030); hairlines rgba(255,255,255,.08); text in three tiers 92 / 64 / 40 %; coral #FF7A5C;
+   GNOME #242424 / #303030); hairlines rgba(255,255,255,.08); text in three tiers 92 / 64 / 40 %;
    screenshots get a 1px inner stroke so a light screenshot keeps an edge without glaring.
 
-   --sys-accent: the host may inject the system accent colour (macOS: NSColor.controlAccentColor); it drives focus
-   rings and text selection, never the brand colour. */
+   --focus: focus rings and text selection use the brand accent (--brand-accent, also the native accent-color). The
+   macOS host may inject --sys-accent (NSColor.controlAccentColor, which is the app's brand AccentColor unless the user
+   picked a system accent), so the canvas matches the AppKit controls around it. */
 
 :root,
 [data-platform="mac"] {
@@ -21,7 +27,6 @@
   --r-pill: 999px;
   --top-h: 52px;
   --ctl-h: 28px;
-  --focus-default: #007aff;
 }
 [data-platform="win"] {
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
@@ -33,7 +38,6 @@
   --r-pill: 999px;
   --top-h: 48px;
   --ctl-h: 32px;
-  --focus-default: #005fb8;
 }
 [data-platform="gnome"] {
   --font: "Adwaita Sans", Cantarell, "Noto Sans", "Noto Sans CJK SC", Ubuntu, "DejaVu Sans", sans-serif;
@@ -45,7 +49,6 @@
   --r-pill: 999px;
   --top-h: 47px;
   --ctl-h: 34px;
-  --focus-default: #3584e4;
 }
 
 /* ---------- brand, semantic and kind colour (generated) ---------- */
@@ -83,7 +86,8 @@
   --on-brand-button: #ffffff;
   --brand-text: linear-gradient(90deg, #14983c 0%, #07957c 45%, #248cc2 100%);
   --brand-spectrum: linear-gradient(90deg, #ffd54f 0%, #66d97a 24%, #61dbbd 46%, #4aabe2 70%, #9d7bf7 100%);
-  --brand-spectrum-conic: conic-gradient(from var(--spin, 0deg), #ffd54f 0deg, #66d97a 79.488deg, #61dbbd 152.352deg, #4aabe2 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg);
+  --brand-spectrum-stops: #ffd54f 0deg, #66d97a 79.488deg, #61dbbd 152.352deg, #4aabe2 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg;
+  --brand-spectrum-conic: conic-gradient(var(--brand-spectrum-stops));
   --brand-field: 
     radial-gradient(75% 48% at 62% -12%, #80e991 0%, rgba(128, 233, 145, 0.00) 100%),
     radial-gradient(58% 52% at 102% 108%, #4aabe2 0%, rgba(74, 171, 226, 0.85) 45%, rgba(97, 219, 189, 0.00) 100%),
@@ -127,7 +131,8 @@
   --on-brand-button: #ffffff;
   --brand-text: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
   --brand-spectrum: linear-gradient(90deg, #ffd54f 0%, #66d97a 24%, #61dbbd 46%, #4aabe2 70%, #9d7bf7 100%);
-  --brand-spectrum-conic: conic-gradient(from var(--spin, 0deg), #ffd54f 0deg, #66d97a 79.488deg, #61dbbd 152.352deg, #4aabe2 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg);
+  --brand-spectrum-stops: #ffd54f 0deg, #66d97a 79.488deg, #61dbbd 152.352deg, #4aabe2 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg;
+  --brand-spectrum-conic: conic-gradient(var(--brand-spectrum-stops));
   --brand-field: 
     radial-gradient(75% 48% at 62% -12%, #5bcf6e 0%, rgba(91, 207, 110, 0.00) 100%),
     radial-gradient(58% 52% at 102% 108%, #2c92c8 0%, rgba(44, 146, 200, 0.85) 45%, rgba(67, 193, 164, 0.00) 100%),
@@ -166,26 +171,10 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --accent: #f55b3e;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(245, 91, 62, 0.12);
-  --keep: #15965f;
-  --keep-ink: #0f7d4e;
-  --keep-soft: rgba(21, 150, 95, 0.1);
-  --drop: #d93a40;
-  --drop-ink: #c02f35;
+  --ok-soft: color-mix(in srgb, var(--ok) 11%, transparent);
+  --attn-soft: color-mix(in srgb, var(--attn) 14%, transparent);
+  --drop: #d93a40; /* destructive fill (system red); its text is --err */
   --drop-soft: rgba(217, 58, 64, 0.08);
-  --amber: #946008;
-  --amber-soft: rgba(234, 170, 40, 0.15);
-  --sev-high: #e5502f;
-  --sev-medium: #b7791f;
-  --sev-low: #4a6fd0;
-  /* K8: kind icons (≥ 3:1 on every surface) and the work-state ring's "to verify" */
-  --kind-issue: #d93d42;
-  --kind-idea: #a8710a;
-  --kind-note: #3e63dd;
-  --kind-task: #218358;
-  --warn: #b86e00;
   --media: #0b0b0c;
   --scrim: rgba(0, 0, 0, 0.42);
   --lightbox: rgba(0, 0, 0, 0.9);
@@ -193,28 +182,30 @@
 /* ---------- dark (shared semantics) ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
-  --accent: #ff7a5c;
-  --accent-ink: #1c0c07;
-  --accent-soft: rgba(255, 122, 92, 0.16);
-  --keep: #2b9466;
-  --keep-ink: #62cf9d;
-  --keep-soft: rgba(70, 190, 135, 0.14);
+  --ok-soft: color-mix(in srgb, var(--ok) 14%, transparent);
+  --attn-soft: color-mix(in srgb, var(--attn) 12%, transparent);
   --drop: #e05a52;
-  --drop-ink: #f28b84;
   --drop-soft: rgba(240, 110, 100, 0.14);
-  --amber: #e3b261;
-  --amber-soft: rgba(227, 178, 97, 0.12);
-  --sev-high: #ff7a5c;
-  --sev-medium: #e3b261;
-  --sev-low: #9fb6f2;
-  --kind-issue: #ff6b6b;
-  --kind-idea: #ffc53d;
-  --kind-note: #8da4ef;
-  --kind-task: #3dd68c;
-  --warn: #f5a524;
   --media: #0e0e0e;
   --scrim: rgba(0, 0, 0, 0.55);
   --lightbox: rgba(8, 8, 8, 0.94);
+}
+/* ---------- deprecated aliases (v0.8, removed in the next release): nothing in this repo uses them ---------- */
+:root,
+[data-theme] {
+  --accent: var(--brand);
+  --accent-ink: var(--on-brand);
+  --accent-soft: var(--brand-tint);
+  --keep: var(--ok);
+  --keep-ink: var(--ok);
+  --keep-soft: var(--ok-soft);
+  --drop-ink: var(--err);
+  --amber: var(--attn-ink);
+  --amber-soft: var(--attn-soft);
+  --warn: var(--attn);
+  --sev-high: var(--kind-issue);
+  --sev-medium: var(--attn-ink);
+  --sev-low: var(--info);
 }
 
 /* ---------- macOS ---------- */
@@ -244,7 +235,7 @@
   --ctl-bg: #ffffff;
   --ctl-border: rgba(0, 0, 0, 0.1);
   --ctl-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.14);
-  --focus: var(--sys-accent, #007aff);
+  --focus: var(--sys-accent, var(--brand-accent));
 }
 [data-platform="mac"][data-theme="dark"] {
   --bg: #1e1e1e;
@@ -271,7 +262,7 @@
   --ctl-bg: rgba(255, 255, 255, 0.09);
   --ctl-border: transparent;
   --ctl-shadow: none;
-  --focus: var(--sys-accent, #0a84ff);
+  --focus: var(--sys-accent, var(--brand-accent));
 }
 
 /* ---------- Windows 11 (Fluent) ---------- */
@@ -301,7 +292,7 @@
   --ctl-border: rgba(0, 0, 0, 0.0578);
   --ctl-border-bottom: rgba(0, 0, 0, 0.1622);
   --ctl-shadow: none;
-  --focus: var(--sys-accent, #005fb8);
+  --focus: var(--sys-accent, var(--brand-accent));
 }
 [data-platform="win"][data-theme="dark"] {
   --bg: #202020;
@@ -329,7 +320,7 @@
   --ctl-border: rgba(255, 255, 255, 0.07);
   --ctl-border-bottom: rgba(255, 255, 255, 0.04);
   --ctl-shadow: none;
-  --focus: var(--sys-accent, #60cdff);
+  --focus: var(--sys-accent, var(--brand-accent));
 }
 
 /* ---------- GNOME (libadwaita) ---------- */
@@ -358,7 +349,7 @@
   --ctl-bg: rgba(0, 0, 6, 0.08);
   --ctl-border: transparent;
   --ctl-shadow: none;
-  --focus: var(--sys-accent, #3584e4);
+  --focus: var(--sys-accent, var(--brand-accent));
 }
 [data-platform="gnome"][data-theme="dark"] {
   --bg: #242424;
@@ -385,7 +376,7 @@
   --ctl-bg: rgba(255, 255, 255, 0.1);
   --ctl-border: transparent;
   --ctl-shadow: none;
-  --focus: var(--sys-accent, #78aeed);
+  --focus: var(--sys-accent, var(--brand-accent));
 }
 
 :root {

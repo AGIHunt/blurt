@@ -37,6 +37,7 @@ const deck = document.querySelector<HTMLElement>('.cards')!;
 const island = document.querySelector<HTMLElement>('.island')!;
 const pill = island.querySelector<HTMLElement>('.pill')!;
 const body = island.querySelector<HTMLElement>('.body')!;
+const glow = document.querySelector<HTMLElement>('.glow');
 
 // ------------------------------------------------------------------ geometry and timing (K7)
 const TOP = 6; // the pill sits this far under the top of the work area
@@ -279,6 +280,8 @@ function render() {
   island.classList.toggle('shown', shown);
   island.classList.toggle('open', expanded);
   island.dataset.mode = S.recording ? 'rec' : S.voice ? 'voice' : 'idle';
+  // the listening glow: only while blurt listens (a voice note), never while recording or idle
+  stage.dataset.glow = shown && S.voice && !S.recording ? '1' : '0';
   const ph = pillHtml();
   if (ph !== lastPill) {
     // only when it changed: a one-shot mascot clip (the hatch) must not restart on every state op
@@ -314,6 +317,10 @@ function size(expanded: boolean) {
   const h = expanded && content ? Math.min(MAX_H, content.offsetHeight + 16) : PILL_H;
   island.style.width = `${w}px`;
   island.style.height = `${h}px`;
+  if (glow) {
+    glow.style.width = `${w}px`;
+    glow.style.height = `${h}px`;
+  }
   islandH = h;
 }
 
@@ -331,7 +338,8 @@ function ticks() {
     const bars = [...w.children] as HTMLElement[];
     bars.forEach((b, i) => {
       const k = 0.35 + 0.65 * Math.abs(Math.sin(performance.now() / 160 + i * 1.3));
-      b.style.transform = `scaleY(${Math.max(0.18, Math.min(1, level * 9 * k + 0.12)).toFixed(3)})`;
+      // height, not scaleY: each bar samples the group-sized gradient at its own height (island.css .wave)
+      b.style.height = `${(Math.max(0.18, Math.min(1, level * 9 * k + 0.12)) * 100).toFixed(1)}%`;
     });
   }
 }
