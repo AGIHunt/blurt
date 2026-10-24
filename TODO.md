@@ -69,6 +69,9 @@
       listening for normal apps: evdev (`/dev/input`, needs the `input` group) or a compositor shortcut that runs
       `blurt dictate toggle`; insert with `wtype` / `ydotool` (needs uinput) or the clipboard + a toast; terminals
       want Ctrl+Shift+V. Detect the session type and say what works in Settings.
+- [ ] **Windows / Linux first run**: the macOS setup assistant is dictation first (docs/design/desktop-app.md §2.2:
+      welcome → dictation's permissions → one "Download recommended models" for the machine's tier → try it, with
+      "open at login" on); the Tauri app has no first run yet — give it the same four steps once dictation lands there.
 - [ ] **Vocabulary / personal dictionary**: words the user teaches (names, product terms, code identifiers) as ASR
       hotwords (SenseVoice / Whisper prompt) and as a "spell these exactly" list in the polish prompt; learn candidates
       from edits made right after a paste (and from the history's raw → polished diffs), always opt-in.
