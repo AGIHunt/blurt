@@ -32,6 +32,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Custom words: store, seed, learning (pure, unit-tested) | `BlurtCore/DictationVocabulary.swift`, `BlurtCore/DictationLearn.swift`, `DictationVocabularyTests`, selftest `dictation_vocab` |
 | Context, the after-typing watch | `Capture/Dictation/DictationContext.swift` |
 | Custom words in ASR and polish | `scripts/dictation_vocab.py`, `transcribe.py` (`note --dictation --vocab`, `dictation-models`), `polish.py`, `tests/test_dictation_vocab.py` |
+| Names inside Chinese speech: the language tag, the near-miss pass, learning from a correction (`learn`, the lab's API) | `transcribe.py` (`Qwen3Mlx._decode_tagged`, `switch_language`), `dictation_vocab.py` (`choose_tag`, `translated_glue`, `context_dump`, `snap`, `fixes`, `learn`), `tests/test_dictation_vocab.py` (`CodeSwitch`, `TaggedDecode`, `NearMiss`, `LearnFromCorrection`), `tests/fixtures/dictation_false_corrections.jsonl`; the page's **Correct**: `MainWindow/DictationPage.swift`, `DictationVocabulary.learnCorrection`, `DictationHistory.correct` |
 | Controller (capture → ASR → polish → insert → history) | `Capture/Dictation/Dictation.swift` |
 | Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `commitSplit`) (`DictationSegmenterTests`, `DictationStitchTests`) |
 | The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
@@ -474,12 +475,12 @@ before comparing.
 | `empty` | the output has no units |
 | `chatty` | the output starts like an assistant ("好的", "以下是", "Sure", "Here is"…) or says "hope this helps" (and the input didn't) |
 | `answered` | the input is a question (a wh-word + auxiliary, a leading auxiliary + subject, 为什么/怎么/吗/…), the output isn't |
-| `correction` | the first 4 units after a correction marker (不对, 不是, 我是说, 算了, no wait, I mean, sorry, actually…) aren't all in the output: the model kept the wrong version |
+| `correction` | the first 4 units after a correction marker (不对, 不是, 我是说, 算了, no wait, I mean, sorry, actually…) aren't all in the output: the model kept the wrong version (up to two lead-in words — make it, 是, 改 — may go with the marker); or a cancelling marker (不对, 我是说, no wait, I mean, scratch that …) was dropped while the words it took back stayed right before the restated version (§Names inside Chinese speech → Polish) |
 | `translated` | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
 | `shrunk` | loss > max(8 units, 25 % of the filler-free input) + 6 per correction (at most 2) |
 | `grew` | output > 1.25 × input + 8 units |
 | `novel` | more than max(4, 15 % of output) units that aren't in the input (digits exempt: 五零零 → 500), the custom words or the context |
-| `term` | a custom word that was spoken (any case or spacing) is missing from the output |
+| `term` | a custom word that was spoken (any case or spacing) is missing from the output, unless it was said only in words a cancelling marker took back |
 | `copied` | 6 units in a row of the context (the text around the cursor, or a streamed dictation's polished text so far) that weren't spoken: the model continued the document |
 | `dropped` | the repair (below) had to put back more than 40 % of the content: the polish was bad |
 | `timeout` | no answer within `record.dictation.polish_timeout_ms` (3000) after the model is loaded; the server stops generating at the deadline |
@@ -536,22 +537,35 @@ the output left out:
 - The seed, once per launch and when Settings opens, adds what's missing: Claude Code, Codex, blurt, 口喷鸡 (with the
   misrecognitions the eval found as sounds-likes) and each project's name and key (`project`); and, as `default`, the
   AI / dev products nearly every user says: Gemini, Claude, ChatGPT, Cursor, Typeless, OpenClaw, MCP, tmux, GitHub,
-  PR, worktree (`DictationVocabulary.defaults`). Settings shows both seeds as "Automatic"; each is removable like any
-  word. Typeless has no "TTS" sounds-like on purpose: that would rewrite every real "TTS" — the biasing does it
-  instead.
+  PR, worktree (`DictationVocabulary.defaults`), and since the names work the AI companies, models and people a
+  Chinese speaker names inside Chinese: OpenAI, Anthropic, GPT, DeepSeek, Kimi, Qwen, Grok, xAI, Llama, Gemma,
+  Mistral, Ollama, Hugging Face, Perplexity, Copilot, Windsurf, Midjourney, Sora, MiniMax, Nvidia, Wispr Flow, Sam
+  Altman, Dario, Musk (§Names inside Chinese speech). Settings shows both seeds as "Automatic"; each is removable like
+  any word. Typeless has no "TTS" sounds-like on purpose: that would rewrite every real "TTS" — the biasing does it
+  instead. The new names have no sounds-likes at all: every misspelling the eval saw was either a real word ("deep
+  sea", "whisper flow", "mosque") or one the model stops making once it is told the name (a test keeps ordinary words
+  out of the defaults' sounds-likes).
 - Every dictation request carries the active words. What happens to them:
   1. **ASR biasing** where the model takes it: Qwen3-ASR (MLX) gets an English sentence as its `context` ("Notes
      about Claude Code, Codex, … and Whisper."), Whisper a comma list as `initial_prompt`, Qwen3-ASR (onnx)
      `"; "`-joined hotwords on each stream (an ASCII comma is split and re-joined with spaces by sherpa-onnx, which
      ran the words together). SenseVoice can't be biased: sherpa-onnx only does greedy CTC for it, and
      `create_stream(hotwords=…)` aborts the process ("only transducer models support contextual biasing").
-     At most 40 words, the relevant ones first: a sounds-like heard, a word spelled like one, a word in the context,
-     then manual before learned before seeded, then by hits.
+     At most 40 words (64 for Qwen3-ASR MLX, `QWEN_MAX_TERMS`: ~2 tokens a word, prefilled with the audio), the
+     relevant ones first: a sounds-like heard, a word spelled like one, a word in the context — for the speech model
+     that is the request's `hint` (the target window's title and 300 characters each side of the cursor,
+     `DictationContext.hint`; only used to order the list, never sent to the model) and the dictation so far —, then
+     manual before learned before seeded, then by hits.
   2. **The deterministic pass** (`dictation_vocab.apply`, in the ASR server, so it also runs when polish is off): an
      exact sounds-like match becomes the term, and a case / spacing / hyphen variant of a term gets its spelling
      ("sense voice" → "SenseVoice", "ba 12" → "BA-12"). Not when the sounds-like is a single ordinary English word
      ("cloud", "blur") or a single CJK character, and no case fix of a term that is itself an ordinary word ("swift"):
-     those are polish's call, since it sees the sentence. Ordinary = a lower-case entry of `/usr/share/dict/words`.
+     those are polish's call, since it sees the sentence. Ordinary = a lower-case entry of `/usr/share/dict/words`,
+     plus a few words that 1934 list lacks and a term can look like (grok, gemini the sign, windsurf, app, email …:
+     `_MODERN_WORDS`).
+  2b. **The near-miss pass** (`dictation_vocab.snap`, in the ASR server after 2): a Latin word that is no real word
+     but nearly spells a listed term becomes the term (Typless → Typeless). No word pairs anywhere; deterministic and
+     conservative (§Names inside Chinese speech).
   3. **Polish** gets `Words: …` and `Near the cursor: … ▮ …` lines before `Dictation: …` in the last message (the
      cached prefix is unchanged). The prompt says to write a word that sounds or looks like a listed one the listed
      way, never to add one that wasn't spoken, and never to copy the context. Two examples show it. The guard accepts
@@ -559,6 +573,153 @@ the output left out:
      and adds `term`: a word that was spoken must survive (the eval caught Gemma dropping "口喷鸡在" otherwise).
 - `terms_applied` in the history: the words the sounds-like pass or polish wrote, plus listed words in the text when
   the speech model was told about them.
+
+## Names inside Chinese speech (code-switching)
+
+What the user saw in WeChat (no readable field: the context was the window title only). They said, in Chinese, that
+they were trying names such as OpenAI 和 Musk 的 Grok and 和 CEO 是 Dario 的 Anthropic. The speech model wrote
+"…open AI and Musk's Grok, and呃，CEO是Dario的Asopic…" — 和 became "and", Musk 的 became "Musk's" —, polish was
+rightly refused (`translated`: English where Chinese was spoken), the raw text was pasted, `terms_applied` was empty,
+and the user's own fix of "Anthropic" in WeChat was never learned.
+
+### Root cause: the language tag, not (only) the English context
+
+Qwen3-ASR answers `language X<asr_text>…`: it first decodes a language tag, then writes the **whole** answer in that
+language. A Chinese sentence dense with English names gets tagged English, and then the Chinese around the names is
+**translated**: measured on spliced clips (the names in an English voice, the rest Chinese), forcing the tag shows it
+both ways — tag English: 「Cursor 和 Codex 我都在用」 → "Cursor and Codex, I'm using Codex, the speed is faster.";
+tag Chinese on English speech: "DeepSeek and Kimi both shipped new models" → 「DeepSeek 和 Kimi 都已发布新模型。」.
+The English "Notes about …" context makes it worse but isn't the cause: with the longer list of English names, 11 → 16
+of the 39 mixed pieces (spliced, clean) came back tagged English with Chinese still in them, and with no context at
+all the model translated too. None of the context formats tried fixed the tag — a Chinese-framed note
+「说话中可能提到这些名字：A、B…」, the notes plus a Chinese instruction to keep English names as they are, a bare comma
+or space list —; the Chinese framing tagged even more pieces English and once copied the list out
+(`results/explore2-sp.jsonl`, `explore3-pz.jsonl`), so the "Notes about …" sentence stays. The model's own probabilities at the tag separate the cases cleanly:
+English speech ≥ 0.9985 English (of English + Chinese); the mixed pieces it translated 0.95–1.0.
+
+**The fix** (`Qwen3Mlx._decode_tagged`, `dictation_vocab.choose_tag` / `translated_glue`): mlx-qwen3-asr's own decode
+(the same prefill, KV cache and greedy loop), with the tag chosen here. The prompt is prefilled up to `language`, the
+probabilities of " English" and of the user's language are read, and the tag is
+- the user's language (Chinese for a user whose languages — `asr.languages`, else the system's — include zh; also when
+  the dictation so far is ≥ 30 % Chinese) unless English has > 99.5 % of the two (`EN_TAG_THRESHOLD`);
+- the model's own when it picks neither (None: noise; another language) — as before;
+- an English answer that still reads like translated Chinese — Chinese characters in it, or nothing but names,
+  acronyms and function words ("Anthropic, the CEO, Dario.") — is decoded once more under the user's language and
+  that is kept when it has Chinese in it (1 piece of 218 in the eval; ~one more decode, only then).
+- English-only users, or a language set in Settings (`asr.language`), keep the plain decode. If the library changes
+  under it, the first failure switches back to the library's `transcribe` for good (`TaggedDecode` tests).
+- Cost: none — it is the same one decode (the probe is the tag step the model would run anyway).
+
+Found on the way: on a noisy piece it couldn't make out, the model answered with the word list itself
+("Claude Code、Codex、blurt、口喷鸡…" — the old pipeline would have pasted that). `dictation_vocab.context_dump` (≥ 4
+listed names in the list's order with only separators between them) → the piece is decoded again with only the text
+so far as context.
+
+### The vocabulary for each piece, and the near-miss pass
+
+- Every streamed piece does get the words (`DictationStream.transcribe` → `vocab` + `prior`); `terms_applied` was
+  empty because none of the names was in the vocabulary. The `default` seed now has the AI names (§Custom words), and
+  the ASR request carries a `hint` (title + text around the cursor) so words seen there are listed first. Qwen3-ASR
+  gets up to 64 words (`QWEN_MAX_TERMS`).
+- `snap` — the near-miss pass, after the sounds-like / spelling pass, in the ASR server (so also with polish off):
+  a Latin run in mostly-Chinese text that is no real word and nearly spells one listed term becomes it. Strict on
+  purpose; no word pairs anywhere, nothing learned:
+  - never an ordinary English word (inflections included; `/usr/share/dict/words` + `_MODERN_WORDS`), an acronym, a
+    number, a term or a sounds-like; never in English text;
+  - similarity ≥ 0.75 and ≥ 5 letters on its own (Typless → Typeless); a weaker miss (≥ 0.55, same first letter, ≥ 3
+    letters shared at an end: Asopic → Anthropic) or a term that is itself a word (Cursor, Windsurf, Mistral) only when
+    the window title / the text around the cursor / the dictation so far names the term; one term clearly closest.
+  - **False corrections: 0** on `tests/fixtures/dictation_false_corrections.jsonl` — 40 sentences (Chinese and English)
+    that use cloud, open, cursor, code, gemini (the sign), grok (the verb), musk (the scent), llama, mistral (the wind),
+    copilot, windsurf, perplexity, codex (the book), apple, meta …, through both passes with the whole seeded
+    vocabulary, with no context and with a context naming every term. Two pre-existing case fixes it caught
+    ("gemini" → "Gemini", "windsurf" → "Windsurf") are gone (`_MODERN_WORDS`).
+  - In the eval the biasing already wrote the names, so it fired 0 times there: it is a safety net.
+- The user's WeChat fix: §Learning from corrections (the page's **Correct**, and `dictation_vocab.learn` for the lab).
+
+### Polish
+
+- The `translated` guard was right and stays. With the tag fixed there is nothing to repair at the polish stage.
+- Two polish problems the eval surfaced, both from the message format every app dictation uses ("Words: …" /
+  "Near the cursor: …" before "Dictation: …"):
+  - Gemma 4 E2B **translated English dictations into Chinese** once a word list was there (6 of 12 English clips; 2
+    without the list): an English dictation is now labelled "Dictation (English: keep it in English): " → 0 of 12.
+  - It **left spoken self-corrections in** (「把这个，不对，这两个…」 typed as said; 2 of 8 applied with the words and a
+    title, 5 of 8 bare). Now polish lists only the words this dictation may need (`dictation_vocab.relevant`: heard,
+    spelled alike, or in the field — the speech model already had them all), a title alone is no "Near the cursor"
+    line (the guard still accepts its words), the first words example has a correction in it, and the rules say the
+    corrections still apply with a word list → 14 of 16 typed right, old code 8 of 16 (8 cases × with / without words, `results/selfcorr-*.txt`; the one left is
+    「先放到左边，不对，放到右边…」, kept whole by the model — typed as said).
+  - The 41-case eval with the new prompt: fall-backs 0 / 0, kept 97.6 % / 97.6 %, unwanted words dropped 90.2 → 97.6 %,
+    fillers removed 88 → 94 %, similarity 0.958 → 0.971; the over-deletion set: kept 100 % after the repair both
+    (the model's own 95.5 % both), repairs 4.5 → 9.1 % of cases (`results/polish-*.json`).
+- Self-corrections in the guard and the repair (found by the Dictation Lab):
+  - a cancelling marker (不对, 我是说, 我的意思是, 更正, 说错了, no wait, wait no, I mean, scratch that, make that)
+    takes back the clause before it (`cancelled`, ≤ 8 units). An output that dropped the marker but kept those words
+    right before the restated version (「把这个文件，这两个文件」) fails `correction`;
+  - the repair never puts back a span with such a marker in it when the words after the span were kept ("Let's meet
+    at 2:30, no wait, make it 3:30" → "Let's meet at 3:30." stays; it used to get "2:30, no wait, make it" back);
+  - the guard's tail check lets up to two lead-in words go with the marker (make it, it's, 是, 改, 换 …; never "to
+    Bob"), and a custom word said only in the taken-back words may go ("用 Claude 写，不对，用 Codex 写" → `term` no
+    more).
+
+### Eval
+
+`promo/cases/v0.8-dictation-names/` (not in git): 48 synthetic clips (`scripts/gen.py`): 28 Chinese sentences with
+67 English names (OpenAI, Anthropic, Claude, Dario, Musk, Grok, Gemini, Codex, Cursor, Typeless, DeepSeek, Kimi, Qwen,
+Sam Altman, Hugging Face, Llama, Mistral, Perplexity, Midjourney, Sora, MiniMax, Windsurf, Nvidia …, most of them next
+to 和 / 的: the code-switch trap, one a paraphrase of the WeChat sentence), 4 Chinese-only, 4 Chinese with a whole
+English sentence, 12 English. Six zh_CN `say` voices (they read the names with a Chinese accent, often unrecognisably:
+"clean"), the same with pink noise at 10–16 dB SNR + hum + a reflection ("noisy"), and **spliced**: the Latin runs in
+an English voice, the rest in the Chinese one — closer to how a Chinese speaker says the names, and the set that
+reproduces the WeChat failure. 1–3 pause-cut pieces each, fed piece by piece like the stream (`prior` = the text so
+far, `hint` = 「微信」 only), through `transcribe.py`'s `NoteEngine.note` (the warm server's code: ranking, biasing,
+the tag, the passes) with Qwen3-ASR 1.7B 8-bit, then `polish.py` (Gemma 4 E2B) with the seeded words and the title.
+Old = the scripts and seed of `86ea0e67`. Code-switch errors = English function words in the output that weren't
+spoken (and, of, 's, the, is …). M5 Max, in-process, warm.
+
+| Set (clips) | Terms old → new | Code-switch errors old → new (clips) | CER old → new | Polish fall-backs old → new |
+|---|---:|---:|---:|---:|
+| Spliced, clean (28) | 52 → **62** / 67 | 6 (3) → **0** | 14.2 → **6.1 %** | 1 → 0 |
+| Spliced, noisy (28) | 28 → **49** / 67 | 3 (2) → **0** | 43.0 → **16.6 %** | 2 → 0 |
+| zh voices, clean (28) | 31 → 34 / 67 | 8 (2) → **0** | 39.4 → 28.5 % | 1 → 1 |
+| zh voices, noisy (28) | 19 → 24 / 67 | 0 → 0 | 44.6 → 39.8 % | 1 → 0 |
+| Chinese only, clean / noisy (4) | — | 0 → 0 | 1.1 → 1.1 % / 9.0 → 11.2 % | 0 → 0 |
+| Chinese + an English sentence (4 ×2) | 2 → 2 / 2 | 0 → 0 | 3.5 → 3.5 % / 31.5 → 18.9 % | 3 → 4 (`translated`) |
+| English, clean (12) | 24 → **26** / 26 | — | 1.6 → **0.4 %** | 5 → **1** |
+| English, noisy (12) | 18 → 21 / 26 | — | 26.4 → 20.2 % | 3 → **0** |
+
+(raw ASR columns; after polish the terms are 63 / 52 on the spliced sets.) `results/pipeline-before.jsonl`,
+`pipeline-after3.jsonl`, `scripts/summarize.py`.
+
+Latency, old and new run interleaved (old, new, old, new; clean + spliced sets, 218 pieces a round), paired per piece:
+
+| | Old: median / p90 | New: median / p90 | Paired difference (median) |
+|---|---:|---:|---:|
+| ASR, every piece (VAD + decode + passes) | 169 / 202 ms | 156 / 203 ms | −13 ms |
+| ASR, the last piece (what is left after key-up) | 179 / 207 ms | 164 / 211 ms | −13 ms |
+| Polish (whole transcript) | 115 / 157 ms | 121 / 163 ms | +3 ms |
+
+The tag costs nothing (it is the model's own first step) and 64 instead of 15 words in the context are a few more
+prefill tokens; the new decode came out 13 ms faster (not taken apart: the loop skips the library's per-step cache
+evaluation, and translated answers were longer). Within the +30 ms budget either way.
+`results/pipeline-*-lat{1,2}.jsonl`, `scripts/latency.py`.
+
+- The zh-voice sets stay hard: those voices say "OpenAI 和 Anthropic" as 「郭困难和阿臭皮」, which no biasing reaches.
+- What's left on the spliced set: Wispr Flow → "Whisper Flow" (real words: the passes leave it; learning takes it),
+  xAI → "Z", Elon Musk → 「埃隆·马斯克」 (a translation the model keeps for a famous name).
+- The Chinese-with-an-English-sentence clips: the English sentence stays English (a Chinese tag doesn't translate it:
+  the probability says English there); polish still refuses some as `translated` (Gemma rewrites the English half).
+
+### What auv taught (moeru-ai/auv)
+
+The user pointed at [moeru-ai/auv](https://github.com/moeru-ai/auv) (Apache-2.0). It turned out to be OS automation
+("Playwright for the OS": accessibility trees, screenshots, OCR), with no speech recognition, VAD or voice input in
+it. Two ideas only, no code: its OCR (Apple Vision) gets a `customWords` list drawn from what it is looking for, and it
+compares on-screen text after folding look-alike characters, case and punctuation. Taken: the words on screen — the
+window title and the field's text — rank the custom words for the speech model and let the near-miss pass accept a
+weaker match (`hint`); spelling-insensitive keys were already how the passes compare. Not taken: OCR of the window
+for apps whose field can't be read (WeChat) — it needs Screen Recording for every dictation; a possible follow-up.
 
 ## Context
 
@@ -591,6 +752,32 @@ After a paste, `DictationWatch` follows the same AX element (the one focused jus
   the same fix is seen, or at once when it is only case or spacing. The first time a word becomes active, the
   island says *Learned "pull request"* with **Undo** (记住了 pull request · 撤销). Never from secure fields; nothing of
   the surrounding text is kept; `record.dictation.learn` turns it off.
+
+### Learning from corrections
+
+The watch needs the field's text. In WeChat (and other apps whose input box Accessibility can't read) it sees
+nothing, so a name the user fixed there by hand — 「…的 Asopic」 → 「…的 Anthropic」 — was never learned. Two other
+ways in, both with the watch's rules (`DictationLearn.fixes`: small replaced spans that sound or look alike; a
+rewrite teaches nothing):
+
+- **The Dictation page**: the typed text has **Correct** (改正); it opens an editor with **Save Correction** (保存改正,
+  ⌘↩) and Cancel. Saving appends `{"op":"correct","id","text"}` to the history (the entry keeps `text` and gains
+  `corrected`; the page, copy, search and *Turn into item* use the correction) and learns every fix in it at once —
+  `DictationVocabulary.learnCorrection` → `learn(…, explicit: true)`: the user did it on purpose, so a new word is
+  active immediately (no second sighting), a known one gains what was heard as a sounds-like, a rejected or removed
+  one stays out. The page says 「已保存改正 · 记住了 Anthropic」 / "Correction saved · learned Anthropic". Test hooks:
+  `dictation history edit [ID]`, `dictation history correct ID TEXT` (event `dictation_history` action `correct`
+  with the fixes and their results).
+- **For tools outside the app** (the Dictation Lab): `scripts/dictation_vocab.py`, the same rules ported to Python
+  (pinyin through macOS's own `CFStringTransform` via ctypes, as the app; `pypinyin` elsewhere when installed):
+  - `learn(raw, corrected, explicit=True, path=None, dry_run=False)` → `{"ok", "fixes": [{"heard", "fixed",
+    "kind": case|spelling|sound, "result": learned|suggested|known|null}], "path", "written"}`; writes
+    `$BLURT_HOME/dictation/vocabulary.json` (read, change, atomic replace). `explicit=False` makes a suggestion, as
+    the watch does. `fixes(raw, corrected)` only finds them.
+  - CLI: `dictation_vocab.py learn --raw TEXT --corrected TEXT [--suggest] [--dry-run] [--file PATH]`,
+    `dictation_vocab.py fixes --raw … --corrected …`, `dictation_vocab.py snap --text TEXT [--context TEXT]`.
+  - The app holds no lock another process can see: a tool writing while the app seeds or counts hits can lose one of
+    the two writes. Call it while the user isn't dictating (a lab session).
 
 ## Recognition model
 
@@ -792,7 +979,8 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
   for after key-up), `load_ms` (model loads waited for), `total_ms` (key-up → paste), `segments` (pieces streamed)
   `repaired` (spans polish dropped that were put back) and `fitted` (how it was fitted into the field at the cursor: head / tail / punct / capital / space). Older lines lack them: read as unknown. `prune` rewrites
   lines through `DictationEntry.json`, which carries them;
-- edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`.
+- edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`, `{"op":"correct","id",
+  "text"}` (the user's correction from the Dictation page: `corrected` on the entry; prune folds it into the line).
 
 Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
 (`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on.
@@ -997,6 +1185,25 @@ by tag (`length:short`, `feature:correction` …).
     then the repair put "two thirty. No, wait. Make it" back.
 - Only the user can check: a take from the real microphone (and the picker's other inputs), the dictation key starting
   and stopping a lab take with the main window in front, `dictation_vocab.learn` once it is merged.
+- Names inside Chinese speech (`promo/cases/v0.8-dictation-names/`, not in git):
+  - `pytest tests`: `test_dictation_vocab.py` — `CodeSwitch` (the tag threshold, translated English, the word list
+    written out, `switch_language`), `TaggedDecode` (the preferred language reaches the tag-aware decoder, English-only
+    users keep the plain decode, a failing decoder falls back for good, a context dump is decoded again), `NearMiss`
+    (close misses, a weak miss needs the context, English text untouched, **0 false corrections** on the 40-sentence
+    fixture with the seeded vocabulary read from the Swift source), `LearnFromCorrection` (`fixes`, `learn` writes the
+    app's file and the next dictation's sounds-like pass uses it, suggestions / rejected / dry run, the CLI), the
+    polish message (`relevant`, no title line, the English label); `test_polish.py` — the two Dictation Lab cases, lead-in
+    words, a custom word in the taken-back words, the repair keeping spoken corrections out;
+  - `swift test`: `DictationVocabularyTests` (the AI names in the seed with no ordinary-word sounds-likes; an explicit
+    correction learned at once, `learnCorrection`), `DictationHistoryTests.testACorrectionIsKeptBesideWhatWasTyped`;
+  - the isolated test build (`dev.blurt.recorder.namestest`, scratch `BLURT_HOME`, LaunchServices, test hooks only,
+    no mic, nothing posted): a WeChat-like entry corrected on the Dictation page (`dictation history edit` /
+    `correct`) → `Asopic` became a sounds-like of the seeded Anthropic, the page says 「已保存改正 · 记住了 Anthropic」
+    (`shots/page-correct-editing.png`, `page-correct-saved.png`);
+  - the eval and latency tables above.
+- Only the user can check: their own voice saying names inside Chinese (the eval's voices are synthetic), and a
+  correction saved on the Dictation page after a real WeChat dictation.
+
 - Punctuation at the seams and double tap = Return (`promo/cases/v0.8-dictation-punct/`, not in git: clips, scripts,
   results; isolated test builds `dev.blurt.recorder.puncttest` — the old one and the new one side by side —, scratch
   `BLURT_HOME`, launched through LaunchServices, no real mic, no tap, nothing posted, nothing pasted outside the test

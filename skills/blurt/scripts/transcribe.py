@@ -326,6 +326,15 @@ def system_languages() -> list[str]:
     return out
 
 
+SWITCH_LANGUAGES = {"zh": "Chinese", "yue": "Cantonese", "ja": "Japanese", "ko": "Korean"}
+
+
+def switch_language(langs: list[str]) -> str | None:
+    """The language a user mixes English names into, as Qwen3-ASR names it: the first of their languages that people
+    commonly speak with English words inside it (zh → "Chinese"). None for English-only users."""
+    return next((SWITCH_LANGUAGES[c] for c in langs if c in SWITCH_LANGUAGES), None)
+
+
 def user_languages(cfg: dict | None = None) -> list[str]:
     """asr.languages, else the system's preferred languages ∪ {en}."""
     cfg = asr_config() if cfg is None else cfg
@@ -1133,14 +1142,22 @@ class Qwen3Mlx(MlxBackend):
             from mlx_qwen3_asr.load_models import _ModelHolder
         except ImportError:
             raise Fail("mlx-qwen3-asr not installed (uv run --with mlx-qwen3-asr …)", "deps", 4)
-        self.m = mlx_qwen3_asr
+        self.m, self.mx = mlx_qwen3_asr, mx
         self.repo = self.model = args.model or "mlx-community/Qwen3-ASR-0.6B-8bit"
         _ModelHolder.get(self.repo, dtype=mx.float16)  # load now, not inside the first chunk
         self.context = args.prompt or ""
         self.base_context = self.context
+        self.names: list[str] = []
+        # The language the user mixes English into (docs/design/dictation.md §Code-switching): Qwen3-ASR writes its
+        # whole answer in the language of the tag it decodes first, so a Chinese sentence full of English names that
+        # it tags English comes back translated (和 → "and", Musk 的 → "Musk's"). None = leave the tag to the model.
+        self.prefer = None if args.language else switch_language(user_languages())
+        self.tagged = True        # the tag-aware decoder below works with this mlx-qwen3-asr; False after it failed
+        self.last: dict = {}
 
     def set_vocab(self, terms: list[dict]) -> bool:
         self.context = dictation_vocab.qwen_context(terms) or self.base_context
+        self.names = [t["term"] for t in terms[:dictation_vocab.QWEN_MAX_TERMS]]
         return bool(terms)
 
     def set_prior(self, text: str) -> None:
@@ -1151,8 +1168,105 @@ class Qwen3Mlx(MlxBackend):
     def decode(self, x):
         prior = getattr(self, "prior", "")
         ctx = (self.context + "\n" + prior).strip() if prior else self.context
+        text, lang = self._decode(x, ctx, prior)
+        # The model now and then answers with the word list itself (seen on a noisy piece it couldn't make out:
+        # "Claude Code、Codex、blurt、…"): once more with only the text so far as context.
+        if self.names and ctx != prior and dictation_vocab.context_dump(text, self.names):
+            text, lang = self._decode(x, prior, prior)
+            self.last["context_dump"] = True
+        return [(0.0, len(x) / SR, text, lang)]
+
+    def _decode(self, x, ctx: str, prior: str) -> tuple[str, str | None]:
+        prefer = self.prefer or ("Chinese" if not self.args.language and dictation_vocab.cjk_share(prior) >= 0.3 else None)
+        self.last = {}
+        if prefer and self.tagged:
+            try:
+                return self._decode_tagged(x, ctx, prefer)
+            except Exception as e:  # noqa: BLE001 — another mlx-qwen3-asr: its own transcribe, as before
+                self.tagged = False
+                print(f"qwen3-asr: tag-aware decode unavailable ({type(e).__name__}: {e}); plain decode", file=sys.stderr, flush=True)
         r = self.m.transcribe(x, model=self.repo, context=ctx, language=self.args.language)
-        return [(0.0, len(x) / SR, (r.text or "").strip(), lang_code(getattr(r, "language", None)))]
+        return (r.text or "").strip(), lang_code(getattr(r, "language", None))
+
+    def _decode_tagged(self, x, ctx: str, prefer: str) -> tuple[str, str | None]:
+        """mlx-qwen3-asr's decode, with the language tag chosen here: the prompt is prefilled up to `language`, the
+        model's probabilities for English and `prefer` are read at the tag, and `prefer` wins unless English is all
+        but certain (dictation_vocab.choose_tag). English that still reads like the Chinese around a name translated
+        (Chinese characters in it, or nothing but names and function words) is decoded once more under `prefer`.
+        The same work as one plain decode; the extra decode only in that case."""
+        mx = self.mx
+        from mlx_qwen3_asr.audio import compute_features
+        from mlx_qwen3_asr.chunking import split_audio_into_chunks
+        from mlx_qwen3_asr.generate import GenerationConfig, detect_repetition, resolve_max_new_tokens
+        from mlx_qwen3_asr.load_models import _ModelHolder
+        from mlx_qwen3_asr.tokenizer import _TokenizerHolder, parse_asr_output
+        model, _ = _ModelHolder.get(self.repo, dtype=mx.float16)
+        tok = _TokenizerHolder.get(_ModelHolder.get_resolved_path(self.repo, dtype=mx.float16))
+        eos = set(GenerationConfig().eos_token_ids)
+        head = tok.encode("language")
+        tag_ids = {name: tok.encode(" " + name)[0] for name in (prefer, "English")}
+
+        def positions(a: int, b: int):
+            p = mx.arange(a, b)[None, :]
+            return mx.stack([p, p, p], axis=1)
+
+        def run(af, budget: int, force: str | None) -> tuple[str, str | None, dict]:
+            ids = tok.build_prompt_tokens(n_audio_tokens=af.shape[1], language=None, context=ctx) + head
+            cache = model.create_cache(max_seq_len=len(ids) + budget + 8)
+            logits = model.prefill(input_ids=mx.array([ids]), audio_features=af, position_ids=positions(0, len(ids)), cache=cache)
+            pos = len(ids)
+            info: dict = {}
+            if force:
+                tag = force
+            else:
+                lp = logits.reshape(-1).astype(mx.float32)
+                lp = lp - mx.logsumexp(lp)
+                p_pref, p_en = (float(mx.exp(lp[tag_ids[prefer]])), float(mx.exp(lp[tag_ids["English"]])))
+                top = int(mx.argmax(lp))
+                info = {"p_en": round(p_en, 4), f"p_{lang_code(prefer) or prefer}": round(p_pref, 4)}
+                tag = dictation_vocab.choose_tag(p_en, p_pref, prefer) if top in tag_ids.values() else None
+            if tag is None:   # the model's own tag (no speech, another language): decode on from it, as before
+                suffix = [int(mx.argmax(logits.reshape(-1)))]
+            else:
+                suffix = tok.encode(f" {tag}<asr_text>")
+            logits = model.step_many(input_ids=mx.array([suffix]), position_ids=positions(pos, pos + len(suffix)), cache=cache)
+            pos += len(suffix)
+            token = int(mx.argmax(logits[0, -1]))
+            out = [token]
+            for _ in range(1, budget):
+                if token in eos or detect_repetition(out):
+                    break
+                logits = model.step(input_ids=mx.array([[token]]), position_ids=positions(pos, pos + 1), cache=cache,
+                                    validate_input_ids=False)
+                pos += 1
+                token = int(mx.argmax(logits.reshape(-1)))
+                out.append(token)
+            out = [t for t in out if t not in eos]
+            raw = tok.decode((head + suffix + out) if tag is None else out)
+            if tag is None:
+                lang, text = parse_asr_output(raw)
+            else:
+                lang, text = tag, parse_asr_output(raw, user_language=tag)[1]
+            return (text or "").strip(), lang, info
+
+        texts, langs, last = [], [], {}
+        for chunk, _off in split_audio_into_chunks(np.asarray(x, np.float32), sr=SR):
+            mel, fl = compute_features(chunk)
+            af, _ = model.audio_tower(mel.astype(mx.float16), fl)
+            budget = resolve_max_new_tokens(None, audio_duration_sec=len(chunk) / SR)
+            text, lang, info = run(af, budget, None)
+            if lang == "English" and dictation_vocab.translated_glue(text, self.names):
+                text2, _, _ = run(af, budget, prefer)
+                if dictation_vocab.cjk_share(text2) > 0:
+                    text, lang = text2, prefer
+                    info["redone"] = True
+            info["tag"] = lang
+            last = info
+            texts.append(text)
+            langs.append(lang)
+        self.last = last
+        lang = next((l for l in langs if l), None)
+        return ("" if lang in ("Chinese", "Japanese", "Cantonese") else " ").join(t for t in texts if t).strip(), lang_code(lang)
 
 
 class FasterWhisper:
@@ -1741,10 +1855,12 @@ class NoteEngine:
             pass
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
-             purpose: str | None = None, prior: str | None = None) -> dict:
+             purpose: str | None = None, prior: str | None = None, hint: str | None = None) -> dict:
         """vocab: None = no custom words; True = the file's; a list = these (strings or term dicts). The model is
         biased toward them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords), then exact
-        sounds-likes are fixed (dictation_vocab.apply): `text` has the fixes, `asr_text` is what the model wrote."""
+        sounds-likes are fixed (dictation_vocab.apply) and near misses snapped (dictation_vocab.snap): `text` has the
+        fixes, `asr_text` is what the model wrote. hint: the target app's window title and the text around the cursor
+        — words seen there are listed to the model first, and let a weaker near miss through."""
         t0 = time.perf_counter()
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
@@ -1757,7 +1873,7 @@ class NoteEngine:
         terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
         biased = False
         if hasattr(self.backend, "set_vocab"):
-            biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or ""))
+            biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or "", hint or "", dictation_vocab.QWEN_MAX_TERMS))
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior[-200:])
         retried = False
@@ -1780,9 +1896,16 @@ class NoteEngine:
                "model": self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": load_ms}
         if retried:
             out["retried"] = True
+        tag = getattr(self.backend, "last", None)
+        if tag:
+            out["tag"] = tag      # the language tag chosen and the model's English / preferred probabilities
         if vocab is not None:
             fixed, applied = dictation_vocab.apply(text, terms)
+            fixed, snapped = dictation_vocab.snap(fixed, terms, (hint or "") + "\n" + (prior or ""))
+            applied += [s["term"] for s in snapped if s["term"] not in applied]
             out.update(text=fixed, asr_text=text, terms=applied, biased=biased)
+            if snapped:
+                out["snapped"] = snapped
         self.last = time.time()
         return out
 
@@ -1880,7 +2003,7 @@ def cmd_serve(a):
                             uses.append(last)
                             del uses[:-50]
                         resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
-                                        req.get("purpose"), req.get("prior"))
+                                        req.get("purpose"), req.get("prior"), req.get("hint"))
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
                         last = time.time()
                         mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)

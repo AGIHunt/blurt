@@ -6,6 +6,8 @@
 //    "asr_ms","polish_ms","load_ms","total_ms" (key-up → paste),"segments" (pieces streamed), "fitted" (how it was fitted at the cursor), "repaired" (spans polish
 //    dropped that the guard put back), …}
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
+//   {"op":"correct","id","text","t"}  the user's corrected text (the Dictation page's "Save correction"); "corrected"
+//                                      on a rewritten line
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio). dictation.py reads the
 // same file (list, turn into an item).
@@ -46,6 +48,10 @@ public struct DictationEntry: Identifiable, Hashable {
     /// how the text was fitted into the field at the cursor (DictationFit: "head" / "tail" — words that repeated the
     /// field, "punct", "capital", "space"); nil: inserted as it came (or an older entry)
     public var fitted: [String]?
+    /// the user's own correction of `text` (the Dictation page): what they meant; nil = never corrected
+    public var corrected: String?
+    /// the text as it stands: the correction when there is one, else what was typed
+    public var finalText: String { corrected ?? text }
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -84,6 +90,7 @@ public struct DictationEntry: Identifiable, Hashable {
         for (k, v) in timing ?? [:] where DictationEntry.timingKeys.contains(k) { o[k] = v }
         if let r = repaired, !r.isEmpty { o["repaired"] = r }
         if let f = fitted, !f.isEmpty { o["fitted"] = f }
+        if let c = corrected { o["corrected"] = c }
         return o
     }
 
@@ -112,6 +119,7 @@ public struct DictationEntry: Identifiable, Hashable {
         timing = t.isEmpty ? nil : t
         repaired = o["repaired"] as? [String]
         fitted = o["fitted"] as? [String]
+        corrected = o["corrected"] as? String
     }
 }
 
@@ -147,6 +155,11 @@ public final class DictationHistory {
 
     public func markItem(_ id: String, item: String, uid: String) {
         appendLine(["op": "item", "id": id, "item": item, "uid": uid, "t": DictationEntry.iso.string(from: Date())])
+    }
+
+    /// The user corrected what was typed (the Dictation page): the entry keeps both, `text` and `corrected`.
+    public func correct(_ id: String, text: String) {
+        appendLine(["op": "correct", "id": id, "text": text, "t": DictationEntry.iso.string(from: Date())])
     }
 
     /// Everything goes: the file is emptied and the audio removed.
@@ -186,6 +199,8 @@ public final class DictationHistory {
                 for i in gone { byID[i] = nil }
                 order.removeAll { gone.contains($0) }
             case "clear": byID = [:]; order = []
+            case "correct":
+                if let i = o["id"] as? String, var e = byID[i], let t = o["text"] as? String { e.corrected = t; byID[i] = e }
             case "item":
                 if let i = o["id"] as? String, var e = byID[i] { e.item = o["item"] as? String; e.itemUID = o["uid"] as? String; byID[i] = e }
             default:

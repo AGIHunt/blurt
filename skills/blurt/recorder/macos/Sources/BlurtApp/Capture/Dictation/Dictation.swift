@@ -659,9 +659,13 @@ final class Dictation {
     /// starts the model itself). Dictation's model (record.dictation.asr_model, else the recommended one when
     /// installed), biased toward the custom words, with `prior` (the text so far) as context; the answer's `text` has
     /// the exact sounds-likes fixed, `asr_text` is what the model wrote. Blocking: off the main thread.
-    static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double) -> [String: Any]? {
+    /// `hint`: the target window's title and the text around the cursor (DictationContext.hint) — words seen there go
+    /// to the model first, and let the near-miss pass correct a weaker miss (docs/design/dictation.md §Code-switching).
+    static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
+                           hint: String = "") -> [String: Any]? {
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab]
         if !prior.isEmpty { req["prior"] = prior }
+        if !hint.isEmpty { req["hint"] = hint }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
         if let r = WarmServer.call("asr-serve", req, timeout: 60), r["ok"] as? Bool == true { return r }

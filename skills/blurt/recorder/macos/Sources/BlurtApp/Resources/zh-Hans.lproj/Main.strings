@@ -380,6 +380,15 @@
 "main.dictation.heard" = "识别原文";
 "main.dictation.same" = "润色没有改动";
 "main.dictation.copied" = "已复制";
+"main.dictation.corrected" = "改正后";
+"main.dictation.correct" = "改正";
+"main.dictation.correct.tip" = "改正听错的地方；改过的名字会被记住";
+"main.dictation.correct.hint" = "改正的名字下次就会认对";
+"main.dictation.correct.save" = "保存改正";
+"main.dictation.correct.cancel" = "取消";
+"main.dictation.correct.saved" = "已保存改正";
+"main.dictation.correct.learned" = "已保存改正 · 记住了 %@";
+"main.dictation.correct.sep" = "、";
 "main.dictation.show_item" = "查看条目 %@";
 "main.dictation.delete.tip" = "删除这条听写（⌫，⌘Z 可撤销）";
 "main.dictation.info.app" = "App";

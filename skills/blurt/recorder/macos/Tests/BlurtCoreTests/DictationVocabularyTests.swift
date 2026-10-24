@@ -53,6 +53,34 @@ final class DictationVocabularyTests: XCTestCase {
         XCTAssertEqual(v.load().first { $0.term == "Codex" }?.source, .manual)
     }
 
+    func testTheSeedHasTheAINamesChineseSpeakersSay() {
+        let d = DictationVocabulary.defaults.map(\.0)
+        for t in ["OpenAI", "Anthropic", "DeepSeek", "Kimi", "Qwen", "Grok", "Musk", "Dario"] { XCTAssertTrue(d.contains(t), t) }
+        XCTAssertEqual(Set(d).count, d.count)                               // no duplicates
+        // no sounds-like that is an ordinary word: the deterministic pass would rewrite real words
+        for (_, sl) in DictationVocabulary.defaults {
+            for s in sl where !s.contains(" ") { XCTAssertFalse(DictationLearn.isCommonWord(s), s) }
+        }
+    }
+
+    func testAnExplicitCorrectionIsLearnedAtOnce() {
+        // the Dictation page's "Save correction": the user fixed it on purpose, no second sighting needed
+        XCTAssertEqual(v.learn(heard: "Asopic", fixed: "Anthropic", explicit: true), .learned("Anthropic"))
+        XCTAssertEqual(v.active().first?.soundsLike, ["Asopic"])
+        let r = v.learnCorrection(typed: "后来他去了Tipless做产品", corrected: "后来他去了Typeless做产品")
+        XCTAssertEqual(r.map(\.fix.heard), ["Tipless"])
+        XCTAssertEqual(r.first?.result, .learned("Typeless"))
+        XCTAssertTrue(v.active().map(\.term).contains("Typeless"))
+        // a rewrite teaches nothing
+        XCTAssertTrue(v.learnCorrection(typed: "今天下午开会", corrected: "明天上午我们一起去公司吃饭然后开会").isEmpty)
+        // a suggestion waiting for its second sighting is taken by an explicit one
+        XCTAssertEqual(v.learn(heard: "Kimmi", fixed: "Kimi"), .suggested("Kimi"))
+        XCTAssertEqual(v.learn(heard: "Kimmi", fixed: "Kimi", explicit: true), .learned("Kimi"))
+        // a word the user rejected stays rejected
+        v.reject("Kimi")
+        XCTAssertNil(v.learn(heard: "Kimmy", fixed: "Kimi", explicit: true))
+    }
+
     func testLearnSuggestThenAcceptOnTheSecondFix() {
         XCTAssertEqual(v.learn(heard: "cloud", fixed: "Claude"), .suggested("Claude"))
         XCTAssertEqual(v.suggestions().map(\.term), ["Claude"])

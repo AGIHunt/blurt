@@ -81,8 +81,36 @@ _QUESTION_EN = re.compile(
     r"(?:you|i|we|they|he|she|it|this|that|there|the|a|an|my|our|your|anyone|someone)\b)", re.I)
 _QUESTION_ZH = re.compile(r"为什么|为啥|怎么|怎样|什么|哪|谁|多少|是否|能不能|可不可以|要不要|有没有|吗|呢$")
 # self-corrections: what follows the marker is the version to keep
-_CORRECTION = re.compile(r"不对|不是|我是说|我的意思是|应该是|算了|还是|更正|"
+_CORRECTION = re.compile(r"不对|不是|我是说|我的意思是|应该是|算了|还是|更正|错了|"
                          r"\bno wait\b|\bwait no\b|\bi mean\b|\bsorry\b|\bactually\b|\bscratch that\b|\bmake that\b|\brather\b")
+# markers that only ever mean "I take back what I just said": the words before them (back to the clause start) are
+# cancelled. The guard fails an output that kept those words and only dropped the marker; the repair never puts
+# them back; and a custom word said only there may go.
+_CANCEL = re.compile(r"不对|我是说|我的意思是|更正|说错了|\bno wait\b|\bwait no\b|\bi mean\b|\bscratch that\b|\bmake that\b")
+CANCEL_BACK = 8           # units before a marker that it can take back (the clause it ends, at most)
+# words that lead into the restated version and may go with the marker ("no wait, make it 3:30", "不对，是下周一")
+_LEAD_IN = {"make", "it", "it's", "its", "is", "say", "let's", "是", "改", "换", "成", "就"}
+
+
+def cancelled(raw: str) -> list[tuple[list[str], list[str]]]:
+    """For each cancelling marker in `raw`: (the units it takes back — the clause before it, at most CANCEL_BACK —,
+    the units after it). "把这个文件，不对，这两个文件" → (把这个文件, 这两个文件…)."""
+    said = unicodedata.normalize("NFKC", raw or "").lower()
+    out = []
+    for m in _CANCEL.finditer(said):
+        before = said[:m.start()].rstrip(" ，,、。.;；:：!！?？\n")
+        cut = max(before.rfind(c) for c in "，,、。.;；:：!！?？\n")
+        back = units(strip_fillers(before[cut + 1:]))[-CANCEL_BACK:]
+        nxt = _CANCEL.search(said, m.end())
+        after = units(strip_fillers(_CORRECTION.sub(" ", said[m.end():nxt.start() if nxt else None])))
+        if back and after:
+            out.append((back, after))
+    return out
+
+
+def _contains(seq: list[str], hay: list[str]) -> bool:
+    n = len(seq)
+    return n > 0 and any(hay[i:i + n] == seq for i in range(len(hay) - n + 1))
 
 # Thresholds (docs/design/dictation.md §Guard): calibrated on the eval set's reference outputs, which keep every
 # legitimate edit (fillers out, a correction applied) inside them with room to spare.
@@ -121,7 +149,8 @@ def clean_output(text: str) -> str:
     """What a model adds around the answer: a <think> block, a label line, quotes or a code fence around it all."""
     t = re.sub(r"<think>.*?(?:</think>|$)", "", text or "", flags=re.S).strip()
     t = re.sub(r"^```[a-z]*\n?|\n?```$", "", t).strip()
-    t = re.sub(r"^(?:输出|结果|Output|Result|Cleaned text|Cleaned|Dictation)\s*[:：]\s*", "", t, flags=re.I).strip()
+    t = re.sub(r"^(?:输出|结果|Output|Result|Cleaned text|Cleaned|Dictation(?: \(English: keep it in English\))?)\s*[:：]\s*",
+               "", t, flags=re.I).strip()
     for a, b in (('"', '"'), ("“", "”"), ("「", "」"), ("'", "'")):
         if len(t) > 2 and t.startswith(a) and t.endswith(b) and t.count(a) == 1 and t.count(b) == 1:
             t = t[1:-1].strip()
@@ -157,7 +186,13 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
     if n_raw and not n_out:
         return verdict("empty")
     key = lambda x: re.sub(r"[\s\-]+", "", unicodedata.normalize("NFKC", x or "").lower())  # noqa: E731
-    if any(key(t) and key(t) in key(raw) and key(t) not in key(out) for t in terms or []):
+    # a custom word said only in words the speaker took back ("用 Claude 写，不对，用 Codex 写") may go
+    taken = [key("".join(b)) for b, _a in cancelled(raw)]
+    taken_back, kept_raw = " ".join(taken), key(raw)
+    for kb in taken:
+        kept_raw = kept_raw.replace(kb, " ", 1)       # what is left of the dictation once the taken-back words go
+    if any(key(t) and key(t) in key(raw) and key(t) not in key(out) and not (key(t) in taken_back and key(t) not in kept_raw)
+           for t in terms or []):
         return verdict("term")
     lead = _CHATTY.match(out or "")
     if (lead and not _CHATTY.match(raw or "")) or (_CHATTY_ANYWHERE.search(out or "") and not _CHATTY_ANYWHERE.search(raw or "")):
@@ -166,8 +201,15 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
         return verdict("answered")
     # a self-correction keeps what comes after the marker (the model kept the wrong version, or dropped both)
     for f in fixes:
-        after = units(strip_fillers(_CORRECTION.sub(" ", said[f.end():])))[:CORRECTION_TAIL]
-        if any(u not in out_set for u in after):
+        tail = units(strip_fillers(_CORRECTION.sub(" ", said[f.end():])))
+        # up to two lead-in words may go with the marker ("no wait, make it 3:30" → "3:30"; "不对，改成三点")
+        starts = [0] + [s for s in (1, 2) if s < len(tail) and all(u in _LEAD_IN for u in tail[:s])]
+        if all(any(u not in out_set for u in tail[s:s + CORRECTION_TAIL]) for s in starts):
+            return verdict("correction")
+    # …and drops what it takes back: the marker gone but the words before it still there, right before the restated
+    # version ("把这个文件，不对，这两个文件" → "把这个文件，这两个文件") is a correction left unapplied
+    for back, after in cancelled(raw):
+        if _contains(back[-3:] + after[:2], out_u) and not _contains(back[-3:] + after[:2], core_u):
             return verdict("correction")
     # words spoken in one script came back in the other (a translation, or English terms turned into Chinese). A
     # misheard word replaced by a custom word or a context word ("口喷机" → "口喷鸡", "cloud" → "Claude") is neither.
@@ -361,6 +403,14 @@ def _droppable(rv: list[str], i1: int, i2: int, raw_text: str, ov: list[str]) ->
         k = len(m)
         if any(rv[j:j + k] == m for j in range(i2, min(len(rv), i2 + 3))) and n <= 8:
             return True
+        # a cancelling marker inside the span with a short lead-in after it ("2:30, no wait, make it" before "3:30"):
+        # what it took back and the lead-in may go when the restated words that follow the span were kept
+        hits = [i for i in range(len(lost) - k + 1) if lost[i:i + k] == m]
+        if hits:
+            lead = units(strip_fillers(" ".join(lost[hits[-1] + k:])))
+            nxt = _without(rv[i2:i2 + 4], _SOFT)[:2]
+            if len(lead) <= 4 and nxt and _seq_in(nxt, ov):
+                return True
     return False
 
 
@@ -493,12 +543,15 @@ Never:
 
 Sometimes the message starts with "Words:" (the speaker's own names and terms) and "Near the cursor:" (text already in the document), then "Dictation:" (the text to clean up). Then:
 - when a word in the dictation sounds or looks like one of the listed words, write it the listed way (cloud code → Claude Code, t mux → tmux);
+- everything above still applies to the dictation: remove the fillers, and when the speaker corrects themselves keep only the corrected version;
 - never add a listed word that wasn't spoken, and never copy or continue the text near the cursor: it only shows how names are spelled there;
 - reply with the cleaned dictation only."""
 
 EXAMPLES = [     # the custom-word ones first: the plain ones last keep the 41-case eval where it was
-    ("Words: Claude Code, tmux, worktree, Codex\nDictation: 嗯我刚才用cloud code在t mux里面开了一个新的work tree",
-     "我刚才用 Claude Code 在 tmux 里面开了一个新的 worktree。"),
+    # with a self-correction in it: without one, the model applied no correction once a "Words:" line was there
+    # (2 of 8 spoken corrections; the names eval, promo/cases/v0.8-dictation-names/results/prompt-ab.txt)
+    ("Words: Claude Code, tmux, worktree, Codex\nDictation: 嗯我刚才用cloud code在t mux里面不对在一个新的work tree里面跑了测试",
+     "我刚才用 Claude Code 在一个新的 worktree 里面跑了测试。"),
     ("Words: Gemma, Qwen, MLX\nNear the cursor: The polish model runs on MLX. ▮\nDictation: uh the default one is jemma and it runs locally",
      "The default one is Gemma, and it runs locally."),
     ("嗯那个我们下午两点不对三点开会就是说讨论一下新版本的那个发布计划",
@@ -521,12 +574,18 @@ def user_message(text: str, terms: list[dict] | None = None, context: dict | str
     lines = []
     if terms:
         lines.append("Words: " + ", ".join(t["term"] for t in terms))
-    near = context_text(context)
+    # only text from the field: a window title alone (WeChat's chat name) spells nothing the dictation needs, and any
+    # extra line made the model leave self-corrections in (the guard still accepts the title's words)
+    near = context_text(context) if not isinstance(context, dict) or any(context.get(k) for k in ("before", "after", "selection")) else ""
     if near:
         lines.append("Near the cursor: " + near)
     if not lines:
         return text
-    return "\n".join(lines + ["Dictation: " + text])
+    # With a word list in front of it, Gemma 4 E2B translated English dictations into Chinese (6 of 12 English clips
+    # in the names eval, the guard's `translated`; 2 of 12 without the list). Saying the language: 0 of 12.
+    label = "Dictation (English: keep it in English): " if not re.search(r"[㐀-鿿]", text) and re.search(r"[A-Za-z]", text) \
+        else "Dictation: "
+    return "\n".join(lines + [label + text])
 
 
 def context_text(context: dict | str | None) -> str:
@@ -820,7 +879,9 @@ class Engine:
         if len(units(raw)) <= 2:          # nothing to tidy
             res["reason"] = "short"
             return {**res, "ms": 0}
-        use = vocab.ranked(all_terms, raw, context_all(context))
+        # only the words this dictation may need (heard, spelled alike, or in the field): the speech model was already
+        # biased toward all of them, and a long list in the message made polish skip self-corrections
+        use = vocab.ranked(vocab.relevant(all_terms, raw, context_all(context)), raw, context_all(context))
         try:
             t_load = time.perf_counter()
             was = self.model is not None and (model_id or selected()) == self.model_id

@@ -29,6 +29,26 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertTrue(h.load().isEmpty)
     }
 
+    func testACorrectionIsKeptBesideWhatWasTyped() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        h.append(entry("d-c", "CEO 是 Dario 的 Asopic", Date().timeIntervalSince1970))
+        XCTAssertNil(h.load().first?.corrected)
+        h.correct("d-c", text: "CEO 是 Dario 的 Anthropic")
+        h.correct("d-missing", text: "nothing to correct")              // an unknown id is ignored
+        var e = try XCTUnwrap(h.load().first)
+        XCTAssertEqual(e.text, "CEO 是 Dario 的 Asopic")
+        XCTAssertEqual(e.corrected, "CEO 是 Dario 的 Anthropic")
+        XCTAssertEqual(e.finalText, "CEO 是 Dario 的 Anthropic")
+        h.correct("d-c", text: "CEO 是 Dario 的 Anthropic。")             // the last correction wins
+        XCTAssertEqual(h.load().first?.finalText, "CEO 是 Dario 的 Anthropic。")
+        XCTAssertEqual(h.prune(days: 30), 0)                              // prune keeps it on the entry's own line
+        e = try XCTUnwrap(h.load().first)
+        XCTAssertEqual(e.corrected, "CEO 是 Dario 的 Anthropic。")
+        XCTAssertTrue(try String(contentsOf: h.url, encoding: .utf8).contains("\"corrected\""))
+    }
+
     func testVocabularyFieldsSurvivePruneAndOldLinesStillRead() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

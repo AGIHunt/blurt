@@ -174,8 +174,28 @@ class Prompt(unittest.TestCase):
         b = polish.messages("x", V.normalize(["Claude"]), {"before": "y"})[:-1]
         self.assertEqual(a, b)          # the prompt cache covers both
 
+    def test_only_what_the_dictation_may_need_goes_to_polish(self):
+        """Polish lists only the relevant words, and a title alone is no "Near the cursor" line: with them the model
+        left spoken self-corrections in (2 of 8 applied)."""
+        rel = [t["term"] for t in V.relevant(TERMS, "我用cloud code开了work tree，把这个不对这两个拿走", "")]
+        self.assertEqual(rel, ["Claude Code", "Claude", "worktree"])      # cloud sounds like Claude: listed, polish decides
+        self.assertEqual([t["term"] for t in V.relevant(TERMS, "把这个，不对，这两个拿到那一边去", "")], [])
+        self.assertIn("GitHub", [t["term"] for t in V.relevant(TERMS, "提交一下", "GitHub — pull requests")])
+        self.assertEqual(polish.user_message("把这个，不对，这两个拿到那一边去", [], {"title": "微信", "app": "WeChat"}),
+                         "把这个，不对，这两个拿到那一边去")
+        self.assertIn("Near the cursor: 前文 ▮", polish.user_message("后文", [], {"before": "前文", "title": "微信"}))
+
+    def test_english_dictation_says_its_language(self):
+        """With a word list, Gemma translated English dictations into Chinese: an English one is labelled English.
+        The bare dictation (no words, no context) is unchanged."""
+        m = polish.user_message("send it to Dario", V.normalize(["Dario"]), {"title": "微信"})
+        self.assertTrue(m.endswith("\nDictation (English: keep it in English): send it to Dario"), m)
+        self.assertTrue(polish.user_message("发给 Dario", V.normalize(["Dario"])).endswith("\nDictation: 发给 Dario"))
+        self.assertEqual(polish.user_message("send it"), "send it")
+
     def test_clean_output_drops_a_dictation_label(self):
         self.assertEqual(polish.clean_output("Dictation: 我用 Claude Code。"), "我用 Claude Code。")
+        self.assertEqual(polish.clean_output("Dictation (English: keep it in English): Send it."), "Send it.")
 
     def test_short_text_still_gets_the_deterministic_pass(self):
         r = polish.Engine().polish("cloud code", terms=["Claude Code"] and [{"term": "Claude Code", "sounds_like": ["cloud code"]}])
@@ -321,6 +341,268 @@ class BiasedNote(unittest.TestCase):
                 self.assertEqual(T.dictation_models(A.hw(ram=8.0))["recommended"], "sensevoice-small")
         finally:
             T.installed = real
+
+
+# ------------------------------------------------------------------ names inside Chinese speech (v0.8 names work)
+SWIFT_VOCAB = ROOT / "skills/blurt/recorder/macos/Sources/BlurtCore/DictationVocabulary.swift"
+FALSE_CORRECTIONS = ROOT / "tests/fixtures/dictation_false_corrections.jsonl"
+
+
+def seeded_vocabulary() -> list[dict]:
+    """What a new user's vocabulary.json holds: the app's built-in seed and its `default` list (read from the Swift
+    source, so the two can't drift apart)."""
+    import re
+    src = SWIFT_VOCAB.read_text(encoding="utf-8")
+    return V.normalize([{"term": m.group(1), "sounds_like": re.findall(r'"([^"]+)"', m.group(2))}
+                        for m in re.finditer(r'\("([^"]+)",\s*\[([^\]]*)\]\)', src)])
+
+
+class CodeSwitch(unittest.TestCase):
+    """Qwen3-ASR decodes a mixed sentence in the language of its tag: tagged English, the Chinese around the names
+    comes back translated. The tag policy and the checks on an English answer."""
+
+    def test_the_tag_goes_to_english_only_when_the_model_is_all_but_sure(self):
+        self.assertEqual(V.choose_tag(0.9999, 0.0001, "Chinese"), "English")     # English speech: ≥ 0.9985 measured
+        self.assertEqual(V.choose_tag(0.98, 0.02, "Chinese"), "Chinese")         # mixed pieces it translated: 0.95–1.0
+        self.assertEqual(V.choose_tag(0.3, 0.6, "Chinese"), "Chinese")
+        self.assertEqual(V.choose_tag(0.0, 0.0, "Chinese"), "Chinese")
+
+    def test_an_english_answer_that_is_translated_chinese(self):
+        names = ["OpenAI", "Anthropic", "Dario", "Sam Altman", "Musk", "Grok"]
+        # Chinese characters left in an English answer: the model switched mid-sentence (the WeChat case, paraphrased)
+        self.assertTrue(V.translated_glue("念几个名字：open AI and Musk's Grok, and呃，CEO是Dario的Asopic", names))
+        # nothing but names and function words: 「Anthropic 的 CEO 是 Dario」 written in English
+        self.assertTrue(V.translated_glue("Anthropic, the CEO, Dario.", names))
+        self.assertTrue(V.translated_glue("OpenAI, the CEO, Sam Altman.", names))
+        # real English sentences
+        for t in ["DeepSeek and Kimi both shipped new models.", "I asked Claude and Gemini the same question.",
+                  "Please send the Cursor invoice to finance.", "Musk said Grok will be open source next month."]:
+            self.assertFalse(V.translated_glue(t, names), t)
+        self.assertFalse(V.translated_glue("", names))
+
+    def test_the_word_list_written_out_is_a_context_dump(self):
+        names = ["Claude Code", "Codex", "blurt", "口喷鸡", "Gemini", "Claude"]
+        self.assertTrue(V.context_dump("目前，Claude Code、Codex、blurt、口喷鸡、Gemini、Claude", names))
+        self.assertFalse(V.context_dump("我用 Claude Code 和 Codex 写代码", names))
+        self.assertFalse(V.context_dump("Gemini、Claude、Codex、blurt", names))       # not in the list's order
+        self.assertFalse(V.context_dump("", names))
+
+    def test_cjk_share(self):
+        self.assertEqual(V.cjk_share("hello world"), 0.0)
+        self.assertEqual(V.cjk_share("你好"), 1.0)
+        self.assertAlmostEqual(V.cjk_share("我用 Claude"), 2 / 3)
+
+    def test_the_language_a_user_mixes_english_into(self):
+        import transcribe as T
+        self.assertEqual(T.switch_language(["zh", "en"]), "Chinese")
+        self.assertEqual(T.switch_language(["en", "ja"]), "Japanese")
+        self.assertIsNone(T.switch_language(["en", "de"]))
+
+
+class TaggedDecode(unittest.TestCase):
+    """Qwen3Mlx.decode without the model: the preferred language goes to the tag-aware decoder, a failing decoder
+    falls back to the library for good, and a word list written out is decoded again without it."""
+
+    def backend(self, prefer="Chinese"):
+        import transcribe as T
+
+        class Lib:
+            calls = []
+
+            @staticmethod
+            def transcribe(x, model=None, context="", language=None):
+                Lib.calls.append((context, language))
+                return type("R", (), {"text": " 普通解码 ", "language": "Chinese"})
+
+        b = object.__new__(T.Qwen3Mlx)
+        b.m, b.repo, b.args = Lib, "fake", type("A", (), {"language": None})()
+        b.context = b.base_context = ""
+        b.names, b.prefer, b.tagged, b.last, b.prior = [], prefer, True, {}, ""
+        return b, Lib
+
+    def test_prefers_the_users_language(self):
+        b, lib = self.backend()
+        seen = []
+        b._decode_tagged = lambda x, ctx, prefer: (seen.append(prefer), ("Anthropic 的 CEO 是 Dario", "zh"))[1]
+        out = b.decode([0.0] * 1600)
+        self.assertEqual(out[0][2:], ("Anthropic 的 CEO 是 Dario", "zh"))
+        self.assertEqual(seen, ["Chinese"])
+        self.assertEqual(lib.calls, [])
+
+    def test_english_only_users_keep_the_models_own_tag(self):
+        b, lib = self.backend(prefer=None)
+        self.assertEqual(b.decode([0.0] * 1600)[0][2], "普通解码")
+        self.assertEqual(lib.calls, [("", None)])
+        # …unless the dictation so far is Chinese
+        b.prior = "我们先把这个需求过一遍"
+        b._decode_tagged = lambda x, ctx, prefer: ("好的", "zh")
+        self.assertEqual(b.decode([0.0] * 1600)[0][2], "好的")
+
+    def test_a_failing_decoder_falls_back_to_the_library_once_and_for_all(self):
+        b, lib = self.backend()
+
+        def boom(*_a):
+            raise AttributeError("no step_many in this version")
+        b._decode_tagged = boom
+        self.assertEqual(b.decode([0.0] * 1600)[0][2], "普通解码")
+        self.assertFalse(b.tagged)
+        b.decode([0.0] * 1600)
+        self.assertEqual(len(lib.calls), 2)
+
+    def test_a_context_dump_is_decoded_again_with_only_the_prior(self):
+        b, lib = self.backend()
+        b.names = ["Claude Code", "Codex", "blurt", "口喷鸡", "Gemini"]
+        b.context = V.qwen_context(V.normalize(b.names))
+        b.prior = "上一句"
+        ctxs = []
+
+        def dec(x, ctx, prefer):
+            ctxs.append(ctx)
+            return ("Claude Code、Codex、blurt、口喷鸡、Gemini" if len(ctxs) == 1 else "马斯克发布了新版本", "zh")
+        b._decode_tagged = dec
+        out = b.decode([0.0] * 1600)
+        self.assertEqual(out[0][2], "马斯克发布了新版本")
+        self.assertEqual(ctxs[1], "上一句")
+        self.assertTrue(b.last.get("context_dump"))
+
+
+class NearMiss(unittest.TestCase):
+    """dictation_vocab.snap: a Latin non-word in Chinese text that nearly spells a listed term. Conservative and
+    context-aware; ordinary words are never rewritten."""
+
+    def test_close_misses_in_chinese_text(self):
+        terms = V.normalize(["Typeless", "Midjourney", "Windsurf", "Anthropic", "Claude"])
+        self.assertEqual(V.snap("用Typless听写的时候", terms)[0], "用Typeless听写的时候")
+        self.assertEqual(V.snap("Midjurney 出了新版本，画得更好了", terms)[0], "Midjourney 出了新版本，画得更好了")
+        # a term that is also an ordinary word (to windsurf) needs the context to name it
+        self.assertEqual(V.snap("Winsurf 被收购以后很多人走了", terms)[0], "Winsurf 被收购以后很多人走了")
+        self.assertEqual(V.snap("Winsurf 被收购以后很多人走了", terms, "Windsurf")[0], "Windsurf 被收购以后很多人走了")
+
+    def test_a_weak_miss_needs_the_context(self):
+        terms = V.normalize(["Anthropic"])
+        heard = "后来他去了Asopic那边做研究"
+        self.assertEqual(V.snap(heard, terms)[0], heard)                       # no support: left alone
+        text, done = V.snap(heard, terms, "群聊：Anthropic 研究小组")
+        self.assertEqual(text, "后来他去了Anthropic那边做研究")
+        self.assertEqual(done, [{"heard": "Asopic", "term": "Anthropic", "context": True}])
+
+    def test_english_text_is_left_alone(self):
+        terms = V.normalize(["Typeless"])
+        self.assertEqual(V.snap("I use Typless every day", terms)[0], "I use Typless every day")
+
+    def test_ordinary_words_and_ambiguous_misses_stay(self):
+        terms = V.normalize(["Claude", "Cursor", "Codex", "Mistral", "Gemma", "Gemini"])
+        for t in ["今天 cloud 上的服务挂了", "把 cursor 移到最后", "这个 codec 不支持", "我用 Mixtral 跑了一下",
+                  "这个 Gemmi 是什么"]:
+            self.assertEqual(V.snap(t, terms)[0], t, t)
+
+    def test_no_false_corrections_with_the_seeded_vocabulary(self):
+        """Sentences that use the ordinary words a term looks like (cloud, open, cursor, code, gemini the sign, grok
+        the verb, musk the scent …): neither the sounds-like / spelling pass nor the near-miss pass may touch them,
+        even with a context naming every term."""
+        terms = seeded_vocabulary()
+        self.assertGreater(len(terms), 30)
+        everything = " ".join(t["term"] for t in terms)
+        rows = [json.loads(ln) for ln in FALSE_CORRECTIONS.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        self.assertGreaterEqual(len(rows), 40)
+        changed = []
+        for r in rows:
+            for ctx in ("", everything):
+                out, _ = V.apply(r["text"], terms)
+                out, _ = V.snap(out, terms, ctx)
+                if out != r["text"]:
+                    changed.append((r["text"], out))
+        self.assertEqual(changed, [])
+
+    def test_note_reports_what_was_snapped(self):
+        import test_asr_select as A
+        T = A.T
+
+        class Typo(A.FakeBackend):
+            def set_vocab(self, terms):
+                return bool(terms)
+
+            def transcribe(self, x):
+                return [(0.0, len(x) / A.SR, "我每天用Typless听写", "zh")]
+
+        old = T.BACKENDS
+        T.BACKENDS = {**T.BACKENDS, "sensevoice": Typo}
+        oldvad = T.vad_segments
+        T.vad_segments = lambda x, max_speech=25: [(0.0, len(x) / A.SR)]
+        real = A.fake_installed("sensevoice-small")
+        try:
+            with tempfile.TemporaryDirectory() as d, A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                wav = A.write_wav(Path(d) / "n.wav", 1.5)
+                r = T.NoteEngine().note(wav, vocab=["Typeless"], hint="Typeless — 设置")
+        finally:
+            T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
+        self.assertEqual(r["text"], "我每天用Typeless听写")
+        self.assertEqual(r["asr_text"], "我每天用Typless听写")
+        self.assertEqual(r["terms"], ["Typeless"])
+        self.assertEqual(r["snapped"][0]["heard"], "Typless")
+
+
+class LearnFromCorrection(unittest.TestCase):
+    """dictation_vocab.learn(raw, corrected): the Dictation Lab's (and any tool's) way to teach a misheard name — the
+    same rules as the app's DictationLearn + DictationVocabulary.learn, written to the app's vocabulary.json."""
+
+    def test_fixes(self):
+        self.assertEqual(V.fixes("后来他去了Asopic做研究", "后来他去了Anthropic做研究"),
+                         [{"heard": "Asopic", "fixed": "Anthropic", "kind": "spelling"}])
+        self.assertEqual(V.fixes("我喜欢口喷机", "我喜欢口喷鸡"), [{"heard": "口喷机", "fixed": "口喷鸡", "kind": "sound"}])
+        self.assertEqual(V.fixes("open the pool request", "open the pull request"),
+                         [{"heard": "pool request", "fixed": "pull request", "kind": "spelling"}])
+        self.assertEqual(V.fixes("there car", "their car"), [])                # grammar, not vocabulary
+        self.assertEqual(V.fixes("今天下午开会", "明天上午我们一起去公司吃饭然后开会"), [])   # a rewrite
+        self.assertEqual(V.fixes("same text", "same text"), [])
+
+    def test_learn_writes_the_apps_file_and_the_next_dictation_uses_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "dictation" / "vocabulary.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps({"schema": 1, "terms": [{"term": "Claude", "state": "active", "source": "default"}]}))
+            r = V.learn("后来他去了Asopic做研究", "后来他去了Anthropic做研究", path=path)
+            self.assertTrue(r["written"])
+            self.assertEqual(r["fixes"][0]["result"], "learned")
+            terms = V.load(path)
+            a = next(t for t in terms if t["term"] == "Anthropic")
+            self.assertEqual(a["sounds_like"], ["Asopic"])
+            self.assertEqual(V.apply("CEO 是 Dario 的 Asopic 吧", terms)[0], "CEO 是 Dario 的 Anthropic 吧")
+            # the same fix again: known, hits counted, nothing duplicated
+            self.assertEqual(V.learn("Asopic 的模型", "Anthropic 的模型", path=path)["fixes"][0]["result"], "known")
+            doc = json.loads(path.read_text())
+            self.assertEqual([t["term"] for t in doc["terms"]].count("Anthropic"), 1)
+            self.assertEqual(doc["terms"][0]["term"], "Claude")                # the rest untouched
+
+    def test_suggest_rejected_and_dry_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "vocabulary.json"
+            r = V.learn("用Tipless听写", "用Typeless听写", explicit=False, path=path)
+            self.assertEqual(r["fixes"][0]["result"], "suggested")
+            self.assertEqual(V.load(path), [])                                  # a suggestion isn't used yet
+            self.assertEqual(V.learn("用Tipless听写", "用Typeless听写", explicit=False, path=path)["fixes"][0]["result"],
+                             "learned")                                          # the second time it is
+            doc = json.loads(path.read_text())
+            doc["terms"][0]["state"] = "rejected"
+            path.write_text(json.dumps(doc))
+            self.assertIsNone(V.learn("用Typles听写", "用Typeless听写", path=path)["fixes"][0]["result"])
+            before = path.read_text()
+            self.assertFalse(V.learn("我用Kimmi", "我用Kimi", path=path, dry_run=True)["written"])
+            self.assertEqual(path.read_text(), before)
+
+    def test_cli(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "vocabulary.json"
+            out = subprocess.run([sys.executable, str(SCRIPTS / "dictation_vocab.py"), "learn", "--raw", "我用Typless听写",
+                                  "--corrected", "我用Typeless听写", "--file", str(path)],
+                                 capture_output=True, text=True, check=True).stdout
+            r = json.loads(out)
+            self.assertTrue(r["ok"] and r["written"])
+            self.assertEqual(V.load(path)[0]["term"], "Typeless")
+            out = subprocess.run([sys.executable, str(SCRIPTS / "dictation_vocab.py"), "snap", "--text", "我用Typles听写",
+                                  "--file", str(path)], capture_output=True, text=True, check=True).stdout
+            self.assertEqual(json.loads(out)["text"], "我用Typeless听写")
 
 
 if __name__ == "__main__":
