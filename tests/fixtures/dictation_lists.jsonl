@@ -1,0 +1,35 @@
+{"name": "zh-three-points", "text": "明天要做三件事。第一，把测试全部跑完。第二，把文档更新一下。第三，提交代码，然后发给小王看看。", "min": 2, "markers": 3, "expect": "明天要做三件事：\n1. 把测试全部跑完\n2. 把文档更新一下\n3. 提交代码，然后发给小王看看"}
+{"name": "zh-three-points-auto", "text": "明天要做三件事。第一，把测试全部跑完。第二，把文档更新一下。第三，提交代码，然后发给小王看看。", "min": 3, "markers": 3, "expect": "明天要做三件事：\n1. 把测试全部跑完\n2. 把文档更新一下\n3. 提交代码，然后发给小王看看"}
+{"name": "zh-seams-without-punctuation", "text": "明天要做三件事，第一，把测试全部跑完第二，把文档更新一下第三，提交代码，然后发给小王看看。", "min": 2, "markers": 3, "expect": "明天要做三件事：\n1. 把测试全部跑完\n2. 把文档更新一下\n3. 提交代码，然后发给小王看看"}
+{"name": "zh-yi-shi", "text": "我说两点：一是价格太高，二是交付太慢。", "min": 2, "markers": 2, "expect": "我说两点：\n1. 价格太高\n2. 交付太慢"}
+{"name": "zh-yi-shi-auto-needs-three", "text": "我说两点：一是价格太高，二是交付太慢。", "min": 3, "markers": 2, "expect": null}
+{"name": "zh-shouxian-ranhou-zuihou", "text": "首先打开设置，然后找到听写，最后把风格改成结构化。", "min": 2, "markers": 3, "expect": "1. 打开设置\n2. 找到听写\n3. 把风格改成结构化"}
+{"name": "zh-shouxian-qici-zaici-zuihou", "text": "首先要备份数据，其次要通知用户，再次要准备回滚，最后再上线。", "min": 2, "markers": 4, "expect": "1. 要备份数据\n2. 要通知用户\n3. 要准备回滚\n4. 再上线"}
+{"name": "zh-digits", "text": "购物清单：1、买牛奶，2、取快递，3、交电费。", "min": 2, "markers": 3, "expect": "购物清单：\n1. 买牛奶\n2. 取快递\n3. 交电费"}
+{"name": "zh-outro", "text": "原因有两个。第一个是太贵了，第二个是太慢了。所以我们换供应商吧。", "min": 2, "markers": 2, "expect": "原因有两个：\n1. 太贵了\n2. 太慢了\n所以我们换供应商吧。"}
+{"name": "zh-qi-yi", "text": "其一，成本低；其二，速度快。", "min": 2, "markers": 2, "expect": "1. 成本低\n2. 速度快"}
+{"name": "zh-yi-dun", "text": "下周的安排：一、周一开会，二、周三出差，三、周五复盘。", "min": 2, "markers": 3, "expect": "下周的安排：\n1. 周一开会\n2. 周三出差\n3. 周五复盘"}
+{"name": "zh-mixed-terms", "text": "这个 PR 有两个问题。第一，Codex 的测试没跑。第二，README 没更新。", "min": 2, "markers": 2, "expect": "这个 PR 有两个问题：\n1. Codex 的测试没跑\n2. README 没更新"}
+{"name": "en-three-things", "text": "For the release we need three things. First, run all the tests. Second, update the docs. Finally, tag the build and tell the team.", "min": 2, "markers": 3, "expect": "For the release we need three things:\n1. Run all the tests\n2. Update the docs\n3. Tag the build and tell the team"}
+{"name": "en-seams-without-punctuation", "text": "We need two things. First, run the tests Second, update the docs.", "min": 2, "markers": 2, "expect": "We need two things:\n1. Run the tests\n2. Update the docs"}
+{"name": "en-first-then-finally", "text": "First, open the settings, then pick the dictation pane, and finally choose a style.", "min": 2, "markers": 3, "expect": "1. Open the settings\n2. Pick the dictation pane\n3. Choose a style"}
+{"name": "en-number-one", "text": "Number one, ship it. Number two, write the post.", "min": 2, "markers": 2, "expect": "1. Ship it\n2. Write the post"}
+{"name": "neg-yiji-qita-ranhou", "text": "我们以及其他几个组的人明天一起开会，然后讨论一下第一次上线的问题，其他的事情以后再说吧。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-ranhou-chain", "text": "然后我们去吃饭，然后去看电影，然后回家。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-lingwai-haiyou", "text": "另外还有一件事，另外那个文档也要改，还有那个表格。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-diyici-diyitian", "text": "这是我第一次来北京，第一天就下雨了。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-diyishijian", "text": "第一时间告诉我，第二天再说。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-yishiyi-idiom", "text": "一是一，二是二，别搞混了。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-yishi-yishi-stutter", "text": "一是一是，你说得对。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-single-shouxian", "text": "首先我想说谢谢大家。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-single-zuihou", "text": "最后我们决定不去了。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-single-diyi", "text": "第一，先别急。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-shouxian-ranhou-no-end", "text": "首先我们去吃饭，然后去看电影。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-decimal", "text": "价格是3.5元，第二个方案更贵。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-qingdan-word", "text": "这个清单以及那个列表都发给我。", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-en-at-first", "text": "At first I thought it was fine, then it broke.", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-en-first-time", "text": "The first time we tried it, it worked. The second time it failed.", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-en-first-time-start", "text": "First time here. Second time is easier.", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-en-also-then", "text": "We also need to update the docs, and then ship it.", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-en-counting", "text": "One, two, three, go!", "min": 2, "markers": 0, "expect": null}
+{"name": "neg-en-last-week", "text": "Last week we shipped it, and finally it works.", "min": 2, "markers": 0, "expect": null}

@@ -30,7 +30,12 @@ configurations and run them all again after a change (a regression run). Everyth
                                                       agent (agents.py), else the local polish model
 
 SPEC: "current" (the app's settings) or comma-separated overrides on it: asr=MODEL_ID, polish=on|off|MODEL_ID,
-vocab=on|off, context=on|off, mode=pieces|whole, language=auto|zh|en…  e.g. --config asr=qwen3-asr-0.6b-mlx,polish=off
+vocab=on|off, context=on|off, mode=pieces|whole, language=auto|zh|en…, style=verbatim|light|structured|auto (the
+dictation styles, docs/design/dictation-styles.md: the list renderer and the app category's variant of light, from
+dictation_styles.py — the same rules as the app), category=chat|code|mail|notes|other (default: the case's app)
+e.g. --config asr=qwen3-asr-0.6b-mlx,polish=off   rerun ID --config style=light --config style=structured
+Every run checks that light (the default) never typed a list: a row whose output has more numbered lines than its
+truth is `listed`, counted in overall.listed, and --fail-on-regression fails on it too.
 
 The pipeline is the app's own entry points: the warm servers of transcribe.py (`note`, purpose dictation, the custom
 words, `prior` = the text so far) and polish.py (`polish`: the guard and the repair), started here when they are not
@@ -61,6 +66,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import blurt_home, global_config  # noqa: E402
+import dictation_styles as styles  # noqa: E402
 
 HERE = Path(__file__).parent
 SCHEMA = 1
@@ -474,7 +480,8 @@ def parse_spec(spec: str | dict | None) -> dict:
                 raw[k.strip()] = v.strip()
     s = settings()
     cfg = {"asr": None, "polish": s.get("polish", "light") != "off", "polish_model": None, "vocab": True,
-           "context": s.get("context", True) is not False, "mode": "pieces", "language": None}
+           "context": s.get("context", True) is not False, "mode": "pieces", "language": None, "style": None,
+           "category": None}
     onoff = lambda v: v if isinstance(v, bool) else str(v).lower() in ("on", "1", "true", "yes")  # noqa: E731
     for k, v in raw.items():
         if k in ("asr", "asr_model"):
@@ -494,6 +501,14 @@ def parse_spec(spec: str | dict | None) -> dict:
             cfg["mode"] = v
         elif k == "language":
             cfg["language"] = None if v in ("", "auto", None) else v
+        elif k == "style":
+            if v not in styles.STYLES:
+                raise Fail(f"style must be one of {', '.join(styles.STYLES)}, not {v}", "usage")
+            cfg["style"] = v
+        elif k in ("category", "app"):
+            if v not in styles.CATEGORIES:
+                raise Fail(f"category must be one of {', '.join(styles.CATEGORIES)}, not {v}", "usage")
+            cfg["category"] = v
         else:
             raise Fail(f"unknown config key {k!r}", "usage")
     cfg["key"] = config_key(cfg)
@@ -509,6 +524,11 @@ def config_key(cfg: dict) -> str:
              f"mode={cfg.get('mode') or 'pieces'}"]
     if cfg.get("language"):
         parts.append(f"language={cfg['language']}")
+    # a style only when one was asked for: runs from before the styles keep their keys (light = the default)
+    if cfg.get("style") and cfg["style"] != "light":
+        parts.append(f"style={cfg['style']}")
+    if cfg.get("category"):
+        parts.append(f"category={cfg['category']}")
     return ",".join(parts)
 
 
@@ -709,20 +729,31 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
            "reason": None, "repaired": [], "terms_applied": terms, "asr_model": model, "polish_model": None,
            "language": language}
     polish_ms = 0
-    if cfg.get("polish") and raw.strip():
+    style = cfg.get("style") or "light"
+    cat = cfg.get("category") or styles.category((c.get("app") or {}).get("bundle"))
+    if cfg.get("polish") and raw.strip() and style != "verbatim":
         t1 = time.perf_counter()
         ctx = context_payload(c) if cfg.get("context") else None
         timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)
-        r = backend.polish(raw, cfg.get("polish_model"), bool(cfg.get("vocab")), ctx, timeout)
+        extra = {"variant": "chat"} if cat == "chat" else {}
+        r = backend.polish(raw, cfg.get("polish_model"), bool(cfg.get("vocab")), ctx, timeout, **extra)
         polish_ms = int((time.perf_counter() - t1) * 1000)
         load_ms += int(r.get("load_ms") or 0)
         out.update(polished=r.get("polished"), text=(r.get("text") or raw), fell_back=bool(r.get("fell_back")),
                    reason=r.get("reason") if r.get("fell_back") else None, repaired=r.get("repaired") or [],
                    polish_model=r.get("model"), context_used=bool(r.get("context")))
         out["terms_applied"] += [t for t in r.get("terms") or [] if t not in out["terms_applied"]]
+    # the style: the list (structured / auto) and the app category's variant of light — the app's own rules
+    t2 = time.perf_counter()
+    st = styles.apply_style(out["text"], style, cat)
+    out.update(text=st["text"], style={"style": style, "category": cat, "rendered": st["rendered"],
+                                       "markers": st["markers"], "variant": st["variant"]})
     out["timings"] = {"asr_ms": asr_ms, "polish_ms": polish_ms, "load_ms": load_ms,
+                      "style_ms": int((time.perf_counter() - t2) * 1000),
                       "total_ms": int((time.perf_counter() - t0) * 1000), "segments": len(pieces)}
     t = truth(c)
+    # light never makes a list (the check the styles promise): more numbered lines than the truth has
+    out["listed"] = style in ("light", "verbatim") and styles.list_lines(out["text"]) > styles.list_lines(t or "")
     exp = c.get("expected_terms") or (expected_terms(t, vocab_terms()) if t else [])
     return {"config": {k: v for k, v in cfg.items()}, "outputs": out,
             "metrics": score(t, out["text"], exp) if t else None}
@@ -756,7 +787,8 @@ def overall(rows: list[dict]) -> dict:
             "term_accuracy": round(hit / exp, 4) if exp else None,
             "score": round(max(0.0, 100 * (1 - mean)), 1) if mean is not None else None,
             "better": count("better"), "worse": count("worse"), "same": count("same"), "new": count("new"),
-            "errors": count("error"), "fell_back": sum(1 for r in rows if r.get("fell_back"))}
+            "errors": count("error"), "fell_back": sum(1 for r in rows if r.get("fell_back")),
+            "listed": sum(1 for r in rows if r.get("listed"))}
 
 
 def regression(cfg: dict, backend, ids: list[str] | None = None, save: bool = True, progress=None) -> dict:
@@ -771,7 +803,8 @@ def regression(cfg: dict, backend, ids: list[str] | None = None, save: bool = Tr
             r = run_case(c, cfg, backend)
             row.update(after=r["metrics"], text=r["outputs"]["text"], raw=r["outputs"]["raw"],
                        fell_back=r["outputs"]["fell_back"], reason=r["outputs"]["reason"],
-                       timings=r["outputs"]["timings"], change=compare(row["before"], r["metrics"]))
+                       timings=r["outputs"]["timings"], change=compare(row["before"], r["metrics"]),
+                       listed=r["outputs"].get("listed", False), style=r["outputs"].get("style"))
             row["changed_text"] = row["before_text"] is not None and row["before_text"] != row["text"]
             if save:
                 add_run(c["id"], {"at": now_iso(), "key": cfg["key"], "label": cfg.get("label"), **r})
@@ -1211,12 +1244,12 @@ def cmd_run(a) -> None:
         o = res["overall"]
         print(f"overall: score {_fmt(o['score'], False)}  WER {_fmt(o['wer'])}  CER {_fmt(o['cer'])}  terms "
               f"{_fmt(o['term_accuracy'])}  better {o['better']}  worse {o['worse']}  same {o['same']}  new {o['new']}"
-              f"  errors {o['errors']}  fell back {o['fell_back']}")
+              f"  errors {o['errors']}  fell back {o['fell_back']}  light made a list {o['listed']}")
         if res.get("by_tag"):
             print("by tag:")
             for t, v in res["by_tag"].items():
                 print(f"  {t:<28} {v['cases']:>3} cases  WER {_fmt(v['wer'])}{'  worse ' + str(v['worse']) if v['worse'] else ''}")
-    if a.fail_on_regression and res["overall"]["worse"]:
+    if a.fail_on_regression and (res["overall"]["worse"] or res["overall"]["listed"]):
         sys.exit(1)
 
 

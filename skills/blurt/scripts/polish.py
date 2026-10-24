@@ -451,8 +451,20 @@ def _splice(out: str, start: int, end: int, text: str) -> str:
     return left + text + right
 
 
-def repair(raw: str, out: str, allowed: set[str] | None = None) -> tuple[str, list[str]]:
-    """→ (out with the dropped meaningful spans and changed numbers of `raw` put back, the spans put back)."""
+# Chat (docs/design/dictation-styles.md §3.1): the particles that end a sentence or clause keep a message human
+# (「好的，那我们晚上见吧」, 「你来吗」 … 「行啊」). Light drops them as discourse words / fillers; in chat they are put back.
+CHAT_PARTICLES = {"吧", "呢", "啊", "哈", "嘛", "呀", "啦", "哦", "噢", "咯", "呗"}
+_CLAUSE_END = re.compile(r"\s*(?:[，。！？、,.!?~～…]|$)")
+
+
+def _final_particle(raw: str, r: list, i: int) -> bool:
+    """Is raw unit i a sentence- or clause-final particle (followed by a mark, or the end)?"""
+    return r[i][0] in CHAT_PARTICLES and bool(_CLAUSE_END.match(raw, r[i][2])) and (i == 0 or r[i - 1][0] != r[i][0])
+
+
+def repair(raw: str, out: str, allowed: set[str] | None = None, keep_particles: bool = False) -> tuple[str, list[str]]:
+    """→ (out with the dropped meaningful spans and changed numbers of `raw` put back, the spans put back).
+    `keep_particles` (chat): a sentence-final particle polish dropped goes back too (the "particle" spans)."""
     import difflib
     r, o = unit_spans(raw), unit_spans(out)
     rv, ov = [u for u, _, _ in r], [u for u, _, _ in o]
@@ -465,6 +477,13 @@ def repair(raw: str, out: str, allowed: set[str] | None = None) -> tuple[str, li
         if tag in ("equal", "insert") or set(range(i1, i2)) & done_raw:
             continue
         lost, new = rv[i1:i2], ov[j1:j2]
+        if keep_particles and tag == "delete" and _final_particle(raw, r, i2 - 1):
+            head = raw[r[i1][1]:r[i2 - 2][2]] if i2 - 1 > i1 else ""
+            if not head or _droppable(rv, i1, i2 - 1, head, ov):
+                # only the particle goes back, right after the unit before it (before the output's mark)
+                pos = o[j1 - 1][2] if j1 > 0 else 0
+                edits.append((pos, pos, r[i2 - 1][0], f"particle:{r[i2 - 1][0]}"))
+                continue
         if all(map(_numeral, lost + new)) and new and lost:
             # a number said one way and written another: the whole number run on both sides
             a, b = i1, i2
@@ -519,7 +538,8 @@ def repair(raw: str, out: str, allowed: set[str] | None = None) -> tuple[str, li
 
 def repaired_share(raw: str, spans: list[str]) -> float:
     n = len(units(strip_fillers(raw))) or 1
-    return sum(len(units(x.split("→")[-1])) for x in spans) / n
+    # a chat particle put back is tone, not content polish lost
+    return sum(len(units(x.split("→")[-1])) for x in spans if not x.startswith("particle:")) / n
 
 # ------------------------------------------------------------------ the prompt
 SYSTEM = """You clean up text that a speech recognizer typed while someone was dictating. Reply with the cleaned text only: no preface, no quotes, no notes.
@@ -867,9 +887,11 @@ class Engine:
         return "".join(out), cut
 
     def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
-               terms: list | None = None, context: dict | str | None = None) -> dict:
+               terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
         """terms: the custom words (None = $BLURT_HOME/dictation/vocabulary.json, [] = none); context: the text around
-        the cursor ({"before","after","selection","title","app"}) — in the prompt and the guard's allowance only."""
+        the cursor ({"before","after","selection","title","app"}) — in the prompt and the guard's allowance only.
+        variant: the app category's variant of light — "chat" keeps sentence-final particles (the repair puts back the
+        ones the model dropped). The prompt is the same for every variant, so its cached prefix is too."""
         t0 = time.perf_counter()
         timeout = timeout or timeout_s()
         all_terms = vocab.load() if terms is None else vocab.normalize(terms)
@@ -904,7 +926,7 @@ class Engine:
         else:
             allowed = vocab.allowed_units(use, context_all(context)) if (use or context) else None
             # what polish dropped that carried meaning goes back in (and a changed number back to how it was said)
-            fixed, spans = repair(raw, out, allowed)
+            fixed, spans = repair(raw, out, allowed, keep_particles=variant == "chat")
             if spans:
                 res["repaired"] = spans
                 if repaired_share(raw, spans) > REPAIR_MAX:
@@ -1002,7 +1024,7 @@ def cmd_serve(a):
                         uses.append(last)
                         del uses[:-50]
                         resp = eng.polish(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
-                                          req.get("vocab"), req.get("context"))
+                                          req.get("vocab"), req.get("context"), req.get("variant"))
                     elif req.get("cmd") == "guard":       # a streamed dictation's joined pieces, checked once more
                         terms = vocab.normalize(req.get("vocab") or [])
                         ctx = req.get("context")
@@ -1033,7 +1055,7 @@ def cmd_run(a):
     terms = [] if a.no_vocab else None
     if not a.no_server:
         r = _server_call({"cmd": "polish", "text": text, "model": a.model_id, "timeout": timeout, "vocab": terms,
-                          "context": a.context}, timeout + 5)
+                          "context": a.context, "variant": a.variant}, timeout + 5)
         if r is not None:
             if not r.get("ok"):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
@@ -1047,7 +1069,7 @@ def cmd_run(a):
         raise Fail(f"{want or 'no polish model'} is not installed (polish.py setup --model ID)", "model_missing")
     ensure_mlx()
     throttle(a.priority)
-    emit(Engine().polish(text, want, timeout, terms, a.context))
+    emit(Engine().polish(text, want, timeout, terms, a.context, a.variant))
 
 
 def cmd_guard(a):
@@ -1252,6 +1274,7 @@ def main():
     r.add_argument("--priority", choices=["utility", "background", "user-initiated", "default"])
     r.add_argument("--context", help="text around the cursor (for spelling; never stored)")
     r.add_argument("--no-vocab", action="store_true", help="ignore the custom words")
+    r.add_argument("--variant", choices=["chat"], help="the app category's variant of light (chat keeps 吧 呢 啊)")
     g = sub.add_parser("guard")
     g.add_argument("raw")
     g.add_argument("output")
