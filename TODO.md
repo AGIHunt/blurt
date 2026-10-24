@@ -62,7 +62,10 @@
       the front app (pasteboard saved and restored) → history (search, raw text, turn into item)
 - [ ] **Windows** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
       `LCtrl` that AltGr layouts inject, ignore it as a modifier exactly like the macOS state machine — port
-      `DictationTrigger`), insert with `SendInput` Ctrl+V after saving / restoring the clipboard (all formats);
+      `DictationTrigger` with its v0.9 rules: `busy` while a take is typed, the double-tap window from the system's
+      double-click time (`GetDoubleClickTime`, clamped 0.3–0.5 s), push-to-talk → release, double tap, the near miss,
+      events stamped with their own time; `DictationTriggerTests` are the spec), and start the warm servers with
+      `--parent <app pid>` so they end with the app), insert with `SendInput` Ctrl+V after saving / restoring the clipboard (all formats);
       UIPI blocks input into elevated windows: detect and fall back to copy. Polish: no MLX — llama.cpp / ONNX Runtime
       GenAI with the same Qwen models (GGUF / ONNX), same guard, same eval set.
 - [ ] **Linux** (Tauri app): X11 — XRecord / XInput2 for the key, `xdotool key ctrl+v`; Wayland — no global key
