@@ -3,69 +3,21 @@
 
 "onboarding.back" = "上一步";
 
-"onboarding.blurt_hands_recordings_agent" = "口喷鸡把录屏交给你已经在用的 agent 整理和修 bug。装上 blurt skill 和 MCP，它就能读条目、修完回写状态。";
-
-"onboarding.blurt_records_area_you" = "口喷鸡录的是你选的区域，录完的文件只存在你的 Mac 上。状态会实时更新。";
-
-"onboarding.coding_agent" = "写代码的 agent";
-
-"onboarding.dependencies_ready_index_built" = "依赖已就绪，索引已建好";
-
 "onboarding.done" = "完成";
-
-"onboarding.download" = "下载";
-
-"onboarding.download_via_hf_mirror" = "下载走国内镜像（hf-mirror.com）";
-
-"onboarding.downloaded" = "已下载";
-
-"onboarding.fetches_scripts_packages_now" = "提前下载脚本要用的包，第一次整理就不用等";
-
-"onboarding.four_quick_steps_talk" = "四步准备好：边说边录，交给 agent 去修。";
-
-"onboarding.install_skill_mcp" = "安装 skill + MCP…";
 
 "onboarding.install_uv" = "安装 uv";
 
-"onboarding.looking_agents" = "检查已安装的 agent…";
-
-"onboarding.needs_uv_first_previous" = "需要先装好 uv（上一步）。";
-
 "onboarding.next" = "下一步";
 
-"onboarding.no_claude_code_codex" = "没找到 Claude Code、Codex、Kimi Code 等。装好一个后，在「设置 → Agent」里接入。";
-
 "onboarding.permissions" = "权限";
-
-"onboarding.preparing_about_minute_first" = "正在准备…（第一次约一分钟）";
-
-"onboarding.processing_search_speech_recognition" = "整理、搜索、语音识别是随 skill 发布的 Python 脚本，用 uv 运行，不需要你装 Python。";
-
-"onboarding.python_uv" = "Python 环境（uv）";
-
-"onboarding.reading_models" = "读取模型…";
 
 "onboarding.set_up_blurt" = "设置口喷鸡";
 
 "onboarding.skip_setup" = "跳过设置";
 
-"onboarding.speech_model" = "语音模型";
-
 "onboarding.step" = "第 %@ 步 · ";
 
-"onboarding.turns_your_narration_into" = "在本机把你说的话转成文字，不上传。推荐的模型支持中、英、日、韩、粤语。";
-
-"onboarding.uv_found" = "已找到 uv：";
-
-"onboarding.uv_not_found" = "没找到 uv";
-
-"onboarding.warm_up_dependencies" = "预装依赖";
-
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
-
-"onboarding.you_can_switch_models" = "以后也可以在「设置 → 语音」里换模型，或者改用云端识别。";
-
-"onboarding.your_ok_blurt_runs" = "经你同意后，口喷鸡会用 uv 官方安装脚本把它装到 ~/.blurt/bin（不改你的 shell 配置）：";
 
 "settings.export.ask_each_time" = "每次问我";
 "settings.export.blurt_config_json_shared" = "这是 %@ 的设置（.blurt/config.json），团队共用。";
@@ -201,7 +153,7 @@
 "settings.perm.done.dictation" = "好了，现在在任何 App 里都能听写。";
 "settings.perm.done.all" = "好了，口喷鸡需要的权限都已开启。";
 "settings.perm.done.some" = "先到这里，剩下的随时可以在这里开启。";
-"onboarding.permissions_detail" = "点「设置权限」：口喷鸡会帮你打开「系统设置」里对应的位置，旁边的小面板会告诉你该打开哪个开关。";
+"onboarding.permissions_detail" = "听写要用麦克风，还要「辅助功能」把字打到光标处。口喷鸡会帮你打开「系统设置」里对应的开关。";
 "onboarding.dictation_key" = "听写键";
 "onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。以后可以在「设置 → 听写」里改。";
 "onboarding.dictation_key.other" = "按一下%@开始听写，再按一下结束；也可以按住说话，松开结束。";
@@ -212,3 +164,38 @@
 "settings.general.voice_end_on_pause.hint" = "关闭时：语音（⌥⇧V）不会因为你停下来想一想就结束，再按一次快捷键或点「完成」才结束，最长 10 分钟；Esc 取消。打开后：安静 1.5 秒就结束。截图的语音备注始终是停顿即结束。";
 "settings.general.live_text" = "边说边显示文字";
 "settings.general.live_text.hint" = "语音或听写在听的时候，已经识别出的文字显示在岛下方的小面板里，最新的字淡入。它不会抢焦点，会避开你正在输入的位置，也不会被录进屏幕录制。";
+
+"onboarding.subtitle" = "按%@ 随处听写，截图和语音备注存成卡片，录屏交给 Agent 去修。";
+"onboarding.use.dictation" = "听写";
+"onboarding.use.snap" = "截图";
+"onboarding.use.voice" = "语音备注";
+"onboarding.use.record" = "录屏";
+"onboarding.use.hint" = "快捷键可以在「设置 → 快捷键」里改。";
+"onboarding.skip_for_now" = "以后再说";
+"onboarding.permissions.screen_later" = "截图和录屏要用的「录屏」权限，第一次用时再开。";
+"onboarding.models" = "语音模型";
+"onboarding.models.detail" = "在这台 Mac 上把你说的话转成整理好的文字，不上传。";
+"onboarding.models.checking" = "正在检查这台 Mac…";
+"onboarding.models.kind.dictation" = "听写";
+"onboarding.models.kind.polish" = "润色";
+"onboarding.models.kind.note" = "语音备注";
+"onboarding.models.download" = "下载推荐模型";
+"onboarding.models.total" = "共 %@，只存在这台 Mac 上";
+"onboarding.models.progress" = "%@ / %@";
+"onboarding.models.background" = "可以先往下走，下载会在后台继续。";
+"onboarding.models.ready" = "模型已就绪";
+"onboarding.models.ready_toast" = "语音模型下载好了";
+"onboarding.models.failed" = "下载中断了。检查一下网络再试。";
+"onboarding.models.retry" = "重试";
+"onboarding.models.small" = "只下载小模型（%@）";
+"onboarding.models.unavailable" = "读不到模型列表。";
+"onboarding.models.later" = "以后可以在「设置 → 听写」和「设置 → 语音」里换模型。";
+"onboarding.uv.needed" = "口喷鸡要用一个小工具 uv 来运行语音模型。";
+"onboarding.uv.failed" = "uv 没装上。检查一下网络再试。";
+"onboarding.try" = "试一下";
+"onboarding.try.detail" = "点一下输入框，按一下%@ 说句话，说完再按一下。";
+"onboarding.try.placeholder" = "说的话会出现在这里";
+"onboarding.try.works" = "听写可以用了。";
+"onboarding.try.needs_permissions" = "听写要先开好权限。";
+"onboarding.try.downloading" = "模型还在下载，下载好再试。";
+"onboarding.login.detail" = "这样听写键随时都能用。";

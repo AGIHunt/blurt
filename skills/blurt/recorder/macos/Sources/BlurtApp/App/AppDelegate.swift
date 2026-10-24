@@ -208,7 +208,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
         if recordConfig()["welcomed"] == nil {
             setRecordConfig("welcomed", true)
-            toast(T("app.toast.welcome", hk(.toggleRecord), hk(.openMenu)), icon: .blurt)   // the menu-bar chick: where to find blurt
+            // the menu-bar chick: where to find blurt, and the two keys to start with (dictation first)
+            toast(T("app.toast.welcome", Dictation.keyShort(Dictation.key), hk(.snap)), icon: .blurt)
         } else {
             Hotkeys.shared.warnOnce { [weak self] in self?.toast($0, seconds: 8) }
         }
@@ -600,7 +601,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activateApp()
         switch a.runModal() {
         case .alertFirstButtonReturn:
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            // the permission guide (Blurt in the list, the pane, the helper panel with Restart Blurt); a grant macOS
+            // already reports (an older build's): just the pane, to remove and add Blurt again
+            if SystemAccess.granted(.screen) { SystemAccess.openPane(.screen) } else {
+                MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: .capture) }
+            }
         case .alertSecondButtonReturn:
             NSApp.terminate(nil)
         default: break

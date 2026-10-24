@@ -158,15 +158,18 @@ final class Permissions: ObservableObject {
     static func openPane(_ k: PermissionKind) { SystemAccess.openPane(k) }
 }
 
-/// The four permission rows (the setup assistant, Settings → Privacy): live state, why in one line, and Allow — the
-/// permission guide for that one permission (Blurt put in the list, the pane, the helper panel).
+/// The permission rows (Settings → Privacy: all four; the setup assistant: what dictation needs, without the small
+/// System Settings link): live state, why in one line, and Allow — the permission guide for that one permission
+/// (Blurt put in the list, the pane, the helper panel).
 struct PermissionRows: View {
     @ObservedObject var p: Permissions
     var source: PermissionGuide.Source
+    var kinds: [PermissionKind] = [.screen, .microphone, .accessibility, .inputMonitoring]
+    var paneLink = true
     @ObservedObject var guide = PermissionGuide.shared
 
     var body: some View {
-        ForEach([PermissionKind.screen, .microphone, .accessibility, .inputMonitoring], id: \.self) { k in
+        ForEach(kinds, id: \.self) { k in
             row(k, p.state(k))
         }
     }
@@ -185,8 +188,10 @@ struct PermissionRows: View {
                 .foregroundStyle(st == .granted ? .secondary : .primary).font(.callout)
             if st != .granted {
                 Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
-                Button { Permissions.openPane(k) } label: { Image(nsImage: BlurtIcon.externalLink.symbolImage(pointSize: 12)) }
-                    .buttonStyle(.borderless).help(T("settings.kit.system_settings")).accessibilityLabel(T("settings.kit.system_settings"))
+                if paneLink {
+                    Button { Permissions.openPane(k) } label: { Image(nsImage: BlurtIcon.externalLink.symbolImage(pointSize: 12)) }
+                        .buttonStyle(.borderless).help(T("settings.kit.system_settings")).accessibilityLabel(T("settings.kit.system_settings"))
+                }
             }
         }
         .accessibilityElement(children: .combine)

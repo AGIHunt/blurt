@@ -1,18 +1,30 @@
-// The setup assistant (§2.2), at most four steps, every one skippable:
-//   1. permissions — Screen Recording, Microphone, Accessibility, Input Monitoring, live, and "Set Up Permissions":
-//      the permission guide (PermissionGuide.swift) walks the missing ones with the helper panel next to System
-//      Settings; the dictation key (Fn first) is picked here too, since Fn adds a step (macOS's own 🌐 action);
-//   2. uv + Python — found, or installed into ~/.blurt/bin with the user's consent (the official installer), then the
-//      scripts' dependencies warmed up so the first real run doesn't wait;
-//   3. a speech model — the recommended one for the user's language, downloaded with progress;
-//   4. agents — which are installed / logged in, and the blurt skill + MCP installed into one (preview first).
+// The setup assistant (docs/design/desktop-app.md §2.2), dictation first — four steps, every one skippable:
+//   1. welcome — one line for the three uses (dictate anywhere, snap and voice notes as cards, record and let an Agent
+//      fix it) and their keys;
+//   2. permissions — what dictation needs: the microphone and Accessibility, live, and "Set Up Permissions" (the brand
+//      button while anything is missing): the permission guide's dictation walk (PermissionGuide.swift) with the
+//      helper panel next to System Settings; Input Monitoring shows only when it is needed (Accessibility still off
+//      after a walk, or a key other than Fn), the 🌐 key is part of the walk. The step moves on by itself when the
+//      walk ends with everything on. The dictation key (Fn first) is picked here too. Screen Recording is not asked
+//      here: the first snap or recording asks for it (the toast's Allow… / the alert start the guide for it);
+//   3. models — one "Download recommended models" for this Mac (ModelSetup.swift: dictation, polish, voice notes) with
+//      the total size and one progress bar; it carries on in the background. uv is found, or — one sentence and a
+//      button — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
+//      dependencies are warmed up in the background as soon as uv is there (only a failure shows);
+//   4. try it — a text box ("tap Fn and say something") that shows a check once the first dictation lands, and "Open
+//      Blurt at login" (on here: dictation needs Blurt running); Done applies it and closes.
+// Connecting agents (the blurt skill + MCP) is not in the assistant: Settings → Agents.
 // Shown once on first launch (config app.onboarded), again from Settings → General or blurt://onboarding.
 //
 // Look (docs/design/system.md §3.4): a fixed-width hero panel on the left — the field (light) / deep (dark) with grain,
 // a soft still spectrum glow behind the mascot (none with Reduce Transparency; the one place the spectrum appears) —
-// then the steps as before: the welcome title in gradient text, step bars in brand ink, Next / Done as the brand
-// primary. Done closes (the chick is already happy on the last step; no bloom).
+// then the steps: the welcome title in gradient text, step bars in brand ink, one brand primary per step (the step's
+// own action while it is still to do, with "Skip for Now" in the footer; else Next / Done). Done closes (the chick is
+// already happy on the last step; no bloom).
+// Test builds never register a login item (an event says what would have happened) and never ask macOS for anything
+// (SystemAccess.swift).
 import AppKit
+import ServiceManagement
 import SwiftUI
 import BlurtCore
 
@@ -21,9 +33,18 @@ final class OnboardingModel: ObservableObject {
     @Published var step = 0
     @Published var uv: String? = ScriptRunner.shared.uvPath
     @Published var installingUV = false
-    @Published var uvLog: [String] = []
+    @Published var uvFailed = false
     @Published var warm: String?            // nil | "running" | "done" | error text
     @Published var dictationKey = Dictation.key
+    /// a dictation walk started here (Input Monitoring's row shows once Accessibility stays off after it)
+    @Published var walked = false
+    /// "Open Blurt at login" on the last step: on by default (dictation needs Blurt running)
+    @Published var openAtLogin = true
+    @Published var tryText = ""
+    /// the first dictation landed while the last step showed
+    @Published var tried = false
+    private var tryTimer: Timer?
+    private var tryBaseline: String?
 
     func setKey(_ k: DictationTrigger.Key) {
         dictationKey = k
@@ -38,10 +59,18 @@ final class OnboardingModel: ObservableObject {
         close()
     }
 
-    /// Done on the last step: close.
+    /// Done on the last step: "Open Blurt at login" as set, then close.
     func done() {
-        emit(["event": "onboarding", "done": true])
+        if openAtLogin != LoginItem.enabled { LoginItem.set(openAtLogin, via: "onboarding") }
+        emit(["event": "onboarding", "done": true, "login": openAtLogin, "tried": tried])
         finish()
+    }
+
+    /// The assistant opened (or uv just arrived): the dependencies warm up and the models are read, in the background.
+    func appear() {
+        guard uv != nil else { return }
+        warmUp()
+        Task { if !ModelSetup.shared.loaded { await ModelSetup.shared.load() } }
     }
 
     static let heroWidth: CGFloat = 200
@@ -50,10 +79,10 @@ final class OnboardingModel: ObservableObject {
 
     static let uvInstallCommand = "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=\"$HOME/.blurt/bin\" UV_NO_MODIFY_PATH=1 sh"
 
-    /// Only after the user pressed the button that shows this exact command.
+    /// Only after the user pressed Install uv (its tooltip shows this exact command).
     func installUV() {
         installingUV = true
-        uvLog = []
+        uvFailed = false
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
         var env = ShellEnv.agentEnvironment()
@@ -62,21 +91,23 @@ final class OnboardingModel: ObservableObject {
         p.arguments = ["-c", OnboardingModel.uvInstallCommand.replacingOccurrences(of: "$HOME/.blurt", with: BlurtPaths.home.path)]
         p.environment = env
         p.standardInput = FileHandle.nullDevice
-        streamLines(p) { [weak self] line, _ in self?.uvLog.append(line) }
+        streamLines(p) { line, _ in emit(["event": "onboarding_uv", "line": line]) }
         p.terminationHandler = { _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 guard let self = self else { return }
                 self.installingUV = false
                 self.uv = ScriptRunner.shared.uvPath
-                if self.uv != nil { self.warmUp() }
+                self.uvFailed = self.uv == nil
+                self.appear()
             }
         }
-        do { try p.run() } catch { installingUV = false; uvLog.append("\(error)") }
+        do { try p.run() } catch { installingUV = false; uvFailed = true }
     }
 
-    /// Pre-installs the scripts' dependencies (numpy, sherpa-onnx…) and builds the search index.
+    /// Pre-installs the scripts' dependencies (numpy, sherpa-onnx…) and builds the search index — quietly: only a
+    /// failure shows (on the models step).
     func warmUp() {
-        guard warm != "running" else { return }
+        guard warm != "running", warm != "done" else { return }
         warm = "running"
         Task {
             do {
@@ -84,15 +115,53 @@ final class OnboardingModel: ObservableObject {
                 let b = try await SkillCLI.shared.run("index.py", ["scan"], timeout: 300)
                 warm = a.ok && b.ok ? "done" : (a.ok ? b.errorText : a.errorText)
             } catch { warm = "\(error)" }
+            emit(["event": "onboarding_warm", "result": warm ?? NSNull()])
         }
+    }
+
+    // MARK: try it
+
+    /// The last step shows: watch for the next dictation to land.
+    func startTry() {
+        tryBaseline = Dictation.shared.lastResult?["id"] as? String
+        tryTimer?.invalidate()
+        tryTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkTry() }
+        }
+    }
+    func stopTry() { tryTimer?.invalidate(); tryTimer = nil }
+
+    private func checkTry() {
+        guard !tried, let r = Dictation.shared.lastResult, r["ok"] as? Bool == true,
+              let id = r["id"] as? String, id != tryBaseline else { return }
+        tried = true
+        stopTry()
+        emit(["event": "onboarding_try", "id": id])
+    }
+}
+
+/// Settings → General's "Open Blurt at login", from the assistant. Test builds never register (a scratch bundle would
+/// land in the user's Login Items): the event says what would have happened.
+enum LoginItem {
+    static var enabled: Bool { SMAppService.mainApp.status == .enabled }
+
+    @discardableResult
+    static func set(_ on: Bool, via: String) -> String? {
+        emit(["event": "login_item", "on": on, "via": via, "test_mode": SystemAccess.testMode])
+        if SystemAccess.testMode { return nil }
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            return nil
+        } catch { return error.localizedDescription }
     }
 }
 
 struct OnboardingView: View {
     @ObservedObject var m: OnboardingModel
     @StateObject var perms = Permissions()
-    @ObservedObject var speech = SpeechModel.shared
-    @ObservedObject var agents = AgentsModel.shared
+    @ObservedObject var guide = PermissionGuide.shared
+    @ObservedObject var models = ModelSetup.shared
+    @FocusState private var tryFocused: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -103,8 +172,25 @@ struct OnboardingView: View {
                 .frame(width: OnboardingModel.contentWidth)
         }
         .frame(width: OnboardingModel.heroWidth + OnboardingModel.contentWidth, height: OnboardingModel.height)
-        .onAppear { perms.start() }
-        .onDisappear { perms.stop() }
+        .onAppear { perms.start(); models.shown = true; m.appear() }
+        .onDisappear { perms.stop(); models.shown = false; m.stopTry() }
+        .onChange(of: guide.finished) { f in
+            // the walk ended with everything dictation needs: on to the models
+            guard f != nil, m.step == 1, guide.missing(.dictation).isEmpty else { return }
+            emit(["event": "onboarding", "step": 2, "via": "permissions_done"])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { if m.step == 1 { m.step = 2 } }
+        }
+        .onChange(of: m.step) { s in emit(["event": "onboarding", "step": s]) }
+    }
+
+    /// The step's own action is still to do: it is the primary, and the footer offers "Skip for Now" instead of Next.
+    var pending: Bool {
+        switch m.step {
+        case 1: return !guide.missing(.dictation).isEmpty
+        case 2: return m.uv == nil || (models.loaded && !models.parts.isEmpty && !models.pending.isEmpty && !models.downloading
+                                       && !models.settled)
+        default: return false
+        }
     }
 
     var content: some View {
@@ -113,8 +199,8 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     // a large headline: gradient text (flat brand ink with Increase Contrast)
                     Text(T("onboarding.welcome_blurt")).font(.system(size: 24, weight: .bold)).brandGradientText()
-                    Text(T("onboarding.four_quick_steps_talk"))
-                        .foregroundStyle(.secondary)
+                    Text(T("onboarding.subtitle", Dictation.keyShort(m.dictationKey)))
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
             }
@@ -128,10 +214,10 @@ struct OnboardingView: View {
 
             Group {
                 switch m.step {
-                case 0: permissions
-                case 1: python
-                case 2: model
-                default: agentsStep
+                case 0: welcome
+                case 1: permissions
+                case 2: modelsStep
+                default: tryIt
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -142,12 +228,16 @@ struct OnboardingView: View {
                 Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link).foregroundStyle(Color.brandInk)
                 Spacer()
                 if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
-                // the one primary: the brand button
-                Button(m.step == m.steps - 1 ? T("onboarding.done") : T("onboarding.next")) {
-                    if m.step == m.steps - 1 { m.done() } else { m.step += 1 }
+                if pending {
+                    Button(T("onboarding.skip_for_now")) { m.step += 1 }
+                } else {
+                    // the one primary: the brand button
+                    Button(m.step == m.steps - 1 ? T("onboarding.done") : T("onboarding.next")) {
+                        if m.step == m.steps - 1 { m.done() } else { m.step += 1 }
+                    }
+                    .buttonStyle(.brand)
+                    .keyboardShortcut(.defaultAction)
                 }
-                .buttonStyle(.brand)
-                .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 28).padding(.vertical, 14)
         }
@@ -160,11 +250,68 @@ struct OnboardingView: View {
         }.padding(.bottom, 10)
     }
 
+    func check(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 13, weight: .semibold)).foregroundStyle(Color.brandOk)
+            Text(text).fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: 1 welcome
+
+    var welcome: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GroupBox {
+                VStack(spacing: 12) {
+                    use(T("onboarding.use.dictation"), Dictation.keyShort(m.dictationKey))
+                    Divider()
+                    use(T("onboarding.use.snap"), hk(.snap))
+                    Divider()
+                    use(T("onboarding.use.voice"), hk(.voice))
+                    Divider()
+                    use(T("onboarding.use.record"), hk(.toggleRecord))
+                }.padding(8)
+            }
+            Hint(T("onboarding.use.hint"))
+        }
+    }
+
+    func use(_ what: String, _ key: String) -> some View {
+        HStack {
+            Text(what)
+            Spacer()
+            Text(key.trimmingCharacters(in: .whitespaces)).foregroundStyle(.secondary)     // zh short names lead with a space
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: 2 permissions
+
+    /// The microphone and Accessibility; Input Monitoring only when dictation needs it: a key other than Fn, or after a
+    /// walk it still isn't satisfied (with Fn, Accessibility alone hears the key — Input Monitoring is what's left when
+    /// Accessibility was turned down).
+    var permissionKinds: [PermissionKind] {
+        let pastAccessibility = m.walked && !(guide.running && guide.current == .accessibility)
+        let im = !guide.satisfied(.inputMonitoring) && (m.dictationKey != .fn || pastAccessibility)
+        return [.microphone, .accessibility] + (im ? [.inputMonitoring] : [])
+    }
+
+    var setupButton: some View {
+        Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
+            m.walked = true
+            guide.start(.dictation, source: .onboarding)
+        }
+    }
+
     var permissions: some View {
         VStack(alignment: .leading, spacing: 10) {
-            title(1, T("onboarding.permissions"), T("onboarding.permissions_detail"))
-            PermissionSetupButton(flow: .all, source: .onboarding, p: perms)
-            GroupBox { VStack(spacing: 10) { PermissionRows(p: perms, source: .onboarding) }.padding(4) }
+            title(2, T("onboarding.permissions"), T("onboarding.permissions_detail"))
+            PermissionDoneBanner()
+            if !guide.missing(.dictation).isEmpty {
+                setupButton.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+            }
+            GroupBox { VStack(spacing: 10) { PermissionRows(p: perms, source: .onboarding, kinds: permissionKinds, paneLink: false) }.padding(4) }
             HStack(spacing: 10) {
                 Text(T("onboarding.dictation_key"))
                 Picker("", selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) })) {
@@ -179,108 +326,120 @@ struct OnboardingView: View {
                 Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
                     .font(.caption).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
             }
+            Hint(T("onboarding.permissions.screen_later"))
         }
     }
 
-    var python: some View {
+    // MARK: 3 models
+
+    func size(_ mb: Double) -> String { ByteCountFormatter.string(fromByteCount: Int64(mb * 1_000_000), countStyle: .file) }
+
+    var modelsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(2, T("onboarding.python_uv"), T("onboarding.processing_search_speech_recognition"))
+            title(3, T("onboarding.models"), T("onboarding.models.detail"))
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        StatusDot(tone: m.uv != nil ? .good : .warn)
-                        Text(m.uv.map { T("onboarding.uv_found") + ($0 as NSString).abbreviatingWithTildeInPath } ?? T("onboarding.uv_not_found"))
-                        Spacer()
-                    }
                     if m.uv == nil {
-                        Text(T("onboarding.your_ok_blurt_runs"))
-                            .font(.callout).foregroundStyle(.secondary)
-                        CommandText(text: OnboardingModel.uvInstallCommand)
+                        Text(T("onboarding.uv.needed")).fixedSize(horizontal: false, vertical: true)
                         HStack {
-                            Button(T("onboarding.install_uv")) { m.installUV() }.disabled(m.installingUV)
+                            Button(T("onboarding.install_uv")) { m.installUV() }
+                                .buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                                .disabled(m.installingUV).help(OnboardingModel.uvInstallCommand)
                             if m.installingUV { ProgressView().controlSize(.small) }
                         }
-                        if !m.uvLog.isEmpty { Text(m.uvLog.suffix(3).joined(separator: "\n")).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                        if m.uvFailed { Text(T("onboarding.uv.failed")).font(.caption).foregroundStyle(Color.brandErr) }
+                    } else if !models.loaded {
+                        HStack { ProgressView().controlSize(.small); Text(T("onboarding.models.checking")).foregroundStyle(.secondary) }
+                    } else if models.parts.isEmpty {
+                        Text(T("onboarding.models.unavailable")).foregroundStyle(.secondary)
+                        Button(T("onboarding.models.retry")) { Task { await models.load() } }
                     } else {
-                        HStack {
-                            switch m.warm {
-                            case nil: Button(T("onboarding.warm_up_dependencies")) { m.warmUp() }
-                                      Text(T("onboarding.fetches_scripts_packages_now")).font(.caption).foregroundStyle(.secondary)
-                            case "running"?: ProgressView().controlSize(.small); Text(T("onboarding.preparing_about_minute_first")).foregroundStyle(.secondary)
-                            case "done"?: Label(T("onboarding.dependencies_ready_index_built"), systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandOk)
-                            case let e?: Label(e, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.brandErr).lineLimit(3)
-                            }
-                        }
+                        modelRows
                     }
-                }.padding(6)
+                    if let e = m.warm, e != "running", e != "done" {
+                        Text(e).font(.caption).foregroundStyle(Color.brandErr).lineLimit(3)
+                    }
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Hint(T("onboarding.models.later"))
+        }
+    }
+
+    @ViewBuilder var modelRows: some View {
+        ForEach(models.parts, id: \.id) { p in
+            HStack(spacing: 10) {
+                StatusDot(tone: p.installed || models.finished.contains(p.id) ? .good : .warn)
+                Text(T("onboarding.models.kind.\(p.kind.rawValue)"))
+                Text(p.name).foregroundStyle(.secondary)
+                Spacer()
+                Text(size(p.sizeMB)).foregroundStyle(.secondary).monospacedDigit()
+            }
+            .accessibilityElement(children: .combine)
+        }
+        if models.downloading {
+            let pr = models.progress
+            ProgressView(value: pr.done, total: max(pr.total, 1)) {
+                Text(T("onboarding.models.progress", size(pr.done), size(pr.total))).font(.caption).monospacedDigit()
+            }
+            Text(T("onboarding.models.background")).font(.caption).foregroundStyle(.secondary)
+        } else if models.ready {
+            check(T("onboarding.models.ready"))
+        } else if models.failed {
+            Text(T("onboarding.models.failed")).font(.callout).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button(T("onboarding.models.retry")) { models.start() }.primary(pending)
+                if let f = models.fallback { Button(T("onboarding.models.small", size(f.sizeMB))) { models.start(only: [f]) } }
+            }
+        } else {
+            HStack(spacing: 10) {
+                // after the small model alone: still on offer, no longer the step's primary
+                Button(T("onboarding.models.download")) { models.start() }.primary(pending)
+                Text(T("onboarding.models.total", size(models.totalMB))).font(.callout).foregroundStyle(.secondary)
             }
         }
     }
 
-    var recommended: ASRModel? { speech.models.first { $0.isDefault == true } ?? speech.models.first(where: \.local) }
+    // MARK: 4 try it
 
-    var model: some View {
+    var tryIt: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(3, T("onboarding.speech_model"), T("onboarding.turns_your_narration_into"))
-            GroupBox {
-                VStack(alignment: .leading, spacing: 10) {
-                    if m.uv == nil {
-                        Text(T("onboarding.needs_uv_first_previous")).foregroundStyle(.secondary)
-                    } else if let r = recommended {
-                        HStack {
-                            StatusDot(tone: r.installed ? .good : .warn)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("SenseVoice Small").fontWeight(.medium)
-                                Text("\(Int(r.sizeMB)) MB · " + r.languages.joined(separator: " ")).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if r.installed { Label(T("onboarding.downloaded"), systemImage: "checkmark.circle.fill").foregroundStyle(Color.brandOk) }
-                            else if speech.download[r.id] == nil { Button(T("onboarding.download")) { speech.startDownload(r) } }
-                        }
-                        if let d = speech.download[r.id] {
-                            ProgressView(value: min(d.done, max(d.total, 1)), total: max(d.total, 1)) { Text(d.text).font(.caption) }
-                        }
-                        Toggle(T("onboarding.download_via_hf_mirror"),
-                               isOn: Binding(get: { speech.mirror }, set: { speech.setMirror($0) }))
-                    } else {
-                        HStack { ProgressView().controlSize(.small); Text(T("onboarding.reading_models")).foregroundStyle(.secondary) }
-                    }
-                    if let e = speech.error { Text(e).font(.caption).foregroundStyle(Color.brandErr) }
-                }.padding(6)
+            title(4, T("onboarding.try"), T("onboarding.try.detail", Dictation.keyShort(m.dictationKey)))
+            TextField(T("onboarding.try.placeholder"), text: $m.tryText, axis: .vertical)
+                .lineLimit(3...5)
+                .textFieldStyle(.roundedBorder)
+                .focused($tryFocused)
+            if m.tried {
+                check(T("onboarding.try.works"))
+            } else if !guide.missing(.dictation).isEmpty {
+                HStack(spacing: 10) {
+                    Text(T("onboarding.try.needs_permissions")).foregroundStyle(.secondary)
+                    setupButton
+                }
+            } else if models.downloading {
+                Text(T("onboarding.try.downloading")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            Hint(T("onboarding.you_can_switch_models"))
+            Spacer().frame(height: 6)
+            Toggle(isOn: $m.openAtLogin) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(T("settings.general.login"))
+                    Text(T("onboarding.login.detail")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
-        .task { if m.uv != nil { await speech.load() } }
+        .onAppear {
+            m.startTry()
+            DispatchQueue.main.async { tryFocused = true }
+        }
+        .onDisappear { m.stopTry() }
     }
+}
 
-    var agentsStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            title(4, T("onboarding.coding_agent"), T("onboarding.blurt_hands_recordings_agent"))
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    if agents.loading && agents.rows.isEmpty { HStack { ProgressView().controlSize(.small); Text(T("onboarding.looking_agents")).foregroundStyle(.secondary) } }
-                    ForEach(agents.rows.filter { $0.installed }) { a in
-                        HStack {
-                            StatusDot(tone: a.state == "ready" ? .good : a.state == "logged_out" ? .bad : .warn)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(a.name)
-                                Text(a.why.isEmpty ? a.state : a.why).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if agents.installing == a.id { ProgressView().controlSize(.small) }
-                            else { Button(T("onboarding.install_skill_mcp")) { Task { await agents.preview(a) } } }
-                        }
-                    }
-                    if !agents.loading && agents.rows.filter(\.installed).isEmpty {
-                        Text(T("onboarding.no_claude_code_codex")).foregroundStyle(.secondary)
-                    }
-                }.padding(6)
-            }
-        }
-        .task { if agents.rows.isEmpty { await agents.load() } }
-        .sheet(isPresented: Binding(get: { agents.plan != nil }, set: { if !$0 { agents.plan = nil } })) {
-            if let p = agents.plan { InstallSheet(m: agents, agent: p.agent, plan: p.plan, applied: p.applied) }
-        }
+private extension View {
+    /// The step's own action as the one brand primary (Return presses it), or a plain button.
+    @ViewBuilder func primary(_ on: Bool) -> some View {
+        if on { buttonStyle(.brand).keyboardShortcut(.defaultAction) } else { self }
     }
 }
 
@@ -362,6 +521,29 @@ final class Onboarding: NSObject, NSWindowDelegate {
         guard let m = model else { return }
         m.step = m.steps - 1
         m.done()
+    }
+
+    /// Tests (`onboarding …` of the test channel): the assistant's buttons, then an "onboarding_state" event.
+    @MainActor
+    func testCommand(_ arg: String) {
+        let a = arg.split(separator: " ").map(String.init)
+        guard let m = model else { return emit(["event": "onboarding_state", "shown": false]) }
+        switch a.first ?? "state" {
+        case "step": m.step = Int(a.count > 1 ? a[1] : "") ?? m.step
+        case "setup": m.walked = true; PermissionGuide.shared.start(.dictation, source: .onboarding)
+        case "download": ModelSetup.shared.start()
+        case "small": if let f = ModelSetup.shared.fallback { ModelSetup.shared.start(only: [f]) }
+        case "reload": Task { await ModelSetup.shared.load() }
+        case "login": m.openAtLogin = a.count > 1 && a[1] == "on"
+        case "done": m.done()
+        default: break
+        }
+        let ms = ModelSetup.shared, pr = ms.progress
+        emit(["event": "onboarding_state", "shown": true, "step": m.step, "uv": m.uv ?? NSNull(), "warm": m.warm ?? NSNull(),
+              "missing": PermissionGuide.shared.missing(.dictation).map(\.rawValue), "walked": m.walked, "tried": m.tried,
+              "login": m.openAtLogin, "models": ms.parts.map { "\($0.kind.rawValue):\($0.id):\($0.installed ? "installed" : "missing")" },
+              "total_mb": ms.totalMB, "downloading": ms.current ?? NSNull(), "progress": [pr.done, pr.total].map { Double(Int($0)) },
+              "failed": ms.failed, "ready": ms.ready])
     }
 
     /// Back to the front as it was (the permission guide finished), without changing the step.

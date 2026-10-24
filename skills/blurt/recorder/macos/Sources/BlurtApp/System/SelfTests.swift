@@ -13,6 +13,7 @@
 //                                status button with a count of 3 (aqua / dark; rest / open) as PNGs
 //   design system v2 moments (screenshots, no real work behind them):
 //   onboardingdone               Done on the onboarding's last step: it closes
+//   onboardingtest step N|setup|download|small|reload|login on|off|done|state   the assistant's buttons → onboarding_state
 //   mainempty KIND               one main-window empty state (ItemListController.testEmpty: first | inbox_zero | …)
 //   mainfakejob process|route|record [SESSION] | done | clear   a running job in the list's jobs section (the AI-working
 //                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
@@ -54,6 +55,7 @@ enum SelfTests {
             out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
         case "onboarding": Onboarding.shared.show(step: Int(arg) ?? 0)
         case "onboardingdone": Onboarding.shared.testDone()
+        case "onboardingtest": Onboarding.shared.testCommand(arg)
         case "mainempty":
             let c = MainWindowController.shared
             c.show()
