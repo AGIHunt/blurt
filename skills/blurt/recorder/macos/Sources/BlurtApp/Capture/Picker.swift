@@ -8,9 +8,11 @@ import ServiceManagement
 
 // MARK: - Region picker
 
-final class KeyWindow: NSWindow {
+/// A non-activating panel: it takes the keys (Esc, Enter, F, L) without activating Blurt, so opening the picker
+/// never brings Blurt's own windows (the main window) above the app the user is about to snap.
+final class KeyWindow: NSPanel {
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
     override func keyDown(with event: NSEvent) { contentView?.keyDown(with: event) }
     override func cancelOperation(_ sender: Any?) { (contentView as? PickerView)?.controller?.finish(false) }
 }
@@ -50,7 +52,9 @@ final class PickerController {
     func show(preselect: CGRect?) {
         frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         for screen in NSScreen.screens {
-            let w = KeyWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            let w = KeyWindow(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            w.becomesKeyOnlyIfNeeded = false
+            w.hidesOnDeactivate = false
             w.level = .screenSaver
             w.isOpaque = false
             w.backgroundColor = .clear
@@ -68,7 +72,6 @@ final class PickerController {
         toolbar.controller = self
         if let p = preselect { selection = toNS(p) }
         applyTestState()
-        activateApp()
         let mouse = NSEvent.mouseLocation
         let keyWin = windows.first(where: { $0.frame.contains(mouse) }) ?? windows.first
         keyWin?.makeKeyAndOrderFront(nil)

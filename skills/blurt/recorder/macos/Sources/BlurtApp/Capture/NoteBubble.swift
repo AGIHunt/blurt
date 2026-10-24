@@ -834,9 +834,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 p.animator().alphaValue = 1
             }
         }
-        // typing needs us in front for a moment (the user just took the shot / clicked 📸); close() hands focus back
+        // the panel is non-activating: it takes the typing without activating Blurt, so Blurt's main window never
+        // jumps above the app the user just snapped; close() still hands focus back
         if mode == .recording { snapper.rememberFrontApp() }
-        activateApp()
         p.makeKey()
         p.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
