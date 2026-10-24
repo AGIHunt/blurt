@@ -105,7 +105,6 @@
 "settings.general.projects.hint" = "项目就是本机上的一个文件夹。条目放在它的 .blurt 里，口喷鸡会帮你把它排除在 git 之外。";
 "settings.general.recording" = "录制";
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
-"settings.general.spotlight" = "在 Spotlight 里搜得到条目";
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
 "settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";
@@ -153,7 +152,7 @@
 "settings.privacy.data" = "数据";
 "settings.privacy.deleted_by_default_once" = "默认在转写完成后删除：录屏文件里已经有同样的声音。";
 "settings.privacy.freed" = "释放了 ";
-"settings.privacy.index_can_be_deleted" = "索引删了也不丢数据，随时能重建；语音模型在「语音」里管理。";
+"settings.privacy.index_can_be_deleted" = "索引随时可以重建。";
 "settings.privacy.items_appear_spotlight" = "条目出现在 Spotlight 里";
 "settings.privacy.keep_raw_live_caption" = "保留实时转写的原始音频（live/audio.pcm）";
 "settings.privacy.local_speech_recognition_only" = "只用本地语音识别";
@@ -167,7 +166,6 @@
 "settings.privacy.recordings_screenshots" = "录屏和截图";
 "settings.privacy.recordings_screenshots_items_stay" = "录屏、截图、条目都只存在你的 Mac 上（~/Blurt 或项目的 .blurt/），口喷鸡不上传任何东西。";
 "settings.privacy.search_index" = "搜索索引";
-"settings.privacy.speech_models" = "语音模型";
 
 /* 权限向导（Onboarding/PermissionGuide.swift、HelperPanel.swift） */
 "settings.perm.screen" = "屏幕录制";
@@ -212,3 +210,29 @@
 "settings.general.voice_end_on_pause.hint" = "关闭时：语音（⌥⇧V）不会因为你停下来想一想就结束，再按一次快捷键或点「完成」才结束，最长 10 分钟；Esc 取消。打开后：安静 1.5 秒就结束。截图的语音备注始终是停顿即结束。";
 "settings.general.live_text" = "边说边显示文字";
 "settings.general.live_text.hint" = "语音或听写在听的时候，已经识别出的文字显示在岛下方的小面板里，最新的字淡入。它不会抢焦点，会避开你正在输入的位置，也不会被录进屏幕录制。";
+"settings.storage.dictation_history" = "历史";
+"settings.storage.dictation_audio" = "保留的录音";
+"settings.storage.dictation_lab" = "测试台";
+"settings.storage.dictation.footer" = "听写历史和录音在「听写」里管理。";
+"settings.storage.jobs" = "任务记录";
+"settings.storage.handoff" = "交给 Agent 的说明";
+"settings.storage.tmp" = "临时文件";
+"settings.storage.models" = "模型";
+"settings.storage.model.asr" = "语音识别";
+"settings.storage.model.vad" = "人声检测，本地模型都要用";
+"settings.storage.model.polish" = "听写润色";
+"settings.storage.model.shared_cache" = "Hugging Face 缓存，其他 App 也可能在用";
+"settings.storage.model.in_use" = "使用中";
+"settings.storage.model.none" = "还没有下载模型";
+"settings.storage.model.footer" = "没被用到的模型可以移到废纸篓。在「语音」和「听写」里选择模型。";
+"settings.storage.videos" = "已整理录屏的视频";
+"settings.storage.videos.delete" = "删除";
+"settings.storage.videos.older" = "%ld 天前的…";
+"settings.storage.videos.all" = "全部视频…";
+"settings.storage.videos.auto" = "自动删除视频";
+"settings.storage.videos.never" = "从不";
+"settings.storage.videos.after" = "%ld 天后";
+"settings.storage.videos.footer" = "只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。";
+"settings.storage.videos.confirm_title" = "把这些视频移到废纸篓？";
+"settings.storage.videos.confirm" = "条目、画面和文字稿都会保留。";
+"settings.storage.videos.freed" = "已把 %@ 视频移到废纸篓";

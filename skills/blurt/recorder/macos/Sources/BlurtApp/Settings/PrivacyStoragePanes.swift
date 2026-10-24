@@ -1,5 +1,6 @@
-// Settings → Privacy (live permission state, local-only speech recognition, what is kept) and Settings → Storage
-// (what takes space, and cleaning what can safely go).
+// Settings → Privacy (live permission state — the one full list of them —, local-only speech recognition, what is
+// kept, Spotlight) and Settings → Storage (what takes space, model by model and folder by folder, and cleaning what
+// can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -115,39 +116,161 @@ struct PrivacyPane: View {
 
 // MARK: - Storage
 
+/// Everything big that Blurt keeps, in four groups — recordings and snaps (per folder, plus the videos of organized
+/// recordings, which can go), the models (one row per model, each with its size, "In use", and Move to Trash for one
+/// Blurt downloaded that nothing uses), dictation (history, kept audio, Lab), and Blurt's own files (index, caches,
+/// agent runs, jobs). Rows show up from the file system at once; which model is in use comes from the scripts
+/// (transcribe.py models, polish.py models) a moment later. Nothing is deleted without the user asking, and what is
+/// deleted goes to the Trash.
 @MainActor
 final class StorageModel: ObservableObject {
-    struct Row: Identifiable { var id: String { path.path }; var name: String; var path: URL; var bytes: Int64; var count: Int? }
-    @Published var rows: [Row] = []
+    struct Row: Identifiable {
+        var id: String { path.path }
+        var name: String
+        var path: URL
+        var bytes: Int64
+        var detail: String = ""
+        /// A model: what it is for (nil = not a model), whether something uses it, whether it may go to the Trash.
+        var family: String?
+        var inUse = false
+        var removable = false
+    }
+    @Published var rows: [Row] = []                 // recording folders
+    @Published var videos: [VideoRetention.Candidate] = []
+    @Published var models: [Row] = []
+    @Published var dictation: [Row] = []
     @Published var app: [Row] = []
     @Published var liveAudio: (count: Int, bytes: Int64) = (0, 0)
+    @Published var autoDelete: Int? = VideoRetention.autoDays
     @Published var busy = false
+    @Published var checkingModels = false
     @Published var message: String?
+
+    var videoBytes: Int64 { videos.reduce(0) { $0 + $1.bytes } }
+    func videos(olderThan days: Int?) -> [VideoRetention.Candidate] {
+        guard let d = days else { return videos }
+        return videos.filter { Date().timeIntervalSince($0.date) >= Double(d) * 86400 }
+    }
 
     func load() async {
         busy = true
         defer { busy = false }
-        let (r, a, l) = await Task.detached { () -> ([Row], [Row], (Int, Int64)) in
+        let current = (NSApp.delegate as? App)?.lastSession.map { Set([$0.standardizedFileURL.path]) } ?? []
+        let r = await Task.detached { () -> ([Row], [VideoRetention.Candidate], [Row], [Row], [Row], (Int, Int64)) in
+            let fm = FileManager.default
+            let roots = FixWatcher.sessionRoots()
             var rows: [Row] = []
-            for root in FixWatcher.sessionRoots() where FileManager.default.fileExists(atPath: root.path) {
-                let n = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.count
+            for root in roots where fm.fileExists(atPath: root.path) {
+                let n = ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") }.count
                 let ws = root.lastPathComponent == "recordings" ? root.deletingLastPathComponent() : root.deletingLastPathComponent().deletingLastPathComponent()
-                rows.append(Row(name: isDefaultWorkspace(ws) ? "~/Blurt" : ws.lastPathComponent, path: root, bytes: diskSize(root), count: n))
+                rows.append(Row(name: isDefaultWorkspace(ws) ? "~/Blurt" : ws.lastPathComponent, path: root, bytes: diskSize(root),
+                                detail: TP("settings.privacy.sessions", n) + " · " + (root.path as NSString).abbreviatingWithTildeInPath))
             }
+            let videos = VideoRetention.candidates(roots: roots, olderThan: nil, excluding: current)
             let h = BlurtPaths.home
-            var app: [Row] = []
-            for (name, rel) in [(T("settings.privacy.speech_models"), "models"), (T("settings.privacy.search_index"), "index.db"),
-                                (T("settings.privacy.build_cache"), "build"), (T("settings.privacy.agent_runs"), "runs"),
-                                (T("settings.privacy.prompts"), "prompts"), (T("settings.privacy.benchmark_samples"), "bench")] {
+            func row(_ name: String, _ rel: String) -> Row? {
                 let u = h.appendingPathComponent(rel)
+                guard fm.fileExists(atPath: u.path) else { return nil }
                 var b = diskSize(u)
                 if rel == "index.db" { b += diskSize(h.appendingPathComponent("index.db-wal")) + diskSize(h.appendingPathComponent("index.db-shm")) }
-                if FileManager.default.fileExists(atPath: u.path) { app.append(Row(name: name, path: u, bytes: b, count: nil)) }
+                return Row(name: name, path: u, bytes: b, detail: (u.path as NSString).abbreviatingWithTildeInPath)
             }
+            let dictation = [row(T("settings.storage.dictation_history"), "dictation/history.jsonl"),
+                             row(T("settings.storage.dictation_audio"), "dictation/audio"),
+                             row(T("settings.storage.dictation_lab"), "dictation/lab")].compactMap { $0 }
+            let app = [row(T("settings.privacy.search_index"), "index.db"), row(T("settings.privacy.build_cache"), "build"),
+                       row(T("settings.privacy.agent_runs"), "runs"), row(T("settings.storage.jobs"), "jobs"),
+                       row(T("settings.storage.handoff"), "handoff"), row(T("settings.privacy.prompts"), "prompts"),
+                       row(T("settings.privacy.benchmark_samples"), "bench"), row(T("settings.storage.tmp"), "tmp")].compactMap { $0 }
             let live = Retention.liveAudioFiles()
-            return (rows, app, (live.count, live.reduce(0) { $0 + diskSize($1) }))
+            return (rows, videos, StorageModel.scanModels(), dictation, app, (live.count, live.reduce(0) { $0 + diskSize($1) }))
         }.value
-        rows = r; app = a; liveAudio = l
+        rows = r.0; videos = r.1; dictation = r.3; app = r.4; liveAudio = r.5
+        // fresh sizes; what the scripts said last time (names, in use, the shared-cache rows) until they say it again
+        let before = Dictionary(models.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        models = r.2.map { fresh in
+            guard var row = before[fresh.id] else { return fresh }
+            row.bytes = fresh.bytes
+            return row
+        } + models.filter { $0.family != nil && !r.2.map(\.id).contains($0.id) && !$0.path.path.hasPrefix(BlurtPaths.home.path) }
+        autoDelete = VideoRetention.autoDays
+        await annotateModels()
+    }
+
+    /// $BLURT_HOME/models: asr/ and polish/ hold one model per folder; anything else at the top is one model (or a
+    /// file every local model needs, like the voice-activity detector).
+    nonisolated static func scanModels() -> [Row] {
+        let fm = FileManager.default
+        let dir = BlurtPaths.home.appendingPathComponent("models")
+        var out: [Row] = []
+        for e in ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
+            where !e.lastPathComponent.hasPrefix(".") {
+            if ["asr", "polish"].contains(e.lastPathComponent) {
+                for m in ((try? fm.contentsOfDirectory(at: e, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
+                    where !m.lastPathComponent.hasPrefix(".") {
+                    out.append(Row(name: m.lastPathComponent, path: m, bytes: diskSize(m), family: nil))
+                }
+            } else {
+                out.append(Row(name: e.lastPathComponent, path: e, bytes: diskSize(e), family: nil))
+            }
+        }
+        return out
+    }
+
+    /// Which model is which and what uses it: transcribe.py models (speech recognition: recordings, live captions,
+    /// voice notes, dictation) and polish.py models (dictation's clean-up). Models of theirs in the shared Hugging Face
+    /// cache are listed too, with their size, but never removed here: other apps may use that cache.
+    func annotateModels() async {
+        checkingModels = true
+        defer { checkingModels = false }
+        async let asr = try? SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
+        async let polish = try? SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
+        var known: [String: (name: String, family: String, inUse: Bool)] = [:]
+        if let o = await asr?.json, let ms = o["models"] as? [[String: Any]] {
+            for m in ms where m["installed"] as? Bool == true {
+                guard let p = m["path"] as? String else { continue }
+                let vad = m["role"] as? String == "vad"
+                known[Self.modelRoot(p)] = (m["name"] as? String ?? p, T(vad ? "settings.storage.model.vad" : "settings.storage.model.asr"),
+                                            vad || !((m["purposes"] as? [String]) ?? []).isEmpty)
+            }
+        }
+        if let o = await polish?.json, let ms = o["models"] as? [[String: Any]] {
+            let sel = o["selected"] as? String
+            for m in ms where m["installed"] as? Bool == true {
+                guard let p = m["path"] as? String else { continue }
+                known[Self.modelRoot(p)] = (m["name"] as? String ?? p, T("settings.storage.model.polish"), m["id"] as? String == sel)
+            }
+        }
+        guard !known.isEmpty else { return }
+        let own = BlurtPaths.home.appendingPathComponent("models").standardizedFileURL.path
+        var rows = models.filter { $0.path.standardizedFileURL.path.hasPrefix(own) }
+        for i in rows.indices {
+            guard let k = known[rows[i].path.standardizedFileURL.path] else { continue }
+            rows[i].name = k.name
+            rows[i].family = k.family
+            rows[i].inUse = k.inUse
+            rows[i].removable = !k.inUse
+        }
+        // the shared Hugging Face cache: its repo folders (the snapshots are links into them)
+        for (p, k) in known.sorted(by: { $0.key < $1.key }) where !p.hasPrefix(own) {
+            let u = URL(fileURLWithPath: p)
+            let bytes = await Task.detached { diskSize(u) }.value
+            rows.append(Row(name: k.name, path: u, bytes: bytes, detail: T("settings.storage.model.shared_cache"),
+                            family: k.family, inUse: k.inUse, removable: false))
+        }
+        models = rows
+    }
+
+    /// A model's folder as the Storage rows list it: ours as they are; in the Hugging Face cache, the repo folder
+    /// (…/hub/models--org--name), not the snapshot inside it.
+    nonisolated static func modelRoot(_ p: String) -> String {
+        let u = URL(fileURLWithPath: p).standardizedFileURL
+        var c = u
+        while c.path != "/" {
+            if c.lastPathComponent.hasPrefix("models--") { return c.path }
+            c.deleteLastPathComponent()
+        }
+        return u.path
     }
 
     func dropLive() async {
@@ -155,55 +278,163 @@ final class StorageModel: ObservableObject {
         message = T("settings.privacy.freed") + byteString(freed)
         await load()
     }
-    func trash(_ u: URL) {
-        NSWorkspace.shared.recycle([u]) { _, _ in Task { @MainActor in await self.load() } }
+
+    func trash(_ urls: [URL]) {
+        NSWorkspace.shared.recycle(urls) { done, _ in
+            Task { @MainActor in
+                emit(["event": "storage_trash", "files": done.count])
+                await self.load()
+            }
+        }
+    }
+
+    /// The videos of organized recordings older than `days` (nil = all) go to the Trash.
+    func deleteVideos(olderThan days: Int?) {
+        let c = videos(olderThan: days)
+        guard !c.isEmpty else { return }
+        emit(["event": "videos_deleted", "auto": false, "sessions": c.count, "bytes": c.reduce(Int64(0)) { $0 + $1.bytes }])
+        message = T("settings.storage.videos.freed", byteString(c.reduce(0) { $0 + $1.bytes }))
+        trash(c.flatMap(\.files))
+    }
+
+    func setAutoDelete(_ d: Int?) {
+        autoDelete = d
+        VideoRetention.autoDays = d
+        if d != nil { Housekeeping.deleteOldVideos(); Task { try? await Task.sleep(nanoseconds: 1_500_000_000); await load() } }
     }
 }
 
 struct StoragePane: View {
     @StateObject var m = StorageModel()
-    @State var confirm: URL?
+    /// What the confirmation is about.
+    enum Ask: Identifiable { case videos(Int?), trash(StorageModel.Row); var id: String { switch self { case .videos(let d): return "v\(d ?? 0)"; case .trash(let r): return r.id } } }
+    @State var ask: Ask?
 
     var body: some View {
         PaneFrame {
             Section {
                 if m.rows.isEmpty && !m.busy { Text(T("settings.privacy.no_recordings")).foregroundStyle(.secondary) }
                 ForEach(m.rows) { r in
-                    row(r.name, detail: TP("settings.privacy.sessions", r.count ?? 0) + " · " + (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
-                        Button { NSWorkspace.shared.open(r.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
-                            .help(T("action.open")).accessibilityLabel(T("action.open"))
-                    }
+                    row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) }
+                }
+                videosRow
+                Picker(T("settings.storage.videos.auto"), selection: Binding(get: { m.autoDelete ?? 0 }, set: { m.setAutoDelete($0 == 0 ? nil : $0) })) {
+                    Text(T("settings.storage.videos.never")).tag(0)
+                    ForEach(VideoRetention.choices, id: \.self) { d in Text(T("settings.storage.videos.after", d)).tag(d) }
                 }
             } header: {
                 HStack { Text(T("settings.privacy.recordings_screenshots")); Spacer(); if m.busy { ProgressView().controlSize(.mini) } }
+            } footer: {
+                Text(T("settings.storage.videos.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+
             Section {
-                row(T("settings.privacy.raw_live_caption_audio"),
-                    detail: TP("settings.privacy.live_audio", m.liveAudio.count),
-                    bytes: m.liveAudio.bytes) {
+                if m.models.isEmpty && !m.busy { Text(T("settings.storage.model.none")).foregroundStyle(.secondary) }
+                ForEach(m.models) { r in modelRow(r) }
+            } header: {
+                HStack { Text(T("settings.storage.models")); Spacer(); if m.checkingModels { ProgressView().controlSize(.mini) } }
+            } footer: {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(T("settings.storage.model.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button(T("settings.kit.speech")) { AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue) }.controlSize(.small)
+                    Button(T("dictation.settings.tab")) { AppEnvironment.settings?.show(pane: SettingsPane.dictation.rawValue) }.controlSize(.small)
+                }
+            }
+
+            if !m.dictation.isEmpty {
+                Section {
+                    ForEach(m.dictation) { r in row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) } }
+                } header: { Text(T("dictation.settings.tab")) } footer: {
+                    Text(T("settings.storage.dictation.footer")).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                row(T("settings.privacy.raw_live_caption_audio"), detail: TP("settings.privacy.live_audio", m.liveAudio.count), bytes: m.liveAudio.bytes) {
                     Button(T("settings.privacy.clean_up")) { Task { await m.dropLive() } }.disabled(m.liveAudio.count == 0)
                 }
                 ForEach(m.app) { r in
-                    row(r.name, detail: (r.path.path as NSString).abbreviatingWithTildeInPath, bytes: r.bytes) {
-                        if r.path.lastPathComponent == "build" || r.path.lastPathComponent == "prompts" || r.path.lastPathComponent == "bench" {
-                            Button(T("settings.privacy.move_trash")) { confirm = r.path }
-                        } else {
-                            Button { NSWorkspace.shared.activateFileViewerSelecting([r.path]) } label: { Image(systemName: "magnifyingglass") }.buttonStyle(.borderless)
-                                .help(T("action.reveal_in_finder")).accessibilityLabel(T("action.reveal_in_finder"))
+                    row(r.name, detail: r.detail, bytes: r.bytes) {
+                        if ["build", "prompts", "bench", "tmp"].contains(r.path.lastPathComponent) {
+                            Button(T("settings.privacy.move_trash")) { ask = .trash(r) }
                         }
+                        revealButton(r.path)
                     }
                 }
                 if let msg = m.message { Text(msg).font(.caption).foregroundStyle(.secondary) }
             } header: { Text(T("settings.privacy.blurt_own_files")) } footer: {
-                Text(T("settings.privacy.index_can_be_deleted"))
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(T("settings.privacy.index_can_be_deleted")).font(.caption).foregroundStyle(.secondary)
             }
         }
         .task { await m.load() }
-        .alert(T("settings.privacy.move_trash_2"), isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
-            Button(T("settings.privacy.move_trash"), role: .destructive) { if let u = confirm { m.trash(u) }; confirm = nil }
-            Button(T("settings.privacy.cancel"), role: .cancel) { confirm = nil }
-        } message: { Text(confirm?.path ?? "") }
+        .alert(alertTitle, isPresented: Binding(get: { ask != nil }, set: { if !$0 { ask = nil } }), presenting: ask) { a in
+            Button(T("settings.privacy.move_trash"), role: .destructive) {
+                switch a {
+                case .videos(let d): m.deleteVideos(olderThan: d)
+                case .trash(let r): m.trash([r.path])
+                }
+                ask = nil
+            }
+            Button(T("settings.privacy.cancel"), role: .cancel) { ask = nil }
+        } message: { a in
+            switch a {
+            case .videos(let d):
+                let c = m.videos(olderThan: d)
+                Text(TP("settings.storage.videos.count", c.count) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + "). " + T("settings.storage.videos.confirm"))
+            case .trash(let r): Text((r.path.path as NSString).abbreviatingWithTildeInPath)
+            }
+        }
+    }
+
+    var alertTitle: String {
+        if case .videos = ask { return T("settings.storage.videos.confirm_title") }
+        return T("settings.privacy.move_trash_2")
+    }
+
+    /// The videos of organized recordings: how much they take, and a menu to send the older ones to the Trash.
+    var videosRow: some View {
+        row(T("settings.storage.videos"), detail: TP("settings.storage.videos.count", m.videos.count), bytes: m.videoBytes) {
+            Menu(T("settings.storage.videos.delete")) {
+                ForEach(VideoRetention.choices, id: \.self) { d in
+                    let c = m.videos(olderThan: d)
+                    Button(T("settings.storage.videos.older", d) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + ")") { ask = .videos(d) }
+                        .disabled(c.isEmpty)
+                }
+                Divider()
+                Button(T("settings.storage.videos.all")) { ask = .videos(nil) }
+            }
+            .fixedSize()
+            .disabled(m.videos.isEmpty)
+        }
+    }
+
+    func modelRow(_ r: StorageModel.Row) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(r.name)
+                    if r.inUse {
+                        Text(T("settings.storage.model.in_use")).font(.caption2.weight(.semibold)).padding(.horizontal, 5).padding(.vertical, 1)
+                            .foregroundStyle(Color.brandInk).background(Capsule().fill(Color.brandTint))
+                    }
+                }
+                Text([r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            Text(byteString(r.bytes)).monospacedDigit().foregroundStyle(.secondary)
+            if r.removable { Button(T("settings.privacy.move_trash")) { ask = .trash(r) } }
+            revealButton(r.path)
+        }
+    }
+
+    func reveal(_ u: URL) -> some View { revealButton(u) }
+
+    /// One reveal action everywhere: Show in Finder.
+    func revealButton(_ u: URL) -> some View {
+        Button { NSWorkspace.shared.activateFileViewerSelecting([u]) } label: { Image(systemName: "arrow.up.forward.app") }
+            .buttonStyle(.borderless).help(T("action.reveal_in_finder")).accessibilityLabel(T("action.reveal_in_finder"))
     }
 
     func row<A: View>(_ name: String, detail: String, bytes: Int64, @ViewBuilder action: () -> A) -> some View {
