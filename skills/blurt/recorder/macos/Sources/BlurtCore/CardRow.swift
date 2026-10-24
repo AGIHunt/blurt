@@ -11,13 +11,16 @@
 //    mapped onto the island's bottom edge in proportion, so the threads keep their order, never cross and hang close to
 //    vertical — not a fan from the island's two corners.
 //  • coming down (CardReveal): only after the pointer has rested on the island `dwell` (brushing past the notch on the
-//    way to a menu drops nothing); up again `away` after it has left the cards' region. Esc is taken from the system
-//    only while cards brought down on purpose have the pointer on them; with the keyboard on the cards their own panel
-//    gets it.
+//    way to a menu drops nothing); up again `away` after it has left the cards' region. Brought down on purpose (the
+//    ear, ⌥⇧H, the menu, the main window) they stay until the pointer has been on them and left — or, if it never
+//    comes, `unvisited` after. Esc is taken from the system only while such cards have the pointer on them, or for
+//    `escGrace` after they came down with the pointer elsewhere; with the keyboard on the cards their own panel gets it.
 //  • the hover note (CardTip): only what the card can't show itself — the rest of a note cut short on the card, and the
 //    play button of a spoken one. Otherwise no note at all.
 //  • a click (DeferredClick): a plain click copies once the double-click interval has passed; a second click (double-click
 //    = edit the note) cancels it, so editing never overwrites the clipboard first.
+//  • a delete (CardDelete, CardUndo): no question, an Undo — and deletes in a row gather under that one Undo, so
+//    Undo brings back every card deleted while it was offered.
 
 import CoreGraphics
 
@@ -88,9 +91,25 @@ public enum CardReveal {
     /// Whether the pointer, on the island since `since` (nil: not on it), has rested there long enough.
     public static func dwelled(since: Double?, now: Double) -> Bool { since.map { now - $0 >= dwell } ?? false }
 
-    /// Esc is ours (a system-wide hotkey) only while cards brought down on purpose have the pointer on them; with the
-    /// keyboard on the cards their panel has it already, and otherwise Esc belongs to whatever app is in front.
-    public static func holdsEsc(sticky: Bool, pointerIn: Bool, keyboard: Bool) -> Bool { sticky && pointerIn && !keyboard }
+    /// Brought down on purpose with the pointer elsewhere (the menu, the main window): Esc sends them up this long,
+    /// before the pointer has come to them.
+    public static let escGrace: Double = 4
+    /// …and if the pointer never comes to them, they stop staying down this long after (then they go up like any time
+    /// the pointer isn't on them): never a curtain over the top of the screen.
+    public static let unvisited: Double = 10
+
+    /// Whether cards brought down on purpose stay down: until the pointer has been on them (`visited`) and left them
+    /// and the island (`pointerIn`) — or, if it never came, `unvisited` after the reveal.
+    public static func staysDown(visited: Bool, pointerIn: Bool, sinceReveal: Double) -> Bool {
+        visited ? pointerIn : sinceReveal < unvisited
+    }
+
+    /// Esc is ours (a system-wide hotkey) only while cards brought down on purpose have the pointer on them (or the
+    /// island), or just came down with it elsewhere (`escGrace`). With the keyboard on the cards (or the overview) their
+    /// panel has it already, and otherwise Esc belongs to whatever app is in front.
+    public static func holdsEsc(sticky: Bool, pointerIn: Bool, keyboard: Bool, visited: Bool, sinceReveal: Double) -> Bool {
+        sticky && !keyboard && (pointerIn || (!visited && sinceReveal < escGrace))
+    }
 
     /// The first card ever says what to do with it, once.
     public static func firstHint(alreadyShown: Bool, isCard: Bool, recording: Bool) -> Bool { !alreadyShown && isCard && !recording }
@@ -163,4 +182,26 @@ public struct DeferredClick<ID: Equatable> {
 public enum CardDelete {
     public static let undoSeconds: Double = 5
     public static let recycleAfter: Double = undoSeconds + 2
+}
+
+/// Deletes in a row gather under one Undo: while the Undo of the last delete is still offered, the next one joins it
+/// ("Deleted 2 cards · Undo") and Undo brings back every one of them — never only the first.
+public struct CardUndo<Item: AnyObject> {
+    public private(set) var items: [Item] = []
+
+    public init() {}
+
+    /// `live`: the Undo of the earlier ones is still offered (else they are gone for good and this starts afresh).
+    /// Returns everything the Undo now covers, in the order they were deleted.
+    public mutating func add(_ new: [Item], live: Bool) -> [Item] {
+        if !live { items = [] }
+        for i in new where !items.contains(where: { $0 === i }) { items.append(i) }
+        return items
+    }
+
+    /// Undo: everything it covers, once.
+    public mutating func take() -> [Item] {
+        defer { items = [] }
+        return items
+    }
 }

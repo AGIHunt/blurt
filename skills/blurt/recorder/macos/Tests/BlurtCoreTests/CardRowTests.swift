@@ -73,10 +73,25 @@ final class CardRowTests: XCTestCase {
     }
 
     func testEscIsOnlyTakenWhileThePointerIsOnCardsBroughtDownOnPurpose() {
-        XCTAssertFalse(CardReveal.holdsEsc(sticky: true, pointerIn: false, keyboard: false), "⌥⇧H, then Esc in another app: theirs")
-        XCTAssertTrue(CardReveal.holdsEsc(sticky: true, pointerIn: true, keyboard: false))
-        XCTAssertFalse(CardReveal.holdsEsc(sticky: true, pointerIn: true, keyboard: true), "the panel has the keyboard: no hotkey")
-        XCTAssertFalse(CardReveal.holdsEsc(sticky: false, pointerIn: true, keyboard: false))
+        let esc = { (sticky: Bool, pointerIn: Bool, keyboard: Bool, visited: Bool, since: Double) in
+            CardReveal.holdsEsc(sticky: sticky, pointerIn: pointerIn, keyboard: keyboard, visited: visited, sinceReveal: since)
+        }
+        XCTAssertTrue(esc(true, true, false, true, 30))
+        XCTAssertFalse(esc(true, true, true, true, 0), "the panel has the keyboard: no hotkey")
+        XCTAssertFalse(esc(false, true, false, true, 0), "not brought down on purpose")
+        XCTAssertFalse(esc(true, false, false, true, 1), "been on them and left: Esc is the front app's again")
+        // the menu / the main window: down with the pointer elsewhere — Esc puts them back up for a moment
+        XCTAssertTrue(esc(true, false, false, false, 1))
+        XCTAssertFalse(esc(true, false, false, false, CardReveal.escGrace + 0.1), "an Esc for the app in front later on")
+    }
+
+    func testCardsBroughtDownOnPurposeNeverHangForever() {
+        XCTAssertTrue(CardReveal.staysDown(visited: false, pointerIn: false, sinceReveal: 2), "time to reach them")
+        XCTAssertFalse(CardReveal.staysDown(visited: false, pointerIn: false, sinceReveal: CardReveal.unvisited + 0.1),
+                       "the pointer never came: no curtain over the top of the screen")
+        XCTAssertTrue(CardReveal.staysDown(visited: true, pointerIn: true, sinceReveal: 60))
+        XCTAssertFalse(CardReveal.staysDown(visited: true, pointerIn: false, sinceReveal: 1), "came and went")
+        XCTAssertGreaterThan(CardReveal.unvisited, CardReveal.escGrace)
     }
 
     func testFirstHintOnce() {
@@ -120,6 +135,22 @@ final class CardRowTests: XCTestCase {
         _ = c.click(4, count: 1, at: 6, interval: 0.3)
         c.cancel()
         XCTAssertNil(c.fire(at: 7))
+    }
+
+    func testDeletesInARowAllComeBackWithOneUndo() {
+        final class Card {}
+        let a = Card(), b = Card(), c = Card()
+        var undo = CardUndo<Card>()
+        XCTAssertEqual(undo.add([a], live: false).count, 1)
+        let both = undo.add([b], live: true)            // ⌫ again while "Deleted · Undo" shows
+        XCTAssertTrue(both.count == 2 && both[0] === a && both[1] === b)
+        XCTAssertEqual(undo.add([b], live: true).count, 2, "the same card twice is one card")
+        let back = undo.take()
+        XCTAssertTrue(back.count == 2 && back[0] === a && back[1] === b, "Undo brings back both, not only the first")
+        XCTAssertTrue(undo.take().isEmpty, "once")
+        _ = undo.add([a], live: false)
+        let fresh = undo.add([c], live: false)          // the earlier Undo had gone: they stay deleted
+        XCTAssertTrue(fresh.count == 1 && fresh[0] === c)
     }
 
     func testDeletedFilesOutlastTheUndo() {
