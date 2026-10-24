@@ -58,7 +58,8 @@ enum MainMenu {
                   item(T("main.place.progress"), #selector(MainWindowController.mGo(_:)), "2", obj: "progress"),
                   item(T("project.inbox"), #selector(MainWindowController.mGo(_:)), "3", obj: "unassigned"),
                   item(T("main.place.all"), #selector(MainWindowController.mGo(_:)), "4", obj: "all"),
-                  item(T("dictation.history.sidebar"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option])]
+                  item(T("dictation.history.sidebar"), #selector(MainWindowController.mDictationHistory), "d", [.command, .option]),
+                  item(T("dictation.lab.menu"), #selector(MainWindowController.mDictationLab), "l", [.command, .option])]
         for (k, p) in c.model.projects.prefix(5).enumerated() where p.registered {
             go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
         }
@@ -141,6 +142,7 @@ extension MainWindowController {
     @objc func mGoProject(_ i: NSMenuItem) { (i.representedObject as? String).map { reveal(project: $0) } }
     @objc func mShortcuts() { showShortcuts() }
     @objc func mDictationHistory() { showDictation() }
+    @objc func mDictationLab() { showDictationLab() }
     @objc func mHelp() { NSWorkspace.shared.open(URL(string: "https://github.com/AGIHunt/blurt")!) }
 }
 
@@ -163,7 +165,7 @@ enum ShortcutsSheet {
             ("W", StateMenu.title("wontfix")), ("X  ⌫", StateMenu.title("discard")),
             ("E", T("main.menu.rename")), ("1 2 3 4", T("main.keys.kind")), ("⌘Z  ⇧⌘Z", T("main.keys.undo")),
             (T("main.keys.space"), "Quick Look"),
-            ("⌘1 … ⌘4", T("main.keys.places")), ("⌥⌘D", T("dictation.history.sidebar")), ("⌘5 … ⌘9", T("main.keys.projects")),
+            ("⌘1 … ⌘4", T("main.keys.places")), ("⌥⌘D", T("dictation.history.sidebar")), ("⌥⌘L", T("dictation.lab.menu")), ("⌘5 … ⌘9", T("main.keys.projects")),
             ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")), ("?", T("main.keys.this")),
         ]
         let grid = NSGridView(views: rows.map { k, v in

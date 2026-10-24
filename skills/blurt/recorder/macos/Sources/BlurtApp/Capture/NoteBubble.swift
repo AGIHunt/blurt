@@ -74,6 +74,8 @@ final class NoteVoice {
     static var testStartDelay: Double { Double(ProcessInfo.processInfo.environment["BLURT_TEST_MIC_START_MS"] ?? "").map { $0 / 1000 } ?? 0 }
     /// dictation: prefer the Mac's own microphone (DictationMicChoice decides; MicEngine sets the device)
     var builtInMic = false
+    /// a specific input device (the Dictation Lab's microphone picker); nil = the default (or the built-in one)
+    var device: AudioDeviceID?
 
     init(url: URL) { self.url = url }
 
@@ -130,9 +132,10 @@ final class NoteVoice {
     private func startMic(_ ready: @escaping (Bool) -> Void) {
         running = true          // buffers may arrive before ready() runs
         let builtIn = builtInMic
+        let device = self.device
         MicEngine.shared.queue.async { [weak self] in
             guard let self = self else { return }
-            let e = MicEngine.shared.take(builtIn: builtIn)
+            let e = device.map { MicEngine.shared.make(device: $0) } ?? MicEngine.shared.take(builtIn: builtIn)
             let input = e.inputNode
             let inFmt = input.outputFormat(forBus: 0)
             guard inFmt.sampleRate > 0, let conv = AVAudioConverter(from: inFmt, to: self.fmt) else {
@@ -278,10 +281,28 @@ final class MicEngine {
 
     /// On `queue`: a stopped engine goes back to being the spare (the next dictation reuses it).
     func giveBack(_ e: AVAudioEngine, builtIn: Bool) {
+        // an engine made for a picked device (the Dictation Lab) is never the spare
+        if custom.remove(ObjectIdentifier(e)) != nil { return }
         guard spare == nil, !DictationInsert.testMode else { return }
         e.prepare()
         spare = e
         spareBuiltIn = builtIn
+    }
+
+    private var custom = Set<ObjectIdentifier>()
+
+    /// On `queue`: an engine on this input device (the Dictation Lab's microphone picker), made for one take.
+    func make(device: AudioDeviceID) -> AVAudioEngine {
+        let e = AVAudioEngine()
+        if let unit = e.inputNode.audioUnit {
+            var id = device
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &id,
+                                 UInt32(MemoryLayout<AudioDeviceID>.size))
+        }
+        _ = e.inputNode.outputFormat(forBus: 0)
+        e.prepare()
+        custom.insert(ObjectIdentifier(e))
+        return e
     }
 
     private func make(builtIn: Bool) -> AVAudioEngine {
@@ -326,6 +347,28 @@ enum AudioDevices {
 
     /// The default input is a Bluetooth headset (AirPods & co.).
     static var defaultInputIsBluetooth: Bool { defaultInput.map(isBluetooth) ?? false }
+
+    /// Every input device and its name (the Dictation Lab's microphone picker). Read-only: nothing is opened.
+    static func inputs() -> [(id: AudioDeviceID, name: String)] {
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal,
+                                              mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size) == noErr else { return [] }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.compactMap { id in
+            var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput,
+                                               mElement: kAudioObjectPropertyElementMain)
+            var s: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &a, 0, nil, &s) == noErr, s > 0 else { return nil }
+            var na = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal,
+                                                mElement: kAudioObjectPropertyElementMain)
+            var name: Unmanaged<CFString>?
+            var ns = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            guard AudioObjectGetPropertyData(id, &na, 0, nil, &ns, &name) == noErr, let n = name?.takeRetainedValue() else { return nil }
+            return (id, n as String)
+        }
+    }
 
     /// The Mac's own microphone, if it has one (a Mac mini or Studio doesn't).
     static func builtInInput() -> AudioDeviceID? {

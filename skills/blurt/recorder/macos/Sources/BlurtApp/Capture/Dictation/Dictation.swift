@@ -107,6 +107,8 @@ final class Dictation {
     static var startSound: Bool { settings["start_sound"] as? Bool ?? false }
     static var retentionDays: Int { settings["retention_days"] as? Int ?? 30 }
     static var keepAudio: Bool { settings["keep_audio"] as? Bool ?? false }
+    /// the Dictation Lab: keep the audio of this many more dictations (collecting cases from real use)
+    static var labKeepNext: Int { (settings["lab_keep_next"] as? NSNumber)?.intValue ?? 0 }
     /// read the text around the cursor for polish (Accessibility, read-only)
     static var contextOn: Bool { settings["context"] as? Bool ?? true }
     /// watch the field after typing and learn the user's fixes
@@ -335,8 +337,27 @@ final class Dictation {
 
     // MARK: events (the tap, or the test hook)
 
+    /// The Dictation Lab while it is in front: the key records a lab take there instead of typing into an app.
+    weak var lab: DictationLabSink?
+
+    /// The lab stopped its take itself (its Stop button): the key's next press starts again.
+    func labReset() { trigger.reset(active: false) }
+
     func handle(_ e: DictationTrigger.Event) {
         guard Dictation.enabled else { return }
+        if let l = lab, phase == .idle, voice == nil, MainActor.assumeIsolated({ l.wantsKey }) {
+            for out in trigger.handle(e) {
+                switch out {
+                case .start: MainActor.assumeIsolated { l.keyStart() }
+                case .stop: MainActor.assumeIsolated { l.keyStop() }
+                case .cancel: MainActor.assumeIsolated { l.keyCancel() }
+                case .arm: warm()
+                case .send: break
+                }
+            }
+            scheduleHoldTick()
+            return
+        }
         for out in trigger.handle(e) {
             switch out {
             case .arm: arm()
@@ -374,7 +395,7 @@ final class Dictation {
     /// Key went down alone: get the models loaded while the user starts talking. A server that isn't running is
     /// started offline first (no package index lookup: `uv run` checking PyPI after its cache expired took 13 s here,
     /// which is how a cold polish server missed a 19 s dictation); online only if that fails.
-    private func warm() {
+    func warm() {
         VoiceInput.warmSpeechModel(dictation: true)
         guard Dictation.polishOn, polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
@@ -718,7 +739,11 @@ final class Dictation {
                     emit(["event": "dictation_send", "result": "skipped", "why": "not_pasted", "after": "paste"])
                 }
             }
-            let keep = Dictation.keepAudio
+            // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
+            // audio, never the text around the cursor
+            let labKeep = Dictation.labKeepNext > 0
+            if labKeep { Dictation.set("lab_keep_next", Dictation.labKeepNext - 1) }
+            let keep = Dictation.keepAudio || labKeep
             if !keep { try? FileManager.default.removeItem(at: wav) }
             let e = DictationEntry(id: id, time: started, app: app?.localizedName, bundle: app?.bundleIdentifier, duration: duration,
                                    raw: r.asrText, polished: r.polished, text: text,
@@ -726,7 +751,7 @@ final class Dictation {
                                    insert: result.rawValue, audio: keep ? "audio/\(wav.lastPathComponent)" : nil,
                                    asrModel: r.asrModel, language: r.language,
                                    termsApplied: terms, contextUsed: r.contextUsed,
-                                   context: keep && r.contextUsed ? context?.debugText : nil,
+                                   context: Dictation.keepAudio && r.contextUsed ? context?.debugText : nil,
                                    timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                    repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             DictationHistory.shared.append(e)
