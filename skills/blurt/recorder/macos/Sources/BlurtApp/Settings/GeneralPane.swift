@@ -1,8 +1,8 @@
 // Settings → General: projects (the folders opened in Blurt, and which one new captures go to), open at login,
 // language, Spotlight; recording (what happens after one, countdown, system audio, collecting macOS screenshots, and
-// what dragging a card out does: copy its note too — record.drag_copy_note, on — and burn the note under the dragged
-// picture — record.drag_caption, off; WeChat / QQ get picture and note in two pastes — record.smart_paste, on:
-// Capture/SmartPaste.swift);
+// what dragging a card out does: copy its note too where it didn't go in — record.drag_copy_note, on — also attach the
+// note as a .md file — record.drag_note_file, off — and burn the note under the dragged picture — record.drag_caption,
+// off; chat apps get picture and note in two pastes — record.smart_paste, on: Capture/SmartPaste.swift);
 // about (version, help, updates). The menu-bar menu stays short because these live here.
 import AppKit
 import ServiceManagement
@@ -21,6 +21,7 @@ final class GeneralModel: ObservableObject {
     @Published var systemAudio = false
     @Published var collect = false
     @Published var dragCopyNote = true
+    @Published var dragNoteFile = false
     @Published var dragCaption = false
     @Published var smartPaste = true
     @Published var dictationLab = DictationLabModel.enabled
@@ -42,6 +43,7 @@ final class GeneralModel: ObservableObject {
         systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         collect = snapper.collecting
         dragCopyNote = CardExport.copyNoteAfterDrag
+        dragNoteFile = CardExport.attachNoteFile
         dragCaption = CardExport.burnCaption
         smartPaste = SmartPaste.enabled
         spotlight = Config.shared["spotlight"] as? Bool ?? true
@@ -89,6 +91,7 @@ final class GeneralModel: ObservableObject {
         collect = snapper.collecting
     }
     func setDragCopyNote(_ v: Bool) { setRecordConfig("drag_copy_note", v); dragCopyNote = v }
+    func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
     func setDragCaption(_ v: Bool) { setRecordConfig("drag_caption", v); dragCaption = v }
     func setSmartPaste(_ v: Bool) {
         setRecordConfig("smart_paste", v)
@@ -172,12 +175,14 @@ struct GeneralPane: View {
                 Toggle(T("settings.general.system_audio"), isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
                 Toggle(T("settings.general.collect"), isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
                 Hint(T("settings.general.collect.hint"))
-                Toggle(T("settings.general.drag_copy_note"), isOn: Binding(get: { m.dragCopyNote }, set: { m.setDragCopyNote($0) }))
-                Hint(T("settings.general.drag_copy_note.hint"))
-                Toggle(T("settings.general.drag_caption"), isOn: Binding(get: { m.dragCaption }, set: { m.setDragCaption($0) }))
-                Hint(T("settings.general.drag_caption.hint"))
                 Toggle(T("settings.general.smart_paste"), isOn: Binding(get: { m.smartPaste }, set: { m.setSmartPaste($0) }))
                 Hint(T("settings.general.smart_paste.hint"))
+                Toggle(T("settings.general.drag_copy_note"), isOn: Binding(get: { m.dragCopyNote }, set: { m.setDragCopyNote($0) }))
+                Hint(T("settings.general.drag_copy_note.hint"))
+                Toggle(T("settings.general.drag_note_file"), isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
+                Hint(T("settings.general.drag_note_file.hint"))
+                Toggle(T("settings.general.drag_caption"), isOn: Binding(get: { m.dragCaption }, set: { m.setDragCaption($0) }))
+                Hint(T("settings.general.drag_caption.hint"))
                 Toggle(T("settings.general.dictation_lab"), isOn: Binding(get: { m.dictationLab }, set: { m.setDictationLab($0) }))
                 Hint(T("settings.general.dictation_lab.hint"))
             } header: { Text(T("settings.general.recording")) }

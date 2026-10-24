@@ -1,41 +1,65 @@
-// Where a shot card is being dropped, and what that kind of app needs besides the rich item (v0.8.2, v0.8.3).
+// Where a shot card is being dropped, and what that kind of app gets (v0.8.2–v0.8.4; one rule since v0.8.5).
 //
-// v0.8.3: a card's first item is the same rich item everywhere but a terminal — its picture's file and bytes, the
-// picture and note as HTML and RTFD, the note as one line of text (CardPasteboard) — the way a WeChat or Notes copy of a
-// picture-and-text message carries both. What still depends on the app is the second item, and that is why the app
-// under the pointer still picks the payload (HangingCards / CardDrag.swift):
+// v0.8.5 — the report: a card (picture + note) dragged into DeepSeek's chat box in a browser arrived as the picture
+// and a "-备注.md" file. A web page's composer (DeepSeek, ChatGPT, Claude…) and an Electron one (Claude desktop,
+// Feishu, Slack…) treat a drop with files as uploads and ignore the text, which is why the .md existed; but a file
+// is not what anyone wants in a chat. The rule now is the one WeChat got in v0.8.4: **the picture, then the text**.
+// The drop carries the picture as its only file, and Blurt pastes the note into the same composer right after
+// (CardSmartPaste.swift: DragFollowUp, FollowUpFocus). A click-copy's ⌘V does the same (smart paste: picture, then
+// note). The .md is an option (record.drag_note_file, off) — and still what a terminal gets.
 //
-//   class      apps                                                  item 1                    item 2
-//   web        Claude desktop, Chrome & Chromium browsers, Safari,   rich (file, PNG, HTML,    the note's .md file
-//              Firefox, Slack, VS Code, Cursor, Notion, Discord,     RTFD, RTF, text)
-//              Feishu / Lark, Obsidian, Figma… any Electron app
-//   text       WeChat, QQ, Messages, Notes, TextEdit, Mail,          rich                      — (an inert item)
-//              Telegram, WhatsApp, Pages, Keynote, Stickies
-//   terminal   Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,      the picture's file only   the .md file
-//              Alacritty, Hyper, Tabby
-//   finder     the Finder (and the Desktop)                          rich                      the .md file
-//   unknown    anything else                                         rich                      the .md file
+//   class      apps                                          drop                              ⌘V after a click-copy
+//   rich       Notes, TextEdit, Mail, Pages, Keynote,        one rich item: picture + note     one rich paste (as it
+//              Stickies, Messages, Telegram (macOS),         (RTFD) — nothing else             was): picture + note
+//              WhatsApp
+//   chat       browsers, Electron apps (Claude, Feishu,      the picture alone (its file);     picture, then note (a
+//              Slack, VS Code, Notion…), WeChat, QQ, and     then Blurt pastes the note in     sequence of pastes;
+//              every app no table names                      after it; + the .md file if       several cards: image,
+//                                                            record.drag_note_file is on       note, image, note…)
+//   terminal   Terminal, iTerm2, Ghostty, Warp, kitty,       the picture's path and the        untouched
+//              WezTerm, Alacritty, Hyper, Tabby              .md's path (Claude Code / Codex
+//                                                            read it) — never the note's text
+//   finder     the Finder (and the Desktop)                  the picture file (+ the .md if    untouched
+//                                                            record.drag_note_file is on)
 //
-// Why, measured with our own stand-ins (a rich NSTextView, a WKWebView contenteditable, pads that log what they get):
-//  • a rich NSTextView reads RTFD before anything else (then RTF, HTML, file names, plain text), on a drop as on a
-//    paste: from the rich item it inserts the picture and the note, and it adds a later item's text (the note twice)
-//    but not a later item's file. The v0.8.2 report — a picture plus a .md attachment in WeChat — came from a payload
-//    without RTFD, so a text app still never gets the .md.
-//  • WeChat and QQ (v0.8.4, SingleFlavourApps in CardSmartPaste.swift) stay in the text row for the drag itself, but
-//    their composer takes one thing per drop — the picture (WeChat 4 is Qt: no RTFD, and HTML loses to the image) —
-//    so the app types the note in after the drop, and DragReceipt counts the drop as "picture only" when it couldn't.
-//  • a web app attaches the files and drops the text and the HTML when there are files (WebKit here; Chromium measured
-//    in v0.8.1): for the note to arrive it has to be a file, the .md.
-//  • a terminal types the file paths it gets; with no text on the pasteboard it can never type the note.
-//  • unknown: the rich item and the .md reach the note in every stand-in (RTFD where a text view reads, the .md where
-//    files win). At worst an extra .md.
-// Which app: Electron apps are found by their bundle (Contents/Frameworks/Electron Framework.framework) when no table
-// names them; the tables win (QQ is in the text row by request even though recent builds ship Electron).
+// Why rich apps keep the one rich item: an AppKit text view reads RTFD before anything else, on a drop as on a paste,
+// and inserts picture and note at once — no Accessibility, no timing, nothing to go wrong (measured with our
+// NSTextView stand-in since v0.8.3). Two steps there would only add a way to fail.
+// Why chat gets the picture alone, without the HTML / RTFD / text it used to carry: a composer that took the HTML
+// (a plain contenteditable, a Qt view's text) would then get the note twice; with the picture alone every chat
+// target ends up the same — the picture, then exactly one note. An app we don't know is a chat app here; the note is
+// pasted after the drop only where Accessibility confirms an editable text focus (FollowUpFocus: an image editor
+// would turn a paste into a text layer), else it goes to the clipboard like everywhere the follow-up can't run.
+//
+// Which app: the tables by bundle id. ComposerKind (how the follow-up puts the caret after the picture) is the only
+// place the engine matters: WeChat / QQ are Qt (⌘↓: their dropped picture is left selected, and Accessibility can't
+// say so); browsers and Electron apps are web content (found by their bundle, Contents/Frameworks/Electron
+// Framework.framework, when no table names them): the selection decides; anything else is a native app.
 
+import CoreGraphics
 import Foundation
 
 public enum DropClass: String, CaseIterable {
-    case web, text, terminal, finder, unknown
+    case rich, chat, terminal, finder
+
+    /// The names older test scripts used: web / unknown → chat, text → rich.
+    public init?(legacy s: String) {
+        switch s {
+        case "web", "unknown": self = .chat
+        case "text": self = .rich
+        default: self.init(rawValue: s)
+        }
+    }
+}
+
+/// How the note's paste after a drop finds its place (FollowUpFocus): what kind of composer it is.
+public enum ComposerKind: String, CaseIterable {
+    /// a browser or an Electron app: web content
+    case web
+    /// WeChat, QQ (Qt): the dropped picture stays selected; ⌘↓ first
+    case qt
+    /// an AppKit / UIKit app
+    case native
 }
 
 public enum DropTargets {
@@ -47,14 +71,13 @@ public enum DropTargets {
         "io.alacritty", "co.zeit.hyper", "org.tabby",
     ]
 
-    /// Apps whose drop target takes a picture and text together (AppKit / UIKit text views, chat composers).
-    public static let textApps: Set<String> = [
-        "com.tencent.xinWeChat", "com.tencent.qq", "com.apple.MobileSMS", "com.apple.Notes", "com.apple.TextEdit",
-        "com.apple.mail", "ru.keepcoder.Telegram", "org.telegram.desktop", "net.whatsapp.WhatsApp",
-        "com.apple.iWork.Pages", "com.apple.iWork.Keynote", "com.apple.Stickies",
+    /// Rich text views that take a picture and its text together from one RTFD item.
+    public static let richApps: Set<String> = [
+        "com.apple.MobileSMS", "com.apple.Notes", "com.apple.TextEdit", "com.apple.mail", "ru.keepcoder.Telegram",
+        "net.whatsapp.WhatsApp", "com.apple.iWork.Pages", "com.apple.iWork.Keynote", "com.apple.Stickies",
     ]
 
-    /// Web engines and Electron apps that keep the files and drop loose text (the bundle check finds other Electron apps).
+    /// Browsers and Electron apps (the bundle check finds other Electron apps): web content, for the caret only.
     public static let webApps: Set<String> = [
         "com.anthropic.claudefordesktop",
         "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
@@ -69,16 +92,21 @@ public enum DropTargets {
         "com.electron.feishu", "com.bytedance.feishu", "md.obsidian", "com.figma.Desktop", "com.linear",
     ]
 
-    /// The class of the app `bundleID` (its bundle at `appURL`, for the Electron check).
-    public static func classify(bundleID: String?, appURL: URL?, fileManager: FileManager = .default) -> DropClass {
-        if let id = bundleID {
-            if finder.contains(id) { return .finder }
-            if terminals.contains(id) { return .terminal }
-            if textApps.contains(id) { return .text }
-            if webApps.contains(id) { return .web }
-        }
+    /// The class of the app `bundleID` — the tables only (no file system: the smart-paste tap asks this too).
+    public static func classify(bundleID: String?) -> DropClass {
+        guard let id = bundleID else { return .chat }
+        if finder.contains(id) { return .finder }
+        if terminals.contains(id) { return .terminal }
+        if richApps.contains(id) { return .rich }
+        return .chat
+    }
+
+    /// What kind of composer the app `bundleID` (its bundle at `appURL`, for the Electron check) has.
+    public static func composer(bundleID: String?, appURL: URL?, fileManager: FileManager = .default) -> ComposerKind {
+        if SingleFlavourApps.contains(bundleID) { return .qt }
+        if let id = bundleID, webApps.contains(id) { return .web }
         if let u = appURL, isElectron(u, fileManager: fileManager) { return .web }
-        return .unknown
+        return .native
     }
 
     /// An Electron app: its bundle carries Electron's framework.
@@ -87,39 +115,71 @@ public enum DropTargets {
     }
 }
 
-/// What happens after a shot card was dropped into another app (Snapper.takeOut): whether the note also goes on the
-/// clipboard, and what the island says.
+/// What happens after a shot card was dropped into another app (Snapper.takeOut): what went in, whether the note
+/// also goes on the clipboard (the safety net, record.drag_copy_note), and what the island says.
 public enum DragReceipt {
-    /// The safety net (record.drag_copy_note): the note goes on the clipboard only where the app may have kept just the
-    /// picture — a web app, the Finder, an app we don't know, or a drop we aren't sure about (it landed in a different
-    /// kind of app than the pasteboard was last written for). A text app took the picture and the note from the rich
-    /// item, a terminal both paths: the clipboard is left alone (v0.8.3; it used to be overwritten quietly).
-    /// `pictureOnly`: it landed in a single-flavour app (WeChat, QQ: SingleFlavourApps) and the note wasn't typed in
-    /// after the picture (DragFollowUp: off, no Accessibility, or it couldn't) — the picture alone went in.
-    public static func copiesNote(delivered: DropClass?, pictureOnly: Bool = false) -> Bool {
-        if pictureOnly { return true }
+    public enum Outcome: String, Equatable {
+        /// picture and note: a rich app took both from the rich item, or a chat app got the note pasted after the picture
+        case both
+        /// the picture went in, the note didn't: a chat app where the follow-up couldn't run (or the app never read
+        /// the note), the Finder without the .md
+        case pictureOnly = "picture_only"
+        /// a terminal: both paths
+        case paths
+        /// the Finder with the .md (record.drag_note_file)
+        case files
+        /// not sure: it landed in another kind of app than the pasteboard was last written for
+        case unsure
+    }
+
+    /// `delivered`: the class whose payload the app got (nil: not sure); `notePasted`: the follow-up pasted the note
+    /// and the app read it; `noteFile`: the .md went with the drag.
+    public static func outcome(delivered: DropClass?, notePasted: Bool, noteFile: Bool) -> Outcome {
         switch delivered {
-        case .text?, .terminal?: return false
-        case .web?, .finder?, .unknown?, nil: return true
+        case .rich?: return .both
+        case .chat?: return notePasted ? .both : .pictureOnly
+        case .terminal?: return .paths
+        case .finder?: return noteFile ? .files : .pictureOnly
+        case nil: return .unsure
         }
     }
 
-    /// The Capture table key. `delivered`: the class whose payload the app got (nil: not sure); `hasNote`: a shot with
-    /// a note; `noteCopied`: the safety net put the note on the clipboard.
-    ///  • text: the picture and the note went in — nothing to paste;
-    ///  • terminal: both paths went in — no ⌘V either (that would paste the note at a shell prompt);
-    ///  • web / finder: the picture and the note's file — ⌘V pastes the note if the app kept only the picture;
-    ///  • an app we don't know (it may have read the rich item, or the files) or not sure: "note copied, ⌘V to paste".
-    ///  • a single-flavour app (WeChat, QQ): the note typed in after the picture → "picture and note"; not typed in →
-    ///    "picture" (and "note copied, ⌘V to paste" when the safety net copied it).
-    public static func toastKey(delivered: DropClass?, hasNote: Bool, noteCopied: Bool, pictureOnly: Bool = false) -> String {
+    /// The safety net: the note goes on the clipboard only where it didn't go in (picture only, or not sure). A rich
+    /// app, a chat app that got the note pasted, a terminal (both paths; ⌘V would paste at a prompt) and the Finder
+    /// with the .md leave the clipboard alone.
+    public static func copiesNote(_ o: Outcome) -> Bool { o == .pictureOnly || o == .unsure }
+
+    /// The Capture table key. `hasNote`: a shot with a note; `noteCopied`: the safety net put it on the clipboard;
+    /// `noteFile`: the .md went too.
+    ///  • both: "Dragged out · picture and note" (nothing to paste) · paths: "… picture and note paths" (no ⌘V)
+    ///  • files: "… picture and note file" (the Finder with the .md)
+    ///  • picture only: "… picture · note copied, ⌘V to paste" ("… picture and note file · …" when the .md went too)
+    ///  • not sure: "Dragged out · note copied, ⌘V to paste"
+    public static func toastKey(_ o: Outcome, hasNote: Bool, noteCopied: Bool, noteFile: Bool = false) -> String {
         guard hasNote else { return "capture.taken_out" }
-        if pictureOnly { return noteCopied ? "capture.taken_out_picture_note" : "capture.taken_out_picture" }
-        switch delivered {
-        case .text?: return "capture.taken_out_text"
-        case .terminal?: return "capture.taken_out_paths"
-        case .web?, .finder?: return noteCopied ? "capture.taken_out_files_note" : "capture.taken_out_files"
-        case .unknown?, nil: return noteCopied ? "capture.taken_out_note" : "capture.taken_out"
+        switch o {
+        case .both: return "capture.taken_out_text"
+        case .paths: return "capture.taken_out_paths"
+        case .files: return "capture.taken_out_files"
+        case .pictureOnly:
+            if noteFile { return noteCopied ? "capture.taken_out_files_note" : "capture.taken_out_files" }
+            return noteCopied ? "capture.taken_out_picture_note" : "capture.taken_out_picture"
+        case .unsure: return noteCopied ? "capture.taken_out_note" : "capture.taken_out"
         }
+    }
+}
+
+/// The composer that received a drop, among the editable text areas of the window it landed on (Accessibility, in
+/// screen coordinates): the one under the drop point, else the nearest — a chat page's whole area is often its drop
+/// zone, and its one composer is at the bottom.
+public enum ComposerPick {
+    public static func nearest(_ frames: [CGRect], to p: CGPoint) -> Int? {
+        var best: (i: Int, d: CGFloat)?
+        for (i, r) in frames.enumerated() where r.width > 1 && r.height > 1 {
+            let dx = max(r.minX - p.x, 0, p.x - r.maxX), dy = max(r.minY - p.y, 0, p.y - r.maxY)
+            let d = hypot(dx, dy)
+            if best == nil || d < best!.d { best = (i, d) }
+        }
+        return best?.i
     }
 }

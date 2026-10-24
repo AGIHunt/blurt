@@ -1,9 +1,10 @@
 // One card dragged out of the app — a hanging card, or a picture in Recently Taken (v0.8.2). What is on the drag
 // pasteboard follows the app under the pointer: BlurtCore DropTargets says which kind of app it is, CardPasteboard
 // .drag(for:) what that kind gets (the table is in CardDropTarget.swift; the user's view of it in HangingCards' header).
-// v0.8.3: the first item is the same rich item (picture file + PNG + HTML + RTFD + RTF + the note as one line) for
-// every kind of app but a terminal, so moving between a web app, the Finder and an unknown app rewrites nothing; only
-// the second item (the .md, or an inert item for a text app) and a terminal's paths-only first item still need it.
+// v0.8.5: a rich app (Notes, TextEdit, Mail…) gets the rich item (picture file + PNG + HTML + RTFD + RTF + the note as
+// one line); every chat app (browsers, Electron apps, WeChat, QQ, anything else) and the Finder the picture alone —
+// the note is pasted after the drop (Captures.takeOut → DragNoteFollowUp); a terminal both paths. The .md rides as the
+// second item only for a terminal, or with record.drag_note_file on.
 //
 // How, and why this way (measured with our own stand-in apps — an NSTextView, a WKWebView page, logging pads):
 //  • The items are lazily provided (NSPasteboardItemDataProvider): when an app asks for a type, we look at where the
@@ -19,7 +20,8 @@
 //    such read and skips it).
 //  • The number of items is fixed when the drag starts (the badge says 2); what item 2 is depends on the target.
 //  • A race is still possible (an app reads before the rewrite reaches it); the drop's end compares the layout for
-//    the app it landed in with the one last written, and the toast only claims what it knows (DragReceipt).
+//    the app it landed in with the one last written: only a drop that got the chat layout gets the note pasted after
+//    it (a rich layout read by mistake already had the note in it), and the toast only claims what it knows.
 // Tests (BLURT_TEST_COMMANDS=1): `droptarget map PID=BUNDLE,…` gives our stand-in processes the bundle ids of the apps
 // they stand in for (the decision still goes through the window owner's pid); BLURT_TEST_DROP_TARGET=BUNDLE (or
 // `droptarget fixed BUNDLE`) does it for every window that isn't ours.
@@ -27,11 +29,12 @@
 import AppKit
 import BlurtCore
 
-/// The app a drag is over: who owns the window under the pointer, and its class.
+/// The app a drag is over: who owns the window under the pointer, its class, and its kind of composer (the caret).
 struct DropTarget: Equatable {
     let pid: pid_t
     let bundleID: String?
     let cls: DropClass
+    let kind: ComposerKind
 }
 
 enum DropProbe {
@@ -50,12 +53,13 @@ enum DropProbe {
 
     static func target(pid: pid_t) -> DropTarget {
         if testMode, let id = testMap[pid] ?? testFixed {
-            return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id, appURL: nil))
+            return DropTarget(pid: pid, bundleID: id, cls: DropTargets.classify(bundleID: id),
+                              kind: DropTargets.composer(bundleID: id, appURL: nil))
         }
         if let t = cache[pid] { return t }
         let app = NSRunningApplication(processIdentifier: pid)
-        let t = DropTarget(pid: pid, bundleID: app?.bundleIdentifier,
-                           cls: DropTargets.classify(bundleID: app?.bundleIdentifier, appURL: app?.bundleURL))
+        let t = DropTarget(pid: pid, bundleID: app?.bundleIdentifier, cls: DropTargets.classify(bundleID: app?.bundleIdentifier),
+                           kind: DropTargets.composer(bundleID: app?.bundleIdentifier, appURL: app?.bundleURL))
         cache[pid] = t
         return t
     }
@@ -104,6 +108,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     /// the rich flavours (HTML, RTFD, RTF), built the first time an app asks for one
     let rich: CardRich
     let tag: String?
+    /// record.drag_note_file when the drag started: the .md rides along into chat apps and the Finder too
+    let attachNote = CardExport.attachNoteFile
     /// the class the drag pasteboard holds now
     private(set) var written: DropClass
     private(set) var target: DropTarget?
@@ -120,12 +126,12 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         rich = CardRich([part])
         tag = CardExport.tag(s)
         target = DropProbe.target()
-        written = target?.cls ?? .unknown
+        written = target?.cls ?? .chat
         super.init()
         report("card_drag_target")
     }
 
-    func layout(_ c: DropClass) -> [CardPasteboard.Item] { CardPasteboard.drag(for: c, card: card) }
+    func layout(_ c: DropClass) -> [CardPasteboard.Item] { CardPasteboard.drag(for: c, card: card, attachNote: attachNote) }
 
     /// The items for `written`, every type lazily provided; at least one (the capture's tag) so a drag can start.
     func pasteboardItems() -> [NSPasteboardItem] {
@@ -159,7 +165,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         guard let t = DropProbe.target(at: p) else { return }     // over our own windows: as it was
         let changedApp = t.pid != target?.pid
         target = t
-        // the same layout for another class (text ↔ web differ only in the second item; terminal in both): no rewrite
+        // the same layout for another class (chat ↔ finder): no rewrite
         guard layout(t.cls) != layout(written), let pb = session?.draggingPasteboard else {
             if t.cls != written { written = t.cls }
             if changedApp { report("card_drag_target") }
@@ -172,14 +178,18 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     }
 
     /// The drag ended at `p` over another app: the class of what it got, if we know it (nil: it read the pasteboard
-    /// written for another kind of app).
+    /// written for another kind of app). `noteFile`: the .md was among it.
     func delivered(at p: NSPoint) -> DropClass? {
         let t = DropProbe.target(at: p)
         let got: DropClass? = t.flatMap { layout($0.cls) == layout(written) ? $0.cls : nil }
         emit(["event": "card_drag_end", "n": shot.n, "bundle": t?.bundleID ?? NSNull(), "class": t?.cls.rawValue ?? NSNull(),
-              "written": written.rawValue, "delivered": got?.rawValue ?? NSNull()])
+              "kind": t?.kind.rawValue ?? NSNull(), "written": written.rawValue, "delivered": got?.rawValue ?? NSNull(),
+              "note_file": got.map(noteFile(_:)) ?? false])
         return got
     }
+
+    /// The .md is in the layout for `c`.
+    func noteFile(_ c: DropClass) -> Bool { card.noteFile.map { f in layout(c).contains { $0.file == f } } ?? false }
 
     private func report(_ event: String, _ extra: [String: Any] = [:]) {
         var o: [String: Any] = ["event": event, "n": shot.n, "pid": Int(target?.pid ?? 0), "bundle": target?.bundleID ?? NSNull(),

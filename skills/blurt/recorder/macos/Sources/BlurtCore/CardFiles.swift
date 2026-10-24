@@ -1,17 +1,17 @@
 // What a shot card hands to other apps as files, and how long a card that was dragged out stays findable (v0.8.1).
 //
-// The report: a snap card (picture + note) dragged into Claude — the desktop app, Chromium/Electron — showed "2" on the
-// drag badge, but only the picture arrived. A web app's drop handler gets `dataTransfer.files` and a separate
-// `getData('text/plain')`; when there are files it attaches them and ignores the loose text. And the card had left its
-// thread, so the note was gone. Now the note can travel as a file too:
+// The report (v0.8.1): a snap card (picture + note) dragged into Claude — the desktop app, Chromium/Electron — showed
+// "2" on the drag badge, but only the picture arrived. A web app's drop handler gets `dataTransfer.files` and a
+// separate `getData('text/plain')`; when there are files it attaches them and ignores the loose text. The note then
+// travelled as a .md file next to the picture — until v0.8.5, when the note is pasted into the composer after the
+// picture instead (CardDropTarget.swift has the table) and the .md is an option (record.drag_note_file, off) and
+// what a terminal gets:
 //   • <stem>.png        the picture (inked if marked) — its note also in the PNG's own "Description" (an iTXt chunk:
 //                       UTF-8, what Preview / exiftool / an image pipeline read); never relied on, it just doesn't hurt.
 //   • <stem>-备注.md     the note and nothing else — line breaks kept, no heading, no image line (v0.8.2: the image line
 //                       was noise wherever the .md was opened; the picture travels next to it anyway).
 // stem = "<Screenshot>-HHMMSS" in the UI language ("截图-153012"), from when it was captured; one folder per capture,
-// so two captures in the same second never collide. CardPasteboard says which pasteboard item carries what: since
-// v0.8.3 one rich item — the pictures and notes as HTML and RTFD, like a WeChat or Notes copy of a picture-and-text
-// message — plus, for a drag, the .md only where the app needs it (CardDropTarget.swift).
+// so two captures in the same second never collide. CardPasteboard says which pasteboard item carries what.
 //
 // A card dragged out and taken by another app is "taken", not discarded: it leaves its thread but stays findable for
 // TakenCaptures.keepDays (the island's right-click "Recently Taken", the main window), then housekeeping trashes it.
@@ -131,17 +131,19 @@ public enum PNGText {
     }
 }
 
-/// Which pasteboard item carries what, for cards copied (a click, Copy All) or one card dragged out (v0.8.3: rich
-/// content, the way copying a picture-and-text message in WeChat or Notes does). Each item is one "thing" to the
-/// receiving app; the order is the order things arrive in.
+/// Which pasteboard item carries what, for cards copied (a click, Copy All) or one card dragged out. A copy is rich
+/// content (v0.8.3), the way copying a picture-and-text message in WeChat or Notes does; a drag is rich only into a
+/// rich app, the picture alone elsewhere (v0.8.5). Each item is one "thing" to the receiving app; the order is the
+/// order things arrive in.
 ///
 /// The rich flavours (CardRich in the app; the HTML here, CardPasteboard.html) carry every card of the payload, in
 /// order — the picture, then its note:
 ///   public.html            <img src="data:image/png;base64,…"> then <p>the note</p>: Chromium / Electron editors
 ///                          (Feishu / Lark, Claude, Slack, Notion…) and WebKit read HTML on paste and on drop
 ///   com.apple.flat-rtfd    the picture as an attachment, then the note: what an AppKit text view (Notes, TextEdit,
-///                          Mail) reads first. Not WeChat 4 (Qt: it takes the TIFF and nothing else — the note goes in
-///                          as a second paste there, CardSmartPaste.swift)
+///                          Mail) reads first. Not WeChat 4 (Qt: it takes the TIFF and nothing else), and a web
+///                          composer that sees a pasted image uploads it and drops the rest — so ⌘V in a chat app
+///                          pastes the picture and the note one after the other (CardSmartPaste.swift)
 ///   public.rtf             the notes alone (RTF has no pictures): what Chromium turns into HTML when there is none
 /// next to them the picture's bytes (PNG; a copy adds TIFF) and the notes as plain text.
 ///
@@ -183,26 +185,33 @@ public enum CardPasteboard {
         }
     }
 
-    /// One card dragged into an app of class `target` (DropTargets; the table is in CardDropTarget.swift). The rich
-    /// item first — the picture's file, its bytes, the rich text, the note as one line (CardTransfer.dragText) — then,
-    /// for a shot with a note, what that kind of app needs besides:
-    ///  • text (WeChat, Notes…): nothing — an inert item (the count is fixed when the drag starts): the text view
-    ///    takes picture and note from the RTFD, and no .md lands in a chat. (WeChat / QQ take just the picture; the
-    ///    app types the note in after the drop: CardSmartPaste.swift.)
-    ///  • web / finder / unknown: the note's .md file — a web app attaches the files and drops the text and the HTML
-    ///    when there are files, so the note has to be a file there.
-    ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell).
-    /// A voice card: its words (one line), nothing else, for every app.
-    public static func drag(for target: DropClass, card: Card) -> [Item] {
+    /// One card dragged into an app of class `target` (DropTargets; the table is in CardDropTarget.swift):
+    ///  • rich (Notes, TextEdit, Mail…): the rich item — the picture's file, its bytes, the rich text, the note as one
+    ///    line (CardTransfer.dragText) — and an inert second item: the text view takes picture and note from the RTFD.
+    ///  • chat (browsers, Electron apps, WeChat, QQ, any other app) and the Finder: the picture alone (its file and
+    ///    bytes) — no HTML, no RTFD, no text, so every composer ends up with the picture and nothing else; the note is
+    ///    pasted after the drop (CardSmartPaste.swift). Then the note's .md only with `attachNote`
+    ///    (record.drag_note_file), else an inert item.
+    ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell; Claude Code and
+    ///    Codex read the .md).
+    /// The number of items is fixed when the drag starts (the badge counts them), so a shot with a note always has two
+    /// — the second inert where it carries nothing. A voice card: its words (one line), nothing else, for every app.
+    public static func drag(for target: DropClass, card: Card, attachNote: Bool = false) -> [Item] {
         let text = CardTransfer.dragText(card.note)
         guard let img = card.image else { return text.map { [Item(text: $0, tag: true)] } ?? [] }
-        var items = [target == .terminal ? Item(file: img, tag: true) : Item(file: img, image: img, rich: true, text: text, tag: true)]
-        guard text != nil else { return items }
-        switch (target, card.noteFile) {
-        case (.text, _), (_, nil): items.append(Item(tag: true))     // (no .md: the note is in the first item)
-        case (_, let f?): items.append(Item(file: f))
+        let first: Item
+        switch target {
+        case .terminal: first = Item(file: img, tag: true)
+        case .chat, .finder: first = Item(file: img, image: img, tag: true)
+        case .rich: first = Item(file: img, image: img, rich: true, text: text, tag: true)
         }
-        return items
+        guard text != nil else { return [first] }
+        let md = card.noteFile.map { Item(file: $0) }
+        switch target {
+        case .terminal: return [first, md ?? Item(tag: true)]
+        case .chat, .finder: return [first, attachNote ? md ?? Item(tag: true) : Item(tag: true)]
+        case .rich: return [first, Item(tag: true)]
+        }
     }
 
     /// A copy (a click on a card, a ⌘-click selection, Copy All): one rich item with every card, in order — the first

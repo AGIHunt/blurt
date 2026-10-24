@@ -7,13 +7,17 @@
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
-//                             a drag into that kind of app carries (web text terminal finder unknown, or a bundle id)
+//                             a drag into that kind of app carries (rich chat terminal finder — or the old names web
+//                             text unknown — or a bundle id)
 //     takeout N [CLASS [PID]] as if card N had been dragged out and taken by that kind of app (the safety-net copy, the
-//                             toast; no CLASS: not sure which); PID: it landed in that process (a stand-in mapped to
-//                             WeChat / QQ gets the note typed in after the picture, through the test route)
-//     smartpaste key PID | state | set on|off   smart paste (Capture/SmartPaste.swift): a ⌘V with process PID in
-//                             front (its bundle from `droptarget map`); the armed copy; record.smart_paste. Each ⌘V the
-//                             sequence would post goes to PID as a dev.blurt.test.standin notification, never an event
+//                             toast; no CLASS: not sure which); PID: it landed in that process (a stand-in mapped to a
+//                             chat app gets the note pasted in after the picture, through the test route)
+//     smartpaste key PID | state | set on|off | notefile on|off   smart paste (Capture/SmartPaste.swift): a ⌘V with
+//                             process PID in front (its bundle from `droptarget map`); the armed copy;
+//                             record.smart_paste; record.drag_note_file. Each key the sequence would post goes to PID as
+//                             a dev.blurt.test.standin notification, never an event
+//     followup facts K=V,… | clear   what Accessibility would say after a drop (editable=1|0, selection=N,
+//                             window=same|other, secure=1): test builds read no Accessibility (DragNoteFollowUp)
 //     droptarget map PID=BUNDLE,… | fixed BUNDLE | clear   stand-in windows (by owner pid) as the apps they stand in
 //                             for, when a drag decides what to hand over (CardDrag.swift)
 //     taken list|show|hide|rows|expire|menu   Recently Taken: the captures ("taken" events), its panel, the panel's rows
@@ -65,7 +69,7 @@ extension App {
     }
 
     /// "web" / "text" / … or a bundle id (classified as a drag would)
-    func testDropClass(_ s: String) -> DropClass { DropClass(rawValue: s) ?? DropTargets.classify(bundleID: s, appURL: nil) }
+    func testDropClass(_ s: String) -> DropClass { DropClass(legacy: s) ?? DropTargets.classify(bundleID: s) }
 
     func testCommand(_ cmd: String) {
         let parts = cmd.split(separator: " ", maxSplits: 1).map(String.init)
@@ -130,7 +134,7 @@ extension App {
         case "carddrag":                                // carddrag N PASTEBOARD [CLASS|BUNDLE]: what dragging card N out carries
             let a = arg.split(separator: " ").map(String.init)
             if a.count >= 2, let n = Int(a[0]) {
-                let target = a.count > 2 ? testDropClass(a[2]) : .unknown
+                let target = a.count > 2 ? testDropClass(a[2]) : .chat
                 emit(["event": "card_drag", "n": n, "class": target.rawValue,
                       "types": hanging.testDrag(n: n, for: target, to: NSPasteboard(name: .init(a[1])))])
             }
@@ -139,10 +143,15 @@ extension App {
             if let n = Int(a.first ?? ""), let s = snapper.cards.last(where: { $0.n == n }) {
                 // takeout N CLASS PID: it landed in that (stand-in) process — WeChat / QQ then get the note typed in
                 let landed = a.count > 2 ? pid_t(a[2]).map { DropProbe.target(pid: $0) } : nil
-                snapper.takeOut(s, delivered: a.count > 1 ? testDropClass(a[1]) : nil, landed: landed)
+                let cls = a.count > 1 ? testDropClass(a[1]) : nil
+                let card = CardExport.card(s).0
+                let md = cls.map { c in CardPasteboard.drag(for: c, card: card, attachNote: CardExport.attachNoteFile)
+                    .contains { $0.file != nil && $0.file == card.noteFile } } ?? false
+                snapper.takeOut(s, delivered: cls, noteFile: md, landed: landed)
             }
         case "droptarget": DropProbe.testCommand(arg)
-        case "smartpaste": SmartPaste.shared.testCommand(arg)      // smartpaste key PID | state | set on|off
+        case "smartpaste": SmartPaste.shared.testCommand(arg)      // smartpaste key PID | state | set on|off | notefile on|off
+        case "followup": DragNoteFollowUp.testCommand(arg)         // followup facts K=V,… | clear
         case "clock":                                   // clock SECONDS: Recently Taken's clock, moved
             Snapper.clockOffset = Double(arg) ?? 0
             emit(["event": "clock", "offset": Snapper.clockOffset])
@@ -158,7 +167,7 @@ extension App {
             case "drag":                                // taken drag N PASTEBOARD: what dragging it out again carries
                 if let s = find(1), a.count > 2 {
                     let pb = NSPasteboard(name: .init(a[2]))
-                    let items = CardExport.dragItems(s, for: a.count > 3 ? testDropClass(a[3]) : .unknown)
+                    let items = CardExport.dragItems(s, for: a.count > 3 ? testDropClass(a[3]) : .chat)
                     pb.clearContents()
                     pb.writeObjects(items)
                     emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])

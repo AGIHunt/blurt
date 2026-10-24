@@ -30,60 +30,69 @@
 //    Cards (more than one), Retry Transcription (after a failure), edit, move, delete · double-click = edit the note ·
 //    drag = into any app, or onto a project in the island: the thread stretches after it, then snaps and springs back
 //    up · × = the thread lets go and the card falls. The island's right-click menu has Copy All N Hanging Cards too.
-//  • rich content (v0.8.3; BlurtCore CardPasteboard has the measurements, CardExport.swift the flavours): a card
-//    travels the way a WeChat or Notes copy of a picture-and-text message does — one item with the picture and the
-//    note together as HTML (<img src="data:…"> then <p>note</p>: Chromium / Electron editors such as Feishu, Claude,
-//    Slack, Notion), RTFD (picture attachment then note: AppKit text views such as Notes, TextEdit, Mail), RTF (the
-//    notes), the picture's PNG, the note as text. So ⌘V after a click, or a drop, brings both — except in WeChat and
-//    QQ (below).
-//      copy (click, ⌘-click selection, Copy All)   that one item, every card in order (pictures and notes; a voice
-//                                                  card's words as a paragraph), the notes with their line breaks; no
-//                                                  file URL for one picture (with one, WebKit pastes nothing), each
-//                                                  picture's file for two or more (Chromium shows one pasted image at
-//                                                  most, but every file). A voice card alone: its words.
-//      drag                                        the rich item with the picture's file too (the note as one line),
-//                                                  then what the app under the pointer needs besides (CardDropTarget):
-//      Claude desktop, Chrome / Chromium browsers, Safari,   + the note as a .md file: a web app attaches files and
-//      Slack, VS Code, Cursor, Notion, Discord, Feishu…,      drops the text and the HTML when there are files
-//      any Electron app (Electron Framework in its bundle)
-//      Messages, Notes, TextEdit, Mail, Telegram,             nothing else — no .md (a rich text view takes picture
-//      WhatsApp, Pages, Keynote                               and note from the RTFD)
-//      WeChat, QQ                                             nothing else in the drag; they keep only the picture,
-//                                                             so Blurt types the note in after it (smart paste, below)
-//      Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm,       only the picture's path and the .md's path — the note's
-//      Alacritty                                              text is never offered to a shell
-//      Finder / the Desktop, anything else                    + the .md file
-//    The app under the pointer is the window there in CGWindowList z-order, skipping ours, its owner's bundle id; the
-//    items are lazily provided, and written again when the pointer moves into an app that needs another layout (the
-//    pasteboard keeps the first answer otherwise, and apps read while a drag only passes over them). The .md is the
-//    note and nothing else (no heading, no image line): out/<NNN>/截图-HHMMSS-备注.md, next to out/<NNN>/截图-HHMMSS.png
-//    (inked if marked, the note also in its PNG Description). Optional (record.drag_caption, off): the picture is a
-//    copy with the note burned in under it. A voice card dragged: its words only, whatever the app.
-//  • WeChat and QQ (v0.8.4; BlurtCore CardSmartPaste.swift, Capture/SmartPaste.swift, record.smart_paste on): their
-//    composer takes one thing per paste or drop — the picture — and reads neither the RTFD nor the HTML (WeChat 4 is
-//    Qt). So: (1) for 2 minutes after a copy, ⌘V there runs a sequence instead — each picture alone, then its note
-//    alone, one paste each (several cards: img, text, img, text…), each step once the app has read the last — then
-//    the card copy is back on the clipboard (armed again) and the island says "图 + 文已粘贴"; (2) after a drop there,
-//    the app comes forward at that window, ⌘↓ (caret after the picture), the note goes in as one paste, the
-//    clipboard comes back; the toast: "Dragged out · picture and note". Needs Accessibility (an active event tap,
-//    only while a copy is armed; posted ⌘V). Off, or it can't: the picture alone, and the safety net copies the note
-//    ("Dragged out · picture · note copied, ⌘V to paste"). Every other app gets exactly what it got before.
-//  • a drag's plain text is one line, control characters out (CardTransfer.dragText): the app that reads it is the
-//    one under the pointer at that moment, which may not be where it lands. A copy keeps the note's line breaks
-//    (pasting is the user's own act).
+//  • the picture, then the note (v0.8.5; BlurtCore CardDropTarget.swift has the table and the why, CardPasteboard the
+//    measurements, CardSmartPaste.swift the two-step model; Capture/CardExport.swift, CardDrag.swift, SmartPaste.swift
+//    the app side). The report: a card dragged into DeepSeek's chat in a browser arrived as the picture and a .md
+//    file. Browsers and Electron composers (DeepSeek, ChatGPT, Claude, Feishu, Slack…) treat anything with a file or
+//    an image in it as an upload and ignore the text; WeChat and QQ (Qt) take one thing per paste or drop. So every
+//    one of those gets the picture, then the note as a second paste — on a drop and on ⌘V alike — and no .md:
+//      class     apps                                   drop                               ⌘V after a click-copy
+//      rich      Notes, TextEdit, Mail, Pages, Keynote,  one rich item: the picture and     one rich paste (RTFD):
+//                Stickies, Messages, Telegram,          the note together (RTFD) — no      picture + note, untouched
+//                WhatsApp                               second step, nothing to go wrong
+//      chat      browsers, Electron apps, WeChat, QQ,   the picture as the only file;      picture, then note (several
+//                any app no table names                 then the note pasted into the      cards: picture, note,
+//                                                       composer that received the drop    picture, note…)
+//      terminal  Terminal, iTerm2, Ghostty, Warp…       the picture's path and the .md's   untouched
+//                                                       path (Claude Code / Codex read
+//                                                       it) — never the note's text
+//      finder    the Finder, the Desktop                the picture file                   untouched
+//    The .md (out/<NNN>/截图-HHMMSS-备注.md: the note and nothing else) is an option for chat apps and the Finder:
+//    Settings → General → "Also attach the note as a .md file" (record.drag_note_file, off).
+//      copy (click, ⌘-click selection, Copy All)   one rich item, every card in order (pictures and notes as HTML,
+//                                                  RTFD, RTF; the picture's PNG + TIFF; the notes as text with their
+//                                                  line breaks); no file URL for one picture (with one, WebKit pastes
+//                                                  nothing), each picture's file for two or more. A voice card alone:
+//                                                  its words. Armed for smart paste (below).
+//      drag                                        the layout for the app under the pointer (CardDropTarget): the
+//                                                  window there in CGWindowList z-order, skipping ours, its owner's
+//                                                  bundle id. Lazily provided, and written again when the pointer
+//                                                  moves into an app of a class with another layout (the pasteboard
+//                                                  keeps the first answer otherwise, and apps read while a drag only
+//                                                  passes over them). Optional (record.drag_caption, off): the picture
+//                                                  is a copy with the note burned in under it. A voice card: its
+//                                                  words only, whatever the app.
+//  • the second step (record.smart_paste, on; needs Accessibility): (1) for 2 minutes after a copy, while the
+//    clipboard still holds it (its change count), ⌘V in a chat app runs a sequence instead — each picture alone, then
+//    its note alone, one paste each, each step once the app has read the last (a note with more after it ends its
+//    line) — then the card copy is back on the clipboard (armed again) and the island says "图 + 文已粘贴". An active
+//    event tap, only while a copy is armed; ⌘V in Blurt, a rich app, a terminal or the Finder passes untouched.
+//    (2) after a drop into a chat app (only when it got the chat layout: one that read the rich layout by mistake
+//    already has the note): the app comes forward at that window; the composer that received the drop gets the focus
+//    if it hasn't (the editable text under the drop point, else the nearest one in that window — a chat page is often
+//    all drop zone); the caret goes after the picture (WeChat / QQ ⌘↓ — their dropped picture stays selected; a
+//    selection →; a caret nothing — the picture became an attachment; can't tell ⌘↓); the note goes in as one paste;
+//    the clipboard comes back. Web content whose focus Accessibility can't confirm still gets the paste, as dictation
+//    does; an unknown native app only into editable text. Never when Blurt is in front, under secure input, or when the
+//    focus is in another window. It counts only if the app read the note. The toast: "Dragged out · picture and note".
+//    Off, no Accessibility, or it couldn't: the picture alone, and the safety net copies the note ("… picture · note
+//    copied, ⌘V to paste").
+//  • a drag's plain text (rich apps only) is one line, control characters out (CardTransfer.dragText): the app that
+//    reads it is the one under the pointer at that moment, which may not be where it lands. A copy keeps the note's
+//    line breaks (pasting is the user's own act), and so does the note pasted after a drop (it went where it landed).
 //  • dropped in another app (the session ended with an operation, over a window that isn't ours): the card has been
 //    used, so it leaves its thread — "taken" (Snapper.takeOut: `{"n","taken":wall}`), not discarded: its files stay,
 //    and it is in Recently Taken for 7 days (the island's right-click menu, the main window; TakenPanel.swift: copy,
-//    drag out again, put back), then housekeeping trashes it. Where the app may have kept only the picture (a web
-//    app, the Finder, an unknown app, WeChat / QQ when the note couldn't be typed in, or not sure), the note also goes
-//    on the clipboard (record.drag_copy_note, on by default; DragReceipt.copiesNote); a text app or a terminal leaves
-//    the clipboard alone. The toast says what went in (DragReceipt): "Dragged out · picture and note" in a text app
-//    (and in WeChat / QQ once the note is typed in), "… picture and note paths" in a terminal (no
-//    ⌘V: that would paste at a prompt), "… picture and note file · note copied, ⌘V to paste" in a web app or the
-//    Finder, "Dragged out · note copied, ⌘V to paste" in an app we don't know or when it isn't the kind the
-//    pasteboard was last written for. Undo puts the card back and the clipboard as it was. It went with the
-//    drag, so nothing falls: the thread lets go and its free end springs back into the island, and the others close
-//    up. Dropped on nothing (or on one of our windows): it comes back to its thread; on a project in the island: filed.
+//    drag out again, put back), then housekeeping trashes it. Where the note didn't go in (a chat app whose second
+//    step couldn't run, the Finder without the .md, or not sure what it got), it also goes on the clipboard
+//    (record.drag_copy_note, on by default; DragReceipt.copiesNote); a rich app, a chat app that got the note pasted
+//    and a terminal leave the clipboard alone. The toast says what went in (DragReceipt): "Dragged out · picture and
+//    note" (rich apps, chat apps with the note pasted), "… picture and note paths" in a terminal (no ⌘V: that would
+//    paste at a prompt), "… picture · note copied, ⌘V to paste" where only the picture went in, "Dragged out · note
+//    copied, ⌘V to paste" when it isn't the kind of app the pasteboard was last written for. Undo puts the card back
+//    and the clipboard as it was. It went with the drag, so nothing falls: the thread lets go and its free end springs
+//    back into the island, and the others close up. Dropped on nothing (or on one of our windows): it comes back to
+//    its thread; on a project in the island: filed.
 //  • a voice card is a text card: up to two lines of its words and a small mic mark (it was spoken). Dragged before
 //    its words are written down, the drag waits for them (up to 1 s, while the pointer keeps moving), else it stays
 //    and says "The words aren't ready yet" under the card. Its hover note keeps the small play button.
@@ -1610,7 +1619,9 @@ final class HangingCards: NSObject {
         // dropped in another app, which took it: the card has done its job — it leaves (restorable: "Dragged out · Undo")
         if !operation.isEmpty, !ourWindow(at: p) {
             emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue)])
-            snapper.takeOut(c.shot, delivered: drag?.delivered(at: p), landed: DropProbe.target(at: p), at: p)
+            let got = drag?.delivered(at: p)
+            snapper.takeOut(c.shot, delivered: got, noteFile: got.map { drag?.noteFile($0) ?? false } ?? false,
+                            landed: DropProbe.target(at: p), at: p)
             show(peek: 1.0)                  // the rest close up while you watch
             return
         }

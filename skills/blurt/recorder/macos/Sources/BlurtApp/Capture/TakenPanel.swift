@@ -304,7 +304,11 @@ final class TakenThumb: NSImageView, NSDraggingSource {
         let drag = cardDrag
         cardDrag = nil
         // taken again: its 7 days start over, and the note goes on the clipboard as after any drag-out
-        if !operation.isEmpty { snapper.takeOut(shot, fromPanel: true, delivered: drag?.delivered(at: p), landed: DropProbe.target(at: p), at: p) }
+        if !operation.isEmpty {
+            let got = drag?.delivered(at: p)
+            snapper.takeOut(shot, fromPanel: true, delivered: got, noteFile: got.map { drag?.noteFile($0) ?? false } ?? false,
+                            landed: DropProbe.target(at: p), at: p)
+        }
     }
 }
 

@@ -78,24 +78,22 @@ final class CardFilesTests: XCTestCase {
         CardPasteboard.Card(image: image, note: note, noteFile: md)
     }
 
-    /// The report (v0.8.1): Claude (Electron) took the files and dropped the loose text and the HTML. For a web app (and
-    /// an app we don't know) the note is a file of its own, after the rich item.
-    func testDragOfASnapWithANoteIntoAWebApp() {
-        for c in [DropClass.web, .unknown] {
-            XCTAssertEqual(CardPasteboard.drag(for: c, card: card("see the header\nthe logo overlaps")), [
-                CardPasteboard.Item(file: img, image: img, rich: true, text: "see the header · the logo overlaps", tag: true),
-                CardPasteboard.Item(file: md),
-            ], "\(c)")
-        }
+    /// The reports (v0.8.1 Claude desktop, v0.8.5 DeepSeek in a browser): a web composer takes the files and drops
+    /// the loose text and the HTML. A chat app now gets the picture as the only file — the note is pasted after it.
+    func testDragOfASnapWithANoteIntoAChatApp() {
+        XCTAssertEqual(CardPasteboard.drag(for: .chat, card: card("see the header\nthe logo overlaps")), [
+            CardPasteboard.Item(file: img, image: img, tag: true),
+            CardPasteboard.Item(tag: true),
+        ])
     }
 
     func testDragTextIsSafeForATerminal() {
         let note = "ls\n\u{1B}[201~rm -rf ~\r"
-        for c in [DropClass.web, .text, .finder, .unknown] {
-            XCTAssertEqual(CardPasteboard.drag(for: c, card: card(note))[0].text, "ls · [201~rm -rf ~",
-                           "every class gets the one-line form: the app that reads it may not be the one it lands in")
+        XCTAssertEqual(CardPasteboard.drag(for: .rich, card: card(note))[0].text, "ls · [201~rm -rf ~",
+                       "the one-line form: the app that reads it may not be the one it lands in")
+        for c in [DropClass.chat, .finder, .terminal] {
+            XCTAssertTrue(CardPasteboard.drag(for: c, card: card(note), attachNote: true).allSatisfy { $0.text == nil && !$0.rich }, "\(c)")
         }
-        XCTAssertTrue(CardPasteboard.drag(for: .terminal, card: card(note)).allSatisfy { $0.text == nil && !$0.rich })
     }
 
     func testDragWithoutANote() {
@@ -108,10 +106,10 @@ final class CardFilesTests: XCTestCase {
         }
     }
 
-    /// No .md (it couldn't be written): the note still rides on the rich item; the second item is inert — and a
-    /// terminal still gets only the picture's path.
+    /// No .md (it couldn't be written): the second item is inert everywhere — and a terminal still gets only the
+    /// picture's path.
     func testDragWhenTheNoteFileCouldNotBeWritten() {
-        XCTAssertEqual(CardPasteboard.drag(for: .web, card: card("words", md: nil)),
+        XCTAssertEqual(CardPasteboard.drag(for: .rich, card: card("words", md: nil)),
                        [CardPasteboard.Item(file: img, image: img, rich: true, text: "words", tag: true), CardPasteboard.Item(tag: true)])
         XCTAssertEqual(CardPasteboard.drag(for: .terminal, card: card("words", md: nil)),
                        [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(tag: true)], "a terminal never gets the note as text")

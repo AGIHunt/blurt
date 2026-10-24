@@ -1,5 +1,7 @@
 // BlurtCore/CardDropTarget.swift: which kind of app a card is dropped into, what each kind gets, and what the island
-// says afterwards. The report: a card dropped into WeChat arrived as a picture plus a Markdown file attachment.
+// says afterwards. The reports: a card dropped into WeChat arrived as a picture plus a Markdown file attachment
+// (v0.8.2); one dropped into DeepSeek's chat in a browser as the picture and a .md (v0.8.5) — now the picture alone,
+// then the note pasted after it.
 import XCTest
 @testable import BlurtCore
 
@@ -12,27 +14,36 @@ final class CardDropTargetTests: XCTestCase {
 
     func testClassifiesTheAppsByBundleID() {
         let cases: [(String, DropClass)] = [
-            ("com.anthropic.claudefordesktop", .web), ("com.google.Chrome", .web), ("com.brave.Browser", .web),
-            ("com.microsoft.edgemac", .web), ("company.thebrowser.Browser", .web), ("com.apple.Safari", .web),
-            ("com.tinyspeck.slackmacgap", .web), ("com.microsoft.VSCode", .web), ("com.todesktop.230313mzl4w4u92", .web),
-            ("notion.id", .web), ("com.hnc.Discord", .web), ("com.electron.lark", .web),
-            ("com.tencent.xinWeChat", .text), ("com.tencent.qq", .text), ("com.apple.MobileSMS", .text),
-            ("com.apple.Notes", .text), ("com.apple.TextEdit", .text), ("com.apple.mail", .text),
-            ("ru.keepcoder.Telegram", .text), ("net.whatsapp.WhatsApp", .text), ("com.apple.iWork.Pages", .text),
-            ("com.apple.iWork.Keynote", .text),
+            ("com.apple.MobileSMS", .rich), ("com.apple.Notes", .rich), ("com.apple.TextEdit", .rich), ("com.apple.mail", .rich),
+            ("ru.keepcoder.Telegram", .rich), ("net.whatsapp.WhatsApp", .rich), ("com.apple.iWork.Pages", .rich),
+            ("com.apple.iWork.Keynote", .rich), ("com.apple.Stickies", .rich),
+            // browsers, Electron apps, WeChat / QQ and every app no table names: chat
+            ("com.anthropic.claudefordesktop", .chat), ("com.google.Chrome", .chat), ("com.brave.Browser", .chat),
+            ("com.microsoft.edgemac", .chat), ("company.thebrowser.Browser", .chat), ("com.apple.Safari", .chat),
+            ("com.tinyspeck.slackmacgap", .chat), ("com.microsoft.VSCode", .chat), ("notion.id", .chat), ("com.electron.lark", .chat),
+            ("com.tencent.xinWeChat", .chat), ("com.tencent.qq", .chat), ("org.telegram.desktop", .chat),
+            ("com.example.SomethingElse", .chat),
             ("com.apple.Terminal", .terminal), ("com.googlecode.iterm2", .terminal), ("com.mitchellh.ghostty", .terminal),
             ("dev.warp.Warp-Stable", .terminal), ("net.kovidgoyal.kitty", .terminal), ("com.github.wez.wezterm", .terminal),
-            ("org.alacritty", .terminal),
+            ("org.alacritty", .terminal), ("co.zeit.hyper", .terminal),
             ("com.apple.finder", .finder),
-            ("com.example.SomethingElse", .unknown),
         ]
-        for (id, want) in cases {
-            XCTAssertEqual(DropTargets.classify(bundleID: id, appURL: nil), want, id)
-        }
-        XCTAssertEqual(DropTargets.classify(bundleID: nil, appURL: nil), .unknown, "a window whose owner has no bundle")
+        for (id, want) in cases { XCTAssertEqual(DropTargets.classify(bundleID: id), want, id) }
+        XCTAssertEqual(DropTargets.classify(bundleID: nil), .chat, "a window whose owner has no bundle")
     }
 
-    /// An app no table names is an Electron app if its bundle carries Electron's framework — then it is a web app.
+    /// The engine only says how the note's paste finds its place after the picture.
+    func testTheComposerKind() {
+        for id in ["com.google.Chrome", "com.apple.Safari", "com.anthropic.claudefordesktop", "com.electron.lark", "com.tinyspeck.slackmacgap"] {
+            XCTAssertEqual(DropTargets.composer(bundleID: id, appURL: nil), .web, id)
+        }
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.tencent.xinWeChat", appURL: nil), .qt)
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.tencent.qq", appURL: nil), .qt)
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.example.native", appURL: nil), .native)
+        XCTAssertEqual(DropTargets.composer(bundleID: nil, appURL: nil), .native)
+    }
+
+    /// An app no table names is web content if its bundle carries Electron's framework.
     func testFindsElectronAppsByTheirFramework() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-droptarget-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -43,98 +54,134 @@ final class CardDropTargetTests: XCTestCase {
                                                 withIntermediateDirectories: true)
         XCTAssertTrue(DropTargets.isElectron(electron))
         XCTAssertFalse(DropTargets.isElectron(native))
-        XCTAssertEqual(DropTargets.classify(bundleID: "com.example.chat", appURL: electron), .web)
-        XCTAssertEqual(DropTargets.classify(bundleID: "com.example.native", appURL: native), .unknown)
-        // the tables come first: a terminal or a text app stays what the table says even if it ships Electron
-        XCTAssertEqual(DropTargets.classify(bundleID: "co.zeit.hyper", appURL: electron), .terminal)
-        XCTAssertEqual(DropTargets.classify(bundleID: "com.tencent.qq", appURL: electron), .text)
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.example.chat", appURL: electron), .web)
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.example.native", appURL: native), .native)
+        // QQ ships Electron in recent builds, but it is a single-flavour composer first (⌘↓ before the note)
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.tencent.qq", appURL: electron), .qt)
+        // the class never depends on the engine
+        XCTAssertEqual(DropTargets.classify(bundleID: "co.zeit.hyper"), .terminal)
     }
 
     func testTheTablesDontOverlap() {
-        let sets = [DropTargets.finder, DropTargets.terminals, DropTargets.textApps, DropTargets.webApps]
+        let sets = [DropTargets.finder, DropTargets.terminals, DropTargets.richApps, DropTargets.webApps, SingleFlavourApps.bundles]
         for (i, a) in sets.enumerated() {
             for b in sets[(i + 1)...] { XCTAssertTrue(a.isDisjoint(with: b), "\(a.intersection(b))") }
         }
     }
 
-    // MARK: what each kind gets — the rich item, then a .md file or nothing
+    func testOldTestNamesStillParse() {
+        XCTAssertEqual(DropClass(legacy: "web"), .chat)
+        XCTAssertEqual(DropClass(legacy: "unknown"), .chat)
+        XCTAssertEqual(DropClass(legacy: "text"), .rich)
+        XCTAssertEqual(DropClass(legacy: "terminal"), .terminal)
+        XCTAssertNil(DropClass(legacy: "com.apple.Notes"))
+    }
+
+    // MARK: what each kind gets
 
     var card: CardPasteboard.Card { CardPasteboard.Card(image: img, note: note, noteFile: md) }
     var rich: CardPasteboard.Item { CardPasteboard.Item(file: img, image: img, rich: true, text: "see the header · the logo overlaps", tag: true) }
+    var picture: CardPasteboard.Item { CardPasteboard.Item(file: img, image: img, tag: true) }
+    let inert = CardPasteboard.Item(tag: true)
 
-    /// WeChat, Notes, TextEdit…: the rich item (a text view takes picture and note from its RTFD) and an inert second
+    /// Notes, TextEdit, Mail…: the rich item (a text view takes picture and note from its RTFD) and an inert second
     /// item — no .md, and no second copy of the text (a text view would insert the note twice).
-    func testATextAppGetsTheRichItemOnly() {
-        let items = CardPasteboard.drag(for: .text, card: card)
-        XCTAssertEqual(items, [rich, CardPasteboard.Item(tag: true)])
-        XCTAssertFalse(items.contains { $0.file == md }, "no Markdown attachment")
-        XCTAssertEqual(items.filter { $0.text != nil }.count, 1, "the note once")
+    func testARichAppGetsTheRichItemOnly() {
+        XCTAssertEqual(CardPasteboard.drag(for: .rich, card: card), [rich, inert])
+        XCTAssertEqual(CardPasteboard.drag(for: .rich, card: card, attachNote: true), [rich, inert], "a text view doesn't add a later file")
     }
 
-    /// Claude desktop, Chrome, Slack…: a web app attaches files and drops the text and HTML — the note goes as a .md file.
-    func testAWebAppGetsTheNoteAsAFile() {
-        XCTAssertEqual(CardPasteboard.drag(for: .web, card: card), [rich, CardPasteboard.Item(file: md)])
+    /// DeepSeek / ChatGPT in a browser, Claude, Feishu, WeChat…: the picture alone — no .md, no text, no HTML (a
+    /// composer that took them would get the note twice once it is pasted after the picture).
+    func testAChatAppGetsThePictureAlone() {
+        let items = CardPasteboard.drag(for: .chat, card: card)
+        XCTAssertEqual(items, [picture, inert])
+        XCTAssertFalse(items.contains { $0.file == md }, "no Markdown attachment by default")
+        XCTAssertTrue(items.allSatisfy { $0.text == nil && !$0.rich })
+        XCTAssertEqual(items.compactMap(\.file), [img], "the picture is the only file")
     }
 
-    /// A terminal types the paths it gets: both files, and no text or rich text anywhere — the note never reaches a shell.
+    func testTheNoteFileIsAnOption() {
+        XCTAssertEqual(CardPasteboard.drag(for: .chat, card: card, attachNote: true), [picture, CardPasteboard.Item(file: md)])
+        XCTAssertEqual(CardPasteboard.drag(for: .finder, card: card, attachNote: true), [picture, CardPasteboard.Item(file: md)])
+        // asked for, but it couldn't be written: inert
+        XCTAssertEqual(CardPasteboard.drag(for: .chat, card: CardPasteboard.Card(image: img, note: note), attachNote: true), [picture, inert])
+    }
+
+    /// A terminal types the paths it gets: both files (Claude Code / Codex read the .md), and no text or rich text
+    /// anywhere — the note never reaches a shell. The option doesn't matter there.
     func testATerminalGetsOnlyPaths() {
-        let items = CardPasteboard.drag(for: .terminal, card: card)
-        XCTAssertEqual(items, [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(file: md)])
-        XCTAssertTrue(items.allSatisfy { $0.text == nil && $0.image == nil && !$0.rich })
+        for attach in [false, true] {
+            let items = CardPasteboard.drag(for: .terminal, card: card, attachNote: attach)
+            XCTAssertEqual(items, [CardPasteboard.Item(file: img, tag: true), CardPasteboard.Item(file: md)])
+            XCTAssertTrue(items.allSatisfy { $0.text == nil && $0.image == nil && !$0.rich })
+        }
     }
 
-    func testTheFinderGetsTheRichItemAndTheMarkdown() {
-        XCTAssertEqual(CardPasteboard.drag(for: .finder, card: card), [rich, CardPasteboard.Item(file: md)])
-    }
-
-    /// An app we don't know gets what a web app gets: the rich item reaches the note where a text view reads, the .md
-    /// where files win.
-    func testAnUnknownAppGetsWhatAWebAppGets() {
-        XCTAssertEqual(CardPasteboard.drag(for: .unknown, card: card), CardPasteboard.drag(for: .web, card: card))
-    }
-
-    /// The first item is the same for every kind of app but a terminal: moving between them rewrites only the second.
-    func testTheRichItemIsTheSameButForATerminal() {
-        let firsts = Set(DropClass.allCases.filter { $0 != .terminal }.map { "\(CardPasteboard.drag(for: $0, card: card)[0])" })
-        XCTAssertEqual(firsts.count, 1)
+    func testTheFinderGetsThePictureFile() {
+        XCTAssertEqual(CardPasteboard.drag(for: .finder, card: card), [picture, inert])
+        XCTAssertEqual(CardPasteboard.drag(for: .finder, card: card), CardPasteboard.drag(for: .chat, card: card),
+                       "moving between a chat app and the Finder rewrites nothing")
     }
 
     /// The number of items is fixed when the drag starts: every kind of app gets the same count for the same card.
     func testItemCountIsTheSameForEveryKindOfApp() {
         for c in [card, CardPasteboard.Card(image: img, note: nil, noteFile: md), CardPasteboard.Card(image: img, note: note, noteFile: nil)] {
-            let counts = Set(DropClass.allCases.map { CardPasteboard.drag(for: $0, card: c).count })
-            XCTAssertEqual(counts.count, 1, "\(counts)")
+            for attach in [false, true] {
+                let counts = Set(DropClass.allCases.map { CardPasteboard.drag(for: $0, card: c, attachNote: attach).count })
+                XCTAssertEqual(counts.count, 1, "\(counts)")
+            }
         }
         XCTAssertTrue(DropClass.allCases.allSatisfy { CardPasteboard.drag(for: $0, card: card)[0].tag })
     }
 
     // MARK: what happens after the drop
 
-    /// The note goes on the clipboard only where the app may have kept just the picture.
+    func testTheOutcome() {
+        XCTAssertEqual(DragReceipt.outcome(delivered: .rich, notePasted: false, noteFile: false), .both)
+        XCTAssertEqual(DragReceipt.outcome(delivered: .chat, notePasted: true, noteFile: false), .both)
+        XCTAssertEqual(DragReceipt.outcome(delivered: .chat, notePasted: false, noteFile: false), .pictureOnly)
+        XCTAssertEqual(DragReceipt.outcome(delivered: .chat, notePasted: false, noteFile: true), .pictureOnly,
+                       "the .md went too, but the note isn't in the message")
+        XCTAssertEqual(DragReceipt.outcome(delivered: .terminal, notePasted: false, noteFile: true), .paths)
+        XCTAssertEqual(DragReceipt.outcome(delivered: .finder, notePasted: false, noteFile: false), .pictureOnly)
+        XCTAssertEqual(DragReceipt.outcome(delivered: .finder, notePasted: false, noteFile: true), .files)
+        XCTAssertEqual(DragReceipt.outcome(delivered: nil, notePasted: false, noteFile: false), .unsure)
+    }
+
+    /// The note goes on the clipboard only where it didn't go in.
     func testTheSafetyNetOnlyWhereItHelps() {
-        XCTAssertFalse(DragReceipt.copiesNote(delivered: .text), "picture and note went in")
-        XCTAssertFalse(DragReceipt.copiesNote(delivered: .terminal), "both paths went in; ⌘V would paste at a prompt")
-        for c in [DropClass.web, .finder, .unknown] { XCTAssertTrue(DragReceipt.copiesNote(delivered: c), "\(c)") }
-        XCTAssertTrue(DragReceipt.copiesNote(delivered: nil), "not sure what it got")
+        XCTAssertFalse(DragReceipt.copiesNote(.both), "picture and note went in")
+        XCTAssertFalse(DragReceipt.copiesNote(.paths), "both paths went in; ⌘V would paste at a prompt")
+        XCTAssertFalse(DragReceipt.copiesNote(.files), "the Finder got the note's file")
+        XCTAssertTrue(DragReceipt.copiesNote(.pictureOnly))
+        XCTAssertTrue(DragReceipt.copiesNote(.unsure), "not sure what it got")
     }
 
     func testToastSaysWhatWentIn() {
-        XCTAssertEqual(DragReceipt.toastKey(delivered: .text, hasNote: true, noteCopied: true), "capture.taken_out_text")
-        XCTAssertEqual(DragReceipt.toastKey(delivered: .text, hasNote: true, noteCopied: false), "capture.taken_out_text")
-        XCTAssertEqual(DragReceipt.toastKey(delivered: .terminal, hasNote: true, noteCopied: true), "capture.taken_out_paths")
-        for c in [DropClass.web, .finder] {
-            XCTAssertEqual(DragReceipt.toastKey(delivered: c, hasNote: true, noteCopied: true), "capture.taken_out_files_note")
-            XCTAssertEqual(DragReceipt.toastKey(delivered: c, hasNote: true, noteCopied: false), "capture.taken_out_files")
-        }
-        // not sure what it got: an app we don't know (a text view reads the rich item, a web view the files), or it
-        // landed in another kind of app than the pasteboard was last written for — the toast claims only the clipboard
-        for c in [DropClass.unknown, nil] {
-            XCTAssertEqual(DragReceipt.toastKey(delivered: c, hasNote: true, noteCopied: true), "capture.taken_out_note")
-            XCTAssertEqual(DragReceipt.toastKey(delivered: c, hasNote: true, noteCopied: false), "capture.taken_out")
-        }
+        XCTAssertEqual(DragReceipt.toastKey(.both, hasNote: true, noteCopied: false), "capture.taken_out_text")
+        XCTAssertEqual(DragReceipt.toastKey(.paths, hasNote: true, noteCopied: false, noteFile: true), "capture.taken_out_paths")
+        XCTAssertEqual(DragReceipt.toastKey(.files, hasNote: true, noteCopied: false, noteFile: true), "capture.taken_out_files")
+        XCTAssertEqual(DragReceipt.toastKey(.pictureOnly, hasNote: true, noteCopied: true), "capture.taken_out_picture_note")
+        XCTAssertEqual(DragReceipt.toastKey(.pictureOnly, hasNote: true, noteCopied: false), "capture.taken_out_picture")
+        XCTAssertEqual(DragReceipt.toastKey(.pictureOnly, hasNote: true, noteCopied: true, noteFile: true), "capture.taken_out_files_note")
+        XCTAssertEqual(DragReceipt.toastKey(.pictureOnly, hasNote: true, noteCopied: false, noteFile: true), "capture.taken_out_files")
+        XCTAssertEqual(DragReceipt.toastKey(.unsure, hasNote: true, noteCopied: true), "capture.taken_out_note")
+        XCTAssertEqual(DragReceipt.toastKey(.unsure, hasNote: true, noteCopied: false), "capture.taken_out")
         // no note (or a voice card): just "Dragged out"
-        for c in DropClass.allCases {
-            XCTAssertEqual(DragReceipt.toastKey(delivered: c, hasNote: false, noteCopied: false), "capture.taken_out")
+        for o in [DragReceipt.Outcome.both, .pictureOnly, .paths, .files, .unsure] {
+            XCTAssertEqual(DragReceipt.toastKey(o, hasNote: false, noteCopied: false), "capture.taken_out")
         }
+    }
+
+    // MARK: the composer that received the drop
+
+    func testPicksTheComposerUnderOrNearestTheDrop() {
+        let search = CGRect(x: 100, y: 40, width: 300, height: 30), composer = CGRect(x: 100, y: 700, width: 800, height: 80)
+        XCTAssertEqual(ComposerPick.nearest([search, composer], to: CGPoint(x: 500, y: 730)), 1, "under the drop point")
+        XCTAssertEqual(ComposerPick.nearest([search, composer], to: CGPoint(x: 500, y: 500)), 1, "the chat's drop zone: the nearest")
+        XCTAssertEqual(ComposerPick.nearest([search, composer], to: CGPoint(x: 200, y: 90)), 0)
+        XCTAssertEqual(ComposerPick.nearest([.zero, composer], to: CGPoint(x: 0, y: 0)), 1, "an empty frame is no composer")
+        XCTAssertNil(ComposerPick.nearest([], to: .zero))
     }
 }
