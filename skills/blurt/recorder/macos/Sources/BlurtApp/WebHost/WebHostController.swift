@@ -5,7 +5,7 @@
 //               item's one Open Session button (blurtHostInfo.sessionBanner: the page leaves its own out then);
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
 //   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
-//   nothing     a quiet placeholder.
+//   nothing     a quiet placeholder (blank while no items exist at all: the list's first-run state speaks).
 //
 // Host protocol v3 (C6 + next-round.md "审核组件宿主协议 v3"):
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
@@ -137,15 +137,28 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private func only(_ v: NSView?) {
         for x in [web!, overlay, placeholder, jobView] as [NSView] { x.isHidden = x !== v && !(v === web && x === overlay) }
         if v !== web { banner.set(nil); overlay.set([]) }
+        showsNothing = false
+        showsQuietNothing = false
     }
 
-    func showNothing(_ count: Int = 0) {
+    /// What showNothing put up, until something else replaces it.
+    private(set) var showsNothing = false, showsQuietNothing = false
+
+    /// Nothing selected (or several): a quiet placeholder. `quiet`: no items exist at all yet — the pane stays blank
+    /// and the list's first-run state is the one thing to look at.
+    func showNothing(_ count: Int = 0, quiet: Bool = false) {
         currentItem = nil
         currentJob = nil
-        let msg = count > 1 ? TP("main.detail.multi.detail", count) : T("main.detail.none.detail")
-        placeholder.show(symbol: count > 1 ? "square.stack.3d.up" : "sidebar.right",
-                         title: count > 1 ? TP("main.detail.multi", count) : T("main.detail.none"), message: msg)
-        only(placeholder)
+        if quiet {
+            only(nil)
+        } else {
+            let msg = count > 1 ? TP("main.detail.multi.detail", count) : T("main.detail.none.detail")
+            placeholder.show(symbol: count > 1 ? "square.stack.3d.up" : "sidebar.right",
+                             title: count > 1 ? TP("main.detail.multi", count) : T("main.detail.none"), message: msg)
+            only(placeholder)
+        }
+        showsNothing = true
+        showsQuietNothing = quiet
     }
 
     func show(item: ItemRow, projects: [ProjectEntry]) {
@@ -420,8 +433,8 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 
 /// The line above an item that tells you what it is waiting for, with the one or two things you can do about it (K3
 /// actions; the detail's state pill has the rest, and its work panel asks about an item waiting to be verified):
-///   with an agent  "With Claude Code · Needs your input"                         [Open Session]
-///   session ended  "With Claude Code · Session ended without reporting back"     [Open Session] [Mark as Done]
+///   with an agent  "Handed off to Claude Code · Needs your input"                         [Open Session]
+///   session ended  "Handed off to Claude Code · Session ended without reporting back"     [Open Session] [Mark as Done]
 ///   session gone   (the same line; nothing left to open)                         [Take Back] [Mark as Done]
 ///   handed out    "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
 ///   suggested      "Looks like it belongs in bug-agent (58%)."                  [Move]

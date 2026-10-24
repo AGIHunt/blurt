@@ -17,7 +17,7 @@
 "state.new" = "New";
 "state.todo" = "To do";
 "state.handed_off" = "Handed off";
-"state.handed_off.session" = "With %@";
+"state.handed_off.session" = "Handed off to %@";
 "state.handed_off.external" = "Copied to your agent";
 "state.in_progress" = "In progress";
 "state.to_verify" = "To verify";
@@ -29,8 +29,8 @@
 /* What you can do from a state: the verb, and one line saying what it does */
 "action.keep" = "Keep";
 "action.keep.hint" = "Add it to To do";
-"action.hand_off" = "Hand Off to Agent…";
-"action.hand_off.hint" = "Start it in Blurt, or copy an instruction";
+"action.hand_off" = "Hand off to agent…";
+"action.hand_off.hint" = "Hand it to an agent in Blurt, or copy an instruction";
 "action.done" = "Mark as done";
 "action.done.hint" = "It’s handled";
 "action.done.hint_verify" = "You checked — it’s fixed";

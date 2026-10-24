@@ -102,6 +102,8 @@ final class MainModel {
 
     var rowCount: Int { uids.count }
     var filtered: Bool { !kinds.isEmpty || state != nil || !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// No items anywhere yet, discarded ones included (a first run): no filters to offer, no detail to point at.
+    var isEmptyWorld: Bool { indexState == .ready && counts.all == 0 && counts.discarded == 0 }
 
     init() {
         open()

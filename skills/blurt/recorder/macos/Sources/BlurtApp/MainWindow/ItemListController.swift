@@ -386,6 +386,7 @@ final class FilterBar: NSView {
         let ready = m.indexState == .ready
         kinds.isHidden = !ready
         state.isHidden = !ready || m.scope == .inbox
+        isHidden = m.isEmptyWorld && !m.filtered      // nothing to filter yet: the first-run state alone
     }
 }
 
@@ -783,10 +784,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "title":
             let c = make("title") { TitleCell() }
             // the search hit, unless it is just the title again
-            let plain = (it.snippet ?? "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
-                .trimmingCharacters(in: CharacterSet(charactersIn: "…"))
             let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
-            let hit = searching && !plain.isEmpty && !it.title.contains(plain) ? it.snippet : nil
+            let hit = searching && SearchHit.adds(it.snippet, to: it.title) ? it.snippet : nil
             c.set(title: it.title, unread: it.state == "new", dimmed: quiet, struck: false, hit: hit)
             c.toolTip = [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
             return c
@@ -815,7 +814,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "time":
             let c = make("time") { IconTextCell() }
             c.set(MainModel.relative(it.updated), font: Look.monoSub, align: .right)
-            c.label.textColor = .tertiaryLabelColor
+            c.label.textColor = .secondaryLabelColor
             c.toolTip = MainModel.shortDate(it.updated)
             return c
         default: return nil

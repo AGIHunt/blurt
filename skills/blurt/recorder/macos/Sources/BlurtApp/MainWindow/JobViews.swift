@@ -33,6 +33,21 @@ enum JobLook {
         return f.date(from: String(name.prefix(15))).map(Loc.dateTime) ?? name
     }
 
+    /// A failed job's reason in words, naming its agent when it has one: the detail and the failure notification say
+    /// the same thing.
+    static func errorText(_ j: Job) -> String? {
+        j.error.map { errorText($0, agent: j.agent.map { AgentHub.shared.def($0.agent)?.name ?? $0.agent } ?? j.usage?.agent.map(AgentNames.name)) }
+    }
+
+    /// A failed job's reason in words: its hint, else the known code ("Claude Code isn’t logged in." when the agent is
+    /// known), else the raw message.
+    static func errorText(_ e: JobError, agent: String?) -> String {
+        if let h = e.hintKey { return T(h) }
+        let key = "main.job.error.\(e.code)"
+        if let a = agent, Loc.has(key + ".named", table: "Main") { return T(key + ".named", a) }
+        return Loc.has(key, table: "Main") ? T(key) : e.message
+    }
+
     /// What it is doing now: the agent's status, else the current step.
     static func status(_ j: Job) -> String {
         if j.state == .failed { return T("job.state.failed") }
@@ -124,7 +139,7 @@ final class JobsSection: NSView {
         if jobs.count > Self.maxRows {
             let more = NSTextField(labelWithString: TP("main.jobs.more", jobs.count - Self.maxRows))
             more.font = .systemFont(ofSize: 11)
-            more.textColor = .tertiaryLabelColor
+            more.textColor = .secondaryLabelColor
             let m = NSStackView(views: [more])
             m.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 0)
             stack.addArrangedSubview(m)
@@ -295,8 +310,8 @@ final class JobDetailView: NSView {
         // AI fill-in has no recording to transcribe, no frames to cut, nothing to file: just prepare and write
         if j.type == .process, j.session == nil { ids = ids.filter { !["transcribe", "frames", "route"].contains($0.id) } }
         for (k, s) in ids.enumerated() { steps.addArrangedSubview(StepRow(s, last: k == ids.count - 1, failed: j.state == .failed)) }
-        if let e = j.error {
-            error.stringValue = e.hintKey.map { T($0) } ?? (T("main.job.error.\(e.code)") == "main.job.error.\(e.code)" ? e.message : T("main.job.error.\(e.code)"))
+        if let why = JobLook.errorText(j) {
+            error.stringValue = why
             error.isHidden = false
         } else { error.isHidden = true }
         buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }

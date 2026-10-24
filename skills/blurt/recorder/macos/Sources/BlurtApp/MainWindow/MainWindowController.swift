@@ -1,5 +1,6 @@
 // Blurt's main window: sidebar (places + projects) | items | detail in an NSSplitViewController, a unified toolbar
-// (Record, Snap, Hand Off, Move to Project, search), ⌘K command palette, context menus, Quick Look, window state
+// (Record, Snap, Hand Off, Move to Project, search; on the Dictation page search only), ⌘K command palette, context
+// menus, Quick Look, a blank detail while there are no items at all (the list's first-run state speaks), window state
 // restored from $BLURT_HOME/ui/main-window.json (not UserDefaults: test builds share the bundle id with the user's
 // real app and must not disturb its state).
 //
@@ -111,6 +112,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             // the same item still selected, but its row changed under it (a state, a move, a renamed folder)
             if self.shownJob == nil, self.list.selectedIDs.count == 1, let it = self.list.selectedItems.first {
                 self.detail.refresh(item: it, projects: self.model.projects)
+            } else if self.shownJob == nil, self.list.selectedIDs.isEmpty, self.detail.showsQuietNothing != self.model.isEmptyWorld,
+                      self.detail.showsNothing {
+                self.listSelectionChanged()     // the first item arrived (or the last one went): "Nothing selected" or blank
             }
             self.updateTitle()
             self.scheduleSave()
@@ -177,12 +181,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// The columns follow the scope: the Dictation page in place of the items and their detail, and the toolbar's
-    /// search field searching what is showing.
+    /// The columns follow the scope: the Dictation page in place of the items and their detail, the toolbar's search
+    /// field searching what is showing, and the toolbar without the items' actions there.
     func syncPage() {
         let on = model.scope == .dictation
         let showing = listColumn.current !== list
         guard on != showing else { return }
+        syncToolbar(dictation: on)
         let field = searchItem?.searchField
         if on {
             let p = dictation
@@ -333,12 +338,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)
     }
 
-    /// The inbox's subtitle (K3): "Needs you: 3 new · 2 to verify" — a zero part left out; nothing when both are zero
-    /// (the empty state says it).
+    /// The inbox's subtitle (K3): "3 new · 2 to verify" under the title "Inbox" — the same words as the menu bar
+    /// menu's rows; a zero part left out; nothing when both are zero (the empty state says it).
     var needsYou: String {
         let c = model.counts
-        let parts = [c.new > 0 ? T("main.inbox.new", c.new) : nil, c.toVerify > 0 ? T("main.inbox.verify", c.toVerify) : nil].compactMap { $0 }
-        return parts.isEmpty ? "" : T("main.inbox.needs_you", parts.joined(separator: " · "))
+        return [c.new > 0 ? T("main.inbox.new", c.new) : nil, c.toVerify > 0 ? T("main.inbox.verify", c.toVerify) : nil]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 
     func jobsChanged(_ changed: [Job]) {
@@ -358,7 +363,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if items.count == 1, let it = items.first {
             detail.show(item: it, projects: model.projects)
         } else {
-            detail.showNothing(items.count)
+            detail.showNothing(items.count, quiet: items.isEmpty && model.isEmptyWorld)
         }
         scheduleSave()
     }
@@ -995,8 +1000,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     static let handOffID = NSToolbarItem.Identifier("handoff"), moveID = NSToolbarItem.Identifier("move")
     static let searchID = NSToolbarItem.Identifier("search")
 
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, Self.recordID, Self.snapID, .flexibleSpace, Self.moveID, Self.handOffID, Self.searchID]
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.toolbarItems(dictation: false) }
+
+    /// The items' toolbar: Record, Snap, Move, Hand Off and search. The Dictation page has its own: search only (its
+    /// header links to Dictation Settings) — none of the items' actions apply to dictations.
+    static func toolbarItems(dictation: Bool) -> [NSToolbarItem.Identifier] {
+        dictation ? [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, searchID]
+                  : [.toggleSidebar, .sidebarTrackingSeparator, recordID, snapID, .flexibleSpace, moveID, handOffID, searchID]
+    }
+
+    /// Swap the toolbar's items for the page's (the search item and the sidebar button stay as they are).
+    func syncToolbar(dictation: Bool) {
+        guard let tb = window?.toolbar else { return }
+        let want = Self.toolbarItems(dictation: dictation)
+        for (n, it) in tb.items.enumerated().reversed() where !want.contains(it.itemIdentifier) { tb.removeItem(at: n) }
+        for (n, id) in want.enumerated() where n >= tb.items.count || tb.items[n].itemIdentifier != id {
+            tb.insertItem(withItemIdentifier: id, at: n)
+        }
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 

@@ -258,7 +258,7 @@ final class SourceCell: NSTableCellView {
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         key.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        key.textColor = .tertiaryLabelColor
+        key.textColor = .secondaryLabelColor
         key.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         badge.setContentHuggingPriority(.required, for: .horizontal)

@@ -65,7 +65,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             MenuGlyph.shared.hop()
             if !frontmost, ran >= 20, setting("done") { post("done", title: text, body: JobLook.title(j), job: j) }
         case (_, .failed):
-            let why = j.error.map { $0.hintKey.map { T($0) } ?? $0.message } ?? ""
+            let why = JobLook.errorText(j) ?? ""
             quiet(T("notify.failed", JobLook.title(j)), action: T("notify.show")) { AppEnvironment.mainWindow?.reveal(job: j.id) }
             if !frontmost { post("failed", title: T("notify.failed", JobLook.title(j)), body: why, job: j) }
         default: break

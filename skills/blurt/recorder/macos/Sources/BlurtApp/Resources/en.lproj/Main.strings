@@ -41,7 +41,7 @@
 "app.migrate.keep" = "Keep %@";
 "app.name" = "Blurt";
 
-"app.permission.detail" = "Turn on Blurt in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen Blurt — macOS reads the permission at launch.\n\nAlready on? Remove Blurt from the list with −, reopen Blurt and allow it again: a grant from an older build doesn’t carry over.";
+"app.permission.detail" = "Turn on Blurt in System Settings, under Privacy & Security, Screen & System Audio Recording. Then quit and reopen Blurt: macOS reads the permission at launch.\n\nAlready on? Remove Blurt from that list with the minus button, reopen Blurt and allow it again: a grant from an older build doesn’t carry over.";
 "app.permission.later" = "Later";
 "app.permission.open_settings" = "Open System Settings";
 "app.permission.title" = "Blurt needs Screen Recording permission";
@@ -67,10 +67,11 @@
 "main.banner.organizing" = "Still being organized · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
-"main.banner.with_agent" = "With %@ · %@";
+"main.banner.with_agent" = "Handed off to %@ · %@";
+"main.banner.handed_off" = "Handed off to %@";
 
-"main.captures.show" = "Bring down";
-"main.captures.tip" = "Snaps and voice notes waiting at the top of the screen: click to bring them all down";
+"main.captures.show" = "Show under the notch";
+"main.captures.tip" = "Cards hanging under the notch, waiting for a project: click to bring them all down";
 "main.captures.taken" = "Recently taken: %ld";
 "main.captures.taken.show" = "Show";
 "main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back";
@@ -96,13 +97,13 @@
 "main.dispatch.concurrent.title" = "Work on a separate branch this time?";
 "main.dispatch.failed" = "Couldn’t start the session";
 "main.dispatch.needs_project" = "Move these items to a project first";
-"main.dispatch.needs_project.detail" = "An agent needs the project’s folder to work in. Use Move to Project, then start the session.";
+"main.dispatch.needs_project.detail" = "An agent needs the project’s folder to work in. Use Move to Project, then hand them off.";
 "main.dispatch.one_project" = "Choose items from one project";
 "main.dispatch.one_project.detail" = "An agent session works in one project folder. Hand these off per project.";
 "main.dispatch.use_worktree" = "Use a Separate Branch";
 
 "main.empty.all_filed" = "Everything is filed";
-"main.empty.all_filed.detail" = "Captures without a project wait here until you pick one or auto-sort them.";
+"main.empty.all_filed.detail" = "Items without a project wait here until you pick one or auto-sort them.";
 "main.empty.clear_all" = "Clear Search & Filters";
 "main.empty.clear_filters" = "Clear Filters";
 "main.empty.discarded" = "Nothing discarded";
@@ -113,7 +114,7 @@
 "main.empty.inbox_zero" = "Nothing needs you right now";
 "main.empty.inbox_zero.detail" = "New captures, and items an agent says are finished, show up here.";
 "main.empty.no_index" = "No index yet";
-"main.empty.no_index.detail" = "Blurt builds a local search index of your projects and captures. Nothing leaves this Mac.";
+"main.empty.no_index.detail" = "Blurt builds a local search index of your projects and items. Nothing leaves this Mac.";
 "main.empty.no_match" = "Nothing matches these filters";
 "main.empty.no_results" = "No results for “%@”";
 "main.empty.no_scripts" = "The blurt skill’s scripts are missing";
@@ -127,7 +128,7 @@
 "main.empty.rebuild" = "Rebuild";
 "main.empty.scan" = "Build the Index";
 "main.empty.scan_failed" = "The scan failed";
-"main.empty.scanning" = "Scanning your captures…";
+"main.empty.scanning" = "Scanning your items…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
 
 "main.error.bad_transition" = "That state change isn’t possible from here.";
@@ -147,7 +148,7 @@
 
 "main.filter.kind" = "Filter by kind";
 "main.filter.live" = "All but Discarded";
-"main.filter.needs_you" = "Needs You";
+"main.filter.needs_you" = "Inbox";
 "main.filter.only_kind" = "Only %@ (%ld)";
 
 "main.filter.state" = "Filter by state";
@@ -155,19 +156,20 @@
 "main.handoff.copied_full" = "Full text copied — screenshots are linked by path";
 "main.handoff.failed" = "Couldn’t prepare the hand-off";
 
-"main.inbox.needs_you" = "Needs you: %@";
 "main.inbox.new" = "%ld new";
 "main.inbox.verify" = "%ld to verify";
 "main.item.untitled" = "Untitled";
 
 "main.job.error.auth" = "The agent isn’t logged in.";
+"main.job.error.auth.named" = "%@ isn’t logged in.";
 "main.job.error.conflict" = "The changes conflict with yours.";
 "main.job.error.git" = "Git couldn’t finish.";
 "main.job.error.model" = "The model isn’t available.";
 "main.job.error.network" = "The network dropped.";
 "main.job.error.quota" = "The agent ran out of quota.";
+"main.job.error.quota.named" = "%@ ran out of quota.";
 "main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
-"main.job.hint.no_agent" = "No coding agent is set up. Install or log in to Claude Code or Codex in Settings → Agents.";
+"main.job.hint.no_agent" = "No coding agent is set up. Install or log in to Claude Code or Codex in Settings, under Agents.";
 "main.job.hint.interrupted" = "Blurt quit before this finished. Retry to run it again.";
 "main.job.no_terminal" = "The terminal isn’t available";
 "main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
@@ -207,7 +209,7 @@
 "main.menu.quick_look" = "Quick Look";
 "main.menu.rename" = "Rename…";
 "main.menu.review_batch" = "Review the Whole Capture";
-"main.menu.start_session" = "Start in Blurt";
+"main.menu.start_session" = "Hand Off to Agent";
 "main.menu.open_session" = "Open Session";
 
 "main.misc.by_codex" = "by codex";
@@ -281,7 +283,7 @@
 "main.missing.locate.message" = "Choose where “%@” is now.";
 "main.sidebar.not_opened" = "not opened as a project";
 "main.sidebar.open_folder.tip" = "Open a folder as a project (⌘O) — or drop folders here";
-"main.sidebar.progress.ax" = "In progress: items with an agent and running jobs";
+"main.sidebar.progress.ax" = "In progress: items handed off to an agent, and running jobs";
 "main.sidebar.projects" = "Projects";
 "main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
 
@@ -293,8 +295,8 @@
 "main.speech.recommended.action" = "Review";
 
 "main.toolbar.handoff" = "Hand Off";
-"main.toolbar.handoff.own" = "For your own agent app";
-"main.toolbar.handoff.tip" = "Start an agent session in Blurt, or copy an instruction for your own agent";
+"main.toolbar.handoff.own" = "For Your Own Agent";
+"main.toolbar.handoff.tip" = "Hand the selected items to an agent in Blurt, or copy an instruction for your own";
 "main.toolbar.move" = "Move";
 "main.toolbar.move.tip" = "Move the selected items to a project";
 "main.toolbar.record.tip" = "Record your screen and voice %@";

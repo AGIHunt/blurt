@@ -98,7 +98,7 @@ New ──keep──▶ To do ──hand off──▶ Handed off ──▶ In pr
 |---|---|
 | **New** | Just captured; you haven't looked at it yet. |
 | **To do** | You kept it. |
-| **Handed off** | Given to an agent: started in Blurt, or an instruction copied to your own agent. |
+| **Handed off** | Handed to an agent in Blurt, or an instruction copied to your own agent. |
 | **In progress** | The agent is working on it. |
 | **To verify** | The agent says it's finished. Check it, then mark it done — or send it back. |
 | **Done** | You confirmed it. |

@@ -115,3 +115,6 @@
       run it with cwd = the session folder (never the project), put `agents.py command`'s `env` (UV_CACHE_DIR,
       BLURT_NO_INDEX) in its environment, name `uv run <scripts>/<name>.py` with its `scripts` path in the prompt
       (Claude / Gemini may run nothing else), and re-index the batch afterwards
+- [ ] Windows/Linux app (web/apps/desktop): follow the Mac main window's copy — the inbox subtitle is just the parts
+      ("3 new · 2 to verify" under "Inbox", no "Needs you:" prefix; `inbox.needs_you`), the Dictation page without
+      the items' toolbar actions, no filter chips and a blank detail while there are no items at all
