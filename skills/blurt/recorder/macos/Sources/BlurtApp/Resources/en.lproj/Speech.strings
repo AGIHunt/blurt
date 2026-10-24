@@ -35,7 +35,7 @@
 "speech.purpose.live" = "Live captions";
 "speech.purpose.live.detail" = "While you record, so results are ready the moment you stop.";
 "speech.purpose.note" = "Voice notes";
-"speech.purpose.note.detail" = "Short notes on screenshots and voice input. Speed first.";
+"speech.purpose.note.detail" = "Notes on snaps and voice notes. Speed first.";
 "speech.suggest.title" = "%@ is recommended";
 "speech.suggest.for" = "Would be used for %@.";
 "speech.suggest.better" = "About %@ → %@ errors in your languages.";

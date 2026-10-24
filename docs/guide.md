@@ -17,8 +17,8 @@ Linux) is where capture starts. Hover it to see your current project and the thr
 
 | | Shortcut | What happens |
 |---|---|---|
-| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong; stop talking for about 2 s and it's saved (room noise doesn't keep it open). Hold `⌃` and drag to circle the exact spot. |
-| **Voice** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* on the island) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels. The words show under the island as you talk. |
+| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong; stop talking for about 2 s and it's saved (room noise doesn't keep it open). Drag on the picture to circle the exact spot. |
+| **Voice** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* on the island) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the island as you talk. |
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* on the island) stops. |
 
 While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
@@ -38,7 +38,7 @@ as you stop. Turn it off in *Settings → General → Show text while I talk*.
 
 In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The countdown, system audio and
 what happens after a recording are in *Settings → General*. The menu-bar icon is the line chick in monochrome, like
-the other icons up there: its sound arcs pulse while voice input listens, and it hops when something is done.
+the other icons up there: its sound arcs pulse while a voice note listens, and it hops when something is done.
 
 Speech is transcribed on your computer. Nothing leaves it unless you choose a cloud speech service.
 
@@ -96,7 +96,8 @@ What you can do with a card:
   | Drop it on | You get |
   | --- | --- |
   | Notes, TextEdit, Mail, Messages, Pages, Keynote | the picture and the note together, in one go |
-  | Chrome, Safari and other browsers (DeepSeek, ChatGPT, Claude…), Claude (desktop app), Feishu/Lark, Slack, VS Code, Notion, other Electron apps, WeChat, QQ, any other app | the picture as an attachment, then Blurt pastes the note into the same message box (needs Accessibility) |
+  | Chrome, Safari and other browsers (DeepSeek, ChatGPT, Claude…), Claude (desktop app), Feishu/Lark, Slack, Notion, other Electron apps, WeChat, QQ, any other app | the picture as an attachment, then Blurt pastes the note into the same message box (needs Accessibility) |
+  | VS Code, Cursor, Windsurf, Zed, Xcode, JetBrains IDEs and other code editors | the picture; the note goes on the clipboard (*⌘V to paste the note*) — Blurt never pastes into a code editor by itself, where the cursor may be in your code |
   | Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm, Alacritty | the paths of the picture and of a small Markdown file with the note (`Screenshot-153012-note.md`), so Claude Code or Codex can see the picture and read the note (the note itself is never typed into the shell) |
   | Finder or the Desktop | the picture file |
 
@@ -108,8 +109,8 @@ What you can do with a card:
   a chat app — a browser, Claude, Feishu/Lark, Slack, WeChat, QQ — you can let go of it **anywhere in the window**,
   not only on the message box (those apps take dropped text only there): the card shows *Let go to paste into
   Claude* while it's over one, and Blurt then pastes the words into that window's message box (needs Accessibility;
-  without it the words go on the clipboard — *Copied — ⌘V to paste into Claude*). Notes, TextEdit and terminals get
-  the normal text drop; a terminal gets the words typed on one line at the prompt, never a Return, so nothing runs.
+  without it the words go on the clipboard — *Copied — ⌘V to paste into Claude*). Notes, TextEdit, code editors and terminals
+  get the normal text drop; a terminal gets the words typed on one line at the prompt, never a Return, so nothing runs.
   A drag you let go of over nothing comes back to its thread. (Drag a voice note before its words are written down and it
   waits a moment for them, or tells you they aren't ready yet.)
 - **After a drop**, the card has done its job and leaves its thread — but it isn't thrown away. The island says what
@@ -119,14 +120,17 @@ What you can do with a card:
   paste* — so `⌘V` brings the words back; this replaces what was on your clipboard, and *Undo* puts the card back on
   its thread and your clipboard as it was. You can turn this off in *Settings → General → If the note didn't go in
   with a drop, copy it*; the two-step paste itself is *Settings → General → Chat apps: the picture, then the note*.
-- **Recently Taken**: cards you dragged out stay findable for 7 days. Right-click the island (or the count left of
-  the notch) → *Recently Taken (N)*, or click *Recently taken: N* at the top of the Inbox or Unassigned in the main
-  window. Each one can be copied (picture and note, or either alone), dragged out again (drag its picture), or put
-  back on its thread. After 7 days it goes to the Trash.
+- **Recently Dragged Out**: cards you dragged out stay findable for 7 days. Right-click the island (or the count left
+  of the notch) → *Recently Dragged Out (N)*, or click *Recently taken: N* at the top of the Inbox or Unassigned in the
+  main window. Each row has one button, *Copy* (picture and note); its *More* menu (or a right-click) copies the
+  picture or the note alone, *Hang Back on the Notch* makes it a card again, and you can drag its picture out again.
+  After 7 days it goes to the Trash.
 - Optional: *Settings → General → Add the note under the picture when dragging* drops a copy of the picture with the
   note in a strip under it, for apps that take one picture and nothing else. Off by default; the capture itself stays
   clean.
-- Hover to read the note, double-click to edit it, or click × to throw it away.
+- Hover to read the note, double-click to edit it, or click × to throw it away. *Edit Note…* shows the whole note,
+  the spoken words too, so you can fix what was heard wrong; the mic records it again, and `Esc` keeps the note as it
+  was. A card waits until you do something with it — however long that takes.
 - Up to seven cards hang side by side; older ones stack up as **+N**. Click the stack to bring them forward.
 - While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.
 
@@ -322,8 +326,8 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 
 | | 快捷键 | 做什么 |
 |---|---|---|
-| **截图** | `⌥⇧A` | 框一块区域，松手，接着说（或者打字）哪里不对。按住 `⌃` 拖动可以圈出具体位置。 |
-| **语音** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点岛上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。`Esc` 取消。说的时候，识别出的文字显示在岛下方。 |
+| **截图** | `⌥⇧A` | 框一块区域，松手，接着说（或者打字）哪里不对。在图上直接拖动，可以圈出具体位置。 |
+| **语音** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点岛上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的应用。说的时候，识别出的文字显示在岛下方。 |
 | **录屏** | `⌥⇧R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥⇧R`（或岛上的「完成」）结束。 |
 
 录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
@@ -367,15 +371,16 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
   | 拖到 | 得到 |
   | --- | --- |
   | 备忘录、文本编辑、邮件、信息、Pages、Keynote | 图片和备注，一次一起进去 |
-  | Chrome、Safari 等浏览器（DeepSeek、ChatGPT、Claude…）、Claude（桌面版）、飞书/Lark、Slack、VS Code、Notion、其他 Electron 应用、微信、QQ、其他应用 | 图片作为附件放进去，然后口喷鸡把备注贴进同一个输入框（需要「辅助功能」权限） |
+  | Chrome、Safari 等浏览器（DeepSeek、ChatGPT、Claude…）、Claude（桌面版）、飞书/Lark、Slack、Notion、其他 Electron 应用、微信、QQ、其他应用 | 图片作为附件放进去，然后口喷鸡把备注贴进同一个输入框（需要「辅助功能」权限） |
+  | VS Code、Cursor、Windsurf、Zed、Xcode、JetBrains 系 IDE 等代码编辑器 | 图片；备注放进剪贴板（「⌘V 可粘贴」）——口喷鸡不会自己往代码编辑器里粘贴，光标可能正停在你的代码里 |
   | 终端、iTerm2、Ghostty、Warp、kitty、WezTerm、Alacritty | 图片和一个写着备注的 Markdown 小文件（`截图-153012-备注.md`）的路径，Claude Code、Codex 能看到图片、读到备注（备注文字本身不会打进命令行） |
   | 访达或桌面 | 图片文件 |
 
-  备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天应用和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天应用——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些应用只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
+  备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天应用和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天应用——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些应用只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑、代码编辑器和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
 - **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天应用：先放图片，再贴备注」、应用没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，拷贝到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天应用：先放图片，再贴备注」。
-- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一张都可以再拷贝（图片和备注一起，或者单独一样）、把图片再拖出去，或者放回线上。7 天后移到废纸篓。
+- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一行只有一个「复制」按钮（图片和备注一起）；「更多」菜单（或者右键）里可以单独复制图片或备注，或者「挂回刘海」让它重新成为卡片；图片也可以再拖出去。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的应用用。默认关闭；原来的截图不变。
-- 悬停看备注，双击改备注，点 × 扔掉。
+- 悬停看备注，双击改备注，点 × 扔掉。「编辑备注…」显示完整的备注，说的话也在里面，识别错了可以直接改；点麦克风可以重录，按 `Esc` 备注保持原样。卡片会一直挂着，直到你处理它，放多久都不会自己消失。
 - 最多并排挂 7 张，更早的叠成「+N」，点一下就换到前面来。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。
 
