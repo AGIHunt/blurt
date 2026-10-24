@@ -926,7 +926,7 @@ uid 01JB… · issue · high · module auth
 |---|---|---|
 | 空闲 | 无（没刘海时隐藏）；有待审时右耳显示待审数 | 第 1 行：当前项目（文件夹图标 + 名字 + chevron，点 = 切换项目）、右侧录屏 / 截图 / 语音三个图标按钮（悬停显示名称和快捷键）；第 2 区：进行中的任务（最多 3 个：图标、标题、当前步骤、进度）；第 3 区：需要你处理的 agent 会话（状态标记，点 = 跳到终端）；底部：「5 条待审」→ 打开主窗口收件箱 |
 | 录屏中 | 左耳：红点（1 Hz 呼吸，减弱动态效果时不动）+ 已录时长（等宽数字）；右耳：截图数 | 暂停 / 继续、完成、放弃（要确认）、截图（= 截图 + 暂停 + 备注）、麦克风电平、「按住 ⌃ 画笔」提示、当前项目（可改，K2） |
-| 语音输入 | 左耳：波形；右耳：时长 | 实时识别的文字（有就显示）+「停顿即结束 · Esc 取消」 |
+| 语音备注 | 左耳：波形；右耳：时长 | 实时识别的文字（有就显示）+「再按 ⌥⇧V 结束 · Esc 取消」（Esc 只在前 10 秒，v0.8.7） |
 | 整理中 | 右耳：孵化的蛋（轻轻晃）+ 正在整理的数量 | 任务行显示步骤 |
 | 抽屉 | — | 项目列表（见下） |
 
@@ -954,8 +954,15 @@ uid 01JB… · issue · high · module auth
 （同 n 后写的为准）；然后调 `AppEnvironment.process(session, captures: [3], project: "<id>")`（Tauri：`process_captures`）。
 「交给 AI 分」= `process(session, captures: 所有卡片, project: nil)`。删卡片 = 追加 `{"n", "deleted": true}`。
 （v0.8.1）拖进别的应用、被接住的卡片 = 追加 `{"n", "taken": <wall>}`：不再是卡片，也没删（文件留着），在「最近拖走的」里保留 7 天
-（`BlurtCore.TakenCaptures`），放回线上 = `{"n", "taken": null}`；7 天后启动整理 / 每小时的 `Snapper.expireTaken` 按删卡片处理（进废纸篓）。
+（`BlurtCore.TakenCaptures`），挂回刘海 = `{"n", "taken": null}`；7 天后启动整理 / 每小时的 `Snapper.expireTaken` 按删卡片处理（进废纸篓）。
 `captures.py file` 跳过 taken 的（`reason: "taken"`）。这是捕获的标记，不是条目状态，K3 的 `lifecycle.json` 不变。
+（v0.8.7，捕获审计）卡片不会自己消失：启动时读所有 `-shots` 批次里还有卡片（或拖走的）的那些，不管多久以前（之前只看最近 30 天，更早的卡片
+重启后就不见了）；先只解析 `shots.jsonl`（`BlurtCore.CardBatches`），有卡片才读图片。编辑备注 = 完整备注（打的字 + 说的话）可直接改，
+改了说的话就以改后的为准（`said` = 改后的文字，`text` = null，`BlurtCore.NoteEdit`）；重录先写 `shots/NNN.retake.wav`，留下才替换原来的 wav，
+Esc 或没说话只删重录（`VoiceRetake`；之前直接覆盖原文件，Esc 后原语音就没了）。⌥⇧V 的 Esc 只在前 10 秒有效（Esc 是全局快捷键，
+一直占着会让 Claude Code、vim 里的 Esc 失灵），取消后「语音备注已丢弃 · 撤销」5 秒，音频留到那时。截图的语音备注开始听时就拉起常驻语音服务，
+转写不再冷启动。拖进代码编辑器（VS Code、Cursor、Windsurf、Zed、Xcode、JetBrains…，`ComposerKind.editor`）只放图片，备注进剪贴板，
+口喷鸡不自己粘贴（落点可能是代码）。
 卡片交出去的文件写在批次的 `out/<NNN>/`：`截图-HHMMSS.png`（备注写进 PNG 的 iTXt Description）+ `截图-HHMMSS-备注.md`（v0.8.2：只有备注，不再有图片行），
 拖动 / 复制时是两个 pasteboard item：①图片文件 + PNG；②.md 文件 + 同一 item 上的备注文字（一行，`CardTransfer.dragText`）。
 原因：用户把截图卡片拖进 Claude 桌面版（Electron），角标是 2，但只附上了图片——网页应用有文件时就不看散落的文字。

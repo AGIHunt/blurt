@@ -491,7 +491,8 @@ enum DragNoteFollowUp {
         f.frontIsBlurt = front == getpid()
         f.frontIsTarget = front == t.pid
         f.secureInput = IsSecureEventInputEnabled()
-        guard AXIsProcessTrusted(), f.frontIsTarget, t.kind != .qt else { return then(f) }
+        // Qt: nothing to ask; a code editor: no paste of ours (and no focus moved toward its source code)
+        guard AXIsProcessTrusted(), f.frontIsTarget, t.kind != .qt, t.kind != .editor else { return then(f) }
         let app = AXUIElementCreateApplication(t.pid)
         AXUIElementSetMessagingTimeout(app, 0.3)
         let read = { (moved: Bool) -> FollowUpFocus.Facts in

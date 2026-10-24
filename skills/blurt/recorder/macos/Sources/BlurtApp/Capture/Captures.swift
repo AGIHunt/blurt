@@ -1,4 +1,4 @@
-// Captures outside a recording (docs/design/next-round.md K7): ⌥⇧A stills, ⌥⇧V voice inputs, and (optionally) the
+// Captures outside a recording (docs/design/next-round.md K7): ⌥⇧A stills, ⌥⇧V voice notes, and (optionally) the
 // system's own screenshots. Each one is a line in the current store's open shots batch, <store>/sessions/<ts>-shots/.
 //
 // v0.7 token diet — an agent runs only when the user asks for one, once per batch:
@@ -131,7 +131,7 @@ final class Snapper {
         captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
             guard let self = self else { return }
             guard let img = img else {
-                AppEnvironment.island?.toast(Loc.t("capture.snap.no_permission", table: "Capture"), actionTitle: nil, action: nil)
+                self.snapFailed()
                 self.restoreFocus()
                 return
             }
@@ -147,15 +147,32 @@ final class Snapper {
         }
     }
 
+    /// No picture came back. Without Screen Recording access that is why: the toast's "Open Settings" starts the
+    /// permission guide for it (System Settings at the right list, the helper panel beside it). With access, it was
+    /// a passing failure: "try again".
+    private func snapFailed() {
+        let allowed = SystemAccess.granted(.screen)
+        emit(["event": "snap_failed", "screen_recording": allowed])
+        guard !allowed else {
+            return island.toast(Loc.t("capture.snap.failed", table: "Capture"), actionTitle: nil, action: nil)
+        }
+        var t = Island.Toast(text: Loc.t("capture.snap.no_permission", table: "Capture"),
+                             actionTitle: Loc.t("capture.snap.open_settings", table: "Capture")) {
+            MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: .island) }
+        }
+        t.seconds = 8
+        island.toast(t)
+    }
+
     func playShutter() {
         guard recordConfig()["snap_sound"] as? Bool ?? true else { return }
         let p = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"
         if FileManager.default.fileExists(atPath: p) { NSSound(contentsOfFile: p, byReference: true)?.play() }
     }
 
-    // MARK: voice inputs
+    // MARK: voice notes
 
-    /// A finished voice input (VoiceInput.swift): its wav is at shots/NNN.wav of `batch`. The words are its note:
+    /// A finished voice note (VoiceInput.swift): its wav is at shots/NNN.wav of `batch`. The words are its note:
     /// with a project it is filed once they are transcribed; without words (or a project) it hangs as a card.
     /// `stream`: the pieces transcribed while it was said — its last piece is all that is left (else the whole wav).
     func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream: VoiceNoteStream? = nil) {
@@ -186,6 +203,7 @@ final class Snapper {
         let key = ObjectIdentifier(s)
         if pendingWords[key] != nil { pendingWords[key]?.append(then); return }
         pendingWords[key] = [then]
+        let take = wordsTake[key] ?? 0
         s.transcription = .pending
         hanging.update(s)
         if let st = streamed.removeValue(forKey: key) {
@@ -196,27 +214,32 @@ final class Snapper {
                 emit(["event": "voice_stream_done", "n": s.n, "ok": text != nil, "chars": t?.count ?? 0,
                       "ms": Int((CACurrentMediaTime() - t0) * 1000)])
                 guard let self = self else { return }
-                if let t = t, !t.isEmpty { self.wordsArrived(s, t, key: key, via: "stream") } else { self.transcribeWhole(s, wav, key: key) }
+                if let t = t, !t.isEmpty { self.wordsArrived(s, t, key: key, take: take, via: "stream") }
+                else { self.transcribeWhole(s, wav, key: key, take: take) }
             }
             return
         }
-        transcribeWhole(s, wav, key: key)
+        transcribeWhole(s, wav, key: key, take: take)
     }
 
-    /// `transcribe.py note` on the whole wav (the warm server answers it when it runs).
-    private func transcribeWhole(_ s: Shot, _ wav: URL, key: ObjectIdentifier) {
-        Task {
-            if let d = Snapper.testWordsDelay { try? await Task.sleep(nanoseconds: UInt64(d * 1e9)) }
-            var r = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
-            if Snapper.testFailWords() { r = nil }
-            let ok = r.map { ($0["ok"] as? Bool) ?? true } ?? false
-            let text = ok ? (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-            await MainActor.run { self.wordsArrived(s, text, key: key, via: "whole") }
+    /// The whole wav → its words: the warm speech server when it runs or is starting (the snap's note bubble and ⌥⇧V
+    /// start it as they begin listening: VoiceInput.warmSpeechModel), else `transcribe.py note` (a cold model load).
+    private func transcribeWhole(_ s: Shot, _ wav: URL, key: ObjectIdentifier, take: Int) {
+        let fail = Snapper.testFailWords()
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let d = Snapper.testWordsDelay { Thread.sleep(forTimeInterval: d) }
+            let r = fail ? nil : VoiceInput.transcribePiece(wav, prior: "")
+            let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            DispatchQueue.main.async { self.wordsArrived(s, text, key: key, take: take, via: "whole") }
         }
     }
 
-    /// The words of `s` are in (nil: transcription failed; "": no speech in it).
-    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, via: String) {
+    /// The words of `s` are in (nil: transcription failed; "": no speech in it). `take`: which recording they are of
+    /// (the words of a take since replaced by a re-record are dropped: voiceReplaced).
+    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, take: Int, via: String) {
+        guard take == wordsTake[key] ?? 0 else {
+            return emit(["event": "voice_text_stale", "n": s.n, "via": via])
+        }
         emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false, "via": via,
               "wall": Date().timeIntervalSince1970])
         if !s.deleted {
@@ -237,6 +260,20 @@ final class Snapper {
         for f in pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
     }
     private var pendingWords: [ObjectIdentifier: [(String?) -> Void]] = [:]
+    /// how many times a capture's recording was replaced (Edit Note's re-record): words of an older take are stale
+    private var wordsTake: [ObjectIdentifier: Int] = [:]
+
+    /// An edit kept a re-record over `s`'s voice (its `said` is nil again). Words still coming for the old take are
+    /// dropped when they land, and whoever waited for them gets the new take's words instead.
+    func voiceReplaced(_ s: Shot) {
+        let key = ObjectIdentifier(s)
+        wordsTake[key, default: 0] += 1
+        streamed.removeValue(forKey: key)
+        s.transcription = .idle
+        guard let waiting = pendingWords.removeValue(forKey: key) else { return }
+        emit(["event": "voice_replaced", "n": s.n, "waiting": waiting.count])
+        transcribe(s) { t in waiting.forEach { $0(t) } }
+    }
     /// voice notes whose pieces were transcribed while they were said (VoiceNoteStream), until their words are in
     private var streamed: [ObjectIdentifier: VoiceNoteStream] = [:]
     /// Scripted checks (test commands only): BLURT_TEST_WORDS_DELAY=SECS holds every transcription back that long, so
@@ -418,8 +455,9 @@ final class Snapper {
     /// `delivered`: the kind of app whose payload the drop got (nil: not sure); `noteFile`: the .md went with it;
     /// `landed` / `at`: the app it was dropped into and where (a screen point). A chat app (a browser, an Electron
     /// app, WeChat, QQ…) got the picture alone: the note is then pasted in after it (DragNoteFollowUp,
-    /// record.smart_paste). Where the note didn't go in after all (the follow-up couldn't run, the app didn't read it,
-    /// the Finder, not sure), the note goes on the clipboard (record.drag_copy_note; BlurtCore DragReceipt) and the
+    /// record.smart_paste) — never in a code editor, whose focus may be source code. Where the note didn't go in after
+    /// all (a code editor, the follow-up couldn't run, the app didn't read it, the Finder, not sure), the note goes on
+    /// the clipboard (record.drag_copy_note; BlurtCore DragReceipt) and the
     /// toast says "⌘V to paste"; a rich app (it took the note from the rich item) and a terminal (both paths) leave the
     /// clipboard alone. "Undo" in the toast puts the card back on its thread (and the clipboard as it was, if nothing
     /// was copied since). `fromPanel`: dragged out of Recently Taken again (it is already off its thread; its days
@@ -434,7 +472,7 @@ final class Snapper {
         let plan = DragFollowUp.plan(delivered: delivered,
                                      card: CardPasteboard.Card(image: s.kind == .shot ? s.bestURL : nil, note: s.copyText),
                                      enabled: SmartPaste.enabled, accessibility: SmartPaste.accessibility,
-                                     secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled())
+                                     secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(), kind: landed?.kind)
         if s.kind == .shot, s.copyText != nil {
             emit(["event": "drag_note_plan", "n": s.n, "bundle": landed?.bundleID ?? NSNull(), "kind": landed?.kind.rawValue ?? NSNull(),
                   "plan": "\(plan)"])
@@ -580,22 +618,25 @@ final class Snapper {
         }
     }
 
-    /// Cards come back after a restart: every shots batch of the last 30 days with unassigned captures — in the inbox,
-    /// and in the projects (captures taken there without a note).
+    /// Cards come back after a restart: every shots batch with unassigned captures, however old (a card waits until
+    /// the user does something with it; v0.8.6 looked at the last 30 days only and older cards vanished) — in the
+    /// inbox, and in the projects (captures taken there without a note). Only a batch whose shots.jsonl still holds a
+    /// card is loaded (BlurtCore CardBatches: its pictures are read only then).
     func restore() {
         let store = ProjectStore.shared
-        let cutoff = Date().addingTimeInterval(-30 * 86400)
         let dirs = ([store.inbox] + store.projects).flatMap { p -> [URL] in
             let root = p.store.appendingPathComponent("sessions")
-            return ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+            return ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [])
                 .filter { $0.lastPathComponent.hasSuffix("-shots") }
-                .filter { ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) > cutoff }
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         for d in dirs where !cardBatches.contains(where: { canonicalPath($0.dir) == canonicalPath(d) }) {
             // cards, and captures dragged out (Recently Taken — or past their days, for expireTaken)
-            guard let b = ShotBatch.load(d), b.live.contains(where: { $0.isCard || $0.taken != nil }) else { continue }
+            guard let raw = try? String(contentsOf: d.appendingPathComponent("shots.jsonl"), encoding: .utf8),
+                  CardBatches.holdsCards(jsonl: raw),
+                  let b = ShotBatch.load(d), b.live.contains(where: { $0.isCard || $0.taken != nil }) else { continue }
             b.onChange = { hanging.refresh() }
             cardBatches.append(b)
+            VoiceRetake.sweep(d.appendingPathComponent("shots"))
         }
         hanging.refresh(quiet: true)
         expireTaken()

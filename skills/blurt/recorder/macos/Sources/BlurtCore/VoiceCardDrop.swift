@@ -14,7 +14,7 @@
 //   a chat app (web / Qt composer)         refused (anywhere but the box) Blurt pastes the words into its composer
 //                                          taken (the box itself)          the app's own text drop — nothing more
 //   a rich app, a terminal, the Finder,    the app's own text drop, as before (a terminal types the one-line text at
-//   an unknown native app                  the prompt where a text drop would — never a Return: nothing runs)
+//   an unknown native app, a code editor   the prompt where a text drop would — never a Return: nothing runs)
 //   Blurt, nothing                         the card goes back to its thread
 // Can't paste (smart paste off, no Accessibility, secure input, the app didn't come forward, the paste wasn't read):
 // the words go on the clipboard and the island says "⌘V to paste" — the card counts as taken, with Undo.
@@ -23,8 +23,9 @@ import Foundation
 
 public enum VoiceCardDrop {
     /// A window whose app gets the words pasted when a voice card is let go of over it: a chat app with a web or Qt
-    /// composer. (A native app we don't know keeps the normal text drop: a paste there could go anywhere.)
-    public static func pastes(cls: DropClass, kind: ComposerKind) -> Bool { cls == .chat && kind != .native }
+    /// composer. (A native app we don't know, and a code editor, keep the normal text drop: a paste there could go
+    /// anywhere — in an editor, into source code.)
+    public static func pastes(cls: DropClass, kind: ComposerKind) -> Bool { cls == .chat && (kind == .web || kind == .qt) }
 
     public enum Plan: Equatable {
         /// not ours to finish: the app took the drop (its own text drop), or it isn't a paste target

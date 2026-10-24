@@ -13,9 +13,10 @@
 //              Stickies, Messages, Telegram (macOS),         (RTFD) — nothing else             was): picture + note
 //              WhatsApp
 //   chat       browsers, Electron apps (Claude, Feishu,      the picture alone (its file);     picture, then note (a
-//              Slack, VS Code, Notion…), WeChat, QQ, and     then Blurt pastes the note in     sequence of pastes;
-//              every app no table names                      after it; + the .md file if       several cards: image,
-//                                                            record.drag_note_file is on       note, image, note…)
+//              Slack, Notion…), WeChat, QQ, code editors,    then Blurt pastes the note in     sequence of pastes;
+//              and every app no table names                  after it — never in a code        several cards: image,
+//                                                            editor (see below); + the .md     note, image, note…)
+//                                                            if record.drag_note_file is on
 //   terminal   Terminal, iTerm2, Ghostty, Warp, kitty,       the picture's path and the        untouched
 //              WezTerm, Alacritty, Hyper, Tabby              .md's path (Claude Code / Codex
 //                                                            read it) — never the note's text
@@ -35,6 +36,12 @@
 // place the engine matters: WeChat / QQ are Qt (⌘↓: their dropped picture is left selected, and Accessibility can't
 // say so); browsers and Electron apps are web content (found by their bundle, Contents/Frameworks/Electron
 // Framework.framework, when no table names them): the selection decides; anything else is a native app.
+// v0.8.7 — code editors (VS Code and its forks Cursor / Windsurf / VSCodium, Zed, Xcode, JetBrains IDEs, Sublime,
+// Nova…) are their own kind, `editor`: a drop that lands on the editor rather than its AI chat panel leaves the
+// focus in source code, and "the editable text under the drop point, else the nearest" is the code buffer. So
+// Blurt never pastes there by itself: the picture goes in as the drop, the note goes on the clipboard ("⌘V to paste
+// the note"), and a voice card gets the editor's own text drop. A ⌘V after a click-copy is the user's own paste and
+// still runs the sequence where they put the caret.
 
 import CoreGraphics
 import Foundation
@@ -60,6 +67,8 @@ public enum ComposerKind: String, CaseIterable {
     case qt
     /// an AppKit / UIKit app
     case native
+    /// a code editor (VS Code family, Zed, Xcode, JetBrains…): the focus may be source code — no paste of its own
+    case editor
 }
 
 public enum DropTargets {
@@ -92,6 +101,19 @@ public enum DropTargets {
         "com.electron.feishu", "com.bytedance.feishu", "md.obsidian", "com.figma.Desktop", "com.linear",
     ]
 
+    /// Code editors: their focus after a drop may well be a source file (DragFollowUp never pastes there).
+    public static let codeEditors: Set<String> = [
+        "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium", "com.vscodium.VSCodiumInsiders",
+        "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.Zed", "dev.zed.Zed-Preview", "com.apple.dt.Xcode",
+        "com.sublimetext.4", "com.sublimetext.3", "com.panic.Nova", "com.google.android.studio", "com.trae.app", "dev.kiro.desktop",
+    ]
+
+    /// A code editor: the table, or a JetBrains IDE (IntelliJ, PyCharm, WebStorm, GoLand, Fleet…).
+    public static func isCodeEditor(_ bundleID: String?) -> Bool {
+        guard let id = bundleID else { return false }
+        return codeEditors.contains(id) || id.hasPrefix("com.jetbrains.")
+    }
+
     /// The class of the app `bundleID` — the tables only (no file system: the smart-paste tap asks this too).
     public static func classify(bundleID: String?) -> DropClass {
         guard let id = bundleID else { return .chat }
@@ -104,6 +126,7 @@ public enum DropTargets {
     /// What kind of composer the app `bundleID` (its bundle at `appURL`, for the Electron check) has.
     public static func composer(bundleID: String?, appURL: URL?, fileManager: FileManager = .default) -> ComposerKind {
         if SingleFlavourApps.contains(bundleID) { return .qt }
+        if isCodeEditor(bundleID) { return .editor }
         if let id = bundleID, webApps.contains(id) { return .web }
         if let u = appURL, isElectron(u, fileManager: fileManager) { return .web }
         return .native

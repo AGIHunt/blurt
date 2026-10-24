@@ -1,14 +1,17 @@
-// Recently Taken (v0.8.1): cards dragged out into another app in the last 7 days. A drop that kept only part of a card
-// (Claude took the picture, not the note) must never lose it — so a taken card leaves its thread but stays here, with
-// everything a card can do: copy it (picture + note, as a click on a card), copy the picture or the note alone, drag
-// the picture out again (the same items as a card's drag), put it back on its thread, show it in the Finder.
+// Recently Dragged Out (v0.8.1; "Recently Taken" in the code): cards dragged out into another app in the last 7 days.
+// A drop that kept only part of a card (Claude took the picture, not the note) must never lose it — so a taken card
+// leaves its thread but stays here, with everything a card can do: copy it (picture + note, as a click on a card),
+// copy the picture or the note alone, drag the picture out again (the same items as a card's drag), hang it back on
+// the notch (a card again), show it in the Finder.
 //
-// Two ways in: the island's right-click menu ("Recently Taken (N)", each one with its actions, and "Show All…" for
-// this panel) and the main window's "Recently taken: N" row (Inbox and Unassigned). After 7 days Snapper.expireTaken
-// moves a taken capture to the Trash.
+// Two ways in: the island's right-click menu ("Recently Dragged Out (N)", each one with its actions, and "Show All…"
+// for this panel) and the main window's "Recently taken: N" row (Inbox and Unassigned). After 7 days
+// Snapper.expireTaken moves a taken capture to the Trash.
 //
 // The panel: a small utility window on the island's screen, under the island; one row per capture — the picture
-// (drag it), the note (two lines) and when it was taken, then Copy · Copy Image · Copy Note · Put Back.
+// (drag it), the note (two lines) and when it was dragged out, then one button, Copy (picture and note, the thing
+// people come back for), and a "more" menu with the rest: Copy Image · Copy Note · Hang Back on the Notch · Show in
+// Finder (the same menu on a right-click of the row). v0.8.6 had four buttons of the same weight on every row.
 
 import AppKit
 import BlurtCore
@@ -157,7 +160,19 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         return m
     }
 
-    /// Copy (as a click on its card) · Copy Image · Copy Note · Put Back on the Line.
+    /// What a row's "more" button (and its right-click) offers besides Copy: Copy Image · Copy Note · Hang Back on
+    /// the Notch, then Show in Finder.
+    static func moreMenu(_ s: Shot, from: (() -> NSRect?)?) -> NSMenu {
+        let m = NSMenu()
+        for (t, f) in actions(s, from: from).dropFirst() { m.addItem(ClosureMenuItem(t, f)) }
+        if let u = s.bestURL {
+            m.addItem(.separator())
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { NSWorkspace.shared.activateFileViewerSelecting([u]) })
+        }
+        return m
+    }
+
+    /// Copy (as a click on its card) · Copy Image · Copy Note · Hang Back on the Notch — Copy first: a row's one button.
     static func actions(_ s: Shot, from: (() -> NSRect?)?) -> [(String, () -> Void)] {
         var out: [(String, () -> Void)] = []
         out.append((Loc.t("capture.taken.copy", table: "Capture"), { copy(s, .click) }))
@@ -217,18 +232,36 @@ final class TakenRow: NSView {
         let detail = NSTextField(labelWithString: when + " · " + left)
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
-        let buttons = NSStackView()
-        buttons.spacing = 6
-        for (t, f) in TakenPanel.actions(s, from: { [weak thumbView = thumb] in
+        // one button (Copy: picture and note), the rest in its "more" menu
+        let from = { [weak thumbView = thumb] () -> NSRect? in
             guard let v = thumbView, let w = v.window else { return nil }
             return w.convertToScreen(v.convert(v.bounds, to: nil))
-        }) {
+        }
+        let buttons = NSStackView()
+        buttons.spacing = 6
+        let actions = TakenPanel.actions(s, from: from)
+        if let (t, f) = actions.first {
             let b = ClosureButton(t, f)
             b.controlSize = .small
             b.bezelStyle = .rounded
             b.font = .systemFont(ofSize: 11)
             buttons.addArrangedSubview(b)
         }
+        let more = TakenPanel.moreMenu(s, from: from)
+        let moreTitle = Loc.t("capture.taken.more", table: "Capture")
+        let mb = ClosureButton("", {})
+        mb.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: moreTitle)
+        mb.imagePosition = .imageOnly
+        mb.controlSize = .small
+        mb.bezelStyle = .rounded
+        mb.toolTip = moreTitle
+        mb.setAccessibilityLabel(moreTitle)
+        mb.set { [weak mb] in
+            guard let b = mb else { return }
+            more.popUp(positioning: nil, at: NSPoint(x: 0, y: b.bounds.height + 3), in: b)
+        }
+        buttons.addArrangedSubview(mb)
+        rowMenu = TakenPanel.moreMenu(s, from: from)
         let text = NSStackView(views: [title, detail, buttons])
         text.orientation = .vertical
         text.alignment = .leading
@@ -251,6 +284,10 @@ final class TakenRow: NSView {
         setAccessibilityLabel(TakenPanel.title(s))
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// the right-click menu: the same as the "more" button's
+    private var rowMenu: NSMenu?
+    override func menu(for event: NSEvent) -> NSMenu? { rowMenu }
 }
 
 /// The picture of a taken capture: drag it out again — the same items as a card's drag (a voice note: its words).
@@ -326,5 +363,7 @@ final class ClosureButton: NSButton {
         target = self
         action = #selector(fire)
     }
+    /// what a click does (after init: a closure that needs the button itself)
+    func set(_ fn: @escaping () -> Void) { self.fn = fn }
     @objc func fire() { fn?() }
 }

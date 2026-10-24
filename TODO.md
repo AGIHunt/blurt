@@ -84,6 +84,10 @@
 - [x] **Pen** (macOS): hold ⌃ and drag to circle / underline; ink fades 3 s after the last stroke, is in the video and
       in events.jsonl (`frames.py marks`, `grab --crop/--box stroke`); ✎ on the bar / ⌥⇧D keeps it on
 - [ ] Pen on Windows (Tk overlay), click ripples, pen for the review page (draw on a frame to correct the agent)
+- [ ] Windows / Linux counterparts of the v0.8.7 capture fixes (macOS done): a cancelled voice note keeps its audio
+      for "Voice note discarded · Undo" (5 s); editing a card's note shows its spoken words to correct, and a re-record
+      never overwrites the old wav until it is kept; cards never age out of the thread; when drag-out pastes notes,
+      never into a code editor (VS Code, Cursor, Zed, JetBrains…)
 - [x] Documents from recordings (requirements / design doc with the marked frames): `reference/docs.md`
 - [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl
 - [ ] **Browser telemetry** (extension or injected script): console errors, failed network requests, URL changes,

@@ -43,6 +43,28 @@ final class CardDropTargetTests: XCTestCase {
         XCTAssertEqual(DropTargets.composer(bundleID: nil, appURL: nil), .native)
     }
 
+    /// Code editors are chat apps for the drop (the picture alone) but their own composer kind: the focus after a drop
+    /// may be source code, so Blurt never pastes there by itself (v0.8.7, the capture audit).
+    func testCodeEditorsAreTheirOwnKind() {
+        for id in ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.Zed",
+                   "com.apple.dt.Xcode", "com.jetbrains.intellij", "com.jetbrains.pycharm", "com.sublimetext.4", "com.panic.Nova"] {
+            XCTAssertTrue(DropTargets.isCodeEditor(id), id)
+            XCTAssertEqual(DropTargets.classify(bundleID: id), .chat, id)
+            XCTAssertEqual(DropTargets.composer(bundleID: id, appURL: nil), .editor, id)
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-editor-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = root.appendingPathComponent("Cursor.app")
+        try? FileManager.default.createDirectory(at: app.appendingPathComponent("Contents/Frameworks/Electron Framework.framework"),
+                                                 withIntermediateDirectories: true)
+        XCTAssertEqual(DropTargets.composer(bundleID: "com.todesktop.230313mzl4w4u92", appURL: app), .editor,
+                       "an Electron editor is an editor first")
+        for id in ["com.google.Chrome", "com.anthropic.claudefordesktop", "com.tinyspeck.slackmacgap", "com.example.native"] {
+            XCTAssertFalse(DropTargets.isCodeEditor(id), id)
+        }
+        XCTAssertFalse(DropTargets.isCodeEditor(nil))
+    }
+
     /// An app no table names is web content if its bundle carries Electron's framework.
     func testFindsElectronAppsByTheirFramework() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-droptarget-\(UUID().uuidString)")

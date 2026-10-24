@@ -35,7 +35,7 @@
 "speech.purpose.live" = "实时字幕";
 "speech.purpose.live.detail" = "边录边转写，停止录制时结果就已就绪。";
 "speech.purpose.note" = "语音备注";
-"speech.purpose.note.detail" = "截图上的口述备注和语音备注，速度优先。";
+"speech.purpose.note.detail" = "截图备注和语音备注，速度优先。";
 "speech.suggest.title" = "推荐使用 %@";
 "speech.suggest.for" = "将用于%@。";
 "speech.suggest.better" = "你的语言错误率约从 %@ 降到 %@。";

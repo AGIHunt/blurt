@@ -578,6 +578,8 @@ final class IslandContent: NSView {
         } else {
             s = Loc.t("capture.voice.hint_done", table: "Capture")
         }
+        // Esc cancels only in the note's first seconds (VoiceInput.escSeconds): then it is the other apps' again
+        if v.escCancels { s += " · " + Loc.t("capture.voice.esc_hint", table: "Capture") }
         let left = v.maxSeconds - v.elapsed
         if v.active, left <= 60 { s += " · " + Loc.t("capture.voice.time_left", table: "Capture", Island.clock(max(0, left))) }
         return s

@@ -17,6 +17,9 @@ final class VoiceCardDropTests: XCTestCase {
         XCTAssertTrue(VoiceCardDrop.pastes(cls: .chat, kind: .web))       // browsers, Claude, Feishu, Slack
         XCTAssertTrue(VoiceCardDrop.pastes(cls: .chat, kind: .qt))        // WeChat, QQ
         XCTAssertFalse(VoiceCardDrop.pastes(cls: .chat, kind: .native))   // an app no table names: its own text drop
+        XCTAssertFalse(VoiceCardDrop.pastes(cls: .chat, kind: .editor))   // a code editor: never a paste into source code
+        XCTAssertEqual(plan(.chat, .editor), .none("not_a_chat_app"))
+        XCTAssertNil(VoiceCardDrop.hint(cls: .chat, kind: .editor, app: "Cursor", enabled: true, accessibility: true))
         for c in [DropClass.rich, .terminal, .finder] {
             for k in ComposerKind.allCases { XCTAssertFalse(VoiceCardDrop.pastes(cls: c, kind: k), "\(c) \(k)") }
         }

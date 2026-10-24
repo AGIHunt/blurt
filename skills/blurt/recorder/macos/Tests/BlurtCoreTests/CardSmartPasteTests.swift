@@ -188,6 +188,13 @@ final class CardSmartPasteTests: XCTestCase {
         XCTAssertEqual(plan(.chat, enabled: false), .none("off"))
         XCTAssertEqual(plan(.chat, ax: false), .none("no_accessibility"))
         XCTAssertEqual(plan(.chat, secure: true), .none("secure_input"))
+        // a code editor: the focus may be source code — the note goes on the clipboard instead
+        XCTAssertEqual(DragFollowUp.plan(delivered: .chat, card: card, enabled: true, accessibility: true, secureInput: false, kind: .editor),
+                       .none("code_editor"))
+        for k in [ComposerKind.web, .qt, .native] {
+            XCTAssertEqual(DragFollowUp.plan(delivered: .chat, card: card, enabled: true, accessibility: true, secureInput: false, kind: k),
+                           .pasteNote("the logo\noverlaps"), "\(k)")
+        }
     }
 
     /// Where the note's paste goes, and how the caret gets after the picture.
@@ -208,6 +215,9 @@ final class CardSmartPasteTests: XCTestCase {
         XCTAssertEqual(FollowUpFocus.decide(F(kind: .native, editable: true, selection: 1)), .paste(caret: [.right]))
         XCTAssertEqual(FollowUpFocus.decide(F(kind: .native, editable: false)), .skip("not_text"))
         XCTAssertEqual(FollowUpFocus.decide(F(kind: .native)), .skip("not_text"))
+        // a code editor: never, not even into editable text (it may be the code buffer)
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .editor, sameWindow: true, editable: true, selection: 0)), .skip("code_editor"))
+        XCTAssertEqual(FollowUpFocus.decide(F(kind: .editor)), .skip("code_editor"))
         // never elsewhere
         for k in ComposerKind.allCases {
             XCTAssertEqual(FollowUpFocus.decide(F(kind: k, frontIsTarget: false)), .skip("not_front"), "\(k)")

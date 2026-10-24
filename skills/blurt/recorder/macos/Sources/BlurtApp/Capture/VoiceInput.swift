@@ -1,8 +1,9 @@
-// Voice input (K7, ⌥⇧V): talk, and it becomes a capture — no screen recording, just the words.
+// Voice note (K7, ⌥⇧V): talk, and it becomes a capture — no screen recording, just the words. (Not dictation: that
+// types at the cursor. This one files a card.)
 //
 // v0.8.6 — the report: any breath or thinking pause ended the voice note (1.5 s of silence did), fine for a short
 // note, bad for a long one. Now you end it:
-//  • press once: listening starts; press ⌥⇧V again (or the island's Done) to finish; Esc cancels. A pause no longer
+//  • press once: listening starts; press ⌥⇧V again (or the island's Done) to finish. A pause no longer
 //    ends it — unless Settings → General → "End a voice note when I pause" (record.voice.end_on_pause, off) is on:
 //    then 1.5 s of silence after you spoke does, as before (record.voice.silence_ms). 10 minutes at most
 //    (record.voice.max_seconds, 600; the right ear shows the time, the island the time left in the last minute);
@@ -22,6 +23,10 @@
 //    time the first piece is complete.
 //    With a current project it goes straight into the island; in auto mode it hangs from the island on a thread.
 //  • while recording it does nothing (the recording already has the mic) and says so.
+//  • Esc cancels — only in its first 10 s (escSeconds): plain Esc is a hotkey for every app while Blurt holds it, and
+//    a vibe coder presses Esc in Claude Code or vim all the time, so it is given back as soon as a mistaken start is
+//    no longer likely (the island stops saying "Esc to cancel"); after that, the key again or Done ends it. A cancel
+//    keeps the audio for 5 s: "Voice note discarded · Undo" files it after all (v0.8.6 deleted it at once).
 // Tests: BLURT_TEST_MIC_WAV (or BLURT_NOTE_WAV) is fed through the same path instead of the microphone;
 // BLURT_TEST_NO_SERVERS=1 starts no warm server (the pieces go through the CLI: no local port is opened).
 
@@ -47,6 +52,12 @@ final class VoiceInput {
     private var heardSpeech = false
     /// this take's live transcript (LiveTranscript's session)
     private var liveSession = 0
+    /// Esc cancels (its hotkey is held): the first `escSeconds` of a voice note only
+    private(set) var escCancels = false
+    private var escTimer: Timer?
+    static let escSeconds: Double = 10
+    /// how long "Voice note discarded · Undo" can bring a cancelled note back (its audio is kept until then)
+    static let undoSeconds: Double = 5
 
     var elapsed: Double { active ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
 
@@ -91,7 +102,17 @@ final class VoiceInput {
     /// The island's mic button, and its Done.
     func toggle() { active ? finish(keep: true, via: "button") : start() }
 
+    /// Esc (its hotkey, held for the first `escSeconds`): the note is discarded, with Undo.
     func cancel() { if active { finish(keep: false, via: "esc") } }
+
+    /// Esc back to the other apps (its time is up, or the note ended).
+    private func releaseEsc() {
+        escTimer?.invalidate()
+        escTimer = nil
+        guard escCancels else { return }
+        escCancels = false
+        unregisterHotkey(.voiceEsc)
+    }
 
     // MARK: listening
 
@@ -143,6 +164,13 @@ final class VoiceInput {
         active = true
         Self.warmSpeechModel()
         registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0)
+        escCancels = true
+        escTimer?.invalidate()
+        escTimer = Timer.scheduledTimer(withTimeInterval: VoiceInput.escSeconds, repeats: false) { [weak self] _ in
+            guard let self = self, self.voice === v else { return }
+            self.releaseEsc()
+            emit(["event": "voice_esc_released", "n": k])
+        }
         emit(["event": "voice_start", "n": k, "session": b.dir.path, "end_on_pause": pauseEnds, "max_seconds": maxSeconds,
               "stream": st != nil, "live_text": LiveTranscript.enabled, "wall": Date().timeIntervalSince1970])
         island.voiceChanged()
@@ -206,14 +234,16 @@ final class VoiceInput {
         guard active, let v = voice, let b = batch else { return }
         let dur = v.elapsed
         let kept = keep && heardSpeech
-        if !ended { v.stop(keep: kept) } else if !kept { v.stop(keep: false) }
+        // Esc after something was said: kept a moment longer, for Undo
+        let undoable = !keep && via == "esc" && heardSpeech
+        if !ended { v.stop(keep: kept || undoable) } else if !kept { v.stop(keep: false) }
         let st = stream
         voice = nil
         stream = nil
         batch = nil
         active = false
         holding = false
-        unregisterHotkey(.voiceEsc)
+        releaseEsc()
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
               "pieces": st?.count ?? 0, "wall": Date().timeIntervalSince1970])
         let project = snapper.target
@@ -227,10 +257,36 @@ final class VoiceInput {
             }
             if st == nil { LiveTranscript.shared.end(session: live, after: 0.4) }
             snapper.voiceFinished(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st)
+        } else if undoable {
+            LiveTranscript.shared.end(session: live)
+            st?.onText = nil
+            discarded(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st, wav: v.url)
         } else {
             st?.cancel()
             LiveTranscript.shared.end(session: live)
             if keep { island.toast(Loc.t("capture.voice.nothing", table: "Capture"), actionTitle: nil, action: nil) }
+        }
+    }
+
+    /// A cancelled voice note: "Voice note discarded · Undo" for `undoSeconds` — Undo files it as if it had been
+    /// finished (Snapper.voiceFinished); else its audio goes.
+    private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL) {
+        var settled = false
+        emit(["event": "voice_discarded", "n": n, "undo_seconds": VoiceInput.undoSeconds])
+        var t = Island.Toast(text: Loc.t("capture.voice.discarded", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
+            guard !settled else { return }
+            settled = true
+            emit(["event": "voice_undo", "n": n])
+            snapper.voiceFinished(batch: b, n: n, duration: duration, project: project, stream: st)
+        }
+        t.seconds = VoiceInput.undoSeconds
+        island.toast(t)
+        DispatchQueue.main.asyncAfter(deadline: .now() + VoiceInput.undoSeconds + 0.5) {
+            guard !settled else { return }
+            settled = true
+            st?.cancel()
+            try? FileManager.default.removeItem(at: wav)
+            emit(["event": "voice_discard_done", "n": n])
         }
     }
 }
