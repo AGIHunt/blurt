@@ -4,7 +4,7 @@
 //               project;
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
 //   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
-//   nothing     a quiet placeholder.
+//   nothing     a quiet placeholder (blank while no items exist at all: the list's first-run state speaks).
 //
 // Host protocol v3 (C6 + next-round.md "审核组件宿主协议 v3"):
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
@@ -133,15 +133,28 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private func only(_ v: NSView?) {
         for x in [web!, overlay, placeholder, jobView] as [NSView] { x.isHidden = x !== v && !(v === web && x === overlay) }
         if v !== web { banner.set(nil); overlay.set([]) }
+        showsNothing = false
+        showsQuietNothing = false
     }
 
-    func showNothing(_ count: Int = 0) {
+    /// What showNothing put up, until something else replaces it.
+    private(set) var showsNothing = false, showsQuietNothing = false
+
+    /// Nothing selected (or several): a quiet placeholder. `quiet`: no items exist at all yet — the pane stays blank
+    /// and the list's first-run state is the one thing to look at.
+    func showNothing(_ count: Int = 0, quiet: Bool = false) {
         currentItem = nil
         currentJob = nil
-        let msg = count > 1 ? TP("main.detail.multi.detail", count) : T("main.detail.none.detail")
-        placeholder.show(symbol: count > 1 ? "square.stack.3d.up" : "sidebar.right",
-                         title: count > 1 ? TP("main.detail.multi", count) : T("main.detail.none"), message: msg)
-        only(placeholder)
+        if quiet {
+            only(nil)
+        } else {
+            let msg = count > 1 ? TP("main.detail.multi.detail", count) : T("main.detail.none.detail")
+            placeholder.show(symbol: count > 1 ? "square.stack.3d.up" : "sidebar.right",
+                             title: count > 1 ? TP("main.detail.multi", count) : T("main.detail.none"), message: msg)
+            only(placeholder)
+        }
+        showsNothing = true
+        showsQuietNothing = quiet
     }
 
     func show(item: ItemRow, projects: [ProjectEntry]) {
@@ -499,8 +512,11 @@ final class ItemBanner: NSView {
         case "session":
             tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
-            let st = it.workJob.flatMap { JobStore.shared.job($0)?.agent?.status }.map { T("session.\($0.rawValue)") } ?? Look.stateName(it.state)
-            text.stringValue = T("main.banner.with_agent", agent ?? T("main.banner.agent"), st)
+            // "Handed off to Claude Code · Working"; without a live session, not "… · Handed off" again
+            let live = it.workJob.flatMap { JobStore.shared.job($0)?.agent?.status }.map { T("session.\($0.rawValue)") }
+            let who = agent ?? T("main.banner.agent")
+            text.stringValue = live == nil && it.state == "handed_off" ? T("main.banner.handed_off", who)
+                : T("main.banner.with_agent", who, live ?? Look.stateName(it.state))
             if it.workJob != nil { button(T("main.banner.open_session"), "session", primary: true) }
         case "external":
             tint = BrandColor.ink

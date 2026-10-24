@@ -529,7 +529,7 @@ route 由 `items.py ingest` 在 auto 模式下调用（后台、写 K4 的 route
 |---|---|---|---|
 | `new` | New | 新 | 刚捕获 / 整理出来，你还没看过 |
 | `todo` | To do | 要做 | 你留下了，要做 |
-| `handed_off` | Handed off | 已交出 | 交给了 agent（口喷鸡里的会话，或复制给你自己的 agent），还没开始 |
+| `handed_off` | Handed off | 已交给 Agent | 交给了 agent（口喷鸡里的会话，或复制给你自己的 agent），还没开始 |
 | `in_progress` | In progress | 进行中 | agent 在做 |
 | `to_verify` | To verify | 待验证 | agent 说做好了（或说不该做），等你确认 |
 | `done` | Done | 完成 | 你确认做好了 |
@@ -568,7 +568,7 @@ v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --
 | 动作 | 从 | 到 | 快捷键 | en | zh-Hans |
 |---|---|---|---|---|---|
 | `keep` | new | todo | A（审核模式还有 ↩） | Keep — add it to To do | 要做 — 留下，放进要做 |
-| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off… — start it in Blurt, or copy an instruction | 交给 agent… — 在口喷鸡里开始，或复制指令 |
+| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off… — hand it to an agent in Blurt, or copy an instruction | 交给 Agent… — 在口喷鸡里交给 Agent，或复制指令 |
 | `done` | todo, handed_off, in_progress, to_verify | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
 | `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
 | `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |
@@ -1198,8 +1198,8 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
 - **校验**：每个平台都有测试检查 en 和 zh-Hans 的键完全一致、占位符一致（Swift 表由 `tests/test_l10n.py` 检查，P4；web 由 P6 的 vitest；Rust 由 P8）。
 - **通用键**（所有平台同名同义，en / zh-Hans）：
   `kind.issue` Issue / 问题，`kind.idea` Idea / 想法，`kind.note` Note / 笔记，`kind.task` Task / 任务；
-  状态（K3 改版，取代 `review.*` / `work.*`）：`state.new` New / 新，`state.todo` To do / 要做，`state.handed_off` Handed off / 已交出，
-  `state.handed_off.session` With {agent} / 已交给 {agent}，`state.handed_off.external` Copied to your agent / 已复制给你的 agent，
+  状态（K3 改版，取代 `review.*` / `work.*`）：`state.new` New / 新，`state.todo` To do / 要做，`state.handed_off` Handed off / 已交给 Agent，
+  `state.handed_off.session` Handed off to {agent} / 已交给 {agent}，`state.handed_off.external` Copied to your agent / 已复制给你的 Agent，
   `state.in_progress` In progress / 进行中，`state.to_verify` To verify / 待验证，`state.done` Done / 完成，`state.wontfix` Won't do / 不做，
   `state.discarded` Discarded / 已丢弃，`state.menu` Change state / 更改状态；
   动作 `action.<keep|hand_off|done|send_back|take_back|reopen|restore|wontfix|discard>` 和 `action.<…>.hint`（+ `action.done.hint_verify`），

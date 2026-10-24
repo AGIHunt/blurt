@@ -48,7 +48,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 item to review</string><key>other</key><string>%d items to review</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 item in Inbox</string><key>other</key><string>%d items in Inbox</string></dict>
   </dict>
   <key>capture.menu.show_cards</key>
   <dict>

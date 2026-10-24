@@ -136,16 +136,17 @@ While Blurt processes captures you see a small egg on the island; when it hatche
 
 The main window (`⌥⇧B` → *Open Blurt*) has the **Inbox** at the top of the sidebar, then your projects.
 
-The Inbox holds what needs you, and its header says so: *Needs you: 3 new · 2 to verify*. Select an item to see
-everything about it on the right — what you said, the frames, steps, the suspected code — and edit any field; changes
-save as you type. To go through a freshly processed capture quickly, open the capture and use the keyboard: `J`/`K` next and
+The Inbox holds what needs you, and its header says how much: *3 new · 2 to verify* (the menu bar menu says the
+same). Select an item to see everything about it on the right — what you said, the frames, steps, the suspected code —
+and edit any field; changes save as you type. Only fields with something in them are shown; **Add field** under them
+brings back an empty one. To go through a freshly processed capture quickly, open the capture and use the keyboard: `J`/`K` next and
 previous, `A` keep, `X` discard, `Z` undo, `M` merge into the previous item, `G` list view, `?` all shortcuts.
 
 ### 5. Hand off to an agent
 
 Select one or more items and choose how they get done:
 
-- **Start in Blurt** (`⌘↩`) — runs Claude Code or Codex in a terminal inside Blurt, in the project folder. Several
+- **Hand Off to Agent** (`⌘↩`) — runs Claude Code or Codex in a terminal inside Blurt, in the project folder. Several
   items can go to one conversation (*Together*) or one each (*In parallel*, each in its own git worktree so they
   don't edit the same files). The session keeps running if you close the window; Blurt tells you when it needs an
   answer or has finished a turn.
@@ -385,38 +386,38 @@ find out why a dictation came out wrong and keep the evidence. Everything in it 
 
 主窗口（`⌥⇧B` →「打开口喷鸡」）侧栏最上面是**待处理**，下面是你的项目。
 
-「待处理」里是需要你看的，标题会直接告诉你：「需要你看的：3 条新的 · 2 条待验证」。选中一条，右边是它的全部内容——原话、截图、步骤、
-可能相关的代码——每个字段都能改，边打边保存。刚整理好的一次捕获想快速过一遍，就打开它，用键盘：`J` / `K` 下一条 / 上一条，
+「待处理」里是需要你看的，标题下面直接写着有多少：「3 条新的 · 2 条待验证」（菜单栏菜单里也是这么写）。选中一条，右边是它的全部内容——
+原话、截图、步骤、可能相关的代码——每个字段都能改，边打边保存。只显示有内容的字段；空的字段在下面的「**添加字段**」里，选一个就加回来。刚整理好的一次捕获想快速过一遍，就打开它，用键盘：`J` / `K` 下一条 / 上一条，
 `A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键。
 
-### 5. 交给 agent
+### 5. 交给 Agent
 
 选中一条或几条，选一种交法：
 
-- **在口喷鸡里开始**（`⌘↩`）：在口喷鸡内置的终端里、在项目文件夹中运行 Claude Code 或 Codex。几条可以放进一个对话（**一起处理**），
+- **交给 Agent**（`⌘↩`）：在口喷鸡内置的终端里、在项目文件夹中运行 Claude Code 或 Codex。几条可以放进一个对话（**一起处理**），
   也可以每条一个（**并行**，各自在独立的 git worktree 里，互不改到同一个文件）。关掉窗口会话也继续跑；需要你回答、或者一轮做完了，口喷鸡会提醒你。
-- **复制指令**：一句话的指令，指向一份交接单，agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 agent 就行。「**复制全文**」复制的是交接单本身。
+- **复制指令**：一句话的指令，指向一份交接单，Agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 Agent 就行。「**复制全文**」复制的是交接单本身。
 
-装了口喷鸡 MCP 的 agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
+装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
 
 ### 6. 条目状态
 
 每条只有一个状态。
 
 ```
-新 ──要做──▶ 要做 ──交出──▶ 已交出 ──▶ 进行中 ──▶ 待验证 ──标为完成──▶ 完成
-               ▲               │          │          │
-               ├── 收回 ───────┴──────────┘          │
-               └── 退回 ─────────────────────────────┘
+新 ──要做──▶ 要做 ──交给 Agent──▶ 已交给 Agent ──▶ 进行中 ──▶ 待验证 ──标为完成──▶ 完成
+               ▲                     │               │          │
+               ├── 收回 ─────────────┴───────────────┘          │
+               └── 退回 ────────────────────────────────────────┘
 ```
 
 - **新**：刚捕获，你还没看。**要做**：你留下了。
-- **已交出** → **进行中**：agent 接手了，正在做。
-- **待验证**：agent 说做好了。看一眼：没问题就「**标为完成**」，不对就「**退回**」。
+- **已交给 Agent** → **进行中**：Agent 接手了，正在做。
+- **待验证**：Agent 说做好了。看一眼：没问题就「**标为完成**」，不对就「**退回**」。
 - **完成**：你确认过了。**不做**：你决定不做（没结束的条目都能标）。两者都能重新打开。
 - **已丢弃**：垃圾桶；「**恢复**」会把条目放回丢弃前的状态。
 
-待处理 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻从待处理里消失。agent 永远不能把条目标为完成——agent 说「修好了」，一律是待验证。
+待处理 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻从待处理里消失。Agent 永远不能把条目标为完成——Agent 说「修好了」，一律是待验证。
 
 点条目前面的状态圆环就能改状态，菜单里只列现在说得通的几步。列表里的快捷键：`A` 要做 · `D` 标为完成 ·
 `R` 往回（退回、收回、重新打开或恢复，哪个适用就是哪个）· `W` 不做 · `X` 丢弃 · `S` 打开菜单。

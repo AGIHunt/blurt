@@ -151,6 +151,10 @@ The platform surfaces stay as they are in `web/packages/ui/src/tokens.css`.
 | island | `#000000` | `#000000` | — |
 | capture glass | white 0.05–0.08 @ 72–82 % | same | — |
 
+Text that must be read — item IDs, project keys, times, shortcut hints, however small — is at least `mute`
+(`secondaryLabelColor` on the Mac). `faint` (`tertiaryLabelColor`, about 2 : 1) is for disabled text, closed states
+(won't do, discarded) and decorative strokes only.
+
 Neutrals never tint toward mint. **Native controls use the brand accent (amended)**: the app declares
 `NSAccentColorName = AccentColor` (an asset compiled into `Assets.car`), so AppKit and SwiftUI controls, focus rings
 and `Color.accentColor` resolve to `brand.accent` while the user's system accent is Multicolor (the default); a user

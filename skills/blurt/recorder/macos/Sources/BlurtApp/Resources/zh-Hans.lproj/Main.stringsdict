@@ -55,7 +55,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>未归类的捕获 %ld 条</string>
+			<string>未归类的卡片 %ld 张</string>
 		</dict>
 	</dict>
 	<key>main.detail.multi</key>
@@ -83,7 +83,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>⌘↩ 交给 agent · ⇧⌘C 复制指令</string>
+			<string>⌘↩ 交给 Agent · ⇧⌘C 复制指令</string>
 		</dict>
 	</dict>
 	<key>main.items.count</key>
@@ -153,7 +153,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>在口喷鸡里开始这 %ld 条</string>
+			<string>把这 %ld 条交给 Agent</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>

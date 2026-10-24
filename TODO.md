@@ -92,3 +92,6 @@
 - [ ] Linux Wayland (PipeWire portal); global hotkeys on Linux
 - [ ] More exporters as scripts where CLIs are awkward (Linear, Jira, Notion)
 - [ ] Hosted ASR API (paid, with free trial minutes) — later
+- [ ] Windows/Linux app (web/apps/desktop): follow the Mac main window's copy — the inbox subtitle is just the parts
+      ("3 new · 2 to verify" under "Inbox", no "Needs you:" prefix; `inbox.needs_you`), the Dictation page without
+      the items' toolbar actions, no filter chips and a blank detail while there are no items at all

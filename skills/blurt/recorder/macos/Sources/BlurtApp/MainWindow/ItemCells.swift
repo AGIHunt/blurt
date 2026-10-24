@@ -333,7 +333,7 @@ final class MetaCell: NSTableCellView {
         super.init(frame: frame)
         key.translatesAutoresizingMaskIntoConstraints = false
         key.font = Look.monoSub
-        key.textColor = .tertiaryLabelColor
+        key.textColor = .secondaryLabelColor
         key.lineBreakMode = .byTruncatingTail
         key.alignment = .right
         key.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

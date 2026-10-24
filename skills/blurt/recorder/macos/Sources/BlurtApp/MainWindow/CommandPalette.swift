@@ -1,5 +1,6 @@
 // ⌘K: one field for every action, place and item. Commands and places match by fuzzy subsequence; items come from
-// the index (same search as the toolbar field, top 8). ↑/↓ choose, ↩ runs, Esc closes.
+// the index (same search as the toolbar field, top 8), each with its ID, project, state (past To do) and the search
+// hit when it isn't just the title again. ↑/↓ choose, ↩ runs, Esc closes. The list shows whole rows only (up to 9).
 import AppKit
 import BlurtCore
 
@@ -23,6 +24,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
     let field = NSTextField()
     let table = NSTableView()
     var entries: [Entry] = []
+    /// The list's height: whole rows, so no sliver of a next row shows at the bottom.
+    private var listHeight: NSLayoutConstraint!
+    static let maxRows = 9
 
     init(controller: MainWindowController) {
         self.controller = controller
@@ -90,6 +94,8 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             scroll.leadingAnchor.constraint(equalTo: fx.leadingAnchor, constant: 8), scroll.trailingAnchor.constraint(equalTo: fx.trailingAnchor, constant: -8),
             scroll.bottomAnchor.constraint(equalTo: fx.bottomAnchor, constant: -8),
         ])
+        listHeight = scroll.heightAnchor.constraint(equalToConstant: table.rowHeight)
+        listHeight.isActive = true
     }
 
     var isOpen: Bool { panel.isVisible }
@@ -186,9 +192,11 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         if !q.isEmpty, let r = controller.model.reader {
             let rows = (try? r.items(ItemQuery(text: q, limit: 8))) ?? []
             let items = rows.map { it in
-                Entry(title: it.title.isEmpty ? it.itemID : it.title,
-                      detail: [it.itemID, it.projectName, it.snippet.map { $0.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "") }]
-                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                let title = it.title.isEmpty ? it.itemID : it.title
+                let hit = SearchHit.adds(it.snippet, to: title) ? it.snippet.map(SearchHit.plain) : nil
+                // where it stands, once it is past To do (in progress, done…): the same words as the list
+                let state = ["new", "todo"].contains(it.state) ? nil : Look.stateLabel(it)
+                return Entry(title: title, detail: [it.itemID, it.projectName, state, hit].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
                       image: Look.kindImage(it.kind), keys: "", enabled: true) { [weak self] in
                     self?.controller.reveal(uid: it.uid)
                 }
@@ -203,10 +211,13 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
 
     func controlTextDidChange(_ obj: Notification) { refresh() }
 
-    /// Grow with the results (up to 9 rows), anchored at the top.
+    /// Grow with the results (up to 9 rows), anchored at the top. The list is exactly that many rows tall and the panel
+    /// fits around it.
     func resize() {
-        let rows = CGFloat(min(max(entries.count, 1), 9))
-        let h = 64 + rows * (table.rowHeight + table.intercellSpacing.height) + 16
+        let rows = CGFloat(min(max(entries.count, 1), Self.maxRows))
+        listHeight.constant = rows * (table.rowHeight + table.intercellSpacing.height)
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let h = panel.contentView?.fittingSize.height ?? 0
         var f = panel.frame
         f.origin.y += f.height - h
         f.size.height = h
@@ -287,7 +298,7 @@ final class PaletteCell: NSTableCellView {
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.init(600), for: .horizontal)
         keys.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        keys.textColor = .tertiaryLabelColor
+        keys.textColor = .secondaryLabelColor
         keys.setContentCompressionResistancePriority(.required, for: .horizontal)
         imageView = icon
         textField = title
