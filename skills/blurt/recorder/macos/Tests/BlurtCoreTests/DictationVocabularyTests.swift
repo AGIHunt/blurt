@@ -250,4 +250,10 @@ final class DictationLearnTests: XCTestCase {
         XCTAssertTrue(DictationLearn.isCommonWord("cloud"))
         XCTAssertFalse(DictationLearn.isCommonWord("tmux"))
     }
+
+    func testLongChineseProjectNamesAreNotSeeded() {
+        XCTAssertTrue(DictationVocabulary.seedable(project: "口喷鸡"))
+        XCTAssertTrue(DictationVocabulary.seedable(project: "Bug Agent"))
+        XCTAssertFalse(DictationVocabulary.seedable(project: "口喷鸡 iOS 客户端（第二版重构和设计稿整理）"))
+    }
 }

@@ -59,6 +59,10 @@ final class DictationKeys {
     /// macOS refused the filter tap: not asked again until Accessibility or the key changes.
     private var filterRefused = false
     private var filterRefusedWithAX = false
+    /// A refused tap is retried when a permission changes, or after a minute — not on every poll (each try tore the
+    /// monitor down and logged a line).
+    private var tapRefusedAt: Date?
+    private var tapRefusedWith = (im: false, ax: false)
     /// What the filter's thread decides by, set from the main thread: behind one lock.
     struct FilterState {
         var swallowFn = false
@@ -140,16 +144,20 @@ final class DictationKeys {
         if DictationInsert.testMode && !simulating { return }      // a test build that says nothing about macOS
         let ax = DictationKeys.accessibility
         if filterRefused && ax != filterRefusedWithAX { filterRefused = false }     // Accessibility changed: try again
+        let im = DictationKeys.inputMonitoring
+        if let t = tapRefusedAt, via != "poll" || (im, ax) != tapRefusedWith || Date().timeIntervalSince(t) > 60 { tapRefusedAt = nil }
         let before = kind
-        var steps = state.plan()
+        var steps = state.plan(tapFailed: tapRefusedAt != nil)
         var failed = false
         var done: [String] = []
         while let step = steps.first {
             steps.removeFirst()
             done.append(step.rawValue)
             switch step {
-            case .createTap: failed = !makeTap(filter: false)
-            case .recreateTap: removeTap(); failed = !makeTap(filter: false)
+            case .createTap, .recreateTap:
+                if step == .recreateTap { removeTap() }
+                failed = !makeTap(filter: false)
+                if failed { tapRefusedAt = Date(); tapRefusedWith = (im, ax) }
             case .createFilterTap, .recreateFilterTap:
                 if step == .recreateFilterTap { removeTap() }
                 failed = !makeTap(filter: true)

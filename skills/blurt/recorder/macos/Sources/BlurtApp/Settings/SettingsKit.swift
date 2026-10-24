@@ -214,6 +214,8 @@ struct PermissionSetupButton: View {
     var body: some View {
         let missing = guide.missing(flow)
         let _ = p.screen                // re-evaluated as the states change
+        // nothing to say (all granted, no fresh done line): no row at all, not an empty one in the form
+        if (banner && guide.finished != nil) || !missing.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
             if banner { PermissionDoneBanner() }
             if !missing.isEmpty {
@@ -226,6 +228,7 @@ struct PermissionSetupButton: View {
                     Spacer()
                 }
             }
+        }
         }
     }
 }
@@ -265,10 +268,20 @@ func diskSize(_ u: URL) -> Int64 {
     guard fm.fileExists(atPath: u.path, isDirectory: &isDir) else { return 0 }
     if !isDir.boolValue { return Int64((try? fm.attributesOfItem(atPath: u.path)[.size] as? Int) ?? 0) }
     var total: Int64 = 0
-    if let e = fm.enumerator(at: u, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]) {
+    let root = u.resolvingSymlinksInPath().path + "/"
+    if let e = fm.enumerator(at: u, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey, .isSymbolicLinkKey]) {
         for case let f as URL in e {
-            let v = try? f.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey])
+            let v = try? f.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
             if v?.isRegularFile == true { total += Int64(v?.totalFileAllocatedSize ?? 0) }
+            else if v?.isSymbolicLink == true {
+                // a link out of the folder (a Hugging Face cache whose blobs live elsewhere) counts once; links
+                // inside it (snapshots → blobs) are already counted as their targets
+                let t = f.resolvingSymlinksInPath()
+                guard !t.path.hasPrefix(root),
+                      let tv = try? t.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]),
+                      tv.isRegularFile == true else { continue }
+                total += Int64(tv.totalFileAllocatedSize ?? 0)
+            }
         }
     }
     return total

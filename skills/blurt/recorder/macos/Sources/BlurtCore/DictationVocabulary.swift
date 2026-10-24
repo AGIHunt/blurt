@@ -237,10 +237,12 @@ public final class DictationVocabulary {
         return added
     }
 
-    /// A project's name or key worth seeding: 2–40 characters, at most three words.
+    /// A project's name or key worth seeding: 2–40 characters, at most three words, and at most 12 CJK characters
+    /// (Chinese doesn't space its words, so a long name is a sentence, not a term).
     static func seedable(project t: String) -> Bool {
         let words = t.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "_" })
-        return t.count >= 2 && t.count <= 40 && !words.isEmpty && words.count <= 3
+        let cjk = t.unicodeScalars.filter { (0x3400...0x9FFF).contains($0.value) || (0xF900...0xFAFF).contains($0.value) }.count
+        return t.count >= 2 && t.count <= 40 && !words.isEmpty && words.count <= 3 && cjk <= 12
     }
 
     /// Schema 1 → 2: the old built-in words (source `project` then) become `default`; the sounds-likes the old seed
