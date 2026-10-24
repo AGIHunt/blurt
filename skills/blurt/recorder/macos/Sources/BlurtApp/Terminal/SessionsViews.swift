@@ -282,15 +282,11 @@ struct SessionOverlay: View {
                 if !model.rows.isEmpty {
                     card { Text(TL("overlay.pick")).foregroundStyle(.secondary) }
                 } else {
-                    card {
-                        // first launch of the sessions window: the empty-state art (§3.5)
-                        BrandArtTile(icon: .terminal, side: 104).padding(.bottom, 6)
-                        Text(TL("overlay.empty.title")).font(.title3.weight(.semibold))
-                        Text(TL("overlay.empty.body")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                            .frame(maxWidth: 380)
-                        Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }
-                            .buttonStyle(.brand).padding(.top, 4)
+                    // first launch of the sessions window: the one empty state (§3.5)
+                    EmptyStateContent(title: TL("overlay.empty.title"), message: TL("overlay.empty.body")) {
+                        Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }.buttonStyle(.brand)
                     }
+                    .background(Color(nsColor: .windowBackgroundColor))
                 }
             }
         }

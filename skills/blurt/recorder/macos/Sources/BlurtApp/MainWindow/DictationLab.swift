@@ -141,8 +141,6 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
     @Published var runSpec = "current"
     @Published var running = false
     @Published var runResult: [String: Any]?
-    /// Counts the runs that came back with a result: the score blooms once each time (the completion celebration).
-    @Published var runsFinished = 0
     @Published var keepNext = 0
     private var take: LabTake?
     private var pendingAudio: URL?
@@ -578,7 +576,6 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
             switch r {
             case .success(let o):
                 self.runResult = o
-                self.runsFinished += 1
                 emit(["event": "dictation_lab", "action": "run_all_done", "overall": o["overall"] ?? NSNull()])
             case .failure(let f):
                 self.error = f.localized
@@ -889,7 +886,7 @@ extension DictationLabModel {
         case "import-pack": lab.importPack(URL(fileURLWithPath: rest))
         case "generate": lab.generateMore()
         // the brand moments without real audio or scripts (screenshots): fake run | done | stop, fake processing | idle,
-        // fake rerun on|off — the AI glow on Run / the recorder / Compare, the score and its bloom
+        // fake rerun on|off — the AI-working states of Run / the recorder / Compare, and the score
         case "fake":
             switch rest {
             case "run": lab.pane = .regression; lab.running = true
@@ -899,7 +896,6 @@ extension DictationLabModel {
                 lab.runResult = ["overall": ["score": 92.4, "wer": 0.041, "cer": 0.022, "term_accuracy": 0.95, "better": 6, "worse": 1, "same": 9] as [String: Any],
                                  "rows": [[String: Any]](), "by_tag": ["app:chat": ["wer": 0.03, "cases": 5, "worse": 0] as [String: Any],
                                                                        "noise:noisy": ["wer": 0.12, "cases": 3, "worse": 1] as [String: Any]]]
-                lab.runsFinished += 1
             case "stop": lab.running = false
             case "processing": lab.phase = .processing
             case "idle": lab.phase = .idle

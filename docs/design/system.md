@@ -5,26 +5,31 @@
 > - **品牌色是薄荷 `#61DBBD`**，含义：口喷鸡正在听、正在截、正在替你动手；另外用于每屏唯一的主操作和列表选中行的浅薄荷底。
 > - **品牌渐变**：清新绿 `#66D97A` → 薄荷 `#61DBBD` → 天蓝 `#4AABE2`，薄荷是中间发亮的分界。大面积版本（field）带弧形分界和细颗粒（grain）。
 > - **主按钮用更深的"按钮渐变"**（`#028932` → `#02866F` → `#087EB3`，同一条色相路径），上面是**白色粗体字**，每一点都 ≥ 4.5 : 1。薄荷小标签、徽章仍用深绿字。
-> - **大标题和大数字可以用渐变字**（引导页标题、空状态标题、Lab 分数、听写页统计）；浅色背景用更深的文字渐变（≥ 3 : 1），正文和小字不用。
+> - **渐变字只剩引导页标题**（24 pt）；空状态标题、Lab 分数、听写页统计都改回中性色。
 > - **系统控件用品牌色**：App 声明了 `AccentColor`（浅色 `#0B735E`，深色 `#1CA288`），开关、复选框、滑块、焦点环跟着走；网页端用 CSS `accent-color`。
-> - **多彩"光谱"渐变**（加黄和紫）只用于特别时刻：引导页主视觉、"AI 正在处理"的光晕（自动整理、润色、Lab 运行）、完成时的庆祝。日常界面只用核心渐变。
+> - **多彩"光谱"渐变**（加黄和紫）**只出现在引导页主视觉**（小鸡背后一团静止、模糊的光）。**(收敛)** 去掉了"AI 正在处理"的旋转彩色光圈和完成时的庆祝光环。
+> - **"AI 正在处理"** = 原有的转圈 + 一条静止的 **1 pt 薄荷细线**（`brand.working`，半透明的品牌墨绿）围住正在处理的那一行；横幅只换成转圈，不加边框。不旋转、不多色、不发光。
+> - **空状态**统一用一个组件：App 图标（渐变底板上的 4A 小鸡，80 pt 画布、64 pt 底板），下面中性标题、中性说明、最多一个主按钮。
+> - 实时文字面板下的渐变横线去掉了。所有装饰性的渐变、光晕、描边的去留见 §14。
 > - 红 = 正在录，琥珀 = 要你处理，叶绿 + ✓ = 完成。珊瑚只剩画笔。task 类型改为紫色。
 > - **App 图标**：白身黑线的鸡（方案 A）放在渐变 field 底板上。
 > - 唯一来源：`assets/color/tokens.json` + `assets/color/build.py`（生成 Swift `BrandColor`、CSS 变量、`AccentColor`，`--check` 检查过期和对比度）。
 
-Status: **v2, implemented** in the macOS app (`skills/blurt/recorder/macos`), the web UI packages (`web/packages/ui`,
+Status: **v2, implemented; toned down (v2.1, "restrained", §14)** in the macOS app (`skills/blurt/recorder/macos`), the web UI packages (`web/packages/ui`,
 `web/packages/review` → `skills/blurt/scripts/review.html`) and the Tauri app's UI (`web/apps/desktop`,
 `web/apps/overlays`). The site (`site/`) is not migrated (§3.8). It supersedes the v1 colour proposal and the visual
 parts of [desktop-app.md §2.4](desktop-app.md#24-视觉语言).
 
 The user amended the v2 proposal before it shipped; those amendments are folded in below and marked **(amended)**:
 gradient text for large headlines, native controls in the brand accent, white text on a deeper button gradient, and a
-multi-hue spectrum for special moments.
+multi-hue spectrum for special moments. v2.1 then toned it down (§14): the spectrum is left only in the onboarding
+hero, "AI is working" is a spinner plus a 1 pt hairline, empty states show the app icon.
 
 Mock-ups and screenshots (untracked, in `promo/cases/v0.8-color/`):
 
 | File | What it shows |
 |---|---|
+| `restrained/sheet*.png` | **v2.1**: job rows + banner, island job row, live-text panel, empty states, before (d3e80209) / after, light and dark. |
 | `applied/contact-sheet*.png` | **Real screenshots** of the test builds, before (77f1ddd9) and after, light and dark, en and zh; the icon. |
 | `applied/web/`, `applied/icon/` | The web UIs (review page, Tauri app, overlays) before / after; the icon at every size. |
 | `v2-palette.png`, `v2-surfaces.png`, `v2-app-icon.png`, `v2-dos-donts.png` | The synthetic v2 proposal (before the amendments). |
@@ -38,7 +43,10 @@ Mock-ups and screenshots (untracked, in `promo/cases/v0.8-color/`):
    action on a screen and the selection in lists blurt draws. If a new use can't be described by that sentence, it
    doesn't get mint.
 2. **The gradient is mint's premium form**, for *few, large or hero* things. It is never a background for reading,
-   and never a thin line, except the one capture selection (and the hearing rule under live text).
+   and never a thin line, except the one capture selection.
+2a. **Use it with reason (v2.1).** Every coloured effect must say something the plain UI doesn't (blurt listens,
+   this is the selection, this is the primary). Decoration that only adds sparkle goes: no rotating or multi-colour
+   rims, no glow halos around rows or banners, no completion blooms, no decorative underlines.
 3. **Most of the app is grey.** Neutral surfaces and text. Colour is information.
 4. **Native stays native, in the brand accent (amended).** Switches, checkboxes, radios, sliders, focus rings and
    selection are the system's own controls, tinted by the app's `AccentColor` (`brand.accent`). If the user picked a
@@ -46,7 +54,7 @@ Mock-ups and screenshots (untracked, in `promo/cases/v0.8-color/`):
 5. **Every coloured state has a shape twin**: dashed vs solid, dot vs ring, check vs "!". It must survive grayscale,
    colour blindness and Reduce Motion.
 6. **One direction.** Green is up / start, azure is down / end. No reversed gradients. Extra hues (yellow, violet)
-   only in the spectrum, only for special moments (§2.2).
+   only in the spectrum, and the spectrum only in the onboarding hero art (§2.2).
 
 ## 2. Colour tokens
 
@@ -61,6 +69,7 @@ capture chrome are always dark, so tokens have an `island` value. Hues are OKLab
 | `brand.fill` | `#61DBBD` | 1.70 / 1.57 / 1.44 | `#61DBBD` | 9.82 / 8.46 / 7.56 | `#61DBBD` (12.38 on black) | Small mint fills that carry `brand.on` text (badge, size label, handle, clasp). Marks on dark and over screen content. **Never a line or text on a light surface.** |
 | `brand.ink` | `#0B735E` | **5.79 / 5.36 / 4.90** | `#61DBBD` | **9.82 / 8.46 / 7.56** | — | Brand as text, icons, state rings, underlines, 1–2 pt lines. |
 | `brand.tint` | mint @ 18 % (= `#E3F9F3` on white) | `brand.ink` on it 5.27 | mint @ 16 % (= `#293C37` on `#1E1E1E`) | `brand.ink` on it 6.89 | @ 20 % (= `#132C26`) | The pale mint wash: selected row, drop target, badge / chip background. Text on it stays neutral `ink`. Increase Contrast: `#0B735E` @ 20 % / mint @ 32 %. |
+| `brand.working` **(v2.1)** | `#0B735E` @ 60 % | 2.64 / 2.56 / 2.46 (composited) | `#61DBBD` @ 50 % | 3.47 / 3.25 / 3.07 | `#61DBBD` @ 50 % (3.53 on black) | "AI is working on this": the one static **1 pt hairline** just inside the working row's rounded edge (`WorkingOutline`, `.aiWorking`, CSS `.ai-working`). An accent next to the spinner, which carries the state. Floor 2 : 1 composited (`minOver`); Increase Contrast `#035948` @ 80 % / `#7FE6CC` @ 70 %. |
 | `brand.on` | `#04261E` | 9.51 on fill, ≥ 6.31 on the gradient | `#04261E` | same | `#04261E` | Text and glyphs on mint and on the gradient. |
 | `brand.onInk` | `#FFFFFF` | 5.79 on `brand.ink` | `#04261E` | 9.51 | — | Rare: text on a `brand.ink` fill. |
 | `brand.accent` **(amended)** | `#0B735E` | 5.79 / 5.36 / 4.90; white on it 5.79 | `#1CA288` | 5.22 / 4.49 / 4.01; white on it 3.19 | — | Native controls: the `AccentColor` asset and CSS `accent-color`. Switch-on track, checkbox / radio fill, slider, focus ring, selection. |
@@ -94,17 +103,15 @@ Variants (all in `tokens.json` → `gradient`):
 
 | Token | Definition | Use |
 |---|---|---|
-| `gradient.linear` | `green 0 %` → `mint 45 %` → `azure 100 %`, **corner to corner** (CSS `to bottom right`; CAGradientLayer `startPoint (0, 1)` → `endPoint (1, 0)` in an unflipped layer). No grain. | The capture selection stroke, level bars (vertical), the snap ring halo, the live-text rule; dark `brand.on` text where text sits on it. |
+| `gradient.linear` | `green 0 %` → `mint 45 %` → `azure 100 %`, **corner to corner** (CSS `to bottom right`; CAGradientLayer `startPoint (0, 1)` → `endPoint (1, 0)` in an unflipped layer). No grain. | The capture selection stroke, level bars (vertical), the listening glow; dark `brand.on` text where text sits on it. |
 | `gradient.button` **(amended)** | `#028932 0 %` → `#02866F 45 %` → `#087EB3 100 %`, corner to corner: the same OKLab hues (147° / 175° / 237°) at L ≈ 0.55. **White semibold text ≥ 4.51 : 1 at every point** (≥ 4.22 at hover ×1.04). | Primary buttons (one per view), Snap / Record in the picker, the island's filled buttons, toast actions. |
-| `gradient.text` **(amended)** | Light: `#14983C` → `#07957C` → `#248CC2` (≥ 3.17 : 1 on every light surface at every point). Dark: the base stops (≥ 5.02 : 1). Horizontal. | Large headlines and hero numbers only (≥ 20 pt, or ≥ 14 pt bold): onboarding title, empty-state titles, the Lab score, the Dictation page stats. Flat `brand.ink` under Increase Contrast. |
-| `gradient.spectrum` **(amended)** | `#FFD54F 0 %` → green 24 % → mint 46 % → azure 70 % → `#9D7BF7 100 %` (conic: the same stops round the circle) | **Special moments only**: the onboarding hero glow, the "AI is working" rim (`gradient.aiGlow`: auto-sort / organize, polish, Structured, the Lab run), the completion bloom. |
+| `gradient.text` **(amended)** | Light: `#14983C` → `#07957C` → `#248CC2` (≥ 3.17 : 1 on every light surface at every point). Dark: the base stops (≥ 5.02 : 1). Horizontal. | **The onboarding title only** (v2.1; 24 pt bold). Empty-state titles, the Lab score and the Dictation stats are neutral again. Flat `brand.ink` under Increase Contrast. |
+| `gradient.spectrum` **(amended)** | `#FFD54F 0 %` → green 24 % → mint 46 % → azure 70 % → `#9D7BF7 100 %` (conic: the same stops round the circle) | **The onboarding hero art only** (v2.1): a still, blurred disc behind the mascot (`SpectrumGlow`). Never on rows, banners, buttons, rims, pills or celebrations. |
 | `gradient.vertical` | Same stops, top → bottom, sized to the group (18 pt for the island level) | Level bars: one gradient across the whole bar group, so each bar shows the slice at its height (short bars read mint, tall ones show green tips and azure feet). |
-| `gradient.field` | Bottom → top: base linear 180° `#66D97A` → `#69DC95`. A large azure ellipse rises from the bottom-left (centre (0.28, 1.16), radii (1.08, 0.80) of the box): `#3C9ED5` 0 → `#4AABE2` 0.5 → mint 0.70 → a glow `#A3F0DA` @ 60 % at 0.79 → clear at 0.93. A second azure from the bottom-right (1.02, 1.08; 0.58 × 0.52). An airy top highlight `#80E991` (0.62, −0.12; 0.75 × 0.48). Then **grain**. | Large surfaces ≥ 64 pt: the app icon tile, the onboarding hero, empty-state art. The ellipse's mint rim is the large organic curve of the reference. |
-| `gradient.deep` | The field with stops `#4ABF61` → `#43C1A4` → `#2C92C8` (0.08 darker in L), corners `#2786BD`, glow `#5FC9AC`. `brand.on` ≥ 4.65. | The field in dark mode (onboarding, empty states); the icon's optional dark appearance. |
-| `gradient.wash` | The field at **14 %** over a light surface, **18 %** over a dark one. | Window-hover wash (22 % over screen content), onboarding and empty-state backdrops. Text on it stays neutral `ink`. |
-| `gradient.glow` | `gradient.linear` horizontal, blurred 24 pt, 35–55 % | The island's listening aura, the snap ring halo. Only while something is happening. |
+| `gradient.field` | Bottom → top: base linear 180° `#66D97A` → `#69DC95`. A large azure ellipse rises from the bottom-left (centre (0.28, 1.16), radii (1.08, 0.80) of the box): `#3C9ED5` 0 → `#4AABE2` 0.5 → mint 0.70 → a glow `#A3F0DA` @ 60 % at 0.79 → clear at 0.93. A second azure from the bottom-right (1.02, 1.08; 0.58 × 0.52). An airy top highlight `#80E991` (0.62, −0.12; 0.75 × 0.48). Then **grain**. | Large surfaces ≥ 64 pt: the app icon tile and the onboarding hero (empty states now show the app icon itself, §3.5). The ellipse's mint rim is the large organic curve of the reference. |
+| `gradient.deep` | The field with stops `#4ABF61` → `#43C1A4` → `#2C92C8` (0.08 darker in L), corners `#2786BD`, glow `#5FC9AC`. `brand.on` ≥ 4.65. | The field in dark mode (onboarding); the icon's optional dark appearance. |
+| `gradient.glow` | `gradient.linear` horizontal, blurred 24 pt, 35–55 % | The island's listening aura only (it says "blurt hears you"). Only while listening. |
 | `grain` | Monochrome fractal noise (base frequency 0.8 / px at 1x, 2 octaves, contrast ×3), **overlay** blend, **10 %** light / **8 %** dark, **7 %** on the app icon | Only on `field` / `deep` surfaces **≥ 64 pt** in both dimensions. Never on buttons, bars, strokes or text. Off with Reduce Transparency. |
-| `gradient.aiGlow` | The spectrum as a 2 pt rim plus a 14 pt soft rim at 55 %, turning once per 3.2 s | Around what AI is working on, only while it works. Still with Reduce Motion; gone with Reduce Transparency. |
 
 Contrast on the gradient: `brand.on` holds ≥ 6.31 : 1 along `linear` and ≥ 4.65 along `deep`. White fails on the
 base gradient (1.70–2.56), so **white text sits only on `gradient.button`** (≥ 4.51), which is why primaries use it;
@@ -181,10 +188,10 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Snap / Record button (picker toolbar) | **B** | white semibold title; a small `rec` dot before "Record" (`PillButton(gradient:fg:dot:)`) |
 | Hint pill, other toolbar buttons | — | dark glass, white text |
 | Dim outside the selection | — | black 42 % |
-| Window hover | M + wash | 2 pt mint line, `gradient.field` at 22 % inside, mint label pill with `brand.on` text |
+| Window hover | M + T | 2 pt mint line, flat `brand.tint` (island, 20 %) inside, mint label pill with `brand.on` text (v2.1: the field wash went) |
 | Countdown ring | `rec` | the recording is committed |
 | Recording frame | `rec` | solid 2.5 pt. Paused: `attn` dashed. The switch from mint to red at the end of the countdown *is* the "now recording" signal. |
-| Snap while recording (`borderFlash`) | M + glow | 3 pt mint ring with the `gradient.glow` halo, 450 ms, outside the red frame |
+| Snap while recording (`borderFlash`) | M | 3 pt flat mint ring, 450 ms, outside the red frame (v2.1: no halo) |
 | Standalone snap shutter | — | white flash |
 | Pen strokes (InkView, NoteBubble sketch, `renderMarked`) | `markup` | coral, with a 45 % black halo |
 | Live caption, HUD text | — | white on glass |
@@ -197,11 +204,11 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Listening aura | **glow** | `gradient.glow` under the notch at 35–55 %, fades in over 200 ms when listening starts and out when it stops. Only while listening or capturing; never while idle. |
 | Dictation keyboard glyph, voice mic glyph | M | |
 | Recording ear | `rec` dot + white time | paused `attn`. The mic level bars there are **G** too (blurt hears you), but there is **no glow**: red owns that moment. |
-| Live-text panel | M caret, **G** rule | text 92 % white (committed) / 60 % (pending). A flat mint 2 pt caret. A 2 pt `gradient.linear` (horizontal) "hearing" rule under the text while listening; it fades when the line commits. |
+| Live-text panel | M caret | text 92 % white (committed) / 60 % (pending). A flat mint 2 pt caret while listening. **No rule under the text** (v2.1: the island's level bars already say blurt hears you). |
 | Alert dot | `attn` | |
 | List rows: selection / hover target | T (island 20 %) | |
 | Check marks, progress, AI-sort wand, quoted query | M | |
-| AI sort / organize running | **S** rim | `AIGlowView` around the running row; a spectrum bloom (`Celebration`) when it finishes |
+| AI sort / organize running | `brand.working` | the row's own progress bar plus one static 1 pt hairline round the row (`WorkingOutline`, island value). When it finishes the chick hatching in the ear says so: no bloom. |
 | Agent dots | M running · `attn` waiting · `err` error · `ok` finished | |
 | Filled island buttons (Organize, Auto-sort, voice Done, toast action) | **B** | white semibold title (`IslandButton(gradient:fg:)`) |
 | Stop / Discard | `rec` / system red | |
@@ -225,7 +232,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | State rings new / handed_off / in_progress, job spinner arc | I | |
 | to_verify / done / todo / wontfix / discarded | `attn` + "!" / `ok` + ✓ / secondary / tertiary | |
 | "New" counts and badges | M | pill, `brand.on` digits (`CountPill`); plain counts neutral |
-| Job running (process / route) | **S** rim | `.aiGlow` on the running job row; the web host's "organising" banner too |
+| Job running (process / route) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. |
 | Progress bars | I (light) / M (dark) | flat: too thin for the gradient |
 | Kind icons | kind tokens | |
 | Severity | `kind.issue` / `attnInk` / `info` | |
@@ -240,26 +247,33 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | "Recommended", "Runs first" badges | T + I | |
 | Selected choice card (dictation style, model) | I border + T ring | not a filled card |
 | Hotkey recorder while listening for keys | I | conflict `attnInk` |
-| Onboarding hero panel | **field** + grain (light), **deep** + grain (dark), **S** glow | A 200 pt side panel (the window grows to 840 pt; the content column keeps 640): the mascot on a still, blurred spectrum glow. Flat field without grain or glow under Reduce Transparency. |
+| Onboarding hero panel | **field** + grain (light), **deep** + grain (dark), **S** glow | A 200 pt side panel (the window grows to 840 pt; the content column keeps 640): the mascot on a still, blurred spectrum glow — **the one place the spectrum appears**. Flat field without grain or glow under Reduce Transparency. |
 | Onboarding title | gradient text | 24 pt bold, `gradient.text` |
-| Onboarding Next / Done | **B** | Done blooms the spectrum once round the chick (not with Reduce Motion / Transparency), then closes |
+| Onboarding Next / Done | **B** | Done closes (the chick is already happy on the last step; v2.1: no bloom) |
 | Onboarding step bars | I | |
 | Permission rows | `ok` + ✓ granted · `attn` dot missing | |
 
 ### 3.5 Empty states
 
-These cover the empty inbox, no recordings, no results, first launch of a page. One tile of art, 96–128 pt (104 in
-the app: `EmptyArtTile` / `BrandArtTile`), r ≈ 30 % of the side: the **field** (light) or **deep** (dark) with grain,
-and the white line chick (or a glyph from `assets/icons`) on it with a soft `brand.on` 30 % drop shadow. Below it a
-neutral title (13 pt semibold; gradient text only when it is a large headline), a neutral hint (11 pt, `mute`), and at
-most one primary button when it moves you on (Open Folder, Turn On Dictation…). Trouble states (scan failed, missing
-folder) keep a quiet symbol: warnings are never brand.
+These cover the empty inbox, inbox zero, All Items / a project with nothing yet, no results, the Dictation page, the
+sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)**: AppKit `EmptyStateView`, SwiftUI
+`EmptyStateContent`, Tauri `EmptyState.tsx`, all on the `EmptyState` metrics (`Icons/BrandViews.swift`):
+
+- **The brand mark**: the app icon itself — the 4A chick on its gradient tile, as in the Dock and the logo
+  (`BrandMark`: Blurt.app's `AppIcon.icns`; the web UIs use `web/packages/ui/src/assets/app-icon.png`, 160 px, written
+  by `assets/brand/build.py`). An **80 pt canvas**, so the tile is 64 pt, centred. The same mark for every friendly
+  state: no per-page glyph tiles, no hop.
+- 10 pt to a **neutral title** (15 pt semibold), 4 pt to a **neutral hint** (12 pt, secondary, ≤ 320 pt wide), 16 pt
+  to at most **one primary** when it moves you on (Open Folder, Turn On Dictation…).
+- Trouble states (scan failed, missing folder) and detail-pane placeholders keep a quiet SF symbol: warnings are never
+  brand.
 
 ### 3.5a Dictation page and Lab
 
-- Today's stats: the digits in gradient text (15 pt bold), the words around them neutral.
-- The Lab score: 30 pt gradient text; it blooms (spectrum) once when a run finishes.
-- The Lab's Run / Save / Next: **B**; the recorder card, Compare and Run carry the **S** rim while processing.
+- Today's stats: neutral; the digits semibold (v2.1: no gradient text).
+- The Lab score: 30 pt semibold, neutral (v2.1: no gradient, no bloom).
+- The Lab's Run / Save / Next: **B**. While a take is processed the recorder card carries the `brand.working` hairline;
+  Compare and Run All show their spinner (no rim). Make Item on the Dictation page: the spinner beside it.
 - Diff: deletions `err`, additions `attn` @ 28 %; stars `attn`; chosen check and level bars `brand.ink`.
 
 ### 3.6 Menu-bar icon
@@ -269,13 +283,15 @@ shows a `rec` dot and the time, or `attn` while paused.
 
 ### 3.7 Review page and overlays (web)
 
-- **Review page** (`web/packages/review`): primary **B**; the "organising" pill carries `.ai-glow`; the Done screen's
-  headline is `.g-text` and its logo turns the spectrum once; selected card 2 pt I ring; active tab 2 pt I underline;
+- **Review page** (`web/packages/review`): primary **B**; the "organising" pill carries `.ai-working` (its hatching egg
+  is the motion); the Done screen's headline and logo are plain (v2.1); selected card 2 pt I ring; active tab 2 pt I
+  underline (it marks the tab, not decoration);
   current transcript line and "now playing" mark I; drop zone T + I; links per §3.3; kind chips; keep ✓ `ok`.
 - **Overlays** (`web/apps/overlays`, Windows / Linux island and picker): exactly §3.1–3.2, island values; the voice
   card face is light, so its mark uses `--brand-ink-light`.
 - **Tauri app** (`web/apps/desktop`): primary **B**; selection, badges, chips **T** + **I**; the sidebar's jobs box
-  carries `.ai-glow` while a process job runs; the empty inbox shows the mascot on a 112 px `.g-field` tile.
+  carries `.ai-working` while a process job runs; the empty inbox and sessions use `EmptyState.tsx` (the app-icon mark,
+  §3.5).
 
 ### 3.8 Web and the site (later)
 
@@ -305,7 +321,10 @@ redo:
 - data series in charts;
 - gradient text below 20 pt (14 pt bold), or on body / labels; gradient icons (except the app icon tile), gradient
   rings or progress bars;
-- the spectrum on everyday UI (it is for the hero, AI working and celebrations only).
+- the spectrum anywhere but the onboarding hero art;
+- rims, glows or halos round rows, banners, pills or buttons; rotating or animated colour; completion blooms;
+- decorative lines: rules or underlines under text that only decorate (links and the active tab keep theirs: they
+  mean something).
 
 ## 4. Motion with colour
 
@@ -322,23 +341,23 @@ Reduce Motion: the still frame must still say the state.
 | Countdown | `rec` ring | The ring drains each second; at 0 the selection stroke cross-fades G → `rec` in 200 ms. |
 | Recording | `rec` frame and dot | The island dot breathes (1.6 s); the frame is still. |
 | Paused | `attn` dashed | No motion: stillness is the signal. |
-| Snap | white shutter / M ring + glow | 320 / 450 ms, once |
+| Snap | white shutter / M ring | 320 / 450 ms, once |
 | Card hung | M clasp | The card swings in on the spring; the clasp does not animate. |
 | blurt working | I spinner arc, M dot | Quarter arc, 1.1 s per turn |
 | Done | `ok` + ✓ | The check draws once (200 ms); the chick hops. The colour never pulses. |
 | Needs you | `attn` | One pulse when it appears, then still. |
 | Primary button | B | Brightness 1.04 on hover (120 ms). The gradient never animates or shifts. |
-| AI working | S rim | The spectrum turns once per 3.2 s while the job runs; still with Reduce Motion; none with Reduce Transparency. |
-| Something big finished | S bloom | A spectrum ring grows 12 % and fades over 0.9 s, once. None with Reduce Motion or Transparency. |
+| AI working | spinner + `brand.working` hairline | The spinner (or the review page's hatching egg) is the only motion; the 1 pt hairline is static and fades in / out over 0.2 s (instantly with Reduce Motion). |
+| Something big finished | `ok` + ✓ / the chick | No bloom (v2.1): the done check, the chick hatching or hopping, says it. |
 
-Rules: at most one brand-coloured thing moves at a time on a screen; the core gradient never moves (no animated
-gradient angles, no shimmer); only the spectrum rim turns, and only while AI works; the listening glow only while
-listening or capturing; nothing in brand colour blinks for an error.
+Rules: at most one brand-coloured thing moves at a time on a screen; no gradient ever moves (no animated gradient
+angles, no shimmer, no rotating rims); the listening glow only while listening; nothing in brand colour blinks for an
+error.
 
-Accessibility fallbacks, everywhere: **Reduce Transparency** → flat colours: no grain, no listening glow, no AI rim,
-no bloom, no hero glow (`reduceTransparency`, `prefers-reduced-transparency`). **Increase Contrast** → the `hc`
+Accessibility fallbacks, everywhere: **Reduce Transparency** → flat colours: no grain, no listening glow, no hero
+glow (`reduceTransparency`, `prefers-reduced-transparency`); the working hairline is flat already and stays. **Increase Contrast** → the `hc`
 values (deeper ink, stronger tint) and flat ink instead of gradient text (`BrandColor.increaseContrast`,
-`prefers-contrast: more`). **Reduce Motion** → no marching dashes, no glow breathing, the rim stands still, no bloom.
+`prefers-contrast: more`). **Reduce Motion** → no marching dashes, no glow breathing, the working hairline appears without a fade.
 Test builds force them with `BLURT_REDUCE_TRANSPARENCY=1`, `BLURT_INCREASE_CONTRAST=1`, `BLURT_REDUCE_MOTION=1`.
 
 ## 5. Gradient recipes
@@ -351,33 +370,35 @@ Test builds force them with `BLURT_REDUCE_TRANSPARENCY=1`, `BLURT_INCREASE_CONTR
 | Picker Snap / Record, island buttons | `PillButton(gradient:fg:dot:)`, `IslandButton(gradient:fg:)`: the gradient drawn clipped to the pill | `Capture/Picker.swift`, `Capture/Island/IslandContent.swift` |
 | Capture stroke, level bars | `BrandGradient.layer(linearStops, .diagonal / .vertical)` **masked** by a `CAShapeLayer` (the dashed rect / the bars path) | `SelectionOutline` (Picker), `Ears`, `Bars` |
 | Gradient text | `GradientLabel` (AppKit: glyphs as a mask) / `.brandGradientText()` (SwiftUI `foregroundStyle`) | `BrandViews.swift` |
-| Field art, onboarding hero | `FieldView` / `BrandField`: `BrandGradient.drawField` (`CGContext.drawRadialGradient` per layer) + `drawGrain` (a generated 256 px value-noise tile, overlay, one noise pixel per device pixel) | `BrandViews.swift`, `BrandColor.swift` |
+| Onboarding hero | `FieldView` / `BrandField`: `BrandGradient.drawField` (`CGContext.drawRadialGradient` per layer) + `drawGrain` (a generated 256 px value-noise tile, overlay, one noise pixel per device pixel) | `BrandViews.swift`, `BrandColor.swift` |
+| Empty states | `EmptyStateView` (AppKit) / `EmptyStateContent` (SwiftUI) on the `EmptyState` metrics; `BrandMarkView` / `BrandMark.image` (the app icon) | `BrandViews.swift`, `ItemListController.swift` |
 | Listening glow | `GlowLayer.make`: the base gradient, blurred once with Core Image, cached as a layer image; `GlowLayer.fade` | `Island.swift` |
-| AI working | `AIGlowView` (two conic `CAGradientLayer`s masked by the rounded-rect stroke, the soft one blurred, rotating) / `.aiGlow(active)` | `BrandViews.swift` |
-| Celebration | `Celebration.play(in:around:)` / `.celebrate(on:)` | `BrandViews.swift`, `App/BrandMoments.swift` |
+| AI working | `WorkingOutline` (a 1 pt `BrandColor.working` stroke, `island` for the island value) / `.aiWorking(active)` | `BrandViews.swift` |
+| Spectrum (onboarding only) | `SpectrumGlow` | `App/BrandMoments.swift` |
 
 `BrandColor.swift` is generated: `BrandColor.*` (dynamic light / dark / Increase Contrast `NSColor`s, all sRGB),
-`BrandColor.Island.*`, `BrandColor.Kind.palette`, and `BrandGradient` (stops, `layer(_:_:flipped:into:)`, `linear()`,
-`button()`, `spectrum()`, `draw(...)`, `drawField`, `grainTile`, `drawGrain`, glow / wash / grain constants). Edit
+`BrandColor.Island.*`, `BrandColor.working` / `workingWidth`, `BrandColor.Kind.palette`, and `BrandGradient` (stops,
+`layer(_:_:flipped:into:)`, `linear()`, `button()`, `draw(...)`, `drawField`, `grainTile`, `drawGrain`, listening-glow and
+grain constants). Edit
 `assets/color/tokens.json`, never this file.
 
 ### 5.2 CSS (shipped)
 
 The generated block in `web/packages/ui/src/tokens.css` (between the `@generated colour` markers) defines, per theme:
-`--brand`, `--brand-ink`, `--brand-tint`, `--brand-glow`, `--on-brand`, `--on-brand-ink`, `--brand-accent`, `--rec`,
+`--brand`, `--brand-ink`, `--brand-tint`, `--brand-working`, `--on-brand`, `--on-brand-ink`, `--brand-accent`, `--rec`,
 `--attn`, `--attn-ink`, `--on-attn`, `--ok`, `--on-ok`, `--err`, `--info`, `--markup`, `--kind-*`, `--g-green / -mint /
 -blue`, `--brand-gradient` (diagonal), `--brand-gradient-v`, `--brand-gradient-h`, `--brand-button`,
-`--on-brand-button`, `--brand-text`, `--brand-spectrum`, `--brand-spectrum-stops`, `--brand-spectrum-conic`,
-`--brand-field` (deep in dark), `--grain`, `--grain-opacity`, `--brand-wash`, `--glow-opacity`, `--ai-glow-opacity`,
-and `accent-color: var(--brand-accent)`. `prefers-contrast: more` swaps in the `hc` ink / tint and sets
-`--brand-text: none`; `prefers-reduced-transparency: reduce` sets `--grain: none` and the glow opacities to 0. The
+`--on-brand-button`, `--brand-text`, `--brand-field` (deep in dark), `--grain`, `--grain-opacity`, `--glow-opacity`,
+and `accent-color: var(--brand-accent)` (v2.1 removed `--brand-glow`, `--brand-spectrum*`, `--brand-wash`,
+`--ai-glow-opacity`). `prefers-contrast: more` swaps in the `hc` ink / tint and sets
+`--brand-text: none` (and the `hc` working line); `prefers-reduced-transparency: reduce` sets `--grain: none` and
+`--glow-opacity: 0`. The
 overlays' `theme.css` gets the island values (+ `--brand-ink-light` for the light voice-card face).
 
 Utilities in `web/packages/ui/src/base.css`: `.btn.primary` (button gradient, white 600 text, highlight, shadow, hover
-1.04, active 0.92, neutral disabled), `.g-text` (gradient text, flat `--ink` under `prefers-contrast` / forced
-colours), `.g-field` (field + grain `::after`), `.ai-glow` (`conic-gradient(from var(--spin),
-var(--brand-spectrum-stops))` rim, `@property --spin` over 3.2 s; static with reduced motion) and `.ai-glow.once` (the
-celebration). The old `--accent*`, `--keep*`, `--amber*`, `--warn`, `--sev-*` remain as unused aliases for one release.
+1.04, active 0.92, neutral disabled), `.ai-working` (`box-shadow: inset 0 0 0 1px var(--brand-working)`), and,
+unused in the app UIs and kept for the site redo, `.g-text` (gradient text, flat `--ink` under `prefers-contrast` /
+forced colours) and `.g-field` (field + grain `::after`). The old `--accent*`, `--keep*`, `--amber*`, `--warn`, `--sev-*` remain as unused aliases for one release.
 
 The dashed gradient stroke has no pure-CSS form (`border-image` drops dashes): the overlays' picker uses an inline SVG
 rect with a `<linearGradient gradientUnits="userSpaceOnUse">`, a 2 px `--on-brand` 60 % under-stroke, then
@@ -448,11 +469,15 @@ the style of body text. Display faces are a site decision for the redo (§3.8).
 | One button-gradient primary per view, white title; secondary actions native | Several gradient buttons side by side |
 | White text only on `gradient.button` (≥ 4.5 : 1) | White text on mint or the base gradient (1.70–2.56 : 1) |
 | `brand.on` dark text on flat mint chips, labels, badges | Gradient fills on small chips and badges |
-| Gradient text for large headlines and hero numbers (≥ 20 pt), the deeper variant on light | Gradient text for body, labels or anything small; gradient text under Increase Contrast |
+| Gradient text for the onboarding title only, the deeper variant on light | Gradient text for body, labels, numbers or empty-state titles; gradient text under Increase Contrast |
 | Native switches, checkboxes and focus in the brand accent (`AccentColor`) | Custom-drawn gradient switches; `controlAccentColor` where you mean "brand" |
-| The field for art and heroes, with grain | The gradient as a window, sidebar or panel background |
+| The field for the onboarding hero and the icon, with grain | The gradient as a window, sidebar or panel background, or as empty-state art |
 | Thin things flat: rings, underlines, badges, clasps, progress | Gradient rings, icons or progress bars |
-| The spectrum for the hero, AI working and the completion bloom | The spectrum on everyday UI, or as a resting decoration |
+| The spectrum in the onboarding hero art only | The spectrum anywhere else |
+| "AI is working" = the spinner + one static 1 pt `brand.working` hairline | **No rotating or multi-colour rims on rows or banners**; no glow halos round rows, banners or buttons |
+| Done = the check / the chick | Completion blooms or celebration rings |
+| Text with nothing under it; links and the active tab keep their meaning-carrying underline | **No decorative underlines** (a gradient rule under live text, a line under a heading for looks) |
+| Empty states: the app-icon mark, one component, the same spacing | Per-page illustration tiles, glyphs on gradient tiles |
 | Red frame while recording | A mint frame while recording |
 | Done = `ok` + ✓ | Done as a mint dot |
 | Green top / start → azure bottom / end | Reversed gradients; yellow or violet outside the spectrum |
@@ -468,17 +493,19 @@ the style of body text. Display faces are a site decision for the redo (§3.8).
 3. **Primary buttons, Snap, island fill buttons** move from flat mint to the gradient.
 4. **The capture selection** is a gradient dashed stroke; handles and size label stay flat.
 5. **Island**: level bars are gradient; a glow while listening or capturing (not while recording).
-6. **New surfaces**: onboarding hero, empty-state art, live-text rule.
+6. **New surfaces**: onboarding hero, empty-state art, live-text rule (v2.1 kept the hero, replaced the art with the
+   app-icon mark and dropped the rule).
 7. **Site**: no migration now; §3.8 says how the redo uses the system.
 8. Everything else (semantic, kinds, neutrals, rules) is as in v1.
 9. **Amendments** (before shipping): white text on a deeper `gradient.button`; gradient text for large headlines;
-   native controls in `brand.accent` via `AccentColor`; the multi-hue spectrum for special moments.
+   native controls in `brand.accent` via `AccentColor`; the multi-hue spectrum for special moments (v2.1: the
+   onboarding hero only, §14).
 
 ## 11. Single source of truth (shipped)
 
 ```
-assets/color/tokens.json       the values: brand (+ accent), semantic, kind, neutral (reference), checks, gradient
-                               (stops, linear, button, text, spectrum, field, deep, grain, wash, glow, aiGlow)
+assets/color/tokens.json       the values: brand (+ accent, working), semantic, kind, neutral (reference), checks,
+                               gradient (stops, linear, button, text, spectrum, field, deep, grain, glow)
 assets/color/build.py          writes, and with --check verifies (stale outputs, contrast floors, kind hue gap):
   skills/blurt/recorder/macos/Sources/BlurtApp/Icons/BrandColor.swift        generated Swift API (§5.1)
   skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Assets.xcassets      AccentColor source
@@ -493,9 +520,12 @@ assets/brand/chick.swift + build.py    read gradient.field / deep / linear / gra
 `--check` enforces every `min` against `checks` (and the `hc` values), `on` tokens against the token they sit on,
 white on `brand.accent`, `brand.ink` on the tint, `brand.on` along `linear` and `deep`, white along `gradient.button`
 (and at hover), `gradient.text` on every surface of its theme, kinds at 3 : 1 on `kindSurfaces`, and kinds ≥ 20° from
-the brand hue. It reads `Assets.car` back with `assetutil` and compares the AccentColor. `tests/test_icons.py` runs it
-and fails on hard-coded brand colours in the app (`calibratedRed`, `controlAccentColor`, `.accentColor`, the old
-`accent` / `amber` globals). `web/packages/ui/src/tokens.test.ts` reads the floors from the same file.
+the brand hue, and the working hairline (1 pt, ≥ 2 : 1 composited on every surface of its appearance). It reads
+`Assets.car` back with `assetutil` and compares the AccentColor. `tests/test_icons.py` runs it and fails on hard-coded
+brand colours in the app (`calibratedRed`, `controlAccentColor`, `.accentColor`, the old `accent` / `amber` globals);
+`test_brand_effects_stay_restrained` fails on a spectrum rim, bloom, hearing rule or art tile coming back, the spectrum
+or the field outside the onboarding, gradient text outside its title, and `ai-glow` / conic gradients / spectrum
+variables in the web sources. `web/packages/ui/src/tokens.test.ts` reads the floors from the same file.
 
 ### 11.1 The token table (as shipped; `build.py --table`)
 
@@ -504,7 +534,7 @@ and fails on hard-coded brand colours in the app (`calibratedRed`, `controlAccen
 | `brand.fill` | `#61DBBD` | 1.70 / 1.57 / 1.44 (fill only) | `#61DBBD` | 9.82 / 8.46 / 7.56 | `#61DBBD` |
 | `brand.ink` | `#0B735E` | 5.79 / 5.36 / 4.90 | `#61DBBD` | 9.82 / 8.46 / 7.56 | `#61DBBD` |
 | `brand.tint` | `#61DBBD` 18 % | wash; ink on it ≥ 4.5 | `#61DBBD` 16 % | wash | `#61DBBD` 20 % |
-| `brand.glow` | `#61DBBD` 35 % | halo | same | halo | same |
+| `brand.working` | `#0B735E` 60 % | line (≥ 2.46 composited) | `#61DBBD` 50 % | line (≥ 3.07) | `#61DBBD` 50 % |
 | `brand.on` | `#04261E` | 9.51 on fill | `#04261E` | 9.51 on fill | `#04261E` |
 | `brand.onInk` | `#FFFFFF` | 5.79 on ink | `#04261E` | 9.51 on ink | — |
 | `brand.accent` | `#0B735E` | 5.79 / 5.36 / 4.90; white on it 5.79 | `#1CA288` | 5.22 / 4.49 / 4.01; white on it 3.19 | — |
@@ -529,7 +559,7 @@ and fails on hard-coded brand colours in the app (`calibratedRed`, `controlAccen
 | `text` light | `#14983C` 0 → `#07957C` .45 → `#248CC2` 1 | ≥ 3.17 on every light surface (large text) |
 | `text` dark | the base stops | ≥ 5.02 on every dark surface |
 | `deep` | `#4ABF61` / `#43C1A4` / `#2C92C8` (+ layers) | `brand.on` ≥ 4.65 |
-| `spectrum` | `#FFD54F` 0 → green .24 → mint .46 → azure .70 → `#9D7BF7` 1 | decoration only, never under text |
+| `spectrum` | `#FFD54F` 0 → green .24 → mint .46 → azure .70 → `#9D7BF7` 1 | the onboarding hero art only, never under text |
 
 ## 12. Implementation status
 
@@ -548,6 +578,47 @@ and README screenshots; the site redo; optionally the dark app icon (§6).
 - **Windows / Linux**: check the gradient and the island glow on Mica dark and GNOME dark.
 
 ---
+
+## 14. Restraint audit (v2.1)
+
+The user's verdict on v2 as first shipped: flashy, too complicated, overused — use it with reason. Every gradient,
+spectrum, glow, rim and decorative line was audited; each one either says something the plain UI doesn't, or it went.
+Before / after screenshots (untracked): `promo/cases/v0.8-color/restrained/sheet*.png`.
+
+**Removed or changed**
+
+| Where | Was | Now |
+|---|---|---|
+| Main window job rows (自动归类 / 整理 · 未归类), Lab recorder card | `AIGlowView` / `.aiGlow`: 2 pt spectrum rim + 14 pt blurred rim, turning every 3.2 s | spinner + a static 1 pt `brand.working` hairline (`WorkingOutline`, `.aiWorking`) |
+| "Still organising" banner (还在整理 · 查看进度) | spectrum rim | its wand icon becomes a small spinner; the banner's own quiet ink wash; no line |
+| Island AI-sort / hand-off job row | spectrum rim | the row's progress bar + the 1 pt hairline (island value) |
+| Island, AI sort finished | spectrum bloom round the island | none (the chick hatching in the ear says it) |
+| Lab Compare / Run All buttons, Dictation "Make Item" | spectrum rim round the button | none: the spinner beside it |
+| Lab score | 30 pt gradient text + spectrum bloom | 30 pt neutral |
+| Dictation page stats | 15 pt bold gradient digits | neutral semibold digits |
+| Onboarding Done | spectrum bloom, 1.1 s delay | closes at once |
+| Live-text panel | 2 pt gradient "hearing" rule under the text | removed |
+| Snap while recording | mint ring + blurred gradient halo | flat mint ring |
+| Picker window hover | `gradient.field` wash at 22 % | flat `brand.tint` |
+| Empty states (All Items / first launch, inbox zero, nothing in progress, all filed, a project, no results, no index, Dictation, sessions; Tauri inbox / sessions) | 104 pt field-and-grain tiles with a per-page white glyph (inbox zero hopped); Tauri: the mascot on a 112 px field tile | the app-icon mark (80 pt canvas / 64 pt tile), one component, one set of spacings |
+| Review page "organising" pill | `.ai-glow` spectrum rim | `.ai-working` hairline (the hatching egg is the motion) |
+| Review page Done screen | the logo turned the spectrum once; the headline in gradient text | plain logo, neutral headline |
+| Tauri sidebar jobs box | `.ai-glow` | `.ai-working` |
+| Tokens | `gradient.aiGlow`, `gradient.wash`, `brand.glow`; CSS `--brand-spectrum*`, `--ai-glow-opacity`, `--brand-wash`, `--brand-glow`; Swift `BrandGradient.spectrum()`, `aiGlow*`, `wash*`; views `AIGlowView`, `Celebration`, `.celebrate`, `HearingRule`, `EmptyArtTile`, `BrandArtTile` | removed; `brand.working` (+ `--brand-working`, `BrandColor.working`, `workingWidth`) added |
+
+**Kept (each carries meaning)**
+
+| Where | Why |
+|---|---|
+| Picker selection outline (gradient dashes over a dark under-stroke) | it is the selection, on any screen content |
+| Primary buttons (`gradient.button`, white title): main window, banners, picker Snap / Record, island Organize / Auto-sort / Done, toast action, onboarding Next / Done, Lab Run / Save | the one primary of a view |
+| Island level bars (vertical gradient) and the listening glow under the island | blurt hears you (only while listening) |
+| Handles, size label, window-hover line and label, clasps, picked card border, count pills (flat mint) | selection / blurt's own marks |
+| Selection and drop-target tints (`brand.tint`), state rings, progress bars (flat ink) | state |
+| Onboarding hero (field + grain + the still spectrum glow) and its gradient title | the one hero moment; the only spectrum and the only gradient text |
+| The app icon tile (field + grain) | the brand mark; now also the empty-state mark |
+| Links' and the active tab's underlines, the `ok` check on toasts and done states | they mean something |
+| Native controls in `brand.accent` | system controls, the app's accent |
 
 ## Appendix A. Migration list
 

@@ -79,7 +79,7 @@ final class LiveTranscript {
     /// The take is over: the panel goes after `after` seconds (now: at once).
     func end(session s: Int, after: Double = 0) {
         guard s == session else { return }
-        view.setListening(false)            // the line is committed: the caret goes, the hearing rule fades
+        view.setListening(false)            // the line is committed: the caret goes
         hideToken += 1
         let tok = hideToken
         let go = { [weak self] in
@@ -185,7 +185,7 @@ final class LiveTranscript {
     // MARK: tests
 
     /// `live state | caret X,Y,W,H | caret - | set on|off | show TEXT | end` — `show` puts TEXT up as a listening
-    /// voice note's words would (a take begins if none is on; no microphone), `end` commits it (the rule fades, the
+    /// voice note's words would (a take begins if none is on; no microphone), `end` commits it (the caret goes, the
     /// panel goes 1.5 s later).
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
@@ -212,26 +212,13 @@ private extension CGFloat {
     func clamped(_ lo: CGFloat, _ hi: CGFloat) -> CGFloat { hi < lo ? lo : Swift.min(Swift.max(self, lo), hi) }
 }
 
-/// The 2 pt "hearing" rule under the words: the base gradient, horizontal (gradient.linear), while the take listens.
-final class HearingRule: NSView {
-    override func makeBackingLayer() -> CALayer { BrandGradient.linear(.horizontal) }
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 1
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
 /// The panel's face: a dark, slightly translucent rounded rect (a HUD blur under a black tint), the text on top —
-/// neutral white (92 % the newest line, 60 % the one before), a flat mint caret after the words and a 2 pt gradient
-/// "hearing" rule along the bottom while the take listens; the rule fades when the line commits (the take ends).
+/// neutral white (92 % the newest line, 60 % the one before) and a flat mint caret after the words while the take
+/// listens. No rule or underline: the island's level bars already say blurt is hearing.
 final class LiveTextView: NSView {
     private let blur = NSVisualEffectView()
     private let tint = NSView()
     private let text = LiveTextLines()
-    private let rule = HearingRule()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -252,22 +239,13 @@ final class LiveTextView: NSView {
             v.autoresizingMask = [.width, .height]
             addSubview(v)
         }
-        // in the bottom padding, under the last line (this view is not flipped: y from the bottom)
-        rule.frame = NSRect(x: LiveTextLines.pad.width, y: 5, width: max(0, bounds.width - LiveTextLines.pad.width * 2), height: 2)
-        rule.autoresizingMask = [.width]
-        rule.alphaValue = 0
-        addSubview(rule)
     }
     required init?(coder: NSCoder) { fatalError() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// The take listens (caret + hearing rule) or its line has committed (both go; the rule fades).
+    /// The take listens (the caret shows) or its line has committed (the caret goes).
     func setListening(_ on: Bool) {
         text.listening = on
-        NSAnimationContext.runAnimationGroup { c in
-            c.duration = on ? BrandGradient.glowFadeIn : 0.3
-            rule.animator().alphaValue = on ? 1 : 0
-        }
     }
 
     /// the lines drawn now (tests)
@@ -290,7 +268,7 @@ final class LiveTextLines: NSView {
     private var fadeStart: CFTimeInterval = 0
     private var timer: Timer?
     private(set) var lines: [String] = []
-    /// the take listens: a flat 2 pt mint caret after the last word (steady: the rule and the island's level move)
+    /// the take listens: a flat 2 pt mint caret after the last word (steady: the island's level moves)
     var listening = false { didSet { if listening != oldValue { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }

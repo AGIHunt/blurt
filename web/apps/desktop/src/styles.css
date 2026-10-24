@@ -373,9 +373,6 @@ body {
   border-radius: var(--r);
   background: var(--panel-2);
 }
-.sidebar .jobs.ai-glow {
-  --ai-glow-plate: var(--panel); /* organizing: the box lifts onto the panel surface while the rim turns */
-}
 .sidebar .job {
   display: flex;
   gap: 9px;
@@ -530,46 +527,38 @@ body {
 .banner .chev {
   color: var(--faint);
 }
+/* the one empty state (system.md §3.5, EmptyState.tsx): the app-icon mark (80 px canvas, the tile is 64), a neutral
+   title, a neutral hint, at most one primary — the macOS app's metrics */
 .hero-empty {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   padding: 40px;
   text-align: center;
   color: var(--mute);
 }
-.hero-empty svg {
-  color: var(--mute);
-}
-.hero-empty .mascot {
-  margin-bottom: -6px;
-}
-/* empty-state art (system.md §3.5): the field with grain, the mascot on it */
-.hero-empty .art {
-  display: grid;
-  place-items: center;
-  width: 112px;
-  height: 112px;
-  border-radius: 34px;
-  margin-bottom: 4px;
-}
-.hero-empty .art .mascot {
-  margin: 0;
-  filter: drop-shadow(0 3px 6px rgb(4 38 30 / 0.3));
+.hero-empty .mark {
+  display: block;
+  width: 80px;
+  height: 80px;
+  margin-bottom: 10px;
 }
 .hero-empty h2 {
-  margin: 6px 0 0;
-  font-size: 18px;
-  font-weight: 650;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--ink);
 }
 .hero-empty p {
-  margin: 0;
-  max-width: 420px;
+  margin: 4px 0 0;
+  max-width: 320px;
+  font-size: 12px;
   line-height: 1.5;
+}
+.hero-empty .acts {
+  margin-top: 16px;
 }
 
 /* ------------------------------------------------------------ items */

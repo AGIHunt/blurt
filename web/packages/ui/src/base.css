@@ -382,7 +382,8 @@ button.spill:hover,
 .smenu-i.a-discard .smenu-v { color: var(--err); }
 
 /* ---------- brand utilities (system.md §2.2, §5.2) ---------- */
-/* Gradient text: large headlines and hero numbers only (≥ 20 px, or ≥ 14 px bold), never body or small text.
+/* Gradient text: a hero headline only (≥ 20 px; unused in the app UIs, kept for the site redo), never body, labels,
+   numbers or small text.
    Flat --ink where background-clip: text is missing, under Increase Contrast (the generated block sets
    --brand-text: none there) and in forced colours. */
 .g-text {
@@ -404,7 +405,8 @@ button.spill:hover,
 }
 
 /* The field: the large gradient surface (light field / deep in dark mode, both in --brand-field) with grain.
-   Only on boxes ≥ 64 px in both dimensions (onboarding hero, empty-state art); never buttons, bars, text.
+   Only on boxes ≥ 64 px in both dimensions (a hero; unused in the app UIs, kept for the site redo); never buttons,
+   bars, text.
    (Not called .field: that name is taken by form rows in the Tauri app.) */
 .g-field {
   position: relative;
@@ -422,63 +424,9 @@ button.spill:hover,
   opacity: var(--grain-opacity);
 }
 
-/* "AI is working": a soft spectrum rim that turns once every 3.2 s, only while blurt's AI runs (organizing).
-   `.ai-glow.once` is the completion celebration: one turn, then it fades. Still under Reduce Motion (the rules above
-   stop animations), gone under Reduce Transparency (--ai-glow-opacity: 0). ::before draws the rim, ::after an
-   opaque plate (--ai-glow-plate) so the rim shows only outside the element's rounded shape; the element must not
-   use its own ::before / ::after. */
-@property --spin {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-.ai-glow {
-  position: relative;
-  isolation: isolate;
-}
-.ai-glow::before,
-.ai-glow::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-}
-.ai-glow::before {
-  inset: -3px;
-  /* --brand-spectrum-conic can't turn here (its var(--spin) is resolved on :root), so the gradient is composed at
-     the use site; the fallback stops are the generated spectrum's */
-  background: conic-gradient(
-    from var(--spin),
-    var(--brand-spectrum-stops, #ffd54f 0deg, var(--g-green) 79.488deg, var(--g-mint) 152.352deg, var(--g-blue) 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg)
-  );
-  filter: blur(6px);
-  opacity: var(--ai-glow-opacity);
-  animation: ai-glow-spin 3.2s linear infinite;
-}
-.ai-glow::after {
-  inset: 0;
-  background: var(--ai-glow-plate, var(--raise, var(--panel)));
-}
-.ai-glow.once::before {
-  opacity: 0;
-  animation: ai-glow-once 1.6s cubic-bezier(0.16, 1, 0.3, 1) 1;
-}
-@keyframes ai-glow-spin {
-  to {
-    --spin: 360deg;
-  }
-}
-@keyframes ai-glow-once {
-  from {
-    --spin: 0deg;
-    opacity: var(--ai-glow-opacity);
-  }
-  70% {
-    opacity: var(--ai-glow-opacity);
-  }
-  to {
-    --spin: 360deg;
-    opacity: 0;
-  }
+/* "AI is working" (organizing): one static 1 px hairline in translucent brand ink (--brand-working) just inside the
+   element's rounded edge. The element's own spinner / hatching egg carries the state; the line only says which box.
+   No rotation, no spectrum, no halo — nothing for Reduce Motion or Reduce Transparency to change. */
+.ai-working {
+  box-shadow: inset 0 0 0 1px var(--brand-working);
 }

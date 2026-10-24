@@ -413,10 +413,13 @@ final class IslandContent: NSView {
             r.progress = j.progress ?? step?.progress
             place(r, x: 0, y: y, w: w, h: 42)
             if j.type == .process {
-                // AI is working on the hand-off / sort: the spectrum rim around its row (special moment only)
-                let g = AIGlowView(frame: r.frame.insetBy(dx: 6, dy: 1).insetBy(dx: -8, dy: -8))
+                // AI is working on the hand-off / sort: one static 1 pt hairline round its row (with the row's progress)
+                let g = WorkingOutline(frame: r.frame.insetBy(dx: 6, dy: 1))
                 g.cornerRadius = 9
+                g.island = true
                 addSubview(g, positioned: .above, relativeTo: r)
+                g.isHidden = false
+                g.alphaValue = 1
             }
             y += 42
         }

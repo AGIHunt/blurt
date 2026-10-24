@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@blurt/icons';
 import { api, listen, type AgentSession, type ProjectRow } from '../api';
 import { ago, plural, t, errText } from '../i18n';
+import { EmptyState } from './EmptyState';
 import { Terminal } from './Terminal';
 
 const AGENTS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', kimi: 'Kimi Code', opencode: 'OpenCode' };
@@ -74,11 +75,7 @@ export function SessionsView({ job, onPick, projects, onToast }: {
 
   if (list && !list.length) {
     return (
-      <div className="hero-empty">
-        <Icon name="terminal" size={28} />
-        <h2>{t('sessions.empty.title')}</h2>
-        <p>{t('sessions.empty.body')}</p>
-      </div>
+      <EmptyState title={t('sessions.empty.title')} body={t('sessions.empty.body')} />
     );
   }
 

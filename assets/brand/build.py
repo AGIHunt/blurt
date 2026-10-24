@@ -28,6 +28,7 @@ Outputs
   site/assets/og.png                      the social card: the left-hand logo slot is repainted with the logo; the
                                           text on the right is left as it is
   apps/desktop/src-tauri/icons/           32x32 / 64x64 / 128x128 / 128x128@2x / icon.png / icon.icns / icon.ico
+  web/packages/ui/src/assets/app-icon.png 160 (80 pt @2x): the empty-state mark in the web UIs (system.md §3.5)
   crates/blurt-capture/demo/icons/        32x32 / icon.png / icon.ico (the capture demo window)
 
 Needs rsvg-convert (brew install librsvg) and Pillow; icon.icns needs macOS iconutil.
@@ -158,6 +159,7 @@ def main():
         ("apps/desktop/src-tauri/icons/icon.png", lambda: icon_png(512)),
         ("apps/desktop/src-tauri/icons/icon.ico", lambda: ico([16, 24, 32, 48, 64, 256])),
         ("apps/desktop/src-tauri/icons/icon.icns", icns),
+        ("web/packages/ui/src/assets/app-icon.png", lambda: icon_png(160)),
         ("crates/blurt-capture/demo/icons/32x32.png", lambda: icon_png(32)),
         ("crates/blurt-capture/demo/icons/icon.png", lambda: icon_png(64)),
         ("crates/blurt-capture/demo/icons/icon.ico", lambda: ico([16, 32, 64])),

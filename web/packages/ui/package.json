@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./react": "./src/react.tsx",
     "./tokens.css": "./src/tokens.css",
-    "./base.css": "./src/base.css"
+    "./base.css": "./src/base.css",
+    "./app-icon.png": "./src/assets/app-icon.png"
   },
   "scripts": {
     "test": "vitest run",
@@ -22,8 +23,12 @@
     "react-dom": ">=18"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true },
-    "react-dom": { "optional": true }
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "22.18.0",

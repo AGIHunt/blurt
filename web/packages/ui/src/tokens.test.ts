@@ -62,7 +62,7 @@ describe.each(PLATFORMS.flatMap((p) => (["light", "dark"] as const).map((t) => [
   it("defines every token", () => {
     for (const name of ["--bg", "--bg-2", "--panel", "--raise", "--ink", "--ink-2", "--mute", "--faint", "--line",
       "--brand", "--brand-ink", "--brand-tint", "--on-brand", "--brand-accent", "--brand-button", "--on-brand-button",
-      "--brand-gradient", "--brand-gradient-v", "--brand-gradient-h", "--brand-text", "--brand-field", "--grain",
+      "--brand-gradient", "--brand-gradient-v", "--brand-gradient-h", "--brand-text", "--brand-field", "--grain", "--brand-working",
       "--ok", "--ok-soft", "--on-ok", "--attn", "--attn-ink", "--attn-soft", "--on-attn", "--err", "--info", "--rec",
       "--drop", "--focus", "--font", "--r", "--r-sm", "--fs"]) {
       expect(k[name], name).toBeTruthy();
@@ -112,6 +112,9 @@ describe.each(PLATFORMS.flatMap((p) => (["light", "dark"] as const).map((t) => [
       expect(contrast(k["--on-brand-button"], stop), `white on ${stop}`).toBeGreaterThanOrEqual(4.5);
     // brand ink on the selection tint (a selected row keeps its icons)
     expect(contrast(k["--brand-ink"], parseRgbaOver(k["--brand-tint"], k["--panel"])), "ink on tint").toBeGreaterThanOrEqual(4.5);
+    // the AI-working hairline: one quiet colour, still visible on every surface
+    for (const s of ["--bg", "--panel"])
+      expect(contrast(parseRgbaOver(k["--brand-working"], k[s]), k[s]), `working line on ${s}`).toBeGreaterThanOrEqual(SPEC.brand.working.minOver);
   });
 
   it("K8: kind colours, the ring colours and custom lenses stand out (3:1) on every surface", () => {
@@ -154,6 +157,10 @@ function parseRgbaOver(fg: string, bg: string): string {
   const mix = (x: number, y: number) => Math.round(x * a + y * (1 - a)).toString(16).padStart(2, "0");
   return `#${mix(r, R)}${mix(g, G)}${mix(b, B)}`;
 }
+
+it("has no spectrum rim, celebration or wash tokens (system.md §9: no rotating or multi-colour rims)", () => {
+  expect(raw).not.toMatch(/--brand-spectrum|--ai-glow|--brand-wash|--brand-glow/);
+});
 
 it("no hand-written brand, state or kind colours outside the generated block", () => {
   const hand = raw.slice(raw.indexOf("/* @end generated colour */"));

@@ -509,37 +509,18 @@ func shutterFlash(_ r: NSRect) {
     CATransaction.commit()
 }
 
-/// Snap while recording: a 3 pt mint ring just outside the red frame with the gradient glow around it (450 ms, once)
-/// — the recorded area itself must not change, it is being recorded. No glow with Reduce Transparency.
+/// Snap while recording: a 3 pt mint ring just outside the red frame (450 ms, once) — the recorded area itself must
+/// not change, it is being recorded. A flat ring, no halo.
 func borderFlash(around r: NSRect) {
-    let pad: CGFloat = 40                       // room for the glow (24 pt blur) outside the ring
+    let pad: CGFloat = 12                       // room for the ring outside the frame
     let w = chromeWindow(r.insetBy(dx: -pad, dy: -pad))
     let view = w.contentView!
-    view.layerUsesCoreImageFilters = true
     let l = view.layer!
     let group = CALayer()
     group.frame = l.bounds
     let inner = NSRect(x: pad, y: pad, width: r.width, height: r.height)
     let ringRect = inner.insetBy(dx: -6.5, dy: -6.5)   // outside the red frame (which reaches 4 pt out)
     let path = CGPath(roundedRect: ringRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-    if !reduceTransparency {
-        // gradient.glow: the base gradient (corner to corner) along the ring, blurred
-        let halo = CALayer()
-        halo.frame = l.bounds
-        let g = BrandGradient.linear(.diagonal)
-        g.frame = ringRect.insetBy(dx: -10, dy: -10)
-        let m = CAShapeLayer()
-        m.frame = g.bounds
-        m.path = CGPath(roundedRect: ringRect.offsetBy(dx: -g.frame.minX, dy: -g.frame.minY), cornerWidth: 6, cornerHeight: 6, transform: nil)
-        m.fillColor = nil
-        m.strokeColor = NSColor.black.cgColor
-        m.lineWidth = 8
-        g.mask = m
-        halo.addSublayer(g)
-        if let blur = CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: BrandGradient.glowBlur / 2]) { halo.filters = [blur] }
-        halo.opacity = Float(BrandGradient.glowOpacity)
-        group.addSublayer(halo)
-    }
     let ring = CAShapeLayer()
     ring.path = path
     ring.fillColor = nil

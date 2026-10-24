@@ -6,12 +6,12 @@
 //   GradientLabel     gradient text for large headlines / hero numbers (AppKit); `.brandGradientText()` in SwiftUI
 //   FieldView         the field (light) / deep (dark) with grain, for heroes and empty-state art; `BrandField` in SwiftUI
 //   GlowLayer         the listening aura: the base gradient, blurred
-//   AIGlowView        the spectrum rim while AI works (auto-sort, polish, Structured, the Lab run)
-//   Celebration       the spectrum ring that blooms once when something big finishes
+//   WorkingOutline    "AI is working on this": one static 1 pt brand-ink hairline (`.aiWorking` in SwiftUI)
+//   BrandMarkView     the brand mark (the app-icon chick tile) for empty states; `BrandMark` in SwiftUI
 //
 // Accessibility: Reduce Transparency → no grain, no glow (flat colours only); Increase Contrast → gradient text turns
-// flat brand ink (the generated colours switch to their `hc` values by themselves); Reduce Motion → glows don't
-// turn or breathe, the celebration doesn't play.
+// flat brand ink (the generated colours switch to their `hc` values by themselves); Reduce Motion → the listening
+// glow doesn't breathe.
 import AppKit
 import QuartzCore
 import SwiftUI
@@ -151,6 +151,7 @@ extension Color {
     static let brandFill = Color(nsColor: BrandColor.fill)
     static let brandInk = Color(nsColor: BrandColor.ink)
     static let brandTint = Color(nsColor: BrandColor.tint)
+    static let brandWorking = Color(nsColor: BrandColor.working)
     static let brandOn = Color(nsColor: BrandColor.on)
     static let brandAccent = Color(nsColor: BrandColor.accent)
     static let brandRec = Color(nsColor: BrandColor.rec)
@@ -290,7 +291,7 @@ final class GradientLabel: NSView {
 
 // MARK: - FieldView
 
-/// The field (light) or deep (dark) with grain: hero panels and empty-state art (≥ 64 pt). Reduce Transparency drops
+/// The field (light) or deep (dark) with grain: the onboarding hero (≥ 64 pt). Reduce Transparency drops
 /// the grain. Corners: `cornerRadius` (≈ 30 % of the side for art tiles).
 final class FieldView: NSView {
     var cornerRadius: CGFloat = 0 { didSet { needsDisplay = true } }
@@ -379,177 +380,139 @@ enum GlowLayer {
     }
 }
 
-// MARK: - AI glow
+// MARK: - AI working
 
-/// The spectrum as a soft rim around what AI is working on (auto-sort, polish, Structured, the Lab run). Put it over
-/// (or just around) the working view; it doesn't take clicks. It turns once per `aiGlowPeriod`; still with Reduce Motion;
-/// hidden with Reduce Transparency.
-final class AIGlowView: NSView {
-    var cornerRadius: CGFloat = 10 { didSet { needsLayout = true } }
-    /// how far the glow reaches outside the working view's edge
-    let outset: CGFloat = 8
-    private let container = CALayer()
-    private let soft = CALayer()
-    private let crisp = CALayer()
-    private let softGrad = CAGradientLayer()
-    private let crispGrad = CAGradientLayer()
-    private let softMask = CAShapeLayer()
-    private let crispMask = CAShapeLayer()
+/// "blurt's AI is working on this" (auto-sort, organising a batch, the Lab processing a take): one static 1 pt
+/// hairline in translucent brand ink (`brand.working`; `BrandColor.Island.working` on the island) just inside the
+/// working view's rounded edge. The spinner next to it carries the state; the line only says
+/// which row the AI is on. No rotation, no spectrum, no halo — so Reduce Motion and Reduce Transparency change nothing.
+/// It doesn't take clicks.
+final class WorkingOutline: NSView {
+    var cornerRadius: CGFloat = 6 { didSet { needsDisplay = true } }
+    /// the always-dark island value (`BrandColor.Island.working`) instead of the dynamic `BrandColor.working`
+    var island = false { didSet { needsDisplay = true } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layerUsesCoreImageFilters = true
-        layer?.addSublayer(container)
-        for (holder, g, m) in [(soft, softGrad, softMask), (crisp, crispGrad, crispMask)] {
-            g.type = .conic
-            g.colors = (BrandGradient.spectrumStops + [BrandGradient.spectrumStops[0]]).map { BrandColor.srgb($0.0).cgColor }
-            g.locations = (BrandGradient.spectrumStops.map { NSNumber(value: Double($0.1) * 0.92) } + [1])
-            g.startPoint = CGPoint(x: 0.5, y: 0.5)
-            g.endPoint = CGPoint(x: 0.5, y: 0)
-            holder.addSublayer(g)
-            m.fillColor = nil
-            m.strokeColor = NSColor.black.cgColor
-            holder.mask = m
-            container.addSublayer(holder)
-        }
-        soft.filters = [CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: BrandGradient.aiGlowBlur / 2])!]
-        soft.opacity = Float(BrandGradient.aiGlowOpacity)
-        crisp.opacity = 0.9
-        isHidden = reduceTransparency
+        isHidden = true
+        alphaValue = 0
+        setAccessibilityElement(false)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
 
-    override func layout() {
-        super.layout()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        container.frame = bounds
-        let inner = bounds.insetBy(dx: outset, dy: outset)
-        let path = CGPath(roundedRect: inner, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        let side = hypot(bounds.width, bounds.height)
-        for (holder, g, m, w) in [(soft, softGrad, softMask, BrandGradient.aiGlowBlur), (crisp, crispGrad, crispMask, BrandGradient.aiGlowWidth)] {
-            holder.frame = bounds
-            g.bounds = CGRect(x: 0, y: 0, width: side, height: side)
-            g.position = CGPoint(x: bounds.midX, y: bounds.midY)
-            m.frame = bounds
-            m.path = path
-            m.lineWidth = w
-        }
-        CATransaction.commit()
-        spin()
+    override func draw(_ dirty: NSRect) {
+        let w = BrandColor.workingWidth
+        let p = NSBezierPath(roundedRect: bounds.insetBy(dx: w / 2, dy: w / 2), xRadius: cornerRadius, yRadius: cornerRadius)
+        p.lineWidth = w
+        (island ? BrandColor.Island.working : BrandColor.working).setStroke()
+        p.stroke()
     }
 
-    private func spin() {
-        for g in [softGrad, crispGrad] {
-            g.removeAnimation(forKey: "spin")
-            guard !reduceMotion else { continue }
-            let a = CABasicAnimation(keyPath: "transform.rotation.z")
-            a.fromValue = 0
-            a.toValue = -2 * Double.pi
-            a.duration = BrandGradient.aiGlowPeriod
-            a.repeatCount = .infinity
-            g.add(a, forKey: "spin")
-        }
-    }
-
-    /// Show / hide with a short fade.
+    /// Show / hide with a short fade (none with Reduce Motion).
     func set(active: Bool) {
-        if reduceTransparency { isHidden = true; return }
-        if active { isHidden = false; spin() }
+        if active { isHidden = false }
         NSAnimationContext.runAnimationGroup({ c in
-            c.duration = 0.25
+            c.duration = reduceMotion ? 0 : 0.2
             animator().alphaValue = active ? 1 : 0
         }, completionHandler: { [weak self] in if !active { self?.isHidden = true } })
     }
-
-    /// Adds a glow around `view` (as a sibling just above it) and returns it.
-    @discardableResult
-    static func attach(around view: NSView, cornerRadius: CGFloat) -> AIGlowView? {
-        guard let parent = view.superview else { return nil }
-        let g = AIGlowView(frame: view.frame.insetBy(dx: -8, dy: -8))
-        g.cornerRadius = cornerRadius
-        g.autoresizingMask = view.autoresizingMask
-        parent.addSubview(g, positioned: .above, relativeTo: view)
-        return g
-    }
 }
 
-/// SwiftUI: the AI-working rim around a view while `active`.
-struct AIGlow: ViewModifier {
+/// SwiftUI: the AI-working hairline round a view while `active` (see `WorkingOutline`).
+struct AIWorking: ViewModifier {
     var active: Bool
     var cornerRadius: CGFloat = 10
-    @Environment(\.accessibilityReduceMotion) private var reduce
-    @State private var turn = 0.0
 
     func body(content: Content) -> some View {
         content.overlay {
-            if active && !reduceTransparency {
-                let st = BrandGradient.spectrumStops + [BrandGradient.spectrumStops[0]]
-                let grad = AngularGradient(stops: st.enumerated().map { i, s in
-                    .init(color: Color(nsColor: BrandColor.srgb(s.0)), location: i == st.count - 1 ? 1 : s.1 * 0.92) },
-                                           center: .center, angle: .degrees(turn))
-                let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                ZStack {
-                    shape.stroke(grad, lineWidth: BrandGradient.aiGlowBlur).blur(radius: BrandGradient.aiGlowBlur / 2)
-                        .opacity(BrandGradient.aiGlowOpacity)
-                    shape.stroke(grad, lineWidth: BrandGradient.aiGlowWidth).opacity(0.9)
-                }
-                .allowsHitTesting(false)
-                .transition(.opacity)
-                .onAppear {
-                    guard !(reduce || reduceMotion) else { return }
-                    withAnimation(.linear(duration: BrandGradient.aiGlowPeriod).repeatForever(autoreverses: false)) { turn = 360 }
-                }
+            if active {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.brandWorking, lineWidth: BrandColor.workingWidth)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.25), value: active)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: active)
     }
 }
 
 extension View {
-    func aiGlow(_ active: Bool, cornerRadius: CGFloat = 10) -> some View { modifier(AIGlow(active: active, cornerRadius: cornerRadius)) }
+    func aiWorking(_ active: Bool, cornerRadius: CGFloat = 10) -> some View { modifier(AIWorking(active: active, cornerRadius: cornerRadius)) }
 }
 
-// MARK: - Celebration
+// MARK: - Brand mark (empty states)
 
-/// The completion celebration: a spectrum ring blooms out of `rect` (in `view`'s coordinates) once and fades
-/// (0.9 s). Nothing with Reduce Motion or Reduce Transparency: the done state (ok + check) says it already.
-enum Celebration {
-    static func play(in view: NSView, around rect: NSRect, cornerRadius: CGFloat = 12) {
-        guard !reduceMotion, !reduceTransparency, let host = view.layer else { return }
-        let ring = CAGradientLayer()
-        ring.type = .conic
-        let st = BrandGradient.spectrumStops + [BrandGradient.spectrumStops[0]]
-        ring.colors = st.map { BrandColor.srgb($0.0).cgColor }
-        ring.locations = st.enumerated().map { i, s in NSNumber(value: i == st.count - 1 ? 1 : Double(s.1) * 0.92) }
-        ring.startPoint = CGPoint(x: 0.5, y: 0.5)
-        ring.endPoint = CGPoint(x: 0.5, y: 0)
-        ring.frame = rect.insetBy(dx: -6, dy: -6)
-        let m = CAShapeLayer()
-        m.frame = ring.bounds
-        m.path = CGPath(roundedRect: ring.bounds.insetBy(dx: 6, dy: 6), cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        m.fillColor = nil
-        m.strokeColor = NSColor.black.cgColor
-        m.lineWidth = 3
-        ring.mask = m
-        host.addSublayer(ring)
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { ring.removeFromSuperlayer() }
-        let grow = CABasicAnimation(keyPath: "transform.scale")
-        grow.fromValue = 1
-        grow.toValue = 1.12
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1
-        fade.toValue = 0
-        let g = CAAnimationGroup()
-        g.animations = [grow, fade]
-        g.duration = 0.9
-        g.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1, 0.3, 1)
-        ring.opacity = 0
-        ring.add(g, forKey: "bloom")
-        CATransaction.commit()
+/// The brand mark for empty states (docs/design/system.md §3.5): the app icon itself — the 4A chick on its gradient
+/// tile, exactly as in the Dock — drawn on the icon canvas (`EmptyState.markSide`; the tile is 80 % of it). It is the
+/// running app's own icon (Blurt.app's AppIcon.icns, built from assets/brand/app-icon.svg), or the skill's
+/// assets/icon.png for a bare `swift build` run. Decoration: hidden from VoiceOver.
+enum BrandMark {
+    static let image: NSImage = {
+        if let p = Bundle.main.path(forResource: "AppIcon", ofType: "icns"), let i = NSImage(contentsOfFile: p) { return i }
+        if let i = NSImage(contentsOf: Scripts.dir.deletingLastPathComponent().appendingPathComponent("assets/icon.png")) { return i }
+        return NSApp.applicationIconImage ?? NSImage()
+    }()
+}
+
+/// One empty state for every page (AppKit `EmptyStateView`, SwiftUI `EmptyStateContent`): the mark, a neutral title,
+/// a neutral hint, at most one primary — the same sizes and spacing everywhere.
+enum EmptyState {
+    /// the icon canvas; the tile inside it is 80 % (64 pt), as the Dock draws it
+    static let markSide: CGFloat = 80
+    static let markToTitle: CGFloat = 10
+    static let titleToMessage: CGFloat = 4
+    static let messageToButtons: CGFloat = 16
+    static let titleSize: CGFloat = 15
+    static let messageSize: CGFloat = 12
+    static let messageWidth: CGFloat = 320
+}
+
+/// AppKit: the mark, `EmptyState.markSide` square.
+final class BrandMarkView: NSImageView {
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: EmptyState.markSide, height: EmptyState.markSide))
+        image = BrandMark.image
+        imageScaling = .scaleProportionallyUpOrDown
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: EmptyState.markSide),
+                                     heightAnchor.constraint(equalToConstant: EmptyState.markSide)])
+        setAccessibilityElement(false)
+        cell?.setAccessibilityElement(false)
     }
+    required init?(coder: NSCoder) { fatalError() }
+    override var intrinsicContentSize: NSSize { NSSize(width: EmptyState.markSide, height: EmptyState.markSide) }
+}
+
+/// SwiftUI: the one empty state — the mark, a title, a hint, then `actions` (at most one primary).
+struct EmptyStateContent<Actions: View>: View {
+    var title: String
+    var message: String = ""
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(nsImage: BrandMark.image).resizable().interpolation(.high)
+                .frame(width: EmptyState.markSide, height: EmptyState.markSide)
+                .accessibilityHidden(true)
+                .padding(.bottom, EmptyState.markToTitle)
+            Text(title).font(.system(size: EmptyState.titleSize, weight: .semibold)).multilineTextAlignment(.center)
+            if !message.isEmpty {
+                Text(message).font(.system(size: EmptyState.messageSize)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).frame(maxWidth: EmptyState.messageWidth)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, EmptyState.titleToMessage)
+            }
+            if Actions.self != EmptyView.self { actions().padding(.top, EmptyState.messageToButtons) }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension EmptyStateContent where Actions == EmptyView {
+    init(title: String, message: String = "") { self.init(title: title, message: message) { EmptyView() } }
 }

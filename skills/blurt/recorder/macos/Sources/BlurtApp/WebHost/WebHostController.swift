@@ -426,8 +426,9 @@ final class ItemBanner: NSView {
     private var tint: NSColor = .clear
     /// The process job the "still organising" line points at.
     private(set) var processingJob: String?
-    /// The spectrum rim while the batch is still being organised (AI at work, §4)
-    private let glow = AIGlowView(frame: .zero)
+    /// While the batch is still being organised (AI at work, §4): a small spinner in the icon's place. The banner's own
+    /// quiet ink wash is the accent — no rim, no glow.
+    private let spinner = NSProgressIndicator()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -438,30 +439,25 @@ final class ItemBanner: NSView {
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         buttons.orientation = .horizontal
         buttons.spacing = 6
-        for v in [icon, text, buttons] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        for v in [icon, spinner, text, buttons] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         height = heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             height,
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16), icon.heightAnchor.constraint(equalToConstant: 16),
+            spinner.centerXAnchor.constraint(equalTo: icon.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
             text.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10), text.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttons.leadingAnchor.constraint(greaterThanOrEqualTo: text.trailingAnchor, constant: 12),
             buttons.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14), buttons.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
-        glow.cornerRadius = 8
-        glow.alphaValue = 0
-        glow.isHidden = true
-        addSubview(glow)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         isHidden = true
     }
     required init?(coder: NSCoder) { fatalError() }
-
-    override func layout() {
-        super.layout()
-        glow.frame = bounds.insetBy(dx: 3 - glow.outset, dy: 3 - glow.outset)     // the rim 3 pt inside the edges
-    }
 
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
@@ -492,7 +488,7 @@ final class ItemBanner: NSView {
         processingJob = nil
         icon.contentTintColor = nil
         var organising = false
-        defer { setGlow(organising) }
+        defer { setWorking(organising) }
         guard let it = it, !it.discarded else { return hide() }
         let agent = it.workAgent.flatMap { AgentHub.shared.def($0)?.name } ?? it.workAgent
         let active = it.state == "handed_off" || it.state == "in_progress"
@@ -543,11 +539,9 @@ final class ItemBanner: NSView {
         height.constant = 0
     }
 
-    private var glowing = false
-    private func setGlow(_ on: Bool) {
-        guard on != glowing else { return }
-        glowing = on
-        glow.set(active: on)
+    private func setWorking(_ on: Bool) {
+        icon.isHidden = on
+        on ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
     }
 
     @objc func tap(_ b: NSButton) { b.identifier.map { onAction?($0.rawValue) } }

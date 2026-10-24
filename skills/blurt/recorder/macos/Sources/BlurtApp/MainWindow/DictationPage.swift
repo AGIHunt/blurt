@@ -483,11 +483,7 @@ struct DictationListView: View {
             if m.entries.isEmpty {
                 DictationEmptyView(m: m)
             } else if m.filtered.isEmpty {
-                VStack(spacing: 12) {
-                    BrandArtTile(icon: .search, side: 96)
-                    Text(T("dictation.history.no_match")).font(.system(size: 13, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyStateContent(title: T("dictation.history.no_match"))
             } else {
                 list
             }
@@ -538,13 +534,12 @@ struct DictationListView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// One of today's numbers: the number itself is a small hero (15 pt bold, gradient text; flat ink with Increase
-    /// Contrast), the words around it stay quiet.
+    /// One of today's numbers: the number itself semibold, the words around it quieter. Neutral: a count is not brand.
     func stat(_ s: String) -> some View {
         let (before, number, after) = Self.splitNumber(s)
         return HStack(alignment: .firstTextBaseline, spacing: 0) {
             if !before.isEmpty { Text(before).foregroundStyle(.primary.opacity(0.85)) }
-            if !number.isEmpty { Text(number).font(.system(size: 15, weight: .bold)).monospacedDigit().brandGradientText() }
+            if !number.isEmpty { Text(number).fontWeight(.semibold).monospacedDigit() }
             if !after.isEmpty { Text(after).foregroundStyle(.primary.opacity(0.85)) }
         }
         .accessibilityElement(children: .ignore)
@@ -642,15 +637,9 @@ struct DictationEmptyView: View {
     @ObservedObject var m: DictationHistoryModel
 
     var body: some View {
-        VStack(spacing: 10) {
-            BrandArtTile(icon: .keyboard, side: 104).padding(.bottom, 6)
-            Text(T("dictation.history.empty.title")).font(.system(size: 15, weight: .semibold))
-            Text(T("dictation.history.empty.body", Dictation.keyInline)).font(.system(size: 12)).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center).frame(maxWidth: 320).fixedSize(horizontal: false, vertical: true)
-            status.padding(.top, 6)
+        EmptyStateContent(title: T("dictation.history.empty.title"), message: T("dictation.history.empty.body", Dictation.keyInline)) {
+            status
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder var status: some View {
@@ -880,10 +869,9 @@ struct DictationDetailView: View {
             if let it = e.item, let uid = e.itemUID {
                 Button { AppEnvironment.mainWindow?.reveal(uid: uid) } label: { Text(T("main.dictation.show_item", it)) }
             } else {
-                // the AI writes the item: the spectrum rim while it works
+                // the AI writes the item: the button waits, the spinner beside it says so
                 Button { m.makeItem(e) } label: { Text(T("dictation.history.make_item")) }
                     .disabled(m.working.contains(e.id))
-                    .aiGlow(m.working.contains(e.id), cornerRadius: 6)
                 if m.working.contains(e.id) { ProgressView().controlSize(.small) }
             }
             if DictationLabModel.enabled {

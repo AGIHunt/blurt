@@ -7,8 +7,8 @@
 Outputs
   Swift  skills/blurt/recorder/macos/Sources/BlurtApp/Icons/BrandColor.swift
            BrandColor (dynamic NSColors: light / dark / Increase Contrast), BrandColor.Island (always dark),
-           BrandColor.Kind, BrandGradient (stops, CAGradientLayer factories for the base, button, text and spectrum
-           gradients, the field / deep drawing, the grain tile, glow constants)
+           BrandColor.Kind, BrandGradient (stops, CAGradientLayer factories for the base, button and text gradients,
+           the onboarding spectrum stops, the field / deep drawing, the grain tile, the listening-glow constants)
   CSS    web/packages/ui/src/tokens.css        the block between the @generated colour markers (light, dark,
                                                prefers-contrast, prefers-reduced-transparency)
          web/apps/overlays/src/theme.css       the island values, between the same markers
@@ -156,6 +156,15 @@ def check_contrast() -> list[str]:
             if "onWhite" in t:
                 for mode in ("light", "dark"):
                     need(f"{group}.{name} white on {mode}", contrast("#FFFFFF", t[mode]), t["onWhite"])
+    # the AI-working hairline: quiet (a translucent ink) but visible on every surface of its appearance; one colour
+    wk = T["brand"]["working"]
+    for mode in ("light", "dark", "island"):
+        vals = [wk[mode]] + ([wk["hc"][mode]] if mode in wk.get("hc", {}) else [])
+        for v in vals:
+            for s in C[mode]:
+                need(f"brand.working {mode} {v} over {s}", contrast(over(v, s), s), wk["minOver"])
+    if wk.get("width") != 1:
+        errs.append("brand.working is a 1 pt hairline (width 1)")
     # text on the tint: the tint is a wash, text on it stays ink; brand.ink on it must still read
     for mode in ("light", "dark"):
         for s in C[mode]:
@@ -232,7 +241,7 @@ def swift_field(layers) -> str:
 
 SWIFT_TEMPLATE = r'''// @@HEADER@@
 // The API every surface uses: docs/design/system.md §2 (tokens), §5.1 (recipes). Views built on it (BrandButton,
-// FieldView, GlowView, gradient text) live in Icons/BrandViews.swift.
+// FieldView, GlowLayer, WorkingOutline, gradient text) live in Icons/BrandViews.swift.
 import AppKit
 import QuartzCore
 
@@ -244,8 +253,9 @@ enum BrandColor {
     static let ink = @@ink@@
     /// the pale mint wash: selected row, drop target, badge background. Text on it stays `labelColor`.
     static let tint = @@tint@@
-    /// halos and pulses only
-    static let glow = @@glow@@
+    /// "AI is working on this": the 1 pt hairline round the working row (translucent ink). One colour, static.
+    static let working = @@working@@
+    static let workingWidth: CGFloat = @@working_width@@
     /// text and glyphs on `fill` and on the base gradient
     static let on = @@on@@
     /// text on an `ink` fill (rare)
@@ -272,7 +282,7 @@ enum BrandColor {
         static let fill = @@i_fill@@
         static let ink = @@i_ink@@
         static let tint = @@i_tint@@
-        static let glow = @@i_glow@@
+        static let working = @@i_working@@
         static let on = @@i_on@@
         static let rec = @@i_rec@@
         static let attn = @@i_attn@@
@@ -324,31 +334,23 @@ enum BrandGradient {
     static let mint = BrandColor.srgb(@@mint@@)
     static let blue = BrandColor.srgb(@@blue@@)
 
-    /// gradient.linear: the base (capture stroke, level bars, live-text rule, snap halo); `BrandColor.on` text on it
+    /// gradient.linear: the base (capture stroke, level bars, listening glow); `BrandColor.on` text on it
     static let linearStops: [(UInt32, CGFloat)] = @@linear@@
     /// gradient.button: the base hue path, deeper, for white bold text (≥ @@button_min@@:1 everywhere)
     static let buttonStops: [(UInt32, CGFloat)] = @@button@@
     static let buttonHover: CGFloat = @@button_hover@@
     static let buttonPressed: CGFloat = @@button_pressed@@
-    /// gradient.text: large headlines and hero numbers only (≥ @@text_pt@@ pt); deeper on light, the base on dark
+    /// gradient.text: the onboarding title only (≥ @@text_pt@@ pt); deeper on light, the base on dark
     static let textLightStops: [(UInt32, CGFloat)] = @@text_light@@
     static let textDarkStops: [(UInt32, CGFloat)] = @@text_dark@@
     static let textMinPoints: CGFloat = @@text_pt@@
-    /// gradient.spectrum: special moments only (onboarding hero, the AI-working glow, the celebration)
+    /// gradient.spectrum: the onboarding hero art only (a still, blurred glow behind the mascot)
     static let spectrumStops: [(UInt32, CGFloat)] = @@spectrum@@
-    /// gradient.glow (listening aura, snap halo) and gradient.aiGlow (the spectrum rim while AI works)
+    /// gradient.glow: the island's listening aura
     static let glowOpacity: CGFloat = @@glow_opacity@@
     static let glowRange: ClosedRange<CGFloat> = @@glow_min@@...@@glow_max@@
     static let glowBlur: CGFloat = @@glow_blur@@
     static let glowFadeIn: CFTimeInterval = @@glow_fade@@
-    static let aiGlowOpacity: CGFloat = @@ai_opacity@@
-    static let aiGlowBlur: CGFloat = @@ai_blur@@
-    static let aiGlowWidth: CGFloat = @@ai_width@@
-    static let aiGlowPeriod: CFTimeInterval = @@ai_period@@
-    /// gradient.wash: the field over a surface
-    static let washLight: CGFloat = @@wash_light@@
-    static let washDark: CGFloat = @@wash_dark@@
-    static let washHover: CGFloat = @@wash_hover@@
     /// grain: overlay noise on field / deep surfaces ≥ minSize pt only
     static let grainLight: CGFloat = @@grain_light@@
     static let grainDark: CGFloat = @@grain_dark@@
@@ -375,7 +377,6 @@ enum BrandGradient {
 
     static func linear(_ dir: Direction = .diagonal, flipped: Bool = false) -> CAGradientLayer { layer(linearStops, dir, flipped: flipped) }
     static func button(flipped: Bool = false) -> CAGradientLayer { layer(buttonStops, .diagonal, flipped: flipped) }
-    static func spectrum(_ dir: Direction = .horizontal, flipped: Bool = false) -> CAGradientLayer { layer(spectrumStops, dir, flipped: flipped) }
     static func textStops(dark: Bool) -> [(UInt32, CGFloat)] { dark ? textDarkStops : textLightStops }
 
     /// A CGGradient for drawing with CGContext (sRGB).
@@ -483,11 +484,11 @@ enum BrandGradient {
 def gen_swift() -> str:
     B, S = T["brand"], T["semantic"]
     rep = {"HEADER": HEADER}
-    for n in ("fill", "ink", "tint", "glow", "on", "onInk", "accent"):
+    for n in ("fill", "ink", "tint", "working", "on", "onInk", "accent"):
         rep[n] = swift_color(B[n])
     for n in ("rec", "attn", "attnInk", "onAttn", "ok", "onOk", "err", "info", "markup"):
         rep[n] = swift_color(S[n])
-    for n in ("fill", "ink", "tint", "glow", "on"):
+    for n in ("fill", "ink", "tint", "working", "on"):
         rep["i_" + n] = swift_static(B[n], "island")
     for n in ("rec", "attn", "ok", "err", "info", "markup"):
         rep["i_" + n] = swift_static(S[n], "island")
@@ -504,13 +505,12 @@ def gen_swift() -> str:
     rep["text_dark"] = swift_stops(stops(G["text"]["dark"]["stops"]))
     rep["text_pt"] = f"{G['text']['minPoints']:g}"
     rep["spectrum"] = swift_stops(stops(G["spectrum"]["stops"]))
-    gl, ai = G["glow"], G["aiGlow"]
+    gl = G["glow"]
     rep.update(glow_opacity=f"{gl['opacity']:g}", glow_min=f"{gl['min']:g}", glow_max=f"{gl['max']:g}",
-               glow_blur=f"{gl['blur']:g}", glow_fade=f"{gl['fadeIn']:g}", ai_opacity=f"{ai['opacity']:g}",
-               ai_blur=f"{ai['blur']:g}", ai_width=f"{ai['width']:g}", ai_period=f"{ai['period']:g}")
-    w, gr = G["wash"], G["grain"]
-    rep.update(wash_light=f"{w['light']:g}", wash_dark=f"{w['dark']:g}", wash_hover=f"{w['hover']:g}",
-               grain_light=f"{gr['light']:g}", grain_dark=f"{gr['dark']:g}", grain_min=f"{gr['minSize']:g}")
+               glow_blur=f"{gl['blur']:g}", glow_fade=f"{gl['fadeIn']:g}")
+    rep["working_width"] = f"{B['working']['width']:g}"
+    gr = G["grain"]
+    rep.update(grain_light=f"{gr['light']:g}", grain_dark=f"{gr['dark']:g}", grain_min=f"{gr['minSize']:g}")
     rep["field"] = swift_field(G["field"]["layers"])
     rep["deep"] = swift_field(G["deep"]["layers"])
     out = SWIFT_TEMPLATE
@@ -568,7 +568,7 @@ def css_vars(mode: str, island: bool = False) -> list[str]:
     add("brand", css_color(B["fill"][m]))
     add("brand-ink", css_color(B["ink"][m]))
     add("brand-tint", css_color(B["tint"][m]))
-    add("brand-glow", css_color(B["glow"][m]))
+    add("brand-working", css_color(B["working"][m]))
     add("on-brand", css_color(B["on"][m]))
     if not island:
         add("on-brand-ink", css_color(B["onInk"][mode]))
@@ -592,12 +592,6 @@ def css_vars(mode: str, island: bool = False) -> list[str]:
     add("on-brand-button", G["button"]["on"].lower())
     tx = G["text"]["dark" if (island or mode == "dark") else "light"]
     add("brand-text", css_lin(stops(tx["stops"]), "90deg"))
-    add("brand-spectrum", css_lin(stops(G["spectrum"]["stops"]), "90deg"))
-    sp = stops(G["spectrum"]["stops"])
-    # the conic stops on their own, so a rotating rim can compose `conic-gradient(from var(--spin), var(--brand-spectrum-
-    # stops))` where --spin is animated (a var() inside --brand-spectrum-conic is resolved on :root and can't turn)
-    add("brand-spectrum-stops", ", ".join(f"{c.lower()} {at * 360 * 0.92:g}deg" for c, at in sp) + f", {sp[0][0].lower()} 360deg")
-    add("brand-spectrum-conic", "conic-gradient(var(--brand-spectrum-stops))")
     if island:
         # overlay cards can have a light face (voice card): brand ink for light surfaces
         add("brand-ink-light", css_color(B["ink"]["light"]))
@@ -605,9 +599,7 @@ def css_vars(mode: str, island: bool = False) -> list[str]:
         layers = G["deep" if mode == "dark" else "field"]["layers"]
         add("brand-field", "\n    " + css_field(layers))
         add("grain-opacity", f"{G['grain'][mode]:g}")
-        add("brand-wash", f"{G['wash'][mode]:g}")
     add("glow-opacity", f"{G['glow']['opacity']:g}")
-    add("ai-glow-opacity", f"{G['aiGlow']['opacity']:g}")
     return v
 
 
@@ -619,14 +611,14 @@ def gen_ui_block() -> str:
     lines += ["}"]
     B = T["brand"]
     hc_l = [f"  --brand-ink: {css_color(B['ink']['hc']['light'])};", f"  --brand-tint: {css_color(B['tint']['hc']['light'])};",
-            "  --brand-text: none;"]
+            f"  --brand-working: {css_color(B['working']['hc']['light'])};", "  --brand-text: none;"]
     hc_d = [f"  --brand-ink: {css_color(B['ink']['hc']['dark'])};", f"  --brand-tint: {css_color(B['tint']['hc']['dark'])};",
-            "  --brand-text: none;"]
+            f"  --brand-working: {css_color(B['working']['hc']['dark'])};", "  --brand-text: none;"]
     lines += ["/* Increase Contrast: deeper ink, a stronger wash, gradient text falls back to flat ink (.g-text) */",
               "@media (prefers-contrast: more) {", "  :root,", '  [data-theme="light"] {'] + ["  " + x for x in hc_l] + \
              ["  }", '  [data-theme="dark"] {'] + ["  " + x for x in hc_d] + ["  }", "}"]
     lines += ["/* Reduce Transparency: no grain, no glow */", "@media (prefers-reduced-transparency: reduce) {",
-              "  :root {", "    --grain: none;", "    --glow-opacity: 0;", "    --ai-glow-opacity: 0;", "  }", "}", END]
+              "  :root {", "    --grain: none;", "    --glow-opacity: 0;", "  }", "}", END]
     return "\n".join(lines)
 
 
@@ -634,8 +626,7 @@ def gen_overlay_block() -> str:
     lines = [BEGIN, "/* island values: overlays sit on top of anything, so they are always dark */", ":root {",
              "  accent-color: var(--brand);"]
     lines += css_vars("dark", island=True)
-    lines += ["}", "@media (prefers-reduced-transparency: reduce) {", "  :root {", "    --glow-opacity: 0;",
-              "    --ai-glow-opacity: 0;", "  }", "}", END]
+    lines += ["}", "@media (prefers-reduced-transparency: reduce) {", "  :root {", "    --glow-opacity: 0;", "  }", "}", END]
     return "\n".join(lines)
 
 
@@ -728,7 +719,7 @@ def table() -> str:
                 if "on" in t:
                     return f"{contrast(v, tok(t['on'])[mode]):.2f} on {t['on']}"
                 if rgba(v)[3] < 1:
-                    return "wash"
+                    return "line" if name == "working" else "wash"
                 return " / ".join(f"{contrast(v, s):.2f}" for s in C[mode])
             rows.append(f"| `{group}.{name}` | `{t['light']}` | {cell('light')} | `{t['dark']}` | {cell('dark')} | "
                         f"{('`' + t['island'] + '`') if 'island' in t else '—'} |")

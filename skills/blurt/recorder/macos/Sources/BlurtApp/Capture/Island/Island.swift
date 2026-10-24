@@ -826,12 +826,7 @@ final class Island: NSObject, IslandHosting {
             hatch.job = j.id
             if !j.isActive, hatch.ended == nil {
                 hatch.ended = (CACurrentMediaTime(), j.state == .done, j.items.count)
-                // the hand-off / AI sort finished: the spectrum ring blooms once around the island (special moment;
-                // nothing with Reduce Motion / Transparency — the chick hatching says it already)
-                if j.state == .done, let v = view {
-                    let box = CGRect(x: geo.cx - w.value / 2, y: geo.top, width: w.value, height: self.h.value)
-                    Celebration.play(in: v, around: box, cornerRadius: min(r.value, box.height / 2))
-                }
+                // the hand-off / AI sort finished: the chick hatching in the ear says it (no ring, no bloom)
                 DispatchQueue.main.asyncAfter(deadline: .now() + (j.state == .done ? EarSlot.hatchSeconds + 1.4 : 5)) { [weak self] in
                     self?.hatches.removeAll { $0 === hatch }
                     self?.refreshReviewCount()

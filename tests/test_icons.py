@@ -161,6 +161,48 @@ def test_no_hard_coded_colours_outside_the_tokens():
     assert hits == []
 
 
+def test_brand_effects_stay_restrained():
+    """docs/design/system.md §9: no rotating or multi-colour rims on rows or banners, no completion bloom, no
+    decorative underlines. The spectrum appears only in the onboarding hero; gradient text only in the onboarding
+    title; the field only in the onboarding hero (and the app icon). "AI is working" is the 1 pt `WorkingOutline` /
+    `.aiWorking` / `.ai-working` hairline."""
+    app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+    banned = re.compile(r"AIGlow|aiGlow|Celebration|\.celebrate\(|HearingRule|\.conic\b|AngularGradient|BrandArtTile|EmptyArtTile")
+    only = {  # pattern → the files that may use it
+        re.compile(r"spectrumStops"): {"App/BrandMoments.swift"},
+        re.compile(r"AngularGradient"): {"App/BrandMoments.swift"},
+        re.compile(r"brandGradientText\(\)|GradientLabel\("): {"Onboarding/Onboarding.swift", "Icons/BrandViews.swift"},
+        re.compile(r"BrandField\(|FieldView\("): {"Onboarding/Onboarding.swift", "Icons/BrandViews.swift"},
+        re.compile(r"SpectrumGlow\("): {"Onboarding/Onboarding.swift"},
+    }
+    hits = []
+    for p in app.rglob("*.swift"):
+        rel = p.relative_to(app).as_posix()
+        if rel == "Icons/BrandColor.swift":
+            continue
+        for i, line in enumerate(p.read_text().splitlines(), 1):
+            code = line.split("//", 1)[0]
+            if banned.search(code) and not (rel == "App/BrandMoments.swift" and "AngularGradient" in code):
+                hits.append(f"{rel}:{i}: {line.strip()}")
+            for pat, ok in only.items():
+                if pat.search(code) and rel not in ok:
+                    hits.append(f"{rel}:{i}: {line.strip()}")
+    web = ROOT / "web"
+    web_banned = re.compile(r"ai-glow|conic-gradient|--brand-spectrum|--brand-wash|className=\{?[^>]*\bg-(text|field)\b")
+    for p in [*web.glob("packages/*/src/**/*"), *web.glob("apps/*/src/**/*")]:
+        if p.suffix not in (".ts", ".tsx", ".css") or p.name in ("tokens.css", "theme.css") or p.name.endswith(".test.ts") \
+                or "node_modules" in p.parts:
+            continue
+        for i, line in enumerate(p.read_text().splitlines(), 1):
+            if web_banned.search(line):
+                hits.append(f"{p.relative_to(ROOT)}:{i}: {line.strip()}")
+    assert hits == []
+    import json
+    t = json.loads((ROOT / "assets/color/tokens.json").read_text())
+    assert "aiGlow" not in t["gradient"] and "wash" not in t["gradient"] and "glow" not in t["brand"]
+    assert t["brand"]["working"]["width"] == 1
+
+
 def test_mascot_outputs_are_copied_from_assets_mascot():
     """The 1A chick's frame strips (assets/mascot) reach the mac app and the web package unchanged, and stay small."""
     import json

@@ -193,16 +193,9 @@ final class PickerView: NSView {
             if at.y + 26 > bounds.height { at.y = sel.maxY - 30; at.x = sel.minX + 8 }
             _ = pill(label, font: f, fg: BrandColor.Island.on, bg: BrandColor.Island.fill, at: at)
         } else if let h = hole {
-            // the window under the pointer: the field at 22 % inside, a 2 pt mint line, a mint label
-            if let ctx = NSGraphicsContext.current?.cgContext {
-                ctx.saveGState()
-                ctx.clip(to: h)
-                ctx.setAlpha(BrandGradient.washHover)
-                ctx.beginTransparencyLayer(in: h, auxiliaryInfo: nil)
-                BrandGradient.drawField(in: h, ctx: ctx, deep: false)
-                ctx.endTransparencyLayer()
-                ctx.restoreGState()
-            }
+            // the window under the pointer: a flat mint tint inside, a 2 pt mint line, a mint label
+            BrandColor.Island.tint.setFill()
+            h.fill(using: .sourceOver)
             BrandColor.Island.fill.setStroke()
             let b = NSBezierPath(rect: h.insetBy(dx: 1, dy: 1))
             b.lineWidth = 2

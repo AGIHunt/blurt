@@ -1789,7 +1789,6 @@ button.chip:hover {
   width: 88px;
   margin: 0 auto;
   border-radius: 22px;
-  --ai-glow-plate: transparent;
 }
 .done p {
   color: var(--mute);
@@ -1822,10 +1821,6 @@ button.chip:hover {
   width: 15px;
   height: 15px;
   color: var(--attn-ink); /* the egg's colour (illustration), not a state */
-}
-.proc.ai-glow {
-  --ai-glow-plate: var(--raise, var(--panel));
-  background: transparent; /* the plate is the surface while the glow runs */
 }
 .proc.stalled .hatching {
   animation: none;

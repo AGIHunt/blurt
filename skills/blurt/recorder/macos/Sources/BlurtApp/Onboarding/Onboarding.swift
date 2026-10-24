@@ -9,9 +9,9 @@
 // Shown once on first launch (config app.onboarded), again from Settings → General or blurt://onboarding.
 //
 // Look (docs/design/system.md §3.4): a fixed-width hero panel on the left — the field (light) / deep (dark) with grain,
-// a soft still spectrum glow behind the mascot (none with Reduce Transparency) — then the steps as before: the welcome
-// title in gradient text, step bars in brand ink, Next / Done as the brand primary. Done blooms the spectrum once
-// around the chick (the completion moment) and closes; with Reduce Motion / Transparency it just closes.
+// a soft still spectrum glow behind the mascot (none with Reduce Transparency; the one place the spectrum appears) —
+// then the steps as before: the welcome title in gradient text, step bars in brand ink, Next / Done as the brand
+// primary. Done closes (the chick is already happy on the last step; no bloom).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -33,23 +33,15 @@ final class OnboardingModel: ObservableObject {
     }
     let steps = 4
     var close: () -> Void = {}
-    /// Bumped when setup completes with Done: the hero's chick hops and the spectrum blooms around it once.
-    @Published var celebrated = 0
-    @Published var celebrating = false
-
     func finish() {
         Config.shared.set("app.onboarded", true)
         close()
     }
 
-    /// Done on the last step: the celebration (0.9 s), then close. Skip / the close box don't celebrate.
+    /// Done on the last step: close.
     func done() {
-        guard !celebrating else { return }
         emit(["event": "onboarding", "done": true])
-        if reduceMotion || reduceTransparency { return finish() }
-        celebrating = true
-        celebrated += 1
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self] in self?.finish() }
+        finish()
     }
 
     static let heroWidth: CGFloat = 200
@@ -149,14 +141,13 @@ struct OnboardingView: View {
             HStack {
                 Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link).foregroundStyle(Color.brandInk)
                 Spacer()
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 }.disabled(m.celebrating) }
+                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
                 // the one primary: the brand button
                 Button(m.step == m.steps - 1 ? T("onboarding.done") : T("onboarding.next")) {
                     if m.step == m.steps - 1 { m.done() } else { m.step += 1 }
                 }
                 .buttonStyle(.brand)
                 .keyboardShortcut(.defaultAction)
-                .disabled(m.celebrating)
             }
             .padding(.horizontal, 28).padding(.vertical, 14)
         }
@@ -293,9 +284,9 @@ struct OnboardingView: View {
     }
 }
 
-/// The hero side panel (§3.4): the field with grain, a soft still spectrum glow, the mascot on it. Flat field (no grain,
-/// no glow) with Reduce Transparency. The chick hatches to say hello, hops on the last step, and the spectrum blooms
-/// around it once when setup completes.
+/// The hero side panel (§3.4): the field with grain, a soft still spectrum glow, the mascot on it — the only place
+/// the spectrum appears. Flat field (no grain, no glow) with Reduce Transparency. The chick hatches to say hello and
+/// hops on the last step.
 struct OnboardingHero: View {
     @ObservedObject var m: OnboardingModel
 
@@ -306,11 +297,10 @@ struct OnboardingHero: View {
                 Spacer()
                 ZStack {
                     SpectrumGlow(size: 150, opacity: 0.5)
-                    MascotImage(clip: m.celebrated > 0 || m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 96)
+                    MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 96)
                         .frame(width: 96, height: 96)
                 }
                 .frame(width: 128, height: 128)
-                .celebrate(on: m.celebrated, cornerRadius: 64)
                 Spacer()
                 Spacer()
             }
@@ -366,7 +356,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
 
     var windowNumber: Int? { window?.windowNumber }
 
-    /// Tests (wp6 `onboardingdone`): Done on the last step — the celebration, then the window closes.
+    /// Tests (wp6 `onboardingdone`): Done on the last step — the window closes.
     @MainActor
     func testDone() {
         guard let m = model else { return }

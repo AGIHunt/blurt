@@ -28,7 +28,7 @@ function Proc() {
   const stalled = s.stalled;
   const title = s.plural(stalled ? "proc.stalled" : "proc.working", n);
   return (
-    <span className={cx("proc", stalled ? "stalled" : "ai-glow")} id="proc" title={title}>
+    <span className={cx("proc", stalled ? "stalled" : "ai-working")} id="proc" title={title}>
       <Icon name="hatch" className="hatching" />
       <span>
         <span className="long">{title}</span>

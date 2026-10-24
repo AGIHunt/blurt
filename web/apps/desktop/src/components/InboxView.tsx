@@ -2,9 +2,10 @@
 // the items an agent says are finished, to check; and a line about items Blurt couldn't place in a project. Nothing
 // here ever opens by itself (K4).
 import type { Action } from '@blurt/ui';
-import { Icon, Mascot } from '@blurt/icons';
+import { Icon } from '@blurt/icons';
 import type { BatchRow, ItemRow, Summary } from '../api';
 import { ago, i18n, needsYou, plural, t } from '../i18n';
+import { EmptyState } from './EmptyState';
 import { ItemList } from './ItemList';
 
 const MODE_ICON = { video: 'video', shots: 'screenshot', voice: 'voice' } as const;
@@ -27,13 +28,7 @@ export function InboxView({ batches, summary, verify, onReview, onUnassigned, on
   const unassigned = summary?.unassigned ?? 0;
   if (summary && batches && !batches.length && !fresh && !toVerify && !unassigned) {
     return (
-      <div className="hero-empty" data-testid="inbox-empty">
-        <span className="art g-field" aria-hidden="true">
-          <Mascot clip="happy" size={80} />
-        </span>
-        <h2>{t('inbox.empty.title')}</h2>
-        <p>{t('inbox.empty.body')}</p>
-      </div>
+      <EmptyState testId="inbox-empty" title={t('inbox.empty.title')} body={t('inbox.empty.body')} />
     );
   }
   const lead = needsYou(fresh, toVerify);

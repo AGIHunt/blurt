@@ -89,14 +89,15 @@ final class ItemTableView: NSTableView {
     }
 }
 
-/// Big centred message with an image and up to two buttons. The friendly states (first launch, inbox zero, nothing
-/// here yet, no results) get one art tile instead of a symbol (docs/design/system.md §3.5): the field with grain and a
-/// white line glyph on it. Trouble (scan failed, a missing folder) keeps a quiet symbol: warnings are never brand.
-/// The first button is the view's one primary (BrandButton, ↩) when it moves you on (scan, open a folder, record); a
-/// button that only clears filters stays a secondary native one.
+/// Big centred message with an image and up to two buttons — the one empty state (docs/design/system.md §3.5,
+/// `EmptyState` metrics, the same as SwiftUI's `EmptyStateContent`). The friendly states (first launch, inbox zero,
+/// nothing here yet, no results) show the brand mark: the app icon, the 4A chick on its tile. Trouble (scan failed, a
+/// missing folder) keeps a quiet symbol: warnings are never brand. The first button is the view's one primary
+/// (BrandButton, ↩) when it moves you on (scan, open a folder, record); a button that only clears filters stays a
+/// secondary native one.
 final class EmptyStateView: NSView {
     let icon = NSImageView()
-    let art = EmptyArtTile(side: 104)
+    let mark = BrandMarkView()
     let title = NSTextField(labelWithString: "")
     let message = NSTextField(wrappingLabelWithString: "")
     let buttons = NSStackView()
@@ -104,15 +105,16 @@ final class EmptyStateView: NSView {
     var onButton: ((Int) -> Void)?
     /// tags whose button is never the primary (they undo a filter rather than move on)
     static let secondaryTags: Set<Int> = [2]
+    private let stack = NSStackView()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.font = .systemFont(ofSize: EmptyState.titleSize, weight: .semibold)
         title.alignment = .center
-        message.font = .systemFont(ofSize: 12)
+        message.font = .systemFont(ofSize: EmptyState.messageSize)
         message.textColor = .secondaryLabelColor
         message.alignment = .center
-        message.preferredMaxLayoutWidth = 300
+        message.preferredMaxLayoutWidth = EmptyState.messageWidth
         icon.symbolConfiguration = .init(pointSize: 34, weight: .light)
         icon.contentTintColor = .tertiaryLabelColor
         spinner.style = .spinning
@@ -120,12 +122,15 @@ final class EmptyStateView: NSView {
         spinner.isDisplayedWhenStopped = false
         buttons.orientation = .horizontal
         buttons.spacing = 8
-        let stack = NSStackView(views: [icon, art, spinner, title, message, buttons])
+        for v in [icon, mark, spinner, title, message, buttons] as [NSView] { stack.addArrangedSubview(v) }
         stack.orientation = .vertical
-        stack.spacing = 8
-        stack.setCustomSpacing(14, after: message)
-        stack.setCustomSpacing(16, after: art)
-        art.isHidden = true
+        stack.spacing = 0
+        stack.setCustomSpacing(EmptyState.markToTitle, after: mark)
+        stack.setCustomSpacing(12, after: icon)
+        stack.setCustomSpacing(12, after: spinner)
+        stack.setCustomSpacing(EmptyState.titleToMessage, after: title)
+        stack.setCustomSpacing(EmptyState.messageToButtons, after: message)
+        mark.isHidden = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor),
@@ -134,25 +139,20 @@ final class EmptyStateView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// `art`: the art tile with this glyph instead of the symbol; `hop`: the glyph hops once each time the state
-    /// appears (inbox zero; still with Reduce Motion).
-    func show(symbol: String?, image: NSImage? = nil, art glyph: BlurtIcon? = nil, hop: Bool = false, title t: String,
+    /// `mark`: the brand mark instead of the symbol (the friendly states).
+    func show(symbol: String?, image: NSImage? = nil, mark showMark: Bool = false, title t: String,
               message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
-        icon.image = glyph == nil ? image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) } : nil
+        icon.image = showMark ? nil : image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         icon.isHidden = icon.image == nil || busy
-        if let g = glyph, !busy {
-            let fresh = art.isHidden || art.icon != g
-            art.icon = g
-            art.isHidden = false
-            if fresh && hop { art.hop() }
-        } else {
-            art.isHidden = true
-        }
+        mark.isHidden = !showMark || busy
         icon.setAccessibilityElement(false); icon.cell?.setAccessibilityElement(false)      // decoration (an SF Symbol's own name, e.g. "split view", says nothing here)
         busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
+        spinner.isHidden = !busy                // a stopped spinner draws nothing but would still take its room
         title.stringValue = t
         message.stringValue = m
         message.isHidden = m.isEmpty
+        // with no hint the title takes the hint's gap to the buttons
+        stack.setCustomSpacing(m.isEmpty ? EmptyState.messageToButtons : EmptyState.titleToMessage, after: title)
         buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (k, (label, tag)) in bs.enumerated() {
             let b: NSButton
@@ -174,54 +174,6 @@ final class EmptyStateView: NSView {
     }
 
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
-}
-
-/// The empty-state art (§3.5): a `side` square of the field (light) / deep (dark) with grain, corners ≈ 30 % of the
-/// side, and a white line glyph on it with a soft `BrandColor.on` 30 % shadow (none with Reduce Transparency).
-/// Decoration: hidden from VoiceOver.
-final class EmptyArtTile: NSView {
-    let side: CGFloat
-    private let field = FieldView()
-    private let glyphHost = NSView()
-    private let glyph = CALayer()
-    var icon: BlurtIcon = .blurt { didSet { if icon != oldValue { render() } } }
-
-    init(side: CGFloat) {
-        self.side = side
-        super.init(frame: NSRect(x: 0, y: 0, width: side, height: side))
-        field.cornerRadius = (side * 0.3).rounded()
-        glyphHost.wantsLayer = true
-        glyphHost.layer?.addSublayer(glyph)
-        glyph.shadowColor = BrandColor.srgb(0x04261E).cgColor
-        glyph.shadowRadius = 5
-        glyph.shadowOffset = CGSize(width: 0, height: -2)
-        for v in [field, glyphHost] { v.frame = bounds; v.autoresizingMask = [.width, .height]; addSubview(v) }
-        translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: side), heightAnchor.constraint(equalToConstant: side)])
-        setAccessibilityElement(false)
-        render()
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    override var intrinsicContentSize: NSSize { NSSize(width: side, height: side) }
-
-    private func render() {
-        let g = (side * 0.52).rounded()
-        let scale = window?.backingScaleFactor ?? 2
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        glyph.shadowOpacity = reduceTransparency ? 0 : 0.3
-        glyph.contentsScale = scale
-        glyph.contents = icon.cgImage(size: g, scale: scale, color: NSColor.white.cgColor, weight: 1.15)
-        glyph.bounds = CGRect(x: 0, y: 0, width: g, height: g)
-        glyph.anchorPoint = CGPoint(x: 0.5, y: 0.1)              // hops from its feet
-        glyph.position = CGPoint(x: side / 2, y: (side - g) / 2 + g * 0.1)
-        CATransaction.commit()
-    }
-
-    override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); render() }
-
-    func hop() { GlyphMotion.hop(glyph, height: side * 0.08) }
 }
 
 /// The inbox's top row while captures hang under the island waiting for a project (K7): "Unfiled captures: 3" — a click
@@ -712,18 +664,18 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func testEmpty(_ kind: String) {
         scroll.isHidden = true
         switch kind {
-        case "inbox_zero": empty.show(symbol: nil, art: .blurt, hop: true, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
-        case "progress": empty.show(symbol: nil, art: .agentRun, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
-        case "unassigned": empty.show(symbol: nil, art: .folder, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
+        case "inbox_zero": empty.show(symbol: nil, mark: true, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
+        case "progress": empty.show(symbol: nil, mark: true, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
+        case "unassigned": empty.show(symbol: nil, mark: true, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
         case "project":
-            empty.show(symbol: nil, art: .blurt, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
                        buttons: [(T("main.action.record"), 3), (T("main.action.snap"), 4)])
         case "no_results":
-            empty.show(symbol: nil, art: .search, title: T("main.empty.no_results", "zebra"), message: T("main.empty.try_shorter"),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", "zebra"), message: T("main.empty.try_shorter"),
                        buttons: [(T("main.empty.clear_all"), 2)])
-        case "no_match": empty.show(symbol: nil, art: .search, title: T("main.empty.no_match"), message: "", buttons: [(T("main.empty.clear_filters"), 2)])
-        case "no_index": empty.show(symbol: nil, art: .inbox, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"), buttons: [(T("main.empty.scan"), 1)])
-        case "outdated": empty.show(symbol: nil, art: .restart, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"), buttons: [(T("main.empty.rebuild"), 1)])
+        case "no_match": empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "", buttons: [(T("main.empty.clear_filters"), 2)])
+        case "no_index": empty.show(symbol: nil, mark: true, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"), buttons: [(T("main.empty.scan"), 1)])
+        case "outdated": empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"), buttons: [(T("main.empty.rebuild"), 1)])
         case "failed": empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: "index.py scan: exit 1", buttons: [(T("action.retry"), 1)])
         case "missing": empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"), buttons: [(T("main.missing.locate"), 7)])
         case "scanning": empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
@@ -731,7 +683,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         default:
-            empty.show(symbol: nil, art: .blurt, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
                        buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])
         }
     }
@@ -745,11 +697,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: "puzzlepiece.extension", title: T("main.empty.no_scripts"), message: T("main.empty.no_scripts.detail"))
             return
         case .missing:
-            empty.show(symbol: nil, art: .inbox, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"),
                        buttons: [(T("main.empty.scan"), 1)])
             return
         case .outdated:
-            empty.show(symbol: nil, art: .restart, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"),
                        buttons: [(T("main.empty.rebuild"), 1)])
             return
         case .failed(let e):
@@ -760,7 +712,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         guard model.rowCount == 0 else { empty.isHidden = true; return }
         let q = model.text.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty {
-            empty.show(symbol: nil, art: .search, title: T("main.empty.no_results", q),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q),
                        message: model.kinds.count + (model.state == nil ? 0 : 1) > 0
                            ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
                        buttons: [(T("main.empty.clear_all"), 2)])
@@ -768,26 +720,26 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         } else if model.filtered {
-            empty.show(symbol: nil, art: .search, title: T("main.empty.no_match"), message: "",
+            empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "",
                        buttons: [(T("main.empty.clear_filters"), 2)])
         } else {
             switch model.scope {
             case .inbox where model.counts.all > 0:
-                empty.show(symbol: nil, art: .blurt, hop: true, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
+                empty.show(symbol: nil, mark: true, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
             case .inProgress:
-                empty.show(symbol: nil, art: .agentRun, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
+                empty.show(symbol: nil, mark: true, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
             case .unassigned:
-                empty.show(symbol: nil, art: .folder, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
+                empty.show(symbol: nil, mark: true, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
             case .project(let p) where model.project(id: p).map { $0.registered && !FileManager.default.fileExists(atPath: $0.path.path) } == true:
                 empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"),
                            buttons: [(T("main.missing.locate"), 7)])
             case .project(let p):
                 let current = ProjectStore.shared.currentID == p
-                empty.show(symbol: nil, art: .blurt, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
+                empty.show(symbol: nil, mark: true, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
                            buttons: current ? [(T("main.action.record"), 3), (T("main.action.snap"), 4)]
                                             : [(T("main.project.use"), 6), (T("main.action.record"), 3)])
             default:
-                empty.show(symbol: nil, art: .blurt, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
+                empty.show(symbol: nil, mark: true, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
                            buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])
             }
         }

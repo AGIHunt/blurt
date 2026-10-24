@@ -21,7 +21,7 @@
   --brand: #61dbbd;
   --brand-ink: #61dbbd;
   --brand-tint: rgba(97, 219, 189, 0.20);
-  --brand-glow: rgba(97, 219, 189, 0.35);
+  --brand-working: rgba(97, 219, 189, 0.50);
   --on-brand: #04261e;
   --rec: #ff453a;
   --attn: #ffc23d;
@@ -38,17 +38,12 @@
   --brand-button: linear-gradient(to bottom right, #028932 0%, #02866f 45%, #087eb3 100%);
   --on-brand-button: #ffffff;
   --brand-text: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
-  --brand-spectrum: linear-gradient(90deg, #ffd54f 0%, #66d97a 24%, #61dbbd 46%, #4aabe2 70%, #9d7bf7 100%);
-  --brand-spectrum-stops: #ffd54f 0deg, #66d97a 79.488deg, #61dbbd 152.352deg, #4aabe2 231.84deg, #9d7bf7 331.2deg, #ffd54f 360deg;
-  --brand-spectrum-conic: conic-gradient(var(--brand-spectrum-stops));
   --brand-ink-light: #0b735e;
   --glow-opacity: 0.45;
-  --ai-glow-opacity: 0.55;
 }
 @media (prefers-reduced-transparency: reduce) {
   :root {
     --glow-opacity: 0;
-    --ai-glow-opacity: 0;
   }
 }
 /* @end generated colour */

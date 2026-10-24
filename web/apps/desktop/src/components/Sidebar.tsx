@@ -107,7 +107,7 @@ export function Sidebar({
       </div>
       <div className="grow" />
       {active.length > 0 && (
-        <div className={active.some((j) => j.type === 'process' && j.state === 'running') ? 'jobs ai-glow' : 'jobs'} aria-label={t('nav.jobs')}>
+        <div className={active.some((j) => j.type === 'process' && j.state === 'running') ? 'jobs ai-working' : 'jobs'} aria-label={t('nav.jobs')}>
           {active.slice(0, 3).map((j) => {
             const step = j.steps.find((s) => s.state === 'running') ?? j.steps.find((s) => s.state === 'pending');
             return (

@@ -142,15 +142,14 @@ final class JobRow: NSView {
     let bar = NSProgressIndicator()
     private var hover = false { didSet { needsDisplay = true } }
     var selected = false { didSet { needsDisplay = true; setAccessibilitySelected(selected) } }
-    /// The spectrum rim while AI works on this job (processing a recording into items, auto-sort): design system §4.
-    private let glow = AIGlowView(frame: .zero)
-    private var glowing = false
+    /// While AI works on this job (processing a recording into items, auto-sort): the spinner plus one static 1 pt
+    /// brand hairline round the row (design system §4) — no rim, no glow, no motion of its own.
+    private let working = WorkingOutline(frame: .zero)
+    private var aiWorking = false
 
     init() {
         super.init(frame: .zero)
-        glow.cornerRadius = 6
-        glow.alphaValue = 0
-        glow.isHidden = true
+        working.cornerRadius = 6
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -189,10 +188,10 @@ final class JobRow: NSView {
         let waiting = j.agent?.status == .waitingInput
         let busy = j.state == .running && j.type != .agent && j.state != .failed
         let ai = busy && (j.type == .process || j.type == .route)
-        if ai != glowing {
-            glowing = ai
-            if ai, glow.superview == nil { addSubview(glow) }
-            glow.set(active: ai)
+        if ai != aiWorking {
+            aiWorking = ai
+            if ai, working.superview == nil { addSubview(working) }
+            working.set(active: ai)
         }
         icon.image = Look.symbol(waiting ? "exclamationmark.bubble" : JobLook.symbol(j), JobLook.title(j), size: 13)
         icon.contentTintColor = waiting ? BrandColor.attn : .secondaryLabelColor
@@ -205,7 +204,7 @@ final class JobRow: NSView {
 
     override func layout() {
         super.layout()
-        glow.frame = bounds.insetBy(dx: -glow.outset, dy: -glow.outset)
+        working.frame = bounds
     }
 
     override func draw(_ dirtyRect: NSRect) {

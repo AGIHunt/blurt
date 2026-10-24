@@ -2,8 +2,8 @@
 // Cases" on top, and the workbench — record, every stage side by side with its milliseconds, the diff against what
 // the user meant, Compare, the marks, Save — or the regression run's table. Colours are BrandColor tokens (light, dark,
 // Increase Contrast; docs/design/system.md A.4), icons BlurtIcon / SF Symbols, words T("dictation.lab.*"). The one
-// primary per view is the brand button; the spectrum rim (`.aiGlow`) shows while a take is processed, Compare runs or
-// the regression runs, and a finished run blooms once (`.celebrate`).
+// primary per view is the brand button; while a take is processed the recorder card carries the AI-working hairline
+// (`.aiWorking`); Compare and the regression run show a spinner. Nothing blooms or glows.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -310,7 +310,7 @@ struct LabWorkbench: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if lab.pane == .script { LabScriptCard(lab: lab).id("top") } else { title.id("top") }
-                    recorder.aiGlow(lab.phase == .processing, cornerRadius: 12)
+                    recorder.aiWorking(lab.phase == .processing, cornerRadius: 12)
                     if lab.pane != .script {
                         LabSection(title: T("dictation.lab.reference")) {
                             TextField(T("dictation.lab.reference.placeholder"), text: text({ $0.reference }, { $0.reference = $1 }), axis: .vertical)
@@ -638,7 +638,6 @@ struct LabWorkbench: View {
                 if lab.rerunning { ProgressView().controlSize(.small) }
                 Button(T("dictation.lab.compare.run")) { lab.rerun() }.disabled(lab.rerunning || lab.chosen.isEmpty || lab.dirty)
                     .help(lab.dirty ? T("dictation.lab.compare.save_first") : T("dictation.lab.compare.tip"))
-                    .aiGlow(lab.rerunning, cornerRadius: 6)
             }.controlSize(.small))) {
             FlowRow(items: lab.options.map { o in
                 Chip(text: o.label, on: lab.chosen.contains(o.spec)) {
@@ -872,7 +871,6 @@ struct LabRegressionView: View {
                     .frame(maxWidth: 360)
                     Button(T("dictation.lab.run_all.run")) { lab.runAll() }
                         .buttonStyle(.brand).disabled(lab.running || lab.cases.allSatisfy { !$0.hasAudio })
-                        .aiGlow(lab.running, cornerRadius: 7)
                     if lab.running {
                         ProgressView().controlSize(.small)
                         Text(T("dictation.lab.run_all.running")).font(.system(size: 12)).foregroundStyle(.secondary)
@@ -895,10 +893,8 @@ struct LabRegressionView: View {
         let rows = r["rows"] as? [[String: Any]] ?? []
         HStack(alignment: .firstTextBaseline, spacing: 18) {
             VStack(alignment: .leading, spacing: 0) {
-                // the hero number: gradient text (flat ink with Increase Contrast); it blooms once when a run lands
+                // the score: large, neutral (a number is not brand; better / worse below carry the colour)
                 Text((o["score"] as? Double).map { String(format: "%.1f", $0) } ?? "—").font(.system(size: 30, weight: .semibold)).monospacedDigit()
-                    .brandGradientText()
-                    .celebrate(on: lab.runsFinished, cornerRadius: 10)
                 Text(T("dictation.lab.run_all.score")).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 3) {

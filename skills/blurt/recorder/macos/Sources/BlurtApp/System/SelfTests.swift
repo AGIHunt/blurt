@@ -12,11 +12,11 @@
 //   menuglyph DIR                the menu-bar chick: the template glyph (rest / listen / hop; 1x / 2x) and the real
 //                                status button with a count of 3 (aqua / dark; rest / open) as PNGs
 //   design system v2 moments (screenshots, no real work behind them):
-//   onboardingdone               Done on the onboarding's last step: the spectrum bloom, then it closes
+//   onboardingdone               Done on the onboarding's last step: it closes
 //   mainempty KIND               one main-window empty state (ItemListController.testEmpty: first | inbox_zero | …)
-//   mainfakejob process|route|record [SESSION] | done | clear   a running job in the list's jobs section (the AI glow
-//                                on process / route; SESSION: the "organising" banner over that batch's items)
-//   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the glow)
+//   mainfakejob process|route|record [SESSION] | done | clear   a running job in the list's jobs section (the AI-working
+//                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
+//   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the spinner)
 //   toastdone TEXT               the small toast with the done check (ok)
 import AppKit
 import Carbon.HIToolbox
