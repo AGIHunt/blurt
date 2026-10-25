@@ -221,12 +221,16 @@ public struct DictationTrigger {
         if !a { settle() }
     }
 
-    /// The take ended by itself (the time limit) at `t`: the user's next tap, a moment later, was meant as its stop —
-    /// it does nothing instead of starting a new take.
+    /// The take ended by itself (the time limit) at `t`: the user's next tap, while the island still says so, was
+    /// meant as its stop — it does nothing instead of starting a new take (v0.9 dogfood: a tap 2–4 s later started one
+    /// under "dictation ended", listening ears and that line at once).
     public mutating func endedByItself(at t: Double) {
         reset(active: false)
-        quietUntil = t + 2.0
+        quietUntil = t + DictationTrigger.limitGrace
     }
+
+    /// How long after the time limit a tap is the late stop: as long as the island's line about it shows.
+    public static let limitGrace = 4.0
 
     /// Not dictating any more: a key still held is waited out (its release must not start or stop anything).
     private mutating func settle() {

@@ -4,6 +4,17 @@ import XCTest
 /// A take between its stop and its text (docs/design/dictation.md §Takes in flight): pastes in order, the forgotten
 /// hands-free take, the first-takes tips, recognition failures.
 final class DictationTakeFlowTests: XCTestCase {
+    /// v0.9 dogfood: a double tap after the app changed — "Copied" replaced "not sent" in the same frame. One line now.
+    func testOneLineSaysHowATakeWent() {
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true, appChanged: true), .copiedNotSent)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true), .copied(appChanged: true))
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false), .copied(appChanged: false))
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: true, appChanged: false), .none)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: false), .pastedUnsure)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: true, confirmed: true, appChanged: false), .notSent)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: false, confirmed: true, appChanged: false), .none)
+    }
+
     func testPastesGoInTheOrderTheyWereSaid() {
         var q = DictationPasteQueue<String>()
         q.add("a")

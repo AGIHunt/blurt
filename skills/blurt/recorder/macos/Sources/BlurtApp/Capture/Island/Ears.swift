@@ -52,6 +52,8 @@ final class EarSlot {
         case level(Float)
         case wave([Float])
         case text(String, mono: Bool)
+        /// dictation's last 30 s before the 5-minute limit ("−0:29"): the clock in the island's attention colour
+        case countdown(String)
         case egg(n: Int)
         case cracking(since: CFTimeInterval, ok: Bool, n: Int)
         case alert
@@ -70,6 +72,7 @@ final class EarSlot {
         func sameKind(_ o: Content) -> Bool {
             switch (self, o) {
             case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
+                 (.countdown, .countdown),
                  (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots),
                  (.done, .done): return true
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
@@ -210,6 +213,8 @@ final class EarSlot {
             x = 40
         case .text(let s, _):
             text(s)
+        case .countdown(let s):
+            text(s, color: BrandColor.Island.attn)
         case .egg(let n):
             placeChick()
             if chick.clip != .wobble || !chick.isPlaying { chick.play(.wobble) }

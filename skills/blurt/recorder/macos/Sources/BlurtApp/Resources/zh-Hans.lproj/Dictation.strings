@@ -481,6 +481,7 @@
 "dictation.style.toast.structured.first" = "%@：说完会排成清单，只留改正后的说法 · 再按 ⇧ 切回";
 "dictation.toast.cancelled" = "已取消";
 "dictation.toast.limit" = "已到 5 分钟上限，听写已结束";
+"dictation.toast.ends_soon" = "还剩 30 秒";
 "dictation.toast.still_listening" = "还在听 · 按%@ 结束 · Esc 取消";
 "dictation.toast.no_model" = "还没有语音模型（%@）";
 "dictation.toast.no_model.get" = "下载…";
@@ -491,6 +492,9 @@
 "dictation.toast.asr_failed" = "没能识别这段话，录音还在";
 "dictation.toast.asr_slow" = "语音模型没有回应，录音还在";
 "dictation.toast.slow.asr" = "还在识别… Esc 取消";
+"dictation.toast.fn_clash" = "%@ 也在听 Fn，文字可能输入两次";
+"dictation.toast.fn_clash.switch" = "改用右 Option";
+"dictation.toast.fn_clash.settings" = "设置…";
 "dictation.toast.slow.polish" = "还在润色… Esc 取消";
 "dictation.toast.retry" = "重试";
 "dictation.toast.retry_gone" = "这段录音已经不在了";
@@ -499,6 +503,7 @@
 "dictation.toast.not_sent.ax" = "没有发送：需要辅助功能权限";
 "dictation.toast.not_sent.secure" = "没有发送：光标在密码框里";
 "dictation.toast.not_sent.copied" = "文字已复制，没有发送";
+"dictation.toast.copied.not_sent" = "已复制，没有发送 · ⌘V 粘贴";
 "dictation.toast.hold_mode" = "按住%@ 说话（设置里可以改成单按）";
 "dictation.toast.tap_mode" = "单按%@ 开始说话";
 "dictation.toast.no_polish" = "润色模型还没下载，这次按原话输入";

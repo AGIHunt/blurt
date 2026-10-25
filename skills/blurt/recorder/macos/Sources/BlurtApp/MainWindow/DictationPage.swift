@@ -359,6 +359,14 @@ final class DictationHistoryModel: ObservableObject {
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
     func turnOn() { Dictation.shared.openSetup(from: "page") }
 
+    /// The one step in the way of a dictation, for the empty state and the header (DictationPageStatus): the speech
+    /// model counts as much as the key's permission.
+    @MainActor static func pageStatus(enabled: Bool, needsSetup: Bool) -> DictationPageStatus {
+        let models = DictationModels.shared, dl = ModelDownloads.shared
+        let download = models.dictationJob.flatMap { j in dl.queue.contains(j.id) ? dl.progress(j.id) ?? (0, j.sizeMB) : nil }
+        return .of(enabled: enabled, needsSetup: needsSetup, modelReady: models.dictationReady, download: download)
+    }
+
     // MARK: words for the views
 
     static func reasonText(_ r: String?) -> String {
@@ -597,6 +605,9 @@ struct RowWash: View {
 
 struct DictationListView: View {
     @ObservedObject var m: DictationHistoryModel
+    /// the header's "no speech model" follows the models and their download
+    @ObservedObject var models = DictationModels.shared
+    @ObservedObject var downloads = ModelDownloads.shared
     @Environment(\.undoManager) private var undo
 
     var body: some View {
@@ -639,7 +650,22 @@ struct DictationListView: View {
                 }
             }
             Spacer(minLength: 8)
-            if !quiet && (!m.enabled || m.needsSetup) {
+            let status = DictationHistoryModel.pageStatus(enabled: m.enabled, needsSetup: m.needsSetup)
+            if !quiet, status == .noModel {
+                // the speech model is gone (removed in Settings, another model chosen): where the settings link was
+                HStack(spacing: 5) {
+                    Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
+                    Text(T("dictation.toast.no_model_plain")).foregroundStyle(.secondary)
+                    LinkButton(title: T("dictation.toast.no_model.action"), tint: .brandAttnInk) { Dictation.getSpeechModel(from: "page") }
+                }
+            } else if !quiet, case let .downloading(done, total) = status {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
+                    Text(T("dictation.toast.model_downloading", modelSize(done), modelSize(total))).foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    LinkButton(title: T("dictation.toast.model_downloading.action")) { ModelDownloads.showProgress() }
+                }
+            } else if !quiet && (!m.enabled || m.needsSetup) {
                 // dictation can't work right now: say so where the settings link was
                 HStack(spacing: 5) {
                     Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
@@ -769,29 +795,52 @@ struct DictationRow: View {
     }
 }
 
-/// Nothing dictated yet: how to, and what stands in the way if anything does.
+/// Nothing dictated yet: how to, and what stands in the way if anything does — the one blocking step
+/// (DictationPageStatus: off, the key's permission, the speech model), with its button.
 struct DictationEmptyView: View {
     @ObservedObject var m: DictationHistoryModel
+    @ObservedObject var models = DictationModels.shared
+    @ObservedObject var downloads = ModelDownloads.shared
 
     var body: some View {
         EmptyStateContent(title: T("dictation.history.empty.title"), message: T("dictation.history.empty.body", Dictation.keyInline)) {
             status
         }
+        .onAppear { models.loadIfNeeded() }
     }
 
     @ViewBuilder var status: some View {
-        if !m.enabled {
+        switch DictationHistoryModel.pageStatus(enabled: m.enabled, needsSetup: m.needsSetup) {
+        case .off:
             VStack(spacing: 8) {
                 pill(T("main.dictation.off"), .secondary)
                 Button(T("main.dictation.settings")) { m.openSettings() }.controlSize(.regular)
             }
-        } else if m.needsSetup {
+        case .needsPermission:
             VStack(spacing: 8) {
                 pill(T("dictation.menu.turn_on.tip", Dictation.keyInline), .brandAttn)
                 // the one thing standing in the way: this view's primary
                 Button(T("dictation.menu.turn_on")) { m.turnOn() }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
             }
-        } else {
+        case .noModel:
+            VStack(spacing: 8) {
+                if let j = models.dictationJob {
+                    pill(T("dictation.toast.no_model", modelSize(j.sizeMB)), .brandAttn)
+                    Button(T("dictation.toast.no_model.action")) { Dictation.getSpeechModel(from: "page") }
+                        .buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                } else {
+                    // what is missing can't be fetched from here: the models' page
+                    pill(T("dictation.toast.no_model_plain"), .brandAttn)
+                    Button(T("dictation.toast.no_model.settings")) { SpeechPane.showDictationModels() }.controlSize(.regular)
+                }
+            }
+        case .downloading(let done, let total):
+            VStack(spacing: 8) {
+                pill(T("dictation.toast.model_downloading", modelSize(done), modelSize(total)), .brandAttn)
+                ProgressView(value: min(done, total), total: max(total, 1)).frame(width: 220)
+                Button(T("dictation.toast.model_downloading.action")) { ModelDownloads.showProgress() }.controlSize(.regular)
+            }
+        case .ready:
             pill(T("main.dictation.ready"), .brandOk, check: true)
         }
     }

@@ -572,7 +572,8 @@ final class Island: NSObject, IslandHosting {
                 switch Dictation.shared.listeningStyle {
                 case .structured?: right.set(.iconText(.list, clock))
                 case .verbatim?: right.set(.iconText(.quote, clock))
-                default: right.set(.text(clock, mono: true))
+                // the last 30 s: the clock turns to the attention colour, so the limit doesn't come as a surprise
+                default: right.set(Dictation.shared.earCountdown ? .countdown(clock) : .text(clock, mono: true))
                 }
             case .polishing:
                 left.set(.glyph(.wand, pulse: true))

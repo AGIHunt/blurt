@@ -406,8 +406,20 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertFalse(t.active)
         XCTAssertEqual(t.run("fn-down@301000 fn-up@301080"), [])
         XCTAssertFalse(t.active)
+        // the next tap is a new take
+        XCTAssertEqual(t.run("fn-down@302000 fn-up@302080"), [.arm, .start])
+        // the late stop 3.5 s after the end, while the island still says the take ended, is a stop too (v0.9
+        // dogfood: with a 2 s grace it started a new take under that line)
+        var e = DictationTrigger()
+        _ = e.run("fn-down@0 fn-up@90")
+        e.endedByItself(at: 300)
+        XCTAssertEqual(DictationTrigger.limitGrace, 4)
+        XCTAssertEqual(e.run("fn-down@303500 fn-up@303580"), [])
         // after the grace a tap starts again
-        XCTAssertEqual(t.run("fn-down@303500 fn-up@303580"), [.arm, .start])
+        var g = DictationTrigger()
+        _ = g.run("fn-down@0 fn-up@90")
+        g.endedByItself(at: 300)
+        XCTAssertEqual(g.run("fn-down@304500 fn-up@304580"), [.arm, .start])
         // a quick double tap right after the end still sends
         var d = DictationTrigger()
         _ = d.run("fn-down@0 fn-up@90")

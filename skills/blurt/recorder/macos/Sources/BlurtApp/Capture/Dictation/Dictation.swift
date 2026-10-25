@@ -188,6 +188,8 @@ final class Dictation {
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
     /// The right ear's clock while listening: the time so far, from 4:30 the time left ("−0:29") before the limit.
     var earClock: String { DictationRunaway.clock(elapsed: elapsed).text }
+    /// The clock counts down (the last 30 s before the limit).
+    var earCountdown: Bool { DictationRunaway.clock(elapsed: elapsed).countdown }
 
     // MARK: settings (record.dictation.*)
 
@@ -255,6 +257,7 @@ final class Dictation {
         watchModelChanges()
         seedVocabulary()
         watchHistoryClear()
+        watchFnApps()
         DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.prewarm("launch") }
@@ -495,6 +498,40 @@ final class Dictation {
         if reason == "launch" { LaunchMessages.shared.post(.permission, t) } else { island.toast(t) }    // one message at launch
     }
 
+    /// Typeless or Wispr Flow running while Fn is the key (DictationFnClash): both react to Fn and the text can go in
+    /// twice. Said on the island when it matters — a Fn take starts (`take`), or one of them launches — once a day per
+    /// app, with "Use Right Option" (the key changes now) and Settings.
+    func fnClashNotice(via: String) {
+        guard Dictation.enabled, deferredTo == nil else { return }
+        let apps = DictationFnClash.toMention(key: trigger.key, running: SystemAccess.fnClashApps,
+                                             saidToday: { Dictation.saidToday("fn_clash_\($0)") })
+        guard !apps.isEmpty else { return }
+        for a in apps { _ = Dictation.onceADay("fn_clash_\(a)") }
+        emit(["event": "dictation_fn_clash", "apps": apps, "via": via])
+        var t = Island.Toast(text: Loc.t("dictation.toast.fn_clash", table: "Dictation", apps.joined(separator: T("settings.perm.list_sep"))),
+                             actionTitle: Loc.t("dictation.toast.fn_clash.switch", table: "Dictation"), action: {
+            Dictation.set("key", DictationTrigger.Key.rightOption.rawValue)
+            Dictation.shared.apply()
+            emit(["event": "dictation_setting", "key": "key", "value": "right_option", "via": "fn_clash"])
+        })
+        t.secondTitle = Loc.t("dictation.toast.fn_clash.settings", table: "Dictation")
+        t.second = { AppEnvironment.settings?.show(pane: "dictation") }
+        t.seconds = 8
+        t.key = "dictation.fn_clash"
+        island.toast(t)
+    }
+
+    /// One of the Fn apps launched while Blurt listens to Fn.
+    private func watchFnApps() {
+        let o = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil,
+                                                                  queue: .main) { [weak self] n in
+            guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let b = app.bundleIdentifier, SystemAccess.fnApps[b] != nil else { return }
+            self?.fnClashNotice(via: "launch")
+        }
+        observers.append(o)
+    }
+
     /// The key's name for a picker or a field ("Right Option", "Fn", "Either Option Key").
     static var keyName: String { keyName(key) }
     static func keyName(_ k: DictationTrigger.Key) -> String {
@@ -728,7 +765,7 @@ final class Dictation {
             if e == .maxed {
                 // the 5-minute limit: said, and the user's next tap (meant as the stop) doesn't start a new take
                 self.trigger.endedByItself(at: CACurrentMediaTime())
-                self.toast("dictation.toast.limit", key: "dictation.listening", seconds: 4)      // in place of "still listening"
+                self.toast("dictation.toast.limit", key: Dictation.listeningToastKey, seconds: DictationTrigger.limitGrace)      // in place of "still listening"
                 emit(["event": "dictation_limit", "id": self.entryID, "seconds": DictationRunaway.limit])
             } else {
                 self.trigger.reset(active: false)
@@ -861,9 +898,13 @@ final class Dictation {
             registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0)
             escRegistered = true
         }
-        // what the island said about the last take (its Undo, the list chip, "nothing heard") is over — not a failed
-        // take's Retry or "Cancelled · Undo" (their own keys, DictationTakes.swift)
-        island.dropToasts(key: Dictation.toastKey)
+        // what the island said about the last take (its Undo, the list chip, "nothing heard"), the last take's tip, the
+        // 5-minute line and "still recognizing" are over — not a failed take's Retry or "Cancelled · Undo" (their own
+        // keys, DictationTakes.swift). A line left up said the opposite of the listening ears under it (v0.9 dogfood).
+        for k in [Dictation.toastKey, Dictation.noticeToastKey, Dictation.listeningToastKey, Dictation.slowToastKey] {
+            island.dropToasts(key: k)
+        }
+        if trigger.key == .fn { fnClashNotice(via: "take") }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
               "precaptured": adopted, "mic_live": micLive, "pending": queue.count, "style": styleDecision?.style.rawValue ?? "light",
@@ -965,6 +1006,7 @@ final class Dictation {
         precaptured = false
         releaseEsc()
         listening = false
+        island.dropToasts(key: Dictation.styleToastKey)
         LiveTranscript.shared.end(session: liveSession)
         updatePhase()
         if !quietly { toastNothing() }
@@ -977,10 +1019,12 @@ final class Dictation {
         switch n {
         case .stillListening:
             emit(["event": "dictation_runaway", "notice": "still_listening", "id": entryID, "elapsed": Int(v.elapsed)])
-            toast("dictation.toast.still_listening", Dictation.keyShort, key: "dictation.listening", seconds: 4, passive: true)
+            toast("dictation.toast.still_listening", Dictation.keyShort, key: Dictation.listeningToastKey, seconds: 4, passive: true)
         case .endsSoon:
             emit(["event": "dictation_runaway", "notice": "ends_soon", "id": entryID, "elapsed": Int(v.elapsed)])
             island.dictationChanged()
+            // one quiet line with the clock turning to the attention colour: the limit is coming
+            toast("dictation.toast.ends_soon", key: Dictation.listeningToastKey, seconds: 3, passive: true)
         }
     }
 
@@ -1040,6 +1084,8 @@ final class Dictation {
         micLive = false
         listening = false
         releaseEsc()
+        // ⇧'s line ("⇧ to go back") works only while listening: it goes with the stop
+        island.dropToasts(key: Dictation.styleToastKey)
         guard heardSpeech else {
             s.cancel()
             try? FileManager.default.removeItem(at: url)

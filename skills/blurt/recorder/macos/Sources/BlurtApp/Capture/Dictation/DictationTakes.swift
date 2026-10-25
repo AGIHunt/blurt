@@ -86,6 +86,8 @@ extension Dictation {
     static let noticeToastKey = "dictation.notice"
     /// "Still recognising… Esc to cancel": up while a slow take is on its way, gone when it lands or is cancelled.
     static let slowToastKey = "dictation.slow"
+    /// What a listening take says about itself ("still listening", the 5-minute limit): a new take drops it.
+    static let listeningToastKey = "dictation.listening"
 
     // MARK: the line of takes
 
@@ -397,13 +399,13 @@ extension Dictation {
             self.takes[id] = nil
             self.inserting = false
             var sent = false
+            let sendAsked = take.sendAfterPaste
             if take.sendAfterPaste {
                 take.sendAfterPaste = false
                 if result == .pasted { self.pressReturn(after: "paste"); sent = true } else {
                     // left on the clipboard (another app in front now, a password field, Blurt in front …): Return
-                    // would send without it
+                    // would send without it — the one line below says so
                     emit(["event": "dictation_send", "result": "skipped", "why": appChanged ? "app_changed" : "not_pasted", "after": "paste"])
-                    self.sendSkipped("not_pasted")
                 }
             }
             // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
@@ -430,16 +432,26 @@ extension Dictation {
             self.rememberPaste(id: id, app: app, bundle: bundle, r: r, record: styleRecord, typed: text, result: result,
                                field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
-            if result == .copied {
-                self.toast(appChanged ? "dictation.toast.copied_app" : "dictation.toast.copied", key: Dictation.toastKey,
-                           seconds: appChanged ? 4 : 2.4)
-            } else if result == .pasted, !DictationInsert.lastPasteConfirmed {
+            // one line about how it went (DictationDeliveredLine: never two that replace each other in one frame)
+            switch DictationDeliveredLine.line(result: result.rawValue, sendAsked: sendAsked && !sent,
+                                               confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged) {
+            case .copiedNotSent:
+                self.toast("dictation.toast.copied.not_sent", key: Dictation.toastKey, seconds: 4)
+            case .copied(let changed):
+                // done (the ok check, as every done line): it is on the clipboard
+                self.toast(changed ? "dictation.toast.copied_app" : "dictation.toast.copied", key: Dictation.toastKey,
+                           seconds: changed ? 4 : 2.4, icon: .check)
+            case .notSent:
+                self.sendSkipped(nil)               // nothing went in: "Not sent"
+            case .pastedUnsure:
                 // pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): in case it didn't land
                 island.toast(Loc.t("dictation.toast.pasted_unsure", table: "Dictation"), key: Dictation.toastKey,
                              actionTitle: Loc.t("dictation.toast.copy_again", table: "Dictation"), action: {
                     DictationInsert.copy(text)
                     emit(["event": "dictation_copy_again", "id": id])
                 })
+            case .none:
+                break
             }
             if result == .pasted { self.afterPaste(take, r, category: styleRecord.category, sent: sent) }
             var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": r.raw, "text": text,
@@ -492,15 +504,22 @@ extension Dictation {
 
     /// true once per day for `what` (app.dictation_notices: the day each was last said).
     static func onceADay(_ what: String) -> Bool {
+        guard !saidToday(what) else { return false }
         var said = Config.shared["app.dictation_notices"] as? [String: Any] ?? [:]
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        let today = "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
-        if DictationInsert.testMode, ProcessInfo.processInfo.environment["BLURT_TEST_NOTICES_ALWAYS"] == "1" {} else {
-            guard said[what] as? String != today else { return false }
-        }
         said[what] = today
         Config.shared.set("app.dictation_notices", said)
         return true
+    }
+
+    /// `what` was said today already (nothing is marked).
+    static func saidToday(_ what: String) -> Bool {
+        if DictationInsert.testMode, ProcessInfo.processInfo.environment["BLURT_TEST_NOTICES_ALWAYS"] == "1" { return false }
+        return (Config.shared["app.dictation_notices"] as? [String: Any])?[what] as? String == today
+    }
+
+    private static var today: String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
     }
 
     /// After a take went in: a model that fell back (once a day), else one of the first takes' tips.

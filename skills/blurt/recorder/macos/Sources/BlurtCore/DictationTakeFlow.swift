@@ -260,6 +260,29 @@ public struct DictationReformatAfterPaste<ID: Hashable> {
 
 /// Dictation gave up on a speech server that didn't answer: still given up only while that same server (by pid) is
 /// the one running — a fresh server is used at once.
+/// What the island says once a take is in (or on the clipboard): one line, never two that replace each other in the
+/// same frame (v0.9 dogfood: a send asked for, the app changed meanwhile — "Copied, ⌘V" showed, "not sent" never did).
+public enum DictationDeliveredLine: Equatable {
+    /// copied — `appChanged`: the user moved to another app meanwhile
+    case copied(appChanged: Bool)
+    /// a double tap asked to send, the text is only on the clipboard: Return was not pressed
+    case copiedNotSent
+    /// a double tap asked to send and nothing went in (why: not_pasted)
+    case notSent
+    /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): "Copy again"
+    case pastedUnsure
+    case none
+
+    /// `result`: pasted | copied | none; `sendAsked`: a double tap queued Return for this take.
+    public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool) -> DictationDeliveredLine {
+        switch result {
+        case "copied": return sendAsked ? .copiedNotSent : .copied(appChanged: appChanged)
+        case "pasted": return confirmed ? .none : .pastedUnsure
+        default: return sendAsked ? .notSent : .none
+        }
+    }
+}
+
 public enum DictationServerGiveUp {
     public static func stillGivenUp(givenUp: Int32?, now: Int32?) -> Bool {
         guard let g = givenUp else { return true }      // no pid known: the minute holds

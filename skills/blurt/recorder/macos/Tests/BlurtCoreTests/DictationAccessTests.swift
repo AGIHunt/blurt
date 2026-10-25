@@ -37,4 +37,29 @@ final class DictationAccessTests: XCTestCase {
         XCTAssertFalse(DictationAccess.confirm(before: deaf, after: deaf))
         XCTAssertFalse(DictationAccess.confirm(before: off, after: ok))     // turning it on with the permission there: no "now on"
     }
+
+    /// v0.9 dogfood: a first run without the speech model read "✓ Dictation is on". The page says the one step in the
+    /// way, and "ready" only when both the key and the model are.
+    func testThePageSaysTheOneStepInTheWay() {
+        XCTAssertEqual(DictationPageStatus.of(enabled: false, needsSetup: false, modelReady: false, download: nil), .off)
+        XCTAssertEqual(DictationPageStatus.of(enabled: true, needsSetup: true, modelReady: false, download: nil), .needsPermission)
+        XCTAssertEqual(DictationPageStatus.of(enabled: true, needsSetup: false, modelReady: false, download: nil), .noModel)
+        XCTAssertEqual(DictationPageStatus.of(enabled: true, needsSetup: false, modelReady: false, download: (done: 300, total: 2468)),
+                       .downloading(done: 300, total: 2468))
+        XCTAssertEqual(DictationPageStatus.of(enabled: true, needsSetup: false, modelReady: true, download: nil), .ready)
+        // not read yet: no claim either way (the key doesn't wait on it either)
+        XCTAssertEqual(DictationPageStatus.of(enabled: true, needsSetup: false, modelReady: nil, download: nil), .ready)
+    }
+
+    /// Typeless / Wispr Flow also react to Fn: said when a Fn take starts, once a day per app; never for another key.
+    func testAnotherFnAppIsMentionedWhenItMatters() {
+        var said: Set<String> = []
+        let saidToday = { (a: String) in said.contains(a) }
+        XCTAssertEqual(DictationFnClash.toMention(key: .fn, running: ["Typeless"], saidToday: saidToday), ["Typeless"])
+        said.insert("Typeless")
+        XCTAssertEqual(DictationFnClash.toMention(key: .fn, running: ["Typeless", "Wispr Flow"], saidToday: { said.contains($0) }),
+                       ["Wispr Flow"])
+        XCTAssertEqual(DictationFnClash.toMention(key: .rightOption, running: ["Wispr Flow"], saidToday: { _ in false }), [])
+        XCTAssertEqual(DictationFnClash.toMention(key: .fn, running: [], saidToday: { _ in false }), [])
+    }
 }

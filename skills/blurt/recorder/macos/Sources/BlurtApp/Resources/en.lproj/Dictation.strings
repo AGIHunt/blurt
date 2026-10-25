@@ -382,7 +382,7 @@
 "dictation.style.light" = "Light";
 "dictation.style.structured" = "Structured";
 "dictation.style.auto" = "Auto";
-"dictation.style.toast.structured" = "%@: becomes a list when you finish · ⇧ to go back";
+"dictation.style.toast.structured" = "%@: a list when you’re done · ⇧ to undo";
 "dictation.style.toast.back" = "Back to %@";
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";
@@ -478,9 +478,10 @@
 "dictation.history.saved.detail" = "Every dictation, its text before and after polish.";
 
 /* takes in flight (DictationTakes.swift): cancel, the limit, no model, failures, notices, tips */
-"dictation.style.toast.structured.first" = "%@: becomes a list when you finish, keeping only what you settled on · ⇧ to go back";
+"dictation.style.toast.structured.first" = "%@: a list when you’re done, only what you settled on · ⇧ to undo";
 "dictation.toast.cancelled" = "Cancelled";
 "dictation.toast.limit" = "Stopped at the 5-minute limit";
+"dictation.toast.ends_soon" = "30 s left";
 "dictation.toast.still_listening" = "Still listening · %@ to finish · Esc to cancel";
 "dictation.toast.no_model" = "No speech model yet (%@)";
 "dictation.toast.no_model.get" = "Download…";
@@ -491,6 +492,9 @@
 "dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
 "dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
 "dictation.toast.slow.asr" = "Still recognizing… Esc to cancel";
+"dictation.toast.fn_clash" = "%@ also listens to Fn — text may go in twice";
+"dictation.toast.fn_clash.switch" = "Use Right Option";
+"dictation.toast.fn_clash.settings" = "Settings…";
 "dictation.toast.slow.polish" = "Still polishing… Esc to cancel";
 "dictation.toast.retry" = "Retry";
 "dictation.toast.retry_gone" = "That recording is gone";
@@ -499,6 +503,7 @@
 "dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
 "dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
 "dictation.toast.not_sent.copied" = "Copied, not sent";
+"dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
 "dictation.toast.tap_mode" = "Tap %@ to start talking";
 "dictation.toast.no_polish" = "No polish model yet — typed as you said it";
