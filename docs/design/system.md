@@ -322,7 +322,8 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | A session's ended card | neutral | How it ended (`SessionOutcome`), the agent's last lines when it failed, one B primary: Review Changes… (changes) or Restart Session (failed); Take Back / Show Output plain. The dead terminal is never shown first. The header's Review Changes… is plain `.bordered` and only appears while the output is shown. Restart / Take Back are off while one runs. One wording per state everywhere (`AgentSessionRow.stateText`: the list, the header, the job row and detail): *Couldn't start* / 启动失败 in both the card title and the row. The review sheet's Merge / Commit and Merge is the B primary on ⌘↩ (no bare Return); Discard's confirmation defaults to Cancel. |
 | Progress bars | I (light) / M (dark) | flat: too thin for the gradient |
 | Kind icons | kind tokens | |
-| Severity | `kind.issue` / `attnInk` / `info` | |
+| Severity | — | a neutral chip with priority bars (one, two or three of three filled, in ink; High's in `kind.issue`). Never `attn`: amber means "needs you" only, so a Medium chip can't read as a second To verify |
+| An item waiting to be verified (the detail) | neutral card + `attn` disc | `WorkPanel` (review page): a `panel-2` card with a hairline, the 16 pt to-verify disc leading, one semibold sentence ("Codex says it's fixed"; "The agent …" when the doc doesn't name it), one secondary line (when · commit · PR · Open Session), the agent's note; Mark as Done is the view's one **B** primary (D), Send Back… plain (opens a note field in place: "What's still wrong?", ⌘↩ sends, the note is kept on the work record), ⋯ holds Review Changes… (a session) and Won't Do. A "won't fix" claim swaps them (Won't Do primary, Mark as Done in ⋯). No status rings inside buttons; the state pill keeps the only amber wash. History with one entry is not shown; where it came from is one mute footer line. The picture sits on the page with its time in a capsule on it and its file actions on hover |
 | Terminal | — | the ANSI palette is a terminal theme; selection = system accent |
 
 ### 3.4 Settings and onboarding
@@ -383,7 +384,7 @@ Reduce Motion). The recording status item shows a `rec` dot and the time, or `at
 - **Review page** (`web/packages/review`): primary **B**; the "organising" pill carries `.ai-working` (its hatching egg
   is the motion); the Done screen's headline and logo are plain (v2.1); selected card 2 pt I ring; active tab 2 pt I
   underline (it marks the tab, not decoration);
-  current transcript line and "now playing" mark I; drop zone T + I; links per §3.3; kind chips; keep ✓ `ok`.
+  current transcript line and "now playing" mark I; drop zone T + I; links per §3.3; kind chips; triage's Keep ✓ `ok` (review mode only; never a button fill in the detail).
 - **Overlays** (`web/apps/overlays`, Windows / Linux island and picker): exactly §3.1–3.2, island values; the voice
   card face is light, so its mark uses `--brand-ink-light`.
 - **Tauri app** (`web/apps/desktop`): primary **B**; selection, badges, chips **T** + **I**; the sidebar's jobs box

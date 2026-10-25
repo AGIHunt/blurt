@@ -140,8 +140,6 @@
   "work.by": "by {who}",
   "work.by_you": "by you",
   "work.history": "History",
-  "work.claim.fixed": "The agent says it’s fixed — check it, then mark it done.",
-  "work.claim.wontfix": "The agent suggests not doing this — choose Won’t do, or send it back.",
   "work.open_session": "Open Session",
   "work.commit": "Commit {sha}",
   "work.pr": "Pull request",
@@ -254,5 +252,18 @@
   "handoff.copy_more": "More ways to copy",
   "chip.add_type": "Add type…",
   "chip.type_none": "No type",
-  "media.title": "Pictures and clips"
+  "media.title": "Pictures and clips",
+  "work.verify.fixed": "{agent} says it’s fixed",
+  "work.verify.fixed.generic": "The agent says it’s fixed",
+  "work.verify.wontfix": "{agent} suggests not doing this",
+  "work.verify.wontfix.generic": "The agent suggests not doing this",
+  "work.back": "Send Back…",
+  "work.back.hint": "Back to To do, with a note for the agent if you like",
+  "work.back.prompt": "What’s still wrong?",
+  "work.back.note_hint": "Optional. The note stays with the item.",
+  "work.more": "More",
+  "work.review_changes": "Review Changes…",
+  "activity.title": "Activity",
+  "time.just_now": "just now",
+  "chip.type.clear": "No Type"
 }

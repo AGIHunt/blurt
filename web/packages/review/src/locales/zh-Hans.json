@@ -138,8 +138,6 @@
   "work.by": "由 {who}",
   "work.by_you": "由你",
   "work.history": "记录",
-  "work.claim.fixed": "Agent 说已经修好了：确认没问题，就标为完成。",
-  "work.claim.wontfix": "Agent 建议不做：选「不做了」，或者退回。",
   "work.open_session": "打开会话",
   "work.commit": "提交 {sha}",
   "work.pr": "Pull Request",
@@ -248,5 +246,18 @@
   "handoff.copy_more": "其他复制方式",
   "chip.add_type": "添加类型…",
   "chip.type_none": "不设类型",
-  "media.title": "截图和片段"
+  "media.title": "截图和片段",
+  "work.verify.fixed": "{agent} 说已经修好了",
+  "work.verify.fixed.generic": "Agent 说已经修好了",
+  "work.verify.wontfix": "{agent} 建议不做",
+  "work.verify.wontfix.generic": "Agent 建议不做",
+  "work.back": "退回…",
+  "work.back.hint": "退回到待办，可以附一句说明给 Agent",
+  "work.back.prompt": "还有什么问题？",
+  "work.back.note_hint": "可不填，说明会记在这一条上。",
+  "work.more": "更多",
+  "work.review_changes": "查看改动…",
+  "activity.title": "动态",
+  "time.just_now": "刚刚",
+  "chip.type.clear": "不设类型"
 }

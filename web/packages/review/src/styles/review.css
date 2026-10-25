@@ -564,6 +564,15 @@ body {
   overflow: auto;
   padding: 20px 24px 90px;
   background: var(--bg);
+  container: insp / inline-size;
+}
+/* one section heading everywhere in the inspector: You said, the fields, History, Where it came from, Activity */
+.sec-h,
+.f label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--mute);
 }
 /* the breadcrumb: "BA-1 · billing-api", set in the UI face with tabular figures, the way the list sets the same ID */
 .idrow {
@@ -864,23 +873,15 @@ button.chip:hover {
   background: var(--ink-2);
 }
 
-/* what happened with the work (K3 `work`): who / when / commit / PR, the agent's claim, the answers */
+/* what happened with the work (K3 `work`): who / when / commit / PR, the agent's note — a quiet line, no card */
 .work {
-  margin: -6px 0 14px;
-  padding: 10px 12px;
-  border-radius: var(--r);
-  background: var(--panel-2);
-}
-.work.s-to_verify {
-  background: var(--attn-soft);
-}
-.work.s-done {
-  background: var(--ok-soft);
+  margin: -4px 0 18px;
+  font-size: 12.5px;
 }
 .work-h {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px 10px;
   flex-wrap: wrap;
   min-height: 22px;
 }
@@ -888,38 +889,137 @@ button.chip:hover {
   color: var(--mute);
   font-size: 12px;
 }
-.work-h code {
-  font: 600 11px/1 var(--mono);
+.work code.sha {
+  font: 500 11.5px/1 var(--mono);
   color: var(--ink-2);
-  padding: 3px 5px;
-  border-radius: 5px;
-  background: var(--panel-2);
 }
-.work-h .linkbtn {
-  margin: -4px 0;
+.work .linkbtn {
+  font-size: 12px;
+  margin: -4px -6px;
 }
-.work-claim,
 .work-note {
-  margin: 6px 0 0;
-  font-size: 12.5px;
+  margin: 4px 0 0;
   color: var(--ink-2);
+  line-height: 1.5;
 }
-.work-h + .work-claim,
-.work-h + .work-note {
-  margin-top: 4px;
+/* an agent says it's finished: a neutral card that asks (Claude's permission card, System Settings' notices) — the
+   to-verify disc leads, one sentence in semibold, the evidence on one secondary line, the answer as the view's one
+   primary (the brand button), Send Back… plain, the rest under ⋯. The state pill keeps the only amber wash. */
+.work.verify {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 2px 12px;
+  margin: -2px 0 22px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-.work > :first-child {
-  margin-top: 0;
+.work.verify .work-ic {
+  margin-top: 2px;
+}
+.work-b {
+  min-width: 0;
+}
+.work-claim {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.work.verify .work-m {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin-top: 1px;
+  line-height: 18px;
+}
+.work.verify .work-note {
+  margin-top: 6px;
+  font-size: 12.5px;
 }
 .work-a {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  margin: 10px 0 0;
 }
-.btn.keep .sring {
-  color: var(--on-ok);
-  --ring-cut: var(--ok);
+.work.verify > .work-a {
+  align-self: center;
+}
+/* narrow: the actions go under the words, left-aligned with them */
+@container insp (max-width: 520px) {
+  .work.verify {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .work.verify > .work-a {
+    grid-column: 2;
+    justify-content: flex-start;
+    margin-top: 8px;
+  }
+}
+/* Send Back…: the note for the agent, in place (Esc cancels, ⌘⏎ sends) */
+.work-back {
+  grid-column: 2 / -1;
+  margin-top: 10px;
+}
+.work-back textarea {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  resize: none;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ctl-border);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+}
+.work-back textarea:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--focus-soft);
+}
+.work-back textarea::placeholder {
+  color: var(--faint);
+}
+.work-back .work-a {
+  margin-top: 8px;
+}
+.work-hint {
+  margin-right: auto;
+  color: var(--faint);
+  font-size: 11.5px;
+}
+/* ⋯: a borderless button over a native select (the host draws the menu) */
+.more-btn {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--mute);
+  cursor: pointer;
+}
+.more-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.more-btn select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.more-btn:has(select:focus-visible) {
+  box-shadow: 0 0 0 3px var(--focus-soft);
 }
 .handoff {
   display: flex;
@@ -980,18 +1080,12 @@ button.chip:hover {
   background: var(--hover);
   color: var(--ink);
 }
-.btn.keep {
-  background: var(--ok);
-  border-color: transparent;
-  color: var(--on-ok);
-  box-shadow: none;
-}
-.btn.keep:hover {
-  filter: brightness(1.06);
+.worklog {
+  margin-bottom: 0;
 }
 .worklog ol {
   list-style: none;
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -2194,6 +2288,105 @@ html.mode-item[data-host="macos"] body,
 }
 .item-mode .props {
   margin-bottom: 22px;
+}
+/* the detail's picture carries its own line: the time in a small capsule on it, the file's actions on hover — never a
+   band under it that only holds a number (main.item-to-verify r1) */
+.shotwrap {
+  position: relative;
+  max-width: 100%;
+}
+.cap.over {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  margin: 0;
+  max-width: none;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  line-height: 1;
+}
+.cap.over > * {
+  pointer-events: auto;
+}
+.cap.over .tm {
+  font: 600 11px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  padding: 4px 7px;
+  border-radius: var(--r-pill);
+  background: rgb(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.cap.over .cap-sp {
+  flex: 1;
+  pointer-events: none;
+}
+.cap.over .dl,
+.cap.over .dl + .dl {
+  margin: 0;
+  width: 26px;
+  height: 26px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cap.over .dl:hover {
+  background: rgb(0 0 0 / 0.72);
+  color: #fff;
+}
+.shotwrap:hover .cap.over .dl,
+.cap.over:focus-within .dl {
+  opacity: 1;
+}
+.cap-t {
+  margin: 8px 0 0;
+  max-width: min(100cqw, 780px);
+  color: var(--mute);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+/* one column (the usual detail width): the picture sits on the page, as wide as the words and at most ~30 % of the
+   height, left-aligned with them — no grey stage band around it */
+@media (max-width: 979.98px) {
+  .focus.item-mode {
+    grid-template-rows: auto auto;
+  }
+  .item-mode .stage {
+    background: transparent;
+    min-height: auto;
+    overflow: visible;
+  }
+  .item-mode .slide {
+    position: relative;
+    inset: auto;
+    padding: 18px 20px 0;
+  }
+  .item-mode .media {
+    display: block;
+    flex: none;
+    min-height: auto;
+    container-type: inline-size;
+  }
+  .item-mode .frame {
+    align-items: flex-start;
+  }
+  .item-mode .shot {
+    width: min(100cqw, calc(min(30vh, 220px) * var(--ar, 1.6)));
+  }
+  .item-mode .strip {
+    margin: 10px 0 0;
+  }
+  .item-mode .side {
+    padding-top: 16px;
+  }
 }
 .item-saved {
   position: fixed;

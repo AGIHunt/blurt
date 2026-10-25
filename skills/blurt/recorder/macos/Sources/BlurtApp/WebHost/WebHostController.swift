@@ -24,7 +24,8 @@
 //   undo          registerUndo {label} (a page step on the window's NSUndoManager; ⌘Z calls blurtReview.undo() /
 //                 redo() back), windowUndo {redo} (⌘Z on the page outside a field), undone {uid}, focusList (Esc)
 //   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {job} (older
-//                 pages: jobId), registerDragRects {rects}, download {path|rel}, confirmed {scope} (a batch confirmed:
+//                 pages: jobId), reviewChanges {job} (the session and its review sheet), registerDragRects {rects},
+//                 download {path|rel}, confirmed {scope} (a batch confirmed:
 //                 review.py, if it asked for this batch, hears it — ReviewHandoff)
 import AppKit
 import BlurtCore
@@ -143,8 +144,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     /// The optional host methods we implement.
     var methods: [String] {
-        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl",
-         "toast", "registerUndo", "focusList"]
+        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "reviewChanges",
+         "fileUrl", "toast", "registerUndo", "focusList"]
     }
 
     // MARK: one undo stack per window
@@ -443,6 +444,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             }
         case "openSession":
             if let j = ReviewHostParams.job(p) { actions?.revealJob(j) }
+            reply(nil, nil)
+        case "reviewChanges":
+            // the verify card's ⋯ Review Changes…: the session, and its review sheet over the window (as the banner's)
+            if let j = ReviewHostParams.job(p) {
+                actions?.revealJob(j)
+                if JobStore.shared.job(j)?.agent?.worktree != nil { FinishPanel.show(job: j, over: view.window) }
+            }
             reply(nil, nil)
         case "registerDragRects":
             let rects = (p["rects"] as? [[String: Any]] ?? []).compactMap { r -> DragRect? in

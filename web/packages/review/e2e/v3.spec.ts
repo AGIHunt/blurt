@@ -76,7 +76,7 @@ test("ops go out by uid; a project move changes the id and keeps what you were t
 test("state: the agent says fixed, you mark it done; S + R reopens it; Z undoes", async ({ page, server }) => {
   await page.locator(".qi").first().click();
   await expect(page.locator("#statePill .sring")).toHaveClass(/s-to_verify/);
-  await expect(page.locator("#workRow")).toContainText("The agent says it’s fixed");
+  await expect(page.locator("#workRow")).toContainText("says it’s fixed");
   await page.locator("#workDone").click();
   await expect(page.locator("#statePill .sring")).toHaveClass(/s-done/);
   await until(() => item(server, 0).state === "done");
@@ -207,7 +207,8 @@ test.describe("in the macOS main window (macos host over the bridge, a project, 
     await expect(page.locator("#workSession")).toBeVisible();
     await page.locator("#workSession").click();
     await expect(page.locator("#dispatchBtn")).toHaveCount(0); // to verify: answer it first
-    await page.locator("#workBack").click(); // send back → to do: now it can be handed off
+    await page.locator("#workBack").click(); // Send Back… opens the note field; sending it → to do: now it can be handed off
+    await page.locator("#workBackSend").click();
     await until(() => item(server, 0).state === "todo");
     await page.locator("#dispatchBtn").click();
     await until(() => server.calls.some((c) => c.method === "dispatch"));

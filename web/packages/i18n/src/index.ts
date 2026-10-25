@@ -79,7 +79,8 @@ export interface I18n {
   /** seconds → "clock" 1:05 / 1:02:05, or words: "short" 1 min 5 sec, "narrow" 1m 5s, "long" 1 minute, 5 seconds */
   formatDuration(seconds: number, style?: DurationStyle): string;
   /** "3 minutes ago", "yesterday", "in 2 hours" */
-  formatRelative(v: DateLike, now?: DateLike): string;
+  /** "2 minutes ago"; style "short": "2 min. ago" / "2分钟前", always numeric (the Mac app's RelativeDateTimeFormatter .short) */
+  formatRelative(v: DateLike, now?: DateLike, style?: "long" | "short"): string;
   formatList(items: string[], type?: "conjunction" | "disjunction" | "unit"): string;
 }
 
@@ -171,12 +172,12 @@ export function createI18n(catalogs: Catalogs, lang: Lang | string, opts: I18nOp
       );
       return new Intl.ListFormat(locale, { type: "unit", style: display === "long" ? "long" : display }).format(words);
     },
-    formatRelative(v, now = Date.now()) {
+    formatRelative(v, now = Date.now(), style = "long") {
       const d = toDate(v).getTime();
       if (isNaN(d)) return "";
       const diff = (d - toDate(now).getTime()) / 1000;
       const a = Math.abs(diff);
-      const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+      const rtf = new Intl.RelativeTimeFormat(locale, style === "short" ? { numeric: "always", style: "short" } : { numeric: "auto" });
       if (a < 45) return rtf.format(0, "second");
       if (a < 45 * 60) return rtf.format(Math.round(diff / 60), "minute");
       if (a < 22 * 3600) return rtf.format(Math.round(diff / 3600), "hour");

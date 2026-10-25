@@ -89,18 +89,22 @@ function MediaBox({ items, k }: { items: Media[]; k: number }) {
   );
 }
 
-function Caption({ m }: { m: Media | undefined }) {
+/** The frame's line: its time (or Clip / Recording · 0:12), its caption, and what you can do with the file. In the
+    main window's detail (`over`) it sits on the picture instead — the time in a small capsule, the file actions on
+    hover — so the picture is never followed by a band that only holds a number; the caption goes under it. */
+function Caption({ m, over = false }: { m: Media | undefined; over?: boolean }) {
   const s = useStore();
   const h = s.host;
-  if (!m || m.kind === "wait") return <div className="cap" id="mediaCap" />;
+  if (!m || m.kind === "wait") return <div className={cx("cap", over && "over")} id="mediaCap" />;
   const rel = m.rel || "";
   return (
-    <div className="cap" id="mediaCap">
+    <div className={cx("cap", over && "over", m.kind !== "img" && "vid")} id="mediaCap">
       <span className="tm">
         {m.label}
         {m.kind === "orig" && m.start != null ? ` · ${s.clock(m.start)}` : ""}
       </span>
-      {m.cap ? <span className="ct">{m.cap}</span> : null}
+      {m.cap && !over ? <span className="ct">{m.cap}</span> : null}
+      {over && <span className="cap-sp" />}
       {h.downloadUrl ? (
         <a className="dl" href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
           <Icon name="download" />
@@ -264,8 +268,20 @@ export function Slide() {
     <div ref={ref} key={`${s.keyOf(i)}:${s.slideKey}`} className={cx("slide", anim && (s.dir === "up" ? "in-up" : "in-down"))}>
       <div className={cx("media", items.length >= 2 && "has-strip")}>
         <div className="frame">
-          <MediaBox items={items} k={k} />
-          <Caption m={items[k]} />
+          {s.mode === "item" ? (
+            <>
+              <div className="shotwrap">
+                <MediaBox items={items} k={k} />
+                <Caption m={items[k]} over />
+              </div>
+              {items[k]?.cap ? <p className="cap-t">{items[k].cap}</p> : null}
+            </>
+          ) : (
+            <>
+              <MediaBox items={items} k={k} />
+              <Caption m={items[k]} />
+            </>
+          )}
           {items.length >= 2 && (
             <div className="strip scroll">
               {items.map((m, n) =>

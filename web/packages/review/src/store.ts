@@ -194,6 +194,12 @@ export class ReviewStore {
   stateLabel = (s: State) => this.t(`state.${s}`);
   /** "0:14" / "1:02:05" */
   clock = (s: unknown) => this.i18n.formatDuration(Number(s) || 0);
+  /** "just now", "2 min. ago", "3 hr. ago" — the Mac app list's short relative format (Loc.relative), one format app-wide */
+  ago = (v: string | number | Date) => {
+    const d = new Date(v).getTime();
+    if (isNaN(d)) return "";
+    return Math.abs(Date.now() - d) < 60_000 ? this.t("time.just_now") : this.i18n.formatRelative(v, Date.now(), "short");
+  };
   get types(): readonly string[] {
     return TYPES;
   }
@@ -306,7 +312,7 @@ export class ReviewStore {
   /** The user's state change (K3): optimistic here, one `state` op per item, undoable. Hand off opens the host's
       panel (or copies an instruction) instead — the host writes that state. Items the action doesn't apply to are
       left alone. Returns how many items changed. */
-  act = (items: Item[], action: Action, opts: { toast?: boolean } = {}): number => {
+  act = (items: Item[], action: Action, opts: { toast?: boolean; note?: string } = {}): number => {
     if (action === "hand_off") {
       const ok = items.filter((i) => canDo("hand_off", this.stateOf(i)));
       if (this.host.dispatch) this.dispatch(ok);
@@ -320,7 +326,8 @@ export class ReviewStore {
     moves.forEach(({ i, from, to }, n) => {
       this.setLocal(i, to, from);
       steps[n].to = this.stateAt(i);
-      if (!this.legacy) this.actionOps.push({ op: "state", id: this.key(i), action });
+      // a note rides with the user's step (Send Back…'s "what's still wrong"): the work record keeps it for the agent
+      if (!this.legacy) this.actionOps.push({ op: "state", id: this.key(i), action, ...(opts.note ? { note: opts.note } : {}) });
     });
     this.snapshot("undo.state", steps, snap);
     this.flush();

@@ -192,6 +192,8 @@ export interface BlurtHost {
   handoff?(uids: string[], what: "instruction" | "full"): Promise<HandoffResult>;
   /** show the agent session (job id) in the host's terminal */
   openSession?(job: string): void;
+  /** the session's changes, in the host's review sheet (diff, merge / keep / discard) */
+  reviewChanges?(job: string): void;
   /** the host puts the item's Open Session above the page while it is with an agent (the Mac app's banner): the
       work panel leaves its own out then, so there is one button */
   sessionBanner?: boolean;

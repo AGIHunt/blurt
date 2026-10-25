@@ -320,15 +320,43 @@ function fixAsWork(f: FixRecord): WorkRecord {
     by: f.agent === "human" ? "user" : "agent" };
 }
 
-/** What happened with the work (K3 `work`): who and when, commit, PR, what the agent claims, its note — and, when an
-    agent says it's finished, the two answers right there (the state pill's menu has every action). */
+/** A borderless ⋯ with the panel's other actions: a native select under it, so the host draws its own menu. */
+function MoreMenu({ id, label, options, onPick }: { id: string; label: string; options: [string, string][]; onPick: (v: string) => void }) {
+  if (!options.length) return null;
+  return (
+    <label className="more-btn" title={label}>
+      <Icon name="more" size={15} />
+      <select id={id} value="" aria-label={label} onChange={(e) => e.target.value && onPick(e.target.value)}>
+        <option value="" disabled>
+          {label}
+        </option>
+        {options.map(([v, t]) => (
+          <option key={v} value={v}>
+            {t}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** What happened with the work (K3 `work`): who and when, commit, PR, the agent's note — and, when an agent says it's
+    finished, a card that asks: one sentence ("Codex says it's fixed"), the evidence on one quiet line, the answer as
+    the view's one primary, Send Back… with an optional note for the agent, the rest under ⋯ (the state pill's menu
+    has every action). */
 function WorkPanel({ i }: { i: Item }) {
   const s = useStore();
   const st = s.stateOf(i);
   const rec = i.work ?? (i.fix ? fixAsWork(i.fix) : undefined);
+  const [back, setBack] = useState<string | null>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (back !== null) autosize(noteRef.current, 160);
+  }, [back]);
   if (!rec || st === "new" || st === "discarded") return null;
-  const who = rec.by === "user" ? s.t("work.by_you") : rec.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(s, rec.agent) }) : "";
-  const when = rec.at ? s.i18n.formatRelative(rec.at) : "";
+  const agent = rec.agent && rec.agent !== "human" ? agentName(s, rec.agent) : null;
+  const who = rec.by === "user" ? s.t("work.by_you") : agent ? s.t("work.by", { who: agent }) : "";
+  const when = rec.at ? s.ago(rec.at) : "";
   // one Open Session per item: while it is with the agent a host banner may have it (the Mac app), else it is here
   const banner = s.host.sessionBanner && (st === "handed_off" || st === "in_progress");
   const session = rec.to === "session" && rec.job && s.host.openSession && st !== "done" && st !== "wontfix" && !banner ? rec.job : null;
@@ -337,38 +365,109 @@ function WorkPanel({ i }: { i: Item }) {
   if (!meta && !verify && !rec.note && !session) return null;
   // the host's banner already says who has it and when: a card with only that line would repeat it
   if (banner && !verify && !rec.note && !rec.commit && !rec.pr) return null;
-  return (
-    <div className={cx("work", "s-" + st)} id="workRow">
-      {meta && (
+  const evidence = (
+    <>
+      {rec.commit ? (
+        <code className="sha" title={rec.commit}>
+          {shortSha(rec.commit)}
+        </code>
+      ) : null}
+      {rec.pr ? (
+        <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
+          {s.t("work.pr")}
+        </a>
+      ) : null}
+      {session ? (
+        <button className="linkbtn" id="workSession" onClick={() => s.openSession(session)}>
+          {s.t("work.open_session")}
+        </button>
+      ) : null}
+    </>
+  );
+  if (!verify)
+    return (
+      <div className={cx("work", "s-" + st)} id="workRow">
         <div className="work-h">
           {(who || when) && <span className="work-m">{[who, when].filter(Boolean).join(" · ")}</span>}
-          {rec.commit ? <code title={rec.commit}>{shortSha(rec.commit)}</code> : null}
-          {rec.pr ? (
-            <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
-              <Icon name="git-pull-request" size={13} /> {s.t("work.pr")}
-            </a>
-          ) : null}
+          {evidence}
         </div>
-      )}
-      {verify && rec.claim && <p className="work-claim">{s.t(rec.claim === "wontfix" ? "work.claim.wontfix" : "work.claim.fixed")}</p>}
-      {rec.note ? <p className="work-note">{rec.note}</p> : null}
-      {(verify || session) && (
+        {rec.note ? <p className="work-note">{rec.note}</p> : null}
+      </div>
+    );
+  // the agent's claim decides the primary: "fixed" → Mark as Done; "won't fix" → Won't Do (the other one waits in ⋯)
+  const wont = rec.claim === "wontfix";
+  const primary: "done" | "wontfix" = wont ? "wontfix" : "done";
+  // the agent by its name when the doc knows it ("Codex says it’s fixed"); else the plain sentence, never "Agent says"
+  const named = (rec.agent && rec.agent !== "human" && s.data.agents?.[rec.agent]?.name) || null;
+  const headline = named
+    ? s.t(wont ? "work.verify.wontfix" : "work.verify.fixed", { agent: named })
+    : s.t(wont ? "work.verify.wontfix.generic" : "work.verify.fixed.generic");
+  const more: [string, string][] = [
+    ...(session && s.host.reviewChanges ? [["review", s.t("work.review_changes")] as [string, string]] : []),
+    [wont ? "done" : "wontfix", s.label(wont ? "action.done" : "action.wontfix")],
+  ];
+  const sendBack = () => {
+    const note = (back ?? "").trim();
+    setBack(null);
+    s.act([i], "send_back", note ? { note } : {});
+  };
+  // the headline names the agent: the line under it is when, then the evidence
+  const timeLine = named && rec.by !== "user" ? when : [who, when].filter(Boolean).join(" · ");
+  return (
+    <div className="work verify s-to_verify" id="workRow" role="group" aria-label={headline}>
+      <StatusRing state="to_verify" size={16} className="work-ic" />
+      <div className="work-b">
+        <p className="work-claim">{headline}</p>
+        {(timeLine || rec.commit || rec.pr || session) && (
+          <div className="work-m">
+            {timeLine && <span>{timeLine}</span>}
+            {evidence}
+          </div>
+        )}
+        {rec.note ? <p className="work-note">{rec.note}</p> : null}
+      </div>
+      {back === null ? (
         <div className="work-a">
-          {verify && (
-            <>
-              <button className="btn sm keep" id="workDone" onClick={() => s.act([i], "done")}>
-                <StatusRing state="done" size={14} /> {s.label("action.done")}
-              </button>
-              <button className="btn sm" id="workBack" onClick={() => s.act([i], "send_back")}>
-                <StatusRing state="todo" size={14} /> {s.label("action.send_back")}
-              </button>
-            </>
-          )}
-          {session && (
-            <button className="btn sm" id="workSession" onClick={() => s.openSession(session)}>
-              <Icon name="terminal" size={14} /> {s.t("work.open_session")}
+          <button className="btn sm" id="workBack" aria-haspopup="dialog" title={s.t("work.back.hint")} onClick={() => setBack("")}>
+            {s.t("work.back")}
+          </button>
+          <button className="btn sm primary" id="workDone" data-action={primary} onClick={() => s.act([i], primary)}>
+            {s.label(wont ? "action.wontfix" : "action.done")}
+            <kbd>{wont ? "W" : "D"}</kbd>
+          </button>
+          <MoreMenu id="workMore" label={s.t("work.more")} options={more}
+            onPick={(v) => (v === "review" ? session && s.host.reviewChanges?.(session) : s.act([i], v as "done" | "wontfix"))} />
+        </div>
+      ) : (
+        <div className="work-back">
+          <textarea ref={noteRef} id="workBackNote" rows={2} autoFocus value={back} placeholder={s.t("work.back.prompt")}
+            aria-label={s.t("work.back.prompt")}
+            onChange={(e) => {
+              setBack(e.target.value);
+              autosize(e.currentTarget, 160);
+            }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setBack(null);
+              } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && isEnter(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                sendBack();
+              }
+            }} />
+          <div className="work-a">
+            <span className="work-hint">{s.t("work.back.note_hint")}</span>
+            <button className="btn sm" id="workBackCancel" onClick={() => setBack(null)}>
+              {s.t("action.cancel")}
             </button>
-          )}
+            <button className="btn sm primary" id="workBackSend" onClick={sendBack}>
+              {s.label("action.send_back")}
+              <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -424,18 +523,23 @@ function HandoffPanel({ i }: { i: Item }) {
   );
 }
 
-function WorkHistory({ i }: { i: Item }) {
-  const s = useStore();
-  // work_history holds each earlier step (the state it was in); the newest row is the item now
-  const rows: WorkRecord[] = i.work
+/** work_history holds each earlier step (the state it was in); the newest row is the item now */
+function historyRows(s: ReviewStore, i: Item): WorkRecord[] {
+  return i.work
     ? [...(i.work_history || []), { ...i.work, state: s.stateOf(i) }]
     : i.fix
       ? [...(i.fix_history || []), i.fix].map(fixAsWork)
       : [];
-  if (rows.length < 2 && !(rows[0]?.state && rows[0].state !== "todo" && rows[0].state !== "new")) return null;
+}
+
+function WorkHistory({ i }: { i: Item }) {
+  const s = useStore();
+  const rows = historyRows(s, i);
+  // one entry is the item now: the state pill (and the work card) already say it
+  if (rows.length < 2) return null;
   return (
     <div className="f worklog">
-      <label>{s.t("work.history")}</label>
+      <label className="sec-h">{s.t("work.history")}</label>
       <ol>
         {[...rows].reverse().map((f, n) => (
           <li key={n} className={"s-" + (f.state ?? "todo")}>
@@ -595,15 +699,21 @@ function specsOf(i: Item, kind: string, s: ReviewStore): { body: Spec; prompt: s
   return { body, prompt, rest };
 }
 
-/** The empty fields, as a quiet menu at the end: picking one shows it, focused. */
-function AddField({ specs, onAdd }: { specs: Spec[]; onAdd: (k: string) => void }) {
+/** The empty fields, as a quiet menu at the end: picking one shows it, focused. An issue without a type lists the
+    types here too (one pick sets it; the type chip appears then). */
+function AddField({ specs, types, onAdd, onType }: { specs: Spec[]; types: [string, string][]; onAdd: (k: string) => void; onType: (t: string) => void }) {
   const s = useStore();
-  if (!specs.length) return null;
+  if (!specs.length && !types.length) return null;
   return (
     <label className="pick btn sm ghost addf">
       <Icon name="plus" size={14} />
       <span className="pick-l">{s.t("field.add")}</span>
-      <select id="addField" value="" aria-label={s.t("field.add")} onChange={(e) => e.target.value && onAdd(e.target.value)}>
+      <select id="addField" value="" aria-label={s.t("field.add")}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v.startsWith("type:")) onType(v.slice(5));
+          else if (v) onAdd(v);
+        }}>
         <option value="" disabled>
           {s.t("field.add")}
         </option>
@@ -612,6 +722,15 @@ function AddField({ specs, onAdd }: { specs: Spec[]; onAdd: (k: string) => void 
             {f.label}
           </option>
         ))}
+        {types.length > 0 && (
+          <optgroup label={s.t("chip.type")}>
+            {types.map(([v, t]) => (
+              <option key={"type:" + v} value={"type:" + v}>
+                {t}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
     </label>
   );
@@ -687,7 +806,8 @@ export function Inspector({ media }: { media?: React.ReactNode } = {}) {
       n++;
     } else body.push(F(f));
   }
-  body.push(<AddField key="add" specs={rest.filter((f) => !shown.includes(f))} onAdd={(k) => open(k, true)} />);
+  const typeChoices: [string, string][] = kind === "issue" && !i.type ? s.types.map((t) => [t, s.typeLabel(t)]) : [];
+  body.push(<AddField key="add" specs={rest.filter((f) => !shown.includes(f))} types={typeChoices} onAdd={(k) => open(k, true)} onType={s.setType} />);
 
   const item = s.mode === "item";
   const props = (
@@ -710,12 +830,14 @@ export function Inspector({ media }: { media?: React.ReactNode } = {}) {
             <SevBars sev={sev} />
             <span className="prop-l">{s.t("severity." + sev)}</span>
           </ChipSelect>
-          {/* the issue's type (Bug, UI, Copy…) is optional: unset, it waits as a faint "+ Type" that shows on hover */}
-          <ChipSelect id="typeChip" cls={i.type ? "type-chip" : "prop-add"} label={s.t("chip.type")} value={String(i.type ?? "")} onPick={s.setType}
-            options={[["", s.t(i.type ? "chip.type_none" : "chip.type")], ...s.types.map((t): [string, string] => [t, s.typeLabel(t)])]}>
-            <Icon name={i.type ? "tag" : "plus"} size={i.type ? 15 : 13} />
-            <span className="prop-l">{i.type ? s.typeLabel(String(i.type)) : s.t("chip.type")}</span>
-          </ChipSelect>
+          {/* the issue's type (Bug, UI, Copy…) is optional: unset, it waits in Add Field under the fields */}
+          {i.type ? (
+            <ChipSelect id="typeChip" cls="type-chip" label={s.t("chip.type")} value={String(i.type)} onPick={s.setType}
+              options={[...[...new Set([...s.types, String(i.type)])].map((t): [string, string] => [t, s.typeLabel(t)]), ["", s.t("chip.type_none")]]}>
+              <Icon name="tag" size={15} />
+              <span className="prop-l">{s.typeLabel(String(i.type))}</span>
+            </ChipSelect>
+          ) : null}
         </>
       )}
       {i.confidence === "low" && (
