@@ -224,13 +224,10 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         return ok
     }
 
-    /// The note's first line, or "Screenshot 15:30" / "Voice note 15:30".
+    /// The note's first line, or "Snap · 15:30" / "Voice note · 15:30".
     static func title(_ s: Shot) -> String {
         if let t = s.words?.split(whereSeparator: \.isNewline).first.map(String.init) { return t.count > 60 ? String(t.prefix(59)) + "…" : t }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n) + " · " +
-            f.string(from: Date(timeIntervalSince1970: s.wall))
+        return s.plainName
     }
 }
 
@@ -339,7 +336,8 @@ final class TakenRow: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// "Dragged out 5 minutes ago · kept 7 more days" — the days in attention ink on the last day.
+    /// "Dragged out 5 minutes ago", and "· kept 1 more day" in attention ink on its last day (the footer says 7 days
+    /// once for all the rows).
     static func detail(_ s: Shot) -> NSAttributedString {
         let ago = RelativeDateTimeFormatter()
         ago.locale = Locale(identifier: Loc.language == "zh-Hans" ? "zh-Hans" : "en")
@@ -348,9 +346,11 @@ final class TakenRow: NSView {
                          ago.localizedString(for: Date(timeIntervalSince1970: s.taken ?? now), relativeTo: Date(timeIntervalSince1970: now)))
         let days = TakenCaptures.daysLeft(taken: s.taken ?? now, now: now)
         let f = NSFont.systemFont(ofSize: 11)
-        let out = NSMutableAttributedString(string: when + " · ", attributes: [.font: f, .foregroundColor: NSColor.secondaryLabelColor])
-        out.append(NSAttributedString(string: Loc.plural("capture.taken.days_left", table: "Capture", count: days),
-                                      attributes: [.font: f, .foregroundColor: days <= 1 ? BrandColor.attnInk : NSColor.secondaryLabelColor]))
+        let out = NSMutableAttributedString(string: when, attributes: [.font: f, .foregroundColor: NSColor.secondaryLabelColor])
+        if TakenCaptures.saysDaysLeft(days) {
+            out.append(NSAttributedString(string: " · " + Loc.plural("capture.taken.days_left", table: "Capture", count: days),
+                                          attributes: [.font: f, .foregroundColor: BrandColor.attnInk]))
+        }
         return out
     }
 
@@ -403,9 +403,9 @@ final class TakenThumb: NSView, NSDraggingSource {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// What the tile is, for VoiceOver: "Screenshot 3" / "Voice note 3, 00:07" (the length it shows).
+    /// What the tile is, for VoiceOver: "Snap · 15:30" / "Voice note · 15:30, 00:07" (the length it shows).
     static func label(_ s: Shot) -> String {
-        let what = Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n)
+        let what = s.plainName
         guard s.kind == .voice, let d = s.duration, d > 0 else { return what }
         return what + ", " + Loc.duration(d)
     }

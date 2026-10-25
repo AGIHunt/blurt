@@ -15,9 +15,9 @@
 "capture.card.ax_help" = "按下复制 · 操作：编辑备注、移到项目、整理、删除";
 "capture.card.ax_move" = "移到 %@";
 "capture.card.ax_shot" = "截图";
-"capture.card.ax_shot_n" = "截图 %d";
+"capture.card.ax_shot_at" = "截图 · %@";
 "capture.card.ax_voice" = "语音备注";
-"capture.card.ax_voice_n" = "语音备注 %d";
+"capture.card.ax_voice_at" = "语音备注 · %@";
 "capture.card.copied" = "已复制";
 "capture.card.copied_no_ax" = "已复制 · 在聊天 App 里只会粘贴图片";
 "capture.card.copy_image" = "复制图片";
@@ -282,7 +282,7 @@
 "capture.voice.sound_settings" = "声音设置";
 "capture.voice.time_left" = "还剩 %@";
 "capture.voice.maxed" = "已到 %@ 上限，语音备注已保存";
-"capture.voice.words_failed" = "备注没能转成文字";
+"capture.voice.words_failed" = "没能转成文字";
 "capture.live.ax" = "已识别的文字";
 "capture.voice_drop.hint_paste" = "松手粘贴到 %@";
 "capture.voice_drop.hint_copy" = "松手后在 %@ 里按 ⌘V";

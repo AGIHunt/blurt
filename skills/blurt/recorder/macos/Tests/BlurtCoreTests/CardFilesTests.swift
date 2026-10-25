@@ -178,5 +178,8 @@ final class CardFilesTests: XCTestCase {
         XCTAssertEqual(TakenCaptures.daysLeft(taken: t, now: t), 7)
         XCTAssertEqual(TakenCaptures.daysLeft(taken: t, now: t + 6.5 * 86400), 1)
         XCTAssertEqual(TakenCaptures.daysLeft(taken: t, now: t + 9 * 86400), 0)
+        // only the last day is worth a word on the row (the footer says 7 days for all)
+        XCTAssertFalse(TakenCaptures.saysDaysLeft(7))
+        XCTAssertTrue(TakenCaptures.saysDaysLeft(1))
     }
 }

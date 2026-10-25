@@ -2102,11 +2102,8 @@ final class HangingCards: NSObject {
         return actions
     }
 
-    /// A card's spoken name: its words, or "Screenshot N" / "Voice note N".
-    static func cardLabel(_ s: Shot) -> String {
-        if let t = s.words { return t }
-        return Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n)
-    }
+    /// A card's spoken name: its words, or "Snap · 15:30" / "Voice note · 15:30" (Shot.plainName).
+    static func cardLabel(_ s: Shot) -> String { s.words ?? s.plainName }
 }
 
 final class ClosureMenuItem: NSMenuItem {

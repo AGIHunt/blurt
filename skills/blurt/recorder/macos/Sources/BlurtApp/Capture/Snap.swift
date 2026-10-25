@@ -200,6 +200,14 @@ final class Shot {
     var intendedProject: String?
     /// A voice note's live text when it ended (in memory only): the card shows it until `said` is in (CardNote.heard).
     var heard: String?
+    /// What a capture without a note is called — VoiceOver, Recently Dragged Out, the island's menu: "Snap · 19:03" /
+    /// "Voice note · 19:03" (v0.9-fix2: "Screenshot 15", a session counter that skipped numbers).
+    var plainName: String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        let at = f.string(from: Date(timeIntervalSince1970: wall))
+        return Loc.t(kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture", at)
+    }
     var assignedBy: String?      // capture | user | ai
     var pixelSize: CGSize = .zero
     var scale: CGFloat = 2
