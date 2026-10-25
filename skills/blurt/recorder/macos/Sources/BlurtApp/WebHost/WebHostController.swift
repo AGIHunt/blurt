@@ -11,7 +11,8 @@
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
 //   doc start     window.blurtHostInfo = {host: "macos", methods: [...], accent: "#rrggbb", scope: {...}, sessionBanner: mode == item}
 //   JS → native   webkit.messageHandlers.blurt.postMessage({id, method, params}); native → window.__blurtReply(id, result, error)
-//   requests      load {scope?} → {doc, etag}             items.py doc SESSION | --project P
+//   requests      load {scope?} → {doc, etag}             items.py doc SESSION | --project P [--item UID: the item
+//                                                          on show, listed whatever its state; also poll, sendOps]
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
 //                 sendOps {ops, confirm, scope?} → {ok, etag, doc}   items.py user-ops … --stdin [--confirm]
 //                 handoff {uids, what} → {id, path, text}  handoff.py create --items … --mark (copied to the clipboard)
@@ -180,8 +181,10 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         banner.set(item, suggested: item.suggestedProject.flatMap { s in projects.first { $0.id == s } })
         let scope: DocScope = item.sessionURL.map { .session($0) } ?? .project(item.projectID)
         if loadedScope == scope, loadedMode == "item" {
-            web.evaluateJavaScript("window.blurtReview && window.blurtReview.setItem ? (window.blurtReview.setItem(\(Self.js(item.uid))), true) : false") { [weak self] r, _ in
-                if (r as? Bool) != true { self?.load(scope, mode: "item", item: item.uid) }
+            // setItem answers whether the loaded doc has the item: a discarded one (left out of its project's doc) or
+            // one that moved in since needs a doc that lists it — never the item shown before
+            web.evaluateJavaScript("window.blurtReview && window.blurtReview.setItem ? window.blurtReview.setItem(\(Self.js(item.uid))) === true : false") { [weak self] r, _ in
+                if (r as? Bool) != true, self?.currentItem?.uid == item.uid { self?.load(scope, mode: "item", item: item.uid) }
             }
             return
         }
@@ -283,6 +286,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         return loadedScope
     }
 
+    /// The item on show is always in its doc (items.py --item), whatever a project's doc leaves out: a discarded one
+    /// selected under the Discarded filter shows itself, not its neighbour.
+    private func shownItemArgs(_ s: DocScope) -> [String] {
+        guard loadedMode == "item", case .project = s, let it = currentItem else { return [] }
+        return ["--item", it.uid]
+    }
+
     /// One host method. `reply(result, error)`; notifications reply nil.
     func call(_ method: String, _ p: [String: Any], reply: @escaping (Any?, String?) -> Void) {
         let session = schemes.session
@@ -292,7 +302,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         switch method {
         case "load", "poll":
             guard let s = scope(p) else { return reply(nil, "no scope") }
-            let args = method == "load" ? ["doc"] + s.args : ["poll"] + s.args + ["--etag", p["etag"] as? String ?? ""]
+            let args = (method == "load" ? ["doc"] + s.args : ["poll"] + s.args + ["--etag", p["etag"] as? String ?? ""]) + shownItemArgs(s)
             Scripts.run("items.py", args, timeout: 30) { r in
                 switch r {
                 case .success(let d):
@@ -306,7 +316,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         case "sendOps":
             guard let s = scope(p) else { return reply(nil, "no scope") }
             let ops = p["ops"] as? [[String: Any]] ?? []
-            Scripts.userOps(s.args, ops, confirm: p["confirm"] as? Bool ?? false) { [weak self] r in
+            Scripts.userOps(s.args + shownItemArgs(s), ops, confirm: p["confirm"] as? Bool ?? false) { [weak self] r in
                 switch r {
                 case .success(let o): reply(["ok": true, "etag": o["etag"] ?? "", "doc": o["doc"] ?? NSNull()], nil); self?.actions?.webWrote()
                 case .failure(let e): reply(nil, "\(e)")

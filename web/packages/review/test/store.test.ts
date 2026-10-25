@@ -111,7 +111,26 @@ describe("ReviewStore over an acknowledging host (macos / tauri)", () => {
     expect([s.item!.id, s.stateOf(s.item!), s.item!.restore_to]).toEqual(["I-002", "discarded", "todo"]);
     key("r");
     expect(s.stateOf(s.item!)).toBe("todo");
-    s.setItem("I-001");
+    expect(s.setItem("I-001")).toBe(true);
+    expect(s.item!.id).toBe("I-001");
+    s.dispose();
+  });
+  it("item mode never shows another item in place of one the doc doesn't have (a discarded one, say)", async () => {
+    const m = memHost({ items: [{ id: "I-001", uid: "U1" }, { id: "I-002", uid: "U2" }] });
+    // asked for at load: not item 0
+    const cold = new ReviewStore(m.host, { mode: "item", itemId: "U9" });
+    await cold.load();
+    expect([cold.missing, cold.item]).toEqual([true, undefined]);
+    cold.dispose();
+    // asked for later: setItem says so (the host then loads a doc that has it), and nothing stale stays on show
+    const s = new ReviewStore(m.host, { mode: "item", itemId: "U2" });
+    await s.load();
+    expect(s.setItem("U9")).toBe(false);
+    expect(s.item).toBeUndefined();
+    const key = (k: string) => s.onKeyDown(new KeyboardEvent("keydown", { key: k, cancelable: true }));
+    key("x"); // no key acts on the item shown before
+    expect(s.pendingOps()).toEqual([]);
+    expect(s.setItem("U1")).toBe(true);
     expect(s.item!.id).toBe("I-001");
     s.dispose();
   });

@@ -173,8 +173,11 @@ export class ReviewStore {
   get v3() {
     return this.key === byUid;
   }
+  /** item mode: the item asked for is not in the doc (it left the scope, or was never in it). The page says so —
+      it never shows another item in its place, whose buttons would then act on the wrong one. */
+  missing = false;
   get item(): Item | undefined {
-    return this.data.items[this.cur];
+    return this.missing ? undefined : this.data.items[this.cur];
   }
   keyOf = (i: Item) => this.key(i);
   /** the review's view of the state: pending (new) · drop (discarded) · keep (anything else) */
@@ -395,7 +398,7 @@ export class ReviewStore {
       this.data.items = S.map(clone);
       this.base = new Map(S.map((i) => [this.key(i), clone(i)]));
       if (!this.langPicked && this.data.language) this.i18n = makeI18n(resolveLang(String(this.data.language), systemLanguages()));
-      if (this.mode === "item") this.cur = Math.max(0, this.findCur());
+      if (this.mode === "item") this.pointAt();
       else this.cur = Math.max(0, this.data.items.findIndex((i) => this.st(i) === "pending"));
       const v = storage.get("blurt.view") as View | null;
       this.view = v === "focus" || v === "list" || v === "overview" ? v : this.data.digest ? "overview" : this.data.items.length > 1 ? "focus" : "list";
@@ -434,10 +437,8 @@ export class ReviewStore {
         else delete i.restore_to;
       }
     }
-    if (this.mode === "item") {
-      const k = this.findCur();
-      this.cur = k >= 0 ? k : this.cur;
-    } else {
+    if (this.mode === "item") this.pointAt();
+    else {
       const k = this.data.items.findIndex((i) => this.key(i) === cid);
       this.cur = k >= 0 ? k : Math.min(this.cur, Math.max(0, this.data.items.length - 1));
     }
@@ -674,17 +675,24 @@ export class ReviewStore {
     this.mediaSel = items[k].src;
     this.emit();
   };
-  setItem = (id: string) => {
+  /** item mode: show another item of the loaded doc. false: it isn't in this doc (a discarded item, one from
+      another project) — the host loads a doc that has it; meanwhile the page shows "not here", never the last one. */
+  setItem = (id: string): boolean => {
     this.itemId = id;
-    const k = this.findCur();
-    if (k >= 0) {
-      this.cur = k;
-      this.mediaSel = null;
-      this.menuOpen = false;
-      this.slideKey++;
-    }
+    const found = this.pointAt();
+    this.mediaSel = null;
+    this.menuOpen = false;
+    this.slideKey++;
     this.emit();
+    return found;
   };
+  /** item mode: `cur` on the item asked for, or `missing` */
+  private pointAt(): boolean {
+    const k = this.findCur();
+    this.missing = k < 0;
+    this.cur = Math.max(0, k);
+    return !this.missing;
+  }
 
   setView = (v: View) => {
     this.view = v;

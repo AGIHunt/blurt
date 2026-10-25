@@ -216,8 +216,9 @@ export interface MountOptions {
 }
 
 export interface ReviewHandle {
-  /** item mode: show another item without reloading */
-  setItem(itemId: string): void;
+  /** item mode: show another item without reloading. false: the loaded doc doesn't have it — load one that does
+      (the page shows "not here" meanwhile, never the item it showed before) */
+  setItem(itemId: string): boolean;
   setTheme(theme: ThemePref): void;
   setPlatform(p: Platform): void;
   /** the UI language ("en" | "zh-Hans"; "zh" accepted) */
