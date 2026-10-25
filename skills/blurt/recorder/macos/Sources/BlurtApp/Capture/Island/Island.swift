@@ -392,7 +392,7 @@ final class Island: NSObject, IslandHosting {
             return (min(Island.openW, max(toastFloor, content.toastWidth)), content.fittingHeight, 20)
         }
         if geo.notch {
-            return (geo.notchW + (anyEar ? 2 * Island.earW : 0), geo.notchH, 10)
+            return (geo.notchW + (anyEar ? 2 * earWidth : 0), geo.notchH, 10)
         }
         var cw = max(120, (e.left ? left.width + 24 : 0) + (e.right ? right.width + 24 : 0) + (anyEar ? 8 : 0))
         // live text hangs under it: the capsule takes the panel's width family (as the notch with its ears does), so
@@ -551,8 +551,8 @@ final class Island: NSObject, IslandHosting {
             // the stills taken (⌥⇧A, the island's button) — a marker (⌥⇧M) is its own count, with a flag
             // while the pen is latched (⌥⇧D) it takes the clicks and Esc: the ear shows the pen instead
             let snaps = rec.snaps?.stills ?? 0, markers = rec.snaps?.markers ?? 0
-            right.set(rec.penSticky ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(symbol: "camera.fill", n: snaps, tint: nil)
-                : markers > 0 ? .count(symbol: "flag.fill", n: markers, tint: nil) : .level(rec.isPaused ? 0 : rec.micLevel))
+            right.set(rec.penSticky ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .camera, n: snaps, tint: nil)
+                : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : .level(rec.isPaused ? 0 : rec.micLevel))
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
             left.set(open ? .glyph(.mic, pulse: false) : .wave(VoiceInput.shared.levels))
@@ -602,7 +602,7 @@ final class Island: NSObject, IslandHosting {
                 right.set(.alert)
             } else if reviewCount > 0 {
                 // quieter than the cards' count: it says what waits in the inbox, the cards' count is what a click takes
-                right.set(.count(symbol: "tray.full.fill", n: reviewCount, tint: NSColor(white: 1, alpha: 0.6)))
+                right.set(.count(icon: .inbox, n: reviewCount, tint: NSColor(white: 1, alpha: 0.6)))
             } else {
                 right.set(.none)
             }
@@ -615,15 +615,15 @@ final class Island: NSObject, IslandHosting {
         let y = geo.top + geo.row / 2
         if geo.notch {
             let l = geo.cx - geo.notchW / 2, r = geo.cx + geo.notchW / 2
-            left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: l - Island.earW, inner: l), y: y), now: now)
-            right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: r + Island.earW, inner: r), y: y), now: now)
+            left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: l - earWidth, inner: l), y: y), now: now)
+            right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: r + earWidth, inner: r), y: y), now: now)
         } else {
             left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: rect.minX, inner: nil), y: y), now: now)
             right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: rect.maxX, inner: nil), y: y), now: now)
         }
         let e = earsWanted
         // ears only show while the shape is wide enough to hold them
-        let roomy = geo.notch ? w.value > geo.notchW + Island.earW : w.value > 110
+        let roomy = geo.notch ? w.value > geo.notchW + earWidth : w.value > 110
         left.layer.opacity = e.left && roomy ? 1 : 0
         right.layer.opacity = e.right && roomy ? 1 : 0
     }
@@ -915,6 +915,14 @@ final class Island: NSObject, IslandHosting {
         sentUntil = CACurrentMediaTime() + 1.6
         emit(["event": "island_sent"])
         refresh()
+    }
+
+    /// Each ear's width on a notch: 56 pt, wider while "Sent" shows in the right ear (both sides, so the shape stays
+    /// centred on the notch) — the word keeps the 14 pt the timer and the counts keep, instead of being pushed 4 pt
+    /// from the rounded corner (IslandLayout.earWidth; v0.9 dogfood).
+    private var earWidth: CGFloat {
+        if case .done = right.content { return IslandLayout.earWidth(content: right.width) }
+        return Island.earW
     }
 
     /// Dictation is still at work for the user after its take: sending (a queued Return) or saying "Sent".

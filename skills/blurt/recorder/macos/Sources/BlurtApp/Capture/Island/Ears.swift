@@ -43,8 +43,8 @@ final class EarSlot {
     enum Content: Equatable {
         case none
         case recording(paused: Bool, time: String)
-        /// a count with an SF Symbol; `tint` colours both (a quieter count: white at 60 %)
-        case count(symbol: String, n: Int, tint: NSColor?)
+        /// a count with one of our line icons; `tint` colours both (a quieter count: white at 60 %)
+        case count(icon: BlurtIcon, n: Int, tint: NSColor?)
         /// the hanging cards waiting (the left ear): the plain stack glyph and its count in mint (the cards' clasp
         /// colour), so it never reads like the inbox's tray count beside it (white at 60 %) — a mint dot on the glyph's
         /// top edge read as a jar's lid at 11 pt
@@ -176,13 +176,13 @@ final class EarSlot {
             icon.isHidden = false
             x += size + 4
         }
-        func sym(_ name: String, _ size: CGFloat, color: NSColor = NSColor(white: 1, alpha: 0.85)) {
-            guard let img = symbolImage(name, size: size, color: color) else { return }
-            let s = CGSize(width: CGFloat(img.width) / 2, height: CGFloat(img.height) / 2)
-            icon.contents = img
-            icon.frame = CGRect(x: x, y: -s.height / 2, width: s.width, height: s.height)
+        // a count's glyph: our line family, as the dictation glyphs beside it (v0.9 dogfood: a filled SF tray at 11 pt
+        // opposite the line keyboard read as a blob — two icon families in one 20 pt strip)
+        func line(_ ic: BlurtIcon, color: NSColor) {
+            icon.contents = ic.cgImage(size: 12, scale: 2, color: color.cgColor, weight: 1.2)
+            icon.frame = CGRect(x: x, y: -6, width: 12, height: 12)
             icon.isHidden = false
-            x += s.width + 4
+            x += 12 + 4
         }
         switch c {
         case .none: break
@@ -199,11 +199,11 @@ final class EarSlot {
             }
             x = 13
             text(time, color: paused ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.95))
-        case .count(let symbol, let n, let tint):
-            sym(symbol, 11, color: tint ?? NSColor(white: 1, alpha: 0.8))
+        case .count(let ic, let n, let tint):
+            line(ic, color: tint ?? NSColor(white: 1, alpha: 0.8))
             text(Loc.number(n), color: tint ?? NSColor(white: 1, alpha: 0.92))
         case .cards(let n):
-            sym("rectangle.stack.fill", 11, color: NSColor(white: 1, alpha: 0.85))
+            line(.stack, color: NSColor(white: 1, alpha: 0.85))
             text(Loc.number(n), color: BrandColor.Island.fill)
         case .level(let v):
             drawLevel(v)

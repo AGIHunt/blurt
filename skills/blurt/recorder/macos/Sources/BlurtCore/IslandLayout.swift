@@ -42,6 +42,10 @@ public enum IslandLayout {
         return side == .left ? outer + inset : outer - inset - width
     }
 
+    /// An ear wide enough for `content` with the full inset on its outer side and 2 pt clear of the notch: never
+    /// narrower than `earWidth` (the "Sent" moment widens it rather than squeezing the word against the corner).
+    public static func earWidth(content: CGFloat) -> CGFloat { max(earWidth, ceil(content) + earInset + 2) }
+
     /// The narrowest a toast's shape is: the notch with both ears, or the capsule's minimum.
     public static func toastFloor(notchWidth: CGFloat?) -> CGFloat {
         notchWidth.map { $0 + 2 * earWidth } ?? capsuleToastWidth

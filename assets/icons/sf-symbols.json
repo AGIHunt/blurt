@@ -162,6 +162,12 @@
     ],
     "bell": [
       "bell"
+    ],
+    "flag": [
+      "flag"
+    ],
+    "stack": [
+      "rectangle.stack"
     ]
   },
   "nearest": {
