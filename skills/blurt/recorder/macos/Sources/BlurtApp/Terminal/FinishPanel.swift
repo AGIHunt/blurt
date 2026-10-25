@@ -108,7 +108,7 @@ struct FinishView: View {
             }
             switch m.phase {
             case .loading:
-                HStack { ProgressView().controlSize(.small); Text(TL("finish.loading")).foregroundStyle(.secondary) }
+                HStack { BrandSpinnerView(); Text(TL("finish.loading")).foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, minHeight: 120)
                 HStack { Spacer(); Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction) }
             case .failed(let why):
@@ -224,7 +224,7 @@ struct FinishView: View {
                 Button(TL("finish.discard"), role: .destructive) { confirmDiscard = true }.disabled(busy != nil)
                 Button(TL("finish.keep")) { Task { await m.run("keep") } }.disabled(busy != nil).help(TL("finish.keep.help"))
                 Spacer()
-                if let b = busy { ProgressView().controlSize(.small).help(TL("finish.working.\(b)")) }
+                if let b = busy { BrandSpinnerView().help(TL("finish.working.\(b)")) }
                 Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction).disabled(busy != nil)
                 Button(TL("finish.pr")) { Task { await m.run("pr") } }.disabled(busy != nil || m.empty).help(TL("finish.pr.help"))
                 // the primary, drawn as one (brand) — on ⌘↩, not a bare Return, since it changes the base branch

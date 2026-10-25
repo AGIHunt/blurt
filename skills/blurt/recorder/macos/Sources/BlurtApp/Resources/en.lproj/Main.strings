@@ -5,7 +5,7 @@
 "app.agent.list_sep" = ", ";
 "app.agent.can_be_used" = " can’t be used";
 "app.agent.checking" = "checking…";
-"app.agent.configured_can_verify_advance" = "set up (can’t be checked in advance)";
+"app.agent.configured_can_verify_advance" = "set up (checked when it’s first used)";
 "app.agent.failed" = "failed";
 "app.agent.isn_installed" = " isn’t installed";
 "app.agent.isn_logged" = " isn’t signed in";
@@ -287,6 +287,10 @@
 "main.misc.by_codex" = "Fixed by Codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
 "main.misc.fixed" = " · fixed";
+"main.misc.idea" = "Idea";
+"main.misc.issue" = "Issue";
+"main.misc.note" = "Note";
+"main.misc.task" = "Task";
 
 "main.move.failed" = "Couldn’t move the items";
 "main.move.undo_name" = "Move to %@";
@@ -502,7 +506,8 @@
 "main.dictation.info.polish.get" = "Download…";
 "app.toast.welcome_no_dictation" = "Blurt is in the menu bar · %1$@ to snap · %2$@ to record";
 "app.toast.change_shortcut" = "Change…";
-"app.config.unreadable" = "Blurt can’t read its settings file, so changes aren’t saved";
+"app.config.unreadable" = "Can’t read config.json · using defaults, can’t save";
+"app.config.not_saved" = "That change wasn’t saved · config.json can’t be read";
 "app.contract.skill_older" = "The Blurt skill is older than this app";
 "app.contract.app_older" = "The Blurt skill is newer than this app";
 "app.contract.how" = "How to Update";
@@ -548,3 +553,8 @@
 "main.banner.desktop" = "In the %@ desktop app · the agent reports progress";
 "main.banner.desktop.no_mcp" = "In the %@ desktop app · no progress comes back here: mark it done when it is";
 "main.banner.go_desktop" = "Go to %@";
+"app.toast.welcome_not_set_up" = "Blurt is in the menu bar · dictation isn’t set up yet";
+"app.toast.welcome_not_set_up.action" = "Set Up…";
+"app.config.show" = "Show File";
+"app.models.offline" = "The speech models finish once you’re online";
+"main.speech.recommended_recordings" = "A better model for recordings · %@";

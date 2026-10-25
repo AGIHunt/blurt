@@ -398,6 +398,9 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
 }
 
 /// A pane in the sidebar: its symbol, its name, and while searching how many of its settings match (dimmed at none).
+/// Like the main window's sidebar (system.md §3.3): the name and symbol are not the cell's textField / imageView, which
+/// a source list repaints in the accent when selected — the selected pane reads in ink on its highlight, never green
+/// text. The symbol has no description of its own (the cell's label says the pane once).
 final class SettingsPaneCell: NSTableCellView {
     let icon = NSImageView()
     let title = NSTextField(labelWithString: "")
@@ -413,6 +416,8 @@ final class SettingsPaneCell: NSTableCellView {
         badge.setContentHuggingPriority(.required, for: .horizontal)
         // not wired as imageView / textField: the source list would repaint them in the accent when selected — the
         // name stays labelColor on the brand tint, as in the main window's sidebar (system.md §3.3)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.cell)
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -429,10 +434,12 @@ final class SettingsPaneCell: NSTableCellView {
     /// count: nil = not searching; 0 = no match here (dimmed)
     func set(title t: String, symbol: String, count: Int?) {
         title.stringValue = t
-        icon.image = Look.symbol(symbol, t, size: 13)
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        icon.setAccessibilityElement(false)
+        title.setAccessibilityElement(false)
         let dim = count == 0
         title.textColor = dim ? .tertiaryLabelColor : .labelColor
-        icon.contentTintColor = dim ? .tertiaryLabelColor : nil
+        icon.contentTintColor = dim ? .tertiaryLabelColor : .secondaryLabelColor
         badge.text = count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
         badge.mint = false
         setAccessibilityLabel([t, badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))

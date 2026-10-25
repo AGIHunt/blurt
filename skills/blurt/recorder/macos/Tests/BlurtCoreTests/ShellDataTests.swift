@@ -43,7 +43,7 @@ final class ShellDataTests: XCTestCase {
 
     func testUnreadableFileIsNeverOverwritten() {
         let u = dir.appendingPathComponent("config.json")
-        let broken = "{\"record\": {\"hotkeys\": {\"snap\": \"opt+shift+A\"}},, }"
+        let broken = "{\"record\": {\"hotkeys\": {\"snap\": \"opt+shift+A\"}}, \"lang\" }"
         try! broken.write(to: u, atomically: true, encoding: .utf8)
         let c = Config(url: u)
         var told: [URL] = []
@@ -67,6 +67,91 @@ final class ShellDataTests: XCTestCase {
         try! #"{"lang": "en"}"#.write(to: u, atomically: true, encoding: .utf8)
         XCTAssertTrue(c.set("app.settings_pane", "general"))
         XCTAssertEqual(c["lang"] as? String, "en")
+    }
+
+    func testATrailingCommaReadsAsTheScriptsReadIt() {
+        // the hand edit's commonest slip: the app and the scripts (_common.parse_config_text) read it the same way
+        let u = dir.appendingPathComponent("config.json")
+        try! "{\"record\": {\"engine\": \"sck\", \"dictation\": {\"asr_model\": \"x\",},},\n\"lang\": \"en\",\n}\n"
+            .write(to: u, atomically: true, encoding: .utf8)
+        let c = Config(url: u)
+        XCTAssertTrue(c.readable)
+        XCTAssertEqual(c["record.dictation.asr_model"] as? String, "x")
+        XCTAssertEqual(c["lang"] as? String, "en")
+        // a comma inside a string is the user's; one before ] goes too; a BOM is fine
+        XCTAssertEqual(ConfigText.dropTrailingCommas(#"{"a": "x,}", "b": [1, 2, ], "c": "\",]"}"#), #"{"a": "x,}", "b": [1, 2 ], "c": "\",]"}"#)
+        XCTAssertEqual(ConfigText.parse(Data("\u{FEFF}{\"a\": 1,}".utf8))?["a"] as? Int, 1)
+        XCTAssertNil(ConfigText.parse(Data(#"{"a": 1 "b": 2}"#.utf8)))
+        XCTAssertNil(ConfigText.parse(Data("[1, 2]".utf8)))
+        // the same list as tests/test_shell_config.py: what one side reads, the other does
+        for t in [#"{"a": 1,}"#, #"{"a": [1,],}"#, #"{"a": 1,, }"#, "{\"a\": {\"b\": 2,},\n}"] {
+            XCTAssertNotNil(ConfigText.parse(Data(t.utf8)), t)
+        }
+        for t in [#"{"a": 1 "b": 2}"#, #"{"a": "#, #"{"a": 1,,"b": 2}"#, "[1]", "", #"{"a": NaN}"#, #"{"a": Infinity}"#,
+                  #"{"a": -Infinity}"#] {
+            XCTAssertNil(ConfigText.parse(Data(t.utf8)), t)
+        }
+        // a write normalises it and keeps everything
+        XCTAssertTrue(c.set("lang", "zh-Hans"))
+        XCTAssertEqual(Config(url: u)["record.engine"] as? String, "sck")
+    }
+
+    func testAnUnreadableFileIsSaidAtLaunchOnceAndReadsAsDefaults() {
+        let u = dir.appendingPathComponent("config.json")
+        try! #"{"app": {"onboarded": true}, "record": {"#.write(to: u, atomically: true, encoding: .utf8)
+        let c = Config(url: u)
+        var told: [URL] = []
+        c.onUnreadable = { told.append($0) }
+        XCTAssertFalse(c.readable)
+        XCTAssertNil(c["app.onboarded"], "every setting at its default — the app doesn't take that for a first run (readable)")
+        XCTAssertFalse(c.checkReadable())
+        XCTAssertEqual(told.count, 1, "said at launch, before any write")
+        var refused: [String] = []
+        c.onWriteRefused = { refused.append($0) }
+        XCTAssertFalse(c.set("lang", "en"))
+        XCTAssertEqual(told.count, 1, "the refused write doesn't copy it again")
+        XCTAssertEqual(refused, ["lang"], "but a refused write is still reported — the launch notice didn't use it up")
+        XCTAssertFalse(c.set("record.dictation.polish_timeout_ms", 900))
+        XCTAssertEqual(refused, ["lang", "record.dictation.polish_timeout_ms"], "each one: the app says it once per session")
+        // missing is fine (nothing to lose, a first run)
+        let fresh = Config(url: dir.appendingPathComponent("none.json"))
+        XCTAssertTrue(fresh.readable)
+        XCTAssertTrue(fresh.checkReadable())
+    }
+
+    func testTheSkillStaysWhereItWasWhenConfigBreaks() {
+        // a skill installed somewhere other than ~/.claude/skills/blurt (Codex, a custom path, a dev checkout)
+        let skill = dir.appendingPathComponent("my skill/blurt")
+        try! FileManager.default.createDirectory(at: skill.appendingPathComponent("scripts"), withIntermediateDirectories: true)
+        let u = dir.appendingPathComponent("config.json")
+        let defaults = UserDefaults(suiteName: "blurt-test-\(UUID().uuidString)")!
+        // readable: the config's skill_dir, remembered
+        let good = #"{"skill_dir": "\#(skill.path)", "record": {"countdown": 3}}"#
+        try! good.write(to: u, atomically: true, encoding: .utf8)
+        XCTAssertEqual(BlurtPaths.skillDir(config: Config(url: u), remembered: defaults).path, skill.path)
+        XCTAssertEqual(defaults.string(forKey: BlurtPaths.rememberedKey), skill.path)
+        // a missing brace further down: its skill_dir still stands whole in the text
+        try! #"{"skill_dir": "\#(skill.path)", "record": {"countdown": 3}"#.write(to: u, atomically: true, encoding: .utf8)
+        let broken = Config(url: u)
+        XCTAssertFalse(broken.readable)
+        XCTAssertEqual(BlurtPaths.skillDir(config: broken, remembered: UserDefaults(suiteName: "blurt-test-\(UUID().uuidString)")!).path,
+                       skill.path, "read from the text, nothing remembered")
+        // broken before skill_dir: the one a readable file named last time
+        try! #"{"record": {"countdown": 3 "skill_dir": "/elsewhere"}"#.write(to: u, atomically: true, encoding: .utf8)
+        XCTAssertEqual(BlurtPaths.skillDir(config: Config(url: u), remembered: defaults).path, skill.path)
+        // nothing to go by: the usual install location
+        XCTAssertEqual(BlurtPaths.skillDir(config: Config(url: u), remembered: UserDefaults(suiteName: "blurt-test-\(UUID().uuidString)")!),
+                       BlurtPaths.defaultSkillDir)
+    }
+
+    func testATopLevelStringIsFoundInABrokenFile() {
+        func find(_ t: String) -> String? { ConfigText.topLevelString("skill_dir", in: Data(t.utf8)) }
+        XCTAssertEqual(find(#"{"a": {"skill_dir": "/nested"}, "skill_dir": "/top" "#), "/top", "the top level only")
+        XCTAssertEqual(find(#"{"skill_dir": "/p\"q", "#), "/p\"q", "escapes decoded")
+        XCTAssertNil(find(#"{"skill_dir": 3,"#))
+        XCTAssertNil(find(#"{"x": "skill_dir", "y": 1"#), "a value is not a key")
+        XCTAssertNil(find(#"{"skill_dir": "/unclosed"#))
+        XCTAssertEqual(Config(url: dir.appendingPathComponent("none.json")).lenientString("skill_dir"), nil)
     }
 
     func testWriteWaitsForTheScriptsLock() {
@@ -246,7 +331,9 @@ final class LaunchQueueTests: XCTestCase {
         XCTAssertEqual(q.post(4, "permission", now: t0 + 2), .held)
         XCTAssertEqual(q.post(7, "welcome again", now: t0 + 2), .held)
         XCTAssertTrue(shown.isEmpty)
+        XCTAssertTrue(q.collecting, "held: a word now would repeat what goes up in a moment (config: the write-refused line)")
         q.flush()
+        XCTAssertFalse(q.collecting)
         XCTAssertEqual(shown, ["welcome"], "the highest; between equals the first posted")
         XCTAssertEqual(Set(dropped), ["model", "permission", "welcome again"])
     }
@@ -259,5 +346,20 @@ final class LaunchQueueTests: XCTestCase {
         XCTAssertEqual(q.post(1, "later", now: t0 + 91), .shown, "after the window it is an ordinary toast")
         XCTAssertEqual(shown, ["job", "later"])
         XCTAssertEqual(dropped, ["config"])
+    }
+
+    func testAMessageNoLongerTrueIsDroppedBeforeThePick() {
+        // "Finishing the speech models" held at launch, then the download stopped (offline): not shown — the next
+        // message in rank goes up instead
+        var stillDownloading = true
+        let q = LaunchQueue<String>(hold: 3, window: 90, show: { self.shown.append($0) }, dropped: { m, _ in self.dropped.append(m) },
+                                    stale: { $0 == "models" && !stillDownloading })
+        q.start(now: t0)
+        q.post(7, "models", now: t0)
+        q.post(1, "model", now: t0)
+        stillDownloading = false
+        q.flush()
+        XCTAssertEqual(shown, ["model"])
+        XCTAssertEqual(dropped, ["models"])
     }
 }

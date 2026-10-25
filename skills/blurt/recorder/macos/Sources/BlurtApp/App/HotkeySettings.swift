@@ -213,6 +213,8 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     var window: NSWindow?
     /// The recorder fields on screen now, by action (`shortcut` / `recordkey` test hooks).
     var fields: [HotAction: ShortcutField] = [:]
+    /// The window the pane shows in: Settings, or the standalone one in a build without it.
+    var shortcutsWindow: NSWindow? { fields.values.compactMap(\.window).first ?? window }
     @Published var drawKey = "control"
     /// why the field just refused a key ("⌘C is Copy in every app — add ⌥ or ⌃"), shown under the action's name
     @Published var refusals: [HotAction: String] = [:]
@@ -297,7 +299,13 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         objectWillChange.send()
     }
 
+    /// Settings → Shortcuts — the one place to change keys. The standalone window is only for a build without the
+    /// Settings window (there it is the same pane).
     func show() {
+        if let s = AppEnvironment.settings {
+            s.show(pane: SettingsPane.shortcuts.rawValue)
+            return
+        }
         if window == nil {
             let host = NSHostingController(rootView: ShortcutsPane())
             host.sizingOptions = []

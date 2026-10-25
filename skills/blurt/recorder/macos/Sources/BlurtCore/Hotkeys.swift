@@ -278,12 +278,21 @@ public enum HotkeyResult: Equatable {
         default: return false
         }
     }
+    /// The menu may show this key next to its row: it is registered (a macOS shortcut is registered too, macOS may
+    /// win). Taken by another Blurt, refused, a duplicate or reserved: the row shows no key — pressing it does nothing.
+    public var worksInMenu: Bool {
+        switch self {
+        case .ok, .system: return true
+        default: return false
+        }
+    }
+
     public var text: String {
         switch self {
         case .ok, .notHere: return ""
         case .off: return Loc.t("capture.keys.state_off", table: "Capture")
         case .duplicate(let a): return Loc.t("capture.keys.duplicate", table: "Capture", a.title)
-        case .failed(let st): return Loc.t("capture.keys.failed", table: "Capture", "\(st)")
+        case .failed: return Loc.t("capture.keys.failed", table: "Capture")      // the OSStatus goes to the log, not here
         case .taken(let pid): return Loc.t("capture.keys.taken", table: "Capture", "\(pid)")
         case .system: return Loc.t("capture.keys.system", table: "Capture")
         case .reserved: return Loc.t("capture.keys.reserved_state", table: "Capture")
@@ -475,9 +484,12 @@ public final class HotkeyCenter {
         let sig = conflictSignature
         guard !c.isEmpty, Config.shared["record.hotkeys_warned"] as? String != sig else { return }
         Config.shared.set("record.hotkeys_warned", sig)
-        let keys = ListFormatter.localizedString(byJoining: c.map { label($0) })
+        // the first line is what the island shows: one key by name, several by how many (the list is in Settings —
+        // eleven names never fit the island's row)
         let first = c[0], why = states[first]?.text ?? ""
-        toast(Loc.t("capture.keys.wont_work", table: "Capture", keys) + "\n"
+        let head = c.count == 1 ? Loc.t("capture.keys.wont_work", table: "Capture", label(first))
+            : Loc.t("capture.keys.wont_work_many", table: "Capture", "\(c.count)")
+        toast(head + "\n"
               + (c.count == 1 ? Loc.t("capture.keys.why", table: "Capture", label(first), why) : Loc.t("capture.keys.taken_or_twice", table: "Capture"))
               + Loc.t("capture.keys.change_it", table: "Capture"))
     }

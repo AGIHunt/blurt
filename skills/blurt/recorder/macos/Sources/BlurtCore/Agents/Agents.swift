@@ -228,6 +228,9 @@ public struct AgentModels: Decodable {
     public var processing: Processing?
 
     enum CodingKeys: String, CodingKey { case id, models, cheapest, efforts, processing, cliDefault = "cli_default" }
+
+    /// A model's name from the agent's own list (nil when it isn't listed: the caller says "default", not the id).
+    public func name(_ id: String?) -> String? { id.flatMap { i in models.first { $0.id == i }?.name } }
 }
 
 /// `agents.py command`

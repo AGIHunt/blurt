@@ -107,7 +107,7 @@ class Login(unittest.TestCase):
 
     def test_check_not_installed(self):
         r = agents.check(self.defs["gemini"], env={"PATH": str(self.home)}, lang="zh")
-        self.assertEqual((r["state"], r["why"]), ("not_installed", "没安装"))
+        self.assertEqual((r["state"], r["why"]), ("not_installed", "未安装"))
         self.assertIn("npm", r["fix"])
         self.assertFalse(agents.usable("logged_out"))
         self.assertTrue(agents.usable("configured"))

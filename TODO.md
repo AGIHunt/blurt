@@ -375,3 +375,22 @@
   - Codex hooks: the `blurt-hook` shim is sh only — Windows needs a `.cmd` / PowerShell shim so the hook command stays
     byte-stable there too (agents.py `hook_command` keeps the old interpreter path on `os.name == "nt"`).
   - Shortcuts panel on Ctrl+/ (not Ctrl+Shift+/); jobs strip "Running"; quit alert with Cancel as the default.
+- [ ] Shell v0.9 pass-2 fixes (Mac, branch fxshell) — the Tauri app's (Windows / Linux) counterparts:
+  - Offline / blocked-network first run as one state (BlurtCore `SpeechSetup`): the setup flow's models step shows one
+    sentence and one Try Again (warm-up → list → download), Skip for Now instead of Next, no Download button with
+    nothing to download on Try it; the dictation key refuses before listening when `transcribe.py dictation-models`
+    can't run ("isn't set up yet · Set Up…"); the tray menu's first row says why dictation can't work; retry on
+    the OS's "back online" (Windows `NetworkListManager` / Linux NetworkManager), only on offline → online.
+  - config.json: read with trailing commas forgiven, exactly as `_common.parse_config_text` (Rust side); an unreadable
+    file = defaults, a `config.json.bad-<time>` copy, one launch line with Show File, never a first-run welcome.
+  - Model downloads: accept only the running model's own progress lines (total within ±50 % of its size, never
+    backwards; `  vad N/M MB` lines are not the model's), "to go" = batch total − what came down, a launch batch
+    that is offline keeps model-downloads.json and carries on when online; the resume line only once it moves.
+  - Tray menu shows a shortcut only when it is registered; Settings: download-aware model rows, filled radio only
+    for an installed model, Storage names from `asr_models.json` / `polish_models.json`, an unknown model folder
+    as an older model (Move to Trash), project remove with Undo, open-at-login with the test-build guard.
+  - Review follow-ups: the scripts' location must not come from an unreadable config.json alone (read `skill_dir`
+    from the text, else the last good one); a refused settings write says so once per session; "offline" only when
+    the OS says so (a crash or a full disk online is a normal failure with Try Again; the setup's blocked sentence
+    blames the network only when offline); a timeout of `dictation-models` doesn't block dictation; Try Again shows
+    Checking… for ≥ 1 s and says when it tried; a retry the network's return started stays quiet if it fails again.

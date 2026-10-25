@@ -190,9 +190,17 @@ struct HelperPanelView: View {
             if let k = g.current {
                 stepView(k)
             } else if let f = g.finished {
-                HStack(spacing: 8) {
-                    Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 15, weight: .semibold)).foregroundStyle(Color.brandOk)
-                    Text(f).font(.headline).fixedSize(horizontal: false, vertical: true)
+                // the same ok disc as the checklist's rows (one check style), at the headline's size
+                // a short headline; what comes next (if anything) a quieter line under it — not three bold lines
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    StatusDot(tone: .good).scaleEffect(16 / StatusDot.size).frame(width: 16, height: 16)
+                        .alignmentGuide(.firstTextBaseline) { d in d[.bottom] - 3 }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(f).font(.system(size: 13, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                        if let d = g.finishedDetail {
+                            Text(d).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
             }
             if g.steps.count > 1 { checklist }

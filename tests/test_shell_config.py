@@ -33,9 +33,100 @@ class ConfigAndPrivacy(unittest.TestCase):
     def test_unreadable_config_is_left_alone(self):
         p = self.home / "config.json"
         p.write_text('{"record": {,, }')
-        with self.assertRaises(json.JSONDecodeError):
-            _common.update_global_config({"lang": "en"})
+        import contextlib
+        import io
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(_common.ConfigUnreadable) as e:
+                _common.update_global_config({"lang": "en"})
+            self.assertEqual(e.exception.code, "config_unreadable")       # a clean JSON error for the CLIs, no traceback
+            # a write that is only a convenience (hardware fingerprint, last region, skill_dir, a model to use): skipped
+            self.assertFalse(_common.save_config_if_readable({"lang": "en"}))
         self.assertEqual(p.read_text(), '{"record": {,, }')
+        # record.py's bookkeeping (where the skill is) goes the same way: a CLI recording isn't stopped by it
+        import record
+        with contextlib.redirect_stderr(io.StringIO()):
+            record.remember_skill_dir()
+        self.assertEqual(p.read_text(), '{"record": {,, }')
+        p.write_text('{}')
+        self.assertTrue(_common.save_config_if_readable({"lang": "en"}))
+
+    def test_a_trailing_comma_reads_like_the_app_reads_it(self):
+        # a hand edit's most common slip: the app (Swift) reads it, so the scripts must too — dictation, voice notes
+        # and processing went down on it before
+        p = self.home / "config.json"
+        p.write_text('{"record": {"engine": "sck", "dictation": {"asr_model": "x",},},\n"lang": "en",\n}\n')
+        self.assertEqual(_common.global_config(), {"record": {"engine": "sck", "dictation": {"asr_model": "x"}}, "lang": "en"})
+        self.assertEqual(_common.read_global_config()[1], True)
+        # a comma inside a string is the user's, untouched; one before ] goes too
+        self.assertEqual(_common.parse_config_text('{"a": "x,}", "b": [1, 2, ], "c": "\\",]"}'),
+                         {"a": "x,}", "b": [1, 2], "c": '",]'})
+        self.assertIsNone(_common.parse_config_text('{"a": 1 "b": 2}'))
+        self.assertIsNone(_common.parse_config_text('[1, 2]'))
+        # the same list as ShellDataTests.testATrailingCommaReadsAsTheScriptsReadIt: what one side reads, the other does
+        for t in ['{"a": 1,}', '{"a": [1,],}', '{"a": 1,, }', '{"a": {"b": 2,},\n}']:
+            self.assertIsNotNone(_common.parse_config_text(t), t)
+        # NaN / Infinity: Python's json takes them, the app's JSONSerialization doesn't — so neither does
+        for t in ['{"a": 1 "b": 2}', '{"a": ', '{"a": 1,,"b": 2}', '[1]', '', '{"a": NaN}', '{"a": Infinity}',
+                  '{"a": -Infinity}']:
+            self.assertIsNone(_common.parse_config_text(t), t)
+        # a write normalises it (and keeps everything)
+        _common.update_global_config({"lang": "zh"})
+        self.assertEqual(json.loads(p.read_text())["record"]["engine"], "sck")
+
+    def test_a_cli_never_tracebacks_on_an_unreadable_config(self):
+        # the app runs `transcribe.py auto --apply` at every launch: a hand-edit slip must not turn it into a traceback
+        import subprocess
+        (self.home / "config.json").write_text('{"asr": {"auto": true}, "record": {')
+        p = subprocess.run([sys.executable, str(ROOT / "skills/blurt/scripts/transcribe.py"), "auto", "--apply"],
+                           capture_output=True, text=True, timeout=120, env={**os.environ, "BLURT_HOME": str(self.home)})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("Traceback", p.stderr)
+        out = json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual((out["ok"], out.get("applied"), out.get("saved")), (True, False, False))
+        self.assertIn('"config_unreadable"', p.stderr)
+        self.assertEqual((self.home / "config.json").read_text(), '{"asr": {"auto": true}, "record": {')
+
+    def test_progress_is_one_line_and_one_count_for_every_download(self):
+        import polish
+        import transcribe
+        self.assertIs(transcribe.progress_line, _common.progress_line)
+        self.assertIs(polish.progress_line, _common.progress_line)
+        self.assertEqual(_common.progress_line(812 * 2**20, 2468 * 2**20), "  812.0/2468.0 MB")
+        # a blob set to its full length up front has landed nothing yet
+        d = self.home / "blob-dir"
+        d.mkdir()
+        with open(d / "x.incomplete", "wb") as f:
+            f.truncate(64 * 2**20)
+        (d / "y").write_bytes(b"z" * 8192)
+        self.assertLess(_common.landed_in(d), 2**20)
+        self.assertGreaterEqual(_common.landed_in(d), 8192)
+
+    def test_unreadable_config_reads_as_defaults_and_says_so_once(self):
+        import contextlib
+        import io
+        p = self.home / "config.json"
+        p.write_text('{"record": {"engine": ')
+        _common._CONFIG_WARNED.discard(str(p))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(_common.global_config(), {})       # never raises: every setting at its default
+            self.assertEqual(_common.read_global_config(), ({}, False))
+        lines = [json.loads(x) for x in err.getvalue().splitlines() if x.strip()]
+        self.assertEqual([x["event"] for x in lines], ["config_unreadable"])      # once per process
+        bak = Path(lines[0]["backup"])
+        self.assertTrue(bak.name.startswith("config.json.bad-"))
+        self.assertEqual(bak.read_text(), p.read_text())
+        # the same bytes are not copied again (the app makes the same copy: BlurtCore Config.refuse)
+        _common._CONFIG_WARNED.discard(str(p))
+        with contextlib.redirect_stderr(io.StringIO()):
+            _common.global_config()
+        self.assertEqual(len(list(self.home.glob("config.json.bad-*"))), 1)
+        self.assertEqual(p.read_text(), '{"record": {"engine": ')      # the file itself is the user's to fix
+
+    def test_swift_reads_config_by_the_same_rule(self):
+        swift = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtCore/Config.swift").read_text()
+        self.assertIn("ConfigText.parse", swift)
+        self.assertIn("dropTrailingCommas", swift)
 
     def test_update_waits_for_the_apps_lock(self):
         lock = self.home / ".config.lock"
@@ -96,6 +187,42 @@ class ShellRules(unittest.TestCase):
         house = (self.APP / "App/Housekeeping.swift").read_text()
         self.assertNotIn("island?.toast(", house, "launch messages go through LaunchMessages")
         self.assertNotIn("island.ask(", house, "launch messages go through LaunchMessages")
+
+    def test_open_at_login_has_one_switch_with_the_test_guard(self):
+        # Settings → General went straight to SMAppService: a scratch build toggling it landed in the user's Login Items
+        general = (self.APP / "Settings/GeneralPane.swift").read_text()
+        self.assertNotIn("SMAppService.mainApp.register", general)
+        self.assertIn('LoginItem.set(on, via: "settings")', general)
+        onboarding = (self.APP / "Onboarding/Onboarding.swift").read_text()
+        self.assertIn("if SystemAccess.testMode { testState = on; return nil }", onboarding)
+
+    def test_one_spinner_everywhere(self):
+        # system.md §3.3: the brand arc (BrandSpinnerView), never the grey system spokes — the Lab's record button
+        # (white on ink, developer-only) is the one exception
+        bare = []
+        for f in self.APP.rglob("*.swift"):
+            for i, line in enumerate(f.read_text().splitlines(), 1):
+                if "ProgressView()" in line and "BrandViews.swift" not in str(f) and ".tint(" not in line:
+                    bare.append(f"{f.relative_to(self.APP)}:{i}")
+        self.assertEqual(bare, [])
+
+    def test_the_menu_advertises_only_working_keys(self):
+        src = (self.APP / "App/Hotkeys.swift").read_text()
+        body = src[src.index("func showHotkey"):]
+        self.assertLess(body.index("worksInMenu"), body.index("keyEquivalent = k"))
+
+    def test_the_task_kind_is_daiban_wherever_a_kind_is_meant(self):
+        zh = (self.APP / "Resources/zh-Hans.lproj/Main.strings").read_text()
+        self.assertIn('"main.keys.kind" = "种类：问题、想法、笔记、待办";', zh)
+        self.assertIn('"main.misc.task" = "待办";', zh)
+
+    def test_agent_states_have_one_wording(self):
+        # 未安装 / 未登录 on every surface (the app's strings and agents.py's), never 没安装 / 没登录 beside them
+        res = self.APP / "Resources/zh-Hans.lproj"
+        texts = [p.read_text() for p in res.glob("*.strings")] + [(ROOT / "skills/blurt/scripts/agents.py").read_text()]
+        import re
+        for t in texts:      # a state's label (a whole string), not prose such as "没登录或额度用完时…"
+            self.assertEqual(re.findall(r'"\s*没(?:安装|登录)"', t), [])
 
     def test_each_setting_in_one_pane(self):
         general = (self.APP / "Settings/GeneralPane.swift").read_text()

@@ -197,6 +197,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         FilePrivacy.lockDown()          // Blurt's data is this account's alone (0700 / 0600)
         Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
+        Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
+        Config.shared.checkReadable()   // a hand edit gone wrong: said at launch (defaults until fixed), not at the first write
+        watchNetwork()
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
         writeAppInfo()
@@ -235,7 +238,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
         MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on
         watchOtherInstances()
-        if recordConfig()["welcomed"] == nil, !assisted {
+        // an unreadable config.json reads as empty: that's no first launch (its own line says what happened)
+        if Config.shared.readable, recordConfig()["welcomed"] == nil, !assisted {
             postWelcome()
         } else {
             // a shortcut another app holds: the first line, and the way to change it (the reason is in Settings)
@@ -267,7 +271,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in
             await DictationModels.shared.load()         // has dictation a speech model?
             let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
-                : DictationModels.shared.asr == nil ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
+                : DictationModels.shared.asrUnreadable ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
@@ -282,6 +286,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_setup.action")) { Dictation.shared.openSetup(from: "welcome") }
             case .downloadModel?:
                 t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_no_model.action")) { Dictation.getSpeechModel(from: "welcome") }
+            case .setUpDictation?:
+                t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_not_set_up.action")) { Onboarding.shared.show(step: 2) }
             case .changeShortcut?:
                 t = Island.Toast(text: text, actionTitle: T("app.toast.change_shortcut")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
@@ -291,11 +297,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             t.seconds = 7
             emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts])
-            LaunchMessages.shared.post(.welcome, t) {
+            LaunchMessages.shared.post(.welcome, t, shown: {
                 setRecordConfig("welcomed", true)
                 if saysConflicts { Hotkeys.shared.markWarned() }     // named here: no second line for them
-            }
+            })
         }
+    }
+
+    /// What waited for the network carries on once the Mac is back online: a model download a launch kept, the
+    /// assistant's speech setup, the model list dictation couldn't read.
+    func watchNetwork() {
+        let w = NetworkWatch.shared
+        w.onBackOnline { MainActor.assumeIsolated { ModelDownloads.shared.backOnline() } }
+        w.onBackOnline { Onboarding.shared.backOnline() }
+        w.onBackOnline {
+            MainActor.assumeIsolated { if DictationModels.shared.asrUnreadable { Dictation.shared.refreshSpeechModels() } }
+        }
+        w.start()
     }
 
     /// Another Blurt (a dev build next to a release, `open -n`) quitting: its hotkeys and the dictation key come over
@@ -746,13 +764,36 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if busy { _ = add(T("app.menu.selecting"), nil); return }
-        // dictation is on but can't hear its key (no Input Monitoring): the first row until the tap works
-        if Dictation.shared.needsSetup {
+        // dictation can't work yet: the first row says why and leads to the fix (BlurtCore SpeechSetup.menuRow) — its
+        // key isn't heard (permissions), its speech tools aren't set up, or it has no speech model
+        let dm = MainActor.assumeIsolated { DictationModels.shared }
+        let row = MainActor.assumeIsolated {
+            SpeechSetup.menuRow(enabled: Dictation.enabled, deferred: Dictation.shared.deferredTo != nil,
+                                needsPermissions: Dictation.shared.needsSetup, ready: dm.dictationReady,
+                                readable: !dm.asrUnreadable, downloading: ModelDownloads.shared.active)
+        }
+        switch row {
+        case .turnOn?:
             let d = add(T("dictation.menu.turn_on"), #selector(mDictationSetup))
             d.image = App.warningImage
             d.toolTip = T("dictation.menu.turn_on.tip", Dictation.keyInline)
             if #available(macOS 14.4, *) { d.subtitle = T("dictation.menu.turn_on.subtitle", Dictation.keyInline) }
             menu.addItem(.separator())
+        case .setUp?:
+            let d = add(T("dictation.menu.set_up"), #selector(mDictationSetUpSpeech))
+            d.image = App.warningImage
+            if #available(macOS 14.4, *) { d.subtitle = T("dictation.menu.set_up.subtitle") }
+            menu.addItem(.separator())
+        case .getModel?:
+            let size = MainActor.assumeIsolated { dm.dictationJob.map { modelSize($0.sizeMB) } }
+            let d = add(T("dictation.menu.get_model"), #selector(mDictationGetModel))
+            d.image = App.warningImage
+            if #available(macOS 14.4, *) {
+                d.subtitle = size.map { T("dictation.menu.get_model.subtitle", $0) } ?? T("dictation.menu.get_model.subtitle_plain")
+            }
+            menu.addItem(.separator())
+        case nil:
+            break
         }
         // a model download runs: where it is (live while the menu is open), with Show and Stop
         if let title = MainActor.assumeIsolated({ ModelDownloads.shared.menuTitle }) {
@@ -867,6 +908,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mOpenJob(_ it: NSMenuItem) { (it.representedObject as? String).map { AppEnvironment.mainWindow?.reveal(job: $0) } }
     @objc func mSettings() { AppEnvironment.settings?.show(pane: nil) }
     @objc func mDictationSetup() { Dictation.shared.openSetup(from: "menu") }
+    @objc func mDictationSetUpSpeech() { Onboarding.shared.show(step: 2) }
+    @objc func mDictationGetModel() { Dictation.getSpeechModel(from: "menu") }
     @objc func mShowDownloads() { MainActor.assumeIsolated { ModelDownloads.showProgress() } }
     @objc func mStopDownloads() { MainActor.assumeIsolated { ModelDownloads.shared.stop() } }
     @objc func mContractHelp() { Housekeeping.contractHelp() }
@@ -925,14 +968,30 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hudToast(text, seconds: seconds, icon: icon)
     }
 
-    /// Settings can't be saved: config.json doesn't parse (a hand edit?). It was copied aside; the file stays as it is.
+    /// config.json doesn't parse (a hand edit?): Blurt and its scripts run on the defaults until it is fixed, and
+    /// changes can't be saved. It was copied aside; the file stays as it is. One line at launch, with Show File.
     static func configUnreadable(_ backup: URL) {
         emit(["event": "config_unreadable", "backup": backup.path])
-        var t = Island.Toast(text: T("app.config.unreadable"), actionTitle: T("action.reveal_in_finder")) {
+        var t = Island.Toast(text: T("app.config.unreadable"), actionTitle: T("app.config.show")) {
             NSWorkspace.shared.activateFileViewerSelecting([BlurtPaths.config])
         }
         t.seconds = 10
         LaunchMessages.shared.post(.config, t)
+    }
+
+    /// A setting couldn't be saved because config.json doesn't parse: once per session, an ordinary line (what the
+    /// user just did — the launch line may be long gone, and a launch message would be dropped by then). Not while
+    /// the launch's messages are held: the launch line says it in a moment ("can't save").
+    private static var writeRefusedSaid = false
+    static func configWriteRefused(_ key: String) {
+        emit(["event": "config_write_refused", "key": key, "said": !writeRefusedSaid && !LaunchMessages.shared.holding])
+        guard !writeRefusedSaid, !LaunchMessages.shared.holding else { return }
+        writeRefusedSaid = true
+        var t = Island.Toast(text: T("app.config.not_saved"), actionTitle: T("app.config.show")) {
+            NSWorkspace.shared.activateFileViewerSelecting([BlurtPaths.config])
+        }
+        t.seconds = 8
+        island.toast(t)
     }
 
     // tiny, non-blocking toast under the menu bar (no notification permission needed) — only without the island

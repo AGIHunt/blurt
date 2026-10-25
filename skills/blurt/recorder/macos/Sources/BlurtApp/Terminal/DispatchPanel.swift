@@ -368,7 +368,7 @@ struct DispatchView: View {
             if case .failed(let why) = m.phase { failedCallout(why) }
 
             HStack {
-                if m.phase == .checking || m.phase == .starting { ProgressView().controlSize(.small) }
+                if m.phase == .checking || m.phase == .starting { BrandSpinnerView() }
                 Spacer()
                 Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction)
                 // while the concurrent-edit reminder is up, its two buttons are the choice
@@ -409,7 +409,7 @@ struct DispatchView: View {
             Text(TL("dispatch.desktop.no_mcp", DesktopApp.name(m.agent))).font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            if agentsModel.installing == m.agent { ProgressView().controlSize(.small) }
+            if agentsModel.installing == m.agent { BrandSpinnerView() }
             else {
                 Button(TL("dispatch.desktop.install")) {
                     installAsked = true
@@ -510,7 +510,7 @@ struct DispatchView: View {
             .fixedSize()
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
-                    if m.loadingCandidates { ProgressView().controlSize(.small) }
+                    if m.loadingCandidates { BrandSpinnerView() }
                     if let e = m.candidatesError { Text(e).font(.caption).foregroundStyle(.secondary) }
                     if !m.loadingCandidates && m.candidates.isEmpty && m.candidatesError == nil {
                         Text(TL("dispatch.pick.empty")).font(.caption).foregroundStyle(.secondary)

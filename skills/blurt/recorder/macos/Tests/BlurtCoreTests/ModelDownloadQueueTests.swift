@@ -23,6 +23,15 @@ final class ModelDownloadQueueTests: XCTestCase {
         XCTAssertEqual(q.next?.id, asr.id)
     }
 
+    func testOnlyTheNetworkKeepsALaunchBatchForTheNetwork() {
+        XCTAssertTrue(ModelDownloadQueue.waitsForNetwork(code: "network", online: true), "the script said so")
+        XCTAssertTrue(ModelDownloadQueue.waitsForNetwork(code: nil, online: false), "uv couldn't fetch the tools: macOS says offline")
+        // online: a crash, a traceback, a full disk is a failure with its error — not "finish once you're online"
+        XCTAssertFalse(ModelDownloadQueue.waitsForNetwork(code: nil, online: true))
+        XCTAssertFalse(ModelDownloadQueue.waitsForNetwork(code: "error", online: true))
+        XCTAssertFalse(ModelDownloadQueue.waitsForNetwork(code: nil, online: nil), "no answer yet is not offline")
+    }
+
     func testOneBarOverTheBatch() {
         var q = ModelDownloadQueue()
         q.add([asr, polish])
@@ -41,6 +50,16 @@ final class ModelDownloadQueueTests: XCTestCase {
         q.finish(note.id)
         XCTAssertFalse(q.active)
         XCTAssertTrue(q.jobs.isEmpty)       // the batch ended: the next request starts a new bar
+    }
+
+    func testWhatIsLeftDoesNotCountWhatCameDownAgain() {
+        // "6.1 GB to go" after 1.6 GB of the running model came down read as progress lost
+        var q = ModelDownloadQueue()
+        q.add([asr, polish])
+        XCTAssertEqual(q.remaining(current: asr.id, line: nil), 2468 + 3415, "before its first line: whole")
+        XCTAssertEqual(q.remaining(current: asr.id, line: (1600, 2468)), 2468 + 3415 - 1600, accuracy: 0.5)
+        q.finish(asr.id)
+        XCTAssertEqual(q.remaining(current: polish.id, line: (415, 3415)), 3000, accuracy: 0.5)
     }
 
     func testStopOneOrAll() {

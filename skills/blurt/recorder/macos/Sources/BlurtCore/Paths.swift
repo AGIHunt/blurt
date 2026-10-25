@@ -21,10 +21,26 @@ public enum BlurtPaths {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Blurt")
     }
     /// The blurt skill (SKILL.md, scripts/, agents.json): config `skill_dir` (record.py writes it on every run), else
-    /// the usual install location.
-    public static var skillDir: URL {
-        if let s = Config.shared["skill_dir"] as? String, !s.isEmpty { return URL(fileURLWithPath: s) }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/blurt")
+    /// the usual install location. A config.json that doesn't parse must not move the app to another skill copy (or to
+    /// none: a skill installed for Codex, at a custom path, a dev checkout): its `skill_dir` is still read from the
+    /// text when it stands whole, else the last one a readable file named (kept in the app's defaults) — so the scripts
+    /// keep running on the defaults instead of every call failing.
+    public static var skillDir: URL { skillDir(config: .shared, remembered: .standard) }
+
+    static let rememberedKey = "BlurtSkillDir"
+    static var defaultSkillDir: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/blurt") }
+
+    static func skillDir(config: Config, remembered: UserDefaults) -> URL {
+        if config.readable {
+            guard let s = config["skill_dir"] as? String, !s.isEmpty else { return defaultSkillDir }
+            if remembered.string(forKey: rememberedKey) != s { remembered.set(s, forKey: rememberedKey) }
+            return URL(fileURLWithPath: s)
+        }
+        let hasScripts = { (p: String) in FileManager.default.fileExists(atPath: URL(fileURLWithPath: p).appendingPathComponent("scripts").path) }
+        for s in [config.lenientString("skill_dir"), remembered.string(forKey: rememberedKey)] {
+            if let s = s, !s.isEmpty, hasScripts(s) { return URL(fileURLWithPath: s) }
+        }
+        return defaultSkillDir
     }
     /// <skill>/scripts — items.py, index.py, agents.py, live.py, transcribe.py, review.py…
     public static var scripts: URL { skillDir.appendingPathComponent("scripts") }

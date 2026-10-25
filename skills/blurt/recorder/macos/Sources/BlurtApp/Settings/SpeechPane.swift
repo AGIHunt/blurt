@@ -9,7 +9,10 @@
 // (asr.limits: threads, transcriptions at once, GPU memory share, lighter models on battery), cloud keys (never
 // stored or shown: only whether each variable is set), recognition language and the download mirror. Every download
 // here goes through the app's one download manager (App/ModelDownloads.swift): the running one's bar and Stop, "Queued"
-// for the next, never a second copy of a model the assistant is already fetching.
+// for the next, never a second copy of a model the assistant is already fetching. A purpose whose model isn't on this
+// Mac says "· downloading" or "None yet" (never names it as if in use) — and in the model list such a model has no
+// purpose badge, only "For … once it's downloaded" —, and while a batch runs no new "X is recommended · Download" offer
+// joins it. Move to Trash asks by the model's name and size, never its folder's path.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
 import Combine
@@ -376,7 +379,10 @@ struct SpeechPane: View {
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
             Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
             Button(S("speech.cancel"), role: .cancel) { confirmRemove = nil }
-        } message: { Text(confirmRemove?.path ?? "") }
+        } message: {
+            // the model by its name and size — never its folder's path (the Storage pane's rows say the same)
+            Text(confirmRemove.map { S("speech.remove.message", $0.title, modelSize($0.sizeMB)) } ?? "")
+        }
     }
 
     // MARK: This Mac + what it uses
@@ -389,18 +395,18 @@ struct SpeechPane: View {
                 ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
                 ForEach(suggestions, id: \.model.id) { sug in suggestionRow(sug.model, purposes: sug.purposes) }
             } else if m.loading {
-                SettingsLine { HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.loading")).foregroundStyle(.secondary) } }
+                SettingsLine { HStack(spacing: 8) { BrandSpinnerView(); Text(S("speech.loading")).foregroundStyle(.secondary) } }
             }
             if let e = m.error { SettingsLine { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr) } }
         }, accessory: {
-            if m.loading && m.state != nil { ProgressView().controlSize(.mini) }
+            if m.loading && m.state != nil { BrandSpinnerView(size: 10) }
         })
     }
 
     func purposeRow(_ p: ASRPurpose) -> some View {
         SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
             if m.auto {
-                Text(m.selected(p)?.title ?? "—").foregroundStyle(.secondary)
+                Text(purposeValue(p)).foregroundStyle(.secondary)
             } else {
                 RowPicker(label: p.title, selection: Binding(get: { m.selected(p)?.id ?? "" }, set: { id in
                     if let x = m.model(id) { m.choose(x, for: p) }
@@ -411,6 +417,14 @@ struct SpeechPane: View {
         }
     }
 
+    /// What a purpose runs on: the model's name once it is on this Mac; "· downloading" while it comes down, "none
+    /// yet" before — never a model that isn't there as if it were in use.
+    func purposeValue(_ p: ASRPurpose) -> String {
+        guard let x = m.selected(p) else { return S("speech.purpose.none_yet") }
+        if x.installed || !x.local { return x.title }
+        return ModelDownloads.shared.queue.contains(x.id) ? S("speech.purpose.downloading", x.title) : S("speech.purpose.none_yet")
+    }
+
     /// Installed models that run here (cloud ones when a key is set and local-only is off).
     func choices(_ p: ASRPurpose) -> [ASRModel] {
         var out = m.models.filter { $0.installed && ($0.runsHere ?? true) && ($0.local || !m.localOnly) }
@@ -419,11 +433,13 @@ struct SpeechPane: View {
     }
 
     /// Recommended models that aren't downloaded yet, with the purposes they would take over.
+    /// While a batch downloads, only the ones in it (their bars): no further "X is recommended · Download" on top.
     var suggestions: [(model: ASRModel, purposes: [ASRPurpose])] {
         guard m.auto else { return [] }
+        let dl = ModelDownloads.shared
         var out: [(model: ASRModel, purposes: [ASRPurpose])] = []
         for p in ASRPurpose.allCases {
-            guard let r = m.recommended(p), !r.installed, r.local else { continue }
+            guard let r = m.recommended(p), !r.installed, r.local, !dl.active || dl.queue.contains(r.id) else { continue }
             if let i = out.firstIndex(where: { $0.model.id == r.id }) { out[i].purposes.append(p) } else { out.append((r, [p])) }
         }
         return out
@@ -502,7 +518,10 @@ struct SpeechPane: View {
     }
 
     func modelRow(_ x: ASRModel) -> some View {
-        let uses = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
+        // the purposes it runs: only a model on this Mac runs anything — one picked but not downloaded yet says when
+        // it will (as the purpose rows above say "None yet"), never a badge that reads as "in use"
+        let picked = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
+        let uses = x.installed ? picked : []
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 StatusDot(tone: x.installed ? (uses.isEmpty ? .off : .good) : .off)
@@ -513,6 +532,9 @@ struct SpeechPane: View {
                         .font(.caption2.weight(.medium)).foregroundStyle(Color.brandInk)
                         .padding(.horizontal, 6).padding(.vertical, 1.5)
                         .background(Capsule().fill(Color.brandTint))
+                } else if !x.installed, !picked.isEmpty {
+                    Text(S("speech.model.picked_not_in", Loc.list(picked.map { $0.title.lowercased(with: Loc.locale) })))
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
                 actions(x, inUse: !uses.isEmpty)
@@ -546,7 +568,7 @@ struct SpeechPane: View {
         HStack(spacing: 6) {
             if x.installed {
                 if m.benching.contains(x.id) {
-                    ProgressView().controlSize(.small)
+                    BrandSpinnerView()
                     Text(S("speech.bench.running")).font(.caption).foregroundStyle(.secondary)
                 } else {
                     Button(S("speech.bench.button")) { Task { await m.runBench(x) } }

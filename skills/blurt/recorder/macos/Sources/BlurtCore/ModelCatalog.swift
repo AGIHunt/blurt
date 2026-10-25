@@ -1,37 +1,109 @@
-// The models' names for people, read straight from the skill's own catalogs (scripts/asr_models.json,
-// polish_models.json: {"models": [{"id", "name"}]}) — so a model's id ("qwen3-asr-1.7b-mlx") never shows where its name
-// belongs, also before `transcribe.py dictation-models` has answered, when it failed, or for a model no longer listed
-// there (v0.9 raw-identifier audit #12). Pure: ModelCatalogTests.
+// Speech and polish models' names, straight from the catalogues the skill ships (scripts/asr_models.json,
+// polish_models.json: {"models": [{"id", "name", …}]}): read once, in-process, no script run. What Settings, the
+// Dictation page and Storage show while a script's list is loading, can't be read (the speech tools aren't set up) or
+// no longer has that model — never its id ("qwen3-asr-1.7b-mlx", v0.9 raw-identifier audit #12) or its folder
+// ("sherpa-onnx-ced-mini-audio-tagging-2024-04-19"). Unit-tested in Tests/BlurtCoreTests/ModelCatalogTests.
 import Foundation
 
 public enum ModelCatalog {
-    /// id → name from one catalog file's JSON; empty when it can't be read.
+    public struct Entry: Equatable {
+        public var id: String
+        public var name: String
+        /// the folder (or Hugging Face repo's last part) the model's files land in, for Storage's rows
+        public var folders: [String]
+        public var sizeMB: Double
+        /// a polish model (polish_models.json), else speech recognition
+        public var polish: Bool
+        /// the speech backend that runs it ("openai", "sensevoice"…)
+        public var backend: String? = nil
+    }
+
+    private static let lock = NSLock()
+    private static var cached: [Entry]?
+
+    /// Every model of both catalogues (`dir`: the scripts folder; tests pass their own).
+    public static func entries(dir: URL = BlurtPaths.scripts) -> [Entry] {
+        lock.lock(); defer { lock.unlock() }
+        if dir == BlurtPaths.scripts, let c = cached { return c }
+        var out: [Entry] = []
+        for file in ["asr_models.json", "polish_models.json"] {
+            guard let d = try? Data(contentsOf: dir.appendingPathComponent(file)) else { continue }
+            out += entries(json: d, polish: file.hasPrefix("polish"))
+        }
+        if dir == BlurtPaths.scripts { cached = out }
+        return out
+    }
+
+    /// The models of one catalogue file's JSON (a model without a name is left out); empty when it can't be read.
+    public static func entries(json: Data, polish: Bool) -> [Entry] {
+        guard let o = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any],
+              let models = o["models"] as? [[String: Any]] else { return [] }
+        return models.compactMap { m in
+            guard let id = m["id"] as? String, let name = m["name"] as? String, !name.isEmpty else { return nil }
+            return Entry(id: id, name: name, folders: folders(m), sizeMB: (m["size_mb"] as? Double) ?? 0,
+                         polish: polish, backend: m["backend"] as? String)
+        }
+    }
+
+    /// id → name from one catalogue file's JSON; empty when it can't be read.
     public static func names(json: Data) -> [String: String] {
-        guard let o = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-              let ms = o["models"] as? [[String: Any]] else { return [:] }
-        var out: [String: String] = [:]
-        for m in ms {
-            if let id = m["id"] as? String, let n = m["name"] as? String, !n.isEmpty { out[id] = n }
-        }
-        return out
+        Dictionary(entries(json: json, polish: false).map { ($0.id, $0.name) }) { a, _ in a }
     }
 
-    /// The catalogs in a scripts folder (asr_models.json, polish_models.json), merged.
+    /// The catalogues in a scripts folder (asr_models.json, polish_models.json), merged: id → name.
     public static func load(scripts: URL) -> [String: String] {
-        var out: [String: String] = [:]
-        for f in ["asr_models.json", "polish_models.json"] {
-            if let d = try? Data(contentsOf: scripts.appendingPathComponent(f)) { out.merge(names(json: d)) { a, _ in a } }
-        }
-        return out
+        Dictionary(entries(dir: scripts).map { ($0.id, $0.name) }) { a, _ in a }
     }
 
-    /// The scripts the app runs: read once.
-    public static let bundled: [String: String] = load(scripts: BlurtPaths.scripts)
-
-    /// A name for `id`: the live list's, else the catalog's; nil when neither knows it (the caller says "another
-    /// model" in words, never the id).
-    public static func name(_ id: String, live: String?, catalog: [String: String] = bundled) -> String? {
+    /// A name for `id`: the live list's (`transcribe.py dictation-models`), else the catalogues' (`catalog`: id →
+    /// name, tests; else the shipped ones, `name(_:dir:)`); nil when neither knows it — the caller says "a model no
+    /// longer listed" in words, never the id.
+    public static func name(_ id: String, live: String?, catalog: [String: String]? = nil) -> String? {
         if let l = live, !l.isEmpty { return l }
-        return catalog[id]
+        if let c = catalog { return c[id] }
+        return name(id)
+    }
+
+    /// The model's name; nil when no catalogue has it. A `backend:model` id — what the scripts make up for a model
+    /// set by backend and name (a cloud API's "openai:whisper-1") — is named by its backend's catalogue entry and the
+    /// model: "OpenAI-compatible API · whisper-1" (the backend's alone for ":default").
+    public static func name(_ id: String, dir: URL = BlurtPaths.scripts) -> String? {
+        let all = entries(dir: dir)
+        if let e = all.first(where: { $0.id == id }) { return e.name }
+        let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let e = all.first(where: { $0.backend == parts[0] && !$0.polish }) else { return nil }
+        return parts[1].isEmpty || parts[1] == "default" ? e.name : "\(e.name) · \(parts[1])"
+    }
+
+    /// The model whose files are in this folder (Storage's rows: a folder name → the model's name).
+    public static func entry(folder: String, dir: URL = BlurtPaths.scripts) -> Entry? {
+        entries(dir: dir).first { $0.folders.contains(folder) || $0.id == folder }
+    }
+
+    /// Where a model's files land: its archive's folder, its file paths' first folder, its Hugging Face repo's
+    /// last part (and the HF cache's models--org--name), the polish repo's last part.
+    static func folders(_ m: [String: Any]) -> [String] {
+        var out: [String] = []
+        if let repo = m["repo"] as? String {
+            out.append(repo.split(separator: "/").last.map(String.init) ?? repo)
+            out.append("models--" + repo.replacingOccurrences(of: "/", with: "--"))
+        }
+        if let inst = m["install"] as? [String: Any] {
+            if let hf = inst["hf"] as? String {
+                out.append(hf.split(separator: "/").last.map(String.init) ?? hf)
+                out.append("models--" + hf.replacingOccurrences(of: "/", with: "--"))
+            }
+            if let dir = inst["dir"] as? String { out.append(dir) }
+            if let files = inst["files"] as? [String: Any] {
+                out += files.keys.compactMap { $0.split(separator: "/").first.map(String.init) }.filter { !$0.contains(".") }
+            }
+            if let archive = inst["archive"] as? String, let last = archive.split(separator: "/").last {
+                var base = String(last)
+                for ext in [".tar.bz2", ".tar.gz", ".tgz", ".zip"] where base.hasSuffix(ext) { base = String(base.dropLast(ext.count)) }
+                out.append(base)
+            }
+        }
+        var seen = Set<String>()
+        return out.filter { seen.insert($0).inserted }
     }
 }

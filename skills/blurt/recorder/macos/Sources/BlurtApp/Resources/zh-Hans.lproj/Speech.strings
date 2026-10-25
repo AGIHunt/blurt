@@ -80,6 +80,7 @@
 "speech.bench.help" = "在这台 Mac 上转写几段你的语言的语音样本，测量准确率、速度和内存。";
 "speech.bench.failed" = "无法测量这个模型。";
 "speech.remove.title" = "将这个模型移到废纸篓？";
+"speech.remove.message" = "%1$@ · %2$@。之后随时可以再下载。";
 "speech.remove.confirm" = "移到废纸篓";
 
 /* Resources */
@@ -122,3 +123,8 @@
 "speech.dictation.no_words" = "不参考词库";
 "speech.dictation.footer" = "两个模型都在本机运行。点「下载」之前不会下载任何东西。";
 "speech.download.queued" = "排队中";
+"speech.model.other" = "已不在列表里的模型";
+"speech.model.picked_not_in" = "下载后用于%@";
+"speech.dictation.used_once_in" = "下载后就用它";
+"speech.purpose.none_yet" = "还没有";
+"speech.purpose.downloading" = "%@ · 正在下载";

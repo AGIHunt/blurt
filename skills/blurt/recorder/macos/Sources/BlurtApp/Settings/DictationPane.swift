@@ -7,7 +7,8 @@
 //               the styles' default); per kind of app, apps set on their own, list suggestions, learning and the
 //               polish time limit folded under "By kind of app" (unfolded when a search lands in it)
 //   Models      the speech and polish model in use, with Change… / Download… → Settings → Speech, where they are chosen
-//               (DictationModels.swift)
+//               (DictationModels.swift); while the download manager has one, "Downloading · 1.2 GB of 2.5 GB" or
+//               "Waiting to download · 3.4 GB" with Show — never "Not downloaded yet · Download…" beside it
 //   Words       a one-line summary with Manage… → the Dictation page's Words tab; reading the context and learning
 //   History     retention, keeping audio, opening and clearing it
 //   (the voice-note line — what to use to keep what you say — is the first group's footnote)
@@ -334,32 +335,42 @@ struct DictationPane: View {
     // MARK: models (chosen in Settings → Speech)
 
     @ViewBuilder var modelRows: some View {
-        // the recogniser as the key sees it: in use, coming down (its bar), or not there yet (Download…)
+        // the recogniser as the key sees it: in use, coming down (its bar), or not there yet (Download…) — a model the
+        // download manager has (running or waiting its turn) is never also "not downloaded yet · Download…"
         let asr = models.selectedASR
-        let job = models.dictationJob
-        let coming = job.flatMap { j in ModelDownloads.shared.queue.contains(j.id) ? j : nil }
-        SettingRow("dictation.asr_model", detail: coming.map { j in
-            let p = models.progress(j.id) ?? (0, j.sizeMB)
-            return T("dictation.models.downloading", modelSize(p.done), modelSize(max(p.total, j.sizeMB)))
-        }) {
-            modelControl(value: asr?.installed == true ? asr.map { $0.name ?? $0.id } : nil, loading: models.asr == nil)
+        let dl = ModelDownloads.shared
+        let asrJob = models.dictationJob.flatMap { j in dl.queue.contains(j.id) ? j : nil }
+            ?? dl.queue.pending.first { j in j.kind == .dictation && models.asr?.models.contains { $0.id == j.id } == true }
+        SettingRow("dictation.asr_model", detail: asrJob.map(downloadLine)) {
+            modelControl(value: asr?.installed == true ? asr.map { $0.name ?? models.asrName($0.id) } : nil,
+                         loading: models.asr == nil, coming: asrJob)
         }
         if m.style != .verbatim {
-            SettingRow("dictation.polish_model") {
+            let polishJob = dl.queue.pending.first { j in j.kind == .polish }
+            SettingRow("dictation.polish_model", detail: polishJob.map(downloadLine)) {
                 if let p = models.polish, !p.supported {
                     Text(T("dictation.models.unsupported")).foregroundStyle(.secondary)
                 } else {
-                    modelControl(value: models.selectedPolish?.name, loading: models.polish == nil)
+                    modelControl(value: models.selectedPolish?.name, loading: models.polish == nil, coming: polishJob)
                 }
             }
         }
     }
 
-    /// "Qwen3-ASR 1.7B   Change…" — or "Not downloaded yet   Download…" (chosen in Settings → Speech)
-    @ViewBuilder func modelControl(value: String?, loading: Bool) -> some View {
+    /// "Downloading · 1.2 GB of 2.5 GB" while it runs, "Waiting to download · 3.4 GB" while it waits its turn.
+    func downloadLine(_ j: ModelDownloadQueue.Job) -> String {
+        guard let p = models.progress(j.id) else { return T("dictation.models.queued", modelSize(j.sizeMB)) }
+        return T("dictation.models.downloading", modelSize(p.done), modelSize(max(p.total, j.sizeMB)))
+    }
+
+    /// "Qwen3-ASR 1.7B   Change…" — or "Not downloaded yet   Download…" (chosen in Settings → Speech) — or, while its
+    /// download runs or waits, Show (where the bar is).
+    @ViewBuilder func modelControl(value: String?, loading: Bool, coming: ModelDownloadQueue.Job? = nil) -> some View {
         HStack(spacing: 8) {
             if loading {
-                ProgressView().controlSize(.small)
+                BrandSpinnerView()
+            } else if coming != nil && value == nil {
+                Button(T("dictation.models.show")) { ModelDownloads.showProgress() }
             } else {
                 Text(value ?? T("dictation.models.none")).foregroundStyle(.secondary)
                 Button(value == nil ? T("dictation.models.get") : T("dictation.models.change")) { SpeechPane.showDictationModels() }

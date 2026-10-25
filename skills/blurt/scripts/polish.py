@@ -52,8 +52,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
-from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, server_exit,  # noqa: E402
-                     serve_exit_reason, serve_said)
+from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, landed_in, load_json, progress_line,  # noqa: E402
+                     save_config_if_readable, save_json, server_exit, serve_exit_reason, serve_said)
 from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent)
 
@@ -1463,10 +1463,11 @@ def cmd_models(_a):
 
 
 def _progress(target: Path, total_mb: float, stop) -> None:
+    """HF downloads: '  N/M MB' from what has really landed on disk — the same line and the same count as
+    transcribe.py's (_common.progress_line / landed_in), so the app's bar moves the same way for both."""
     while not stop.wait(1.0):
         if target.exists():
-            done = sum(f.stat().st_size for f in target.rglob("*") if f.is_file() and not f.is_symlink()) / 2**20
-            serve_said(f"  {int(min(done, total_mb))}/{int(total_mb)} MB")
+            serve_said(progress_line(min(landed_in(target), total_mb * 2**20), total_mb * 2**20))
 
 
 def _modelscope(m: dict) -> Path:
@@ -1495,7 +1496,7 @@ def _modelscope(m: dict) -> Path:
 
         def progress(have: int, _total: int) -> None:
             if time.time() - t0[0] > 1:
-                serve_said(f"  {int(done + have / 2**20)}/{int(total)} MB")
+                serve_said(progress_line((done + have / 2**20) * 2**20, total * 2**20))
                 t0[0] = time.time()
         got = fetch(url, tmp, f.get("Size"), progress)
         if f.get("Size") and got != f["Size"]:      # a dropped connection can end the read quietly (kept: next try continues)
@@ -1555,13 +1556,14 @@ def cmd_setup(a):
         with download_lock(m["id"]):
             if not model_path(m):
                 _download(m)
+    saved = True
     if a.use:
-        from _common import update_global_config  # noqa: PLC0415
         cfg = global_config()
         rec = cfg.setdefault("record", {})
         d = rec.get("dictation") if isinstance(rec.get("dictation"), dict) else {}
-        update_global_config({"record": {**rec, "dictation": {**d, "polish_model": m["id"]}}})
-    emit({"ok": True, "model": m["id"], "path": str(model_path(m))})
+        # the download is done either way: a config.json that doesn't parse only leaves the choice unsaved
+        saved = save_config_if_readable({"record": {**rec, "dictation": {**d, "polish_model": m["id"]}}})
+    emit({"ok": True, "model": m["id"], "path": str(model_path(m)), **({} if saved else {"saved": False})})
 
 
 # ------------------------------------------------------------------ evaluation

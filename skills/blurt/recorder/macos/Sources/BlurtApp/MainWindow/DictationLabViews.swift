@@ -659,7 +659,7 @@ struct LabWorkbench: View {
     var compare: some View {
         LabSection(title: T("dictation.lab.compare"), trailing: AnyView(
             HStack(spacing: 6) {
-                if lab.rerunning { ProgressView().controlSize(.small) }
+                if lab.rerunning { BrandSpinnerView() }
                 Button(T("dictation.lab.compare.run")) { lab.rerun() }.disabled(lab.rerunning || lab.chosen.isEmpty || lab.dirty)
                     .help(lab.dirty ? T("dictation.lab.compare.save_first") : T("dictation.lab.compare.tip"))
             }.controlSize(.small))) {
@@ -805,7 +805,7 @@ struct LabScriptCard: View {
                 } label: { labGlyph(.more, 12) }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help(T("dictation.lab.script.more"))
-                if lab.generating { ProgressView().controlSize(.small) }
+                if lab.generating { BrandSpinnerView() }
             }
             HStack(spacing: 8) {
                 ProgressView(value: Double(pr.done), total: Double(max(1, pr.total))).frame(maxWidth: 240)
@@ -897,7 +897,7 @@ struct LabRegressionView: View {
                     Button(T("dictation.lab.run_all.run")) { lab.runAll() }
                         .buttonStyle(.brand).disabled(lab.running || lab.cases.allSatisfy { !$0.hasAudio })
                     if lab.running {
-                        ProgressView().controlSize(.small)
+                        BrandSpinnerView()
                         Text(T("dictation.lab.run_all.running")).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }

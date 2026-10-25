@@ -75,6 +75,17 @@ final class HotkeysTests: XCTestCase {
         XCTAssertTrue(k.reserved!.reason(k).contains(k.label))
     }
 
+    func testTheMenuShowsOnlyKeysThatWork() {
+        // a key another Blurt or app holds, refused or a duplicate does nothing when pressed: not shown in the menu
+        XCTAssertTrue(HotkeyResult.ok.worksInMenu)
+        XCTAssertTrue(HotkeyResult.system.worksInMenu, "registered; macOS may win")
+        for st in [HotkeyResult.taken(123), .failed(-9878), .duplicate(.snap), .reserved, .off, .notHere] {
+            XCTAssertFalse(st.worksInMenu, "\(st)")
+        }
+        // the reason never carries the raw OSStatus
+        XCTAssertFalse(HotkeyResult.failed(-9878).text.contains("9878"))
+    }
+
     func testOwnerFindsTheOtherActionWithTheKeys() {
         let v = combo("opt+shift+V")
         let map: [HotkeyCenter.Action: KeyCombo] = [.snap: combo("opt+shift+A"), .voice: v]

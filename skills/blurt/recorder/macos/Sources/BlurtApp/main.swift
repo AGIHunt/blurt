@@ -37,6 +37,9 @@ if opts.standalone, plainLaunch, ProcessInfo.processInfo.environment["BLURT_ALLO
     DistributedNotificationCenter.default().postNotificationName(.init("dev.blurt.recorder.start"), object: nil, userInfo: nil, deliverImmediately: true)
     exit(0)
 }
+// Blurt's own dictation is Fn: AppKit's Edit → Start Dictation (macOS's) would be a second one in the same menu.
+// Emoji & Symbols stays. In-memory defaults only — nothing is written to the user's preferences.
+UserDefaults.standard.register(defaults: ["NSDisabledDictationMenuItem": true])
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = App()

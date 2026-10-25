@@ -1183,7 +1183,7 @@ struct DictationDetailView: View {
                 // the AI writes the item: the button waits, the spinner beside it says so
                 Button { m.makeItem(e) } label: { Text(T("dictation.history.make_item")) }
                     .disabled(m.working.contains(e.id))
-                if m.working.contains(e.id) { ProgressView().controlSize(.small) }
+                if m.working.contains(e.id) { BrandSpinnerView() }
             }
             if DictationLabModel.enabled {
                 Button { m.addToLab?(e) } label: { Text(T("dictation.lab.add")) }

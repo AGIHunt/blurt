@@ -6,9 +6,105 @@
 // takes, so the app and the scripts never lose each other's changes — and atomic (pretty, sorted keys, like
 // _common.save_json; 0600). A config.json that exists but doesn't parse (a hand edit gone wrong) is never overwritten:
 // it is copied once to config.json.bad-<time> (not again on later launches while it stays the same), the write is
-// refused, and `onUnreadable` says so (the app: one line in the island). Reads of such a file give {} (every setting
-// at its default) until it is fixed.
+// refused, and `onUnreadable` says so (the app: one line in the island, at launch already: checkReadable — "using the
+// defaults, can't save"); every refused write also calls `onWriteRefused`, which the launch's notice doesn't use up
+// (the app: "That change wasn't saved" once per session, after the launch line — that may be long gone). Reads
+// of such a file give {} (every setting at its default) until it is fixed; `readable` tells that apart from an empty
+// file (the app then doesn't take a missing app.onboarded for a first run), and `lenientString` still finds one plain
+// top-level string in it (where the skill is: BlurtPaths.skillDir). What counts as readable is the scripts' rule too
+// (_common.parse_config_text): JSON — no NaN / Infinity, which Python's json would take and JSONSerialization doesn't —
+// with a comma right before `}` or `]` forgiven (ConfigText), the slip a hand edit makes most, so a file the app
+// reads, the scripts read, and the other way round.
 import Foundation
+
+/// config.json's text the way the app and the scripts both read it.
+public enum ConfigText {
+    /// A comma right before `}` or `]` (outside strings) left out — the same walk as _common.drop_trailing_commas —
+    /// until none is left (",, }" too): JSONSerialization forgives one trailing comma and Python's json none, so with
+    /// none left both read exactly the same files.
+    public static func dropTrailingCommas(_ text: String) -> String {
+        var cur = text
+        while true {
+            let next = dropOnce(cur)
+            if next == cur { return cur }
+            cur = next
+        }
+    }
+
+    private static func dropOnce(_ text: String) -> String {
+        let s = Array(text.unicodeScalars)
+        var out = String.UnicodeScalarView()
+        var i = 0, inString = false
+        while i < s.count {
+            let c = s[i]
+            if inString {
+                out.append(c)
+                if c == "\\", i + 1 < s.count { out.append(s[i + 1]); i += 1 } else if c == "\"" { inString = false }
+            } else if c == "\"" {
+                inString = true
+                out.append(c)
+            } else if c == "," {
+                var j = i + 1
+                while j < s.count, [" ", "\t", "\r", "\n"].contains(s[j]) { j += 1 }
+                if j >= s.count || (s[j] != "}" && s[j] != "]") { out.append(c) }
+            } else {
+                out.append(c)
+            }
+            i += 1
+        }
+        return String(out)
+    }
+
+    /// The file's bytes → its settings; nil when it doesn't parse (even with trailing commas left out) or isn't an
+    /// object.
+    public static func parse(_ data: Data) -> [String: Any]? {
+        guard var text = String(data: data, encoding: .utf8) else { return nil }
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }      // a BOM (Notepad, PowerShell), as the scripts allow
+        guard let d = dropTrailingCommas(text).data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: d)) as? [String: Any]
+    }
+
+    /// One top-level string value of a file that doesn't parse ("skill_dir" of `{"skill_dir": "/x", "record": {`):
+    /// the tokens are walked (strings, depth) up to where it breaks, and the value is taken only where `"key": "…"`
+    /// stands whole at the top level. nil when it isn't there.
+    public static func topLevelString(_ key: String, in data: Data) -> String? {
+        guard var text = String(data: data, encoding: .utf8) else { return nil }
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
+        let s = Array(text.unicodeScalars)
+        var i = 0, depth = 0
+        // the string token starting at s[i] ("…" with its escapes), decoded; nil when it doesn't close
+        func stringToken() -> String? {
+            var j = i + 1
+            while j < s.count, s[j] != "\"" { j += s[j] == "\\" ? 2 : 1 }
+            guard j < s.count else { return nil }
+            var raw = String.UnicodeScalarView(); raw.append(contentsOf: s[i...j])
+            i = j + 1
+            return (try? JSONSerialization.jsonObject(with: Data("[\(String(raw))]".utf8))).flatMap { ($0 as? [String])?.first }
+        }
+        func skipSpace() { while i < s.count, [" ", "\t", "\r", "\n"].contains(s[i]) { i += 1 } }
+        var expectKey = false
+        while i < s.count {
+            let c = s[i]
+            if c == "\"" {
+                let atKey = depth == 1 && expectKey
+                guard let tok = stringToken() else { return nil }
+                guard atKey else { continue }
+                expectKey = false
+                skipSpace()
+                guard i < s.count, s[i] == ":" else { continue }
+                i += 1
+                skipSpace()
+                guard tok == key, i < s.count, s[i] == "\"" else { continue }
+                return stringToken()
+            }
+            if c == "{" || c == "[" { depth += 1; expectKey = c == "{" && depth == 1 }
+            else if c == "}" || c == "]" { depth -= 1 }
+            else if c == ",", depth == 1 { expectKey = true }
+            i += 1
+        }
+        return nil
+    }
+}
 
 public final class Config {
     public static let shared = Config()
@@ -21,6 +117,9 @@ public final class Config {
 
     /// The file exists but doesn't parse; a write was refused (called with the backup's URL, once per bad version).
     public var onUnreadable: ((URL) -> Void)?
+    /// A write was refused because the file doesn't parse (called with the key, every time — unlike `onUnreadable`,
+    /// not used up by the launch's notice; the caller decides how often to say it).
+    public var onWriteRefused: ((String) -> Void)?
 
     /// nil = BlurtPaths.config at the time of each access (so a changed BLURT_HOME is honoured, as in the scripts)
     public init(url: URL? = nil) { fixedURL = url }
@@ -43,13 +142,33 @@ public final class Config {
     /// The whole file ({} when missing or unreadable).
     public var all: [String: Any] { read().value }
 
+    /// The file parses (or isn't there). False: every setting reads as its default until it is fixed.
+    public var readable: Bool { read().ok }
+
+    /// A top-level string even when the file doesn't parse (ConfigText.topLevelString); the parsed value when it does.
+    public func lenientString(_ key: String) -> String? {
+        let r = read()
+        if r.ok { return r.value[key] as? String }
+        return (try? Data(contentsOf: url)).flatMap { ConfigText.topLevelString(key, in: $0) }
+    }
+
+    /// At launch: a file that doesn't parse is copied aside (once per version) and `onUnreadable` says so — before a
+    /// write is refused, so the user hears it right away, with what it means. Returns `readable`.
+    @discardableResult
+    public func checkReadable() -> Bool {
+        if read().ok { return true }
+        lock.lock(); defer { lock.unlock() }
+        refuse()
+        return false
+    }
+
     /// The parsed file, and whether it parsed (a missing file counts as fine: there is nothing to lose).
     private func read() -> (value: [String: Any], ok: Bool) {
         let u = url
         guard let sig = FileSig(u) else { return ([:], true) }
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let c = cache, c.sig == sig { return (c.value, c.ok) }
-        let parsed = (try? Data(contentsOf: u)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let parsed = (try? Data(contentsOf: u)).flatMap(ConfigText.parse)
         cache = (sig, parsed ?? [:], parsed != nil)
         return (parsed ?? [:], parsed != nil)
     }
@@ -75,7 +194,11 @@ public final class Config {
         let fd = Config.lockFile(dir.appendingPathComponent(".config.lock"))
         defer { if fd >= 0 { flock(fd, LOCK_UN); close(fd) } }
         let (cur, ok) = read()
-        guard ok else { refuse(); return false }
+        guard ok else {
+            refuse()
+            onWriteRefused?(key)
+            return false
+        }
         func put(_ dict: [String: Any], _ i: Int) -> [String: Any] {
             var d = dict
             if i == parts.count - 1 {

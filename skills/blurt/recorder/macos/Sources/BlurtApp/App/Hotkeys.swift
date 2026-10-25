@@ -46,9 +46,17 @@ func hkHint(_ a: HotAction, _ key: String) -> String? {
 }
 
 extension NSMenuItem {
-    /// Show (and accept) the user's hotkey for this action as the item's key equivalent.
+    /// Show (and accept) the user's hotkey for this action as the item's key equivalent — only when it works
+    /// (HotkeyResult.worksInMenu): a key another app or another Blurt holds, one that failed to register or a
+    /// duplicate isn't advertised; the row's tooltip says why, and where to change it (the menu is rebuilt each time
+    /// it opens, so it follows a key that comes free).
     func showHotkey(_ a: HotAction) {
         guard let s = Hotkeys.shared.shortcut(a) else { return }
+        let st = Hotkeys.shared.state(a)
+        guard st.worksInMenu else {
+            toolTip = Loc.t("capture.keys.menu_not_working", table: "Capture", s.label, st.text)
+            return
+        }
         let (k, f) = s.menuKeyEquivalent
         keyEquivalent = k
         keyEquivalentModifierMask = f

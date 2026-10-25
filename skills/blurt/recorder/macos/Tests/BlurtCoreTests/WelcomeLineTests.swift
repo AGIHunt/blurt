@@ -41,10 +41,12 @@ final class WelcomeLineTests: XCTestCase {
         XCTAssertEqual(both.conflicts, ["⌥⇧A"])
     }
 
-    func testDictationModelsUnreadableDoesNotAdvertiseTheKey() {
-        // the model list couldn't be read: Fn isn't promised (it may end in "no speech model"), the rest is
+    func testDictationModelsUnreadableSaysDictationIsNotSetUp() {
+        // the model list couldn't be read (the speech tools didn't install: offline first run): Fn isn't promised, and
+        // the line says dictation isn't set up yet, with Set Up… — not a line that just leaves dictation out
         let l = WelcomeLine.compose(dictation: .unknown, dictationKey: "Fn", snap: "⌥⇧A", record: "⌥⇧R", conflicts: [])
-        XCTAssertEqual(l.key, "app.toast.welcome_no_dictation")
+        XCTAssertEqual(l.key, "app.toast.welcome_not_set_up")
+        XCTAssertEqual(l.action, .setUpDictation)
         XCTAssertFalse(l.args.contains("Fn"))
     }
 
@@ -90,6 +92,7 @@ final class WelcomeLineWidthTests: XCTestCase {
                 let button: String? = switch l.action {
                 case .turnOnDictation?: main["app.toast.welcome_setup.action"]
                 case .downloadModel?: main["app.toast.welcome_no_model.action"]
+                case .setUpDictation?: main["app.toast.welcome_not_set_up.action"]
                 case .changeShortcut?: main["app.toast.change_shortcut"]
                 case nil: nil
                 }
@@ -107,6 +110,14 @@ final class WelcomeLineWidthTests: XCTestCase {
                     }
                 }
             }
+            // the other launch lines that explain a problem: a config.json that can't be read, shortcuts that don't
+            // work (one by name, several by count), models waiting for the network, dictation not set up
+            lines.append((main["app.config.unreadable"] ?? "app.toast?", main["app.config.show"]))
+            lines.append((main["app.config.not_saved"] ?? "app.toast?", main["app.config.show"]))
+            lines.append((String(format: capture["capture.keys.wont_work"] ?? "app.toast?", "⌃⌥⇧⌘A"), main["app.toast.change_shortcut"]))
+            lines.append((String(format: capture["capture.keys.wont_work_many"] ?? "app.toast?", "11"), main["app.toast.change_shortcut"]))
+            lines.append((main["app.models.offline"] ?? "app.toast?", table(lang, "Settings")["onboarding.models.retry"]))
+            lines.append((dictation["dictation.toast.not_set_up"] ?? "app.toast?", dictation["dictation.toast.not_set_up.action"]))
             for (text, button) in lines {
                 XCTAssertFalse(text.contains("app.toast"), "\(lang): missing string in \(text)")
                 let w = width(text, size: 13, weight: .medium), r = room(button: button)

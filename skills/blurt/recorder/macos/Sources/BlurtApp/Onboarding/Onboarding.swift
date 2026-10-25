@@ -10,13 +10,19 @@
 //   3. models — one "Download recommended models" for this Mac (ModelSetup.swift: dictation, polish, voice notes) with
 //      the total size and one progress bar (and Stop); it carries on in the background. uv is found, or — one sentence
 //      and a button — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
-//      dependencies are warmed up in the background as soon as uv is there (only a failure shows: one sentence and
-//      Try Again);
-//   4. try it — a text box ("tap Fn and say something … or double-tap to send it") that shows a check once the first
+//      dependencies are warmed up in the background as soon as uv is there. Speech tools that didn't install and a
+//      model list that couldn't be read are one state (BlurtCore SpeechSetup .blocked — offline, a proxy): one
+//      sentence and one Try Again (the warm-up, the list, then the download), Next becomes Skip for Now, and it is
+//      tried again by itself when the Mac comes back online (NetworkWatch). Its sentence blames the network only when
+//      macOS says the Mac is offline (SpeechSetup.Cause; online it points at a proxy or VPN), Try Again shows
+//      Checking… for at least a second with the footer kept, and a retry still blocked says when it tried;
+//   4. try it — a text box ("tap Fn and say something … or double-tap to send it"; "once dictation is set up, try it
+//      here" while it can't be tried yet, so the instruction never sits above the reason) that shows a check once the first
 //      dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the double tap
 //      came (Dictation.sendAttempts; no Return goes into Blurt's own window); it waits only while dictation's own
 //      recogniser is still coming down (its bar) — with it in and
-//      polish still downloading it says dictation works already — and offers the download when there is no model;
+//      polish still downloading it says dictation works already — and offers the download when there is a model to
+//      download, else (blocked) the models step's Try Again — never a button that does nothing;
 //      and "Open Blurt at login" (on the first time: dictation needs Blurt running; reopened later, as it is now);
 //      Done applies it and closes.
 // The big gradient headline is the welcome on the first step, then the step's own name and line (the four bars say
@@ -30,7 +36,8 @@
 // a soft still spectrum glow behind the mascot (none with Reduce Transparency; the one place the spectrum appears) —
 // then the steps: the welcome title in gradient text, step bars in brand ink, one brand primary per step (the step's
 // own action while it is still to do, with "Skip for Now" in the footer; else Next / Done). Done closes (the chick is
-// already happy on the last step; no bloom).
+// already happy on the last step; no bloom). The window is sized before it is centred (it opened against the menu
+// bar, its left edge on the screen's middle, when centred at zero size).
 // Test builds never register a login item (an event says what would have happened) and never ask macOS for anything
 // (SystemAccess.swift); BLURT_TEST_WARM_FAIL names a script that stands in for the warm-up's first one (a failure).
 import AppKit
@@ -45,6 +52,10 @@ final class OnboardingModel: ObservableObject {
     @Published var installingUV = false
     @Published var uvFailed = false
     @Published var warm: String?            // nil | "running" | "done" | "failed" (the script's output: the event only)
+    /// Try Again runs: the warm-up, the list, then the download (the step shows "Checking…" meanwhile)
+    @Published var retrying = false
+    /// The last Try Again ended still blocked, at this time ("Tried again at 14:32: still offline")
+    @Published var retriedAt: Date?
     @Published var dictationKey = Dictation.key
     /// how the key starts a take (the Try-it line says the gesture of this mode: a Hold-only user is never told to tap)
     @Published var dictationMode = Dictation.mode
@@ -140,22 +151,71 @@ final class OnboardingModel: ObservableObject {
         do { try p.run() } catch { installingUV = false; uvFailed = true }
     }
 
-    /// Pre-installs the scripts' dependencies (numpy, sherpa-onnx…) and builds the search index — quietly: only a
-    /// failure shows (on the models step: one sentence and Try Again; the script's output goes to the event).
+    /// Pre-installs the scripts' dependencies (numpy, sherpa-onnx…) and builds the search index — quietly: only the
+    /// speech tools' failure shows (on the models step, as SpeechSetup .blocked; the script's output goes to the
+    /// event). The index is built on the way and logged; it has nothing to do with speech and never blocks the step.
     func warmUp() {
+        Task { await warmUpNow() }
+    }
+
+    func warmUpNow() async {
         guard warm != "running", warm != "done" else { return }
         warm = "running"
+        var error: String?
+        do {
+            let test = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+            let fail = test ? ProcessInfo.processInfo.environment["BLURT_TEST_WARM_FAIL"] : nil
+            let a = try await SkillCLI.shared.run(fail ?? "transcribe.py", ["backends"], timeout: 600)
+            if !a.ok { error = a.errorText }
+        } catch let e { error = "\(e)" }
+        warm = error == nil ? "done" : "failed"
+        emit(["event": "onboarding_warm", "result": warm ?? NSNull(), "error": error ?? NSNull()])
+        if warm == "done" {
+            let b = try? await SkillCLI.shared.run("index.py", ["scan"], timeout: 300)
+            if b?.ok != true { emit(["event": "onboarding_index", "result": "failed", "error": b?.errorText ?? NSNull()]) }
+        }
+    }
+
+    /// Where the models step stands (BlurtCore SpeechSetup): one state for "the tools or the list can't be set up".
+    var speechStep: SpeechSetup.Step {
+        let ms = ModelSetup.shared
+        if retrying { return .checking }
+        return SpeechSetup.step(uv: uv != nil, warm: warm, loaded: ms.loaded, listRead: ms.listRead,
+                                downloading: ms.downloading, failed: ms.failed, ready: ms.ready)
+    }
+
+    /// The one Try Again (the models step, the Try-it step, back online): the speech tools again if they didn't
+    /// install, the model list, then the download — what was asked for is carried through, not half of it.
+    /// "Checking…" lasts at least SpeechSetup.minimumCheck (offline it fails in a blink), and a retry that is still
+    /// blocked says when it tried.
+    func retrySetup(via: String) {
+        guard !retrying, uv != nil else { return }
+        retrying = true
+        retriedAt = nil
+        if warm == "failed" { warm = nil }
+        emit(["event": "onboarding_retry", "via": via])
+        let started = Date()
         Task {
-            var error: String?
-            do {
-                let test = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
-                let fail = test ? ProcessInfo.processInfo.environment["BLURT_TEST_WARM_FAIL"] : nil
-                let a = try await SkillCLI.shared.run(fail ?? "transcribe.py", ["backends"], timeout: 600)
-                let b = try await SkillCLI.shared.run("index.py", ["scan"], timeout: 300)
-                if !(a.ok && b.ok) { error = a.ok ? b.errorText : a.errorText }
-            } catch let e { error = "\(e)" }
-            warm = error == nil ? "done" : "failed"
-            emit(["event": "onboarding_warm", "result": warm ?? NSNull(), "error": error ?? NSNull()])
+            await warmUpNow()
+            await ModelSetup.shared.load()
+            let left = SpeechSetup.minimumCheck - Date().timeIntervalSince(started)
+            if left > 0 { try? await Task.sleep(nanoseconds: UInt64(left * 1e9)) }
+            retrying = false
+            if speechStep == .blocked { retriedAt = Date() }
+            emit(["event": "onboarding_retry_done", "via": via, "step": "\(speechStep)", "cause": "\(blockedCause)"])
+            let ms = ModelSetup.shared
+            if warm == "done", ms.listRead, !ms.pending.isEmpty, !ms.downloading { ms.start() }
+        }
+    }
+
+    /// What a blocked setup is put down to: the network only when macOS says the Mac is offline.
+    var blockedCause: SpeechSetup.Cause { SpeechSetup.cause(online: NetworkWatch.shared.isOnline) }
+
+    /// The Mac is online again (NetworkWatch): a blocked or failed setup is tried again by itself.
+    func backOnline() {
+        switch speechStep {
+        case .blocked, .failed: retrySetup(via: "online")
+        default: break
         }
     }
 
@@ -190,15 +250,17 @@ final class OnboardingModel: ObservableObject {
     }
 }
 
-/// Settings → General's "Open Blurt at login", from the assistant. Test builds never register (a scratch bundle would
-/// land in the user's Login Items): the event says what would have happened.
+/// "Open Blurt at login" — the one switch behind Settings → General's row and the assistant's. Test builds never
+/// register (a scratch bundle would land in the user's Login Items): the event says what would have happened, and the
+/// switch remembers it in memory so the row still flips.
 enum LoginItem {
-    static var enabled: Bool { SMAppService.mainApp.status == .enabled }
+    private static var testState: Bool?
+    static var enabled: Bool { SystemAccess.testMode ? testState ?? false : SMAppService.mainApp.status == .enabled }
 
     @discardableResult
     static func set(_ on: Bool, via: String) -> String? {
         emit(["event": "login_item", "on": on, "via": via, "test_mode": SystemAccess.testMode])
-        if SystemAccess.testMode { return nil }
+        if SystemAccess.testMode { testState = on; return nil }
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             return nil
@@ -231,14 +293,15 @@ struct OnboardingView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { if m.step == 1 { m.step = 2 } }
         }
         .onChange(of: m.step) { s in emit(["event": "onboarding", "step": s]) }
+        // a model came down: the network works — speech tools that failed earlier are set up again quietly
+        .onChange(of: models.finished.count) { _ in if m.warm == "failed" { m.warm = nil; m.warmUp() } }
     }
 
     /// The step's own action is still to do: it is the primary, and the footer offers "Skip for Now" instead of Next.
     var pending: Bool {
         switch m.step {
         case 1: return !guide.missing(.dictation).isEmpty
-        case 2: return m.uv == nil || (models.loaded && !models.parts.isEmpty && !models.pending.isEmpty && !models.downloading
-                                       && !models.settled)
+        case 2: return SpeechSetup.pending(m.speechStep, settled: models.settled, retrying: m.retrying)
         default: return false
         }
     }
@@ -276,7 +339,10 @@ struct OnboardingView: View {
 
             Divider()
             HStack {
-                Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link).foregroundStyle(Color.brandInk)
+                // on the last step Done says the same: one way out
+                if m.step < m.steps - 1 {
+                    Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link).foregroundStyle(Color.brandInk)
+                }
                 Spacer()
                 if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
                 if pending {
@@ -301,9 +367,22 @@ struct OnboardingView: View {
         case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle", key))
         case 1: return (T("onboarding.permissions"), T("onboarding.permissions_detail"))
         case 2: return (T("onboarding.models"), T("onboarding.models.detail"))
-        default: return (T("onboarding.try"), OnboardingModel.tryDetail(key: key, mode: m.dictationMode)
-                            + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
+        default:
+            // dictation can't be tried yet (permissions, its speech tools or model): no "tap Fn and say something"
+            // above the line that says why
+            if !canTryNow { return (T("onboarding.try"), T("onboarding.try.detail_later")) }
+            return (T("onboarding.try"), OnboardingModel.tryDetail(key: key, mode: m.dictationMode)
+                        + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
         }
+    }
+
+    /// The Try-it step's instruction holds: dictation's permissions are on and its recogniser is in (or not known yet —
+    /// the list is still being read).
+    var canTryNow: Bool {
+        if m.tried { return true }
+        if !guide.missing(.dictation).isEmpty { return false }
+        if models.dictationReady { return true }
+        return !(models.loaded || m.speechStep == .blocked)
     }
 
     func check(_ text: String) -> some View {
@@ -400,29 +479,31 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    if m.uv == nil {
+                    switch m.speechStep {
+                    case .needsUV:
                         Text(T("onboarding.uv.needed")).fixedSize(horizontal: false, vertical: true)
                         HStack {
                             Button(T("onboarding.install_uv")) { m.installUV() }
                                 .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                                 .disabled(m.installingUV).help(OnboardingModel.uvInstallCommand)
-                            if m.installingUV { ProgressView().controlSize(.small) }
+                            if m.installingUV { BrandSpinnerView() }
                         }
                         if m.uvFailed { Text(T("onboarding.uv.failed")).font(.caption).foregroundStyle(Color.brandErr) }
-                    } else if !models.loaded {
-                        HStack { ProgressView().controlSize(.small); Text(T("onboarding.models.checking")).foregroundStyle(.secondary) }
-                    } else if models.parts.isEmpty {
-                        Text(T("onboarding.models.unavailable")).foregroundStyle(.secondary)
-                        Button(T("onboarding.models.retry")) { Task { await models.load() } }
-                    } else {
-                        modelRows
-                    }
-                    if m.warm == "failed" {
-                        HStack(spacing: 10) {
-                            Text(T("onboarding.warm.failed")).font(.callout).foregroundStyle(Color.brandErr)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button(T("onboarding.models.retry")) { m.warmUp() }
+                    case .checking:
+                        HStack { BrandSpinnerView(); Text(T("onboarding.models.checking")).foregroundStyle(.secondary) }
+                    case .blocked:
+                        // the tools or the list: one cause, one sentence, one Try Again (the rows wait for it)
+                        let offline = m.blockedCause == .offline
+                        Text(T(offline ? "onboarding.setup.blocked" : "onboarding.setup.blocked_error"))
+                            .foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
+                        if let at = m.retriedAt {
+                            Text(T(offline ? "onboarding.setup.retried_offline" : "onboarding.setup.retried_error",
+                                   at.formatted(date: .omitted, time: .shortened)))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
+                        Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.primary(true)
+                    default:
+                        modelRows
                     }
                 }
                 .padding(6)
@@ -438,7 +519,7 @@ struct OnboardingView: View {
             HStack(spacing: 10) {
                 // in: ok; coming down now: a small spinner; waiting its turn: quiet; missing while idle: attention
                 if models.current == p.id {
-                    ProgressView().controlSize(.mini).frame(width: 8, height: 8)
+                    BrandSpinnerView(size: 10).frame(width: StatusDot.size, height: StatusDot.size)     // the dot's column
                 } else {
                     StatusDot(tone: have ? .good : models.downloading ? .off : .warn)
                 }
@@ -465,8 +546,11 @@ struct OnboardingView: View {
         } else if models.failed {
             Text(T("onboarding.models.failed")).font(.callout).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button(T("onboarding.models.retry")) { models.start() }.primary(pending)
-                if let f = models.fallback { Button(T("onboarding.models.small", size(f.sizeMB))) { models.start(only: [f]) } }
+                Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.primary(pending)
+                if let f = models.fallback {
+                    Button(T("onboarding.models.small", size(f.sizeMB))) { models.start(only: [f]) }
+                        .help(T("onboarding.models.small.help"))
+                }
             }
         } else {
             HStack(spacing: 10) {
@@ -510,10 +594,20 @@ struct OnboardingView: View {
                 // dictation works already; polish (and the voice-note model) are still coming
                 Text(T("onboarding.try.polish_coming", size(models.restMB))).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if models.loaded && !models.dictationReady {
-                HStack(spacing: 10) {
-                    Text(T("onboarding.try.no_model")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button(T("onboarding.models.download")) { models.start() }
+            } else if (models.loaded || m.speechStep == .blocked) && !models.dictationReady {
+                switch SpeechSetup.tryState(dictationReady: false, dictationDownloading: false, step: m.speechStep,
+                                            pendingDownloads: !models.pending.isEmpty) {
+                case .download:
+                    HStack(spacing: 10) {
+                        Text(T("onboarding.try.no_model")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button(T("onboarding.models.download")) { models.start() }
+                    }
+                default:
+                    // nothing to download until the tools are in: the models step's Try Again, where its progress shows
+                    HStack(spacing: 10) {
+                        Text(T("onboarding.try.blocked")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button(T("onboarding.models.retry")) { m.step = 2; m.retrySetup(via: "try") }
+                    }
                 }
             }
             Spacer().frame(height: 6)
@@ -570,7 +664,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var model: OnboardingModel?
 
-    static var needed: Bool { Config.shared["app.onboarded"] as? Bool != true }
+    /// A config.json that can't be read says nothing about a first run: the assistant isn't shown again for it.
+    static var needed: Bool { Config.shared.readable && Config.shared["app.onboarded"] as? Bool != true }
 
     func show(step: Int = 0) {
         DispatchQueue.main.async { MainActor.assumeIsolated { self.present(step) } }
@@ -595,7 +690,10 @@ final class Onboarding: NSObject, NSWindowDelegate {
         w.delegate = self
         // an ordinary window: screenshots (yours or ours) can show it; our own recordings leave it out by their filter
         m.close = { [weak w] in w?.close() }
-        w.contentViewController = NSHostingController(rootView: OnboardingView(m: m))
+        let host = NSHostingController(rootView: OnboardingView(m: m))
+        host.sizingOptions = []         // the window keeps its size: centred at that size, not at zero
+        w.contentViewController = host
+        w.setContentSize(NSSize(width: OnboardingModel.heroWidth + OnboardingModel.contentWidth, height: OnboardingModel.height))
         w.center()
         window = w
         model = m
@@ -610,6 +708,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
         MainActor.assumeIsolated {
             ModelSetup.shared.shown = false
             ModelSetup.shared.closedWhileDownloading()       // "the models carry on in the background · Show"
+            // closed while speech couldn't be set up: the one line that says dictation won't work yet, and the way back
+            if model?.speechStep == .blocked { Dictation.shared.notSetUp(from: "onboarding_closed") }
             model?.stopTry()
         }
         window = nil
@@ -617,6 +717,9 @@ final class Onboarding: NSObject, NSWindowDelegate {
     }
 
     var windowNumber: Int? { window?.windowNumber }
+
+    /// The Mac is online again (NetworkWatch): an open assistant whose speech setup was blocked tries again.
+    func backOnline() { MainActor.assumeIsolated { model?.backOnline() } }
 
     /// Tests (wp6 `onboardingdone`): Done on the last step — the window closes.
     @MainActor
@@ -637,6 +740,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
         case "download": ModelSetup.shared.start()
         case "stop": ModelSetup.shared.cancel()
         case "warm": m.warmUp()
+        case "retry": m.retrySetup(via: "test")
         case "small": if let f = ModelSetup.shared.fallback { ModelSetup.shared.start(only: [f]) }
         case "reload": Task { await ModelSetup.shared.load() }
         case "login": m.openAtLogin = a.count > 1 && a[1] == "on"
@@ -648,8 +752,10 @@ final class Onboarding: NSObject, NSWindowDelegate {
               "missing": PermissionGuide.shared.missing(.dictation).map(\.rawValue), "walked": m.walked, "tried": m.tried, "send_tried": m.sendTried,
               "login": m.openAtLogin, "models": ms.parts.map { "\($0.kind.rawValue):\($0.id):\($0.installed ? "installed" : "missing")" },
               "total_mb": ms.totalMB, "downloading": ms.current ?? NSNull(), "progress": [pr.done, pr.total].map { Double(Int($0)) },
-              "failed": ms.failed, "ready": ms.ready, "dictation_ready": ms.dictationReady,
-              "dictation_progress": ms.dictationProgress.map { [Int($0.done), Int($0.total)] } ?? NSNull()])
+              "failed": ms.failed, "ready": ms.ready, "dictation_ready": ms.dictationReady, "step_state": "\(m.speechStep)",
+              "skip_for_now": m.step == 2 && SpeechSetup.pending(m.speechStep, settled: ms.settled, retrying: m.retrying), "list_read": ms.listRead,
+              "dictation_progress": ms.dictationProgress.map { [Int($0.done), Int($0.total)] } ?? NSNull(),
+              "retrying": m.retrying, "cause": "\(m.blockedCause)", "retried_at": m.retriedAt.map { $0.timeIntervalSince1970 } ?? NSNull()])
     }
 
     /// Back to the front as it was (the permission guide finished), without changing the step.

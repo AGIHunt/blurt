@@ -18,11 +18,20 @@
 //   Stop       one model: a queued one leaves the queue, the running one ends. Everything: the running one ends and
 //              what was waiting then goes — one that finishes in that moment is kept, and one asked for after Stop runs.
 //   lasts      $BLURT_HOME/model-downloads.json while anything is left: a quit (the setup is ended, its partial file
-//              kept), a relaunch or a crash carries on quietly at the next launch, with one launch line.
+//              kept), a relaunch or a crash carries on quietly at the next launch, with one launch line — posted
+//              once the first progress line shows it really carries on ("· 4.4 GB to go": what is left, the part
+//              already down not counted again), and dropped if it stopped before the line went up. Offline at that
+//              launch (the script says "network", or macOS says the Mac is offline — ModelDownloadQueue
+//              .waitsForNetwork; a crash or a full disk while online is an ordinary failure with its error): the file
+//              is kept, one line says the models finish once the Mac is online (Try Again), and they carry on by
+//              themselves when it is (NetworkWatch) or at the next launch. A retry on the network coming back that
+//              fails again stays quiet (a flapping Wi-Fi, a captive portal): said again only after a Try Again.
+//   progress   only a line about the running model counts (ModelBundle.acceptProgress: a file fetched on the way
+//              never moves the bar, and it never moves back).
 //   after      each model that comes in: dictation's state is read again (DictationModels — the dictation key needs a
 //              model), the voice-note models re-picked (SpeechModel.reapply), polish picks its model up, and once
 //              dictation's model is there it is loaded straight away (Dictation.prewarm), so the first Fn isn't cold.
-// Test hooks: `downloads state|add ID[,ID…] KIND|stop [ID]|resume` (DictationTestHooks → testCommand).
+// Test hooks: `downloads state|add ID[,ID…] KIND|stop [ID]|resume|online` (DictationTestHooks → testCommand).
 import AppKit
 import BlurtCore
 import Combine
@@ -52,9 +61,17 @@ final class ModelDownloads: ObservableObject {
     private var quitting = false
     /// the surface that started the batch ("onboarding", "settings", "dictation", "launch")
     private(set) var via = ""
+    /// a batch carried over at launch couldn't reach the network: model-downloads.json is kept for when it can
+    private(set) var waitingForNetwork = false
+    /// the batch resumed at launch: its launch line goes up with the first progress line (then it is true)
+    private var announceResume = false
+    /// "finish once you're online" was said: a retry the network's return started stays quiet if it fails again
+    private var offlineSaid = false
 
     var active: Bool { queue.active }
     var progress: (done: Double, total: Double) { queue.progress(current: current, line: line) }
+    /// What is left to download (MB): the batch less what came down, the running model's part included.
+    var remainingMB: Double { queue.remaining(current: current, line: line) }
 
     func isQueued(_ id: String) -> Bool { queue.contains(id) && current != id }
     func isRunning(_ id: String) -> Bool { current == id }
@@ -72,6 +89,11 @@ final class ModelDownloads: ObservableObject {
     /// Queue these models (the ones already queued or running are not asked for twice) and start if idle.
     func download(_ jobs: [Job], via source: String) {
         for j in jobs { failed[j.id] = nil }
+        // the batch a launch kept for the network comes along (the file would otherwise be overwritten without it)
+        if waitingForNetwork, let kept = ModelDownloadQueue.load() {
+            waitingForNetwork = false
+            queue.add(kept.pending)
+        }
         if !queue.active { via = source }
         let added = queue.add(jobs, group: String(UUID().uuidString.prefix(8)))
         queue.save()
@@ -99,16 +121,38 @@ final class ModelDownloads: ObservableObject {
 
     /// At launch: what a quit, a relaunch or a crash left carries on, quietly, with one launch line.
     func resumeAtLaunch() {
-        guard let q = ModelDownloadQueue.load() else { return }
+        guard proc == nil, let q = ModelDownloadQueue.load() else { return }
         emit(["event": "model_download", "op": "resume", "models": q.pending.map(\.id), "finished": q.finished])
-        var t = Island.Toast(text: T("app.models.resuming", modelSize(q.remainingMB)), actionTitle: T("app.models.show")) {
-            ModelDownloads.showProgress()
-        }
-        t.seconds = 6
-        LaunchMessages.shared.post(.models, t)
+        waitingForNetwork = false
+        announceResume = true           // the line goes up with the first progress line: it carries on for real
         queue = q
         via = "launch"
         runNext()
+    }
+
+    /// "Finishing the speech models · 4.4 GB to go": once the resumed batch really moves; dropped if it stopped while
+    /// the launch's messages were held.
+    private func announceResumed() {
+        guard announceResume else { return }
+        announceResume = false
+        var t = Island.Toast(text: T("app.models.resuming", modelSize(remainingMB)), actionTitle: T("app.models.show")) {
+            ModelDownloads.showProgress()
+        }
+        t.seconds = 6
+        LaunchMessages.shared.post(.models, t, stillTrue: { MainActor.assumeIsolated { ModelDownloads.shared.active } })
+    }
+
+    /// The line's Try Again: the kept batch again, and if it fails again that is said again (the user asked).
+    func retryKept() {
+        offlineSaid = false
+        resumeAtLaunch()
+    }
+
+    /// The Mac is online again (NetworkWatch): a batch a launch kept for the network carries on.
+    func backOnline() {
+        guard waitingForNetwork, proc == nil else { return }
+        emit(["event": "model_download", "op": "online"])
+        resumeAtLaunch()
     }
 
     /// Quitting: the setup ends now (its partial files stay for the next launch, and so does the queue's file).
@@ -142,20 +186,36 @@ final class ModelDownloads: ObservableObject {
         if ModelBundle.mirror { extra["BLURT_HF_MIRROR"] = "1" }
         emit(["event": "model_download", "op": "start", "model": j.id, "kind": j.kind.rawValue, "mirror": extra["BLURT_HF_MIRROR"] != nil])
         var lastError = ""
+        var lastErrLine = ""        // the last thing the script said on stderr (a traceback's last line), for the log
+        var code: String?           // the script's own {"ok": false, "code": …}; nil: it never got to say (uv couldn't run it)
         do {
             proc = try SkillCLI.shared.spawn(script, args, env: extra, onLine: { [weak self] l, isErr in
+                guard let self = self else { return }
                 let t = l.trimmingCharacters(in: .whitespaces)
-                if let q = ModelBundle.parseProgress(t) { self?.line = q }
-                else if t.hasPrefix("unpacking ") { self?.unpacking = true; self?.updateMenuRow() }
-                else if isErr, l.hasPrefix("ERROR") || l.contains("failed") { lastError = String(l.prefix(300)) }
-            }, onExit: { [weak self] st in self?.exited(j, status: st, error: lastError) })
+                if let q = ModelBundle.parseProgress(t) {
+                    // only the running model's own line, never backwards (a file fetched on the way isn't the model)
+                    if let ok = ModelBundle.acceptProgress(q, sizeMB: j.sizeMB, previous: self.line) {
+                        self.line = ok
+                        self.announceResumed()
+                    }
+                } else if t.hasPrefix("unpacking ") {
+                    self.unpacking = true
+                    self.updateMenuRow()
+                } else if !isErr, t.hasPrefix("{"), let o = (try? JSONSerialization.jsonObject(with: Data(t.utf8))) as? [String: Any] {
+                    code = o["ok"] as? Bool == false ? o["code"] as? String ?? "error" : nil
+                } else if isErr, l.hasPrefix("ERROR") || l.contains("failed") {
+                    lastError = String(l.prefix(300))
+                } else if isErr, !t.isEmpty {
+                    lastErrLine = String(t.prefix(300))
+                }
+            }, onExit: { [weak self] st in self?.exited(j, status: st, error: lastError.isEmpty ? lastErrLine : lastError, code: code) })
         } catch {
             proc = nil
-            exited(j, status: 1, error: "\(error)")
+            exited(j, status: 1, error: "\(error)", code: nil)
         }
     }
 
-    private func exited(_ j: Job, status st: Int32, error: String) {
+    private func exited(_ j: Job, status st: Int32, error: String, code: String?) {
         proc = nil
         guard !quitting else { return }        // the queue's file stays as it is: the next launch carries on
         let stop = stopping
@@ -164,14 +224,22 @@ final class ModelDownloads: ObservableObject {
         stopSet = []
         let outcome = ModelDownloadQueue.outcome(status: st, stopping: stop != nil)
         emit(["event": "model_download", "op": "exit", "model": j.id, "status": Int(st), "outcome": outcome.rawValue,
-              "error": error.isEmpty ? NSNull() : error])
+              "error": error.isEmpty ? NSNull() : error, "code": code ?? NSNull()])
         // the scripts' own words for every outcome: the per-surface events tests read
         emit(["event": j.kind == .polish ? "polish_download" : "asr_download", "model": j.id, "status": Int(st)])
         current = nil
         line = nil
         unpacking = false
         let request: ModelDownloadQueue.Stop = stop == nil ? .none : stop == "" ? .all(stopAll) : .one(stop!)
-        if outcome == .failed { failed[j.id] = error.isEmpty ? "exit \(st)" : error }
+        // a batch carried over from the last run that can't reach the network: kept on disk for when the Mac is
+        // online, said once — not dropped for good behind a "still finishing" line. Anything else is a failure.
+        if outcome == .failed, via == "launch", ModelDownloadQueue.waitsForNetwork(code: code, online: NetworkWatch.shared.isOnline) {
+            return keepForNetwork(j)
+        }
+        if outcome == .failed {
+            failed[j.id] = error.isEmpty ? "exit \(st)" : error
+            announceResume = false          // no "finishing" line for a batch that just stopped on an error
+        }
         let next = queue.ended(j.id, outcome: outcome, stop: request)
         queue.save()
         if outcome == .done { arrived(j) } else { Task { await refresh(); await ModelSetup.shared.load() } }
@@ -187,6 +255,25 @@ final class ModelDownloads: ObservableObject {
             stoppedOnError(left.isEmpty ? [j] : left, via: via)
             if queue.active { runNext() } else { via = "" }
         }
+    }
+
+    /// The launch's batch is offline: the file stays (the next launch or the network coming back carries on), the
+    /// queue in memory empties (nothing shows as downloading), one line says so — with Try Again. Once: a retry the
+    /// network's return started that fails again says nothing more (Try Again says it again if it fails).
+    private func keepForNetwork(_ j: Job) {
+        emit(["event": "model_download", "op": "offline", "model": j.id, "kept": queue.pending.map(\.id), "said": !offlineSaid])
+        announceResume = false
+        queue.clear()                   // not saved: model-downloads.json keeps what is left
+        via = ""
+        waitingForNetwork = true
+        Task { await ModelSetup.shared.load() }
+        guard !offlineSaid else { return }
+        offlineSaid = true
+        var t = Island.Toast(text: T("app.models.offline"), actionTitle: T("onboarding.models.retry")) {
+            MainActor.assumeIsolated { ModelDownloads.shared.retryKept() }
+        }
+        t.seconds = 8
+        LaunchMessages.shared.post(.models, t)
     }
 
     /// One model is in: everything that depends on it reads it again; dictation's model loads now.
@@ -255,11 +342,13 @@ final class ModelDownloads: ObservableObject {
                      via: "test")
         case "stop": stop(a.count > 1 ? a[1] : nil)
         case "resume": resumeAtLaunch()
+        case "online": backOnline()
         default: break
         }
         let p = progress
         emit(["event": "downloads_state", "current": current ?? NSNull(), "queue": queue.pending.map(\.id), "unpacking": unpacking,
               "finished": queue.finished, "progress": [Int(p.done), Int(p.total)], "failed": failed,
-              "file": FileManager.default.fileExists(atPath: ModelDownloadQueue.url.path), "menu": menuTitle ?? NSNull()])
+              "file": FileManager.default.fileExists(atPath: ModelDownloadQueue.url.path), "menu": menuTitle ?? NSNull(),
+              "waiting_for_network": waitingForNetwork, "remaining_mb": Int(remainingMB)])
     }
 }

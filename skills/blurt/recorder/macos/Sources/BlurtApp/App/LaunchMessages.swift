@@ -10,7 +10,8 @@
 // the menu and Settings → General, the job in the main window, the model in Settings → Speech, the download in the
 // menu). Until 90 s after launch, a launch message that arrives once one has been shown is
 // dropped too. Outside that window post() is just the island's toast; ordinary toasts (what the user just did) never
-// come through here. The rule itself is BlurtCore's LaunchQueue.
+// come through here. A message that may stop being true while held passes `stillTrue` ("the downloads carry on"): at
+// the end of the hold it goes only if it still is. The rule itself is BlurtCore's LaunchQueue.
 import AppKit
 import BlurtCore
 
@@ -23,7 +24,7 @@ enum LaunchRank: Int, Comparable {
 final class LaunchMessages {
     static let shared = LaunchMessages()
 
-    private struct Held { let rank: LaunchRank; let toast: Island.Toast; let shown: (() -> Void)? }
+    private struct Held { let rank: LaunchRank; let toast: Island.Toast; let shown: (() -> Void)?; let stillTrue: (() -> Bool)? }
     private lazy var queue = LaunchQueue<Held>(show: { h in
         var t = h.toast
         t.passive = true            // a launch message never pushes aside what the user just did (ToastQueue)
@@ -31,7 +32,7 @@ final class LaunchMessages {
         h.shown?()
     }, dropped: { h, _ in
         emit(["event": "launch_toast_dropped", "rank": h.rank.rawValue, "text": h.toast.text])
-    })
+    }, stale: { h in h.stillTrue.map { !$0() } ?? false })
 
     /// At launch, before anything posts (App.startResident).
     func start() {
@@ -39,9 +40,13 @@ final class LaunchMessages {
         DispatchQueue.main.asyncAfter(deadline: .now() + queue.hold) { [weak self] in self?.queue.flush() }
     }
 
-    /// `shown`: called when the message really goes up (not when it is dropped).
-    func post(_ rank: LaunchRank, _ t: Island.Toast, shown: (() -> Void)? = nil) {
-        if queue.post(rank.rawValue, Held(rank: rank, toast: t, shown: shown)) == .held {
+    /// The launch's messages are still held: a word now would only repeat what goes up in a moment.
+    var holding: Bool { queue.collecting }
+
+    /// `shown`: called when the message really goes up (not when it is dropped). `stillTrue`: asked at the end of the
+    /// hold — false drops it.
+    func post(_ rank: LaunchRank, _ t: Island.Toast, stillTrue: (() -> Bool)? = nil, shown: (() -> Void)? = nil) {
+        if queue.post(rank.rawValue, Held(rank: rank, toast: t, shown: shown, stillTrue: stillTrue)) == .held {
             emit(["event": "launch_toast_held", "rank": rank.rawValue, "text": t.text])
         }
     }

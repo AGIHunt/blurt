@@ -80,6 +80,7 @@
 "speech.bench.help" = "Transcribes short spoken samples in your languages on this Mac and measures accuracy, speed and memory.";
 "speech.bench.failed" = "Couldn’t measure this model.";
 "speech.remove.title" = "Move this model to the Trash?";
+"speech.remove.message" = "%1$@ · %2$@. You can download it again any time.";
 "speech.remove.confirm" = "Move to Trash";
 
 /* Resources */
@@ -122,3 +123,8 @@
 "speech.dictation.no_words" = "doesn’t use your Words";
 "speech.dictation.footer" = "Both run on this Mac. Nothing is downloaded until you click Download.";
 "speech.download.queued" = "Queued";
+"speech.model.other" = "A model no longer listed";
+"speech.model.picked_not_in" = "For %@ once it’s downloaded";
+"speech.dictation.used_once_in" = "Used once it’s downloaded";
+"speech.purpose.none_yet" = "None yet";
+"speech.purpose.downloading" = "%@ · downloading";

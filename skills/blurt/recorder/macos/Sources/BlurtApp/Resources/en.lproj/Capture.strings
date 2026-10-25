@@ -72,7 +72,7 @@
 "capture.keys.dictation_change" = "Change in Dictation…";
 "capture.keys.draw_note" = "Hold it and drag to circle things while recording";
 "capture.keys.duplicate" = "Same as “%@” — not active";
-"capture.keys.failed" = "Can’t use this shortcut (%@). Another app may have it.";
+"capture.keys.failed" = "Can’t use this shortcut. Another app may have it.";
 "capture.keys.fn" = "fn";
 "capture.keys.hint" = "Click (or press Space), then the new keys · Esc cancels · ⌫ removes it";
 "capture.keys.hold_draw" = "Hold to draw";
@@ -300,3 +300,5 @@
 "capture.screen.reallow" = "Re-allow…";
 "capture.sort.no_agent" = "Organizing needs Claude Code or Codex · the cards stay";
 "capture.sort.set_up" = "Set Up…";
+"capture.keys.wont_work_many" = "%@ shortcuts won’t work";
+"capture.keys.menu_not_working" = "%1$@ doesn’t work: %2$@. Change it in Settings, under Shortcuts.";

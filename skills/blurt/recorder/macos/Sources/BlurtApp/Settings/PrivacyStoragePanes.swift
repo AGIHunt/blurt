@@ -4,7 +4,10 @@
 // can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default). Move
 // to Trash acts at once, like Finder, with Undo (the island's button, ⌘Z; BlurtCore TrashRestore: a folder made again
 // takes its old contents back, what can't come back is said); only turning on automatic deletion asks.
-// Privacy's "never use cloud recognition" says what it does where things stand (no cloud key set: local anyway).
+// Privacy's "never use cloud recognition" says what it does where things stand (no cloud key set: local anyway), and
+// its footer says what leaves the Mac: nothing, or — with an agent on — what organising and hand-offs send to it.
+// Storage's model rows are named from the catalogues at once (BlurtCore ModelCatalog), never by folder; a folder no
+// catalogue knows is an older model nothing uses — Move to Trash, with Undo. Empty rows are left out.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -102,7 +105,7 @@ struct PrivacyPane: View {
                     }
                 }
             })
-            SettingsGroup("privacy.data", footer: T("settings.privacy.recordings_screenshots_items_stay")) {
+            SettingsGroup("privacy.data", footer: dataFooter) {
                 // what the switch does, said for where things stand: off with no cloud key set is local too
                 SettingToggle("privacy.local_asr", isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }), detail: localDetail)
                 SettingToggle("privacy.keep_live", isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
@@ -115,6 +118,14 @@ struct PrivacyPane: View {
     }
 
     @ObservedObject var speech = SpeechModel.shared
+
+    /// What stays on this Mac, said as it is: with an agent on (the default), organising and hand-offs send what they
+    /// need to it — "nothing is uploaded" would be untrue then.
+    var dataFooter: String {
+        // record.agents = [] turns every agent off; unset is the registry's default order (agents on)
+        let agentsOff = Agents.shared.order?.isEmpty == true
+        return T(agentsOff ? "settings.privacy.recordings_screenshots_items_stay" : "settings.privacy.stay_with_agents")
+    }
 
     /// On: never the cloud. Off: local anyway while no cloud key is set; with one, the automatic choice may use it.
     var localDetail: String {
@@ -228,13 +239,26 @@ final class StorageModel: ObservableObject {
             if ["asr", "polish"].contains(e.lastPathComponent) {
                 for m in ((try? fm.contentsOfDirectory(at: e, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
                     where !m.lastPathComponent.hasPrefix(".") {
-                    out.append(Row(name: m.lastPathComponent, path: m, bytes: diskSize(m), family: nil))
+                    out.append(Row(name: displayName(m.lastPathComponent), path: m, bytes: diskSize(m), family: family(m.lastPathComponent)))
                 }
             } else {
-                out.append(Row(name: e.lastPathComponent, path: e, bytes: diskSize(e), family: nil))
+                out.append(Row(name: displayName(e.lastPathComponent), path: e, bytes: diskSize(e), family: family(e.lastPathComponent)))
             }
         }
         return out
+    }
+
+    /// What a model folder is for, from the catalogues (nil: not known — annotateModels says it).
+    nonisolated static func family(_ folder: String) -> String? {
+        if folder == "silero_vad.onnx" { return T("settings.storage.model.vad") }
+        return ModelCatalog.entry(folder: folder).map { T($0.polish ? "settings.storage.model.polish" : "settings.storage.model.asr") }
+    }
+
+    /// A model folder's name for people: the catalogue's name, the voice detector by what it is, anything else as a
+    /// model this version doesn't use (the folder stays in the row's detail, like a path).
+    nonisolated static func displayName(_ folder: String) -> String {
+        if folder == "silero_vad.onnx" { return T("settings.storage.model.vad_name") }
+        return ModelCatalog.entry(folder: folder)?.name ?? T("settings.storage.model.unknown")
     }
 
     /// Which model is which and what uses it (BlurtCore ModelUsage): transcribe.py models and dictation-models (speech
@@ -255,7 +279,16 @@ final class StorageModel: ObservableObject {
         let own = BlurtPaths.home.appendingPathComponent("models").standardizedFileURL.path
         var rows = models.filter { $0.path.standardizedFileURL.path.hasPrefix(own) }
         for i in rows.indices {
-            guard let k = known[rows[i].path.standardizedFileURL.path] else { continue }
+            guard let k = known[rows[i].path.standardizedFileURL.path] else {
+                // a folder no script knows (a model an older version used): nothing uses it, it may go
+                let folder = rows[i].path.lastPathComponent
+                if folder != "silero_vad.onnx", ModelCatalog.entry(folder: folder) == nil {
+                    rows[i].family = T("settings.storage.model.unused")
+                    rows[i].detail = folder
+                    rows[i].removable = true
+                }
+                continue
+            }
             rows[i].name = k.name
             rows[i].family = family(k.kind)
             rows[i].inUse = k.inUse
@@ -285,7 +318,7 @@ final class StorageModel: ObservableObject {
                 emit(["event": "storage_trash", "files": done.count])
                 await self.load()
                 await DictationModels.shared.load()          // a model gone: the dictation key knows
-                self.offerUndo(done, text: T("settings.storage.trashed", name), window: window) { _ in }
+                self.offerUndo(done, text: T("settings.storage.trashed", name), name: name, window: window) { _ in }
             }
         }
     }
@@ -309,8 +342,9 @@ final class StorageModel: ObservableObject {
         }
     }
 
-    /// "Moved to the Trash · Undo" in the island, and the same step on the window's ⌘Z.
-    private func offerUndo(_ moved: [URL: URL], text: String, window: NSWindow?, restored: @escaping ([URL]) -> Void) {
+    /// "Moved to the Trash · Undo" in the island, and the same step on the window's ⌘Z. `name`: the row's name, said
+    /// when it can't come back (never the folder's name on disk).
+    private func offerUndo(_ moved: [URL: URL], text: String, name: String? = nil, window: NSWindow?, restored: @escaping ([URL]) -> Void) {
         guard !moved.isEmpty else { return }
         var undone = false
         let undo: () -> Void = { [weak self] in
@@ -321,8 +355,8 @@ final class StorageModel: ObservableObject {
             let (back, missing) = TrashRestore.restore(moved)
             restored(back)
             emit(["event": "storage_trash_undo", "files": back.count, "missing": missing.map(\.lastPathComponent)])
-            if let first = missing.first {
-                var t = Island.Toast(text: missing.count == 1 ? T("settings.storage.undo_failed", first.lastPathComponent)
+            if !missing.isEmpty {
+                var t = Island.Toast(text: missing.count == 1 && name != nil ? T("settings.storage.undo_failed", name ?? "")
                                                               : T("settings.storage.undo_failed_many", missing.count),
                                      actionTitle: nil, action: nil)
                 t.seconds = 6
@@ -384,7 +418,7 @@ struct StoragePane: View {
                         ForEach(VideoRetention.choices, id: \.self) { d in Text(T("settings.storage.videos.after", d)).tag(d) }
                     }
                 }
-            }, accessory: { if m.busy { ProgressView().controlSize(.mini) } })
+            }, accessory: { if m.busy { BrandSpinnerView(size: 10) } })
 
             SettingsGroup("storage.models", footer: T("settings.storage.model.footer"), content: {
                 if m.models.isEmpty && !m.busy {
@@ -392,27 +426,35 @@ struct StoragePane: View {
                 }
                 ForEach(m.models) { r in modelRow(r) }
                 SettingRow("storage.choose_models") {
-                    HStack(spacing: 8) {
-                        Button(T("settings.kit.speech")) { AppEnvironment.settings?.show(pane: "speech/speech.models") }
-                        Button(T("dictation.settings.tab")) { AppEnvironment.settings?.show(pane: "dictation/dictation.models") }
+                    // links that say where they go (as Shortcuts' "Change in Dictation…"), not pane names as buttons
+                    HStack(spacing: 14) {
+                        Button(T("settings.storage.choose.speech")) { AppEnvironment.settings?.show(pane: "speech/speech.models") }
+                            .buttonStyle(.plain).foregroundStyle(Color.brandInk)
+                        Button(T("settings.storage.choose.dictation")) { AppEnvironment.settings?.show(pane: "dictation/dictation.models") }
+                            .buttonStyle(.plain).foregroundStyle(Color.brandInk)
                     }
                 }
-            }, accessory: { if m.checkingModels { ProgressView().controlSize(.mini) } })
+            }, accessory: { if m.checkingModels { BrandSpinnerView(size: 10) } })
 
-            if !m.dictation.isEmpty {
+            if m.dictation.contains(where: { $0.bytes > 0 }) {
                 SettingsGroup("storage.dictation", footer: T("settings.storage.dictation.footer")) {
-                    ForEach(m.dictation) { r in row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) } }
+                    ForEach(m.dictation.filter { $0.bytes > 0 }) { r in row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) } }
                 }
             }
 
             SettingsGroup("storage.files", footer: T("settings.privacy.index_can_be_deleted")) {
                 SettingRow("storage.live_audio", detail: TP("settings.privacy.live_audio", m.liveAudio.count)) {
-                    HStack(spacing: 10) {
-                        Text(byteString(m.liveAudio.bytes)).monospacedDigit().foregroundStyle(.secondary)
-                        Button(T("settings.privacy.clean_up")) { Task { await m.dropLive() } }.disabled(m.liveAudio.count == 0)
+                    // nothing to clean: says so, with no greyed-out button
+                    if m.liveAudio.count == 0 {
+                        Text(T("settings.storage.none")).foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 10) {
+                            Text(byteString(m.liveAudio.bytes)).monospacedDigit().foregroundStyle(.secondary)
+                            Button(T("settings.privacy.clean_up")) { Task { await m.dropLive() } }
+                        }
                     }
                 }
-                ForEach(m.app) { r in
+                ForEach(m.app.filter { $0.bytes > 0 }) { r in
                     row(r.name, detail: r.detail, bytes: r.bytes) {
                         if ["build", "prompts", "bench", "tmp"].contains(r.path.lastPathComponent) {
                             Button(T("settings.privacy.move_trash")) { m.trash([r.path], name: r.name, window: NSApp.keyWindow) }
@@ -478,8 +520,10 @@ struct StoragePane: View {
                         Text(r.name).font(.system(size: SettingsMetrics.titleSize))
                         if r.inUse { Badge(T("settings.storage.model.in_use")) }
                     }
-                    Text([r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    let detail = [r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · ")
+                    if !detail.isEmpty {
+                        Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
                 }
                 Spacer()
                 Text(byteString(r.bytes)).monospacedDigit().foregroundStyle(.secondary)

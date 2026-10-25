@@ -97,7 +97,7 @@ struct MCPInstallHost: View {
     var body: some View {
         Group {
             if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied) }
-            else { ProgressView().controlSize(.small).padding(40) }
+            else { BrandSpinnerView().padding(40) }
         }
         .task {
             await m.preview(CoreAgent(id: agent, name: AgentNames.name(agent), installed: true, state: "ready"))
