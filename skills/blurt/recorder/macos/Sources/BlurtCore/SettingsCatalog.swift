@@ -153,6 +153,7 @@ public enum SettingsCatalog {
         sec("shortcuts.open", "capture.keys.section.open", "Capture"),
 
         sec("agents.list", "agents.header", "Terminal"),
+        sec("agents.organize", "agents.organize.header", "Terminal"),
         sec("agents.sessions", "agents.sessions.header", "Terminal"),
         sec("agents.manual", "agents.manual.header", "Terminal"),
         sec("agents.ask", "agents.ask.header", "Terminal"),
@@ -282,6 +283,7 @@ public enum SettingsCatalog {
 
             // Agents
             whole("agents.list", detail: SettingsText("agents.lead", "Terminal")),
+            whole("agents.organize", detail: SettingsText("agents.organize.footer", "Terminal")),
             whole("agents.sessions", detail: SettingsText("agents.sessions.about", "Terminal")),
             row("agents.keep_sessions", "agents.sessions", SettingsText("agents.keep_sessions", "Terminal"),
                 detail: SettingsText("agents.keep_sessions.ok", "Terminal")),

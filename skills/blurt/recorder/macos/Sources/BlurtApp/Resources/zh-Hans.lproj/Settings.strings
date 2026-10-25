@@ -72,11 +72,6 @@
 "settings.privacy.keep_raw_live_caption" = "转写后保留麦克风音频";
 "settings.privacy.local_speech_recognition_only" = "语音识别";
 "settings.privacy.macos_applies_screen_recording" = "重新打开口喷鸡后，macOS 才会应用这项更改。";
-"settings.privacy.deleted_by_default_once" = "关闭时，转写完成后就删除，录屏视频里有同样的声音。";
-"settings.privacy.items_appear_spotlight" = "条目出现在 Spotlight 里";
-"settings.privacy.keep_raw_live_caption" = "保留实时字幕的原始音频";
-"settings.privacy.local_speech_recognition_only" = "不用云端语音识别";
-"settings.privacy.macos_applies_screen_recording" = "屏幕录制权限改了之后，macOS 要重新打开口喷鸡才生效。";
 "settings.privacy.move_trash" = "移到废纸篓";
 "settings.privacy.permissions_live" = "权限";
 "settings.privacy.prompts" = "提示词";
@@ -393,3 +388,4 @@
 "settings.privacy.local_asr.local" = "只在这台 Mac 上";
 "settings.privacy.local_asr.help" = "云端服务在「语音」里设置。整理和修复由你选的 Agent 完成，按它自己的条款处理数据。";
 "settings.kw.shortcuts.pen" = "画笔, 画图, 按住画图, 圈出, Control, 标注";
+"settings.kw.agents.organize" = "模型, 强度, 最省, token, 费用, 整理, 卡片, 录屏, AI 补全";

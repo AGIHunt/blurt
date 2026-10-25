@@ -154,7 +154,7 @@ final class SettingsCatalogTests: XCTestCase {
             XCTAssertEqual(r.first?.paneHit, true, lang)
             XCTAssertEqual(r.first?.hits.first?.entry.id, "shortcuts.record", lang)
             XCTAssertFalse(r.first?.hits.contains { $0.entry.id == "shortcuts.restore" } ?? true, lang)
-            XCTAssertEqual(r.first?.hits.map { $0.entry.section }.filter { $0 == "shortcuts.anytime" }.count, 9, lang)
+            XCTAssertEqual(r.first?.hits.map { $0.entry.section }.filter { $0 == "shortcuts.capture" }.count, 3, lang)
             // the other panes' hits follow, each pane once; the page's order is the search's
             XCTAssertEqual(Set(r.map(\.pane)).count, r.count, lang)
             XCTAssertTrue(r.dropFirst().allSatisfy { !$0.paneHit }, lang)

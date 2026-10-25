@@ -102,7 +102,6 @@ struct GeneralPane: View {
         return v.isEmpty ? "—" : v
     }
 
-    private let w = SettingsMetrics.controlWidth
 
     var body: some View {
         SettingsPage(.general) {
@@ -116,39 +115,32 @@ struct GeneralPane: View {
                         if pendingLanguage {
                             Button(T("settings.general.language.relaunch")) { SystemAccess.relaunch(source: "language", guide: false) }
                         }
-                        RowPicker(label: T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), width: w) {
-                            Text(T("settings.general.language.system")).tag("auto")
-                            Text("English").tag("en")
-                            Text("简体中文").tag("zh-Hans")
-                        }
+                        ChoicePopup(label: T("settings.general.language"),
+                                    choices: [("auto", T("settings.general.language.system")), ("en", "English"), ("zh-Hans", "简体中文")],
+                                    selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), dividers: [1])
                     }
                 }
             }
 
             SettingsGroup("general.recording") {
                 SettingRow("general.after_recording") {
-                    RowPicker(label: T("settings.general.after_recording"), selection: Binding(get: { m.processMode }, set: { m.setProcess($0) }), width: w) {
-                        Text(T("app.menu.after.organize")).tag("auto")
-                        Text(T("app.menu.after.keep")).tag("off")
-                    }
+                    ChoicePopup(label: T("settings.general.after_recording"),
+                                choices: [("auto", T("app.menu.after.organize")), ("off", T("app.menu.after.keep"))],
+                                selection: Binding(get: { m.processMode }, set: { m.setProcess($0) }))
                 }
                 SettingRow("general.countdown") {
-                    RowPicker(label: T("app.menu.countdown"), selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) }), width: w) {
-                        Text(T("app.menu.countdown.none")).tag(0)
-                        Text(T("app.menu.countdown.seconds", 3)).tag(3)
-                        Text(T("app.menu.countdown.seconds", 5)).tag(5)
-                    }
+                    ChoicePopup(label: T("app.menu.countdown"),
+                                choices: [(0, T("app.menu.countdown.none")), (3, T("app.menu.countdown.seconds", 3)), (5, T("app.menu.countdown.seconds", 5))],
+                                selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) }))
                 }
                 SettingToggle("general.system_audio", isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
             }
 
             SettingsGroup("general.voice") {
                 SettingRow("general.voice_end_on_pause") {
-                    RowPicker(label: T("settings.general.voice_end_on_pause"),
-                              selection: Binding(get: { m.voiceEndOnPause }, set: { m.setVoiceEndOnPause($0) }), width: w) {
-                        Text(T("settings.general.voice_end.key")).tag(false)
-                        Text(T("settings.general.voice_end.pause")).tag(true)
-                    }
+                    ChoicePopup(label: T("settings.general.voice_end_on_pause"),
+                                choices: [(false, T("settings.general.voice_end.key")), (true, T("settings.general.voice_end.pause"))],
+                                selection: Binding(get: { m.voiceEndOnPause }, set: { m.setVoiceEndOnPause($0) }))
                 }
                 SettingToggle("general.live_text", isOn: Binding(get: { m.liveText }, set: { m.setLiveText($0) }))
             }
@@ -164,9 +156,9 @@ struct GeneralPane: View {
                             Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .general) }
                                 .fixedSize()
                         }
-                        RowPicker(label: T("settings.general.card_drag"), selection: Binding(get: { m.cardDrag }, set: { m.setCardDrag($0) }), width: w) {
-                            ForEach(CardDragMode.allCases, id: \.self) { c in Text(T("settings.general.card_drag.\(c.rawValue)")).tag(c) }
-                        }
+                        ChoicePopup(label: T("settings.general.card_drag"),
+                                    choices: CardDragMode.allCases.map { ($0, T("settings.general.card_drag.\($0.rawValue)")) },
+                                    selection: Binding(get: { m.cardDrag }, set: { m.setCardDrag($0) }))
                     }
                 }
                 SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))

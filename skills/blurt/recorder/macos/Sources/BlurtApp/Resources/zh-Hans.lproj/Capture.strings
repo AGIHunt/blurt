@@ -267,11 +267,12 @@
 "capture.keys.std.minimize_all" = "全部最小化";
 "capture.keys.std.select_text" = "选择文字";
 "capture.keys.swap.cancel" = "取消";
-"capture.keys.swap.detail" = "互换后，「%1$@」用 %2$@，「%3$@」改用 %4$@。";
+"capture.keys.swap.detail" = "互换后「%1$@」用 %2$@，「%3$@」用 %4$@。可按 ⌘Z 撤销。";
 "capture.keys.swap.ok" = "互换";
-"capture.keys.move.detail" = "移过来后，「%1$@」用 %2$@，「%3$@」没有快捷键。";
-"capture.keys.move.ok" = "移到这里";
-"capture.keys.swap.title" = "%1$@ 已用于「%2$@」";
+"capture.keys.swap.ask" = "与「%@」互换？";
+"capture.keys.move.ask" = "把 %1$@ 从「%2$@」移过来？";
+"capture.keys.move.ok" = "移过来";
+"capture.keys.move.detail" = "移过来后「%1$@」用 %2$@，「%3$@」没有快捷键。可按 ⌘Z 撤销。";
 "capture.keys.system_refused" = "%@ 是 macOS 的系统快捷键（系统设置里的「键盘」），换一个";
 "capture.keys.system_short" = "macOS 在用";
 "capture.keys.undo_set" = "更改快捷键";
@@ -301,7 +302,7 @@
 "capture.action.marker.detail" = "同时截一张图";
 "capture.action.cards.detail" = "刘海下还没归类的截图和语音备注";
 "capture.action.reformat.detail" = "把刚才的听写换成下一种风格";
-"capture.keys.section.capture" = "记录";
+"capture.keys.section.capture" = "录制";
 "capture.keys.section.open" = "打开与切换";
 "capture.keys.dictation_key" = "开始听写";
 "capture.keys.restore.help" = "把所有快捷键恢复成口喷鸡的默认设置。可以用 ⌘Z 撤销。";
@@ -316,3 +317,4 @@
 "capture.keys.hold_off" = "按住某个键画图：已关闭";
 "capture.keys.quit_others" = "退出其他口喷鸡";
 "capture.keys.taken_banner.detail_many" = "它们都退出后，这些快捷键就会在这里生效。";
+"capture.keys.none" = "未设置";

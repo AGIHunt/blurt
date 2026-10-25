@@ -314,7 +314,7 @@
 "row.desktop" = "In %@ desktop";
 "row.desktop.no_mcp" = "In %@ desktop · waiting for you to mark it";
 "agents.handoff_target" = "Hand-offs to %@";
-"agents.handoff_target.hint" = "Where the hand-off sheet starts. You can change it each time.";
+"agents.handoff_target.hint" = "Where the hand-off sheet starts. Blurt’s terminal is recommended; you can change it each time.";
 "agents.handoff_target.no_app" = "%@ desktop isn’t installed, so hand-offs run in Blurt’s terminal.";
 "error.no_desktop" = "This agent has no desktop app to hand items to.";
 "error.desktop_version" = "This needs a newer Claude Code (2.1.285 or later).";
@@ -387,3 +387,12 @@
 "agents.handoff.desktop" = "%@ desktop";
 "agents.ask.line" = "Your agent sends items with the tools it already has, like Slack, Feishu or Linear.";
 "agents.ask.examples" = "Examples…";
+"agents.details" = "Details…";
+"agents.missing" = "Not installed";
+"agents.organize.header" = "Organizing";
+"agents.organize.recording" = "Recordings";
+"agents.organize.cards" = "Cards and AI fill-in";
+"agents.organize.footer" = "Every agent uses these. Higher effort is slower and uses more tokens.";
+"agents.organize.own" = "Set on its own: %@ (in Details…).";
+"agents.organize.follow" = "Same as all (%@)";
+"agents.organize.follow_plain" = "Same as all agents";

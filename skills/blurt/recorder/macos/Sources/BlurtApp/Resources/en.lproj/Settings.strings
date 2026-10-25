@@ -72,11 +72,6 @@
 "settings.privacy.keep_raw_live_caption" = "Keep microphone audio after transcribing";
 "settings.privacy.local_speech_recognition_only" = "Speech recognition";
 "settings.privacy.macos_applies_screen_recording" = "macOS applies this change after Blurt restarts.";
-"settings.privacy.deleted_by_default_once" = "Off: deleted once it is transcribed. The video has the same sound.";
-"settings.privacy.items_appear_spotlight" = "Items appear in Spotlight";
-"settings.privacy.keep_raw_live_caption" = "Keep the raw audio from live captions";
-"settings.privacy.local_speech_recognition_only" = "Never use cloud speech recognition";
-"settings.privacy.macos_applies_screen_recording" = "macOS applies a Screen Recording change after Blurt restarts.";
 "settings.privacy.move_trash" = "Move to Trash";
 "settings.privacy.permissions_live" = "Permissions";
 "settings.privacy.prompts" = "Prompts";
@@ -394,3 +389,4 @@
 "settings.privacy.local_asr.local" = "On This Mac Only";
 "settings.privacy.local_asr.help" = "Cloud services are set up in Speech. Organizing and fixing are done by the agent you chose, under its own terms.";
 "settings.kw.shortcuts.pen" = "pen, draw, hold to draw, circle, control, annotate";
+"settings.kw.agents.organize" = "model, effort, cheapest, tokens, cost, organize, cards, recordings, AI fill-in";

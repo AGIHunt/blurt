@@ -178,7 +178,7 @@ enum SelfTests {
                          "config": (Config.shared["record.hotkeys"] as? [String: Any])?[act.rawValue] ?? NSNull(),
                          "state": "\(Hotkeys.shared.states[act].map { "\($0)" } ?? "")",
                          "refused": m.refusals[act] ?? NSNull(), "note": m.note(act)?.text ?? NSNull(),
-                         "asking": m.asking?.messageText ?? NSNull()])
+                         "asking": m.asking ?? NSNull()])
                     if f.recording { f.stop() }
                 }
             }
@@ -211,7 +211,7 @@ enum SelfTests {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 out(["hotkeys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
                      "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, "\(Hotkeys.shared.state($0))") }),
-                     "asking": m.asking?.messageText ?? NSNull()])
+                     "asking": m.asking ?? NSNull()])
             }
         case "fix":
             let uids = (arg.split(separator: " ").first ?? "").split(separator: ",").map(String.init)
@@ -249,12 +249,13 @@ enum SelfTests {
                 case "toggle" where a.count == 3: m.toggle(a[1], a[2] == "on")
                 case "up" where a.count == 2: m.moveUp(a[1])
                 case "down" where a.count == 2: m.moveDown(a[1])
-                // the pane's sheet and popovers, for screenshots: details ID | fix ID | examples | hover ID | close
+                // the pane's sheet and popovers, for screenshots: details ID | fix ID | examples | missing | hover ID | close
                 case "details" where a.count == 2: m.details = a[1]
                 case "fix" where a.count == 2: m.fixFor = a[1]
                 case "examples": m.examplesShown = true
+                case "missing": m.showMissing = true
                 case "hover" where a.count == 2: m.hovered = a[1]
-                case "close": m.details = nil; m.fixFor = nil; m.examplesShown = false; m.hovered = nil
+                case "close": m.details = nil; m.fixFor = nil; m.examplesShown = false; m.hovered = nil; m.showMissing = false
                 case "processing" where a.count >= 3:
                     // processing AGENT [recording|cards] MODEL [EFFORT] (no kind: cards)
                     let kind = ProcessingKind(rawValue: a[2])

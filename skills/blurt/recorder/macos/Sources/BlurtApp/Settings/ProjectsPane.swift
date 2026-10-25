@@ -122,12 +122,10 @@ struct ProjectsPane: View {
         SettingsPage(.projects) {
             SettingsGroup {
                 SettingRow("projects.capture_into") {
-                    RowPicker(label: T("settings.general.capture_into"), selection: Binding(get: { m.current }, set: { m.setCurrent($0) }),
-                              width: SettingsMetrics.controlWidth) {
-                        ForEach(m.projects, id: \.id) { p in Text(p.name).tag(p.id) }
-                        Divider()
-                        Text(T("project.inbox")).tag("inbox")
-                    }
+                    ChoicePopup(label: T("settings.general.capture_into"),
+                                choices: m.projects.map { ($0.id, $0.name) } + [("inbox", T("project.inbox"))],
+                                selection: Binding(get: { m.current }, set: { m.setCurrent($0) }),
+                                dividers: m.projects.isEmpty ? [] : [m.projects.count])
                 }
             }
 

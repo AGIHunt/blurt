@@ -1,9 +1,12 @@
-// Shared pieces of the Settings panes and the setup assistant: the one look of every pane — SettingsPage (the pane's
-// title, its groups, scrolling to a row a search or a link asked for, kept in view while the page still grows), SettingsGroup (a section:
-// a secondary heading over its rows in one rounded box, System Settings' grouped form), SettingsLine (one line of a box,
-// hairlines between lines), SettingRow / SettingToggle (a setting: title, ⓘ for a longer explanation and one-line
-// description from SettingsCatalog on the left, the control on the right), RowPicker, InkLink —, status dots, the live permission model and its rows, config helpers, a
-// project-config reader/writer.
+// Shared pieces of the Settings panes and the setup assistant: the one look of every pane — SettingsPage (the page under
+// the pane's name in the toolbar: an optional lead line, its groups, scrolling to a row a search or a link asked for,
+// kept in view while the page still grows), SettingsGroup (a section: a secondary heading over its rows in one rounded
+// box, System Settings' grouped form), SettingsLine (one line of a box, hairlines between lines), SettingRow /
+// SettingToggle (a setting: title, ⓘ for a longer explanation and a one-line description from SettingsCatalog on the
+// left, one control on the right), ChoicePopup (every pop-up, one width: the page's one control column), RowMenu (a
+// row's ⋯: its rare actions, on hover), SettingsNotice (one state said once above a page's first section),
+// SettingsPageButton (the button that closes a page), InkLink —, status dots, the live permission model and its rows,
+// config helpers, a project-config reader/writer.
 import AppKit
 import AVFoundation
 import ApplicationServices
@@ -107,7 +110,7 @@ enum SettingsMetrics {
     static let boxInset: CGFloat = 12
     static let boxRadius: CGFloat = 10
     /// The trailing column: every pop-up of a page the same width, so the controls share one left and one right edge
-    /// (RowPicker, ChoicePopup).
+    /// (ChoicePopup).
     static let controlWidth: CGFloat = 200
     /// A row's icon (SettingRow(icon:), SettingsIcon): an 18 pt slot, the text 10 pt after it — every row of a pane
     /// that uses icons starts its text at the same x (28).
@@ -118,8 +121,10 @@ enum SettingsMetrics {
     static let boxFill = Color.primary.opacity(0.035)
     static let boxStroke = Color.primary.opacity(0.07)
     static let topFade: CGFloat = 10            // under the titlebar: rows scrolled up fade out instead of being cut
-    /// a list of even rows (Shortcuts): one height for a one-line row and a row with a description line
-    static let evenRow: CGFloat = 44
+    /// the page's first line under the toolbar: clear of the fade, so a lead line or a heading is never half-hidden
+    static let pageTop: CGFloat = 8
+    /// a list of even rows: one height for a one-line row and a row with a description line
+    static let evenRow: CGFloat = 46
     static let evenRowPadding: CGFloat = 5
 }
 
@@ -176,7 +181,7 @@ struct SettingsPage<Content: View>: View {
                     }
                     content
                 }
-                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, -8).padding(.bottom, 24)
+                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, SettingsMetrics.pageTop).padding(.bottom, 24)
                 .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
                 // (a preference doesn't come out of a ScrollView: the height is watched in place)
@@ -564,28 +569,6 @@ struct SettingsIcon: View {
     }
 }
 
-/// A menu of choices on a row's right, at the page's one control width (SettingsMetrics.controlWidth), flush with the
-/// column's trailing edge, so every pop-up of every pane shares one left and one right edge (as ChoicePopup); a choice
-/// longer than that — a long project name — is cut short in the button and shown whole in its menu.
-struct RowPicker<Value: Hashable, Choices: View>: View {
-    var label: String
-    var selection: Binding<Value>
-    var width: CGFloat?
-    @ViewBuilder var choices: Choices
-
-    init(label: String, selection: Binding<Value>, width: CGFloat? = nil, @ViewBuilder choices: () -> Choices) {
-        self.label = label
-        self.selection = selection
-        self.width = width
-        self.choices = choices()
-    }
-
-    var body: some View {
-        Picker(label, selection: selection) { choices }.labelsHidden()
-            .frame(width: width ?? SettingsMetrics.controlWidth, alignment: .trailing)
-    }
-}
-
 /// A catalogue setting that is a check item in a row's menu (a split button's, ChoicePopup's): its title from
 /// SettingsCatalog, its description as the item's tooltip. Its row names it in `hosts`, so a search for it lands there.
 struct SettingMenuToggle: View {
@@ -631,6 +614,8 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
     var selection: Binding<Value>
     var checks: [SettingMenuToggle] = []
     var width: CGFloat = SettingsMetrics.controlWidth
+    /// a separator before these choices (by index: "Automatic", then the rest)
+    var dividers: Set<Int> = []
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -652,6 +637,7 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for (i, c) in choices.enumerated() {
+            if dividers.contains(i), i > 0 { menu.addItem(.separator()) }
             let it = NSMenuItem(title: c.title, action: nil, keyEquivalent: "")
             it.tag = i
             it.state = c.value == selection.wrappedValue ? .on : .off
@@ -669,7 +655,7 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
             }
         }
         b.menu = menu
-        if let i = choices.firstIndex(where: { $0.value == selection.wrappedValue }) { b.selectItem(at: i) }
+        if let i = choices.firstIndex(where: { $0.value == selection.wrappedValue }) { b.selectItem(withTag: i) }
         b.isEnabled = context.environment.isEnabled
         b.setAccessibilityLabel(label)
     }
@@ -680,7 +666,7 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
             guard let p = parent, let it = b.selectedItem else { return }
             if it.tag >= 1000, p.checks.indices.contains(it.tag - 1000) {
                 p.checks[it.tag - 1000].isOn.wrappedValue.toggle()
-                if let i = p.choices.firstIndex(where: { $0.value == p.selection.wrappedValue }) { b.selectItem(at: i) }
+                if let i = p.choices.firstIndex(where: { $0.value == p.selection.wrappedValue }) { b.selectItem(withTag: i) }
             } else if p.choices.indices.contains(it.tag) {
                 p.selection.wrappedValue = p.choices[it.tag].value
             }
@@ -703,18 +689,21 @@ struct TextLinkButton: View {
     }
 }
 
-/// What stops a page's feature from working now, above its first section: the attention dot, what is missing, one
-/// line on why, and the one thing to do (§3.4: `attn` for what's missing). Nothing at all while all is well.
+/// One state that concerns a whole page, said once above its first section instead of on every row it touches (§3.4):
+/// what stops a feature now (a permission missing, the key not heard), or what another copy of Blurt holds. The disc
+/// (its shape twin, §1.5) at 16 pt, what and why, and the one thing to do. A quiet card: the tone only as a faint wash,
+/// a hairline and the disc; the text in the ordinary inks. Nothing at all while all is well.
 struct SettingsNotice<Action: View>: View {
     var title: String
     var detail: String?
     var tone: Tone = .warn
     @ViewBuilder var action: Action
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            StatusDot(tone: tone)
+        let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
+        HStack(alignment: .center, spacing: 12) {
+            StatusDot(tone: tone, diameter: 16)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
+                Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).fixedSize(horizontal: false, vertical: true)
                 if let d = detail {
                     Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -723,12 +712,31 @@ struct SettingsNotice<Action: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             action
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint.opacity(0.10)))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
-        .accessibilityElement(children: .combine)
+        .padding(.horizontal, SettingsMetrics.boxInset).padding(.vertical, 10)
+        .background(shape.fill(tint.opacity(tone == .off ? 0.05 : 0.08)))
+        .overlay(shape.strokeBorder(tint.opacity(tone == .off ? 0.12 : 0.3), lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
     }
-    private var tint: Color { tone == .off ? Color(nsColor: .tertiaryLabelColor) : tone == .bad ? .brandErr : .brandAttn }
+    private var tint: Color { tone == .off ? Color.primary : tone == .bad ? .brandErr : .brandAttn }
+}
+
+/// A row's ⋯: its rare actions in a menu, shown while the pointer is over the row (or the menu is open, or keyboard
+/// focus is in it), its slot kept at rest so nothing moves (Linear, Raycast: actions on hover). The same items belong in
+/// the row's context menu.
+struct RowMenu<Items: View>: View {
+    var label: String
+    var visible: Bool
+    @ViewBuilder var items: Items
+    var body: some View {
+        Menu { items } label: {
+            Image(systemName: "ellipsis").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                .frame(width: 22, height: 20).contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .opacity(visible ? 1 : 0)
+        .help(label)
+        .accessibilityLabel(label)
+    }
 }
 
 /// The brief brand wash on the row a search or a link landed on (§3.3: the selection colour), fading out. In a box
@@ -763,34 +771,6 @@ struct Hint: View {
     init(_ t: String) { text = t }
     var body: some View {
         Text(text).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// One state that concerns a whole page, said once under the page's title instead of on every row it touches: the
-/// attention disc (its shape twin, §1.5), what and why, and the one thing to do about it. A quiet card: the attention
-/// colour only as a faint wash, a hairline and the disc; the text in the ordinary inks.
-struct AttentionBanner<Action: View>: View {
-    var title: String
-    var detail: String?
-    @ViewBuilder var action: Action
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        HStack(alignment: .center, spacing: 12) {
-            StatusDot(tone: .warn, diameter: 16)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).fixedSize(horizontal: false, vertical: true)
-                if let d = detail {
-                    Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            action
-        }
-        .padding(.horizontal, 14).padding(.vertical, 11)
-        .background(shape.fill(Color.brandAttn.opacity(0.08)))
-        .overlay(shape.strokeBorder(Color.brandAttn.opacity(0.3), lineWidth: 0.5))
-        .accessibilityElement(children: .contain)
     }
 }
 

@@ -1,16 +1,20 @@
 // Settings → Agents (a page of SettingsKit lines; its sections are in SettingsCatalog). One focus: which agent Blurt
 // uses and whether it works. The page's lead says the rule (the first agent that works, top to bottom); the list is
-// one calm row per agent — status dot, name, one line of state in words, and at most two controls at rest: a fix
-// (Sign In… / Install…) where the agent needs the user, and a switch (record.agents: on = tried, in the shown order).
-// The drag handle (to reorder) and a ⋯ menu (Models…, Test, Connect Skill and MCP…, Move Up / Down, Check Again)
-// appear on hover; the same menu is the row's context menu. "In use" marks the agent that runs (only once the sign-in
-// check is in, so it never jumps), and an agent above it that is on but can't run says it is skipped, and why.
+// one calm row per installed agent — status dot, name, one line of state in words (with its one fix as a text link
+// where the agent needs the user: "Not signed in · Sign In…") and a switch (record.agents: on = tried, in the shown
+// order). The drag handle and a ⋯ menu (Details…, Test, Connect Skill and MCP…, Move Up / Down, Check Again) appear on
+// hover; the same menu is the row's context menu. "In use" marks the agent that runs (only once the sign-in check is
+// in, so it never jumps), and an agent above it that is on but can't run says it is skipped. Agents that aren't
+// installed are one folded line at the list's foot ("Not installed: Gemini CLI, ZCode"), each with Install… once open.
 // One status rule everywhere (§3.3): ok = it can run, attn = installed but needs you, err = nothing can run, a hollow
 // ring = off or not installed — the own-app agents (ZCode) too.
-// Per-agent settings live in a sheet (AgentDetailSheet, from Models… or a double-click): the processing model and
-// effort for recordings and for cards (fixed columns, the agent's own model names, never a raw id), Codex's trust
-// note, the blurt skill + MCP (Connect: agents.py install, a --dry-run preview first, applied only after the user
-// confirms), a test run, whether it can run in sessions, its version.
+// Organizing: one shared section for every agent — the model (the CLI's own / the cheapest) and the effort for
+// recordings and for cards (snaps, voice notes, AI fill-in), in two fixed columns. Written through to each agent that
+// follows it (record.agent_processing.<id>; the shared choice itself under "*", which agents.py doesn't read); an agent
+// set differently keeps its own, named in the footnote, and is changed in its details sheet (AgentDetailSheet, from
+// Details… or a double-click): its own model and effort per kind ("Same as all agents" first), Codex's trust note, the
+// blurt skill + MCP (Connect: agents.py install, a --dry-run preview first, applied only after the user confirms), a
+// test run, whether it can run in sessions, its version.
 // Sessions: whether they outlive Blurt (tmux), the current project's default agent, where Claude hand-offs start
 // (the recommended value marked inside the menu), and once, which agents can run in sessions.
 // "Ask your agent" (agents.ask) is one line with Examples… (a popover of three requests, copy on hover): sending items
@@ -50,6 +54,8 @@ final class AgentsModel: ObservableObject {
     @Published var details: String?
     @Published var fixFor: String?
     @Published var examplesShown = false
+    /// the agents that aren't installed, folded into one line at the list's foot: open
+    @Published var showMissing = false
 
     var headless: [CoreAgent] { rows.filter(\.headless) }
     var manual: [CoreAgent] { rows.filter { !$0.headless } }
@@ -165,6 +171,43 @@ final class AgentsModel: ObservableObject {
         objectWillChange.send()
     }
 
+    // MARK: organizing, shared
+
+    /// The shared choice (record.agent_processing["*"]): what every agent that follows it uses.
+    static let sharedID = "*"
+    func sharedSetting(_ k: ProcessingKind) -> (model: String, effort: String) {
+        let o = Agents.shared.processingSetting(Self.sharedID, kind: k)
+        return (o.model ?? k.shippedModel, o.effort ?? ProcessingKind.shippedEffort)
+    }
+    /// The agent uses the shared model / effort for `k` (its own value is the same).
+    func followsModel(_ id: String, _ k: ProcessingKind) -> Bool { processingModel(id, k) == sharedSetting(k).model }
+    func followsEffort(_ id: String, _ k: ProcessingKind) -> Bool { processingEffort(id, k) == sharedSetting(k).effort }
+    /// Installed agents set differently from the shared choice, for any kind (the section's footnote names them).
+    var ownSettings: [CoreAgent] {
+        headless.filter { a in a.installed && ProcessingKind.allCases.contains { !followsModel(a.id, $0) || !followsEffort(a.id, $0) } }
+    }
+    /// The effort levels any installed agent knows, in their order (the shared column's choices).
+    var sharedEfforts: [String] {
+        let known = ["minimal", "low", "medium", "high", "xhigh", "max"]
+        let all = Set(models.values.flatMap(\.efforts))
+        let list = known.filter(all.contains)
+        return list.isEmpty ? ["low", "medium", "high"] : list
+    }
+
+    /// A new shared model or effort: every agent that followed the old one follows the new one; one set differently
+    /// keeps its own.
+    func setShared(_ k: ProcessingKind, model: String? = nil, effort: String? = nil) {
+        let old = sharedSetting(k)
+        for a in headless {
+            if let m = model, processingModel(a.id, k) == old.model { setProcessing(a.id, k, model: m) }
+            if let e = effort, processingEffort(a.id, k) == old.effort { setProcessing(a.id, k, effort: e) }
+        }
+        let m = model ?? old.model, e = effort ?? old.effort
+        Agents.shared.setProcessing(Self.sharedID, kind: k, model: m == k.shippedModel ? nil : m, effort: e == ProcessingKind.shippedEffort ? nil : e)
+        emit(["event": "processing_shared", "kind": k.rawValue, "model": m, "effort": e])
+        objectWillChange.send()
+    }
+
     /// record.agents = the ticked headless agents in the shown order.
     func save() {
         let ids = headless.map(\.id).filter { enabled.contains($0) }
@@ -261,6 +304,13 @@ final class AgentsModel: ObservableObject {
         } catch { tests[a.id] = (false, peopleText(error, context: "agent test")) }
     }
 }
+/// The Organizing section's two columns.
+enum AgentsLayout {
+    static let modelWidth: CGFloat = 180
+    static let effortWidth: CGFloat = 150
+    static let columnGap: CGFloat = 8
+}
+
 struct AgentsPane: View {
     @ObservedObject var m = AgentsModel.shared
     /// the agent being dragged to a new place in the order, and the row it is over (where the insertion line shows)
@@ -274,13 +324,20 @@ struct AgentsPane: View {
         return from < to
     }
 
+    /// Installed (or still being looked at) agents Blurt can run, in the order it tries them.
+    var listed: [CoreAgent] { m.headless.filter { $0.installed || $0.state == "checking" } }
+    /// Not installed, Blurt's and the own-app ones alike.
+    var missing: [CoreAgent] { m.rows.filter { !$0.installed && $0.state != "checking" } }
+    /// Own-app agents that are installed.
+    var apps: [CoreAgent] { m.manual.filter(\.installed) }
+
     var body: some View {
         // the list's section is named like the page (Agents): no heading of its own, the lead says how it works
         SettingsPage(.agents, subtitle: TL("agents.lead")) {
-            SettingsGroup("agents.list", content: {
+            SettingsGroup("agents.list", footer: listFooterText, content: {
                 // one stack: the untitled group hides only the first row's hairline (not every row's)
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(m.headless) { a in
+                    ForEach(listed) { a in
                         agentRow(a, ordered: true)
                             .overlay(alignment: insertsBelow(a.id) ? .bottom : .top) {
                                 if dropTarget == a.id, let d = dragging, d != a.id {
@@ -291,15 +348,18 @@ struct AgentsPane: View {
                             .onDrag { dragging = a.id; return NSItemProvider(object: a.id as NSString) }
                             .onDrop(of: [.text], delegate: AgentDrop(target: a.id, m: m, dragging: $dragging, over: $dropTarget))
                     }
-                    listFooter
+                    if !missing.isEmpty { missingRows }
                 }
-            })
+            }, accessory: { EmptyView() })
+            .overlay(alignment: .bottomTrailing) { checkAgain }
+
+            organizeSection
 
             sessionsSection
 
-            if !m.manual.isEmpty {
+            if !apps.isEmpty {
                 SettingsGroup("agents.manual", footer: TL("agents.manual.footer")) {
-                    ForEach(m.manual) { a in agentRow(a, ordered: false) }
+                    ForEach(apps) { a in agentRow(a, ordered: false) }
                 }
             }
 
@@ -317,25 +377,46 @@ struct AgentsPane: View {
         }
     }
 
-    /// Under the list: what the agents do, in one line, and Check Again (a spinner beside it while a check runs).
-    var listFooter: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let e = m.error {
-                Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(TL("agents.footer")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 12)
-                if m.loading { BrandSpinnerView(size: 10, label: TL("agents.state.checking")).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 } }
-                Button(TL("agents.check_again")) { m.recheck() }
-                    .buttonStyle(.plain).font(.system(size: SettingsMetrics.detailSize))
-                    .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
-                    .disabled(m.loading)
-            }
+    /// Under the list: what the agents do (or what went wrong), in one line; Check Again sits at its right.
+    var listFooterText: String { m.error ?? TL("agents.footer") }
+
+    /// Check Again, at the right of the list's footnote (a spinner beside it while a check runs).
+    var checkAgain: some View {
+        HStack(spacing: 6) {
+            if m.loading { BrandSpinnerView(size: 10, label: TL("agents.state.checking")) }
+            Button(TL("agents.check_again")) { m.recheck() }
+                .buttonStyle(.plain).font(.system(size: SettingsMetrics.detailSize))
+                .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
+                .disabled(m.loading)
         }
-        .padding(.top, 8)
+        .padding(.trailing, SettingsMetrics.boxInset)
+        .offset(y: 1)
+    }
+
+    /// The agents that aren't installed: one folded line ("Not installed · Gemini CLI, ZCode"); open, a row each.
+    @ViewBuilder var missingRows: some View {
+        SettingsLine {
+            Button {
+                withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.15)) { m.showMissing.toggle() }
+            } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(m.showMissing ? 90 : 0))
+                        .frame(width: SettingsMetrics.leadingWidth)
+                    Text(TL("agents.missing")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
+                    Text(Loc.list(missing.map(\.name))).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.tertiary)
+                        .lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(TL("agents.missing"))
+            .accessibilityValue(m.showMissing ? "1" : "0")
+        }
+        if m.showMissing {
+            ForEach(missing) { a in agentRow(a, ordered: a.headless) }
+        }
     }
 
     // MARK: the agent row
@@ -360,7 +441,7 @@ struct AgentsPane: View {
         }
     }
 
-    /// On, installed, can't run: Sign In… is its one inline action.
+    /// On, installed, can't run: Sign In… is its one fix, a text link in its state line.
     func needsSignIn(_ a: CoreAgent, ordered: Bool) -> Bool {
         ordered && a.installed && on(a, ordered: true) && a.state == "logged_out"
     }
@@ -385,7 +466,11 @@ struct AgentsPane: View {
                             .help(a.version.map { TL("agents.details.version", shortVersion($0)) } ?? "")
                         if ordered && a.id == m.pick && checked { Badge(TL("agents.in_use")) }
                     }
-                    subtitle(a, ordered: ordered).font(.system(size: SettingsMetrics.detailSize)).lineLimit(1)
+                    HStack(spacing: 0) {
+                        subtitle(a, ordered: ordered).lineLimit(1)
+                        fixLink(a, ordered: ordered)
+                    }
+                    .font(.system(size: SettingsMetrics.detailSize))
                     if let t = m.tests[a.id] {
                         Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                             .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(t.ok ? Color.brandOk : Color.brandErr)
@@ -401,9 +486,9 @@ struct AgentsPane: View {
         }
         // the handle in the page's margin, on hover only: every name stays at one x
         .overlay(alignment: .leading) {
-            if ordered && hover {
+            if ordered && hover && a.installed {
                 Image(systemName: "line.3.horizontal").font(.system(size: 11, weight: .medium)).foregroundStyle(.tertiary)
-                    .offset(x: -20).help(TL("agents.drag")).accessibilityHidden(true)
+                    .offset(x: -SettingsMetrics.boxInset - 18).help(TL("agents.drag")).accessibilityHidden(true)
             }
         }
         .contentShape(Rectangle())
@@ -432,44 +517,49 @@ struct AgentsPane: View {
         return t
     }
 
-    /// At rest: the one fix (Sign In… / Install… / Get ZCode… / an app's Connect…), then the switch; on hover the ⋯ menu
-    /// before them. Every row's controls end at the page's trailing edge.
+    /// The row's one fix, after its state: Sign In… (a popover with the command), Install… / Get ZCode…, or an app's
+    /// Connect…; a brand-ink text link (§3.4), never a button at rest.
+    @ViewBuilder
+    func fixLink(_ a: CoreAgent, ordered: Bool) -> some View {
+        let dot = Text(" · ").foregroundStyle(.secondary)
+        if needsSignIn(a, ordered: ordered) {
+            dot
+            InkLink(TL("agents.sign_in")) { m.fixFor = a.id }
+                .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: false) }
+        } else if !a.installed && a.state != "checking" {
+            dot
+            if !a.headless, let url = AgentFix.site(AgentHub.shared.def(a.id)?.installText ?? "") {
+                InkLink(TL("agents.get_app", a.name)) {
+                    NSWorkspace.shared.open(url)
+                    emit(["event": "agents_get_app", "agent": a.id, "url": url.absoluteString])
+                }
+                .help(url.host ?? url.absoluteString)
+            } else {
+                InkLink(TL("agents.install_cli")) { m.fixFor = a.id }
+                    .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: true) }
+            }
+        } else if !a.headless && a.installed && m.connected[a.id] != true {
+            // an app of its own: Connect is the one thing to do here (the blurt skill + MCP, by hand in its settings)
+            dot
+            InkLink(TL("agents.install")) { Task { await m.preview(a) } }.help(TL("agents.install.help"))
+        }
+    }
+
+    /// At rest the switch alone (an installed agent Blurt runs); on hover the ⋯ menu before it, its slot kept so
+    /// nothing moves. Every row's controls end at the page's trailing edge.
     @ViewBuilder
     func trailing(_ a: CoreAgent, ordered: Bool, hover: Bool) -> some View {
         HStack(spacing: 10) {
             if m.installing == a.id || m.testing == a.id {
                 BrandSpinnerView(size: 10, label: TL(m.testing == a.id ? "agents.test" : "agents.install"))
             } else {
-                moreMenu(a, ordered: ordered).opacity(hover ? 1 : 0)
+                RowMenu(label: TL("agents.more.named", a.name), visible: hover) { menuItems(a, ordered: ordered) }
             }
-            fixButton(a, ordered: ordered)
             if ordered && (a.installed || a.state == "checking") {
                 Toggle(TL("agents.use", a.name), isOn: Binding(get: { m.enabled.contains(a.id) }, set: { m.toggle(a.id, $0) }))
                     .labelsHidden().toggleStyle(.switch).controlSize(.small)
                     .help(TL(m.enabled.contains(a.id) ? "agents.use.on.help" : "agents.use.off.help"))
             }
-        }
-    }
-
-    @ViewBuilder
-    func fixButton(_ a: CoreAgent, ordered: Bool) -> some View {
-        if needsSignIn(a, ordered: ordered) {
-            Button(TL("agents.sign_in")) { m.fixFor = a.id }.controlSize(.small)
-                .popover(isPresented: fixBinding(a.id), arrowEdge: .leading) { AgentFixPopover(m: m, agent: a, install: false) }
-        } else if !a.installed && a.state != "checking" {
-            if !a.headless, let url = AgentFix.site(AgentHub.shared.def(a.id)?.installText ?? "") {
-                Button(TL("agents.get_app", a.name)) {
-                    NSWorkspace.shared.open(url)
-                    emit(["event": "agents_get_app", "agent": a.id, "url": url.absoluteString])
-                }
-                .controlSize(.small).help(url.host ?? url.absoluteString)
-            } else {
-                Button(TL("agents.install_cli")) { m.fixFor = a.id }.controlSize(.small)
-                    .popover(isPresented: fixBinding(a.id), arrowEdge: .leading) { AgentFixPopover(m: m, agent: a, install: true) }
-            }
-        } else if !a.headless && a.installed {
-            // an app of its own: Connect is the one thing to do here (the blurt skill + MCP, by hand in its settings)
-            Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small).help(TL("agents.install.help"))
         }
     }
 
@@ -479,22 +569,14 @@ struct AgentsPane: View {
 
     func hasDetails(_ a: CoreAgent) -> Bool { a.headless && a.installed }
 
-    func moreMenu(_ a: CoreAgent, ordered: Bool) -> some View {
-        Menu { menuItems(a, ordered: ordered) } label: {
-            Image(systemName: "ellipsis.circle").font(.system(size: 13)).foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .help(TL("agents.more")).accessibilityLabel(TL("agents.more.named", a.name))
-    }
-
     /// The ⋯ menu and the row's context menu: the rarer actions, in the order people reach for them.
     @ViewBuilder
     func menuItems(_ a: CoreAgent, ordered: Bool) -> some View {
         if hasDetails(a) {
-            Button(TL("agents.models")) { m.details = a.id }
+            Button(TL("agents.details")) { m.details = a.id }
             Button(TL("agents.test")) { Task { await m.test(a) } }.disabled(m.testing != nil)
         }
-        if a.installed && a.headless {
+        if a.installed {
             if m.connected[a.id] == true {
                 Button(TL("agents.connected.menu")) {}.disabled(true)
             } else {
@@ -502,7 +584,8 @@ struct AgentsPane: View {
             }
         }
         if needsSignIn(a, ordered: ordered) { Button(TL("agents.sign_in")) { m.fixFor = a.id } }
-        if ordered {
+        if !a.installed && a.headless { Button(TL("agents.install_cli")) { m.fixFor = a.id } }
+        if ordered && a.installed {
             Divider()
             let i = m.headless.firstIndex { $0.id == a.id } ?? 0
             Button(TL("agents.move_up")) { m.moveUp(a.id) }.disabled(i == 0)
@@ -513,6 +596,49 @@ struct AgentsPane: View {
     }
 
     func stateText(_ a: CoreAgent) -> String { AgentFix.stateText(a) }
+
+    // MARK: organizing, one shared section
+
+    /// What every agent uses to organize: model and effort for recordings and for cards, two fixed columns (the
+    /// pop-ups at the page's one width each would not fit beside each other). Its footnote names the agents set
+    /// differently in their details.
+    @ViewBuilder var organizeSection: some View {
+        SettingsGroup("agents.organize", footer: organizeFooter, content: {
+            ForEach(ProcessingKind.allCases, id: \.self) { k in
+                SettingsLine(flashID: k == .recording ? "agents.organize" : nil) {
+                    HStack(spacing: AgentsLayout.columnGap) {
+                        Text(TL("agents.organize.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .help(TL("agents.processing.\(k.rawValue).help"))
+                        let cur = m.sharedSetting(k)
+                        ChoicePopup(label: TL("agents.processing.\(k.rawValue)"),
+                                    choices: [("default", TL("agents.processing.default")), ("cheapest", TL("agents.processing.cheapest"))],
+                                    selection: Binding(get: { cur.model }, set: { m.setShared(k, model: $0) }),
+                                    width: AgentsLayout.modelWidth)
+                        ChoicePopup(label: TL("agents.effort"),
+                                    choices: [("default", TL("agents.effort.default"))] + m.sharedEfforts.map { ($0, TL("agents.effort.\($0)")) },
+                                    selection: Binding(get: { cur.effort }, set: { m.setShared(k, effort: $0) }),
+                                    width: AgentsLayout.effortWidth, dividers: [1])
+                    }
+                }
+            }
+        }, accessory: {
+            // the columns' names on the heading's line, over the pop-ups (the box has no header row of its own)
+            HStack(spacing: AgentsLayout.columnGap) {
+                Text(TL("agents.details.model")).frame(width: AgentsLayout.modelWidth, alignment: .leading)
+                Text(TL("agents.effort")).frame(width: AgentsLayout.effortWidth, alignment: .leading)
+            }
+            .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            .accessibilityHidden(true)
+        })
+    }
+
+    /// "Every agent uses these…", and the ones set differently (in their details).
+    var organizeFooter: String {
+        let own = m.ownSettings.map(\.name)
+        let base = TL("agents.organize.footer")
+        return own.isEmpty ? base : base + " " + TL("agents.organize.own", Loc.list(own))
+    }
 
     // MARK: sessions
 
@@ -538,10 +664,9 @@ struct AgentsPane: View {
             }
             if let p = m.project {
                 SettingRow("agents.project_agent", title: TL("agents.project_agent", p.name)) {
-                    RowPicker(label: TL("agents.project_agent", p.name), selection: Binding(get: { m.projectAgent }, set: { m.setProjectAgent($0) })) {
-                        Text(TL("agents.project_agent.default")).tag("")
-                        ForEach(m.rows.filter { m.sessions($0) && $0.installed }) { Text($0.name).tag($0.id) }
-                    }
+                    ChoicePopup(label: TL("agents.project_agent", p.name),
+                                choices: [("", TL("agents.project_agent.default"))] + m.rows.filter { m.sessions($0) && $0.installed }.map { ($0.id, $0.name) },
+                                selection: Binding(get: { m.projectAgent }, set: { m.setProjectAgent($0) }), dividers: [1])
                 }
             }
             ForEach(m.rows.filter { $0.installed && m.sessions($0) && DesktopApp.supports($0.id) }) { a in
@@ -550,16 +675,12 @@ struct AgentsPane: View {
                 // closed button stays short) or its desktop app — config sessions.target, the key the sheet remembers.
                 SettingRow("agents.handoff", title: TL("agents.handoff_target", a.name),
                            detail: installed ? TL("agents.handoff_target.hint") : TL("agents.handoff_target.no_app", DesktopApp.name(a.id))) {
-                    RowPicker(label: TL("agents.handoff_target", a.name),
-                              selection: Binding(get: { DesktopApp.target(a.id) },
-                                                 set: { DesktopApp.remember(a.id, $0); m.objectWillChange.send() })) {
-                        Section(TL("agents.handoff.recommended")) {
-                            Text(TL("agents.handoff.terminal")).tag(HandoffTarget.terminal)
-                        }
-                        Section {
-                            Text(TL("agents.handoff.desktop", DesktopApp.name(a.id))).tag(HandoffTarget.desktop)
-                        }
-                    }
+                    // the recommended one first, said in its own words inside the menu so the closed button stays short
+                    ChoicePopup(label: TL("agents.handoff_target", a.name),
+                                choices: [(HandoffTarget.terminal, TL("agents.handoff.terminal")),
+                                          (HandoffTarget.desktop, TL("agents.handoff.desktop", DesktopApp.name(a.id)))],
+                                selection: Binding(get: { DesktopApp.target(a.id) },
+                                                   set: { DesktopApp.remember(a.id, $0); m.objectWillChange.send() }))
                     .disabled(!installed)
                 }
             }
@@ -688,8 +809,8 @@ struct AgentDetailSheet: View {
     var id: String
     var agent: CoreAgent? { m.rows.first { $0.id == id } }
 
-    static let modelWidth: CGFloat = 250
-    static let effortWidth: CGFloat = 110
+    static let modelWidth: CGFloat = 240
+    static let effortWidth: CGFloat = 150
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -702,7 +823,7 @@ struct AgentDetailSheet: View {
                     Spacer()
                     Text(AgentFix.stateText(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
-                section(TL("agents.details.models")) {
+                section(TL("agents.organize.header")) {
                     if let ms = m.models[a.id] { grid(a, ms) } else { Hint(TL("agents.details.no_models")) }
                     Hint(TL("agents.details.models.note"))
                     if a.id == "codex" { Hint(TL("agents.codex_trust")) }
@@ -759,30 +880,46 @@ struct AgentDetailSheet: View {
             }
             ForEach(ProcessingKind.allCases, id: \.self) { k in
                 GridRow {
-                    Text(TL("agents.processing.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
+                    Text(TL("agents.organize.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .help(TL("agents.processing.\(k.rawValue).help"))
-                    Picker(TL("agents.processing.\(k.rawValue)"),
-                           selection: Binding(get: { m.processingModel(a.id, k) }, set: { m.setProcessing(a.id, k, model: $0) })) {
-                        // by the model's name from the agent's own list; one it doesn't list goes unnamed (never its raw id)
-                        Text(ms.name(ms.cliDefault).map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
-                        Text(ms.name(ms.cheapest).map { TL("agents.processing.cheapest_named", $0) } ?? TL("agents.processing.cheapest")).tag("cheapest")
-                        Divider()
-                        ForEach(ms.models) { x in Text(x.name).tag(x.id) }
-                    }
-                    .labelsHidden().frame(width: Self.modelWidth, alignment: .leading)
+                    // "Same as all agents" first (the shared choice, Settings → Agents → Organizing), then the agent's own:
+                    // by the model's name from its own list; one it doesn't list goes unnamed (never its raw id)
+                    ChoicePopup(label: TL("agents.processing.\(k.rawValue)"), choices: modelChoices(k, ms),
+                                selection: modelBinding(a.id, k), width: Self.modelWidth, dividers: [1, 3])
                     if !ms.efforts.isEmpty {
-                        Picker(TL("agents.effort"),
-                               selection: Binding(get: { m.processingEffort(a.id, k) }, set: { m.setProcessing(a.id, k, effort: $0) })) {
-                            Text(TL("agents.effort.default")).tag("default")
-                            Divider()
-                            ForEach(ms.efforts, id: \.self) { e in Text(TL("agents.effort.\(e)")).tag(e) }
-                        }
-                        .labelsHidden().frame(width: Self.effortWidth, alignment: .leading)
+                        ChoicePopup(label: TL("agents.effort"), choices: effortChoices(k, ms),
+                                    selection: effortBinding(a.id, k), width: Self.effortWidth, dividers: [1, 2])
                     }
                 }
             }
         }
+    }
+
+    /// "Same as all agents (GPT-6-Luna)" — the shared choice, by this agent's model name — then the agent's own.
+    func modelChoices(_ k: ProcessingKind, _ ms: AgentModels) -> [(value: String, title: String)] {
+        let shared = m.sharedSetting(k).model
+        let named: String? = shared == "cheapest" ? ms.name(ms.cheapest) : ms.name(ms.cliDefault)
+        let follow = named.map { TL("agents.organize.follow", $0) } ?? TL("agents.organize.follow_plain")
+        let cli = ms.name(ms.cliDefault).map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")
+        let cheap = ms.name(ms.cheapest).map { TL("agents.processing.cheapest_named", $0) } ?? TL("agents.processing.cheapest")
+        var out: [(value: String, title: String)] = [(AgentsModel.sharedID, follow), ("default", cli), ("cheapest", cheap)]
+        for x in ms.models { out.append((x.id, x.name)) }
+        return out
+    }
+    func effortChoices(_ k: ProcessingKind, _ ms: AgentModels) -> [(value: String, title: String)] {
+        let follow = TL("agents.organize.follow", TL("agents.effort.\(m.sharedSetting(k).effort)"))
+        var out: [(value: String, title: String)] = [(AgentsModel.sharedID, follow), ("default", TL("agents.effort.default"))]
+        for e in ms.efforts { out.append((e, TL("agents.effort.\(e)"))) }
+        return out
+    }
+    func modelBinding(_ id: String, _ k: ProcessingKind) -> Binding<String> {
+        Binding(get: { m.followsModel(id, k) ? AgentsModel.sharedID : m.processingModel(id, k) },
+                set: { v in m.setProcessing(id, k, model: v == AgentsModel.sharedID ? m.sharedSetting(k).model : v) })
+    }
+    func effortBinding(_ id: String, _ k: ProcessingKind) -> Binding<String> {
+        Binding(get: { m.followsEffort(id, k) ? AgentsModel.sharedID : m.processingEffort(id, k) },
+                set: { v in m.setProcessing(id, k, effort: v == AgentsModel.sharedID ? m.sharedSetting(k).effort : v) })
     }
 
     func line<C: View>(_ title: String, detail: String, result: (ok: Bool, text: String)? = nil, @ViewBuilder control: () -> C) -> some View {

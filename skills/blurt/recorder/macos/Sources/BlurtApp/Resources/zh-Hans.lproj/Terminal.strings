@@ -314,7 +314,7 @@
 "row.desktop" = "在 %@ 桌面端";
 "row.desktop.no_mcp" = "在 %@ 桌面端 · 等你标记";
 "agents.handoff_target" = "交给 %@ 时";
-"agents.handoff_target.hint" = "交给 Agent 面板默认选这个，每次都能改。";
+"agents.handoff_target.hint" = "交给 Agent 面板默认选这个，推荐口喷鸡终端，每次都能改。";
 "agents.handoff_target.no_app" = "没有安装 %@ 桌面端，所以在口喷鸡终端运行。";
 "error.no_desktop" = "这个 Agent 没有可以交给的桌面端。";
 "error.desktop_version" = "需要更新的 Claude Code（2.1.285 或更高）。";
@@ -387,3 +387,12 @@
 "agents.handoff.desktop" = "%@ 桌面端";
 "agents.ask.line" = "Agent 用它已有的工具发送条目，比如 Slack、飞书、Linear。";
 "agents.ask.examples" = "示例…";
+"agents.details" = "详细信息…";
+"agents.missing" = "未安装";
+"agents.organize.header" = "整理";
+"agents.organize.recording" = "录屏";
+"agents.organize.cards" = "卡片和 AI 补全";
+"agents.organize.footer" = "所有 Agent 都用这一套。强度越高越慢，花的 token 越多。";
+"agents.organize.own" = "单独设置的：%@（在「详细信息…」里）。";
+"agents.organize.follow" = "和全部相同（%@）";
+"agents.organize.follow_plain" = "和全部 Agent 相同";

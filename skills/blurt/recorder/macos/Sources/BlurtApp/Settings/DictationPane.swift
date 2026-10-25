@@ -323,9 +323,18 @@ struct DictationPane: View {
             let _ = perms.accessibility                 // re-evaluated as the states change (once a second)
             Group {
                 if !m.tap, let pid = Dictation.shared.deferredTo {
-                    // another Blurt has the key: nothing to set up here (this one takes over when that one quits)
-                    SettingsNotice(title: T("dictation.status.other_instance", "\(pid)"), detail: T("dictation.status.other_instance.detail"),
-                                   tone: .off) { EmptyView() }
+                    // another Blurt has the key (this one takes over when that one quits): the same notice and the same
+                    // way out as the Shortcuts page's
+                    let keys = HotkeySettings.shared
+                    SettingsNotice(title: T("dictation.status.other_instance", "\(pid)"), detail: T("dictation.status.other_instance.detail")) {
+                        if !keys.otherApps.isEmpty {
+                            Button(keys.quitting ? Loc.t("capture.keys.quitting", table: "Capture")
+                                   : Loc.t(keys.otherApps.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
+                                keys.quitOthers()
+                            }
+                            .disabled(keys.quitting)
+                        }
+                    }
                 } else if !missing.isEmpty {
                     SettingsNotice(title: T("dictation.notice.needs", missing.map(PermissionGuide.name).joined(separator: T("settings.perm.list_sep"))),
                                    detail: missing.count == 1 ? PermissionGuide.why(missing[0]) : nil) {
@@ -346,7 +355,7 @@ struct DictationPane: View {
                     }
                 }
             }
-            .padding(.top, 18)
+            .padding(.top, SettingsMetrics.groupGap)
         }
     }
 

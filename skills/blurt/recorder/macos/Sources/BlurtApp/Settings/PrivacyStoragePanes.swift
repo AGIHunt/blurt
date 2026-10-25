@@ -107,13 +107,10 @@ struct PrivacyPane: View {
             SettingsGroup("privacy.data") {
                 // where speech is recognized, said for where things stand (Automatic with no cloud key set: here too)
                 SettingRow("privacy.local_asr", detail: localDetail, help: T("settings.privacy.local_asr.help")) {
-                    RowPicker(label: T("settings.privacy.local_speech_recognition_only"),
-                              selection: Binding(get: { m.localASR }, set: { m.setLocal($0) })) {
-                        Text(T("settings.privacy.local_asr.auto")).tag(false)
-                        Text(T("settings.privacy.local_asr.local")).tag(true)
-                    }
+                    ChoicePopup(label: T("settings.privacy.local_speech_recognition_only"),
+                                choices: [(false, T("settings.privacy.local_asr.auto")), (true, T("settings.privacy.local_asr.local"))],
+                                selection: Binding(get: { m.localASR }, set: { m.setLocal($0) }))
                 }
-                .hidesRuleAbove()
                 SettingToggle("privacy.keep_live", isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
                 SettingToggle("privacy.spotlight", isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
             }
@@ -205,7 +202,6 @@ private struct PermissionsSummary: View {
             .contentShape(Rectangle())
             .onTapGesture { toggle(open) }
         }
-        .hidesRuleAbove()
         // the check-mark line after a walk ("Done — Blurt has every permission it needs.")
         if guide.finished != nil { SettingsLine { PermissionDoneBanner() } }
         if open {
@@ -290,13 +286,6 @@ private struct InkTextButton: View {
         Button(action: action) { Text(title).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandInk) }
             .buttonStyle(.plain)
             .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
-    }
-}
-
-private extension View {
-    /// The first row under a section heading: no rule between the heading and it (only rows are separated).
-    func hidesRuleAbove() -> some View {
-        overlay(alignment: .top) { Rectangle().fill(SettingsMetrics.ground).frame(height: 1).allowsHitTesting(false) }
     }
 }
 
@@ -731,10 +720,9 @@ struct StoragePane: View {
             SettingsGroup("storage.recordings") {
                 if m.loaded { recordings }
                 SettingRow("storage.auto_delete", icon: "clock.arrow.circlepath") {
-                    RowPicker(label: T("settings.storage.videos.auto"), selection: Binding(get: { m.autoDelete ?? 0 }, set: { setAuto($0) })) {
-                        Text(T("settings.storage.videos.never")).tag(0)
-                        ForEach(VideoRetention.choices, id: \.self) { d in Text(T("settings.storage.videos.after", d)).tag(d) }
-                    }
+                    ChoicePopup(label: T("settings.storage.videos.auto"),
+                                choices: [(0, T("settings.storage.videos.never"))] + VideoRetention.choices.map { ($0, T("settings.storage.videos.after", $0)) },
+                                selection: Binding(get: { m.autoDelete ?? 0 }, set: { setAuto($0) }), dividers: [1])
                 }
             }
 

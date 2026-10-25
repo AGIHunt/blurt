@@ -267,11 +267,12 @@
 "capture.keys.std.minimize_all" = "Minimize All";
 "capture.keys.std.select_text" = "Select Text";
 "capture.keys.swap.cancel" = "Cancel";
-"capture.keys.swap.detail" = "Swap, and “%1$@” gets %2$@ while “%3$@” gets %4$@.";
+"capture.keys.swap.detail" = "%1$@ gets %2$@ and %3$@ gets %4$@. ⌘Z undoes it.";
 "capture.keys.swap.ok" = "Swap";
-"capture.keys.move.detail" = "Move them, and “%1$@” gets %2$@ while “%3$@” has no shortcut.";
-"capture.keys.move.ok" = "Move Here";
-"capture.keys.swap.title" = "%1$@ is set for “%2$@”";
+"capture.keys.swap.ask" = "Swap with %@?";
+"capture.keys.move.ask" = "Move %1$@ from %2$@?";
+"capture.keys.move.ok" = "Move";
+"capture.keys.move.detail" = "%1$@ gets %2$@ and %3$@ is left without a shortcut. ⌘Z undoes it.";
 "capture.keys.system_refused" = "%@ is a macOS shortcut (System Settings, Keyboard) — pick another";
 "capture.keys.system_short" = "macOS uses it";
 "capture.keys.undo_set" = "Change Shortcut";
@@ -316,3 +317,4 @@
 "capture.keys.hold_off" = "Holding a key to draw is off";
 "capture.keys.quit_others" = "Quit Other Copies";
 "capture.keys.taken_banner.detail_many" = "They’ll work here once those copies quit.";
+"capture.keys.none" = "Not set";

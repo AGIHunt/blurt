@@ -1,25 +1,26 @@
 // Settings → Shortcuts (and, in a build without the Settings window, the Shortcuts window from the menu): the same
-// page of rows as every other pane (SettingsKit; rows from SettingsCatalog, "shortcuts.<action>"), every row one even
-// height (SettingsMetrics.evenRow) — the action on the left, its shortcut on the right as small keycaps that are the
-// recorder: click (or Tab to it and press Space) and it listens. Four short sections (SettingsCatalog.shortcutSections):
+// page of rows as every other pane (SettingsKit; rows from SettingsCatalog, "shortcuts.<action>") — the action on the
+// left, its shortcut on the right as small keycaps that are the recorder: click (or Tab to it and press Space) and it
+// listens. Four short sections (SettingsCatalog.shortcutSections):
 // Capture (record, snap, voice note), While recording (pause, marker, the pen — its hold key, record.draw_key, is the
 // pen row's second line, a menu), Dictation (its key, set in Settings → Dictation, where its row's link leads; reformat)
 // and Open and switch (project, cards, the menu-bar menu, the main window). Restore Defaults closes the page.
 //
 // One cause is said once: keys another running Blurt holds (HotkeyResult.taken — every one of them, when the user's
-// own Blurt is running beside this one) are one banner under the page's title, with how many, where that copy runs
-// from and Quit Other Copy; each row it touches only gets the small "!" before its keycaps (the tooltip says why). A
-// conflict of the row's own (a macOS shortcut, the same keys as another action, a key macOS refused, a hand-edited
-// config.json) keeps its line under the action's name, in attention ink, besides the "!".
+// own Blurt is running beside this one) are one notice above the first section, with how many, where that copy runs
+// from and Quit Other Copy; the rows it touches only show their keycaps dimmed (the tooltip says why). A conflict of
+// the row's own (a macOS shortcut, the same keys as another action, a key macOS refused, a hand-edited config.json)
+// keeps its line under the action's name, in attention ink, and the small "!" before its keycaps.
 //
 // ⌥⇧R starts a recording and also finishes one; ⌥⇧S only finishes — it is the key a recording started from the
 // chat (no menu-bar app) listens to, so it stays, listed under While recording as "Finish recording".
 //
 // What the recorder refuses, with the reason under the action's name: a key without ⌃ / ⌥ / ⌘, ⌘ / ⇧⌘ with a typing
-// key (⌘C is Copy in every app: KeyCombo.reserved) and a macOS system shortcut. Keys another action has ask first — a
-// sheet on this window: "Swap" exchanges the two actions' keys, or, when this one had none, "Move Here" moves them
-// and leaves the other without — never a silent duplicate. Every change (set, clear, swap, restore) can be undone
-// with ⌘Z. The recorder works from the keyboard: Tab reaches it (focus ring), Space or Return starts recording,
+// key (⌘C is Copy in every app: KeyCombo.reserved) and a macOS system shortcut. Keys another action has ask first, in
+// the row itself, no sheet: the new keys stay in the recorder (brand ink on the tint), the row's second line asks
+// "Swap with Voice note?" with Swap and Cancel (Return / Esc), the other action's keycaps get the "!" meanwhile —
+// Swap exchanges the two actions' keys, or, when this one had none, Move takes them and leaves the other without;
+// never a silent duplicate. Every change (set, clear, swap, restore) can be undone with ⌘Z. The recorder works from the keyboard: Tab reaches it (focus ring), Space or Return starts recording,
 // Delete clears it.
 
 import AppKit
@@ -96,12 +97,18 @@ enum Keycaps {
 final class ShortcutField: NSView {
     let action: HotAction
     var onSet: ((Shortcut?) -> Void)?
+    /// the row's swap question answered from the keyboard (Return: yes, Esc: no)
+    var onAnswer: ((Bool) -> Void)?
     /// a refusal's reason, for the line under the action's name (nil: clear it)
     var onRefuse: ((String?) -> Void)?
     var recording = false { didSet { needsDisplay = true } }
     var live = ""                       // modifiers held while recording
-    /// it doesn't work here (another Blurt holds it, or a conflict of its own): the "!" before the keycaps
+    /// a conflict of its own (or the keys another row asks to swap for): the "!" before the keycaps
     var warn = false { didSet { if warn != oldValue { needsDisplay = true } } }
+    /// another running Blurt holds it: the keycaps dimmed (the page's notice says why, once)
+    var dim = false { didSet { if dim != oldValue { needsDisplay = true } } }
+    /// keys another action has, waiting for the row's Swap / Cancel: shown in brand ink on the tint, as while listening
+    var pending: [String]? { didSet { if pending != oldValue { needsDisplay = true } } }
     var monitor: Any?
     var refuse: String?                 // "needs ⌃ / ⌥ / ⌘" flash
     /// the last refusal (tests read it)
@@ -155,11 +162,16 @@ final class ShortcutField: NSView {
     /// Tests: the pointer over it, for a screenshot of the hover state.
     func testHover(_ on: Bool) { hovering = on }
 
-    /// Not recording: Space / Return start, Delete clears; anything else (Tab) goes on as usual.
+    /// Not recording: Space / Return start, Delete clears; anything else (Tab) goes on as usual. With a swap waiting
+    /// in the row: Return swaps, Esc cancels.
     override func keyDown(with e: NSEvent) {
         guard !recording else { return }
         let code = Int(e.keyCode)
         guard Shortcut.carbonMods(e.modifierFlags) == 0 else { return super.keyDown(with: e) }
+        if pending != nil {
+            if [kVK_Return, kVK_ANSI_KeypadEnter].contains(code) { onAnswer?(true); return }
+            if code == kVK_Escape { onAnswer?(false); return }
+        }
         if [kVK_Space, kVK_Return, kVK_ANSI_KeypadEnter].contains(code) { start() }
         else if [kVK_Delete, kVK_ForwardDelete].contains(code) {
             if Hotkeys.shared.shortcut(action) != nil { onSet?(nil) } else { NSSound.beep() }
@@ -189,6 +201,14 @@ final class ShortcutField: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let midY = bounds.midY
+        if let k = pending, !recording {
+            // keys waiting for the row's Swap / Cancel: as while listening, with the keys
+            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 6, yRadius: 6)
+            BrandColor.tint.setFill(); path.fill()
+            BrandColor.ink.setStroke(); path.lineWidth = 1.5; path.stroke()
+            Keycaps.draw(k, maxX: bounds.maxX - 6, midY: midY, ink: BrandColor.ink, fill: BrandColor.ink.withAlphaComponent(0.12))
+            return
+        }
         if recording {
             // listening for keys: brand ink on the brand tint (§3.4), the whole cell
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 6, yRadius: 6)
@@ -218,7 +238,9 @@ final class ShortcutField: NSView {
         }
         let start: CGFloat
         if let k = restingKeys {
-            start = Keycaps.draw(k, maxX: contentMaxX, midY: midY)
+            start = dim ? Keycaps.draw(k, maxX: contentMaxX, midY: midY, ink: .tertiaryLabelColor,
+                                       fill: NSColor.labelColor.withAlphaComponent(0.04))
+                : Keycaps.draw(k, maxX: contentMaxX, midY: midY)
         } else {
             let a = placeholder, sz = a.size()
             start = contentMaxX - ceil(sz.width)
@@ -238,6 +260,7 @@ final class ShortcutField: NSView {
 
     func start() {
         ShortcutField.active?.stop()
+        HotkeySettings.shared.cancelSwap()
         ShortcutField.active = self
         recording = true
         live = ""
@@ -318,15 +341,19 @@ struct ShortcutRecorder: NSViewRepresentable {
         let f = ShortcutField(action)
         f.onSet = { [weak model, weak f] s in model?.set(s, for: action, window: f?.window) }
         f.onRefuse = { [weak model] why in model?.refusals[action] = why }
+        f.onAnswer = { [weak model] yes in model?.answerSwap(yes) }
         model.fields[action] = f
         return f
     }
     func updateNSView(_ f: ShortcutField, context: Context) {
         let note = model.note(action)
         f.warn = note?.mark == true
+        f.dim = note?.dim == true
+        f.pending = model.swap?.action == action ? model.swap.map { Keycaps.keys($0.keys) } : nil
         // why it doesn't work, or how the recorder works
-        f.toolTip = note?.mark == true ? note?.text : Loc.t("capture.keys.field_help", table: "Capture")
-        f.setAccessibilityHelp(note?.mark == true ? note?.text : Loc.t("capture.keys.field_ax_hint", table: "Capture"))
+        let why = note?.mark == true || note?.dim == true ? note?.text : nil
+        f.toolTip = why ?? Loc.t("capture.keys.field_help", table: "Capture")
+        f.setAccessibilityHelp(why ?? Loc.t("capture.keys.field_ax_hint", table: "Capture"))
         f.needsDisplay = true
     }
     /// Its own size, so the row stays one line high with the recorder beside the name.
@@ -337,13 +364,14 @@ struct ShortcutRecorder: NSViewRepresentable {
 /// Read-only keycaps (the dictation key: set in Settings → Dictation), drawn like the recorder's resting ones.
 struct KeycapsView: View {
     var keys: [String]
+    var dim = false
     var body: some View {
         HStack(spacing: Keycaps.gap) {
             ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
-                Text(k).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                Text(k).font(.system(size: 12, weight: .medium)).foregroundStyle(dim ? .tertiary : .secondary)
                     .padding(.horizontal, 5)
                     .frame(minWidth: Keycaps.height, minHeight: Keycaps.height)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.07)))
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(dim ? 0.04 : 0.07)))
             }
         }
         .accessibilityElement(children: .combine)
@@ -412,48 +440,60 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     @Published var refusals: [HotAction: String] = [:]
     /// Quit Other Copy was pressed: the banner's button waits for that copy to go
     @Published var quitting = false
-    /// the swap question on screen (tests answer it: `shortcutswap yes|no`)
-    private(set) var asking: NSAlert?
+    /// Keys another action has, waiting in the row for Swap / Cancel (`shortcutswap yes|no` answers it in tests).
+    struct PendingSwap: Equatable {
+        var action: HotAction
+        var keys: Shortcut
+        var other: HotAction
+        /// what this action gives in exchange; nil: it had none, so the keys move and the other is left without
+        var mine: Shortcut?
+        var window: NSWindow?
+    }
+    @Published private(set) var swap: PendingSwap?
+    /// the question as the row says it (tests)
+    var asking: String? { swap.map(swapQuestion) }
 
-    /// A field's new keys. Keys another action has: ask on this window whether to swap — never a silent duplicate.
-    /// Every change can be undone (⌘Z): the whole record.hotkeys as it was comes back.
+    /// A field's new keys. Keys another action has: asked in the row whether to swap — never a silent duplicate, and
+    /// no sheet over the list. Every change can be undone (⌘Z): the whole record.hotkeys as it was comes back.
     func set(_ s: Shortcut?, for a: HotAction, window: NSWindow?) {
         refusals[a] = nil
+        swap = nil
         guard s != Hotkeys.shared.shortcut(a) || Hotkeys.shared.states[a]?.isConflict == true else { return }
         if let s = s, let other = Hotkeys.shared.owner(of: s, except: a) {
-            return askSwap(s, to: a, from: other, window: window)
+            // an exchange when this action has keys to give; otherwise the keys move here and the other one has none
+            let mine = Hotkeys.shared.shortcut(a).flatMap { $0.reserved == nil ? $0 : nil }
+            swap = PendingSwap(action: a, keys: s, other: other, mine: mine, window: window)
+            emit(["event": "shortcut_swap_ask", "action": a.rawValue, "keys": s.spec, "other": other.rawValue])
+            return
         }
         change(window) { Hotkeys.shared.set(s, for: a) }
         emit(["event": "shortcut_set", "action": a.rawValue, "now": s?.spec ?? "off"])
     }
 
-    private func askSwap(_ s: Shortcut, to a: HotAction, from other: HotAction, window: NSWindow?) {
-        let alert = NSAlert()
-        // an exchange when this action has keys to give; otherwise the keys move here and the other one has none
-        let mine = Hotkeys.shared.shortcut(a).flatMap { $0.reserved == nil ? $0 : nil }
-        alert.messageText = Loc.t("capture.keys.swap.title", table: "Capture", s.label, other.title)
-        alert.informativeText = mine.map { Loc.t("capture.keys.swap.detail", table: "Capture", a.title, s.label, other.title, $0.label) }
-            ?? Loc.t("capture.keys.move.detail", table: "Capture", a.title, s.label, other.title)
-        alert.addButton(withTitle: Loc.t(mine == nil ? "capture.keys.move.ok" : "capture.keys.swap.ok", table: "Capture"))
-        alert.addButton(withTitle: Loc.t("capture.keys.swap.cancel", table: "Capture"))
-        asking = alert
-        emit(["event": "shortcut_swap_ask", "action": a.rawValue, "keys": s.spec, "other": other.rawValue])
-        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
-            guard let self = self else { return }
-            self.asking = nil
-            let yes = r == .alertFirstButtonReturn
-            emit(["event": "shortcut_swap", "action": a.rawValue, "other": other.rawValue, "swapped": yes])
-            if yes { self.change(window) { Hotkeys.shared.swap(s, to: a) } }
-            self.refresh()
-        }
-        if let w = window { alert.beginSheetModal(for: w, completionHandler: done) } else { done(alert.runModal()) }
+    /// "Swap with Voice note?" / "Move ⌥⇧V from Voice note?"
+    func swapQuestion(_ p: PendingSwap) -> String {
+        p.mine == nil ? Loc.t("capture.keys.move.ask", table: "Capture", p.keys.label, p.other.title)
+            : Loc.t("capture.keys.swap.ask", table: "Capture", p.other.title)
+    }
+    /// What Swap / Move does, said whole (the question's tooltip).
+    func swapOutcome(_ p: PendingSwap) -> String {
+        p.mine.map { Loc.t("capture.keys.swap.detail", table: "Capture", p.action.title, p.keys.label, p.other.title, $0.label) }
+            ?? Loc.t("capture.keys.move.detail", table: "Capture", p.action.title, p.keys.label, p.other.title)
     }
 
-    /// Tests: answer the swap question as its buttons would.
-    func testAnswerSwap(_ yes: Bool) {
-        guard let a = asking, let w = a.window.sheetParent else { return }
-        w.endSheet(a.window, returnCode: yes ? .alertFirstButtonReturn : .alertSecondButtonReturn)
+    /// The row's Swap (or Move) / Cancel, or Return / Esc in its recorder.
+    func answerSwap(_ yes: Bool) {
+        guard let p = swap else { return }
+        swap = nil
+        emit(["event": "shortcut_swap", "action": p.action.rawValue, "other": p.other.rawValue, "swapped": yes])
+        if yes { change(p.window) { Hotkeys.shared.swap(p.keys, to: p.action) } } else { refresh() }
     }
+
+    /// Another recorder started, or the page went: the question is dropped (nothing changed).
+    func cancelSwap() { if swap != nil { answerSwap(false) } }
+
+    /// Tests: answer the swap question as its buttons would.
+    func testAnswerSwap(_ yes: Bool) { answerSwap(yes) }
 
     /// Runs `apply`, with undo (⌘Z) back to record.hotkeys as it was before.
     private func change(_ window: NSWindow?, _ apply: () -> Void) {
@@ -519,16 +559,19 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Why an action doesn't work here, or nothing. `mark`: the "!" before its keycaps (it doesn't work); `line`: said
-    /// under the action's name too — everything but another Blurt's keys, which the page's banner says once for all.
-    struct Note { var text: String; var mark: Bool; var line: Bool }
+    /// Why an action doesn't work here, or nothing. `mark`: the "!" before its keycaps (a conflict of its own); `dim`:
+    /// its keycaps dimmed (another Blurt holds them — the page's notice says so once for all); `line`: said under the
+    /// action's name too.
+    struct Note { var text: String; var mark: Bool; var line: Bool; var dim = false }
 
     func note(_ a: HotAction) -> Note? {
         let hk = Hotkeys.shared
         if let why = refusals[a] { return Note(text: why, mark: false, line: true) }
+        // the keys another row asks to swap for
+        if let p = swap, p.other == a { return Note(text: swapOutcome(p), mark: true, line: false) }
         if let bad = hk.invalid[a] { return Note(text: Loc.t("capture.keys.unreadable", table: "Capture", bad), mark: true, line: true) }
         let st = hk.states[a] ?? .ok
-        if case .taken = st { return Note(text: st.text, mark: true, line: false) }
+        if case .taken = st { return Note(text: st.text, mark: false, line: false, dim: true) }
         if st == .reserved, let s = hk.shortcut(a), let r = s.reserved { return Note(text: r.reason(s), mark: true, line: true) }
         if st.isConflict { return Note(text: st.text, mark: true, line: true) }
         if st == .notHere { return Note(text: Loc.t("capture.keys.menu_bar_only", table: "Capture"), mark: false, line: true) }
@@ -611,7 +654,7 @@ struct ShortcutsPane: View {
 
     var body: some View {
         SettingsPage(.shortcuts) {
-            if m.takenCount > 0 { banner.padding(.top, 18) }
+            if m.takenCount > 0 { banner.padding(.top, SettingsMetrics.groupGap) }
 
             SettingsGroup("shortcuts.capture") {
                 ForEach([HotAction.toggleRecord, .snap, .voice], id: \.self) { row($0) }
@@ -633,7 +676,7 @@ struct ShortcutsPane: View {
                                help: Loc.t("capture.keys.restore.help", table: "Capture")) { m.restore() }
         }
         .onAppear { m.refresh() }
-        .onDisappear { ShortcutField.active?.stop() }
+        .onDisappear { ShortcutField.active?.stop(); m.cancelSwap() }
     }
 
     /// Another running Blurt holds some of the keys: said once, with the way to free them.
@@ -644,8 +687,8 @@ struct ShortcutsPane: View {
         let detail = many ? Loc.t("capture.keys.taken_banner.detail_many", table: "Capture")
             : m.otherLocation.map { Loc.t("capture.keys.taken_banner.detail", table: "Capture", $0) }
                 ?? Loc.t("capture.keys.taken_banner.detail_unknown", table: "Capture")
-        return AttentionBanner(title: Loc.plural(many ? "capture.keys.taken_banner_many" : "capture.keys.taken_banner", table: "Capture", count: n),
-                               detail: detail) {
+        return SettingsNotice(title: Loc.plural(many ? "capture.keys.taken_banner_many" : "capture.keys.taken_banner", table: "Capture", count: n),
+                              detail: detail) {
             if !m.otherApps.isEmpty {
                 Button(m.quitting ? Loc.t("capture.keys.quitting", table: "Capture")
                        : Loc.t(m.otherApps.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
@@ -662,10 +705,11 @@ struct ShortcutsPane: View {
     func row(_ a: HotAction) -> some View {
         let note = m.note(a)
         let line = note?.line == true ? note : nil
+        let asking = m.swap?.action == a ? m.swap : nil
         return SettingRow("shortcuts.\(a.rawValue)", title: a.title, detail: line?.text,
                           detailColor: line?.mark == true || m.refusals[a] != nil ? Color.brandAttnInk : nil,
-                          height: SettingsMetrics.evenRow,
-                          detailContent: a == .pen && line == nil ? AnyView(HoldKeyLine(m: m)) : nil) {
+                          detailContent: asking.map { AnyView(SwapLine(m: m, p: $0)) }
+                            ?? (a == .pen && line == nil ? AnyView(HoldKeyLine(m: m)) : nil)) {
             ShortcutRecorder(action: a, model: m)
                 .frame(width: ShortcutField.size.width, height: ShortcutField.size.height)
         }
@@ -677,29 +721,57 @@ struct ShortcutsPane: View {
         let mode = Loc.t("dictation.mode.\(Dictation.mode.rawValue)", table: "Dictation")
         let taken = m.dictationTaken
         return SettingRow("shortcuts.dictation_key",
-                          detail: Dictation.enabled ? (Dictation.doubleTapSend ? mode + " · " + Loc.t("dictation.mode.send_suffix", table: "Dictation") : mode) : nil,
-                          height: SettingsMetrics.evenRow) {
-            HStack(spacing: 12) {
-                // a text button in brand ink (§3.3 links), not the system's blue
-                Button(Loc.t("capture.keys.dictation_change", table: "Capture")) { m.openDictation() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: SettingsMetrics.detailSize))
-                    .foregroundStyle(Color.brandInk)
-                HStack(spacing: 6) {
-                    if taken {
-                        StatusDot(tone: .warn, diameter: 12)
-                            .help(Loc.t("dictation.status.other_instance", table: "Dictation"))
-                    }
-                    if Dictation.enabled {
-                        KeycapsView(keys: [Dictation.keyName])
-                    } else {
-                        Text(Loc.t("capture.keys.off", table: "Capture")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.trailing, 6)          // the recorders' keycaps end 6 pt in from the cell's edge
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(Loc.t("dictation.settings.tab", table: "Dictation"))
-            }
+                          detail: Dictation.enabled ? (Dictation.doubleTapSend ? mode + " · " + Loc.t("dictation.mode.send_suffix", table: "Dictation") : mode) : nil) {
+            DictationKeyButton(taken: taken) { m.openDictation() }
         }
+    }
+}
+
+/// The dictation key on the Shortcuts page: read-only keycaps (it is set in Settings → Dictation) and a chevron, the
+/// whole of it one button there — the same faint ground under the pointer as the recorders. Dimmed while another copy
+/// of Blurt hears the key (the page's notice says so).
+struct DictationKeyButton: View {
+    var taken: Bool
+    var action: () -> Void
+    @State private var hover = false
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if Dictation.enabled {
+                    KeycapsView(keys: [Dictation.keyName], dim: taken)
+                } else {
+                    Text(Loc.t("capture.keys.off", table: "Capture")).font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            }
+            .padding(.leading, 6).padding(.trailing, 6)
+            .frame(height: ShortcutField.size.height)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(hover ? 0.05 : 0)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(taken ? Loc.t("dictation.status.other_instance", table: "Dictation") : Loc.t("capture.keys.dictation_change", table: "Capture"))
+        .accessibilityLabel(Loc.t("capture.keys.dictation_change", table: "Capture"))
+        .accessibilityValue(Dictation.enabled ? Dictation.keyName : Loc.t("capture.keys.off", table: "Capture"))
+    }
+}
+
+/// The row's swap question, as its second line: "Swap with Voice note?" in attention ink, then Swap (brand ink, the
+/// row's one action) and Cancel — Return and Esc in the recorder do the same. The whole outcome is the tooltip.
+struct SwapLine: View {
+    @ObservedObject var m: HotkeySettings
+    let p: HotkeySettings.PendingSwap
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(m.swapQuestion(p)).foregroundStyle(Color.brandAttnInk).help(m.swapOutcome(p))
+            Button(Loc.t(p.mine == nil ? "capture.keys.move.ok" : "capture.keys.swap.ok", table: "Capture")) { m.answerSwap(true) }
+                .buttonStyle(.plain).foregroundStyle(Color.brandInk).fontWeight(.semibold)
+                .accessibilityHint(m.swapOutcome(p))
+            Button(Loc.t("capture.keys.swap.cancel", table: "Capture")) { m.answerSwap(false) }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+        }
+        .font(.system(size: SettingsMetrics.detailSize))
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

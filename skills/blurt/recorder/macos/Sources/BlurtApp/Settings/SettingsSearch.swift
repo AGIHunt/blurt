@@ -482,9 +482,6 @@ private struct NoMatch: View {
     }
 }
 
-/// One hit: its title with the words that matched in semibold, its section on the right, its description under it.
-private struct ResultRow: View {
-    let hit: SettingsHit
 /// One stop: its title (the matched words in semibold) and, when the title doesn't say why it matched, the reason after
 /// it in secondary; the accessory (keycaps) on the right, then ↩ on the chosen one. One line, the same height for all.
 private struct ResultRow<Accessory: View>: View {

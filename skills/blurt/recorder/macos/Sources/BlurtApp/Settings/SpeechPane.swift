@@ -515,8 +515,9 @@ struct SpeechPane: View {
                             SettingsIcon("arrow.down.circle")
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(S("speech.rec.title")).font(.system(size: SettingsMetrics.titleSize))
+                                // every model named whole, on as many lines as the width needs (never cut)
                                 Text(pickLine(ps)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 if failed {
                                     Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
                                         .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
@@ -683,12 +684,10 @@ struct SpeechPane: View {
                 }
             }
             SettingRow("speech.language", icon: "ear") {
-                RowPicker(label: S("speech.advanced.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
-                    Text(S("speech.advanced.language.auto")).tag("auto")
-                    Divider()
-                    ForEach(m.languages, id: \.self) { Text(endonym($0)).tag($0) }
-                    if m.language != "auto" && !m.languages.contains(m.language) { Text(endonym(m.language)).tag(m.language) }
-                }
+                let langs = m.languages + (m.language != "auto" && !m.languages.contains(m.language) ? [m.language] : [])
+                ChoicePopup(label: S("speech.advanced.language"),
+                            choices: [("auto", S("speech.advanced.language.auto"))] + langs.map { ($0, endonym($0)) },
+                            selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), dividers: [1])
             }
         }
     }
@@ -724,27 +723,22 @@ struct SpeechPane: View {
         if let s = m.state {
             let cores = max(1, s.hardware.perfCores + s.hardware.effCores)
             SettingRow("speech.threads", detail: S("speech.limits.threads.detail", decimal(Double(cores))), icon: "cpu") {
-                RowPicker(label: S("speech.limits.threads"),
-                          selection: Binding(get: { min(max(1, s.limits.threads), cores) }, set: { m.setLimit("threads", $0) })) {
-                    ForEach(1...cores, id: \.self) { Text(decimal(Double($0))).tag($0) }
-                }
+                ChoicePopup(label: S("speech.limits.threads"), choices: (1...cores).map { ($0, decimal(Double($0))) },
+                            selection: Binding(get: { min(max(1, s.limits.threads), cores) }, set: { m.setLimit("threads", $0) }))
             }
             SettingRow("speech.concurrent", icon: "square.stack") {
-                RowPicker(label: S("speech.limits.concurrent"),
-                          selection: Binding(get: { min(max(1, s.limits.maxConcurrent), 4) }, set: { m.setLimit("max_concurrent", $0) })) {
-                    ForEach(1...4, id: \.self) { Text(decimal(Double($0))).tag($0) }
-                }
+                ChoicePopup(label: S("speech.limits.concurrent"), choices: (1...4).map { ($0, decimal(Double($0))) },
+                            selection: Binding(get: { min(max(1, s.limits.maxConcurrent), 4) }, set: { m.setLimit("max_concurrent", $0) }))
             }
             if s.hardware.gpu.kind == "apple" {
                 // the share of memory as what it means: "Up to 32 GB" (10–50 %, in 5 % steps)
                 SettingRow("speech.memory", icon: "memorychip") {
-                    RowPicker(label: S("speech.limits.memory"),
-                              selection: Binding(get: { Int((s.limits.maxMemoryFraction * 20).rounded()) * 5 },
-                                                 set: { m.setLimit("max_memory_fraction", Double($0) / 100) })) {
-                        ForEach(Array(stride(from: 10, through: 50, by: 5)), id: \.self) { pct in
-                            Text(S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100))).tag(pct)
-                        }
-                    }
+                    ChoicePopup(label: S("speech.limits.memory"),
+                                choices: Array(stride(from: 10, through: 50, by: 5)).map { pct in
+                                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
+                                },
+                                selection: Binding(get: { Int((s.limits.maxMemoryFraction * 20).rounded()) * 5 },
+                                                   set: { m.setLimit("max_memory_fraction", Double($0) / 100) }))
                 }
             }
             SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }),
