@@ -26,7 +26,7 @@ import BlurtCore
 final class PermissionGuide: ObservableObject {
     static let shared = PermissionGuide()
 
-    enum Source: String { case onboarding, privacy, dictation, menu, island, page, capture, test }
+    enum Source: String { case onboarding, privacy, dictation, menu, island, page, capture, test, general }
 
     @Published private(set) var running = false
     @Published private(set) var flow: PermissionFlowKind = .all
@@ -246,6 +246,7 @@ final class PermissionGuide: ObservableObject {
         switch source {
         case .onboarding: Onboarding.shared.bringToFront()
         case .privacy: AppEnvironment.settings?.show(pane: "privacy")
+        case .general: AppEnvironment.settings?.show(pane: "general/general.card_drag")   // Settings → General's drag choice
         case .dictation, .menu, .island, .page: AppEnvironment.settings?.show(pane: "dictation")
         case .capture, .test: break
         }

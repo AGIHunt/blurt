@@ -1,27 +1,47 @@
-// Settings → General, in groups: Projects (the folders opened in Blurt, and which one new captures go to); App (open at
-// login, language — Spotlight is in Privacy: each setting lives in one pane); Recording (what happens after one,
-// countdown, system audio, collecting macOS screenshots); Voice notes (whether a pause ends one —
-// record.voice.end_on_pause, off: Capture/VoiceInput.swift — and the words while you talk — record.live_text, on:
-// Capture/LiveTranscript.swift); Cards (what dragging a card out does: chat apps get picture and note in two pastes —
-// record.smart_paste, on: Capture/SmartPaste.swift —, copy its note where it didn't go in — record.drag_copy_note, on —,
-// also attach the note as a .md file — record.drag_note_file, off —, burn the note under the dragged picture —
-// record.drag_caption, off); Advanced (the Dictation Lab); About (version, updates, the user guide, the setup
-// assistant). Rows and their descriptions come from SettingsCatalog. The menu-bar menu stays short because these live here.
-// A language change applies at the next launch: Relaunch Now next to it. A skill / app contract mismatch is said on the
-// Version row for as long as it lasts, with How to Update. Open Folder… is a sheet on this window. Projects are listed
-// in the sidebar's order (the user's own); ⊖ removes one at once — the folder and its items stay — with Undo (the
-// island's button and ⌘Z, like the main window). Open at login goes through LoginItem (the assistant's switch too), so
-// a test build never registers itself. Errors are said in a sentence; what the script said goes to the log.
+// Settings → General: the app's everyday choices on one short page, four boxes and a closing line.
+//   App          open at login (LoginItem: the assistant's switch too, so a test build never registers itself),
+//                language (the running app keeps the one it opened with: Relaunch Now next to it).
+//   Recording    what happens after one, the countdown, system audio.
+//   Voice notes  how one ends — one choice, press the key again or a 1.5 s pause (record.voice.end_on_pause, off:
+//                Capture/VoiceInput.swift) —, the words while you talk (record.live_text, on: Capture/LiveTranscript.swift).
+//   Cards        macOS's own screenshots as cards (record.collect_system_shots); what a card dragged into an app
+//                carries — one choice over three settings: "picture, then the note" (record.smart_paste, on:
+//                Capture/SmartPaste.swift), "picture with the note under it" (record.drag_caption), "picture only";
+//                with either of the first two, a note that couldn't go in goes on the clipboard (record.drag_copy_note,
+//                on), with picture only it doesn't —; the note as a .md file too (record.drag_note_file, off). Pasting
+//                the note needs Accessibility: said in attention ink with Allow… only while that choice is made and
+//                the permission is missing.
+//   About        one quiet line under the boxes: Blurt and its version, Check for Updates…, User Guide, Setup
+//                Assistant… as brand-ink text buttons; a skill / app contract mismatch is said above it in attention
+//                ink, with How to Update, for as long as it lasts.
+// The projects have their own pane (ProjectsPane.swift); the Dictation Lab is under Dictation's Advanced. Rows and
+// their descriptions come from SettingsCatalog; longer explanations are behind each row's ⓘ. Every pop-up is the same
+// width (SettingsMetrics.pickerWidth), so the controls share one column.
 import AppKit
 import ServiceManagement
 import SwiftUI
 import BlurtCore
 
+/// What a card dragged into another app carries (the Cards box's one choice).
+enum CardDragMode: String, CaseIterable {
+    case paste, caption, picture
+
+    /// From the three settings it stands for: the note burned in wins, then smart paste, else the picture alone.
+    static var current: CardDragMode { CardExport.burnCaption ? .caption : SmartPaste.enabled ? .paste : .picture }
+
+    /// Writes the three settings; each one left at its default where it can be (smart paste and the clipboard
+    /// fallback on, the caption off).
+    func apply() {
+        setRecordConfig("smart_paste", self == .paste ? nil : false)
+        setRecordConfig("drag_caption", self == .caption ? true : nil)
+        setRecordConfig("drag_copy_note", self == .picture ? false : nil)
+        if self != .paste { SmartPaste.shared.disarm("off") }
+        emit(["event": "card_drag_mode", "mode": rawValue])
+    }
+}
+
 @MainActor
 final class GeneralModel: ObservableObject {
-    @Published var projects: [Project] = []
-    /// the current project's id, or "inbox": none — captures go to Unassigned
-    @Published var current: String = "inbox"
     @Published var openAtLogin = false
     @Published var loginError: String?
     @Published var language = "auto"
@@ -29,22 +49,14 @@ final class GeneralModel: ObservableObject {
     @Published var countdown = 3
     @Published var systemAudio = false
     @Published var collect = false
-    @Published var dragCopyNote = true
+    @Published var cardDrag = CardDragMode.paste
     @Published var dragNoteFile = false
-    @Published var dragCaption = false
-    @Published var smartPaste = true
     @Published var voiceEndOnPause = false
     @Published var liveText = true
-    @Published var dictationLab = DictationLabModel.enabled
-    @Published var error: String?
 
     init() { reload() }
 
     func reload() {
-        let s = ProjectStore.shared
-        s.reload()
-        projects = s.ordered
-        current = s.currentID ?? "inbox"
         openAtLogin = LoginItem.enabled
         let l = Config.shared["lang"] as? String ?? "auto"
         language = l == "zh" ? "zh-Hans" : (["en", "zh-Hans"].contains(l) ? l : "auto")
@@ -52,73 +64,12 @@ final class GeneralModel: ObservableObject {
         countdown = recordConfig()["countdown"] as? Int ?? 3
         systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         collect = snapper.collecting
-        dragCopyNote = CardExport.copyNoteAfterDrag
+        cardDrag = CardDragMode.current
         dragNoteFile = CardExport.attachNoteFile
-        dragCaption = CardExport.burnCaption
-        smartPaste = SmartPaste.enabled
         voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
     }
 
-    private func run(_ f: @escaping () async throws -> Void) {
-        Task { @MainActor in
-            do { try await f(); error = nil } catch { self.error = peopleText(error, context: "projects") }
-            reload()
-        }
-    }
-
-    func setCurrent(_ id: String) {
-        run {
-            try await ProjectStore.shared.use(id == "inbox" ? nil : id)
-            await MainActor.run { island.projectChanged() }
-        }
-    }
-    /// ⊖: removed at once (the folder and its items stay), with Undo — the island's button and ⌘Z on this window
-    /// put it back exactly (its key, name, settings and place), as the main window's Remove does.
-    func remove(_ p: Project, window: NSWindow?) {
-        Task { @MainActor in
-            do {
-                let removed = try await ProjectStore.shared.remove(p.id)
-                error = nil
-                reload()
-                guard !removed.isEmpty else { return }
-                emit(["event": "project_removed", "id": p.id, "via": "settings"])
-                var undone = false
-                let undo: () -> Void = { [weak self] in
-                    guard !undone else { return }
-                    undone = true
-                    Task { @MainActor in
-                        do { try await ProjectStore.shared.restore(removed) } catch { self?.error = peopleText(error, context: "projects") }
-                        emit(["event": "project_restored", "id": p.id, "via": "settings"])
-                        self?.reload()
-                    }
-                }
-                if let um = window?.undoManager {
-                    um.registerUndo(withTarget: self) { _ in undo() }
-                    um.setActionName(T("main.project.remove.undo_name"))
-                }
-                appDelegate?.toast(T("main.project.removed", p.name), undo: undo)
-            } catch {
-                self.error = peopleText(error, context: "projects")
-                reload()
-            }
-        }
-    }
-    func openFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = true
-        panel.prompt = T("main.open.prompt")
-        panel.message = T("main.open.message")
-        let open: (NSApplication.ModalResponse) -> Void = { [weak self] r in
-            guard r == .OK else { return }
-            let urls = panel.urls
-            self?.run { for u in urls { _ = try await ProjectStore.shared.open(folder: u) } }
-        }
-        // a sheet on the Settings window, not an app-wide modal panel
-        if let w = NSApp.keyWindow { panel.beginSheetModal(for: w, completionHandler: open) } else { open(panel.runModal()) }
-    }
     /// The same switch as the assistant's (LoginItem): a test build never registers itself in the user's Login Items.
     func setLogin(_ on: Bool) {
         loginError = LoginItem.set(on, via: "settings") == nil ? nil : T("settings.general.login_failed")
@@ -136,48 +87,25 @@ final class GeneralModel: ObservableObject {
         snapper.syncCollector()
         collect = snapper.collecting
     }
-    func setDragCopyNote(_ v: Bool) { setRecordConfig("drag_copy_note", v); dragCopyNote = v }
+    func setCardDrag(_ v: CardDragMode) { v.apply(); cardDrag = CardDragMode.current }
     func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
-    func setDragCaption(_ v: Bool) { setRecordConfig("drag_caption", v); dragCaption = v }
-    func setSmartPaste(_ v: Bool) {
-        setRecordConfig("smart_paste", v)
-        smartPaste = v
-        if !v { SmartPaste.shared.disarm("off") }
-    }
     func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
     func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
-    func setDictationLab(_ v: Bool) { Config.shared.set("record.dictation.lab", v ? true : nil); dictationLab = v }
 }
 
 struct GeneralPane: View {
     @StateObject var m = GeneralModel()
+    @StateObject var perms = Permissions()
 
     static var version: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         return v.isEmpty ? "—" : v
     }
 
+    private let w = SettingsMetrics.pickerWidth
+
     var body: some View {
         SettingsPage(.general) {
-            SettingsGroup("general.projects", footer: T("settings.general.projects.hint")) {
-                SettingRow("general.capture_into") {
-                    RowPicker(label: T("settings.general.capture_into"), selection: Binding(get: { m.current }, set: { m.setCurrent($0) })) {
-                        ForEach(m.projects, id: \.id) { p in Text(p.name).tag(p.id) }
-                        Divider()
-                        Text(T("settings.general.none")).tag("inbox")
-                    }
-                }
-                ForEach(m.projects, id: \.id) { p in projectLine(p) }
-                SettingsLine {
-                    HStack {
-                        Button(T("project.open_folder")) { m.openFolder() }
-                        Spacer()
-                        Button(T("settings.general.open_unassigned")) { NSWorkspace.shared.open(ProjectStore.shared.inbox.store) }
-                    }
-                }
-                if let e = m.error { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr).padding(.bottom, 4) }
-            }
-
             SettingsGroup("general.app") {
                 SettingToggle("general.login", isOn: Binding(get: { m.openAtLogin }, set: { m.setLogin($0) }),
                               detail: m.loginError)
@@ -188,7 +116,7 @@ struct GeneralPane: View {
                         if pendingLanguage {
                             Button(T("settings.general.language.relaunch")) { SystemAccess.relaunch(source: "language", guide: false) }
                         }
-                        RowPicker(label: T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
+                        RowPicker(label: T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), width: w) {
                             Text(T("settings.general.language.system")).tag("auto")
                             Text("English").tag("en")
                             Text("简体中文").tag("zh-Hans")
@@ -199,84 +127,85 @@ struct GeneralPane: View {
 
             SettingsGroup("general.recording") {
                 SettingRow("general.after_recording") {
-                    RowPicker(label: T("settings.general.after_recording"), selection: Binding(get: { m.processMode }, set: { m.setProcess($0) })) {
+                    RowPicker(label: T("settings.general.after_recording"), selection: Binding(get: { m.processMode }, set: { m.setProcess($0) }), width: w) {
                         Text(T("app.menu.after.organize")).tag("auto")
                         Text(T("app.menu.after.keep")).tag("off")
                     }
                 }
                 SettingRow("general.countdown") {
-                    RowPicker(label: T("app.menu.countdown"), selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) })) {
+                    RowPicker(label: T("app.menu.countdown"), selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) }), width: w) {
                         Text(T("app.menu.countdown.none")).tag(0)
                         Text(T("app.menu.countdown.seconds", 3)).tag(3)
                         Text(T("app.menu.countdown.seconds", 5)).tag(5)
                     }
                 }
                 SettingToggle("general.system_audio", isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
-                SettingToggle("general.collect", isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
             }
 
             SettingsGroup("general.voice") {
-                SettingToggle("general.voice_end_on_pause", isOn: Binding(get: { m.voiceEndOnPause }, set: { m.setVoiceEndOnPause($0) }))
+                SettingRow("general.voice_end_on_pause") {
+                    RowPicker(label: T("settings.general.voice_end_on_pause"),
+                              selection: Binding(get: { m.voiceEndOnPause }, set: { m.setVoiceEndOnPause($0) }), width: w) {
+                        Text(T("settings.general.voice_end.key")).tag(false)
+                        Text(T("settings.general.voice_end.pause")).tag(true)
+                    }
+                }
                 SettingToggle("general.live_text", isOn: Binding(get: { m.liveText }, set: { m.setLiveText($0) }))
             }
 
             SettingsGroup("general.cards") {
-                SettingToggle("general.smart_paste", isOn: Binding(get: { m.smartPaste }, set: { m.setSmartPaste($0) }))
-                SettingToggle("general.drag_copy_note", isOn: Binding(get: { m.dragCopyNote }, set: { m.setDragCopyNote($0) }))
-                SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
-                SettingToggle("general.drag_caption", isOn: Binding(get: { m.dragCaption }, set: { m.setDragCaption($0) }))
-            }
-
-            SettingsGroup("general.developer") {
-                SettingToggle("general.dictation_lab", isOn: Binding(get: { m.dictationLab }, set: { m.setDictationLab($0) }))
-            }
-
-            SettingsGroup("general.about") {
-                // the skill and the app don't speak the same contract: said here for as long as it lasts
-                let mismatch = SkillContract.check(skill: SkillContract.skillVersion())
-                SettingRow("general.version", detail: mismatch.map { T($0.appIsOlder ? "app.contract.app_older" : "app.contract.skill_older") },
-                           detailColor: mismatch == nil ? nil : Color.brandAttnInk) {
-                    HStack(spacing: 10) {
-                        Text(Self.version).monospacedDigit().foregroundStyle(.secondary).textSelection(.enabled)
-                        if mismatch != nil {
-                            Button(T("app.contract.how")) { Housekeeping.contractHelp() }
-                        } else if Updater.shared.available {
-                            Button(T("app.menu.updates")) { Updater.shared.checkForUpdates(nil) }.disabled(!Updater.shared.canCheck)
+                SettingToggle("general.collect", isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
+                // pasting the note in needs Accessibility: said only while that choice is made and it is missing
+                let needsAccess = m.cardDrag == .paste && perms.accessibility != .granted
+                SettingRow("general.card_drag", detail: needsAccess ? T("settings.general.card_drag.needs_ax") : nil,
+                           detailColor: needsAccess ? Color.brandAttnInk : nil) {
+                    HStack(spacing: 8) {
+                        if needsAccess {
+                            Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .general) }
+                                .fixedSize()
+                        }
+                        RowPicker(label: T("settings.general.card_drag"), selection: Binding(get: { m.cardDrag }, set: { m.setCardDrag($0) }), width: w) {
+                            ForEach(CardDragMode.allCases, id: \.self) { c in Text(T("settings.general.card_drag.\(c.rawValue)")).tag(c) }
                         }
                     }
                 }
-                SettingRow("general.help") {
-                    Button(T("action.open")) { NSWorkspace.shared.open(Help.guideURL()) }
-                }
-                SettingRow("general.assistant") {
-                    Button(T("action.open")) { Onboarding.shared.show() }
-                }
+                SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
             }
+
+            SettingsGroup("general.about", boxed: false) { aboutLine }
         }
-        .onAppear { m.reload() }
+        .onAppear { m.reload(); perms.start() }
+        .onDisappear { perms.stop() }
     }
 
-    /// A project: its folder, name, key and path, with Open and Remove.
-    func projectLine(_ p: Project) -> some View {
-        SettingsLine(padding: 8) {
-            HStack(spacing: 14) {
-                Image(systemName: p.exists ? "folder" : "questionmark.folder").foregroundStyle(.secondary)
-                    .frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(p.name).font(.system(size: SettingsMetrics.titleSize))
-                        Text(p.key).font(.system(size: 11).monospaced()).foregroundStyle(.secondary)
-                    }
-                    Text((p.path.path as NSString).abbreviatingWithTildeInPath).font(.system(size: SettingsMetrics.detailSize))
-                        .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).help(p.path.path)
+    /// About, as one quiet line: the version, then the rarely needed ways on, as brand-ink text buttons.
+    @ViewBuilder var aboutLine: some View {
+        // the skill and the app don't speak the same contract: said here for as long as it lasts
+        let mismatch = SkillContract.check(skill: SkillContract.skillVersion())
+        VStack(alignment: .leading, spacing: 6) {
+            if let mm = mismatch {
+                HStack(spacing: 8) {
+                    Text(T(mm.appIsOlder ? "app.contract.app_older" : "app.contract.skill_older")).foregroundStyle(Color.brandAttnInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    InkLink(T("app.contract.how")) { Housekeeping.contractHelp() }
                 }
-                Spacer(minLength: 8)
-                Button { NSWorkspace.shared.open(p.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
-                    .help(T("action.open")).accessibilityLabel(T("action.open"))
-                Button { m.remove(p, window: NSApp.keyWindow) } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless)
-                    .help(T("settings.general.remove.help")).accessibilityLabel(T("settings.general.remove.help"))
             }
-            .accessibilityElement(children: .contain)
+            HStack(spacing: 6) {
+                Text(T("settings.general.about.version", Self.version)).foregroundStyle(.secondary).textSelection(.enabled)
+                if mismatch == nil && Updater.shared.available {
+                    dot
+                    InkLink(T("app.menu.updates")) { Updater.shared.checkForUpdates(nil) }.disabled(!Updater.shared.canCheck)
+                }
+                dot
+                InkLink(T("settings.general.help")) { NSWorkspace.shared.open(Help.guideURL()) }
+                dot
+                InkLink(T("settings.general.assistant.link")) { Onboarding.shared.show() }
+            }
         }
+        .font(.system(size: SettingsMetrics.detailSize))
+        .padding(.horizontal, SettingsMetrics.boxInset)
+        .padding(.top, -6)
     }
+
+    private var dot: some View { Text("·").foregroundStyle(.tertiary).accessibilityHidden(true) }
 }

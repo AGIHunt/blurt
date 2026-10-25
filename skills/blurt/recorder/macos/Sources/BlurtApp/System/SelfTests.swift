@@ -1,6 +1,8 @@
 // BLURT_TEST_COMMANDS=1 only: scripted checks for WP6, over a distributed notification like the shell's channel —
 //   dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "…"}; every answer is one JSON line on stdout.
 //   settings PANE[/ROW] | settingsscroll top|bottom|N | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
+//   settingskeylook on|off       Settings drawn as the key window though another app has the focus (screenshots)
+//   projectsselect N|none        Settings → Projects: select its Nth project (the row's tint and Show in Finder)
 //   settingssearch TEXT          type TEXT into Settings' search field → {"hits": [id…]} (settingssearch alone clears it)
 //   settingskey down|up|return|esc   a key in that field: ↓ / ↑ walk the results, ↩ opens one, Esc clears
 //   route URL                    parse a blurt:// URL (no action)         url URL   handle it like macOS would
@@ -66,6 +68,13 @@ enum SelfTests {
         case "settings": SettingsController.shared.show(pane: arg.isEmpty ? nil : arg)
         case "settingsscroll":          // settingsscroll top|bottom|POINTS: scroll the visible pane
             out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
+        case "settingskeylook":         // settingskeylook on|off: the window drawn as the key one (screenshots)
+            SettingsController.shared.testKeyLook(arg != "off")
+            out(["keylook": arg != "off"])
+        case "projectsselect":          // projectsselect N|none: Settings → Projects with its Nth row selected
+            let m = ProjectsModel.shown
+            m?.selected = Int(arg).flatMap { i in m.flatMap { i < $0.projects.count ? $0.projects[i].id : nil } }
+            out(["selected": m?.selected ?? NSNull()])
         case "settingssearch":
             SettingsController.shared.show(pane: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

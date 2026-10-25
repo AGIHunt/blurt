@@ -1,6 +1,6 @@
 // The Settings window (⌘, from the menu; blurt://settings/<pane>[/<row>]): one resizable window, a sidebar and a page.
 //   Sidebar  the search field on top (⌘F focuses it, Esc clears it, ↓ / ↑ walk the results, ↩ opens one), then the
-//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Agents ·
+//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Projects, Agents ·
 //            This Mac: Privacy, Storage (SettingsCatalog.panes) — in an NSOutlineView like the main window's sidebar:
 //            the brand-tint selection (BrandRowView), ↑ / ↓ move between panes. While searching, the panes with
 //            matches show how many; the others are dimmed.
@@ -13,12 +13,13 @@
 // that moved (SettingsCatalog.moved: the old Export pane) opens where its settings went: Agents, at "Ask your agent".
 import AppKit
 import Combine
+import ObjectiveC
 import SwiftUI
 import BlurtCore
 
 enum SettingsPane: String, CaseIterable {
     // the sidebar's order (SettingsCatalog.panes)
-    case general, dictation, speech, shortcuts, agents, privacy, storage
+    case general, dictation, speech, shortcuts, projects, agents, privacy, storage
 
     var info: SettingsPaneInfo? { SettingsCatalog.pane(rawValue) }
     var title: String { info.flatMap { SettingsCatalog.text($0.title) } ?? rawValue }
@@ -32,6 +33,7 @@ enum SettingsPane: String, CaseIterable {
         case .shortcuts: view = AnyView(ShortcutsPane())
         case .speech: view = AnyView(SpeechPane())
         case .dictation: view = AnyView(DictationPane())
+        case .projects: view = AnyView(ProjectsPane())
         case .agents: view = AnyView(AgentsPane())
         case .privacy: view = AnyView(PrivacyPane())
         case .storage: view = AnyView(StoragePane())
@@ -46,6 +48,27 @@ enum SettingsPane: String, CaseIterable {
 /// ⌘F (and the menu's Find) focuses the search field, wherever the focus is.
 final class SettingsWindow: NSWindow {
     var onFind: (() -> Void)?
+    /// Tests (`settingskeylook on`): draw as the key window while another app has the focus — the switches in the
+    /// accent, the sidebar's selection in the brand tint — for screenshots taken without taking the focus.
+    static var keyLook = false
+    override var isKeyWindow: Bool { Self.keyLook || super.isKeyWindow }
+    override var isMainWindow: Bool { Self.keyLook || super.isMainWindow }
+    // AppKit's controls ask the window for its key / active *appearance* (the switch's accent track): answered here
+    // while keyLook is on, else as NSWindow answers
+    @objc(_hasActiveAppearance) func testHasActiveAppearance() -> Bool { Self.keyLook || superBool("_hasActiveAppearance") }
+    @objc(_hasActiveAppearanceIgnoringKeyFocus) func testHasActiveAppearanceIgnoringKeyFocus() -> Bool {
+        Self.keyLook || superBool("_hasActiveAppearanceIgnoringKeyFocus")
+    }
+    @objc(_hasKeyAppearance) func testHasKeyAppearance() -> Bool { Self.keyLook || superBool("_hasKeyAppearance") }
+    @objc(_hasMainAppearance) func testHasMainAppearance() -> Bool { Self.keyLook || superBool("_hasMainAppearance") }
+    @objc(hasKeyAppearance) func testHasKeyAppearancePublic() -> Bool { Self.keyLook || superBool("hasKeyAppearance") }
+    @objc(hasMainAppearance) func testHasMainAppearancePublic() -> Bool { Self.keyLook || superBool("hasMainAppearance") }
+    private func superBool(_ name: String) -> Bool {
+        let sel = NSSelectorFromString(name)
+        guard let imp = class_getMethodImplementation(NSWindow.self, sel), NSWindow.instancesRespond(to: sel) else { return false }
+        typealias F = @convention(c) (AnyObject, Selector) -> Bool
+        return unsafeBitCast(imp, to: F.self)(self, sel)
+    }
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
         if e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, e.charactersIgnoringModifiers == "f" {
             onFind?()
@@ -73,6 +96,7 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         sideItem.minimumThickness = 190
         sideItem.maximumThickness = 260
         sideItem.canCollapse = false
+        sideItem.allowsFullHeightLayout = true          // the source list runs to the top, under the window's buttons
         let pageItem = NSSplitViewItem(viewController: page)
         pageItem.minimumThickness = 540
         split.addSplitViewItem(sideItem)
@@ -82,8 +106,12 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                backing: .buffered, defer: false)
         w.contentViewController = split
+        // the pane's name is the window's title, in the toolbar beside the window's buttons (System Settings): the
+        // sidebar runs full height under them and the page starts right below
         w.title = T("settings.window.title")
-        w.titleVisibility = .hidden
+        w.toolbar = NSToolbar(identifier: "BlurtSettings")
+        w.toolbarStyle = .unified
+        w.titleVisibility = .visible
         w.titlebarAppearsTransparent = true
         w.minSize = NSSize(width: 760, height: 520)
         w.setContentSize(NSSize(width: 860, height: 620))
@@ -97,6 +125,10 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         detail = page
         // the last pane, for next time (a pane chosen while the window is open counts, not only the one at closing)
         nav.$pane.removeDuplicates().sink { p in Config.shared.set("app.settings_pane", p.rawValue) }.store(in: &subs)
+        nav.$pane.combineLatest(nav.$query.map { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.removeDuplicates())
+            .receive(on: RunLoop.main)
+            .sink { [weak w] p, searching in w?.title = searching ? T("settings.search.title") : p.title }
+            .store(in: &subs)
     }
 
     func show(pane: String?) {
@@ -158,6 +190,21 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
             queue += v.subviews
         }
         return false
+    }
+
+    /// Tests (`settingskeylook on|off`): see SettingsWindow.keyLook.
+    @MainActor
+    func testKeyLook(_ on: Bool) {
+        SettingsWindow.keyLook = on
+        guard let w = window else { return }
+        NotificationCenter.default.post(name: on ? NSWindow.didBecomeKeyNotification : NSWindow.didResignKeyNotification, object: w)
+        NotificationCenter.default.post(name: on ? NSWindow.didBecomeMainNotification : NSWindow.didResignMainNotification, object: w)
+        for name in on ? ["acquireMainAppearance", "acquireKeyAppearance"] : ["resignKeyAppearance", "resignMainAppearance"] {
+            let sel = NSSelectorFromString(name)
+            if w.responds(to: sel) { w.perform(sel) }
+        }
+        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        w.contentView.map(redraw)
     }
 
     /// Tests (`settingssearch TEXT`): type into the search field as a person would.

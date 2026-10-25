@@ -71,6 +71,7 @@ public enum SettingsCatalog {
         pane("dictation", "dictation.settings.tab", "Dictation", "character.cursor.ibeam", "preferences"),
         pane("speech", "settings.kit.speech", "Settings", "waveform", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
+        pane("projects", "main.sidebar.projects", "Main", "folder", "work"),
         pane("agents", "settings.kit.agents", "Settings", "paperplane", "work"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
         pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
@@ -82,22 +83,36 @@ public enum SettingsCatalog {
     /// Export went in v0.9: the user's agent sends items with its own tools, so Agents says how to ask it.
     public static let moved: [String: String] = ["export": "agents/agents.ask"]
 
-    /// "export" or "export/target" → "agents/agents.ask"; anything else as it is.
+    /// Rows that moved to another place (v0.9: the projects got their own pane, the Dictation Lab went to Dictation's
+    /// Advanced, the four drag switches became one choice, About became General's closing line): old row → new row.
+    public static let movedRows: [String: String] = [
+        "general.projects": "projects.list", "general.capture_into": "projects.capture_into",
+        "general.dictation_lab": "dictation.lab", "general.developer": "dictation.advanced",
+        "general.smart_paste": "general.card_drag", "general.drag_caption": "general.card_drag", "general.drag_copy_note": "general.card_drag",
+        "general.version": "general.about", "general.help": "general.about", "general.assistant": "general.about",
+    ]
+
+    /// "export" or "export/target" → "agents/agents.ask"; "general/general.capture_into" (or "general/capture_into") →
+    /// "projects/projects.capture_into"; anything else as it is.
     public static func redirect(_ link: String) -> String {
         let pane = String(link.prefix { $0 != "/" })
-        return moved[pane] ?? link
+        if let to = moved[pane] { return to }
+        guard link.count > pane.count + 1 else { return link }
+        let row = String(link.dropFirst(pane.count + 1))
+        guard let to = movedRows[row.contains(".") ? row : "\(pane).\(row)"] else { return link }
+        return "\(to.prefix { $0 != "." })/\(to)"
     }
 
     // MARK: sections
 
     public static let sections: [SettingsSection] = [
-        sec("general.projects", "main.sidebar.projects", "Main"),
         sec("general.app", "settings.general.app"),
         sec("general.recording", "settings.general.recording"),
         sec("general.voice", "settings.general.section.voice"),
         sec("general.cards", "settings.general.section.cards"),
-        sec("general.developer", "settings.general.section.developer"),
         sec("general.about", "settings.general.about"),
+
+        sec("projects.list", "main.sidebar.projects", "Main"),
 
         sec("dictation.main", "dictation.settings.section", "Dictation"),
         sec("dictation.style", "dictation.style.section", "Dictation"),
@@ -106,6 +121,7 @@ public enum SettingsCatalog {
         sec("dictation.history", "dictation.history.section", "Dictation"),
         sec("dictation.mic", "dictation.mic.section", "Dictation"),
         sec("dictation.permissions", "dictation.perm.section", "Dictation"),
+        sec("dictation.advanced", "settings.general.section.developer"),
 
         sec("speech.machine", "speech.section.machine", "Speech"),
         sec("speech.dictation", "speech.section.dictation", "Speech"),
@@ -144,29 +160,22 @@ public enum SettingsCatalog {
     public static let entries: [SettingsEntry] = {
         var e: [SettingsEntry] = [
             // General
-            row("general.capture_into", "general.projects", "settings.general.capture_into"),
-            whole("general.projects", detail: S("settings.general.projects.hint")),
             row("general.login", "general.app", "settings.general.login", detail: S("settings.general.login.detail")),
             row("general.language", "general.app", "settings.general.language"),
             row("general.after_recording", "general.recording", "settings.general.after_recording"),
             row("general.countdown", "general.recording", SettingsText("app.menu.countdown", "Main")),
             row("general.system_audio", "general.recording", "settings.general.system_audio"),
-            row("general.collect", "general.recording", "settings.general.collect", detail: S("settings.general.collect.hint")),
             row("general.voice_end_on_pause", "general.voice", "settings.general.voice_end_on_pause",
-                detail: S("settings.general.voice_end_on_pause.detail"), more: S("settings.general.voice_end_on_pause.hint")),
-            row("general.live_text", "general.voice", "settings.general.live_text",
-                detail: S("settings.general.live_text.detail"), more: S("settings.general.live_text.hint")),
-            row("general.smart_paste", "general.cards", "settings.general.smart_paste",
-                detail: S("settings.general.smart_paste.detail"), more: S("settings.general.smart_paste.hint")),
-            row("general.drag_copy_note", "general.cards", "settings.general.drag_copy_note",
-                detail: S("settings.general.drag_copy_note.detail"), more: S("settings.general.drag_copy_note.hint")),
-            row("general.drag_note_file", "general.cards", "settings.general.drag_note_file",
-                detail: S("settings.general.drag_note_file.detail"), more: S("settings.general.drag_note_file.hint")),
-            row("general.drag_caption", "general.cards", "settings.general.drag_caption", detail: S("settings.general.drag_caption.hint")),
-            row("general.dictation_lab", "general.developer", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
-            row("general.version", "general.about", "settings.general.version"),
-            row("general.help", "general.about", "settings.general.help", detail: S("settings.general.help.detail")),
-            row("general.assistant", "general.about", "settings.general.assistant.title", detail: S("settings.general.assistant.detail")),
+                more: S("settings.general.voice_end_on_pause.hint")),
+            row("general.live_text", "general.voice", "settings.general.live_text", more: S("settings.general.live_text.hint")),
+            row("general.collect", "general.cards", "settings.general.collect", more: S("settings.general.collect.hint")),
+            row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
+            row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
+            whole("general.about"),
+
+            // Projects
+            row("projects.capture_into", nil, "settings.general.capture_into"),
+            whole("projects.list", detail: S("settings.general.projects.hint")),
 
             // Dictation
             row("dictation.enable", "dictation.main", D("dictation.settings.enable"), detail: D("dictation.settings.enable.detail")),
@@ -197,6 +206,7 @@ public enum SettingsCatalog {
             row("dictation.builtin_mic", "dictation.mic", D("dictation.mic.builtin"), detail: D("dictation.mic.builtin.detail")),
             row("dictation.start_sound", "dictation.mic", D("dictation.mic.start_sound")),
             whole("dictation.permissions"),
+            row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
             // Speech
             row("speech.auto", "speech.machine", P("speech.auto.title"), detail: P("speech.auto.detail")),

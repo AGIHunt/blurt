@@ -1,7 +1,8 @@
 // Shared pieces of the Settings panes and the setup assistant: the one look of every pane — SettingsPage (the pane's
-// title, its groups, scrolling to a row a search or a link asked for, kept in view while the page still grows), SettingsGroup (a section), SettingsLine (one line
-// over a hairline), SettingRow / SettingToggle (a setting: title and one-line description from SettingsCatalog on the
-// left, the control on the right) —, status dots, the live permission model and its rows, config helpers, a
+// title, its groups, scrolling to a row a search or a link asked for, kept in view while the page still grows), SettingsGroup (a section:
+// a secondary heading over its rows in one rounded box, System Settings' grouped form), SettingsLine (one line of a box,
+// hairlines between lines), SettingRow / SettingToggle (a setting: title, ⓘ for a longer explanation and one-line
+// description from SettingsCatalog on the left, the control on the right), RowPicker, InkLink —, status dots, the live permission model and its rows, config helpers, a
 // project-config reader/writer.
 import AppKit
 import AVFoundation
@@ -89,14 +90,24 @@ extension View {
 
 enum SettingsMetrics {
     static let pageWidth: CGFloat = 680         // the column's widest; the window's extra width goes to the margins
-    static let gutter: CGFloat = 32
-    static let rowPadding: CGFloat = 11
+    static let gutter: CGFloat = 28
+    static let rowPadding: CGFloat = 7
     static let titleSize: CGFloat = 13
     static let detailSize: CGFloat = 12
-    static let groupGap: CGFloat = 28
+    static let headerSize: CGFloat = 13         // a group's heading: secondary, outside its box
+    static let groupGap: CGFloat = 18
     static let leadingWidth: CGFloat = 22       // an icon or a status dot before a row's title
+    /// A group's rows sit in a rounded box (the grouped-form look of System Settings): its inner side inset (the row
+    /// titles, the hairlines between rows), its corner radius.
+    static let boxInset: CGFloat = 12
+    static let boxRadius: CGFloat = 10
+    /// The trailing column: every pop-up of a page the same width, so the controls share one left and one right edge.
+    static let pickerWidth: CGFloat = 220
     static let ground = Color(nsColor: .controlBackgroundColor)
-    static let topFade: CGFloat = 18            // under the titlebar: rows scrolled up fade out instead of being cut
+    /// the box on the page's ground: a few percent of ink, so it holds in light, dark and Increase Contrast alike
+    static let boxFill = Color.primary.opacity(0.035)
+    static let boxStroke = Color.primary.opacity(0.07)
+    static let topFade: CGFloat = 10            // under the titlebar: rows scrolled up fade out instead of being cut
 }
 
 extension View {
@@ -144,15 +155,16 @@ struct SettingsPage<Content: View>: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
+                // the pane's name is the window's title (in the toolbar): the page starts with its first group
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(pane.title).font(.system(size: 22, weight: .semibold)).accessibilityAddTraits(.isHeader)
                     if let s = subtitle {
-                        Text(s).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).padding(.top, 5)
+                        Text(s).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                            .padding(.horizontal, SettingsMetrics.boxInset).padding(.top, SettingsMetrics.groupGap - 4)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     content
                 }
-                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 22).padding(.bottom, 44)
+                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, -8).padding(.bottom, 24)
                 .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
                 // (a preference doesn't come out of a ScrollView: the height is watched in place)
@@ -209,22 +221,41 @@ final class UserInput {
     }
 }
 
-/// A section: a small heading (with an optional accessory at its right, like a spinner or a refresh button), its
-/// rows, each over a hairline, and an optional footnote. `id` is a catalogue section (SettingsCatalog.sections).
+/// Inside a group's box: rows pad their sides and draw their hairline inset; the first row's hairline is cut by the
+/// box's top edge (the heading has no rule of its own).
+private struct SettingsBoxedKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var settingsBoxed: Bool {
+        get { self[SettingsBoxedKey.self] }
+        set { self[SettingsBoxedKey.self] = newValue }
+    }
+}
+
+/// A section, the grouped-form look of System Settings: a small secondary heading outside (with an optional
+/// accessory at its right, like a spinner or a refresh button), the rows in one rounded box with hairlines between
+/// them — never under the heading —, and an optional footnote under the box. `id` is a catalogue section
+/// (SettingsCatalog.sections). `disclosure`: the heading is a disclosure (Advanced) and the box shows only while it is
+/// open. `boxed: false`: the rows without a box (a page's closing line, like About).
 struct SettingsGroup<Content: View, Accessory: View>: View {
     var id: String?
     var title: String?
     var footer: String?
+    var disclosure: Binding<Bool>?
+    var boxed = true
     var accessory: Accessory
     var content: Content
     @ObservedObject private var flash = SettingsFlash.shared
 
-    init(_ id: String, title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
+    init(_ id: String, title: String? = nil, footer: String? = nil, disclosure: Binding<Bool>? = nil, boxed: Bool = true,
+         @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
         self.id = id
         let t = title ?? SettingsCatalog.section(id).flatMap { SettingsCatalog.text($0.title) }
         // a section named like its page (Dictation → Dictation) needs no heading of its own under the page's title
-        self.title = t == SettingsCatalog.section(id).flatMap({ SettingsPane(rawValue: $0.pane)?.title }) ? nil : t
+        let named = t == SettingsCatalog.section(id).flatMap({ SettingsPane(rawValue: $0.pane)?.title })
+        self.title = named || !boxed || t?.isEmpty == true ? nil : t
         self.footer = footer
+        self.disclosure = disclosure
+        self.boxed = boxed
         self.accessory = accessory()
         self.content = content()
     }
@@ -235,27 +266,63 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
         self.content = content()
     }
 
+    private var open: Bool { disclosure?.wrappedValue ?? true }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let t = title {
                 HStack(spacing: 8) {
-                    Text(t).font(.system(size: 14, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    if let d = disclosure {
+                        Button {
+                            withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.15)) {
+                                d.wrappedValue.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                                    .rotationEffect(.degrees(d.wrappedValue ? 90 : 0))
+                                Text(t).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
+                            }
+                            .foregroundStyle(.secondary)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(t)
+                        .accessibilityValue(d.wrappedValue ? "1" : "0")
+                        .accessibilityAddTraits(.isHeader)
+                    } else {
+                        Text(t).font(.system(size: SettingsMetrics.headerSize, weight: .semibold)).foregroundStyle(.secondary)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     Spacer(minLength: 8)
                     accessory
                 }
-                .frame(minHeight: 20)
-                .padding(.bottom, 6)
+                .frame(minHeight: 16)
+                .padding(.horizontal, boxed ? SettingsMetrics.boxInset : 0)
+                .padding(.bottom, 5)
                 .background(FlashWash(on: id != nil && flash.row == id))
             }
-            content
-                // no heading above it: the first row's hairline would only underline the page's title
-                .overlay(alignment: .top) {
-                    if title == nil { Rectangle().fill(SettingsMetrics.ground).frame(height: 1).allowsHitTesting(false) }
+            if open {
+                if boxed {
+                    VStack(alignment: .leading, spacing: 0) { content }
+                        .environment(\.settingsBoxed, true)
+                        .padding(.horizontal, SettingsMetrics.boxInset)
+                        // the first row's hairline lies on the box's top edge, where the clip takes it away
+                        .padding(.top, -1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .clipShape(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous))
+                        .background(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous).fill(SettingsMetrics.boxFill))
+                        .overlay(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
+                            .strokeBorder(SettingsMetrics.boxStroke, lineWidth: 0.5).allowsHitTesting(false))
+                } else {
+                    content
                 }
-            if let f = footer {
-                Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
+                if let f = footer {
+                    Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, boxed ? SettingsMetrics.boxInset : 0)
+                        .padding(.top, 7)
+                }
             }
         }
         .padding(.top, SettingsMetrics.groupGap)
@@ -264,16 +331,17 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
 }
 
 extension SettingsGroup where Accessory == EmptyView {
-    init(_ id: String, title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) {
-        self.init(id, title: title, footer: footer, content: content) { EmptyView() }
+    init(_ id: String, title: String? = nil, footer: String? = nil, disclosure: Binding<Bool>? = nil, boxed: Bool = true,
+         @ViewBuilder content: () -> Content) {
+        self.init(id, title: title, footer: footer, disclosure: disclosure, boxed: boxed, content: content) { EmptyView() }
     }
     init(footer: String? = nil, @ViewBuilder content: () -> Content) {
         self.init(footer: footer, content: content) { EmptyView() }
     }
 }
 
-/// One line of a group: the hairline above it and the row's padding. Content that isn't a setting of its own (a
-/// project, a model, a permission) uses it directly; settings use SettingRow.
+/// One line of a group: the hairline above it (between rows of a box) and the row's padding. Content that isn't a
+/// setting of its own (a project, a model, a permission) uses it directly; settings use SettingRow.
 struct SettingsLine<Content: View>: View {
     var flashID: String?
     var padding: CGFloat = SettingsMetrics.rowPadding
@@ -294,7 +362,8 @@ struct SettingsLine<Content: View>: View {
 
 /// A setting: its title and one-line description on the left (from the catalogue: SettingsCatalog.entry(id)), the
 /// control on the right. `title` / `detail` override the catalogue's text where it depends on state (the dictation
-/// key, the chosen mode); `help` is the longer explanation, as a tooltip (the catalogue's `more` by default).
+/// key, the chosen mode); `help` is the longer explanation (the catalogue's `more` by default), behind a small ⓘ after
+/// the title that opens it in a popover — the description itself stays one line.
 /// `detailBelow` puts the description under the whole row, for a wide control (the style's segmented choice).
 struct SettingRow<Control: View>: View {
     let id: String
@@ -333,9 +402,12 @@ struct SettingRow<Control: View>: View {
                         Image(systemName: i).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                             .frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
                     }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(titleText).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(enabled ? .primary : .secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 5) {
+                            Text(titleText).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(enabled ? .primary : .secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if let h = helpText, !h.isEmpty { InfoButton(title: titleText, text: h) }
+                        }
                         if !detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -345,7 +417,6 @@ struct SettingRow<Control: View>: View {
             }
         }
         .id(id)
-        .help(helpText ?? "")
         .accessibilityElement(children: .contain)
     }
 
@@ -353,6 +424,31 @@ struct SettingRow<Control: View>: View {
         Text(d).font(.system(size: SettingsMetrics.detailSize))
             .foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(enabled ? .secondary : .tertiary))
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// ⓘ after a row's title: the longer explanation in a popover (a click, or Space when it has the focus), so the row
+/// keeps its one-line description.
+struct InfoButton: View {
+    var title: String
+    var text: String
+    @State private var shown = false
+    var body: some View {
+        Button { shown.toggle() } label: {
+            Image(systemName: "info.circle").font(.system(size: 11.5)).foregroundStyle(.tertiary)
+        }
+        .buttonStyle(.borderless)
+        .help(T("settings.kit.more_info"))
+        .accessibilityLabel(T("settings.kit.more_info"))
+        .popover(isPresented: $shown, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .semibold))
+                Text(text).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(width: 300, alignment: .leading)
+        }
     }
 }
 
@@ -380,25 +476,72 @@ struct SettingToggle: View {
     }
 }
 
-/// A menu of choices on a row's right, sized to its longest choice.
+/// A menu of choices on a row's right, sized to its longest choice and flush with the column's trailing edge; `width`
+/// caps it (SettingsMetrics.pickerWidth): a choice longer than that — a long project name — is cut short in the
+/// button and shown whole in its menu, so one row can't stretch the column.
 struct RowPicker<Value: Hashable, Choices: View>: View {
     var label: String
     var selection: Binding<Value>
+    var width: CGFloat?
     @ViewBuilder var choices: Choices
+
+    init(label: String, selection: Binding<Value>, width: CGFloat? = nil, @ViewBuilder choices: () -> Choices) {
+        self.label = label
+        self.selection = selection
+        self.width = width
+        self.choices = choices()
+    }
+
     var body: some View {
-        Picker(label, selection: selection) { choices }.labelsHidden().fixedSize()
+        if let w = width {
+            // its own size up to `w`, flush with the column's trailing edge; a longer choice is cut short in the button
+            CapWidth(limit: w) { picker }
+        } else {
+            picker.fixedSize()
+        }
+    }
+
+    private var picker: some View { Picker(label, selection: selection) { choices }.labelsHidden() }
+}
+
+/// Its one subview at its ideal width, but never wider than `limit` (a frame(maxWidth:) would take the whole limit and
+/// leave a gap beside a short pop-up; a fixedSize() would let a long one stretch the column).
+private struct CapWidth: Layout {
+    var limit: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let v = subviews.first else { return .zero }
+        let ideal = v.sizeThatFits(.unspecified)
+        return CGSize(width: min(ideal.width, limit, proposal.width ?? .infinity), height: ideal.height)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
-/// The brief brand wash on the row a search or a link landed on (§3.3: the selection colour), fading out.
+/// The brief brand wash on the row a search or a link landed on (§3.3: the selection colour), fading out. In a box
+/// it reaches the box's sides.
 struct FlashWash: View {
     var on: Bool
+    @Environment(\.settingsBoxed) private var boxed
     var body: some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.brandTint)
-            .padding(.horizontal, -10)
+        RoundedRectangle(cornerRadius: boxed ? 0 : 7, style: .continuous).fill(Color.brandTint)
+            .padding(.horizontal, boxed ? -SettingsMetrics.boxInset : -10)
             .opacity(on ? 1 : 0)
             .animation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: on ? 0.15 : 0.7), value: on)
             .allowsHitTesting(false)
+    }
+}
+
+/// A small text button in `brand.ink` (system.md §3.4: text buttons in Settings, not the system link blue).
+struct InkLink: View {
+    var title: String
+    var action: () -> Void
+    init(_ title: String, action: @escaping () -> Void) { self.title = title; self.action = action }
+    var body: some View {
+        Button(action: action) { Text(title).foregroundStyle(Color.brandInk) }
+            .buttonStyle(.plain)
+            .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
     }
 }
 

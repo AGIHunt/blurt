@@ -130,7 +130,6 @@ struct SettingsSearchResults: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical) {
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(T("settings.search.title")).font(.system(size: 22, weight: .semibold)).accessibilityAddTraits(.isHeader)
                             ForEach(groups, id: \.pane) { g in
                                 HStack(spacing: 7) {
                                     Image(systemName: g.pane.symbol).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
@@ -144,7 +143,7 @@ struct SettingsSearchResults: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 22).padding(.bottom, 44)
+                        .padding(.horizontal, SettingsMetrics.gutter).padding(.top, -8).padding(.bottom, 24)
                         .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
                         .frame(maxWidth: .infinity)
                     }

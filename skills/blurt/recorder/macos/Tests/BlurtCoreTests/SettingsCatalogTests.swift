@@ -127,6 +127,22 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.title(SettingsCatalog.entry("general.login")!), "登录时打开口喷鸡")
     }
 
+    /// Links to rows that moved (v0.9: Projects got its own pane, the Lab went to Dictation, the drag switches became one
+    /// choice, About a closing line) land where the row is now; every target exists.
+    func testMovedRowsRedirect() {
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.capture_into"), "projects/projects.capture_into")
+        XCTAssertEqual(SettingsCatalog.redirect("general/capture_into"), "projects/projects.capture_into")
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.dictation_lab"), "dictation/dictation.lab")
+        XCTAssertEqual(SettingsCatalog.redirect("general/smart_paste"), "general/general.card_drag")
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.login"), "general/general.login")
+        XCTAssertEqual(SettingsCatalog.redirect("general"), "general")
+        XCTAssertEqual(SettingsCatalog.redirect("export/target"), "agents/agents.ask")
+        for (old, new) in SettingsCatalog.movedRows {
+            XCTAssertNil(SettingsCatalog.entry(old), "\(old) moved but is still in the catalogue")
+            XCTAssertTrue(SettingsCatalog.entry(new) != nil || SettingsCatalog.section(new) != nil, "\(old) → \(new): no such row")
+        }
+    }
+
     func testPlaceholdersReadAsAGapWithoutArguments() {
         XCTAssertEqual(SettingsCatalog.fillGaps("Double-tap %@ to send"), "Double-tap … to send")
         XCTAssertEqual(SettingsCatalog.fillGaps("%1$@, in %2$@"), "…, in …")

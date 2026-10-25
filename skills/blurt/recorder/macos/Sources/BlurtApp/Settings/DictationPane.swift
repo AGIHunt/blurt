@@ -15,6 +15,7 @@
 //   Microphone  the Mac's own mic, the start sound
 //   Permissions folded to one line when all are allowed (with the listener and when the key was last heard in another
 //               app); otherwise the rows with Allow and "Set Up Permissions"
+//   Advanced    folded at the foot (open while it is on): Show the Dictation Lab (record.dictation.lab), for developers
 // Everything is record.dictation.* in config.json; Dictation.shared.apply() picks changes up at once.
 // Strings: Resources/*.lproj/Dictation.strings (T("dictation.…")).
 import AppKit
@@ -181,6 +182,9 @@ struct DictationPane: View {
     @State var confirmClear = false
     @State var showPermissions = false
     @State var showByApp = false
+    /// Advanced (the Dictation Lab): folded unless the Lab is on
+    @State var showAdvanced = DictationLabModel.enabled
+    @State var lab = DictationLabModel.enabled
 
     private let nav = SettingsNavigator.shared       // not observed: the pane needn't redraw as the search is typed
 
@@ -240,6 +244,14 @@ struct DictationPane: View {
             }
 
             SettingsGroup("dictation.permissions") { permissionRows }
+
+            // for developers: folded away at the page's foot
+            SettingsGroup("dictation.advanced", disclosure: $showAdvanced) {
+                SettingToggle("dictation.lab", isOn: Binding(get: { lab }, set: { v in
+                    lab = v
+                    Config.shared.set("record.dictation.lab", v ? true : nil)
+                }))
+            }
         }
         // tests: `dictation settings-scroll style|models|words|history|permissions`
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
@@ -252,6 +264,7 @@ struct DictationPane: View {
             guard let id = r?.id else { return }
             if id == "dictation.by_app" || SettingsCatalog.entry(id)?.fold == "dictation.by_app" { showByApp = true }
             if id == "dictation.permissions" { showPermissions = true }
+            if id == "dictation.lab" || id == "dictation.advanced" { showAdvanced = true }
         }
         .onAppear { m.start(); perms.start() }
         .onDisappear { m.stop(); perms.stop() }
