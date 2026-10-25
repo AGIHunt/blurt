@@ -32,6 +32,7 @@
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
 //     assign N PROJECT|inbox  = dropping card N (with its ⌘-click selection) on that target · aisort · deleteall
+//     cardselect N,M…         a ⌘-click selection of those cards (no copy: the clipboard is left alone)
 //     cardmove N PROJECT|inbox   card N's menu: Move To ▸ that project (its selection too; "card_move_menu" lists it)
 //     pick PROJECT|inbox · pickrows [QUERY] · refile SESSION   the switcher's pick form ("Filed to X · Change"): choose
 //                             a row / its rows after typing ("pick_rows") / the line a recording leaves as it ends
@@ -212,6 +213,9 @@ extension App {
             if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) {
                 snapper.assign(hanging.withSelection(s), to: a[1])
             }
+        case "cardselect":                              // cardselect N,M…: a ⌘-click selection of those cards, no copy
+            hanging.testSelect(arg.split(separator: ",").compactMap { Int($0) })
+            emit(["event": "card_picked", "picked": hanging.pickedNumbers])
         case "cardmove":                                // cardmove N PROJECT: card N's menu, Move To ▸ PROJECT (selection too)
             let a = arg.split(separator: " ").map(String.init)
             guard a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) else { return }

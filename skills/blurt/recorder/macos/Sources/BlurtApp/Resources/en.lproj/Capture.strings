@@ -46,12 +46,11 @@
 "capture.drawer.inbox_sub" = "File it now, pick a project later";
 "capture.drawer.more" = "More…";
 "capture.drawer.no_projects" = "No projects yet — open a folder and it becomes one.";
-"capture.drawer.none_sub" = "No current project: captures wait here until you pick one";
+"capture.drawer.none_sub" = "No current project: snaps and recordings wait here until you pick one";
 "capture.drawer.open_failed" = "Couldn’t open that folder as a project";
 "capture.drawer.open_message" = "Pick a folder. Its items are kept in a .blurt folder inside it, never committed to git.";
 "capture.drawer.open_prompt" = "Open";
-"capture.drawer.refile_items" = "FILE IT TO";
-"capture.drawer.refile_recording" = "FILE THIS RECORDING TO";
+"capture.drawer.pick_title" = "FILE TO";
 "capture.drawer.switch_title" = "CURRENT PROJECT";
 "capture.filed" = "Filed to %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";

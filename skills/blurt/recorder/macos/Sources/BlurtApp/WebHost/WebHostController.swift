@@ -1,7 +1,7 @@
 // The detail column. Reviewing happens here — there is no separate review window and nothing opens by itself:
 //   an item     the shared review component (web/packages/review → review.html) in a WKWebView, mode=item, with a
 //               native banner above it when the item is with an agent (its session live, ended without reporting
-//               back, or gone — WorkSession), is being organised, or has a suggested project. The banner holds the
+//               back, or gone — WorkSession) or is being organised (a suggested project is the page's and the row's). The banner holds the
 //               item's one Open Session button (blurtHostInfo.sessionBanner: the page leaves its own out then);
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
 //   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
@@ -232,7 +232,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             return only(placeholder)
         }
         only(web)
-        banner.set(item, suggested: item.suggestedProject.flatMap { s in projects.first { $0.id == s } })
+        banner.set(item)
         let scope: DocScope = item.sessionURL.map { .session($0) } ?? .project(item.projectID)
         if loadedScope == scope, loadedMode == "item" {
             // setItem answers whether the loaded doc has the item: a discarded one (left out of its project's doc) or
@@ -282,13 +282,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             return show(item: item, projects: projects)
         }
         currentItem = item
-        if wasShown { banner.set(item, suggested: item.suggestedProject.flatMap { s in projects.first { $0.id == s } }) }
+        if wasShown { banner.set(item) }
     }
 
     /// Jobs moved on: the line above the item may say something else now.
     func refreshBanner(projects: [ProjectEntry]) {
         guard let it = currentItem, !web.isHidden else { return }
-        banner.set(it, suggested: it.suggestedProject.flatMap { s in projects.first { $0.id == s } })
+        banner.set(it)
     }
 
     private func load(_ scope: DocScope, mode: String, item: String?) {
@@ -335,7 +335,6 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             }
         case "take_back": actions?.applyState("take_back", uids: [it.uid])
         case "progress": if let j = banner.processingJob { actions?.revealJob(j) }
-        case "move": if let p = it.suggestedProject { actions?.move(uids: [it.uid], to: p) }
         default: break
         }
     }
@@ -573,7 +572,6 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 ///                                                                     [Open Session] [Restart Session] ⋯
 ///   session gone   (the same line; nothing left to open)                         [Take Back] [Mark as Done]
 ///   handed out    "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
-///   suggested      "Looks like bug-agent." (an organizing run's suggestion)   [Move]
 final class ItemBanner: NSView {
     var onAction: ((String) -> Void)?
     private let icon = NSImageView()
@@ -619,7 +617,9 @@ final class ItemBanner: NSView {
         layer?.backgroundColor = tint.withAlphaComponent(tint == .labelColor ? 0.05 : 0.1).cgColor
     }
 
-    func set(_ it: ItemRow?, suggested: ProjectEntry? = nil) {
+    /// (A suggested project is not a banner: the row says it — "Looks like X · Move" — and so does the page's "Where it
+    /// came from"; a second, primary Move up here only repeated them.)
+    func set(_ it: ItemRow?) {
         buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }
         func button(_ t: String, _ a: String, primary: Bool = false) {
             let b: NSButton
@@ -700,12 +700,6 @@ final class ItemBanner: NSView {
                 processingJob = j.id
                 organising = true
                 button(T("main.banner.show_progress"), "progress", primary: true)
-            } else if let s = suggested, it.projectID == "inbox" {
-                tint = BrandColor.ink
-                icon.image = Look.symbol("folder.badge.questionmark", "", size: 13)
-                icon.contentTintColor = BrandColor.ink
-                text.stringValue = T("main.banner.suggested", s.name)
-                button(T("main.banner.move"), "move", primary: true)
             } else {
                 return hide()
             }

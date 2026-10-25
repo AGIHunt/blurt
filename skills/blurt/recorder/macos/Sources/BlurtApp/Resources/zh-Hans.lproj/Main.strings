@@ -58,11 +58,9 @@
 "main.banner.agent" = "Agent";
 "main.banner.ended" = "会话已结束，未报告完成";
 "main.banner.external" = "已复制给你的 Agent。做完后在这里标为完成。";
-"main.banner.move" = "归过去";
 "main.banner.open_session" = "打开会话";
 "main.banner.organizing" = "还在整理 · %@";
 "main.banner.show_progress" = "查看进度";
-"main.banner.suggested" = "像是 %@ 的。";
 "main.banner.with_agent" = "已交给 %@ · %@";
 "main.banner.handed_off" = "已交给 %@";
 
@@ -158,7 +156,7 @@
 "main.move.placeholder" = "移到…";
 "main.palette.move_pick" = "移到项目…";
 "main.palette.switch_project" = "切换当前项目…";
-"main.palette.use_none" = "不指定当前项目（捕获进未归类）";
+"main.palette.use_none" = "不指定当前项目（新的截图和录屏进未归类）";
 "main.palette.use_project" = "把 %@ 设为当前项目";
 "main.project.use_none" = "不再作为当前项目";
 "main.state.toast" = "%1$@ · %2$@";
@@ -273,7 +271,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "默认";
 "main.project.description" = "描述";
-"main.project.description.note" = "这个项目是做什么的。没选项目的捕获在整理时会参考它，建议归到哪个项目。";
+"main.project.description.note" = "这个项目是做什么的。没选项目的截图和录屏整理时会参考它，建议归到哪个项目。";
 "main.project.description.placeholder" = "例如：官网和注册流程";
 "main.project.key" = "前缀";
 "main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";

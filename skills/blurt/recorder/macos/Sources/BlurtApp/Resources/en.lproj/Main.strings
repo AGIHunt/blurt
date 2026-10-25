@@ -58,11 +58,9 @@
 "main.banner.agent" = "an agent";
 "main.banner.ended" = "Session ended without reporting back";
 "main.banner.external" = "Copied to your agent. Mark it done when it is.";
-"main.banner.move" = "Move";
 "main.banner.open_session" = "Open Session";
 "main.banner.organizing" = "Still being organized · %@";
 "main.banner.show_progress" = "Show Progress";
-"main.banner.suggested" = "Looks like %@.";
 "main.banner.with_agent" = "Handed off to %@ · %@";
 "main.banner.handed_off" = "Handed off to %@";
 
@@ -158,7 +156,7 @@
 "main.move.placeholder" = "Move to…";
 "main.palette.move_pick" = "Move to Project…";
 "main.palette.switch_project" = "Switch Current Project…";
-"main.palette.use_none" = "No Current Project (captures to Unassigned)";
+"main.palette.use_none" = "No Current Project (new snaps and recordings to Unassigned)";
 "main.palette.use_project" = "Make %@ the Current Project";
 "main.project.use_none" = "Stop Using as Current Project";
 "main.state.toast" = "%1$@ · %2$@";
@@ -273,7 +271,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "Default";
 "main.project.description" = "Description";
-"main.project.description.note" = "What this project is about. Organizing a capture that has no project reads it to suggest one.";
+"main.project.description.note" = "What this project is about. When a snap or recording without a project is organized, this helps suggest where it goes.";
 "main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
 "main.project.key" = "Key";
 "main.project.key.invalid" = "2–5 letters or digits, starting with a letter (IN is taken).";

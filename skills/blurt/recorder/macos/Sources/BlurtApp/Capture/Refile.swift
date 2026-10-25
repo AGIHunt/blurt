@@ -33,7 +33,7 @@ enum Refile {
         emit(["event": "recording_filed", "session": dir.path, "project": where_])
         var t = Island.Toast(text: Loc.t("capture.recording.filed", table: "Capture", name(where_)),
                              actionTitle: Loc.t("capture.change", table: "Capture")) {
-            pick(title: Loc.t("capture.drawer.refile_recording", table: "Capture"), current: where_) { to in
+            pick(title: Loc.t("capture.drawer.pick_title", table: "Capture"), current: where_) { to in
                 recording(dir, to: to, from: where_)
             }
         }
@@ -78,7 +78,7 @@ enum Refile {
 
     /// "Filed to X · AW-14 · Change": these items to another project.
     static func items(_ uids: [String], from: String) {
-        pick(title: Loc.t("capture.drawer.refile_items", table: "Capture"), current: from) { to in move(uids, to: to, from: from) }
+        pick(title: Loc.t("capture.drawer.pick_title", table: "Capture"), current: from) { to in move(uids, to: to, from: from) }
     }
 
     private static func move(_ uids: [String], to: String, from: String) {

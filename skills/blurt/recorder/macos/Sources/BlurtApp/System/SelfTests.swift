@@ -21,6 +21,8 @@
 //                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
 //   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the spinner)
 //   toastdone TEXT               the small toast with the done check (ok)
+//   mainsuggest [moveall P | move ROW]   Unassigned's suggestion groups and rows ("Looks like X · Move"), pressing one
+//   mainmovepop [open | QUERY | return | esc]   M on the list: the Move popover, typing into it, choosing
 import AppKit
 import Carbon.HIToolbox
 import BlurtCore
@@ -200,7 +202,7 @@ enum SelfTests {
                 out(["previewed": AgentsModel.shared.plan != nil, "env_home": Agents.shared.installEnvironment()["HOME"] ?? "",
                      "codex_home": Agents.shared.installEnvironment()["CODEX_HOME"] ?? ""])
             }
-        case "agents":                  // agents toggle ID on|off | up ID | processing ID MODEL [EFFORT] | state: Settings → Agents
+        case "agents":                  // agents toggle ID on|off | up ID | processing ID [recording|cards] MODEL [EFFORT] | state: Settings → Agents
             let a = arg.split(separator: " ").map(String.init)
             Task { @MainActor in
                 let m = AgentsModel.shared
@@ -412,6 +414,37 @@ enum SelfTests {
                 DispatchQueue.main.async { c.list.table.keyDown(with: e) }
             }
             out(["key": arg])
+        case "mainsuggest":             // mainsuggest [moveall PROJECT | move ROW]: Unassigned's suggestions — the groups
+                                        // above the list and each row's "Looks like X · Move" (pressing one)
+            let c = MainWindowController.shared
+            let a = arg.split(separator: " ").map(String.init)
+            let t = c.list.table
+            let col = t.tableColumns.firstIndex { $0.identifier.rawValue == "title" } ?? 1
+            func chip(_ r: Int) -> SuggestChip? {
+                (t.view(atColumn: col, row: r, makeIfNecessary: true) as? TitleCell).flatMap { $0.suggest.isHidden ? nil : $0.suggest }
+            }
+            if a.first == "moveall", a.count == 2, let g = c.list.suggestions.groups.first(where: { $0.project == a[1] }) {
+                c.move(uids: g.uids, to: g.project)
+            } else if a.first == "move", a.count == 2, let r = Int(a[1]) {
+                chip(r)?.performClick(nil)
+            }
+            let rows = (0..<min(t.numberOfRows, 40)).map { r -> String in
+                let it = c.model.item(at: r)
+                return "\(it?.itemID ?? "?") \(it?.title ?? "")" + (chip(r).map { " -> " + $0.attributedTitle.string } ?? "")
+            }
+            out(["groups": c.list.suggestions.groups.map { "\($0.project)=\($0.uids.count)" }, "banner": !c.list.suggestions.isHidden,
+                 "rows": rows])
+        case "mainmovepop":             // mainmovepop [open | QUERY | return | esc | close]: M on the list and its popover
+            let c = MainWindowController.shared
+            switch arg {
+            case "", "open": c.window?.makeFirstResponder(c.list.table); c.pickProject()
+            case "return": c.movePopover?.testPick()
+            case "esc", "close": c.movePopover?.close()
+            default: c.movePopover?.type(arg)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                out(["open": c.movePopover != nil, "shown": c.movePopover?.shownIDs ?? []])
+            }
         case "mainchord":               // mainchord cmd+delete: ⌘⌫ on the list, through NSApp (the menus get it first)
             let c = MainWindowController.shared
             c.window?.makeFirstResponder(c.list.table)

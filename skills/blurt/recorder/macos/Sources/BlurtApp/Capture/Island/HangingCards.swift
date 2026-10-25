@@ -1869,6 +1869,8 @@ final class HangingCards: NSObject {
     func testCopy(n: Int, _ what: Copy) -> Bool { cards.first { $0.shot.n == n }.map { copy($0, what) } ?? false }
     func testPick(n: Int) -> Bool { cards.first { $0.shot.n == n }.map { pick($0); return true } ?? false }
     var pickedNumbers: [Int] { picked.map(\.shot.n) }
+    /// Tests: a ⌘-click selection of these captures, without the copy a ⌘-click also makes (no clipboard touched).
+    func testSelect(_ ns: [Int]) { setPicked(cards.filter { ns.contains($0.shot.n) }) }
     func testMenu(n: Int) -> [String] {
         cards.first { $0.shot.n == n }.map { cardMenu($0.shot) { _ in }.items.filter { !$0.isSeparatorItem }.map(\.title) } ?? []
     }

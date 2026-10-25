@@ -1038,7 +1038,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let t = list.table
         let rows = t.selectedRowIndexes
         let visible = rows.filter { t.rows(in: t.visibleRect).contains($0) }
-        let anchor = visible.first ?? rows.first ?? 0
+        let anchor = visible.last ?? rows.first ?? 0       // under the selection, not over part of it
         if visible.isEmpty { t.scrollRowToVisible(anchor) }
         var r = t.rect(ofRow: anchor)
         if let col = t.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) {

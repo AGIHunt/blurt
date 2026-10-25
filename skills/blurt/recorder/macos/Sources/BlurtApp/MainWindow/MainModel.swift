@@ -264,9 +264,10 @@ final class MainModel {
         overrides.removeAll()
         uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
         rowByUID = nil
-        // Unassigned: "Looks like X · Move All (3)" — what an organizing run suggested, per registered project
-        suggestionGroups = scope == .unassigned
-            ? Suggestions.groups((try? reader?.suggestions()) ?? [], known: projects.filter(\.registered).map(\.id)) : []
+        // Unassigned: "Looks like X · Move All (3)" — what an organizing run suggested, per registered project, in the
+        // order the rows below are in (by the project's name: IndexReader's bySuggestion)
+        let byName = projects.filter(\.registered).sorted { $0.name.lowercased() < $1.name.lowercased() }.map(\.id)
+        suggestionGroups = scope == .unassigned ? Suggestions.groups((try? reader?.suggestions()) ?? [], known: byName) : []
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         reloadJobs()
         onReload?()

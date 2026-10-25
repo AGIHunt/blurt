@@ -781,11 +781,13 @@ final class IslandContent: NSView {
             place(l, x: 20, y: y + 6, w: w - 40)
             y += 30
         }
-        let sep = NSView(frame: NSRect(x: 18, y: y + 4, width: w - 36, height: 1))
-        sep.wantsLayer = true
-        sep.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
-        addSubview(sep)
-        y += 9
+        if pick == nil {        // the pick form ends with the projects: no Open Folder under a line
+            let sep = NSView(frame: NSRect(x: 18, y: y + 4, width: w - 36, height: 1))
+            sep.wantsLayer = true
+            sep.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
+            addSubview(sep)
+            y += 9
+        }
         if d == .switcher {
             if pick == nil {
                 let r = IslandRow(icon: ic("folder.badge.plus"), title: Loc.t("project.open_folder"), height: 36)
@@ -803,8 +805,8 @@ final class IslandContent: NSView {
         return y + 8
     }
 
-    /// Tests: the drawer's rows as shown ("✓ " before the checked one).
-    var rowTitles: [String] { rows.map { ($0.checked ? "✓ " : "") + $0.title } }
+    /// Tests: the drawer's rows as shown ("[on] " before the checked one).
+    var rowTitles: [String] { rows.map { ($0.checked ? "[on] " : "") + $0.title } }
 
     private func select(_ i: Int?) {
         selected = i

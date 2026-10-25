@@ -186,6 +186,8 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
     /// Tests (wp6 `movepopover`): the rows as shown.
     var shownIDs: [String] { shown.map(\.id) }
     func type(_ s: String) { field.stringValue = s; refresh() }
+    /// Tests: ↩ on the selected row.
+    func testPick() { pick(table.selectedRow) }
 }
 
 // MARK: - "Looks like X · Move" at the end of an Unassigned row
@@ -202,6 +204,8 @@ final class SuggestChip: NSButton {
         target = self
         action = #selector(tapped)
         focusRingType = .none
+        cell?.wraps = false
+        cell?.lineBreakMode = .byClipping
         setContentCompressionResistancePriority(.required, for: .horizontal)
         setContentHuggingPriority(.required, for: .horizontal)
     }
@@ -209,10 +213,15 @@ final class SuggestChip: NSButton {
 
     /// "Looks like Atlas Web · Move" — the project quiet, the action in brand ink.
     func set(project name: String) {
-        let s = NSMutableAttributedString(string: T("main.list.suggested", name),
+        // one line, always ending in "Move": a long name gives way, never the action
+        let short = name.count > Self.nameMax ? String(name.prefix(Self.nameMax - 1)) + "…" : name
+        let s = NSMutableAttributedString(string: T("main.list.suggested", short),
                                           attributes: [.font: Look.subFont, .foregroundColor: NSColor.secondaryLabelColor])
         s.append(NSAttributedString(string: " · ", attributes: [.font: Look.subFont, .foregroundColor: NSColor.tertiaryLabelColor]))
         s.append(NSAttributedString(string: T("main.list.move"), attributes: [.font: Look.smallFont, .foregroundColor: BrandColor.ink]))
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byClipping
+        s.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: s.length))
         attributedTitle = s
         toolTip = T("main.list.move.tip", name)
         setAccessibilityLabel(T("main.list.move.tip", name))
@@ -220,6 +229,13 @@ final class SuggestChip: NSButton {
     }
 
     @objc private func tapped() { onMove?() }
+
+    /// Characters of a project's name the chip shows before "…"
+    static let nameMax = 16
+    override var intrinsicContentSize: NSSize {
+        let w = attributedTitle.size().width
+        return NSSize(width: ceil(w) + 6, height: 18)
+    }
 }
 
 // MARK: - the groups above the Unassigned list

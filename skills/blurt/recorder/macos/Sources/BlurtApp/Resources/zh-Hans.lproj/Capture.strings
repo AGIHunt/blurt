@@ -46,12 +46,11 @@
 "capture.drawer.inbox_sub" = "先存着，之后再选项目";
 "capture.drawer.more" = "更多…";
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";
-"capture.drawer.none_sub" = "不选当前项目：新的捕获先放在这里，之后再归";
+"capture.drawer.none_sub" = "不选当前项目：截图和录屏先放在这里，之后再归";
 "capture.drawer.open_failed" = "没能把这个文件夹打开成项目";
 "capture.drawer.open_message" = "选一个文件夹。它的条目保存在其中的 .blurt 文件夹里，不进 git。";
 "capture.drawer.open_prompt" = "打开";
-"capture.drawer.refile_items" = "归到";
-"capture.drawer.refile_recording" = "这段录屏归到";
+"capture.drawer.pick_title" = "归到";
 "capture.drawer.switch_title" = "当前项目";
 "capture.filed" = "已归到 %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";
