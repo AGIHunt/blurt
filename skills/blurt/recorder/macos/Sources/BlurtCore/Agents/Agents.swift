@@ -282,15 +282,96 @@ public struct InstallChange: Decodable, Hashable {
     public var output: String?
     public var how: String?
     public var what: String?
+    /// manual: what the user would run themselves (the MCP server's own command line)
+    public var command: [String]?
 
-    enum CodingKeys: String, CodingKey { case action, path, target, argv, key, ok, error, output, how, what, pointsTo = "points_to" }
+    enum CodingKeys: String, CodingKey { case action, path, target, argv, key, ok, error, output, how, what, command, pointsTo = "points_to" }
+
+    public init(action: String, path: String? = nil, target: String? = nil, pointsTo: String? = nil, argv: [String]? = nil,
+                key: [String]? = nil, ok: Bool? = nil, what: String? = nil, how: String? = nil, command: [String]? = nil) {
+        self.action = action; self.path = path; self.target = target; self.pointsTo = pointsTo; self.argv = argv
+        self.key = key; self.ok = ok; self.what = what; self.how = how; self.command = command
+    }
 
     public var changesSomething: Bool { action == "symlink" || action == "run" || action == "json_merge" }
+
+    /// What the change is about. agents.py names it only for `manual`; the rest follows from the shape: a link in the
+    /// agent's skill folder is the skill, a command line or a config key is the MCP server.
+    public enum Subject: String { case skill, mcp }
+    public var subject: Subject {
+        if let w = what { return w == "skill" ? .skill : .mcp }
+        switch action {
+        case "symlink", "conflict": return .skill
+        case "exists": return argv == nil && key == nil ? .skill : .mcp
+        default: return .mcp
+        }
+    }
+
+    /// Where a change sits in the confirmation sheet, in this order: what Connect does, what the user has to handle,
+    /// what is already in place and stays as it is.
+    public enum Group: Int, Comparable {
+        case change, needsYou, inPlace
+        public static func < (a: Group, b: Group) -> Bool { a.rawValue < b.rawValue }
+    }
+    /// `otherIsBlurt`: for a conflict, the skill already at the path is another copy of Blurt (a checkout, an older
+    /// install). It keeps working, so it is in place, not something to handle.
+    public func group(otherIsBlurt: Bool) -> Group {
+        if ok == false || action == "error" || action == "manual" { return .needsYou }
+        if action == "conflict" { return otherIsBlurt ? .inPlace : .needsYou }
+        return changesSomething ? .change : .inPlace
+    }
+
+    /// The exact command or path behind the change, for the sheet's details only (never its summary): the home folder
+    /// as ~, arguments with spaces quoted. nil when there is nothing technical to show.
+    public func technicalLine(home: String = NSHomeDirectory()) -> String? {
+        let t = { (s: String) in InstallChange.tilde(s, home: home) }
+        let words = { (a: [String]) in a.map { w -> String in let x = t(w); return x.contains(" ") ? "'\(x)'" : x }.joined(separator: " ") }
+        switch action {
+        case "symlink": return path.map { "\(t($0)) → \(t(target ?? "?"))" }
+        case "conflict": return path.map { "\(t($0)) → \(t(pointsTo ?? "?"))" }
+        case "run": return argv.map(words)
+        case "json_merge": return path.map { "\(t($0)): \((key ?? []).joined(separator: "."))" }
+        case "exists":
+            if let a = argv { return words(a) }
+            if let p = path, let k = key { return "\(t(p)): \(k.joined(separator: "."))" }
+            return path.map { p in pointsTo.map { "\(t(p)) → \(t($0))" } ?? t(p) }
+        case "manual": return command.map(words)
+        default: return path.map(t)
+        }
+    }
+
+    /// "/Users/me/x" → "~/x" for `home` (the home itself → "~"); anything else as it is.
+    public static func tilde(_ path: String, home: String = NSHomeDirectory()) -> String {
+        let h = home.hasSuffix("/") ? String(home.dropLast()) : home
+        guard !h.isEmpty else { return path }
+        if path == h { return "~" }
+        return path.hasPrefix(h + "/") ? "~" + path.dropFirst(h.count) : path
+    }
+
+    /// For a conflict with another copy of Blurt: where that copy lives, as people know it — the checkout or install
+    /// folder (".../bug-agent" for ".../bug-agent/skills/blurt"), else the skill folder itself.
+    public var otherCopy: String? {
+        guard let p = pointsTo else { return nil }
+        let suffix = "/skills/blurt"
+        return p.hasSuffix(suffix) && p.count > suffix.count ? String(p.dropLast(suffix.count)) : p
+    }
+
+    /// For a conflict: is what sits at the skill path another copy of Blurt (its SKILL.md says `name: blurt`)?
+    public var conflictIsBlurt: Bool {
+        guard action == "conflict", let p = pointsTo,
+              let text = try? String(contentsOfFile: (p as NSString).appendingPathComponent("SKILL.md"), encoding: .utf8)
+        else { return false }
+        return text.split(separator: "\n").prefix(12).contains { $0.trimmingCharacters(in: .whitespaces) == "name: blurt" }
+    }
 }
 
 public struct InstallPlan: Decodable {
     public var changes: [InstallChange]
     public var applied: Bool
+    public init(changes: [InstallChange], applied: Bool) { self.changes = changes; self.applied = applied }
+
+    /// Connect would change something (a preview whose every line is already in place offers Done instead).
+    public var changesSomething: Bool { changes.contains(where: \.changesSomething) }
 }
 
 public enum AgentError: Error, CustomStringConvertible {

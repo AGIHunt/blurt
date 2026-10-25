@@ -225,11 +225,18 @@ enum SelfTests {
             out(["problems": MascotArt.check()])
         case "menuglyph":              // menuglyph DIR: the menu-bar chick as the status item draws it, as PNGs
             out(["files": MenuGlyph.renderPoses(to: URL(fileURLWithPath: arg.isEmpty ? "/tmp/menuglyph" : arg))])
-        case "install":                 // install ID: the dry-run preview (sheet in Settings → Agents); install-apply: confirm it
+        case "install":                 // install ID [details]: the dry-run preview (sheet in Settings → Agents), Details open with `details`; install-apply: confirm it
             SettingsController.shared.show(pane: "agents")
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count == 1, a[0] == "details", AgentsModel.shared.plan != nil {   // install details: open them on the sheet already up
+                MainActor.assumeIsolated { AgentsModel.shared.installDetails = true }
+                out(["details": true]); break
+            }
             Task { @MainActor in
                 await AgentsModel.shared.load(login: false)
-                if let a = AgentsModel.shared.rows.first(where: { $0.id == arg }) { await AgentsModel.shared.preview(a) }
+                if let x = AgentsModel.shared.rows.first(where: { $0.id == a.first }) { await AgentsModel.shared.preview(x) }
+                if a.contains("details") { AgentsModel.shared.installDetails = true }
+                AgentsModel.shared.testKeyLook = a.contains("keylook")
                 out(["previewed": AgentsModel.shared.plan != nil, "env_home": Agents.shared.installEnvironment()["HOME"] ?? "",
                      "codex_home": Agents.shared.installEnvironment()["CODEX_HOME"] ?? ""])
             }

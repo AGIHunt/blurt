@@ -33,6 +33,10 @@ final class AgentsModel: ObservableObject {
     @Published var error: String?
     @Published var plan: (agent: CoreAgent, plan: InstallPlan, applied: Bool)?
     @Published var installing: String?
+    /// the install sheet's Details (the exact commands and paths), closed for every new preview
+    @Published var installDetails = false
+    /// test commands only (`install ID keylook`): the sheet drawn as in a key window, for background screenshots
+    @Published var testKeyLook = false
     @Published var testing: String?
     @Published var tests: [String: (ok: Bool, text: String)] = [:]
     @Published var doctor: SessionsDoctor?
@@ -206,6 +210,7 @@ final class AgentsModel: ObservableObject {
         defer { installing = nil }
         do {
             let p = try await Agents.shared.install(a.id, dryRun: true)
+            installDetails = false
             plan = (a, p, false)
             emit(["event": "install_preview", "agent": a.id, "changes": p.changes.map { InstallSheet.summary($0, agent: a.id) }])
         } catch { self.error = peopleText(error, context: "install preview") }
@@ -848,80 +853,292 @@ enum AgentFix {
     }
 }
 
+/// Connect's confirmation (a dry run, nothing written yet) and, after Connect, its result. It reads like the Mac's own
+/// "install this" sheets: who is connected to what (Blurt's icon, the agent's app as a badge), one line on what the
+/// user gets, a few rows in plain words — what Connect adds first, then what needs the user, then what is already in
+/// place — and the exact commands and paths only under Details (mono, selectable, one line each, scrolling sideways,
+/// with a Copy button). Amber only where the user has to do something, and that row says what. The one primary is the
+/// native default button (↩), accent-filled.
 struct InstallSheet: View {
     @ObservedObject var m: AgentsModel
     var agent: CoreAgent
     var plan: InstallPlan
     var applied: Bool
 
-    /// One line per change for the confirmation sheet — in words: what ("the Blurt skill", "the blurt MCP") and the
-    /// agent's own fix in the user's language, never the script's English or a raw error (that goes to the log only;
-    /// the sheet shows this line and nothing else per change).
-    static func summary(_ c: InstallChange, agent: String = "") -> String {
-        switch c.action {
-        case "symlink": return TL("install.symlink", c.path ?? "", c.target ?? "")
-        case "exists": return TL("install.exists", c.path ?? c.argv?.joined(separator: " ") ?? "")
-        case "conflict": return TL("install.conflict", c.path ?? "", c.pointsTo ?? "?")
-        case "run": return TL("install.run", (c.argv ?? []).joined(separator: " "))
-        case "json_merge": return TL("install.json_merge", (c.key ?? []).joined(separator: "."), c.path ?? "")
-        case "manual":
-            let what = c.what.map { TL("install.what.\($0)") } ?? ""
-            let fix = AgentHub.shared.def(agent).map(\.fixText).flatMap { $0.isEmpty ? nil : $0 } ?? c.how ?? ""
-            return TL("install.manual", what, fix)
-        default:
-            NSLog("blurt install: %@ %@: %@", c.action, c.path ?? "", c.error ?? "")
-            return c.path.map { TL("install.error.path", ($0 as NSString).abbreviatingWithTildeInPath) } ?? TL("install.error")
+    /// One change, in words: what it is (the Blurt skill, the Blurt MCP server), what it does or why it stays, and the
+    /// agent's own fix where the user has to act — in the user's language, never the script's English, an argv or a
+    /// raw error (errors go to the log; the command and paths go to Details).
+    struct Row {
+        enum Tone { case add, added, inPlace, attn, err }
+        var change: InstallChange
+        var group: InstallChange.Group
+        var tone: Tone
+        var title: String
+        var detail: String?
+        /// a conflict with a different skill: Show in Finder on that folder
+        var reveal: String?
+    }
+
+    static func row(_ c: InstallChange, agent: String, applied: Bool, otherIsBlurt: Bool? = nil) -> Row {
+        let name = AgentNames.name(agent)
+        let skill = c.subject == .skill
+        let group = c.group(otherIsBlurt: otherIsBlurt ?? c.conflictIsBlurt)
+        let about = TL(skill ? "install.row.about.skill" : "install.row.about.mcp", name)
+        let inPlaceTitle = TL(skill ? "install.row.in_place.skill" : "install.row.in_place.mcp")
+        if c.action == "manual" {
+            let fix = AgentHub.shared.def(agent).map(\.fixText).flatMap { $0.isEmpty ? nil : $0 } ?? c.how.flatMap { $0.isEmpty ? nil : $0 }
+            return Row(change: c, group: group, tone: .attn, title: TL(skill ? "install.row.manual.skill" : "install.row.manual.mcp"),
+                       detail: fix ?? TL("install.row.manual.none", name))
         }
+        if c.action == "error" {
+            NSLog("blurt install: %@ %@: %@", c.action, c.path ?? "", c.error ?? "")
+            return Row(change: c, group: group, tone: .err, title: TL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
+                       detail: c.path.map { TL("install.error.path", InstallChange.tilde($0)) } ?? TL("install.error"))
+        }
+        if c.ok == false {
+            NSLog("blurt install: %@ %@: %@ %@", c.action, c.path ?? "", c.error ?? "", c.output ?? "")
+            return Row(change: c, group: group, tone: .err, title: TL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
+                       detail: TL("install.row.failed.detail", name))
+        }
+        switch c.action {
+        case "symlink", "run", "json_merge":
+            let done = applied && c.ok == true
+            return Row(change: c, group: group, tone: done ? .added : .add,
+                       title: TL(done ? (skill ? "install.row.added.skill" : "install.row.added.mcp")
+                                      : (skill ? "install.row.add.skill" : "install.row.add.mcp")),
+                       detail: about)
+        case "conflict" where group == .inPlace:
+            return Row(change: c, group: group, tone: .inPlace, title: inPlaceTitle,
+                       detail: TL("install.row.other_copy", InstallChange.tilde(c.otherCopy ?? "?")))
+        case "conflict":
+            return Row(change: c, group: group, tone: .attn, title: TL("install.row.conflict.title"),
+                       detail: TL("install.row.conflict", InstallChange.tilde(c.path ?? "?")), reveal: c.path)
+        default:
+            return Row(change: c, group: group, tone: .inPlace, title: inPlaceTitle, detail: TL("install.row.exists"))
+        }
+    }
+
+    /// The localized one-liner of a change (the self-test channel's install_preview event): the row's title and detail.
+    static func summary(_ c: InstallChange, agent: String = "") -> String {
+        let r = row(c, agent: agent, applied: false)
+        return [r.title, r.detail].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    var rows: [Row] {
+        plan.changes.map { Self.row($0, agent: agent.id, applied: applied) }
+            .enumerated().sorted { ($0.element.group, $0.offset) < ($1.element.group, $1.offset) }.map(\.element)
+    }
+    /// Nothing for Connect to do: every row is in place or needs the user.
+    var nothingToDo: Bool { !applied && !plan.changesSomething }
+    var failed: Bool { applied && !plan.applied }
+
+    var title: String {
+        if applied { return TL(failed ? "install.title.failed" : "install.title.applied", agent.name) }
+        return TL(nothingToDo ? "install.title.nothing" : "install.title", agent.name)
+    }
+    var subtitle: String {
+        if applied { return failed ? TL("install.benefit.failed") : TL("install.benefit.applied", agent.name) }
+        return TL(nothingToDo ? "install.benefit.nothing" : "install.benefit", agent.name)
+    }
+
+    /// The exact lines under Details: one per change that has a command or a path.
+    var technical: [(label: String, line: String)] {
+        rows.compactMap { r in r.change.technicalLine().map { (r.title, $0) } }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(TL(applied ? "install.title.applied" : "install.title", agent.name)).font(.headline)
-            Text(TL(applied ? "install.result" : "install.preview")).font(.callout).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(plan.changes.enumerated()), id: \.offset) { _, c in
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Image(systemName: icon(c)).foregroundStyle(color(c))
-                        Text(Self.summary(c, agent: agent.id)).font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            list.padding(.top, 18)
+            if !technical.isEmpty { details.padding(.top, 14) }
+            footer.padding(.top, 16)
+        }
+        .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 16)
+        .frame(width: 480)
+        .modifier(TestKeyLook(on: BrandRowView.testKeyLook || m.testKeyLook))
+    }
+
+    // MARK: header: who connects to what, and what the user gets
+
+    var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            InstallMark(agent: agent.id)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 15, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: the rows: what Connect adds, what needs the user, what stays as it is
+
+    var list: some View {
+        let rows = rows
+        let showInPlaceLabel = rows.contains { $0.group != .inPlace } && rows.contains { $0.group == .inPlace }
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
+                if showInPlaceLabel, r.group == .inPlace, i == 0 || rows[i - 1].group != .inPlace {
+                    Text(TL("install.group.in_place")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                        .padding(.top, 4).accessibilityAddTraits(.isHeader)
+                }
+                rowView(r)
+            }
+        }
+    }
+
+    func rowView(_ r: Row) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: symbol(r.tone)).font(.system(size: 13)).foregroundStyle(tint(r.tone))
+                .frame(width: 18, alignment: .center)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.title).font(.system(size: 13))
+                if let d = r.detail {
+                    Text(d).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                if let p = r.reveal {
+                    Button(T("action.reveal_in_finder")) {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)])
+                    }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.brandInk).padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    func symbol(_ t: Row.Tone) -> String {
+        switch t {
+        case .add: return "plus.circle.fill"
+        case .added: return "checkmark.circle.fill"
+        case .inPlace: return "checkmark.circle"
+        case .attn: return "exclamationmark.triangle.fill"
+        case .err: return "xmark.octagon.fill"
+        }
+    }
+    func tint(_ t: Row.Tone) -> Color {
+        switch t {
+        case .add: return .brandInk           // blurt about to act for you
+        case .added: return .brandOk
+        case .inPlace: return .secondary
+        case .attn: return .brandAttn
+        case .err: return .brandErr
+        }
+    }
+
+    // MARK: Details: the exact commands and paths, on request
+
+    var details: some View {
+        DisclosureGroup(isExpanded: $m.installDetails) {
+            InstallDetailsWell(lines: technical).padding(.top, 8)
+        } label: {
+            Text(TL("install.details")).font(.system(size: 12)).foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { m.installDetails.toggle() } }
+        }
+    }
+
+    // MARK: footer: the promise, Cancel and the one default
+
+    var footer: some View {
+        HStack(alignment: .center, spacing: 8) {
+            if m.installing != nil {
+                BrandSpinnerView(size: 14, label: TL("install.working"))
+                Text(TL("install.working")).font(.system(size: 12)).foregroundStyle(.secondary)
+            } else if !applied && !nothingToDo {
+                Text(TL("install.footnote")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            if applied || nothingToDo {
+                Button(TL("common.done")) { m.plan = nil; Task { await m.load() } }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            } else {
+                Button(TL("common.cancel")) { m.plan = nil }.keyboardShortcut(.cancelAction)
+                    .disabled(m.installing != nil)
+                Button(TL("install.confirm")) { Task { await m.apply() } }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .disabled(m.installing != nil)
+            }
+        }
+        .controlSize(.regular)
+    }
+}
+
+/// Screenshots of a test build launched in the background (test commands only, like BLURT_TEST_KEY_LOOK for the
+/// list selection): the sheet draws as it does in the key window people see it in, its default button filled.
+struct TestKeyLook: ViewModifier {
+    var on: Bool
+    func body(content: Content) -> some View {
+        if on { content.environment(\.controlActiveState, .key) } else { content }
+    }
+}
+
+/// Blurt's app icon (the thing being connected), with the agent's own app icon as a badge when it has a desktop app
+/// (Claude); a command-line-only agent shows Blurt's icon alone. Decoration: the title names both.
+struct InstallMark: View {
+    var agent: String
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Image(nsImage: BrandMark.image).resizable().interpolation(.high).frame(width: 44, height: 44)
+            if let url = DesktopApp.appURL(agent) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().interpolation(.high)
+                    .frame(width: 22, height: 22).offset(x: 4, y: 3)
+            }
+        }
+        .frame(width: 48, height: 48, alignment: .topLeading)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Details: one mono line per change (label above it in the system font), never wrapped — a long command scrolls
+/// sideways — selectable, on a quiet 5 % well with no stroke (it is not a field), and a Copy button for all of it.
+struct InstallDetailsWell: View {
+    var lines: [(label: String, line: String)]
+    @State private var copied = false
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(l.label).font(.system(size: 11)).foregroundStyle(.secondary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Text(l.line).font(.system(size: 11, design: .monospaced))
+                                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                                .textSelection(.enabled)
+                                .padding(.trailing, 16)
+                        }
+                        // a long line fades out at the edge instead of being cut mid-letter: it scrolls
+                        .mask(HStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 16)
+                        })
                     }
                 }
             }
-            .padding(10)
+            .padding(.leading, 10).padding(.vertical, 9).padding(.trailing, 34)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
-            HStack {
-                if m.installing != nil { BrandSpinnerView() }
-                Spacer()
-                if applied {
-                    Button(TL("common.done")) { m.plan = nil; Task { await m.load() } }.keyboardShortcut(.defaultAction)
-                } else {
-                    Button(TL("common.cancel")) { m.plan = nil }.keyboardShortcut(.cancelAction)
-                    Button(TL("install.confirm")) { Task { await m.apply() } }.keyboardShortcut(.defaultAction)
-                        .disabled(!plan.changes.contains(where: \.changesSomething) || m.installing != nil)
-                }
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(lines.map(\.line).joined(separator: "\n"), forType: .string)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc").font(.system(size: 11))
+                    .foregroundStyle(copied ? Color.brandOk : .secondary)
+                    .frame(width: 22, height: 22)
             }
+            .buttonStyle(.borderless)
+            .help(copied ? TL("install.copied") : T("settings.kit.copy"))
+            .accessibilityLabel(T("settings.kit.copy"))
+            .padding(5)
         }
-        .padding(20)
-        .frame(width: 560)
-    }
-
-    func icon(_ c: InstallChange) -> String {
-        if c.ok == false || c.action == "error" { return "xmark.octagon.fill" }
-        switch c.action {
-        case "exists": return "checkmark.circle"
-        case "conflict", "manual": return "exclamationmark.triangle"
-        default: return applied ? "checkmark.circle.fill" : "plus.circle"
-        }
-    }
-    func color(_ c: InstallChange) -> Color {
-        if c.ok == false || c.action == "error" { return .brandErr }
-        switch c.action {
-        case "conflict", "manual": return .brandAttn
-        case "exists": return .secondary
-        default: return applied ? .brandOk : .brandInk
-        }
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
     }
 }
 
