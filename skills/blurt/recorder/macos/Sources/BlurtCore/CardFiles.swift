@@ -282,4 +282,7 @@ public enum TakenCaptures {
     public static func isExpired(taken: Double, now: Double) -> Bool { !isRecent(taken: taken, now: now) }
     /// Days left before it goes (rounded up; 0 when expired).
     public static func daysLeft(taken: Double, now: Double) -> Int { max(0, Int(ceil((keep - (now - taken)) / 86400))) }
+    /// A row says how long it is kept only on its last day (in attention ink): the panel's footer says "7 days" once
+    /// for all of them — "kept 7 more days" on every row repeated it.
+    public static func showsDaysLeft(_ days: Int) -> Bool { days <= 1 }
 }

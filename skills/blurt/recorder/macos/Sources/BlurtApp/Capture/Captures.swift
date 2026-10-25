@@ -25,6 +25,11 @@
 //  • quitting (App.applicationShouldTerminate → prepareForQuit) saves the open note, finishes a voice note, waits a
 //    moment for words and filings, and flushes shots.jsonl; what still waits is picked up at the next launch (restore).
 //  • Delete / Delete All on cards: no question, "Deleted · Undo" for 5 s; the files stay until then (CardDelete).
+//  • a project whose folder is gone (moved, renamed, on a drive that isn't there) is never filed into (BlurtCore
+//    MissingFolder) — filing would make the old folder again, with ids that clash once it is found. Whatever was on
+//    its way there (Move To ▸, VoiceOver's "Move to X", a drop on the island, the note's "Goes to" chip, a capture
+//    taken while it is current, Organize into it) stays a card; the island says "“X” folder not found · the card
+//    stays · Locate…", and the same project found again (ProjectLocate) takes those cards.
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 
 import AppKit
@@ -126,8 +131,9 @@ final class Snapper {
 
     // MARK: batches
 
-    /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none.
-    var target: Project { ProjectStore.shared.current ?? ProjectStore.shared.inbox }
+    /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none — or when
+    /// the current project's folder is gone (its batch would make the old folder again: `missingCurrent` says so).
+    var target: Project { currentCaptureProject() ?? ProjectStore.shared.inbox }
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
     func openBatch(for p: Project) -> ShotBatch {
@@ -443,8 +449,64 @@ final class Snapper {
             file([s], in: b, project: p)
         case .cardKeepingProject(let p):
             hangAsCard(s, keeping: p)
-        case .card, .none:
+        case .card:
+            // taken while the current project's folder is gone: a card (`target`), and the island says why
+            if s.isCard, let gone = missingCurrent { keepAsCards([s], missing: gone, via: "current") }
+        case .none:
             break
+        }
+    }
+
+    // MARK: a project whose folder is gone
+
+    /// The project `id` names, when its folder is gone (BlurtCore MissingFolder): nil when captures may go there.
+    func missingProject(_ id: String) -> Project? {
+        let p = ProjectStore.shared.project(id: id)
+        guard MissingFolder.filing(project: id, exists: p?.exists) == .keepAsCards else { return nil }
+        return p
+    }
+
+    /// The current project, when its folder is gone.
+    var missingCurrent: Project? { ProjectStore.shared.currentID.flatMap(missingProject) }
+
+    /// Cards kept back from a project whose folder is gone, by project: Locate… files them there once it is found.
+    private var keptFromMissing: [String: [Shot]] = [:]
+
+    /// `shots` were on their way into `p`, whose folder is gone: they stay (or become) cards, and the island says so
+    /// with Locate… (one line per project: a second one replaces it and offers to file every card kept so far).
+    func keepAsCards(_ shots: [Shot], missing p: Project, via: String) {
+        for s in shots where !s.deleted {
+            if !s.isCard, let b = s.batch { b.release(s) }
+            if hanging.screenRect(of: s) == nil { hanging.catchCapture(s, from: island.frameOnScreen) }
+        }
+        hanging.refresh()
+        var kept = (keptFromMissing[p.id] ?? []).filter(\.isCard)
+        for s in shots where !s.deleted && !kept.contains(where: { $0 === s }) { kept.append(s) }
+        keptFromMissing[p.id] = kept
+        emit(["event": "missing_project_kept", "project": p.id, "captures": shots.map(\.n), "via": via])
+        var t = Island.Toast(text: Loc.t("capture.drawer.missing_toast", table: "Capture", p.name),
+                             actionTitle: T("main.missing.locate")) { [weak self] in self?.locate(p) }
+        t.key = "capture.missing.\(p.id)"
+        t.seconds = 8
+        t.overOpen = true               // a drop on the open island: said at once
+        island.toast(t)
+    }
+
+    /// Locate… from the island: the same project found → the cards kept back from it are filed there, then `then`;
+    /// another project → said, and nothing moves.
+    func locate(_ p: Project, then: ((Project) -> Void)? = nil) {
+        ProjectLocate.ask(p) { [weak self] r in
+            switch r {
+            case .found(let f):
+                island.projectChanged()
+                let kept = (self?.keptFromMissing.removeValue(forKey: p.id) ?? []).filter(\.isCard)
+                if !kept.isEmpty { self?.assign(kept, to: f.id) }
+                then?(f)
+            case .other(let f):
+                island.toast(ProjectLocate.otherLine(f, wanted: p.name), actionTitle: nil, action: nil)
+            case .failed:
+                island.toast(Loc.t("capture.drawer.open_failed", table: "Capture"), actionTitle: nil, action: nil)
+            }
         }
     }
 
@@ -460,6 +522,7 @@ final class Snapper {
     /// Captures → items with captures.py: the note is the item, no agent, no tokens. A process job (K4) all the
     /// same, so the island hatches it and the main window lists it (usage: 0 tokens).
     func file(_ shots: [Shot], in b: ShotBatch, project: String) {
+        if let gone = missingProject(project) { return keepAsCards(shots, missing: gone, via: "file") }
         let ns = shots.map(\.n)
         for s in shots { hanging.pullIn(s) }
         island.expectProcess(session: b.dir, captures: ns)
@@ -520,6 +583,7 @@ final class Snapper {
     /// Cards — one, or a ⌘-click selection — onto a project (Move To ▸, a drop on the island): each batch's filed in
     /// one go, the user's own choice (assigned_by "user").
     func assign(_ shots: [Shot], to project: String) {
+        if let gone = missingProject(project) { return keepAsCards(shots.filter(\.isCard), missing: gone, via: "assign") }
         var by: [ObjectIdentifier: (ShotBatch, [Shot])] = [:]
         var order: [ObjectIdentifier] = []
         for s in shots where s.isCard {
@@ -543,6 +607,8 @@ final class Snapper {
     func handToAI(project: String? = nil, shots: [Shot]? = nil) {
         let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
+        // "Organize" into a current project whose folder is gone: the cards stay, the island offers Locate…
+        if let p = project, let gone = missingProject(p) { return keepAsCards(all, missing: gone, via: "organize") }
         NoteBubble.shared.commit()
         // the cards come off the notch only once an agent can take them: none usable → they stay, and the island says why
         agentReady { [weak self] ok in

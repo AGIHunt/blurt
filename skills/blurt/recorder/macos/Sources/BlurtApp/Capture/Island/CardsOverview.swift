@@ -348,15 +348,13 @@ final class OverviewTile: NSView, NSDraggingSource {
 
     override func accessibilityPerformPress() -> Bool { overview?.copy(self, .click); return true }
 
-    /// Under the picture: its note (a voice tile has its words on it already: when it was said).
+    /// Under the picture: its note; a snap without one says what it is and when ("Snap · 19:03", as its card's name);
+    /// a voice tile has its words on it already: when it was said.
     static func line(_ s: Shot) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        let when = f.string(from: Date(timeIntervalSince1970: s.wall))
         if s.kind == .shot, let w = s.words { return w.replacingOccurrences(of: "\n", with: " · ") }
-        // a snap whose note couldn't be transcribed says so (in amber), not just its time
-        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(when) · \(st)" }
-        return when
+        // a snap whose note couldn't be transcribed says so (in amber), not just its name
+        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(HangingCards.cardName(s)) · \(st)" }
+        return s.kind == .shot ? HangingCards.cardName(s) : HangingCards.takenAt(s.wall)
     }
 
     func flashCopied() {

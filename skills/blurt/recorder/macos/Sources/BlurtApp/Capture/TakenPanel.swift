@@ -9,7 +9,8 @@
 // Snapper.expireTaken moves a taken capture to the Trash.
 //
 // The panel (v0.9 look, docs/design/system.md §3.2): a small utility window on the island's screen, under the strip
-// the hanging cards use (HangingCards.panelTop) — Put Back hangs the card again right above it, never over it;
+// the hanging cards use (HangingCards.panelTop; right under the island while none hang) — Put Back hangs the card
+// again right above it, never over it, moving the panel down out of its way;
 // one compact row per capture, like the main window's lists — its tile (CaptureThumb: the picture, or a voice note's
 // brand-tint tile with the waveform and its length; drag it out), the note on one line, then when it was dragged out
 // and how long it stays (in attention ink on its last day). Pointing at a row gives it the brand-tint wash and shows
@@ -136,6 +137,25 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         f.size.height += dh
         f.origin.y -= dh
         w.setFrame(f, display: true)
+        follow()
+    }
+
+    /// Its top edge: right under the island while no card hangs, below the cards' strip once one does
+    /// (HangingCards.panelTop). Put Back hangs a card again: the panel moves down out of its way (never up, under
+    /// the pointer, while it is open).
+    private func follow() {
+        guard let w = window, w.isVisible else { return }
+        let top = min(island.frameOnScreen.minY - 12, hanging.panelTop)
+        guard w.frame.maxY > top + 0.5 else { return }
+        let screen = w.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        var f = w.frame
+        f.origin.y = max(screen.visibleFrame.minY + 12, top - f.height)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return w.setFrame(f, display: true) }
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = 0.25
+            c.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            w.animator().setFrame(f, display: true)
+        }
     }
 
     /// Tests: the row of capture N as if the pointer were on it (its wash and its actions); nil = none.
@@ -329,7 +349,7 @@ final class TakenRow: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// "Dragged out 5 minutes ago · kept 7 more days" — the days in attention ink on the last day.
+    /// "Dragged out 5 minutes ago" — and on its last day "· kept 1 more day" in attention ink.
     static func detail(_ s: Shot) -> NSAttributedString {
         let ago = RelativeDateTimeFormatter()
         ago.locale = Locale(identifier: Loc.language == "zh-Hans" ? "zh-Hans" : "en")
@@ -338,9 +358,12 @@ final class TakenRow: NSView {
                          ago.localizedString(for: Date(timeIntervalSince1970: s.taken ?? now), relativeTo: Date(timeIntervalSince1970: now)))
         let days = TakenCaptures.daysLeft(taken: s.taken ?? now, now: now)
         let f = NSFont.systemFont(ofSize: 11)
-        let out = NSMutableAttributedString(string: when + " · ", attributes: [.font: f, .foregroundColor: NSColor.secondaryLabelColor])
+        let out = NSMutableAttributedString(string: when, attributes: [.font: f, .foregroundColor: NSColor.secondaryLabelColor])
+        // the footer says "7 days" for every row: a row says it only on its last day (BlurtCore TakenCaptures)
+        guard TakenCaptures.showsDaysLeft(days) else { return out }
+        out.append(NSAttributedString(string: " · ", attributes: [.font: f, .foregroundColor: NSColor.secondaryLabelColor]))
         out.append(NSAttributedString(string: Loc.plural("capture.taken.days_left", table: "Capture", count: days),
-                                      attributes: [.font: f, .foregroundColor: days <= 1 ? BrandColor.attnInk : NSColor.secondaryLabelColor]))
+                                      attributes: [.font: f, .foregroundColor: BrandColor.attnInk]))
         return out
     }
 

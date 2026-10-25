@@ -6,12 +6,14 @@
 //    through listening, transcribing, polishing and idle (the dogfood found them centred in their 56 pt ear, so the
 //    mint glyph jumped 12 pt at the stop tap). Content wider than the ear widens that ear (IslandLayout.earSpan:
 //    both ears, so the shape stays centred on the notch) instead of giving up its inset — "✓ Sent" sat 4 pt from the
-//    island's rounded corner while the clock beside it kept 14.
+//    island's rounded corner while the clock beside it kept 14. The other ear's content stays where it was
+//    (IslandLayout.earReach: measured from the notch by its own need), the extra black outside it — a glyph never
+//    jumps because the ear across the notch grew.
 //  • a toast (IslandLayout.toast): its content box is never narrower than the shape it shows in (the notch plus both
 //    ears, or 260 pt on a capsule), so the text starts 18 pt in — the island rows' side inset — and an action button
 //    ends `earInset` from the right edge, under the right ear's number; a line with nothing beside it is centred.
-//    A line too long for the open width wraps onto a second line (`wraps`, `toastHeight`) instead of ending in "…"
-//    mid-word: the lines that explain a failure are the long ones.
+//    A line too long for the open width wraps — up to three lines (`wraps`, `toastLines`, `toastHeight`) — instead of
+//    ending in "…" mid-word: the lines that explain a failure are the long ones.
 //  • time left (IslandLayout.timeLeft): rounded up, so the clock and the time left always add up to the limit.
 //  • the live-text panel (IslandLayout.livePanelWidth): the island's lower half, not a second pop-up — as wide as
 //    the island when it is open (a voice note), else a little wider than its ears, in one width family; the width
@@ -62,6 +64,14 @@ public enum IslandLayout {
         max(earWidth(content: left), earWidth(content: right))
     }
 
+    /// How far from the notch an ear's content measures its outer edge, while the shape's ear is `shape` wide (as it
+    /// springs): its own need (`earWidth(content:)`), never more — so when the *other* ear widens ("✓ Sent", a clock
+    /// past 9:59) this one's glyph stays where it was and the extra black is outside it; and never beyond the shape,
+    /// so a growing ear's content rides the edge rather than standing outside the black.
+    public static func earReach(content width: CGFloat, shape: CGFloat) -> CGFloat {
+        max(earWidth, min(earWidth(content: width), shape))
+    }
+
     /// The narrowest a toast's shape is: the notch with both ears, or the capsule's minimum.
     public static func toastFloor(notchWidth: CGFloat?) -> CGFloat {
         notchWidth.map { $0 + 2 * earWidth } ?? capsuleToastWidth
@@ -83,8 +93,14 @@ public enum IslandLayout {
 
     /// A toast's row: 46 pt for one line, a line's height more for each further one.
     public static let toastLineHeight: CGFloat = 17
-    public static let toastMaxLines = 2
+    /// Three: two cut the launch line's list of shortcuts mid-word ("…and ⌃⌥⇧⌘L w…"), the part that says what is wrong.
+    public static let toastMaxLines = 3
     public static func toastHeight(lines: Int) -> CGFloat { 46 + CGFloat(min(max(1, lines), toastMaxLines) - 1) * toastLineHeight }
+    /// How many lines a wrapped toast's text takes: `wrapped` its height laid out at the wrap width, `line` one line's.
+    public static func toastLines(wrapped: CGFloat, line: CGFloat) -> Int {
+        guard line > 0 else { return 1 }
+        return min(toastMaxLines, max(1, Int(((wrapped - line) / toastLineHeight).rounded()) + 1))
+    }
 
     /// `lead`: the width of what goes before the text (the chick's art, an icon, a key badge, with their gaps);
     /// `art`: the lead is the mascot (drawn from the left edge, so the line is never centred).

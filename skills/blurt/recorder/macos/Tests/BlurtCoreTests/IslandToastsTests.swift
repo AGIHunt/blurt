@@ -8,13 +8,29 @@ final class IslandToastsTests: XCTestCase {
     /// "⇧ to go back" after ⇧ stopped meaning anything.
     func testANewTakeDropsWhatWasSaidAboutTheLastOne() {
         let start = Set(DictationToastKeys.droppedAtStart)
-        XCTAssertTrue(start.isSuperset(of: [DictationToastKeys.take, DictationToastKeys.notice, DictationToastKeys.listening]))
-        // still true across a new take: a failed take's Retry, "Cancelled · Undo", the model's Download…
+        XCTAssertTrue(start.isSuperset(of: [DictationToastKeys.take, DictationToastKeys.tip, DictationToastKeys.listening]))
+        // still true across a new take: a failed take's Retry, "Cancelled · Undo", the model's Download…, and the
+        // once-a-day notices (their day is spent when posted: dropped, they wouldn't come back until tomorrow)
+        XCTAssertFalse(start.contains(DictationToastKeys.notice))
+        XCTAssertNotEqual(DictationToastKeys.tip, DictationToastKeys.notice)
         XCTAssertFalse(start.contains(DictationToastKeys.cancel))
         XCTAssertFalse(start.contains(DictationToastKeys.model))
         XCTAssertFalse(start.contains { $0.hasPrefix("dictation.failed.") })
         XCTAssertEqual(DictationToastKeys.droppedWhenListeningEnds, [DictationToastKeys.style])
         XCTAssertFalse(start.contains(DictationToastKeys.style), "⇧'s line belongs to the take that listens")
+    }
+
+    /// "No polish model yet · Download…" waits behind "Copied"; the user starts the next take at once. The tip goes,
+    /// the notice is still there when the island is free.
+    func testAOnceADayNoticeWaitingBehindAReplySurvivesTheNextTake() {
+        let q = ToastQueue<Int>()
+        _ = q.post(.init(1, text: "Copied", key: DictationToastKeys.take, seconds: 5), now: 0)
+        _ = q.post(.init(2, text: "No polish model yet", key: DictationToastKeys.notice, kind: .passive, seconds: 6,
+                         actionable: true), now: 0.1)
+        _ = q.post(.init(3, text: "Double-tap ⌥ to send", key: DictationToastKeys.tip, kind: .passive, seconds: 3), now: 0.2)
+        DictationToastKeys.droppedAtStart.forEach { q.drop(key: $0) }
+        let left = ([q.current].compactMap { $0 } + q.waiting).map(\.key)
+        XCTAssertEqual(left, [DictationToastKeys.notice])
     }
 
     /// A double tap after the app changed: "Not sent" was replaced in the same frame by "Copied — paste with ⌘V".
@@ -41,5 +57,30 @@ final class IslandToastsTests: XCTestCase {
         let long = String(repeating: "a", count: 80)
         XCTAssertEqual(CardName.words(long)?.count, CardName.maxLength)
         XCTAssertEqual(CardName.words(long)?.last, "…")
+    }
+
+    /// The review: "Snap · 19:03" ignored a 12-hour clock and an older card (cards hang until used) had no day.
+    func testACardsTimeFollowsTheUsersClockAndSaysItsDayOnceItIsntToday() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date()                  // (a relative day is said against the real today)
+        let start = cal.startOfDay(for: now)
+        let today = start.addingTimeInterval(19 * 3600 + 3 * 60)          // 19:03 that day
+        let en = Locale(identifier: "en_US")
+        XCTAssertEqual(CardName.when(taken: today, now: now, locale: en, uses24Hour: true, calendar: cal), "19:03")
+        XCTAssertTrue(CardName.when(taken: today, now: now, locale: en, uses24Hour: false, calendar: cal).hasPrefix("7:03"))
+        let yesterday = today.addingTimeInterval(-86400)
+        XCTAssertTrue(CardName.showsDay(taken: yesterday, now: now, calendar: cal))
+        XCTAssertFalse(CardName.showsDay(taken: today, now: now, calendar: cal))
+        XCTAssertEqual(CardName.when(taken: yesterday, now: now, locale: en, uses24Hour: true, calendar: cal), "Yesterday 19:03")
+        XCTAssertEqual(CardName.when(taken: yesterday, now: now, locale: Locale(identifier: "zh-Hans_CN"), uses24Hour: true, calendar: cal),
+                       "昨天 19:03")
+    }
+
+    /// Recently Dragged Out: "kept 7 more days" on every row repeated the footer — only the last day says it.
+    func testATakenRowSaysHowLongItIsKeptOnlyOnItsLastDay() {
+        XCTAssertFalse(TakenCaptures.showsDaysLeft(7))
+        XCTAssertFalse(TakenCaptures.showsDaysLeft(2))
+        XCTAssertTrue(TakenCaptures.showsDaysLeft(1))
     }
 }

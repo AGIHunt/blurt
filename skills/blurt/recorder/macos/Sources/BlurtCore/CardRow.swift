@@ -15,7 +15,8 @@
 //    mapped onto the island's bottom edge in proportion, so the threads keep their order, never cross and hang close to
 //    vertical — not a fan from the island's two corners.
 //  • the band (CardRow.panelTop): the strip under the island the cards hang in. Recently Dragged Out and the cards'
-//    overview open below it, so a card hung back (Put Back, Undo) or brought down by the pointer never covers them.
+//    overview open below it, so a card hung back (Put Back, Undo) or brought down by the pointer never covers them;
+//    with no card hanging, right under the island (and down below the band once Put Back hangs one).
 //  • coming down (CardReveal): only after the pointer has rested on the island `dwell` (brushing past the notch on the
 //    way to a menu drops nothing); up again `away` after it has left the cards' region. Brought down on purpose (the
 //    ear, ⌥⇧H, the menu, the main window) they stay until the pointer has been on them and left — or, if it never
@@ -88,9 +89,11 @@ public enum CardRow {
     }
 
     /// The top edge (screen points, y up) of a panel that opens under the cards — Recently Dragged Out, the overview:
-    /// below the band whether the cards are down or not, so ones hung back later never cover its title or rows.
-    public static func panelTop(islandBottom: CGFloat, band: CGFloat, gap: CGFloat = 12) -> CGFloat {
-        islandBottom - band - gap
+    /// below the band whether the cards are down or not, so ones hung back later never cover its title or rows. With
+    /// no card hanging at all (`cardsHang` false) right under the island instead — 150 pt down it read as a window
+    /// of its own; Put Back then moves it below the band as the card hangs again (TakenPanel).
+    public static func panelTop(islandBottom: CGFloat, band: CGFloat, cardsHang: Bool = true, gap: CGFloat = 12) -> CGFloat {
+        islandBottom - (cardsHang ? band : 0) - gap
     }
 
     /// Where the thread of a card at `x` comes out of the island's bottom edge (`edge`: the part of it a thread may

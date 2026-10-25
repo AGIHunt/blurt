@@ -2,7 +2,8 @@
 // note's field) opens the list in the bubble itself — the same rows as every project picker (BlurtCore
 // ProjectPick.choices: recent projects first, typing filters them by name or key, Unassigned last, under a line), ↑↓
 // move, ↩ picks, Esc goes back to the note. Unassigned = no project: the snap hangs as a card. Only this capture moves
-// (Snapper.retarget); the island's current project stays as it is.
+// (Snapper.retarget); the island's current project stays as it is. A project whose folder is gone is dimmed, with
+// questionmark.folder: picked, the capture stays a card and the island offers Locate… (Snapper.file, MissingFolder).
 import AppKit
 import BlurtCore
 
@@ -161,7 +162,8 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
 }
 
 /// One project in the chip's list: its colour dot, its name, a check on the one the capture goes to now; Unassigned with
-/// the tray, under a hairline, as in the island's switcher.
+/// the tray, under a hairline, as in the island's switcher. A project whose folder is gone is dimmed, with
+/// questionmark.folder: picked, the capture stays a card and the island offers Locate… (Snapper.file).
 final class PickRow: NSView {
     let project: Project?
     let checked: Bool
@@ -177,11 +179,14 @@ final class PickRow: NSView {
         super.init(frame: .zero)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(title)
+        setAccessibilityLabel(gone ? title + ", " + T("main.sidebar.missing") : title)
+        if gone { toolTip = Loc.t("capture.drawer.missing_sub", table: "Capture") }
     }
     required init?(coder: NSCoder) { fatalError() }
 
     var title: String { project?.name ?? Loc.t("project.inbox") }
+    /// its folder is gone (moved or renamed): dimmed, with the folder-and-question-mark
+    var gone: Bool { project.map { !$0.exists } ?? false }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -203,7 +208,10 @@ final class PickRow: NSView {
             NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
         }
         var x: CGFloat = 8
-        if let p = project {
+        if gone, let img = NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .regular).applying(.init(paletteColors: [.secondaryLabelColor]))) {
+            img.draw(in: NSRect(x: x - 1, y: bounds.midY - img.size.height / 2, width: img.size.width, height: img.size.height))
+        } else if let p = project {
             ProjectLook.color(p).setFill()
             NSBezierPath(ovalIn: NSRect(x: x, y: bounds.midY - 3.5, width: 7, height: 7)).fill()
         } else if let img = NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)?   // Unassigned (the tray is the Inbox)
@@ -212,7 +220,7 @@ final class PickRow: NSView {
         }
         x += 16
         let s = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12.5),
-                                                               .foregroundColor: project == nil ? NSColor.secondaryLabelColor : NSColor.labelColor])
+                                                               .foregroundColor: project == nil || gone ? NSColor.secondaryLabelColor : NSColor.labelColor])
         s.draw(with: NSRect(x: x, y: (bounds.height - s.size().height) / 2, width: bounds.width - x - 28, height: s.size().height),
                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         if checked, let img = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?

@@ -14,7 +14,7 @@
 "capture.card.allow_ax" = "Allow…";
 "capture.card.ax_help" = "Press to copy · actions: edit the note, move to a project, organize, delete";
 "capture.card.ax_move" = "Move to %@";
-"capture.card.ax_shot" = "screenshot";
+"capture.card.ax_shot" = "snap";
 "capture.card.ax_shot_at" = "Snap · %@";
 "capture.card.ax_voice" = "voice note";
 "capture.card.ax_voice_at" = "Voice note · %@";

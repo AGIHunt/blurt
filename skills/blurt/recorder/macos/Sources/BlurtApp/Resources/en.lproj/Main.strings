@@ -310,6 +310,7 @@
 "main.missing.detail_empty" = "It may have been moved or renamed. Locate it and its items come back.";
 "main.missing.locate" = "Locate…";
 "main.missing.locate.message" = "Choose where “%@” is now.";
+"main.missing.other" = "That folder is “%1$@”, not “%2$@”";
 "main.sidebar.not_opened" = "not opened as a project";
 "main.sidebar.open_folder.tip" = "Open a folder as a project (⌘O) — or drop folders here";
 "main.sidebar.progress.ax" = "In progress: items handed off to an agent, and running jobs";

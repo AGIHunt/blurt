@@ -71,8 +71,9 @@ extension Dictation {
     // The island's toast keys for dictation (Island.toast / BlurtCore ToastQueue: a toast with the same key replaces
     // the one showing at once; different keys queue, newest first, and an Undo or Retry pushed out comes back).
     // `Dictation.toastKey` ("dictation") is what the island says about the last take — reformat's Undo, the list chip,
-    // "nothing heard", "copied": a new take drops them (Dictation.start), with the tips (`noticeToastKey`) and the
-    // 5-minute limit; ⇧'s style line goes when the take stops listening (BlurtCore DictationToastKeys has the rule).
+    // "nothing heard", "copied": a new take drops them (Dictation.start), with the tips (`tipToastKey`) and the
+    // 5-minute limit (not the once-a-day notices, `noticeToastKey`); ⇧'s style line goes when the take stops
+    // listening (BlurtCore DictationToastKeys has the rule).
     // The others are kept across a new take.
     static let toastKey = DictationToastKeys.take
     /// "no speech model · Download…" and "the model is ready · Retry": the newest says what is true now.
@@ -84,8 +85,10 @@ extension Dictation {
     static let cancelToastKey = DictationToastKeys.cancel
     /// "Recognition failed · Retry" for one take: its own key, so two failed takes each keep their Retry.
     static func failedToastKey(_ id: String) -> String { "dictation.failed.\(id)" }
-    /// Once-a-day notices and the first takes' tips (passive: they wait behind replies).
+    /// Once-a-day notices with a button (passive: they wait behind replies; a new take keeps them).
     static let noticeToastKey = DictationToastKeys.notice
+    /// The first takes' tips (passive): a new take drops them.
+    static let tipToastKey = DictationToastKeys.tip
 
     // MARK: the line of takes
 
@@ -517,9 +520,9 @@ extension Dictation {
             Config.shared.set("app.dictation_tips", shown)
             emit(["event": "dictation_tip", "tip": tip.rawValue])
             switch tip {
-            case .send: self.toast("dictation.tip.send", Dictation.keyShort, key: Dictation.noticeToastKey, seconds: 3, passive: true)
-            case .list: self.toast("dictation.tip.list", key: Dictation.noticeToastKey, seconds: 3, passive: true)
-            case .reformat: self.toast("dictation.tip.reformat", hk(.reformat), key: Dictation.noticeToastKey, seconds: 3, passive: true)
+            case .send: self.toast("dictation.tip.send", Dictation.keyShort, key: Dictation.tipToastKey, seconds: 3, passive: true)
+            case .list: self.toast("dictation.tip.list", key: Dictation.tipToastKey, seconds: 3, passive: true)
+            case .reformat: self.toast("dictation.tip.reformat", hk(.reformat), key: Dictation.tipToastKey, seconds: 3, passive: true)
             }
         }
     }

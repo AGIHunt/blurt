@@ -110,6 +110,11 @@ never reorders them — so `⌘5`…`⌘9` always open the same five. Double-cli
 to rename it in place. **Remove from Blurt** happens right away (the folder and its items stay where they are) and
 **Undo** brings the project back exactly as it was. The **Project** menu has the same actions for the project on show.
 
+If you move or rename a project's folder, Blurt shows it with a folder and a question mark: *Folder not found*. Nothing
+is saved into the old place meanwhile — a snap or voice note meant for it stays a card, a recording goes to
+Unassigned, and the notch says so with **Locate…**. Choose where the folder is now and it is the same project again,
+with its cards filed there. If the folder you pick is a different project, Blurt says so and changes nothing else.
+
 ### 3. Cards
 
 With no current project each snap or voice note becomes a card under the notch, on a thin thread. They tuck away into
@@ -642,6 +647,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 侧栏里的项目按你的顺序排：新打开的文件夹排在最后，拖动项目就能调整，用哪个都不会改变顺序——所以 `⌘5`…`⌘9` 永远对应同样的五个项目。
 双击项目（或选中后按回车）可以直接改名。「**从口喷鸡移除**」立刻生效（文件夹和条目都不动），「**撤销**」会把项目原样放回来。
 「**项目**」菜单里是同样的操作，作用于当前打开的项目。
+
+项目的文件夹被移走或改了名，口喷鸡会在它旁边显示带问号的文件夹：「文件夹不见了」。这期间不会往旧位置存任何东西：要放进去的截图、语音备注先留成卡片，录屏放进「未归类」，刘海上会说明，并给出「**找到它…**」。选出文件夹现在的位置，它就还是原来的项目，卡片也会放进去。选的如果是另一个项目的文件夹，口喷鸡会说明，其他什么都不变。
 
 ### 3. 卡片
 

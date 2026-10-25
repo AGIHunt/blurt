@@ -1201,10 +1201,11 @@ final class HangingCards: NSObject {
 
     /// Where a panel that opens under the cards starts (global Cocoa y, its top edge): below the strip they hang in,
     /// whether they are down now or not (BlurtCore CardRow.panelTop) — Recently Dragged Out and the overview, so a
-    /// card hung back (Put Back, Undo) or brought down by the pointer never covers their title or rows.
+    /// card hung back (Put Back, Undo) or brought down by the pointer never covers their title or rows; right under the
+    /// island while no card hangs.
     var panelTop: CGFloat {
         let depth = CardRow.bandDepth(below: HangingCards.below, slacks: HangingCards.slacks, cardHeight: CardShape.height)
-        let top = CardRow.panelTop(islandBottom: island.frameOnScreen.minY, band: depth)
+        let top = CardRow.panelTop(islandBottom: island.frameOnScreen.minY, band: depth, cardsHang: count > 0)
         return min(top, (shownBottom ?? .greatestFiniteMagnitude) - 12)
     }
 
@@ -1838,9 +1839,16 @@ final class HangingCards: NSObject {
                                                      : Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
         let sub = NSMenu()
         for proj in ProjectStore.shared.projects.prefix(12) {       // recently used first
+            // a folder that is gone: shown so; choosing it keeps the cards and offers Locate… (Snapper.assign)
+            let gone = !proj.exists
             let i = ClosureMenuItem(proj.name) { snapper.assign(these, to: proj.id) }
-            i.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(paletteColors: [ProjectLook.color(proj)]))
+            i.image = gone ? NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: nil)
+                           : NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
+                                 .withSymbolConfiguration(.init(paletteColors: [ProjectLook.color(proj)]))
+            if gone {
+                i.toolTip = Loc.t("capture.drawer.missing_sub", table: "Capture")
+                i.setAccessibilityLabel(proj.name + ", " + T("main.sidebar.missing"))
+            }
             sub.addItem(i)
         }
         if !ProjectStore.shared.projects.isEmpty { sub.addItem(.separator()) }
@@ -2106,7 +2114,8 @@ final class HangingCards: NSObject {
     static func axActions(_ s: Shot) -> [NSAccessibilityCustomAction] {
         var actions = [NSAccessibilityCustomAction(name: Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit); return true }]
         for p in ProjectStore.shared.projects.prefix(8) {
-            actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ax_move", table: "Capture", p.name)) { snapper.assign(s, to: p.id); return true })
+            let name = p.exists ? p.name : p.name + ", " + T("main.sidebar.missing")     // chosen: the card stays, Locate…
+            actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ax_move", table: "Capture", name)) { snapper.assign(s, to: p.id); return true })
         }
         actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.organize", table: "Capture")) { snapper.handToAI(shots: [s]); return true })
         actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s); return true })
@@ -2119,10 +2128,13 @@ final class HangingCards: NSObject {
     /// What a capture is and when it was taken ("Snap · 19:03"), for where its words can't name it — never the
     /// session's counter ("Screenshot 15" skipped numbers and told nothing apart).
     static func cardName(_ s: Shot) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return Loc.t(s.kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture",
-                     f.string(from: Date(timeIntervalSince1970: s.wall)))
+        Loc.t(s.kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture", takenAt(s.wall))
+    }
+
+    /// When a card was taken, in the user's clock (12 or 24 hours): "19:03" today, else with its day ("Yesterday
+    /// 19:03") — cards hang until they are used (BlurtCore CardName.when).
+    static func takenAt(_ wall: Double) -> String {
+        CardName.when(taken: Date(timeIntervalSince1970: wall), now: Date(), locale: Loc.locale, uses24Hour: CardName.systemUses24Hour)
     }
 }
 

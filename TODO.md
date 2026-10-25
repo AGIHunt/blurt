@@ -135,6 +135,11 @@
       (Locate…, never filing into the old path); the live panel showing typed text from the top (≤ 8 lines) and going
       with an open island that closes; no "+1" tile for a card that fits; Recently Dragged Out and the overview below
       the card band; cards named "Snap · 19:03" instead of a counter; the Unassigned glyph distinct from the Inbox's.
+      Review pass: nothing filed into a project whose folder is gone from any path (Move To, AX actions, the note's
+      chip, the current project's captures and recordings: cards / Unassigned + "folder not found · Locate…", Locate
+      takes only the same project back); toasts wrap to three lines; Keep Recording as the default with ↩; the ear
+      across the notch keeps its glyph still when one ear widens; card times in the user's 12/24-hour clock with a day
+      once not today; Recently Dragged Out under the island while no card hangs, the days left only on the last day.
 - [ ] Hanging cards on Windows / Linux (web/apps/overlays island.ts, crates/blurt-capture overlay.rs): bring over the
       v0.9 Mac rules (BlurtCore CardRow.swift): newest first, at most 5 + a "+N" tile that opens an overview of every
       card (no paging); a 180 ms dwell before they drop and 0.25 s to go up; Delete / Delete All with Undo instead of

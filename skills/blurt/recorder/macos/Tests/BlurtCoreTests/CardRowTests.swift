@@ -178,5 +178,7 @@ final class CardRowTests: XCTestCase {
         let top = CardRow.panelTop(islandBottom: islandBottom, band: depth)
         XCTAssertLessThanOrEqual(top, islandBottom - 18 - 12 - 84, "below the lowest card")
         XCTAssertEqual(top, islandBottom - depth - 12)
+        // no card hangs: right under the island, not floating 150 pt down
+        XCTAssertEqual(CardRow.panelTop(islandBottom: islandBottom, band: depth, cardsHang: false), islandBottom - 12)
     }
 }

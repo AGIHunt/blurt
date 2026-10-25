@@ -6,22 +6,23 @@
 //               waiting cards (into the current project; with none, into Unassigned with a suggested project each)
 //   recording   pause / resume · snap + note (pauses) · discard (asks first, its question on its own line with what
 //               goes with it — the snaps and the markers apart — then Discard · Restart · Keep Recording, the last
-//               where Finish was, so nothing destructive lands under the hand that stops) · mic level · finish ·
+//               where Finish was, so nothing destructive lands under the hand that stops; Keep is the default,
+//               filled, and ↩ chooses it) · mic level · finish ·
 //               "hold ⌃ to draw · ⇧ box · ⌥ ellipse" (every modifier a keycap) · how many items were spotted so far ·
-//               the project (changeable)
+//               the project (changeable; dimmed with questionmark.folder while its folder is gone)
 //   voice       the listening chick (mascot), the live waveform, Done, how it ends ("press ⌥⇧V again to finish · Esc to
 //               discard"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
 //               will go — the words themselves hang under the island (LiveTranscript.swift)
 //   drawer      switcher (⌥⇧O): Unassigned (no current project; tray.2, as in the sidebar — the tray is the Inbox),
 //               recent projects (≤ 8, "More…", type to filter; a project whose folder is gone shows so, dimmed, and
-//               choosing it asks where the folder is now instead of making it current —
+//               choosing it asks where the folder is now instead of making it current: Snapper.locate —
 //               ProjectPick), Open Folder… ⌘O. Its pick form (Island.Pick: "Filed to X · Change") has the same rows and
 //               files that one thing instead of changing the current project.
 //               drop (a card dragged in, or a ⌘-click selection of them): recent projects, Unassigned, Organize
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on the island's mint tint
 //   toast       one quiet line (K4), optionally with art (the mascot: done, fixed), the ok check and an action — spanning
 //               the whole shape (IslandLayout.toast): text 18 pt in, the button under the right ear's number, a lone
-//               line centred; a line too long for the open width wraps onto a second line, never "…" mid-word
+//               line centred; a line too long for the open width wraps (up to three lines), never "…" mid-word
 // Dark on black in both appearances (it is the notch); white text at 92 / 60 / 40 %.
 
 import AppKit
@@ -450,10 +451,18 @@ final class IslandContent: NSView {
     private func chip(_ w: CGFloat, small: Bool = false) -> IslandButton {
         let p = ProjectStore.shared.current
         let name = p?.name ?? Loc.t("project.inbox")
-        let b = IslandButton(symbol: p == nil ? "tray.2" : "", title: name,
-                             tip: tip("capture.island.switch_project", .project)) { [weak self] in self?.island?.showSwitcher() }
+        // the current project's folder is gone: captures hang as cards meanwhile (Snapper.target) — the chip says so,
+        // dimmed with the folder-and-question-mark, and the switcher it opens offers Locate…
+        let gone = p.map { !$0.exists } ?? false
+        let b = IslandButton(symbol: gone ? "questionmark.folder" : p == nil ? "tray.2" : "", title: name,
+                             tip: gone ? Loc.t("capture.drawer.missing_sub", table: "Capture")
+                                       : tip("capture.island.switch_project", .project),
+                             fg: gone ? NSColor(white: 1, alpha: 0.6) : .white) { [weak self] in self?.island?.showSwitcher() }
         // every capture with a note goes to the current project: its key in its colour leads, so it reads at a glance
-        if let p = p {
+        if gone {
+            b.fill = NSColor(white: 1, alpha: 0.1)
+            b.symbolInset = IslandButton.badgeInset + 2
+        } else if let p = p {
             let c = ProjectLook.color(p)
             b.fill = c.withAlphaComponent(0.26)
             b.badge = (p.key, c)
@@ -461,7 +470,7 @@ final class IslandContent: NSView {
             b.fill = NSColor(white: 1, alpha: 0.1)
             b.symbolInset = IslandButton.badgeInset + 2     // the tray where the key badge would start (its glyph has air)
         }
-        b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", name))
+        b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", gone ? name + ", " + T("main.sidebar.missing") : name))
         let maxW = small ? 200 : max(110, side(w) - 14)
         b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 14), height: 26))
         let chev = NSImageView(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
@@ -622,16 +631,19 @@ final class IslandContent: NSView {
                 y = d.frame.maxY
             }
             y += 10
-            // right to left: Keep Recording where Finish was (the hand that stops lands on keep, never on discard),
-            // then Restart, then the red Discard furthest from it
+            // right to left: Keep Recording where Finish was (the hand that stops lands on keep, never on discard) —
+            // the default, filled like every suggested answer in the island, and ↩ chooses it (Island.key) — then
+            // Restart, then Discard furthest from it, red but quieter than the default (a Mac sheet's destructive
+            // button is never the one that stands out)
             var bx = w - 14
-            let items: [(String, NSColor?, () -> Void)] = [
-                (Loc.t("capture.rec.keep", table: "Capture"), NSColor(white: 1, alpha: 0.16), { [weak i] in i?.confirmDiscard(false) }),
-                (Loc.t("capture.rec.restart", table: "Capture"), nil, { rec.stop(discard: true, restart: true) }),
-                (Loc.t("capture.rec.discard", table: "Capture"), NSColor.systemRed.withAlphaComponent(0.9), { rec.stop(discard: true) }),
+            let items: [(String, NSColor?, Bool, () -> Void)] = [
+                (Loc.t("capture.rec.keep", table: "Capture"), nil, true, { [weak i] in i?.confirmDiscard(false) }),
+                (Loc.t("capture.rec.restart", table: "Capture"), NSColor(white: 1, alpha: 0.12), false, { rec.stop(discard: true, restart: true) }),
+                (Loc.t("capture.rec.discard", table: "Capture"), NSColor.systemRed.withAlphaComponent(0.32), false, { rec.stop(discard: true) }),
             ]
-            for (t, f, a) in items {
-                let b = IslandButton(title: t, tip: t, fill: f, action: a)
+            for (t, f, isDefault, a) in items {
+                let b = IslandButton(title: t, tip: isDefault ? t + "  ↩" : t, fill: f,
+                                     gradient: isDefault ? BrandGradient.buttonStops : nil, action: a)
                 bx -= b.frame.width
                 place(b, x: bx, y: y)
                 bx -= 8
@@ -922,12 +934,8 @@ final class IslandContent: NSView {
         case .organize: snapper.handToAI(shots: shots)
         case .locate(let id):
             // a card dropped on a project whose folder is gone: it stays a card; the island says so and offers Locate…
-            guard let p = ProjectStore.shared.project(id: id) else { return }
-            emit(["event": "island_missing_project", "project": id, "via": "drop"])
-            var t = Island.Toast(text: Loc.t("capture.drawer.missing_toast", table: "Capture", p.name),
-                                 actionTitle: T("main.missing.locate")) { IslandContent.locate(p, then: nil) }
-            t.overOpen = true
-            island?.toast(t)
+            // (Snapper.assign refuses it, as every other way into that project)
+            if let s = shots { snapper.assign(s, to: id) }
         default: break
         }
     }
@@ -959,35 +967,12 @@ final class IslandContent: NSView {
             island?.setOpen(false)
             emit(["event": "island_missing_project", "project": id, "via": pick == nil ? "switch" : "pick"])
             // found again: the pick form files its one thing there, the switcher makes it current
-            IslandContent.locate(p) { found in
+            snapper.locate(p) { found in
                 if let pick = pick { pick.choose(found.id); return }
                 Task {
                     do { try await ProjectStore.shared.use(found.id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }
                     await MainActor.run { Island.shared.projectChanged() }
                 }
-            }
-        }
-    }
-
-    /// Where a project's folder is now (it was moved or renamed): the same project again once it is opened there
-    /// (projects.py add relocates a store whose registered folder has gone), then `then`.
-    static func locate(_ p: Project, then: ((Project) -> Void)?) {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = Loc.t("capture.drawer.open_prompt", table: "Capture")
-        panel.message = T("main.missing.locate.message", p.name)
-        var up = p.path.deletingLastPathComponent()
-        while !FileManager.default.fileExists(atPath: up.path), up.path != "/" { up.deleteLastPathComponent() }
-        panel.directoryURL = up
-        activateApp()
-        guard panel.runModal() == .OK, let u = panel.url else { return }
-        Task {
-            do {
-                let found = try await ProjectStore.shared.open(folder: u)
-                await MainActor.run { then?(found) }
-            } catch {
-                await MainActor.run { Island.shared.toast(Loc.t("capture.drawer.open_failed", table: "Capture"), actionTitle: nil, action: nil) }
             }
         }
     }
@@ -1058,15 +1043,15 @@ final class IslandContent: NSView {
         let fit = IslandLayout.toast(text: tw, lead: lead, art: t.art != nil, button: btn?.frame.width,
                                      floor: island?.toastFloor ?? IslandLayout.capsuleToastWidth, maxWidth: Island.openW)
         toastWidth = fit.width
-        // too long for one line at the open width: the text wraps onto a second line (the row grows a line) instead
-        // of "Couldn't snap — macOS needs Screen Recording allo…"; the icon and badge keep to its first line
+        // too long for one line at the open width: the text wraps (up to three lines; the row grows a line for each)
+        // instead of "Couldn't snap — macOS needs Screen Recording allo…"; the icon and badge keep to its first line
         var text: NSTextField = l
         var rowH: CGFloat = 46
         var textH = l.frame.height
         if fit.wraps {
             let wl = wrapping(t.text, size: 13, weight: .medium, color: ink, width: fit.textWidth, lines: IslandLayout.toastMaxLines)
             wl.cell?.truncatesLastVisibleLine = true
-            let lines = wl.frame.height > l.frame.height * 1.5 ? IslandLayout.toastMaxLines : 1
+            let lines = IslandLayout.toastLines(wrapped: wl.frame.height, line: l.frame.height)
             rowH = IslandLayout.toastHeight(lines: lines)
             textH = min(wl.frame.height, l.frame.height + CGFloat(lines - 1) * IslandLayout.toastLineHeight + 2)
             text = wl

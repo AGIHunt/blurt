@@ -623,10 +623,12 @@ final class Island: NSObject, IslandHosting {
         if geo.notch {
             let l = geo.cx - geo.notchW / 2, r = geo.cx + geo.notchW / 2
             // the outer edge: 56 pt out, or — while an ear grows wider for its content — the shape's edge as it springs
-            // out (the content rides it rather than standing outside the black for a moment)
+            // out (the content rides it rather than standing outside the black for a moment); an ear whose own content
+            // fits 56 keeps it there while the other one grows (IslandLayout.earReach: no glyph jumps)
             let ear = max(Island.earW, min(earSpan, l - rect.minX))
-            left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: l - ear, inner: l), y: y), now: now)
-            right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: r + ear, inner: r), y: y), now: now)
+            let lo = IslandLayout.earReach(content: left.width, shape: ear), ro = IslandLayout.earReach(content: right.width, shape: ear)
+            left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: l - lo, inner: l), y: y), now: now)
+            right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: r + ro, inner: r), y: y), now: now)
         } else {
             left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: rect.minX, inner: nil), y: y), now: now)
             right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: rect.maxX, inner: nil), y: y), now: now)
@@ -706,7 +708,7 @@ final class Island: NSObject, IslandHosting {
         open = on
         emit(["event": "island_open", "open": on, "wall": Date().timeIntervalSince1970])
         if !on {
-            confirmingDiscard = false
+            if confirmingDiscard { confirmDiscard(false, rebuild: false) }
             if drawer == .switcher { closeSwitcher() }
         }
         content.rebuild()
@@ -787,6 +789,7 @@ final class Island: NSObject, IslandHosting {
 
     func key(_ e: NSEvent) -> Bool {
         if drawer == .switcher { return content.key(e) }
+        if confirmingDiscard, e.keyCode == 36 || e.keyCode == 76 { confirmDiscard(false); return true }     // ↩: Keep Recording
         if e.keyCode == 53 { setOpen(false); return true }
         return false
     }
@@ -870,12 +873,24 @@ final class Island: NSObject, IslandHosting {
     }
 
     func recordingChanged() {
-        if !isRecording { confirmingDiscard = false }
+        if !isRecording, confirmingDiscard { confirmDiscard(false, rebuild: false) }
         refresh()
     }
 
-    func confirmDiscard(_ on: Bool) {
+    /// Discard's question while recording. It takes the keyboard while it shows, as the switcher does (the panel is
+    /// non-activating: the app being recorded stays in front): ↩ chooses Keep Recording — the default, the safe one —
+    /// and Esc closes the island, which keeps it too.
+    func confirmDiscard(_ on: Bool, rebuild: Bool = true) {
         confirmingDiscard = on
+        if on {
+            panel?.keyable = true
+            panel?.makeKey()
+            panel?.makeFirstResponder(view)
+        } else if drawer != .switcher {
+            panel?.keyable = false
+            panel?.resignKey()
+        }
+        guard rebuild else { return }
         content.rebuild()
         wake()
     }
