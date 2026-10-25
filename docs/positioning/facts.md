@@ -17,7 +17,7 @@ to it. When a number is unknown it says "not measured" or "not published".
 | | English | 中文 |
 |---|---|---|
 | Title | The keyboard for the agent era. | Agent 时代的输入法 |
-| Supporting line | The quickest way to work with your agents: text, voice, screenshots, screen recordings and more. Runs on your computer. Free and open source. | 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。 |
+| Supporting line | The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source. | 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。 |
 
 ## 1. Positioning
 
@@ -47,7 +47,7 @@ rebuild integrations your agent already has.
 - Works in chat apps, mail, editors and terminals. In terminals and code editors the text stays on one line. It never
   types into a password field. (`docs/guide.md` §7)
 
-**2. Snaps and voice notes as cards.** A snap or a voice note hangs as a card under the notch until you use it, and
+**2. Snaps and voice notes as cards.** A snap or a voice note stays as a card under the notch until you use it, and
 you drag or paste it into any app.
 
 - `⌥⇧A` snap: drag an area, say or type what's wrong, and stop talking for about 2 s to save it. Drag on the picture to
@@ -65,7 +65,7 @@ items your agent can work on.
 
 - `⌥⇧R` starts and stops a recording of an area, a window or the full screen. Hold `⌃` and drag to circle something;
   the ink fades after 3 s. (`README.md` §How it feels)
-- Your coding agent splits the recording into items (bugs, ideas, notes, todos), picks a frame for each, marks the
+- Your coding agent splits the recording into items (issues, ideas, notes, tasks), picks a frame for each, marks the
   spot, and writes actual vs. expected, repro steps and suspected code. (`README.md`)
 - You review each item with the keyboard (`A` keep, `X` discard, `J/K` next and previous), then export to
   Markdown/CSV or a hand-off bundle (`.zip`), have your agent file them wherever your team works (GitHub, Linear,
@@ -140,7 +140,7 @@ What polish keeps (Blurt, synthetic eval sets):
 | Platforms | Dictation and cards: macOS. Recording → items: macOS, Windows, Linux (X11). | macOS, Windows, Linux, iOS, Android ([home](https://www.typeless.com/)) | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
 | Offline | Dictation needs no network once the models are downloaded; not yet tested with the network switched off. | No (transcription is in the cloud) | No (transcription is in the cloud) | Yes, with local models ("works offline") | No (cloud) |
 | Styles | Verbatim, Light, Structured, Auto; a style per kind of app (chat, code and terminals, mail, notes, other); `⇧` during a take; `⌥⇧L` afterwards | No style picker; tone adapts per app automatically ([home](https://www.typeless.com/)) | Styles per category, English only; cleanup levels None to High ([docs](https://docs.wisprflow.ai/articles/2368263928-how-to-setup-flow-styles)) | Modes with your own prompts, switchable during a take ([docs](https://superwhisper.com/docs/modes)) | Custom instructions (Pro) |
-| Custom words | Words list, learned from your corrections (with Undo), plus the text around the cursor; words are hints, never replacements | Personal dictionary | Dictionary | Vocabulary and replacements | Personal dictionary (Pro) |
+| Custom words | Words (a list of names and terms), learned from your corrections (with Undo), plus the text around the cursor; words are hints, never replacements | Personal dictionary | Dictionary | Vocabulary and replacements | Personal dictionary (Pro) |
 | Snap and voice-note cards for agents | Yes | No | No | No | No |
 | Screen recording → items with frames and code pointers | Yes | No | No | No | No |
 | Hand-off to coding agents, status back through MCP | Yes (Claude Code, Codex; Kimi Code, OpenCode, Gemini CLI for processing) | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
@@ -160,7 +160,7 @@ Blurt is a Mac app, so some themes don't carry over. The rest of the research (r
 | **Rewrites what I said**: paraphrases, summarizes, turns speech into lists. "now it just writes what it thinks I said" (akmeds301, Typeless iOS, 2026-10-22) | Ranked first in `dictation-styles.md`; 4 of 57 low Typeless ratings; Wispr's own changelog added cleanup levels after the same complaint | Light is the default and never restructures or summarizes. If polish drops or adds content, the raw transcript is typed instead. Verbatim types exactly what the speech model heard. Structured happens only when you press `⇧`, and `⌥⇧L` switches the last dictation back. | Done |
 | **Takes lost or cut off**. "It keeps stopping mid-sentence and missing what I said" (er ep er, Typeless iOS, 2026-07-12); "everything i said was just eaten" (nerdhappy, Wispr Flow iOS, 2026-10-11) | 5 of 57 low Typeless ratings; 5 of 29 low Wispr ratings | Live text shows what was heard while you talk. Every dictation is kept in Dictation History for 30 days, with Copy. The mic opens on the key-down, so the first words aren't cut off (measured: audio from 5–6 ms after the key with a mic that starts at once). Keeping the audio until the paste is confirmed is planned, not built. | Partial |
 | **Price and word limits**. "2000 is way too low" (Yeahyea588, Typeless iOS, 2026-09-28) | About 11 of 57 low Typeless ratings; 3 of 29 for Wispr | Free and open source, no word limit, no account. Recordings use your own agent's tokens. | Done |
-| **Names, languages and scripts**. "I spoke in Cantonese, but it showed the simplified Chinese" (plchan, Typeless iOS) | About 6 of 57 low Typeless ratings; also V2EX and 极客公园 on names and mixed Chinese–English | A Words list the speech model listens for; learning from your fixes (it learns a word, never a replacement); the text around the cursor. Simplified-Chinese users get simplified characters; Traditional users keep what the model wrote. Cantonese was not measured. A setting to limit dictation to your languages: not yet. | Partial |
+| **Names, languages and scripts**. "I spoke in Cantonese, but it showed the simplified Chinese" (plchan, Typeless iOS) | About 6 of 57 low Typeless ratings; also V2EX and 极客公园 on names and mixed Chinese–English | Words, a list of names and terms the speech model listens for; learning from your fixes (it learns a word, never a replacement); the text around the cursor. Simplified-Chinese users get simplified characters; Traditional users keep what the model wrote. Cantonese was not measured. A setting to limit dictation to your languages: not yet. | Partial |
 | **Microphone on in the background, privacy**. "the microphone stays on even when not using the keyboard" (RichardS_23, Typeless iOS) | About 8 of 57 low Typeless ratings, mostly about the iOS keyboard; Wispr once sent screenshots for context (`dictation-styles.md` §1) | Speech is processed on the Mac. The mic opens when you press the key and closes when you stop. Blurt reads about 500 characters around the cursor for spelling and keeps it only for that dictation; password fields are never read. No screenshots for dictation. | Done |
 | **Slow**. Typeless measured at about 3.0 s in one comparison | Common on r/macapps and V2EX (`dictation-styles.md` §1, theme 6) | About 0.3–0.5 s from releasing the key to the paste on the test Mac (§2.1). Not measured on 16 GB or 8 GB Macs. | Done on the test Mac; other Macs not measured |
 | **Can't see the words before sending**. "It doesn't add the punctuation in real time" (Karen Fanboy, Wispr Flow iOS, 2026-10-17) | Raised by Blurt's own users and in our dogfood run | Live text under the notch: first words after about 0.6 s, average lag 0.9–1.3 s (§2.2). | Done (16 GB Macs and up) |

@@ -15,7 +15,7 @@
 | | 中文 | English |
 |---|---|---|
 | 标题 | Agent 时代的输入法 | The keyboard for the agent era. |
-| 副标题 | 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。 | The quickest way to work with your agents: text, voice, screenshots, screen recordings and more. Runs on your computer. Free and open source. |
+| 副标题 | 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。 | The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source. |
 
 ## 1. 定位
 
@@ -23,7 +23,7 @@
 
 口喷鸡是一个菜单栏 App，给每天和 AI Agent 打交道的人用，比如 Claude Code、Codex、Cursor、Claude、ChatGPT、豆包。它管的是
 Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框。按 `Fn` 说话，文字打在任意 App 的光标处；截一块屏幕，说一句哪里不对，
-把图和备注拖进 Agent 所在的聊天框或终端；一边录屏一边讲，你的 Agent 把录屏整理成一条条事项，带截图、复现步骤和最可能出问题的代码。
+把图和备注拖进 Agent 所在的聊天框或终端；一边录屏一边讲，你的 Agent 把录屏整理成条目，带截图、复现步骤和最可能出问题的代码。
 语音在你自己的电脑上转成文字。口喷鸡配合你已经在用的 Agent 工作：它自己不做 Agent，也不重复做 Agent 已有的集成。
 
 ### 三项能力
@@ -34,12 +34,12 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
   （`docs/guide.md` §7）
 - 识别和润色都在 Mac 上运行：识别用 Qwen3-ASR（32 GB 及以上内存用 1.7B，16–24 GB 用 0.6B），润色用 Gemma 4 E2B，都通过 MLX。
   （`docs/design/dictation.md` §Recognition model、§Defaults by hardware tier）
-- 默认的「轻整理」去掉语气词和口吃，加标点；不改写、不概括、不翻译，也不把话排成列表。说话时单按 `⇧` 切到「结构化」：你确实在列点时
-  排成列表。`⌥⇧L` 重排上一条听写。（`docs/guide.md` §7）
+- 默认的「轻整理」去掉语气词和口吃，加标点；不改写、不概括、不翻译，也不把话排成清单。说话时单按 `⇧` 切到「结构化」：你确实在列点时
+  排成清单。`⌥⇧L` 重排上一条听写。（`docs/guide.md` §7）
 - 说话时，识别出的文字显示在刘海下方，大约落后一秒，你可以在文字进去之前决定直接发送还是先改。（`docs/design/dictation.md` §Live text）
 - 聊天软件、邮件、编辑器、终端都能用；在终端和代码编辑器里文字保持一行；不会往密码框里打字。（`docs/guide.md` §7）
 
-**2. 截图和语音备注挂成卡片。** 截图或语音备注挂在刘海下方，用的时候拖进或粘贴到任意 App。
+**2. 截图和语音备注变成卡片。** 截图或语音备注作为卡片留在刘海下方，用的时候拖进或粘贴到任意 App。
 
 - `⌥⇧A` 截图：框一块区域，说一句（或打字）哪里不对，停约 2 秒就保存；可以在图上拖动圈出位置。`⌥⇧V` 语音备注：最长 10 分钟。
   （`docs/guide.md` §1）
@@ -48,16 +48,16 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 - 单击卡片复制，再 `⌘V`；按住 `⌘` 点几张，一起复制；`⌥⇧H` 放下卡片，用键盘操作。（`docs/guide.md` §3）
 - 拖走的卡片 7 天内还能找回；删除的卡片 5 秒内可以撤销。（`docs/guide.md` §3）
 
-**3. 录屏整理成事项，再交给 Agent。** 一边录屏一边讲，拿回一份 Agent 可以接着做的事项清单。
+**3. 录屏整理成条目，再交给 Agent。** 一边录屏一边讲，拿回一份 Agent 可以接着做的条目清单。
 
 - `⌥⇧R` 开始、再按一次结束，可以录一块区域、一个窗口或全屏。按住 `⌃` 拖动可以在屏幕上圈出来，笔迹 3 秒后消失。
   （`README.zh-CN.md` §用起来是什么样）
-- 你的 coding agent 把录屏拆成一条条事项（问题、想法、笔记、待办），给每条挑一帧截图、框出位置，写好实际效果和预期效果、复现步骤、
+- 你的 coding agent 把录屏拆成条目（问题、想法、笔记、任务），给每条挑一帧截图、框出位置，写好实际效果和预期效果、复现步骤、
   可能有关的代码。（`README.zh-CN.md`）
 - 用键盘一条条过（`A` 要做、`X` 丢弃、`J/K` 下一条/上一条），然后导出成 Markdown/CSV 或交接包（`.zip`），让 Agent 用它自己的工具
   建到团队在用的地方（GitHub、Linear、飞书、Slack……），或者让 Agent 去改。（`README.zh-CN.md`、`skills/blurt/reference/export-other.md`）
-- 「交给 Agent」（`⌘↩`）在口喷鸡里、在项目文件夹中启动 Claude Code 或 Codex，可以每条事项一个 git worktree。「复制指令」给你自己的
-  Agent 一行指令，指向一份交接说明：事项、你说的话、步骤、可能有关的代码和截图。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」
+- 「交给 Agent」（`⌘↩`）在口喷鸡里、在项目文件夹中启动 Claude Code 或 Codex，可以每个条目一个 git worktree。「复制指令」给你自己的
+  Agent 一行指令，指向一份交接说明：条目、你说的话、步骤、可能有关的代码和截图。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」
   一律只算「待验证」。（`docs/guide.md` §5、`skills/blurt/reference/sessions.md`）
 - 没有代码的同事也能用 App 录屏，把视频发过来，开发这边的 Agent 结合代码处理。（`README.zh-CN.md`）
 
@@ -117,14 +117,14 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 
 | | **口喷鸡** | Typeless | Wispr Flow | Superwhisper | Aqua Voice |
 |---|---|---|---|---|---|
-| 价格 | 免费，MIT 协议，不限字数。录屏整理成事项用的是你自己的 coding agent；三段 7–20 分钟的真实录屏，按 API 价格每段约 2–2.6 美元（`README.md` FAQ）。 | 免费版每周有额度；Pro 按年付每月 12 美元，按月付 30 美元（[定价页](https://www.typeless.com/pricing)）。App Store 用户说免费额度从每周 8,000 字降到了 2,000 字。 | 免费版桌面端每周 2,000 词；Pro 每月 15 美元，按年付每月 12 美元（[定价页](https://wisprflow.ai/pricing)） | 免费版可用本地 Whisper 模型；Pro 每月 8.49 美元（[superwhisper.com](https://superwhisper.com/)）；第三方指南说按年 84.99 美元、买断 249.99 美元（[Voibe](https://www.getvoibe.com/resources/superwhisper-pricing/)，竞争厂商） | 免费 1,000 词；Pro 每月 12 美元，按年付每月 10 美元；Max 每月 24 美元（[定价页](https://aquavoice.com/pricing)） |
-| 语音在哪里处理 | 在你的电脑上。可选：录屏可以用你自己的 Groq、OpenAI 或 DashScope（阿里云百炼）密钥。写事项由你选的 Agent 完成，它会把转写文字和几帧截图发给这个 Agent 的模型服务商。 | 云端：「Transcription is performed on the cloud」（[数据说明](https://typeless.com/data-controls)，2026-10-13 更新） | 云端：「Transcription always occurs on the cloud」（[数据说明](https://wisprflow.ai/data-controls)，2026-08-18 更新） | 本地模型或云端模型，自己选（[文档](https://superwhisper.com/docs/llms-full.txt)） | 云端：「dictation runs in the cloud」（[Aqua 博客](https://aquavoice.com/blog/wispr-flow-alternatives)） |
-| 平台 | 听写和卡片：macOS。录屏整理成事项：macOS、Windows、Linux（X11）。 | macOS、Windows、Linux、iOS、Android（[官网](https://www.typeless.com/)） | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android |
+| 价格 | 免费，MIT 协议，不限字数。录屏整理成条目用的是你自己的 coding agent；三段 7–20 分钟的真实录屏，按 API 价格每段约 2–2.6 美元（`README.md` FAQ）。 | 免费版每周有额度；Pro 按年付每月 12 美元，按月付 30 美元（[定价页](https://www.typeless.com/pricing)）。App Store 用户说免费额度从每周 8,000 字降到了 2,000 字。 | 免费版桌面端每周 2,000 词；Pro 每月 15 美元，按年付每月 12 美元（[定价页](https://wisprflow.ai/pricing)） | 免费版可用本地 Whisper 模型；Pro 每月 8.49 美元（[superwhisper.com](https://superwhisper.com/)）；第三方指南说按年 84.99 美元、买断 249.99 美元（[Voibe](https://www.getvoibe.com/resources/superwhisper-pricing/)，竞争厂商） | 免费 1,000 词；Pro 每月 12 美元，按年付每月 10 美元；Max 每月 24 美元（[定价页](https://aquavoice.com/pricing)） |
+| 语音在哪里处理 | 在你的电脑上。可选：录屏可以用你自己的 Groq、OpenAI 或 DashScope（阿里云百炼）密钥。写条目由你选的 Agent 完成，它会把转写文字和几帧截图发给这个 Agent 的模型服务商。 | 云端：「Transcription is performed on the cloud」（[数据说明](https://typeless.com/data-controls)，2026-10-13 更新） | 云端：「Transcription always occurs on the cloud」（[数据说明](https://wisprflow.ai/data-controls)，2026-08-18 更新） | 本地模型或云端模型，自己选（[文档](https://superwhisper.com/docs/llms-full.txt)） | 云端：「dictation runs in the cloud」（[Aqua 博客](https://aquavoice.com/blog/wispr-flow-alternatives)） |
+| 平台 | 听写和卡片：macOS。录屏整理成条目：macOS、Windows、Linux（X11）。 | macOS、Windows、Linux、iOS、Android（[官网](https://www.typeless.com/)） | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android |
 | 离线 | 模型下载好之后，听写不需要联网；还没有在断网状态下实测。 | 不能（转写在云端） | 不能（转写在云端） | 能，用本地模型时（「works offline」） | 不能（云端） |
 | 风格 | 原话、轻整理、结构化、自动；按 App 类型设风格（聊天、代码和终端、邮件、笔记、其他）；说话时按 `⇧`；事后 `⌥⇧L` | 没有风格选项；按 App 自动调语气（[官网](https://www.typeless.com/)） | 按类别设 Styles，只支持英文；整理程度从 None 到 High（[文档](https://docs.wisprflow.ai/articles/2368263928-how-to-setup-flow-styles)） | 模式（Modes），可以写自己的 prompt，说话中途可以切换（[文档](https://superwhisper.com/docs/modes)） | 自定义指令（Pro） |
-| 自定义词 | 词表，会从你的修改里学（可撤销），也参考光标前后的文字；词只作提示，从不替换 | 个人词典 | 词典 | 词汇和替换规则 | 个人词典（Pro） |
+| 自定义词 | 词库，会从你的修改里学（可撤销），也参考光标前后的文字；词只作提示，从不替换 | 个人词典 | 词典 | 词汇和替换规则 | 个人词典（Pro） |
 | 截图、语音备注卡片，交给 Agent | 有 | 没有 | 没有 | 没有 | 没有 |
-| 录屏整理成带截图和代码定位的事项 | 有 | 没有 | 没有 | 没有 | 没有 |
+| 录屏整理成带截图和代码定位的条目 | 有 | 没有 | 没有 | 没有 | 没有 |
 | 交给 coding agent，并通过 MCP 回报状态 | 有（Claude Code、Codex；整理录屏还支持 Kimi Code、OpenCode、Gemini CLI） | 没有 | 没有 | 没有 | 免费版列出了「MCP/CLI」，没有细看 |
 
 ---
@@ -138,10 +138,10 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 
 | 抱怨 | 大致多常见 | 口喷鸡的做法 | 状态 |
 |---|---|---|---|
-| **改了我说的话**：改写、概括、硬排成列表。"now it just writes what it thinks I said"（akmeds301，Typeless iOS，2026-10-22） | `dictation-styles.md` 里排第一；Typeless 57 条低分里 4 条；Wispr 也因为同样的抱怨，在更新日志里加了整理程度档位 | 默认「轻整理」，从不重排、不概括。润色如果丢了或多了内容，就改打原始转写。「原话」打的就是识别模型听到的。只有按 `⇧` 才「结构化」，`⌥⇧L` 可以把上一条改回去。 | 已做 |
-| **说的内容丢了、中途断了**。「频繁中断、内容直接丢失」（Hao wang11，Typeless iOS，2026-07-22）；"everything i said was just eaten"（nerdhappy，Wispr Flow iOS，2026-10-11） | Typeless 57 条低分里 5 条；Wispr 29 条低分里 5 条 | 说话时就能看到识别出的文字。每条听写在「听写记录」里保存 30 天，可以复制。按下键的那一刻就开麦，开头的字不会被吞（实测：麦克风即开时，从按键后 5–6 毫秒就有音频）。「粘贴确认之前一直保留音频」还在计划里，没做。 | 部分做了 |
+| **改了我说的话**：改写、概括、硬排成清单。"now it just writes what it thinks I said"（akmeds301，Typeless iOS，2026-10-22） | `dictation-styles.md` 里排第一；Typeless 57 条低分里 4 条；Wispr 也因为同样的抱怨，在更新日志里加了整理程度档位 | 默认「轻整理」，从不重排、不概括。润色如果丢了或多了内容，就改打原始转写。「原话」打的就是识别模型听到的。只有按 `⇧` 才「结构化」，`⌥⇧L` 可以把上一条改回去。 | 已做 |
+| **说的内容丢了、中途断了**。「频繁中断、内容直接丢失」（Hao wang11，Typeless iOS，2026-07-22）；"everything i said was just eaten"（nerdhappy，Wispr Flow iOS，2026-10-11） | Typeless 57 条低分里 5 条；Wispr 29 条低分里 5 条 | 说话时就能看到识别出的文字。每条听写在「听写历史」里保存 30 天，可以复制。按下键的那一刻就开麦，开头的字不会被吞（实测：麦克风即开时，从按键后 5–6 毫秒就有音频）。「粘贴确认之前一直保留音频」还在计划里，没做。 | 部分做了 |
 | **价格和字数额度**。"2000 is way too low"（Yeahyea588，Typeless iOS，2026-09-28） | Typeless 57 条低分里约 11 条；Wispr 29 条里 3 条 | 免费开源，不限字数，不用注册账号。录屏整理用的是你自己 Agent 的 token。 | 已做 |
-| **人名、语言、简繁**。"I spoke in Cantonese, but it showed the simplified Chinese"（plchan，Typeless iOS） | Typeless 57 条低分里约 6 条；V2EX、极客公园也提到名词和中英混说 | 有词表，识别模型会照着听；从你的修改里学（学的是词，不是替换规则）；参考光标前后的文字。简体用户得到简体字，繁体用户保留模型写的字。粤语没测。「听写只认你说的那几种语言」的设置：还没做。 | 部分做了 |
+| **人名、语言、简繁**。"I spoke in Cantonese, but it showed the simplified Chinese"（plchan，Typeless iOS） | Typeless 57 条低分里约 6 条；V2EX、极客公园也提到名词和中英混说 | 有词库，识别模型会照着听；从你的修改里学（学的是词，不是替换规则）；参考光标前后的文字。简体用户得到简体字，繁体用户保留模型写的字。粤语没测。「听写只认你说的那几种语言」的设置：还没做。 | 部分做了 |
 | **后台一直开着麦克风，隐私**。"the microphone stays on even when not using the keyboard"（RichardS_23，Typeless iOS） | Typeless 57 条低分里约 8 条，多数是 iOS 键盘的问题；Wispr 曾为了上下文发送截图（`dictation-styles.md` §1） | 语音在 Mac 上处理。按下键才开麦，结束就关。为了拼对名词，会读光标前后约 500 个字符，只用于这一次听写；从不读密码框。听写不截屏。 | 已做 |
 | **慢**。一篇对比里 Typeless 约 3.0 秒 | r/macapps、V2EX 上常见（`dictation-styles.md` §1 第 6 条） | 测试机上从松键到粘贴约 0.3–0.5 秒（§2.1）。16 GB、8 GB 的 Mac 没测。 | 测试机上已做；其他机型没测 |
 | **发送前看不到识别结果**。"It doesn't add the punctuation in real time"（Karen Fanboy，Wispr Flow iOS，2026-10-17） | 口喷鸡自己的用户提过，内部试用也发现了 | 刘海下方显示实时文字：约 0.6 秒出第一批字，平均落后 0.9–1.3 秒（§2.2）。 | 已做（16 GB 及以上） |
@@ -164,9 +164,9 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 5. **截图卡片拖进 Claude。** `⌥⇧A`，圈出有问题的按钮，说一句，把卡片拖进 Claude 桌面版：先进去图片，再在同一个输入框里贴上备注。
    拍中文版时可以换成飞书或微信。
 6. **同一张卡片拖进终端。** Claude Code 拿到图片路径和一份 Markdown 备注，命令行里什么都不会执行。
-7. **录屏整理成事项。** 一段 5 分钟、12 条的录屏，点「完成」后 51 秒就能开始审；一段 14 分钟的录屏，本地转写 12 秒，整理出 23 条，
+7. **录屏整理成条目。** 一段 5 分钟、12 条的录屏，点「完成」后 51 秒就能开始审；一段 14 分钟的录屏，本地转写 12 秒，整理出 23 条，
    Agent 的 token 约 2.6 美元。（`README.md` FAQ）
-8. **事项交给 Agent，再收回来。** 在一条事项上按 `⌘↩`，Codex 在 worktree 里开工；Agent 调用 `mark_fixed` 后，0.5 秒内事项显示「待验证」。
+8. **条目交给 Agent，再收回来。** 在一个条目上按 `⌘↩`，Codex 在 worktree 里开工；Agent 调用 `mark_fixed` 后，0.5 秒内条目显示「待验证」。
    （`promo/cases/v0.9-dogfood/work/timeline.md`）
 9. **同事录的屏，你的 Agent 来处理。** 设计师用 App 录好，通过 Slack 或飞书把视频发过来；你对 Agent 说「处理这个视频」。交接说明里
    是本机文件路径，所以目前要分享的是视频本身。
@@ -195,11 +195,11 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 
 ## 6. 常见问题素材
 
-**我的声音会离开电脑吗？** 听写、截图和语音备注不会：识别和润色都在你的 Mac 上。听写的音频转写完就删除，除非你选择保留；听写记录保存
-30 天。截图、语音备注和录屏留在你的文件夹里，直到你删除。Agent 把录屏整理成事项时，转写文字和几帧截图会发给这个 Agent 的服务商，
+**我的声音会离开电脑吗？** 听写、截图和语音备注不会：识别和润色都在你的 Mac 上。听写的音频转写完就删除，除非你选择保留；听写历史保存
+30 天。截图、语音备注和录屏留在你的文件夹里，直到你删除。Agent 把录屏整理成条目时，转写文字和几帧截图会发给这个 Agent 的服务商，
 和你交给这个 Agent 的其他内容一样。
 
-**要花钱吗？** 口喷鸡免费，MIT 协议，不限字数。录屏整理成事项用的是你自己的 Agent：三段 7–20 分钟的真实录屏，按 API 价格每段约
+**要花钱吗？** 口喷鸡免费，MIT 协议，不限字数。录屏整理成条目用的是你自己的 Agent：三段 7–20 分钟的真实录屏，按 API 价格每段约
 2–2.6 美元（`README.md` FAQ）。
 
 **用哪些模型，多大？**（`skills/blurt/scripts/asr_models.json`、`polish_models.json`）
@@ -220,7 +220,7 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 Windows、Linux（X11）。Windows 和 Linux 上的听写在计划中，还没做（`TODO.md`）。没有手机 App。
 
 **支持哪些语言？** 听写测过中文、英文和中英混说。口喷鸡的模型清单里 Qwen3-ASR 列了 30 种语言，其他语言没有测过听写。录屏：SenseVoice
-支持中、英、日、韩、粤语；Whisper 支持 99 种语言。事项用你说的语言写。App 界面有英文和简体中文。
+支持中、英、日、韩、粤语；Whisper 支持 99 种语言。条目用你说的语言写。App 界面有英文和简体中文。
 
 **会取代我的 Agent 吗？** 不会。它给你在用的 Agent 供料：Claude Code、Codex、Cursor、Claude、ChatGPT、豆包，或者任何聊天框。
 

@@ -3,8 +3,8 @@ name: blurt
 description: >-
   Screen + voice → structured work. The user records their screen while talking (demoing their product, browsing,
   exploring an idea); turn the recording into items — bug/polish issues with repro steps, frames and suspected code,
-  ideas with the inspiration behind them, notes, todos — let them review on a local page, then export (Markdown/CSV,
-  a hand-off .zip, or any tracker or chat through the tools you already have) or start fixing. Use when the user
+  ideas with the inspiration behind them, notes, tasks — let them review on a local page, then export (Markdown/CSV,
+  a hand-off bundle (.zip), or any tracker or chat through the tools you already have) or start fixing. Use when the user
   wants to record feedback / QA / ideas by talking while using their screen, hands over such a video, wants to
   process recordings from the Blurt app, or wants their Blurt items packed up and sent somewhere.
   Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
@@ -152,7 +152,7 @@ the page, `"reviewed": false` then; prints `REVIEW <url>`, a private local addre
 that URL if no browser can open where you run: SSH, container) and tell the user in one short message:
 - ≤ 5 items: the numbered list (kind · title · owner/module, plus `questions`); more: counts by kind, the headline
   items, open questions; screenshots are still filling in;
-- two lines on the page: one item at a time — **A** keep · **X** drop · **J/K** next/prev · **Z** undo · **?** keys;
+- two lines on the page: one item at a time — **A** keep · **X** discard · **J/K** next/prev · **Z** undo · **?** keys;
   fields editable in place; **G** list view; **V** overview; "完成审核" hands it back.
 
 From here on the user edits the same items: change them **only** with `items.py` (`patch`, `set-frames`, `add`,
@@ -225,9 +225,10 @@ other destination goes through the tools you already have.
   `frames/`, `clips/` — relative paths only, so it opens on a teammate's machine (paths in the text are made
   relative or cut to the file name; a frame no longer on disk is named as not included). It prints the zip's absolute
   `path` and `summary`, one paragraph
-  to post with the file. Grouping is your judgement, not a rule: "把 A 模块的问题打包发给飞书群里的张三" → find A's
-  issues (`search_items` / `index.py search`, read their `module`, `owner`, titles), one bundle per group with a
-  `--title` that says who it is for, then send it with the user's own tool for that chat. Bundling changes no state.
+  to post with the file. Grouping is your judgement, not a rule: "Bundle the checkout issues and post them to #web
+  in Slack" or "把 A 模块的问题打包发给飞书群里的张三" → find those issues (`search_items` / `index.py search`, read
+  their `module`, `owner`, titles), one bundle per group with a `--title` that says who it is for, then send it with
+  the user's own tool for that chat. Bundling changes no state.
 - A document rather than a list ("整理成需求文档和设计文档", a brief, a comparison — typically after walking through
   reference sites or a competitor, often across several recordings) → `reference/docs.md`.
 Confirm destination and count before creating or sending anything remotely; report links afterwards. Then offer the
@@ -236,13 +237,13 @@ prototype / spec of the top one?".
 
 ## 7. Work on items (and say so)
 
-When the user asks you to handle items — "fix these", a Blurt session that started you, a handoff file
+When the user asks you to handle items — "fix these", a Blurt session that started you, a hand-off note
 (`~/.blurt/handoff/H-….md`, see `reference/sessions.md`) — for each item:
 1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <uid|id>` and open the frame files
    (absolute paths). Look at the frames; they are the evidence.
 2. `items.py state <uid> --state in_progress` (MCP: `mark_fixed(uid, state="fixing")`) before you start — the app
    shows it in progress.
-3. Do it, smallest change that does it. Commit only when the handoff says so (a worktree session); never push.
+3. Do it, smallest change that does it. Commit only when the hand-off note says so (a worktree session); never push.
 4. `items.py state <uid> --state to_verify --claim fixed --note "<one line: what changed, which files>"`
    (`--commit SHA` / `--pr URL` if there is one; MCP: `mark_fixed(uid, state="fixed", note=…)`); can't or shouldn't →
    `--claim wontfix --note "<why>"`. That is your claim: the item waits in the user's inbox as *to verify* — only
@@ -273,5 +274,5 @@ The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_serv
 plugin registers it for Claude Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first
 shows what changes). Prefer the tools when they are there; they write through items.py like everything else.
 
-Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, handoff files and the jobs the app shows:
+Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, hand-off notes and the jobs the app shows:
 `reference/sessions.md`.
