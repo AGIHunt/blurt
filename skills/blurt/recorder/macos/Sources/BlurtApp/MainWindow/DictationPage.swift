@@ -142,7 +142,7 @@ final class DictationHistoryModel: ObservableObject {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return entries }
         return entries.filter { e in
-            [e.finalText, e.text, e.raw, e.polished ?? "", e.app ?? ""].contains { $0.lowercased().contains(q) }
+            [e.finalText, e.text, e.raw, e.polished ?? "", AppNames.display(name: e.app, bundle: e.bundle) ?? ""].contains { $0.lowercased().contains(q) }
                 || (extras[e.id]?.terms.contains { $0.lowercased().contains(q) } ?? false)
         }
     }
@@ -728,7 +728,7 @@ struct DictationRow: View {
                 if let i = DictationHistoryModel.icon(e.bundle) {
                     Image(nsImage: i).resizable().interpolation(.high).frame(width: 14, height: 14)
                 }
-                Text(e.app ?? T("main.dictation.unknown_app")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                Text(AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                     .lineLimit(1)
                 marks(x)
                 Spacer(minLength: 6)
@@ -956,7 +956,7 @@ struct DictationDetailView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35)))
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(e.app ?? T("main.dictation.unknown_app")).font(.system(size: 17, weight: .semibold))
+                Text(AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")).font(.system(size: 17, weight: .semibold))
                 Text("\(DictationHistoryModel.dayTitle(e.time)) \(DictationHistoryModel.time(e.time)) · \(DictationHistoryModel.duration(e.duration))")
                     .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
             }
@@ -1127,7 +1127,7 @@ struct DictationDetailView: View {
     func info(_ e: DictationEntry) -> some View {
         let x = m.extras[e.id]
         return Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 8) {
-            row(T("main.dictation.info.app"), e.app ?? T("main.dictation.unknown_app"))
+            row(T("main.dictation.info.app"), AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app"))
             row(T("main.dictation.info.when"), Loc.dateTime(e.time))
             row(T("main.dictation.info.length"), DictationHistoryModel.duration(e.duration))
             row(T("main.dictation.info.result"), e.insert == "pasted" ? T("main.dictation.info.pasted")

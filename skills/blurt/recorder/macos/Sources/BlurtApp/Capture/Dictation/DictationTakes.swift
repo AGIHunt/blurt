@@ -211,7 +211,7 @@ extension Dictation {
             emit(["event": "dictation_send", "result": "skipped", "why": "asr_failed", "after": "paste"])
         }
         LiveTranscript.shared.end(session: take.liveSession)
-        let e = DictationEntry(id: take.id, time: take.started, app: take.front?.localizedName ?? take.bundle,
+        let e = DictationEntry(id: take.id, time: take.started, app: AppNames.name(for: take.bundle ?? take.front?.bundleIdentifier, running: take.front),
                                bundle: take.bundle ?? take.front?.bundleIdentifier, duration: take.duration, raw: "",
                                polished: nil, text: "", model: nil, fellBack: false, reason: "asr_failed:\(f.code)",
                                insert: "none", audio: "audio/\(take.wav.lastPathComponent)")
@@ -396,7 +396,7 @@ extension Dictation {
             if labKeep { Dictation.set("lab_keep_next", Dictation.labKeepNext - 1) }
             let keep = Dictation.keepAudio || labKeep
             if !keep { try? FileManager.default.removeItem(at: take.wav) }
-            var entry = DictationEntry(id: id, time: take.started, app: bundle == app?.bundleIdentifier ? app?.localizedName : bundle,
+            var entry = DictationEntry(id: id, time: take.started, app: AppNames.name(for: bundle, running: app),
                                        bundle: bundle, duration: take.duration, raw: r.asrText, polished: r.polished, text: text,
                                        model: r.model, fellBack: r.fellBack, reason: r.reason,
                                        insert: result.rawValue, audio: keep ? "audio/\(take.wav.lastPathComponent)" : nil,
