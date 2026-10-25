@@ -229,13 +229,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         model.text = ""
         searchItem?.searchField.stringValue = ""
-        model.state = row.discarded ? "discarded" : nil
-        model.kinds = []
-        if model.row(of: uid) == nil {
-            model.scope = row.projectID == "inbox" ? .unassigned : .project(row.projectID)
+        // the place on show if it lists the item (with the filters that show it), else its project, else All Items
+        func look(in s: Scope) -> Bool {
+            model.scope = s
+            model.kinds = []
+            model.state = row.discarded ? "discarded" : nil
             model.reload()
+            return model.row(of: uid) != nil
         }
-        if model.row(of: uid) == nil { model.scope = .all; model.reload() }
+        _ = look(in: model.scope) || look(in: row.projectID == "inbox" ? .unassigned : .project(row.projectID)) || look(in: .all)
         sidebar.select(model.scope)
         list.select(id: uid)
         window?.makeFirstResponder(list.table)
@@ -1136,7 +1138,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     struct State: Codable {
         var frame: String?, sidebar: Double?, detail: Double?, sidebarCollapsed: Bool?
-        var scope: String?, kinds: [String]?, state: String?, sort: String?, ascending: Bool?
+        var scope: String?, sort: String?, ascending: Bool?
+        /// each place's kinds and State filter (PlaceFilters)
+        var filters: PlaceFilters?
+        /// before 0.9: one filter for the whole window (read once, for the place it was saved in)
+        var kinds: [String]?, state: String?
         var selected: [String]?, open: Bool?
     }
     static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
@@ -1160,7 +1166,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.sidebarCollapsed = items[0].isCollapsed
         s.detail = Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
-        s.kinds = model.kinds.sorted(); s.state = model.state
+        s.filters = model.allFilters
         s.sort = model.sort; s.ascending = model.ascending
         s.selected = list.selectedIDs
         s.open = open
@@ -1175,8 +1181,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let f = s?.frame { w.setFrame(from: f) } else { w.center() }
         if let sc = s?.scope.flatMap(Scope.init(key:)) { model.scope = sc }
         if case .project(let p) = model.scope, ProjectStore.shared.project(id: p) == nil { model.scope = .inbox }
-        model.kinds = Set(s?.kinds ?? [])
-        model.state = s?.state.flatMap { $0 == "inbox" || Lifecycle.isState($0) ? $0 : nil }
+        var filters = s?.filters ?? PlaceFilters()
+        if s?.filters == nil, let old = s, old.kinds?.isEmpty == false || old.state != nil {
+            filters.set(PlaceFilter(kinds: old.kinds ?? [], state: old.state), for: model.scope.key)   // never a state the place can't show
+        }
+        model.filters = filters
+        model.applyFilters()
         model.text = ""          // like Finder and Mail: a new window starts without the last search
         model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
         model.ascending = s?.ascending ?? false

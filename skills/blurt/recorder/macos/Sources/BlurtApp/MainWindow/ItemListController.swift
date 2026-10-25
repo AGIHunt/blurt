@@ -714,10 +714,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let q = model.text.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty {
             empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q),
-                       message: model.kinds.count + (model.state == nil ? 0 : 1) > 0
+                       message: model.kinds.count + (model.shownState == nil ? 0 : 1) > 0
                            ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
                        buttons: [(T("main.empty.clear_all"), 2)])
-        } else if model.state == "discarded", model.kinds.isEmpty {
+        } else if model.shownState == "discarded", model.kinds.isEmpty {
             empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         } else if model.filtered {
