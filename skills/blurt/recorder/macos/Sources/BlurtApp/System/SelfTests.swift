@@ -343,12 +343,20 @@ enum SelfTests {
                 out(["projects": c.model.projects.map { "\($0.name) \($0.key)" }, "go": c.shortcutProjects.map(\.name),
                      "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
             }
-        case "mainshortcuts":           // the ? panel, kept up for a screenshot of a build launched in the background
-            let c = MainWindowController.shared
-            c.showShortcuts()
+        case "mainshortcuts":           // mainshortcuts [QUERY | @end]: the ? panel, kept up for a screenshot of a build launched in
+            let c = MainWindowController.shared   // the background; QUERY is typed into its search field
+            if ShortcutsSheet.panel?.isVisible != true { c.showShortcuts() }
             ShortcutsSheet.panel?.hidesOnDeactivate = false
             ShortcutsSheet.panel?.orderFrontRegardless()
-            out(["shown": ShortcutsSheet.panel?.isVisible ?? false, "title": ShortcutsSheet.panel?.title ?? ""])
+            if let p = ShortcutsSheet.panel {
+                if arg == "@end" { p.scrollToEnd() } else {
+                    p.field.stringValue = arg
+                    p.field.currentEditor()?.selectedRange = NSRange(location: (arg as NSString).length, length: 0)
+                    p.search(arg)
+                }
+            }
+            out(["shown": ShortcutsSheet.panel?.isVisible ?? false, "title": ShortcutsSheet.panel?.title ?? "",
+                 "size": ShortcutsSheet.panel.map { "\(Int($0.frame.width))x\(Int($0.frame.height))" } ?? ""])
         case "mainjs":                  // mainjs EXPR: run EXPR in the detail page (as the page's own UI would), its value back
             MainWindowController.shared.detail.web.evaluateJavaScript("JSON.stringify((() => { return \(arg); })())") { r, e in
                 out(["value": (r as? String) ?? NSNull(), "error": e.map { "\($0)" } ?? NSNull()])
