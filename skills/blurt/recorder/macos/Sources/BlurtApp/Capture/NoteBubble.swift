@@ -8,8 +8,10 @@
 //  • the words while they are said (v0.9): the voice note's live text (VoiceNoteStream, interim decodes about once a
 //    second) in the field's place, secondary, the part still being said quieter. When the pause ends it, the final
 //    words go into the field in label colour with "✓ Saved · Goes to …" for `savedSeconds` (at most `wordsWait` for
-//    them), then it tucks away — a click or a key in the words is an edit of them (NoteEdit: it replaces them), and
-//    the stream goes to Snapper, so the card has its words as it lands, not "Transcribing…".
+//    them), then it tucks away — not while the pointer is over it (NoteHold.hovering); a click into the words or a key
+//    that moves the caret pins it open until ⏎ / Esc (the user is fixing a word), and a change to them is an edit
+//    (NoteEdit: it replaces them). The stream goes to Snapper, so the card has its words as it lands, not
+//    "Transcribing…". ⏎ shows the same "Saved" (the check in BrandColor.ok, the line secondary), only shorter.
 //  • it closes by itself only when BlurtCore NoteHold says so: never under the pen (a stroke being drawn holds the
 //    pause end too: NoteEndpointer.activity), `inkGrace` after the last stroke, never while typed text waits for ⏎,
 //    `emptiedGrace` after the text was cleared. A stroke still being drawn when it closes (⏎, ⌥⇧A) is kept.
@@ -19,10 +21,13 @@
 //    committed text counts as typing (NoteTyping: not an IME composition; an emptied field is voice mode again).
 //  • ⏎ (or ✓) keeps the shot — with the note, or without one (with a project it is filed all the same, "Goes to …";
 //    in Auto it hangs as a card). Esc (BlurtCore NoteEsc): typed text first; then the shot is discarded — Trash,
-//    "Discarded · Undo" for 5 s. Gone to another app while not listening: saved `resignSeconds` later.
+//    "Discarded · Undo" for 5 s. Gone to another app: saved `resignSeconds` later, or as soon as it is done listening
+//    and has its words after that (it never floats over every app waiting for ⏎).
 //  • a ⌥⇧V voice note listening already: this bubble is typed only (no second listener), and the voice note's Esc
 //    hotkey is the bubble's while it is open (VoiceInput.yieldEsc).
-//  • the microphone gone mid-note (NoteVoice's watchdog, the engine's configuration change): it ends with what it has.
+//  • the microphone gone mid-note (NoteVoice's watchdog, the engine's configuration change): it ends with what it has;
+//    gone before anything was said, the bubble stays, typed only: "Mic disconnected · type a note". A mic that
+//    doesn't start logs note_voice_start_failed with the reason (NoteVoice.failReason).
 //  • the shot is shown enlarged; a plain drag circles things (the "Drag to circle" hint fades after a moment, or as
 //    soon as the user talks or draws) → the ink is burnt into shots/NNN.marked.png, the original stays as it was.
 //  • ⌥⇧A while it is open saves the note and takes the next shot. Listening starts the warm speech server
@@ -92,6 +97,8 @@ final class NoteVoice {
     var speechSeconds: Double { vad.speechSeconds }
     /// the loudest frame so far (dBFS): a take that is digital silence stays near −120 (BlurtCore VoiceKeep)
     var peakDB: Float { vad.peakDB }
+    /// how long a sound was held above the room: a fan or a hum alone holds none (BlurtCore VoiceKeep)
+    var soundSeconds: Double { vad.soundSeconds }
     /// the user is still at it without talking (drawing on the picture): the pause / no-speech end waits `grace` more
     func activity(grace: Double) { vad.activity(grace: grace) }
     /// when the last buffer arrived (CACurrentMediaTime), for the watchdog
@@ -138,6 +145,8 @@ final class NoteVoice {
     }
 
     var elapsed: Double { vad.heard }
+    /// why `start` answered false (logged as note_voice_start_failed / voice_start_failed)
+    private(set) var failReason: String?
 
     func start(_ ready: @escaping (Bool) -> Void) {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -146,10 +155,11 @@ final class NoteVoice {
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         started = Date()
         startedAt = CACurrentMediaTime()
-        if NoteVoice.testDenied { ready(false); return }
+        if NoteVoice.testDenied { failReason = "test_denied"; ready(false); return }
         if let wav = inject ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"] {
             running = true                  // the feed checks it as it begins
             running = startInjected(URL(fileURLWithPath: wav))
+            if !running { failReason = "inject_unreadable" }
             ready(running)
             return
         }
@@ -157,9 +167,9 @@ final class NoteVoice {
         case .authorized: startMic(ready)
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { ok in
-                DispatchQueue.main.async { if ok { self.startMic(ready) } else { ready(false) } }
+                DispatchQueue.main.async { if ok { self.startMic(ready) } else { self.failReason = "denied"; ready(false) } }
             }
-        default: ready(false)
+        default: failReason = "not_allowed"; ready(false)
         }
     }
 
@@ -177,7 +187,7 @@ final class NoteVoice {
             let inFmt = input.outputFormat(forBus: 0)
             guard inFmt.sampleRate > 0, let conv = AVAudioConverter(from: inFmt, to: self.fmt) else {
                 MicEngine.shared.giveBack(e, builtIn: builtIn)
-                return DispatchQueue.main.async { self.running = false; ready(false) }
+                return DispatchQueue.main.async { self.running = false; self.failReason = "no_input_format"; ready(false) }
             }
             input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(inFmt.sampleRate / 20), format: inFmt) { [weak self] buf, _ in
                 guard let self = self else { return }
@@ -195,7 +205,8 @@ final class NoteVoice {
             do { try e.start() } catch {
                 input.removeTap(onBus: 0)
                 MicEngine.shared.giveBack(e, builtIn: builtIn)
-                return DispatchQueue.main.async { self.running = false; ready(false) }
+                let why = "engine_start: \((error as NSError).domain) \((error as NSError).code)"
+                return DispatchQueue.main.async { self.running = false; self.failReason = why; ready(false) }
             }
             DispatchQueue.main.async {
                 guard self.running else {          // stopped while it was starting
@@ -642,9 +653,12 @@ final class SymbolButton: NSButton {
 /// Key-able, but doesn't activate the app: typing works, the app the user was in stays in front.
 final class NotePanel: NSPanel {
     var onKey: ((NSEvent) -> Bool)?
+    /// every click in the bubble, before it reaches the view under it (the field's editor swallows its own)
+    var onMouseDown: ((NSEvent) -> Void)?
     override var canBecomeKey: Bool { true }
     override func sendEvent(_ e: NSEvent) {
         if e.type == .keyDown, onKey?(e) == true { return }
+        if e.type == .leftMouseDown { onMouseDown?(e) }
         super.sendEvent(e)
     }
 }
@@ -735,6 +749,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     static let wordsWait = 2.5
     /// a ⌥⇧V voice note has the microphone: this bubble takes typing only (no second listener)
     private var voiceBusy = false
+    /// the microphone went before anything was said: typed only now ("Mic disconnected · type a note")
+    private var micGone = false
     /// every open has its own number: a close still fading out never hides the bubble opened after it
     private var generation = 0
     private var closeWork: DispatchWorkItem?
@@ -758,6 +774,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// recording mode: which shots can be switched between, and what to do on close (resume).
     var recordingShots: [Shot] = []
     var onClose: (() -> Void)?
+    /// a recording's note session is open: whether closing it resumes the take (IslandRecording, RecordingNotes)
+    var recordingResume: Bool?
     var anchor: (() -> NSRect?)?
 
     var isOpen: Bool { shot != nil }
@@ -794,6 +812,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         heard = ("", "")
         hold = NoteHold()
         voiceBusy = false
+        micGone = false
         penHintGone = false
         penHint.alphaValue = 1
         original = (s.text, s.voice, s.said, s.strokes)
@@ -823,6 +842,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         p.sharingType = chromeSharing
         p.isMovableByWindowBackground = false
         p.onKey = { [weak self] e in self?.key(e) ?? false }
+        p.onMouseDown = { [weak self] e in self?.pointerDown(e) }
         let root = bg
         p.contentView = root
         canvas.onChange = { [weak self] in self?.inkChanged() }
@@ -1056,10 +1076,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         v.onEnd = { [weak self] e in
             guard let self = self, self.voice === v else { return }
             self.voice = nil
-            if e == .noSpeech || (e == .micLost && !self.speechStarted) {
+            if e == .micLost && !self.speechStarted {
+                // nothing was said: the bubble stays and says so — the note can still be typed
                 self.retakeFell()
                 self.dropStream()
-                if e == .micLost { VoiceInput.say(.micLost) }
+                self.micGone = true
+                emit(["event": "note_mic_gone", "n": self.shot?.n ?? 0])
+                self.refreshStatus()
+                return
+            }
+            if e == .noSpeech {
+                self.retakeFell()
+                self.dropStream()
             } else {
                 self.voiceKept = true
                 self.voiceSpeech = v.speechSeconds
@@ -1081,7 +1109,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         VoiceInput.warmSpeechModel()            // its words come from the warm server, not a cold model load
         v.start { [weak self] ok in
             guard let self = self, self.voice === v else { return }
-            if !ok { self.voice = nil; self.dropStream(); self.retakeFell(); self.refreshStatus() }
+            guard !ok else { return }
+            emit(["event": "note_voice_start_failed", "n": s.n, "why": v.failReason ?? "unknown", "mode": "\(self.mode)"])
+            self.voice = nil; self.dropStream(); self.retakeFell(); self.refreshStatus()
         }
         refreshStatus()
     }
@@ -1134,6 +1164,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         guard isOpen, mode != .recording else { return }
         hold.typed = typed
         hold.drawing = canvas.isDrawing
+        hold.hovering = panel.map { $0.isVisible && $0.frame.contains(NSEvent.mouseLocation) } ?? false
         guard let wait = hold.closeIn(now: CACurrentMediaTime()) else { return }
         if wait > 0 {
             let w = DispatchWorkItem { [weak self] in self?.maybeClose() }
@@ -1143,6 +1174,21 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
         // the words were already shown with "Saved": no second flash
         close(save: true, flash: voiceKept && wordsInField == nil)
+    }
+
+    /// A click into the words shown with "Saved" (to fix one): the bubble stays until ⏎ or Esc (BlurtCore NoteHold).
+    private func pointerDown(_ e: NSEvent) {
+        guard e.window === panel, field.frame.insetBy(dx: -4, dy: -4).contains(bg.convert(e.locationInWindow, from: nil)) else { return }
+        engageWords(via: "click")
+    }
+
+    /// The user is working on the words shown with "Saved" (a click into them, the caret moved): pinned open.
+    private func engageWords(via: String) {
+        guard wordsInField != nil, hold.savedUntil != nil, !hold.pinned else { return }
+        hold.pinned = true
+        hold.savedUntil = nil
+        holdWork?.cancel()
+        emit(["event": "note_words_engaged", "n": shot?.n ?? 0, "via": via])
     }
 
     private func strokeBegan() {
@@ -1164,16 +1210,24 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         emit(["event": "note_resign", "n": shot?.n ?? 0, "app_active": NSApp.isActive])
         // tests on a shared machine: another app coming forward isn't the tester leaving the bubble
         guard !NoteBubble.testIgnoresResign else { return }
+        scheduleResignSave(after: NoteBubble.resignSeconds)
+    }
+
+    /// Saves the bubble once it isn't key and isn't listening or waiting for its words. Still listening (the user
+    /// spoke, typed, then switched apps), it checks again until the voice is done — it never floats over every app.
+    private func scheduleResignSave(after delay: Double) {
         resignWork?.cancel()
         let g = generation
         let w = DispatchWorkItem { [weak self] in
-            guard let self = self, self.generation == g, self.isOpen, self.panel?.isKeyWindow != true,
-                  self.voice?.running != true, !self.hold.waitingWords else { return }
+            guard let self = self, self.generation == g, self.isOpen, self.panel?.isKeyWindow != true else { return }
+            if self.voice?.running == true || self.hold.waitingWords {
+                return self.scheduleResignSave(after: 0.5)
+            }
             emit(["event": "note_resign_commit", "n": self.shot?.n ?? 0])
             self.commit()
         }
         resignWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + NoteBubble.resignSeconds, execute: w)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: w)
     }
 
     private func rerecord() {
@@ -1259,7 +1313,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             } else if hold.voiceDone && voiceKept {
                 status.stringValue = dest + Loc.t("capture.note.save_discard", table: "Capture")
             } else {
-                status.stringValue = dest + Loc.t("capture.note.no_mic", table: "Capture")
+                status.stringValue = dest + Loc.t(micGone ? "capture.note.mic_gone" : "capture.note.no_mic", table: "Capture")
             }
         case .edit:
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
@@ -1325,6 +1379,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func key(_ e: NSEvent) -> Bool {
         // (an IME composition takes its own Esc: it cancels the composition, not the note)
         if e.keyCode == UInt16(kVK_Escape), (field.currentEditor() as? NSTextView)?.hasMarkedText() != true { escape(); return true }
+        // a key in the words shown with "Saved" other than ⏎ (moving the caret to a word): they are being fixed
+        if e.keyCode != UInt16(kVK_Return), e.keyCode != UInt16(kVK_ANSI_KeypadEnter) { engageWords(via: "key") }
         if e.modifierFlags.contains(.command), e.charactersIgnoringModifiers == "z", !canvas.strokes.isEmpty, field.stringValue.isEmpty {
             undoInk(); return true
         }
@@ -1421,6 +1477,20 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         p.sendEvent(e)
     }
 
+    /// A click into the note's field through the panel (down, with its up queued first so the field editor's tracking
+    /// loop ends at once): the same path a click takes.
+    func testClickField() {
+        guard let p = panel, isOpen else { return }
+        let at = bg.convert(NSPoint(x: field.frame.midX, y: field.frame.midY), to: nil)
+        func ev(_ t: NSEvent.EventType) -> NSEvent? {
+            NSEvent.mouseEvent(with: t, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: p.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: t == .leftMouseDown ? 1 : 0)
+        }
+        guard let down = ev(.leftMouseDown), let up = ev(.leftMouseUp) else { return }
+        p.postEvent(up, atStart: false)
+        p.sendEvent(down)
+    }
+
     /// A stroke on the picture through the canvas's own mouse handlers: `down` | `move` | `up` (normalised x,y).
     func testInk(_ phase: String, x: Double, y: Double) {
         guard isOpen, let p = panel, canvas.editable else { return }
@@ -1445,7 +1515,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
          "field": field.stringValue, "placeholder": field.placeholderAttributedString?.string ?? field.placeholderString ?? "",
          "status": status.stringValue, "listening": isListening, "typed": typed, "words_in_field": wordsInField ?? NSNull(),
          "voice_busy": voiceBusy, "strokes": canvas.strokes.count, "drawing": canvas.isDrawing, "generation": generation,
-         "hold": ["voice_done": hold.voiceDone, "waiting_words": hold.waitingWords, "pinned": hold.pinned]]
+         "hold": ["voice_done": hold.voiceDone, "waiting_words": hold.waitingWords, "pinned": hold.pinned,
+                  "saved": hold.savedUntil != nil, "hovering": hold.hovering], "mic_gone": micGone,
+         "recording_paused": island.rec.map { $0.isPaused as Any } ?? NSNull(), "resume_on_close": recordingResume as Any? ?? NSNull()]
     }
 
     // MARK: close
@@ -1574,12 +1646,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             plainPlaceholder("")
             if !(heard.committed + heard.pending).isEmpty || wordsInField != nil { livePlaceholder("") }
             icon.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
+            // the same "Saved" as when the words are shown (wordsIn): the check in the brand's ok colour, the line
+            // secondary — only shorter, as the user pressed ⏎ and is going on
             icon.contentTintColor = BrandColor.ok
             status.stringValue = savedLine
-            status.textColor = BrandColor.ok
+            status.textColor = .secondaryLabelColor
             let w = DispatchWorkItem { [weak self] in
                 guard let self = self, self.generation == g else { return }
-                self.status.textColor = .secondaryLabelColor
                 self.fadeOut(p, generation: g, then: done)
             }
             closeWork = w

@@ -15,7 +15,9 @@
 //  • `speechSeconds`: how much of it was talking — a note abandoned for typing after a cough is dropped, not kept.
 //  • `activity(grace:)`: the snap's bubble is being drawn on — the pause or the no-speech end waits for the pen
 //    (v0.9: a circle drawn as the note ended was lost). `peakDB`: the loudest frame, so a take that is digital silence
-//    can be told from speech the room hid (VoiceKeep).
+//    can be told from speech the room hid. `soundSeconds`: how long a sound was held above the room (3 of 5 frames
+//    6 dB over the floor) — speech too quiet for the endpointer in a café still holds some, a fan or a hum none
+//    (VoiceKeep: a note the user ended is kept on it).
 // Pure (samples in, events out) so tests feed it synthetic rooms and voices (NoteEndpointerTests).
 
 import Foundation
@@ -46,6 +48,9 @@ public struct NoteEndpointer {
     public private(set) var lastDB: Float = -120
     /// the loudest frame after the mic's warm-up (dBFS): digital silence (a muted or dead input) stays near −120
     public private(set) var peakDB: Float = -120
+    /// how long a sound was held above the room (seconds): `soundDelta` over the floor in 3 of the last 5 frames
+    public private(set) var soundSeconds: Double = 0
+    public var soundDelta: Float = 6
 
     static let startWindow = 12, startLoud = 8, lookback = 50, talkWindow = 6, talkLoud = 4
 
@@ -55,6 +60,7 @@ public struct NoteEndpointer {
     private var historyAt = 0
     private var recent: [Float] = []          // the last second's frame levels
     private var quietFor: Double = 0
+    private var soundRecent: [Bool] = []      // the last 5 frames: above floor + soundDelta
 
     public init(sampleRate: Double = 16000) {
         self.sampleRate = sampleRate
@@ -122,6 +128,11 @@ public struct NoteEndpointer {
             let sorted = history.sorted()
             let p10 = sorted[min(sorted.count - 1, sorted.count / 10)]
             floorDB = speaking ? min(p10, floorDB + Float(2 * dt)) : p10
+        }
+        if heard > warmup + 1e-9, history.count >= 12 {
+            soundRecent.append(db > max(floorDB + soundDelta, minLoudDB))
+            if soundRecent.count > 5 { soundRecent.removeFirst() }
+            if soundRecent.last == true, soundRecent.filter({ $0 }).count >= 3 { soundSeconds += dt }
         }
         if !speaking {
             // judged once a quarter second of the room is known, over the last second, against today's floor

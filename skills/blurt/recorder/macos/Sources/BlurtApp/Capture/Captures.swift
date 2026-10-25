@@ -277,7 +277,7 @@ final class Snapper {
             } else if text != nil {
                 s.transcription = .idle
                 if s.kind == .shot { dropVoice(s, reason: "no_speech") } else {
-                    // a voice note the speech model found no words in: kept as audio, "No words recognised · Retry"
+                    // a voice note the speech model found no words in: kept as audio, "No words recognized · Retry"
                     s.said = ""
                     s.batch?.save(s)
                     if !quiet { wordsToast(s, "capture.voice.no_words") }
@@ -294,7 +294,7 @@ final class Snapper {
         for f in pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
     }
 
-    /// "Couldn't turn the note into words · Retry" / "No words recognised · Retry".
+    /// "Couldn't turn the note into words · Retry" / "No words recognized · Retry".
     private func wordsToast(_ s: Shot, _ key: String) {
         var t = Island.Toast(text: Loc.t(key, table: "Capture"), actionTitle: Loc.t("capture.retry", table: "Capture")) { [weak self] in
             self?.retryWords(s)
@@ -367,7 +367,7 @@ final class Snapper {
     /// "Retry Transcription" (a card's menu, after "Couldn't transcribe").
     func retryWords(_ s: Shot) {
         guard s.voice != nil, CardNote.clean(s.said) == nil, !s.deleted else { return }
-        if s.said != nil { s.said = nil }             // "No words recognised": ask again
+        if s.said != nil { s.said = nil }             // "No words recognized": ask again
         if s.transcription == .failed { s.transcription = .idle }
         emit(["event": "voice_retry", "n": s.n, "intended_project": s.intendedProject ?? NSNull()])
         transcribe(s) { [weak self] _ in self?.settled(s) }
@@ -393,8 +393,10 @@ final class Snapper {
     func settled(_ s: Shot) {
         guard !s.deleted, let b = s.batch else { return }
         let filing = s.assignedBy == "capture" ? s.project : nil
+        // no words: the transcription failed, or a voice note held none (a shot's empty voice was dropped already)
+        let noWords = s.transcription == .failed || (s.kind == .voice && s.voice != nil && s.said?.isEmpty == true)
         let route = CaptureRoute.decide(project: filing, intended: s.intendedProject, isCard: s.isCard, needsWords: s.needsWords,
-                                        failed: s.transcription == .failed, hasNote: s.words != nil)
+                                        noWords: noWords, hasNote: s.words != nil)
         switch route {
         case .transcribeFirst:
             // a card's words in auto mode: for the card, a copy and the item it becomes; otherwise routed again after
@@ -776,7 +778,12 @@ final class Snapper {
             // left half-done by a quit or a crash (v0.9): a project capture never filed, a voice note's wav without its line
             let filed = Set((Snapper.batchJSON(d)["local"] as? [String: Any])?.keys.map { $0 } ?? [])
             let unfiled = CaptureRestore.unfiled(jsonl: raw, filed: filed)
-            let files = (try? FileManager.default.contentsOfDirectory(atPath: d.appendingPathComponent("shots").path)) ?? []
+            var files = (try? FileManager.default.contentsOfDirectory(atPath: d.appendingPathComponent("shots").path)) ?? []
+            // voice notes cancelled with Esc whose Undo a quit cut short: discarded, as the user asked
+            if files.contains(where: VoiceDiscard.isParked) {
+                VoiceDiscard.sweep(d.appendingPathComponent("shots"))
+                files.removeAll(where: VoiceDiscard.isParked)
+            }
             let orphans = CaptureRestore.orphanVoices(files: files, known: Set(CaptureRestore.fold(raw).keys))
             // cards, and captures dragged out (Recently Taken — or past their days, for expireTaken)
             guard CardBatches.holdsCards(jsonl: raw) || !unfiled.isEmpty || !orphans.isEmpty,

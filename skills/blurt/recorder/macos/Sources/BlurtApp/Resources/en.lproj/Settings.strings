@@ -117,8 +117,10 @@
 "settings.perm.accessibility" = "Accessibility";
 "settings.perm.input_monitoring" = "Input Monitoring";
 "settings.perm.fn_key" = "Fn key in macOS";
-"settings.perm.screen.readd" = "Select Blurt, remove it with −, then add it again";
-"settings.perm.screen.readd_why" = "The list still has an older Blurt’s permission, which doesn’t carry over. Then restart Blurt.";
+"settings.perm.screen.readd" = "Select Blurt and remove it with −";
+"settings.perm.screen.readd_why" = "The list still has an older Blurt’s permission, which doesn’t carry over.";
+"settings.perm.screen.readd_drag" = "Then drag Blurt back into the list";
+"settings.perm.screen.readd_drag_detail" = "Drop the icon on the list, turn its switch on, then restart Blurt.";
 "settings.perm.screen.why" = "To record your screen and take snaps.";
 "settings.perm.microphone.why" = "To hear you: narration, voice notes and dictation.";
 "settings.perm.accessibility.why" = "To paste dictated text where you’re typing and hear the dictation key in every app; also lets you hold ⌃ to draw.";
@@ -155,7 +157,7 @@
 "settings.general.voice_end_on_pause" = "End a voice note when I pause";
 "settings.general.voice_end_on_pause.hint" = "Off: a voice note (⌥⇧V) goes on through your thinking pauses until you press the key again or click Done, up to 10 minutes; Esc cancels. On: 1.5 seconds of silence ends it. A screenshot’s spoken note always ends when you pause.";
 "settings.general.live_text" = "Show text while I talk";
-"settings.general.live_text.hint" = "While a voice note or a dictation listens, the words recognised so far show in a small panel under the island, the newest fading in. It never takes the focus, moves out of the way of where you type, and is never recorded.";
+"settings.general.live_text.hint" = "While a voice note or a dictation listens, the words recognized so far show in a small panel under the island, the newest fading in. It never takes the focus, moves out of the way of where you type, and is never recorded.";
 
 "onboarding.subtitle" = "Dictate anywhere with %@, snap and leave voice notes as cards, record and let an Agent fix it.";
 "onboarding.use.dictation" = "Dictation";

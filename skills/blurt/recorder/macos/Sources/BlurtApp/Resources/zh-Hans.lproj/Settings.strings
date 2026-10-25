@@ -117,8 +117,10 @@
 "settings.perm.accessibility" = "辅助功能";
 "settings.perm.input_monitoring" = "输入监控";
 "settings.perm.fn_key" = "macOS 的 Fn 键设置";
-"settings.perm.screen.readd" = "选中口喷鸡，点 − 删掉，再点 + 加回来";
-"settings.perm.screen.readd_why" = "列表里是旧版本口喷鸡的授权，新版本用不了。加回来后重新打开口喷鸡。";
+"settings.perm.screen.readd" = "选中口喷鸡，点 − 删掉";
+"settings.perm.screen.readd_why" = "列表里是旧版本口喷鸡的授权，新版本用不了。";
+"settings.perm.screen.readd_drag" = "再把口喷鸡拖回列表";
+"settings.perm.screen.readd_drag_detail" = "拖到列表里，打开开关，再重新打开口喷鸡。";
 "settings.perm.screen.why" = "录屏和截图要用。";
 "settings.perm.microphone.why" = "听你说话：录讲解、语音备注和听写。";
 "settings.perm.accessibility.why" = "把听写的文字粘贴到你正在输入的地方，并在任何 App 里听到听写键；按住 ⌃ 画图也要用。";

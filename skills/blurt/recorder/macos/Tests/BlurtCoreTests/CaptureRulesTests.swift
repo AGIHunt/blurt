@@ -1,6 +1,7 @@
-// BlurtCore/CaptureRules.swift (+ NoteEndpointer.activity / peakDB, CardNote.noWords, CardPasteSequence.arm): the
-// capture rules the v0.9 dogfood run asked for — stale Screen Recording, the note bubble's close / typing / Esc, where
-// a capture goes, which voice notes are kept, the mic watchdog, what a quit leaves behind, a failed recording.
+// BlurtCore/CaptureRules.swift (+ NoteEndpointer.activity / peakDB / soundSeconds, CardNote.noWords,
+// CardPasteSequence.arm): the capture rules the v0.9 dogfood run asked for — stale Screen Recording, the note bubble's
+// close / typing / Esc / Saved moment, where a capture goes, which voice notes are kept, the mic watchdog, what a quit
+// leaves behind (a cancelled note never comes back), a failed recording, a recording's note sessions.
 import XCTest
 @testable import BlurtCore
 
@@ -68,6 +69,28 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertNil(h.closeIn(now: 2), "an Esc just cleared the text: the user decides")
     }
 
+    func testTheSavedMomentWaitsForTheReader() {
+        var h = NoteHold()
+        h.voiceDone = true
+        h.savedUntil = 1.2
+        // the pointer is over the bubble: it stays a moment after it leaves, however long the words were shown
+        h.hovering = true
+        XCTAssertEqual(h.closeIn(now: 5)!, NoteHold.hoverGrace, accuracy: 1e-9)
+        XCTAssertEqual(h.closeIn(now: 0)!, 1.2, accuracy: 1e-9)
+        h.hovering = false
+        XCTAssertEqual(h.closeIn(now: 5), 0)
+        // hovering doesn't hold anything but the Saved moment (the pen rests on the picture after a circle)
+        var ink = NoteHold()
+        ink.voiceDone = true
+        ink.lastInk = 0
+        ink.hovering = true
+        XCTAssertEqual(ink.closeIn(now: 10), 0)
+        // a click into the words (the app pins it and drops the Saved timer): only ⏎ or Esc closes it
+        h.savedUntil = nil
+        h.pinned = true
+        XCTAssertNil(h.closeIn(now: 10))
+    }
+
     func testEscClearsTypedTextFirstThenDiscards() {
         XCTAssertEqual(NoteEsc.action(fresh: true, field: "the button overlaps"), .clearText)
         XCTAssertEqual(NoteEsc.action(fresh: true, field: "   "), .close)
@@ -79,58 +102,123 @@ final class CaptureRulesTests: XCTestCase {
     // MARK: where a capture goes
 
     func testAProjectCaptureWithoutANoteGoesToTheProject() {
-        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, failed: false, hasNote: false),
+        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, noWords: false, hasNote: false),
                        .file("p1"))
-        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, failed: false, hasNote: true),
+        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, noWords: false, hasNote: true),
                        .file("p1"))
-        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: true, failed: false, hasNote: false),
+        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: true, noWords: false, hasNote: false),
                        .transcribeFirst)
     }
 
     func testAFailedTranscriptionKeepsItsProject() {
-        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, failed: true, hasNote: false),
+        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, noWords: true, hasNote: false),
                        .cardKeepingProject("p1"))
         // typed text next to it: the typed note is enough to file it
-        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, failed: true, hasNote: true),
+        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, noWords: true, hasNote: true),
                        .file("p1"))
         // Retry: its words now → filed where it was taken for; failed again → it stays a card
-        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: true, failed: false, hasNote: false),
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: true, noWords: false, hasNote: false),
                        .transcribeFirst)
-        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: false, failed: false, hasNote: true),
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: false, noWords: false, hasNote: true),
                        .file("p1"))
-        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: false, failed: true, hasNote: false),
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: false, noWords: true, hasNote: false),
+                       .none)
+    }
+
+    func testAVoiceNoteWithNoWordsIsNeverFiledEmpty() {
+        // ⌥⇧V with a project, nothing the speech model could read: a card that keeps its project ("No words
+        // recognized · Retry"), not an empty item in the project (rvcapture: AW-6 '语音 13:51' with no note)
+        XCTAssertEqual(CaptureRoute.decide(project: "p1", intended: nil, isCard: false, needsWords: false, noWords: true, hasNote: false),
+                       .cardKeepingProject("p1"))
+        // Retry found words: filed there; none again: it stays a card
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: false, noWords: false, hasNote: true),
+                       .file("p1"))
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: "p1", isCard: true, needsWords: false, noWords: true, hasNote: false),
                        .none)
     }
 
     func testAutoModeCardsStayCards() {
-        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: nil, isCard: true, needsWords: true, failed: false, hasNote: false),
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: nil, isCard: true, needsWords: true, noWords: false, hasNote: false),
                        .transcribeFirst)
-        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: nil, isCard: true, needsWords: false, failed: false, hasNote: true), .card)
-        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: nil, isCard: false, needsWords: false, failed: false, hasNote: true), .none)
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: nil, isCard: true, needsWords: false, noWords: false, hasNote: true), .card)
+        XCTAssertEqual(CaptureRoute.decide(project: nil, intended: nil, isCard: false, needsWords: false, noWords: false, hasNote: true), .none)
     }
 
     // MARK: voice notes
 
     func testAVoiceNoteTheUserEndedIsKeptWhenTheRoomHidTheSpeech() {
-        // the café: speech at −41 dBFS in −45 dBFS of noise never passed the endpointer, the user pressed Done at 9 s
-        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 9, peakDB: -38), .keep(toast: .none))
-        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: true, seconds: 0.8, peakDB: -20), .keep(toast: .none))
-        // a slip of the key, or digital silence: nothing to keep
-        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 0.6, peakDB: -30), .drop(toast: .nothing))
-        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 9, peakDB: -110), .drop(toast: .nothing))
+        // the café: quiet speech in noise never passed the endpointer, but held 0.7 s of sound; Done at 9 s
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 9, soundSeconds: 0.7), .keep(toast: .none))
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: true, seconds: 0.8, soundSeconds: 0.6), .keep(toast: .none))
+        // a slip of the key; the room alone (a fan, a hum, a muted input): nothing to keep
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 0.6, soundSeconds: 0.5), .drop(toast: .nothing))
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 9, soundSeconds: 0), .drop(toast: .nothing))
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 4, soundSeconds: 0.2), .drop(toast: .nothing))
     }
 
     func testANoteThatHeardNothingSaysToCheckTheMic() {
-        XCTAssertEqual(VoiceKeep.decide(.noSpeech, heardSpeech: false, seconds: 20, peakDB: -90), .drop(toast: .checkMic))
-        XCTAssertEqual(VoiceKeep.decide(.noMic, heardSpeech: false, seconds: 0, peakDB: -120), .drop(toast: .none))
+        XCTAssertEqual(VoiceKeep.decide(.noSpeech, heardSpeech: false, seconds: 20, soundSeconds: 0), .drop(toast: .checkMic))
+        XCTAssertEqual(VoiceKeep.decide(.noMic, heardSpeech: false, seconds: 0, soundSeconds: 0), .drop(toast: .none))
     }
 
     func testEscAndMicLoss() {
-        XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: true, seconds: 4, peakDB: -20), .undoable)
-        XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: false, seconds: 4, peakDB: -20), .drop(toast: .none))
-        XCTAssertEqual(VoiceKeep.decide(.micLost, heardSpeech: true, seconds: 6, peakDB: -20), .keep(toast: .micLost))
-        XCTAssertEqual(VoiceKeep.decide(.micLost, heardSpeech: false, seconds: 0.4, peakDB: -120), .drop(toast: .micLost))
-        XCTAssertEqual(VoiceKeep.decide(.maxed, heardSpeech: true, seconds: 600, peakDB: -20), .keep(toast: .none))
+        XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: true, seconds: 4, soundSeconds: 3), .undoable)
+        XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: false, seconds: 4, soundSeconds: 3), .drop(toast: .none))
+        XCTAssertEqual(VoiceKeep.decide(.micLost, heardSpeech: true, seconds: 6, soundSeconds: 4), .keep(toast: .micLost))
+        // gone before anything was said: not "what was said is kept"
+        XCTAssertEqual(VoiceKeep.decide(.micLost, heardSpeech: false, seconds: 0.4, soundSeconds: 0), .drop(toast: .micGone))
+        XCTAssertEqual(VoiceKeep.decide(.maxed, heardSpeech: true, seconds: 600, soundSeconds: 300), .keep(toast: .none))
+    }
+
+    func testHeldSoundTellsQuietSpeechFromTheRoom() {
+        // steady room noise (rvcapture's noise.wav: −41 dBFS, flat): no held sound — a stray ⌥⇧V isn't a note
+        var room = NoteEndpointer(sampleRate: 16000)
+        _ = feed(&room, NoteEndpointerTests.noise(4, db: -41))
+        XCTAssertLessThan(room.soundSeconds, VoiceKeep.minSoundSeconds)
+        XCTAssertGreaterThan(room.peakDB, -70, "a real mic's floor is far above digital silence: peak alone can't tell")
+        // digital silence
+        var mute = NoteEndpointer(sampleRate: 16000)
+        _ = feed(&mute, [Float](repeating: 0, count: 64000))
+        XCTAssertEqual(mute.soundSeconds, 0)
+        // quiet speech a few dB over a café's noise: held sound, though maybe too quiet for the endpointer
+        var cafe = NoteEndpointer(sampleRate: 16000)
+        _ = feed(&cafe, NoteEndpointerTests.mix(NoteEndpointerTests.noise(1, db: -45),
+                                               NoteEndpointerTests.mix(NoteEndpointerTests.noise(8, db: -45, seed: 5),
+                                                                       [Float](repeating: 0, count: 16000) + NoteEndpointerTests.talk(6, db: -37))))
+        XCTAssertGreaterThanOrEqual(cafe.soundSeconds, VoiceKeep.minSoundSeconds)
+        // ordinary speech
+        var talk = NoteEndpointer(sampleRate: 16000)
+        _ = feed(&talk, NoteEndpointerTests.mix(NoteEndpointerTests.noise(4, db: -60), [Float](repeating: 0, count: 8000) + NoteEndpointerTests.talk(3, db: -24)))
+        XCTAssertGreaterThan(talk.soundSeconds, 1)
+    }
+
+    func testACancelledVoiceNoteWaitsUnderAnotherName() throws {
+        let wav = URL(fileURLWithPath: "/x/shots/005.wav")
+        XCTAssertEqual(VoiceDiscard.parked(wav).lastPathComponent, "005.discarded.wav")
+        XCTAssertTrue(VoiceDiscard.isParked("005.discarded.wav"))
+        XCTAssertFalse(VoiceDiscard.isParked("005.wav"))
+        // a quit within its Undo: never an orphan voice note at the next launch
+        XCTAssertEqual(CaptureRestore.orphanVoices(files: ["005.discarded.wav", "006.wav"], known: []), [6])
+        // …and the next launch sweeps it
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for f in ["005.discarded.wav", "006.wav", "006.png"] { try Data([1]).write(to: dir.appendingPathComponent(f)) }
+        VoiceDiscard.sweep(dir)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted(), ["006.png", "006.wav"])
+        // a new capture still never takes its number while it waits
+        XCTAssertEqual(CaptureRestore.highestN(files: ["005.discarded.wav"], known: [3]), 5)
+    }
+
+    func testARecordingsNotesPauseOncePerSession() {
+        // opened on a running take: pause it, resume on close
+        XCTAssertTrue(RecordingNotes.open(alreadyOpen: false, carriedResume: false, paused: false) == (true, true))
+        // the user had paused it: leave it paused
+        XCTAssertTrue(RecordingNotes.open(alreadyOpen: false, carriedResume: false, paused: true) == (false, false))
+        // the bubble switches to another snap (it is paused by the notes now): the session's resume goes on —
+        // the replaced bubble doesn't resume the take under the new one, and the new one still resumes it
+        XCTAssertTrue(RecordingNotes.open(alreadyOpen: true, carriedResume: true, paused: true) == (false, true))
+        XCTAssertTrue(RecordingNotes.open(alreadyOpen: true, carriedResume: false, paused: true) == (false, false))
     }
 
     func testTheWatchdogWaitsForTheFirstBuffer() {
@@ -165,10 +253,10 @@ final class CaptureRulesTests: XCTestCase {
     func testPeakTellsDigitalSilenceFromAQuietRoom() {
         var a = NoteEndpointer(sampleRate: 16000)
         _ = feed(&a, [Float](repeating: 0, count: 32000))
-        XCTAssertLessThan(a.peakDB, VoiceKeep.silenceDB)
+        XCTAssertLessThan(a.peakDB, -100)
         var b = NoteEndpointer(sampleRate: 16000)
         _ = feed(&b, NoteEndpointerTests.noise(2, db: -45))
-        XCTAssertGreaterThan(b.peakDB, VoiceKeep.silenceDB)
+        XCTAssertGreaterThan(b.peakDB, -50)
     }
 
     private func feed(_ e: inout NoteEndpointer, _ x: [Float]) -> [NoteEndpointer.Event] {

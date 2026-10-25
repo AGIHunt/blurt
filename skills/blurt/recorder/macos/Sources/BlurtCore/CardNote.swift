@@ -7,7 +7,7 @@
 //  • a voice note still being transcribed: a quiet "Transcribing…" (never an empty card); failed: "Couldn't
 //    transcribe" (Retry in the card's right-click menu). A shot's spoken note that turned out to hold no speech is
 //    dropped (no mark, nothing left to transcribe) — the app does that. A voice note with no words (`said` == "", v0.9:
-//    one the user ended in a noisy room is kept) says "No words recognised" and offers Retry, like a failed one.
+//    one the user ended in a noisy room is kept) says "No words recognized" and offers Retry, like a failed one.
 //
 // Copy / drag-out (v0.8.3: CardFiles.swift / CardPasteboard / CardDropTarget.swift): one rich item — picture and note
 // together as HTML, RTFD and RTF, the picture's PNG, the note as text (a WeChat-style copy) — and, for a drag, what the
@@ -33,7 +33,7 @@ public struct CardNote: Equatable {
         /// transcribed, and the speech model found no words in it (the audio stays: Retry)
         case noWords
 
-        /// It needs the user: "Couldn't transcribe" / "No words recognised", Retry (the card shows it in amber).
+        /// It needs the user: "Couldn't transcribe" / "No words recognized", Retry (the card shows it in amber).
         public var needsRetry: Bool { self == .failed || self == .noWords }
     }
 

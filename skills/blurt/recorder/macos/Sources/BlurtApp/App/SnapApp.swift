@@ -224,11 +224,22 @@ extension App {
             try? FileManager.default.createDirectory(at: URL(fileURLWithPath: opts.out).deletingLastPathComponent(), withIntermediateDirectories: true)
             r.snaps = RecordingSnaps(rec: r, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
             island.recordingStarted(r, on: NSScreen.main)
+        case "failtake":                                // failtake STILL.png: a take whose writer failed, with a still and its note
+            let dir = newSessionDir()
+            let shots = dir.appendingPathComponent("shots")
+            try? FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: URL(fileURLWithPath: arg), to: shots.appendingPathComponent("001.png"))
+            try? Data(#"{"n":1,"t":2.0,"file":"shots/001.png","text":"the total is cut off"}"#.utf8 + [10])
+                .write(to: dir.appendingPathComponent("shots.jsonl"))
+            lastSession = dir
+            takeStartedAt = Date(timeIntervalSinceNow: -30)
+            takeEnded(5, ["event": "error", "message": "writer failed (test)"])
         case "aisort": snapper.handToAI()
         case "organize": snapper.handToAI(project: ProjectStore.shared.currentID)   // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
         case "notekey": NoteBubble.shared.testKey(arg == "esc" ? 53 : 36)           // notekey esc|return: a real key event
         case "noteclear": NoteBubble.shared.testClear()                             // ⌘A ⌫ in the note's field
+        case "noteclick": NoteBubble.shared.testClickField()                        // a click into the note's field
         case "noteink":                                 // noteink down|move|up X,Y: the pen on the bubble's picture (0–1)
             let a = arg.split(separator: " ")
             let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
@@ -256,6 +267,7 @@ extension App {
             let title = a.count > 1 || !["to_verify", "done"].contains(a.first ?? "") ? (a.last ?? "") : "Login button does nothing"
             PeckCard.shared.play(title: title, detail: "", uid: "test", state: state)
         case "notes": island.openRecordingNotes()
+        case "recsnap": island.snapWithNote()                                      // the recording island's snap button
         case "shortcuts": HotkeySettings.shared.show()
         case "raise", "lower":                          // the main window above everything for a screenshot, and back
             if let w = MainWindowController.shared.window {

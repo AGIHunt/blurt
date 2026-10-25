@@ -43,7 +43,6 @@
 
 
 "app.record.failed" = "The recording couldn’t be saved";
-"app.record.failed_kept" = "The recording couldn’t be saved · its %d stills and notes are kept";
 "app.record.organize" = "Organize";
 
 "app.status.ax_count" = "Blurt — %@";

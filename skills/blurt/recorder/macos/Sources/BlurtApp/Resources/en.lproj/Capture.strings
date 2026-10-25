@@ -25,7 +25,7 @@
 "capture.card.delete" = "Delete";
 "capture.card.edit_note" = "Edit Note…";
 "capture.card.move_to" = "Move To";
-"capture.card.no_words" = "No words recognised";
+"capture.card.no_words" = "No words recognized";
 "capture.card.reveal" = "Show in Finder";
 "capture.card.retry_transcribe" = "Retry Transcription";
 "capture.card.transcribe_failed" = "Couldn’t transcribe";
@@ -104,6 +104,7 @@
 "capture.note.next" = "Next shot";
 "capture.note.next_hint" = "next shot";
 "capture.note.no_mic" = "Mic unavailable · ⏎ save · Esc discard";
+"capture.note.mic_gone" = "Mic disconnected · type a note · ⏎ save";
 "capture.note.paused" = "Paused · ⏎ save & resume · Esc resume";
 "capture.note.pen_hint" = "Drag to circle";
 "capture.note.placeholder" = "Write a note";
@@ -187,6 +188,7 @@
 "capture.voice.discarded" = "Voice note discarded";
 "capture.voice.mic_denied" = "Blurt isn’t allowed to use the microphone";
 "capture.voice.mic_lost" = "The microphone disconnected — what was said is kept";
+"capture.voice.mic_gone" = "The microphone disconnected";
 "capture.voice.mic_settings" = "Open Settings";
 "capture.voice.goes_card" = "Waits on a card until you pick a project";
 "capture.voice.goes_to" = "Goes to %@";
@@ -194,7 +196,7 @@
 "capture.voice.hold_hint" = "Listening — let go to finish";
 "capture.voice.listening" = "Listening…";
 "capture.voice.no_mic" = "The microphone isn’t available";
-"capture.voice.no_words" = "No words recognised";
+"capture.voice.no_words" = "No words recognized";
 "capture.voice.nothing" = "Didn’t hear anything";
 "capture.voice.recording_busy" = "The recording already has the microphone";
 

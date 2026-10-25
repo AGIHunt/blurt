@@ -149,10 +149,13 @@
       `CaptureRules.swift` with its tests): the snap's note shows the words as they are heard and "Saved" with the final
       words; it never closes under the pen (a stroke holds the pause end; 2.5 s after the last stroke) or while typed
       text waits (committed text only, not an IME composition); Esc clears typed text first, then discards (Undo 5 s);
-      a project capture without a note is filed into the project; a failed transcription keeps its project
-      (`intended_project`), says so with Retry and files once Retry has the words; a voice note the user ends is kept
-      unless it is short or digital silence ("No words recognised · Retry"); "check the microphone" when nothing was
-      heard; a mic lost mid-note ends it with what was said; one listener at a time (a snap during a voice note is
+      a project capture without a note is filed into the project; a failed transcription — or a voice note with no
+      words — keeps its project (`intended_project`), says so with Retry and files once Retry has the words (never an
+      empty item); a voice note the user ends is kept unless it is short or held no sound above the room
+      (`soundSeconds`: a fan or a hum is not a note; "No words recognized · Retry"); "check the microphone" when
+      nothing was heard; a mic lost mid-note ends it with what was said (before speech: "Mic disconnected · type a
+      note"); a cancelled voice note waits for its Undo as NNN.discarded.wav (a quit never brings it back); the Saved
+      moment holds under the pointer and pins on a click into the words; a recording's notes pause once per session; one listener at a time (a snap during a voice note is
       typed only); quitting saves what is on its way and the next launch files it (and repairs a cut-off wav);
       Screen Recording missing / stale → one island line and the permission guide (re-add form for a stale grant);
       auto-sort with no agent leaves the cards; click-copy without the paste permission says only the picture pastes;

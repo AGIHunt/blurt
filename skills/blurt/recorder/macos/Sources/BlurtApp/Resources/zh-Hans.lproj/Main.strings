@@ -43,7 +43,6 @@
 
 
 "app.record.failed" = "录屏没能保存";
-"app.record.failed_kept" = "录屏没能保存 · 其中的 %d 张截图和备注都留着";
 "app.record.organize" = "整理";
 
 "app.status.ax_count" = "口喷鸡 · %@";

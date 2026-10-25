@@ -8,12 +8,20 @@
 //  • NoteTyping / NoteHold / NoteEsc — the snap's note bubble: only committed text counts as typed (an IME composition
 //    doesn't, and an emptied field is voice mode again); when the bubble may close by itself (never under the pen, a
 //    moment after the last stroke, never while text waits for ⏎); and Esc in two steps (typed text first, then the shot).
+//  • NoteHold also holds the "Saved" moment while the pointer is over the bubble, and once the user clicks into the
+//    words or moves the caret in them (they are fixing a word): then only ⏎ or Esc closes it.
 //  • CaptureRoute — where a capture goes once its note is complete: with a project it is filed (with a note, or
-//    without one: "Screenshot 14:32"); a spoken note is transcribed first; a failed transcription waits as a card that
-//    remembers its project and is filed there once Retry has its words.
+//    without one: "Screenshot 14:32"); a spoken note is transcribed first; one whose words couldn't be had (the
+//    transcription failed, or a voice note the speech model found no words in) waits as a card that remembers its
+//    project and is filed there once Retry has its words — never an empty item.
 //  • VoiceKeep — whether a ⌥⇧V voice note is kept: one the user ended (key, Done, letting go, quitting) is kept when it
-//    lasted and wasn't digital silence, even if the room hid the speech from the endpointer — the speech model decides,
-//    and a take with no words stays as audio ("No words recognised · Retry").
+//    lasted and held a sound above the room (`soundSeconds`: NoteEndpointer's held sound 6 dB over the noise floor),
+//    even if the room hid the speech from the endpointer — the speech model decides, and a take with no words stays as
+//    audio ("No words recognized · Retry"). A fan, a hum or a muted input alone is not a note.
+//  • VoiceDiscard — a voice note cancelled with Esc waits for its Undo as NNN.discarded.wav, which a quit or a crash
+//    never brings back (CaptureRestore ignores it; the next launch sweeps it).
+//  • RecordingNotes — a recording's snap notes pause the take once per note session, however often the bubble
+//    switches between its snaps, and the take resumes when the last one closes (only if the notes paused it).
 //  • MicWatchdog — a microphone that stopped delivering (AirPods gone, the input device changed) ends the note.
 //  • CaptureRestore / WavRepair — captures a quit or a crash left half-done come back at launch: a project capture
 //    that was never filed, and a voice note's wav without its shots.jsonl line (its header is rewritten from the size).
@@ -76,8 +84,11 @@ public struct NoteHold: Equatable {
     public var waitingWords = false
     /// "Saved" shows the words until then
     public var savedUntil: Double?
-    /// the user is deciding (an Esc just cleared the typed text): only ⏎ or Esc closes it
+    /// the user is deciding (an Esc just cleared the typed text, they clicked into the words): only ⏎ or Esc closes it
     public var pinned = false
+    /// the pointer is over the bubble: the "Saved" moment waits until it leaves (and `hoverGrace` after)
+    public var hovering = false
+    public static let hoverGrace = 0.6
 
     public init() {}
 
@@ -87,7 +98,11 @@ public struct NoteHold: Equatable {
         var wait = 0.0
         if let i = lastInk { wait = max(wait, NoteHold.inkGrace - (now - i)) }
         if let e = emptiedAt { wait = max(wait, NoteHold.emptiedGrace - (now - e)) }
-        if let s = savedUntil { wait = max(wait, s - now) }
+        if let s = savedUntil {
+            wait = max(wait, s - now)
+            // reading the words: never sooner than a moment after the pointer leaves
+            if hovering { wait = max(wait, NoteHold.hoverGrace) }
+        }
         return max(0, wait)
     }
 }
@@ -120,18 +135,20 @@ public enum CaptureRoute: Equatable {
     case none
 
     /// `project`: the capture's project when it was taken with one (assigned by "capture"), else nil; `intended`: the
-    /// project a card remembers from a failed transcription; `needsWords`: a spoken note without words yet (not given
-    /// up on); `failed`: its transcription failed; `hasNote`: typed text or words said.
-    public static func decide(project: String?, intended: String?, isCard: Bool, needsWords: Bool, failed: Bool,
+    /// project a card remembers from words it couldn't get; `needsWords`: a spoken note without words yet (not given
+    /// up on); `noWords`: its spoken note gave no words — the transcription failed, or it is a voice note the speech
+    /// model found none in (a shot's empty voice is just dropped: the picture is its content); `hasNote`: typed text
+    /// or words said. A voice note with nothing typed and no words is never filed as an empty item.
+    public static func decide(project: String?, intended: String?, isCard: Bool, needsWords: Bool, noWords: Bool,
                               hasNote: Bool) -> CaptureRoute {
         if let p = project {
             if needsWords { return .transcribeFirst }
-            if failed && !hasNote { return .cardKeepingProject(p) }
+            if noWords && !hasNote { return .cardKeepingProject(p) }
             return .file(p)
         }
         if isCard, let p = intended {
             if needsWords { return .transcribeFirst }
-            return failed && !hasNote ? .none : .file(p)
+            return noWords && !hasNote ? .none : .file(p)
         }
         return isCard && needsWords ? .transcribeFirst : isCard ? .card : .none
     }
@@ -155,8 +172,9 @@ public enum VoiceKeep: Equatable {
         case noMic
     }
 
-    /// what the island says when nothing is kept
-    public enum Toast: Equatable { case none, nothing, checkMic, micLost }
+    /// what the island says when nothing is kept (`micLost`: the mic went, what was said is kept; `micGone`: it went
+    /// before anything was said)
+    public enum Toast: Equatable { case none, nothing, checkMic, micLost, micGone }
 
     case keep(toast: Toast)
     /// discarded with "Voice note discarded · Undo"
@@ -165,19 +183,21 @@ public enum VoiceKeep: Equatable {
 
     /// A take shorter than this the user ended is a slip of the key, not a note.
     public static let minUserSeconds = 1.5
-    /// Below this the take is digital silence (a muted or dead input), whatever the endpointer says.
-    public static let silenceDB: Float = -70
+    /// A take with less held sound above the room than this is the room alone (a fan, a hum, a muted input) — not a
+    /// note the endpointer missed. Quiet speech in a café holds 0.7 s in 9 s; steady noise holds none.
+    public static let minSoundSeconds = 0.4
 
-    /// `heardSpeech`: the endpointer heard speech; `peakDB`: the loudest 20 ms frame of the take.
-    public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, peakDB: Float) -> VoiceKeep {
-        let sound = seconds >= minUserSeconds && peakDB > silenceDB
+    /// `heardSpeech`: the endpointer heard speech; `soundSeconds`: how long the take held a sound above the room
+    /// (NoteEndpointer.soundSeconds).
+    public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, soundSeconds: Double) -> VoiceKeep {
+        let sound = seconds >= minUserSeconds && soundSeconds >= minSoundSeconds
         switch ended {
         case .cancel: return heardSpeech ? .undoable : .drop(toast: .none)
         case .noMic: return .drop(toast: .none)
         case .noSpeech: return .drop(toast: .checkMic)
         case .user: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
         case .silence, .maxed: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
-        case .micLost: return heardSpeech || sound ? .keep(toast: .micLost) : .drop(toast: .micLost)
+        case .micLost: return heardSpeech || sound ? .keep(toast: .micLost) : .drop(toast: .micGone)
         }
     }
 }
@@ -274,7 +294,35 @@ public enum WavRepair {
     }
 }
 
+/// A voice note cancelled with Esc: "Discarded · Undo" for a few seconds. Its wav waits under another name, so a quit
+/// or a crash in that time never brings it back as a note (CaptureRestore.orphanVoices only takes NNN.wav).
+public enum VoiceDiscard {
+    /// shots/005.wav → shots/005.discarded.wav
+    public static func parked(_ wav: URL) -> URL {
+        wav.deletingPathExtension().appendingPathExtension("discarded").appendingPathExtension(wav.pathExtension)
+    }
+
+    public static func isParked(_ name: String) -> Bool { name.hasSuffix(".discarded.wav") }
+
+    /// Cancelled notes a quit or a crash left waiting for their Undo: they go.
+    public static func sweep(_ shots: URL, fileManager fm: FileManager = .default) {
+        for f in (try? fm.contentsOfDirectory(atPath: shots.path)) ?? [] where isParked(f) {
+            try? fm.removeItem(at: shots.appendingPathComponent(f))
+        }
+    }
+}
+
 // MARK: - Recordings
+
+/// A recording's snap notes (the island's snap button, ⌥⇧A while recording): the take pauses while a note is open.
+public enum RecordingNotes {
+    /// The bubble opens on a snap of this take. `open`: its notes were already open (the bubble switches to another
+    /// snap; the session goes on); `carriedResume`: that session's resume-on-close; `paused`: the take is paused now.
+    /// → pause it now; resume it when the notes close (only when they were what paused it).
+    public static func open(alreadyOpen: Bool, carriedResume: Bool, paused: Bool) -> (pause: Bool, resumeOnClose: Bool) {
+        alreadyOpen ? (false, carriedResume) : (!paused, !paused)
+    }
+}
 
 public enum TakeEnd {
     /// sessionEnded codes: 0 saved, 2 cancelled / discarded, 3 capture / setup error, 4 no frames, 5 writer error.

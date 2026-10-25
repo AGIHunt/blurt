@@ -16,6 +16,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var processing: [String] = []    // sessions being processed by an agent
     var statusTimer: Timer?
     var lastSession: URL?
+    /// when the take in `lastSession` was started (a failed take's meta.json says so)
+    var takeStartedAt: Date?
 
     var resident: Bool { opts.standalone }
 
@@ -368,6 +370,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.countdown = recordConfig()["countdown"] as? Int ?? 3
         opts.systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         lastSession = dir
+        takeStartedAt = Date()
         busy = true
         if autoProcess {
             AgentHub.shared.check(AgentHub.shared.order(), force: true) { _ in }   // warm the cache while recording
@@ -443,15 +446,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let project = ProjectStore.shared.current
         let meta: [String: Any] = [
             "engine": "native-app", "state": "failed", "error": event["message"] as? String ?? "",
-            "started_at": ISO8601DateFormatter().string(from: Date()),
+            "started_at": ISO8601DateFormatter().string(from: takeStartedAt ?? Date()),
             "author": recordConfig()["author"] as? String ?? NSFullUserName(),
             "project": project?.id as Any? ?? NSNull(), "workspace": currentWorkspace().path,
         ]
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
-        emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills])
-        var t = Island.Toast(text: T("app.record.failed_kept", stills), actionTitle: T("app.record.organize")) { [weak self] in
+        // (the error is in meta.json and the log: the island line says what is kept)
+        emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills,
+              "error": event["message"] as? String ?? NSNull()])
+        var t = Island.Toast(text: TP("app.record.failed_kept", stills), actionTitle: T("app.record.organize")) { [weak self] in
             self?.process(dir, project: project?.id)
         }
         t.seconds = 12

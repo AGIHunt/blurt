@@ -27,12 +27,14 @@
 //  • Esc cancels — only in its first 10 s (escSeconds): plain Esc is a hotkey for every app while Blurt holds it, and
 //    a vibe coder presses Esc in Claude Code or vim all the time, so it is given back as soon as a mistaken start is
 //    no longer likely (the island stops saying "Esc to cancel"); after that, the key again or Done ends it. A cancel
-//    keeps the audio for 5 s: "Voice note discarded · Undo" files it after all (v0.8.6 deleted it at once).
+//    keeps the audio for 5 s: "Voice note discarded · Undo" files it after all (v0.8.6 deleted it at once). Meanwhile
+//    the wav waits as NNN.discarded.wav (BlurtCore VoiceDiscard): a quit or a crash then never brings it back.
 //  • what is kept (BlurtCore VoiceKeep, v0.9): a note the user ends (the key, Done, letting go, quitting) is kept when
-//    it lasted 1.5 s and wasn't digital silence, even if the room hid the speech from the endpointer — the speech
-//    model decides; no words → the card says "No words recognised" with Retry. Nothing heard for the whole wait:
-//    "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone mid-note (a headset out, the
-//    input switched: NoteVoice's watchdog) ends it with what was said.
+//    it lasted 1.5 s and held a sound above the room, even if the room hid the speech from the endpointer — the speech
+//    model decides; no words → a card that says "No words recognized" with Retry (with a project too: it is filed
+//    there once Retry has words, never as an empty item). A fan or a hum alone is "Didn't hear anything". Nothing
+//    heard for the whole wait: "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone
+//    mid-note (a headset out, the input switched: NoteVoice's watchdog) ends it with what was said.
 //  • Blurt quitting finishes it (finishForQuit); a snap's bubble opened meanwhile has Esc (yieldEsc).
 // Tests: BLURT_TEST_MIC_WAV (or BLURT_NOTE_WAV) is fed through the same path instead of the microphone;
 // BLURT_TEST_NO_SERVERS=1 starts no warm server (the pieces go through the CLI: no local port is opened).
@@ -259,7 +261,7 @@ final class VoiceInput {
         // hid the speech from the endpointer — the speech model decides (no words → kept as audio, "Retry")
         let how: VoiceKeep.Ended = via == "esc" ? .cancel : via == "no_mic" ? .noMic : via == "noSpeech" ? .noSpeech
             : via == "mic_lost" ? .micLost : via == "silence" ? .silence : via == "maxed" ? .maxed : .user
-        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, peakDB: v.peakDB)
+        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, soundSeconds: v.soundSeconds)
         var kept = false, undoable = false, toast = VoiceKeep.Toast.none
         switch decision {
         case .keep(let t): kept = true; toast = t
@@ -276,6 +278,7 @@ final class VoiceInput {
         releaseEsc()
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
               "pieces": st?.count ?? 0, "heard_speech": heardSpeech, "peak_db": Double((v.peakDB * 10).rounded() / 10),
+              "sound": (v.soundSeconds * 100).rounded() / 100,
               "wall": Date().timeIntervalSince1970])
         VoiceInput.say(toast)
         let project = snapper.target
@@ -305,6 +308,7 @@ final class VoiceInput {
         case .none: return
         case .nothing: island.toast(Loc.t("capture.voice.nothing", table: "Capture"), actionTitle: nil, action: nil)
         case .micLost: island.toast(Loc.t("capture.voice.mic_lost", table: "Capture"), actionTitle: nil, action: nil)
+        case .micGone: island.toast(Loc.t("capture.voice.mic_gone", table: "Capture"), actionTitle: nil, action: nil)
         case .checkMic:
             // nothing at all for the whole wait: a muted or wrong microphone, most likely
             var toast = Island.Toast(text: Loc.t("capture.voice.check_mic", table: "Capture"),
@@ -329,10 +333,14 @@ final class VoiceInput {
     /// finished (Snapper.voiceFinished); else its audio goes.
     private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL) {
         var settled = false
-        emit(["event": "voice_discarded", "n": n, "undo_seconds": VoiceInput.undoSeconds])
+        // waiting for its Undo under another name: a quit or a crash now never brings it back as a note
+        let parked = VoiceDiscard.parked(wav)
+        let moved = (try? FileManager.default.moveItem(at: wav, to: parked)) != nil
+        emit(["event": "voice_discarded", "n": n, "undo_seconds": VoiceInput.undoSeconds, "parked": moved])
         var t = Island.Toast(text: Loc.t("capture.voice.discarded", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
             guard !settled else { return }
             settled = true
+            if moved { try? FileManager.default.moveItem(at: parked, to: wav) }
             emit(["event": "voice_undo", "n": n])
             snapper.voiceFinished(batch: b, n: n, duration: duration, project: project, stream: st)
         }
@@ -342,7 +350,7 @@ final class VoiceInput {
             guard !settled else { return }
             settled = true
             st?.cancel()
-            try? FileManager.default.removeItem(at: wav)
+            try? FileManager.default.removeItem(at: moved ? parked : wav)
             emit(["event": "voice_discard_done", "n": n])
         }
     }

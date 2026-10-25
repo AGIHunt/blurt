@@ -40,7 +40,7 @@
 //    once there is a caption) only when the note was spoken *and* its words are here. A spoken note still being
 //    transcribed: "Transcribing…" under whatever was typed, never an empty mic; failed: "Couldn't transcribe" and
 //    Retry Transcription in the right-click menu — in the island's amber, with the mic mark kept (there is audio to
-//    try again; v0.9); a voice note the model found no words in: "No words recognised", the same way. A spoken note with no speech in it (the room, a cough, abandoned
+//    try again; v0.9); a voice note the model found no words in: "No words recognized", the same way. A spoken note with no speech in it (the room, a cough, abandoned
 //    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
 //  • hover shortens the thread and lifts the card (its neighbours make room); its note, under the whole row (never over
 //    a neighbour), only adds what the card can't show (CardTip): the rest of a note cut short, the play button of a
@@ -509,7 +509,7 @@ final class HangingCards: NSObject {
         c.badge.frame = CGRect(x: w - 6 - 31, y: c.caption.isHidden && c.captionStatus.isHidden ? h - 6 - 16 : 6, width: 31, height: 16)
     }
 
-    /// "Transcribing…" / "Couldn't transcribe" / "No words recognised" (nil: nothing pending).
+    /// "Transcribing…" / "Couldn't transcribe" / "No words recognized" (nil: nothing pending).
     static func statusText(_ s: CardNote.Status) -> String? {
         switch s {
         case .none: return nil
