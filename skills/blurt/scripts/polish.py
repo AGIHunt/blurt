@@ -40,6 +40,7 @@ import re
 import socket
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import unicodedata
 import urllib.request
@@ -904,14 +905,42 @@ class Engine:
         self.prefixes: dict[str, tuple[list[int], object]] = {}
         self.last = time.time()
         self.load_ms = 0
-        # held while a model loads: serve's preload runs beside its loop, and a request that needs the model waits here
-        self.lock = threading.RLock()
+        # every MLX call on one thread of its own (MLX streams belong to the thread that made them): serve's preload
+        # runs there beside its loop, and a request that needs the model queues behind it (`on_model_thread`)
+        self._ex = ThreadPoolExecutor(1, thread_name_prefix=Engine.THREAD)
+        self.preloading = False
+
+    THREAD = "polish-mlx"
+
+    def on_model_thread(self, fn, *args, **kw):
+        """`fn` on the model's thread (at once when already there), its result or its exception."""
+        if threading.current_thread().name.startswith(Engine.THREAD):
+            return fn(*args, **kw)
+        return self._ex.submit(fn, *args, **kw).result()
+
+    def preload(self, model_id: str | None) -> None:
+        """serve: the model loads on its thread while the loop answers what needs none."""
+        self.preloading = True
+
+        def job():
+            try:
+                self._load_now(model_id)
+            except Fail as e:
+                serve_said(f"serve: {e}")
+            except Exception as e:  # noqa: BLE001 — a request loads it again and says what failed
+                serve_said(f"serve: preload failed ({type(e).__name__}: {e})"[:300])
+            finally:
+                self.preloading = False
+        self._ex.submit(job)
 
     @property
     def prefix(self) -> list[int]:              # Light's (the eval reports whether it was cached)
         return (self.prefixes.get("light") or ([], None))[0]
 
     def load(self, model_id: str | None = None) -> "Engine":
+        return self.on_model_thread(self._load_now, model_id)
+
+    def _load_now(self, model_id: str | None = None) -> "Engine":
         model_id = model_id or selected()
         if not model_id:
             raise Fail("no polish model is installed (polish.py setup --model ID)", "model_missing")
@@ -980,7 +1009,11 @@ class Engine:
 
     def generate(self, text: str, deadline: float, terms: list[dict] | None = None,
                  context: dict | str | None = None, mode: str = "light", variant: str | None = None) -> tuple[str, bool]:
-        """The model's raw reply and whether the deadline cut it short."""
+        """The model's raw reply and whether the deadline cut it short (on the model's thread)."""
+        return self.on_model_thread(self._generate_now, text, deadline, terms, context, mode, variant)
+
+    def _generate_now(self, text: str, deadline: float, terms: list[dict] | None = None,
+                      context: dict | str | None = None, mode: str = "light", variant: str | None = None) -> tuple[str, bool]:
         import copy
         from mlx_lm import stream_generate
         from mlx_lm.sample_utils import make_sampler
@@ -1007,8 +1040,7 @@ class Engine:
         polish time (the deadline starts after it)."""
         t_load = time.perf_counter()
         was = self.model is not None and (model_id or selected()) == self.model_id
-        with self.lock:
-            self.load(model_id)    # warm already when the app asked on key-down; a cold load is not timed
+        self.load(model_id)        # warm already when the app asked on key-down; a cold load (or the preload) is load_ms
         if not was:
             res["load_ms"] = int((time.perf_counter() - t_load) * 1000)
         res["model"] = self.model_id
@@ -1170,16 +1202,8 @@ def cmd_serve(a):
         if a.preload:
             # the model loads beside the loop: what needs no model (ping, a reply too short to tidy, the guard) is
             # answered meanwhile — a one-word take after the idle exit used to wait the whole load (~2 s) for "short";
-            # a request that needs the model waits for it (Engine.lock) and reports that wait as load_ms
-            def preload():
-                try:
-                    with eng.lock:
-                        eng.load(a.model_id)
-                except Fail as e:
-                    serve_said(f"serve: {e}")
-                except Exception as e:  # noqa: BLE001 — a request loads it again and says what failed
-                    serve_said(f"serve: preload failed ({type(e).__name__}: {e})"[:300])
-            threading.Thread(target=preload, name="preload", daemon=True).start()
+            # a request that needs the model queues behind it on the model's thread and reports that wait as load_ms
+            eng.preload(a.model_id)
         emit({"ok": True, "pid": os.getpid(), "port": port, "model": a.model_id or selected(), "preloading": bool(a.preload)})
         last = time.time()
         uses: list[float] = []
@@ -1212,15 +1236,12 @@ def cmd_serve(a):
                         last = time.time()
                         # the key-down's warm-up while the preload is still at it: nothing to add, and the loop
                         # stays free for the requests that need no model
-                        if eng.lock.acquire(blocking=False):
-                            try:
-                                eng.load(req.get("model"))
-                            finally:
-                                eng.lock.release()
+                        if eng.preloading:
+                            resp = {"ok": True, "model": None, "loading": True}
+                        else:
+                            eng.load(req.get("model"))
                             eng.last = time.time()
                             resp = {"ok": True, "model": eng.model_id, "load_ms": eng.load_ms}
-                        else:
-                            resp = {"ok": True, "model": None, "loading": True}
                     elif req.get("cmd") == "polish":
                         last = time.time()
                         uses.append(last)

@@ -214,7 +214,7 @@ final class VoiceInput {
             // key-down asks it, and one that is stuck is replaced — on a relaunch too (v0.9 dogfood: every take
             // waited ~20 s for one, then ran the CLI, until a reboot)
             DispatchQueue.global(qos: .userInitiated).async {
-                if replaceIfStuck("key_down") { return }
+                if replaceIfStuck("warm") { return }
                 _ = WarmServer.call("asr-serve", ["cmd": "load", "purpose": "dictation"], timeout: 30)
             }
             return

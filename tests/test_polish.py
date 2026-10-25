@@ -601,13 +601,17 @@ class ServeWhileLoading(unittest.TestCase):
 
     class Slow(polish.Engine):
         loading = 1.5
+        threads: set = set()
 
-        def load(self, model_id=None):
-            time.sleep(self.loading)
+        def _load_now(self, model_id=None):
+            self.threads.add(threading.current_thread().name)
+            if self.model is None:
+                time.sleep(self.loading)
             self.model, self.model_id = object(), model_id or "fake"
             return self
 
-        def generate(self, text, deadline, terms=None, context=None, mode="light", variant=None):
+        def _generate_now(self, text, deadline, terms=None, context=None, mode="light", variant=None):
+            self.threads.add(threading.current_thread().name)
             return text + "。", False
 
     def call(self, req, timeout=10):
@@ -633,6 +637,10 @@ class ServeWhileLoading(unittest.TestCase):
                 full = self.call({"cmd": "polish", "text": "我们下午三点开会讨论一下", "vocab": []})
                 self.assertFalse(full["fell_back"])
                 self.assertGreater(full["load_ms"], 400)                         # the wait for the preload is load time
+                # the load and the generation on the model's one thread (MLX streams belong to the thread that made
+                # them: a preload on another thread failed every request with "no Stream(gpu, 1) in current thread")
+                self.assertEqual(len(self.Slow.threads), 1)
+                self.assertTrue(next(iter(self.Slow.threads)).startswith(polish.Engine.THREAD))
                 self.call({"cmd": "exit"})
                 th.join(5)
         finally:
