@@ -142,6 +142,49 @@ final class SettingsCatalogTests: XCTestCase {
             XCTAssertNil(SettingsCatalog.entry(old), "\(old) moved but is still in the catalogue")
             XCTAssertTrue(SettingsCatalog.entry(new) != nil || SettingsCatalog.section(new) != nil, "\(old) → \(new): no such row")
         }
+    func testResultsComeByPaneAndAPaneNameFindsThePane() {
+        defer { Loc.setting = nil }
+        for lang in ["en", "zh-Hans"] {
+            Loc.setting = lang
+            let r = SettingsCatalog.results("short")
+            // the pane named leads, as one hit with its settings after it in the page's order — not Restore defaults
+            XCTAssertEqual(r.first?.pane, "shortcuts", lang)
+            XCTAssertEqual(r.first?.paneHit, true, lang)
+            XCTAssertEqual(r.first?.hits.first?.entry.id, "shortcuts.record", lang)
+            XCTAssertFalse(r.first?.hits.contains { $0.entry.id == "shortcuts.restore" } ?? true, lang)
+            XCTAssertEqual(r.first?.hits.map { $0.entry.section }.filter { $0 == "shortcuts.anytime" }.count, 9, lang)
+            // the other panes' hits follow, each pane once; the page's order is the search's
+            XCTAssertEqual(Set(r.map(\.pane)).count, r.count, lang)
+            XCTAssertTrue(r.dropFirst().allSatisfy { !$0.paneHit }, lang)
+            XCTAssertEqual(SettingsCatalog.search("short").map(\.entry.id), r.flatMap(\.hits).map(\.entry.id), lang)
+            // a pane's name in the other language says why it matched; the UI's own name needs no reason
+            XCTAssertEqual(SettingsCatalog.reason(pane: "shortcuts", query: "short"), lang == "en" ? nil : "Shortcuts", lang)
+            XCTAssertEqual(SettingsCatalog.reason(pane: "shortcuts", query: "hotkey"), "hotkey", lang)
+        }
+        Loc.setting = "en"
+        // an action is found only by its own words
+        XCTAssertEqual(SettingsCatalog.results("restore").first?.hits.first?.entry.id, "shortcuts.restore")
+        // pane keywords alone: the pane as a whole
+        XCTAssertEqual(SettingsCatalog.results("hotkey").first?.paneHit, true)
+        XCTAssertEqual(SettingsCatalog.results("hotkey").first?.pane, "shortcuts")
+        // groups: best first, a pane's hits by section
+        let voice = SettingsCatalog.results("voice")
+        XCTAssertTrue(voice.allSatisfy { !$0.paneHit })
+        for g in voice {
+            var seen: [String] = []
+            for s in g.hits.map({ $0.entry.section ?? "" }) where seen.last != s {
+                XCTAssertFalse(seen.contains(s), "section \(s) of \(g.pane) split")
+                seen.append(s)
+            }
+        }
+        XCTAssertEqual(voice.map(\.score), voice.map(\.score).sorted(by: >))
+        // why a row matched when its title doesn't say: the stretch of its description
+        let login = SettingsCatalog.entry("general.login")!
+        XCTAssertEqual(SettingsCatalog.reason(login, query: "login"), nil)
+        XCTAssertTrue(SettingsCatalog.reason(login, query: "short")?.localizedCaseInsensitiveContains("shortcuts") == true)
+        XCTAssertEqual(SettingsCatalog.reason(login, query: "startup"), "startup")
+        XCTAssertEqual(SettingsCatalog.excerpt(["Blurt tells you when a shortcut clashes with another Blurt action"], ["another"]),
+                       "…clashes with another Blurt action")
     }
 
     func testPlaceholdersReadAsAGapWithoutArguments() {

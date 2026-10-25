@@ -383,8 +383,8 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
                 return false
             case #selector(NSResponder.insertNewline(_:)):
                 guard nav.searching else { return false }
-                nav.openSelected()
-                focusList()
+                // "Show 9 more" stays in the search (the field keeps the keys); anything else opens its pane
+                if nav.openSelected() { focusList() }
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
                 if search.stringValue.isEmpty { return false }

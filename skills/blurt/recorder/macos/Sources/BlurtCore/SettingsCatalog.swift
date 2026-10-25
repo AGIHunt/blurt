@@ -10,8 +10,11 @@
 // speech purposes); `fold` names the row whose disclosure hides the entry until a search jumps there, or whose menu
 // holds it (SettingMenuToggle / SettingMenuPicker: a search lands on that row).
 // Search: every word of the query has to appear in the entry's title, description, keywords or section — in the UI
-// language or in the other one — scored title first; a query that only names a pane lists that pane's rows. Plain
-// substring matching, no language rules.
+// language or in the other one — scored title first. Plain substring matching, no language rules. The results come in
+// groups, one per pane, best group first (ties: the sidebar's order), each by section, best first: what the results
+// page shows and what the sidebar counts. A query that names a pane ("short", "快捷") — or, when no row matches by its
+// own words, one that matches a pane's keywords ("hotkey") — finds the pane as a whole: its group leads, the pane itself
+// is its first hit and its rows follow in the page's order. Actions (Restore defaults) are only found by their own words.
 import Foundation
 
 public struct SettingsText: Hashable {
@@ -54,6 +57,17 @@ public struct SettingsPaneInfo: Hashable {
 
 public struct SettingsHit: Hashable {
     public let entry: SettingsEntry
+    public let score: Int
+}
+
+/// One pane's share of the results.
+public struct SettingsResultGroup: Hashable {
+    public let pane: String
+    /// The query names the pane (or matches only its keywords): the pane itself is the group's first hit, and `hits`
+    /// are all its settings, in the page's order.
+    public let paneHit: Bool
+    /// The settings found, by section (best section first, a section's own entry leading it), best first in a section.
+    public let hits: [SettingsHit]
     public let score: Int
 }
 
@@ -269,6 +283,9 @@ public enum SettingsCatalog {
         return e
     }()
 
+    /// Rows that are a button rather than a setting: found by their own words only, never listed with their pane.
+    public static let actions: Set<String> = ["shortcuts.restore"]
+
     public static func entry(_ id: String) -> SettingsEntry? { byID[id] }
     private static let byID: [String: SettingsEntry] = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 
@@ -308,13 +325,16 @@ public enum SettingsCatalog {
 
     // MARK: search
 
-    /// The entries every word of `query` matches, best first (ties keep the catalogue's order). A query that is a pane's
-    /// name or its start ("快捷", "short") puts that pane's rows first; one that only matches a pane's keywords ("hotkey") lists
-    /// its rows when nothing matches the rows themselves — "voice" finds the voice settings, not every row of Dictation.
-    public static func search(_ query: String) -> [SettingsHit] {
-        let terms = query.split(whereSeparator: { $0.isWhitespace }).map { fold(String($0)) }.filter { !$0.isEmpty }
+    /// Every setting found, in the order the results page lists them (its groups one after the other).
+    public static func search(_ query: String) -> [SettingsHit] { results(query).flatMap(\.hits) }
+
+    /// The results by pane, best group first; ties keep the sidebar's order. A query that is a pane's name or its start
+    /// ("快捷", "short") finds that pane as a whole; one that only matches a pane's keywords ("hotkey") does so when
+    /// nothing matches the rows themselves — "voice" finds the voice settings, not the whole of Dictation.
+    public static func results(_ query: String) -> [SettingsResultGroup] {
+        let terms = words(query)
         guard !terms.isEmpty else { return [] }
-        let here = Loc.language, other = Loc.languages.first { $0 != here } ?? "en"
+        let here = Loc.language, other = otherLanguage
         let all = entries.map { fields($0, here: here, other: other) }
         func pass(_ paneLevel: Bool) -> [SettingsHit] {
             var hits: [(SettingsHit, Int)] = []
@@ -331,26 +351,121 @@ public enum SettingsCatalog {
             }
             return hits.sorted { $0.0.score != $1.0.score ? $0.0.score > $1.0.score : $0.1 < $1.1 }.map(\.0)
         }
-        // the query is (the start of) a pane's name ("快捷", "short", "Shortcuts"): that pane's rows lead, so the
-        // results don't jump around while the name is typed — two letters at least, or one Chinese character
+        // the query is (the start of) a pane's name ("快捷", "short", "Shortcuts"): the pane is found as a whole and
+        // leads, so the results don't jump around while the name is typed — two letters at least, or one Chinese character
         let q = fold(query.trimmingCharacters(in: .whitespaces))
         let longEnough = q.count >= (q.unicodeScalars.allSatisfy(\.isASCII) ? 2 : 1)
-        let named = !longEnough ? [] : Set(panes.filter { p in
+        var whole = !longEnough ? Set<String>() : Set(panes.filter { p in
             [here, other].contains { lang in text(p.title, language: lang).map(fold)?.hasPrefix(q) == true }
         }.map(\.id))
-        let rows = pass(false)
-        guard !named.isEmpty else { return rows.isEmpty ? pass(true) : rows }
-        let lead = entries.filter { named.contains($0.pane) }.map { SettingsHit(entry: $0, score: 1000) }
-        return lead + rows.filter { !named.contains($0.entry.pane) }
+        var own = pass(false)
+        if own.isEmpty && whole.isEmpty {
+            // nothing matches by its own words: a pane whose name or keywords hold every word ("hotkey") is found as a
+            // whole; otherwise rows matched with their pane's help ("shortcut snap") are listed one by one
+            for p in panes where terms.allSatisfy({ score($0, paneFields(p, here: here, other: other)) > 0 }) { whole.insert(p.id) }
+            if whole.isEmpty { own = pass(true) }
+        }
+        var groups: [SettingsResultGroup] = []
+        let lead = 100_000
+        for p in panes where whole.contains(p.id) {
+            let found = Set(own.map(\.entry.id))
+            let rows = entries.filter { $0.pane == p.id && (!actions.contains($0.id) || found.contains($0.id)) }
+                .map { SettingsHit(entry: $0, score: lead) }
+            groups.append(SettingsResultGroup(pane: p.id, paneHit: true, hits: bySection(rows), score: lead))
+        }
+        for p in panes where !whole.contains(p.id) {
+            let rows = own.filter { $0.entry.pane == p.id }
+            guard let best = rows.first?.score else { continue }
+            groups.append(SettingsResultGroup(pane: p.id, paneHit: false, hits: bySection(rows), score: best))
+        }
+        let order = Dictionary(uniqueKeysWithValues: panes.enumerated().map { ($1.id, $0) })
+        return groups.sorted { $0.score != $1.score ? $0.score > $1.score : order[$0.pane, default: 0] < order[$1.pane, default: 0] }
+    }
+
+    /// Hits (best first) by section: the sections in the order of their best hit, a section's own entry leading it,
+    /// rows without a section (actions) last.
+    private static func bySection(_ hits: [SettingsHit]) -> [SettingsHit] {
+        var keys: [String] = []
+        var runs: [String: [SettingsHit]] = [:]
+        for h in hits {
+            let k = h.entry.section ?? ""
+            if runs[k] == nil { keys.append(k) }
+            runs[k, default: []].append(h)
+        }
+        let ordered = keys.filter { !$0.isEmpty } + keys.filter(\.isEmpty)
+        return ordered.flatMap { k -> [SettingsHit] in
+            let r = runs[k] ?? []
+            return r.filter { $0.entry.kind == .section } + r.filter { $0.entry.kind != .section }
+        }
+    }
+
+    /// The query's words, folded.
+    public static func words(_ query: String) -> [String] {
+        query.split(whereSeparator: { $0.isWhitespace }).map { fold(String($0)) }.filter { !$0.isEmpty }
+    }
+
+    /// The language search looks in besides the UI's.
+    public static var otherLanguage: String { Loc.languages.first { $0 != Loc.language } ?? "en" }
+
+    /// Why an entry was found, when its title doesn't say so: the stretch of its description, the keyword, or its name in
+    /// the other language that holds the query's other words. nil when the title holds every word, or when the entry
+    /// was found by its section or its pane (the results show those as headings).
+    public static func reason(_ e: SettingsEntry, query: String) -> String? {
+        let missing = words(query).filter { !fold(title(e)).contains($0) }
+        guard !missing.isEmpty else { return nil }
+        let other = otherLanguage
+        let texts = [detail(e)].compactMap { $0 } + keywordList(e.keywords, nil)
+            + [text(e.title, language: other), e.detail.flatMap { text($0, language: other) }].compactMap { $0 }
+            + keywordList(e.keywords, other) + [e.more.flatMap { text($0) }].compactMap { $0 }
+        return excerpt(texts, missing)
+    }
+
+    /// Why a pane was found as a whole, when its name in the UI language doesn't say so: its name in the other language
+    /// ("Shortcuts" beside 快捷键) or the keyword that holds the query ("hotkey").
+    public static func reason(pane id: String, query: String) -> String? {
+        guard let p = pane(id) else { return nil }
+        let missing = words(query).filter { !fold(text(p.title) ?? "").contains($0) }
+        guard !missing.isEmpty else { return nil }
+        let texts = [text(p.title, language: otherLanguage)].compactMap { $0 } + keywordList(p.keywords, nil)
+            + keywordList(p.keywords, otherLanguage)
+        return excerpt(texts, missing)
+    }
+
+    private static func keywordList(_ t: SettingsText, _ lang: String?) -> [String] {
+        guard let s = lang == nil ? text(t) : text(t, language: lang) else { return [] }
+        return s.split(whereSeparator: { $0 == "," || $0 == "，" || $0 == "、" }).map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// The first text holding the most of `terms` — a long one from a few words before the first of them, when it sits
+    /// far in ("…macOS’s own shortcuts become cards too."), so the match isn't cut off at the row's end.
+    static func excerpt(_ texts: [String], _ terms: [String]) -> String? {
+        let opts: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        var best: (text: String, n: Int)?
+        for t in texts {
+            let n = terms.filter { t.range(of: $0, options: opts) != nil }.count
+            if n > (best?.n ?? 0) { best = (t, n) }
+            if n == terms.count { break }
+        }
+        guard let t = best?.text, let first = terms.compactMap({ t.range(of: $0, options: opts)?.lowerBound }).min() else { return nil }
+        guard t.count > 56, t.distance(from: t.startIndex, to: first) > 28 else { return t }
+        var from = t.index(first, offsetBy: -12, limitedBy: t.startIndex) ?? t.startIndex
+        while from > t.startIndex, !t[t.index(before: from)].isWhitespace, t.distance(from: from, to: first) < 24 {
+            from = t.index(before: from)
+        }
+        return "…" + t[from...].trimmingCharacters(in: .whitespaces)
     }
 
     typealias Field = (text: String, title: Bool, pane: Bool, weight: Int)
 
     /// The texts one entry is found by, folded, with what a match in each is worth; `pane`: the pane's name or keywords.
+    /// An action is found by its name and keywords only ("restore", "reset"), never by a word of its description
+    /// ("shortcut" in Restore defaults' one).
     private static func fields(_ e: SettingsEntry, here: String, other: String) -> [Field] {
         var out: [Field] = []
+        let action = actions.contains(e.id)
         func add(_ t: SettingsText?, _ lang: String?, title: Bool = false, pane: Bool = false, _ w: Int) {
-            guard let t = t, let s = lang == nil ? text(t) : text(t, language: lang) else { return }
+            guard let t = t, !(action && (t == e.detail || t == e.more)),
+                  let s = lang == nil ? text(t) : text(t, language: lang) else { return }
             out.append((fold(s), title, pane, w))
         }
         add(e.title, nil, title: true, 100)
@@ -367,6 +482,12 @@ public enum SettingsCatalog {
         add(pane(e.pane)?.keywords, other, pane: true, 10)
         add(e.detail, other, 8)
         return out
+    }
+
+    /// A pane's own texts: its name and keywords, in both languages.
+    private static func paneFields(_ p: SettingsPaneInfo, here: String, other: String) -> [Field] {
+        [text(p.title, language: here), text(p.keywords, language: here), text(p.title, language: other), text(p.keywords, language: other)]
+            .compactMap { $0 }.map { (text: fold($0), title: false, pane: true, weight: 10) }
     }
 
     /// A field's best match for one word: the title scores by where the word sits (its start, a word's start, anywhere);

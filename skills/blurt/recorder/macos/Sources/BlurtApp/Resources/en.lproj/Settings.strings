@@ -234,6 +234,13 @@
 "settings.group.mac" = "This Mac";
 "settings.search.placeholder" = "Search settings";
 "settings.search.title" = "Search results";
+"settings.search.count.one" = "1 result for “%@”";
+"settings.search.count" = "%1$ld results for “%2$@”";
+"settings.search.open_pane" = "Open %@ settings";
+"settings.search.more" = "Show %ld more";
+"settings.search.fewer" = "Show fewer";
+"settings.search.hint.choose" = "Choose";
+"settings.search.hint.open" = "Open";
 "settings.search.none.title" = "Nothing matches “%@”";
 "settings.search.none.hint" = "Try another word, in English or Chinese.";
 "settings.search.result.ax" = "%1$@, in %2$@";

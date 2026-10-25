@@ -233,6 +233,13 @@
 "settings.group.mac" = "这台 Mac";
 "settings.search.placeholder" = "搜索设置";
 "settings.search.title" = "搜索结果";
+"settings.search.count.one" = "「%@」的 1 条结果";
+"settings.search.count" = "「%2$@」的 %1$ld 条结果";
+"settings.search.open_pane" = "打开「%@」设置";
+"settings.search.more" = "再显示 %ld 项";
+"settings.search.fewer" = "收起";
+"settings.search.hint.choose" = "选择";
+"settings.search.hint.open" = "打开";
 "settings.search.none.title" = "没有和「%@」相关的设置";
 "settings.search.none.hint" = "换个词试试，中文英文都可以。";
 "settings.search.result.ax" = "%1$@，在%2$@";

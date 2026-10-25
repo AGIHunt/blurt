@@ -70,7 +70,7 @@
 "capture.keys.change_it" = " · 可以在「设置」的「快捷键」里更换";
 "capture.keys.control" = "⌃ Control 键";
 "capture.keys.dictation_change" = "去听写设置…";
-"capture.keys.draw_note" = "录屏时按住它拖动，圈出重点";
+"capture.keys.draw_note" = "按住它拖动，在屏幕上圈出重点";
 "capture.keys.duplicate" = "和「%@」重复，没生效";
 "capture.keys.failed" = "这个快捷键用不了，可能被别的 App 占用";
 "capture.keys.fn" = "fn 键";

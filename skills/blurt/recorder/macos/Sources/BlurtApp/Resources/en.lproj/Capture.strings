@@ -70,7 +70,7 @@
 "capture.keys.change_it" = " · change it in Settings, under Shortcuts";
 "capture.keys.control" = "⌃ Control";
 "capture.keys.dictation_change" = "Change in Dictation…";
-"capture.keys.draw_note" = "Hold it and drag to circle things while recording";
+"capture.keys.draw_note" = "Hold it and drag to circle things on screen";
 "capture.keys.duplicate" = "Same as “%@” — not active";
 "capture.keys.failed" = "Can’t use this shortcut. Another app may have it.";
 "capture.keys.fn" = "fn";
