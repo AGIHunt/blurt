@@ -50,6 +50,8 @@ final class DictationTake {
     /// a double tap came for it: Return once it is pasted (the island's ears say "sending" meanwhile: Dictation.sendQueued)
     var sendAfterPaste = false { didSet { if sendAfterPaste != oldValue { island.dictationChanged() } } }
     var cancelled = false
+    /// Esc came while it polished: it goes in as heard (DictationStream.skipPolish)
+    var skippedPolish = false
     var result: DictationStream.Result?
     /// recognition failed with this (DictationASRFailure.code): kept for Retry
     var failure: String?
@@ -185,6 +187,14 @@ extension Dictation {
         var stopped: [String] = []
         for id in ids {
             guard let t = takes[id] else { queue.drop(id); continue }
+            // still polishing (a model loading, a slow answer): Esc types what was heard instead of waiting
+            // ("Still polishing… Esc types it as spoken"); the take stays in the line and lands as a fallback
+            if t.stage == .polishing, t.result == nil, t.failure == nil, !t.skippedPolish {
+                t.skippedPolish = true
+                t.stream.skipPolish()
+                emit(["event": "dictation_cancel", "id": id, "phase": "polishing", "skipped_polish": true])
+                continue
+            }
             t.cancelled = true
             t.sendAfterPaste = false
             t.stream.cancel()

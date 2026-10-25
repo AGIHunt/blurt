@@ -1,11 +1,14 @@
-// The Dictation Lab's two columns (DictationLab.swift has the model): the list of cases with "New Take" and "Run All
-// Cases" on top, and the workbench — record, every stage side by side with its milliseconds, the diff against what
-// the user meant, Compare, the marks, Save — or the regression run's table. Colours are BrandColor tokens (light, dark,
-// Increase Contrast; docs/design/system.md A.4), icons BlurtIcon / SF Symbols, words T("dictation.lab.*"). The one
-// primary per view is the brand button; while a take is processed the recorder card carries the AI-working hairline
-// (`.aiWorking`); Compare and the regression run show a spinner. Nothing blooms or glows. The list's selection is the
-// brand wash (ListWash / RowWash, as the history's); the workbench wraps (the scenario pickers, the hints) rather than
-// running past a narrow detail column's edges.
+// The Dictation Lab's two columns (DictationLab.swift has the model): the cases, with a few commands in the page's
+// header band beside the views (LabCommandBar: +, Read a Script, Run All Cases once there is a case, ⋯ for Import /
+// Export / keeping audio), and the workbench — the record
+// button first, what you meant, the optional text around the cursor (closed) and the scenario pills, every stage side
+// by side with its milliseconds, the diff, Compare, the marks — over a pinned bar with Save, or the regression run's
+// table. Colours are BrandColor tokens (light, dark, Increase Contrast; docs/design/system.md A.4), icons BlurtIcon /
+// SF Symbols, words T("dictation.lab.*"). The one primary per view is the brand button (Save, in the pinned bar);
+// while a take is processed the recorder card carries the AI-working hairline (`.aiWorking`); Compare and the
+// regression run show a spinner. Nothing blooms or glows. The list's selection is the brand wash (ListWash / RowWash,
+// as the history's); the workbench sits on one leading inset (LabGrid) and wraps (the pills) rather than running past
+// a narrow detail column's edges.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -35,46 +38,30 @@ enum LabScenario {
 
 // MARK: - the list column
 
+/// The list column: a bar of commands over the cases (+ for a new take, Read a Script, Run All Cases once there is a
+/// case, and ⋯ with Import Audio…, Export… and keeping the audio of the next dictations), then the cases alone — no
+/// command dressed as a row. No cases: the shared empty state, without a button (the recorder on the right is the
+/// action).
 struct LabListView: View {
     @ObservedObject var lab: DictationLabModel
 
     private var selection: Binding<String?> {
-        Binding(get: { lab.pane == .regression ? "regression" : lab.pane == .script ? "script" : lab.isNew ? "new" : lab.draft.id },
+        Binding(get: { lab.isNew || lab.pane == .regression ? nil : lab.draft.id },
                 set: { v in
                     guard let v = v else { return }
-                    switch v {
-                    case "regression": lab.pane = .regression
-                    case "script": lab.startScript()
-                    case "new": lab.newTake()
                     // reading a script, the take just saved is the one showing: its new row appearing isn't a click
-                    case lab.draft.id where lab.pane == .script: break
-                    default: lab.open(v)
-                    }
+                    if v == lab.draft.id && lab.pane == .script { return }
+                    lab.open(v)
                 })
-    }
-
-    private var scriptDetail: String {
-        guard let p = lab.currentPack else { return T("dictation.lab.script.detail") }
-        let pr = lab.progress
-        return "\(p.name) · \(pr.done)/\(pr.total)"
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            List(selection: selection) {
-                Section {
-                    row(.plus, T("dictation.lab.new_take"), T("dictation.lab.new_take.detail", Dictation.keyShort)).tag("new")
-                        .listRowBackground(RowWash(on: selection.wrappedValue == "new"))
-                    row(.document, T("dictation.lab.script"), scriptDetail).tag("script")
-                        .listRowBackground(RowWash(on: selection.wrappedValue == "script"))
-                    row(.restart, T("dictation.lab.run_all"), runDetail).tag("regression")
-                        .listRowBackground(RowWash(on: selection.wrappedValue == "regression"))
-                }
-                Section(header: Text(T("dictation.lab.cases", lab.cases.count))) {
-                    if lab.cases.isEmpty {
-                        Text(T("dictation.lab.cases.empty")).font(.system(size: 12)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true).padding(.vertical, 4)
-                    }
+            // the commands sit in the page's header band (DictationPageHeader), beside the views
+            if lab.cases.isEmpty {
+                EmptyStateContent(title: T("dictation.lab.cases.empty.title"), message: T("dictation.lab.cases.empty.hint"))
+            } else {
+                List(selection: selection) {
                     ForEach(lab.cases) { c in
                         LabCaseRow(c: c).tag(c.id)
                             .listRowBackground(RowWash(on: selection.wrappedValue == c.id))
@@ -83,61 +70,129 @@ struct LabListView: View {
                             }
                     }
                 }
+                .listStyle(.inset)
+                .background(ListWash())
             }
-            .listStyle(.inset)
-            .background(ListWash())
-            Divider()
-            footer
+            if lab.keepNext > 0 { keeping }
         }
         .frame(minWidth: 320, minHeight: 300)
         .onAppear { lab.reload() }
     }
 
-    private var runDetail: String {
-        guard let o = lab.runResult?["overall"] as? [String: Any], let s = o["score"] as? Double else { return T("dictation.lab.run_all.detail") }
-        return T("dictation.lab.run_all.last", String(format: "%.1f", s))
-    }
-
-    func row(_ icon: BlurtIcon, _ title: String, _ detail: String) -> some View {
-        HStack(spacing: 10) {
-            labGlyph(icon, 13).foregroundStyle(.secondary).frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium))
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
-    /// Import, export, collecting from real use, and the privacy line.
-    var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Button { lab.importAudio() } label: { HStack(spacing: 4) { labGlyph(.waveform, 11); Text(T("dictation.lab.import")) } }
-                    .disabled(lab.phase != .idle)
-                Button { lab.export() } label: { HStack(spacing: 4) { labGlyph(.download, 11); Text(T("dictation.lab.export")) } }
-                    .disabled(lab.cases.isEmpty)
-                Spacer()
-            }
-            .controlSize(.small)
+    /// While the audio of the next dictations is kept: say so, with the way to stop (the setting itself is in ⋯).
+    var keeping: some View {
+        VStack(spacing: 0) {
+            Divider()
             HStack(spacing: 6) {
-                Toggle(T("dictation.lab.keep_next"), isOn: Binding(get: { lab.keepNext > 0 }, set: { lab.setKeepNext($0 ? 10 : 0) }))
-                    .toggleStyle(.checkbox)
-                if lab.keepNext > 0 {
-                    Stepper(value: Binding(get: { lab.keepNext }, set: { lab.setKeepNext($0) }), in: 1...200) {
-                        Text(T("dictation.lab.keep_next.count", lab.keepNext)).monospacedDigit()
-                    }
-                }
+                labGlyph(.waveform, 11).foregroundStyle(.secondary)
+                Text(T("dictation.lab.keep_next.on", lab.keepNext)).monospacedDigit().foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 6)
+                Button(T("dictation.lab.keep_next.stop")) { lab.setKeepNext(0) }
+                    .buttonStyle(.plain).foregroundStyle(Color.brandInk)
             }
             .font(.system(size: 11.5))
-            .help(T("dictation.lab.keep_next.tip"))
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Image(systemName: "lock").font(.system(size: 10)).foregroundStyle(.secondary)
-                Text(T("dictation.lab.privacy")).font(.system(size: 11)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
+        .help(T("dictation.lab.keep_next.tip"))
+    }
+}
+
+/// The list column's commands as a compact bar (as Notes' and Mail's): icon buttons with a quiet hover, a word where
+/// the icon alone wouldn't say it, the rarely used ones in ⋯.
+struct LabCommandBar: View {
+    @ObservedObject var lab: DictationLabModel
+
+    /// In the page's header band, after History | Words | Lab: the words beside the icons where the column has room,
+    /// the icons alone (their names on hover) where it hasn't.
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            buttons(titled: true)
+            buttons(titled: false)
+        }
+    }
+
+    func buttons(titled: Bool) -> some View {
+        HStack(spacing: 2) {
+            LabBarButton(icon: .plus, help: T("dictation.lab.new_take.tip"), on: false) { lab.newTake() }
+                .disabled(lab.phase != .idle)
+                .accessibilityLabel(T("dictation.lab.new_take"))
+            LabBarButton(icon: .document, title: titled ? T("dictation.lab.script") : nil, help: scriptHelp, on: lab.pane == .script) { lab.startScript() }
+                .disabled(lab.phase != .idle)
+                .accessibilityLabel(T("dictation.lab.script"))
+            if !lab.cases.isEmpty {
+                LabBarButton(icon: .restart, title: titled ? T("dictation.lab.run_all") : nil, help: runHelp, on: lab.pane == .regression) { lab.pane = .regression }
+                    .accessibilityLabel(T("dictation.lab.run_all"))
+            }
+            more
+        }
+        .fixedSize()
+    }
+
+    private var scriptHelp: String {
+        guard let p = lab.currentPack else { return T("dictation.lab.script.detail") }
+        let pr = lab.progress
+        return T("dictation.lab.script.detail") + " · \(p.name) · \(pr.done)/\(pr.total)"
+    }
+
+    private var runHelp: String {
+        guard let o = lab.runResult?["overall"] as? [String: Any], let s = o["score"] as? Double else { return T("dictation.lab.run_all.detail") }
+        return T("dictation.lab.run_all.detail") + " · " + T("dictation.lab.run_all.last", String(format: "%.1f", s))
+    }
+
+    /// Import, export and keeping the audio of the next dictations: rare, so one menu.
+    var more: some View {
+        Menu {
+            Button(Look.menuCase(T("dictation.lab.import"))) { lab.importAudio() }.disabled(lab.phase != .idle)
+            Button(Look.menuCase(T("dictation.lab.export"))) { lab.export() }.disabled(lab.cases.isEmpty)
+            Divider()
+            Picker(Look.menuCase(T("dictation.lab.keep_next")), selection: Binding(get: { lab.keepNext }, set: { lab.setKeepNext($0) })) {
+                Text(T("dictation.lab.keep_next.off")).tag(0)
+                ForEach(keepChoices, id: \.self) { n in
+                    Text(LabCommandBar.presets.contains(n) ? T("dictation.lab.keep_next.n", n) : T("dictation.lab.keep_next.count", n)).tag(n)
+                }
+            }
+        } label: {
+            labGlyph(.more, 13)
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .padding(.horizontal, 4)
+        .help(T("dictation.lab.more"))
+        .accessibilityLabel(T("dictation.lab.more"))
+    }
+
+    static let presets = [5, 10, 25, 50]
+    /// the presets, and what is left of a count that is running down
+    private var keepChoices: [Int] { Array(Set(LabCommandBar.presets + (lab.keepNext > 0 ? [lab.keepNext] : []))).sorted() }
+}
+
+/// A bar button: an icon (and a word); a rounded neutral wash on hover, and while its pane is showing.
+private struct LabBarButton: View {
+    let icon: BlurtIcon
+    var title: String? = nil
+    let help: String
+    let on: Bool
+    let action: () -> Void
+    @State private var hover = false
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                labGlyph(icon, 12).frame(width: 14)
+                if let t = title { Text(t).lineLimit(1).fixedSize() }
+            }
+            .font(.system(size: 12, weight: on ? .semibold : .regular))
+            .foregroundStyle(enabled ? Color.primary : Color.secondary)
+            .padding(.horizontal, title == nil ? 5 : 8).frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(on ? 0.09 : hover && enabled ? 0.06 : 0)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(help)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -182,20 +237,61 @@ struct LabDetailView: View {
     }
 }
 
-/// A titled block of the workbench.
+/// The workbench's grid: every block starts on one leading inset, the pinned bar too.
+enum LabGrid {
+    static let inset: CGFloat = 28
+}
+
+/// A titled block of the workbench: the heading in the label colour (weight, not grey, sets it apart from the
+/// fields), an optional caption beside it.
 private struct LabSection<Content: View>: View {
     let title: String
+    var caption: String? = nil
     var trailing: AnyView? = nil
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                Spacer()
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                if let c = caption {
+                    Text(c).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                }
+                Spacer(minLength: 0)
                 if let t = trailing { t }
             }
             content
         }
+    }
+}
+
+/// One scenario tag as a property pill: its name while it isn't set ("App ⌄"), "App: WeChat ⌄" once it is; a menu
+/// of the choices with "Not set" first.
+private struct LabScenarioPill: View {
+    let key: String
+    let values: [String]
+    let value: String
+    let set: (String) -> Void
+
+    var body: some View {
+        let name = T("dictation.lab.scenario.\(key)")
+        let on = !value.isEmpty
+        Menu {
+            Picker(selection: Binding(get: { value }, set: set)) {
+                Text(T("dictation.lab.scenario.none")).tag("")
+                Divider()
+                ForEach(values, id: \.self) { v in Text(T("dictation.lab.scenario.\(key).\(v)")).tag(v) }
+            } label: { EmptyView() }
+            .pickerStyle(.inline).labelsHidden()
+        } label: {
+            Text(on ? T("dictation.lab.scenario.pill", name, T("dictation.lab.scenario.\(key).\(value)")) : name)
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .font(.system(size: 12))
+        .padding(.leading, 10).padding(.trailing, 6).frame(height: 24)
+        .background(Capsule().fill(on ? chipFill : Color.clear))
+        .overlay(Capsule().strokeBorder(Color(nsColor: on ? .clear : .separatorColor), lineWidth: 1))
+        .accessibilityLabel(name)
+        .accessibilityValue(on ? T("dictation.lab.scenario.\(key).\(value)") : T("dictation.lab.scenario.none"))
     }
 }
 
@@ -310,51 +406,59 @@ private struct Chip: View {
 
 struct LabWorkbench: View {
     @ObservedObject var lab: DictationLabModel
+    /// "Text around the cursor" is optional: closed until the user opens it (or the case has some)
+    @State private var showContext = false
 
     private func text(_ get: @escaping (LabCase) -> String?, _ set: @escaping (inout LabCase, String?) -> Void) -> Binding<String> {
         Binding(get: { get(lab.draft) ?? "" }, set: { v in lab.edit { set(&$0, v) } })
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    if lab.pane == .script { LabScriptCard(lab: lab).id("top") } else { title.id("top") }
-                    recorder.aiWorking(lab.phase == .processing, cornerRadius: 12)
-                    if lab.pane != .script {
-                        LabSection(title: T("dictation.lab.reference")) {
-                            TextField(T("dictation.lab.reference.placeholder"), text: text({ $0.reference }, { $0.reference = $1 }), axis: .vertical)
-                                .textFieldStyle(.roundedBorder).lineLimit(2...6)
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        if lab.pane == .script { LabScriptCard(lab: lab).id("top") } else { title.id("top") }
+                        recorder.aiWorking(lab.phase == .processing, cornerRadius: 12)
+                        if lab.pane != .script {
+                            LabSection(title: T("dictation.lab.reference")) {
+                                TextField(T("dictation.lab.reference.placeholder"), text: text({ $0.reference }, { $0.reference = $1 }), axis: .vertical)
+                                    .textFieldStyle(.roundedBorder).lineLimit(3...8)
+                            }
+                            cursor
+                            scenario
                         }
-                        cursor
-                        scenario
+                        if let take = lab.draft.take { stages(take).id("stages") }
+                        if lab.draft.take != nil || (lab.draft.truth != nil && lab.pane != .script) { markup.id("markup") }
+                        if !lab.learned.isEmpty { learned }
+                        if !lab.isNew && lab.draft.hasAudio { compare.id("compare") }
                     }
-                    if let take = lab.draft.take { stages(take).id("stages") }
-                    if lab.draft.take != nil || (lab.draft.truth != nil && lab.pane != .script) { markup.id("markup") }
-                    if !lab.learned.isEmpty { learned }
-                    if !lab.isNew && lab.draft.hasAudio { compare.id("compare") }
-                    saveBar
+                    .padding(.horizontal, LabGrid.inset).padding(.top, 8).padding(.bottom, 28)
+                    .frame(maxWidth: 900, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 28)
-                .frame(maxWidth: 900, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .onChange(of: lab.scrollTarget) { t in
+                    guard let t = t else { return }
+                    withAnimation { proxy.scrollTo(t, anchor: .top) }
+                    DispatchQueue.main.async { lab.scrollTarget = nil }
+                }
             }
-            .onChange(of: lab.scrollTarget) { t in
-                guard let t = t else { return }
-                withAnimation { proxy.scrollTo(t, anchor: .top) }
-                DispatchQueue.main.async { lab.scrollTarget = nil }
-            }
+            Divider()
+            saveBar
         }
+        .onAppear { if !lab.before.isEmpty || !lab.after.isEmpty { showContext = true } }
+        .onChange(of: lab.draft.id) { _ in if !lab.before.isEmpty || !lab.after.isEmpty { showContext = true } }
     }
 
+    /// The take's (or the case's) name, the one promise of the page, and Move to Trash for a saved case.
     var title: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(lab.isNew ? T("dictation.lab.new_take") : T("dictation.lab.case", "\(DictationHistoryModel.dayTitle(lab.draft.created)) \(DictationHistoryModel.time(lab.draft.created))"))
                     .font(.system(size: 17, weight: .semibold))
-                HStack(spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Image(systemName: "lock").font(.system(size: 10))
-                    Text(T("dictation.lab.privacy.short"))
+                    Text(T("dictation.lab.privacy.short")).fixedSize(horizontal: false, vertical: true)
                 }
                 .font(.system(size: 11.5)).foregroundStyle(.secondary)
             }
@@ -370,6 +474,8 @@ struct LabWorkbench: View {
 
     // MARK: record
 
+    /// The record button (the page's loudest thing), what it is doing, and the microphone (Sound → Input's popup,
+    /// borderless, the device's whole name). Importing a file is in the list's ⋯.
     var recorder: some View {
         HStack(alignment: .center, spacing: 16) {
             Button { lab.toggleRecord() } label: {
@@ -382,44 +488,50 @@ struct LabWorkbench: View {
                             .foregroundStyle(lab.phase == .recording ? .white : Color(nsColor: BrandColor.onInk))
                     }
                 }
-                .frame(width: 58, height: 58)
+                .frame(width: 56, height: 56)
             }
             .buttonStyle(.plain)
             .disabled(lab.phase == .processing)
             .accessibilityLabel(lab.phase == .recording ? T("dictation.lab.stop") : T("dictation.lab.record"))
-            VStack(alignment: .leading, spacing: 5) {
-                Text(status).font(.system(size: 13, weight: .medium))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(status).font(.system(size: 13, weight: .semibold))
                 if lab.phase == .recording {
                     HStack(spacing: 8) {
-                        LabLevelBars(levels: lab.levels).frame(width: 160, height: 18)
+                        LabLevelBars(levels: lab.levels).frame(width: 160, height: 15)
                         Text(String(format: "%d:%02d", Int(lab.elapsed) / 60, Int(lab.elapsed) % 60)).monospacedDigit()
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .font(.system(size: 11.5)).foregroundStyle(.secondary)
                     }
                 } else {
                     Text(T("dictation.lab.record.hint", Dictation.keyShort)).font(.system(size: 11.5)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1).truncationMode(.tail)
                 }
                 if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true) }
-                // under the text, not beside it: the text has the card's width (it used to wrap in a narrow column)
-                HStack(spacing: 8) {
-                    Picker(selection: Binding(get: { lab.mic }, set: { lab.setMic($0) })) {
-                        Text(T("dictation.lab.mic.default")).tag("")
-                        ForEach(lab.mics, id: \.self) { Text($0).tag($0) }
-                    } label: { labGlyph(.mic, 11) }
-                    .frame(maxWidth: 220)
-                    .disabled(lab.phase != .idle)
-                    .help(T("dictation.lab.mic.tip"))
-                    Button { lab.importAudio() } label: { Text(T("dictation.lab.import")) }
-                        .disabled(lab.phase != .idle)
-                }
-                .controlSize(.small)
-                .padding(.top, 4)
+                micMenu.padding(.top, 1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
+        .padding(.horizontal, 16).padding(.vertical, 14)
         .background(RoundedRectangle(cornerRadius: 12).fill(cardFill))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+    }
+
+    var micMenu: some View {
+        Menu {
+            Picker(selection: Binding(get: { lab.mic }, set: { lab.setMic($0) })) {
+                Text(Look.menuCase(T("dictation.lab.mic.default"))).tag("")
+                if !lab.mics.isEmpty { Divider() }
+                ForEach(lab.mics, id: \.self) { Text($0).tag($0) }
+            } label: { EmptyView() }
+            .pickerStyle(.inline).labelsHidden()
+        } label: {
+            Text(lab.mic.isEmpty ? Look.menuCase(T("dictation.lab.mic.default")) : lab.mic)
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+        .font(.system(size: 11.5))
+        .padding(.leading, -3)      // the borderless button's own inset: its text on the status's edge
+        .disabled(lab.phase != .idle)
+        .help(T("dictation.lab.mic.tip"))
+        .accessibilityLabel(T("dictation.lab.mic.tip"))
     }
 
     var status: String {
@@ -431,35 +543,57 @@ struct LabWorkbench: View {
         }
     }
 
+    // MARK: the optional fields
+
+    /// Text around the cursor: a disclosure row (its state in a word when closed), then what it does, the two
+    /// texts stacked at full width, and whether the case keeps them.
     var cursor: some View {
-        LabSection(title: T("dictation.lab.cursor")) {
-            HStack(spacing: 8) {
-                TextField(T("dictation.lab.cursor.before"), text: $lab.before).textFieldStyle(.roundedBorder)
-                Text(T("dictation.lab.cursor.mark")).font(.system(size: 11)).foregroundStyle(.secondary)
-                TextField(T("dictation.lab.cursor.after"), text: $lab.after).textFieldStyle(.roundedBorder)
+        let filled = !lab.before.isEmpty || !lab.after.isEmpty
+        return VStack(alignment: .leading, spacing: 10) {
+            Button { showContext.toggle() } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showContext ? 90 : 0)).frame(width: 10)
+                    Text(T("dictation.lab.cursor")).font(.system(size: 13, weight: .semibold))
+                    Text(filled ? (lab.includeContext ? T("dictation.lab.cursor.filled_kept") : T("dictation.lab.cursor.filled"))
+                         : T("dictation.lab.optional"))
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Toggle(T("dictation.lab.cursor.include"), isOn: $lab.includeContext).toggleStyle(.checkbox)
-                Text(T("dictation.lab.cursor.tip")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(showContext ? .isSelected : [])
+            .accessibilityHint(T("dictation.lab.cursor.tip"))
+            if showContext {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(T("dictation.lab.cursor.tip")).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    TextField(T("dictation.lab.cursor.before"), text: $lab.before, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).lineLimit(1...4)
+                    TextField(T("dictation.lab.cursor.after"), text: $lab.after, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).lineLimit(1...4)
+                    HStack {
+                        Text(T("dictation.lab.cursor.include")).font(.system(size: 12))
+                        Spacer()
+                        Toggle(T("dictation.lab.cursor.include"), isOn: $lab.includeContext).toggleStyle(.switch).controlSize(.small).labelsHidden()
+                    }
+                    .padding(.top, 2)
+                }
             }
-            .font(.system(size: 11.5))
         }
     }
 
+    /// The scenario tags: one row of property pills (Linear's), each its name until set, then "Name: value".
     var scenario: some View {
-        LabSection(title: T("dictation.lab.scenario")) {
-            LabFlowLayout(spacing: 10) {        // wraps in a narrow detail column instead of running past its edges
+        LabSection(title: T("dictation.lab.scenario"), caption: T("dictation.lab.scenario.tip")) {
+            LabFlowLayout(spacing: 6) {        // wraps in a narrow detail column instead of running past its edges
                 ForEach(LabScenario.keys, id: \.key) { k in
-                    Picker(T("dictation.lab.scenario.\(k.key)"), selection: Binding(
-                        get: { lab.draft.scenario[k.key] ?? "" },
-                        set: { v in lab.edit { var s = $0.scenario; s[k.key] = v; $0.scenario = s } })) {
-                        Text(T("dictation.lab.scenario.none")).tag("")
-                        ForEach(k.values, id: \.self) { v in Text(T("dictation.lab.scenario.\(k.key).\(v)")).tag(v) }
+                    LabScenarioPill(key: k.key, values: k.values, value: lab.draft.scenario[k.key] ?? "") { v in
+                        lab.edit { var s = $0.scenario; s[k.key] = v; $0.scenario = s }
                     }
-                    .fixedSize()
                 }
             }
-            .font(.system(size: 12))
         }
     }
 
@@ -542,7 +676,8 @@ struct LabWorkbench: View {
         return Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 7) {
             GridRow {
                 label(T("dictation.lab.detail.terms"))
-                if terms.isEmpty { Text(T("dictation.lab.none")).foregroundStyle(.tertiary) } else { FlowRow(items: terms.map { Chip(text: $0) }) }
+                Text(terms.isEmpty ? T("dictation.lab.none") : terms.joined(separator: T("main.dictation.correct.sep")))
+                    .foregroundStyle(terms.isEmpty ? .secondary : .primary)
             }
             GridRow {
                 label(T("dictation.lab.detail.guard"))
@@ -550,7 +685,7 @@ struct LabWorkbench: View {
                      : take["polished"] is String ? T("dictation.lab.guard.passed") : T("dictation.lab.stage.polish_off"))
             }
             if !repaired.isEmpty {
-                GridRow { label(T("dictation.lab.detail.repaired")); FlowRow(items: repaired.map { Chip(text: $0) }) }
+                GridRow { label(T("dictation.lab.detail.repaired")); Text(repaired.joined(separator: T("main.dictation.correct.sep"))) }
             }
             GridRow {
                 label(T("dictation.lab.detail.fit"))
@@ -571,7 +706,10 @@ struct LabWorkbench: View {
         .font(.system(size: 12))
     }
 
-    func label(_ s: String) -> some View { Text(s).foregroundStyle(.secondary).gridColumnAlignment(.trailing) }
+    /// the labels in one fixed, leading column (as the history's Details), the same in both languages
+    func label(_ s: String) -> some View {
+        Text(s).foregroundStyle(.secondary).lineLimit(1).gridColumnAlignment(.leading).frame(width: 112, alignment: .leading)
+    }
 
     // MARK: mark up
 
@@ -713,12 +851,18 @@ struct LabWorkbench: View {
 
     // MARK: save
 
+    /// Pinned under the workbench, so the commit never scrolls away: what just happened on the left; Discard and the
+    /// one primary on the right, with why it is off while there is nothing to save yet.
     var saveBar: some View {
         HStack(spacing: 10) {
             if let n = lab.notice {
-                HStack(spacing: 4) { labGlyph(.check, 11).foregroundStyle(okColor); Text(n) }.font(.system(size: 12)).foregroundStyle(.secondary)
+                HStack(spacing: 4) { labGlyph(.check, 11).foregroundStyle(okColor); Text(n).lineLimit(1).truncationMode(.tail) }
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: 8)
+            if lab.isNew && lab.pane != .script && lab.draft.take == nil && lab.draft.truth == nil {
+                Text(T("dictation.lab.save.needs_take")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            }
             if lab.isNew && lab.draft.take != nil {
                 Button(T("dictation.lab.discard")) { lab.newTake() }.disabled(lab.phase != .idle)
             }
@@ -727,8 +871,10 @@ struct LabWorkbench: View {
                 .keyboardShortcut("s", modifiers: .command)
                 .primaryButton(lab.pane != .script)
                 .disabled(!lab.canSave)
+                .help(T("dictation.lab.save.tip"))
         }
         .controlSize(.regular)
+        .padding(.horizontal, LabGrid.inset).padding(.vertical, 12)
     }
 }
 

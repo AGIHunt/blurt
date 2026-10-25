@@ -233,4 +233,22 @@ final class DictationHistoryTests: XCTestCase {
         try fm.setAttributes([.modificationDate: old], ofItemAtPath: h2.audioDir.appendingPathComponent("d-x.wav").path)
         XCTAssertEqual(h2.pruneOrphanAudio(), ["d-x.wav"])
     }
+
+    /// The page's rows say only the exception, one at a time: the item first, then copied-only, then not polished.
+    func testARowShowsOneExceptionAtMost() {
+        var e = entry("d-m", "hi", 1)
+        XCTAssertNil(e.rowMark)
+        e.fellBack = true
+        XCTAssertEqual(e.rowMark, .notPolished)
+        e.insert = "copied"
+        XCTAssertEqual(e.rowMark, .copiedOnly)
+        e.item = "BA-42"
+        XCTAssertEqual(e.rowMark, .item("BA-42"))
+    }
+
+    /// Every row clamps alike: a list typed into Notes previews as one paragraph.
+    func testThePreviewIsOneParagraph() {
+        XCTAssertEqual(DictationEntry.preview("今天下午要做的：\n1. 把听写\n\n2.  菜单栏 "), "今天下午要做的： 1. 把听写 2. 菜单栏")
+        XCTAssertEqual(DictationEntry.preview("  plain  "), "plain")
+    }
 }

@@ -218,8 +218,8 @@ class Tables(unittest.TestCase):
             "JobViews.swift": {'"job.step.\\(s.id)"': common, 'key + ".named"': None, '"main.job.error.\\(e.code)"': None},
             "MainWindowController.swift": {'"main.bundle.error.\\(f.code)"': None},
             # the developer-only Dictation Lab (General → Developer) falls back to the raw tag by design
-            "DictationLabViews.swift": {'"dictation.lab.scenario.\\(k.key).\\(v)"': None,
-                                        '"dictation.lab.scenario.\\(k.key)"': None, '"dictation.lab.error_tag.\\(tag)"': None},
+            "DictationLabViews.swift": {'"dictation.lab.scenario.\\(key).\\(v)"': None, '"dictation.lab.scenario.\\(key).\\(value)"': None,
+                                        '"dictation.lab.scenario.\\(key)"': None, '"dictation.lab.error_tag.\\(tag)"': None},
         }
         missing, glued = [], []
         for f in SOURCES.rglob("*.swift"):

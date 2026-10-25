@@ -142,6 +142,31 @@ public struct DictationEntry: Identifiable, Hashable {
     }
 }
 
+/// What a row of the Dictation page says beside the app's name (system.md §3.5a): nothing for the usual take —
+/// polished and typed in — else the one exception that matters most, in one neutral chip: the item it became (a link
+/// to it), that it was only copied (no text field had the focus: it still has to be pasted), or that it went in
+/// without polish.
+public enum DictationRowMark: Equatable {
+    case item(String)
+    case copiedOnly
+    case notPolished
+}
+
+extension DictationEntry {
+    public var rowMark: DictationRowMark? {
+        if let i = item, !i.isEmpty { return .item(i) }
+        if insert == "copied" { return .copiedOnly }
+        if fellBack { return .notPolished }
+        return nil
+    }
+
+    /// The list's preview of a text: one paragraph — line breaks and runs of spaces become one space — so every row
+    /// clamps the same way (two lines, then "…"), a list typed into Notes as much as a sentence.
+    public static func preview(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
+    }
+}
+
 /// The speech model's language tag for one piece (transcribe.py's `tag`): which language it wrote in, the
 /// probabilities it gave English and the user's language without the Words (what decided) and with them, and how far
 /// the decision was from the line (`margin`, in log-odds: logit(English share) − logit(threshold), > 0 English — a

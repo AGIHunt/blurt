@@ -364,10 +364,36 @@ sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)
 
 ### 3.5a Dictation page and Lab
 
-- Today's stats: neutral; the digits semibold (v2.1: no gradient text).
+- **One header band (v0.9 redesign)** at the top of the list column, nothing else above the list: History | Words |
+  Lab as a native segmented control with a **neutral** selected segment (a view is where you are, never a brand fill;
+  every segment one width, so the control keeps its shape in both languages), on the rows' leading edge (16 pt), and
+  on the right only the view's own commands (the Lab's +, Read a Script, Run All Cases, ⋯). The detail column's first
+  row is a band of the same height (the app and when; the word; New Take), so the two columns read as one header.
+  The toolbar's search field is History's: on Words and the Lab it leaves the toolbar.
+- Today's stats: neutral, on the Today heading's right ("6 dictations · 112 words"), the page's one count besides the
+  window subtitle; while searching, the same place says "3 of 9 dictations".
+- What stops dictation (no speech model, the key not heard, off, the model downloading) is one card above the list:
+  its `StatusDot` (or the spinner), plain words, and — when it is the next step — the view's one **B** primary; the
+  detail's Turn into Item is plain meanwhile. Never amber link text.
+- Rows: the app's icon (a neutral initial tile for an app not on this Mac, never the blank document), app name and time
+  in secondary, the text as one paragraph clamped to two lines; at most one neutral chip, only for an exception (the
+  item key, "Copied only", "As spoken"); no per-row glyphs, no separators, day headings without a rule. A row the AI
+  writes an item from: the spinner in its time's place and the `brand.working` hairline, so it stays in sight.
+- Detail: the text at 15 pt straight on the pane (no card), Copy and Correct on hover; Polished | As Spoken | Changes
+  as a small neutral segmented control (Changes: what polish removed struck through in `err`, what it added on `attn`
+  @ 28 %, in one text — never two narrow columns); Turn into Item as the primary, its busy state ("Writing Item…" with
+  the spinner) inside the same button at the same width; "⋯" next to it for the rest (Delete last, red); the facts
+  behind a closed "Details", labels in one fixed leading column. Correcting happens in place, with the system focus
+  ring; Save (⌘↩) is the moment's **B**, Cancel plain; the views are off and the actions step aside until it ends.
+- A search with no results is a filter state: the quiet `magnifyingglass` (not the app icon), the query said back,
+  one hint, a plain Clear Search; the detail column stays empty.
+- Words: one field that finds as you type and adds on Return (the line under it says which); the words to review in
+  a quiet card (Add in `brand.ink`, × to ignore) and chosen first, so the detail opens on them with Add to Your Words
+  as its **B**; one heading form for every group (name, count in secondary), Built-in folded with a chevron; chips
+  neutral, `brand.tint` when chosen, their × over the corner (no reflow).
 - The Lab score: 30 pt semibold, neutral (v2.1: no gradient, no bloom).
 - The Lab's Run / Save / Next: **B**. While a take is processed the recorder card carries the `brand.working` hairline;
-  Compare and Run All show their spinner (no rim). Make Item on the Dictation page: the spinner beside it.
+  Compare and Run All show their spinner (no rim).
 - Diff: deletions `err`, additions `attn` @ 28 %; stars `attn`; chosen check and level bars `brand.ink`.
 
 ### 3.6 Menu-bar icon
