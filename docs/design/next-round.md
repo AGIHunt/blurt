@@ -15,7 +15,8 @@
 - **MCP 已经有**（v0.6 的 `mcp_server.py`，7 个工具，Codex 实测通过）；设置 → Agent 可一键装进 Claude Code / Codex，
   外部 agent 装了就能自动回报状态。
 - **鸡爪卡片 = 还没归属项目的捕获**：选了当前项目时，捕获被鸡爪直接抓回刘海岛（归档并开始整理），不挂着；没选项目时卡片
-  挂在上方，拖到刘海岛展开的项目列表上 = 归属并开始整理；卡片多时「交给 AI 分」。录屏不挂卡片，结束即整理，按条分项目。
+  挂在上方，拖到刘海岛展开的项目列表上 = 归属并开始整理；卡片多时「整理」（进未归类，附建议的项目）。录屏不挂卡片，结束即整理，
+  进当前项目或未归类（v0.9：不按条自动分项目，只给建议）。
   截图飞上去、摆动、悬停抬起、拖出、掉落等动效保留。
 - **2026-10-22 更新：不要鸡爪。** 从上往下伸的鸡爪看着瘆人，改成**细线**：没归属的卡片用一根细线挂在刘海岛下沿，线从岛里垂下来。
   线头一个小圆扣，用品牌色。几张卡就是几根长短略有错落的线，像风铃，不是一根横绳，避开晾衣架的样子。动效全保留：
@@ -57,11 +58,14 @@ Claude Code、Codex 是「干活的」：一个文件夹里跑各种会话。口
 
 下一轮的团队协作就基于这几个字段，加上 `assignee`、`module` 做分派。
 
-### 1.2 归属哪个项目：三层，按优先级
+### 1.2 归属哪个项目：用户来定，Blurt 只让它变得便宜（v0.9 改版）
 
-1. **先指定**：刘海岛上始终显示「当前项目」，点它或按快捷键切换。切了之后，录屏、截图、语音都默认归它。
-2. **AI 分**：当前项目是「自动」时（默认），整理时 AI 按项目的名称、描述、文件夹和模块，给每条建议一个项目并附置信度。低置信度的进「待分配」。
-3. **事后改**：审核时每条都有项目下拉，可以一次拖一批到某个项目。改过的记成用户决定，AI 不再覆盖。
+1. **先指定**：刘海岛上始终显示「当前项目」，点它、按 ⌥⇧O、菜单栏「当前项目 ▸」或命令面板切换（打字筛选）。选了项目，录屏、截图、语音都归它；
+   没选（「未归类」）就进未归类，截图和语音先挂成卡片。**不按前台 App 猜，也从不自动移动条目**（v0.8 的「自动」模式和按置信度自动移动都已去掉）。
+2. **整理时只给建议**：没选项目的内容整理时，整理的那一次调用顺带拿到候选项目（名称、描述、文件夹路径——想看可以看——和最近 5 条的标题；
+   不多调一次模型，不预先建项目画像，也不从用户的改动里学习），给每条写一个建议（`suggested_project`），条目留在未归类。
+3. **一键接受、随时改**：未归类里的条目写着「像是 X 的 · 归过去」，同一建议的排在一起、可以「全部归过去 (3)」，都能撤销；录屏结束时刘海说
+   「归入 X · 更改」；主窗口多选后按 M 打字选项目、拖到侧栏；卡片 ⌘ 点多选后拖到岛上的项目或右键「移到项目 ▸」。每次移动都能 ⌘Z。
 
 项目本身 = 名称 + 描述 + 可选的本机代码文件夹（没有文件夹就是纯记录型项目，比如「日常想法」）+ 默认 agent + worktree 偏好。
 
@@ -239,9 +243,8 @@ title: "登录按钮点击后无响应"
 state: new                        # 唯一的状态（K3 改版）：new | todo | handed_off | in_progress | to_verify | done | wontfix | discarded
 work: {"to": …, "agent": …, ...}  # 最近一次交出 / 处理的细节，K3；没交出过就没有这个键
 project: 3f2a9c1b7e44             # 项目 id（K2），inbox 里的条目是 inbox
-project_by: capture               # capture（捕获时就有当前项目）| ai | user | migrate
-project_confidence: null          # ai 分的置信度 0–1
-suggested_project: {"id": "…", "confidence": 0.58, "reason": "…"}   # 低于阈值时只建议不移动；没有就不写
+project_by: capture               # capture（捕获时就有当前项目）| user | migrate；ai 只出现在 v0.8 自动归过的旧条目上
+suggested_project: {"id": "…", "reason": "…"}   # 整理时给未归类条目的建议（可带 confidence），只建议不移动；移走后保留（⌘Z 移回来还在）
 created: "2026-10-22T10:15:00+08:00"
 updated: "2026-10-22T10:20:41+08:00"   # 每次 items.py 写入都更新
 source: {"type": "recording", "by": "john", "role": null, "app": "Chrome", "url": "https://…",   # 示例为排版折行，实际写在一行
@@ -297,7 +300,7 @@ details、next_steps、open_questions、questions、answer、自定义字段、�
 
 ```jsonc
 {"schema": 3, "session": "20261022-101500", "title": "官网改版的一些想法", "digest": "## 总览…", "language": "zh",
- "project": "3f2a9c1b7e44" | null,        // 这个会话的默认项目（捕获时的当前项目；auto 时为 null）
+ "project": "3f2a9c1b7e44" | null,        // 这个会话的默认项目（捕获时的当前项目；没选时为 null = 未归类）
  "processing": true, "reviewed": false, "agent_at": "…ISO…", "source_video": "recording.mp4" | null,
  "items": ["<uid>", …],                   // 审核页的顺序
  "local": {"I-001": "<uid>", …},          // agent 草稿号 → uid，旧的 `items.py patch SESSION I-001` 靠它定位
@@ -306,8 +309,8 @@ details、next_steps、open_questions、questions、answer、自定义字段、�
 
 **agent 的处理流程不变**（SKILL.md §3）：agent 仍然先整份写 `<session>/items.json`（v2 格式），然后：
 - `items.py ingest SESSION`：把 items.json 里的每条变成 Markdown 条目，写 batch.json，把 items.json 改名为 `items.ingested.json`
-  （留作排查，不删）。归属：条目自带 `project` → 用它；否则会话的 `batch.project` / `$BLURT_PROJECT`；都没有 → 先进 inbox，再跑
-  `projects.py route --apply`（K2）。会话目录下的 `frames/…` 等文件复制进各自 store 的 `assets/<uid>/`。
+  （留作排查，不删）。归属：会话的 `batch.project` / `meta.json` / `$BLURT_PROJECT` / 会话所在的 store；都没有 → inbox，这时条目自带的
+  `project` 只记成 `suggested_project`（K2，v0.9：不移动）。会话目录下的 `frames/…` 等文件复制进各自 store 的 `assets/<uid>/`。
 - **之后任何 `items.py` 写命令遇到还没 ingest 的 items.json，都先自动 ingest**（所以按旧 SKILL.md 干活的 agent 也能用）。
 
 **items.py v3**（P1）。`REF` = uid | `KEY-n`（含 aliases）| `.md` 的路径；旧写法 `SESSION ID`（第一个位置参数是存在的目录）照常支持，
@@ -449,20 +452,19 @@ projects.json 只有 `projects.py` 写，锁 `$BLURT_HOME/.projects.lock`，原�
 
 ```jsonc
 {"schema": 1,
- "current": "auto",                      // "auto" 或项目 id。录屏 / 截图 / 语音默认归它
- "route_threshold": 0.75,                // AI 分项目的置信度阈值
+ "current": null,                        // 项目 id，或 null = 没选（进未归类）；v0.8 的 "auto" 读作 null。只由用户设置
  "projects": [{
    "id": "3f2a9c1b7e44",                 // sha1(realpath(path)).hex[:12]，和 v1 索引的 workspace id 同一公式
    "path": "/Users/john/workspace/bug-agent",
    "name": "bug-agent",                  // 默认文件夹名
    "key": "BA",                          // 条目编号前缀：^[A-Z][A-Z0-9]{1,4}$，在注册表里唯一，"IN" 保留给 inbox
    "slug": "bug-agent",                  // ^[a-z0-9][a-z0-9-]{0,31}$，唯一；tmux 会话名用它（K5）
-   "description": "",                    // 给 AI 分项目用，用户可写
+   "description": "",                    // 用户可写；没选项目的内容整理时作为候选项目的说明
    "default_agent": null,                // agents.json id；null = 全局默认
    "worktree": true,                     // 派发时默认开 worktree（不是 git 仓库时忽略）
    "worktree_root": null,                // null = <仓库根>/../.<仓库名>-worktrees
-   "modules": [{"name": "review page", "paths": ["web/packages/review"], "description": ""}],   // 预留给分派，这轮只给 AI 分项目当提示
-   "hints": {"domains": ["blurt.dev"], "apps": ["Blurt"]},   // 来源网址 / 应用命中 → 高置信度
+   "modules": [{"name": "review page", "paths": ["web/packages/review"], "description": ""}],   // 预留给分派
+   // v0.8 的 "hints"（按来源网址 / 前台应用猜项目）已去掉：不再写，旧文件里有也不读
    "opened": "…ISO…", "last_used": "…ISO…", "pinned": false}]}
 ```
 
@@ -480,36 +482,33 @@ projects.py list                           → {"ok","current","projects":[Row],
      Row = 注册表的项 + {exists, git: bool, store, open_items, unassigned?(仅 inbox)}，按 pinned、last_used 排序
 projects.py add PATH [--name N] [--key K] [--description D]    打开文件夹：登记、建 store、写 git exclude → {"ok","project":Row,"created":bool}
 projects.py remove ID                      只取消登记，绝不删 .blurt → {"ok"}
-projects.py set ID --json '{patch}'        改设置（name description default_agent worktree worktree_root modules hints key pinned）→ {"ok","project":Row}
-projects.py use ID|auto                    切换当前项目（并更新 last_used）→ {"ok","current"}
-projects.py current                        → {"ok","current":"auto"|id,"project":Row|null}
+projects.py set ID --json '{patch}'        改设置（name description default_agent worktree worktree_root modules key pinned）→ {"ok","project":Row}
+projects.py use ID|inbox                   切换当前项目（并更新 last_used）；inbox（none、旧的 auto 同义）= 不选 → {"ok","current":id|null}
+projects.py current                        → {"ok","current":id|null,"project":Row|null}
 projects.py resolve PATH                   PATH 属于哪个项目（最深的那个）→ {"ok","project":Row|null}
-projects.py route --items REF … [--apply] [--threshold X] [--agent ID] [--no-llm]
-     → {"ok","suggestions":[{"uid","project":id|null,"confidence","reason","by":"rule"|"llm"}],"moved":[uid…]}
+projects.py candidates [--recent N]        整理未归类内容时告诉 agent 的候选项目 → {"ok","projects":[{id,key,name,description,path,recent}],"text"}
 projects.py migrate                        → {"ok","added":n,"current"}
 ```
+（v0.8 的 `projects.py route` 已删掉：规则 + 小模型 + 阈值自动移动，连同 `route_threshold`、`hints`、`$BLURT_ROUTE_CMD`、`BLURT_NO_ROUTE`。）
 
-**AI 分项目**（`route`）：先规则（`code_refs` 的路径只在一个项目里存在 → 0.95；`source.url` 的域名或 `source.app` 命中 `hints` → 0.9；
-`module` 命中 `modules[].name` → 0.8），没命中再问小模型（`agents.py command <id> headless`，和 live 草稿同一个模型和超时 60 秒；
-输入是各项目的 name / description / modules 和条目的 title / quote / source，输出 `{project|null, confidence, reason}`）。
-`--apply`：≥ 阈值 → `items.py move --by ai`；< 阈值 → 留在 inbox，写 `suggested_project`。`_user.project` 存在的条目永远跳过。
-route 由 `items.py ingest` 在 auto 模式下调用（后台、写 K4 的 route 任务）；失败只是条目留在 inbox。
+**建议项目**（v0.9，取代 v0.8 的 route）：没选项目的内容整理时，App 在整理提示词末尾附上 `projects.py candidates` 的 `text`
+（每个项目的名称、id、key、文件夹路径、描述、最近 5 条标题；现算，不存画像）。agent 在 items.json 里给有把握的条目写 `project` 和
+`project_reason`，`items.py ingest` 只把它记成 `suggested_project`，条目留在未归类。同一次整理调用完成，不额外调模型；不学用户的改动。
+接受建议 = 用户自己的移动（`items.py move`），主窗口「像是 X 的 · 归过去」「全部归过去 (N)」，都能 ⌘Z。
 
-**捕获时的归属**：current = 项目 X → 会话写进 X 的 store、条目 `project_by: capture`；current = auto → 会话写进 inbox store，
-录屏整理完按条 route；截图和语音变成卡片等用户分（K7）。录屏中途在刘海岛上换项目 → 更新该会话 `meta.json.project` 和 `batch.project`。
+**捕获时的归属**：current = 项目 X → 会话写进 X 的 store、条目 `project_by: capture`；current = null → 会话写进 inbox store，
+录屏整理后条目留在未归类（带建议）；截图和语音变成卡片等用户分（K7）。录屏中途在刘海岛上换项目 → 更新该会话 `meta.json.project` 和
+`batch.project`；录屏结束时刘海「归入 X · 更改」：整理还没完就改 `meta.json.project`（整理完再把落错的移过去），整理完了就移动条目。
 
 **细则（P1）**：
 - **key 默认值**：按 `-_ .` 和驼峰切词时只留 ASCII 字母数字；开头不能是数字（去掉前导数字，不够 2 位就取名字里前 3 个拉丁字母，`3d-viewer` → `DVI`）；
   加数字后超过 5 位就截断。`opened` / `last_used` 精确到毫秒（最近列表靠它排序）。`projects.json` 多一个 `_migrated: true`（`migrate` 只在第一次把
-  `record.workspace` 设为 current，之后用户改回 auto 不再被覆盖）。
+  `record.workspace` 设为 current，之后用户改成不选项目不再被覆盖）。
 - **错误码**：`not_found` `not_a_folder` `reserved`（Blurt 自己的文件夹）`bad_key` `key_taken` `key_in_use` `bad_field` `no_project` `locked`。
 - **inbox 的名字**按 config `lang`（auto 跟随系统首选语言）给 Unassigned / 待分配。
-- **agent 提议归属**（SKILL.md §3）：auto 模式下 agent 可以在 items.json 的每条里写 `project`（id 或 key）、`project_confidence`、`project_reason`；
-  ≥ 阈值直接归过去（`project_by: ai`，记 `project_confidence`），< 阈值留在 inbox 并写 `suggested_project`（不再后台 route）；都没写的才后台 route。
-- **route 的小模型**：`$BLURT_ROUTE_CMD`（从 stdin 读提示词、stdout 输出答案，测试和其它 agent 用）；否则按 `record.live_drafts_agent` → `record.agents`
-  顺序找第一个装了的 claude / codex，`agents.py command <id> headless`（不带事件流和 MCP），claude 加 `--model <record.live_drafts_model>`；
-  cwd = `$BLURT_HOME/tmp`，60 秒超时。一次调用给所有条目，答案里取第一个 JSON；失败时条目留在 inbox，reason 写原因。
-- `items.py move --by ai` 和 route 都跳过 `_user.project`；`move --by user` 记 `_user.project`、清掉 `suggested_project`；AI 移动时多写 `project_reason`。
+- **agent 建议归属**（SKILL.md §3）：只在未归类的会话里，agent 可以在 items.json 的每条里写 `project`（id 或 key）、`project_reason`
+  （`project_confidence` 可写可不写）；ingest 一律只写 `suggested_project`，不移动。会话有项目时忽略这些字段。
+- `items.py move` 只有用户的移动（`--by ai` 已去掉）：记 `_user.project`，`project_by: user`，保留 `suggested_project`（只在未归类里显示）。
 
 ### K3 · 条目状态：一条生命线
 
@@ -641,12 +640,12 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
 ```
 
 - **steps 的 id 是固定的**（UI 用本地化键 `job.step.<id>` 显示）：record `capture, finalize`；snap `capture`；voice `listen, transcribe, file`；
-  process `prepare, transcribe, write, frames, route`；route `route`；agent `launch, work, finish`。
+  process `prepare, transcribe, write, frames`（v0.8 还有 `route`）；route `route`（v0.8 的旧任务，只读不再新建）；agent `launch, work, finish`。
 - **events.jsonl 的一行**：`{"t": ISO, "source": "hook|tty|tmux|app|items", "event": "<名字>", "status"?: K5 状态, "state"?: 任务状态,
   "step"?: {"id", "state", "progress"?}, "items"?: [uid], "progress"?: n, "detail"?: {…}}`。
   **读者算「有效状态」**：读 json，再从 `events_offset` 开始按顺序把事件叠上去（step 按 id 覆盖；status → `agent.status/status_at/status_source`；
   state、progress 覆盖；items 取并集）。Swift、Rust、Python 三处实现同一规则，所以 owner 没在跑（应用关了）时状态也是新的。
-- **谁是 owner**：record / snap / voice / process 由应用（AgentHub、Capture、Tauri）建和写；route 由 projects.py；agent 由 sessions.py。
+- **谁是 owner**：record / snap / voice / process 由应用（AgentHub、Capture、Tauri）建和写；agent 由 sessions.py（v0.8 的 route 由 projects.py，已去掉）。
   `items.py ingest / done` 看到 `$BLURT_JOB` 时往那个任务的 events 里追加 `write` / `frames` 步骤完成。
 - **CLI**（P2，`jobs.py`；Python 的 owner 都用它的库函数）：
   `jobs.py new --type T [--project P] [--session S] [--parent J] [--title T]` → `{"ok","id","path"}`；
@@ -856,7 +855,7 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
   盖住岛时，岛移到区域下方（X11 没有截屏排除）。录屏 HUD 和鸡舍（perch）窗口删除，`overlay::record` 换成不带窗口的 `engine::record`。
 - **录屏外的截图 / 语音**：`tk_recorder.py shot SESSION --region x,y,w,h [--project P]`、`tk_recorder.py voice SESSION [--project P]
   [--silence-ms] [--max] [--hold]`（`BLURT_TEST_MIC_WAV` 测试用），写 K7 的 shots.jsonl 行；转写用 `transcribe.py note`（P7），没有时 `said`
-  留空、整理时再转写。有当前项目时 8 秒内的捕获合并成一个 process 任务（`process_captures` 不写归属行，归属已在捕获行里）；auto 下是卡片
+  留空、整理时再转写。有当前项目时 8 秒内的捕获合并成一个 process 任务（`process_captures` 不写归属行，归属已在捕获行里）；没选项目时是卡片
   （= inbox store 里还开着的截图批次中 project 为 null、没删的行）。
 - **整理**：process 任务由应用跑 `agents.py command <pick> headless`（`BLURT_JOB`、`BLURT_PROJECT`，输出进 `jobs/<id>.log`）；录屏一结束就
   整理（parent = record 任务），失败的原因按输出归到 `auth / quota / network / unknown`。
@@ -934,19 +933,20 @@ uid 01JB… · issue · high · module auth
 | 抽屉 | — | 项目列表（见下） |
 
 **抽屉**（项目作为放置目标）：拖着卡片进入岛的范围就展开成抽屉；按 ⌥⇧O 是「切换器」模式。行：最近的项目（按 last_used，最多 8 个，
-再多有「更多…」和输入即过滤）、每行文件夹图标 + 名字 + key；切换器模式顶部多一行「自动」，底部「打开文件夹…」（⌘O）；放置模式底部多
-「待分配」和「交给 AI 分」两个目标。↑↓ 选择、↩ 确认、Esc 关闭。放置目标高亮：放大 1.02 + 12% 强调色底。
+再多有「更多…」和输入即过滤）、每行文件夹图标 + 名字 + key；切换器模式顶部多一行「未归类」（= 不选项目；v0.8 是「自动」），底部「打开文件夹…」（⌘O）；
+挑选模式（「归入 X · 更改」打开的，Island.Pick）行一样，选中只把那一样东西移过去，不改当前项目；放置模式底部多
+「未归类」和「整理」两个目标（⌘ 点多选的卡片一起放）。↑↓ 选择、↩ 确认、Esc 关闭。放置目标高亮：放大 1.02 + 12% 强调色底。
 
 **鸡爪卡片**：
-- **卡片 = 还没归属项目的捕获**（auto 模式下的截图加备注、一段语音）；录屏永远不挂卡片。有图：112×84 pt 缩略图；只有语音：168×44 pt，波形图标加一行文字。
+- **卡片 = 还没归属项目的捕获**（没选当前项目时的截图加备注、一段语音）；录屏永远不挂卡片。有图：112×84 pt 缩略图；只有语音：168×44 pt，波形图标加一行文字。
 - 每张卡被一只从屏幕顶边伸下来的鸡爪（现有的爪子矢量，`drawFoot`）抓着上沿，卡片上沿在岛底下 18 pt，以岛为中心左右排开，间距 12 pt，
   交替倾斜 ±2°，最多显示 7 张，其余叠成一张「+N」。（v0.9 改为：最新的在左，最多 5 张、整排不超过 780 pt，其余在末尾的「+N」后面，
   点开是全部卡片的总览；见 HangingCards.swift / BlurtCore CardRow.swift。）
 - 当前项目已选时：捕获结束后卡片飞上来，爪子接住，随即把它拽进岛里（不挂着），岛轻轻一鼓，出现孵化的蛋（这一条进入整理）。
   多个捕获在 8 秒内连续发生时合并成一个 process 任务。
-- 没选项目（auto）时卡片挂着。手势沿用鸡舍：单击复制图片；拖出 = 文件（附备注文字）；双击编辑备注；悬停抬起并显示备注；× 删除。
-  **拖到岛上的某个项目 = 归属并开始整理**（爪子把卡拽回岛、孵化）；拖到「待分配」= 归属 inbox 并整理（条目进待分配）；
-  「交给 AI 分」= 把所有卡片一起整理，按条 route（K2）。
+- 没选项目时卡片挂着。手势沿用鸡舍：单击复制图片；拖出 = 文件（附备注文字）；双击编辑备注；悬停抬起并显示备注；× 删除。
+  **拖到岛上的某个项目 = 归属并开始整理**（爪子把卡拽回岛、孵化；⌘ 点多选的一起走，右键「移到项目 ▸」同样）；拖到「未归类」= 归属 inbox；
+  「整理」= 把这些卡片一起整理进未归类，每条附上建议的项目（K2，v0.9：只建议不移动）。
 - 动效（P5 定最终参数，P8 尽量对齐）：飞上来 = 弹簧（response 0.55 s，damping 0.72）；爪子下伸 0.35 s ease-out、接触时合拢；
   摆动按现有阻尼弹簧，1.2 秒内停稳；悬停抬起 6 pt、旁边的卡让位；拖走时爪子张开、0.3 s 缩回；没放到目标上弹回爪子；删除 = 爪子张开、
   卡片受重力掉落并淡出（0.5 s）；拽进岛 = 0.45 s ease-in，缩到岛中心 0.2 倍，岛 1.04 → 1（0.25 s）。系统开了「减弱动态效果」：一律 0.2 s 淡入淡出，不摆动。
@@ -956,7 +956,7 @@ uid 01JB… · issue · high · module auth
 （没有就新建；格式同 v0.6）。新增字段：`"type": "shot" | "voice"`（缺省 shot；voice 行 `file` 为 null、`voice` 是 wav 路径）、
 `"project": id | "inbox" | null`（null = 卡片，还没分）。归属 = 追加一行 `{"n": 3, "project": "<id>", "assigned_by": "user"|"ai"|"capture"}`
 （同 n 后写的为准）；然后调 `AppEnvironment.process(session, captures: [3], project: "<id>")`（Tauri：`process_captures`）。
-「交给 AI 分」= `process(session, captures: 所有卡片, project: nil)`。删卡片 = 追加 `{"n", "deleted": true}`。
+「整理」（没选项目）= `process(session, captures: 这些卡片, project: nil)`：提示词里带候选项目，条目进未归类、带建议。删卡片 = 追加 `{"n", "deleted": true}`。
 （v0.8.1）拖进别的应用、被接住的卡片 = 追加 `{"n", "taken": <wall>}`：不再是卡片，也没删（文件留着），在「最近拖走的」里保留 7 天
 （`BlurtCore.TakenCaptures`），挂回刘海 = `{"n", "taken": null}`；7 天后启动整理 / 每小时的 `Snapper.expireTaken` 按删卡片处理（进废纸篓）。
 `captures.py file` 跳过 taken 的（`reason: "taken"`）。这是捕获的标记，不是条目状态，K3 的 `lifecycle.json` 不变。
@@ -1008,7 +1008,7 @@ Esc 或没说话只删重录（`VoiceRetake`；之前直接覆盖原文件，Esc
 - **悬停 vs 按键打开**：悬停打开的离开 400 ms 收起；快捷键 / 命令打开的（`setOpen(_, sticky: true)`）要等指针进来再离开才收，或 Esc。语音输入期间保持展开。
 - **voice 行**：`{"n","type":"voice","file":null,"voice":"shots/NNN.wav","said":null|text,"duration":s,"project":…}`；`said` 在
   `transcribe.py note` 返回后再追加一行写入（没有这个命令时为 null，整理时 agent 转写）。按住手势里静音不结束；没听到语音的不归档。
-- **「交给 AI 分」的标记行**：`{"n","project":null,"assigned_by":"ai"}`（不再是卡片；ingest 按条 route）。`assigned_by` 有值的都不是卡片。
+- **「整理」的标记行**：`{"n","project":null,"assigned_by":"ai"}`（不再是卡片；条目进未归类，只带建议）。`assigned_by` 有值的都不是卡片。
 - **合并**：带项目的捕获 8 秒内合并成一个 `process(session, captures, project)`；拖到项目 / 待分配的卡片 1.2 秒内合并（连续拖几张时一个任务）。
 - **孵化**：`expectProcess(session, captures)` 立刻在右耳放蛋；`JobStore` 里 session 相同（realpath 比较）、captures 有交集的 process 任务接管它，
   结束时破壳 0.6 s → `+N`（N = 任务的 items 数），1.6 s 后换成待审数。120 秒没有任务接管就静默去掉。
@@ -1036,14 +1036,14 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
   条目多一个 `enrich: pending`。应用照样建一个 process 任务（title「按备注直接归档」，`usage = {tokens: 0, agent: null}`），岛上孵化 +1，
   岛里一句「已归到 ordo-platform · OP-14」（项目 key 徽标、项目色）。
 - **没备注 = 卡片**，即使选了当前项目（截图行改回 `project: null, assigned_by: null`，卡片留在原 store 的批次里；重启时 inbox 和各项目 store 的批次都恢复卡片）。
-  current = auto 时有备注的捕获也是卡片。拖卡片到项目 / 待分配 = 同样用 `captures.py` 直接归档（没备注的标题是「截图 14:32」），不跑 agent。
-- **交给 agent 的只有**：岛上「整理」（有当前项目时：所有卡片整理进它）/「交给 AI 分」（auto：按条分项目）—— 每个批次一次调用；
+  没选项目时有备注的捕获也是卡片。拖卡片到项目 / 未归类 = 同样用 `captures.py` 直接归档（没备注的标题是「截图 14:32」），不跑 agent。
+- **交给 agent 的只有**：岛上「整理」（有当前项目时：所有卡片整理进它；没有：整理进未归类、附建议）—— 每个批次一次调用；
   主窗口右键「AI 补全」（`App.enrich(uids)`：一次调用，按 lens 补 kind / 步骤 / code_refs，`items.py patch … --unset enrich`）；录屏结束的整理。
   它们都用**整理用模型**（K5 细则）。
 - **Esc = 取消**：备注气泡里 Esc（或垃圾桶按钮）丢弃这张截图（文件进废纸篓，追加 `{"n","deleted": true}`），岛上「已丢弃 · 撤销」3 秒；
   撤销把文件从废纸篓移回、追加 `{"n","deleted": false}`，连同已打的字 / 说的话按正常流程走。⏎（或 ✓ 按钮）= 留下（没备注就成卡片）。语音输入 Esc 照旧取消。
 - **迁移后问一次**：`projects.json` 多 `current_by: "user" | "migrate"`（`projects.py use` 写 user；`migrate` 写 migrate；早先迁移过、没有这个键而 current
-  不是 auto 的也补成 migrate）。应用启动整理完后，`current_by == "migrate"` 时岛上问「截图、语音默认归到 X（沿用旧设置）还是自动分配？」[归 X] [自动分配]，
+  不为空的也补成 migrate）。应用启动整理完后，`current_by == "migrate"` 时岛上问「截图、语音默认归到 X（沿用旧设置）还是先放进未归类？」[沿用 X] [未归类]，
   不会自动消失；两个答案都经 `projects.py use` 记成 user。
 - **当前项目一眼可见**：岛上项目按钮 = 项目色的 key 徽标 + 名字（放不下时名字截断，徽标不截）；备注气泡状态行先写「→ 项目名」。
 
@@ -1074,7 +1074,7 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
 - **录屏失败不删截图**（`TakeEnd`）：只有取消、或什么都没有的失败才删目录；有截图 / 备注时 meta `state: failed`（`started_at` 是这次录屏开始的时间，`error` 写进 meta 和日志），
   岛上「录屏没能保存 · 其中的 N 张截图和备注都留着 · 整理」（复数走 stringsdict）。
 - **录屏中的截图备注**（`RecordingNotes`）：一次备注会话只暂停一次；气泡在这次录屏的截图之间切换时沿用这次会话的「关闭后继续」，被替换的气泡不会在新气泡下面恢复录屏。
-- **交给 AI 前先看有没有 agent**：没有可用的就不收卡片，岛上「自动归类需要 Claude Code 或 Codex，卡片先留着 · 去设置…」。
+- **交给 AI 前先看有没有 agent**：没有可用的就不收卡片，岛上「整理需要 Claude Code 或 Codex，卡片先留着 · 去设置…」。
 - **没有辅助功能时点击复制不武装两步粘贴**（`CardPasteSequence.arm`）：每次会话说一次「已复制 · 在聊天应用里只会粘贴图片 · 去开启…」。
 - 选区提示里的「L 上次区域」只在有上次区域时出现，并注册成和 F 一样的全局键。
 
@@ -1251,7 +1251,8 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
   现在没有需要你看的，`inbox.empty.body` New captures, and items an agent says are finished, show up here. / 新捕获的条目，和 agent 说做好了的条目，会出现在这里。；
   `session.running` Working / 运行中，`session.waiting_input` Needs your input / 等你回答，`session.turn_done` Turn finished / 本轮完成，
   `session.exited` Exited / 已退出，`session.error` Error / 出错；
-  `project.auto` Auto / 自动，`project.inbox` Unassigned / 待分配，`project.ai_sort` Let AI sort / 交给 AI 分，`project.open_folder` Open Folder… / 打开文件夹…；
+  `project.inbox` Unassigned / 未归类，`project.open_folder` Open Folder… / 打开文件夹…（v0.8 的 `project.auto`、`project.ai_sort` 在 macOS 上已去掉，
+  Windows / Linux 跟进前还留在共享词表里）；
   `handoff.copy_instruction` Copy instruction / 复制指令，`handoff.copy_full` Copy full text / 复制全文；
   `job.type.<type>`、`job.step.<id>`（K4 的每个 type 和 step id 都要有）。
 
@@ -1288,13 +1289,13 @@ public final class ProjectStore {
   public static let shared: ProjectStore
   public private(set) var projects: [Project]              // 已登记的，pinned 和最近使用的在前，不含 inbox
   public var inbox: Project { get }
-  public private(set) var currentID: String?               // nil = auto
+  public private(set) var currentID: String?               // nil = 没选（未归类）
   public var current: Project? { get }
   public func project(id: String) -> Project?
   public func use(_ id: String?) async throws              // projects.py use
   public func open(folder: URL) async throws -> Project    // projects.py add
   public func update(_ id: String, _ patch: [String: Any]) async throws
-  public func newSessionDir(_ kind: SessionKind) -> URL    // 当前项目（auto 时 inbox）store 的 sessions/<ts>[-shots|-voice]
+  public func newSessionDir(_ kind: SessionKind) -> URL    // 当前项目（没选时 inbox）store 的 sessions/<ts>[-shots|-voice]
   public var onChange: (() -> Void)?                       // 主线程；projects.json 变化
   public func reload() }
 // BlurtCore/Jobs/Jobs.swift（P3）

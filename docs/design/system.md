@@ -214,10 +214,10 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Live-text panel | M caret | the island's **lower half**, not a second pop-up: the island's black (`#000`), 6 pt under it, exactly the open island's width under a voice note (radius 22) and the ears + 24 pt a side under dictation (radius 14), with the window's soft shadow; no blur, no border. The width is the island's *without* a toast, so a toast during a take never re-wraps the words. On a capsule screen (no notch) the capsule widens to 292 pt while the panel shows (the notch-with-ears proportion; the panel 340, radius 15) — never a 340 pt panel under a 120 pt pill. Text 92 % white (committed) / 60 % (pending: dictation's piece still being said, provisional until its transcript lands). Up to three lines, newest at the bottom; the panel keeps the height it reached during a take. A flat mint 2 pt caret while listening. **No rule under the text** (v2.1: the island's level bars already say blurt hears you). |
 | Alert dot | `attn` | |
 | List rows: selection / hover target | T (island 20 %) | |
-| Check marks, progress, AI-sort wand, quoted query | M | |
+| Check marks, progress, quoted query | M | |
 | AI sort / organize running | `brand.working` | the row's own progress bar plus one static 1 pt hairline round the row (`WorkingOutline`, island value). When it finishes the chick hatching in the ear says so: no bloom. |
 | Agent dots | M running · `attn` waiting · `err` error · `ok` finished | |
-| Filled island buttons (Organize, Auto-sort, voice Done, toast action) | **B** | white semibold title (`IslandButton(gradient:fg:)`), composed of layers (never drawn: a drawn view showed scanline seams while the island grew); the title is a picture of the line drawn with font smoothing (`TextImage`), since a `CATextLayer` draws without it and the semibold came out as light as regular |
+| Filled island buttons (Organize, voice Done, toast action) | **B** | white semibold title (`IslandButton(gradient:fg:)`), composed of layers (never drawn: a drawn view showed scanline seams while the island grew); the title is a picture of the line drawn with font smoothing (`TextImage`), since a `CATextLayer` draws without it and the semibold came out as light as regular |
 | Stop / Discard | `rec` / system red | |
 | Hanging-card threads | — | neutral hairline with an opposite-tone halo |
 | Clasps | M | ringed in the card surface |
@@ -249,7 +249,9 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Kind icons in lists | kind tokens | outline glyphs at one weight; the issue kind is the brand outline bug (no dense SF ladybug) |
 | to_verify / done / todo / wontfix / discarded | `attn` + "!" / `ok` + ✓ / secondary / tertiary | |
 | "New" counts and badges | M | pill, `brand.on` digits (`CountPill`); plain counts neutral |
-| Job running (process / route) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. The spinner is always the brand arc (`BrandSpinner`), never the system's grey spokes. |
+| Suggested project (an Unassigned row's "Looks like X · Move", the "Looks like X · 3 items [Move All (3)]" line above the list) | `brand.ink` on the action word only | the project name in secondary label, "Move" in brand ink 11 pt medium, no pill and no wash: it is an offer, not a state; the group line's button is a plain small bordered button (the one primary stays the view's); the project's folder glyph in its own colour (`ProjectLook`) |
+| Move popover (M in the main window) | the system popover | type-to-filter field, rows: check (brand ink) where the items are now, folder glyph in the project's colour, name, key in mono secondary; Unassigned last |
+| Job running (process) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. The spinner is always the brand arc (`BrandSpinner`), never the system's grey spokes. |
 | Item banner of a hand-off | I wash while the agent works · `attn` wash when it waits for you · neutral 5 % wash once the session ended | `SessionBannerPlan`: the first button is the one primary; two inline at most, the rest in a borderless ⋯ menu (`more`). Ended without a report: Open Session, Restart Session · ⋯ Mark as Done, Take Back. Failed: Restart Session, Take Back · ⋯ Open Session, with the reason ("Codex couldn't start: …") and an `err` icon. Ready to review: Review Changes… (opens the sheet), Take Back · ⋯ Mark as Done. No response (watchdog): `attn`, Open Session, Restart Session. Never Mark as Done as the primary. |
 | A session's ended card | neutral | How it ended (`SessionOutcome`), the agent's last lines when it failed, one B primary: Review Changes… (changes) or Restart Session (failed); Take Back / Show Output plain. The dead terminal is never shown first. The header's Review Changes… is plain `.bordered` and only appears while the output is shown. Restart / Take Back are off while one runs. One wording per state everywhere (`AgentSessionRow.stateText`: the list, the header, the job row and detail): *Couldn't start* / 启动失败 in both the card title and the row. The review sheet's Merge / Commit and Merge is the B primary on ⌘↩ (no bare Return); Discard's confirmation defaults to Cancel. |
 | Progress bars | I (light) / M (dark) | flat: too thin for the gradient |
@@ -655,7 +657,7 @@ Before / after screenshots (untracked): `promo/cases/v0.8-color/restrained/sheet
 
 | Where | Was | Now |
 |---|---|---|
-| Main window job rows (自动归类 / 整理 · 未归类), Lab recorder card | `AIGlowView` / `.aiGlow`: 2 pt spectrum rim + 14 pt blurred rim, turning every 3.2 s | spinner + a static 1 pt `brand.working` hairline (`WorkingOutline`, `.aiWorking`) |
+| Main window job rows (整理 · 未归类), Lab recorder card | `AIGlowView` / `.aiGlow`: 2 pt spectrum rim + 14 pt blurred rim, turning every 3.2 s | spinner + a static 1 pt `brand.working` hairline (`WorkingOutline`, `.aiWorking`) |
 | "Still organising" banner (还在整理 · 查看进度) | spectrum rim | its wand icon becomes a small spinner; the banner's own quiet ink wash; no line |
 | Island AI-sort / hand-off job row | spectrum rim | the row's progress bar + the 1 pt hairline (island value) |
 | Island, AI sort finished | spectrum bloom round the island | none (the chick hatching in the ear says it) |
@@ -677,7 +679,7 @@ Before / after screenshots (untracked): `promo/cases/v0.8-color/restrained/sheet
 | Where | Why |
 |---|---|
 | Picker selection outline (gradient dashes over a dark under-stroke) | it is the selection, on any screen content |
-| Primary buttons (`gradient.button`, white title): main window, banners, picker Snap / Record, island Organize / Auto-sort / Done, toast action, onboarding Next / Done, Lab Run / Save | the one primary of a view |
+| Primary buttons (`gradient.button`, white title): main window, banners, picker Snap / Record, island Organize / Done, toast action, onboarding Next / Done, Lab Run / Save | the one primary of a view |
 | Island level bars (vertical gradient) and the listening glow under the island | blurt hears you (only while listening) |
 | Handles, size label, window-hover line and label, clasps, picked card border, count pills (flat mint) | selection / blurt's own marks |
 | Selection and drop-target tints (`brand.tint`), state rings, progress bars (flat ink) | state |

@@ -167,10 +167,10 @@
   "project.moved_one": "Moved to {project}",
   "project.moved_other": "Moved {n} items to {project}",
   "project.suggested": "Looks like {project}",
-  "project.suggested.hint": "AI suggestion · {pct} sure · {reason}",
-  "project.accept": "Move there",
+  "project.suggested.hint": "Suggested when it was organized · {reason}",
+  "project.accept": "Move",
   "project.by.capture": "Captured in this project",
-  "project.by.ai": "Auto-sorted · {pct} sure",
+  "project.by.ai": "Sorted by an earlier version · {pct} sure",
   "project.by.user": "Moved here by you",
   "project.by.migrate": "Brought over from an earlier version",
 

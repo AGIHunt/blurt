@@ -614,8 +614,11 @@ Swift、Rust、live.py 不各自拼命令。
                                          // 要用的几个脚本，按绝对路径钉死（"Bash(uv run {scripts}/items.py:*)"，{scripts} = skill 的
                                          // scripts 目录，prompt 里写同一路径），别的命令、别的脚本都不行。kimi / opencode 用各自默认
                                          // （参数未验证）。用户自己发起的交给 Agent 走 interactive.session，权限不变。
-                                         // 归类（会再调模型、跨项目搬文件）由 App 在运行结束后自己跑：BLURT_NO_ROUTE +
-                                         // projects.py route --session；索引和任务的条目也由 App 在结束后补（沙箱里写不了）。
+                                         // 没选项目的内容：提示词里附上候选项目（projects.py candidates），整理只写
+                                         // suggested_project，不移动、不多调模型（v0.9，K2）；索引和任务的条目由 App 在
+                                         // 结束后补（沙箱里写不了）。用哪个模型分两种：录屏（CLI 自己的模型、低思考强度）和
+                                         // 卡片（最省的模型），agents.json processing.{recording,cards}，用户在设置 → Agent 改
+                                         // （config record.agent_processing.<id>.<kind>）。
     "fix": {"zh": "…", "en": "…"}, "install": {"zh": "…", "en": "…"}, "drafts": true,          // drafts = live.py 能用
     // WP2 加的字段
     "version": ["--version"],
