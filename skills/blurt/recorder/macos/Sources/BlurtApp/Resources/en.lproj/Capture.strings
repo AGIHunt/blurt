@@ -289,6 +289,7 @@
 "capture.voice_drop.hint_copy" = "Let go, then ⌘V in %@";
 "capture.voice_drop.pasted" = "Pasted into %@";
 "capture.voice_drop.copied" = "Copied — ⌘V to paste into %@";
+"capture.voice_drop.that_app" = "that app";
 "capture.record.no_permission" = "Recording needs Screen Recording";
 "capture.record.stale" = "Couldn’t record — macOS needs Screen Recording allowed again";
 "capture.screen.reallow" = "Re-allow…";

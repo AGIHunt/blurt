@@ -289,6 +289,7 @@
 "capture.voice_drop.hint_copy" = "松手后在 %@ 里按 ⌘V";
 "capture.voice_drop.pasted" = "已粘贴到 %@";
 "capture.voice_drop.copied" = "已复制，在 %@ 里按 ⌘V 粘贴";
+"capture.voice_drop.that_app" = "那个 App";
 "capture.record.no_permission" = "录屏需要「屏幕录制」权限";
 "capture.record.stale" = "录不了屏：需要重新授权屏幕录制";
 "capture.screen.reallow" = "重新授权…";

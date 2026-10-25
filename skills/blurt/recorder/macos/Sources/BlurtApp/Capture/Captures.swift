@@ -735,7 +735,7 @@ final class Snapper {
         if !fromPanel { hanging.takeAway(s) }
         b.take(s, at: Snapper.now)
         takenChanged()
-        let app = DropProbe.appName(t) ?? "App"
+        let app = DropProbe.appName(t) ?? Loc.t("capture.voice_drop.that_app", table: "Capture")
         let plan = VoiceCardDrop.plan(cls: t.cls, kind: t.kind, accepted: accepted, words: s.copyText, enabled: SmartPaste.enabled,
                                       accessibility: SmartPaste.accessibility,
                                       secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled())

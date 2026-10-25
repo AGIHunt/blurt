@@ -305,3 +305,24 @@
     (BlurtCore `SerialWork` / `UndoStep`), drop a failed write's step; ⌘⌫ / Delete on the list discards items (never a
     project); an id typed in the search that this place doesn't list says where the item is (Show it); ↑ from the first
     row reaches the banners above the list. (The page's per-step state undo is in the shared review store already.)
+- [ ] Capture fixes from the second dogfood (Mac, branch fxcapture) — the Tauri app's counterparts:
+  - A project whose folder moved or was renamed takes nothing (the scripts already refuse: `folder_missing`, and never
+    make the old folder again): captures go to Unassigned meanwhile (snaps and voice notes as cards, recordings to
+    Unassigned), the island says "Can't find X's folder" with Locate… (a folder with this project's
+    `.blurt/store.json` → `projects.py add` relocates; another project's store is refused), the switcher and the
+    note's "Goes to" list draw it with a question-mark folder and "folder not found". BlurtCore
+    `ProjectStore.captureTarget` / `locatePick` are the rules.
+  - Live words in notes on every tier: `transcribe.py serve` now answers interim requests on SenseVoice
+    (`quick_decode`); the client asks for them on every tier for notes, and one `interim_unsupported` backs off 4 s
+    instead of turning them off for the take (BlurtCore `DictationLiveDecode.refusalBackoff` / `maxRefusals`).
+  - A voice note the user ended is never deleted in silence: the stream's segmenter hearing speech counts, and a take
+    nothing heard (not digital silence, ≥ 1.5 s) gets "Didn't hear anything · Keep" for the Undo window
+    (BlurtCore `VoiceKeep.unsure`). The card shows the words already heard while its last piece is transcribed
+    (`CardNote.heard`), and the live panel leaves where it is.
+  - The recording's discard question: on its own line when it doesn't fit beside the answers, snaps and markers
+    counted apart, answers Discard · Restart · Keep Recording (the safe one where Finish was) — BlurtCore
+    `RecordingDiscard`. Failed recordings say why (`RecordingFailure`: disk_full / permission / stopped / no_frames),
+    never the raw error; a writer that fails mid-take ends it at once; low free space warns before a take.
+  - The in-place snap's dim lifts as soon as the words are saved; the picker's last area is saved only once its
+    picture exists and offered only on a display still there (`LastArea`); a snap without a note is "Snap · 19:03"
+    (no session counter); "Add to Blurt" says where it went and says "Nothing to add" when nothing is selected.
