@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Everything that is happening — a recording, a screenshot batch, voice input, processing, routing, an agent
+"""Everything that is happening — a recording, a screenshot batch, voice input, processing, an agent
 session — is a job (contract K4). One JSON file per job, written only by its owner; everyone else appends events.
 
   jobs.py new --type T [--project P] [--session S] [--parent J] [--title T] [--owner O]   → {"ok","id","path"}
@@ -38,11 +38,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# "route" (v0.8: projects.py sorting the inbox into projects) is still read — old job files, the Windows / Linux app
+# until it follows — but nothing here makes one: nothing moves items on its own now
 TYPES = ("record", "snap", "voice", "process", "route", "agent")
 STATES = ("queued", "running", "done", "failed", "cancelled")
 STEP_STATES = ("pending", "running", "done", "failed", "skipped")
 STEPS = {"record": ["capture", "finalize"], "snap": ["capture"], "voice": ["listen", "transcribe", "file"],
-         "process": ["prepare", "transcribe", "write", "frames", "route"], "route": ["route"],
+         "process": ["prepare", "transcribe", "write", "frames"], "route": ["route"],
          "agent": ["launch", "work", "finish"]}
 ERROR_CODES = ("auth", "quota", "network", "model", "skill", "tmux", "git", "conflict", "io", "agent_exit", "unknown")
 FINAL = ("done", "failed", "cancelled")

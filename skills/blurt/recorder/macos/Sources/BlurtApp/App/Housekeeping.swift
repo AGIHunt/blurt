@@ -142,7 +142,7 @@ enum Housekeeping {
             emit(["event": "current_project_answer", "keep": true])
             use(p.id)
         }
-        t.secondTitle = T("app.migrate.auto")
+        t.secondTitle = T("project.inbox")
         t.second = {
             emit(["event": "current_project_answer", "keep": false])
             use(nil)

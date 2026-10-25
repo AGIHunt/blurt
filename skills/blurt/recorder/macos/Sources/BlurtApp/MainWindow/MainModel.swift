@@ -7,7 +7,8 @@
 // Places (K2 / K3):
 //   Inbox        what needs you: new items and items an agent says are finished (new + to_verify)
 //   In Progress  handed off, in progress, to verify — with the running jobs above the list
-//   Unassigned   items not filed under a project yet (the inbox store)
+//   Unassigned   items not filed under a project yet (the inbox store); those an organizing run suggested a project
+//                for come first, each project's together, with "Looks like X · Move All (3)" above the list
 //   All Items    everything, as a full table
 //   Dictation    not items: what was dictated into other apps (DictationPage.swift replaces both columns)
 //   <project>    one opened folder
@@ -99,6 +100,8 @@ final class MainModel {
     private(set) var counts = IndexCounts()
     private(set) var projects: [ProjectEntry] = []
     private(set) var jobs: [Job] = []            // active ones for this place (and failures waiting), newest first
+    /// Unassigned only: its items by the project an organizing run suggested (the sidebar's order)
+    private(set) var suggestionGroups: [SuggestionGroup] = []
     private(set) var lastReloadMS = 0.0
 
     private var pages: [Int: [ItemRow]] = [:]
@@ -208,7 +211,7 @@ final class MainModel {
         switch scope {
         case .inbox: q.inbox = true
         case .inProgress: if state == nil { q.states = Lifecycle.states.filter(Lifecycle.active.contains) }
-        case .unassigned: q.project = "inbox"
+        case .unassigned: q.project = "inbox"; q.bySuggestion = true     // each suggested project's items together
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
         case .all, .dictation: break
@@ -261,6 +264,9 @@ final class MainModel {
         overrides.removeAll()
         uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
         rowByUID = nil
+        // Unassigned: "Looks like X · Move All (3)" — what an organizing run suggested, per registered project
+        suggestionGroups = scope == .unassigned
+            ? Suggestions.groups((try? reader?.suggestions()) ?? [], known: projects.filter(\.registered).map(\.id)) : []
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
         reloadJobs()
         onReload?()

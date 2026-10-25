@@ -208,7 +208,13 @@ enum SelfTests {
                 switch a.first ?? "state" {
                 case "toggle" where a.count == 3: m.toggle(a[1], a[2] == "on")
                 case "up" where a.count == 2: m.moveUp(a[1])
-                case "processing" where a.count >= 3: m.setProcessing(a[1], model: a[2], effort: a.count > 3 ? a[3] : nil)
+                case "processing" where a.count >= 3:
+                    // processing AGENT [recording|cards] MODEL [EFFORT] (no kind: cards)
+                    let kind = ProcessingKind(rawValue: a[2])
+                    let rest = Array(a.dropFirst(kind == nil ? 2 : 3))
+                    if let model = rest.first {
+                        m.setProcessing(a[1], kind ?? .cards, model: model, effort: rest.count > 1 ? rest[1] : nil)
+                    }
                 default: break
                 }
                 try? await Task.sleep(nanoseconds: 1_500_000_000)      // save() reloads

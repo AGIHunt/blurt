@@ -8,12 +8,14 @@
 "agents.effort.max" = "最高强度";
 "agents.effort.medium" = "中强度";
 "agents.effort.xhigh" = "超高强度";
-"agents.processing" = "整理用模型";
+"agents.processing.cards" = "卡片";
+"agents.processing.cards.help" = "整理截图、语音备注和 AI 补全用的模型。默认最省的模型、低思考强度：一张图一段话足够，token 少很多。";
 "agents.processing.cheapest" = "最省";
 "agents.processing.cheapest_named" = "最省（%@）";
 "agents.processing.default" = "跟随 CLI 设置";
 "agents.processing.default_named" = "跟随 CLI 设置（%@）";
-"agents.processing.help" = "整理录屏和截图、自动归类、AI 补全都用这个模型。整理用小模型、低思考强度就够了，能省很多 token。";
+"agents.processing.recording" = "录屏";
+"agents.processing.recording.help" = "整理录屏用的模型。默认用 CLI 自己的模型、低思考强度，长录屏需要它。";
 "common.cancel" = "取消";
 "common.close" = "关闭";
 "common.done" = "完成";
@@ -183,7 +185,7 @@
 
 /* 设置 → Agent */
 "agents.header" = "Agent（按顺序使用）";
-"agents.footer" = "用于整理录屏和截图、自动归类和 AI 补全。拖动调整顺序：第一个能用的来干活，没登录或额度用完时自动换下一个。取消勾选的不会被用到。";
+"agents.footer" = "用于整理录屏、截图和语音备注，以及 AI 补全。拖动调整顺序：第一个能用的来干活，没登录或额度用完时自动换下一个。取消勾选的不会被用到。";
 "agents.check_again" = "重新检查";
 "agents.drag" = "拖动排序";
 "agents.runs_first" = "当前首选";

@@ -201,6 +201,8 @@ final class StateCell: NSTableCellView {
 final class TitleCell: NSTableCellView, InlineEditable {
     let title = NSTextField(labelWithString: "")
     var editField: NSTextField { title }
+    /// Unassigned rows with a suggested project: "Looks like X · Move" after the title (ProjectPicking.swift)
+    let suggest = SuggestChip()
     override init(frame: NSRect) {
         super.init(frame: frame)
         title.lineBreakMode = .byTruncatingTail
@@ -209,15 +211,27 @@ final class TitleCell: NSTableCellView, InlineEditable {
         title.cell?.wraps = false
         title.translatesAutoresizingMaskIntoConstraints = false
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        suggest.translatesAutoresizingMaskIntoConstraints = false
+        suggest.isHidden = true
         addSubview(title)
+        addSubview(suggest)
         textField = title
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: suggest.leadingAnchor, constant: -8),
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
+            suggest.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            suggest.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The row's suggested project (nil: none, or not an Unassigned row); `move` moves this row's item there.
+    func setSuggestion(_ project: String?, move: (() -> Void)?) {
+        suggest.isHidden = project == nil
+        if let p = project { suggest.set(project: p) } else { suggest.attributedTitle = NSAttributedString(string: "") }
+        suggest.onMove = move
+    }
 
     func set(title t: String, unread: Bool, dimmed: Bool, struck: Bool, hit: String?) {
         var attrs: [NSAttributedString.Key: Any] = [.font: unread ? Look.titleUnread : Look.titleFont,

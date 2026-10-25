@@ -123,16 +123,26 @@ final class AgentsModel: ObservableObject {
         }
     }
 
-    /// "cheapest" (agents.json's default for organizing) | "default" (the CLI's own setting) | a model id.
-    func processingModel(_ id: String) -> String { Agents.shared.processingSetting(id).model ?? "cheapest" }
-    func processingEffort(_ id: String) -> String { Agents.shared.processingSetting(id).effort ?? "low" }
+    /// "cheapest" | "default" (the CLI's own setting) | a model id — per kind of run: a recording (shipped: the CLI's
+    /// own model) or a batch of cards and AI fill-in (shipped: the cheapest). ProcessingSpec has the rules.
+    func processingModel(_ id: String, _ kind: ProcessingKind) -> String {
+        Agents.shared.processingSetting(id, kind: kind).model ?? shipped(id, kind).model
+    }
+    func processingEffort(_ id: String, _ kind: ProcessingKind) -> String {
+        Agents.shared.processingSetting(id, kind: kind).effort ?? shipped(id, kind).effort
+    }
+    /// agents.json's default for this agent and kind (the models answer carries it), else what Blurt ships with.
+    func shipped(_ id: String, _ kind: ProcessingKind) -> (model: String, effort: String) {
+        ProcessingSpec.wanted(base: AgentHub.shared.def(id)?.processingDefault, over: nil, kind: kind)
+    }
 
-    func setProcessing(_ id: String, model: String? = nil, effort: String? = nil) {
-        let cur = Agents.shared.processingSetting(id)
+    func setProcessing(_ id: String, _ kind: ProcessingKind, model: String? = nil, effort: String? = nil) {
+        let cur = Agents.shared.processingSetting(id, kind: kind)
         let m = model ?? cur.model, e = effort ?? cur.effort
-        // the shipped defaults (cheapest, low) are stored as nothing, so a better default later reaches everyone
-        Agents.shared.setProcessing(id, model: m == "cheapest" ? nil : m, effort: e == "low" ? nil : e)
-        emit(["event": "processing_model", "agent": id, "model": m ?? "cheapest", "effort": e ?? "low"])
+        let base = shipped(id, kind)
+        // the shipped defaults are stored as nothing, so a better default later reaches everyone
+        Agents.shared.setProcessing(id, kind: kind, model: m == base.model ? nil : m, effort: e == base.effort ? nil : e)
+        emit(["event": "processing_model", "agent": id, "kind": kind.rawValue, "model": m ?? base.model, "effort": e ?? base.effort])
         objectWillChange.send()
     }
 
@@ -396,13 +406,23 @@ struct AgentsPane: View {
         }
     }
 
-    /// "Model for organizing": what recordings, Organize, Let AI sort and AI fill-in run with — a small model at low
-    /// effort is plenty and costs a fraction of the tokens.
+    /// The models organizing runs use, one line per kind: "Recordings" (shipped: the CLI's own model at low effort —
+    /// a recording is long and its items need judgement) and "Cards" (snaps, voice notes and AI fill-in: the cheapest
+    /// model, low effort — plenty for a note and a picture, at a fraction of the tokens).
     @ViewBuilder
     func processingRow(_ a: CoreAgent, _ ms: AgentModels) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(ProcessingKind.allCases, id: \.self) { k in processingLine(a, ms, k) }
+        }
+        .padding(.leading, 44)
+    }
+
+    @ViewBuilder
+    func processingLine(_ a: CoreAgent, _ ms: AgentModels, _ k: ProcessingKind) -> some View {
         HStack(spacing: 8) {
-            Text(TL("agents.processing")).font(.caption).foregroundStyle(.secondary)
-            Picker("", selection: Binding(get: { m.processingModel(a.id) }, set: { m.setProcessing(a.id, model: $0) })) {
+            Text(TL("agents.processing.\(k.rawValue)")).font(.caption).foregroundStyle(.secondary)
+                .frame(minWidth: 64, alignment: .leading)
+            Picker("", selection: Binding(get: { m.processingModel(a.id, k) }, set: { m.setProcessing(a.id, k, model: $0) })) {
                 Text(ms.cheapest.map { c in TL("agents.processing.cheapest_named", ms.models.first { $0.id == c }?.name ?? c) }
                      ?? TL("agents.processing.cheapest")).tag("cheapest")
                 Text(ms.cliDefault.map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
@@ -410,9 +430,9 @@ struct AgentsPane: View {
                 ForEach(ms.models) { x in Text(x.name).tag(x.id) }
             }
             .labelsHidden().fixedSize().controlSize(.small)
-            .accessibilityLabel(TL("agents.processing"))
+            .accessibilityLabel(TL("agents.processing.\(k.rawValue)"))
             if !ms.efforts.isEmpty {
-                Picker("", selection: Binding(get: { m.processingEffort(a.id) }, set: { m.setProcessing(a.id, effort: $0) })) {
+                Picker("", selection: Binding(get: { m.processingEffort(a.id, k) }, set: { m.setProcessing(a.id, k, effort: $0) })) {
                     Text(TL("agents.effort.default")).tag("default")
                     Divider()
                     ForEach(ms.efforts, id: \.self) { e in Text(TL("agents.effort.\(e)")).tag(e) }
@@ -421,8 +441,7 @@ struct AgentsPane: View {
                 .accessibilityLabel(TL("agents.effort"))
             }
         }
-        .padding(.leading, 44)
-        .help(TL("agents.processing.help"))
+        .help(TL("agents.processing.\(k.rawValue).help"))
     }
 
     /// `c` nil: the brand badge ("Runs first"), brand ink on the brand tint (§3.4)

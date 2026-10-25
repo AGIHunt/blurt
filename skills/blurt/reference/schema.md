@@ -28,9 +28,8 @@ from then on every change goes through `items.py`.
       "tags": ["登录"],
       "confidence": "high",               // high | low
       "questions": [],                     // what the user must clarify; their reply lands in "answer"
-      "project": "BA",                    // optional, auto mode only: the project you propose (id or key) …
-      "project_confidence": 0.9,          // … how sure you are (≥ 0.75 files it there, below only suggests) …
-      "project_reason": "code_refs in web/src",   // … and why, in a few words
+      "project": "BA",                    // optional, Unassigned captures only: the project you suggest (id or key) …
+      "project_reason": "code_refs in web/src",   // … and why, in a few words. Never moves it: suggested_project
       // no state: every item you write starts as "new" — keeping, finishing or discarding is the user's call
 
       // + the lens's own fields, e.g. for "issue": module, owner, severity, type, actual, expected, steps, code_refs
@@ -100,8 +99,9 @@ frames: [{"path": "assets/01JB…/1.png", "t": 14.2, "caption": "登录按钮是
 - **work** holds the details of the last hand-off: to (session | external), agent, job, handoff, claim, note,
   commit, pr, at, by. Earlier ones, with the state they belonged to, are in `work_history`.
 - `_user`: fields the user edited (→ epoch); `items.py` won't overwrite them unless you pass `--force`.
-- `project_by`: `capture` (filed when captured), `ai`, `user`, `migrate`; an AI suggestion below the threshold is
-  in `suggested_project`.
+- `project_by`: `capture` (filed when captured), `user` (the user moved it), `migrate`; `ai` only on items an
+  earlier version sorted. An organizing run's suggestion for an Unassigned item is `suggested_project`
+  (`{id, reason}`); it stays when the user moves the item, and shows only while the item is in Unassigned.
 
 ## Custom lenses
 

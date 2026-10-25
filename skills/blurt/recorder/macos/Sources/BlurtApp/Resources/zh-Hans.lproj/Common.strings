@@ -55,9 +55,7 @@
 "session.error" = "出错";
 
 /* 项目 */
-"project.auto" = "自动";
 "project.inbox" = "未归类";
-"project.ai_sort" = "自动归类";
 "project.open_folder" = "打开文件夹…";
 
 /* 交给外部 agent */

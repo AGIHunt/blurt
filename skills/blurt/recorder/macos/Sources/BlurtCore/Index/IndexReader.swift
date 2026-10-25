@@ -91,6 +91,9 @@ public struct ItemQuery: Equatable {
     public var project: String?, session: String?
     public var sort = "updated"                       // updated | created | t_start | title | kind | state | project | id
     public var ascending = false
+    /// Unassigned: items with the same suggested project next to each other (by that project's name), the ones with no
+    /// suggestion last — then `sort` within each run.
+    public var bySuggestion = false
     public var limit = 50, offset = 0                 // limit 0 = no limit (uids)
     public init(text: String? = nil, kinds: [String] = [], states: [String] = [], statuses: [String] = [], workStates: [String] = [],
                 inbox: Bool = false, project: String? = nil, session: String? = nil, sort: String = "updated", limit: Int = 50,
@@ -387,7 +390,20 @@ public final class IndexReader {
     func order(_ q: ItemQuery) -> String {
         // the item whose id was typed comes first (ids are [A-Z0-9-] only: safe as literals)
         let first = q.idTerms.map { "CASE WHEN upper(i.item_id) = '\($0)' THEN 0 ELSE 1 END, " }.joined()
-        return first + sortOrder(q)
+        let groups = q.bySuggestion
+            ? "(i.suggested_project IS NULL), (SELECT sp.name FROM projects sp WHERE sp.id = i.suggested_project) COLLATE NOCASE, i.suggested_project, "
+            : ""
+        return first + groups + sortOrder(q)
+    }
+
+    /// Live items of a store (`project`, "inbox" for Unassigned) that carry a suggested project: (uid, project id),
+    /// newest first — what the list's "Looks like X · Move All" groups are made of.
+    public func suggestions(in project: String = "inbox") throws -> [(uid: String, project: String)] {
+        try rows("""
+            SELECT i.uid, i.suggested_project FROM items i
+            WHERE i.project_id = ? AND i.state != 'discarded' AND i.suggested_project IS NOT NULL AND i.suggested_project != ''
+            ORDER BY i.updated DESC, i.item_id
+            """, [project]) { (uid: $0.text(0), project: $0.text(1)) }
     }
 
     private func sortOrder(_ q: ItemQuery) -> String {

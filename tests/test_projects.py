@@ -1,5 +1,6 @@
 """Projects (contract K2): projects.json and projects.py — keys and slugs, open / remove / set / use / resolve,
-the v0.6 migration, and AI routing (rules, the small model, the threshold, the user's choice wins)."""
+the v0.6 migration, and assignment: the user's current project or none (Unassigned), an organizing run's project
+only ever a suggestion, the candidates its prompt lists — nothing moves an item but the user."""
 from __future__ import annotations
 
 import json
@@ -63,9 +64,10 @@ class Registry(TmpCase):
         self.assertEqual((c, o["code"]), (1, "key_taken"))
         # the registry file: what the apps read
         reg = json.loads((self.e.home / "projects.json").read_text())
-        self.assertEqual((reg["schema"], reg["current"], reg["route_threshold"]), (1, "auto", 0.75))
+        self.assertEqual((reg["schema"], reg["current"]), (1, None))
+        self.assertNotIn("route_threshold", reg)
         self.assertEqual(set(reg["projects"][0]), {"id", "path", "name", "key", "slug", "description", "default_agent",
-                                                   "worktree", "worktree_root", "modules", "hints", "opened",
+                                                   "worktree", "worktree_root", "modules", "opened",
                                                    "last_used", "pinned"})
         self.assertNotIn("projects", json.loads((self.e.home / "config.json").read_text()))
         # list: most recently used first; the inbox apart
@@ -93,19 +95,20 @@ class Registry(TmpCase):
         # set: settings; the key only while the project has no items
         out = ok("projects.py", "set", pa["id"], "--json", json.dumps({
             "name": "Blurt", "modules": [{"name": "review page", "paths": ["web/packages/review"], "description": ""}],
-            "hints": {"domains": ["blurt.dev"], "apps": ["Blurt"]}, "worktree": False, "key": "BL"}), env=self.e.env())
+            "worktree": False, "key": "BL"}), env=self.e.env())
         self.assertEqual((out["project"]["name"], out["project"]["key"], out["project"]["worktree"]), ("Blurt", "BL", False))
         self.assertEqual(json.loads((a / ".blurt" / "store.json").read_text())["key"], "BL")
         ok("items.py", "add", "--project", "BL", "--json", '{"kind":"note","title":"first"}', env=self.e.env())
         self.assertTrue((a / ".blurt" / "items" / "BL-1-first.md").is_file())
         for patch, code in (({"key": "BX"}, "key_in_use"), ({"key": "in"}, "bad_key"), ({"key": "DN"}, "key_taken"),
-                            ({"path": "/x"}, "bad_field"), ({"name": " "}, "bad_field"), ({"modules": "x"}, "bad_field")):
+                            ({"path": "/x"}, "bad_field"), ({"name": " "}, "bad_field"), ({"modules": "x"}, "bad_field"),
+                            ({"hints": {"apps": ["Xcode"]}}, "bad_field")):  # v0.8's front-app guessing is gone
             c, o = run_cli("projects.py", "set", pa["id"], "--json", json.dumps(patch), env=self.e.env())
             self.assertEqual((c, o["code"]), (1, code), patch)
         # remove: unregisters only
         ok("projects.py", "remove", pa["id"], env=self.e.env())
         self.assertTrue((a / ".blurt" / "items" / "BL-1-first.md").is_file())
-        self.assertEqual(ok("projects.py", "current", env=self.e.env())["current"], "auto")
+        self.assertIsNone(ok("projects.py", "current", env=self.e.env())["current"])
         self.assertEqual(run_cli("projects.py", "remove", pa["id"], env=self.e.env())[1]["code"], "no_project")
 
     def test_remove_restores_losslessly_and_the_users_order(self):
@@ -114,13 +117,13 @@ class Registry(TmpCase):
         a, b, c = (make_repo(self.tmp / n) for n in ("alpha", "beta", "gamma"))
         ids = [ok("projects.py", "add", p, env=self.e.env())["project"]["id"] for p in (a, b, c)]
         ok("projects.py", "set", ids[1], "--json", json.dumps({"description": "the API", "default_agent": "codex",
-                                                               "worktree": False, "hints": {"apps": ["Xcode"]}}), env=self.e.env())
+                                                               "worktree": False}), env=self.e.env())
         ok("projects.py", "use", ids[1], env=self.e.env())
         reg = lambda: json.loads((self.e.home / "projects.json").read_text())  # noqa: E731
         before = reg()
         removed = ok("projects.py", "remove", ids[1], env=self.e.env())["removed"]
         self.assertEqual((removed["index"], removed["current"]), (1, True))
-        self.assertEqual(reg()["current"], "auto")
+        self.assertIsNone(reg()["current"])
         back = ok("projects.py", "restore", "--json", json.dumps(removed), env=self.e.env())["project"]
         self.assertEqual(back["id"], ids[1])
         self.assertEqual(reg(), before)          # name, key, settings, place in the list, current: all as they were
@@ -175,7 +178,7 @@ class Registry(TmpCase):
         (self.e.home / "config.json").write_text(json.dumps(cfg))
         self.assertEqual(ok("projects.py", "migrate", env=self.e.env())["added"], 0)
         self.assertEqual([r["id"] for r in ok("projects.py", "list", env=self.e.env())["projects"]], [pa["id"]])
-        ok("projects.py", "use", "auto", env=self.e.env())
+        ok("projects.py", "use", "inbox", env=self.e.env())
         # removed, then opened again (at yet another path): the store's id and key come back with it
         ok("projects.py", "remove", pa["id"], env=self.e.env())
         c = self.tmp / "billing"
@@ -205,8 +208,8 @@ class Registry(TmpCase):
         # the user's answer (keep it) makes it theirs
         ok("projects.py", "use", projects.project_id(b), env=self.e.env())
         self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "user")
-        ok("projects.py", "use", "auto", env=self.e.env())
-        self.assertEqual(ok("projects.py", "migrate", env=self.e.env())["current"], "auto")  # the user's choice stays
+        ok("projects.py", "use", "inbox", env=self.e.env())
+        self.assertIsNone(ok("projects.py", "migrate", env=self.e.env())["current"])  # the user's choice stays
         self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "user")
         self.assertEqual(json.loads((self.e.home / "config.json").read_text()), cfg)  # config.json untouched
 
@@ -221,7 +224,7 @@ class Registry(TmpCase):
         self.assertEqual(ok("projects.py", "current", env=self.e.env())["current_by"], "migrate")
 
 
-class Route(TmpCase):
+class Assignment(TmpCase):
     def setUp(self):
         super().setUp()
         self.web = make_repo(self.tmp / "web-app")
@@ -230,160 +233,123 @@ class Route(TmpCase):
         self.docs = self.tmp / "handbook"
         self.docs.mkdir()
         self.pw = ok("projects.py", "add", self.web, env=self.e.env())["project"]
-        self.pd = ok("projects.py", "add", self.docs, env=self.e.env())["project"]
-        ok("projects.py", "set", self.pw["id"], "--json", json.dumps({"hints": {"domains": ["example.test"], "apps": []},
-                                                                    "modules": [{"name": "billing"}]}), env=self.e.env())
-        ok("projects.py", "set", self.pd["id"], "--json", json.dumps({"hints": {"domains": [], "apps": ["Notion"]},
-                                                                    "description": "the team handbook"}), env=self.e.env())
-
-    def model(self, answer: str) -> str:
-        """A stand-in for the small model ($BLURT_ROUTE_CMD): reads the prompt, answers with some chatter + JSON."""
-        f = self.tmp / f"answer-{len(answer)}.txt"
-        f.write_text("Sure, here you go:\n" + answer)
-        script = self.tmp / "model.py"
-        script.write_text("import sys\nprompt = sys.stdin.read()\nassert 'Projects:' in prompt\n"
-                          "print(open(sys.argv[1], encoding='utf-8').read())\n")
-        return f"{sys.executable} {script} {f}"
+        self.pd = ok("projects.py", "add", self.docs, "--description", "the team handbook", env=self.e.env())["project"]
 
     def inbox(self, **fields) -> str:
         return ok("items.py", "add", "--project", "inbox", "--json", json.dumps({"kind": "issue", **fields}),
                   env=self.e.env())["uid"]
 
-    def test_route_a_session_after_its_organizing_run(self):
-        """The app routes a batch itself once the (sandboxed, BLURT_NO_ROUTE) organizing run is done: only the items
-        still in the inbox with no suggestion."""
-        session = self.e.ws / "inbox" / "sessions" / "20261025-100000"
-        session.mkdir(parents=True)
-        (session / "items.json").write_text(json.dumps({"items": [
-            {"id": "I-001", "kind": "issue", "title": "crash", "code_refs": ["src/auth/Login.tsx:42"]},
-            {"id": "I-002", "kind": "issue", "title": "typo", "project": self.pd["id"]},  # the agent filed it
-            {"id": "I-003", "kind": "issue", "title": "vague"}]}))
-        ok("items.py", "ingest", session, env=self.e.env())
-        out = ok("projects.py", "route", "--session", session, "--apply", "--no-llm", env=self.e.env())
-        self.assertEqual(len(out["suggestions"]), 2)  # I-001 and I-003, not the one already in a project
-        self.assertEqual(len(out["moved"]), 1)
-        again = ok("projects.py", "route", "--session", session, "--apply", "--no-llm", env=self.e.env())
-        self.assertEqual(len(again["suggestions"]), 1)  # only the vague one is still in the inbox, unsuggested
+    def test_none_is_unassigned_and_old_words_mean_the_same(self):
+        """The current project is the user's pick or none: `use inbox` (or v0.8's "auto", or "none") = Unassigned;
+        a v0.8 registry that says "auto" and still has route_threshold reads as none, and loses the threshold on
+        the next write."""
+        for word in ("inbox", "none", "auto"):
+            ok("projects.py", "use", self.pw["id"], env=self.e.env())
+            self.assertIsNone(ok("projects.py", "use", word, env=self.e.env())["current"], word)
+            self.assertIsNone(json.loads((self.e.home / "projects.json").read_text())["current"])
+        reg = json.loads((self.e.home / "projects.json").read_text())
+        reg.update(current="auto", route_threshold=0.75)
+        (self.e.home / "projects.json").write_text(json.dumps(reg))
+        cur = ok("projects.py", "current", env=self.e.env())
+        self.assertEqual((cur["current"], cur["project"]), (None, None))
+        self.assertIsNone(ok("projects.py", "list", env=self.e.env())["current"])
+        ok("projects.py", "use", self.pd["id"], env=self.e.env())
+        self.assertNotIn("route_threshold", json.loads((self.e.home / "projects.json").read_text()))
+        # nothing to route with any more
+        self.assertEqual(run_cli("projects.py", "route", "--items", "x", env=self.e.env())[1]["code"], "bad_args")
 
-    def test_rules_then_model_then_threshold(self):
-        u_code = self.inbox(title="crash", code_refs=["src/auth/Login.tsx:42"])
-        u_url = self.inbox(title="slow page", source={"url": "https://www.example.test/pricing"})
-        u_app = self.inbox(title="typo", source={"app": "Notion"})
-        u_mod = self.inbox(title="invoice", module="Billing")
-        u_low = self.inbox(title="something vague")
-        u_high = self.inbox(title="handbook onboarding page is outdated")
-        answer = json.dumps([{"uid": u_low, "project": self.pd["id"], "confidence": 0.5, "reason": "maybe docs"},
-                             {"uid": u_high, "project": self.pd["id"], "confidence": 0.9, "reason": "handbook"}])
-        cmd = self.model(answer)
-        out = ok("projects.py", "route", "--items", u_code, u_url, u_app, u_mod, u_low, u_high, "--apply",
-                 env=self.e.env(BLURT_ROUTE_CMD=cmd))
-        by = {s["uid"]: s for s in out["suggestions"]}
-        self.assertEqual((by[u_code]["project"], by[u_code]["confidence"], by[u_code]["by"]), (self.pw["id"], 0.95, "rule"))
-        self.assertEqual((by[u_url]["project"], by[u_url]["confidence"]), (self.pw["id"], 0.9))
-        self.assertEqual((by[u_app]["project"], by[u_app]["confidence"]), (self.pd["id"], 0.9))
-        self.assertEqual((by[u_mod]["project"], by[u_mod]["confidence"]), (self.pw["id"], 0.8))
-        self.assertEqual((by[u_low]["by"], by[u_high]["by"]), ("llm", "llm"))
-        self.assertEqual(set(out["moved"]), {u_code, u_url, u_app, u_mod, u_high})
-        # moved: in the project's store, by ai with its confidence, the inbox id kept as an alias
-        it = ok("items.py", "get", u_code, env=self.e.env())["item"]
-        self.assertEqual((it["project"], it["project_by"], it["project_confidence"], it["id"]),
-                         (self.pw["id"], "ai", 0.95, "WA-1"))
-        self.assertEqual(it["aliases"], ["IN-1"])
-        self.assertEqual(ok("items.py", "get", "IN-1", env=self.e.env())["item"]["uid"], u_code)  # old id still works
-        # below the threshold: stays in the inbox with a suggestion
-        low = ok("items.py", "get", u_low, env=self.e.env())["item"]
-        self.assertEqual((low["project"], low["suggested_project"]),
-                         ("inbox", {"id": self.pd["id"], "confidence": 0.5, "reason": "maybe docs"}))
-        self.assertEqual(ok("items.py", "get", u_high, env=self.e.env())["item"]["project"], self.pd["id"])
-        # a higher threshold just suggests
-        u2 = self.inbox(title="crash 2", code_refs=["src/auth/Login.tsx:1"])
-        out = ok("projects.py", "route", "--items", u2, "--apply", "--threshold", "0.99", "--no-llm", env=self.e.env())
-        self.assertEqual(out["moved"], [])
-        self.assertEqual(ok("items.py", "get", u2, env=self.e.env())["item"]["suggested_project"]["confidence"], 0.95)
-
-    def test_the_users_choice_is_never_overridden(self):
-        u = self.inbox(title="crash", code_refs=["src/auth/Login.tsx:42"])
-        ok("items.py", "move", u, "--project", self.pd["id"], "--by", "user", env=self.e.env())
-        it = ok("items.py", "get", u, env=self.e.env())["item"]
-        self.assertIn("project", it["_user"])
-        self.assertEqual(it["project_by"], "user")
-        out = ok("projects.py", "route", "--items", u, "--apply", env=self.e.env())
-        self.assertEqual((out["suggestions"], out["moved"]), ([], []))
-        code, o = run_cli("items.py", "move", u, "--project", self.pw["id"], "--by", "ai", env=self.e.env())
-        self.assertEqual(o["moved"], [])
-        self.assertEqual(ok("items.py", "get", u, env=self.e.env())["item"]["project"], self.pd["id"])
-        # dry: without --apply nothing changes
-        v = self.inbox(title="x", source={"app": "Notion"})
-        out = ok("projects.py", "route", "--items", v, "--no-llm", env=self.e.env())
-        self.assertEqual((out["suggestions"][0]["project"], out["moved"]), (self.pd["id"], []))
-        self.assertEqual(ok("items.py", "get", v, env=self.e.env())["item"]["project"], "inbox")
-
-    def test_background_route_is_a_job(self):
-        """--apply (the run ingest starts) reports as a K4 route job owned by projects.py; a preview writes none."""
-        u = self.inbox(title="typo", source={"app": "Notion"})
-        out = ok("projects.py", "route", "--items", u, "--no-llm", env=self.e.env())
-        self.assertNotIn("job", out)
-        out = ok("projects.py", "route", "--items", u, "--apply", "--no-llm", env=self.e.env())
-        job = json.loads((self.e.home / "jobs" / f"{out['job']}.json").read_text())
-        self.assertEqual((job["type"], job["owner"], job["state"], job["project"], job["items"]),
-                         ("route", "projects.py", "done", "inbox", [u]))
-        self.assertEqual([(s["id"], s["state"]) for s in job["steps"]], [("route", "done")])
-        self.assertIsNotNone(job["ended"])
-
-    def test_model_failure_leaves_items_in_the_inbox(self):
-        u = self.inbox(title="vague")
-        bad = f"{sys.executable} -c \"import sys; sys.exit(3)\""
-        out = ok("projects.py", "route", "--items", u, "--apply", env=self.e.env(BLURT_ROUTE_CMD=bad))
-        self.assertEqual((out["suggestions"][0]["project"], out["moved"]), (None, []))
-        self.assertIn("model", out["suggestions"][0]["reason"])
-        nonsense = f"{sys.executable} -c \"print('no json here')\""
-        out = ok("projects.py", "route", "--items", u, "--apply", env=self.e.env(BLURT_ROUTE_CMD=nonsense))
-        self.assertEqual(out["moved"], [])
-        self.assertEqual(run_cli("projects.py", "route", "--items", "nope", env=self.e.env())[1]["code"], "not_found")
-
-    def test_ingest_in_auto_mode_routes_in_the_background(self):
-        """An agent's items.json for a capture made in auto mode: the items land in the inbox, then route moves them."""
-        session = self.e.ws / "inbox" / "sessions" / "20261022-101500-shots"
-        session.mkdir(parents=True)
-        (session / "items.json").write_text(json.dumps({"title": "t", "language": "en", "items": [
-            {"id": "I-001", "kind": "issue", "title": "login crash", "code_refs": ["src/auth/Login.tsx:9"]},
-            {"id": "I-002", "kind": "note", "title": "no idea"}]}))
-        env = self.e.env()
-        env.pop("BLURT_NO_ROUTE")
-        out = ok("items.py", "ingest", session, env={**env, "BLURT_ROUTE_CMD": self.model("[]")})
-        self.assertEqual(out["inbox"], 2)
-        deadline = time.time() + 20
-        while time.time() < deadline:
-            moved = list((self.web / ".blurt" / "items").glob("*.md"))
-            if moved:
-                break
-            time.sleep(0.2)
-        self.assertEqual([p.name for p in moved], ["WA-1-login-crash.md"])
-        self.assertEqual(len(list((self.e.ws / "inbox" / "items").glob("*.md"))), 1)
-        doc = ok("items.py", "doc", session, env=self.e.env())["doc"]  # the batch still lists both, wherever they are
-        self.assertEqual([i["_project"]["key"] for i in doc["items"]], ["WA", "IN"])
-
-    def test_the_agent_proposes_a_project_per_item(self):
-        """SKILL.md §3 in auto mode: project + project_confidence per item; below the threshold → Unassigned with
-        the suggestion, and no background routing for it."""
+    def test_the_organizer_only_suggests(self):
+        """SKILL.md §3 for an Unassigned capture: the run may write "project" per item — however sure it says it is,
+        the item stays in Unassigned with suggested_project; an unknown project is no suggestion."""
         session = self.e.ws / "inbox" / "sessions" / "20261022-141500"
         session.mkdir(parents=True)
         (session / "items.json").write_text(json.dumps({"items": [
-            {"id": "I-001", "kind": "issue", "title": "sure", "project": "WA", "project_confidence": 0.92},
+            {"id": "I-001", "kind": "issue", "title": "sure", "project": "WA", "project_confidence": 0.98,
+             "project_reason": "the sign-in page", "code_refs": ["src/auth/Login.tsx:42"]},
             {"id": "I-002", "kind": "issue", "title": "unsure", "project": self.pd["id"], "project_confidence": 0.4,
              "project_reason": "mentions onboarding"},
             {"id": "I-003", "kind": "note", "title": "no idea"},
-            {"id": "I-004", "kind": "note", "title": "unknown project", "project": "NOPE"}]}))
+            {"id": "I-004", "kind": "note", "title": "unknown project", "project": "NOPE"},
+            {"id": "I-005", "kind": "note", "title": "no confidence given", "project": self.pd["key"]}]}))
         out = ok("items.py", "ingest", session, env=self.e.env())
-        by = {r["local"]: r for r in out["items"]}
-        self.assertEqual((by["I-001"]["project"], by["I-001"]["id"]), (self.pw["id"], "WA-1"))
-        a = ok("items.py", "get", by["I-001"]["uid"], env=self.e.env())["item"]
-        self.assertEqual((a["project_by"], a["project_confidence"]), ("ai", 0.92))
-        self.assertNotIn("project_reason", a)
-        b = ok("items.py", "get", by["I-002"]["uid"], env=self.e.env())["item"]
-        self.assertEqual((b["project"], b["suggested_project"]),
-                         ("inbox", {"id": self.pd["id"], "confidence": 0.4, "reason": "mentions onboarding"}))
-        self.assertEqual((by["I-003"]["project"], by["I-004"]["project"]), ("inbox", "inbox"))
+        self.assertEqual(out["inbox"], 5)
+        by = {r["local"]: ok("items.py", "get", r["uid"], env=self.e.env())["item"] for r in out["items"]}
+        self.assertEqual({k: v["project"] for k, v in by.items()}, dict.fromkeys(by, "inbox"))
+        self.assertEqual(by["I-001"]["suggested_project"],
+                         {"id": self.pw["id"], "confidence": 0.98, "reason": "the sign-in page"})
+        self.assertEqual(by["I-001"]["project_by"], "capture")
+        self.assertNotIn("project_confidence", by["I-001"])
+        self.assertNotIn("project_reason", by["I-001"])
+        self.assertEqual(by["I-002"]["suggested_project"]["id"], self.pd["id"])
+        self.assertEqual(by["I-005"]["suggested_project"], {"id": self.pd["id"], "reason": ""})
+        self.assertNotIn("suggested_project", by["I-003"])
+        self.assertNotIn("suggested_project", by["I-004"])
+        # nothing in the background moves them later either
+        time.sleep(1.0)
+        self.assertEqual(list((self.web / ".blurt" / "items").glob("*.md")), [])
+
+    def test_a_project_the_user_set_wins_over_the_organizer(self):
+        """A capture made with a current project: its items go there, whatever project the run wrote."""
+        session = self.web / ".blurt" / "sessions" / "20261022-151500"
+        session.mkdir(parents=True)
+        (session / "items.json").write_text(json.dumps({"items": [
+            {"id": "I-001", "kind": "issue", "title": "x", "project": self.pd["id"], "project_confidence": 0.99}]}))
+        out = ok("items.py", "ingest", session, env=self.e.env())
+        it = ok("items.py", "get", out["items"][0]["uid"], env=self.e.env())["item"]
+        self.assertEqual((it["project"], it["project_by"]), (self.pw["id"], "capture"))
+        self.assertNotIn("suggested_project", it)
+
+    def test_moving_keeps_the_suggestion_for_undo(self):
+        """Looks like X · Move = the user's move; ⌘Z moves it back, and the suggestion is still there to show."""
+        session = self.e.ws / "inbox" / "sessions" / "20261022-161500"
+        session.mkdir(parents=True)
+        (session / "items.json").write_text(json.dumps({"items": [
+            {"id": "I-001", "kind": "issue", "title": "crash", "project": "WA", "project_reason": "sign-in"}]}))
+        uid = ok("items.py", "ingest", session, env=self.e.env())["items"][0]["uid"]
+        moved = ok("items.py", "move", uid, "--project", "WA", env=self.e.env())["moved"]
+        self.assertEqual((moved[0]["from"], moved[0]["to"], moved[0]["id"]), ("inbox", self.pw["id"], "WA-1"))
+        it = ok("items.py", "get", uid, env=self.e.env())["item"]
+        self.assertEqual((it["project"], it["project_by"]), (self.pw["id"], "user"))
+        self.assertIn("project", it["_user"])
+        back = ok("items.py", "move", uid, "--project", "inbox", "--by", "user", env=self.e.env())["moved"][0]
+        self.assertEqual(back["id"], "IN-1")  # its old id again
+        it = ok("items.py", "get", uid, env=self.e.env())["item"]
+        self.assertEqual((it["project"], it["suggested_project"]["id"]), ("inbox", self.pw["id"]))
+        # the AI never moves: --by ai is gone
+        self.assertEqual(run_cli("items.py", "move", uid, "--project", "WA", "--by", "ai", env=self.e.env())[1]["code"],
+                         "bad_args")
+
+    def test_candidates_for_the_organizer_prompt(self):
+        """What an organizing run of an Unassigned capture is told: every project with a folder — id, key, name,
+        description, path, its newest 5 live titles (newest first) — and the prompt text; nothing without projects."""
+        for n in range(7):
+            ok("items.py", "add", "--project", self.pw["id"], "--json", json.dumps({"kind": "issue", "title": f"bug {n}"}),
+               env=self.e.env())
+        gone = ok("items.py", "add", "--project", self.pw["id"], "--json", '{"kind":"note","title":"thrown away"}',
+                  env=self.e.env())["uid"]
+        ok("items.py", "state", gone, "--action", "discard", "--by", "user", env=self.e.env())
+        out = ok("projects.py", "candidates", env=self.e.env())
+        by = {r["key"]: r for r in out["projects"]}
+        self.assertEqual(set(by), {"WA", "HAN"})
+        self.assertEqual(by["WA"]["recent"], ["bug 6", "bug 5", "bug 4", "bug 3", "bug 2"])
+        self.assertEqual((by["HAN"]["description"], by["HAN"]["recent"], by["HAN"]["path"]),
+                         ("the team handbook", [], str(self.docs.resolve())))
+        text = out["text"]
+        self.assertIn(f"id {self.pw['id']}, key WA, folder {self.web.resolve()}", text)
+        self.assertIn('Newest items: "bug 6"; "bug 5"', text)
+        self.assertIn("About: the team handbook", text)
+        self.assertIn('"project"', text)
+        self.assertIn("only a suggestion", text)
+        self.assertNotIn("thrown away", text)
+        two = ok("projects.py", "candidates", "--recent", "2", env=self.e.env())["projects"]
+        self.assertEqual(next(r for r in two if r["key"] == "WA")["recent"], ["bug 6", "bug 5"])
+        # a folder that is gone is no candidate; none left → no text
+        import shutil
+        shutil.rmtree(self.docs)
+        self.assertEqual([r["key"] for r in ok("projects.py", "candidates", env=self.e.env())["projects"]], ["WA"])
+        for p in (self.pw, self.pd):
+            ok("projects.py", "remove", p["id"], env=self.e.env())
+        self.assertEqual(ok("projects.py", "candidates", env=self.e.env()), {"ok": True, "projects": [], "text": ""})
 
     def test_capture_with_a_current_project_goes_straight_there(self):
         session = self.web / ".blurt" / "sessions" / "20261022-101500"
@@ -431,7 +397,7 @@ class Route(TmpCase):
             {"n": 1, "project": None, "assigned_by": "ai"})) + "\n")
         (s / "items.json").write_text(json.dumps({"items": [
             {"id": "I-001", "kind": "task", "title": "Water the basil", "source": {"shot": 1}}]}))
-        out = ok("items.py", "ingest", s, env=self.e.env(BLURT_NO_ROUTE="1"))
+        out = ok("items.py", "ingest", s, env=self.e.env())
         a = ok("items.py", "get", out["items"][0]["uid"], env=self.e.env())["item"]
         self.assertEqual((a["source"]["type"], a["source"]["shot"]), ("voice", 1))
 

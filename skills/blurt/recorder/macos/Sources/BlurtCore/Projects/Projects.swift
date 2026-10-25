@@ -2,6 +2,9 @@
 // $BLURT_HOME/projects.json — written only by projects.py (it locks and replaces the file atomically); we read the
 // file directly, watch it, and send every change through the CLI (`projects.py add / use / set / remove`).
 // Items with no project live in the inbox store, $BLURT_WORKSPACE/inbox ("Unassigned").
+// The current project is only ever the user's pick (nil = none: captures go to Unassigned). Nothing guesses one from
+// the app in front and nothing moves an item on its own; an organizing run only leaves a suggestion
+// (suggested_project), which the user accepts with a click.
 import Foundation
 
 public enum SessionKind: String { case video, shots, voice }
@@ -82,12 +85,10 @@ public final class ProjectStore {
         return first + current.filter { !taken.contains($0) }
     }
 
-    /// nil = auto (AI sorts captures into projects)
+    /// nil = none: captures go to Unassigned (projects.json "current": null; v0.8's "auto" reads the same)
     public private(set) var currentID: String?
     /// Who set the current project: "user", or "migrate" (carried over from v0.6 — the app asks once).
     public private(set) var currentBy: String?
-    /// The confidence at or above which the AI moves an item (projects.json route_threshold).
-    public private(set) var routeThreshold = 0.75
     /// Main thread; projects.json changed (another process, or our own CLI call).
     public var onChange: (() -> Void)?
 
@@ -133,7 +134,6 @@ public final class ProjectStore {
         let cur = raw["current"] as? String
         currentID = cur == nil || cur == "auto" || !list.contains(where: { $0.id == cur }) ? nil : cur
         currentBy = raw["current_by"] as? String
-        routeThreshold = (raw["route_threshold"] as? NSNumber)?.doubleValue ?? 0.75
         lastStamp = modified
     }
 
@@ -237,8 +237,8 @@ public final class ProjectStore {
         return o
     }
 
-    /// nil = auto
-    public func use(_ id: String?) async throws { try await cli(["use", id ?? "auto"]) }
+    /// nil = none (captures go to Unassigned)
+    public func use(_ id: String?) async throws { try await cli(["use", id ?? "inbox"]) }
 
     /// Opens (registers) a folder: creates its store and its .git/info/exclude line. An already registered folder just
     /// comes back (and becomes the most recently used).

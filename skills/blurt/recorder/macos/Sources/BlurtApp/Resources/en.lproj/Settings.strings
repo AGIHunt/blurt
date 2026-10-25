@@ -39,12 +39,12 @@
 "settings.general.after_recording" = "After a recording";
 "settings.general.app" = "App";
 "settings.general.assistant" = "Run the Setup Assistant Again…";
-"settings.general.auto" = "Auto — sorted into projects by content";
 "settings.general.capture_into" = "Snaps and voice notes go to";
 "settings.general.language" = "Language";
 "settings.general.language.restart" = "Takes effect the next time Blurt opens.";
 "settings.general.language.system" = "Same as the system";
 "settings.general.login" = "Open Blurt at login";
+"settings.general.none" = "Unassigned — pick a project later";
 "settings.general.open_unassigned" = "Show Unassigned in Finder";
 "settings.general.projects.hint" = "A project is a folder on this Mac. Its items live in the folder’s .blurt, which Blurt keeps out of git for you.";
 "settings.general.recording" = "Recording";
@@ -281,7 +281,7 @@
 "settings.kw.pane.export" = "export, send, share";
 "settings.kw.pane.privacy" = "permission, private, security";
 "settings.kw.pane.storage" = "disk, space, size, delete, clean up, trash";
-"settings.kw.general.capture_into" = "project, folder, inbox, where, destination, sort";
+"settings.kw.general.capture_into" = "project, folder, inbox, unassigned, where, destination, current project";
 "settings.kw.general.projects" = "folder, repo, repository, add project, remove project, unassigned";
 "settings.kw.general.login" = "startup, launch, boot, login items, start automatically";
 "settings.kw.general.language" = "English, Chinese, locale, translation, interface";
@@ -331,7 +331,7 @@
 "settings.kw.speech.mirror" = "mirror, Hugging Face, China, download speed, hf-mirror";
 "settings.kw.shortcuts.draw_key" = "pen, draw, circle, control, annotate";
 "settings.kw.shortcuts.restore" = "reset, defaults, conflicts";
-"settings.kw.agents.list" = "order, organize, auto sort, AI fill-in, connect, MCP, skill, sign in, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
+"settings.kw.agents.list" = "order, organize, model, effort, AI fill-in, connect, MCP, skill, sign in, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, terminal, session, default agent";
 "settings.kw.export.target" = "destination, Feishu, Lark, GitHub, Markdown, CSV, Bitable";
 "settings.kw.export.destinations" = "lark-cli, gh, GitHub CLI, set up export";

@@ -213,7 +213,7 @@ enum ShortcutsSheet {
             ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("main.cmd.copy_instruction")),
             ("S", T("main.keys.state")), ("A", StateMenu.title("keep")), ("D", StateMenu.title("done")), ("R", T("main.keys.back")),
             ("W", StateMenu.title("wontfix")), ("X  ⌫  ⌘⌫", StateMenu.title("discard")),
-            ("E", T("main.menu.rename").replacingOccurrences(of: "…", with: "")), ("1 2 3 4", T("main.keys.kind")),
+            ("E", T("main.menu.rename").replacingOccurrences(of: "…", with: "")), ("M", T("main.keys.move")), ("1 2 3 4", T("main.keys.kind")),
             (T("main.keys.space"), T("main.menu.quick_look")), ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")),
          ]),
          (T("main.keys.section.window"), [

@@ -1,14 +1,17 @@
 // The island, open (Island.swift draws the shape): what is under the ears row.
 //
 //   home        the current project (click = switch) · record / snap / voice · up to 3 jobs in progress (step,
-//               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Let AI sort"
+//               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Organize" the
+//               waiting cards (into the current project; with none, into Unassigned with a suggested project each)
 //   recording   pause / resume · snap + note (pauses) · discard (asks first: keep / restart / discard) · mic level ·
 //               finish · "hold ⌃ to draw" · how many items were spotted so far · the project (changeable)
 //   voice       the listening chick (mascot), the live waveform, Done, how it ends ("press ⌥⇧V again to finish · Esc to
 //               cancel"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
 //               will go — the words themselves hang under the island (LiveTranscript.swift)
-//   drawer      switcher (⌥⇧O): Auto, recent projects (≤ 8, "More…", type to filter), Open Folder… ⌘O
-//               drop (a card dragged in): recent projects, Unassigned, Let AI sort
+//   drawer      switcher (⌥⇧O): Unassigned (no current project), recent projects (≤ 8, "More…", type to filter —
+//               ProjectPick), Open Folder… ⌘O. Its pick form (Island.Pick: "Filed to X · Change") has the same rows and
+//               files that one thing instead of changing the current project.
+//               drop (a card dragged in, or a ⌘-click selection of them): recent projects, Unassigned, Organize
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on the island's mint tint
 //   toast       one quiet line (K4), optionally with art (the mascot: done, fixed), the ok check and an action — spanning
 //               the whole shape (IslandLayout.toast): text 18 pt in, the button under the right ear's number, a lone
@@ -335,7 +338,7 @@ final class IslandContent: NSView {
         return i.drawer == nil && i.currentToast.map { !i.open || $0.isQuestion || $0.overOpen } == true ? toastWidth : Island.openW
     }
 
-    enum Target: Equatable { case project(String), inbox, aiSort, auto, openFolder, more }
+    enum Target: Equatable { case project(String), inbox, organize, none, openFolder, more }
 
     private var rows: [IslandRow] = []
     private var selected: Int?
@@ -410,8 +413,8 @@ final class IslandContent: NSView {
 
     private func chip(_ w: CGFloat, small: Bool = false) -> IslandButton {
         let p = ProjectStore.shared.current
-        let name = p?.name ?? Loc.t("project.auto")
-        let b = IslandButton(symbol: p == nil ? "sparkles" : "", title: name,
+        let name = p?.name ?? Loc.t("project.inbox")
+        let b = IslandButton(symbol: p == nil ? "tray" : "", title: name,
                              tip: tip("capture.island.switch_project", .project)) { [weak self] in self?.island?.showSwitcher() }
         // every capture with a note goes to the current project: its key in its colour leads, so it reads at a glance
         if let p = p {
@@ -509,14 +512,15 @@ final class IslandContent: NSView {
                 place(r, x: 0, y: y, w: cards > 0 ? w - 150 : w, h: 36)
             }
             if cards > 0 {
-                // with a current project the cards are organised into it; in auto mode the AI also picks the project.
-                // Either way: one agent run for all of them (the processing model).
+                // with a current project the cards are organised into it; with none, into Unassigned, each item with
+                // the project the run suggests (the user moves it with a click). Either way one agent run for all.
                 let cur = ProjectStore.shared.current
                 let b = cur.map { p in
                     IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
                                  tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
                                  gradient: BrandGradient.buttonStops) { snapper.handToAI(project: p.id) }
-                } ?? IslandButton(symbol: "wand.and.stars", title: Loc.t("project.ai_sort"), tip: Loc.plural("capture.island.ai_sort_tip", table: "Capture", count: cards),
+                } ?? IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
+                                  tip: Loc.plural("capture.island.organize_all_tip", table: "Capture", count: cards),
                                   gradient: BrandGradient.buttonStops) { snapper.handToAI() }
                 place(b, x: w - 14 - b.frame.width, y: y + 4)
                 if review == 0 {
@@ -729,7 +733,10 @@ final class IslandContent: NSView {
         }
         // the ears row: what this is on the left of the notch, the filter typed so far on its right
         let row = firstRow
-        let head = label(Loc.t(d == .drop ? "capture.drawer.drop_title" : "capture.drawer.switch_title", table: "Capture"), size: 11, weight: .semibold, color: ink3)
+        let pick = d == .switcher ? island?.pick : nil
+        let headText = d == .drop ? Loc.t("capture.drawer.drop_title", table: "Capture")
+            : pick?.title ?? Loc.t("capture.drawer.switch_title", table: "Capture")
+        let head = label(headText, size: 11, weight: .semibold, color: ink3)
         place(head, x: 20, y: (row - head.frame.height) / 2, w: min(head.frame.width, side(w) - 26))
         if !query.isEmpty {
             let q = label("\u{201C}\(query)\u{201D}", size: 12, weight: .medium, color: BrandColor.Island.fill)
@@ -747,22 +754,26 @@ final class IslandContent: NSView {
             place(r, x: 0, y: y, w: w, h: r.frame.height)
             y += r.frame.height
         }
-        if d == .switcher && query.isEmpty {
-            let r = IslandRow(icon: ic("sparkles"), title: Loc.t("project.auto"), subtitle: Loc.t("capture.drawer.auto_sub", table: "Capture"), height: 44)
-            r.checked = store.currentID == nil
-            add(r, .auto)
+        // what is checked: the current project (nil = none), or where the thing being re-filed went
+        let checkedID: String? = pick.map { $0.current } ?? (store.currentID ?? "inbox")
+        let none = d == .switcher && (query.isEmpty || !ProjectPick.filter([Loc.t("project.inbox")], query, name: { $0 }, key: { _ in "" }).isEmpty)
+        if none {
+            // no current project: captures go to Unassigned until the user picks one — never a guess
+            let r = IslandRow(icon: ic("tray"), title: Loc.t("project.inbox"),
+                              subtitle: Loc.t(pick == nil ? "capture.drawer.none_sub" : "capture.drawer.inbox_sub", table: "Capture"), height: 44)
+            r.checked = checkedID == "inbox"
+            add(r, .none)
         }
-        let q = query.lowercased()
-        let matches = store.projects.filter { q.isEmpty || $0.name.lowercased().contains(q) || $0.key.lowercased().hasPrefix(q) }
-        let shown = q.isEmpty && !showAll ? Array(matches.prefix(8)) : matches
+        let matches = ProjectPick.filter(store.projects, query)
+        let shown = query.isEmpty && !showAll ? Array(matches.prefix(8)) : matches
         for p in shown {
             let r = IslandRow(icon: ic("folder.fill", ProjectLook.color(p)), title: p.name, height: 36)     // the project's colour
             r.accessory = p.key
             r.accessoryIsKey = true
-            r.checked = d == .switcher && store.currentID == p.id
+            r.checked = d == .switcher && checkedID == p.id
             add(r, .project(p.id))
         }
-        if q.isEmpty && !showAll && matches.count > 8 {
+        if query.isEmpty && !showAll && matches.count > 8 {
             add(IslandRow(icon: ic("ellipsis"), title: Loc.t("capture.drawer.more", table: "Capture"), height: 34), .more)
         }
         if store.projects.isEmpty {
@@ -776,17 +787,24 @@ final class IslandContent: NSView {
         addSubview(sep)
         y += 9
         if d == .switcher {
-            let r = IslandRow(icon: ic("folder.badge.plus"), title: Loc.t("project.open_folder"), height: 36)
-            r.accessory = "\u{2318}O"
-            add(r, .openFolder)
+            if pick == nil {
+                let r = IslandRow(icon: ic("folder.badge.plus"), title: Loc.t("project.open_folder"), height: 36)
+                r.accessory = "\u{2318}O"
+                add(r, .openFolder)
+            }
         } else {
             add(IslandRow(icon: ic("tray"), title: Loc.t("project.inbox"), subtitle: Loc.t("capture.drawer.inbox_sub", table: "Capture"), height: 44), .inbox)
-            add(IslandRow(icon: ic("wand.and.stars", BrandColor.Island.fill), title: Loc.t("project.ai_sort"),
-                          subtitle: Loc.plural("capture.drawer.ai_sub", table: "Capture", count: island?.cardCount ?? 0), height: 44), .aiSort)
+            // with no current project: one run for the cards, into Unassigned with a suggested project each
+            let n = island?.dropCount ?? 1
+            add(IslandRow(icon: ic("sparkles", BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
+                          subtitle: Loc.plural("capture.drawer.organize_sub", table: "Capture", count: n), height: 44), .organize)
         }
         if d == .switcher { select(rows.firstIndex { $0.checked } ?? 0) }
         return y + 8
     }
+
+    /// Tests: the drawer's rows as shown ("✓ " before the checked one).
+    var rowTitles: [String] { rows.map { ($0.checked ? "✓ " : "") + $0.title } }
 
     private func select(_ i: Int?) {
         selected = i
@@ -804,11 +822,14 @@ final class IslandContent: NSView {
         return rows[i].target
     }
 
+    /// A card dropped on a target: that card — or the ⌘-click selection it is part of — goes there (Organize: those
+    /// cards, organized into Unassigned with suggestions; from the island itself, every card).
     func perform(_ t: Target, shot: Shot?) {
+        let shots = shot.map { hanging.withSelection($0) }
         switch t {
-        case .project(let id): if let s = shot { snapper.assign(s, to: id) }
-        case .inbox: if let s = shot { snapper.assign(s, to: "inbox") }
-        case .aiSort: snapper.handToAI()
+        case .project(let id): if let s = shots { snapper.assign(s, to: id) }
+        case .inbox: if let s = shots { snapper.assign(s, to: "inbox") }
+        case .organize: snapper.handToAI(shots: shots)
         default: break
         }
     }
@@ -817,15 +838,21 @@ final class IslandContent: NSView {
         switch t {
         case .more: showAll = true; rebuild(); island?.wake()
         case .openFolder: island?.closeSwitcher(); IslandContent.openFolder()
-        case .auto, .project:
+        case .none, .project:
             let id: String? = { if case .project(let i) = t { return i }; return nil }()
+            if let p = island?.pick {
+                // the pick form: file that one thing there; the current project stays as it is
+                island?.closeSwitcher()
+                island?.setOpen(false)
+                return p.choose(id ?? "inbox")
+            }
             island?.closeSwitcher()
             island?.setOpen(false)
             Task {
                 do { try await ProjectStore.shared.use(id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }
                 await MainActor.run { island?.projectChanged() }
             }
-        case .inbox, .aiSort:
+        case .inbox, .organize:
             perform(t, shot: nil)
         }
     }
@@ -860,7 +887,7 @@ final class IslandContent: NSView {
             return true
         default: break
         }
-        if e.modifierFlags.contains(.command), e.charactersIgnoringModifiers == "o" { choose(.openFolder); return true }
+        if e.modifierFlags.contains(.command), e.charactersIgnoringModifiers == "o", island?.pick == nil { choose(.openFolder); return true }
         if let c = e.characters, !c.isEmpty, !e.modifierFlags.contains(.command), !e.modifierFlags.contains(.control),
            c.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
             query += c

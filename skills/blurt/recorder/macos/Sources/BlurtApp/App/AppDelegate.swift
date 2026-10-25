@@ -546,6 +546,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if autoProcess {
             process(dir, project: project?.id)
+            // where its items go, and the way to put them elsewhere (Refile) — the user's pick, never a guess
+            Refile.offerRecording(dir, project: project?.id)
         } else {
             toast(T("app.toast.saved", Loc.duration(dur)), icon: .check)
         }
@@ -724,19 +726,19 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(.separator())
         }
 
-        // the current project (K2): where new captures go
+        // the current project (K2): where new captures go — the user's pick (recently used first), or none
         let store = ProjectStore.shared
-        let pItem = NSMenuItem(title: T("app.menu.project", store.current?.name ?? T("project.auto")), action: nil, keyEquivalent: "")
+        let pItem = NSMenuItem(title: T("app.menu.project", store.current?.name ?? T("project.inbox")), action: nil, keyEquivalent: "")
         let pMenu = NSMenu()
-        let auto = add(T("project.auto"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
-        auto.toolTip = T("app.menu.project.auto_tip")
-        auto.image = App.menuSymbol("sparkles")         // like the island's chip
-        if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
             let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
             i.image = App.menuSymbol(p.exists ? "folder" : "questionmark.folder")
             i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
         }
+        if !store.projects.isEmpty { pMenu.addItem(.separator()) }
+        let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
+        none.toolTip = T("app.menu.project.none_tip")
+        none.image = App.menuSymbol("tray")              // like the island's chip with no project
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
         _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)
@@ -818,6 +820,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in
             do { try await ProjectStore.shared.use(id) }
             catch { self.toast(T("main.error.generic")) }
+            island.projectChanged()
         }
     }
     @objc func mOpenFolder() {

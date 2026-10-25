@@ -38,7 +38,7 @@ def cli(*args, ok=True) -> dict:
 def test_ids_and_shape(home):
     j = jobs.create("process", project="p1", session="/s/20261022-101500", owner="app")
     assert re.fullmatch(r"j-\d{8}-\d{6}-[0-9a-hjkmnp-tv-z]{4}", j["id"])
-    assert [s["id"] for s in j["steps"]] == ["prepare", "transcribe", "write", "frames", "route"]
+    assert [s["id"] for s in j["steps"]] == ["prepare", "transcribe", "write", "frames"]  # no routing step: nothing moves items
     assert all(s["state"] == "pending" for s in j["steps"]) and j["state"] == "running" and j["events_offset"] == 0
     on_disk = json.loads((home / "jobs" / f"{j['id']}.json").read_text())
     assert on_disk == j and re.search(r"[+-]\d\d:\d\d$", j["created"])  # ISO 8601 with the offset

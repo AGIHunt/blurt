@@ -4,14 +4,16 @@
 // v0.7 token diet — an agent runs only when the user asks for one, once per batch:
 //  • a current project is set and the capture has a note (typed, or spoken and transcribed here) → it is filed
 //    straight away by captures.py, no agent, no tokens: it flies up, a thread reels it into the island, and the island
-//    says where it went ("Filed to ordo-platform · OP-14"). The item carries `enrich: pending` for a later AI fill-in.
+//    says where it went ("Filed to ordo-platform · OP-14 · Change" — Change picks another project: Refile.swift). The
+//    item carries `enrich: pending` for a later AI fill-in.
 //  • v0.9: with a project, a capture without a note is filed there too ("Screenshot 14:32") — the island said "Goes to
 //    <project>" and the guide promises every capture goes straight in. Only a spoken note whose words couldn't be had
 //    hangs as a card, remembering its project ("intended_project"): Retry files it there (BlurtCore CaptureRoute).
-//  • no project (current = auto) → it hangs from the island on a thread, as a card, until the user drags
-//    it onto a project in the island (filed there the same way, no agent), onto "Unassigned", or hands the cards to
-//    the AI: "Organize" (into the current project) / "Auto-sort" (one card, its menu) / "Auto-sort All Cards" (the
-//    island's menu) — one agent run per batch with the processing model.
+//  • no current project (the user picked none; Blurt never guesses one) → it hangs from the island on a thread, as a
+//    card, until the user drags it — or its ⌘-click selection — onto a project in the island (filed there the same
+//    way, no agent), onto "Unassigned", picks Move To ▸ in its menu, or has the cards organized: "Organize" (into the
+//    current project when there is one; otherwise into Unassigned, the run suggesting a project per item that the
+//    user accepts with a click) — one agent run per batch with the cards' processing model (the cheapest).
 //  • Esc in the note bubble clears what was typed first, then discards the capture (Trash, with Undo for 5 s, as a voice
 //    note's); ⏎ keeps it without a note.
 //  • Screen Recording missing → the snap doesn't open the picker: the island says so, Open Settings starts the guide.
@@ -118,7 +120,7 @@ final class Snapper {
 
     // MARK: batches
 
-    /// Where a capture goes now: the current project, or the inbox (as a card) when the current project is auto.
+    /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none.
     var target: Project { ProjectStore.shared.current ?? ProjectStore.shared.inbox }
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
@@ -458,39 +460,57 @@ final class Snapper {
                     job.setItems(made.compactMap { $0["uid"] as? String })
                     job.setUsage(tokens: 0, agent: nil, model: nil, effort: nil)
                     job.step("write", r == nil ? .failed : .done)
-                    for st in ["transcribe", "frames", "route"] { job.step(st, .skipped) }
+                    for st in ["transcribe", "frames"] { job.step(st, .skipped) }
                     job.finish(r == nil ? .failed : .done, error: why.map { JobError(code: "io", message: $0, hintKey: nil) })
                     self.filing = max(0, self.filing - 1)
                     emit(["event": "filed", "job": job.id, "items": made.compactMap { $0["id"] as? String }, "tokens": 0])
                     guard let first = made.first else { return }
-                    self.announceFiled(project: project, id: first["id"] as? String, count: made.count)
+                    self.announceFiled(project: project, id: first["id"] as? String, uids: made.compactMap { $0["uid"] as? String })
                 }
             }
         }
     }
 
-    /// One quiet line in the island: "Filed to ordo-platform · OP-14" (the project's key badge in its colour).
-    private func announceFiled(project: String, id: String?, count: Int) {
+    /// One quiet line in the island: "Filed to ordo-platform · OP-14 · Change" (the project's key badge in its
+    /// colour); Change picks another project for what was just filed (Refile).
+    private func announceFiled(project: String, id: String?, uids: [String]) {
         let store = ProjectStore.shared
         let p = project == "inbox" ? store.inbox : store.project(id: project)
         let name = p?.name ?? project
-        let ids = (id ?? "") + (count > 1 ? " +\(count - 1)" : "")
-        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: nil, action: nil)
+        let ids = (id ?? "") + (uids.count > 1 ? " +\(uids.count - 1)" : "")
+        var t = Island.Toast(text: Loc.t("capture.filed", table: "Capture", name, ids), actionTitle: Loc.t("capture.change", table: "Capture")) {
+            Refile.items(uids, from: project)
+        }
         t.badge = p.map { ($0.key, ProjectLook.color($0)) }
         island.toast(t)
     }
 
     /// A card dropped on a project (or "inbox" = Unassigned) in the island: filed there, like a capture with a note.
-    func assign(_ s: Shot, to project: String) {
-        guard s.isCard, let b = s.batch else { return }
-        b.assign(s, project: project, by: "user")
-        emit(["event": "assign", "n": s.n, "session": b.dir.path, "project": project])
-        file([s], in: b, project: project)
+    func assign(_ s: Shot, to project: String) { assign([s], to: project) }
+
+    /// Cards — one, or a ⌘-click selection — onto a project (Move To ▸, a drop on the island): each batch's filed in
+    /// one go, the user's own choice (assigned_by "user").
+    func assign(_ shots: [Shot], to project: String) {
+        var by: [ObjectIdentifier: (ShotBatch, [Shot])] = [:]
+        var order: [ObjectIdentifier] = []
+        for s in shots where s.isCard {
+            guard let b = s.batch else { continue }
+            b.assign(s, project: project, by: "user")
+            let k = ObjectIdentifier(b)
+            if by[k] == nil { order.append(k) }
+            by[k, default: (b, [])].1.append(s)
+        }
+        for k in order {
+            guard let (b, ss) = by[k] else { continue }
+            emit(["event": "assign", "n": ss.map(\.n), "session": b.dir.path, "project": project])
+            file(ss, in: b, project: project)
+        }
     }
 
-    /// The cards, to an agent — one run per batch, with the processing model. `project` set ("Organize"): they all
-    /// go there; nil ("Auto-sort"): routed per item (K2). `shots`: just these (a card's own "Auto-sort"); nil:
-    /// every hanging card (the island's "Auto-sort All Cards").
+    /// The cards, to an agent — one run per batch, with the cards' processing model. `project` set ("Organize" with
+    /// a current project): they all go there; nil: into Unassigned, the run told the projects so it can suggest one
+    /// per item (nothing moves — "Looks like X · Move" in the main window). `shots`: just these (a card's own
+    /// "Organize", a drop on Organize); nil: every hanging card (the island's Organize, "Organize All Cards").
     func handToAI(project: String? = nil, shots: [Shot]? = nil) {
         let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
@@ -499,7 +519,7 @@ final class Snapper {
         agentReady { [weak self] ok in
             guard let self = self else { return }
             guard ok else {
-                emit(["event": "ai_sort_no_agent", "captures": all.map(\.n)])
+                emit(["event": "organize_no_agent", "captures": all.map(\.n)])
                 var t = Island.Toast(text: Loc.t("capture.sort.no_agent", table: "Capture"),
                                      actionTitle: Loc.t("capture.sort.set_up", table: "Capture")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
@@ -531,7 +551,7 @@ final class Snapper {
         }
         hanging.pullInAll(all)
         for (b, ns) in by.values {
-            emit(["event": project == nil ? "ai_sort" : "organize", "session": b.dir.path, "captures": ns, "project": project ?? NSNull()])
+            emit(["event": "organize", "session": b.dir.path, "captures": ns, "project": project ?? NSNull()])
             island.expectProcess(session: b.dir, captures: ns)
             process(b, ns, project: project)
         }

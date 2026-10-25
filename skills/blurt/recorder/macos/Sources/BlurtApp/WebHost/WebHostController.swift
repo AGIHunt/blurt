@@ -573,7 +573,7 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 ///                                                                     [Open Session] [Restart Session] ⋯
 ///   session gone   (the same line; nothing left to open)                         [Take Back] [Mark as Done]
 ///   handed out    "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
-///   suggested      "Looks like it belongs in bug-agent (58%)."                  [Move]
+///   suggested      "Looks like bug-agent." (an organizing run's suggestion)   [Move]
 final class ItemBanner: NSView {
     var onAction: ((String) -> Void)?
     private let icon = NSImageView()
@@ -704,7 +704,7 @@ final class ItemBanner: NSView {
                 tint = BrandColor.ink
                 icon.image = Look.symbol("folder.badge.questionmark", "", size: 13)
                 icon.contentTintColor = BrandColor.ink
-                text.stringValue = T("main.banner.suggested", s.name, Loc.percent(it.suggestedConfidence ?? 0))
+                text.stringValue = T("main.banner.suggested", s.name)
                 button(T("main.banner.move"), "move", primary: true)
             } else {
                 return hide()

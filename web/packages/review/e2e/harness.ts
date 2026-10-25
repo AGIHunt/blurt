@@ -40,7 +40,7 @@ export async function startReview(fixture = "20261021-101500"): Promise<Session>
   // every Blurt folder in the scratch root: a session outside any project is filed into the inbox store, which
   // would otherwise be the user's own ~/Blurt/inbox
   const env = { ...process.env, BLURT_HOME: join(root, "home"), BLURT_WORKSPACE: join(root, "Blurt"), BLURT_NO_INDEX: "1",
-    BLURT_NO_ROUTE: "1", PYTHONDONTWRITEBYTECODE: "1" };
+    PYTHONDONTWRITEBYTECODE: "1" };
   const proc = spawn(PY, [join(scripts, "review.py"), dir, "--open", "none"], { env, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   const exited = new Promise<string>((res) => proc.on("exit", () => res(out)));

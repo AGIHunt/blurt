@@ -144,6 +144,8 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("action.reveal_in_finder"), "folder", "⇧⌘R", enabled: has) { c.mReveal() },
             e(T("action.copy_path"), "doc.on.doc", "⌥⌘C", enabled: has) { c.copyPaths() },
             e(T("main.menu.rename"), "pencil", "E", enabled: has) { c.renameSelection() },
+            e(T("main.palette.move_pick"), "folder", "M", enabled: has && Scripts.canWrite) { DispatchQueue.main.async { c.pickProject() } },
+            e(T("main.palette.switch_project"), "arrow.left.arrow.right", hk(.project)) { AppEnvironment.island?.showSwitcher() },
             e(T("main.place.inbox"), "tray", "⌘1") { c.go(.inbox) },
             e(T("main.place.progress"), "circle.dashed", "⌘2") { c.go(.inProgress) },
             e(T("project.inbox"), "tray.2", "⌘3") { c.go(.unassigned) },
@@ -168,11 +170,19 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             out.append(e(JobLook.title(j), JobLook.symbol(j), detail: JobLook.status(j)) { c.reveal(job: j.id) })
         }
         if AppEnvironment.settings != nil { out.append(e(T("menu.settings"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
+        let current = ProjectStore.shared.currentID
         for p in c.model.projects where p.registered {
             out.append(e(p.name, "folder", detail: T("main.palette.project", (p.path.path as NSString).abbreviatingWithTildeInPath)) { c.reveal(project: p.id) })
             if !items.isEmpty {
                 out.append(e(T("main.palette.move_to", p.name), "arrow.right.doc.on.clipboard") { c.move(uids: items.map(\.uid), to: p.id) })
             }
+            // where new captures go: the user's pick, never a guess (K2)
+            if p.id != current {
+                out.append(e(T("main.palette.use_project", p.name), "scope", detail: T("main.project.use.tip")) { c.useProject(p.id) })
+            }
+        }
+        if current != nil {
+            out.append(e(T("main.palette.use_none"), "tray.2", detail: T("app.menu.project.none_tip")) { c.useProject(nil) })
         }
         return out
     }

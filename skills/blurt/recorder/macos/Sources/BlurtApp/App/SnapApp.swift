@@ -31,13 +31,16 @@
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
-//     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
+//     assign N PROJECT|inbox  = dropping card N (with its ⌘-click selection) on that target · aisort · deleteall
+//     cardmove N PROJECT|inbox   card N's menu: Move To ▸ that project (its selection too; "card_move_menu" lists it)
+//     pick PROJECT|inbox · pickrows [QUERY] · refile SESSION   the switcher's pick form ("Filed to X · Change"): choose
+//                             a row / its rows after typing ("pick_rows") / the line a recording leaves as it ends
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
 //     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
 //     noteclear · noteink down|move|up X,Y · notestall · notestate (the note bubble: ⌘A⌫, the pen, a mic gone, what it shows)
 //     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
-//     project ID|auto         switch the current project
+//     project ID|inbox        switch the current project (inbox: none — captures go to Unassigned)
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
 //     mascotframes DIR CLIP [dark]  the clip at 12 fps as PNGs (80 pt, 2x), in order
@@ -204,9 +207,29 @@ extension App {
             }, "panel": TakenPanel.shared.isOpen])
         case "hotkey":                                  // hotkey ACTION: the same path as pressing its keys
             if let act = HotAction(rawValue: arg) { Hotkeys.shared.simulate(act, released: false) }
-        case "assign":
+        case "assign":                                  // assign N PROJECT: = dropping card N (with its ⌘-click selection) there
             let a = arg.split(separator: " ").map(String.init)
-            if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) { snapper.assign(s, to: a[1]) }
+            if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) {
+                snapper.assign(hanging.withSelection(s), to: a[1])
+            }
+        case "cardmove":                                // cardmove N PROJECT: card N's menu, Move To ▸ PROJECT (selection too)
+            let a = arg.split(separator: " ").map(String.init)
+            guard a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) else { return }
+            let m = hanging.cardMenu(s) { _ in }
+            let move = m.items.first { $0.submenu != nil }
+            emit(["event": "card_move_menu", "title": move?.title ?? "", "items": move?.submenu?.items.map(\.title) ?? []])
+            let target = a[1] == "inbox" ? Loc.t("project.inbox") : ProjectStore.shared.project(id: a[1])?.name
+            if let i = move?.submenu?.items.first(where: { $0.title == target }) as? ClosureMenuItem { i.fire() }
+        case "pick":                                    // pick PROJECT|inbox: choose a row of the island's switcher / pick form
+            if let p = island.pick { island.closeSwitcher(); p.choose(arg) }
+            else { Task { try? await ProjectStore.shared.use(arg == "inbox" ? nil : arg); await MainActor.run { island.projectChanged() } } }
+        case "pickrows":                                // pickrows [QUERY]: the switcher's rows as shown, after typing QUERY
+            if island.drawer != .switcher { island.showSwitcher() }
+            island.content.query = arg
+            island.content.rebuild()
+            emit(["event": "pick_rows", "rows": island.content.rowTitles, "pick": island.pick?.title ?? NSNull()])
+        case "refile":                                  // refile SESSION: the end-of-recording line for that session
+            Refile.offerRecording(URL(fileURLWithPath: arg), project: ProjectStore.shared.currentID)
         case "framerec": FrameCapture.start(arg)      // framerec DIR SECS X,Y,W,H [BACKDROP|-] [FPS] [cursor]
         case "mascotframes":                            // mascotframes DIR CLIP [dark]: the clip at 12 fps
             let a = arg.split(separator: " ").map(String.init)
@@ -258,7 +281,7 @@ extension App {
             enrich(arg.split(separator: ",").map(String.init), project: ProjectStore.shared.currentID)
         case "deleteall": snapper.deleteAllCards()
         case "project":
-            Task { try? await ProjectStore.shared.use(arg == "auto" ? nil : arg); await MainActor.run { island.projectChanged() } }
+            Task { try? await ProjectStore.shared.use(["inbox", "none", "auto"].contains(arg) ? nil : arg); await MainActor.run { island.projectChanged() } }
         case "commit": NoteBubble.shared.commit()
         case "cancel": NoteBubble.shared.cancel()
         case "edit":

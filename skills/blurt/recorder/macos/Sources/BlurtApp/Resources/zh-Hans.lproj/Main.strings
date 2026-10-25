@@ -26,7 +26,7 @@
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";
 "app.menu.project" = "当前项目：%@";
-"app.menu.project.auto_tip" = "按内容自动归到对应项目";
+"app.menu.project.none_tip" = "不选当前项目：录屏进未归类，截图和语音备注先挂成卡片";
 "app.menu.quit" = "退出口喷鸡";
 "app.menu.record" = "开始录屏";
 "app.menu.record_last" = "录上次的区域";
@@ -36,8 +36,7 @@
 "app.menu.shortcuts" = "快捷键…";
 "app.menu.updates" = "检查更新…";
 
-"app.migrate.ask" = "截图和语音备注以后还是默认放进 %@（沿用之前的设置），还是按内容自动归类？";
-"app.migrate.auto" = "自动归类";
+"app.migrate.ask" = "截图和语音备注以后还是默认放进 %@（沿用之前的设置），还是先放进未归类、之后再选项目？";
 "app.migrate.keep" = "放进 %@";
 "app.name" = "口喷鸡";
 
@@ -59,11 +58,11 @@
 "main.banner.agent" = "Agent";
 "main.banner.ended" = "会话已结束，未报告完成";
 "main.banner.external" = "已复制给你的 Agent。做完后在这里标为完成。";
-"main.banner.move" = "移过去";
+"main.banner.move" = "归过去";
 "main.banner.open_session" = "打开会话";
 "main.banner.organizing" = "还在整理 · %@";
 "main.banner.show_progress" = "查看进度";
-"main.banner.suggested" = "看起来属于「%@」（把握 %@）。";
+"main.banner.suggested" = "像是 %@ 的。";
 "main.banner.with_agent" = "已交给 %@ · %@";
 "main.banner.handed_off" = "已交给 %@";
 
@@ -100,7 +99,7 @@
 "main.dispatch.use_worktree" = "用单独的分支";
 
 "main.empty.all_filed" = "都已归类";
-"main.empty.all_filed.detail" = "还没归类的条目会先放在这里，等你选项目或自动归类。";
+"main.empty.all_filed.detail" = "还没归类的条目会先放在这里，等你把它们移到项目里。";
 "main.empty.clear_all" = "清除搜索和筛选";
 "main.empty.clear_filters" = "清除筛选";
 "main.empty.discarded" = "没有丢弃的条目";
@@ -149,6 +148,19 @@
 "main.error.save_title" = "没能保存";
 "main.error.timeout" = "等太久了，稍后再试。";
 "main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
+"main.keys.move" = "移到项目";
+"main.list.move" = "归过去";
+"main.list.move.tip" = "移到 %@（⌘Z 可以移回来）";
+"main.list.suggested" = "像是 %@ 的";
+"main.move.here" = "当前所在";
+"main.move.list" = "项目";
+"main.move.no_match" = "没有匹配的项目";
+"main.move.placeholder" = "移到…";
+"main.palette.move_pick" = "移到项目…";
+"main.palette.switch_project" = "切换当前项目…";
+"main.palette.use_none" = "不指定当前项目（捕获进未归类）";
+"main.palette.use_project" = "把 %@ 设为当前项目";
+"main.project.use_none" = "不再作为当前项目";
 "main.state.toast" = "%1$@ · %2$@";
 "main.state.not_here" = "「%@」状态下不能这样改，按 S 看看能做什么。";
 "main.state.restore_first" = "它在已丢弃里，先按 R 恢复。";
@@ -217,6 +229,11 @@
 "main.menu.copy_link" = "复制链接";
 "main.menu.enrich" = "AI 补全";
 "main.menu.kind" = "种类";
+"main.suggest.label" = "建议的项目";
+"main.suggest.looks_like" = "像是 %@ 的";
+"main.suggest.more" = "下面还有 %ld 个项目的建议";
+"main.suggest.move_all" = "全部归过去 (%ld)";
+"main.suggest.move_all.tip" = "把这 %1$ld 条移到 %2$@，一次 ⌘Z 全部移回来";
 "main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";
@@ -256,7 +273,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "默认";
 "main.project.description" = "描述";
-"main.project.description.note" = "这个项目是做什么的，自动归类时会参考";
+"main.project.description.note" = "这个项目是做什么的。没选项目的捕获在整理时会参考它，建议归到哪个项目。";
 "main.project.description.placeholder" = "例如：官网和注册流程";
 "main.project.key" = "前缀";
 "main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
@@ -277,7 +294,6 @@
 "main.project.settings.title" = "「%@」设置";
 "main.project.use" = "设为当前项目";
 "main.project.use.tip" = "新的录屏、截图和语音备注都归当前项目";
-"main.project.use_auto" = "不指定项目（自动归类）";
 "main.project.worktree" = "每次交给 Agent 都用单独的 worktree";
 "main.project.worktree.no_git" = "不是 git 仓库：Agent 直接在文件夹里改。";
 "main.project.worktree.note" = "Agent 在你工作区旁边的分支上改，之后由你合并、开 PR 或丢弃。";
