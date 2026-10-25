@@ -147,8 +147,10 @@ public enum SettingsCatalog {
         sec("speech.advanced", "speech.section.advanced", "Speech"),
         sec("speech.models", "speech.section.models", "Speech"),
 
-        sec("shortcuts.anytime", "capture.keys.anytime", "Capture"),
+        sec("shortcuts.capture", "capture.keys.section.capture", "Capture"),
         sec("shortcuts.recording", "capture.keys.while_recording", "Capture"),
+        sec("shortcuts.dictation", "dictation.settings.tab", "Dictation"),
+        sec("shortcuts.open", "capture.keys.section.open", "Capture"),
 
         sec("agents.list", "agents.header", "Terminal"),
         sec("agents.sessions", "agents.sessions.header", "Terminal"),
@@ -167,8 +169,19 @@ public enum SettingsCatalog {
 
     // MARK: entries
 
-    /// The shortcut actions under "While recording"; the rest are "Anytime".
-    public static let recordingShortcuts: Set<String> = ["pause", "marker", "pen", "stop"]
+    /// The Shortcuts page's sections and their actions (HotkeyCenter.Action raw values), in the page's order: what you
+    /// capture, the keys of a recording in progress, dictation, and opening or switching things. The dictation key
+    /// (set in Settings → Dictation) leads its section, ahead of these.
+    public static let shortcutSections: [(section: String, actions: [String])] = [
+        ("shortcuts.capture", ["record", "snap", "voice"]),
+        ("shortcuts.recording", ["pause", "marker", "pen", "stop"]),
+        ("shortcuts.dictation", ["reformat"]),
+        ("shortcuts.open", ["project", "cards", "menu", "main"]),
+    ]
+    /// The section an action's row is in.
+    public static func shortcutSection(_ action: String) -> String? { shortcutSections.first { $0.actions.contains(action) }?.section }
+    /// The actions whose name needs a line to say what it does (capture.action.<name>.detail).
+    public static let describedShortcuts: Set<String> = ["marker", "cards", "reformat"]
     /// The three jobs of speech recognition (BlurtApp ASRPurpose), in the pane's order.
     public static let speechPurposes = ["batch", "live", "note"]
 
@@ -251,19 +264,21 @@ public enum SettingsCatalog {
             whole("speech.models", detail: P("speech.models.footer")),
         ]
 
-        // Shortcuts: one row per action (HotkeyCenter.Action), in the page's order, the dictation key among them, then
-        // the pen's hold key
-        func shortcut(_ a: String) -> SettingsEntry {
-            row("shortcuts.\(a)", recordingShortcuts.contains(a) ? "shortcuts.recording" : "shortcuts.anytime",
-                SettingsText("capture.action.\(a)", "Capture"), generated: true)
+        // Shortcuts: one row per action (HotkeyCenter.Action), section by section in the page's order, the dictation
+        // key heading its section (the pen's hold key is the pen row's second line: its keywords find it), then the
+        // page's Restore Defaults
+        func shortcut(_ a: String, _ section: String) -> SettingsEntry {
+            row("shortcuts.\(a)", section, SettingsText("capture.action.\(a)", "Capture"),
+                detail: describedShortcuts.contains(a) ? SettingsText("capture.action.\(a).detail", "Capture") : nil, generated: true)
         }
-        e += ["record", "snap", "voice", "project", "cards", "menu", "main"].map(shortcut)
-        e += [row("shortcuts.dictation", "shortcuts.anytime", D("dictation.settings.tab"))]
-        e += ["reformat", "pause", "marker", "pen", "stop"].map(shortcut)
+        for (section, actions) in shortcutSections {
+            if section == "shortcuts.dictation" {
+                e.append(row("shortcuts.dictation_key", section, SettingsText("capture.keys.dictation_key", "Capture")))
+            }
+            e += actions.map { shortcut($0, section) }
+        }
         e += [
-            row("shortcuts.draw_key", "shortcuts.recording", SettingsText("capture.keys.hold_draw", "Capture"),
-                detail: SettingsText("capture.keys.draw_note", "Capture")),
-            row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture"), detail: S("settings.kit.conflicts_are_checked_three")),
+            row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture")),
 
             // Agents
             whole("agents.list", detail: SettingsText("agents.footer", "Terminal")),

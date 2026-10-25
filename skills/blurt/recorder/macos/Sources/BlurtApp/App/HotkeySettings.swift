@@ -1,29 +1,98 @@
 // Settings → Shortcuts (and, in a build without the Settings window, the Shortcuts window from the menu): the same
-// page of rows as every other pane (SettingsKit; rows from SettingsCatalog, "shortcuts.<action>") — the action on the
-// left, its recorder field on the right with the × that turns it off inside the field, and each action's conflict
-// state under its name (Hotkeys.swift works them out). Two groups: Anytime (record, snap, voice note, switch project,
-// hanging cards, the menu, the main window, dictation's key — set in Settings → Dictation, where its row leads — and
-// reformat) and While recording (pause, marker, pen, finish, and the pen's hold key, record.draw_key). Restore
-// defaults at the bottom; how to record a key under the page's title.
+// page of rows as every other pane (SettingsKit; rows from SettingsCatalog, "shortcuts.<action>"), every row one even
+// height (SettingsMetrics.evenRow) — the action on the left, its shortcut on the right as small keycaps that are the
+// recorder: click (or Tab to it and press Space) and it listens. Four short sections (SettingsCatalog.shortcutSections):
+// Capture (record, snap, voice note), While recording (pause, marker, the pen — its hold key, record.draw_key, is the
+// pen row's second line, a menu), Dictation (its key, set in Settings → Dictation, where its row's link leads; reformat)
+// and Open and switch (project, cards, the menu-bar menu, the main window). Restore Defaults closes the page.
+//
+// One cause is said once: keys another running Blurt holds (HotkeyResult.taken — every one of them, when the user's
+// own Blurt is running beside this one) are one banner under the page's title, with how many, where that copy runs
+// from and Quit Other Copy; each row it touches only gets the small "!" before its keycaps (the tooltip says why). A
+// conflict of the row's own (a macOS shortcut, the same keys as another action, a key macOS refused, a hand-edited
+// config.json) keeps its line under the action's name, in attention ink, besides the "!".
 //
 // ⌥⇧R starts a recording and also finishes one; ⌥⇧S only finishes — it is the key a recording started from the
 // chat (no menu-bar app) listens to, so it stays, listed under While recording as "Finish recording".
 //
-// What the field refuses, with the reason under the action's name: a key without ⌃ / ⌥ / ⌘, ⌘ / ⇧⌘ with a typing key
-// (⌘C is Copy in every app: KeyCombo.reserved) and a macOS system shortcut. Keys another action has ask first — a
+// What the recorder refuses, with the reason under the action's name: a key without ⌃ / ⌥ / ⌘, ⌘ / ⇧⌘ with a typing
+// key (⌘C is Copy in every app: KeyCombo.reserved) and a macOS system shortcut. Keys another action has ask first — a
 // sheet on this window: "Swap" exchanges the two actions' keys, or, when this one had none, "Move Here" moves them
-// and leaves the other without — never a silent duplicate. Every change
-// (set, clear, swap, restore) can be undone with ⌘Z. The field works from the keyboard: Tab reaches it (focus ring),
-// Space or Return starts recording, Delete clears it.
+// and leaves the other without — never a silent duplicate. Every change (set, clear, swap, restore) can be undone
+// with ⌘Z. The recorder works from the keyboard: Tab reaches it (focus ring), Space or Return starts recording,
+// Delete clears it.
 
 import AppKit
 import BlurtCore
 import Carbon.HIToolbox
 import SwiftUI
 
-/// Click (or Space / Return), then press the new combination. Esc cancels, ⌫ turns the hotkey off, and so does the ×
-/// at the field's right end. Global hotkeys are suspended meanwhile, or pressing the current one would fire it instead
-/// of being recorded.
+/// Keycaps: one small rounded grey chip per key, in Apple's order (⌃ ⌥ ⇧ ⌘ then the key), right-aligned — the
+/// recorder's resting look and the dictation key's read-only one.
+enum Keycaps {
+    static let height: CGFloat = 20
+    static let gap: CGFloat = 3
+    static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+
+    /// "⌥⇧R" → ["⌥", "⇧", "R"]; a named key ("Space", "F5") stays whole.
+    static func keys(_ s: Shortcut) -> [String] {
+        var k: [String] = []
+        if s.mods & controlKey != 0 { k.append("⌃") }
+        if s.mods & optionKey != 0 { k.append("⌥") }
+        if s.mods & shiftKey != 0 { k.append("⇧") }
+        if s.mods & cmdKey != 0 { k.append("⌘") }
+        return k + [hotkeyKeyTable.first { $0.name == s.key }?.glyph ?? s.key]
+    }
+
+    static func width(_ key: String) -> CGFloat {
+        let w = (key as NSString).size(withAttributes: [.font: font]).width
+        return max(height, ceil(w) + 10)
+    }
+    static func width(_ keys: [String]) -> CGFloat {
+        keys.isEmpty ? 0 : keys.map(width).reduce(0, +) + gap * CGFloat(keys.count - 1)
+    }
+
+    /// Draws `keys` ending at `maxX`, centred on `midY`; returns where they start.
+    @discardableResult
+    static func draw(_ keys: [String], maxX: CGFloat, midY: CGFloat, ink: NSColor = .secondaryLabelColor,
+                     fill: NSColor = NSColor.labelColor.withAlphaComponent(0.07)) -> CGFloat {
+        var x = maxX - width(keys)
+        let start = x
+        for k in keys {
+            let w = width(k)
+            let r = NSRect(x: x, y: midY - height / 2, width: w, height: height)
+            fill.setFill()
+            NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5).fill()
+            let a = NSAttributedString(string: k, attributes: [.font: font, .foregroundColor: ink])
+            let sz = a.size()
+            a.draw(at: NSPoint(x: r.midX - sz.width / 2, y: r.midY - sz.height / 2))
+            x += w + gap
+        }
+        return start
+    }
+
+    /// The attention disc with its "!" (StatusDot .warn, §1.5's shape twin), `d` across, centred at (midX, midY).
+    static func drawWarn(midX: CGFloat, midY: CGFloat, d: CGFloat = 12) {
+        let r = NSRect(x: midX - d / 2, y: midY - d / 2, width: d, height: d)
+        BrandColor.attn.setFill()
+        NSBezierPath(ovalIn: r).fill()
+        BrandColor.onAttn.setStroke()
+        let p = NSBezierPath()
+        p.lineWidth = 1.5
+        p.lineCapStyle = .round
+        // flipped = false: y grows upwards — the bar above, the dot below
+        p.move(to: NSPoint(x: r.midX, y: r.maxY - d * 0.25)); p.line(to: NSPoint(x: r.midX, y: r.midY - d * 0.06))
+        p.move(to: NSPoint(x: r.midX, y: r.minY + d * 0.25)); p.line(to: NSPoint(x: r.midX, y: r.minY + d * 0.255))
+        p.stroke()
+    }
+}
+
+/// A shortcut, and its recorder. At rest: the keycaps alone, right-aligned (an unset one says "Record Shortcut" in
+/// secondary ink), with the attention "!" before them while it doesn't work here. Pointer over it (or keyboard focus):
+/// a faint ground behind them and the × that turns it off. Clicked (or Space / Return): it listens — a brand-ink ring
+/// on the brand tint across the whole cell (§3.4), "Type shortcut…" and an Esc keycap; the modifiers held so far show
+/// as keycaps. Esc cancels, ⌫ turns the shortcut off. Global hotkeys are suspended meanwhile, or pressing the current
+/// one would fire it instead of being recorded. The whole cell is the click target.
 final class ShortcutField: NSView {
     let action: HotAction
     var onSet: ((Shortcut?) -> Void)?
@@ -31,13 +100,18 @@ final class ShortcutField: NSView {
     var onRefuse: ((String?) -> Void)?
     var recording = false { didSet { needsDisplay = true } }
     var live = ""                       // modifiers held while recording
-    var conflict = false { didSet { needsDisplay = true } }
+    /// it doesn't work here (another Blurt holds it, or a conflict of its own): the "!" before the keycaps
+    var warn = false { didSet { if warn != oldValue { needsDisplay = true } } }
     var monitor: Any?
     var refuse: String?                 // "needs ⌃ / ⌥ / ⌘" flash
     /// the last refusal (tests read it)
     private(set) var lastRefusal: String?
     private var refuseGeneration = 0
+    private(set) var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
+    private var focused = false { didSet { if focused != oldValue { needsDisplay = true } } }
+    private var tracking: NSTrackingArea?
     static let size = NSSize(width: 140, height: 24)
+    static let clearWidth: CGFloat = 20
 
     init(_ a: HotAction) {
         action = a
@@ -52,18 +126,34 @@ final class ShortcutField: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override var canBecomeKeyView: Bool { true }
-    override func accessibilityValue() -> Any? { Hotkeys.shared.shortcut(action)?.label ?? Loc.t("capture.keys.none", table: "Capture") }
+    override func accessibilityValue() -> Any? { Hotkeys.shared.shortcut(action)?.label ?? Loc.t("capture.keys.record", table: "Capture") }
     override func accessibilityPerformPress() -> Bool { recording ? stop() : start(); return true }
 
-    // the system focus ring, shaped like the field (Tab moves through the fields)
+    // the system focus ring, around what is drawn (Tab moves through the recorders)
     override var focusRingMaskBounds: NSRect { bounds }
-    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6).fill() }
-    override func becomeFirstResponder() -> Bool { noteFocusRingMaskChanged(); return true }
+    override func drawFocusRingMask() {
+        let r = recording ? bounds : groundRect
+        NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6).fill()
+    }
+    override func becomeFirstResponder() -> Bool { focused = true; noteFocusRingMaskChanged(); return true }
     override func resignFirstResponder() -> Bool {
         if recording { stop() }
+        focused = false
         noteFocusRingMaskChanged()
         return true
     }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(t)
+        tracking = t
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    /// Tests: the pointer over it, for a screenshot of the hover state.
+    func testHover(_ on: Bool) { hovering = on }
 
     /// Not recording: Space / Return start, Delete clears; anything else (Tab) goes on as usual.
     override func keyDown(with e: NSEvent) {
@@ -76,36 +166,68 @@ final class ShortcutField: NSView {
         } else { super.keyDown(with: e) }
     }
 
-    /// The × at the right end, shown while there is a shortcut to turn off (and not while recording).
+    /// The × at the right end: under the pointer or with keyboard focus, while there is a shortcut to turn off.
     private var clearRect: NSRect? {
-        guard !recording, Hotkeys.shared.shortcut(action) != nil else { return nil }
-        return NSRect(x: bounds.maxX - 22, y: 0, width: 22, height: bounds.height)
+        guard !recording, hovering || focused, Hotkeys.shared.shortcut(action) != nil else { return nil }
+        return NSRect(x: bounds.maxX - Self.clearWidth, y: 0, width: Self.clearWidth, height: bounds.height)
+    }
+
+    /// What rests in the cell, right to left: the × (when shown), the keycaps or "Record Shortcut", the "!".
+    private var restingKeys: [String]? { Hotkeys.shared.shortcut(action).map(Keycaps.keys) }
+    private var placeholder: NSAttributedString {
+        NSAttributedString(string: Loc.t("capture.keys.record", table: "Capture"),
+                           attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor])
+    }
+    private var contentMaxX: CGFloat { bounds.maxX - (clearRect == nil ? 6 : Self.clearWidth + 2) }
+    private var contentWidth: CGFloat { restingKeys.map(Keycaps.width) ?? ceil(placeholder.size().width) }
+    private static let warnD: CGFloat = 12
+    /// The faint ground under the pointer: hugs what is drawn, not the whole cell.
+    private var groundRect: NSRect {
+        let minX = contentMaxX - contentWidth - 6 - (warn ? Self.warnD + 6 : 0)
+        return NSRect(x: max(0, minX), y: 0, width: bounds.maxX - max(0, minX), height: bounds.height)
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6)
-        // listening for keys: brand ink on the brand tint; a conflict: attention (§3.4)
-        (recording ? BrandColor.tint : NSColor.controlBackgroundColor).setFill()
-        path.fill()
-        (recording ? BrandColor.ink : conflict ? BrandColor.attnInk : NSColor.separatorColor).setStroke()
-        path.lineWidth = recording || conflict ? 1.5 : 1
-        path.stroke()
-        let s = Hotkeys.shared.shortcut(action)
-        let text: String
-        let color: NSColor
-        if let r = refuse { text = r; color = BrandColor.attnInk }
-        else if recording { text = live.isEmpty ? Loc.t("capture.keys.type", table: "Capture") : live; color = BrandColor.ink }
-        else if let s = s { text = s.label; color = .labelColor }
-        else { text = Loc.t("capture.keys.none", table: "Capture"); color = .tertiaryLabelColor }
-        let font = recording || s == nil || refuse != nil ? NSFont.systemFont(ofSize: 12, weight: .medium)
-                                                          : NSFont.systemFont(ofSize: 13, weight: .semibold)
-        let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
-        let sz = a.size()
-        a.draw(at: NSPoint(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2))
+        let midY = bounds.midY
+        if recording {
+            // listening for keys: brand ink on the brand tint (§3.4), the whole cell
+            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 6, yRadius: 6)
+            BrandColor.tint.setFill(); path.fill()
+            BrandColor.ink.setStroke(); path.lineWidth = 1.5; path.stroke()
+            if let r = refuse {
+                let a = NSAttributedString(string: r, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                                                                   .foregroundColor: BrandColor.attnInk])
+                let sz = a.size()
+                a.draw(at: NSPoint(x: max(6, bounds.maxX - 8 - sz.width), y: midY - sz.height / 2))
+            } else if !live.isEmpty {
+                Keycaps.draw(live.map(String.init), maxX: bounds.maxX - 4, midY: midY, ink: BrandColor.ink,
+                             fill: BrandColor.ink.withAlphaComponent(0.12))
+            } else {
+                // "Type shortcut…  [esc]": what to do, and the way out
+                let x = Keycaps.draw(["esc"], maxX: bounds.maxX - 4, midY: midY, ink: BrandColor.ink, fill: BrandColor.ink.withAlphaComponent(0.12))
+                let a = NSAttributedString(string: Loc.t("capture.keys.type", table: "Capture"),
+                                           attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: BrandColor.ink])
+                let sz = a.size()
+                a.draw(at: NSPoint(x: max(6, x - 6 - sz.width), y: midY - sz.height / 2))
+            }
+            return
+        }
+        if hovering || focused {
+            NSColor.labelColor.withAlphaComponent(0.05).setFill()
+            NSBezierPath(roundedRect: groundRect, xRadius: 6, yRadius: 6).fill()
+        }
+        let start: CGFloat
+        if let k = restingKeys {
+            start = Keycaps.draw(k, maxX: contentMaxX, midY: midY)
+        } else {
+            let a = placeholder, sz = a.size()
+            start = contentMaxX - ceil(sz.width)
+            a.draw(at: NSPoint(x: start, y: midY - sz.height / 2))
+        }
+        if warn { Keycaps.drawWarn(midX: start - 6 - Self.warnD / 2, midY: midY, d: Self.warnD) }
         if let c = clearRect, let x = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 11, weight: .regular).applying(.init(paletteColors: [.tertiaryLabelColor]))) {
-            x.draw(in: NSRect(x: c.midX - x.size.width / 2, y: c.midY - x.size.height / 2, width: x.size.width, height: x.size.height))
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .regular).applying(.init(paletteColors: [.secondaryLabelColor]))) {
+            x.draw(in: NSRect(x: c.midX - x.size.width / 2 - 1, y: c.midY - x.size.height / 2, width: x.size.width, height: x.size.height))
         }
     }
 
@@ -121,6 +243,7 @@ final class ShortcutField: NSView {
         live = ""
         Hotkeys.shared.suspended = true
         window?.makeFirstResponder(self)
+        noteFocusRingMaskChanged()
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged, .leftMouseDown]) { [weak self] e in
             guard let self = self else { return e }
             switch e.type {
@@ -180,6 +303,7 @@ final class ShortcutField: NSView {
         recording = false
         if ShortcutField.active === self { ShortcutField.active = nil }
         Hotkeys.shared.suspended = false
+        noteFocusRingMaskChanged()
     }
 
     static weak var active: ShortcutField?
@@ -198,12 +322,80 @@ struct ShortcutRecorder: NSViewRepresentable {
         return f
     }
     func updateNSView(_ f: ShortcutField, context: Context) {
-        f.conflict = Hotkeys.shared.states[action]?.isConflict ?? false
+        let note = model.note(action)
+        f.warn = note?.mark == true
+        // why it doesn't work, or how the recorder works
+        f.toolTip = note?.mark == true ? note?.text : Loc.t("capture.keys.field_help", table: "Capture")
+        f.setAccessibilityHelp(note?.mark == true ? note?.text : Loc.t("capture.keys.field_ax_hint", table: "Capture"))
         f.needsDisplay = true
     }
-    /// Its own size, so the form row stays one line high with the field beside the name.
+    /// Its own size, so the row stays one line high with the recorder beside the name.
     @available(macOS 13.0, *)
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ShortcutField, context: Context) -> CGSize? { ShortcutField.size }
+}
+
+/// Read-only keycaps (the dictation key: set in Settings → Dictation), drawn like the recorder's resting ones.
+struct KeycapsView: View {
+    var keys: [String]
+    var body: some View {
+        HStack(spacing: Keycaps.gap) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
+                Text(k).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: Keycaps.height, minHeight: Keycaps.height)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.07)))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The pens's hold key, as the pen row's second line: "Or hold ⌃ Control to draw" in secondary ink; the pointer over it
+/// shows that it opens a menu (Control, Option, fn, Off).
+struct HoldKeyLine: View {
+    @ObservedObject var m: HotkeySettings
+    @State private var hover = false
+
+    static let choices = ["control", "option", "fn", "off"]
+    static func name(_ k: String) -> String {
+        switch k {
+        case "option": return Loc.t("capture.keys.option", table: "Capture")
+        case "fn": return Loc.t("capture.keys.fn", table: "Capture")
+        case "off": return Loc.t("capture.keys.off", table: "Capture")
+        default: return Loc.t("capture.keys.control", table: "Capture")
+        }
+    }
+
+    var body: some View {
+        let line = m.drawKey == "off" ? Loc.t("capture.keys.hold_off", table: "Capture")
+            : Loc.t("capture.keys.hold_line", table: "Capture", Self.name(m.drawKey))
+        Button(action: pop) {
+            HStack(spacing: 3) {
+                Text(line).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                    .opacity(hover ? 1 : 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(Loc.t("capture.keys.hold_draw", table: "Capture"))
+        .accessibilityLabel(Loc.t("capture.keys.hold_draw", table: "Capture"))
+        .accessibilityValue(m.drawKey == "off" ? Self.name("off") : Self.name(m.drawKey))
+    }
+
+    private func pop() {
+        let menu = NSMenu()
+        for k in Self.choices {
+            let i = NSMenuItem(title: Self.name(k), action: #selector(HotkeySettings.pickDrawKey(_:)), keyEquivalent: "")
+            i.target = m
+            i.representedObject = k
+            i.state = m.drawKey == k ? .on : .off
+            if k == "off" { menu.addItem(.separator()) }
+            menu.addItem(i)
+        }
+        menu.popUp(positioning: menu.items.first { $0.state == .on }, at: NSEvent.mouseLocation, in: nil)
+    }
 }
 
 /// The pane's state: it redraws when a binding or a conflict changes (Hotkeys.onChange) and keeps the fields for the
@@ -218,6 +410,8 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     @Published var drawKey = "control"
     /// why the field just refused a key ("⌘C is Copy in every app — add ⌥ or ⌃"), shown under the action's name
     @Published var refusals: [HotAction: String] = [:]
+    /// Quit Other Copy was pressed: the banner's button waits for that copy to go
+    @Published var quitting = false
     /// the swap question on screen (tests answer it: `shortcutswap yes|no`)
     private(set) var asking: NSAlert?
 
@@ -296,6 +490,7 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
 
     func refresh() {
         drawKey = recordConfig()["draw_key"] as? String ?? "control"
+        if quitting && others.isEmpty { quitting = false }
         objectWillChange.send()
     }
 
@@ -324,27 +519,83 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Under an action's name: why it doesn't work, a config entry that couldn't be read, or nothing.
-    func note(_ a: HotAction) -> (text: String, warn: Bool)? {
+    /// Why an action doesn't work here, or nothing. `mark`: the "!" before its keycaps (it doesn't work); `line`: said
+    /// under the action's name too — everything but another Blurt's keys, which the page's banner says once for all.
+    struct Note { var text: String; var mark: Bool; var line: Bool }
+
+    func note(_ a: HotAction) -> Note? {
         let hk = Hotkeys.shared
-        if let why = refusals[a] { return (why, true) }
-        if let bad = hk.invalid[a] { return (Loc.t("capture.keys.unreadable", table: "Capture", bad), true) }
+        if let why = refusals[a] { return Note(text: why, mark: false, line: true) }
+        if let bad = hk.invalid[a] { return Note(text: Loc.t("capture.keys.unreadable", table: "Capture", bad), mark: true, line: true) }
         let st = hk.states[a] ?? .ok
-        if st == .reserved, let s = hk.shortcut(a), let r = s.reserved { return (r.reason(s), true) }
-        if st.isConflict { return (st.text, true) }
-        if st == .notHere { return (Loc.t("capture.keys.menu_bar_only", table: "Capture"), false) }
+        if case .taken = st { return Note(text: st.text, mark: true, line: false) }
+        if st == .reserved, let s = hk.shortcut(a), let r = s.reserved { return Note(text: r.reason(s), mark: true, line: true) }
+        if st.isConflict { return Note(text: st.text, mark: true, line: true) }
+        if st == .notHere { return Note(text: Loc.t("capture.keys.menu_bar_only", table: "Capture"), mark: false, line: true) }
         return nil
+    }
+
+    // MARK: another Blurt
+
+    /// The actions on the page another running Blurt holds (HotkeyResult.taken), and the dictation key when another
+    /// copy listens to it.
+    var takenActions: [HotAction] {
+        HotAction.allCases.filter { a in
+            guard !Hotkeys.shared.disabled.contains(a), case .taken = Hotkeys.shared.states[a] ?? .ok else { return false }
+            return true
+        }
+    }
+    var dictationTaken: Bool { AppEnvironment.settings != nil && Dictation.shared.deferredTo != nil }
+    /// How many shortcuts on the page another copy holds.
+    var takenCount: Int { takenActions.count + (dictationTaken ? 1 : 0) }
+
+    /// The other copies holding them, by pid.
+    var others: [pid_t] {
+        var p: [pid_t] = takenActions.compactMap { if case .taken(let pid) = Hotkeys.shared.states[$0] ?? .ok { return pid } else { return nil } }
+        if let d = Dictation.shared.deferredTo, dictationTaken { p.append(d) }
+        var seen = Set<pid_t>()
+        return p.filter { seen.insert($0).inserted }
+    }
+    /// The running apps among them (the button can only quit an app).
+    var otherApps: [NSRunningApplication] { others.compactMap { NSRunningApplication(processIdentifier: $0) }.filter { !$0.isTerminated } }
+
+    /// Where the other copy runs from, "~/Applications" (one copy that is an app; nil otherwise).
+    var otherLocation: String? {
+        let apps = otherApps
+        guard apps.count == 1, let u = apps[0].bundleURL else { return nil }
+        // a deep folder (a build somewhere under the project) by its last part, so the banner keeps to two lines
+        let dir = u.deletingLastPathComponent()
+        let p = (dir.path as NSString).abbreviatingWithTildeInPath
+        return p.count <= 32 ? p : "…/" + dir.lastPathComponent
+    }
+
+    /// Quit Other Copy: an ordinary quit (that copy finishes or asks as it would from its own menu); the keys come over
+    /// here when it has gone (Hotkeys applies again when an instance quits).
+    func quitOthers() {
+        let apps = otherApps
+        emit(["event": "shortcut_quit_other", "pids": apps.map { Int($0.processIdentifier) }])
+        guard !apps.isEmpty else { return }
+        quitting = true
+        apps.forEach { $0.terminate() }
+        // it may ask first (a recording in progress) or refuse: the button comes back
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.quitting = false }
     }
 
     func setDrawKey(_ k: String) {
         drawKey = k
         setRecordConfig("draw_key", k == "control" ? nil : k)
+        emit(["event": "draw_key_set", "key": k])
+    }
+
+    @objc func pickDrawKey(_ sender: NSMenuItem) {
+        if let k = sender.representedObject as? String { setDrawKey(k) }
     }
 
     func restore() {
         ShortcutField.active?.stop()
         refusals = [:]
         change(fields.values.compactMap(\.window).first ?? window) { Hotkeys.shared.restoreDefaults() }
+        emit(["event": "shortcut_restore"])
     }
 
     @objc func openDictation() {
@@ -358,71 +609,96 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
 struct ShortcutsPane: View {
     @ObservedObject var m = HotkeySettings.shared
 
-    var anytime: [HotAction] {
-        [.toggleRecord, .snap, .voice, .project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain])
-    }
-
     var body: some View {
-        SettingsPage(.shortcuts, subtitle: Loc.t("capture.keys.hint", table: "Capture")) {
-            SettingsGroup("shortcuts.anytime") {
-                ForEach(anytime, id: \.self) { row($0) }
-                if AppEnvironment.settings != nil {
+        SettingsPage(.shortcuts) {
+            if m.takenCount > 0 { banner.padding(.top, 18) }
+
+            SettingsGroup("shortcuts.capture") {
+                ForEach([HotAction.toggleRecord, .snap, .voice], id: \.self) { row($0) }
+            }
+            SettingsGroup("shortcuts.recording") {
+                ForEach([HotAction.pause, .marker, .pen, .finish], id: \.self) { row($0) }
+            }
+            if AppEnvironment.settings != nil {
+                SettingsGroup("shortcuts.dictation") {
                     dictationRow
                     row(.reformat)          // ⌥⇧L: the last dictation in another style
                 }
             }
-
-            SettingsGroup("shortcuts.recording") {
-                ForEach([HotAction.pause, .marker, .pen, .finish], id: \.self) { row($0) }
-                SettingRow("shortcuts.draw_key") {
-                    RowPicker(label: Loc.t("capture.keys.hold_draw", table: "Capture"), selection: Binding(get: { m.drawKey }, set: { m.setDrawKey($0) })) {
-                        Text(Loc.t("capture.keys.control", table: "Capture")).tag("control")
-                        Text(Loc.t("capture.keys.option", table: "Capture")).tag("option")
-                        Text(Loc.t("capture.keys.fn", table: "Capture")).tag("fn")
-                        Text(Loc.t("capture.keys.off", table: "Capture")).tag("off")
-                    }
-                }
+            SettingsGroup("shortcuts.open") {
+                ForEach([HotAction.project, .cards, .openMenu] + (AppEnvironment.mainWindow == nil ? [] : [.openMain]), id: \.self) { row($0) }
             }
 
-            SettingsGroup {
-                SettingRow("shortcuts.restore") {
-                    Button(T("settings.shortcuts.restore")) { m.restore() }
-                }
-            }
+            SettingsPageButton("shortcuts.restore", title: Loc.t("capture.keys.restore", table: "Capture"),
+                               help: Loc.t("capture.keys.restore.help", table: "Capture")) { m.restore() }
         }
         .onAppear { m.refresh() }
         .onDisappear { ShortcutField.active?.stop() }
     }
 
-    /// An action: its name (and why it doesn't work, when it doesn't — in attention ink for a conflict) on the left,
-    /// its recorder field on the right.
+    /// Another running Blurt holds some of the keys: said once, with the way to free them.
+    var banner: some View {
+        let n = m.takenCount
+        // usually one: the user's own Blurt beside a second one (a dev build, a copy opened twice)
+        let many = m.others.count > 1
+        let detail = many ? Loc.t("capture.keys.taken_banner.detail_many", table: "Capture")
+            : m.otherLocation.map { Loc.t("capture.keys.taken_banner.detail", table: "Capture", $0) }
+                ?? Loc.t("capture.keys.taken_banner.detail_unknown", table: "Capture")
+        return AttentionBanner(title: Loc.plural(many ? "capture.keys.taken_banner_many" : "capture.keys.taken_banner", table: "Capture", count: n),
+                               detail: detail) {
+            if !m.otherApps.isEmpty {
+                Button(m.quitting ? Loc.t("capture.keys.quitting", table: "Capture")
+                       : Loc.t(m.otherApps.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
+                    m.quitOthers()
+                }
+                .disabled(m.quitting)
+            }
+        }
+        .id("shortcuts.taken")
+    }
+
+    /// An action: its name (and, for a conflict of its own, why — in attention ink; its description otherwise) on the
+    /// left, its keycaps on the right. The pen's row says its hold key on its second line.
     func row(_ a: HotAction) -> some View {
         let note = m.note(a)
-        return SettingRow("shortcuts.\(a.rawValue)", title: a.title, detail: note?.text,
-                          detailColor: note?.warn == true ? Color.brandAttnInk : nil) {
+        let line = note?.line == true ? note : nil
+        return SettingRow("shortcuts.\(a.rawValue)", title: a.title, detail: line?.text,
+                          detailColor: line?.mark == true || m.refusals[a] != nil ? Color.brandAttnInk : nil,
+                          height: SettingsMetrics.evenRow,
+                          detailContent: a == .pen && line == nil ? AnyView(HoldKeyLine(m: m)) : nil) {
             ShortcutRecorder(action: a, model: m)
                 .frame(width: ShortcutField.size.width, height: ShortcutField.size.height)
         }
     }
 
-    /// Dictation's key: set in Settings → Dictation; shown here like the others, with the way there.
+    /// Dictation's key: set in Settings → Dictation; shown here as read-only keycaps, with the way there.
     var dictationRow: some View {
         // "Tap or hold · double-tap to send": the double tap presses Return, so it is said wherever the key is
         let mode = Loc.t("dictation.mode.\(Dictation.mode.rawValue)", table: "Dictation")
-        return SettingRow("shortcuts.dictation",
-                   detail: Dictation.enabled ? (Dictation.doubleTapSend ? mode + " · " + Loc.t("dictation.mode.send_suffix", table: "Dictation") : mode) : nil) {
-            HStack(spacing: 10) {
+        let taken = m.dictationTaken
+        return SettingRow("shortcuts.dictation_key",
+                          detail: Dictation.enabled ? (Dictation.doubleTapSend ? mode + " · " + Loc.t("dictation.mode.send_suffix", table: "Dictation") : mode) : nil,
+                          height: SettingsMetrics.evenRow) {
+            HStack(spacing: 12) {
                 // a text button in brand ink (§3.3 links), not the system's blue
                 Button(Loc.t("capture.keys.dictation_change", table: "Capture")) { m.openDictation() }
                     .buttonStyle(.plain)
+                    .font(.system(size: SettingsMetrics.detailSize))
                     .foregroundStyle(Color.brandInk)
-                Text(Dictation.enabled ? Dictation.keyName : Loc.t("capture.keys.off", table: "Capture"))
-                    .font(.system(size: Dictation.enabled ? 13 : 12, weight: Dictation.enabled ? .semibold : .medium))
-                    .foregroundStyle(Dictation.enabled ? .primary : .tertiary)
-                    .frame(width: ShortcutField.size.width, height: ShortcutField.size.height)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
-                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
-                    .accessibilityLabel(Loc.t("dictation.settings.tab", table: "Dictation"))
+                HStack(spacing: 6) {
+                    if taken {
+                        StatusDot(tone: .warn, diameter: 12)
+                            .help(Loc.t("dictation.status.other_instance", table: "Dictation"))
+                    }
+                    if Dictation.enabled {
+                        KeycapsView(keys: [Dictation.keyName])
+                    } else {
+                        Text(Loc.t("capture.keys.off", table: "Capture")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.trailing, 6)          // the recorders' keycaps end 6 pt in from the cell's edge
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Loc.t("dictation.settings.tab", table: "Dictation"))
             }
         }
     }

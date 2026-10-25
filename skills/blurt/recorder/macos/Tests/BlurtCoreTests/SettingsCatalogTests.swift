@@ -1,6 +1,6 @@
 // BlurtCore/SettingsCatalog.swift: the Settings window's rows as data. Every text exists in both languages, every id is
 // rendered exactly once by the panes (BlurtApp/Settings/*.swift, App/HotkeySettings.swift: SettingRow / SettingToggle /
-// SettingMenuToggle / SettingMenuPicker / SettingsGroup with that id) and nothing is rendered that the catalogue — and so search — doesn't know; search finds
+// SettingMenuToggle / SettingMenuPicker / SettingsPageButton / SettingsGroup with that id) and nothing is rendered that the catalogue — and so search — doesn't know; search finds
 // rows by title, keyword or the other language.
 import XCTest
 @testable import BlurtCore
@@ -66,7 +66,7 @@ final class SettingsCatalogTests: XCTestCase {
             .filter { $0.pathExtension == "swift" }
         files.append(app.appendingPathComponent("App/HotkeySettings.swift"))
         // a setting in a row's menu (SettingMenuToggle / SettingMenuPicker) is rendered there, once, like a row
-        let pattern = try NSRegularExpression(pattern: #"\b(SettingRow|SettingToggle|SettingMenuToggle|SettingMenuPicker|SettingsGroup)\(\s*"([a-z0-9_.]+)""#)
+        let pattern = try NSRegularExpression(pattern: #"\b(SettingRow|SettingToggle|SettingMenuToggle|SettingMenuPicker|SettingsPageButton|SettingsGroup)\(\s*"([a-z0-9_.]+)""#)
         var rows: [String: Int] = [:], groups: [String: Int] = [:]
         for f in files {
             let code = try String(contentsOf: f, encoding: .utf8).split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }

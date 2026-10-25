@@ -338,7 +338,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Mic test meter | **G** vertical (dark) / I (light) | idle bars neutral |
 | "Recommended", "Runs first" badges | T + I | |
 | Selected choice card (dictation style, model) | I border + T ring | not a filled card |
-| Hotkey recorder while listening for keys | I | conflict `attnInk` |
+| Hotkey recorder while listening for keys | I | At rest a shortcut is small grey keycaps (one 20 pt chip per key, `mute` text), right-aligned; unset reads "Record Shortcut" in secondary. Hover or focus: a faint ground and the × that clears it. Listening: an `ink` ring on `tint` across the cell, "Type shortcut…" and an esc keycap. A key that doesn't work here: a 12 pt `attn` "!" disc before its keycaps; a conflict of the row's own also says why under the action's name in `attnInk`. One cause for many rows (another running Blurt holds them) is one attention banner under the page's title (`AttentionBanner`: the disc, what and why, one button), never a line per row |
 | Onboarding hero panel | **field** + grain (light), **deep** + grain (dark), **S** glow | A 200 pt side panel (the window grows to 840 pt; the content column keeps 640): the mascot on a still, blurred spectrum glow — **the one place the spectrum appears**. Flat field without grain or glow under Reduce Transparency. |
 | Onboarding title | gradient text | 24 pt bold, `gradient.text` |
 | Onboarding Next / Done, or the step's own action | **B** | One per step: Set Up Permissions… / Download Recommended Models / Install uv while that is still to do (the footer then says Skip for Now, plain), else Next / Done. Done closes (the chick is already happy on the last step; v2.1: no bloom) |

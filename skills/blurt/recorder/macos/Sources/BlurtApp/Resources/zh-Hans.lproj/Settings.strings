@@ -49,7 +49,6 @@
 "settings.kit.agents" = "Agent";
 "settings.kit.allow" = "允许…";
 "settings.kit.allowed" = "已允许";
-"settings.kit.conflicts_are_checked_three" = "快捷键和口喷鸡自己的其他快捷键、macOS 系统快捷键或别的 App 冲突时，这里会提示。改动立即生效。";
 "settings.kit.copy" = "复制";
 "settings.kit.general" = "通用";
 "settings.kit.not_allowed" = "已关闭";
@@ -265,7 +264,6 @@
 "settings.general.language.relaunch" = "现在重新打开";
 "settings.kit.allow_help" = "按住 Control 点按可打开「系统设置」";
 "settings.privacy.spotlight.detail" = "用 ⌘空格 按标题找到条目。";
-"settings.shortcuts.restore" = "恢复";
 
 "settings.kw.pane.general" = "应用, 偏好, 选项, 通用";
 "settings.kw.pane.dictation" = "听写, 语音输入法, 说话打字, 语音转文字";
@@ -322,8 +320,7 @@
 "settings.kw.speech.cloud" = "云端, API 密钥, OpenAI, 百炼, 在线";
 "settings.kw.speech.language" = "识别语言, 自动检测";
 "settings.kw.speech.mirror" = "镜像, Hugging Face, 国内, 下载速度, hf-mirror";
-"settings.kw.shortcuts.draw_key" = "画笔, 画图, 圈出, Control, 标注";
-"settings.kw.shortcuts.restore" = "重置, 默认, 冲突";
+"settings.kw.shortcuts.restore" = "重置, 默认, 恢复";
 "settings.kw.agents.list" = "顺序, 整理, 模型, 思考强度, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
 "settings.kw.agents.ask" = "导出, 发送, 分享, 打包, 交接包, zip, Slack, 飞书, Lark, Linear, GitHub, Notion, Jira, 邮件";
@@ -395,3 +392,4 @@
 "settings.privacy.local_asr.auto" = "自动";
 "settings.privacy.local_asr.local" = "只在这台 Mac 上";
 "settings.privacy.local_asr.help" = "云端服务在「语音」里设置。整理和修复由你选的 Agent 完成，按它自己的条款处理数据。";
+"settings.kw.shortcuts.pen" = "画笔, 画图, 按住画图, 圈出, Control, 标注";

@@ -49,7 +49,6 @@
 "settings.kit.agents" = "Agents";
 "settings.kit.allow" = "Allow…";
 "settings.kit.allowed" = "Allowed";
-"settings.kit.conflicts_are_checked_three" = "Blurt tells you when a shortcut clashes with another Blurt action, a macOS shortcut or another app. Changes apply at once.";
 "settings.kit.copy" = "Copy";
 "settings.kit.general" = "General";
 "settings.kit.not_allowed" = "Turned off";
@@ -266,7 +265,6 @@
 "settings.general.language.relaunch" = "Relaunch Now";
 "settings.kit.allow_help" = "Control-click for the System Settings pane";
 "settings.privacy.spotlight.detail" = "Find items by title with ⌘Space.";
-"settings.shortcuts.restore" = "Restore";
 
 "settings.kw.pane.general" = "app, preferences, options";
 "settings.kw.pane.dictation" = "dictate, speech to text, voice typing, talk to type";
@@ -323,8 +321,7 @@
 "settings.kw.speech.cloud" = "cloud, API key, OpenAI, DashScope, online";
 "settings.kw.speech.language" = "recognition language, detect, auto detect";
 "settings.kw.speech.mirror" = "mirror, Hugging Face, China, download speed, hf-mirror";
-"settings.kw.shortcuts.draw_key" = "pen, draw, circle, control, annotate";
-"settings.kw.shortcuts.restore" = "reset, defaults, conflicts";
+"settings.kw.shortcuts.restore" = "reset, defaults, restore";
 "settings.kw.agents.list" = "order, organize, model, effort, AI fill-in, connect, MCP, skill, sign in, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, terminal, session, default agent";
 "settings.kw.agents.ask" = "export, send, share, bundle, hand-off, zip, Slack, Feishu, Lark, Linear, GitHub, Notion, Jira, email";
@@ -396,3 +393,4 @@
 "settings.privacy.local_asr.auto" = "Automatic";
 "settings.privacy.local_asr.local" = "On This Mac Only";
 "settings.privacy.local_asr.help" = "Cloud services are set up in Speech. Organizing and fixing are done by the agent you chose, under its own terms.";
+"settings.kw.shortcuts.pen" = "pen, draw, hold to draw, circle, control, annotate";

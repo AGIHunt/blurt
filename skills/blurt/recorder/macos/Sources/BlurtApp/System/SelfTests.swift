@@ -194,6 +194,17 @@ enum SelfTests {
         case "storagehover":            // storagehover NAME: Settings → Storage shows that row's ⋯ as on hover (empty: none)
             MainActor.assumeIsolated { StorageHover.shared.forced = arg.isEmpty ? nil : arg }
             out(["hover": arg])
+        case "shortcutlook":            // shortcutlook ACTION hover|listen|rest: a recorder's state, for a screenshot
+            let a = arg.split(separator: " ").map(String.init)
+            guard a.count == 2, let act = HotAction(rawValue: a[0]), let f = HotkeySettings.shared.fields[act] else { out(["error": "no field"]); return }
+            switch a[1] {
+            case "hover": f.testHover(true)
+            case "listen": f.start()
+            default: f.testHover(false); if f.recording { f.stop() }
+            }
+            let m = HotkeySettings.shared
+            out(["action": act.rawValue, "hovering": f.hovering, "recording": f.recording, "warn": f.warn,
+                 "taken": m.takenCount, "others": m.others.map { Int($0) }, "location": m.otherLocation ?? NSNull()])
         case "shortcutswap":            // shortcutswap yes|no: answer the "already used" question; undo: ⌘Z's undo
             let m = HotkeySettings.shared
             if arg == "undo" { m.fields.values.first?.window?.undoManager?.undo() } else { m.testAnswerSwap(arg == "yes") }

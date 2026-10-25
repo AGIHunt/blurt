@@ -21,10 +21,12 @@ enum Tone { case good, warn, bad, off }
 /// hollow ring.
 struct StatusDot: View {
     var tone: Tone
+    /// the disc's diameter: 9 in a row's leading column, larger where it marks a banner
+    var diameter: CGFloat = StatusDot.size
     static let size: CGFloat = 9
 
     var body: some View {
-        let s = StatusDot.size
+        let s = diameter
         Group {
             if tone == .off {
                 Circle().strokeBorder(color, lineWidth: 1.5)
@@ -39,22 +41,25 @@ struct StatusDot: View {
     }
 
     @ViewBuilder private var mark: some View {
-        let line = StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
+        // drawn on the 9 pt grid, scaled to the disc
+        let k = diameter / StatusDot.size
+        let line = StrokeStyle(lineWidth: 1.2 * min(k, 1.4), lineCap: .round, lineJoin: .round)
+        let scale = CGAffineTransform(scaleX: k, y: k)
         switch tone {
         case .good:
             Path { p in
                 p.move(to: CGPoint(x: 2.6, y: 4.7)); p.addLine(to: CGPoint(x: 4, y: 6.1)); p.addLine(to: CGPoint(x: 6.5, y: 3.1))
-            }.stroke(Color.brandOnOk, style: line)
+            }.applying(scale).stroke(Color.brandOnOk, style: line)
         case .warn:
             Path { p in
                 p.move(to: CGPoint(x: 4.5, y: 2.3)); p.addLine(to: CGPoint(x: 4.5, y: 5.2))
                 p.move(to: CGPoint(x: 4.5, y: 6.9)); p.addLine(to: CGPoint(x: 4.5, y: 6.95))
-            }.stroke(Color(nsColor: BrandColor.onAttn), style: line)
+            }.applying(scale).stroke(Color(nsColor: BrandColor.onAttn), style: line)
         case .bad:
             Path { p in
                 p.move(to: CGPoint(x: 3, y: 3)); p.addLine(to: CGPoint(x: 6, y: 6))
                 p.move(to: CGPoint(x: 6, y: 3)); p.addLine(to: CGPoint(x: 3, y: 6))
-            }.stroke(Color.white, style: line)
+            }.applying(scale).stroke(Color.white, style: line)
         case .off:
             EmptyView()
         }
@@ -113,6 +118,9 @@ enum SettingsMetrics {
     static let boxFill = Color.primary.opacity(0.035)
     static let boxStroke = Color.primary.opacity(0.07)
     static let topFade: CGFloat = 10            // under the titlebar: rows scrolled up fade out instead of being cut
+    /// a list of even rows (Shortcuts): one height for a one-line row and a row with a description line
+    static let evenRow: CGFloat = 44
+    static let evenRowPadding: CGFloat = 5
 }
 
 extension View {
@@ -390,12 +398,15 @@ struct SettingsLine<Content: View>: View {
     /// settings that live in this line's menu (SettingMenuToggle / SettingMenuPicker): a search for one lands here
     var hosts: [String] = []
     var padding: CGFloat = SettingsMetrics.rowPadding
+    /// a list of even rows (Shortcuts): every line at least this tall, its content centred in it
+    var height: CGFloat?
     @ViewBuilder var content: Content
     @ObservedObject private var flash = SettingsFlash.shared
     @Environment(\.displayScale) private var scale
 
     var body: some View {
         content
+            .frame(minHeight: height.map { max(0, $0 - 2 * padding) }, alignment: .center)
             .padding(.vertical, padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .top) {
@@ -425,11 +436,16 @@ struct SettingRow<Control: View>: View {
     /// a description that is a warning (a shortcut's conflict): attention ink
     var detailColor: Color?
     var hosts: [String] = []
+    /// a list of even rows (Shortcuts): every row this tall, with a description line or without
+    var height: CGFloat?
+    /// a description that is itself something to click (the pen's hold key), in place of the text one
+    var detailContent: AnyView?
     var control: Control
     @Environment(\.isEnabled) private var enabled
 
     init(_ id: String, title: String? = nil, detail: String? = nil, richDetail: Text? = nil, help: String? = nil, icon: String? = nil,
-         detailBelow: Bool = false, detailColor: Color? = nil, hosts: [String] = [], @ViewBuilder control: () -> Control) {
+         detailBelow: Bool = false, detailColor: Color? = nil, hosts: [String] = [], height: CGFloat? = nil, detailContent: AnyView? = nil,
+         @ViewBuilder control: () -> Control) {
         self.id = id
         self.title = title
         self.detail = detail
@@ -439,6 +455,8 @@ struct SettingRow<Control: View>: View {
         self.detailBelow = detailBelow
         self.detailColor = detailColor
         self.hosts = hosts
+        self.height = height
+        self.detailContent = detailContent
         self.control = control()
     }
 
@@ -448,18 +466,19 @@ struct SettingRow<Control: View>: View {
     var helpText: String? { help ?? entry?.more.flatMap { SettingsCatalog.text($0) } }
 
     var body: some View {
-        SettingsLine(flashID: id, hosts: hosts) {
+        SettingsLine(flashID: id, hosts: hosts, padding: height == nil ? SettingsMetrics.rowPadding : SettingsMetrics.evenRowPadding, height: height) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center, spacing: 14) {
                     HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
                     if let i = icon { SettingsIcon(i) }
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: height == nil ? 2 : 1) {
                         HStack(alignment: .firstTextBaseline, spacing: 5) {
                             Text(titleText).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(enabled ? .primary : .secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             if let h = helpText, !h.isEmpty { InfoButton(title: titleText, text: h) }
                         }
-                        if let r = richDetail {
+                        if let c = detailContent { c }
+                        else if let r = richDetail {
                             r.font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(enabled ? .secondary : .tertiary)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else if !detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
@@ -744,6 +763,60 @@ struct Hint: View {
     init(_ t: String) { text = t }
     var body: some View {
         Text(text).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// One state that concerns a whole page, said once under the page's title instead of on every row it touches: the
+/// attention disc (its shape twin, §1.5), what and why, and the one thing to do about it. A quiet card: the attention
+/// colour only as a faint wash, a hairline and the disc; the text in the ordinary inks.
+struct AttentionBanner<Action: View>: View {
+    var title: String
+    var detail: String?
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        HStack(alignment: .center, spacing: 12) {
+            StatusDot(tone: .warn, diameter: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                if let d = detail {
+                    Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            action
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(shape.fill(Color.brandAttn.opacity(0.08)))
+        .overlay(shape.strokeBorder(Color.brandAttn.opacity(0.3), lineWidth: 0.5))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// The button that closes a page (Restore Defaults): a plain bordered button at the page's bottom left, a section gap
+/// under the last section, no row and no description of its own (the tooltip explains it). `id` is its catalogue
+/// entry, so search lands on it.
+struct SettingsPageButton: View {
+    let id: String
+    var title: String
+    var help: String?
+    var action: () -> Void
+    @ObservedObject private var flash = SettingsFlash.shared
+
+    init(_ id: String, title: String, help: String? = nil, action: @escaping () -> Void) {
+        self.id = id
+        self.title = title
+        self.help = help
+        self.action = action
+    }
+
+    var body: some View {
+        Button(title, action: action)
+            .help(help ?? "")
+            .background(FlashWash(on: flash.row == id))
+            .padding(.top, SettingsMetrics.groupGap)
+            .id(id)
     }
 }
 

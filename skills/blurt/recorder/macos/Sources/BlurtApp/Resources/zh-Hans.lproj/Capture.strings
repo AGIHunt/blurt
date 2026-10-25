@@ -2,10 +2,10 @@
 
 "capture.action.cards" = "显示卡片";
 "capture.action.main" = "打开口喷鸡窗口";
-"capture.action.marker" = "标记（同时截图）";
-"capture.action.menu" = "打开菜单";
+"capture.action.marker" = "加标记";
+"capture.action.menu" = "打开菜单栏菜单";
 "capture.action.pause" = "暂停 / 继续";
-"capture.action.pen" = "画笔开 / 关";
+"capture.action.pen" = "打开或关闭画笔";
 "capture.action.project" = "切换项目";
 "capture.action.record" = "开始录屏";
 "capture.action.snap" = "截图";
@@ -65,16 +65,13 @@
 "capture.island.switch_project" = "切换项目";
 "capture.island.tip_with_key" = "%1$@ · %2$@";
 "capture.island.voice" = "语音备注";
-"capture.keys.anytime" = "随时可用";
 "capture.keys.bad_key" = "这个键不能用";
 "capture.keys.change_it" = " · 可以在「设置」的「快捷键」里更换";
 "capture.keys.control" = "⌃ Control 键";
 "capture.keys.dictation_change" = "去听写设置…";
-"capture.keys.draw_note" = "按住它拖动，在屏幕上圈出重点";
 "capture.keys.duplicate" = "和「%@」重复，没生效";
 "capture.keys.failed" = "这个快捷键用不了，可能被别的 App 占用";
 "capture.keys.fn" = "fn 键";
-"capture.keys.hint" = "点一下（或按空格）再按新的组合键 · Esc 取消 · ⌫ 去掉";
 "capture.keys.hold_draw" = "按住画图";
 "capture.keys.menu_bar_only" = "只在菜单栏 App 里生效";
 "capture.keys.needs_mod" = "要带 ⌃ / ⌥ / ⌘";
@@ -83,7 +80,7 @@
 "capture.keys.restore" = "恢复默认";
 "capture.keys.state_off" = "已关闭";
 "capture.keys.system" = "和 macOS 系统快捷键冲突";
-"capture.keys.taken" = "被另一个口喷鸡占用";
+"capture.keys.taken" = "另一个口喷鸡正在使用它";
 "capture.keys.taken_or_twice" = "被别的 App 占用或互相重复";
 "capture.keys.title" = "快捷键";
 "capture.keys.type" = "按下新的快捷键…";
@@ -233,7 +230,6 @@
 /* dictation styles (docs/design/dictation-styles.md) */
 "capture.action.reformat" = "重排上一条听写";
 "capture.keys.field_ax_hint" = "按空格键录新的快捷键，按删除键去掉";
-"capture.keys.none" = "未设置";
 "capture.keys.reserved" = "%1$@ 在所有 App 里都是「%2$@」，加上 ⌥ 或 ⌃ 再试";
 "capture.keys.reserved_menu" = "%@ 是各个 App 自己菜单里的快捷键，加上 ⌥ 或 ⌃ 再试";
 "capture.keys.reserved_short" = "%1$@ 是「%2$@」";
@@ -302,3 +298,21 @@
 "capture.sort.set_up" = "去设置…";
 "capture.keys.wont_work_many" = "%@ 个快捷键用不了";
 "capture.keys.menu_not_working" = "%1$@ 用不了：%2$@。可以在「设置」的「快捷键」里更换。";
+"capture.action.marker.detail" = "同时截一张图";
+"capture.action.cards.detail" = "刘海下还没归类的截图和语音备注";
+"capture.action.reformat.detail" = "把刚才的听写换成下一种风格";
+"capture.keys.section.capture" = "记录";
+"capture.keys.section.open" = "打开与切换";
+"capture.keys.dictation_key" = "开始听写";
+"capture.keys.restore.help" = "把所有快捷键恢复成口喷鸡的默认设置。可以用 ⌘Z 撤销。";
+"capture.keys.record" = "设置快捷键";
+"capture.keys.field_help" = "点按后按下新的组合键。Esc 取消，⌫ 删除这个快捷键。";
+"capture.keys.clear" = "删除快捷键";
+"capture.keys.taken_banner.detail" = "它从 %@ 运行。它退出后，这些快捷键就会在这里生效。";
+"capture.keys.taken_banner.detail_unknown" = "它退出后，这些快捷键就会在这里生效。";
+"capture.keys.quit_other" = "退出另一个口喷鸡";
+"capture.keys.quitting" = "正在退出…";
+"capture.keys.hold_line" = "或按住 %@画图";
+"capture.keys.hold_off" = "按住某个键画图：已关闭";
+"capture.keys.quit_others" = "退出其他口喷鸡";
+"capture.keys.taken_banner.detail_many" = "它们都退出后，这些快捷键就会在这里生效。";
