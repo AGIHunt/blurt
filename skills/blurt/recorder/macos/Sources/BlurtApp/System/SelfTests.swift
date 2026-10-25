@@ -301,6 +301,12 @@ enum SelfTests {
                 out(["projects": c.model.projects.map { "\($0.name) \($0.key)" }, "go": c.shortcutProjects.map(\.name),
                      "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
             }
+        case "mainshortcuts":           // the ? panel, kept up for a screenshot of a build launched in the background
+            let c = MainWindowController.shared
+            c.showShortcuts()
+            ShortcutsSheet.panel?.hidesOnDeactivate = false
+            ShortcutsSheet.panel?.orderFrontRegardless()
+            out(["shown": ShortcutsSheet.panel?.isVisible ?? false, "title": ShortcutsSheet.panel?.title ?? ""])
         case "mainjs":                  // mainjs EXPR: run EXPR in the detail page (as the page's own UI would), its value back
             MainWindowController.shared.detail.web.evaluateJavaScript("JSON.stringify((() => { return \(arg); })())") { r, e in
                 out(["value": (r as? String) ?? NSNull(), "error": e.map { "\($0)" } ?? NSNull()])
