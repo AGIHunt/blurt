@@ -2198,7 +2198,8 @@ def cmd_serve(a):
                             del uses[:-50]
                         # an interim decode looks for a waiting connection (a final piece, anything) between steps
                         stop = (lambda: bool(_select.select([srv], [], [], 0)[0])) if interim else None
-                        with no_download(bool(req.get("no_download"))):
+                        # a dictation (final or interim) never waits for a download, whatever the client sent
+                        with no_download(bool(req.get("no_download")) or req.get("purpose") == "dictation"):
                             resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
                                             req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop)
                         if interim:

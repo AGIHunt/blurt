@@ -147,6 +147,8 @@ extension Dictation {
             let b = before.trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
             return !b.isEmpty && !b.hasSuffix("\n") ? ("\n" + text, ["list_line"]) : (text, [])
         }
+        // right after a list item: the take starts a paragraph of its own
+        if DictationFit.endsInListItem(before: before, after: after) { return ("\n\n" + text, ["after_list"]) }
         let fit = DictationFit.fit(text, before: before, after: after)
         return fit.trimmed ? (fit.text, fit.changes) : (text, [])
     }

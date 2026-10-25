@@ -1344,6 +1344,12 @@ final class DictationHistoryWindow: NSObject {
         m.beginEdit(e)
         emit(["event": "dictation_history", "action": "edit", "id": e.id, "draft": m.draft])
     }
+    @MainActor func testNote(_ what: String) {
+        let m = page.model
+        if what == "undo" { m.undoAdded() } else { m.addOffered() }
+        emit(["event": "dictation_history", "action": "note", "what": what, "offered": m.savedNote?.offered ?? [],
+              "added": m.savedNote?.added ?? []])
+    }
     @MainActor func testCorrect(_ id: String?, text: String) {
         let m = page.model
         guard let e = m.entries.first(where: { $0.id == id }) ?? m.entries.first else { return }

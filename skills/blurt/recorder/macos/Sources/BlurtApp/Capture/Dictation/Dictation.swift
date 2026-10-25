@@ -891,7 +891,8 @@ final class Dictation {
 
     /// The silence watch while a take listens: a reminder after 20 s without speech, the countdown from 4:30.
     private func watchRunaway(_ v: NoteVoice) {
-        guard let n = runaway.feed(elapsed: v.elapsed, speaking: v.speaking, handsFree: !trigger.pushToTalk) else { return }
+        // talking now: the last stretch of speech is under half a second ago (`speaking` alone stays on through pauses)
+        guard let n = runaway.feed(elapsed: v.elapsed, speaking: v.quietSeconds < 0.5, handsFree: !trigger.pushToTalk) else { return }
         switch n {
         case .stillListening:
             emit(["event": "dictation_runaway", "notice": "still_listening", "id": entryID, "elapsed": Int(v.elapsed)])
@@ -1018,7 +1019,7 @@ final class Dictation {
                                   hint: String) -> [String: Any]? {
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation",
-                                  "vocab": vocab, "interim": true]
+                                  "vocab": vocab, "interim": true, "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
         return WarmServer.call("asr-serve", req, timeout: 15)

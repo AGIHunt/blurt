@@ -215,9 +215,29 @@ final class VoiceInput {
     /// doesn't take SIGTERM), so the next key-down starts a fresh one. A server someone else started is left alone.
     static func endUnresponsiveServer() {
         guard let s = server, s.isRunning else { return }
+        // the server itself is `uv run`'s child (or grandchild): it goes first, while it can still be told from a
+        // stranger's by its ancestry (killing only `uv` left it orphaned and running)
+        if let d = try? Data(contentsOf: WarmServer.infoURL("asr-serve")),
+           let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let pid = (o["pid"] as? NSNumber)?.int32Value,
+           descends(pid, from: s.processIdentifier) {
+            kill(pid, SIGKILL)
+        }
         kill(s.processIdentifier, SIGKILL)
         server = nil
         emit(["event": "asr_server_ended", "why": "unresponsive"])
+    }
+
+    /// `pid`'s parent, grandparent … (up to 4) include `ancestor`.
+    private static func descends(_ pid: pid_t, from ancestor: pid_t) -> Bool {
+        var p = pid
+        for _ in 0..<4 {
+            var info = proc_bsdinfo()
+            guard proc_pidinfo(p, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return false }
+            p = pid_t(info.pbi_ppid)
+            if p == ancestor { return true }
+            if p <= 1 { return false }
+        }
+        return false
     }
 
     /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).

@@ -191,6 +191,8 @@ extension App {
                 case "key": DictationHistoryWindow.shared.testKey(a.count > 1 ? a[1] : "")       // delete | cmd+c | cmd+z | cmd+f | esc | up | down
                 // edit [ID] (opens the editor) | correct ID TEXT (saves a correction, as "Save Correction" does)
                 case "edit": DictationHistoryWindow.shared.testEdit(a.count > 1 ? a[1] : nil)
+                // note add | note undo: the saved correction's note — Add (the words found), then its Undo
+                case "note": DictationHistoryWindow.shared.testNote(a.count > 1 ? a[1] : "add")
                 case "correct":
                     let b = (a.count > 1 ? a[1] : "").split(separator: " ", maxSplits: 1).map(String.init)
                     DictationHistoryWindow.shared.testCorrect(b.first, text: b.count > 1 ? b[1] : "")

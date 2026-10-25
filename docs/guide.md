@@ -231,23 +231,43 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   asked there: the first snap or recording asks for it. Connecting an agent is in Settings → Agents.
 - **Tap Fn** (🌐, alone), talk, **tap it again**. Or **hold Fn** while you talk and let go to stop: anything held
   longer than about 0.3 s is push-to-talk. The island's ears show a keyboard and a mint level while it listens, then
-  a few dots while it transcribes and polishes. `Esc` cancels. Fn used with another key (`Fn`-arrow, `Fn`-F-keys…)
-  never starts a dictation. What has been recognised so far shows under the island while you talk, about a second
-  behind you: the words you're still saying in a lighter grey (they can still change), then white once that stretch
-  is done. It's the raw transcript — the polished text is what gets typed — so it's there to tell you whether to
-  fix something by hand or just double-tap to send. It doesn't slow the paste down. (On Macs with less than 16 GB
-  the grey part is left out and the words appear after each pause; `record.dictation.live_partial` true / false
-  overrides that.)
+  a few dots while it transcribes and polishes. `Esc` cancels — while you talk, and also while the text is still on
+  its way (it then never goes in). Fn used with another key (`Fn`-arrow, `Fn`-F-keys…) never starts a dictation.
+  What has been recognised so far shows under the island while you talk, about a second behind you: the words you're
+  still saying in a lighter grey (they can still change), then white once that stretch is done. When you stop, that
+  panel shows the text that was actually typed — polished, or laid out as a list — for about a second and a half:
+  what a double tap would now send. It doesn't slow the paste down. (On Macs with less than 16 GB the grey part is
+  left out and the words appear after each pause; `record.dictation.live_partial` true / false overrides that.)
+- **The next thought right away.** Tap Fn again as soon as you've stopped (after half a second, so it isn't a double
+  tap) and the next dictation starts listening while the last one is still being typed; they go in in the order you
+  said them.
+- **Only where you were.** The text goes into the app you started in. If you've moved to another app by the time it
+  is ready (a long dictation, a model still loading), it is copied instead and the island says *Copied — paste with
+  ⌘V*; a double tap's Return is then not pressed.
+- **A dictation you forgot.** Hands-free dictation stops by itself at 5 minutes. After 20 seconds without speech the
+  island says *Still listening · Fn to finish · Esc to cancel*; from 4:30 the clock counts down (−0:30), and at the
+  limit the island says the dictation stopped there and types what you said. A tap right after that doesn't start a
+  new one.
+- **No speech model yet.** Fn doesn't listen; the island says *No speech model yet* with **Download…**, which opens
+  Settings → Speech → Dictation with the download already started. A dictation never downloads a model by itself.
+  If recognising a dictation fails anyway, the recording is kept and the island says so with **Retry**; the
+  Dictation page lists it too, with Retry. It never says "didn't catch anything" for that.
 - **Dictating into the middle of a sentence.** Blurt looks at the text on both sides of the cursor and inserts only
   what's new: put the cursor in 「我知道你就是▮的。」, say 「就是从老家回来的」, and you get 「我知道你就是从老家回来的。」 —
   not the repeated 「就是」 or a second full stop. Punctuation and spaces fit the sentence too. It only trims what it
   types, never what's already there, and where the field's text can't be read (WeChat) the words go in as said.
-- **Double-tap Fn to send.** Two quick taps press Return in the app in front. Right after you dictate, tap twice
-  instead of once: the dictation stops, the text goes in, and then it is sent — the Return you'd press yourself in a
-  chat. (With push-to-talk: let go, then double-tap.) Taps while the text is still on its way never lose it: a double
-  tap then sends once it is in. The island says "Sent". It works with whichever key
-  you set, never types into Blurt itself or a password field, and can be turned off in *Settings → Dictation*
-  (*Double-tap Fn to send (Return)*).
+- **Double-tap Fn to send.** Two quick taps press Return in the app in front. Two ways to use it:
+  - **check, then send:** tap to stop, read the text (in the field, or in the panel under the island), then
+    double-tap to send — or fix it first;
+  - **send straight away:** tap twice instead of the stop tap: the dictation stops, the text goes in, and then it is
+    sent — the Return you'd press yourself in a chat. (With push-to-talk: let go, then double-tap.)
+
+  A double tap that's a little slow (the second tap within 0.8 s, nothing said yet) still sends. Taps while the text
+  is still on its way never lose it: a double tap then sends once it is in. The island says "Sent" — or, when the
+  Return couldn't be pressed (no Accessibility, a password field, the text was only copied), why not. For your first
+  few dictations in a chat app, a quiet line after the text reminds you: *Double-tap Fn to send*. It works with
+  whichever key you set, never types into Blurt itself or a password field, and can be turned off in *Settings →
+  Dictation* (*Double-tap Fn to send (Return)*).
 - *Settings → Dictation* (or the setup assistant) switches the key to **right Option** or **either Option key** (left
   or right, still only when tapped alone), and the mode to **tap to start, tap to stop** or **hold to talk** only. If
   you never picked a key before, you now have Fn; a key you chose stays.
@@ -281,12 +301,15 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
     become a numbered list with the sentence before them as its heading — only when you really enumerated; otherwise
     it stays a paragraph. It never rewrites or summarizes: if its result loses anything, you get the Light text. This
     takes a little longer (about 0.1–0.3 s more on an M-series Mac). Press ⇧ again to go back. **Fn+⇧** starts a
-    dictation in Structured. A click on the island while it listens does the same;
+    dictation in Structured. A click on the island while it listens does the same. The island explains Structured the
+    first two times, then just names it. Whatever you dictate right after a list starts a paragraph of its own;
   - **⌥⇧L reformats the last dictation**: Light → Structured → Verbatim (exactly what the speech model heard) → Light,
     with **Undo** on the island. It replaces the text in the field only while it is exactly as it was typed; if you
-    have edited it, the new version goes to the clipboard instead, and your edits stay. After a longer dictation that
-    went in as prose, the model checks it for a list in the background (the paste never waits for it); if it finds
-    one, the island offers **Make a List** for a few seconds.
+    have edited it, the new version goes to the clipboard instead, and your edits stay. Pressed while the text is
+    still going in, it waits for it: it's about the dictation you just saw. After a longer dictation that went in as
+    prose, the model checks it for a list in the background (the paste never waits for it); if it finds one, the
+    island offers **Make a List** for a few seconds. *Make a List* and *Undo* belong to their dictation: they go when
+    you start the next one, so they never change a newer text.
   - Nothing you *say* switches the style: "make a list" or 「帮我列个清单」 is typed like any other words, because it is
     often an instruction meant for an AI agent.
   - *By kind of app* under Style (Settings → Dictation) sets a style per kind of app (Chat, Code and terminals, Mail,
@@ -302,10 +325,15 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   one line) and your projects' names and keys; remove any you don't want. The recommended **recognition model**
   (Qwen3-ASR on Apple silicon) listens for these words directly; with the others, polish uses them.
 - **It learns from your fixes.** For a minute after a dictation, if you correct a word it typed (pool request →
-  pull request), Blurt notices. The second time you make the same fix, or at once for a capital letter or a space
-  ("github" → "GitHub"), the word joins your list and the island says *Learned "pull request"* with **Undo**. It
-  learns the word, never a replacement. Suggestions it isn't sure about wait in the Words tab for you to add or
-  ignore.
+  pull request), Blurt notices — once you're done: it compares what it typed with how the field reads when the
+  minute is up, you move on, or you dictate again, never a half-typed word. The second time you make the same fix, or
+  at once for a capital letter or a space ("github" → "GitHub"), the word joins your list and the island says
+  *Learned "pull request"* with **Undo**. It learns the word, never a replacement, and never two words run together
+  with a comma. Suggestions it isn't sure about wait in the Words tab for you to add or ignore.
+- **Correcting a dictation on the Dictation page.** Select it and press `E` or `Return` (or *Correct*): the text is
+  ready to edit with the cursor in it. `⌘Return` saves, `Esc` cancels. The note under it says which words it found
+  and offers **Add to Words** (then **Undo**); nothing is added by itself. `⌘Z` puts the old text back and takes away
+  the words that correction suggested.
 - **The text around the cursor** helps too: when you start talking, Blurt reads about 500 characters before and after
   the cursor (and the window's title) so names are spelled the way the document spells them. It is used for that one
   dictation and not kept; password fields are never read. Both this and learning can be turned off in Settings.
@@ -335,7 +363,11 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   or side by side, each with its own Copy button. From there you can **turn it into an item** in the current project
   (or Unassigned) or delete it. The detail also shows the app, the length, how it was typed, the style the text is
   actually in, and the speech and polish models by name. A second tab, **Words**, is where your custom words are
-  added, filtered and removed (above). Keys: `↑` `↓` to move,
+  added, filtered and removed (above): paste "Claude, Codex, tmux" to add three at once (a word already there is
+  pointed out, not added twice); `Tab` into the words, `←` `→` to move, `⌫` to remove, `Return` or a double-click to
+  change the spelling. Removing, adding and ignoring say so on the island with **Undo** (`⌘Z` too). A dictation that
+  wasn't recognised shows as such, with **Retry** while its recording is kept. After ⌥⇧L replaced a text, the detail
+  shows the text as it is now, with the first version under it. Keys: `↑` `↓` to move, `E` / `Return` to correct,
   `⌘C` to copy, `⌫` to delete (`⌘Z` puts it back), `⌘F` to search. With no dictations yet, the page explains which key
   to tap and says when dictation is off or can't hear its key yet. History is kept for 30 days (Settings), and the
   audio is deleted right after transcription unless you choose to keep it.
@@ -524,24 +556,33 @@ so the two must speak the same version: when one is older than the other, the is
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
 - **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下，还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
-- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。那是原始转写，真正输入的是润色后的文字；它的用处是让你决定先手动改一下，还是直接双击发送。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
+- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消：说话时可以，文字还在处理时也可以（那段话就不会输入）。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。按下结束后，这里会显示真正输入的文字（润色过的，或者排好的清单）约一秒半，也就是双击会发送出去的内容。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
+- **马上说下一段。** 刚结束就再按一下 Fn（隔半秒以上，免得算成双击），下一段马上开始听，上一段还在输入也不影响；几段按你说的先后顺序输入。
+- **只输入到原来的地方。** 文字只会输入到你开始说话时所在的 App。等文字好了你已经换到别的 App（说得很长、模型还在加载），就改成复制，岛上提示「已复制，⌘V 粘贴」；这时双击也不会按回车。
+- **忘了结束的听写。** 单按开始的听写最长 5 分钟。超过 20 秒没说话，岛上提示「还在听 · 按 Fn 结束 · Esc 取消」；从 4:30 开始时间倒数（−0:30），到上限时岛上会说明听写已结束，并输入你说的内容。紧接着按的那一下不会开始新的一段。
+- **还没有识别模型。** 按 Fn 不会开始听，岛上提示「还没有识别模型」和**下载…**，点它会打开「设置 → 语音 → 听写」并开始下载。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，岛上说明原因并给出**重试**；听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
-- **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。岛上会显示「已发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
+- **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。有两种用法：
+  - **先看再发：** 按一下结束，看一眼文字（输入框里，或岛下方的面板），再双击发送；要改就先改。
+  - **直接发：** 把结束的那一下换成连按两下：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）
+
+  双击稍微慢一点（第二下在 0.8 秒内，还没说话）也算发送。文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。岛上会显示「已发送」；没能按回车时（没有辅助功能权限、在密码框里、文字只是复制了）会说明原因。在聊天 App 里的前几次听写后，会有一行小字提醒「双击 Fn 发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **风格**（「设置 → 听写」）只有一个选项：**原话**（语音模型听到的原样，不润色）、**轻整理**（默认）、**结构化**或**自动**。它们用的润色模型和识别模型都在「设置 → 语音 → 听写」里选：推荐组合会写明一共多大，一个**下载**按钮就好；「设置 → 听写」显示正在用哪个，可以点「更换…」。
 - **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。模型在设置助手的「下载推荐模型」里一起装好（也可以在「设置 → 语音」里下载），推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：
-  - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，岛右侧会出现清单标记。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。
-  - **⌥⇧L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，岛上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，新版本放进剪贴板，你的修改不动。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，岛上会出现几秒「排成清单」。
+  - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，岛右侧会出现清单标记。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。前两次岛上会说明结构化做什么，之后只显示名字。紧跟在清单后面说的内容，会另起一段。
+  - **⌥⇧L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，岛上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，新版本放进剪贴板，你的修改不动。文字还在输入时按下，会等它输入完：重排的就是你刚看到的那一条。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，岛上会出现几秒「排成清单」。「排成清单」和「撤销」只属于它们那一条：开始下一段听写时就会消失，不会改到更新的文字。
   - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI Agent 的指令。
   - 「设置 → 听写」风格下的「按 App 类型」可以按 App 类别（聊天、代码和终端、邮件、笔记和文档、其他应用）选：跟随上面、轻整理、原话、结构化，或「自动」（只有模型排成了清单才用结构化的版本）。如果你在某个 App 里总是同样地切换（三次以上），岛上会问一次要不要把它设成这个 App 的风格；它从不自己改，学到的设置在设置页里能看到，也能恢复默认。
 - **词库**（听写页的「词库」标签；「设置 → 听写」里显示个数和「管理…」）：你常说的名字和术语，比如「Claude Code」「tmux」、项目名。识别和润色模型会参考这些词，「Claude」不会变成「cloud」，「option」也不会只剩「op」。它们只是提示，不是规则：你说的话不会被列表里的词替换（「视频 codec」还是 codec）。口喷鸡内置了一小组你可能常提到的工具名（Claude Code、Codex、Cursor、Typeless、MCP、GitHub、OpenAI、DeepSeek、Qwen 等，收在一行里），再加上你的项目名和项目代号；不想要的可以移除。推荐的**识别模型**（Apple 芯片上用 Qwen3-ASR）在识别时就会照顾这些词；用其他模型时，由润色参考它们。
-- **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。它记下的是这个词，不是替换规则。拿不准的会作为建议留在「词库」里，由你决定添加还是忽略。
+- **它会从你的修改中学习。** 听写后一分钟内，如果你改了它打错的词（pool request → pull request），口喷鸡会注意到——等你改完再看：一分钟到了、你离开了那里、或者开始下一段听写时，拿输入的文字和输入框里最后的样子比，从不拿改到一半的词。同样的修改第二次出现时，或者只是改大小写、空格（「github」→「GitHub」）时，这个词就会加入列表，岛上显示「记住了 pull request」，可以**撤销**。它记下的是这个词，不是替换规则，也不会把两个词连着逗号记成一个。拿不准的会作为建议留在「词库」里，由你决定添加还是忽略。
+- **在听写页里改正一条。** 选中它，按 `E` 或 `Return`（或点「改正」），光标就在文字里，可以直接改。`⌘Return` 保存，`Esc` 取消。下面会写出发现了哪些词，并给出**加入词库**（加入后可以**撤销**）；不会自己加进去。`⌘Z` 会把原来的文字放回去，并去掉这次改正建议的词。
 - **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。只用于这一次听写，不会保存，也从不读密码框。这项和自动学习都可以在设置里关掉。
 - **权限**：「辅助功能」用来粘贴、读取光标附近的文字和听到 Fn；「输入监控」用来听到其他按键；还有麦克风。按键还听不到时，「设置 → 听写」最上面会提示；「权限」一栏列出每一项的状态（都开好时收成一行「都已开启」），以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，岛上大约每天提醒一次。这两处和设置里的「开启…」都会打开**权限向导**（见下）；开关打开后几秒内自动生效，不用重启。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，岛上会提示「已复制，可粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。
 - **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」录屏权限在第一次截图或录屏需要时才问（截图失败的提示上有「允许…」），有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
-- **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）。按键：`↑` `↓` 切换，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
+- **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、按原话输入（润色没成功）、用到了术语。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）：粘贴「Claude, Codex, tmux」一次加三个（已经有的会提示，不会重复加）；`Tab` 进入词，`←` `→` 移动，`⌫` 移除，`Return` 或双击改写法。移除、添加和忽略都会在岛上提示，可以**撤销**（`⌘Z` 也行）。没能识别的听写会标出来，录音还在时可以**重试**。⌥⇧L 替换过的一条，详情里显示现在的文字，下面是最初的版本。按键：`↑` `↓` 切换，`E` / `Return` 改正，`⌘C` 复制，`⌫` 删除（`⌘Z` 撤销），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着或还听不到按键时也会说明。历史默认保留 30 天（可在设置里改）；录音转写完就删，除非你选择保留。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。
 
 #### 听写测试台（开发者选项）

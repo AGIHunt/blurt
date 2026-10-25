@@ -32,6 +32,15 @@ public enum DictationFit {
     static func isCJK(_ c: Character) -> Bool { c.unicodeScalars.first.map(DictationStitch.isCJK) ?? false }
     static func isLatinWordChar(_ c: Character) -> Bool { DictationStitch.isWordChar(c) }
 
+    /// The cursor is at the end of a list item ("3. 更新文档▮", nothing after it on the line): what comes next is a new
+    /// paragraph, not more of that item (a take right after a structured one used to run on into its last line).
+    public static func endsInListItem(before: String, after: String) -> Bool {
+        let restOfLine = after.prefix { $0 != "\n" }
+        guard restOfLine.allSatisfy(\.isWhitespace), let last = before.components(separatedBy: "\n").last,
+              !last.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        return DictationStitch.listLines(last) == 1
+    }
+
     /// `text` fitted between `before` and `after` (the field's text on each side of the cursor or selection).
     public static func fit(_ text: String, before: String, after: String) -> Result {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
