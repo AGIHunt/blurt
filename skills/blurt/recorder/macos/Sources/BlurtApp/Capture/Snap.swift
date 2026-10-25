@@ -198,6 +198,8 @@ final class Shot {
     /// a card that was taken with a project but whose words couldn't be had (transcription failed): filed there once
     /// Retry has them (shots.jsonl "intended_project"; BlurtCore CaptureRoute)
     var intendedProject: String?
+    /// A voice note's live text when it ended (in memory only): the card shows it until `said` is in (CardNote.heard).
+    var heard: String?
     var assignedBy: String?      // capture | user | ai
     var pixelSize: CGSize = .zero
     var scale: CGFloat = 2
@@ -227,7 +229,7 @@ final class Shot {
     var needsWords: Bool { voice != nil && said == nil && transcription != .failed }
     /// What the card shows (BlurtCore CardNote): the typed note first, then the words said; the mic mark only with
     /// words; "Transcribing…" / "Couldn't transcribe" while a spoken note has none.
-    var note: CardNote { CardNote.make(typed: text, said: said, hasVoice: voice != nil, transcription: transcription) }
+    var note: CardNote { CardNote.make(typed: text, said: said, hasVoice: voice != nil, transcription: transcription, heard: heard) }
     /// The note's text — what the card says, what a copy or a drag carries, the item's title and quote (nil: none).
     var words: String? { CardNote.merged(typed: text, said: said) }
     var copyText: String? { words }

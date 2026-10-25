@@ -237,8 +237,10 @@ final class Snapper {
     /// A finished voice note (VoiceInput.swift): its wav is at shots/NNN.wav of `batch`. The words are its note:
     /// with a project it is filed once they are transcribed; without words (or a project) it hangs as a card.
     /// `stream`: the pieces transcribed while it was said — its last piece is all that is left (else the whole wav).
-    func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream: VoiceNoteStream? = nil) {
+    func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream: VoiceNoteStream? = nil,
+                       heard: String? = nil) {
         let s = b.addVoice(n: n, duration: duration, project: project)
+        s.heard = heard         // the card shows the words already heard until its own are in
         if let st = stream { streamed[ObjectIdentifier(s)] = st }
         emit(["event": "voice", "n": n, "session": b.dir.path, "duration": duration, "project": project ?? NSNull(),
               "streamed": stream != nil])

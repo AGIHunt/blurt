@@ -53,6 +53,9 @@ final class LiveTranscript {
     /// where the take types (dictation's caret, global Cocoa points): the panel stays off it
     private var avoid: NSRect?
     private var bottom = false
+    /// the take is over and the panel is on its way out: it stays where it is while the island closes (v0.9-fix2: it
+    /// slid down below the card row and lingered there)
+    private var leaving = false
     /// tests: `live caret …`
     var testCaret: NSRect?
 
@@ -66,6 +69,7 @@ final class LiveTranscript {
         text = ""
         pending = ""
         avoid = caret
+        leaving = false
         hideToken += 1
         view.reset()
         view.setListening(true)
@@ -121,6 +125,7 @@ final class LiveTranscript {
     func end(session s: Int, after: Double = 0) {
         guard s == session else { return }
         view.setListening(false)            // the line is committed: the caret goes
+        leaving = true
         hideToken += 1
         let tok = hideToken
         let go = { [weak self] in
@@ -132,7 +137,7 @@ final class LiveTranscript {
     }
 
     /// The island grew, shrank or moved: the panel follows its bottom edge.
-    func islandMoved() { if shown { place(animated: false) } }
+    func islandMoved() { if shown && !leaving { place(animated: false) } }
 
     // MARK: the panel
 

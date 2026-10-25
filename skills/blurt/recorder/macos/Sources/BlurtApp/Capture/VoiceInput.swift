@@ -336,13 +336,20 @@ final class VoiceInput {
         island.voiceChanged()
         let live = liveSession
         if kept {
-            // the words stay a moment once the last piece is in (the card has them by then)
-            st?.onFinished = { t in
-                if let t = t, !t.isEmpty { LiveTranscript.shared.update(t, session: live) }
-                LiveTranscript.shared.end(session: live, after: 1.2)
+            if project.isInbox {
+                // a card: it shows the words heard so far at once, then its own (CardNote.heard) — the panel goes now,
+                // where it is, instead of lingering over the card row
+                LiveTranscript.shared.end(session: live, after: 0.3)
+            } else {
+                // filed: the words stay a moment once the last piece is in
+                st?.onFinished = { t in
+                    if let t = t, !t.isEmpty { LiveTranscript.shared.update(t, session: live) }
+                    LiveTranscript.shared.end(session: live, after: 1.2)
+                }
+                if st == nil { LiveTranscript.shared.end(session: live, after: 0.4) }
             }
-            if st == nil { LiveTranscript.shared.end(session: live, after: 0.4) }
-            snapper.voiceFinished(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st)
+            snapper.voiceFinished(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st,
+                                  heard: liveText)
         } else if undoable {
             LiveTranscript.shared.end(session: live)
             st?.onText = nil
