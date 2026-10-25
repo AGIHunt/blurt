@@ -144,8 +144,9 @@ public struct DictationEntry: Identifiable, Hashable {
 
 /// The speech model's language tag for one piece (transcribe.py's `tag`): which language it wrote in, the
 /// probabilities it gave English and the user's language without the Words (what decided) and with them, and how far
-/// the decision was from the line (`margin` = English share − threshold: > 0 English). Within `fragileMargin` the tag
-/// could flip with a slightly different take — the Dictation Lab flags it.
+/// the decision was from the line (`margin`, in log-odds: logit(English share) − logit(threshold), > 0 English — a
+/// clear English piece is about +4, the v0.9 translated sentence +0.1). Within `fragileMargin` the tag could flip with
+/// a slightly different take — the Dictation Lab flags it.
 public struct DictationLanguageTag: Hashable {
     public var tag: String?
     public var pEn: Double?
@@ -155,7 +156,7 @@ public struct DictationLanguageTag: Hashable {
     public var pEnWords: Double?
     public var margin: Double?
     public var redone: Bool
-    public static let fragileMargin = 0.02
+    public static let fragileMargin = 1.0           // log-odds (dictation_vocab.FRAGILE_MARGIN)
 
     public var fragile: Bool { margin.map { abs($0) < DictationLanguageTag.fragileMargin } ?? false }
 

@@ -740,7 +740,8 @@ def asr_hint(ctx: dict | None) -> str:
 
 def tag_summary(tags: list[dict]) -> dict:
     """The pieces' language tags → the closest call: its margin to the threshold and whether it is fragile (a tag
-    that close could flip with a slightly different take — the v0.9 translated sentence sat 0.0006 over the line)."""
+    that close could flip with a slightly different take — the v0.9 translated sentence sat 0.0006 over the line: +0.1
+    in log-odds, dictation_vocab.tag_margin)."""
     import dictation_vocab  # noqa: PLC0415
     margins = [t["margin"] for t in tags if isinstance(t, dict) and isinstance(t.get("margin"), (int, float))]
     if not margins:
@@ -1362,7 +1363,7 @@ def cmd_run(a) -> None:
             ta = (af.get("terms") or {}).get("accuracy")
             m = r.get("tag_margin")
             print(f"{r['id']:<24} {_fmt(b.get('wer')):>10} {_fmt(af.get('wer')):>10} {_fmt(ta):>7} "
-                  f"{r.get('language') or '—':>5} {'—' if m is None else f'{m:+.3f}':>7}  "
+                  f"{r.get('language') or '—':>5} {'—' if m is None else f'{m:+.2f}':>7}  "
                   f"{r.get('change')}{' (text changed)' if r.get('changed_text') else ''}"
                   f"{'  fragile language tag' if r.get('fragile_tag') else ''}{'  ' + r['error'] if r.get('error') else ''}")
         o = res["overall"]

@@ -16,18 +16,20 @@ final class DictationHistoryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
         var e = entry("d-t", "这个 feature 下周上线。", 1000)
-        e.asrTags = [["tag": "Chinese", "p_en": 0.9497, "p_zh": 0.0503, "margin": -0.0453, "p_en_words": 0.994],
-                     ["tag": "Chinese", "p_en": 0.98, "p_zh": 0.02, "margin": -0.015, "redone": true]]
+        e.asrTags = [["tag": "Chinese", "p_en": 0.9497, "p_zh": 0.0503, "margin": -2.355, "p_en_words": 0.994],
+                     ["tag": "Chinese", "p_en": 0.99, "p_zh": 0.01, "margin": -0.697, "redone": true],
+                     ["tag": "English", "p_en": 0.9999, "p_zh": 0.0001, "margin": 3.917]]
             .compactMap(DictationLanguageTag.init(json:))
         h.append(e)
         let back = try XCTUnwrap(h.load().first?.asrTags)
-        XCTAssertEqual(back.count, 2)
+        XCTAssertEqual(back.count, 3)
         XCTAssertEqual(back[0].prefer, "zh")
         XCTAssertEqual(back[0].pPref ?? 0, 0.0503, accuracy: 1e-6)
         XCTAssertEqual(back[0].pEnWords ?? 0, 0.994, accuracy: 1e-6)
         XCTAssertFalse(back[0].fragile)
         XCTAssertTrue(back[1].redone)
-        XCTAssertEqual(DictationLanguageTag.closest(back)?.margin ?? 0, -0.015, accuracy: 1e-6)
+        XCTAssertFalse(back[2].fragile)                              // a clear English piece is no close call
+        XCTAssertEqual(DictationLanguageTag.closest(back)?.margin ?? 0, -0.697, accuracy: 1e-6)
         XCTAssertTrue(DictationLanguageTag.closest(back)?.fragile ?? false)
         XCTAssertNil(DictationLanguageTag.closest([[String: Any]]()))
         XCTAssertNil(entry("d-old", "x", 1).asrTags)                 // an older entry has none

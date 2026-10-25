@@ -198,9 +198,17 @@ class StableOrder(unittest.TestCase):
         self.assertEqual(V.ranked(terms, "t mux 里面", limit=64)[0]["term"], "tmux")
 
     def test_margin(self):
-        self.assertGreater(V.tag_margin(0.9999, 0.0001), 0)
-        self.assertLess(V.tag_margin(0.948, 0.051), -0.02)
-        self.assertAlmostEqual(V.tag_margin(0.0, 0.0), -V.EN_TAG_THRESHOLD)
+        """Log-odds from the line: a clear English piece is far from it (v0.9 review: as a linear difference every
+        English piece was within 0.005 of the line and flagged a close call)."""
+        clear_en = V.tag_margin(0.9999, 0.0001)
+        self.assertGreater(clear_en, V.FRAGILE_MARGIN)                    # +3.9: English, not a close call
+        self.assertLess(V.tag_margin(0.948, 0.051), -V.FRAGILE_MARGIN)    # the mixed sentence without the Words
+        near = V.tag_margin(0.9956, 0.0044)                               # the v0.9 translated sentence, with them
+        self.assertTrue(0 < near < V.FRAGILE_MARGIN)
+        self.assertLess(abs(V.tag_margin(0.99, 0.01)), V.FRAGILE_MARGIN)  # just under the line: a close call too
+        self.assertLess(V.tag_margin(0.2, 0.8), -V.FRAGILE_MARGIN)        # plain Chinese
+        self.assertLess(V.tag_margin(0.0, 0.0), -V.FRAGILE_MARGIN)
+        self.assertGreater(V.tag_margin(1.0, 0.0), V.FRAGILE_MARGIN)
 
 
 if __name__ == "__main__":

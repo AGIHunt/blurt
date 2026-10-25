@@ -200,14 +200,21 @@ def choose_tag(p_en: float, p_pref: float, prefer: str, threshold: float = EN_TA
     return "English" if total > 0 and p_en / total > threshold else prefer
 
 
-FRAGILE_MARGIN = 0.02       # a tag this close to the threshold could flip with a slightly different take
+FRAGILE_MARGIN = 1.0        # log-odds: a tag this close to the threshold could flip with a slightly different take
+#                             (an English share of about 0.987–0.998 around the 0.995 line)
 
 
 def tag_margin(p_en: float, p_pref: float, threshold: float = EN_TAG_THRESHOLD) -> float:
-    """How far the English share (p_en / (p_en + p_pref)) is from the threshold: > 0 tagged English, < 0 the user's
-    language. The history and the Dictation Lab show it; within FRAGILE_MARGIN the tag is fragile."""
+    """How far the English share (p_en / (p_en + p_pref)) is from the threshold, in log-odds (logit(share) −
+    logit(threshold)): > 0 tagged English, < 0 the user's language. A linear difference could never be more than 0.005
+    on the English side of a 0.995 line, so every English piece read as a close call; in log-odds a clear English piece
+    (0.9999) is +3.9 and the v0.9 translated sentence (0.9956) +0.1. The history and the Dictation Lab show it; within
+    FRAGILE_MARGIN the tag is fragile."""
+    import math
     total = p_en + p_pref
-    return round((p_en / total if total > 0 else 0.0) - threshold, 4)
+    share = min(max(p_en / total if total > 0 else 0.0, 1e-6), 1 - 1e-6)
+    logit = lambda x: math.log(x / (1 - x))  # noqa: E731
+    return round(logit(share) - logit(threshold), 3)
 
 
 def translated_glue(text: str, names=()) -> bool:

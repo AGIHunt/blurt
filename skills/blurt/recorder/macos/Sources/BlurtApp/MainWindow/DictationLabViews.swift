@@ -471,7 +471,7 @@ struct LabWorkbench: View {
     /// call is flagged (v0.9: a sentence 0.0006 over the line was typed as an English translation, and scored perfect).
     @ViewBuilder func tagLine(_ outputs: [String: Any]) -> some View {
         if let t = DictationLanguageTag.closest(outputs["tags"] as? [[String: Any]] ?? []), let m = t.margin {
-            let margin = String(format: "%+.3f", m)
+            let margin = String(format: "%+.2f", m)
             Text(t.fragile ? T("dictation.lab.tag.fragile", margin)
                  : T("dictation.lab.tag", Loc.locale.localizedString(forLanguageCode: outputs["language"] as? String ?? "") ?? (t.tag ?? "—"), margin))
                 .font(.system(size: 11)).monospacedDigit()
@@ -995,7 +995,7 @@ struct LabRegressionView: View {
                         Text(e).font(.system(size: 11)).foregroundStyle(Color.brandErr)
                     }
                     if row["fragile_tag"] as? Bool == true, let m = row["tag_margin"] as? Double {
-                        Text(T("dictation.lab.tag.fragile", String(format: "%+.3f", m)))
+                        Text(T("dictation.lab.tag.fragile", String(format: "%+.2f", m)))
                             .font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
                     }
                 }

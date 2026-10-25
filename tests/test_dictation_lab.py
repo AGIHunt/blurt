@@ -266,14 +266,18 @@ def test_a_language_tag_near_the_line_is_flagged(home):
     make_case(home, "near", 1.0, "这个 feature 下周上线")
     make_case(home, "clear", 2.0, "好的")
     fake = FakePipeline({1.0: "这个 feature 下周上线", 2.0: "好的"},
-                        tags={1.0: {"tag": "Chinese", "p_en": 0.98, "p_zh": 0.02, "margin": -0.015},
-                              2.0: {"tag": "Chinese", "p_en": 0.2, "p_zh": 0.8, "margin": -0.795}})
+                        tags={1.0: {"tag": "Chinese", "p_en": 0.99, "p_zh": 0.01, "margin": -0.697},
+                              2.0: {"tag": "Chinese", "p_en": 0.2, "p_zh": 0.8, "margin": -6.679}})
     res = L.regression(L.parse_spec("current"), fake, save=False)
     by = {r["id"]: r for r in res["rows"]}
-    assert by["near"]["fragile_tag"] and by["near"]["tag_margin"] == -0.015
+    assert by["near"]["fragile_tag"] and by["near"]["tag_margin"] == -0.697
     assert not by["clear"]["fragile_tag"]
     assert res["overall"]["fragile_tags"] == 1
     assert L.tag_summary([]) == {"tag_margin": None, "fragile_tag": False}
+    # a clear English piece (p_en 0.9999, +3.9 in log-odds) is no close call (v0.9 review: every English piece was)
+    import dictation_vocab
+    en = dictation_vocab.tag_margin(0.9999, 0.0001)
+    assert L.tag_summary([{"tag": "English", "p_en": 0.9999, "p_zh": 0.0001, "margin": en}]) == {"tag_margin": en, "fragile_tag": False}
 
 
 def test_regression_before_after_and_overall(home):
