@@ -166,7 +166,7 @@ final class ModelDownloads: ObservableObject {
             if queue.active { runNext() } else { via = "" }
         case .failed:
             failed[j.id] = error.isEmpty ? "exit \(st)" : error
-            let batch = queue.jobs
+            let batch = queue.pending                 // what is still missing: Try Again fetches only that
             let source = via
             queue.clear()
             queue.save()

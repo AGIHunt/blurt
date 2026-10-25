@@ -615,7 +615,13 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
   between requests, so a CLI or agent request in flight is answered first, and a crash counts too), and on
   `{"cmd": "exit"}`. The next key-down starts it again (offline, `WarmSpawn`); the speech model is also warmed a few
   seconds after launch (`Dictation.prewarm`: dictation on, key heard, ≥ 16 GB, the dictation model installed — the
-  first dictation took 5.9 s of ASR on a cold model, newc008), which costs its memory for those 10 minutes only;
+  first dictation took 5.9 s of ASR on a cold model, newc008), and as soon as the app's download manager brings
+  dictation's model in (`ModelDownloads`: the Try-it moment after the assistant's download isn't cold), which costs its
+  memory for those 10 minutes only;
+- never downloads: the servers and the CLI fallback run with `BLURT_NO_DOWNLOAD=1` (a missing model is `model_missing`,
+  never a three-minute hidden download behind a key press), and without an installed recogniser
+  (`DictationModels.dictationReady`) the key starts nothing — the island says "no speech model yet (2.5 GB) ·
+  Download" or "still downloading (1.2 of 2.5 GB) · Show" instead of a false "nothing heard";
 - uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
   Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
 

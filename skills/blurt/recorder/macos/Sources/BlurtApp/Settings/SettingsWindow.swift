@@ -8,7 +8,8 @@
 //            page is kept once made, so switching back doesn't reload it.
 // State (pane, query) lives in SettingsNavigator, the row to scroll to in SettingsFlash. The last pane is remembered
 // (app.settings_pane).
-// show(pane:) takes "speech" or "speech/dictation" (a row or section of that pane: scrolled to and flashed).
+// show(pane:) takes "speech" or "speech/dictation" (a row or section of that pane: scrolled to and flashed); nil opens
+// the last pane, a name that isn't a pane (a stale link) opens General — never an unrelated pane from last time.
 import AppKit
 import Combine
 import SwiftUI

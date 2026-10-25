@@ -12,9 +12,15 @@
 //      and a button — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
 //      dependencies are warmed up in the background as soon as uv is there (only a failure shows: one sentence and
 //      Try Again);
-//   4. try it — a text box ("tap Fn and say something") that shows a check once the first dictation lands, and "Open
-//      Blurt at login" (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies
-//      it and closes.
+//   4. try it — a text box ("tap Fn and say something … or double-tap to send it") that shows a check once the first
+//      dictation lands; it waits only while dictation's own recogniser is still coming down (its bar) — with it in and
+//      polish still downloading it says dictation works already — and offers the download when there is no model;
+//      and "Open Blurt at login" (on the first time: dictation needs Blurt running; reopened later, as it is now);
+//      Done applies it and closes.
+// The big gradient headline is the welcome on the first step, then the step's own name and line (the four bars say
+// which step it is). Wherever the dictation key is explained, so is the double tap (it presses Return). The models'
+// downloads are the app's one download manager's (App/ModelDownloads.swift): closing the assistant mid-download says
+// they carry on, and where to see them. Sizes: modelSize, as everywhere.
 // Connecting agents (the blurt skill + MCP) is not in the assistant: Settings → Agents.
 // Shown once on first launch (config app.onboarded), again from Settings → General or blurt://onboarding.
 //

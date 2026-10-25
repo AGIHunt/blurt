@@ -7,7 +7,9 @@
 // comparison of the models that run here — accuracy for the user's languages, speed, memory, download
 // size — measured on this Mac when the user asks (`transcribe.py bench`), reference numbers otherwise. Resource caps
 // (asr.limits: threads, transcriptions at once, GPU memory share, lighter models on battery), cloud keys (never
-// stored or shown: only whether each variable is set), recognition language and the download mirror.
+// stored or shown: only whether each variable is set), recognition language and the download mirror. Every download
+// here goes through the app's one download manager (App/ModelDownloads.swift): the running one's bar and Stop, "Queued"
+// for the next, never a second copy of a model the assistant is already fetching.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
 import Combine

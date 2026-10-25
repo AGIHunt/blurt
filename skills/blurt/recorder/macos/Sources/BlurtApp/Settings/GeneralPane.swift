@@ -7,6 +7,8 @@
 // also attach the note as a .md file — record.drag_note_file, off —, burn the note under the dragged picture —
 // record.drag_caption, off); Advanced (the Dictation Lab); About (version, updates, the user guide, the setup
 // assistant). Rows and their descriptions come from SettingsCatalog. The menu-bar menu stays short because these live here.
+// A language change applies at the next launch: Relaunch Now next to it. A skill / app contract mismatch is said on the
+// Version row for as long as it lasts, with How to Update. Open Folder… is a sheet on this window.
 import AppKit
 import ServiceManagement
 import SwiftUI

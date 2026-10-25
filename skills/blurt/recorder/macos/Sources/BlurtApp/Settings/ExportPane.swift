@@ -2,7 +2,9 @@
 // same key the skill's exporters read; SKILL reference/export-*.md), or globally for ~/Blurt (config export). One row
 // per destination in plain words — Feishu / Lark, GitHub Issues, Markdown and CSV — each Ready, Checking or Not set up
 // with the one command that sets it up; which tool it uses (lark-cli or a Feishu app, gh) is in the row's tooltip.
-// Never shows a credential.
+// Never shows a credential. The Feishu / Lark table link is saved on Return, on leaving the field and on leaving the
+// pane — a link that can't be a table's (BlurtCore FeishuLink) says so under the field and isn't saved. Choose… is a
+// sheet on the Settings window.
 import AppKit
 import SwiftUI
 import BlurtCore
