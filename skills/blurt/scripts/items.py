@@ -28,9 +28,10 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   fix        REF | SESSION ID --state fixing|fixed|wontfix|reopened [--agent A] [--run-id R] [--commit] [--pr] [--note]
              v2 alias of state (fixing → in_progress, fixed / wontfix → to_verify with that claim, reopened → todo)
   move       REF … --project P|inbox [--by user|ai] [--confidence X] [--reason TEXT]
-  doc        SESSION | --project P|inbox [--state S]… [--kind K]…   what the review page shows
+  doc        SESSION | --project P|inbox [--state S]… [--kind K]… [--item REF]   what the review page shows; --item:
+             that item is always in it, whatever the filters (the one a detail pane shows, a discarded one too)
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
-  user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm]           the user's edits (apps)
+  user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm] [--item REF]   the user's edits (apps)
   migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items; --all also
              forgets the sessions unfinished items point at that no longer exist ("repaired": their files)
   path       REF                                       → {"path","store","project","uid","id"}
@@ -948,9 +949,11 @@ def move_items(paths: list[Path], pid: str, by: str = "user", confidence: float 
                 moved.append({"uid": item["uid"], "from": src.project_id, "to": dst.project_id, "id": old,
                               "path": str(path)})
                 continue
-            item["id"] = dst.next_id()
+            aliases = list(item.get("aliases") or [])
+            back = _former_id(aliases, dst)
+            item["id"] = back or dst.next_id()
             item["project"] = dst.project_id
-            item["aliases"] = [*(item.get("aliases") or []), old] if old else item.get("aliases") or []
+            item["aliases"] = [*(a for a in aliases if a != back), *([old] if old else [])]
             if reason and by == "ai":
                 item["project_reason"] = reason
             a_src, a_dst = src.asset_dir(item["uid"]), dst.asset_dir(item["uid"])
@@ -970,6 +973,18 @@ def move_items(paths: list[Path], pid: str, by: str = "user", confidence: float 
             moved.append({"uid": item["uid"], "from": src.project_id, "to": dst.project_id, "id": item["id"],
                           "path": str(new_path)})
     return moved
+
+
+def _former_id(aliases: list[str], dst: Store) -> str | None:
+    """An id this item had in `dst` before it left (the newest one), still free there: moving back — the user's
+    ⌘Z after a move — gives the item its old id again instead of minting another. Only ids the store itself handed
+    out (below its counter), so a key another project once used is never taken."""
+    nxt = int(dst.meta.get("next") or 1)
+    for a in reversed(aliases):
+        k, _, n = a.rpartition("-")
+        if k == dst.key and n.isdigit() and int(n) < nxt and dst.path_for_id(a) is None:
+            return a
+    return None
 
 
 def suggest_project(path: Path, pid: str, confidence: float, reason: str) -> None:
@@ -1065,9 +1080,11 @@ def list_items(session: Path | None, project: str | None, kinds, states) -> dict
     return {"ok": True, "items": rows, **({"session": str(session)} if session else {})}
 
 
-def make_doc(scope: dict, kinds=(), states=None) -> dict:
+def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> dict:
     """A session's doc lists every item it still has (discarded ones too: the page shows and restores them); a
-    project's doc lists its items but the discarded, unless asked for them (states)."""
+    project's doc lists its items but the discarded, unless asked for them (states). `include` (a uid, id or alias):
+    the one item a detail pane shows is always in its doc, whatever the filters say — a discarded item opened from
+    the Discarded filter must not show its neighbour instead."""
     import projects  # noqa: PLC0415
     pairs, b = scope_items(scope)
     names = _project_names()
@@ -1079,7 +1096,8 @@ def make_doc(scope: dict, kinds=(), states=None) -> dict:
             continue
         if it["uid"] in removed:
             continue
-        if (b is None or states is not None or kinds) and not _matches(it, kinds, states):
+        wanted = include is not None and include in (it.get("uid"), it.get("id"), *(it.get("aliases") or []))
+        if not wanted and (b is None or states is not None or kinds) and not _matches(it, kinds, states):
             continue
         items.append(present(it, p, names=names))
     plist = [{"id": e["id"], "name": e.get("name"), "key": e.get("key"), "path": e["path"]}
@@ -1543,6 +1561,7 @@ def build_parser() -> Parser:
         s.add_argument("session", nargs="?")
         s.add_argument("--project")
         add_state_filters(s)
+        s.add_argument("--item", metavar="REF", help="always include this item (the one a detail pane shows)")
         if name == "poll":
             s.add_argument("--etag", required=True)
     s = sub.add_parser("user-ops")
@@ -1553,6 +1572,7 @@ def build_parser() -> Parser:
     g.add_argument("--stdin", action="store_true")
     s.add_argument("--confirm", action="store_true", help="the user finished the review (reviewed: true)")
     add_state_filters(s)  # the doc that comes back
+    s.add_argument("--item", metavar="REF", help="always include this item in the doc that comes back")
     s = sub.add_parser("migrate")
     s.add_argument("sessions", nargs="*")
     s.add_argument("--all", action="store_true")
@@ -1640,7 +1660,7 @@ def run(a) -> dict:
         return move(session, refs, a.project, a.by, a.confidence, a.reason)
     if a.cmd in ("doc", "poll"):
         scope = scope_of(_session_arg(a.session), a.project)
-        doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work))
+        doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work), a.item)
         tag = doc_etag(doc)
         if a.cmd == "poll" and a.etag == tag:
             return {"ok": True, "etag": tag}
@@ -1657,7 +1677,7 @@ def run(a) -> dict:
         ops = parse_ops(raw)
         scope = scope_of(_session_arg(a.session), a.project)
         apply_user_ops(scope, ops, a.confirm)
-        doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work))
+        doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work), a.item)
         return {"ok": True, "etag": doc_etag(doc), "doc": doc}
     if a.cmd == "migrate":
         if a.all:

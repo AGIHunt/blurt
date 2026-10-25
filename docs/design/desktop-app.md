@@ -254,12 +254,23 @@ Windows/Linux: Blurt（Tauri 2）
 | `J` / `K` | 下一条 / 上一条 |
 | `↩` | 打开 |
 | `⌘↩` | 交给 agent |
-| `E` | 编辑标题 |
-| `1`–`4` | 改 kind |
+| `E` | 就地改标题（在列表行里；↩ / Tab / 点别处保存，Esc 恢复，空标题不保存）|
+| `1`–`4` | 改 kind（列表和详情页一样；严重程度在详情的标签菜单里）|
 | `S` | 改状态 |
 | `R` | 审核模式 |
 | `Space` | Quick Look |
 | `?` | 显示键位表 |
+| `⌘Z` / `⇧⌘Z` | 窗口里只有一个撤销栈：列表的状态、移动、改名，和详情页的状态、标签、字段编辑（一次聚焦到失焦算一步，`registerUndo` 桥）都在同一个 `NSUndoManager` 上。原生步骤在发起动作的那次按键里就登记（目标是各自的 `UndoStep`，写失败就 `removeAllActions(withTarget:)` 撤掉这一步）；脚本写入（items.py / projects.py）按发起顺序经 `SerialWork` 串行执行，撤销在原动作写完之后才跑。页面的一步只记它自己改的状态（uid、from、to），撤销时只在条目仍是 to 时发 `state --undo`，别的条目的状态（Agent 之后写的 to_verify）不动 |
+| `⌫` / `⌘⌫` | 丢弃选中的条目（访达的「移到废纸篓」）；「从口喷鸡移除」项目没有快捷键 |
+| `⌘Q` | 主窗口里是关窗口回到菜单栏（第一次会提示一次），退出在菜单栏图标的菜单里 |
+
+v0.9 补充（主窗口）：
+- 筛选按位置记：每个位置（待处理、全部条目、某个项目…）有自己的 kind 和状态筛选（`PlaceFilters`），存在 `ui/main-window.json` 的 `filters` 里；
+  没有状态控件的位置（待处理）永远不套状态筛选。
+- 项目顺序是用户自己的（`projects.json` 里的顺序，`projects.py order` 拖动改）：使用项目不会改顺序，`⌘5`–`⌘9` 和「前往」菜单读同一份。
+  「打开最近」仍按最近使用排。项目可以在侧栏里就地改名；「从口喷鸡移除」不再确认，`projects.py remove` 返回原条目，撤销时 `restore` 原样放回。
+- 详情页总是显示选中的那一条：`items.py doc/poll/user-ops --item UID` 让这条无论状态都在文档里；页面 `setItem` 找不到时返回 false，宿主重新加载，页面同时显示「不在这里」，绝不显示上一条。
+- 列表里的状态键是乐观更新（行立即变化或离开，索引随后对上，失败就回到索引的状态），写完后详情页 `pollNow` 原地刷新，不重载页面。
 
 ---
 
@@ -453,6 +464,9 @@ WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] ORDER B
 - **查询词**：QUERY 按空白切成多个词，全部要命中（AND）。≥ 3 个字符的词交给 FTS5，作为带引号的短语
   （`"` 写成 `""`，所以用户输入里的 FTS 语法只当普通文字）；1–2 个字符的词用
   `(i.title LIKE ? ESCAPE '\' OR i.quote LIKE ? ESCAPE '\' OR i.body LIKE ? ESCAPE '\')`，`%` `_` `\` 要转义。
+  长得像条目编号的词（`KEY-n`，大小写不限，如 `AW-11`）= `(upper(i.item_id) = ? OR i.rowid IN (SELECT rowid FROM items_fts
+  WHERE items_fts MATCH ?))`，这一条排在最前（`CASE WHEN upper(i.item_id) = 'AW-11' THEN 0 ELSE 1 END` 放在排序最前）；
+  条目移走后的旧编号（`aliases`）在 `body` 里，所以旧编号也搜得到。Mac（IndexReader）、`index.py`、MCP 同一套。
   snippet：走 FTS 时用 `snippet(items_fts, -1, '[', ']', '…', 12)`；只有短词时由宿主自己截（`index.py` 截命中处前后约 20 字）。
   Mac 上显示成一行（`SearchHit.shown`）：多行用 ` · ` 连起来，截断处的 `…` 保留；最后一行被截成不到 4 个字的碎片（不含命中）时去掉，止于 ` …`。
 - **筛选**：`--kind` / `--status` / `--fix-state` 都可以重复给；不带 `--status` 时排除 `deleted`；`--fix-state none` = `fix_state IS NULL`。
@@ -610,6 +624,9 @@ opencode `cli`、mcp=`docs`；gemini、zcode 全部 `docs`。
 原生应用只执行 `command` 返回的 argv 或 url，并且注入登录 shell 的环境（沿用 `agentEnvironment()`）。
 
 ### C6 · 审核组件的宿主协议
+
+> v0.9：宿主可以再提供 `registerUndo(label)` / `windowUndo(redo)` / `undone(uid)` / `focusList()`（窗口级撤销栈、Esc 回列表），
+> 句柄多了 `undo()` / `redo()` / `pollNow()` / `focusTitle()`，`setItem()` 返回是否找到。以 `web/packages/review/src/host.ts` 为准。
 
 ```ts
 // web/packages/review/src/host.ts

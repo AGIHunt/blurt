@@ -7,7 +7,9 @@
 // Reads come from index.db (MainModel / IndexReader v3), projects.json (ProjectStore) and $BLURT_HOME/jobs
 // (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / state / move, projects.py,
 // handoff.py, sessions.py (AppEnvironment.dispatch, P3). The index follows (items.py updates it in-process, FSEvents
-// + `index.py update` catch everything else) and the model reloads when index.db's data_version moves.
+// + `index.py update` catch everything else) and the model reloads when index.db's data_version moves. The writes run
+// one after another (writes: SerialWork), and each undoable one is on the window's NSUndoManager from the moment it is
+// asked for, so ⌘Z always takes back the latest step, after it has been written.
 // This window never opens by itself: no review pops up when processing finishes (K4 notification rules).
 import AppKit
 import BlurtCore
@@ -31,6 +33,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     let sidebar: SidebarController
     let list: ItemListController
     let detail = WebHostController()
+    /// this window's writes (items.py, projects.py), in the order they were asked for — an undo after its action
+    let writes = SerialWork()
     /// The middle and detail columns: the items and their detail, or the Dictation page's two halves.
     let listColumn: ColumnController
     let detailColumn: ColumnController
@@ -55,6 +59,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private(set) var shownJob: String?
     /// The reminder sheet while it is up (tests answer it).
     var openAlert: NSAlert?
+    /// ⌘Q's one-time "still in the menu bar" toast was shown (saved with the window state).
+    var quitHintShown = false
 
     init() {
         sidebar = SidebarController(model: model)
@@ -229,13 +235,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         model.text = ""
         searchItem?.searchField.stringValue = ""
-        model.state = row.discarded ? "discarded" : nil
-        model.kinds = []
-        if model.row(of: uid) == nil {
-            model.scope = row.projectID == "inbox" ? .unassigned : .project(row.projectID)
+        // the place on show if it lists the item (with the filters that show it), else its project, else All Items
+        func look(in s: Scope) -> Bool {
+            model.scope = s
+            model.kinds = []
+            model.state = row.discarded ? "discarded" : nil
             model.reload()
+            return model.row(of: uid) != nil
         }
-        if model.row(of: uid) == nil { model.scope = .all; model.reload() }
+        _ = look(in: model.scope) || look(in: row.projectID == "inbox" ? .unassigned : .project(row.projectID)) || look(in: .all)
         sidebar.select(model.scope)
         list.select(id: uid)
         window?.makeFirstResponder(list.table)
@@ -294,6 +302,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard s != model.scope || model.rowCount == 0 else { return }
         list.forgetSelection()        // a new place starts at its first row
         shownJob = nil
+        focusBanner(nil)
         model.scope = s
         if s.isTable { roomForTable() }
         model.reload()
@@ -358,7 +367,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func listSelectionChanged() {
         let items = list.selectedItems
-        if !items.isEmpty { shownJob = nil; list.jobs.selected = nil }
+        if !items.isEmpty { shownJob = nil; list.jobs.selected = nil; if focusedBanner != nil { focusBanner(nil) } }
         if shownJob != nil { return }
         if items.count == 1, let it = items.first {
             detail.show(item: it, projects: model.projects)
@@ -368,15 +377,59 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         scheduleSave()
     }
 
+    /// The rows above the list from the keyboard (micro 15): the "Unfiled captures" and "Recently dragged out"
+    /// banners, then the running jobs. ↑ on the first item goes to the last of them, ↑ / ↓ walk them (the detail
+    /// shows a job, as a click does), ↓ from the last one is the first item again; ↩ on a banner opens what it opens.
+    func stepJobs(_ d: Int, fromRow row: Int) -> Bool {
+        var tops: [String] = []
+        if !list.captures.isHidden { tops.append("banner:captures") }
+        if !list.taken.isHidden { tops.append("banner:taken") }
+        tops += model.jobs.map(\.id)
+        switch TopRows.step(tops, current: focusedBanner.map { "banner:" + $0 } ?? shownJob, by: d, fromRow: row, hasItems: model.rowCount > 0) {
+        case .pass: return false
+        case .beep: NSSound.beep()
+        case .firstItem:
+            focusBanner(nil)
+            list.table.selectRowIndexes([0], byExtendingSelection: false)
+            list.table.scrollRowToVisible(0)
+        case .row(let id) where id.hasPrefix("banner:"):
+            focusBanner(String(id.dropFirst("banner:".count)))
+        case .row(let id):
+            focusBanner(nil)
+            selectJob(id)
+        }
+        return true
+    }
+
+    /// The banner the keyboard cursor is on ("captures" | "taken"), drawn selected like a job row.
+    private(set) var focusedBanner: String?
+    func focusBanner(_ name: String?) {
+        if name != nil {
+            list.table.deselectAll(nil)
+            shownJob = nil
+            list.jobs.selected = nil
+        }
+        focusedBanner = name
+        list.captures.selected = name == "captures"
+        list.taken.selected = name == "taken"
+    }
+
     func selectJob(_ id: String) {
         guard let j = JobStore.shared.job(id) else { return }
+        if focusedBanner != nil { focusBanner(nil) }
         list.table.deselectAll(nil)
         shownJob = id
         list.jobs.selected = id
         detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
     }
 
-    func openSelection() { window?.makeFirstResponder(detail.web) }
+    /// ↩: into the detail, the caret at the end of its title (E renames in the row instead).
+    func openSelection() {
+        if let b = focusedBanner { (b == "captures" ? list.captures.onClick : list.taken.onClick)?(); return }
+        guard !detail.web.isHidden else { return }
+        window?.makeFirstResponder(detail.web)
+        detail.web.evaluateJavaScript("window.blurtReview && window.blurtReview.focusTitle && window.blurtReview.focusTitle()")
+    }
 
     func handOffSelection() {
         let uids = list.selectedItems.map(\.uid)
@@ -385,21 +438,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func renameSelection() {
-        guard let it = list.selectedItems.first, let w = window else { return }
-        let a = NSAlert()
-        a.messageText = T("main.rename.title")
-        a.informativeText = "\(Look.kindName(it.kind)) · \(it.itemID)"
-        let f = NSTextField(string: it.title)
-        f.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
-        a.accessoryView = f
-        a.addButton(withTitle: T("action.save"))
-        a.addButton(withTitle: T("action.cancel"))
-        a.window.initialFirstResponder = f
-        a.beginSheetModal(for: w) { [weak self] r in
-            let t = f.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard r == .alertFirstButtonReturn, !t.isEmpty, t != it.title else { return }
-            self?.edit([it], ["title": t])
-        }
+        // in place, in the row (micro 1): no sheet; Return / Tab / a click away commits, Esc reverts
+        let sel = list.selectedItems
+        guard sel.count == 1, let it = sel.first, !it.legacy, Scripts.canWrite else { NSSound.beep(); return }
+        window?.makeFirstResponder(list.table)
+        if !list.beginRename(commit: { [weak self] it, t in self?.edit([it], ["title": t]) }) { NSSound.beep() }
     }
 
     func setKind(_ kind: String) { edit(list.selectedItems.filter { $0.kind != kind }, ["kind": kind]) }
@@ -408,54 +451,93 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// An action on the items it is valid for (the others are left alone). Hand off opens the dispatch panel; the rest
     /// go to items.py state.
-    func apply(_ action: String, to items: [ItemRow]) { apply(action, to: items, redoing: false) }
-
-    /// `redoing`: called by ⇧⌘Z — its undo is registered right away, inside the redo (where it belongs), not later.
-    private func apply(_ action: String, to items: [ItemRow], redoing: Bool) {
-        let items = StateMenu.valid(action, items)
-        guard !items.isEmpty else { NSSound.beep(); return }
-        if action == "hand_off" { return dispatch(uids: items.map(\.uid)) }
+    func apply(_ action: String, to items: [ItemRow]) {
+        let ok = StateMenu.valid(action, items)
+        guard !ok.isEmpty else { NSSound.beep(); return }
+        if action == "hand_off" { return dispatch(uids: ok.map(\.uid)) }
         guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
-        if redoing { registerStateUndo(action, items) }
-        Scripts.state(items.map(\.uid), action: action) { [weak self] r in
-            switch r {
+        // shown at once (the row takes its new state, or leaves a place that no longer lists it); the index agrees a
+        // moment later, or puts it back if the write failed
+        if action != "restore" {
+            model.optimistic(states: Dictionary(ok.compactMap { it in Lifecycle.target(of: action, state: it.state).map { (it.uid, $0) } },
+                                                uniquingKeysWith: { a, _ in a }))
+        }
+        apply(action, uids: ok.map(\.uid), redoing: false)
+    }
+
+    /// The write itself. Its ⌘Z is on the window's stack at once — in the key press or click that asked for it (or
+    /// inside the ⇧⌘Z that redoes it) — so a quick ⌘Z takes back this step, never an older one. The script runs after
+    /// whatever this window is still writing (writes), against the items as they are by then; a failure takes the
+    /// step off again. `redoing`: ⇧⌘Z (no toast).
+    private func apply(_ action: String, uids: [String], redoing: Bool) {
+        let step = UndoStep<[(String, String)]>()
+        register(StateMenu.title(action), step) { c, s in c.undoState(action, uids: uids, s) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            let items = StateMenu.valid(action, self.model.items(uids: uids))
+            guard !items.isEmpty else { return self.drop(step) }
+            step.value = items.map { ($0.uid, $0.state) }
+            switch await Scripts.awaiting({ Scripts.state(items.map(\.uid), action: action, done: $0) }) {
             case .success:
-                self?.wrote(items)
-                if !redoing { self?.registerStateUndo(action, items) }
-            case .failure(let f): self?.alert(T("main.error.save_title"), f.localized)
+                self.wrote(items)
+                guard !redoing else { return }
+                // where it went, and the way back — the row may just have left the list (like the review page's toast)
+                let to = StateMenu.target(action, items)
+                let what = items.count == 1 ? items[0].itemID : TP("main.items.count", items.count)
+                appDelegate?.toast(T("main.state.toast", Look.stateName(to), what),
+                                   icon: ["todo", "done"].contains(to) ? .check : nil, undo: self.undoToast(StateMenu.title(action)))
+            case .failure(let f):
+                self.drop(step)
+                self.model.reload()            // the optimistic state goes: the index has the truth
+                self.alert(T("main.error.save_title"), f.localized)
             }
+        }
+    }
+
+    /// Why a key does nothing for the selection: a discarded item has to be restored first; otherwise the state's
+    /// own menu (S) has what can be done from there.
+    func notHere(_ key: String, _ items: [ItemRow]) -> String? {
+        switch Lifecycle.refusal(forKey: key, states: items.filter { !$0.legacy }.map(\.state)) {
+        case .discarded: return T("main.state.restore_first")
+        case .state(let s): return T("main.state.not_here", s.map(Look.stateName) ?? T("main.state.these"))
+        case nil: return nil
         }
     }
 
     /// ⌘Z after a state action (A D R W X ⌫, the ring, the menus): each item back to the state it had, through
-    /// items.py's --undo (the user taking back their own change); ⇧⌘Z does the action again.
-    func registerStateUndo(_ action: String, _ items: [ItemRow]) {
-        guard let um = window?.undoManager else { return }
-        let before = items.map { ($0.uid, $0.state) }
-        um.registerUndo(withTarget: self) { c in c.undoState(action, before) }
-        um.setActionName(StateMenu.title(action))
-    }
-
-    private func undoState(_ action: String, _ before: [(String, String)]) {
-        let uids = before.map(\.0)
-        if let um = window?.undoManager {
-            um.registerUndo(withTarget: self) { c in c.apply(action, to: c.model.items(uids: uids), redoing: true) }   // redo
-            um.setActionName(StateMenu.title(action))
-        }
-        for (state, group) in Dictionary(grouping: before, by: \.1) {
-            let ids = group.map(\.0)
-            Scripts.undoState(ids, to: state) { [weak self] r in
-                guard let self = self else { return }
-                switch r {
+    /// items.py's --undo (the user taking back their own change); ⇧⌘Z does the action again. Runs after the action's
+    /// own write (step holds what it changed).
+    private func undoState(_ action: String, uids: [String], _ step: UndoStep<[(String, String)]>) {
+        let redo = UndoStep<Void>()
+        register(StateMenu.title(action), redo) { c, _ in c.apply(action, uids: uids, redoing: true) }
+        writes.run { [weak self] in
+            guard let self = self, let before = step.value else { return }      // the action never ran: nothing to take back
+            for (state, group) in Dictionary(grouping: before, by: \.1) {
+                let ids = group.map(\.0)
+                switch await Scripts.awaiting({ Scripts.undoState(ids, to: state, done: $0) }) {
                 case .success:
                     self.wrote(self.model.items(uids: ids))
                     self.model.reloadAll()                  // back in this list (a discard undone): selected again
                     if ids.contains(where: { self.model.row(of: $0) != nil }) { self.list.reload(keep: ids) }
-                case .failure(let f): self.alert(T("main.error.save_title"), f.localized)
+                case .failure(let f):
+                    self.drop(redo)
+                    self.alert(T("main.error.save_title"), f.localized)
                 }
             }
         }
     }
+
+    /// One step on the window's undo stack, registered now; `step` carries what its write found (filled in by the
+    /// write, read by the undo — which runs after it, in writes).
+    /// NSUndoManager doesn't retain its targets: the handler holds the step, so it lives exactly as long as the step
+    /// is on the stack.
+    private func register<V>(_ name: String, _ step: UndoStep<V>, _ undo: @escaping (MainWindowController, UndoStep<V>) -> Void) {
+        guard let um = window?.undoManager else { return }
+        um.registerUndo(withTarget: step) { [weak self] _ in if let c = self { undo(c, step) } }
+        um.setActionName(name)
+    }
+    /// A step whose write failed (or found nothing to do) leaves the stack: ⌘Z goes to the one before it.
+    private func drop(_ step: AnyObject) { window?.undoManager?.removeAllActions(withTarget: step) }
 
     func applyState(_ action: String, uids: [String]) { apply(action, to: model.items(uids: uids)) }
 
@@ -464,7 +546,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func act(key: String) {
         let byAction = Dictionary(grouping: list.selectedItems.filter { !$0.legacy }) { Lifecycle.action(forKey: key, state: $0.state) ?? "" }
         let runs = byAction.filter { !$0.key.isEmpty }
-        guard !runs.isEmpty else { NSSound.beep(); return }
+        guard !runs.isEmpty else {
+            NSSound.beep()
+            if let why = notHere(key, list.selectedItems) { appDelegate?.toast(why) }
+            return
+        }
         for a in Lifecycle.actions where runs[a] != nil { apply(a, to: runs[a]!) }
     }
 
@@ -503,17 +589,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         for (p, group) in Dictionary(grouping: items, by: \.projectID) {
             let ops: [[String: Any]] = group.map { ["op": "set", "id": $0.uid, "set": set, "unset": [] as [String]] }
-            Scripts.userOps(["--project", p], ops) { [weak self] r in
+            writes.run { [weak self] in
+                let r = await Scripts.awaiting({ Scripts.userOps(["--project", p], ops, done: $0) })
                 if case .failure(let f) = r { self?.alert(T("main.error.save_title"), f.localized) }
                 self?.wrote(group)
             }
         }
     }
 
-    /// After a write: make sure the index catches up even when items.py couldn't update it in-process.
+    /// After a write: make sure the index catches up even when items.py couldn't update it in-process; the detail page
+    /// re-reads its doc in place (its scroll, media and caret stay) — an item that moved elsewhere is shown again
+    /// from there by the model's reload (WebHostController.refresh(item:)).
     func wrote(_ items: [ItemRow]) {
         Scripts.indexUpdate(items.map(\.fileURL))
-        detail.reload()
+        detail.pollNow()
     }
 
     func copyPaths() {
@@ -537,6 +626,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case 5: openFolder()
         case 6: if case .project(let p) = model.scope { useProject(p) }
         case 7: if case .project(let p) = model.scope { locateFolder(p) }
+        case 8: list.elsewhereUID.map(reveal(uid:))
         default: break
         }
     }
@@ -603,49 +693,197 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// Items to a project (or "inbox" = Unassigned), as the user's choice (items.py move --by user).
+    /// Items to a project (or "inbox" = Unassigned), as the user's choice (items.py move --by user) — from the toolbar,
+    /// the menus, the palette, a drop on the sidebar or the banner's suggestion. ⌘Z (or the toast's Undo) sends each
+    /// item back to the project it came from, with its old id. The step is on the stack at once; the move runs in
+    /// writes, after anything still being written.
     func move(uids: [String], to project: String) {
-        let items = model.items(uids: uids).filter { $0.projectID != project && !$0.legacy }
-        guard !items.isEmpty else { return }
-        Scripts.move(items.map(\.uid), to: project) { [weak self] r in
-            switch r {
+        guard model.items(uids: uids).contains(where: { $0.projectID != project && !$0.legacy }) else { return }
+        move(uids: uids, to: project, toast: true)
+    }
+
+    /// `toast`: false for ⇧⌘Z.
+    private func move(uids: [String], to project: String, toast: Bool) {
+        let step = UndoStep<[(uid: String, project: String)]>()
+        register(moveUndoName(project), step) { c, s in c.undoMove(uids: uids, to: project, s) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            let items = self.model.items(uids: uids).filter { $0.projectID != project && !$0.legacy }
+            guard !items.isEmpty else { return self.drop(step) }
+            step.value = items.map { (uid: $0.uid, project: $0.projectID) }
+            switch await Scripts.awaiting({ Scripts.move(items.map(\.uid), to: project, done: $0) }) {
             case .success(let o):
                 let n = (o["moved"] as? [Any])?.count ?? items.count
-                let name = project == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: project)?.name ?? project
-                appDelegate?.toast(TP("main.move.done", n, name), icon: .check)
-                self?.wrote(items)
-            case .failure(let f): self?.alert(T("main.move.failed"), f.localized)
+                self.wrote(items)
+                if toast {
+                    appDelegate?.toast(TP("main.move.done", n, Self.projectName(project)), icon: .check, undo: self.undoToast(self.moveUndoName(project)))
+                }
+            case .failure(let f):
+                self.drop(step)
+                self.alert(T("main.move.failed"), f.localized)
             }
+        }
+    }
+
+    static func projectName(_ id: String) -> String {
+        id == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: id)?.name ?? id
+    }
+    private func moveUndoName(_ project: String) -> String { T("main.move.undo_name", Self.projectName(project)) }
+
+    /// ⌘Z: each item back where it was (after the move itself has been written); ⇧⌘Z moves them again.
+    private func undoMove(uids: [String], to project: String, _ step: UndoStep<[(uid: String, project: String)]>) {
+        let redo = UndoStep<Void>()
+        register(moveUndoName(project), redo) { c, _ in c.move(uids: uids, to: project, toast: false) }
+        writes.run { [weak self] in
+            guard let self = self, let before = step.value else { return }
+            for back in MoveBack.plan(before, movedTo: project) {
+                let rows = self.model.items(uids: back.uids)
+                switch await Scripts.awaiting({ Scripts.move(back.uids, to: back.project, done: $0) }) {
+                case .success:
+                    self.wrote(rows)
+                    // back in this list (moved out of the project on show): selected again
+                    self.model.reloadAll()
+                    if back.uids.contains(where: { self.model.row(of: $0) != nil }) { self.list.reload(keep: back.uids) }
+                case .failure(let f):
+                    self.drop(redo)
+                    self.alert(T("main.move.failed"), f.localized)
+                }
+            }
+        }
+    }
+
+    /// A toast's Undo: the window's ⌘Z, as long as the step it names is still the one ⌘Z would take back.
+    func undoToast(_ name: String) -> () -> Void {
+        { [weak self] in
+            guard let um = self?.window?.undoManager, um.canUndo, um.undoActionName == name else { NSSound.beep(); return }
+            um.undo()
         }
     }
 
     func projectSettings(_ id: String) {
         guard let p = ProjectStore.shared.project(id: id), !p.isInbox, let w = window else { return }
         ProjectSettingsSheet.show(p, on: w) { [weak self] patch in
-            Task { @MainActor in
+            self?.writes.run { [weak self] in
                 do { try await ProjectStore.shared.update(id, patch) }
-                catch let e as ProjectError { self?.alert(T("main.project.save_failed"), Scripts.Failure(code: e.code, message: "\(e)").localized) }
-                catch { self?.alert(T("main.project.save_failed"), "\(error)") }
+                catch { self?.alert(T("main.project.save_failed"), Self.projectFailure(error)) }
             }
         }
     }
 
+    /// What to tell the user when projects.py said no: its code's own sentence (K10), never the code or an id.
+    static func projectFailure(_ error: Error) -> String {
+        (error as? ProjectError).map { Scripts.Failure(code: $0.code, message: "\($0)").localized } ?? T("main.error.generic")
+    }
+
+    /// Remove from Blurt: at once, no question (micro 9) — the folder and its items stay where they are, and Undo
+    /// (⌘Z, the toast) puts the project back exactly as it was (projects.py restore: name, key, settings, its place in
+    /// the list, current or not). On the stack at once; the write runs in writes.
     func removeProject(_ id: String) {
-        guard let p = ProjectStore.shared.project(id: id), let w = window else { return }
-        let a = NSAlert()
-        a.messageText = T("main.project.remove.title", p.name)
-        a.informativeText = T("main.project.remove.detail")
-        a.addButton(withTitle: T("main.project.remove.confirm"))
-        a.addButton(withTitle: T("action.cancel"))
-        a.beginSheetModal(for: w) { [weak self] r in
-            guard r == .alertFirstButtonReturn else { return }
-            Task { @MainActor in
-                do {
-                    try await ProjectStore.shared.remove(id)
-                    if self?.model.scope == .project(id) { self?.go(.inbox) }
-                } catch { self?.alert(T("main.project.save_failed"), "\(error)") }
+        guard ProjectStore.shared.project(id: id) != nil else { return }
+        let name = T("main.project.remove.undo_name")
+        let step = UndoStep<[String: Any]>()
+        register(name, step) { c, s in c.restoreProject(id, s, name: name) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            guard let p = ProjectStore.shared.project(id: id) else { return self.drop(step) }
+            do {
+                let removed = try await ProjectStore.shared.remove(id)
+                guard !removed.isEmpty else { return self.drop(step) }
+                step.value = removed
+                self.model.filters.forget(Scope.project(id).key)
+                if self.model.scope == .project(id) { self.go(.inbox) }
+                appDelegate?.toast(T("main.project.removed", p.name), undo: self.undoToast(name))
+            } catch {
+                self.drop(step)
+                self.alert(T("main.project.save_failed"), Self.projectFailure(error))
             }
         }
+    }
+
+    private func restoreProject(_ id: String, _ step: UndoStep<[String: Any]>, name: String) {
+        let redo = UndoStep<Void>()
+        register(name, redo) { c, _ in c.removeProject(id) }      // ⇧⌘Z removes it again
+        writes.run { [weak self] in
+            guard let self = self, let removed = step.value else { return }
+            do {
+                try await ProjectStore.shared.restore(removed)
+                self.model.reloadSidebar()
+                self.reveal(project: id)
+            } catch {
+                self.drop(redo)
+                self.alert(T("main.project.save_failed"), Self.projectFailure(error))
+            }
+        }
+    }
+
+    /// A project's name typed in place in the sidebar; ⌘Z puts the old one back.
+    func renameProject(_ id: String, to name: String) {
+        guard let old = ProjectStore.shared.project(id: id)?.name, old != name else { return }
+        renameProject(id, resolve: { name })
+    }
+
+    /// `resolve`: the new name, read when the write runs (an undo's is the name its rename found).
+    private func renameProject(_ id: String, resolve: @escaping () -> String?) {
+        let step = UndoStep<String>()
+        register(T("main.project.rename.undo_name"), step) { c, s in c.renameProject(id, resolve: { s.value }) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            guard let name = resolve(), let old = ProjectStore.shared.project(id: id)?.name, old != name else { return self.drop(step) }
+            step.value = old
+            do { try await ProjectStore.shared.update(id, ["name": name]) }
+            catch {
+                self.drop(step)
+                self.alert(T("main.project.save_failed"), Self.projectFailure(error))
+            }
+        }
+    }
+
+    /// The projects dragged into a new order (⌘5–⌘9 follow it); ⌘Z puts the old order back.
+    func reorderProjects(_ ids: [String]) {
+        guard ProjectStore.shared.ordered.map(\.id) != ids else { return }
+        reorderProjects(resolve: { ids })
+    }
+
+    private func reorderProjects(resolve: @escaping () -> [String]?) {
+        let step = UndoStep<[String]>()
+        register(T("main.project.reorder.undo_name"), step) { c, s in c.reorderProjects(resolve: { s.value }) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            let old = ProjectStore.shared.ordered.map(\.id)
+            // the order as it is by now: a project removed meanwhile drops out, one added stays where it is
+            guard let want = resolve().map({ ProjectStore.reconciled($0, with: old) }), want != old else { return self.drop(step) }
+            step.value = old
+            do { try await ProjectStore.shared.order(want) }
+            catch {
+                self.drop(step)
+                self.alert(T("main.project.save_failed"), Self.projectFailure(error))
+            }
+        }
+    }
+
+    /// The project on show (the menu bar's Project menu acts on it).
+    var shownProject: String? {
+        if case .project(let p) = model.scope, model.project(id: p)?.registered == true { return p }
+        return nil
+    }
+    @objc func mRenameShownProject() {
+        guard let p = shownProject else { return }
+        sidebar.select(.project(p))
+        window?.makeFirstResponder(sidebar.outline)
+        sidebar.renameSelected()
+    }
+    @objc func mShownProjectSettings() { shownProject.map(projectSettings) }
+    @objc func mUseShownProject() {
+        guard let p = shownProject else { return }
+        useProject(ProjectStore.shared.currentID == p ? nil : p)
+    }
+    @objc func mRevealShownProject() { shownProject.flatMap { model.project(id: $0) }.map { NSWorkspace.shared.activateFileViewerSelecting([$0.path]) } }
+    @objc func mRemoveShownProject() { shownProject.map(removeProject) }
+    @objc func mRenameProject(_ i: NSMenuItem) {
+        guard let p = i.representedObject as? String else { return }
+        sidebar.select(.project(p))
+        window?.makeFirstResponder(sidebar.outline)
+        DispatchQueue.main.async { [weak self] in self?.sidebar.renameSelected() }   // after the context menu closed
     }
 
     func useProject(_ id: String?) {
@@ -722,7 +960,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard !items.isEmpty else { return nil }
         let m = NSMenu()
         m.autoenablesItems = true
-        let n = items.count
         // what you can do from here (K3); handing off has its own section below
         let states = StateMenu.actions(for: items, canHandOff: false)
         if !states.isEmpty, Scripts.canWrite {
@@ -730,25 +967,37 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             for a in states { m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self)) }
             m.addItem(.separator())
         }
-        // hand off
-        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
-        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
+        itemActions(into: m, items: items)
+        return m
+    }
+
+    /// The item actions after the state section — one builder for the context menu and the menu bar's Item menu, so
+    /// both have the same entries in the same order with the same titles, symbols and keys (the menu bar's are all
+    /// there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
+    func itemActions(into m: NSMenu, items: [ItemRow]?) {
+        let n = items?.count ?? 1
+        let one = items.map { $0.count == 1 } ?? true
+        let bar = items == nil
+        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
         _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
-        if n == 1, sessionJob(items[0]) != nil { _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal") }
+        if bar || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
+            _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
+        }
         m.addItem(.separator())
         m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
-        m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items)))
-        if n == 1 { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
-        if n == 1, let it = items.first, it.sessionURL != nil {
+        m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items ?? [])))
+        if bar || one { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
+        if bar || (one && items?.first?.sessionURL != nil) {
             _ = add(m, T("main.menu.review_batch"), #selector(mReviewBatch), "rectangle.stack")
         }
         m.addItem(.separator())
+        _ = add(m, T("main.menu.quick_look"), #selector(mQuickLook), "eye", key: "y")
         _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "folder", key: "r", mods: [.command, .shift])
         _ = add(m, T("action.copy_path"), #selector(mCopyPath), "doc.on.doc", key: "c", mods: [.command, .option])
         _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink), "link")
-        if n == 1, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
-        return m
+        if one, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
     }
 
     @discardableResult
@@ -782,7 +1031,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func moveMenu() -> NSMenu {
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
-        for p in ProjectStore.shared.projects {
+        for p in ProjectStore.shared.ordered {
             let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
             i.state = here == [p.id] ? .on : .off
         }
@@ -818,6 +1067,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let cur = ProjectStore.shared.currentID == id
         let use = add(m, cur ? T("main.project.use_auto") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
         use.toolTip = T("main.project.use.tip")
+        _ = add(m, T("main.project.rename"), #selector(mRenameProject(_:)), "pencil", obj: id)
         _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
         m.addItem(.separator())
         _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "folder", obj: p.path)
@@ -881,9 +1131,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return e.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent
     }
 
+    /// The item sits in the menu bar (at any depth), not in a context or toolbar menu.
+    func inMenuBar(_ item: NSMenuItem) -> Bool {
+        var m = item.menu
+        while let s = m?.supermenu { m = s }
+        return m != nil && m === NSApp.mainMenu
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let items = list.selectedItems
-        if item.action == #selector(mState(_:)) || item.action == #selector(mStateMenu), item.menu?.supermenu != nil, isKeyMatch(item) {
+        if inMenuBar(item), isKeyMatch(item) {
             return false        // a menu-bar item's single key: the list's keyDown handles it there (MainMenu.displayKey)
         }
         switch item.action {
@@ -910,8 +1167,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return Scripts.canWrite && items.contains { $0.projectID != p && !$0.legacy }
         case #selector(mOpenSession):
             return items.count == 1 && sessionJob(items[0]) != nil
-        case #selector(mRename), #selector(mSetKind(_:)):
+        case #selector(mRename):
+            // one title at a time: with several rows selected Rename is off and E beeps
+            return Scripts.canWrite && items.count == 1 && !items[0].legacy
+        case #selector(mSetKind(_:)):
+            if inMenuBar(item), let k = item.representedObject as? String { item.state = !items.isEmpty && items.allSatisfy { $0.kind == k } ? .on : .off }
             return Scripts.canWrite && items.contains { !$0.legacy }
+        case #selector(mRenameShownProject), #selector(mShownProjectSettings), #selector(mRevealShownProject):
+            return shownProject != nil
+        case #selector(mUseShownProject):
+            item.title = shownProject != nil && ProjectStore.shared.currentID == shownProject ? T("main.project.use_auto") : T("main.project.use")
+            return shownProject != nil
+        case #selector(mRemoveShownProject):
+            return shownProject != nil
+        case #selector(mSort(_:)):
+            item.state = item.representedObject as? String == model.sort ? .on : .off
+            return model.scope != .dictation
+        case #selector(mClearFilters):
+            return model.filtered
+        case #selector(mEnrich):
+            return Scripts.canWrite && items.contains { !$0.legacy && !$0.discarded }
+        case #selector(mReviewBatch):
+            return items.count == 1 && items[0].sessionURL != nil
         case #selector(mReveal), #selector(mCopyPath), #selector(mCopyLink), #selector(mQuickLook), #selector(mOpenInEditor):
             return !items.isEmpty
         default: return true
@@ -923,6 +1200,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func reveal(file: URL) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
     func quickLook(files: [URL]) { list.toggleQuickLook(files) }
     func webWrote() { detail.currentItem.map { Scripts.indexUpdate([$0.fileURL]) } }
+    /// ⌘Z took back a step the detail page made on another item than the one selected: show that one, like the
+    /// list's own undo does.
+    func webUndid(_ uid: String) {
+        guard detail.currentItem?.uid != uid, !uid.isEmpty else { return }
+        if model.row(of: uid) != nil { list.select(id: uid) }
+    }
     func revealJob(_ id: String) { reveal(job: id) }
 
     func openCode(_ ref: String, item: ItemRow?) {
@@ -980,13 +1263,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             case "k": palette.toggle(); return true
             case "f": focusSearch(); return true
             case "o": openFolder(); return true
+            case "q": mCloseToMenuBar(); return true     // not Quit: the window goes, Blurt stays in the menu bar
             case "1": go(.inbox); return true
             case "2": go(.inProgress); return true
             case "3": go(.unassigned); return true
             case "4": go(.all); return true
             default: break
             }
-            if let n = Int(ch), n >= 5, n <= 9, n - 5 < model.projects.count { go(.project(model.projects[n - 5].id)); return true }
+            if let n = Int(ch), n >= 5, n <= 9 {
+                let ps = shortcutProjects
+                if n - 5 < ps.count { go(.project(ps[n - 5].id)) } else { NSSound.beep() }
+                return true
+            }
             if e.keyCode == 36 || e.keyCode == 76, window?.firstResponder === list.table { handOffSelection(); return true }
         }
         if mods == [.command, .shift], ch == "r" { mReveal(); return true }
@@ -1075,7 +1363,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch menu.identifier?.rawValue {
         case "toolbar-1":
             let n = list.selectedItems.count
-            _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
+            _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
             menu.addItem(.separator())
             menu.addItem(menuHeader(T("main.toolbar.handoff.own")))
             _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
@@ -1137,8 +1425,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     struct State: Codable {
         var frame: String?, sidebar: Double?, detail: Double?, sidebarCollapsed: Bool?
-        var scope: String?, kinds: [String]?, state: String?, sort: String?, ascending: Bool?
+        var scope: String?, sort: String?, ascending: Bool?
+        /// each place's kinds and State filter (PlaceFilters)
+        var filters: PlaceFilters?
+        /// before 0.9: one filter for the whole window (read once, for the place it was saved in)
+        var kinds: [String]?, state: String?
         var selected: [String]?, open: Bool?
+        /// ⌘Q's "Blurt is still in the menu bar" was shown
+        var quitHint: Bool?
     }
     static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
 
@@ -1161,7 +1455,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.sidebarCollapsed = items[0].isCollapsed
         s.detail = Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
-        s.kinds = model.kinds.sorted(); s.state = model.state
+        s.filters = model.allFilters
+        s.quitHint = quitHintShown ? true : nil
         s.sort = model.sort; s.ascending = model.ascending
         s.selected = list.selectedIDs
         s.open = open
@@ -1176,8 +1471,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if let f = s?.frame { w.setFrame(from: f) } else { w.center() }
         if let sc = s?.scope.flatMap(Scope.init(key:)) { model.scope = sc }
         if case .project(let p) = model.scope, ProjectStore.shared.project(id: p) == nil { model.scope = .inbox }
-        model.kinds = Set(s?.kinds ?? [])
-        model.state = s?.state.flatMap { $0 == "inbox" || Lifecycle.isState($0) ? $0 : nil }
+        var filters = s?.filters ?? PlaceFilters()
+        if s?.filters == nil, let old = s, old.kinds?.isEmpty == false || old.state != nil {
+            filters.set(PlaceFilter(kinds: old.kinds ?? [], state: old.state), for: model.scope.key)   // never a state the place can't show
+        }
+        model.filters = filters
+        model.applyFilters()
+        quitHintShown = s?.quitHint == true
         model.text = ""          // like Finder and Mail: a new window starts without the last search
         model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
         model.ascending = s?.ascending ?? false

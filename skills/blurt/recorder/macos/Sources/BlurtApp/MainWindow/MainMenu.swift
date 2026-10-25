@@ -25,8 +25,10 @@ enum MainMenu {
         }
         var app = [NSMenuItem]()
         if AppEnvironment.settings != nil { app += [item(T("menu.settings"), #selector(MainWindowController.mSettings), ","), .separator()] }
+        // no ⌘Q on Quit: it's the resident app. ⌘Q in the main window closes it back to the menu bar instead
+        // (MainWindowController.handleKeyEquivalent → mCloseToMenuBar, which says so once)
         app += [item(T("menu.hide"), #selector(NSApplication.hide(_:)), "h", target: nil), .separator(),
-                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "", target: nil)]   // no ⌘Q: it's the resident app
+                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "", target: nil)]
         _ = menu("Blurt", app)
 
         let recent = NSMenu()
@@ -62,15 +64,24 @@ enum MainMenu {
         if DictationLabModel.enabled {
             go.append(item(T("dictation.lab.menu"), #selector(MainWindowController.mDictationLab), "l", [.command, .option]))
         }
-        for (k, p) in c.model.projects.prefix(5).enumerated() where p.registered {
+        // ⌘5–⌘9: the same five projects the key handler goes to (MainWindowController.shortcutProjects)
+        for (k, p) in c.shortcutProjects.enumerated() {
             go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
         }
-        go += [.separator(), item(T("menu.toggle_sidebar"), #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control], target: nil)]
         _ = menu(T("menu.go"), go)
-        let move = NSMenuItem(title: T("main.menu.move_to"), action: nil, keyEquivalent: "")
-        move.submenu = c.moveMenu()
+        // View: the columns, the sort (the same as the table's header) and the filters
+        let sort = NSMenu()
+        for (key, title) in MainWindowController.sortKeys {
+            sort.addItem(item(title, #selector(MainWindowController.mSort(_:)), obj: key))
+        }
+        let sortItem = NSMenuItem(title: T("menu.sort_by"), action: nil, keyEquivalent: "")
+        sortItem.submenu = sort
+        _ = menu(T("menu.view"), [item(T("menu.toggle_sidebar"), #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control], target: nil),
+                                  item(T("menu.toggle_detail"), #selector(MainWindowController.mToggleDetail), "i", [.command, .option]), .separator(),
+                                  sortItem,
+                                  item(T("main.empty.clear_filters"), #selector(MainWindowController.mClearFilters))])
         // K3's actions, enabled per selection (validateMenuItem); the single-key equivalents only show here — the list
-        // handles A D R W X ⌫ S itself, so typing in the search field or the detail never triggers them
+        // handles A D R W X ⌫ S E 1–4 itself, so typing in the search field or the detail never triggers them
         func state(_ a: String, _ key: String) -> NSMenuItem {
             let i = item(StateMenu.title(a == "back" ? "send_back" : a), #selector(MainWindowController.mState(_:)), obj: a)
             i.image = Look.ring(Lifecycle.transitions[a]?.to ?? "todo", size: 14)
@@ -79,18 +90,16 @@ enum MainMenu {
         }
         let changeState = item(T("main.menu.change_state"), #selector(MainWindowController.mStateMenu))
         displayKey(changeState, "s")
-        _ = menu(T("menu.item"), [item(T("main.menu.start_session"), #selector(MainWindowController.mHandOff), "\r"),
-                                  item(T("main.cmd.copy_instruction"), #selector(MainWindowController.mCopyInstruction), "c", [.command, .shift]),
-                                  item(T("main.cmd.copy_full"), #selector(MainWindowController.mCopyFull)),
-                                  item(T("main.menu.open_session"), #selector(MainWindowController.mOpenSession)), .separator(),
-                                  changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
-                                  state("discard", "\u{8}"), .separator(),
-                                  move,
-                                  item(T("main.menu.rename"), #selector(MainWindowController.mRename)), .separator(),
-                                  item(T("main.menu.quick_look"), #selector(MainWindowController.mQuickLook), "y"),
-                                  item(T("action.reveal_in_finder"), #selector(MainWindowController.mReveal), "r", [.command, .shift]),
-                                  item(T("action.copy_path"), #selector(MainWindowController.mCopyPath), "c", [.command, .option]),
-                                  item(T("main.menu.copy_link"), #selector(MainWindowController.mCopyLink))])
+        let itemMenu = menu(T("menu.item"), [changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
+                                             state("discard", "\u{8}"), .separator()])
+        c.itemActions(into: itemMenu, items: nil)       // the rest as in the context menu (one builder)
+        // the project on show: what its sidebar row's menu offers. Remove from Blurt has no key: ⌘⌫ on a selection
+        // means "delete these" on the Mac (Finder), so in the list it discards the items, never the project
+        _ = menu(T("menu.project"), [item(T("main.project.settings"), #selector(MainWindowController.mShownProjectSettings), "i"),
+                                     item(T("main.project.rename"), #selector(MainWindowController.mRenameShownProject)),
+                                     item(T("main.project.use"), #selector(MainWindowController.mUseShownProject)), .separator(),
+                                     item(T("action.reveal_in_finder"), #selector(MainWindowController.mRevealShownProject)), .separator(),
+                                     item(T("main.project.remove"), #selector(MainWindowController.mRemoveShownProject))])
         _ = menu(T("menu.window"), [item(T("menu.minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil),
                                     item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil)])
         let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),
@@ -147,6 +156,39 @@ extension MainWindowController {
     @objc func mDictationHistory() { showDictation() }
     @objc func mDictationLab() { showDictationLab() }
     @objc func mHelp() { NSWorkspace.shared.open(Help.guideURL()) }      // the user guide, in the app's language
+
+    /// ⌘1–⌘4 the places, ⌘5–⌘9 these: the first five opened projects in the sidebar's order — the Go menu and the key
+    /// handler read the same list, so a key never goes somewhere its menu doesn't show.
+    var shortcutProjects: [ProjectEntry] { Array(model.projects.filter(\.registered).prefix(5)) }
+
+    /// The View menu's Sort By: the table header's sort keys, in its order.
+    static var sortKeys: [(String, String)] {
+        [("updated", T("main.col.updated")), ("title", T("main.col.title")), ("id", T("main.col.id")), ("kind", T("main.col.kind")),
+         ("state", T("main.col.state")), ("project", T("main.col.project"))]
+    }
+
+    @objc func mSort(_ i: NSMenuItem) {
+        guard let key = i.representedObject as? String else { return }
+        // the header's own default direction for the key; picking the current key again flips it, like a header click
+        let asc = key == model.sort ? !model.ascending : ["title", "kind", "state", "project", "id"].contains(key)
+        list.table.sortDescriptors = [NSSortDescriptor(key: key, ascending: asc)]   // sortDescriptorsDidChange reloads
+    }
+
+    @objc func mToggleDetail() {
+        let d = split.splitViewItems[2]
+        d.animator().isCollapsed.toggle()
+    }
+
+    @objc func mClearFilters() { clearFilters() }
+
+    /// ⌘Q in the main window: close it to the menu bar — Blurt stays for dictation and the capture keys. The first
+    /// time, a toast says so (and where Quit is).
+    @objc func mCloseToMenuBar() {
+        let first = !quitHintShown
+        quitHintShown = true                // before the close, which saves the window state
+        window?.performClose(nil)
+        if first { appDelegate?.toast(T("main.quit.kept"), seconds: 7) }
+    }
 }
 
 /// A section title in a menu (NSMenuItem.sectionHeader on macOS 14+, a disabled item before).
@@ -157,35 +199,60 @@ func menuHeader(_ title: String) -> NSMenuItem {
     return i
 }
 
-/// "?" — the keyboard map
+/// "?" — the keyboard map, in three headed groups (where you go, what you do to an item, edit and window). A normal
+/// utility panel that follows the app's appearance: label text on the window background (the old HUD measured 3.8:1),
+/// every row in the user's language.
 enum ShortcutsSheet {
-    static func show(on window: NSWindow?) {
-        let rows: [(String, String)] = [
-            ("⌘K", T("main.keys.palette")), ("/  ⌘F", T("main.keys.search")), ("⌘O", T("project.open_folder")),
-            ("J / K  ↓ / ↑", T("main.keys.next")), ("↩", T("main.keys.open")),
+    static var sections: [(String, [(String, String)])] {
+        [(T("main.keys.section.navigate"), [
+            ("⌘K", T("main.keys.palette")), ("/  ⌘F", T("main.keys.search")), ("J / K  ↓ / ↑", T("main.keys.next")),
+            ("↩", T("main.keys.open")), ("⌘1 … ⌘4", T("main.keys.places")), ("⌘5 … ⌘9", T("main.keys.projects")),
+            ("⎋  ⇧⇥", T("main.keys.back_to_list")), ("⌥⌘D", T("dictation.history.sidebar")), ("⌘O", T("project.open_folder")),
+         ]),
+         (T("main.keys.section.item"), [
             ("⌘↩", T("main.menu.start_session")), ("⇧⌘C", T("main.cmd.copy_instruction")),
             ("S", T("main.keys.state")), ("A", StateMenu.title("keep")), ("D", StateMenu.title("done")), ("R", T("main.keys.back")),
-            ("W", StateMenu.title("wontfix")), ("X  ⌫", StateMenu.title("discard")),
-            ("E", T("main.menu.rename")), ("1 2 3 4", T("main.keys.kind")), ("⌘Z  ⇧⌘Z", T("main.keys.undo")),
-            (T("main.keys.space"), "Quick Look"),
-            ("⌘1 … ⌘4", T("main.keys.places")), ("⌥⌘D", T("dictation.history.sidebar")), ("⌘5 … ⌘9", T("main.keys.projects")),
-            ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")), ("?", T("main.keys.this")),
-        ]
-        let grid = NSGridView(views: rows.map { k, v in
-            let a = NSTextField(labelWithString: k)
-            a.font = .monospacedSystemFont(ofSize: 12, weight: .medium)
-            a.alignment = .right
-            let b = NSTextField(labelWithString: v)
-            b.font = .systemFont(ofSize: 12)
-            b.textColor = .secondaryLabelColor
-            return [a, b]
-        })
+            ("W", StateMenu.title("wontfix")), ("X  ⌫  ⌘⌫", StateMenu.title("discard")),
+            ("E", T("main.menu.rename").replacingOccurrences(of: "…", with: "")), ("1 2 3 4", T("main.keys.kind")),
+            (T("main.keys.space"), T("main.menu.quick_look")), ("⇧⌘R  ⌥⌘C", T("main.keys.reveal_copy")),
+         ]),
+         (T("main.keys.section.window"), [
+            ("⌘Z  ⇧⌘Z", T("main.keys.undo")), ("⌃⌘S", T("menu.toggle_sidebar")), ("⌥⌘I", T("main.keys.detail")),
+            ("⌘I", T("main.project.settings").replacingOccurrences(of: "…", with: "")), ("⌘W  ⌘Q", T("main.keys.close_window")),
+            ("?", T("main.keys.this")),
+         ])]
+    }
+
+    static func show(on window: NSWindow?) {
+        let grid = NSGridView(numberOfColumns: 2, rows: 0)
+        for (n, (title, rows)) in sections.enumerated() {
+            let h = NSTextField(labelWithString: title)
+            h.font = .systemFont(ofSize: 11, weight: .semibold)
+            h.textColor = .secondaryLabelColor
+            grid.addRow(with: [h, NSGridCell.emptyContentView])
+            let hr = grid.row(at: grid.numberOfRows - 1)
+            hr.mergeCells(in: NSRange(location: 0, length: 2))
+            hr.cell(at: 0).xPlacement = .leading
+            hr.topPadding = n == 0 ? 0 : 12
+            hr.bottomPadding = 2
+            for (k, v) in rows {
+                let a = NSTextField(labelWithString: k)
+                a.font = .monospacedSystemFont(ofSize: 12, weight: .medium)
+                a.textColor = .labelColor
+                a.alignment = .right
+                let b = NSTextField(labelWithString: v)
+                b.font = .systemFont(ofSize: 12)
+                b.textColor = .secondaryLabelColor
+                grid.addRow(with: [a, b])
+            }
+        }
         grid.rowSpacing = 7
         grid.columnSpacing = 16
         grid.column(at: 0).xPlacement = .trailing
         // a floating panel, not a sheet: it never blocks the window (or quitting); ? or Esc closes it
         if let p = panel, p.isVisible { p.orderOut(nil); return }
-        let p = ShortcutsPanel(contentRect: .zero, styleMask: [.titled, .closable, .utilityWindow, .hudWindow], backing: .buffered, defer: false)
+        let p = ShortcutsPanel(contentRect: .zero, styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
+        p.appearance = window?.appearance
         p.title = T("menu.shortcuts")
         p.isFloatingPanel = true
         p.hidesOnDeactivate = true

@@ -22,6 +22,8 @@ protocol ItemListActions: AnyObject {
     func focusSearch()                         // /
     func emptyAction(_ tag: Int)               // buttons in the empty states
     func selectJob(_ id: String)               // a row of the jobs section
+    /// ↑ / ↓ at the edge between the jobs and the items: true when it moved among the jobs (or back to the items)
+    func stepJobs(_ d: Int, fromRow row: Int) -> Bool
 }
 
 /// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
@@ -37,6 +39,8 @@ final class ItemTableView: NSTableView {
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
         let ch = e.charactersIgnoringModifiers ?? ""
         if mods == .command, e.keyCode == 36 || e.keyCode == 76 { actions?.handOffSelection(); return }
+        // ⌘⌫ = delete these (Finder's Move to Trash): the items are discarded, as ⌫ does — never the project
+        if mods == .command, e.keyCode == 51 || e.keyCode == 117 { actions?.act(key: "delete"); return }
         if mods.isEmpty || mods == .shift {
             switch (e.keyCode, ch) {
             case (36, _), (76, _): actions?.openSelection(); return
@@ -44,6 +48,9 @@ final class ItemTableView: NSTableView {
             case (51, _), (117, _): actions?.act(key: "delete"); return
             case (_, "j"): move(1); return
             case (_, "k"): move(-1); return
+            // plain ↑ / ↓ as J / K, so they reach the jobs above the list too (⇧ extends the selection as usual)
+            case (125, _) where mods.isEmpty: move(1); return
+            case (126, _) where mods.isEmpty: move(-1); return
             case (_, "e"): actions?.renameSelection(); return
             case (_, "s"): actions?.showStateMenu(row: selectedRowIndexes.first, from: nil); return
             case (_, "a"), (_, "d"), (_, "r"), (_, "w"), (_, "x"): actions?.act(key: ch.lowercased()); return
@@ -60,6 +67,8 @@ final class ItemTableView: NSTableView {
     }
 
     func move(_ d: Int) {
+        // ↑ from the first item enters the running jobs above the list, ↓ from the last job comes back (micro 15)
+        if actions?.stepJobs(d, fromRow: selectedRow) == true { return }
         guard numberOfRows > 0 else { return }
         let cur = selectedRow < 0 ? (d > 0 ? -1 : numberOfRows) : selectedRow
         let n = max(0, min(numberOfRows - 1, cur + d))
@@ -89,6 +98,69 @@ final class ItemTableView: NSTableView {
     }
 }
 
+/// A row whose title can be renamed in place: an item's title (TitleCell), a project's name in the sidebar (SourceCell).
+protocol InlineEditable: AnyObject {
+    var editField: NSTextField { get }
+    func beginEditing(_ text: String, delegate: NSTextFieldDelegate)
+    func setInvalid(_ on: Bool)
+    func endEditing(showing text: String?)
+}
+
+/// Rename in place (micro 1, 10): the row's title turns into a field with the whole title selected. Return, Tab or a click
+/// elsewhere commits; Esc puts the title back. An empty title is refused right there (a red ring and a beep — it
+/// never commits). The focus goes back to the list with the row still selected; ⌘Z undoes it ("Undo Rename").
+final class InlineRename: NSObject, NSTextFieldDelegate {
+    let cell: InlineEditable
+    let uid: String
+    let original: String
+    let commit: (String) -> Void
+    let done: () -> Void
+    private var finished = false
+
+    init(cell: InlineEditable, uid: String, original: String, commit: @escaping (String) -> Void, done: @escaping () -> Void) {
+        self.cell = cell
+        self.uid = uid
+        self.original = original
+        self.commit = commit
+        self.done = done
+        super.init()
+    }
+
+    func start() {
+        cell.beginEditing(original, delegate: self)
+        cell.editField.window?.makeFirstResponder(cell.editField)
+        cell.editField.currentEditor()?.selectAll(nil)
+    }
+
+    var text: String { cell.editField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    func controlTextDidChange(_ obj: Notification) { cell.setInvalid(text.isEmpty) }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        switch sel {
+        case #selector(NSResponder.cancelOperation(_:)): finish(save: false); return true
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            if text.isEmpty { NSSound.beep(); cell.setInvalid(true); return true }
+            finish(save: true)
+            return true
+        default: return false
+        }
+    }
+
+    /// A click elsewhere: commit what's there (an empty title puts the old one back).
+    func controlTextDidEndEditing(_ obj: Notification) { finish(save: !text.isEmpty) }
+
+    func finish(save: Bool) {
+        guard !finished else { return }
+        finished = true
+        let t = text
+        let changed = save && t != original
+        cell.endEditing(showing: changed ? t : nil)
+        done()
+        if changed { commit(t) }
+    }
+}
+
 /// Big centred message with an image and up to two buttons — the one empty state (docs/design/system.md §3.5,
 /// `EmptyState` metrics, the same as SwiftUI's `EmptyStateContent`). The friendly states (first launch, inbox zero,
 /// nothing here yet, no results) show the brand mark: the app icon, the 4A chick on its tile. Trouble (scan failed, a
@@ -101,8 +173,7 @@ final class EmptyStateView: NSView {
     let title = NSTextField(labelWithString: "")
     let message = NSTextField(wrappingLabelWithString: "")
     let buttons = NSStackView()
-    /// the brand arc, as every "AI at work" spinner (JobRow, the item banner), not the system one
-    let spinner = BrandSpinner()
+    let spinner = BrandSpinner(size: 26)
     var onButton: ((Int) -> Void)?
     /// tags whose button is never the primary (they undo a filter rather than move on)
     static let secondaryTags: Set<Int> = [2]
@@ -118,8 +189,6 @@ final class EmptyStateView: NSView {
         message.preferredMaxLayoutWidth = EmptyState.messageWidth
         icon.symbolConfiguration = .init(pointSize: 34, weight: .light)
         icon.contentTintColor = .tertiaryLabelColor
-        spinner.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([spinner.widthAnchor.constraint(equalToConstant: 22), spinner.heightAnchor.constraint(equalToConstant: 22)])
         buttons.orientation = .horizontal
         buttons.spacing = 8
         for v in [icon, mark, spinner, title, message, buttons] as [NSView] { stack.addArrangedSubview(v) }
@@ -140,8 +209,14 @@ final class EmptyStateView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// `mark`: the brand mark instead of the symbol (the friendly states).
+    /// `oneLine`: a path — one line, cut in the middle (both ends say where it was).
     func show(symbol: String?, image: NSImage? = nil, mark showMark: Bool = false, title t: String,
-              message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
+              message m: String, oneLine: Bool = false, buttons bs: [(String, Int)] = [], busy: Bool = false) {
+        message.maximumNumberOfLines = oneLine ? 1 : 0
+        message.lineBreakMode = oneLine ? .byTruncatingMiddle : .byWordWrapping
+        message.toolTip = oneLine ? m : nil
+        message.cell?.wraps = !oneLine
+        message.usesSingleLineMode = oneLine
         icon.image = showMark ? nil : image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         icon.isHidden = icon.image == nil || busy
         mark.isHidden = !showMark || busy
@@ -162,7 +237,8 @@ final class EmptyStateView: NSView {
                 b.bezelStyle = .rounded
             }
             b.tag = tag
-            if k == 0 { b.keyEquivalent = "\r" }
+            // the brand primary takes Return; a plain button never does (it would draw as the system default)
+            if k == 0 && !Self.secondaryTags.contains(tag) { b.keyEquivalent = "\r" }
             buttons.addArrangedSubview(b)
         }
         buttons.isHidden = bs.isEmpty
@@ -180,6 +256,11 @@ final class EmptyStateView: NSView {
 final class CapturesBanner: NSView {
     var onClick: (() -> Void)?
     private let row = JobRow()
+    /// the keyboard cursor is on it (↑ from the first item, micro 15)
+    var selected: Bool {
+        get { row.selected }
+        set { row.selected = newValue }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -221,6 +302,11 @@ final class CapturesBanner: NSView {
 final class TakenBanner: NSView {
     var onClick: (() -> Void)?
     private let row = JobRow()
+    /// the keyboard cursor is on it (↑ from the first item, micro 15)
+    var selected: Bool {
+        get { row.selected }
+        set { row.selected = newValue }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -399,6 +485,25 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let missing = MissingFolderBanner()
     let bar = FilterBar()
     let empty = EmptyStateView()
+    /// the item the empty state's "Show AW-11" goes to
+    private(set) var elsewhereUID: String?
+
+    /// A search for an item's id that this place doesn't list: the item, and where it is instead.
+    func elsewhere(_ q: String) -> (ItemRow, String)? {
+        let ids = ItemQuery(text: q).idTerms
+        guard ids.count == 1, let r = model.reader,
+              let it = ((try? r.items(ItemQuery(text: ids[0], states: Lifecycle.states, limit: 4))) ?? []).first(where: { $0.itemID.uppercased() == ids[0] })
+        else { return nil }
+        if it.discarded { return (it, T("main.empty.id_in", it.itemID, Look.stateName("discarded"))) }
+        let here: Bool
+        switch model.scope {
+        case .project(let p): here = it.projectID == p
+        case .unassigned: here = it.projectID == "inbox"
+        case .all: here = true
+        default: here = false
+        }
+        return (it, here ? T("main.empty.id_filtered", it.itemID) : T("main.empty.id_in", it.itemID, it.projectID == "inbox" ? T("project.inbox") : it.projectName))
+    }
     let scroll = NSScrollView()
     private var suppressSelection = false
     private var header: NSTableHeaderView?
@@ -579,8 +684,32 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // MARK: reload
 
+    // MARK: rename in place
+
+    private(set) var renaming: InlineRename?
+    private var reloadAfterRename = false
+
+    /// E (or Rename in a menu) on the one selected row: its title becomes editable right there.
+    func beginRename(commit: @escaping (ItemRow, String) -> Void) -> Bool {
+        guard renaming == nil, table.selectedRowIndexes.count == 1, let r = table.selectedRowIndexes.first, let it = model.item(at: r),
+              let col = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) else { return false }
+        table.scrollRowToVisible(r)
+        guard let cell = table.view(atColumn: col, row: r, makeIfNecessary: true) as? TitleCell else { return false }
+        let e = InlineRename(cell: cell, uid: it.uid, original: it.title, commit: { commit(it, $0) }) { [weak self] in
+            guard let self = self else { return }
+            self.renaming = nil
+            self.view.window?.makeFirstResponder(self.table)       // back to the list, the row still selected
+            if self.reloadAfterRename { self.reloadAfterRename = false; self.reload() }
+        }
+        renaming = e
+        e.start()
+        return true
+    }
+
     /// Reload rows, keeping the selection (by uid) and the scroll position where possible.
     func reload(keep: [String]? = nil) {
+        // never under a title being renamed: once it's done
+        if renaming != nil { reloadAfterRename = true; return }
         let keepIDs = keep ?? selectionIDs     // captured before the model changed (row numbers mean other rows now)
         let top = table.rows(in: table.visibleRect).location
         let topID = topIDSeen                  // likewise: the model's rows are the new ones already
@@ -680,7 +809,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "missing": empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"), buttons: [(T("main.missing.locate"), 7)])
         case "scanning": empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
         case "discarded":
-            empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         default:
             empty.show(symbol: nil, mark: true, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
@@ -711,13 +840,19 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         }
         guard model.rowCount == 0 else { empty.isHidden = true; return }
         let q = model.text.trimmingCharacters(in: .whitespaces)
-        if !q.isEmpty {
+        if !q.isEmpty, let (it, why) = elsewhere(q) {
+            // an id typed here for an item this place doesn't list (discarded, filtered out, another project): say
+            // where it is and take you there — ⌘K finds it anywhere, the search shouldn't just say "no results"
+            elsewhereUID = it.uid
+            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q), message: why,
+                       buttons: [(T("main.empty.show_item", it.itemID), 8), (T("main.empty.clear_all"), 2)])
+        } else if !q.isEmpty {
             empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q),
-                       message: model.kinds.count + (model.state == nil ? 0 : 1) > 0
+                       message: model.kinds.count + (model.shownState == nil ? 0 : 1) > 0
                            ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
                        buttons: [(T("main.empty.clear_all"), 2)])
-        } else if model.state == "discarded", model.kinds.isEmpty {
-            empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
+        } else if model.shownState == "discarded", model.kinds.isEmpty {
+            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         } else if model.filtered {
             empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "",

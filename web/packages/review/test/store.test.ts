@@ -161,7 +161,49 @@ describe("ReviewStore over an acknowledging host (macos / tauri)", () => {
     expect([s.item!.id, s.stateOf(s.item!), s.item!.restore_to]).toEqual(["I-002", "discarded", "todo"]);
     key("r");
     expect(s.stateOf(s.item!)).toBe("todo");
-    s.setItem("I-001");
+    expect(s.setItem("I-001")).toBe(true);
+    expect(s.item!.id).toBe("I-001");
+    s.dispose();
+  });
+  it("the list view works from the keyboard: move, extend, select, open, act (micro 29)", async () => {
+    const m = memHost({ title: "t", items: [{ id: "I-001", title: "a" }, { id: "I-002", title: "b" }, { id: "I-003", title: "c" }] });
+    const s = new ReviewStore(m.host);
+    await s.load();
+    s.setView("list");
+    const key = (k: string, o: KeyboardEventInit = {}) => s.onKeyDown(new KeyboardEvent("keydown", { key: k, cancelable: true, ...o }));
+    key("a", { metaKey: true });
+    expect(s.selected.size).toBe(3);
+    s.clearSelection();
+    key("ArrowDown");
+    expect(s.listCur).toBe("I-001");
+    key("ArrowDown", { shiftKey: true });
+    expect([s.listCur, [...s.selected]]).toEqual(["I-002", ["I-001", "I-002"]]);
+    key("x"); // the selection
+    expect(s.data.items.map((i) => s.stateOf(i))).toEqual(["discarded", "discarded", "new"]);
+    s.clearSelection();
+    key("j");
+    key(" ");
+    expect([...s.selected]).toEqual(["I-003"]);
+    key("Enter");
+    expect([s.view, s.item!.id]).toEqual(["focus", "I-003"]); // (the view is remembered: back in focus for the next test)
+    s.dispose();
+  });
+  it("item mode never shows another item in place of one the doc doesn't have (a discarded one, say)", async () => {
+    const m = memHost({ items: [{ id: "I-001", uid: "U1" }, { id: "I-002", uid: "U2" }] });
+    // asked for at load: not item 0
+    const cold = new ReviewStore(m.host, { mode: "item", itemId: "U9" });
+    await cold.load();
+    expect([cold.missing, cold.item]).toEqual([true, undefined]);
+    cold.dispose();
+    // asked for later: setItem says so (the host then loads a doc that has it), and nothing stale stays on show
+    const s = new ReviewStore(m.host, { mode: "item", itemId: "U2" });
+    await s.load();
+    expect(s.setItem("U9")).toBe(false);
+    expect(s.item).toBeUndefined();
+    const key = (k: string) => s.onKeyDown(new KeyboardEvent("keydown", { key: k, cancelable: true }));
+    key("x"); // no key acts on the item shown before
+    expect(s.pendingOps()).toEqual([]);
+    expect(s.setItem("U1")).toBe(true);
     expect(s.item!.id).toBe("I-001");
     s.dispose();
   });

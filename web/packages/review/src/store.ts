@@ -4,11 +4,12 @@
    Two doc shapes (host.ts): v2 (a session's items.json, ops by display id) and v3 (K1 doc: a session or a project,
    ops by uid, projects). Everything the page edits is a field diff (sync.ts); the one thing that is an action rather
    than a field — a state change (K3: keep, done, send back, discard…) — goes as an explicit `state` op, sent at once
-   and shown optimistically until the server's answer arrives. */
+   and shown optimistically until the server's answer arrives. Undo restores the page's fields from a snapshot, but a
+   state only where that step changed it (UndoEntry.states), so an agent's state written meanwhile is never undone. */
 import { resolveLang, systemLanguages } from "@blurt/i18n";
-import { actionForKey, canDo, isInbox, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
+import { actionForKey, canDo, isInbox, KINDS, menuCase, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
 import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp } from "./host";
-import { humanizeKey } from "./fields";
+import { fieldLabel, humanizeKey } from "./fields";
 import { makeI18n, SEVERITIES, TYPES, type I18n } from "./i18n";
 import { imeBusy, isEnter } from "./ime";
 import { byId, byUid, canon, clone, diffOps, mergeInto, norm, rebase, statusOf, type KeyFn } from "./sync";
@@ -18,6 +19,34 @@ export type View = "overview" | "focus" | "list";
 export type StateFilter = "live" | "inbox" | State;
 export type ProcPhase = "hidden" | "working" | "fin" | "out";
 export type SaveState = "" | "saving" | "saved" | "error";
+/** what an undo step is called (the host's Edit menu: "Undo Change State") */
+/** the page's first control the Tab key reaches (document order; tabindex ≥ 0, enabled, not hidden) */
+export function firstTabbable(root: ParentNode = document): HTMLElement | null {
+  const sel = 'a[href], button, input, select, textarea, [contenteditable="true"], [tabindex]';
+  for (const el of root.querySelectorAll<HTMLElement>(sel)) {
+    if (el.tabIndex < 0 || (el as HTMLButtonElement).disabled || el.closest("[hidden], [inert], [aria-hidden='true']")) continue;
+    if ((el as HTMLInputElement).type === "hidden") continue;
+    return el;
+  }
+  return null;
+}
+
+export type UndoLabel = "undo.state" | "undo.move" | "undo.merge" | "undo.kind" | "undo.severity" | "undo.type" | "undo.field";
+/** one item's state as a step left it (`restore_to` only for discarded) */
+type StateAt = Pick<Item, "state" | "restore_to">;
+/** A state the step itself changed: undo puts `from` back only while the item is still at `to` (an agent's later
+    to_verify, or another page's change, is never undone by it). */
+interface StateStep {
+  k: string;
+  from: StateAt;
+  to: StateAt;
+}
+/** an undo/redo entry: the page as it was (fields), and the states this step changed — nothing else's state */
+interface UndoEntry {
+  snap: string;
+  label: string;
+  states: StateStep[];
+}
 
 export interface Media {
   kind: "img" | "wait" | "clip" | "orig";
@@ -112,7 +141,10 @@ export class ReviewStore {
   readonly ar = new Map<string, number>();
 
   private knownSrc = new Set<string>();
-  private undoStack: string[] = [];
+  private undoStack: UndoEntry[] = [];
+  private redoStack: UndoEntry[] = [];
+  /** the field being edited: the snapshot from when it got the focus (one undo step per editing session) */
+  private editing: { snap: string; key: string; k: string; was: string } | null = null;
   private listeners = new Set<() => void>();
   private net: Promise<unknown> = Promise.resolve();
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -154,6 +186,8 @@ export class ReviewStore {
     return this.i18n.lang;
   }
   t = (k: string, p?: Record<string, string | number | null | undefined>) => this.i18n.t(k, p);
+  /** a button or menu label: English in Title Case ("Mark as Done"); the catalog keeps sentence case */
+  label = (k: string) => menuCase(this.t(k));
   plural = (k: string, n: number, p?: Record<string, string | number | null | undefined>) => this.i18n.plural(k, n, p);
   kindLabel = (k: string) => (this.i18n.has(`kind.${k}`) ? this.t(`kind.${k}`) : humanizeKey(k));
   typeLabel = (k: string) => (this.i18n.has(`type.${k}`) ? this.t(`type.${k}`) : humanizeKey(k));
@@ -177,8 +211,11 @@ export class ReviewStore {
   get v3() {
     return this.key === byUid;
   }
+  /** item mode: the item asked for is not in the doc (it left the scope, or was never in it). The page says so —
+      it never shows another item in its place, whose buttons would then act on the wrong one. */
+  missing = false;
   get item(): Item | undefined {
-    return this.data.items[this.cur];
+    return this.missing ? undefined : this.data.items[this.cur];
   }
   keyOf = (i: Item) => this.key(i);
   /** the review's view of the state: pending (new) · drop (discarded) · keep (anything else) */
@@ -273,11 +310,14 @@ export class ReviewStore {
     }
     const moves = items.map((i) => ({ i, from: this.stateOf(i), to: targetOf(action, i) })).filter((m): m is { i: Item; from: State; to: State } => !!m.to);
     if (!moves.length) return 0;
-    this.snapshot();
-    for (const { i, from, to } of moves) {
+    const snap = this.snapString();
+    const steps = moves.map(({ i }): StateStep => ({ k: this.key(i), from: this.stateAt(i), to: this.stateAt(i) }));
+    moves.forEach(({ i, from, to }, n) => {
       this.setLocal(i, to, from);
+      steps[n].to = this.stateAt(i);
       if (!this.legacy) this.actionOps.push({ op: "state", id: this.key(i), action });
-    }
+    });
+    this.snapshot("undo.state", steps, snap);
     this.flush();
     if (opts.toast !== false) {
       const to = moves[0].to;
@@ -301,11 +341,11 @@ export class ReviewStore {
   moveTo = (items: Item[], projectId: string) => {
     const moving = items.filter((i) => i.project !== projectId);
     if (!this.canMove || !moving.length) return;
-    this.snapshot();
+    this.snapshot("undo.move");
     for (const i of moving) i.project = projectId;
     this.flush();
     const name = this.projectName(this.project(projectId));
-    this.showToast(this.plural("project.moved", moving.length, { project: name }), false, "folder");
+    this.showToast(this.plural("project.moved", moving.length, { project: name }), true, "folder");
   };
 
   /** the host can write a handoff (the browser page only when review.py says it can: doc `_caps`) */
@@ -399,7 +439,7 @@ export class ReviewStore {
       this.data.items = S.map(clone);
       this.base = new Map(S.map((i) => [this.key(i), clone(i)]));
       if (!this.langPicked && this.data.language) this.i18n = makeI18n(resolveLang(String(this.data.language), systemLanguages()));
-      if (this.mode === "item") this.cur = Math.max(0, this.findCur());
+      if (this.mode === "item") this.pointAt();
       else this.cur = Math.max(0, this.data.items.findIndex((i) => this.st(i) === "pending"));
       const v = storage.get("blurt.view") as View | null;
       this.view = v === "focus" || v === "list" || v === "overview" ? v : this.data.digest ? "overview" : this.data.items.length > 1 ? "focus" : "list";
@@ -438,10 +478,8 @@ export class ReviewStore {
         else delete i.restore_to;
       }
     }
-    if (this.mode === "item") {
-      const k = this.findCur();
-      this.cur = k >= 0 ? k : this.cur;
-    } else {
+    if (this.mode === "item") this.pointAt();
+    else {
       const k = this.data.items.findIndex((i) => this.key(i) === cid);
       this.cur = k >= 0 ? k : Math.min(this.cur, Math.max(0, this.data.items.length - 1));
     }
@@ -560,42 +598,95 @@ export class ReviewStore {
   flush = () => this.save(0);
 
   // ---------------------------------------------------------------- user actions
-  private snapshot() {
-    this.undoStack.push(JSON.stringify({ items: this.data.items, base: [...this.base.values()], cur: this.cur, cid: this.item && this.key(this.item) }));
-    if (this.undoStack.length > 80) this.undoStack.shift();
+  private snapString() {
+    return JSON.stringify({ items: this.data.items, base: [...this.base.values()], cur: this.cur, cid: this.item && this.key(this.item) });
   }
+  /** One undoable step of the user's (`label`: undo.state | undo.move | undo.merge | undo.edit). Where the host keeps
+      the window's undo stack (the Mac app), the step goes there too: ⌘Z works wherever the focus is, the Edit menu
+      names it, and the host calls undo() / redo() back. */
+  private snapshot(label: UndoLabel | string, states: StateStep[] = [], snap = this.snapString()) {
+    const name = label.startsWith("undo.") ? this.t(label) : label;
+    this.undoStack.push({ snap, label: name, states });
+    if (this.undoStack.length > 80) this.undoStack.shift();
+    this.redoStack = [];
+    this.host.registerUndo?.(name);
+  }
+  private stateAt(i: Item): StateAt {
+    const m = migrate(i);
+    return m.restore_to ? { state: m.state, restore_to: m.restore_to } : { state: m.state };
+  }
+  /** what the Edit menu calls the last step ("Change Kind", "Edit Steps to Reproduce") */
+  get undoName(): string | undefined {
+    return this.undoStack[this.undoStack.length - 1]?.label;
+  }
+  /** Z, ⌘Z outside a text field, a toast's Undo: the host's window-wide undo when it has one (it calls undo() back),
+      else the page's own. */
+  undoLast = () => (this.host.windowUndo ? this.host.windowUndo(false) : this.undo());
+  redoLast = () => (this.host.windowUndo ? this.host.windowUndo(true) : this.redo());
+
+  /** A field's editing session — focus to blur — is one undo step: the snapshot taken when it got the focus goes on
+      the stack when it loses it, if the field changed (typing autosaves meanwhile, as before). */
+  beginEdit = (i: Item, k: string) => {
+    this.editing = { snap: this.snapString(), key: this.key(i), k, was: JSON.stringify(k === "source" ? i.source : i[k]) ?? "" };
+  };
+  endEdit = (i: Item) => {
+    const e = this.editing;
+    this.editing = null;
+    if (!e || e.key !== this.key(i)) return;
+    if ((JSON.stringify(e.k === "source" ? i.source : i[e.k]) ?? "") !== e.was)
+      this.snapshot(menuCase(this.t("undo.field", { field: fieldLabel(e.k, this.i18n) })), [], e.snap);
+  };
+
   undo = () => {
-    const s = this.undoStack.pop();
-    if (!s) return;
-    const o = JSON.parse(s) as { items: Item[]; base: Item[]; cur: number; cid?: string };
+    const e = this.undoStack.pop();
+    if (!e) return;
+    this.redoStack.push({ snap: this.snapString(), label: e.label, states: e.states.map(({ k, from, to }) => ({ k, from: to, to: from })) });
+    this.restore(e, "toast.undone");
+  };
+  redo = () => {
+    const e = this.redoStack.pop();
+    if (!e) return;
+    this.undoStack.push({ snap: this.snapString(), label: e.label, states: e.states.map(({ k, from, to }) => ({ k, from: to, to: from })) });
+    this.restore(e, "toast.redone");
+  };
+  private restore(e: UndoEntry, toast: string) {
+    const o = JSON.parse(e.snap) as { items: Item[]; base: Item[]; cur: number; cid?: string };
     const now = new Map(this.data.items.map((i) => [this.key(i), this.stateOf(i)]));
-    const was = new Map(o.items.map((i) => [this.key(i), migrate(i)])); // before the rebase writes the server's into them
     // undo the user's own steps only: whatever the agent wrote since stays
     this.data.items = this.legacy
       ? o.items
       : rebase(o.items, new Map(o.base.map((i) => [this.key(i), i])), [...this.base.values()].map(clone), true, this.key).items;
-    // a state the user changed goes back explicitly (the server owns `state`): {op: "state", state, undo: true}.
-    // Items no longer on the page (merged away) come back through the merge's own undo (`add`).
+    // A state goes back only where this step changed it, and only while the item is still where the step left it
+    // (the server owns `state`: {op: "state", state, undo: true}). Every other item keeps the state it has now —
+    // an agent's to_verify written after a chip pick is not the chip's to undo. Items no longer on the page (merged
+    // away) come back through the merge's own undo (`add`).
+    const steps = new Map(e.states.map((st) => [st.k, st]));
     for (const i of this.data.items) {
       const k = this.key(i);
-      const { state, restore_to } = was.get(k) ?? {};
-      if (state && now.has(k) && state !== now.get(k)) {
-        this.setLocal(i, state, restore_to ?? "new");
-        if (!this.legacy) this.actionOps.push({ op: "state", id: k, state, undo: true });
+      const st = steps.get(k);
+      if (st && now.get(k) === st.to.state) {
+        this.setLocal(i, st.from.state!, st.from.restore_to ?? st.to.state!);
+        if (!this.legacy) this.actionOps.push({ op: "state", id: k, state: st.from.state!, undo: true });
         continue;
       }
       const p = this.pendingState.get(k); // unanswered: still as the user set it
       if (p) Object.assign(i, p);
     }
-    const k = this.data.items.findIndex((i) => this.key(i) === o.cid);
-    this.cur = this.legacy || k < 0 ? Math.min(o.cur, this.data.items.length - 1) : k;
+    if (this.mode === "item") {
+      // the detail keeps showing the item the host selected; the host is told which item the step was about
+      this.pointAt();
+      if (o.cid) this.host.undone?.(o.cid);
+    } else {
+      const k = this.data.items.findIndex((i) => this.key(i) === o.cid);
+      this.cur = this.legacy || k < 0 ? Math.min(o.cur, this.data.items.length - 1) : k;
+    }
     this.mediaSel = null;
     this.menuOpen = false;
     this.dir = "down";
     this.slideKey++;
     this.save();
-    this.showToast(this.t("toast.undone"));
-  };
+    this.showToast(this.t(toast));
+  }
 
   go = (k: number, d?: "up" | "down") => {
     if (k < 0 || k >= this.data.items.length) return;
@@ -624,31 +715,24 @@ export class ReviewStore {
     }
     setTimeout(() => this.nextPending(), 90);
   };
-  setSev = (v: string) => {
+  /** A chip's pick (kind, severity, type) on the current item: one undoable step. Nothing when it is the value already. */
+  private setChip(k: "kind" | "severity" | "type", v: string) {
     const i = this.item;
-    if (!i || kindOf(i) !== "issue") return;
-    i.severity = v;
+    if (!i || (k !== "kind" && kindOf(i) !== "issue") || (k === "kind" ? kindOf(i) : String(i[k] ?? "")) === v) return;
+    this.snapshot(k === "kind" ? "undo.kind" : k === "severity" ? "undo.severity" : "undo.type");
+    if (v) i[k] = v;
+    else delete i[k];
     this.save();
-  };
-  cycleSev = () => {
-    const i = this.item;
-    if (!i) return;
-    const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
-    this.setSev(SEV[(SEV.indexOf(sev as never) + 1) % 3]);
-  };
-  cycleType = () => {
-    const i = this.item;
-    if (!i) return;
-    const ks = this.types;
-    i.type = ks[(ks.indexOf(String(i.type)) + 1) % ks.length];
-    this.save();
-  };
+  }
+  setKind = (v: string) => this.setChip("kind", v);
+  setSev = (v: string) => this.setChip("severity", v);
+  setType = (v: string) => this.setChip("type", v);
   mergePrev = () => {
     if (this.mode === "item") return;
     let j = this.cur - 1;
     while (j >= 0 && this.st(this.data.items[j]) === "drop") j--;
     if (j < 0) return;
-    this.snapshot();
+    this.snapshot("undo.merge");
     const p = this.data.items[j];
     const i = this.data.items[this.cur];
     mergeInto(p, i, this.key);
@@ -678,17 +762,24 @@ export class ReviewStore {
     this.mediaSel = items[k].src;
     this.emit();
   };
-  setItem = (id: string) => {
+  /** item mode: show another item of the loaded doc. false: it isn't in this doc (a discarded item, one from
+      another project) — the host loads a doc that has it; meanwhile the page shows "not here", never the last one. */
+  setItem = (id: string): boolean => {
     this.itemId = id;
-    const k = this.findCur();
-    if (k >= 0) {
-      this.cur = k;
-      this.mediaSel = null;
-      this.menuOpen = false;
-      this.slideKey++;
-    }
+    const found = this.pointAt();
+    this.mediaSel = null;
+    this.menuOpen = false;
+    this.slideKey++;
     this.emit();
+    return found;
   };
+  /** item mode: `cur` on the item asked for, or `missing` */
+  private pointAt(): boolean {
+    const k = this.findCur();
+    this.missing = k < 0;
+    this.cur = Math.max(0, k);
+    return !this.missing;
+  }
 
   setView = (v: View) => {
     this.view = v;
@@ -731,8 +822,11 @@ export class ReviewStore {
   showToast(msg: string, withUndo = false, icon?: "check" | "x" | "copy" | "folder") {
     // the Mac app shows it on the island (one place for the main window's toasts); its Undo comes back here
     if (this.host.toast) {
-      void this.host.toast({ msg, undo: withUndo, icon }).then((r) => {
-        if (r === "undo" && withUndo) this.undo();
+      const t = withUndo && this.undoName ? { msg, undo: withUndo, icon, label: this.undoName } : { msg, undo: withUndo, icon };
+      void this.host.toast(t).then((r) => {
+        // through the window's undo stack (the Mac app), as the page's own toast and ⌘Z do, so the Edit menu and
+        // NSUndoManager stay in step with the page
+        if (r === "undo" && withUndo) this.undoLast();
       });
       return;
     }
@@ -856,10 +950,13 @@ export class ReviewStore {
     this.selectMedia(src);
     setTimeout(() => void document.querySelector<HTMLVideoElement>("#mediaBox video")?.play().catch(() => {}), 60);
   }
-  editTitle = () => {
+  /** E: the title, all of it selected; `atEnd` (the host's Return from its list): the caret after the last character */
+  editTitle = (atEnd = false) => {
     const ta = document.querySelector<HTMLTextAreaElement>(".insp .title");
-    ta?.focus();
-    ta?.select();
+    if (!ta) return;
+    ta.focus();
+    if (atEnd) ta.setSelectionRange(ta.value.length, ta.value.length);
+    else ta.select();
   };
 
   onKeyDown = (e: KeyboardEvent) => {
@@ -893,20 +990,44 @@ export class ReviewStore {
       else this.openFinish();
       return;
     }
-    // ⌘Z undoes the page's last step (a state, a merge, an edit) — also after its toast is gone (micro 20): the
-    // island's Undo is only the visible way to it. In a text field it stays the field's; with nothing to undo here it
-    // goes on to the app (the main window's own Undo).
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "z" && !typing && !this.modal) {
-      if (!this.undoStack.length) return;
-      e.preventDefault();
-      this.undo();
-      return;
+    // ⇧Tab from the detail's first control: back to the host's list (the Mac app), the way Tab came in — not round
+    // to the page's last control
+    if (e.key === "Tab" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing && this.host.focusList && !this.modal) {
+      const first = firstTabbable();
+      if (!ae || ae === document.body || ae === first) {
+        e.preventDefault();
+        ae?.blur(); // a field's edit ends (its undo step) before the focus leaves
+        this.host.focusList();
+        return;
+      }
     }
     if (e.key === "Escape") {
       if (this.modal) this.closeModal();
       else if (this.lightbox) this.openLightbox(null);
       else if (this.selected.size && !typing) this.clearSelection();
-      else ae?.blur();
+      else if (typing) ae?.blur();
+      else if (this.host.focusList) {
+        // nothing left to cancel: back to the host's list, which keeps its selection (the Mac app)
+        e.preventDefault();
+        this.host.focusList();
+      } else ae?.blur();
+      return;
+    }
+    // ⌘A in the list view: every card shown
+    if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A") && !typing && this.mode === "review" && this.view === "list") {
+      e.preventDefault();
+      this.selectAll();
+      return;
+    }
+    // ⌘Z / ⇧⌘Z outside a text field and a modal: the user's last step — also after its toast is gone (micro 20: the
+    // island's Undo is only the visible way to it). A text field keeps its own typing undo. Where the host keeps the
+    // window's undo stack (the Mac app) it is that stack's next step, the page's or the window's own; elsewhere the
+    // page's, and with nothing to undo here the key goes on to the app.
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "z" || e.key === "Z") && !typing && !this.modal) {
+      if (!this.host.windowUndo && !(e.shiftKey ? this.redoStack.length : this.undoStack.length)) return;
+      e.preventDefault();
+      if (e.shiftKey) this.redoLast();
+      else this.undoLast();
       return;
     }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -918,6 +1039,7 @@ export class ReviewStore {
     if (this.mode === "review") {
       if (k === "g" || k === "G") return this.setView(this.view === "focus" ? "list" : "focus");
       if ((k === "v" || k === "V") && this.hasOverview) return this.setView("overview");
+      if (this.view === "list" && this.listKey(k, e.shiftKey)) return e.preventDefault();
       if (this.view !== "focus") return;
     }
     const review = this.mode === "review";
@@ -926,11 +1048,10 @@ export class ReviewStore {
       ArrowRight: () => this.stepMedia(1),
       " ": this.togglePlay,
       o: this.playOrig,
-      e: this.editTitle,
+      e: () => this.editTitle(),
       s: () => this.item && this.setMenuOpen(true),
-      "1": () => this.setSev("high"),
-      "2": () => this.setSev("medium"),
-      "3": () => this.setSev("low"),
+      // 1–4 set the kind, as in the Mac app's list (severity is the chip's menu)
+      ...Object.fromEntries(KINDS.map((kd, n) => [String(n + 1), () => this.setKind(kd)])),
       ...(review
         ? {
             j: () => this.go(this.cur + 1, "up"),
@@ -943,8 +1064,8 @@ export class ReviewStore {
             x: () => this.decide("discard"),
             Backspace: () => this.decide("discard"),
             Delete: () => this.decide("discard"),
-            z: this.undo,
-            u: this.undo,
+            z: this.undoLast,
+            u: this.undoLast,
             m: this.mergePrev,
           }
         : {}),
@@ -957,6 +1078,52 @@ export class ReviewStore {
       f();
     }
   };
+
+  /** List view, from the keyboard (micro 29): ↑↓ / J K move the cursor (⇧ extends the selection), Space selects,
+      Return opens, A keeps and X / ⌫ discards the selection (or the card under the cursor) — undoable like the rest. */
+  listCur: string | null = null;
+  private listKey(k: string, shift: boolean): boolean {
+    const vis = this.listed();
+    if (!vis.length) return false;
+    const keys = vis.map(({ i }) => this.key(i));
+    const n = this.listCur ? keys.indexOf(this.listCur) : -1;
+    const move = (d: number) => {
+      const m = n < 0 ? 0 : Math.max(0, Math.min(keys.length - 1, n + d));
+      if (shift) {
+        this.selected.add(keys[n < 0 ? m : n]);
+        this.selected.add(keys[m]);
+      }
+      this.listCur = keys[m];
+      this.emit();
+    };
+    switch (k) {
+      case "ArrowDown":
+      case "j":
+      case "J":
+        move(1);
+        return true;
+      case "ArrowUp":
+      case "k":
+      case "K":
+        move(-1);
+        return true;
+      case " ":
+        if (n >= 0) this.toggleSelect(vis[n].i);
+        return n >= 0;
+      case "Enter":
+        if (n >= 0) this.openItem(vis[n].k);
+        return n >= 0;
+      case "a":
+      case "x":
+      case "Backspace":
+      case "Delete": {
+        const items = this.selected.size ? this.selectedItems() : n >= 0 ? [vis[n].i] : [];
+        if (items.length) this.act(items, k === "a" ? "keep" : "discard");
+        return items.length > 0;
+      }
+    }
+    return false;
+  }
 
   /** wheel / swipe on the stage moves between items */
   private wheelLock = 0;

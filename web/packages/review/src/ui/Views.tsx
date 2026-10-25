@@ -1,6 +1,6 @@
 import { STATES, targetOf, type Action } from "@blurt/ui";
 import { KindIcon } from "@blurt/ui/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Item } from "../host";
 import { kindOf, SEV, type StateFilter } from "../store";
 import { Icon } from "./Icon";
@@ -68,6 +68,11 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
   const wait = !img && !!s.data.processing && !s.stalled;
   const sel = s.isSelected(i);
   const w = s.stateOf(i);
+  const cursor = s.listCur === s.keyOf(i);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (cursor) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [cursor]);
   const meta = [
     kd === "issue" ? (
       <span key="sev" className={"sev sev-" + sev}>
@@ -85,7 +90,9 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
   ].filter(Boolean);
   return (
     <article
-      className={cx("card", st, sel && "sel", ch?.has("*") && "fresh", "s-" + w)}
+      ref={ref}
+      className={cx("card", st, sel && "sel", cursor && "cursor", ch?.has("*") && "fresh", "s-" + w)}
+      aria-current={cursor ? "true" : undefined}
       data-k={k}
       draggable={s.canMove}
       onDragStart={(e) => {
@@ -161,12 +168,12 @@ function SelectionBar() {
       {s.canMove && <MovePicker items={items} id="selMove" />}
       {s.canHandoff && live.length > 0 && (
         <button className="btn sm" id="selCopy" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff(live, "instruction")}>
-          <Icon name="copy" size={14} /> {s.t("handoff.copy_instruction")}
+          <Icon name="copy" size={14} /> {s.label("handoff.copy_instruction")}
         </button>
       )}
       {s.host.dispatch && live.length > 0 && (
         <button className="btn sm primary" id="selDispatch" title={s.t("handoff.dispatch.hint")} onClick={() => s.dispatch(live)}>
-          <Icon name="terminal" size={14} /> {s.t("handoff.dispatch")}
+          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
         </button>
       )}
       <span className="sp" />

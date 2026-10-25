@@ -12,6 +12,8 @@
 //   Dictation    not items: what was dictated into other apps (DictationPage.swift replaces both columns)
 //   <project>    one opened folder
 //   <session>    one capture batch (a recording, a snap batch), reached from a job or a link
+//
+// Filters (kinds, State) are per place (BlurtCore/PlaceFilters.swift); the search text is the window's.
 import AppKit
 import BlurtCore
 
@@ -76,9 +78,19 @@ final class MainModel {
     private(set) var reader: IndexReader?
     private(set) var indexState: IndexState = .missing
 
-    var scope: Scope = .inbox
+    /// The place on show. Each place keeps its own kinds and State filter (PlaceFilters): going somewhere puts that
+    /// place's back, and the one left keeps what it had.
+    var scope: Scope = .inbox {
+        didSet {
+            guard scope != oldValue else { return }
+            filters.set(currentFilter, for: oldValue.key)
+            applyFilters()
+        }
+    }
     var kinds: Set<String> = []                 // empty = every kind
     var state: String?                          // nil = all but discarded | "inbox" (needs you) | one of Lifecycle.states
+    /// The other places' filters (the one on show lives in kinds / state).
+    var filters = PlaceFilters()
     var text = ""
     var sort = "updated"
     var ascending = false
@@ -101,7 +113,22 @@ final class MainModel {
     var onJobs: (() -> Void)?
 
     var rowCount: Int { uids.count }
-    var filtered: Bool { !kinds.isEmpty || state != nil || !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    var filtered: Bool { !kinds.isEmpty || shownState != nil || !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// The State filter as this place applies it: none where there is no State control to show it.
+    var shownState: String? { PlaceFilters.showsState(scope.key) ? state : nil }
+    var currentFilter: PlaceFilter { PlaceFilter(kinds: Array(kinds), state: state) }
+    /// Every place's filters, the one on show included (saved with the window state).
+    var allFilters: PlaceFilters {
+        var f = filters
+        f.set(currentFilter, for: scope.key)
+        return f
+    }
+    /// The place's own filters on show (after `scope` or `filters` were set from outside).
+    func applyFilters() {
+        let f = filters.filter(for: scope.key)
+        kinds = Set(f.kinds)
+        state = f.state
+    }
     /// No items anywhere yet, discarded ones included (a first run): no filters to offer, no detail to point at.
     var isEmptyWorld: Bool { indexState == .ready && counts.all == 0 && counts.discarded == 0 }
 
@@ -174,6 +201,7 @@ final class MainModel {
     // MARK: queries
 
     var query: ItemQuery {
+        let state = shownState
         var q = ItemQuery(text: text, kinds: kinds.sorted(), states: state.flatMap { $0 == "inbox" ? nil : [$0] } ?? [],
                           inbox: state == "inbox", sort: sort, limit: 0)
         q.ascending = ascending
@@ -196,7 +224,7 @@ final class MainModel {
     func reloadSidebar() {
         let byID = Dictionary(((try? reader?.projects()) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         counts = (try? reader?.counts()) ?? IndexCounts()
-        var list = ProjectStore.shared.projects.map { p -> ProjectEntry in
+        var list = ProjectStore.shared.ordered.map { p -> ProjectEntry in
             var e = ProjectEntry(id: p.id, name: p.name, key: p.key, path: p.path, registered: true, exists: p.exists, pinned: p.pinned)
             e.open = byID[p.id]?.openItems ?? 0
             e.inbox = byID[p.id]?.inbox ?? 0
@@ -230,6 +258,7 @@ final class MainModel {
     func reload() {
         let t0 = DispatchTime.now().uptimeNanoseconds
         pages.removeAll()
+        overrides.removeAll()
         uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
         rowByUID = nil
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
@@ -241,6 +270,24 @@ final class MainModel {
         }
     }
 
+    /// A state change shown at once, before items.py and the index have it (the next reload from index.db agrees, or
+    /// puts the truth back if the write failed): the rows take their new state, and those this place no longer lists
+    /// (a key pressed in the Inbox, a discard) leave it.
+    func optimistic(states: [String: String]) {
+        guard !states.isEmpty else { return }
+        let allowed = query.allowedStates.map(Set.init)
+        overrides.merge(states) { _, n in n }
+        let leaving = Set(states.filter { _, s in allowed.map { !$0.contains(s) } ?? (s == "discarded") }.keys)
+        if !leaving.isEmpty {
+            uids.removeAll(where: leaving.contains)
+            rowByUID = nil
+        }
+        pages.removeAll()           // refetched for what's on screen, with the overrides
+        onReload?()
+    }
+    /// States shown before the index has them (optimistic); a reload from the index drops them.
+    private var overrides: [String: String] = [:]
+
     func item(at row: Int) -> ItemRow? {
         guard row >= 0, row < uids.count, let r = reader else { return nil }
         let p = row / pageSize
@@ -248,7 +295,11 @@ final class MainModel {
             let slice = Array(uids[(p * pageSize)..<min((p + 1) * pageSize, uids.count)])
             let rows = (try? r.items(uids: slice, terms: query.terms)) ?? []
             // a uid can vanish between the two queries (index.py committed): keep the row count stable until the reload
-            let byUID = Dictionary(rows.map { ($0.uid, $0) }, uniquingKeysWith: { a, _ in a })
+            let byUID = Dictionary(rows.map { r -> (String, ItemRow) in
+                var r = r
+                if let s = overrides[r.uid] { r.state = s }
+                return (r.uid, r)
+            }, uniquingKeysWith: { a, _ in a })
             pages[p] = slice.map { byUID[$0] ?? ItemRow(uid: $0, itemID: "", kind: "note", title: "…") }
         }
         return pages[p]?[row % pageSize]

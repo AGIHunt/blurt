@@ -93,6 +93,16 @@ public enum Lifecycle {
         return a.flatMap { canDo($0, state) ? $0 : nil }
     }
 
+    /// Why a list key does nothing for items in these states — said, not only beeped: `.discarded` (restore it
+    /// first), `.state(s)` (not from that state: S shows what is), nil when the key does something for one of them.
+    public enum Refusal: Equatable { case discarded, state(String?) }
+    public static func refusal(forKey key: String, states: [String]) -> Refusal? {
+        guard !states.isEmpty, !states.contains(where: { action(forKey: key, state: $0) != nil }) else { return nil }
+        let set = Set(states)
+        if set == ["discarded"] { return .discarded }
+        return .state(set.count == 1 ? set.first : nil)
+    }
+
     /// The key an action shows in menus ("A", "D", "R", "W", "X", "⌘↩").
     public static func keyLabel(_ action: String) -> String {
         guard let k = transitions[action]?.key else { return "" }

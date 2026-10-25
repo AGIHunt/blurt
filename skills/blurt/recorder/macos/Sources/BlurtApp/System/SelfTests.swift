@@ -268,12 +268,66 @@ enum SelfTests {
                 return ["\(String(repeating: " ", count: depth))\(type(of: v)) \(v.frame) hidden=\(v.isHidden)"] + v.subviews.flatMap { dump($0, depth + 1) }
             }
             out(["views": dump(d.jobView, 0)])
+        case "mainrename":              // mainrename [TEXT | esc | -]: the row title being renamed in place: its state, or
+            let c = MainWindowController.shared   // TEXT typed then Return, Esc, "-" an empty title then Return
+            if let r = c.list.renaming, let tv = r.cell.editField.currentEditor() as? NSTextView {
+                switch arg {
+                case "": break
+                case "esc": _ = r.control(r.cell.editField, textView: tv, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+                default:
+                    tv.string = arg == "-" ? "" : arg
+                    r.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+                    _ = r.control(r.cell.editField, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                }
+            }
+            out(["renaming": c.list.renaming != nil, "field": c.list.renaming?.cell.editField.stringValue ?? NSNull(),
+                 "responder": "\(type(of: c.window?.firstResponder as Any))", "selected": c.list.selectedIDs])
+        case "mainprojects":            // mainprojects [rename ID NAME | order ID,ID… | remove ID]: the sidebar's projects
+            let c = MainWindowController.shared
+            let w = arg.split(separator: " ", maxSplits: 2).map(String.init)
+            switch w.first ?? "" {
+            case "rename" where w.count == 3:
+                c.sidebar.select(.project(w[1]))
+                c.window?.makeFirstResponder(c.sidebar.outline)
+                if c.sidebar.renameSelected(), let r = c.sidebar.renaming, let tv = r.cell.editField.currentEditor() as? NSTextView {
+                    tv.string = w[2]
+                    _ = r.control(r.cell.editField, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                }
+            case "order" where w.count == 2: c.reorderProjects(w[1].split(separator: ",").map(String.init))
+            case "remove" where w.count == 2: c.removeProject(w[1])
+            default: break
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                out(["projects": c.model.projects.map { "\($0.name) \($0.key)" }, "go": c.shortcutProjects.map(\.name),
+                     "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
+            }
+        case "mainshortcuts":           // the ? panel, kept up for a screenshot of a build launched in the background
+            let c = MainWindowController.shared
+            c.showShortcuts()
+            ShortcutsSheet.panel?.hidesOnDeactivate = false
+            ShortcutsSheet.panel?.orderFrontRegardless()
+            out(["shown": ShortcutsSheet.panel?.isVisible ?? false, "title": ShortcutsSheet.panel?.title ?? ""])
+        case "mainjs":                  // mainjs EXPR: run EXPR in the detail page (as the page's own UI would), its value back
+            MainWindowController.shared.detail.web.evaluateJavaScript("JSON.stringify((() => { return \(arg); })())") { r, e in
+                out(["value": (r as? String) ?? NSNull(), "error": e.map { "\($0)" } ?? NSNull()])
+            }
+        case "maindetail":              // the item the detail page shows (uid, id, title) — never another than the selected one
+            let c = MainWindowController.shared
+            let js = "(() => { const s = window.blurtReview && window.blurtReview.store; const i = s && s.item;"
+                + " return JSON.stringify({uid: i ? i.uid : null, id: i ? i.id : null, title: i ? i.title : null, missing: s ? s.missing : null,"
+                + " loaded: s ? s.loaded : false}); })()"
+            c.detail.web.evaluateJavaScript(js) { r, e in
+                out(["page": (r as? String) ?? "\(e.map { "\($0)" } ?? "nil")", "selected": c.list.selectedIDs,
+                     "shown": c.detail.currentItem?.uid ?? NSNull(), "job": c.shownJob ?? NSNull()])
+            }
         case "mainsearch":
             let c = MainWindowController.shared
             c.searchItem?.searchField.stringValue = arg
             c.model.text = arg
             c.model.reload()
-            out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS])
+            c.list.updateEmpty()
+            out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS,
+                 "empty": c.list.empty.isHidden ? NSNull() : (c.list.empty.accessibilityLabel() ?? "") as Any])
         case "mainproject":             // mainproject ID: its settings sheet
             MainWindowController.shared.projectSettings(arg)
         case "mainstate", "mainmove":   // mainstate ACTION (K3: keep, done, back, …) / mainmove PROJECT: on the selection
@@ -324,11 +378,33 @@ enum SelfTests {
             c.window?.makeFirstResponder(c.list.table)
             if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c.window?.windowNumber ?? 0,
                                         context: nil, characters: arg, charactersIgnoringModifiers: arg, isARepeat: false,
-                                        keyCode: arg == "\u{7f}" ? 51 : 0) {
+                                        keyCode: arg == "\u{7f}" ? 51 : arg == "\r" ? 36 : 0) {
                 // async: S opens a menu, which runs its own loop until it closes
                 DispatchQueue.main.async { c.list.table.keyDown(with: e) }
             }
             out(["key": arg])
+        case "mainchord":               // mainchord cmd+delete: ⌘⌫ on the list, through NSApp (the menus get it first)
+            let c = MainWindowController.shared
+            c.window?.makeFirstResponder(c.list.table)
+            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: c.window?.windowNumber ?? 0, context: nil, characters: "\u{7f}",
+                                        charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51) {
+                NSApp.sendEvent(e)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                out(["scope": c.model.scope.key, "projects": c.model.projects.filter(\.registered).map(\.name),
+                     "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
+            }
+        case "mainbanner":              // mainbanner captures|taken N: show that banner with N (no cards needed), for the ↑ walk
+            let c = MainWindowController.shared
+            let w = arg.split(separator: " ").map(String.init)
+            let n = w.count > 1 ? Int(w[1]) ?? 0 : 0
+            if w.first == "captures" { c.list.captures.set(count: n) } else { c.list.taken.set(count: n) }
+            out(["captures": !c.list.captures.isHidden, "taken": !c.list.taken.isHidden])
+        case "mainresponder":           // the main window's first responder (the list, the detail page, the sidebar…)
+            let c = MainWindowController.shared
+            out(["responder": c.window?.firstResponder.map { "\(type(of: $0))" } ?? "nil", "selected": c.list.selectedIDs,
+                 "banner": c.focusedBanner ?? NSNull(), "job": c.shownJob ?? NSNull()])
         case "mainfilter":              // mainfilter STATE|inbox|all: the State filter
             let c = MainWindowController.shared
             c.model.state = arg == "all" || arg.isEmpty ? nil : arg

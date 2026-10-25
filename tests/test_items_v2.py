@@ -373,10 +373,33 @@ class Moves(Base):
         self.assertEqual(self.ok("get", self.s, "I-001")["item"]["id"], "OP-1")  # and so does the session's draft id
         # ids are never reused: the next AP item is WA-4
         self.assertEqual(self.ok("add", "--project", "WA", "--json", '{"kind":"note","title":"n"}')["id"], "WA-4")
-        # moved back: a new id again, both old ids remembered
+        # moved back (the user's undo): its own old id again, the other one remembered — never another item's id
         self.ok("move", uid, "--project", "WA")
-        self.assertEqual(self.item(uid)["aliases"], ["WA-1", "OP-1"])
+        self.assertEqual((self.item(uid)["id"], self.item(uid)["aliases"]), ("WA-1", ["OP-1"]))
+        self.assertEqual(self.item("OP-1")["uid"], uid)
+        # and once more there: OP-1 back too
+        self.ok("move", uid, "--project", po["key"])
+        self.assertEqual((self.item(uid)["id"], self.item(uid)["aliases"]), ("OP-1", ["WA-1"]))
+        # an old id someone else holds now is not taken: a fresh one instead
+        p = self.file("WA-3")
+        p.rename(p.with_name("WA-1.md"))   # a hand-made clash: a file in WA named like the old id
+        self.ok("move", uid, "--project", "WA")
         self.assertEqual(self.item(uid)["id"], "WA-5")
+
+    def test_doc_always_lists_the_item_a_pane_shows(self):
+        """--item: a discarded item opened from the Discarded filter is in its project's doc (its own detail, not
+        its neighbour's)."""
+        self.ok("ingest", self.s)
+        uid = self.ok("path", "WA-2")["uid"]
+        self.ok("state", "WA-2", "--action", "discard", "--by", "user")
+        ids = lambda d: [i["id"] for i in d["items"]]  # noqa: E731
+        self.assertNotIn("WA-2", ids(self.ok("doc", "--project", "WA")["doc"]))
+        self.assertIn("WA-2", ids(self.ok("doc", "--project", "WA", "--item", uid)["doc"]))
+        self.assertIn("WA-2", ids(self.ok("doc", "--project", "WA", "--item", "WA-2")["doc"]))
+        tag = self.ok("doc", "--project", "WA", "--item", uid)["etag"]
+        self.assertEqual(self.ok("poll", "--project", "WA", "--item", uid, "--etag", tag), {"ok": True, "etag": tag})
+        out = self.ok("user-ops", "--project", "WA", "--item", uid, "--json", "[]")
+        self.assertIn("WA-2", ids(out["doc"]))
 
 
 class UserOps(Base):

@@ -384,6 +384,67 @@ enum GlowLayer {
 
 // MARK: - AI working
 
+/// The job spinner (§3.3 "job spinner arc"), the one "working" motion of the main window: a quarter arc in brand ink
+/// going round, 1.1 s a turn — the same arc as the running step's marker (JobViews StepMarker), so a job's row, its
+/// banner, the scanning empty state and its steps spin alike, never the system's grey spokes. Reduce Motion: the
+/// arc stands still. Hidden while stopped (it takes no room's worth of drawing then), like a stopped NSProgressIndicator
+/// with isDisplayedWhenStopped off.
+final class BrandSpinner: NSView {
+    private let ring = CAShapeLayer()
+    private let diameter: CGFloat
+    private(set) var isAnimating = false
+
+    init(size: CGFloat = 14) {
+        diameter = size
+        super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        wantsLayer = true
+        ring.fillColor = nil
+        ring.lineWidth = size >= 24 ? 2.25 : 1.75
+        ring.strokeStart = 0
+        ring.strokeEnd = 0.3
+        ring.lineCap = .round
+        layer?.addSublayer(ring)
+        isHidden = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.progressIndicator)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: diameter, height: diameter) }
+
+    override func layout() {
+        super.layout()
+        ring.frame = bounds
+        ring.path = CGPath(ellipseIn: bounds.insetBy(dx: ring.lineWidth, dy: ring.lineWidth), transform: nil)
+        effectiveAppearance.performAsCurrentDrawingAppearance { ring.strokeColor = BrandColor.ink.cgColor }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance { ring.strokeColor = BrandColor.ink.cgColor }
+    }
+
+    func startAnimation(_ sender: Any? = nil) {
+        isHidden = false
+        guard !isAnimating else { return }
+        isAnimating = true
+        needsLayout = true
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -Double.pi * 2
+        spin.duration = 1.1
+        spin.repeatCount = .infinity
+        ring.add(spin, forKey: "spin")
+    }
+
+    func stopAnimation(_ sender: Any? = nil) {
+        isAnimating = false
+        ring.removeAnimation(forKey: "spin")
+        isHidden = true
+    }
+}
+
 /// "blurt's AI is working on this" (auto-sort, organising a batch, the Lab processing a take): one static 1 pt
 /// hairline in translucent brand ink (`brand.working`; `BrandColor.Island.working` on the island) just inside the
 /// working view's rounded edge. The spinner next to it carries the state; the line only says

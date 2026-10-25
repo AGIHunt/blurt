@@ -127,6 +127,9 @@
 "main.empty.scan_failed" = "扫描失败";
 "main.empty.scanning" = "正在扫描你的条目…";
 "main.empty.try_shorter" = "试试更短的词，或换个说法。";
+"main.empty.show_item" = "显示 %@";
+"main.empty.id_in" = "%1$@ 在「%2$@」里。";
+"main.empty.id_filtered" = "%@ 就在这里，只是被筛选隐藏了。";
 
 "main.error.bad_transition" = "当前状态下不能这样改。";
 "main.error.deleted" = "它在已丢弃里，先恢复它。";
@@ -139,9 +142,17 @@
 "main.error.no_scripts" = "需要 blurt skill 的脚本和 uv。运行一次 record.py build，或重新安装 skill。";
 "main.error.no_uv" = "没装 uv，口喷鸡的设置助手可以帮你装。";
 "main.error.not_found" = "找不到了。";
+"main.error.no_project" = "这个项目已经不在口喷鸡里了。";
+"main.error.exists" = "这个文件夹已经在口喷鸡里了。";
+"main.error.not_a_folder" = "这不是文件夹。";
+"main.error.reserved" = "这是口喷鸡自己的文件夹。";
 "main.error.save_title" = "没能保存";
 "main.error.timeout" = "等太久了，稍后再试。";
 "main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
+"main.state.toast" = "%1$@ · %2$@";
+"main.state.not_here" = "「%@」状态下不能这样改，按 S 看看能做什么。";
+"main.state.restore_first" = "它在已丢弃里，先按 R 恢复。";
+"main.state.these" = "这些状态";
 
 "main.filter.kind" = "按种类筛选";
 "main.filter.live" = "全部（不含已丢弃）";
@@ -182,7 +193,7 @@
 
 "main.keys.back" = "退回 · 收回 · 重新打开 · 恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、任务";
-"main.keys.undo" = "撤销 / 重做状态、标题或种类的修改";
+"main.keys.undo" = "撤销 / 重做上一步修改";
 "main.keys.next" = "下一条 / 上一条";
 "main.keys.open" = "打开（进入详情）";
 "main.keys.palette" = "命令面板";
@@ -193,6 +204,12 @@
 "main.keys.space" = "空格";
 "main.keys.state" = "更改状态（打开菜单）";
 "main.keys.this" = "这个面板";
+"main.keys.section.navigate" = "浏览";
+"main.keys.section.item" = "条目";
+"main.keys.section.window" = "编辑与窗口";
+"main.keys.detail" = "显示或隐藏详情";
+"main.keys.back_to_list" = "从详情回到列表";
+"main.keys.close_window" = "关闭窗口（口喷鸡留在菜单栏）";
 
 "main.list.label" = "条目";
 
@@ -204,7 +221,7 @@
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";
 "main.menu.quick_look" = "快速查看";
-"main.menu.rename" = "改标题…";
+"main.menu.rename" = "改标题";
 "main.menu.review_batch" = "审核整批素材";
 "main.menu.start_session" = "交给 Agent";
 "main.menu.open_session" = "打开会话";
@@ -218,6 +235,7 @@
 "main.misc.task" = "待办";
 
 "main.move.failed" = "没能移动条目";
+"main.move.undo_name" = "移到「%@」";
 
 "main.open.failed" = "没能打开「%@」";
 "main.open.message" = "选一个文件夹：代码仓库，或者任何放笔记的文件夹。口喷鸡把条目放在它的 .blurt 里，不会进 git。";
@@ -246,10 +264,13 @@
 "main.project.key.locked" = "条目已经编号为 %1$@-1、%1$@-2…，前缀不再改。";
 "main.project.name" = "名称";
 "main.project.open_as" = "作为项目打开";
-"main.project.remove" = "从口喷鸡移除…";
-"main.project.remove.confirm" = "移除";
-"main.project.remove.detail" = "文件夹和里面的条目都不会动，重新打开这个文件夹就能回来。";
-"main.project.remove.title" = "从口喷鸡移除「%@」？";
+"main.project.remove" = "从口喷鸡移除";
+"main.project.remove.undo_name" = "从口喷鸡移除";
+"main.project.removed" = "已从口喷鸡移除「%@」，文件夹和里面的条目都还在";
+"main.project.rename" = "重命名";
+"main.project.rename.undo_name" = "重命名项目";
+"main.project.rename.empty" = "项目需要一个名字";
+"main.project.reorder.undo_name" = "调整项目顺序";
 "main.project.save_failed" = "没能保存项目";
 "main.project.use_failed" = "没能切换项目";
 "main.project.settings" = "项目设置…";
@@ -320,6 +341,7 @@
 "menu.hide" = "隐藏口喷鸡";
 
 "menu.item" = "条目";
+"menu.project" = "项目";
 
 "menu.minimize" = "最小化";
 
@@ -342,6 +364,10 @@
 "menu.shortcuts" = "键盘快捷键";
 
 "menu.toggle_sidebar" = "显示或隐藏侧栏";
+"menu.view" = "显示";
+"menu.toggle_detail" = "显示或隐藏详情";
+"menu.sort_by" = "排序方式";
+"main.quit.kept" = "口喷鸡还在菜单栏里，听写照常能用。要退出，请从菜单栏图标的菜单里选。";
 
 "menu.undo" = "撤销";
 

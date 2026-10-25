@@ -127,6 +127,9 @@
 "main.empty.scan_failed" = "The scan failed";
 "main.empty.scanning" = "Scanning your items…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
+"main.empty.show_item" = "Show %@";
+"main.empty.id_in" = "%1$@ is in %2$@.";
+"main.empty.id_filtered" = "%@ is here, but the filters hide it.";
 
 "main.error.bad_transition" = "That state change isn’t possible from here.";
 "main.error.deleted" = "It’s in Discarded. Restore it first.";
@@ -139,9 +142,17 @@
 "main.error.no_scripts" = "This needs the blurt skill’s scripts and uv. Run record.py build once, or reinstall the skill.";
 "main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
 "main.error.not_found" = "Blurt can’t find that any more.";
+"main.error.no_project" = "That project isn’t in Blurt any more.";
+"main.error.exists" = "That folder is in Blurt already.";
+"main.error.not_a_folder" = "That isn’t a folder.";
+"main.error.reserved" = "That’s Blurt’s own folder.";
 "main.error.save_title" = "Couldn’t save";
 "main.error.timeout" = "It took too long. Try again in a moment.";
 "main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
+"main.state.toast" = "%1$@ · %2$@";
+"main.state.not_here" = "Can’t do that from %@. Press S to see what you can do.";
+"main.state.restore_first" = "It’s in Discarded. Press R to restore it first.";
+"main.state.these" = "these states";
 
 "main.filter.kind" = "Filter by kind";
 "main.filter.live" = "All but Discarded";
@@ -182,7 +193,7 @@
 
 "main.keys.back" = "Send back · take back · reopen · restore";
 "main.keys.kind" = "Kind: issue, idea, note, task";
-"main.keys.undo" = "Undo / redo a state, title or kind change";
+"main.keys.undo" = "Undo / redo the last change";
 "main.keys.next" = "Next / previous";
 "main.keys.open" = "Open (focus the detail)";
 "main.keys.palette" = "Command palette";
@@ -193,6 +204,12 @@
 "main.keys.space" = "Space";
 "main.keys.state" = "Change state (the menu)";
 "main.keys.this" = "This panel";
+"main.keys.section.navigate" = "Navigate";
+"main.keys.section.item" = "Item";
+"main.keys.section.window" = "Edit and Window";
+"main.keys.detail" = "Show or hide the detail";
+"main.keys.back_to_list" = "From the detail back to the list";
+"main.keys.close_window" = "Close the window (Blurt stays in the menu bar)";
 
 "main.list.label" = "Items";
 
@@ -204,7 +221,7 @@
 "main.menu.move_to" = "Move to Project";
 "main.menu.open_in" = "Open in %@";
 "main.menu.quick_look" = "Quick Look";
-"main.menu.rename" = "Rename…";
+"main.menu.rename" = "Rename";
 "main.menu.review_batch" = "Review the Whole Capture";
 "main.menu.start_session" = "Hand Off to Agent";
 "main.menu.open_session" = "Open Session";
@@ -218,6 +235,7 @@
 "main.misc.task" = "Task";
 
 "main.move.failed" = "Couldn’t move the items";
+"main.move.undo_name" = "Move to %@";
 
 "main.open.failed" = "Couldn’t open “%@”";
 "main.open.message" = "Choose a folder — a code repo or any folder for notes. Blurt keeps its items in the folder’s .blurt, which never goes into git.";
@@ -246,10 +264,13 @@
 "main.project.key.locked" = "Items are already numbered %1$@-1, %1$@-2…, so the key stays.";
 "main.project.name" = "Name";
 "main.project.open_as" = "Open as Project";
-"main.project.remove" = "Remove from Blurt…";
-"main.project.remove.confirm" = "Remove";
-"main.project.remove.detail" = "The folder and its items stay where they are. Open the folder again to bring it back.";
-"main.project.remove.title" = "Remove “%@” from Blurt?";
+"main.project.remove" = "Remove from Blurt";
+"main.project.remove.undo_name" = "Remove from Blurt";
+"main.project.removed" = "Removed “%@” from Blurt — the folder and its items stay where they are";
+"main.project.rename" = "Rename";
+"main.project.rename.undo_name" = "Rename Project";
+"main.project.rename.empty" = "A project needs a name";
+"main.project.reorder.undo_name" = "Reorder Projects";
 "main.project.save_failed" = "Couldn’t save the project";
 "main.project.use_failed" = "Couldn’t switch the project";
 "main.project.settings" = "Project Settings…";
@@ -320,6 +341,7 @@
 "menu.hide" = "Hide Blurt";
 
 "menu.item" = "Item";
+"menu.project" = "Project";
 
 "menu.minimize" = "Minimize";
 
@@ -342,6 +364,10 @@
 "menu.shortcuts" = "Keyboard Shortcuts";
 
 "menu.toggle_sidebar" = "Show or Hide Sidebar";
+"menu.view" = "View";
+"menu.toggle_detail" = "Show or Hide Detail";
+"menu.sort_by" = "Sort By";
+"main.quit.kept" = "Blurt is still in the menu bar, so dictation keeps working. To quit, use its menu there.";
 
 "menu.undo" = "Undo";
 

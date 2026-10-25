@@ -162,7 +162,7 @@ final class JobsSection: NSView {
 final class JobRow: NSView {
     var onClick: (() -> Void)?
     let icon = NSImageView()
-    let spinner = BrandSpinner()
+    let spinner = BrandSpinner(size: 14)
     let title = NSTextField(labelWithString: "")
     let status = NSTextField(labelWithString: "")
     let bar = NSProgressIndicator()

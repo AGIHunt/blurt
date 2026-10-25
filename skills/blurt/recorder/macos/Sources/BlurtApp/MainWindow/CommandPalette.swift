@@ -1,7 +1,8 @@
 // ⌘K: one field for every action, place and item. Commands and places match by fuzzy subsequence; items come from
 // the index (same search as the toolbar field, top 8), each with its ID, project, state (past To do) and the search
-// hit when it isn't just the title again (on one line, ending where index.db cut it: SearchHit.shown). ↑/↓ choose,
-// ↩ runs, Esc closes. The list shows whole rows only (up to 9).
+// hit when it isn't just the title again (on one line, ending where index.db cut it: SearchHit.shown). An item's id
+// ("AW-11") puts that item on top, discarded or not. ↑/↓ choose, ↩ runs, Esc closes. The list shows whole rows only
+// (up to 9).
 import AppKit
 import BlurtCore
 
@@ -136,7 +137,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.action.record"), "record.circle", hk(.toggleRecord)) { c.record() },
             e(T("main.action.snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
             e(T("project.open_folder"), "folder.badge.plus", "⌘O") { c.openFolder() },
-            e(T("main.menu.start_session"), "apple.terminal", "⌘↩", enabled: has) { c.handOffSelection() },
+            e(T("main.menu.start_session"), "paperplane", "⌘↩", enabled: has) { c.handOffSelection() },
             e(T("main.cmd.copy_instruction"), "doc.on.clipboard", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
             e(T("main.cmd.copy_full"), "text.alignleft", enabled: has) { c.mCopyFull() },
             e(T("main.menu.quick_look"), "eye", T("main.keys.space"), enabled: has) { c.list.toggleQuickLook() },
@@ -161,6 +162,10 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             out.append(Entry(title: T("main.palette.only_kind", Look.kindName(k)), detail: "", image: Look.kindImage(k), keys: "", enabled: true) {
                 c.model.kinds = [k]; c.model.reload()
             })
+        }
+        // what's running (organising, agent sessions): its progress or its terminal, as a click on its row
+        for j in JobStore.shared.active {
+            out.append(e(JobLook.title(j), JobLook.symbol(j), detail: JobLook.status(j)) { c.reveal(job: j.id) })
         }
         if AppEnvironment.settings != nil { out.append(e(T("menu.settings"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
         for p in c.model.projects where p.registered {
@@ -191,7 +196,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         ranked.sort { $0.0 > $1.0 }
         entries = ranked.map(\.1)
         if !q.isEmpty, let r = controller.model.reader {
-            let rows = (try? r.items(ItemQuery(text: q, limit: 8))) ?? []
+            // an id ("AW-11") is that item, wherever it is — a discarded one too — and it goes on top
+            let byID = q.split(separator: " ").count == 1 && ItemQuery.isItemID(q)
+            let rows = (try? r.items(ItemQuery(text: q, states: byID ? Lifecycle.states : [], limit: 8))) ?? []
             let items = rows.map { it in
                 let title = it.title.isEmpty ? it.itemID : it.title
                 let hit = SearchHit.adds(it.snippet, to: title) ? it.snippet.map { SearchHit.unmarked(SearchHit.shown($0)) } : nil
@@ -202,8 +209,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                     self?.controller.reveal(uid: it.uid)
                 }
             }
-            // a few strong command matches first, then items
-            entries = Array(entries.prefix(4)) + items + Array(entries.dropFirst(4))
+            // a few strong command matches first, then items (the item itself first when its id was typed)
+            let exact = byID && rows.first?.itemID.uppercased() == q.uppercased()
+            entries = exact ? items + entries : Array(entries.prefix(4)) + items + Array(entries.dropFirst(4))
         }
         table.reloadData()
         resize()

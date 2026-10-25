@@ -174,7 +174,6 @@ extension BlurtIcon {
         case .list: return ["list.bullet"]
         case .home: return ["house"]
         case .arrowLeft: return ["arrow.left"]
-        case .bug: return ["ladybug"]
         case .lightbulb: return ["lightbulb"]
         case .document: return ["doc.text"]
         case .checklist: return ["checklist"]

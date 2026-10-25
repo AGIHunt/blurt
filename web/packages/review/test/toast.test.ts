@@ -130,4 +130,32 @@ describe("toasts", () => {
     ta.remove();
     s.dispose();
   });
+
+  it("an Undo toast names the step it is for, so the app's Undo takes back only that step", async () => {
+    const shown: { msg: string; undo: boolean; label?: string }[] = [];
+    const s = new ReviewStore(host({ toast: async (t) => { shown.push(t); return "shown"; } }));
+    await s.load();
+    s.act([s.item ?? s.data.items[0]], "discard");
+    expect(shown.at(-1)?.undo).toBe(true);
+    expect(shown.at(-1)?.label).toBe(s.undoName);
+    expect(shown.at(-1)?.label).toBeTruthy();
+    s.showToast("Copied", false, "copy");
+    expect(shown.at(-1)?.label).toBeUndefined();
+    s.dispose();
+  });
+
+  it("with the window's undo stack (the Mac app) the island's Undo goes through it, not round it", async () => {
+    let answer: (r: string) => void = () => {};
+    const calls: boolean[] = [];
+    const s = new ReviewStore(host({ toast: () => new Promise((r) => { answer = r; }), windowUndo: (redo) => calls.push(redo) }));
+    await s.load();
+    const undo = vi.spyOn(s, "undo");
+    s.showToast("Done · I-001", true);
+    answer("undo");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toEqual([false]);
+    expect(undo).not.toHaveBeenCalled();
+    s.dispose();
+  });
 });

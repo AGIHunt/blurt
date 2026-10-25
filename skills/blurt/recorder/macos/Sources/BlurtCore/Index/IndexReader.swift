@@ -109,6 +109,14 @@ public struct ItemQuery: Equatable {
         return allowed.map { a in Lifecycle.states.filter(a.contains) }
     }
     public var terms: [String] { (text ?? "").split(whereSeparator: { $0.isWhitespace }).map(String.init) }
+    /// Terms shaped like an item's id ("AW-11", "ba-3": a project key, a dash, a number): they find that item first,
+    /// as well as the text that mentions them (index.py's search does the same).
+    public var idTerms: [String] { terms.filter(Self.isItemID).map { $0.uppercased() } }
+    public static func isItemID(_ t: String) -> Bool {
+        let parts = t.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2, let k = parts[0].first, k.isASCII, k.isLetter, !parts[1].isEmpty else { return false }
+        return parts[0].allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) } && parts[1].allSatisfy { $0.isASCII && $0.isNumber }
+    }
 }
 
 /// Sidebar and menu-bar badges, one query, by K3's groups.
@@ -332,12 +340,18 @@ public final class IndexReader {
 
     /// "FROM … WHERE …", its arguments, and whether it joins items_fts.
     func whereClause(_ q: ItemQuery) -> (String, [Any], Bool) {
-        let terms = q.terms
+        let terms = q.terms.filter { !ItemQuery.isItemID($0) }
         let fts = terms.filter { $0.count >= 3 }, short = terms.filter { $0.count < 3 }
         var wh: [String] = [], args: [Any] = []
+        func phrase(_ t: String) -> String { "\"" + t.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         if !fts.isEmpty {
             wh.append("items_fts MATCH ?")
-            args.append(fts.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: " AND "))
+            args.append(fts.map(phrase).joined(separator: " AND "))
+        }
+        // an id: that item (its id now, or an old one in its text), or the text that mentions it
+        for t in q.idTerms {
+            wh.append("(upper(i.item_id) = ? OR i.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?))")
+            args += [t, phrase(t)]
         }
         for t in short {
             wh.append("(i.title LIKE ? ESCAPE '\\' OR i.quote LIKE ? ESCAPE '\\' OR i.body LIKE ? ESCAPE '\\')")
@@ -371,6 +385,12 @@ public final class IndexReader {
     }
 
     func order(_ q: ItemQuery) -> String {
+        // the item whose id was typed comes first (ids are [A-Z0-9-] only: safe as literals)
+        let first = q.idTerms.map { "CASE WHEN upper(i.item_id) = '\($0)' THEN 0 ELSE 1 END, " }.joined()
+        return first + sortOrder(q)
+    }
+
+    private func sortOrder(_ q: ItemQuery) -> String {
         let dir = q.ascending ? "ASC" : "DESC"
         switch q.sort {
         case "created": return "i.created \(dir), i.t_start, i.item_id"

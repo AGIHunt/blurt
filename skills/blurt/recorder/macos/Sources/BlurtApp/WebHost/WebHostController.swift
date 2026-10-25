@@ -11,12 +11,15 @@
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
 //   doc start     window.blurtHostInfo = {host: "macos", methods: [...], accent: "#rrggbb", scope: {...}, sessionBanner: mode == item}
 //   JS → native   webkit.messageHandlers.blurt.postMessage({id, method, params}); native → window.__blurtReply(id, result, error)
-//   requests      load {scope?} → {doc, etag}             items.py doc SESSION | --project P
+//   requests      load {scope?} → {doc, etag}             items.py doc SESSION | --project P [--item UID: the item
+//                                                          on show, listed whatever its state; also poll, sendOps]
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
 //                 sendOps {ops, confirm, scope?} → {ok, etag, doc}   items.py user-ops … --stdin [--confirm]
 //                 handoff {uids, what} → {id, path, text}  handoff.py create --items … --mark (copied to the clipboard)
-//                 toast {msg, undo, icon} → "undo" | "shown"   the page's line goes up on the island — the main window's
+//                 toast {msg, undo, icon, label?} → "undo" | "shown" | "gone"   the page's line goes up on the island — the main window's
 //                 toasts have one place (and one timing: ≥ 5 s, held while pointed at); "undo" when its Undo is clicked
+//   undo          registerUndo {label} (a page step on the window's NSUndoManager; ⌘Z calls blurtReview.undo() /
+//                 redo() back), windowUndo {redo} (⌘Z on the page outside a field), undone {uid}, focusList (Esc)
 //   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {job} (older
 //                 pages: jobId), registerDragRects {rects}, download {path|rel}, confirmed {scope} (a batch confirmed:
 //                 review.py, if it asked for this batch, hears it — ReviewHandoff)
@@ -35,6 +38,12 @@ protocol WebHostActions: AnyObject {
     func revealJob(_ id: String)
     func jobAction(_ action: String, job: Job)
     func webWrote()
+    /// the page undid / redid a step about this item (not necessarily the one shown): select it
+    func webUndid(_ uid: String)
+    /// Esc on the page with nothing left to cancel
+    func focusList()
+    /// "Locate…" for a project whose folder is gone
+    func locateFolder(_ id: String)
 }
 
 /// What a page shows: one capture session's batch, or one project's items.
@@ -65,6 +74,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private(set) var currentItem: ItemRow?
     private(set) var currentJob: Job?
     private var accentObserver: NSObjectProtocol?
+    /// The project whose missing folder the placeholder offers to find.
+    private var missingProject: String?
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 600))
@@ -82,7 +93,10 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         if #available(macOS 13.3, *) { web.isInspectable = ProcessInfo.processInfo.environment["BLURT_INSPECT"] != nil }
         web.setAccessibilityLabel(T("main.detail.label"))
         overlay.web = web
-        placeholder.onButton = { [weak self] tag in if tag == 1 { self?.actions?.webWrote() } }
+        placeholder.onButton = { [weak self] tag in
+            if tag == 1 { self?.actions?.webWrote() }
+            if tag == 7, let p = self?.missingProject { self?.actions?.locateFolder(p) }
+        }
         banner.onAction = { [weak self] a in self?.bannerAction(a) }
         jobView.onAction = { [weak self] a in
             guard let self = self, let j = self.currentJob else { return }
@@ -121,7 +135,33 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     /// The optional host methods we implement.
     var methods: [String] {
-        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl", "toast"]
+        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl",
+         "toast", "registerUndo", "focusList"]
+    }
+
+    // MARK: one undo stack per window
+    //
+    // The page's own undoable steps (a state from the pill, a chip, a move, a field's editing session) go on the
+    // window's NSUndoManager next to the list's: ⌘Z / ⇧⌘Z work wherever the focus is and the Edit menu names the step.
+    // Each page load has its own target: a step of a page since replaced is dropped with it (nothing left to undo
+    // there), never run against another page.
+
+    private final class PageSteps {}
+    private var pageSteps = PageSteps()
+
+    private func registerPageStep(_ label: String, undo: Bool, on target: PageSteps) {
+        guard let um = view.window?.undoManager else { return }
+        um.registerUndo(withTarget: target) { [weak self] t in
+            guard let self = self, t === self.pageSteps else { return }
+            self.web.evaluateJavaScript("window.blurtReview && window.blurtReview.\(undo ? "undo" : "redo")()")
+            self.registerPageStep(label, undo: !undo, on: t)       // inside an undo: the redo, and back
+        }
+        um.setActionName(label)
+    }
+
+    private func dropPageSteps() {
+        view.window?.undoManager?.removeAllActions(withTarget: pageSteps)
+        pageSteps = PageSteps()
     }
 
     /// sessionBanner only in item mode: the banner above the page exists only there, so a batch keeps the panel's own.
@@ -178,15 +218,27 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             return only(placeholder)
         }
         guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
-            placeholder.show(symbol: "questionmark.folder", title: T("main.detail.gone"), message: (item.fileURL.path as NSString).abbreviatingWithTildeInPath)
+            // the whole folder is gone (moved, renamed, an unplugged disk): say that, where it was on one line, and
+            // offer to find it — the list's banner says the same; one missing item file keeps the plain message
+            if let p = projects.first(where: { $0.id == item.projectID }), p.registered, !FileManager.default.fileExists(atPath: p.path.path) {
+                placeholder.show(symbol: "questionmark.folder", title: T("main.missing.title"),
+                                 message: (p.path.path as NSString).abbreviatingWithTildeInPath, oneLine: true,
+                                 buttons: [(T("main.missing.locate"), 7)])
+                missingProject = p.id
+            } else {
+                placeholder.show(symbol: "questionmark.folder", title: T("main.detail.gone"),
+                                 message: (item.fileURL.path as NSString).abbreviatingWithTildeInPath, oneLine: true)
+            }
             return only(placeholder)
         }
         only(web)
         banner.set(item, suggested: item.suggestedProject.flatMap { s in projects.first { $0.id == s } })
         let scope: DocScope = item.sessionURL.map { .session($0) } ?? .project(item.projectID)
         if loadedScope == scope, loadedMode == "item" {
-            web.evaluateJavaScript("window.blurtReview && window.blurtReview.setItem ? (window.blurtReview.setItem(\(Self.js(item.uid))), true) : false") { [weak self] r, _ in
-                if (r as? Bool) != true { self?.load(scope, mode: "item", item: item.uid) }
+            // setItem answers whether the loaded doc has the item: a discarded one (left out of its project's doc) or
+            // one that moved in since needs a doc that lists it — never the item shown before
+            web.evaluateJavaScript("window.blurtReview && window.blurtReview.setItem ? window.blurtReview.setItem(\(Self.js(item.uid))) === true : false") { [weak self] r, _ in
+                if (r as? Bool) != true, self?.currentItem?.uid == item.uid { self?.load(scope, mode: "item", item: item.uid) }
             }
             return
         }
@@ -211,6 +263,15 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     func reload() { if let s = loadedScope { load(s, mode: loadedMode, item: currentItem?.uid) } }
 
+    /// Something was written behind the page (a list key, a move, a rename): it fetches the doc again in place — no
+    /// reload, so its scroll, media, caret and undo steps stay. A page without pollNow is reloaded.
+    func pollNow() {
+        guard loadedScope != nil, !web.isHidden else { return }
+        web.evaluateJavaScript("window.blurtReview && window.blurtReview.pollNow ? (window.blurtReview.pollNow(), true) : false") { [weak self] r, _ in
+            if (r as? Bool) != true { self?.reload() }
+        }
+    }
+
     /// The index has a newer row for the item on show (its state, title, file, project): the banner follows it, and
     /// an item whose file moved (to another project, a folder renamed on disk) or came back is shown again from there.
     func refresh(item: ItemRow, projects: [ProjectEntry]) {
@@ -231,6 +292,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     }
 
     private func load(_ scope: DocScope, mode: String, item: String?) {
+        dropPageSteps()
         loadedScope = scope
         loadedMode = mode
         overlay.set([])
@@ -301,6 +363,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         return loadedScope
     }
 
+    /// The item on show is always in its doc (items.py --item), whatever a project's doc leaves out: a discarded one
+    /// selected under the Discarded filter shows itself, not its neighbour.
+    private func shownItemArgs(_ s: DocScope) -> [String] {
+        guard loadedMode == "item", case .project = s, let it = currentItem else { return [] }
+        return ["--item", it.uid]
+    }
+
     /// One host method. `reply(result, error)`; notifications reply nil.
     func call(_ method: String, _ p: [String: Any], reply: @escaping (Any?, String?) -> Void) {
         let session = schemes.session
@@ -310,7 +379,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         switch method {
         case "load", "poll":
             guard let s = scope(p) else { return reply(nil, "no scope") }
-            let args = method == "load" ? ["doc"] + s.args : ["poll"] + s.args + ["--etag", p["etag"] as? String ?? ""]
+            let args = (method == "load" ? ["doc"] + s.args : ["poll"] + s.args + ["--etag", p["etag"] as? String ?? ""]) + shownItemArgs(s)
             Scripts.run("items.py", args, timeout: 30) { r in
                 switch r {
                 case .success(let d):
@@ -324,7 +393,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         case "sendOps":
             guard let s = scope(p) else { return reply(nil, "no scope") }
             let ops = p["ops"] as? [[String: Any]] ?? []
-            Scripts.userOps(s.args, ops, confirm: p["confirm"] as? Bool ?? false) { [weak self] r in
+            Scripts.userOps(s.args + shownItemArgs(s), ops, confirm: p["confirm"] as? Bool ?? false) { [weak self] r in
                 switch r {
                 case .success(let o): reply(["ok": true, "etag": o["etag"] ?? "", "doc": o["doc"] ?? NSNull()], nil); self?.actions?.webWrote()
                 case .failure(let e): reply(nil, "\(e)")
@@ -374,13 +443,37 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             // (replaced, superseded, expired after a hover hold, stale) — never a click on an Undo the page gave up on
             var answered = false
             func answer(_ r: String) { if !answered { answered = true; reply(r, nil) } }
+            // its Undo takes back only the step it was for (one undo stack per window): while that is still the step
+            // ⌘Z would take back, the page undoes through the window's stack (windowUndo); after a later step, nothing
+            let label = p["label"] as? String
             var t = Island.Toast(text: text, actionTitle: undo ? Loc.t("capture.undo", table: "Capture") : nil,
-                                 action: undo ? { answer("undo") } : nil)
+                                 action: undo ? { [weak self] in
+                if let l = label, let um = self?.view.window?.undoManager, !(um.canUndo && um.undoActionName == l) {
+                    NSSound.beep()
+                    return answer("gone")
+                }
+                answer("undo")
+            } : nil)
             t.key = "main.page"
             t.icon = done ? .check : nil
             t.gone = { answer("gone") }
             island.toast(t)
             if !undo { answer("shown") }
+        case "registerUndo":
+            registerPageStep(p["label"] as? String ?? "", undo: true, on: pageSteps)
+            reply(nil, nil)
+        case "windowUndo":          // ⌘Z / Z / a toast's Undo on the page, outside a text field: the window's next step
+            if let um = view.window?.undoManager {
+                if p["redo"] as? Bool == true { if um.canRedo { um.redo() } else { NSSound.beep() } }
+                else if um.canUndo { um.undo() } else { NSSound.beep() }
+            }
+            reply(nil, nil)
+        case "undone":
+            if let uid = p["uid"] as? String { actions?.webUndid(uid) }
+            reply(nil, nil)
+        case "focusList":
+            actions?.focusList()
+            reply(nil, nil)
         case "confirmed":
             actions?.webWrote()
             if case .session(let u)? = scope(p) { ReviewHandoff.confirmed(session: u) }
@@ -492,7 +585,7 @@ final class ItemBanner: NSView {
     private(set) var processingJob: String?
     /// While the batch is still being organised (AI at work, §4): the brand arc in the icon's place. The banner's own
     /// quiet ink wash is the accent — no rim, no glow.
-    private let spinner = BrandSpinner()
+    private let spinner = BrandSpinner(size: 14)
 
     override init(frame: NSRect) {
         super.init(frame: frame)

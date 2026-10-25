@@ -11,8 +11,8 @@ export function Toast() {
       {t?.icon && <Icon name={t.icon} size={15} className={"ti ti-" + t.icon} />}
       <span id="toastMsg">{t?.msg}</span>
       {t?.undo && (
-        <button id="toastUndo" onClick={s.undo}>
-          {s.t("action.undo")} <kbd>Z</kbd>
+        <button id="toastUndo" onClick={s.undoLast}>
+          {s.t("action.undo")} <kbd>{s.mode === "item" ? (isMacLike() ? "⌘Z" : "Ctrl+Z") : "Z"}</kbd>
         </button>
       )}
     </div>
@@ -28,9 +28,9 @@ function Keys() {
     s.mode === "item"
       ? [["A", "keys.keep_item"], ["X / ⌫", "keys.discard_item"], ...states,
          ...(s.canHandOff ? [[mod, "keys.hand_off"] as [string, string]] : []),
-         ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["1 2 3", "keys.severity"], ["?", "keys.help"]]
+         ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["1 2 3 4", "keys.kind"], [isMacLike() ? "⌘Z ⇧⌘Z" : "Ctrl+Z", "keys.undo"], ["?", "keys.help"]]
       : [["↓ ↑ / J K", "keys.next"], ["A / ⏎", "keys.keep"], ["X / ⌫", "keys.discard"], ...states, ["Z", "keys.undo"], ["M", "keys.merge"],
-         ["1 2 3", "keys.severity"], ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["G", "keys.view"],
+         ["1 2 3 4", "keys.kind"], ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["G", "keys.view"], ["Space", "keys.select"],
          ["V", "keys.overview"], ...(s.isSession ? [[mod, "keys.finish"] as [string, string]] : []), ["?", "keys.help"]];
   return (
     <>

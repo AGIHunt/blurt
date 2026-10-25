@@ -738,13 +738,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// with " · ". The small HUD under the menu bar below is only for a build without the island (the one-shot
     /// recorder a chat starts); there several lines are fine: the first is the headline, the rest a quieter detail.
     /// `icon: .check` is a done toast, in the island or the HUD: the check in ok green (§2.3).
-    func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil) {
+    /// `undo`: the main window's "Moved … · Undo" — the button is a shortcut to that window's ⌘Z (the HUD has no
+    /// button; ⌘Z works all the same). A newer undo toast takes the place of the one on show (`key`).
+    func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil, undo: (() -> Void)? = nil) {
         if island.started {
-            emit(["event": "toast", "text": text, "via": "island"])
+            emit(["event": "toast", "text": text, "via": "island", "undo": undo != nil])
             var t = Island.Toast(text: text.components(separatedBy: "\n").filter { !$0.isEmpty }.joined(separator: " · "),
-                                 actionTitle: nil, action: nil)
-            t.seconds = seconds
+                                 actionTitle: undo == nil ? nil : T("action.undo"), action: undo)
+            t.seconds = undo == nil ? seconds : max(seconds, 6)
             t.icon = icon
+            if undo != nil { t.key = "main.undo"; t.overOpen = true }
             island.toast(t)
             return
         }

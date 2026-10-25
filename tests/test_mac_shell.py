@@ -220,7 +220,7 @@ class SessionRecoveryWiring(unittest.TestCase):
         self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
         self.assertIn("loginChecked: loginVerified", d)
         ilc = self.src("MainWindow/ItemListController.swift")
-        self.assertIn("let spinner = BrandSpinner()", ilc)
+        self.assertIn("let spinner = BrandSpinner(", ilc)       # the brand arc (one BrandSpinner, sized for the empty state)
         self.assertNotIn("NSProgressIndicator()", ilc)
 
 

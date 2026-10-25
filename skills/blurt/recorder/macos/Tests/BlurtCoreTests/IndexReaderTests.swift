@@ -229,6 +229,20 @@ final class IndexReaderTests: XCTestCase {
         XCTAssertEqual(try r.count(ItemQuery(text: "100%")), 0)
     }
 
+    /// The id printed on every row ("AW-11") finds that item, in any case, first (index.py does the same).
+    func testSearchByItemID() throws {
+        let r = try IndexReader(url: Self.dbURL)
+        let some = try XCTUnwrap(r.items(ItemQuery(limit: 20)).last)
+        for typed in [some.itemID, some.itemID.lowercased()] {
+            let hits = try r.items(ItemQuery(text: typed, limit: 5))
+            XCTAssertEqual(hits.first?.uid, some.uid, typed)
+            XCTAssertEqual(try r.uids(ItemQuery(text: typed, limit: 0)).first, some.uid, typed)
+        }
+        XCTAssertEqual(try r.count(ItemQuery(text: "ZZ-424242")), 0)
+        XCTAssertTrue(ItemQuery.isItemID("AW-11") && ItemQuery.isItemID("ios-3"))
+        XCTAssertFalse(ItemQuery.isItemID("3D-1") || ItemQuery.isItemID("AW-") || ItemQuery.isItemID("UTF-8x") || ItemQuery.isItemID("登录-1"))
+    }
+
     func testPerformanceFilterReload() throws {
         let r = try IndexReader(url: Self.dbURL)
         let qs = [ItemQuery(), ItemQuery(inbox: true), ItemQuery(states: ["handed_off", "in_progress", "to_verify"]),

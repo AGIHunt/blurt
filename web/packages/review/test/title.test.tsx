@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { BlurtHost, SessionDoc, UserOp } from "../src/host";
-import { ReviewStore } from "../src/store";
+import { firstTabbable, ReviewStore } from "../src/store";
 import { StoreCtx } from "../src/ui/ctx";
 import { Inspector } from "../src/ui/Inspector";
 
@@ -56,10 +56,16 @@ describe("an empty title is never saved", () => {
     act(() => type(ta, "Login"));
     act(() => type(ta, "   "));
     expect(ta.value).toBe("   "); // what the user typed stays visible while editing
+    // said while typing, not after the fact: the field is marked and a line under it explains
+    expect(ta.getAttribute("aria-invalid")).toBe("true");
+    expect(el.querySelector("#titleErr")?.textContent).toBe("标题不能为空。按 Esc 恢复原标题。");
+    // Return doesn't commit an empty title: the focus stays
+    act(() => void ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    expect(document.activeElement).toBe(ta);
     act(() => ta.blur());
     expect(ta.value).toBe("Login button does nothing");
     expect(s.item!.title).toBe("Login button does nothing");
-    expect(s.toast?.msg).toBe("标题不能为空，已恢复原标题");
+    expect(el.querySelector("#titleErr")).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(1500));
     const titles = sent.flat().flatMap((op) => (op.op === "set" && op.set && "title" in op.set ? [op.set.title] : []));
     expect(titles.every((t) => typeof t === "string" && t.trim() !== "")).toBe(true);
@@ -67,5 +73,109 @@ describe("an empty title is never saved", () => {
     el.remove();
     s.dispose();
     vi.useRealTimers();
+  });
+});
+
+/** the inspector mounted on a store whose host keeps the window's undo stack (the Mac app) */
+async function mounted(lang = "en") {
+  const { host, sent } = setup();
+  const labels: string[] = [];
+  const asked: boolean[] = [];
+  host.registerUndo = (l) => labels.push(l);
+  host.windowUndo = (redo) => asked.push(redo);
+  const s = new ReviewStore(host, { lang, mode: "item", itemId: "I-001" });
+  await s.load();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const root = createRoot(el);
+  await act(async () => root.render(<StoreCtx.Provider value={s}><Inspector /></StoreCtx.Provider>));
+  const done = () => {
+    act(() => root.unmount());
+    el.remove();
+    s.dispose();
+  };
+  return { s, el, labels, asked, sent, done };
+}
+const key = (el: Element, k: string, o: KeyboardEventInit = {}) =>
+  act(() => void el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o })));
+
+describe("one undo stack per window (micro 3, 4, 12, 13)", () => {
+  it("a field's editing session is one step on the host's stack; the host's undo/redo come back to the page", async () => {
+    const { s, el, labels, done } = await mounted();
+    const ta = el.querySelector("textarea.title") as HTMLTextAreaElement;
+    act(() => ta.focus());
+    act(() => type(ta, "Login"));
+    act(() => type(ta, "Login fails on Safari"));
+    expect(labels).toEqual([]); // nothing while typing
+    act(() => ta.blur());
+    expect(labels).toEqual(["Edit Title"]); // one step for the whole edit
+    act(() => s.undo()); // the host's ⌘Z
+    expect(s.item!.title).toBe("Login button does nothing");
+    act(() => s.redo()); // ⇧⌘Z
+    expect(s.item!.title).toBe("Login fails on Safari");
+    // focus and blur without a change: no step
+    act(() => ta.focus());
+    act(() => ta.blur());
+    expect(labels).toEqual(["Edit Title"]);
+    done();
+  });
+
+  it("Esc cancels an edit: the value from when editing began comes back, and no step is left", async () => {
+    const { s, el, labels, done } = await mounted();
+    const ta = el.querySelector("textarea.title") as HTMLTextAreaElement;
+    act(() => ta.focus());
+    act(() => type(ta, "oops"));
+    expect(s.item!.title).toBe("oops"); // autosaving as before
+    key(ta, "Escape");
+    expect(s.item!.title).toBe("Login button does nothing");
+    expect(ta.value).toBe("Login button does nothing");
+    expect(document.activeElement).not.toBe(ta);
+    expect(labels).toEqual([]);
+    done();
+  });
+
+  it("⌘Z outside a field asks the host (the window's stack); chips and 1–4 are undoable steps", async () => {
+    const { s, el, labels, asked, done } = await mounted();
+    const page = (k: string, o: KeyboardEventInit = {}) => act(() => s.onKeyDown(new KeyboardEvent("keydown", { key: k, cancelable: true, ...o })));
+    page("z", { metaKey: true });
+    page("z", { metaKey: true, shiftKey: true });
+    expect(asked).toEqual([false, true]);
+    page("2"); // 1–4 = kind, as in the list
+    expect(s.item!.kind).toBe("idea");
+    page("1");
+    const sev = el.querySelector("#sevChip") as HTMLSelectElement;
+    expect([...sev.options].map((o) => o.value)).toEqual(["high", "medium", "low"]);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sev, "high");
+      sev.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(s.item!.severity).toBe("high");
+    expect(labels).toEqual(["Change Kind", "Change Kind", "Change Severity"]);
+    act(() => s.undo());
+    expect(s.item!.severity).toBeUndefined();
+    done();
+  });
+
+  it("⇧Tab from the detail's first control goes back to the host's list (micro 5); from a later one it stays a Tab", async () => {
+    const { s, el, labels, done } = await mounted();
+    let back = 0;
+    s.host.focusList = () => void back++;
+    const first = firstTabbable(el)!;
+    expect(first).toBeTruthy();
+    const tab = () => {
+      const e = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+      act(() => s.onKeyDown(e));
+      return e.defaultPrevented;
+    };
+    act(() => first.focus());
+    expect(tab()).toBe(true);
+    expect(back).toBe(1);
+    expect(document.activeElement).not.toBe(first);
+    const later = [...el.querySelectorAll<HTMLElement>("textarea, input, button")].find((x) => x !== first && x.tabIndex >= 0)!;
+    act(() => later.focus());
+    expect(tab()).toBe(false);
+    expect(back).toBe(1);
+    expect(labels).toEqual([]);
+    done();
   });
 });

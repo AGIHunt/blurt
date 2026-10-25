@@ -143,6 +143,77 @@ describe("v3 doc: ops by uid", () => {
     s.dispose();
   });
 
+  it("undoing a chip pick leaves alone a state the agent wrote meanwhile (window ⌘Z over the project doc)", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ project: "p-blurt" });
+    const labels: string[] = [];
+    host.registerUndo = (l) => labels.push(l);
+    const s = new ReviewStore(host, { lang: "en", mode: "item", itemId: "BA-12" });
+    await s.load();
+    const other = s.data.items.find((i) => i.id === "BA-15")!;
+    expect(s.stateOf(other)).toBe("in_progress");
+    s.setKind("note");
+    await flush();
+    expect(labels).toEqual(["Change Kind"]);
+    m.agentWork(other.uid!, "to_verify", "fixed"); // an agent finishing, after the pick
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(s.stateOf(s.data.items.find((i) => i.id === "BA-15")!)).toBe("to_verify");
+    const before = sent.length;
+    s.undo();
+    await flush();
+    expect(s.item?.kind ?? "issue").toBe("issue");
+    expect(s.stateOf(s.data.items.find((i) => i.id === "BA-15")!)).toBe("to_verify");
+    expect(sent.slice(before).flat().some((o) => o.op === "state")).toBe(false);
+    expect(m.items.find((i) => i.uid === other.uid)!.state).toBe("to_verify");
+    s.redo();
+    await flush();
+    expect(s.item?.kind).toBe("note");
+    expect(m.items.find((i) => i.uid === other.uid)!.state).toBe("to_verify");
+    s.dispose();
+  });
+
+  it("undoing a state step sends back only the items it changed, and only while they are still where it left them", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ project: "p-blurt" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    const [a, b] = ["BA-12", "BA-16"].map((id) => s.data.items.find((i) => i.id === id)!);
+    const other = s.data.items.find((i) => i.id === "BA-15")!;
+    s.act([a, b], "discard");
+    await flush();
+    m.agentWork(b.uid!, "to_verify", "fixed"); // b moved on by an agent after the discard
+    m.agentWork(other.uid!, "to_verify", "fixed");
+    await vi.advanceTimersByTimeAsync(2100);
+    const before = sent.length;
+    s.undo();
+    await flush();
+    expect(sent.slice(before).flat().filter((o) => o.op === "state")).toEqual([{ op: "state", id: a.uid, state: "to_verify", undo: true }]);
+    expect(m.items.find((i) => i.uid === a.uid)!.state).toBe("to_verify");
+    expect(m.items.find((i) => i.uid === b.uid)!.state).toBe("to_verify");
+    expect(m.items.find((i) => i.uid === other.uid)!.state).toBe("to_verify");
+    s.redo(); // discards a again, and only a
+    await flush();
+    expect(m.items.find((i) => i.uid === a.uid)!.state).toBe("discarded");
+    expect(m.items.find((i) => i.uid === b.uid)!.state).toBe("to_verify");
+    s.dispose();
+  });
+
+  it("a field's editing session is named after the field in the Edit menu", async () => {
+    vi.useFakeTimers();
+    const { host } = v3Host({ project: "p-blurt" });
+    const labels: string[] = [];
+    host.registerUndo = (l) => labels.push(l);
+    const s = new ReviewStore(host, { lang: "en", mode: "item", itemId: "BA-12" });
+    await s.load();
+    const i = s.item!;
+    s.beginEdit(i, "steps");
+    s.setField(i, "steps", ["Open it", "Click"]);
+    s.endEdit(i);
+    s.setSev("low");
+    expect(labels).toEqual(["Edit Steps to Reproduce", "Change Severity"]);
+    s.dispose();
+  });
+
   it("an agent's to_verify arrives by poll while nothing is pending", async () => {
     vi.useFakeTimers();
     const { m, host } = v3Host({ session: "/s" });
@@ -207,7 +278,7 @@ describe("v3 UI", () => {
     expect(pill.textContent).toBe("To verify");
     expect(pill.getAttribute("aria-haspopup")).toBe("menu");
     expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
-    expect(el.querySelector("#workDone")?.textContent).toContain("Mark as done");
+    expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
     expect(el.querySelector("#workSession")).not.toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
     expect(el.querySelector("#provenance")?.textContent).toContain("Captured in this project");

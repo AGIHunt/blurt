@@ -173,6 +173,25 @@ def test_search_trigram_like_and_filters(env):
     assert cli("search", 'a"b OR (')["total"] == 0  # FTS syntax in the query is just text
 
 
+def test_search_by_item_id(env):
+    """The id printed on every row finds that item (any case), first — and an old id still finds a moved item."""
+    migrated(env)
+    rep5 = cli("search", "REP-5")
+    assert rep5["items"][0]["item_id"] == "REP-5"
+    assert cli("search", "rep-5")["items"][0]["item_id"] == "REP-5"
+    assert cli("search", "REP-5", "--project", "REP")["items"][0]["item_id"] == "REP-5"
+    assert cli("search", "REP-999")["total"] == 0
+    assert index.is_item_id("AW-11") and index.is_item_id("ba-3") and index.is_item_id("IOS-12")
+    assert not index.is_item_id("-3") and not index.is_item_id("AW-") and not index.is_item_id("3D-1") \
+        and not index.is_item_id("UTF-8x") and not index.is_item_id("登录-1")
+    # moved to the inbox: a new id there, and its old one finds it too
+    uid = rep5["items"][0]["uid"]
+    subprocess.run([sys.executable, str(ROOT / "skills/blurt/scripts/items.py"), "move", uid, "--project", "inbox"],
+                   check=True, capture_output=True)
+    moved = cli("search", "REP-5")["items"]
+    assert [r["uid"] for r in moved] == [uid] and moved[0]["item_id"].startswith("IN-")
+
+
 def cpu_ms(f):
     """→ (f(), the CPU milliseconds it took). Wall-clock time here was flaky: SQLite's commit waits for the disk, and a
     disk busy with something else (a `swift build` just before the suite, other agents) made a 5 ms update take

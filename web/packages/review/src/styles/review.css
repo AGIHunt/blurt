@@ -622,6 +622,20 @@ body {
   background: var(--panel);
   box-shadow: 0 0 0 3px var(--focus-soft);
 }
+/* an emptied title, while it is being typed: said right there, never saved (Esc puts the old one back) */
+.title.invalid,
+.title.invalid:focus {
+  border-color: var(--kind-issue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind-issue) 18%, transparent);
+}
+.title::placeholder {
+  color: var(--faint);
+}
+.field-err {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  color: var(--kind-issue);
+}
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -647,6 +661,33 @@ body {
 }
 button.chip:hover {
   color: var(--ink);
+}
+/* a chip with a menu of its values (kind, severity, type): a native select laid over it */
+.chip-pick {
+  position: relative;
+  cursor: pointer;
+  gap: 5px;
+}
+.chip-pick:hover {
+  color: var(--ink);
+}
+.chip-pick select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.chip-pick .pick-ch {
+  width: 11px;
+  height: 11px;
+  opacity: 0.7;
+  color: currentColor;
+}
+.chip-pick:has(select:focus-visible) {
+  outline: 3px solid var(--focus-soft);
+  box-shadow: 0 0 0 1px var(--focus);
 }
 .chip .sw {
   width: 7px;
@@ -1232,8 +1273,11 @@ button.chip:hover {
   flex-direction: column;
   gap: 2px;
 }
+/* id · title · state ring: the ring in a fixed trailing column, so the rings line up down the list */
 .ov-list button {
-  display: flex;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
   text-align: left;
   padding: 9px 12px;
@@ -1244,10 +1288,10 @@ button.chip:hover {
 .ov-list button:hover {
   background: var(--hover);
 }
+/* item ids are what users search and talk by: mute, never faint (faint is for disabled, §2.4) */
 .ov-list button span:first-child {
   font: 600 12px/20px var(--mono);
-  color: var(--faint);
-  min-width: 52px;
+  color: var(--mute);
 }
 
 /* ---------- list view ---------- */
@@ -1359,7 +1403,7 @@ button.chip:hover {
   display: flex;
   gap: 7px;
   align-items: center;
-  color: var(--faint);
+  color: var(--mute);
   font: 600 11.5px/1 var(--mono);
 }
 .card .tt {
@@ -1475,6 +1519,11 @@ button.chip:hover {
 }
 [data-theme="dark"] .card.sel {
   box-shadow: 0 0 0 2px var(--brand-ink);
+}
+/* the keyboard's place in the list view: the focus ring, not the selection */
+.card.cursor {
+  outline: 3px solid var(--focus-soft);
+  outline-offset: 2px;
 }
 .card.sel:hover {
   box-shadow: 0 0 0 2px var(--brand-ink), var(--shadow);
