@@ -205,7 +205,7 @@ describe("v3 UI", () => {
     expect(pill.textContent).toBe("To verify");
     expect(pill.getAttribute("aria-haspopup")).toBe("menu");
     expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
-    expect(el.querySelector("#workDone")?.textContent).toContain("Mark as done");
+    expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
     expect(el.querySelector("#workSession")).not.toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
     expect(el.querySelector("#provenance")?.textContent).toContain("Captured in this project");

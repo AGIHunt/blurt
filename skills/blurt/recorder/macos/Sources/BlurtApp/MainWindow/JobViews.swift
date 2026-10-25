@@ -151,7 +151,7 @@ final class JobsSection: NSView {
 final class JobRow: NSView {
     var onClick: (() -> Void)?
     let icon = NSImageView()
-    let spinner = NSProgressIndicator()
+    let spinner = BrandSpinner(size: 14)
     let title = NSTextField(labelWithString: "")
     let status = NSTextField(labelWithString: "")
     let bar = NSProgressIndicator()
@@ -165,9 +165,6 @@ final class JobRow: NSView {
     init() {
         super.init(frame: .zero)
         working.cornerRadius = 6
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
         title.font = .systemFont(ofSize: 12, weight: .medium)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

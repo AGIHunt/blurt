@@ -156,7 +156,7 @@ final class EmptyStateView: NSView {
     let title = NSTextField(labelWithString: "")
     let message = NSTextField(wrappingLabelWithString: "")
     let buttons = NSStackView()
-    let spinner = NSProgressIndicator()
+    let spinner = BrandSpinner(size: 26)
     var onButton: ((Int) -> Void)?
     /// tags whose button is never the primary (they undo a filter rather than move on)
     static let secondaryTags: Set<Int> = [2]
@@ -172,9 +172,6 @@ final class EmptyStateView: NSView {
         message.preferredMaxLayoutWidth = EmptyState.messageWidth
         icon.symbolConfiguration = .init(pointSize: 34, weight: .light)
         icon.contentTintColor = .tertiaryLabelColor
-        spinner.style = .spinning
-        spinner.controlSize = .regular
-        spinner.isDisplayedWhenStopped = false
         buttons.orientation = .horizontal
         buttons.spacing = 8
         for v in [icon, mark, spinner, title, message, buttons] as [NSView] { stack.addArrangedSubview(v) }
@@ -195,8 +192,14 @@ final class EmptyStateView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// `mark`: the brand mark instead of the symbol (the friendly states).
+    /// `oneLine`: a path — one line, cut in the middle (both ends say where it was).
     func show(symbol: String?, image: NSImage? = nil, mark showMark: Bool = false, title t: String,
-              message m: String, buttons bs: [(String, Int)] = [], busy: Bool = false) {
+              message m: String, oneLine: Bool = false, buttons bs: [(String, Int)] = [], busy: Bool = false) {
+        message.maximumNumberOfLines = oneLine ? 1 : 0
+        message.lineBreakMode = oneLine ? .byTruncatingMiddle : .byWordWrapping
+        message.toolTip = oneLine ? m : nil
+        message.cell?.wraps = !oneLine
+        message.usesSingleLineMode = oneLine
         icon.image = showMark ? nil : image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         icon.isHidden = icon.image == nil || busy
         mark.isHidden = !showMark || busy
@@ -218,7 +221,8 @@ final class EmptyStateView: NSView {
                 b.bezelStyle = .rounded
             }
             b.tag = tag
-            if k == 0 { b.keyEquivalent = "\r" }
+            // the brand primary takes Return; a plain button never does (it would draw as the system default)
+            if k == 0 && !Self.secondaryTags.contains(tag) { b.keyEquivalent = "\r" }
             buttons.addArrangedSubview(b)
         }
         buttons.isHidden = bs.isEmpty
@@ -760,7 +764,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "missing": empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"), buttons: [(T("main.missing.locate"), 7)])
         case "scanning": empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
         case "discarded":
-            empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         default:
             empty.show(symbol: nil, mark: true, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
@@ -797,7 +801,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
                            ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
                        buttons: [(T("main.empty.clear_all"), 2)])
         } else if model.shownState == "discarded", model.kinds.isEmpty {
-            empty.show(symbol: nil, image: Look.ring("discarded", size: 34), title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
+            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
                        buttons: [(T("main.empty.clear_filters"), 2)])
         } else if model.filtered {
             empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "",

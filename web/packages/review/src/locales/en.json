@@ -6,13 +6,13 @@
   "theme.switch": "Switch theme",
   "keys.open": "Keyboard shortcuts",
 
-  "review.finish": "Finish review",
+  "review.finish": "Finish Review",
 
   "view.overview": "Overview",
   "view.focus": "Focus",
   "view.list": "List",
 
-  "action.merge": "Merge up",
+  "action.merge": "Merge Up",
   "action.undo": "Undo",
   "action.prev": "Previous",
   "action.next": "Next",
@@ -146,7 +146,7 @@
   "work.history": "History",
   "work.claim.fixed": "The agent says it’s fixed — check it, then mark it done.",
   "work.claim.wontfix": "The agent suggests not doing this — choose Won’t do, or send it back.",
-  "work.open_session": "Open session",
+  "work.open_session": "Open Session",
   "work.commit": "Commit {sha}",
   "work.pr": "Pull request",
 

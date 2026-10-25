@@ -40,6 +40,8 @@ protocol WebHostActions: AnyObject {
     func webUndid(_ uid: String)
     /// Esc on the page with nothing left to cancel
     func focusList()
+    /// "Locate…" for a project whose folder is gone
+    func locateFolder(_ id: String)
 }
 
 /// What a page shows: one capture session's batch, or one project's items.
@@ -70,6 +72,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private(set) var currentItem: ItemRow?
     private(set) var currentJob: Job?
     private var accentObserver: NSObjectProtocol?
+    /// The project whose missing folder the placeholder offers to find.
+    private var missingProject: String?
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 600))
@@ -87,7 +91,10 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         if #available(macOS 13.3, *) { web.isInspectable = ProcessInfo.processInfo.environment["BLURT_INSPECT"] != nil }
         web.setAccessibilityLabel(T("main.detail.label"))
         overlay.web = web
-        placeholder.onButton = { [weak self] tag in if tag == 1 { self?.actions?.webWrote() } }
+        placeholder.onButton = { [weak self] tag in
+            if tag == 1 { self?.actions?.webWrote() }
+            if tag == 7, let p = self?.missingProject { self?.actions?.locateFolder(p) }
+        }
         banner.onAction = { [weak self] a in self?.bannerAction(a) }
         jobView.onAction = { [weak self] a in
             guard let self = self, let j = self.currentJob else { return }
@@ -206,7 +213,17 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             return only(placeholder)
         }
         guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
-            placeholder.show(symbol: "questionmark.folder", title: T("main.detail.gone"), message: (item.fileURL.path as NSString).abbreviatingWithTildeInPath)
+            // the whole folder is gone (moved, renamed, an unplugged disk): say that, where it was on one line, and
+            // offer to find it — the list's banner says the same; one missing item file keeps the plain message
+            if let p = projects.first(where: { $0.id == item.projectID }), p.registered, !FileManager.default.fileExists(atPath: p.path.path) {
+                placeholder.show(symbol: "questionmark.folder", title: T("main.missing.title"),
+                                 message: (p.path.path as NSString).abbreviatingWithTildeInPath, oneLine: true,
+                                 buttons: [(T("main.missing.locate"), 7)])
+                missingProject = p.id
+            } else {
+                placeholder.show(symbol: "questionmark.folder", title: T("main.detail.gone"),
+                                 message: (item.fileURL.path as NSString).abbreviatingWithTildeInPath, oneLine: true)
+            }
             return only(placeholder)
         }
         only(web)
@@ -516,7 +533,7 @@ final class ItemBanner: NSView {
     private(set) var processingJob: String?
     /// While the batch is still being organised (AI at work, §4): a small spinner in the icon's place. The banner's own
     /// quiet ink wash is the accent — no rim, no glow.
-    private let spinner = NSProgressIndicator()
+    private let spinner = BrandSpinner(size: 14)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -527,9 +544,6 @@ final class ItemBanner: NSView {
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         buttons.orientation = .horizontal
         buttons.spacing = 6
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
         for v in [icon, spinner, text, buttons] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         height = heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([

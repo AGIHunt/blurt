@@ -1273,8 +1273,11 @@ button.chip:hover {
   flex-direction: column;
   gap: 2px;
 }
+/* id · title · state ring: the ring in a fixed trailing column, so the rings line up down the list */
 .ov-list button {
-  display: flex;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 12px;
   text-align: left;
   padding: 9px 12px;
@@ -1285,10 +1288,10 @@ button.chip:hover {
 .ov-list button:hover {
   background: var(--hover);
 }
+/* item ids are what users search and talk by: mute, never faint (faint is for disabled, §2.4) */
 .ov-list button span:first-child {
   font: 600 12px/20px var(--mono);
-  color: var(--faint);
-  min-width: 52px;
+  color: var(--mute);
 }
 
 /* ---------- list view ---------- */
@@ -1400,7 +1403,7 @@ button.chip:hover {
   display: flex;
   gap: 7px;
   align-items: center;
-  color: var(--faint);
+  color: var(--mute);
   font: 600 11.5px/1 var(--mono);
 }
 .card .tt {

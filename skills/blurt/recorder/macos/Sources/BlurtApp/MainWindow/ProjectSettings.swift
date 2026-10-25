@@ -15,8 +15,8 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     private let agent = NSPopUpButton()
     private let worktree = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let keyNote = NSTextField(labelWithString: "")
-    /// the sheet's one primary (§3.3): the brand button, ↩
-    private let save = BrandButton()
+    /// a dialog's default stays native (§3.3), like every other sheet's: ↩ (⌘↩ from the description)
+    private let save = NSButton()
     /// projects.py set refuses a new key once the store has items (their ids carry it): the field is read-only then.
     private let keyLocked: Bool
 
@@ -54,6 +54,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         keyNote.textColor = .secondaryLabelColor
         keyNote.stringValue = T("main.project.key.note", p.key)
         desc.stringValue = p.description
+        desc.delegate = self                // Return adds a line here; ⌘Return saves
         desc.placeholderString = T("main.project.description.placeholder")
         desc.usesSingleLineMode = false
         desc.cell?.wraps = true
@@ -105,6 +106,7 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
         let cancel = NSButton(title: T("action.cancel"), target: self, action: #selector(cancelTapped))
         cancel.keyEquivalent = "\u{1b}"
         save.title = T("action.save")
+        save.bezelStyle = .rounded
         save.target = self
         save.action = #selector(saveTapped)
         save.keyEquivalent = "\r"
@@ -129,6 +131,17 @@ final class ProjectSettingsSheet: NSObject, NSTextFieldDelegate {
     }
 
     func controlTextDidChange(_ obj: Notification) { validate() }
+
+    /// The description is several lines: Return adds one there, ⌘Return saves (Return saves from the other fields).
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        guard control === desc, sel == #selector(NSResponder.insertNewline(_:)) else { return false }
+        if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+            if save.isEnabled { saveTapped() } else { NSSound.beep() }
+        } else {
+            textView.insertNewlineIgnoringFieldEditor(nil)
+        }
+        return true
+    }
 
     /// K2: ^[A-Z][A-Z0-9]{1,4}$, and "IN" belongs to Unassigned.
     private var keyValid: Bool {

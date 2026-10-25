@@ -259,7 +259,9 @@ final class SourceCell: NSTableCellView {
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         key.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         key.textColor = .secondaryLabelColor
-        key.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        // the name wins: the key (which only repeats it) gives way first, and goes when it doesn't fit whole
+        key.setContentCompressionResistancePriority(.init(NSLayoutConstraint.Priority.defaultLow.rawValue - 1), for: .horizontal)
+        key.lineBreakMode = .byClipping
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         badge.setContentHuggingPriority(.required, for: .horizontal)
         imageView = icon
@@ -279,14 +281,32 @@ final class SourceCell: NSTableCellView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    override func layout() {
+        super.layout()
+        key.alphaValue = key.frame.width + 0.5 < key.intrinsicContentSize.width ? 0 : 1      // never a cut-off key
+    }
+
+    private var dimmed = false
+    /// The selection is the brand tint wash alone (BrandRowView): the source list would tint the selected row's text
+    /// and icon with the accent — they stay ink.
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { applyInk() }
+    }
+    private func applyInk() {
+        title.textColor = dimmed ? .secondaryLabelColor : .labelColor
+        icon.contentTintColor = dimmed ? .tertiaryLabelColor : .secondaryLabelColor
+        key.textColor = .secondaryLabelColor
+    }
+
     func set(_ n: SidebarNode) {
+        dimmed = n.dimmed
         title.stringValue = n.title
         title.textColor = n.dimmed ? .secondaryLabelColor : .labelColor
         key.stringValue = n.detail ?? ""
         key.isHidden = n.detail == nil
         icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
-        icon.contentTintColor = n.dimmed ? .tertiaryLabelColor : nil
         icon.alphaValue = 1
+        applyInk()
         badge.text = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
         badge.mint = n.alert
         setAccessibilityLabel([n.accessibility ?? n.title, badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))
