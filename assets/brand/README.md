@@ -21,7 +21,8 @@ SVG below. The icon tile's colour is not in it: `chick.swift` reads `gradient.fi
 | `app-icon-16.svg` | The 16 px slot: no arcs, chunkier line, eyes and beak; the same plain linear tile. |
 | `app-icon-dark.svg` | The master on `gradient.deep`: the icon's optional dark appearance. Not shipped yet (see the last editing note). |
 | `logo.svg` | The logo: the app icon's chick without the tile, on a white sticker edge so the black line and arcs read on dark pages too (GitHub dark). |
-| `glyph.svg` | The macOS menu-bar icon (an 18 pt template image) and the tray glyph. Drawn directly on the 18 pt grid with a 1.5 pt line (3 px at 2x), slightly heavier than SF Symbols at menu-bar size so the small face reads, and stored as filled outlines in the family's 24 grid (the family strokes at a fixed 1.75). Hinted by construction: the body's outer edges sit on whole points, the eyes are 2 pt dots centred on whole points (2 × 2 px at 1x). Three layers: the chick, the inner arc, the outer arc. `assets/icons/blurt.svg` is a copy of it. |
+| `glyph.svg` | The macOS menu-bar icon (an 18 pt template image) and the tray glyph (v0.9): the chick as **one bold filled silhouette** — body, the three-bump tuft and the wing nubs — with the eyes (2.3 pt) and the beak knocked out, 16.5 pt tall and 17 wide in its 18 pt box, foot on a whole point. No arcs at rest. One layer, in the family's 24 grid. `assets/icons/blurt.svg` is a copy of it (`build.py` copies it and regenerates the family). See "The menu-bar icon" below. |
+| `…/BlurtApp/App/MenuGlyphGeometry.swift` | The menu bar's two sound arcs (generated): centre, radii, angles and their 2 pt line in the glyph's 18 pt box. They sit to the right of the box, so they are not in `glyph.svg`. |
 | `build.py` | Renders every bitmap below. |
 | `…/BlurtApp/Icons/MascotGeometry.swift` | The mascot's drawing for the mac app (generated): the master and small chicks' outline as a path, their wings, eyes, glints, beak and arcs as numbers, and the mascot palette. |
 
@@ -54,9 +55,26 @@ The 32 / 16 px drawings use only `gradient.linear` (no radial layers, no grain: 
 
 The menu bar shows the chick **in monochrome only**, like every other menu-bar icon: `glyph.svg` as a template image,
 which macOS tints for light, dark and highlighted bars. The colour option of the hen (Settings → General → "Colour
-menu-bar icon", `Icons/MenuHen.swift`) is gone; the old setting keys are removed at launch. `App/MenuGlyph.swift`
-moves it: while voice input listens the arcs pulse outward (inner, then outer), and it hops when something is done;
-with Reduce Motion it stays still.
+menu-bar icon", `Icons/MenuHen.swift`) is gone; the old setting keys are removed at launch.
+
+### The menu-bar icon (v0.9: the silhouette)
+
+The v0.8 glyph was the line chick: a 1.5 pt line, 13 pt tall with two arcs beside it, 2 px dot eyes. Next to other
+apps' menu-bar icons (bold silhouettes that fill most of the 16–18 pt height, as Apple's HIG asks of menu bar extras)
+it read small and faint. Of three directions (`promo/cases/v0.9-next/menubar/compare.png`, untracked: (a) a filled
+silhouette, (b) a 2 pt line chick with one arc, (c) the head alone, larger) the silhouette won: it carries the same
+ink weight as the filled icons around it at 1x and 2x, and the chick still reads by its outline alone (three-bump
+tuft, round body, wing nubs) with the eyes and beak cut out; the line versions stayed busy and greyer at 1x.
+
+- At rest: the silhouette alone (`glyph.svg`, the 18 pt image). The arcs are a state, not decoration.
+- Listening (voice input): the two sound arcs (2 pt, `MenuGlyphGeometry.swift`) appear to the right and pulse
+  outward, inner then outer. The image is then 24 pt wide (`MenuGlyph.listenWidth`), so the count moves over once
+  when listening starts and back when it stops, never per frame.
+- Done: it hops (1.5 pt up, stretched 5 %, after a 10 % crouch). Every moving frame is 22 pt tall (the bar) with the
+  18 pt box centred, as AppKit centres the 18 pt rest image, so the chick never jumps between the two.
+- Reduce Motion: no hop and no pulse; while listening the arcs show still.
+- The count (" 9") follows the image as the status button's title; the silhouette leaves under a point on its right,
+  so the gap is the title's own space.
 
 ## The mascot
 
@@ -77,13 +95,14 @@ The mac app's mascot (onboarding hero, the island, notifications) is this chick 
 ## Regenerate
 
 ```sh
-swift assets/brand/chick.swift                      # the SVGs and MascotGeometry.swift, after a geometry, palette or
+swift assets/brand/chick.swift                      # the SVGs and the two Swift files, after a geometry, palette or
                                                     # tokens.json gradient change (--check: list stale outputs, write none)
                                                     # (add --alts DIR for the three v0.8 tile treatments)
-python3 assets/brand/build.py                       # the brand bitmaps (needs rsvg-convert and Pillow; .icns needs macOS)
+python3 assets/brand/build.py                       # the brand bitmaps (needs rsvg-convert and Pillow; .icns needs macOS);
+                                                    # if the glyph changed it also copies it to assets/icons/blurt.svg and
+                                                    # runs assets/icons/tools/build.py (BlurtIconPaths.swift, web icons +
+                                                    # sprite, Tk PNGs, Tauri tray)
 python3 assets/brand/build.py --site                # …plus the site/ outputs: for the site redo, off by default
-cp assets/brand/glyph.svg assets/icons/blurt.svg    # if the glyph changed
-python3 assets/icons/tools/build.py                 # → BlurtIconPaths.swift, web icons + sprite, Tk PNGs, Tauri tray
 ```
 
 `build.py` writes:
@@ -115,9 +134,10 @@ grain at full per-pixel strength, where WebKit and CSS average it out with size.
 - rsvg-convert (2.62) and WebKit (Quick Look) agree on the 1024 master to within one level on average (the radial
   layers, the clipped group, `feTurbulence` and `mix-blend-mode: overlay`).
 - The glyph must pass the icon family lint (`assets/icons/tools/iconlib.py`): the 24 grid and geometry inside 0.5–23.5.
-  `MenuGlyph` draws its layers one by one, so keep the order chick, inner arc, outer arc (`tests/test_icons.py` checks).
-  Check 1x and 2x with the app's self-test hook `menuglyph DIR`: the rest, listen and hop poses tinted for light and
-  dark bars, and the real status button (with a count) in each appearance, at rest and highlighted.
+  It is one fill layer, at least 16 pt tall, foot on a whole point; the arcs live in `MenuGlyphGeometry.swift`
+  (`tests/test_icons.py` checks). Check 1x and 2x with the app's self-test hook `menuglyph DIR`: the rest, listen,
+  still-listen (Reduce Motion), hop and crouch poses tinted for light and dark bars, and the real status button (with a
+  count) in each appearance, at rest and highlighted.
 - Not done yet: the dark appearance and a Liquid Glass `.icon` (Icon Composer) layer set for macOS 26. Until then
   macOS uses the `.icns`, which has no appearances. The tile already fills the grid, so macOS 26 doesn't add its grey
   frame. Checked with Xcode 26.0.1's actool: an `.appiconset` with `luminosity: dark` entries is ignored for the `mac`

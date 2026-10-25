@@ -3,7 +3,8 @@
 // every SVG source in assets/brand/ (build.py renders the bitmaps from those) and the mac app's mascot drawing:
 //
 //     swift assets/brand/chick.swift                 # → chick-line.svg, chick-filled.svg, app-icon*.svg, glyph.svg,
-//                                                    #   …/BlurtApp/Icons/MascotGeometry.swift (the mascot, in colour)
+//                                                    #   …/BlurtApp/Icons/MascotGeometry.swift (the mascot, in colour),
+//                                                    #   …/BlurtApp/App/MenuGlyphGeometry.swift (the menu bar's arcs)
 //     swift assets/brand/chick.swift --alts DIR      # also the three v0.8 yellow / dark / white tile treatments
 //     swift assets/brand/chick.swift --check         # write nothing; exit 1 if an output is stale (tests run this)
 //
@@ -12,10 +13,10 @@
 // single-sourced (docs/design/system.md §2.2, §6).
 //
 // Why code: the outline is a union (body ∪ tuft) and the wings are the part of their loop outside the body, which
-// CoreGraphics computes exactly (CGPath.union / lineSubtracting, macOS 13+); the menu-bar glyph is the line art turned
-// into filled outlines (CGPath.copy(strokingWithWidth:)) so it can carry its own, heavier line in the icon family's
-// fixed-stroke 24 grid. The icon art is drawn in "hero space" (the 1254 px d4a-hero raster the design came from) and
-// placed with an affine transform; the glyph is drawn directly in 18 pt, so it can be hinted.
+// CoreGraphics computes exactly (CGPath.union / lineSubtracting, macOS 13+); the menu-bar glyph is the same chick as a
+// filled silhouette with the face knocked out (CGPath.subtracting), stored as a fill in the icon family's 24 grid. The
+// icon art is drawn in "hero space" (the 1254 px d4a-hero raster the design came from) and placed with an affine
+// transform; the glyph is drawn directly in 18 pt, so it can be hinted.
 import CoreGraphics
 import Foundation
 
@@ -382,44 +383,73 @@ var tiny: Chick {
     return c
 }
 
-/// The menu-bar glyph, drawn directly in 18 pt (y down) with a 1.5 pt line (3 px at 2x), simplified for the size: the
-/// tuft's bumps are bigger, the beak is a solid diamond, the arcs hug the top-right corner. Hinted by construction: the
-/// body's outer edges (left, right, bottom) sit on whole points, so at 1x the outside of the line is crisp and at 2x
-/// both sides; the eyes are 2 pt dots centred on whole points (2 × 2 px at 1x, 4 × 4 at 2x).
+/// The menu-bar glyph (v0.9), drawn directly in its 18 pt box (y down): a bold filled silhouette — body, tuft and wing
+/// nubs as one shape, the eyes and the beak knocked out — 16.5 pt tall, so it stands as tall as the other menu-bar
+/// icons (the v0.8 1.5 pt line chick was 13 pt with 2 px eyes and read small and faint). No arcs at rest: the sound
+/// arcs show only while voice input listens, to the right of the box (MenuGlyphGeometry.swift, 2 pt lines), and the
+/// status item widens for them. The foot sits on a whole point (y 17, so 19 in the 22 pt bar); the eye holes are 2.3 pt.
 var glyphChick: Chick {
     var c = Chick()
-    c.cx = 7.5; c.top = 7.0; c.hw = 4.75; c.yw = 11.7; c.yb = 16.25
+    c.cx = 9; c.top = 2.8; c.hw = 6.5; c.yw = 9.2; c.yb = 17
     c.k1 = 0.92; c.k2 = 0.5; c.k3 = 0.62; c.k4 = 0.68
-    c.tuft = [(-2.2, 6.5, 1.15), (0, 5.85, 1.4), (2.2, 6.5, 1.15)]
-    c.wing = (-4.9, 12.7, 1.2, 0.8, -40)
-    c.eye = (2.5, 11, 1)
+    c.tuft = [(-3.05, 2.6, 1.35), (0, 2.05, 1.55), (3.05, 2.6, 1.35)]
+    c.wing = (-6.55, 11.0, 1.75, 1.1, -38)
+    c.eye = (3.2, 8.6, 1.15)
     c.glint = (0, 0, 0)
     c.filledBeak = true
     c.slit = false
-    c.beak = (13.15, 1.3, 1.0, 1.3)
-    c.arcCentre = CGPoint(x: 12.2, y: 6.6)
-    c.arcs = [(2.2, -86, -4), (4.45, -82, -10)]
+    c.beak = (11.6, 1.55, 1.15, 1.45)
+    c.arcCentre = CGPoint(x: 15.6, y: 7.0)
+    c.arcs = [(3.1, -60, 30), (6.0, -56, 26)]
     return c
 }
+/// The listening arcs' line, in pt.
+let menuArcLine: CGFloat = 2
 
-/// The glyph in the icon family's 24 grid: filled outlines (the family's strokes are a fixed 1.75), three layers — the
-/// chick, the inner sound arc, the outer one (MenuGlyph pulses the arcs while voice input listens).
-func glyphSVG(_ c: Chick, w wPt: CGFloat = 1.5) -> String {
+/// The glyph's one shape: body ∪ tuft ∪ wings, minus the eyes and the (softened) beak.
+func glyphShape(_ c: Chick) -> CGPath {
+    let beak = outlined(c.beakPath, width: 0.6).union(c.beakPath)     // softened corners
+    return c.outline.union(c.wingAreas).subtracting(c.eyes).subtracting(beak)
+}
+
+/// The glyph in the icon family's 24 grid: one filled shape (the silhouette), so the tray and every other place that
+/// shows the `blurt` glyph get the same bold mark. The arcs are not in it (they sit outside the square box): they go to
+/// MenuGlyphGeometry.swift.
+func glyphSVG(_ c: Chick) -> String {
     let g = CGAffineTransform(scaleX: 4.0 / 3.0, y: 4.0 / 3.0)
-    var body: CGPath = outlined(c.outline, width: wPt)
-    if c.wings { body = body.union(outlined(c.wingLines, width: wPt)) }
-    let beak = outlined(c.beakPath, width: 0.5).union(c.beakPath)     // softened corners
-    body = body.union(beak).union(c.eyes)
     var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" data-group=\"brand\">\n"
     svg += "  <title>blurt — the chick that blurts it out (app mark: menu bar, tray)</title>\n"
-    svg += "  <desc>The 4A line chick for the menu bar (an 18 pt template image) and the tray, as filled outlines with its own 1.5 pt line (2 grid units; the family strokes at 1.75). Drawn on the 18 pt grid: the body's outer edges sit on whole points, the eyes are 2 pt dots centred on whole points. Layers: the chick, the inner sound arc, the outer sound arc (MenuGlyph pulses the arcs while voice input listens). Generated by assets/brand/chick.swift; do not edit by hand.</desc>\n"
-    svg += "  <g fill=\"currentColor\" stroke=\"none\">\n"
-    svg += "    <path d=\"\(d(transformed(body, g), digits: 3))\"/>\n"
-    for i in c.arcs.indices {
-        svg += "    <path d=\"\(d(transformed(outlined(c.arc(i), width: wPt), g), digits: 3))\"/>\n"
-    }
-    svg += "  </g>\n</svg>\n"
+    svg += "  <desc>The 4A chick for the menu bar (an 18 pt template image) and the tray: a bold filled silhouette (body, a tuft of three bumps, wing nubs) with the eyes and the beak knocked out, 16.5 pt of the 18 pt box tall. Drawn on the 18 pt grid, the foot on a whole point. One layer: the sound arcs show only while voice input listens and live in MenuGlyphGeometry.swift. Generated by assets/brand/chick.swift; do not edit by hand.</desc>\n"
+    svg += "  <path d=\"\(d(transformed(glyphShape(c), g), digits: 3))\" fill=\"currentColor\" stroke=\"none\"/>\n"
+    svg += "</svg>\n"
     return svg
+}
+
+/// The listening arcs for MenuGlyph, in the glyph's 18 pt box (y down; they reach past its right edge).
+func menuGlyphSwift(_ c: Chick) -> String {
+    func n(_ v: CGFloat) -> String { fmt(v, 3) }
+    var right: CGFloat = 0
+    for i in c.arcs.indices { right = max(right, outlined(c.arc(i), width: menuArcLine).boundingBoxOfPath.maxX) }
+    let arcs = c.arcs.map { "(r: \(n($0.0)), from: \(n($0.1)), to: \(n($0.2)))" }.joined(separator: ", ")
+    return """
+    // GENERATED by assets/brand/chick.swift — do not edit; edit chick.swift and run `swift assets/brand/chick.swift`.
+    //
+    // The menu-bar glyph's sound arcs (assets/brand/glyph.svg is the chick alone): they show only while voice input
+    // listens, to the right of the chick, in the glyph's 18 pt box (y down, degrees clockwise from +x).
+    import CoreGraphics
+
+    extension MenuGlyph {
+        static let arcCentre = CGPoint(x: \(n(c.arcCentre.x)), y: \(n(c.arcCentre.y)))
+        /// Inner, then outer.
+        static let arcs: [(r: CGFloat, from: CGFloat, to: CGFloat)] = [\(arcs)]
+        static let arcLine: CGFloat = \(n(menuArcLine))
+        /// Where the outer arc's line ends on the right, in pt from the box's left edge.
+        static let arcsRight: CGFloat = \(n(right))
+        /// The chick's foot, in pt from the box's top.
+        static let foot: CGFloat = \(n(c.yb))
+    }
+
+    """
 }
 
 // MARK: - write
@@ -537,6 +567,9 @@ do {
 }
 
 write(glyphSVG(glyphChick), "glyph.svg")
+write(menuGlyphSwift(glyphChick), "MenuGlyphGeometry.swift",
+      dir: here.deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("skills/blurt/recorder/macos/Sources/BlurtApp/App"))
 
 // MARK: - the mascot (the app's animated chick)
 

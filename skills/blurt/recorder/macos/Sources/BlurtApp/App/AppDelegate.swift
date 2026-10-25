@@ -690,9 +690,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MenuGlyph.shared.listening = VoiceInput.shared.active
             image = MenuGlyph.shared.current ?? menuIcon
             let badge = MenuBadge.shared
-            // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing
+            // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing. No leading
+            // space: the button's own image–title gap is enough now that the chick fills its box (with the space the
+            // count sat 6 pt off, looking like a separate item)
             title = badge.count > 0
-                ? NSAttributedString(string: " " + Loc.number(badge.count), attributes: [
+                ? NSAttributedString(string: Loc.number(badge.count), attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
                     .foregroundColor: badge.urgent ? BrandColor.attn : NSColor.labelColor])
                 : NSAttributedString(string: "")
@@ -732,10 +734,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
-    /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray): the 4A line chick with its sound
-    /// arcs, a 1.5 pt line drawn on the 18 pt grid (assets/brand/chick.swift), as a monochrome template image like every
-    /// other menu-bar icon: macOS tints it for light, dark and highlighted bars, and it is vector, so it is crisp at
-    /// every scale.
+    /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray): the 4A chick as a bold filled
+    /// silhouette with the face knocked out, 16.5 pt tall in its 18 pt box (assets/brand/chick.swift), as a monochrome
+    /// template image like every other menu-bar icon: macOS tints it for light, dark and highlighted bars, and it is
+    /// vector, so it is crisp at every scale. No arcs at rest: MenuGlyph adds them while voice input listens.
     static func makeMenuIcon() -> NSImage {
         let img = BlurtIcon.blurt.image(size: 18)
         img.isTemplate = true
