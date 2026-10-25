@@ -145,3 +145,16 @@
       row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in
       `--brand-ink` and its length; never a bare mic glyph). Done toasts ("Saved", "Copied") carry the `ok` check in
       the overlay island too; search hits that span lines show on one line (" · ") in the desktop app's lists.
+- [ ] Main window v0.9 fixes (Mac, branch fxmainwin) — the Tauri app's counterparts:
+  - Detail pane: pass `--item UID` to `items.py doc/poll/user-ops` (`apps/desktop/src-tauri`), and in `ReviewPane.tsx`
+    remount / reload when `handle.setItem()` returns false — never show the previous item for a discarded one.
+  - Filters per place (BlurtCore `PlaceFilters`): the Inbox never applies a State filter; save `filters` per place.
+  - Search by item id in `apps/desktop/src-tauri/src/index.rs` (the same rule as `index.py search` / IndexReader:
+    an id-shaped term = `upper(item_id) = ?` or an FTS match, that item first).
+  - Undo for Move to Project (each item back to its project; items.py gives it its old id back), a toast after
+    A/D/R/W/X with Undo, and the reason when a key doesn't apply.
+  - One undo stack per window: implement the host's `registerUndo` / `windowUndo` / `undone` / `focusList` in the
+    Tauri host (review `host.ts`), so the detail page's steps share the list's undo.
+  - Projects: rename in place in the sidebar, the user's order (`projects.py order`, drag to reorder; `⌘5`–`⌘9`
+    follow it), Remove from Blurt with Undo (`projects.py remove` answers the entry, `restore` puts it back).
+  - Rename an item in place (E), 1–4 = kind, the ? panel grouped and localized, one spinner (the brand arc).

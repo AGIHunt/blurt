@@ -237,11 +237,13 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Primary button (one per view) | **B** | `BrandButton` / `.buttonStyle(.brand)` / CSS `--brand-button`: white semibold title, 1 pt inner top highlight (white 18 %), 1 pt shadow (`brand.on` 25 %). Hover ×1.04, pressed ×0.92. Disabled: neutral fill, no gradient. Small dialog defaults (↩ in sheets and alerts) stay native and show `brand.accent`. |
 | Secondary, tertiary buttons | — | native |
 | Destructive | system red | |
-| List and sidebar selection | T | rounded wash, r 6, text stays `ink`; neutral 6 % when the window is not key |
+| List and sidebar selection | T | rounded wash, r 6, text stays `ink`; neutral 6 % when the window is not key. In the sidebar the name is not the cell's `textField` (a source list repaints that one in the accent when selected) |
 | Command palette chosen row | T | |
 | Focus ring, text selection | `brand.accent` (native) | via `AccentColor`; the user's own system accent wins when set |
 | Links | I underline | text `ink`, 1.5 pt `brand.ink` underline; standalone text / link buttons in `brand.ink` |
-| State rings new / handed_off / in_progress, job spinner arc | I | |
+| State rings new / handed_off / in_progress, job spinner arc | I | one spinner everywhere: `BrandSpinner` (job rows, the item banner, the scanning empty state) is the running step's quarter arc, 1.1 s a turn, still under Reduce Motion; never the grey system spokes |
+| Labels (en) | — | buttons and menu items in Title Case at display (`Look.menuCase`, web `menuCase`); the string catalogs keep sentence case, so the same words read right inside sentences |
+| Kind icons in lists | kind tokens | outline glyphs at one weight; the issue kind is the brand outline bug (no dense SF ladybug) |
 | to_verify / done / todo / wontfix / discarded | `attn` + "!" / `ok` + ✓ / secondary / tertiary | |
 | "New" counts and badges | M | pill, `brand.on` digits (`CountPill`); plain counts neutral |
 | Job running (process / route) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. |
@@ -284,7 +286,10 @@ sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)
 - 10 pt to a **neutral title** (15 pt semibold), 4 pt to a **neutral hint** (12 pt, secondary, ≤ 320 pt wide), 16 pt
   to at most **one primary** when it moves you on (Open Folder, Turn On Dictation…).
 - Trouble states (scan failed, missing folder) and detail-pane placeholders keep a quiet SF symbol: warnings are never
-  brand.
+  brand. A path in one is one line, cut in the middle; a missing project folder offers **Locate…**.
+- One rule for the buttons: the first button is the brand primary (with ↩) only when it moves you on; a button that
+  only undoes a filter (Clear Filters) is a plain native button and never takes ↩ (so it never draws as the system
+  default). Sheets and dialogs (Project Settings, Rename, Hand Off) keep the native default button.
 
 ### 3.5a Dictation page and Lab
 
