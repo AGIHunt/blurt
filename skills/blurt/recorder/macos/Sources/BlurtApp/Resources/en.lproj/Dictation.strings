@@ -524,3 +524,12 @@
 "dictation.toast.no_model_plain" = "No speech model yet";
 "dictation.toast.no_model.settings" = "Models…";
 "dictation.toast.no_model.action" = "Download";
+"dictation.toast.not_set_up" = "Dictation isn’t set up yet";
+"dictation.toast.not_set_up.action" = "Set Up…";
+"dictation.menu.set_up" = "Set Up Dictation…";
+"dictation.menu.set_up.subtitle" = "Its speech tools haven’t downloaded yet";
+"dictation.menu.get_model" = "Download Speech Model…";
+"dictation.menu.get_model.subtitle" = "Dictation needs it · %@";
+"dictation.menu.get_model.subtitle_plain" = "Dictation needs it";
+"dictation.models.queued" = "Waiting to download · %@";
+"dictation.models.show" = "Show";

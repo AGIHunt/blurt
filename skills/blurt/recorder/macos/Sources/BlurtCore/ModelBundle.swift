@@ -12,7 +12,9 @@
 //   mirror        the China-friendly mirrors first when Settings → Speech says so, or, never set, when the region is
 //                 CN — one answer for every download.
 //   progress      the scripts print "  N/M MB" on stderr; a part's share is N/M of its registry size, so the bar
-//                 moves evenly over parts whose own totals differ from the registry's.
+//                 moves evenly over parts whose own totals differ from the registry's. A file fetched on the way (the
+//                 VAD) prints a named line ("  vad 1.7/1.7 MB") that doesn't parse, and acceptProgress keeps only
+//                 lines about the model itself, never moving back.
 import Foundation
 
 public enum ModelBundle {
@@ -85,7 +87,19 @@ public enum ModelBundle {
         return (f.string(from: (mb / 1000) as NSNumber) ?? "\(mb / 1000)") + " GB"
     }
 
-    /// A download's progress line ("  812/2468 MB") → (812, 2468); anything else nil.
+    /// A parsed line for the running job (`sizeMB`: its registry size), or nil to ignore it. Only a line about the
+    /// model itself counts — its total within half again of the job's size (a small file fetched on the way, the VAD's
+    /// "1.7/1.7 MB", once leapt the bar to 2.5 of 6.1 GB and back) — and the bar never moves back within one job
+    /// (`previous`: the line it shows now).
+    public static func acceptProgress(_ line: (done: Double, total: Double), sizeMB: Double,
+                                      previous: (done: Double, total: Double)?) -> (done: Double, total: Double)? {
+        guard line.total > 0, sizeMB > 0, line.total >= sizeMB * 0.5, line.total <= sizeMB * 1.5 else { return nil }
+        if let p = previous, p.total > 0, line.done / line.total < p.done / p.total { return nil }
+        return line
+    }
+
+    /// A download's progress line ("  812/2468 MB", "  812.4/2468.0 MB") → (812, 2468); anything else nil — a line
+    /// that names what it fetches on the way ("  vad 1.7/1.7 MB") too.
     public static func parseProgress(_ line: String) -> (done: Double, total: Double)? {
         let w = line.split(separator: " ")
         guard w.count >= 2, w[1] == "MB" else { return nil }

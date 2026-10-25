@@ -358,6 +358,44 @@ class BiasedNote(unittest.TestCase):
         finally:
             T.installed = real
 
+    def test_an_installed_qwen_is_used_when_it_fits_next_to_polish(self):
+        # a 16 GB Mac (standard: 0.6B recommended) that has only the 1.7B (moved from a bigger Mac): the memory check
+        # counts the pair a dictation holds — recogniser + polish model — not the recogniser alone
+        import test_asr_select as A
+        T = A.T
+        real = A.fake_installed("sensevoice-small", "qwen3-asr-1.7b-mlx")
+        try:
+            base = {"asr": {"auto": False, "backend": "sensevoice"}}
+            with A.config(base):
+                # polish on (Gemma 4 E2B, 3.9 GB) + 1.7B (3.1 GB) is over a 16 GB Mac's share: SenseVoice
+                self.assertGreater(T.polish_ram_mb(A.hw(ram=16.0)), 3000)
+                d = T.dictation_models(A.hw(ram=16.0))
+                self.assertEqual((d["recommended"], d["selected"]), ("qwen3-asr-0.6b-mlx", "sensevoice-small"))
+                self.assertFalse({m["id"]: m["fits"] for m in d["models"]}["qwen3-asr-1.7b-mlx"])
+                # 24 GB (still standard): the pair fits — the 1.7B, which takes the Words list, runs until the 0.6B
+                self.assertEqual(T.dictation_models(A.hw(ram=24.0))["selected"], "qwen3-asr-1.7b-mlx")
+            with A.config({**base, "record": {"dictation": {"polish": "off"}}}):
+                # no polish model held next to it: the 1.7B alone fits 16 GB
+                self.assertEqual(T.polish_ram_mb(A.hw(ram=16.0)), 0)
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-1.7b-mlx")
+            with A.config({**base, "record": {"dictation": {"polish_model": "qwen3.5-0.8b"}}}):
+                # a small polish model chosen by hand: 3.1 + 1.6 GB fits
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-1.7b-mlx")
+            with A.config(base):
+                # never off Apple Silicon (MLX)
+                self.assertEqual(T.dictation_models(A.hw(os_="linux", arch="x86_64", ram=16.0))["selected"], "sensevoice-small")
+        finally:
+            T.installed = real
+
+    def test_progress_lines_name_what_is_fetched_on_the_way(self):
+        # the VAD (1.7 MB) before a model: its line must not read as the model's own progress (the bar leapt to 40 %)
+        import test_asr_select as A
+        T = A.T
+        self.assertEqual(T.progress_line(812 * 2**20, 2468 * 2**20), "  812.0/2468.0 MB")
+        self.assertEqual(T.progress_line(1.5 * 2**20, 1.7 * 2**20, "vad"), "  vad 1.5/1.7 MB")
+        src = (A.SCRIPTS / "transcribe.py").read_text()
+        self.assertIn('download("silero_vad.onnx", aux="vad")', src)
+
 
 # ------------------------------------------------------------------ names inside Chinese speech (v0.8 names work)
 SWIFT_VOCAB = ROOT / "skills/blurt/recorder/macos/Sources/BlurtCore/DictationVocabulary.swift"

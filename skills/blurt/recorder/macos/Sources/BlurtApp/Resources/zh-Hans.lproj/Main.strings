@@ -5,15 +5,15 @@
 "app.agent.list_sep" = "、";
 "app.agent.can_be_used" = " 用不了";
 "app.agent.checking" = "检查中…";
-"app.agent.configured_can_verify_advance" = "已设置（无法提前检查）";
+"app.agent.configured_can_verify_advance" = "已设置（第一次用时才能确认）";
 "app.agent.failed" = "失败";
-"app.agent.isn_installed" = " 没安装";
-"app.agent.isn_logged" = " 没登录";
+"app.agent.isn_installed" = " 未安装";
+"app.agent.isn_logged" = " 未登录";
 "app.agent.logged" = "已登录";
 "app.agent.login_unknown_will_just" = "未确认登录，会直接尝试";
 "app.agent.none_short" = "没有能用的 Agent";
-"app.agent.not_installed" = "没安装";
-"app.agent.not_logged" = "没登录";
+"app.agent.not_installed" = "未安装";
+"app.agent.not_logged" = "未登录";
 "app.agent.unfinished" = "%@ 没整理完就停下了";
 
 "app.menu.after.keep" = "只保存视频";
@@ -194,7 +194,7 @@
 "main.job.step_state.skipped" = "跳过";
 
 "main.keys.back" = "退回 · 收回 · 重新打开 · 恢复";
-"main.keys.kind" = "种类：问题、想法、笔记、任务";
+"main.keys.kind" = "种类：问题、想法、笔记、待办";
 "main.keys.undo" = "撤销 / 重做上一步修改";
 "main.keys.next" = "下一条 / 上一条";
 "main.keys.open" = "打开（进入详情）";
@@ -245,7 +245,7 @@
 "main.misc.idea" = "想法";
 "main.misc.issue" = "问题";
 "main.misc.note" = "笔记";
-"main.misc.task" = "任务";
+"main.misc.task" = "待办";
 
 "main.move.failed" = "没能移动条目";
 "main.move.undo_name" = "移到「%@」";
@@ -459,7 +459,7 @@
 "main.dictation.info.polish.get" = "下载…";
 "app.toast.welcome_no_dictation" = "口喷鸡在菜单栏里 · %1$@ 截图 · %2$@ 录屏";
 "app.toast.change_shortcut" = "更换…";
-"app.config.unreadable" = "口喷鸡读不了设置文件，改动不会被保存";
+"app.config.unreadable" = "读不了 config.json · 先用默认设置";
 "app.contract.skill_older" = "口喷鸡 skill 比 App 旧";
 "app.contract.app_older" = "口喷鸡 skill 比 App 新";
 "app.contract.how" = "怎么更新";
@@ -503,3 +503,8 @@
 // Agent 的桌面端（Claude）
 "main.banner.desktop" = "在 %@ 桌面端进行 · 由 Agent 回报进度";
 "main.banner.go_desktop" = "前往 %@";
+"app.toast.welcome_not_set_up" = "口喷鸡在菜单栏里 · 听写还没设置好";
+"app.toast.welcome_not_set_up.action" = "设置…";
+"app.config.show" = "显示文件";
+"app.models.offline" = "联网后会接着下载语音模型";
+"main.speech.recommended_recordings" = "录屏用的更好模型 · %@";

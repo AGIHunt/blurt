@@ -95,7 +95,8 @@ def ui_lang(lang: str | None = None) -> str:
     v = (lang or "").strip().lower()
     if not v:
         try:
-            v = str(json.loads((jobs.home() / "config.json").read_text(encoding="utf-8-sig")).get("lang") or "").lower()
+            from _common import parse_config_text  # noqa: PLC0415 — read as every script reads it
+            v = str((parse_config_text((jobs.home() / "config.json").read_text(encoding="utf-8-sig")) or {}).get("lang") or "").lower()
         except (OSError, ValueError, AttributeError):
             v = ""
     if v.startswith("zh"):

@@ -113,7 +113,7 @@
 "settings.perm.restart_hint" = "Turned it on and it still says off? macOS applies Screen Recording once Blurt restarts.";
 "settings.perm.skip" = "Skip";
 "settings.perm.close" = "Close";
-"settings.perm.now" = "Now";
+"settings.perm.now" = "This step";
 "settings.perm.setup" = "Set Up Permissions…";
 "settings.perm.setup_running" = "Setting Up…";
 "settings.perm.list_sep" = ", ";
@@ -155,9 +155,7 @@
 "onboarding.models.ready_toast" = "Speech models are ready";
 "onboarding.models.failed" = "The download stopped. Check your connection and try again.";
 "onboarding.models.retry" = "Try Again";
-"onboarding.models.small" = "Small Model Only (%@)";
-"onboarding.models.unavailable" = "Couldn’t read the models.";
-"onboarding.warm.failed" = "Blurt couldn’t finish setting up its speech tools. Check your connection and try again.";
+"onboarding.models.small" = "Small Model for Now (%@)";
 "onboarding.models.stop" = "Stop";
 "onboarding.models.failed_toast" = "The model download stopped";
 "onboarding.models.failed_open" = "Try Again…";
@@ -318,3 +316,14 @@
 "settings.storage.undo_failed_many" = "%d items couldn’t be put back";
 "settings.storage.undo" = "Undo";
 "settings.storage.videos.trashed" = "%1$@ (%2$@) moved to the Trash";
+"onboarding.setup.blocked" = "Blurt couldn’t download its speech tools. It needs the internet once to set them up: connect, then Try Again.";
+"onboarding.try.blocked" = "Dictation can’t work yet: its speech tools haven’t downloaded.";
+"onboarding.models.small.help" = "SenseVoice Small: dictation and voice notes work with it. The full set can come later.";
+"settings.privacy.stay_with_agents" = "Recordings, snaps and items stay on your Mac (~/Blurt or the project’s .blurt/). When you organise them or hand them off, what’s needed goes to the agent you use (Claude Code, Codex…), under its terms.";
+"settings.storage.model.vad_name" = "Voice detector";
+"settings.storage.model.unknown" = "Older model";
+"settings.storage.model.unused" = "Not used by this version of Blurt";
+"settings.storage.choose.speech" = "Change in Speech…";
+"settings.storage.choose.dictation" = "Change in Dictation…";
+"settings.storage.none" = "None";
+"settings.general.login_failed" = "Couldn’t change it here. You can in System Settings, under Login Items.";

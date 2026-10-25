@@ -264,7 +264,7 @@ struct AgentsPane: View {
                 }
                 if let e = m.error { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr).padding(.top, 6) }
             }, accessory: {
-                if m.loading { ProgressView().controlSize(.mini) }
+                if m.loading { BrandSpinnerView(size: 10) }
                 Button { Task { m.connected = [:]; await m.load(); await m.checkConnected() } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless)
                     .help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
@@ -438,18 +438,17 @@ struct AgentsPane: View {
                     Text(stateText(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if a.state == "checking" { ProgressView().controlSize(.mini) }
                 // the blurt skill + MCP: Connect only while they are missing (manual agents: always offered)
                 if (a.installed && m.connected[a.id] == false) || !a.headless {
                     // not connected yet: said on the button's tooltip, not as one more grey label on every row
-                    if m.installing == a.id { ProgressView().controlSize(.small) }
+                    if m.installing == a.id { BrandSpinnerView() }
                     else {
                         Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small)
                             .help(TL(a.headless ? "agents.not_connected.help" : "agents.install.help"))
                     }
                 }
                 if a.headless && a.installed {
-                    if m.testing == a.id { ProgressView().controlSize(.small) }
+                    if m.testing == a.id { BrandSpinnerView() }
                     else { Button(TL("agents.test")) { Task { await m.test(a) } }.controlSize(.small).help(TL("agents.test.help")) }
                 }
             }
@@ -522,18 +521,17 @@ struct AgentsPane: View {
 
     func stateText(_ a: CoreAgent) -> String {
         if !a.headless { return TL(a.installed ? "agents.state.manual" : "agents.state.not_installed") }
-        if a.why.isEmpty {
-            switch a.state {
-            case "not_installed": return TL("agents.state.not_installed")
-            case "ready": return TL("agents.state.ready")
-            case "checking": return TL("agents.state.checking")
-            case "unknown": return TL("agents.state.unknown")
-            case "configured": return TL("agents.state.configured")
-            case "logged_out": return TL("agents.state.logged_out")
-            default: return a.state
-            }
+        // a state the app has words for is said in the app's words (one wording on every surface: 未安装 / 未登录),
+        // whatever the script's `why` says; its `why` only for a state the app doesn't know
+        switch a.state {
+        case "not_installed": return TL("agents.state.not_installed")
+        case "ready": return TL("agents.state.ready")
+        case "checking": return TL("agents.state.checking")
+        case "unknown": return TL("agents.state.unknown")
+        case "configured": return TL("agents.state.configured")
+        case "logged_out": return TL("agents.state.logged_out")
+        default: return a.why.isEmpty ? TL("agents.state.unknown") : a.why
         }
-        return a.why
     }
 
     /// a `command` in backticks, or a bare install line ("npm i -g …") — not prose like "run claude, then /login"
@@ -586,7 +584,7 @@ struct InstallSheet: View {
             .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
             HStack {
-                if m.installing != nil { ProgressView().controlSize(.small) }
+                if m.installing != nil { BrandSpinnerView() }
                 Spacer()
                 if applied {
                     Button(TL("common.done")) { m.plan = nil; Task { await m.load() } }.keyboardShortcut(.defaultAction)

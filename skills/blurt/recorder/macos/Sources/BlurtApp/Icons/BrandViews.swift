@@ -445,6 +445,31 @@ final class BrandSpinner: NSView {
     }
 }
 
+/// The same spinner in SwiftUI (Settings, the setup assistant, panels): never `ProgressView()`'s grey spokes, so the
+/// app has one spinner everywhere (§3.3). `size` 10 for a row's dot column, 14 next to a line of text. Turns while
+/// shown; Reduce Motion stands it still (BrandSpinner). `label`: what VoiceOver says it is busy with.
+struct BrandSpinnerView: NSViewRepresentable {
+    var size: CGFloat = 14
+    var label: String?
+
+    func makeNSView(context: Context) -> BrandSpinner {
+        let s = BrandSpinner(size: size)
+        s.setAccessibilityLabel(label)
+        s.startAnimation()
+        return s
+    }
+
+    func updateNSView(_ s: BrandSpinner, context: Context) {
+        s.setAccessibilityLabel(label)
+        if !s.isAnimating { s.startAnimation() }
+    }
+
+    @available(macOS 13.0, *)
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: BrandSpinner, context: Context) -> CGSize? {
+        CGSize(width: size, height: size)
+    }
+}
+
 /// "blurt's AI is working on this" (organizing cards or a batch, the Lab processing a take): one static 1 pt
 /// hairline in translucent brand ink (`brand.working`; `BrandColor.Island.working` on the island) just inside the
 /// working view's rounded edge. The spinner next to it carries the state; the line only says

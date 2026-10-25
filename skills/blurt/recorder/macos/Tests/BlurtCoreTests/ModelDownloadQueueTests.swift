@@ -43,6 +43,16 @@ final class ModelDownloadQueueTests: XCTestCase {
         XCTAssertTrue(q.jobs.isEmpty)       // the batch ended: the next request starts a new bar
     }
 
+    func testWhatIsLeftDoesNotCountWhatCameDownAgain() {
+        // "6.1 GB to go" after 1.6 GB of the running model came down read as progress lost
+        var q = ModelDownloadQueue()
+        q.add([asr, polish])
+        XCTAssertEqual(q.remaining(current: asr.id, line: nil), 2468 + 3415, "before its first line: whole")
+        XCTAssertEqual(q.remaining(current: asr.id, line: (1600, 2468)), 2468 + 3415 - 1600, accuracy: 0.5)
+        q.finish(asr.id)
+        XCTAssertEqual(q.remaining(current: polish.id, line: (415, 3415)), 3000, accuracy: 0.5)
+    }
+
     func testStopOneOrAll() {
         var q = ModelDownloadQueue()
         q.add([asr, polish, note])

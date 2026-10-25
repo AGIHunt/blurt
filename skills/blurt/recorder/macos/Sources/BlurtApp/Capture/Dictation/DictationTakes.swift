@@ -278,6 +278,18 @@ extension Dictation {
         }
     }
 
+    /// The speech tools aren't set up (`speechToolsMissing`: an offline first run): one line, and Set Up… — the
+    /// assistant's models step, where one Try Again sets them up. The list is asked for again meanwhile, so the next
+    /// tap works as soon as it can be read.
+    func notSetUp(from source: String) {
+        emit(["event": "dictation_not_set_up", "from": source])
+        island.toast(Loc.t("dictation.toast.not_set_up", table: "Dictation"), key: Dictation.modelToastKey, seconds: 8,
+                     actionTitle: Loc.t("dictation.toast.not_set_up.action", table: "Dictation")) {
+            Onboarding.shared.show(step: 2)
+        }
+        refreshSpeechModels()
+    }
+
     /// The speech model (or the VAD) is there now: the newest take that failed for lack of it gets Retry on the
     /// island — not pasted by itself minutes later into whatever has the focus.
     func modelArrived() {

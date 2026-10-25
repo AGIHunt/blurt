@@ -806,9 +806,12 @@ def app_event(job_id: str, event: str, exit_code: int | None) -> dict:
 
 # ------------------------------------------------------------------ dispatch
 def _config() -> dict:
+    """config.json read the way every script and the app read it (_common.parse_config_text: trailing commas are
+    fine; a file that doesn't parse gives the defaults)."""
+    from _common import parse_config_text  # noqa: PLC0415
     try:
-        return json.loads((jobs.home() / "config.json").read_text(encoding="utf-8-sig")) or {}
-    except (OSError, ValueError):
+        return parse_config_text((jobs.home() / "config.json").read_text(encoding="utf-8-sig")) or {}
+    except OSError:
         return {}
 
 

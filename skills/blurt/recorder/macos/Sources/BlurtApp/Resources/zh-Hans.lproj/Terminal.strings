@@ -202,7 +202,7 @@
 "agents.state.ready" = "已登录";
 "agents.state.not_installed" = "未安装";
 "agents.state.manual" = "已安装 · 手动接入";
-"agents.manual.header" = "只接 skill + MCP";
+"agents.manual.header" = "通过 skill 和 MCP 连接";
 "agents.manual.footer" = "这些没有命令行，不会在口喷鸡里运行。在它们自己的设置里导入 blurt skill 和 MCP 一次即可，用「复制指令」把条目交给它们。";
 "agents.sessions.header" = "会话";
 "agents.tmux.ok" = "tmux %@";

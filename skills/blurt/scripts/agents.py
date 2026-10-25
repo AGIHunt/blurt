@@ -150,7 +150,7 @@ def check(defn: dict, env: dict | None = None, lang: str = "en") -> dict:
     path = next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
     out = {"id": defn["id"], "name": defn.get("name", defn["id"]), "path": path}
     if not path:
-        out.update(state="not_installed", why=("没安装" if lang == "zh" else "not installed"),
+        out.update(state="not_installed", why=("未安装" if lang == "zh" else "not installed"),
                    fix=(defn.get("install") or {}).get(lang, ""))
         return out
     code, text = None, ""
@@ -163,8 +163,8 @@ def check(defn: dict, env: dict | None = None, lang: str = "en") -> dict:
         except (OSError, subprocess.TimeoutExpired):
             pass
     state = parse_status(defn, code, text, env)
-    why = {"ready": ("已登录", "logged in"), "configured": ("已配置（无法预先验证）", "configured (can't verify in advance)"),
-           "logged_out": ("没登录", "not logged in"), "unknown": ("登录状态未知，会直接试", "login unknown, will try")}[state]
+    why = {"ready": ("已登录", "logged in"), "configured": ("已配置", "configured"),
+           "logged_out": ("未登录", "not logged in"), "unknown": ("登录状态未知，会直接试", "login unknown, will try")}[state]
     out.update(state=state, why=why[0] if lang == "zh" else why[1],
                fix=(defn.get("fix") or {}).get(lang, "") if state == "logged_out" else "")
     return out

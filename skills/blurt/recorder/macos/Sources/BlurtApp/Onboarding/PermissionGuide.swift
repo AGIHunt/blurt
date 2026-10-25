@@ -12,8 +12,9 @@
 // At the end the panel closes, Blurt comes back to the front where the walk started, with a check mark: "Done —
 // dictation works in every app now." — only once a speech model is there too; before that: "Permissions are set.
 // Next, the speech model — then Fn dictates anywhere." Nothing in System Settings is ever clicked or changed by Blurt.
-// The step count ("1 of 3") is the walk's live list: a step satisfied on the way (Input Monitoring, once Accessibility
-// hears the key) leaves the count.
+// The step count ("1 of 2") is the walk's live list. With Fn as the key, Input Monitoring isn't planned while
+// Accessibility is still to come (the Fn filter hears the key with Accessibility alone), so the count doesn't promise
+// a step and then drop it; only if the filter still can't hear the key once Accessibility is on does it join the walk.
 // Re-add (`reauthorize`, v0.9): macOS lists Blurt as allowed but ScreenCaptureKit refuses — the grant was made for an
 // older build (ScreenHelp, BlurtCore ScreenGrant.stale). The Screen Recording step then isn't satisfied by the switch
 // being on: the panel says to remove Blurt with − and add it again, and Restart Blurt is what finishes it.
@@ -47,6 +48,8 @@ final class PermissionGuide: ObservableObject {
     @Published private(set) var reauthorize = false
 
     private(set) var source: Source = .test
+    /// the walk was asked for these kinds only (a row's Allow): it never grows
+    private var only: [PermissionKind]?
     private var timer: Timer?
     private var stepStarted = Date()
     private var finishedAt = Date.distantPast
@@ -55,12 +58,15 @@ final class PermissionGuide: ObservableObject {
 
     // MARK: what counts as done
 
-    /// Input Monitoring is satisfied once the key is heard by a tap (the Fn filter needs only Accessibility); the 🌐
-    /// key once Fn isn't the key, dictation is off, or macOS does nothing on Fn.
+    /// Input Monitoring is satisfied once the key is heard by a tap (the Fn filter needs only Accessibility) — and,
+    /// with Fn as the key, while Accessibility is still to come (that filter is what will hear it: not a step to
+    /// promise); the 🌐 key once Fn isn't the key, dictation is off, or macOS does nothing on Fn.
     func satisfied(_ k: PermissionKind) -> Bool {
         switch k {
         case .inputMonitoring:
-            return SystemAccess.granted(.inputMonitoring) || (Dictation.enabled && Dictation.shared.listenerKind == .tap && Dictation.key == .fn)
+            let fnFilter = Dictation.enabled && Dictation.key == .fn
+            return SystemAccess.granted(.inputMonitoring)
+                || (fnFilter && (Dictation.shared.listenerKind == .tap || !SystemAccess.granted(.accessibility)))
         case .fnKey:
             return !Dictation.enabled || Dictation.key != .fn || SystemAccess.granted(.fnKey)
         case .screen where reauthorize:
@@ -81,6 +87,7 @@ final class PermissionGuide: ObservableObject {
     func start(_ flow: PermissionFlowKind, only: [PermissionKind]? = nil, source: Source, reauthorize: Bool = false) {
         self.flow = flow
         self.source = source
+        self.only = only
         self.reauthorize = reauthorize && (only ?? []).contains(.screen)
         finished = nil
         let walk = PermissionPlan.steps(flow, only: only, satisfied: satisfiedSet)
@@ -156,7 +163,15 @@ final class PermissionGuide: ObservableObject {
     private func next() {
         guard running else { return }
         let done = steps.prefix { $0 != current } + (current.map { [$0] } ?? [])
-        let rest = steps.drop { $0 != current }.dropFirst().filter { !satisfied($0) }
+        var rest = Array(steps.drop { $0 != current }.dropFirst().filter { !satisfied($0) })
+        // what the walk didn't plan but now needs (Input Monitoring when the Fn filter still can't hear the key with
+        // Accessibility on) joins it, in the plan's order
+        if only == nil {
+            let planned = PermissionPlan.steps(flow, satisfied: satisfiedSet)
+            for k in planned where !done.contains(k) && !rest.contains(k) {
+                rest.insert(k, at: rest.firstIndex { a in (planned.firstIndex(of: a) ?? 0) > (planned.firstIndex(of: k) ?? 0) } ?? rest.endIndex)
+            }
+        }
         steps = Array(done) + rest           // what got satisfied on the way leaves the count ("2 of 2", not "2 of 3")
         if let n = rest.first { go(n) } else { finish(already: false) }
     }

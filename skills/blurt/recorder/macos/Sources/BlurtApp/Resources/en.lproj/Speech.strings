@@ -122,3 +122,7 @@
 "speech.dictation.no_words" = "doesn’t use your Words";
 "speech.dictation.footer" = "Both run on this Mac. Nothing is downloaded until you click Download.";
 "speech.download.queued" = "Queued";
+"speech.model.other" = "A model no longer listed";
+"speech.dictation.used_once_in" = "Used once it’s downloaded";
+"speech.purpose.none_yet" = "None yet";
+"speech.purpose.downloading" = "%@ · downloading";

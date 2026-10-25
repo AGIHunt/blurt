@@ -524,3 +524,12 @@
 "dictation.toast.no_model_plain" = "还没有语音模型";
 "dictation.toast.no_model.settings" = "查看模型…";
 "dictation.toast.no_model.action" = "下载";
+"dictation.toast.not_set_up" = "听写还没设置好";
+"dictation.toast.not_set_up.action" = "设置…";
+"dictation.menu.set_up" = "设置听写…";
+"dictation.menu.set_up.subtitle" = "语音工具还没下载好";
+"dictation.menu.get_model" = "下载语音模型…";
+"dictation.menu.get_model.subtitle" = "听写要用 · %@";
+"dictation.menu.get_model.subtitle_plain" = "听写要用";
+"dictation.models.queued" = "等待下载 · %@";
+"dictation.models.show" = "查看";

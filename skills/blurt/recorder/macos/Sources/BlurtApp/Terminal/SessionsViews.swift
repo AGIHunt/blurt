@@ -272,7 +272,7 @@ struct SessionOverlay: View {
             case .attached:
                 EmptyView()         // the pane hides this view while a terminal is attached
             case .connecting:
-                card { ProgressView().controlSize(.small); Text(TL("overlay.connecting")).foregroundStyle(.secondary) }
+                card { BrandSpinnerView(); Text(TL("overlay.connecting")).foregroundStyle(.secondary) }
                     .transition(.opacity)
             case .detached:
                 card {
@@ -364,7 +364,7 @@ struct SessionOverlay: View {
                         Button(TL("overlay.restart")) { actions?.restart(r.id) }.disabled(inFlight)
                     }
                 }
-                if inFlight { ProgressView().controlSize(.small) }
+                if inFlight { BrandSpinnerView() }
             case .finished, .live:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
             }

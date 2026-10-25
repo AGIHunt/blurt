@@ -62,7 +62,7 @@ enum Housekeeping {
         var t = Island.Toast(text: text, actionTitle: action) { contractHelp() }
         t.seconds = 8
         // ranked above the welcome (it breaks things); while it lasts, the menu-bar menu and Settings → General say so too
-        LaunchMessages.shared.post(.skill, t) { Config.shared.set("app.contract_warned", sig) }   // said once it was seen
+        LaunchMessages.shared.post(.skill, t, shown: { Config.shared.set("app.contract_warned", sig) })   // said once it was seen
     }
 
     /// The way to fix a skill / app mismatch: a newer app from the updater when it can check, else the guide's
@@ -108,6 +108,8 @@ enum Housekeeping {
     /// The suggestion stays pending (config app.model_suggest_pending) until its line was seen — a launch whose line
     /// went to something more urgent offers it again next time, as long as the recommended model is still missing.
     /// `--apply` records the hardware, so `hardware_changed` is true only once: the pending flag is what remembers.
+    /// A model only recordings would use waits for the first recording (right after the assistant said the speech
+    /// models are ready, "a recommended model" read as "yours is the wrong one") and says what it is for.
     static func speechModels() async {
         guard !Onboarding.needed, (try? ScriptRunner.shared.scriptURL("transcribe.py")) != nil else { return }
         guard let r = try? await ScriptRunner.shared.json("transcribe.py", ["auto", "--apply"], timeout: 120),
@@ -122,13 +124,29 @@ enum Housekeeping {
         let models = need.compactMap { $0["model"] as? String }
         let mb = need.compactMap { ($0["size_mb"] as? NSNumber)?.doubleValue }.reduce(0, +)
         Config.shared.set("app.model_suggest_pending", ["models": models, "size_mb": mb])
-        await MainActor.run {
-            emit(["event": "asr_suggest", "models": models, "size_mb": mb, "again": pending])
-            guard AppEnvironment.island != nil else { return }
-            LaunchMessages.shared.post(.model, Island.Toast(text: T("main.speech.recommended", modelSize(mb)), actionTitle: T("main.speech.recommended.action")) {
-                AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
-            }) { Config.shared.set("app.model_suggest_pending", nil) }        // seen: not again
+        let purposes = Set(need.flatMap { $0["purposes"] as? [String] ?? [] })
+        let forRecordings = !purposes.isEmpty && purposes == ["batch"]
+        if forRecordings, !(await Task.detached { hasRecording() }.value) {
+            return emit(["event": "asr_suggest", "models": models, "held": "no_recording_yet"])     // stays pending
         }
+        let text = T(forRecordings ? "main.speech.recommended_recordings" : "main.speech.recommended", modelSize(mb))
+        await MainActor.run {
+            emit(["event": "asr_suggest", "models": models, "size_mb": mb, "again": pending, "for": Array(purposes).sorted()])
+            guard AppEnvironment.island != nil else { return }
+            LaunchMessages.shared.post(.model, Island.Toast(text: text, actionTitle: T("main.speech.recommended.action")) {
+                AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
+            }, shown: { Config.shared.set("app.model_suggest_pending", nil) })     // seen: not again
+        }
+    }
+
+    /// Any recording on this Mac (a session with its video) — a model for recordings is suggested only then.
+    static func hasRecording() -> Bool {
+        let fm = FileManager.default
+        for root in FixWatcher.sessionRoots() {
+            for d in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+                where fm.fileExists(atPath: d.appendingPathComponent("recording.mp4").path) { return true }
+        }
+        return false
     }
 
     /// v0.6's bound repo became the current project in the migration, which nobody chose here: ask once, in the

@@ -17,7 +17,9 @@
 //  • no speech model (`transcribe.py dictation-models`, read through DictationModels at launch, after every download
 //    and whenever Settings reloads it): the key doesn't listen; the island says so (with the size), and its button
 //    starts the download in the app's one download manager (`Dictation.getSpeechModel` → ModelDownloads; "Show" opens
-//    its progress). A dictation never downloads a model itself (`--no-download`, `no_download`).
+//    its progress). A dictation never downloads a model itself (`--no-download`, `no_download`). When
+//    `dictation-models` couldn't run at all (the speech tools aren't set up: an offline first run), the key doesn't
+//    listen either: "Dictation isn't set up yet · Set Up…" (the assistant's models step; `notSetUp`).
 //  • a hands-free take nobody stops: "still listening" after 20 s without speech, the ear counts down from 4:30, and
 //    the 5-minute limit says so when it ends the take (BlurtCore's DictationRunaway); the tap right after is its stop.
 //  • the key needs Accessibility (the Fn filter, or the monitor) or Input Monitoring (the listen-only tap). Until it
@@ -625,8 +627,9 @@ final class Dictation {
     /// and get the models loaded while the user starts talking.
     private func arm() {
         armedAt = CACurrentMediaTime()
-        // no speech model: nothing to listen for (the start says so) — and nothing to warm, nothing downloaded
-        guard !speechModelMissing else { return }
+        // no speech model (or no speech tools to run one): nothing to listen for (the start says so) — and nothing
+        // to warm, nothing downloaded
+        guard !speechModelMissing, !speechToolsMissing else { return }
         warm()
         guard Dictation.precapture, !listening, voice == nil, canListen(toast: false) else { return }
         precaptured = true
@@ -636,11 +639,18 @@ final class Dictation {
     /// The speech model dictation would use isn't on this Mac (known only once `dictation-models` has answered).
     var speechModelMissing: Bool { speechModels.map { !$0.ready } ?? false }
 
+    /// `dictation-models` ran and couldn't answer, and never has this run: the speech tools aren't set up (an offline
+    /// first run). Nothing could be recognised — the start refuses with "isn't set up yet · Set Up…" (notSetUp)
+    /// instead of listening and failing without a reason.
+    var speechToolsMissing: Bool {
+        speechModels == nil && MainActor.assumeIsolated { DictationModels.shared.asrUnreadable }
+    }
+
     /// Key went down alone: get the models loaded while the user starts talking. A server that isn't running is
     /// started offline first (no package index lookup: `uv run` checking PyPI after its cache expired took 13 s here,
     /// which is how a cold polish server missed a 19 s dictation); online only if that fails.
     func warm() {
-        guard !speechModelMissing else { return }
+        guard !speechModelMissing, !speechToolsMissing else { return }
         VoiceInput.warmSpeechModel(dictation: true)
         guard Dictation.polishOn, polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
@@ -813,6 +823,13 @@ final class Dictation {
             dropPrecapture()
             emit(["event": "dictation_start_refused", "why": "no_model", "model": speechModels?.selected ?? NSNull()])
             return noSpeechModel()
+        }
+        // the speech tools couldn't even list the models (offline first run): say so and how to set them up
+        guard !speechToolsMissing else {
+            trigger.reset(active: false, keepTap: true)
+            dropPrecapture()
+            emit(["event": "dictation_start_refused", "why": "not_set_up"])
+            return notSetUp(from: "key")
         }
         guard canListen(toast: true) else {
             trigger.reset(active: false, keepTap: true)      // a second tap still sends: Return needs no mic

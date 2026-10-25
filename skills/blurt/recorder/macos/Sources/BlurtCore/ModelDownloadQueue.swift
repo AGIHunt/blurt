@@ -101,8 +101,15 @@ public struct ModelDownloadQueue: Codable, Equatable {
         ModelBundle.progress(jobs.map(\.part), finished: Set(finished), current: current, line: line)
     }
 
-    /// What is left to download, in MB (the running job counted whole).
+    /// What is left to download, in MB (the running job counted whole: before its first progress line).
     public var remainingMB: Double { pending.reduce(0) { $0 + $1.sizeMB } }
+
+    /// What is left to download, in MB: the bar's total less what it shows done — what already came down of the
+    /// running job is not counted again ("6.1 GB to go" after 1.6 GB read as progress lost).
+    public func remaining(current: String?, line: (done: Double, total: Double)?) -> Double {
+        let p = progress(current: current, line: line)
+        return max(0, p.total - p.done)
+    }
 
     // MARK: how a download ended
 

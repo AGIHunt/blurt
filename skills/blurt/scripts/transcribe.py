@@ -683,7 +683,15 @@ def qos_cpu_seconds() -> dict | None:
 
 
 # ------------------------------------------------------------------ downloads
-def _download_url(urls: list[str], dest: Path, label: str) -> Path:
+def progress_line(done_bytes: float, total_bytes: float, aux: str | None = None) -> str:
+    """The '  N/M MB' line the app's bar reads (BlurtCore ModelBundle.parseProgress), in MB with one decimal. `aux`:
+    a file fetched on the way to the model (the VAD before a model's own files) — its line is named ('  vad 1.7/1.7
+    MB') so it is never read as the model's own progress (a 1.7 MB file done is not 2.5 GB done)."""
+    q = f"{done_bytes / 2**20:.1f}/{total_bytes / 2**20:.1f} MB"
+    return f"  {aux} {q}" if aux else f"  {q}"
+
+
+def _download_url(urls: list[str], dest: Path, label: str, aux: str | None = None) -> Path:
     if os.environ.get("BLURT_HF_MIRROR"):  # the China-friendly mirror first
         urls = sorted(urls, key=lambda u: "hf-mirror" not in u)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -696,7 +704,7 @@ def _download_url(urls: list[str], dest: Path, label: str) -> Path:
 
             def progress(done: int, total: int) -> None:
                 if total and time.time() - t0[0] > 1:
-                    serve_said(f"  {done >> 20}/{total >> 20} MB")
+                    serve_said(progress_line(done, total, aux))
                     t0[0] = time.time()
             fetch(url, tmp, progress=progress, timeout=30)
             os.replace(tmp, dest)
@@ -707,8 +715,9 @@ def _download_url(urls: list[str], dest: Path, label: str) -> Path:
     raise Fail(f"could not download {label}: {last}. Set BLURT_HF_MIRROR=1 or download manually to {dest}", "network")
 
 
-def download(rel: str) -> Path:
-    """A single model file under MODELS_DIR (the VAD, SenseVoice's files)."""
+def download(rel: str, aux: str | None = None) -> Path:
+    """A single model file under MODELS_DIR (the VAD, SenseVoice's files). `aux`: fetched on the way to another
+    model (its progress lines are named so: progress_line)."""
     dest = MODELS_DIR / rel
     if dest.exists() and dest.stat().st_size > 0:
         return dest
@@ -718,7 +727,7 @@ def download(rel: str) -> Path:
         (u for m in entries() for f, u in ((m.get("install") or {}).get("files") or {}).items() if f == rel), None)
     if not urls:
         raise Fail(f"no download source for {rel}", "model_missing")
-    return _download_url(urls, dest, rel)
+    return _download_url(urls, dest, rel, aux)
 
 
 def hf_cache() -> Path:
@@ -814,17 +823,22 @@ def _du_mb(p: Path) -> float:
 
 
 def _progress_poller(target: Path, total_mb: float, stop: threading.Event) -> None:
-    """HF downloads: report '  N/M MB' from what has landed on disk (incl. *.incomplete blobs)."""
+    """HF downloads: report '  N/M MB' from what has landed on disk (incl. *.incomplete blobs) — the blocks really
+    written (st_blocks), not the size: a blob set to its full length up front would count as done before a byte came."""
+    def landed(f: Path) -> int:
+        st = f.stat()
+        blocks = getattr(st, "st_blocks", None)
+        return min(st.st_size, blocks * 512) if blocks is not None else st.st_size
     while not stop.wait(1.0):
         if target.exists():
-            done = sum(f.stat().st_size for f in target.rglob("*") if f.is_file() and not f.is_symlink()) / 2**20
-            serve_said(f"  {int(min(done, total_mb))}/{int(total_mb)} MB")
+            done = sum(landed(f) for f in target.rglob("*") if f.is_file() and not f.is_symlink())
+            serve_said(progress_line(min(done, total_mb * 2**20), total_mb * 2**20))
 
 
 def install_model(m: dict) -> Path:
     """Download a registry model (and the VAD every local backend needs). Progress on stderr. One download of a
     model at a time (download_lock): a second caller waits, then finds it installed."""
-    download("silero_vad.onnx")
+    download("silero_vad.onnx", aux="vad")      # its own named progress: not the model's (progress_line)
     if not m.get("local", True):
         return MODELS_DIR
     have = model_path(m)
@@ -2334,23 +2348,55 @@ QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
 DICTATION_MODELS = (QWEN_MLX_17, QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2)   # the local ones dictation offers, best first
 
 
+def polish_ram_mb(hw: dict, cfg: dict | None = None) -> float:
+    """The memory the polish model dictation runs next to takes (polish_models.json ram_mb): the configured one, else
+    the tier's default — 0 where polish doesn't run (MLX: Apple Silicon only) or is turned off. Read here rather than
+    from polish.py, which imports this module."""
+    cfg = ((global_config().get("record") or {}).get("dictation") or {}) if cfg is None else cfg
+    if hw_kind(hw) != "apple" or (isinstance(cfg, dict) and cfg.get("polish", "light") == "off"):
+        return 0.0
+    try:
+        reg = json.loads((HERE / "polish_models.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0.0
+    want = (cfg.get("polish_model") if isinstance(cfg, dict) else None) or (reg.get("defaults") or {}).get(hw["tier"])
+    m = next((x for x in reg.get("models") or [] if x.get("id") == want), None)
+    return float((m or {}).get("ram_mb") or 0)
+
+
+def fits_with_polish(m: dict, hw: dict, polish_mb: float) -> bool:
+    """`_fits`, counting the polish model too: a dictation holds both warm at once (ASR + polish), so the pair has to
+    stay within the share of RAM one model may take (on a 16 GB Mac: 0.6B 2.1 GB + Gemma 4 E2B 3.9 GB fits; 1.7B
+    3.1 GB + 3.9 GB doesn't)."""
+    return _fits({**m, "ram_mb": (m.get("ram_mb") or 0) + polish_mb}, hw)
+
+
 def dictation_models(hw: dict | None = None) -> dict:
     """configured (record.dictation.asr_model or None = automatic), recommended (by the dictation eval: Qwen3-ASR MLX
     on Apple Silicon pro / standard, else the voice-note pick), selected (what runs: the configured one when it is
-    installed, else the recommended one when installed, else the voice-note model) and the rows for Settings."""
+    installed, else the recommended one when installed, else the best installed Qwen3-ASR MLX that runs here next to
+    the polish model, else the voice-note model) and the rows for Settings. Memory is judged for the pair dictation
+    holds — the recogniser plus the polish model (fits_with_polish)."""
     hw = hw or probe()
     cfg = (global_config().get("record") or {}).get("dictation") or {}
     configured = cfg.get("asr_model") if isinstance(cfg, dict) else None
     note_pick = select("note")
     apple = hw_kind(hw) == "apple"
+    pmb = polish_ram_mb(hw, cfg if isinstance(cfg, dict) else {})
+
+    def fits(mid: str) -> bool:
+        m = entry(mid)
+        return bool(m) and fits_with_polish(m, hw, pmb)
     # the v0.8 speed eval (docs/design/dictation.md §Recognition model): 1.7B on pro Macs (≥ 32 GB: 3 GB more is
     # fine there), 0.6B on standard ones
-    rec = QWEN_MLX_17 if apple and hw["tier"] == "pro" and _fits(entry(QWEN_MLX_17), hw) else \
-        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and _fits(entry(QWEN_MLX), hw) else note_pick["id"]
-    # what runs: the configured one, else the recommended one, else the 0.6B a pro Mac already has (until the 1.7B
-    # is installed), all only when installed; else the voice-note model
-    fallback = QWEN_MLX if rec == QWEN_MLX_17 else None
-    selected = next((mid for mid in (configured, rec, fallback) if mid and entry(mid) and runs_here(entry(mid))
+    rec = QWEN_MLX_17 if apple and hw["tier"] == "pro" and fits(QWEN_MLX_17) else \
+        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_pick["id"]
+    # what runs: the configured one (the user's choice, as it is), else the recommended one, else any Qwen3-ASR MLX
+    # already here that runs next to polish, best first (it takes the Words list; the voice-note model doesn't) — a
+    # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
+    # voice-note model
+    usable = [mid for mid in (QWEN_MLX_17, QWEN_MLX) if mid != rec and apple and fits(mid)]
+    selected = next((mid for mid in (configured, rec, *usable) if mid and entry(mid) and runs_here(entry(mid))
                      and installed(entry(mid))), note_pick["id"])
     # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
     # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
@@ -2364,7 +2410,7 @@ def dictation_models(hw: dict | None = None) -> dict:
         have = installed(m)
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
                      "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True)), "files": have,
-                     "vocab": m.get("vocab") or "none", "recommended": mid == rec, "fits": _fits(m, hw)})
+                     "vocab": m.get("vocab") or "none", "recommended": mid == rec, "fits": fits(mid)})
     # ready: a dictation can run right now with nothing downloaded (it never downloads: `no_download`) — the
     # selected model (local and on this Mac, or a cloud one with its key: judged by itself, not by being a row) and
     # the VAD every take goes through. missing: what a download would have to bring for that ("silero-vad" and/or

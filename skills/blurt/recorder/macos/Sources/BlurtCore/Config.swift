@@ -6,9 +6,60 @@
 // takes, so the app and the scripts never lose each other's changes — and atomic (pretty, sorted keys, like
 // _common.save_json; 0600). A config.json that exists but doesn't parse (a hand edit gone wrong) is never overwritten:
 // it is copied once to config.json.bad-<time> (not again on later launches while it stays the same), the write is
-// refused, and `onUnreadable` says so (the app: one line in the island). Reads of such a file give {} (every setting
-// at its default) until it is fixed.
+// refused, and `onUnreadable` says so (the app: one line in the island, at launch already: checkReadable). Reads of
+// such a file give {} (every setting at its default) until it is fixed; `readable` tells that apart from an empty file
+// (the app then doesn't take a missing app.onboarded for a first run). What counts as readable is the scripts' rule
+// too (_common.parse_config_text): JSON, with a comma right before `}` or `]` forgiven (ConfigText) — the slip a hand
+// edit makes most — so a file the app reads, the scripts read, and the other way round.
 import Foundation
+
+/// config.json's text the way the app and the scripts both read it.
+public enum ConfigText {
+    /// A comma right before `}` or `]` (outside strings) left out — the same walk as _common.drop_trailing_commas —
+    /// until none is left (",, }" too): JSONSerialization forgives one trailing comma and Python's json none, so with
+    /// none left both read exactly the same files.
+    public static func dropTrailingCommas(_ text: String) -> String {
+        var cur = text
+        while true {
+            let next = dropOnce(cur)
+            if next == cur { return cur }
+            cur = next
+        }
+    }
+
+    private static func dropOnce(_ text: String) -> String {
+        let s = Array(text.unicodeScalars)
+        var out = String.UnicodeScalarView()
+        var i = 0, inString = false
+        while i < s.count {
+            let c = s[i]
+            if inString {
+                out.append(c)
+                if c == "\\", i + 1 < s.count { out.append(s[i + 1]); i += 1 } else if c == "\"" { inString = false }
+            } else if c == "\"" {
+                inString = true
+                out.append(c)
+            } else if c == "," {
+                var j = i + 1
+                while j < s.count, [" ", "\t", "\r", "\n"].contains(s[j]) { j += 1 }
+                if j >= s.count || (s[j] != "}" && s[j] != "]") { out.append(c) }
+            } else {
+                out.append(c)
+            }
+            i += 1
+        }
+        return String(out)
+    }
+
+    /// The file's bytes → its settings; nil when it doesn't parse (even with trailing commas left out) or isn't an
+    /// object.
+    public static func parse(_ data: Data) -> [String: Any]? {
+        guard var text = String(data: data, encoding: .utf8) else { return nil }
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }      // a BOM (Notepad, PowerShell), as the scripts allow
+        guard let d = dropTrailingCommas(text).data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: d)) as? [String: Any]
+    }
+}
 
 public final class Config {
     public static let shared = Config()
@@ -43,13 +94,26 @@ public final class Config {
     /// The whole file ({} when missing or unreadable).
     public var all: [String: Any] { read().value }
 
+    /// The file parses (or isn't there). False: every setting reads as its default until it is fixed.
+    public var readable: Bool { read().ok }
+
+    /// At launch: a file that doesn't parse is copied aside (once per version) and `onUnreadable` says so — before a
+    /// write is refused, so the user hears it right away, with what it means. Returns `readable`.
+    @discardableResult
+    public func checkReadable() -> Bool {
+        if read().ok { return true }
+        lock.lock(); defer { lock.unlock() }
+        refuse()
+        return false
+    }
+
     /// The parsed file, and whether it parsed (a missing file counts as fine: there is nothing to lose).
     private func read() -> (value: [String: Any], ok: Bool) {
         let u = url
         guard let sig = FileSig(u) else { return ([:], true) }
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let c = cache, c.sig == sig { return (c.value, c.ok) }
-        let parsed = (try? Data(contentsOf: u)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let parsed = (try? Data(contentsOf: u)).flatMap(ConfigText.parse)
         cache = (sig, parsed ?? [:], parsed != nil)
         return (parsed ?? [:], parsed != nil)
     }

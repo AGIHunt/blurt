@@ -389,18 +389,18 @@ struct SpeechPane: View {
                 ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
                 ForEach(suggestions, id: \.model.id) { sug in suggestionRow(sug.model, purposes: sug.purposes) }
             } else if m.loading {
-                SettingsLine { HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.loading")).foregroundStyle(.secondary) } }
+                SettingsLine { HStack(spacing: 8) { BrandSpinnerView(); Text(S("speech.loading")).foregroundStyle(.secondary) } }
             }
             if let e = m.error { SettingsLine { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr) } }
         }, accessory: {
-            if m.loading && m.state != nil { ProgressView().controlSize(.mini) }
+            if m.loading && m.state != nil { BrandSpinnerView(size: 10) }
         })
     }
 
     func purposeRow(_ p: ASRPurpose) -> some View {
         SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
             if m.auto {
-                Text(m.selected(p)?.title ?? "—").foregroundStyle(.secondary)
+                Text(purposeValue(p)).foregroundStyle(.secondary)
             } else {
                 RowPicker(label: p.title, selection: Binding(get: { m.selected(p)?.id ?? "" }, set: { id in
                     if let x = m.model(id) { m.choose(x, for: p) }
@@ -411,6 +411,14 @@ struct SpeechPane: View {
         }
     }
 
+    /// What a purpose runs on: the model's name once it is on this Mac; "· downloading" while it comes down, "none
+    /// yet" before — never a model that isn't there as if it were in use.
+    func purposeValue(_ p: ASRPurpose) -> String {
+        guard let x = m.selected(p) else { return S("speech.purpose.none_yet") }
+        if x.installed || !x.local { return x.title }
+        return ModelDownloads.shared.queue.contains(x.id) ? S("speech.purpose.downloading", x.title) : S("speech.purpose.none_yet")
+    }
+
     /// Installed models that run here (cloud ones when a key is set and local-only is off).
     func choices(_ p: ASRPurpose) -> [ASRModel] {
         var out = m.models.filter { $0.installed && ($0.runsHere ?? true) && ($0.local || !m.localOnly) }
@@ -419,11 +427,13 @@ struct SpeechPane: View {
     }
 
     /// Recommended models that aren't downloaded yet, with the purposes they would take over.
+    /// While a batch downloads, only the ones in it (their bars): no further "X is recommended · Download" on top.
     var suggestions: [(model: ASRModel, purposes: [ASRPurpose])] {
         guard m.auto else { return [] }
+        let dl = ModelDownloads.shared
         var out: [(model: ASRModel, purposes: [ASRPurpose])] = []
         for p in ASRPurpose.allCases {
-            guard let r = m.recommended(p), !r.installed, r.local else { continue }
+            guard let r = m.recommended(p), !r.installed, r.local, !dl.active || dl.queue.contains(r.id) else { continue }
             if let i = out.firstIndex(where: { $0.model.id == r.id }) { out[i].purposes.append(p) } else { out.append((r, [p])) }
         }
         return out
@@ -546,7 +556,7 @@ struct SpeechPane: View {
         HStack(spacing: 6) {
             if x.installed {
                 if m.benching.contains(x.id) {
-                    ProgressView().controlSize(.small)
+                    BrandSpinnerView()
                     Text(S("speech.bench.running")).font(.caption).foregroundStyle(.secondary)
                 } else {
                     Button(S("speech.bench.button")) { Task { await m.runBench(x) } }

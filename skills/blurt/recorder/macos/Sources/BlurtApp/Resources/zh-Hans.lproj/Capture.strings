@@ -71,7 +71,7 @@
 "capture.keys.dictation_change" = "去听写设置…";
 "capture.keys.draw_note" = "录屏时按住它拖动，圈出重点";
 "capture.keys.duplicate" = "和「%@」重复，没生效";
-"capture.keys.failed" = "这个快捷键用不了（%@），可能被别的 App 占用";
+"capture.keys.failed" = "这个快捷键用不了，可能被别的 App 占用";
 "capture.keys.fn" = "fn 键";
 "capture.keys.hint" = "点一下（或按空格）再按新的组合键 · Esc 取消 · ⌫ 去掉";
 "capture.keys.hold_draw" = "按住画图";
@@ -280,3 +280,5 @@
 "capture.screen.reallow" = "重新授权…";
 "capture.sort.no_agent" = "整理需要 Claude Code 或 Codex，卡片先留着";
 "capture.sort.set_up" = "去设置…";
+"capture.keys.wont_work_many" = "%@ 个快捷键用不了";
+"capture.keys.menu_not_working" = "%1$@ 用不了：%2$@。可以在「设置」的「快捷键」里更换。";

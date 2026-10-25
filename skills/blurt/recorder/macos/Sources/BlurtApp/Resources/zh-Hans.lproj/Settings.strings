@@ -155,9 +155,7 @@
 "onboarding.models.ready_toast" = "语音模型下载好了";
 "onboarding.models.failed" = "下载中断了。检查一下网络再试。";
 "onboarding.models.retry" = "重试";
-"onboarding.models.small" = "只下载小模型（%@）";
-"onboarding.models.unavailable" = "读不到模型列表。";
-"onboarding.warm.failed" = "语音工具没装好。检查一下网络再试。";
+"onboarding.models.small" = "先装小模型（%@）";
 "onboarding.models.stop" = "停止";
 "onboarding.models.failed_toast" = "模型下载中断了";
 "onboarding.models.failed_open" = "重试…";
@@ -317,3 +315,14 @@
 "settings.storage.undo_failed_many" = "%d 项没能放回原处";
 "settings.storage.undo" = "撤销";
 "settings.storage.videos.trashed" = "%1$@（%2$@）已移到废纸篓";
+"onboarding.setup.blocked" = "口喷鸡没能下载语音工具。第一次设置要联网：连上网络后点「重试」。";
+"onboarding.try.blocked" = "听写还用不了：语音工具还没下载好。";
+"onboarding.models.small.help" = "SenseVoice Small：听写和语音备注都能用，完整的模型以后再下载。";
+"settings.privacy.stay_with_agents" = "录屏、截图、条目都只存在你的 Mac 上（~/Blurt 或项目的 .blurt/）。整理或交给 Agent 时，需要的内容会发给你用的 Agent（Claude Code、Codex 等），按它的条款处理。";
+"settings.storage.model.vad_name" = "人声检测";
+"settings.storage.model.unknown" = "旧模型";
+"settings.storage.model.unused" = "这个版本的口喷鸡用不到";
+"settings.storage.choose.speech" = "去语音设置…";
+"settings.storage.choose.dictation" = "去听写设置…";
+"settings.storage.none" = "无";
+"settings.general.login_failed" = "这里没改成，可以在「系统设置」的「登录项」里改。";

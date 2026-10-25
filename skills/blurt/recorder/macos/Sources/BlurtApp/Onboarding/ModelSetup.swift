@@ -3,8 +3,9 @@
 // with the total size and one progress bar (Stop ends it). The downloads themselves are the app's one download manager
 // (App/ModelDownloads.swift): they run one after another, carry on when the assistant closes (a line says so; the
 // menu-bar menu and Settings → Speech show the progress), and pick up again after a quit or a crash. When the set
-// didn't come down, SenseVoice Small alone is offered. A list that couldn't be read shows "Couldn't read the models"
-// and Try Again — never a set with a model quietly left out. Read again each time the assistant opens.
+// didn't come down, SenseVoice Small alone is offered. A list that couldn't be read (`listRead` false) is the same
+// state as speech tools that didn't install (BlurtCore SpeechSetup .blocked): one sentence and one Try Again on the
+// step — never a set with a model quietly left out, never two errors. Read again each time the assistant opens.
 //   reads      `transcribe.py dictation-models`, `polish.py models`, `transcribe.py models` (SpeechModel)
 //   downloads  ModelDownloads, nothing pinned: dictation and polish stay automatic (the recommended model runs once it
 //              is installed); voice notes are re-picked with `transcribe.py auto --apply`.
@@ -21,6 +22,8 @@ final class ModelSetup: ObservableObject {
     @Published private(set) var parts: [ModelBundle.Part] = []
     @Published private(set) var loading = false
     @Published private(set) var loaded = false
+    /// the last read could read every list (false: the speech tools couldn't run — SpeechSetup .blocked)
+    @Published private(set) var listRead = true
     /// the user asked for the small model alone
     private var only = false
     /// the user settled for the small model (it came down): the step is done, the full set stays on offer
@@ -94,6 +97,7 @@ final class ModelSetup: ObservableObject {
         let plan = ModelBundle.plan(dictation: dictation, polish: pm, polishRuns: polish?.supported, note: note)
         // while the set downloads, keep the rows it started with (a read mid-download changes nothing that matters)
         if !(downloading && plan == nil) { parts = plan ?? [] }
+        listRead = plan != nil || downloading
         loaded = true
         emit(["event": "onboarding_models", "read": ["dictation": asr != nil, "polish": polish != nil, "note": note != nil],
               "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
@@ -126,7 +130,7 @@ final class ModelSetup: ObservableObject {
     /// The assistant closed while the set downloads: one line says it carries on, and where to see it.
     func closedWhileDownloading() {
         guard downloading else { return }
-        let left = modelSize(dl.queue.remainingMB)
+        let left = modelSize(dl.remainingMB)       // what came down of the running model isn't counted again
         var t = Island.Toast(text: T("app.models.background", left), actionTitle: T("app.models.show")) { ModelDownloads.showProgress() }
         t.seconds = 6
         island.toast(t)

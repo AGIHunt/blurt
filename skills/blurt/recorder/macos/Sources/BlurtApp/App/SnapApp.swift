@@ -355,7 +355,7 @@ extension App {
                 w.level = parts[0] == "raise" ? .floating : .normal
                 if parts[0] == "raise" { w.orderFrontRegardless() }
             }
-            if parts[0] == "raise" { HotkeySettings.shared.window?.orderFrontRegardless() }
+            if parts[0] == "raise" { HotkeySettings.shared.shortcutsWindow?.orderFrontRegardless() }
         case "js":                                      // js CODE: run in the main window's review canvas
             MainWindowController.shared.detail.web?.evaluateJavaScript(arg) { r, e in emit(["event": "js", "result": "\(r ?? e ?? "")"]) }
         case "webjs":                                   // webjs CODE: run in every blurt-app:// canvas (main window detail)
@@ -368,7 +368,7 @@ extension App {
             if let a = HotAction(rawValue: arg) { HotkeySettings.shared.fields[a]?.start() }
         case "presskey", "rkey":                        // presskey SPEC|esc|delete: a real key event through the app's queue,
                                                         // to the Shortcuts window (presskey) or the main window (rkey)
-            guard let w = parts[0] == "rkey" ? MainWindowController.shared.window : HotkeySettings.shared.window else { return }
+            guard let w = parts[0] == "rkey" ? MainWindowController.shared.window : HotkeySettings.shared.shortcutsWindow else { return }
             if parts[0] == "rkey" {                     // key equivalents need us active with that window key
                 NSApp.activate(ignoringOtherApps: true)
                 w.makeKeyAndOrderFront(nil)

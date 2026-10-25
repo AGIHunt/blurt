@@ -91,6 +91,10 @@ final class DictationModels: ObservableObject {
 
     @Published var asr: DictationASRState?
     @Published var polish: PolishState?
+    /// `dictation-models` ran and couldn't answer: the speech tools aren't set up (an offline first run — uv couldn't
+    /// install them). Dictation then refuses before listening ("isn't set up yet · Set Up…", Dictation.notSetUp), the
+    /// menu offers Set Up Dictation…, and the welcome line says so — instead of listening and failing without a reason.
+    @Published private(set) var asrUnreadable = false
     private var loaded = false
     private var sub: AnyCancellable?
 
@@ -138,6 +142,8 @@ final class DictationModels: ObservableObject {
         async let p = SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
         asr = (try? await a)?.decode(DictationASRState.self)
         polish = (try? await p)?.decode(PolishState.self)
+        if asrUnreadable != (asr == nil) { emit(["event": "dictation_models_readable", "readable": asr != nil]) }
+        asrUnreadable = asr == nil
     }
 
     /// Once per run (the history's names); Settings reloads whenever it opens.
@@ -145,8 +151,10 @@ final class DictationModels: ObservableObject {
 
     // MARK: names
 
-    func asrName(_ id: String) -> String { asr?.models.first { $0.id == id }?.name ?? id }
-    func polishName(_ id: String) -> String { polish?.models.first { $0.id == id }?.name ?? id }
+    /// A model's name — from the list once it is read, else from the catalogues the app ships with the skill (read
+    /// once, no script run), so an id ("qwen3-asr-1.7b-mlx") never shows while the list loads or can't be read.
+    func asrName(_ id: String) -> String { asr?.models.first { $0.id == id }?.name ?? ModelCatalog.name(id) ?? S("speech.model.other") }
+    func polishName(_ id: String) -> String { polish?.models.first { $0.id == id }?.name ?? ModelCatalog.name(id) ?? S("speech.model.other") }
     var selectedASR: DictationASRModel? { asr.flatMap { a in a.models.first { $0.id == a.selected } } }
     var selectedPolish: PolishModel? { polish.flatMap { p in p.models.first { $0.id == p.selected } } }
 
@@ -241,7 +249,7 @@ struct DictationModelsSection: View {
         SettingsGroup("speech.dictation", footer: m.downloading ? nil : S("speech.dictation.footer")) {
             if m.asr == nil && m.polish == nil {
                 SettingsLine {
-                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.dictation.loading")).foregroundStyle(.secondary) }
+                    HStack(spacing: 8) { BrandSpinnerView(); Text(S("speech.dictation.loading")).foregroundStyle(.secondary) }
                 }
             } else {
                 recommended
@@ -314,16 +322,23 @@ struct DictationModelsSection: View {
         }
     }
 
+    /// The radio is filled only for a model on this Mac: with nothing in yet, none is — the recommended one says it is
+    /// used once it's downloaded.
     func asrRow(_ x: DictationASRModel, selected: Bool) -> some View {
-        DictationModelRow(name: x.name ?? x.id, sizeMB: x.sizeMB, recommended: x.recommended, installed: x.installed,
-                          selected: selected, detail: x.vocab == "none" ? S("speech.dictation.no_words") : nil,
+        let noneIn = m.asr.map { a in !a.models.contains { $0.id == a.selected && $0.installed } } ?? false
+        let notes = [x.vocab == "none" ? S("speech.dictation.no_words") : nil,
+                     noneIn && x.recommended && !x.installed ? S("speech.dictation.used_once_in") : nil].compactMap { $0 }
+        return DictationModelRow(name: x.name ?? m.asrName(x.id), sizeMB: x.sizeMB, recommended: x.recommended, installed: x.installed,
+                          selected: selected && x.installed, detail: notes.isEmpty ? nil : notes.joined(separator: " · "),
                           progress: m.progress(x.id), queued: m.queued(x.id), unpacking: m.unpacking(x.id), failed: m.failed(x.id),
                           use: { m.chooseASR(x) }, download: { m.installASR(x) }, cancel: { m.cancel(x.id) })
     }
 
     func polishRow(_ x: PolishModel, selected: Bool) -> some View {
-        DictationModelRow(name: x.name, sizeMB: x.sizeMB, recommended: x.recommended, installed: x.installed,
-                          selected: selected, detail: nil, progress: m.progress(x.id), queued: m.queued(x.id), unpacking: m.unpacking(x.id), failed: m.failed(x.id),
+        let noneIn = m.polish.map { p in !p.models.contains { $0.id == p.selected && $0.installed } } ?? false
+        return DictationModelRow(name: x.name, sizeMB: x.sizeMB, recommended: x.recommended, installed: x.installed,
+                          selected: selected && x.installed, detail: noneIn && x.recommended && !x.installed ? S("speech.dictation.used_once_in") : nil,
+                          progress: m.progress(x.id), queued: m.queued(x.id), unpacking: m.unpacking(x.id), failed: m.failed(x.id),
                           use: { m.choose(x) }, download: { m.install(x) }, cancel: { m.cancel(x.id) })
     }
 }
@@ -370,7 +385,7 @@ struct DictationModelRow: View {
             }
             Spacer()
             if let d = progress {
-                ProgressView(value: min(d.done, d.total), total: max(d.total, 1)).frame(width: 90)
+                ProgressView(value: min(d.done, d.total), total: max(d.total, 1)).tint(Color.brandInk).frame(width: 90)
                 if let c = cancel { Button(S("speech.download.stop"), action: c).controlSize(.small) }
             } else if queued {
                 if let c = cancel { Button(S("speech.download.stop"), action: c).controlSize(.small) }

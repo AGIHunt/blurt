@@ -1,17 +1,18 @@
 // The first launch's one line in the island (App.postWelcome, outside the setup assistant): where Blurt lives and the
 // keys to try first — only keys that work right now. Dictation's key only when dictation hears it and has a speech
-// model (else the line says how to get there, with the button for it); the snap / record keys only when they are
+// model (else the line says how to get there, with the button for it — and when the speech tools couldn't even list
+// the models, an offline first run, that dictation isn't set up yet, with Set Up…); the snap / record keys only when they are
 // registered. A shortcut macOS or another app holds is named as not working in that same line (with Change…), in
 // place of the keys — the island's row has room for one clause beside a button. Every variant fits the island in
 // both languages (WelcomeLineWidthTests). Unit-tested in Tests/BlurtCoreTests/WelcomeLineTests. Strings: Main table.
 import Foundation
 
 public enum WelcomeLine {
-    /// Where dictation stands at that launch. `unknown`: its models couldn't be read (the scripts can't run yet) —
-    /// its key isn't advertised, as when it's off.
+    /// Where dictation stands at that launch. `unknown`: its models couldn't be read (the speech tools couldn't be
+    /// set up — offline on a first run): its key isn't advertised, and the line says dictation isn't set up yet.
     public enum Dictation: Equatable { case works, needsSetup, noModel, unknown, off }
     /// The line's button.
-    public enum Action: String, Equatable { case turnOnDictation, downloadModel, changeShortcut }
+    public enum Action: String, Equatable { case turnOnDictation, downloadModel, setUpDictation, changeShortcut }
 
     public struct Line: Equatable {
         public var key: String
@@ -34,7 +35,9 @@ public enum WelcomeLine {
             line = Line(key: "app.toast.welcome_setup", args: [], conflicts: [], action: .turnOnDictation)
         case .noModel:
             line = Line(key: "app.toast.welcome_no_model", args: [], conflicts: [], action: .downloadModel)
-        case .off, .unknown:
+        case .unknown:
+            line = Line(key: "app.toast.welcome_not_set_up", args: [], conflicts: [], action: .setUpDictation)
+        case .off:
             if let s = snap, let r = record { line = Line(key: "app.toast.welcome_no_dictation", args: [s, r], conflicts: [], action: nil) }
             else if let s = snap { line = Line(key: "app.toast.welcome_snap_only", args: [s], conflicts: [], action: nil) }
             else { line = Line(key: "app.toast.welcome_plain", args: [], conflicts: [], action: nil) }

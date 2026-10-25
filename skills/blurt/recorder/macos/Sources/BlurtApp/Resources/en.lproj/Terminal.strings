@@ -202,7 +202,7 @@
 "agents.state.ready" = "Signed in";
 "agents.state.not_installed" = "Not installed";
 "agents.state.manual" = "Installed · set up by hand";
-"agents.manual.header" = "Skill + MCP only";
+"agents.manual.header" = "Connected through skill + MCP";
 "agents.manual.footer" = "These have no command line, so they never run in Blurt. Import the blurt skill and MCP once in their own settings; “Copy instruction” hands items to them.";
 "agents.sessions.header" = "Sessions";
 "agents.tmux.ok" = "tmux %@";

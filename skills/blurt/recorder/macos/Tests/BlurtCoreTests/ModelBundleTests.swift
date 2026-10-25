@@ -91,5 +91,20 @@ final class ModelBundleTests: XCTestCase {
         XCTAssertNil(ModelBundle.parseProgress("  failed: timed out"))
         XCTAssertNil(ModelBundle.parseProgress("  5/0 MB"))
         XCTAssertNil(ModelBundle.parseProgress("unpacking sensevoice"))
+        // one decimal (transcribe.py progress_line); a file fetched on the way names itself and isn't read
+        XCTAssertEqual(ModelBundle.parseProgress("  812.4/2468.0 MB")?.done ?? 0, 812.4, accuracy: 0.01)
+        XCTAssertNil(ModelBundle.parseProgress("  vad 1.7/1.7 MB"))
+    }
+
+    func testOnlyTheModelsOwnLinesMoveTheBarAndNeverBack() {
+        // the VAD's "1/1 MB" (an older script) for Qwen 1.7B (2468 MB) once read as 100 %: the bar leapt to 2.5 GB and back
+        XCTAssertNil(ModelBundle.acceptProgress((1, 1), sizeMB: 2468, previous: nil))
+        XCTAssertNotNil(ModelBundle.acceptProgress((3, 1010), sizeMB: 1010, previous: nil))
+        // the registry size and the real total differ a little: still the model
+        XCTAssertNotNil(ModelBundle.acceptProgress((100, 2300), sizeMB: 2468, previous: nil))
+        XCTAssertNil(ModelBundle.acceptProgress((100, 6000), sizeMB: 2468, previous: nil))
+        // never backwards within the job
+        XCTAssertNil(ModelBundle.acceptProgress((10, 1010), sizeMB: 1010, previous: (500, 1010)))
+        XCTAssertNotNil(ModelBundle.acceptProgress((510, 1010), sizeMB: 1010, previous: (500, 1010)))
     }
 }

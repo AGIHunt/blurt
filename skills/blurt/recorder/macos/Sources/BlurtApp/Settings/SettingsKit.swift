@@ -15,21 +15,48 @@ enum Tone { case good, warn, bad, off }
 
 /// A state as a small disc: good (ok, with a check: done is always a check shape, §2.3), warn (attention), bad (error),
 /// off (quiet).
+/// Every tone has its own shape too (system.md principle 5: a coloured state has a shape twin), so it reads in
+/// grayscale and to colour-blind eyes: good a disc with a check, warn a disc with "!", bad a disc with "×", off a
+/// hollow ring.
 struct StatusDot: View {
     var tone: Tone
+    static let size: CGFloat = 9
+
     var body: some View {
-        Circle().fill(color).frame(width: 9, height: 9)
-            .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 0.5))
-            .overlay {
-                if tone == .good {
-                    Path { p in
-                        p.move(to: CGPoint(x: 2.6, y: 4.7)); p.addLine(to: CGPoint(x: 4, y: 6.1)); p.addLine(to: CGPoint(x: 6.5, y: 3.1))
-                    }
-                    .stroke(Color.brandOnOk, style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 9, height: 9)
-                }
+        let s = StatusDot.size
+        Group {
+            if tone == .off {
+                Circle().strokeBorder(color, lineWidth: 1.5)
+            } else {
+                Circle().fill(color)
+                    .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 0.5))
+                    .overlay { mark.frame(width: s, height: s) }
             }
-            .accessibilityHidden(true)
+        }
+        .frame(width: s, height: s)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var mark: some View {
+        let line = StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
+        switch tone {
+        case .good:
+            Path { p in
+                p.move(to: CGPoint(x: 2.6, y: 4.7)); p.addLine(to: CGPoint(x: 4, y: 6.1)); p.addLine(to: CGPoint(x: 6.5, y: 3.1))
+            }.stroke(Color.brandOnOk, style: line)
+        case .warn:
+            Path { p in
+                p.move(to: CGPoint(x: 4.5, y: 2.3)); p.addLine(to: CGPoint(x: 4.5, y: 5.2))
+                p.move(to: CGPoint(x: 4.5, y: 6.9)); p.addLine(to: CGPoint(x: 4.5, y: 6.95))
+            }.stroke(Color(nsColor: BrandColor.onAttn), style: line)
+        case .bad:
+            Path { p in
+                p.move(to: CGPoint(x: 3, y: 3)); p.addLine(to: CGPoint(x: 6, y: 6))
+                p.move(to: CGPoint(x: 6, y: 3)); p.addLine(to: CGPoint(x: 3, y: 6))
+            }.stroke(Color.white, style: line)
+        case .off:
+            EmptyView()
+        }
     }
     var color: Color {
         switch tone {

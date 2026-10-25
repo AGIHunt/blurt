@@ -140,16 +140,109 @@ def _config_path() -> Path:
     return Path(os.environ["BLURT_HOME"]) / "config.json" if os.environ.get("BLURT_HOME") else GLOBAL_CONFIG
 
 
+def drop_trailing_commas(text: str) -> str:
+    """A comma right before `}` or `]` (outside strings) left out — the one slip a hand edit makes most. The Mac app's
+    Config (BlurtCore/Config.swift, `ConfigText.dropTrailingCommas`) reads the file the same way, so what one side
+    can read the other can too. Until none is left (",, }" too): Swift's parser forgives one trailing comma, Python's
+    none, so with none left both read exactly the same files."""
+    while True:
+        nxt = _drop_trailing_commas_once(text)
+        if nxt == text:
+            return text
+        text = nxt
+
+
+def _drop_trailing_commas_once(text: str) -> str:
+    out, i, n, in_str = [], 0, len(text), False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 1
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif c == ",":
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if j >= n or text[j] not in "}]":
+                out.append(c)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def parse_config_text(text: str) -> dict | None:
+    """config.json's text → the settings, or None when it doesn't parse even with trailing commas left out (or isn't
+    an object)."""
+    try:
+        v = json.loads(drop_trailing_commas(text.lstrip("﻿")))
+    except ValueError:
+        return None
+    return v if isinstance(v, dict) else None
+
+
+_CONFIG_WARNED: set = set()
+
+
+def _backup_unreadable(path: Path) -> Path | None:
+    """A copy of a config.json that doesn't parse, once per version: config.json.bad-<time>, unless one with the same
+    bytes is already there (the app makes the same copy: BlurtCore Config.refuse)."""
+    try:
+        data = path.read_bytes()
+        for old in sorted(path.parent.glob(path.name + ".bad-*")):
+            if old.read_bytes() == data:
+                return old
+        bak = path.with_name(f"{path.name}.bad-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+        bak.write_bytes(data)
+        if not IS_WIN:
+            bak.chmod(0o600)
+        return bak
+    except OSError:
+        return None
+
+
+def read_global_config() -> tuple[dict, bool]:
+    """(settings, readable). A missing file is readable ({}); one that doesn't parse gives {} — every setting at its
+    default — and False: it is copied aside once and a `config_unreadable` line goes to stderr (once per process), so
+    dictation, voice notes and processing keep working with the defaults instead of stopping on a hand edit."""
+    path = _config_path()
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return {}, True
+    except (OSError, UnicodeDecodeError):
+        text = None
+    cfg = parse_config_text(text) if text is not None else None
+    if cfg is not None:
+        return cfg, True
+    if str(path) not in _CONFIG_WARNED:
+        _CONFIG_WARNED.add(str(path))
+        bak = _backup_unreadable(path)
+        print(json.dumps({"event": "config_unreadable", "path": str(path), "backup": str(bak) if bak else None}),
+              file=sys.stderr)
+    return {}, False
+
+
 def global_config() -> dict:
-    return load_json(_config_path(), {}) or {}
+    """The settings ({} when the file is missing or doesn't parse: read_global_config). Reading never raises."""
+    return read_global_config()[0]
 
 
 def update_global_config(patch: dict) -> dict:
     """Read-modify-write under $BLURT_HOME/.config.lock — the lock the app's Config.set takes too, so neither loses the
-    other's change. An unreadable config.json raises (json.JSONDecodeError) and is left as it is."""
+    other's change. An unreadable config.json is left as it is: the write raises (json.JSONDecodeError)."""
     path = _config_path()
     with file_lock(path.parent / ".config.lock"):
-        cfg = global_config()
+        cfg, ok = read_global_config()
+        if not ok:
+            raise json.JSONDecodeError("config.json doesn't parse", "", 0)
         for k, v in patch.items():
             if isinstance(v, dict) and isinstance(cfg.get(k), dict):
                 cfg[k].update(v)

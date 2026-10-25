@@ -8,7 +8,10 @@
 // record.drag_caption, off); Advanced (the Dictation Lab); About (version, updates, the user guide, the setup
 // assistant). Rows and their descriptions come from SettingsCatalog. The menu-bar menu stays short because these live here.
 // A language change applies at the next launch: Relaunch Now next to it. A skill / app contract mismatch is said on the
-// Version row for as long as it lasts, with How to Update. Open Folder… is a sheet on this window.
+// Version row for as long as it lasts, with How to Update. Open Folder… is a sheet on this window. Projects are listed
+// in the sidebar's order (the user's own); ⊖ removes one at once — the folder and its items stay — with Undo (the
+// island's button and ⌘Z, like the main window). Open at login goes through LoginItem (the assistant's switch too), so
+// a test build never registers itself. Errors are said in a sentence; what the script said goes to the log.
 import AppKit
 import ServiceManagement
 import SwiftUI
@@ -40,9 +43,9 @@ final class GeneralModel: ObservableObject {
     func reload() {
         let s = ProjectStore.shared
         s.reload()
-        projects = s.projects
+        projects = s.ordered
         current = s.currentID ?? "inbox"
-        openAtLogin = SMAppService.mainApp.status == .enabled
+        openAtLogin = LoginItem.enabled
         let l = Config.shared["lang"] as? String ?? "auto"
         language = l == "zh" ? "zh-Hans" : (["en", "zh-Hans"].contains(l) ? l : "auto")
         processMode = (recordConfig()["process"] as? String ?? "auto") == "off" ? "off" : "auto"
@@ -59,11 +62,19 @@ final class GeneralModel: ObservableObject {
 
     private func run(_ f: @escaping () async throws -> Void) {
         Task { @MainActor in
-            do { try await f(); error = nil } catch let e as ProjectError {
-                error = Scripts.Failure(code: e.code, message: "\(e)").localized
-            } catch { self.error = "\(error)" }
+            do { try await f(); error = nil } catch {
+                self.error = GeneralModel.sentence(error)
+            }
             reload()
         }
+    }
+
+    /// An error as a sentence for the pane (never the script's own words, which go to the log).
+    static func sentence(_ error: Error) -> String {
+        emit(["event": "settings_general_error", "error": "\(error)"])
+        if let e = error as? ProjectError { return Scripts.Failure(code: e.code, message: "\(e)").localized }
+        if case ScriptError.timeout = error { return T("main.error.timeout") }
+        return T("main.error.generic")
     }
 
     func setCurrent(_ id: String) {
@@ -72,7 +83,37 @@ final class GeneralModel: ObservableObject {
             await MainActor.run { island.projectChanged() }
         }
     }
-    func remove(_ p: Project) { run { try await ProjectStore.shared.remove(p.id) } }
+    /// ⊖: removed at once (the folder and its items stay), with Undo — the island's button and ⌘Z on this window
+    /// put it back exactly (its key, name, settings and place), as the main window's Remove does.
+    func remove(_ p: Project, window: NSWindow?) {
+        Task { @MainActor in
+            do {
+                let removed = try await ProjectStore.shared.remove(p.id)
+                error = nil
+                reload()
+                guard !removed.isEmpty else { return }
+                emit(["event": "project_removed", "id": p.id, "via": "settings"])
+                var undone = false
+                let undo: () -> Void = { [weak self] in
+                    guard !undone else { return }
+                    undone = true
+                    Task { @MainActor in
+                        do { try await ProjectStore.shared.restore(removed) } catch { self?.error = GeneralModel.sentence(error) }
+                        emit(["event": "project_restored", "id": p.id, "via": "settings"])
+                        self?.reload()
+                    }
+                }
+                if let um = window?.undoManager {
+                    um.registerUndo(withTarget: self) { _ in undo() }
+                    um.setActionName(T("main.project.remove.undo_name"))
+                }
+                appDelegate?.toast(T("main.project.removed", p.name), undo: undo)
+            } catch {
+                self.error = GeneralModel.sentence(error)
+                reload()
+            }
+        }
+    }
     func openFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -88,12 +129,10 @@ final class GeneralModel: ObservableObject {
         // a sheet on the Settings window, not an app-wide modal panel
         if let w = NSApp.keyWindow { panel.beginSheetModal(for: w, completionHandler: open) } else { open(panel.runModal()) }
     }
+    /// The same switch as the assistant's (LoginItem): a test build never registers itself in the user's Login Items.
     func setLogin(_ on: Bool) {
-        do {
-            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-            loginError = nil
-        } catch { loginError = error.localizedDescription }
-        openAtLogin = SMAppService.mainApp.status == .enabled
+        loginError = LoginItem.set(on, via: "settings") == nil ? nil : T("settings.general.login_failed")
+        openAtLogin = LoginItem.enabled
     }
     func setLanguage(_ v: String) {
         Config.shared.set("lang", v == "auto" ? nil : v)
@@ -244,7 +283,7 @@ struct GeneralPane: View {
                 Spacer(minLength: 8)
                 Button { NSWorkspace.shared.open(p.path) } label: { Image(systemName: "arrow.up.forward.app") }.buttonStyle(.borderless)
                     .help(T("action.open")).accessibilityLabel(T("action.open"))
-                Button { m.remove(p) } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless)
+                Button { m.remove(p, window: NSApp.keyWindow) } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless)
                     .help(T("settings.general.remove.help")).accessibilityLabel(T("settings.general.remove.help"))
             }
             .accessibilityElement(children: .contain)
