@@ -161,7 +161,7 @@ extension Dictation {
         let original: DictationStyle = style == .auto ? (record.rendered ? .structured : .light) : style
         // light's text: what polish gave (a fall-back is the transcript, as typed); a take polish didn't run on gets it
         // on demand
-        let lp = DictationLastPaste(id: id, bundle: bundle, app: bundle == app?.bundleIdentifier ? app?.localizedName : bundle, category: cat,
+        let lp = DictationLastPaste(id: id, bundle: bundle, app: AppNames.name(for: bundle, running: app), category: cat,
                                     original: original, raw: r.raw, light: r.polished != nil || r.fellBack ? r.text : nil,
                                     typed: typed, currentVersion: "", field: field, location: location)
         lp.structured = r.structured
@@ -382,11 +382,9 @@ extension Dictation {
         island.toast(t)
     }
 
-    /// An app's name from its bundle id (the installed app's), else what the history says, else the id.
+    /// An app's name from its bundle id (AppNames: the running or installed app's), else what the history says when
+    /// it is a name, else "Unknown app" — never the id.
     static func appName(bundle: String, fallback: String?) -> String {
-        if let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
-            return FileManager.default.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: "")
-        }
-        return fallback ?? bundle
+        AppNames.display(name: nil, bundle: bundle) ?? AppNames.displayOrUnknown(name: fallback, bundle: nil)
     }
 }

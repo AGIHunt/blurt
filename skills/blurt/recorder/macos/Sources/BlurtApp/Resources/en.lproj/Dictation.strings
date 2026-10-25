@@ -122,7 +122,7 @@
 "dictation.history.reason.empty" = "Polish returned nothing — typed as spoken";
 "dictation.history.reason.error" = "Polish failed — typed as spoken";
 
-/* Words, recognition model */
+/* Words, speech model */
 "dictation.toast.learned" = "Learned “%@”";
 "dictation.toast.undo" = "Undo";
 "dictation.vocab.section" = "Words";
@@ -133,7 +133,7 @@
 "dictation.vocab.remove" = "Remove";
 "dictation.vocab.context" = "Use the text around the cursor";
 "dictation.vocab.context.detail" = "On: names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
-"dictation.vocab.learn" = "Learn from my fixes";
+"dictation.vocab.learn" = "Learn from my corrections";
 "dictation.vocab.learn.detail" = "On: when you fix a name Blurt got wrong, it learns the word.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
@@ -433,7 +433,7 @@
 "dictation.style.by_app" = "By kind of app";
 "dictation.style.follow" = "Same as above (%@)";
 "dictation.models.section" = "Models";
-"dictation.models.asr" = "Recognition model";
+"dictation.models.asr" = "Speech model";
 "dictation.models.polish" = "Polish model";
 "dictation.models.none" = "Not downloaded yet";
 "dictation.models.change" = "Change…";
@@ -505,7 +505,7 @@
 "dictation.toast.not_sent.copied" = "Copied, not sent";
 "dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
-"dictation.toast.tap_mode" = "Tap %@ to start talking";
+"dictation.toast.tap_mode" = "Tap %@ to start talking (Settings can make it a hold)";
 "dictation.toast.no_polish" = "No polish model yet — typed as you said it";
 "dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may come out wrong";
 "dictation.tip.send" = "Double-tap %@ to send";

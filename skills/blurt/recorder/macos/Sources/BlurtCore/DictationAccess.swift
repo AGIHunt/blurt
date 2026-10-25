@@ -15,14 +15,18 @@ public struct DictationAccess: Equatable {
     public var enabled: Bool
     /// The event tap is installed (the key is heard).
     public var tapInstalled: Bool
+    /// Another running Blurt listens to the key (a dev build next to the release): this one doesn't, on purpose —
+    /// nothing to set up here (v0.9 dogfood: the launch reminder sent such a user to a pane with everything granted).
+    public var deferred: Bool
 
-    public init(enabled: Bool, tapInstalled: Bool) {
+    public init(enabled: Bool, tapInstalled: Bool, deferred: Bool = false) {
         self.enabled = enabled
         self.tapInstalled = tapInstalled
+        self.deferred = deferred
     }
 
-    /// The menu row "Turn On Dictation…", Settings → Dictation's warning: on and still deaf.
-    public var needsSetup: Bool { enabled && !tapInstalled }
+    /// The menu row "Turn On Dictation…", Settings → Dictation's warning, the island's reminder: on and still deaf.
+    public var needsSetup: Bool { enabled && !tapInstalled && !deferred }
 
     /// macOS is never asked at launch (≤ 0.8 asked once per version); the user's click in the guide asks.
     public static let asksAtLaunch = false

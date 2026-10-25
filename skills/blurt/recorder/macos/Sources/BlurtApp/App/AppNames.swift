@@ -7,19 +7,26 @@ import BlurtCore
 enum AppNames {
     private static var cache: [String: String] = [:]
 
-    /// The display name for an app known by `name` and/or `bundle`.
+    /// The display name for an app known by `name` and/or `bundle`; nil when only an id is known and no installed app
+    /// answers to it (the caller says "Unknown app" — never the id).
     static func display(name: String?, bundle: String?) -> String? {
         if let n = name, !n.isEmpty, !looksLikeBundleID(n) { return n }
         for id in [bundle, name].compactMap({ $0 }) where looksLikeBundleID(id) {
             if let n = resolve(id) { return n }
         }
-        return name?.isEmpty == false ? name : nil
+        return nil
     }
 
-    /// The name to store for a take: the running app's name when it is that app, else the installed app's name.
+    /// `display`, or "Unknown app" in words.
+    static func displayOrUnknown(name: String?, bundle: String?) -> String {
+        display(name: name, bundle: bundle) ?? Loc.t("main.dictation.unknown_app", table: "Main")
+    }
+
+    /// The name to store for a take: the running app's name when it is that app, else the installed app's name; nil
+    /// when neither knows it (the bundle id is stored beside it anyway — never as the name).
     static func name(for bundle: String?, running: NSRunningApplication?) -> String? {
         if let r = running, bundle == nil || r.bundleIdentifier == bundle, let n = r.localizedName, !n.isEmpty { return n }
-        return bundle.flatMap(resolve) ?? bundle
+        return bundle.flatMap(resolve)
     }
 
     static func looksLikeBundleID(_ s: String) -> Bool { AppIdentity.looksLikeBundleID(s) }

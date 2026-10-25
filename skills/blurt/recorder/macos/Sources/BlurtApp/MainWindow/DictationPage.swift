@@ -37,7 +37,8 @@ struct DictationExtras: Equatable {
         if let s = c as? String, !s.isEmpty { context = s }
         else if let d = c as? [String: Any] {
             let parts = ["app", "kind", "source", "summary", "title", "field"].compactMap { d[$0] as? String }.filter { !$0.isEmpty }
-            context = parts.isEmpty ? (d.isEmpty ? nil : d.keys.sorted().joined(separator: ", ")) : parts.joined(separator: " · ")
+            // an older entry's raw context dict ({"before","after","selection"}): never its keys — just that it was used
+            context = parts.isEmpty ? (d.isEmpty ? nil : T("main.dictation.info.context.yes")) : parts.joined(separator: " · ")
         } else if let a = c as? [String], !a.isEmpty { context = a.joined(separator: ", ") }
         else if (c as? Bool) == true { context = T("main.dictation.info.context.yes") }
     }
@@ -398,14 +399,23 @@ final class DictationHistoryModel: ObservableObject {
     // MARK: app icons (the app a dictation went into)
 
     private static var icons: [String: NSImage] = [:]
-    static func icon(_ bundle: String?) -> NSImage? {
-        guard let b = bundle, !b.isEmpty else { return nil }
+    /// The app's icon; Blurt's own for its own windows (any of its builds), else the generic app icon — never a gap:
+    /// the list's names keep one left edge (v0.9 dogfood: rows without an icon jumped 28 pt left).
+    static func icon(_ bundle: String?) -> NSImage {
+        guard let b = bundle, !b.isEmpty else { return genericIcon }
         if let i = icons[b] { return i }
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) else { return nil }
-        let i = NSWorkspace.shared.icon(forFile: url.path)
+        let i: NSImage
+        if b == Bundle.main.bundleIdentifier || b.hasPrefix(DictationInsert.productionBundleID) {
+            i = NSApp.applicationIconImage
+        } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) {
+            i = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            i = genericIcon
+        }
         icons[b] = i
         return i
     }
+    static let genericIcon = NSWorkspace.shared.icon(for: .application)
 }
 
 // MARK: - the page (two columns of the main window)
@@ -751,9 +761,7 @@ struct DictationRow: View {
         let x = m.extras[e.id]
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
-                if let i = DictationHistoryModel.icon(e.bundle) {
-                    Image(nsImage: i).resizable().interpolation(.high).frame(width: 14, height: 14)
-                }
+                Image(nsImage: DictationHistoryModel.icon(e.bundle)).resizable().interpolation(.high).frame(width: 14, height: 14)
                 Text(AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                     .lineLimit(1)
                 marks(x)
@@ -777,7 +785,13 @@ struct DictationRow: View {
     @ViewBuilder func marks(_ x: DictationExtras?) -> some View {
         HStack(spacing: 4) {
             if e.fellBack {
-                mark(.undo, .brandAttn, DictationHistoryModel.reasonText(e.reason))
+                // a word, not a lone arrow: what happened is the point ("Not polished" — the reason on hover)
+                Text(T("dictation.history.badge.fell_back")).font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Color.brandAttnInk)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.brandAttn.opacity(0.14)))
+                    .help(DictationHistoryModel.reasonText(e.reason))
+                    .accessibilityLabel(DictationHistoryModel.reasonText(e.reason))
             } else if DictationHistoryModel.differs(e) {
                 mark(.wand, .secondary, T("dictation.history.badge.polished"))
             }
@@ -790,8 +804,9 @@ struct DictationRow: View {
         }
     }
 
+    /// A row's mark at the icon floor (system.md §2.6: never below 13), in full secondary.
     func mark(_ i: BlurtIcon, _ c: Color, _ tip: String) -> some View {
-        glyph(i, 10).foregroundStyle(c).opacity(c == .secondary ? 0.8 : 1).help(tip).accessibilityLabel(tip)
+        glyph(i, 13).foregroundStyle(c).help(tip).accessibilityLabel(tip)
     }
 }
 
@@ -848,7 +863,7 @@ struct DictationEmptyView: View {
     /// A status line in a pill: a dot (attention), or a check (ready: ok is always a check shape).
     func pill(_ s: String, _ c: Color, check: Bool = false) -> some View {
         HStack(spacing: 6) {
-            if check { glyph(.check, 10).foregroundStyle(c) } else { Circle().fill(c).frame(width: 6, height: 6) }
+            if check { glyph(.check, 13).foregroundStyle(c) } else { Circle().fill(c).frame(width: 6, height: 6) }
             Text(s).font(.system(size: 11.5)).foregroundStyle(.secondary).multilineTextAlignment(.leading)
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -982,7 +997,7 @@ struct DictationDetailView: View {
                 }
                 if e.fellBack {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        glyph(.undo, 11).foregroundStyle(Color.brandAttnInk)
+                        glyph(.undo, 13).foregroundStyle(Color.brandAttnInk)
                         Text(DictationHistoryModel.reasonText(e.reason)).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
@@ -998,12 +1013,7 @@ struct DictationDetailView: View {
 
     func title(_ e: DictationEntry) -> some View {
         HStack(spacing: 12) {
-            if let i = DictationHistoryModel.icon(e.bundle) {
-                Image(nsImage: i).resizable().interpolation(.high).frame(width: 34, height: 34)
-            } else {
-                glyph(.keyboard, 20).foregroundStyle(.secondary).frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35)))
-            }
+            Image(nsImage: DictationHistoryModel.icon(e.bundle)).resizable().interpolation(.high).frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")).font(.system(size: 17, weight: .semibold))
                 Text("\(DictationHistoryModel.dayTitle(e.time)) \(DictationHistoryModel.time(e.time)) · \(DictationHistoryModel.duration(e.duration))")
@@ -1062,7 +1072,7 @@ struct DictationDetailView: View {
     @ViewBuilder func savedNote(_ n: DictationHistoryModel.SavedNote) -> some View {
         let sep = T("main.dictation.correct.sep")
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            glyph(.check, 11).foregroundStyle(Color.brandOk)
+            glyph(.check, 13).foregroundStyle(Color.brandOk)
             // the note is quiet; its one action reads as a link (brand ink), not as more of the sentence
             if !n.added.isEmpty {
                 Text(T("main.dictation.correct.added", n.added.joined(separator: sep))).foregroundStyle(.secondary)
@@ -1128,7 +1138,7 @@ struct DictationDetailView: View {
                 }
                 Button { m.copy(text, from: copyID) } label: {
                     HStack(spacing: 4) {
-                        glyph(m.copied == copyID ? .check : .copy, 11)
+                        glyph(m.copied == copyID ? .check : .copy, 13)
                         Text(m.copied == copyID ? T("main.dictation.copied") : T("dictation.history.copy"))
                     }
                     .font(.system(size: 11))
@@ -1166,7 +1176,7 @@ struct DictationDetailView: View {
             }
             Spacer()
             Button(role: .destructive) { m.delete([e], undo: undo) } label: {
-                HStack(spacing: 4) { glyph(.trash, 11); Text(T("dictation.history.delete")) }
+                HStack(spacing: 4) { glyph(.trash, 13); Text(T("dictation.history.delete")) }
             }
             .help(T("main.dictation.delete.tip"))
         }

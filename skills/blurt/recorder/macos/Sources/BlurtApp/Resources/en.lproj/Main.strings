@@ -449,6 +449,7 @@
 "main.dictation.info.terms" = "Words used";
 "main.dictation.info.context" = "Context";
 "main.dictation.info.context.yes" = "Used";
+"main.dictation.info.model.other" = "Another model";
 "main.dictation.none" = "No dictation selected";
 "main.dictation.none.detail" = "Pick one on the left. ↑↓ to move, ⌘C to copy, ⌫ to delete.";
 "main.dictation.copy_all" = "Copy All";

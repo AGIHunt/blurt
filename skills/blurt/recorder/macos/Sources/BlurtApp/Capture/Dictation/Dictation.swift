@@ -346,6 +346,9 @@ final class Dictation {
         if !assistantShows { nudge("launch") }
     }
 
+    /// Posted after every `apply` (a setting changed): what shows the key or the mode follows (the setup assistant).
+    static let settingsChanged = Notification.Name("dev.blurt.dictation.settings.changed")
+
     /// Re-reads the settings: the tap on or off, the key and the mode.
     func apply() {
         trigger.key = Dictation.key
@@ -367,9 +370,13 @@ final class Dictation {
         } else {
             keys.stop()
             hk.dictationKey = nil
-            if busy { cancel() }
+            // a take still listening ends here as if its key came up (what was said goes in); the takes already on
+            // their way finish and paste — they belong to the app they started in, whoever has the key now (v0.9
+            // dogfood: another Blurt quitting threw a finished take away, its audio deleted under the CLI)
+            if listening { trigger.reset(active: false); stop() }
         }
         lastAccess = access
+        NotificationCenter.default.post(name: Dictation.settingsChanged, object: nil)
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
               "key": trigger.key.rawValue, "filter": keys.filtering,
               "mode": trigger.mode.rawValue, "double_tap": trigger.doubleTap, "double_tap_window": trigger.doubleTapWindow, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
@@ -418,10 +425,10 @@ final class Dictation {
     }
 
     /// What the cues go by: on, and is the key heard (the tap, not a permission check).
-    var access: DictationAccess { DictationAccess(enabled: Dictation.enabled, tapInstalled: keys.installed) }
+    var access: DictationAccess { DictationAccess(enabled: Dictation.enabled, tapInstalled: keys.installed, deferred: deferredTo != nil) }
     /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder. Not while another Blurt has
-    /// the key (nothing to set up here).
-    var needsSetup: Bool { deferredTo == nil && access.needsSetup }
+    /// the key (nothing to set up here — the launch reminder included).
+    var needsSetup: Bool { access.needsSetup }
     /// The pid of the other running Blurt that listens to the dictation key instead of this one.
     private(set) var deferredTo: pid_t?
 

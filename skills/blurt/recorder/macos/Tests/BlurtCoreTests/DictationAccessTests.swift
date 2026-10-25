@@ -38,6 +38,15 @@ final class DictationAccessTests: XCTestCase {
         XCTAssertFalse(DictationAccess.confirm(before: off, after: ok))     // turning it on with the permission there: no "now on"
     }
 
+    /// Two Blurts running (a dev build beside the release): the other one has the key — no "needs permission" here,
+    /// no launch reminder that leads to a pane with everything granted (v0.9 dogfood).
+    func testAnotherBlurtWithTheKeyIsNothingToSetUp() {
+        let deferred = DictationAccess(enabled: true, tapInstalled: false, deferred: true)
+        XCTAssertFalse(deferred.needsSetup)
+        XCTAssertFalse(deferred.nudge(lastNudge: nil, now: Date()))
+        XCTAssertTrue(DictationAccess(enabled: true, tapInstalled: false).nudge(lastNudge: nil, now: Date()))
+    }
+
     /// v0.9 dogfood: a first run without the speech model read "✓ Dictation is on". The page says the one step in the
     /// way, and "ready" only when both the key and the model are.
     func testThePageSaysTheOneStepInTheWay() {

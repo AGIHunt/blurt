@@ -145,8 +145,13 @@ final class DictationModels: ObservableObject {
 
     // MARK: names
 
-    func asrName(_ id: String) -> String { asr?.models.first { $0.id == id }?.name ?? id }
-    func polishName(_ id: String) -> String { polish?.models.first { $0.id == id }?.name ?? id }
+    /// A model's name for people: the live list's, else the skill's own catalog's (ModelCatalog) — never its id.
+    func asrName(_ id: String) -> String {
+        ModelCatalog.name(id, live: asr?.models.first { $0.id == id }?.name) ?? T("main.dictation.info.model.other")
+    }
+    func polishName(_ id: String) -> String {
+        ModelCatalog.name(id, live: polish?.models.first { $0.id == id }?.name) ?? T("main.dictation.info.model.other")
+    }
     var selectedASR: DictationASRModel? { asr.flatMap { a in a.models.first { $0.id == a.selected } } }
     var selectedPolish: PolishModel? { polish.flatMap { p in p.models.first { $0.id == p.selected } } }
 

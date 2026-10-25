@@ -46,6 +46,8 @@ final class OnboardingModel: ObservableObject {
     @Published var uvFailed = false
     @Published var warm: String?            // nil | "running" | "done" | "failed" (the script's output: the event only)
     @Published var dictationKey = Dictation.key
+    /// how the key starts a take (the Try-it line says the gesture of this mode: a Hold-only user is never told to tap)
+    @Published var dictationMode = Dictation.mode
     /// a dictation walk started here (Input Monitoring's row shows once Accessibility stays off after it)
     @Published var walked = false
     /// "Open Blurt at login" on the last step: on the first time (dictation needs Blurt running); opened again later,
@@ -65,6 +67,24 @@ final class OnboardingModel: ObservableObject {
         Dictation.set("key", k.rawValue)
         Dictation.shared.apply()
         emit(["event": "dictation_setting", "key": "key", "value": k.rawValue, "via": "onboarding"])
+    }
+
+    private var settingsWatch: Any?
+    /// The key and the mode follow Settings while this window is open (Dictation.settingsChanged).
+    func watchSettings() {
+        guard settingsWatch == nil else { return }
+        settingsWatch = NotificationCenter.default.addObserver(forName: Dictation.settingsChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                if self.dictationKey != Dictation.key { self.dictationKey = Dictation.key }
+                if self.dictationMode != Dictation.mode { self.dictationMode = Dictation.mode }
+            }
+        }
+    }
+
+    /// The Try-it line for the key and mode: tap (and auto) — tap, talk, tap; hold — hold, talk, let go.
+    static func tryDetail(key: String, mode: DictationTrigger.Mode) -> String {
+        mode == .hold ? T("onboarding.try.detail.hold", key) : T("onboarding.try.detail", key)
     }
     let steps = 4
     var close: () -> Void = {}
@@ -281,7 +301,8 @@ struct OnboardingView: View {
         case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle", key))
         case 1: return (T("onboarding.permissions"), T("onboarding.permissions_detail"))
         case 2: return (T("onboarding.models"), T("onboarding.models.detail"))
-        default: return (T("onboarding.try"), T("onboarding.try.detail", key) + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
+        default: return (T("onboarding.try"), OnboardingModel.tryDetail(key: key, mode: m.dictationMode)
+                            + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
         }
     }
 
@@ -563,6 +584,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
         }
         let m = OnboardingModel()
         m.step = step
+        m.watchSettings()
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: OnboardingModel.heroWidth + OnboardingModel.contentWidth,
                                              height: OnboardingModel.height), styleMask: [.titled, .closable, .fullSizeContentView],
                          backing: .buffered, defer: false)
