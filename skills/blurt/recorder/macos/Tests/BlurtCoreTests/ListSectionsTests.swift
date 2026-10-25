@@ -16,6 +16,18 @@ final class ListSectionsTests: XCTestCase {
         XCTAssertEqual(ListSections.starts(ListSections.runs(["a", "a", "b"])).keys.sorted(), [0, 2])
     }
 
+    func testGroupedBucketsByRankKeepingEachBucketsOrder() {
+        let rows = [(uid: "1", key: "new"), (uid: "2", key: "to_verify"), (uid: "3", key: "new"), (uid: "4", key: "done"),
+                    (uid: "5", key: "to_verify")]
+        let g = ListSections.grouped(rows, rank: ListSections.stateRank)
+        XCTAssertEqual(g.uids, ["2", "5", "1", "3", "4"])         // to verify first, then new, then done
+        XCTAssertEqual(g.keys, ["to_verify", "to_verify", "new", "new", "done"])
+        // projects in the one order (pinned, then recent), Unassigned last, one unknown after the known ones
+        let p = ListSections.grouped([(uid: "a", key: "inbox"), (uid: "b", key: "pz"), (uid: "c", key: "pa"), (uid: "d", key: "px")],
+                                     rank: ListSections.projectRank(["pa", "pz"]))
+        XCTAssertEqual(p.keys, ["pa", "pz", "px", "inbox"])
+    }
+
     func testInboxByProjectPutsUnassignedFirstThenNamesThenNewest() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-sections-\(getpid())")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

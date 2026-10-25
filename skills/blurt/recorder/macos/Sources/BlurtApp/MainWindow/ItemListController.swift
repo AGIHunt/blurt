@@ -202,7 +202,7 @@ final class EmptyStateView: NSView {
     let path = NSTextField(labelWithString: "")
     let buttons = NSStackView()
     let link = NSButton()
-    let spinner = BrandSpinner(size: 18)
+    let spinner = TrackedSpinner(size: 22)          // the brand arc on a faint track: reads as busy, never as a stray "("
     var onButton: ((Int) -> Void)?
     /// tags whose button only undoes a search or a filter: never the primary, never ↩
     static let secondaryTags: Set<Int> = [2, 9]
@@ -710,6 +710,8 @@ final class FilterBar: NSView {
     func sync(_ m: MainModel) {
         let text = m.indexState == .ready && !m.isEmptyWorld ? Self.describe(m) : nil
         isHidden = text == nil
+        // with nothing left to show, the empty state below has the one Clear Filters
+        clear.isHidden = m.rowCount == 0
         summary.title = " " + (text ?? "")
         summary.setAccessibilityLabel(text)
     }

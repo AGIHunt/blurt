@@ -1799,10 +1799,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 i.state = model.state == value ? .on : .off
             }
             st(T("main.filter.live"), nil, ring: nil)
-            st(T("main.filter.needs_you"), "inbox", ring: nil, symbol: "tray")
+            // "needs you" is a place (the Inbox), not a state: an old saved filter that says it still works
+            if model.state == "inbox" { st(T("main.filter.needs_you"), "inbox", ring: nil, symbol: "tray") }
             for s in Lifecycle.live { st(Look.stateName(s), s, ring: s) }
             st(Look.stateName("discarded"), "discarded", ring: "discarded")
         }
+        // the order lives here too (and in View ▸ Sort By): the list has no column header to click
+        m.addItem(.separator())
+        let sort = NSMenu()
+        for (key, title) in Self.sortKeys {
+            let i = add(sort, title, #selector(mSort(_:)), obj: key)
+            i.state = model.sort == key ? .on : .off
+        }
+        m.addItem(submenu(T("menu.sort_by"), "arrow.up.arrow.down", sort))
         m.addItem(.separator())
         let clear = add(m, T("main.empty.clear_filters"), #selector(mClearKindAndState))
         clear.isEnabled = !model.kinds.isEmpty || model.shownState != nil
@@ -1811,6 +1820,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// The Filter menu at the top of the list (tests and View ▸ Filter…; the toolbar button opens its own).
     @objc func showFilterMenu() {
+        // under the toolbar's Filter button (it sits just before the search field), as a click on it opens it
+        if let f = searchItem?.searchField, let sv = f.superview, f.window != nil {
+            filterMenu().popUp(positioning: nil, at: NSPoint(x: f.frame.minX - 44, y: sv.isFlipped ? f.frame.maxY + 6 : f.frame.minY - 6), in: sv)
+            return
+        }
         let v = list.view
         filterMenu().popUp(positioning: nil, at: NSPoint(x: 16, y: v.isFlipped ? 8 : v.bounds.maxY - 8), in: v)
     }

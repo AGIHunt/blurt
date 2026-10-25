@@ -80,7 +80,7 @@
 "main.banner.with_agent" = "Handed off to %@ · %@";
 
 "main.captures.tip" = "They’re waiting at the top of your screen, under the notch. This brings them all down there, so you can choose a project for each.";
-"main.captures.taken" = "Recently dragged out: %ld";
+"main.captures.taken" = "Recently dragged out · %ld in the last 7 days";
 "main.captures.taken.show" = "Show";
 "main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back under the notch";
 "main.cmd.copy_full" = "Copy Full Text";
