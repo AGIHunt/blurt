@@ -12,4 +12,4 @@ Fields:
 - `code_refs` — `path:line`s you found by grepping visible text / routes / components (only inside a repo).
 
 Frames: show the problem itself — box the exact spot (see SKILL §4).
-Export default: a bug table (Feishu columns 异常描述 / 所属模块 / 预期效果与实际效果 / 复现步骤 / 截图或视频 / 对应 owner).
+Export default: the team's bug tracker or table, through the tool the user has (columns such as 异常描述 / 所属模块 / 预期效果与实际效果 / 复现步骤 / 截图或视频 / 对应 owner), or a hand-off bundle per owner.

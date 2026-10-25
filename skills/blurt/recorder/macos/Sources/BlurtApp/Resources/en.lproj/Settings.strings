@@ -19,22 +19,6 @@
 
 "onboarding.welcome_blurt" = "Welcome to Blurt";
 
-"settings.export.ask_each_time" = "Ask each time";
-"settings.export.blurt_config_json_shared" = "For %@ (.blurt/config.json), shared with your team.";
-"settings.export.checking" = "Checking…";
-"settings.export.choose" = "Choose";
-"settings.export.choose_2" = "Choose…";
-"settings.export.default_destination" = "Default destination";
-"settings.export.default_workspace_blurt" = "For Unassigned items. Each project keeps its own choice in its .blurt/config.json.";
-"settings.export.exporters" = "Destinations";
-"settings.export.feishu_app_id_set" = "FEISHU_APP_ID is set";
-"settings.export.feishu_lark_bitable" = "Feishu / Lark Base";
-"settings.export.not_logged" = "Not signed in";
-"settings.export.open_table_browser_copy" = "Open the table in the browser and copy the address. Columns are matched by meaning; missing ones are created.";
-"settings.export.save" = "Save to";
-"settings.export.send_confirmed_items" = "Export to";
-"settings.export.session_folder" = "the recording’s folder";
-"settings.export.table_url" = "Table URL";
 
 "settings.general.after_recording" = "After a recording";
 "settings.general.app" = "App";
@@ -70,7 +54,6 @@
 "settings.kit.allowed" = "Allowed";
 "settings.kit.conflicts_are_checked_three" = "Blurt tells you when a shortcut clashes with another Blurt action, a macOS shortcut or another app. Changes apply at once.";
 "settings.kit.copy" = "Copy";
-"settings.kit.export" = "Export";
 "settings.kit.general" = "General";
 "settings.kit.hold_pen_reads_modifier" = "Pastes dictated text, and lets you hold ⌃ to draw";
 "settings.kit.input_monitoring" = "Input Monitoring";
@@ -237,12 +220,6 @@
 "settings.storage.videos.auto_confirm_title" = "Delete videos after %ld days?";
 "settings.storage.videos.auto_confirm" = "Older ones go to the Trash now:";
 "settings.storage.videos.auto_on" = "Turn On";
-"settings.export.feishu" = "Feishu / Lark";
-"settings.export.local" = "Markdown and CSV";
-"settings.export.ready" = "Ready";
-"settings.export.not_set_up" = "Not set up";
-"settings.export.footer" = "Ask your agent to export, for example “export the to-dos to GitHub”. Exporting again never makes duplicates.";
-"settings.export.url_invalid" = "That isn’t a Feishu or Lark table link";
 
 /* The Settings window: sidebar groups, search, the shorter descriptions under each row (the long text is the row's
    tooltip), and search keywords per row (settings.kw.<id>) and per pane (settings.kw.pane.<pane>): comma-separated
@@ -278,7 +255,6 @@
 "settings.kw.pane.speech" = "speech recognition, transcription, ASR, model, whisper";
 "settings.kw.pane.shortcuts" = "shortcut, hotkey, keyboard, key, keys, binding";
 "settings.kw.pane.agents" = "agent, AI, coding agent";
-"settings.kw.pane.export" = "export, send, share";
 "settings.kw.pane.privacy" = "permission, private, security";
 "settings.kw.pane.storage" = "disk, space, size, delete, clean up, trash";
 "settings.kw.general.capture_into" = "project, folder, inbox, where, destination, sort";
@@ -333,8 +309,7 @@
 "settings.kw.shortcuts.restore" = "reset, defaults, conflicts";
 "settings.kw.agents.list" = "order, organize, auto sort, AI fill-in, connect, MCP, skill, sign in, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, terminal, session, default agent";
-"settings.kw.export.target" = "destination, Feishu, Lark, GitHub, Markdown, CSV, Bitable";
-"settings.kw.export.destinations" = "lark-cli, gh, GitHub CLI, set up export";
+"settings.kw.agents.ask" = "export, send, share, bundle, hand-off, zip, Slack, Feishu, Lark, Linear, GitHub, Notion, Jira, email";
 "settings.kw.privacy.permissions" = "Screen Recording, microphone, accessibility, input monitoring, allow";
 "settings.kw.privacy.local_asr" = "local, offline, on device, cloud";
 "settings.kw.privacy.keep_live" = "live audio, raw audio, pcm";

@@ -1,4 +1,4 @@
-"""mcp_server.py (contract C4, v0.7 behaviour in K1) through the official MCP Python client over stdio: all 7 tools,
+"""mcp_server.py (contract C4, v0.7 behaviour in K1) through the official MCP Python client over stdio: all 8 tools (bundle_items too),
 images in get_item, writes through items.py, mark_fixed ending at to-verify, v0.6 sessions migrated on first touch. The server runs as agents launch it (`uv run --script mcp_server.py`); the client runs
 in its own `uv run --with mcp` interpreter, so this test needs uv (skipped without it).
 
@@ -134,11 +134,31 @@ def test_all_tools_over_stdio(env):
         ["projects_after", "list_projects", {}],
         ["bad_uid", "get_item", {"uid": "nope"}],
         ["bad_state", "mark_fixed", {"uid": "$uid", "state": "done"}],
+        ["bundle", "bundle_items", {"uids": ["$uid"], "title": "Login issues", "out_dir": str(env["tmp"] / "bundles"),
+                                    "lang": "en"}],
+        ["bundle_project", "bundle_items", {"project": str(env["repo"]), "kind": ["issue"], "state": ["to_verify"],
+                                            "out_dir": str(env["tmp"] / "bundles" / "x.zip")}],
+        ["bundle_none", "bundle_items", {}],
+        ["bundle_bad", "bundle_items", {"uids": ["nope"]}],
     ]
     r = run_client(env, calls)
     assert r["_server"] == "blurt"
     assert set(r["_tools"]) == {"list_projects", "list_sessions", "search_items", "get_item", "get_transcript",
-                                "update_item", "mark_fixed"}
+                                "update_item", "mark_fixed", "bundle_items"}
+    assert r["_tools"]["bundle_items"]["params"] == ["kind", "lang", "out_dir", "project", "state", "title", "uids"]
+    assert "once per group" in r["_tools"]["bundle_items"]["description"]
+    b = text_json(r["bundle"])
+    assert b["uids"] == [r["_uid"]] and b["title"] == "Login issues" and b["name"].endswith("-1-item.zip")
+    assert Path(b["path"]).parent == (env["tmp"] / "bundles").resolve() and Path(b["path"]).is_file()
+    assert b["summary"].startswith("Login issues: 1 item (1 issue; 1 to verify).") and b["states"] == {"to_verify": 1}
+    import zipfile
+    with zipfile.ZipFile(b["path"]) as z:
+        names = z.namelist()
+        summary = z.read(next(n for n in names if n.endswith("/summary.md"))).decode()
+    assert any("/frames/" in n for n in names) and str(env["tmp"]) not in summary
+    bp = text_json(r["bundle_project"])
+    assert bp["uids"] == [r["_uid"]] and bp["path"] == str((env["tmp"] / "bundles" / "x.zip").resolve())
+    assert r["bundle_none"]["is_error"] and r["bundle_bad"]["is_error"]
     assert r["_tools"]["update_item"]["params"] == ["set", "uid", "unset"]
     assert r["_tools"]["mark_fixed"]["params"] == ["agent", "commit", "note", "pr", "state", "uid"]
     assert "work_state" in r["_tools"]["search_items"]["params"] and "state" in r["_tools"]["search_items"]["params"]

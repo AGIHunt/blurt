@@ -141,7 +141,6 @@ def main():
         "system": info,
         "ffmpeg": run([ff, "-version"]).stdout.splitlines()[0] if ff else None,
         "uv": shutil.which("uv"),
-        "lark_cli": shutil.which("lark-cli"),
         "gh": shutil.which("gh"),
         "disk_free_gb": round(shutil.disk_usage(Path.cwd()).free / 2**30, 1),
         "asr_configured": global_config().get("asr"),

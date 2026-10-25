@@ -41,7 +41,7 @@ Website: https://blurt.agihunt.info/en/ (English) · https://blurt.agihunt.info/
 ## Items and the review page
 - Kinds: issue, idea, note, task, plus custom "lenses" teams define (e.g. ux-research, sales-call, sop). Each kind has an egg: issue = speckled egg with a tiny bug, idea = golden egg, note = white egg, task = copper egg with a check, custom = pastel egg.
 - Review keys: A keep · X drop · J/K next/previous · Z undo · G list · V overview.
-- Exports: Feishu/Lark Base (with frames and clips), GitHub Issues, Linear, Markdown, CSV; Jira, Notion, Obsidian and others through the CLI or MCP your agent already has. Or skip exporting and tell the agent to fix the items.
+- Exports: Markdown, CSV and a hand-off bundle (one .zip with a summary, every item and its screenshots, relative paths only). GitHub, Linear, Feishu/Lark, Slack, Jira, Notion and the rest go through the CLI or MCP your agent already has; Blurt has no connectors of its own. Or skip exporting and tell the agent to fix the items.
 
 ## Privacy
 - By default nothing is uploaded. Recordings, screenshots and audio stay in your workspace on your machine.

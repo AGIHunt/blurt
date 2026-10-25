@@ -1,6 +1,6 @@
 // The Settings window (⌘, from the menu; blurt://settings/<pane>[/<row>]): one resizable window, a sidebar and a page.
 //   Sidebar  the search field on top (⌘F focuses it, Esc clears it, ↓ / ↑ walk the results, ↩ opens one), then the
-//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Agents, Export ·
+//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Agents ·
 //            This Mac: Privacy, Storage (SettingsCatalog.panes) — in an NSOutlineView like the main window's sidebar:
 //            the brand-tint selection (BrandRowView), ↑ / ↓ move between panes. While searching, the panes with
 //            matches show how many; the others are dimmed.
@@ -9,7 +9,8 @@
 // State (pane, query) lives in SettingsNavigator, the row to scroll to in SettingsFlash. The last pane is remembered
 // (app.settings_pane).
 // show(pane:) takes "speech" or "speech/dictation" (a row or section of that pane: scrolled to and flashed); nil opens
-// the last pane, a name that isn't a pane (a stale link) opens General — never an unrelated pane from last time.
+// the last pane, a name that isn't a pane (a stale link) opens General — never an unrelated pane from last time. A pane
+// that moved (SettingsCatalog.moved: the old Export pane) opens where its settings went: Agents, at "Ask your agent".
 import AppKit
 import Combine
 import SwiftUI
@@ -17,7 +18,7 @@ import BlurtCore
 
 enum SettingsPane: String, CaseIterable {
     // the sidebar's order (SettingsCatalog.panes)
-    case general, dictation, speech, shortcuts, agents, export, privacy, storage
+    case general, dictation, speech, shortcuts, agents, privacy, storage
 
     var info: SettingsPaneInfo? { SettingsCatalog.pane(rawValue) }
     var title: String { info.flatMap { SettingsCatalog.text($0.title) } ?? rawValue }
@@ -32,7 +33,6 @@ enum SettingsPane: String, CaseIterable {
         case .speech: view = AnyView(SpeechPane())
         case .dictation: view = AnyView(DictationPane())
         case .agents: view = AnyView(AgentsPane())
-        case .export: view = AnyView(ExportPane())
         case .privacy: view = AnyView(PrivacyPane())
         case .storage: view = AnyView(StoragePane())
         }
@@ -103,14 +103,17 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         DispatchQueue.main.async { [self] in
             MainActor.assumeIsolated {
                 let nav = SettingsNavigator.shared
-                // "speech" or "speech/dictation": the pane, then a row or section of it
-                let parts = (pane ?? "").split(separator: "/", maxSplits: 1).map(String.init)
+                // "speech" or "speech/dictation": the pane, then a row or section of it; a pane that moved: where it went
+                let link = SettingsCatalog.redirect(pane ?? "")
+                if link != (pane ?? "") { emit(["event": "settings_moved_pane", "from": pane ?? "", "to": link]) }
+                let parts = link.split(separator: "/", maxSplits: 1).map(String.init)
                 let asked = parts.first.flatMap(SettingsPane.init(rawValue:))
                 // no pane named: the last one picked; a name that isn't a pane (a stale link): General, never an
                 // unrelated pane from last time
                 if asked == nil, let p = parts.first, !p.isEmpty { emit(["event": "settings_unknown_pane", "pane": p]) }
+                let last = SettingsCatalog.redirect(Config.shared["app.settings_pane"] as? String ?? "").split(separator: "/").first
                 let want = asked ?? (parts.first?.isEmpty == false ? .general
-                    : SettingsPane(rawValue: Config.shared["app.settings_pane"] as? String ?? "") ?? .general)
+                    : last.flatMap { SettingsPane(rawValue: String($0)) } ?? .general)
                 nav.go(want)                    // before the window is made: only the pane asked for is built
                 if window == nil { build() }
                 if parts.count > 1 { nav.reveal(parts[1].contains(".") ? parts[1] : "\(want.rawValue).\(parts[1])") }

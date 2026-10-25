@@ -6,7 +6,9 @@
 - [x] VAD-first ASR: SenseVoice (local), mlx-whisper, faster-whisper, OpenAI-compatible, DashScope
 - [x] Frame tools: activity scan, diverse candidates, contact sheets, red-box/crop grab, clips
 - [x] Local review page (edit / delete / merge / jump-to-moment / confirm)
-- [x] Export: Markdown + CSV, Feishu (lark-cli guide + OpenAPI fallback), GitHub/other guides
+- [x] Export: Markdown + CSV, Feishu (lark-cli guide + OpenAPI fallback), GitHub/other guides — v0.9: the Feishu
+      exporter is removed; Markdown/CSV and the hand-off bundle (`export_local.py bundle`, MCP `bundle_items`) stay,
+      every other destination goes through the agent's own tools
 - [x] Verified on macOS 26 (Apple Silicon): real screen + mic, transcription, frames, review, Feishu export
 - [ ] Verify on Windows 10/11 (ddagrab/gdigrab, WASAPI mic via sounddevice, DPI scaling, wall-clock sync)
   — 2026-10-18 on a Windows Server 2022 VM over RDP: full pipeline, ddagrab→gdigrab fallback, no-mic path OK.
@@ -142,6 +144,15 @@
       the items' toolbar actions, no filter chips and a blank detail while there are no items at all
 
 ## Windows / Linux app (Tauri) — counterparts of the Mac shell fixes (audit E2)
+- [ ] **Export → hand-off bundle** (Mac v0.9, area nxbundle): feishu.py and reference/export-feishu.md are gone (git
+      history keeps them), and so is the Mac's Settings → Export. The Tauri app still lists export targets with Feishu
+      / Lark (`apps/desktop/src-tauri/src/settings.rs` `export_targets`, `web/apps/desktop/src/mock.ts`,
+      `settings.tab.export` / `settings.export.*` in `web/apps/desktop/src/locales/*.json`): drop the Export tab, open
+      Agents for an old `blurt://settings/export`, show each agent's skill + MCP state and the three "Ask your agent"
+      requests (`agents.ask.*` in the Mac's Terminal.strings) with Copy. Main window: "Export Hand-off Bundle…" on the
+      selection (Item menu, context menu, the Hand Off menu, Ctrl+K) → a native save dialog suggesting
+      `<project>-<date>-<n items>.zip` (export_local.py `bundle_name`) → `export_local.py bundle --items … -o <file>`,
+      then a toast with "Show in folder". No item changes state.
 - [ ] Hand-off sessions (Mac v0.9 dogfood, docs/design/system.md §3.3 "A session's ended card"): show an ended
       session's card, not the dead terminal (`SessionOutcome`: couldn't start / ready to review only with changes /
       ended · no changes), with the agent's `agent.last_output` and `job.error`, Restart Session (`sessions.py restart`),

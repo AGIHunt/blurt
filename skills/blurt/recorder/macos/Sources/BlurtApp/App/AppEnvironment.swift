@@ -38,6 +38,11 @@ protocol TerminalHosting: AnyObject {
 protocol IslandHosting: AnyObject {
     func showSwitcher()
     func toast(_ text: String, actionTitle: String?, action: (() -> Void)?)
+    /// One line about `key`: a newer one with the same key takes its place at once (a "Packing…" line, then
+    /// "Saved"); `seconds` how long it may stay.
+    func toast(_ text: String, key: String?, icon: BlurtIcon?, seconds: Double, actionTitle: String?, action: (() -> Void)?)
+    /// Forgets every toast about `key`, the one showing too.
+    func dropToasts(key: String)
     /// Captures hanging under the island, waiting for a project (posts .blurtCardsChanged when it changes).
     var hangingCount: Int { get }
     /// Open the island with every hanging card down, until the pointer has come and gone (the main window's

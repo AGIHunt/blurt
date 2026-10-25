@@ -19,7 +19,7 @@ your agent does the rest:
   **Hold ⌃ and circle it on screen**
 - writes it up: actual vs. expected, repro steps, owner, and **the code that's probably responsible**
 - lets you triage it one item at a time with the keyboard (in the Blurt app on a Mac, a review page elsewhere)
-- files it to Feishu/Lark, GitHub, Linear or Markdown, or goes straight to fixing it
+- hands it to your team as Markdown, CSV or a hand-off .zip, or through the tools your agent already has (GitHub, Linear, Slack, Feishu/Lark…), or goes straight to fixing it
 
 > What used to take two days of screenshots, red boxes and spreadsheet rows is now a 30-minute walkthrough.
 

@@ -54,8 +54,8 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
   （`README.zh-CN.md` §用起来是什么样）
 - 你的 coding agent 把录屏拆成一条条事项（问题、想法、笔记、待办），给每条挑一帧截图、框出位置，写好实际效果和预期效果、复现步骤、
   可能有关的代码。（`README.zh-CN.md`）
-- 用键盘一条条过（`A` 要做、`X` 丢弃、`J/K` 下一条/上一条），然后导出成 Markdown/CSV、飞书多维表格或 GitHub Issues，或者让 Agent
-  去改。（`README.zh-CN.md`、`skills/blurt/reference/export-other.md`）
+- 用键盘一条条过（`A` 要做、`X` 丢弃、`J/K` 下一条/上一条），然后导出成 Markdown/CSV 或交接包（`.zip`），让 Agent 用它自己的工具
+  建到团队在用的地方（GitHub、Linear、飞书、Slack……），或者让 Agent 去改。（`README.zh-CN.md`、`skills/blurt/reference/export-other.md`）
 - 「交给 Agent」（`⌘↩`）在口喷鸡里、在项目文件夹中启动 Claude Code 或 Codex，可以每条事项一个 git worktree。「复制指令」给你自己的
   Agent 一行指令，指向一份交接说明：事项、你说的话、步骤、可能有关的代码和截图。Agent 通过口喷鸡的 MCP 汇报进度；Agent 说「修好了」
   一律只算「待验证」。（`docs/guide.md` §5、`skills/blurt/reference/sessions.md`）
@@ -179,8 +179,10 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
 
 ## 5. 口喷鸡刻意不做什么，为什么
 
-- **不做连接器。** 你的 Agent 已经有 Linear、Jira、Notion、Slack、飞书等的 MCP 和命令行工具。口喷鸡负责把你的话、截图和录屏送进
-  Agent，投递交给 Agent。自带的导出只有文件（Markdown、CSV）、飞书多维表格，以及通过 `gh` 的 GitHub Issues。
+- **不做连接器。** 你的 Agent 已经有飞书、Linear、Jira、Notion、Slack、GitHub 等的 MCP 和命令行工具。口喷鸡负责把你的话、截图和
+  录屏送进 Agent，投递交给 Agent。口喷鸡自己只写文件：Markdown、CSV，以及交接包（一个 `.zip`，有概要、每一条和它的截图，只用相对
+  路径），由 Agent 或你发到团队在用的地方。没有飞书导出，也没有导出设置；「把 A 模块的问题打包发给飞书群里的张三」是对 Agent 说的话。
+  （`skills/blurt/SKILL.md` §6、`export_local.py bundle`、MCP `bundle_items`）
 - **不做自己的 Agent。** 录屏由你已经安装并登录的第一个 coding agent 处理：先 Claude Code，然后 Codex、Kimi Code、OpenCode、
   Gemini CLI。Agent 自己会变强，下一个新 Agent 出来，口喷鸡也能配合。
 - **不做云服务。** 没有口喷鸡的服务器，也不用注册账号。语音在你的电脑上转写。联网只有这几种情况：下载模型、你自己加的云端语音密钥、

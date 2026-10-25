@@ -21,6 +21,9 @@
 //                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
 //   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the spinner)
 //   toastdone TEXT               the small toast with the done check (ok)
+//   mainbundle [PATH.zip|cancel] Export Hand-off Bundle… on the selection (PATH: bundling + the action's state at once,
+//                            then the result): its Save sheet (suggested name back), or
+//                                written straight to PATH (no panel); cancel closes the sheet
 import AppKit
 import Carbon.HIToolbox
 import BlurtCore
@@ -462,6 +465,29 @@ enum SelfTests {
             c.handOff(uids: c.list.selectedItems.map(\.uid), what: arg.isEmpty ? "instruction" : arg) { r in
                 out(["text": r?["text"] ?? NSNull(), "clipboard": NSPasteboard.general.string(forType: .string) ?? ""])
             }
+        case "mainbundle":              // mainbundle [PATH.zip | cancel]: Export Hand-off Bundle… on the selection —
+                                        // no PATH: its Save sheet (the suggested name back); PATH: written there, no panel
+            let c = MainWindowController.shared
+            if arg == "cancel" {
+                if let p = c.bundlePanel, let w = c.window, let s = w.attachedSheet, s === p { w.endSheet(p, returnCode: .cancel) }
+                c.bundlePanel = nil
+                return out(["cancelled": true])
+            }
+            if arg.isEmpty {
+                c.exportBundle(uids: c.list.selectedItems.map(\.uid)) { u in out(["path": u?.path ?? NSNull(), "via": "panel"]) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    out(["panel": c.bundlePanel?.nameFieldStringValue ?? NSNull(), "message": c.bundlePanel?.message ?? "",
+                         "sheet": c.window?.attachedSheet != nil])
+                }
+                return
+            }
+            c.exportBundle(uids: c.list.selectedItems.map(\.uid), to: URL(fileURLWithPath: arg)) { u in
+                out(["path": u?.path ?? NSNull(), "exists": u.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+                     "bundling": c.bundling])
+            }
+            // while it packs: the action is off (one bundle at a time) and the island says so
+            let probe = NSMenuItem(title: "", action: #selector(MainWindowController.mExportBundle), keyEquivalent: "")
+            out(["bundling": c.bundling, "action_enabled": c.validateMenuItem(probe)])
         case "mainmenu":                // mainmenu: the context menu of the selection, as titles (enabled ones)
             let c = MainWindowController.shared
             let m = c.contextMenu(for: c.list.table.selectedRowIndexes)

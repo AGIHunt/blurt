@@ -6,7 +6,12 @@
 // agent tried before the one that runs); an agent that isn't installed can't be ticked. Connect installs the blurt skill + MCP server into
 // an agent (agents.py install: a --dry-run preview first, applied only after the user confirms) and is offered only
 // while they are missing (a dry run per installed agent says so). The current project's default agent for sessions
-// (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart.
+// (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart. Each installed
+// agent says whether the blurt skill + MCP are in it: a "Skill + MCP" badge, or Connect… whose tooltip says they are
+// not in it yet (no grey label repeated down the list).
+// "Ask your agent" (agents.ask) ends the page: three requests in plain words, each copyable — sending items anywhere
+// (Slack, Feishu, Linear…) is the agent's job with its own tools, so there are no connector settings here; this is
+// where the old Export pane's links land (SettingsCatalog.moved).
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -262,12 +267,42 @@ struct AgentsPane: View {
                     ForEach(m.manual) { a in agentRow(a, ordered: false) }
                 }
             }
+
+            askSection
         }
         .task { await m.open() }
         .sheet(isPresented: Binding(get: { m.plan != nil }, set: { if !$0 { m.plan = nil } })) {
             if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied) }
         }
     }
+
+    /// "Ask your agent": three things people ask for, in their own words — sending items somewhere is the agent's
+    /// job, with the tools it already has (Blurt has no connectors to set up). Each can be copied.
+    @ViewBuilder
+    var askSection: some View {
+        SettingsGroup("agents.ask", footer: TL("agents.ask.footer")) {
+            ForEach(Self.askExamples, id: \.self) { key in
+                SettingsLine {
+                    HStack(spacing: 10) {
+                        Text(Self.quoted(TL(key))).font(.system(size: SettingsMetrics.titleSize)).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(TL(key), forType: .string)
+                            emit(["event": "agents_ask_copied", "example": key])
+                        } label: { Image(systemName: "doc.on.doc") }
+                            .buttonStyle(.borderless).help(TL("agents.ask.copy")).accessibilityLabel(TL("agents.ask.copy"))
+                    }
+                }
+            }
+        }
+    }
+
+    static let askExamples = ["agents.ask.1", "agents.ask.2", "agents.ask.3"]
+
+    /// A request as said: “…” in English, 「…」 in Chinese (the app's own quotes).
+    static func quoted(_ s: String) -> String { Loc.isChinese ? "「\(s)」" : "“\(s)”" }
 
     @ViewBuilder
     var sessionsSection: some View {
@@ -385,6 +420,10 @@ struct AgentsPane: View {
                         if a.installed && m.sessions(a) {
                             badge(TL("agents.sessions_badge"), Color.secondary).help(TL("agents.sessions_badge.help"))
                         }
+                        // the blurt skill + MCP: in place (it can read and update your items), or not yet
+                        if a.installed && m.connected[a.id] == true {
+                            badge(TL("agents.connected"), Color.secondary).help(TL("agents.connected.help"))
+                        }
                     }
                     Text(stateText(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
@@ -392,8 +431,12 @@ struct AgentsPane: View {
                 if a.state == "checking" { ProgressView().controlSize(.mini) }
                 // the blurt skill + MCP: Connect only while they are missing (manual agents: always offered)
                 if (a.installed && m.connected[a.id] == false) || !a.headless {
+                    // not connected yet: said on the button's tooltip, not as one more grey label on every row
                     if m.installing == a.id { ProgressView().controlSize(.small) }
-                    else { Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small).help(TL("agents.install.help")) }
+                    else {
+                        Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small)
+                            .help(TL(a.headless ? "agents.not_connected.help" : "agents.install.help"))
+                    }
                 }
                 if a.headless && a.installed {
                     if m.testing == a.id { ProgressView().controlSize(.small) }

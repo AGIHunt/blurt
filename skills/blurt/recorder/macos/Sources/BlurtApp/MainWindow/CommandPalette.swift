@@ -140,6 +140,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.menu.start_session"), "paperplane", "⌘↩", enabled: has) { c.handOffSelection() },
             e(T("main.cmd.copy_instruction"), "doc.on.clipboard", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
             e(T("main.cmd.copy_full"), "text.alignleft", enabled: has) { c.mCopyFull() },
+            e(T("main.menu.export_bundle"), "archivebox", enabled: has) { c.mExportBundle() },
             e(T("main.menu.quick_look"), "eye", T("main.keys.space"), enabled: has) { c.list.toggleQuickLook() },
             e(T("action.reveal_in_finder"), "folder", "⇧⌘R", enabled: has) { c.mReveal() },
             e(T("action.copy_path"), "doc.on.doc", "⌥⌘C", enabled: has) { c.copyPaths() },
