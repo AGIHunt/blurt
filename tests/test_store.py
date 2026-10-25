@@ -238,6 +238,7 @@ class HandEdits(TmpCase):
 
 class StoreBasics(TmpCase):
     def test_ids_counter_and_lookup(self):
+        (self.tmp / "proj").mkdir()      # a project store is made only inside a folder that is there
         s = st.Store(self.tmp / "proj" / ".blurt")
         self.assertTrue(s.ensure("p1", "PR"))
         self.assertFalse(s.ensure("p1", "PR"))

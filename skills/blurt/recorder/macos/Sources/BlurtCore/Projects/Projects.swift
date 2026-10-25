@@ -270,13 +270,34 @@ public final class ProjectStore {
 
     // MARK: where captures go
 
-    /// <current project's store, or the inbox's>/sessions/<yyyyMMdd-HHmmss>[-shots|-voice], created.
+    /// Where a capture goes now: the current project while its folder is there, else Unassigned (the inbox store). A
+    /// current project whose folder moved or was renamed is never written to — that would make its folder again at
+    /// the old path, with ids that clash with the moved folder's (dogfood v0.9-2) — until the user locates it
+    /// (`missingCurrent` says so; projects.py add relocates).
+    public var captureTarget: Project { Self.captureTarget(current: current, inbox: inbox) }
+    /// The current project when its folder can't be found (moved, renamed, deleted).
+    public var missingCurrent: Project? { current.flatMap { $0.exists ? nil : $0 } }
+
+    public static func captureTarget(current: Project?, inbox: Project) -> Project {
+        current.flatMap { $0.exists ? $0 : nil } ?? inbox
+    }
+
+    /// What a folder picked for "Locate…" is to the project `projectID`: it holds that project's store (opening it
+    /// relocates the project: same id, key and items), another project's (refused), or no store yet.
+    public enum LocatePick: String { case same, other, empty }
+    public static func locatePick(_ folder: URL, projectID: String) -> LocatePick {
+        guard let d = try? Data(contentsOf: folder.appendingPathComponent(".blurt/store.json")),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return .empty }
+        return o["project"] as? String == projectID ? .same : .other
+    }
+
+    /// <capture target's store>/sessions/<yyyyMMdd-HHmmss>[-shots|-voice], created.
     public func newSessionDir(_ kind: SessionKind) -> URL {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
         let suffix = kind == .video ? "" : "-" + kind.rawValue
-        let store = current?.store ?? inbox.store
+        let store = captureTarget.store
         let dir = store.appendingPathComponent("sessions").appendingPathComponent(f.string(from: Date()) + suffix)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir

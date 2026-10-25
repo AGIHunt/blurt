@@ -136,6 +136,7 @@
 "main.error.not_found" = "Blurt can’t find that any more.";
 "main.error.no_project" = "That project isn’t in Blurt any more.";
 "main.error.exists" = "That folder is in Blurt already.";
+"main.error.folder_missing" = "That project’s folder can’t be found. Locate it first.";
 "main.error.not_a_folder" = "That isn’t a folder.";
 "main.error.reserved" = "That’s Blurt’s own folder.";
 "main.error.save_title" = "Couldn’t save";

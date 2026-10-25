@@ -475,6 +475,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func startRecording(useLast: Bool) {
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         guard !busy else { return }
+        MissingFolder.warnIfCurrentMissing(recording: true)     // its folder is gone: this one goes to Unassigned
         let dir = newSessionDir()
         opts.out = dir.appendingPathComponent("recording.mp4").path
         opts.events = dir.appendingPathComponent("events.jsonl").path

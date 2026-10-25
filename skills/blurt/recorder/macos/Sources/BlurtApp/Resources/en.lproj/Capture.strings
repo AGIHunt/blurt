@@ -97,6 +97,14 @@
 "capture.menu.voice" = "Voice Note";
 "capture.move_failed" = "Couldn’t move it — it stays where it was";
 "capture.moved" = "Moved to %@";
+"capture.project.missing_card" = "Can’t find %@’s folder — kept as a card";
+"capture.project.missing_rec" = "Can’t find %@’s folder — this recording goes to Unassigned";
+"capture.project.missing_short" = "folder not found";
+"capture.project.locate" = "Locate…";
+"capture.project.locate_message" = "Choose where “%@” is now.";
+"capture.project.not_this" = "That isn’t %@’s folder";
+"capture.project.found" = "Found %@ — new captures go there again";
+"capture.drawer.missing_sub" = "Folder not found · Locate…";
 "capture.note.discard_tip" = "Discard this shot (Esc)";
 "capture.note.goes_to" = "Goes to %@";
 "capture.note.keep_discard" = "⏎ keep without a note · Esc discard";

@@ -8,8 +8,11 @@ let homeDir = FileManager.default.homeDirectoryForCurrentUser
 /// ~/Blurt (Blurt's own folder: the inbox store lives in it)
 let defaultWorkspace = BlurtPaths.workspace
 
-/// The current project's folder, else the inbox store.
-func currentWorkspace() -> URL { ProjectStore.shared.current?.path ?? ProjectStore.shared.inbox.store }
+/// The current project's folder (while it is there: ProjectStore.captureTarget), else the inbox store.
+func currentWorkspace() -> URL {
+    let t = ProjectStore.shared.captureTarget
+    return t.isInbox ? t.store : t.path
+}
 
 /// The opened projects' folders.
 func knownWorkspaces() -> [URL] { ProjectStore.shared.projects.filter(\.exists).map(\.path) }

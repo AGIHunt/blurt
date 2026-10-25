@@ -223,7 +223,8 @@ def store_of(entry: dict) -> st.Store:
 
 
 def store_for(pid: str) -> st.Store:
-    """The store of a project id ('inbox' included), created if it isn't there yet."""
+    """The store of a project id ('inbox' included), created if it isn't there yet. A project whose folder is gone
+    (moved, renamed) → ProjectError "folder_missing": nothing is written at the old path — `add NEWPATH` relocates it."""
     if pid == st.INBOX:
         s = st.inbox_store()
         s.ensure()
@@ -231,8 +232,14 @@ def store_for(pid: str) -> st.Store:
     e = by_id(pid)
     if e is None:
         raise ProjectError(f"no project {pid}", "no_project")
+    if not Path(e["path"]).is_dir():
+        raise ProjectError(f"{e.get('name') or pid}: its folder {e['path']} isn't there (moved or renamed?) — "
+                           "locate it: projects.py add NEWPATH", "folder_missing")
     s = store_of(e)
-    s.ensure(e["id"], e["key"])
+    try:
+        s.ensure(e["id"], e["key"])
+    except st.FolderMissing as x:
+        raise ProjectError(str(x), "folder_missing") from x
     return s
 
 

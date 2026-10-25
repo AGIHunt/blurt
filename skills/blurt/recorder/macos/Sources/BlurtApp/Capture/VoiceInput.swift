@@ -140,6 +140,7 @@ final class VoiceInput {
             return
         }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
+        MissingFolder.warnIfCurrentMissing()      // the current project's folder is gone: a card meanwhile
         let b = snapper.openBatch(for: snapper.target)
         let k = b.reserve()
         let url = b.dir.appendingPathComponent("shots/\(ShotBatch.name(k)).wav")

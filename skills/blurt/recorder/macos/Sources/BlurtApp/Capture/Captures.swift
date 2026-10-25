@@ -25,6 +25,9 @@
 //  • quitting (App.applicationShouldTerminate → prepareForQuit) saves the open note, finishes a voice note, waits a
 //    moment for words and filings, and flushes shots.jsonl; what still waits is picked up at the next launch (restore).
 //  • Delete / Delete All on cards: no question, "Deleted · Undo" for 5 s; the files stay until then (CardDelete).
+//  • v0.9-fix2: a project whose folder can't be found (moved, renamed) takes nothing — captures go to Unassigned
+//    (`target`), filing into it is refused before anything is written (`file` → keepAsCards), and the island offers
+//    Locate… (MissingFolder). captures.py refuses too (folder_missing) and never makes the old folder again.
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 
 import AppKit
@@ -126,8 +129,9 @@ final class Snapper {
 
     // MARK: batches
 
-    /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none.
-    var target: Project { ProjectStore.shared.current ?? ProjectStore.shared.inbox }
+    /// Where a capture goes now: the current project, or the inbox (as a card) when the user picked none — or when
+    /// the current project's folder can't be found (moved, renamed): nothing is written there (MissingFolder).
+    var target: Project { ProjectStore.shared.captureTarget }
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
     func openBatch(for p: Project) -> ShotBatch {
@@ -180,6 +184,7 @@ final class Snapper {
             let shot = b.add(n: n, image: img, scale: scale, region: region, t: nil, project: p.isInbox ? nil : p.id)
             emit(["event": "snap", "n": n, "file": shot.file ?? "", "session": b.dir.path, "project": shot.project ?? NSNull(),
                   "in_place": withNote])
+            if p.isInbox { MissingFolder.warnIfCurrentMissing() }
             if withNote {
                 // (before anything else runs: the stage holds the shot back from the cards until it is done)
                 InkStage.shared.open(shot, image: img, selection: ns)
@@ -460,6 +465,10 @@ final class Snapper {
     /// Captures → items with captures.py: the note is the item, no agent, no tokens. A process job (K4) all the
     /// same, so the island hatches it and the main window lists it (usage: 0 tokens).
     func file(_ shots: [Shot], in b: ShotBatch, project: String) {
+        // a project whose folder can't be found takes nothing: its folder would be made again at the old path
+        if project != "inbox", let p = ProjectStore.shared.project(id: project), !p.exists {
+            return keepAsCards(shots, in: b, missing: p)
+        }
         let ns = shots.map(\.n)
         for s in shots { hanging.pullIn(s) }
         island.expectProcess(session: b.dir, captures: ns)
@@ -468,6 +477,19 @@ final class Snapper {
     }
     /// filings under way (prepareForQuit waits for them a moment)
     private var filing = 0
+
+    /// Filing into `missing` (its folder moved or was renamed) was refused: the captures stay Unassigned cards, and the
+    /// island says so with Locate… (MissingFolder). Nothing was written.
+    private func keepAsCards(_ shots: [Shot], in b: ShotBatch, missing p: Project) {
+        for s in shots where !s.deleted {
+            if s.project != nil { b.release(s) }
+            if hanging.screenRect(of: s) == nil { hanging.catchCapture(s, from: island.frameOnScreen) }
+        }
+        emit(["event": "file_refused", "session": b.dir.path, "captures": shots.map(\.n), "project": p.id,
+              "reason": "folder_missing"])
+        hanging.refresh()
+        MissingFolder.warn(p)
+    }
 
     private func write(_ shots: [Shot], in b: ShotBatch, project: String) {
         let ns = shots.map(\.n)
@@ -480,19 +502,29 @@ final class Snapper {
             Task {
                 var r: [String: Any]?
                 var why: String?
+                var code = "io"
                 do {
                     r = try await ScriptRunner.shared.json("captures.py", ["file", b.dir.path, "--captures"] + ns.map(String.init)
                                                             + ["--project", project], timeout: 120)
+                } catch ScriptError.failed(_, let out, let err) {
+                    code = Scripts.json(out)?["code"] as? String ?? "io"
+                    why = Scripts.json(out)?["error"] as? String ?? err
                 } catch { why = "\(error)" }
+                let (r0, why0, code0) = (r, why, code)
                 await MainActor.run {
+                    let (r, why, code) = (r0, why0, code0)
                     let made = r?["items"] as? [[String: Any]] ?? []
                     job.setItems(made.compactMap { $0["uid"] as? String })
                     job.setUsage(tokens: 0, agent: nil, model: nil, effort: nil)
                     job.step("write", r == nil ? .failed : .done)
                     for st in ["transcribe", "frames"] { job.step(st, .skipped) }
-                    job.finish(r == nil ? .failed : .done, error: why.map { JobError(code: "io", message: $0, hintKey: nil) })
+                    job.finish(r == nil ? .failed : .done, error: why.map { JobError(code: code, message: $0, hintKey: nil) })
                     self.filing = max(0, self.filing - 1)
                     emit(["event": "filed", "job": job.id, "items": made.compactMap { $0["id"] as? String }, "tokens": 0])
+                    // its folder went away after it was picked (captures.py refused, wrote nothing): cards again
+                    if code == "folder_missing", let p = ProjectStore.shared.project(id: project) {
+                        return self.keepAsCards(shots, in: b, missing: p)
+                    }
                     guard let first = made.first else { return }
                     self.announceFiled(project: project, id: first["id"] as? String, uids: made.compactMap { $0["uid"] as? String })
                 }

@@ -89,6 +89,11 @@ window's command palette (`⌘K`) do the same.
 - **Unassigned** (no current project) — snaps and voice notes wait as cards (below) until you say where they belong;
   a recording's items go to **Unassigned**.
 
+If you move or rename a project's folder, Blurt doesn't write to the old place: a snap or voice note stays as a card,
+a recording goes to **Unassigned**, and the notch says *Can't find billing-api's folder* with **Locate…**. Pick the
+folder where it is now and it is the same project again (its items, key and IDs), and new captures go there. The
+switcher shows such a project with a question-mark folder and *Folder not found*.
+
 When a recording ends, the notch says where it went — *Filed to Atlas Web · Change* — and **Change** puts it in
 another project (it waits until organizing is done if it has to). A snap filed straight into a project says the same:
 *Filed to Atlas Web · AW-14 · Change*. Either way *Moved to … · Undo* takes it back. An item you have already moved
@@ -625,6 +630,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 通用」和主窗口的命令面板（`⌘K`）也一样。
 - **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的条目也进这里。
 - **未归类**（不选当前项目）：截图和语音备注先作为卡片留在刘海下方（见下），等你决定放哪；录屏的条目进「**未归类**」。
+
+如果你移动了项目文件夹或改了名，口喷鸡不会往原来的位置写：截图和语音备注先留作卡片，录屏进「**未归类**」，刘海上会提示「找不到「billing-api」的文件夹」和「**找到它…**」。选一下它现在的位置，就还是原来那个项目（条目、代号和编号都在），之后的内容也会归到这里。切换项目的列表里，这样的项目显示成带问号的文件夹，写着「文件夹不见了」。
 
 录屏结束时，刘海上会写明它去了哪——「已归到 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
 直接归进项目的截图也一样：「已归到 Atlas Web · AW-14 · 更改」。换了之后会提示「已移到 … · 撤销」，点撤销就移回来。

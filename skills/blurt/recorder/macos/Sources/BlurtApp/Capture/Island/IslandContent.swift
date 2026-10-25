@@ -519,7 +519,7 @@ final class IslandContent: NSView {
             if cards > 0 {
                 // with a current project the cards are organised into it; with none, into Unassigned, each item with
                 // the project the run suggests (the user moves it with a click). Either way one agent run for all.
-                let cur = ProjectStore.shared.current
+                let cur = ProjectStore.shared.captureTarget.isInbox ? nil : ProjectStore.shared.captureTarget
                 let b = cur.map { p in
                     IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
                                  tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
@@ -722,7 +722,8 @@ final class IslandContent: NSView {
         voiceText = tx
         y += 24
         let dest: String
-        if let p = ProjectStore.shared.current { dest = Loc.t("capture.voice.goes_to", table: "Capture", p.name) } else {
+        if let m = ProjectStore.shared.missingCurrent { dest = Loc.t("capture.project.missing_card", table: "Capture", m.name) }
+        else if let p = ProjectStore.shared.current { dest = Loc.t("capture.voice.goes_to", table: "Capture", p.name) } else {
             dest = Loc.t("capture.voice.goes_card", table: "Capture")
         }
         let d = label(dest, size: 11.5, color: ink3)
@@ -769,7 +770,11 @@ final class IslandContent: NSView {
         let matches = choices.compactMap(\.project)
         let shown = query.isEmpty && !showAll ? Array(matches.prefix(8)) : matches
         for p in shown {
-            let r = IslandRow(icon: ic("folder.fill", ProjectLook.color(p)), title: p.name, height: 36)     // the project's colour
+            // the project's colour; a folder that can't be found: a question-mark folder and "folder not found · Locate…"
+            // (picking it asks where it is now: MissingFolder.locate)
+            let r = p.exists ? IslandRow(icon: ic("folder.fill", ProjectLook.color(p)), title: p.name, height: 36)
+                : IslandRow(icon: ic("questionmark.folder", ink3), title: p.name,
+                            subtitle: Loc.t("capture.drawer.missing_sub", table: "Capture"), height: 44)
             r.accessory = p.key
             r.accessoryIsKey = true
             r.checked = d == .switcher && checkedID == p.id
@@ -853,6 +858,12 @@ final class IslandContent: NSView {
         case .openFolder: island?.closeSwitcher(); IslandContent.openFolder()
         case .none, .project:
             let id: String? = { if case .project(let i) = t { return i }; return nil }()
+            if let i = id, let p = ProjectStore.shared.project(id: i), !p.exists {
+                // its folder moved: where is it now? (nothing is filed there until it is found)
+                island?.closeSwitcher()
+                island?.setOpen(false)
+                return MissingFolder.locate(p)
+            }
             if let p = island?.pick {
                 // the pick form: file that one thing there; the current project stays as it is
                 island?.closeSwitcher()

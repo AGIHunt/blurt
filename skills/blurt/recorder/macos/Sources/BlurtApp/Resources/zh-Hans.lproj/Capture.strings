@@ -97,6 +97,14 @@
 "capture.menu.voice" = "语音备注";
 "capture.move_failed" = "没能移过去，还在原来的地方";
 "capture.moved" = "已移到 %@";
+"capture.project.missing_card" = "找不到「%@」的文件夹，先留作卡片";
+"capture.project.missing_rec" = "找不到「%@」的文件夹，这段录屏先放进未归类";
+"capture.project.missing_short" = "文件夹不见了";
+"capture.project.locate" = "找到它…";
+"capture.project.locate_message" = "选一下「%@」现在在哪里。";
+"capture.project.not_this" = "这不是「%@」的文件夹";
+"capture.project.found" = "找到「%@」了，之后的内容会归到这里";
+"capture.drawer.missing_sub" = "文件夹不见了 · 找到它…";
 "capture.note.discard_tip" = "丢弃这张截图（Esc）";
 "capture.note.goes_to" = "归入 %@";
 "capture.note.keep_discard" = "⏎ 不写备注直接留下 · Esc 丢弃";

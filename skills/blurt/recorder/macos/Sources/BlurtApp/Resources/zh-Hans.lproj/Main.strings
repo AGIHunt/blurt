@@ -136,6 +136,7 @@
 "main.error.not_found" = "找不到了。";
 "main.error.no_project" = "这个项目已经不在口喷鸡里了。";
 "main.error.exists" = "这个文件夹已经在口喷鸡里了。";
+"main.error.folder_missing" = "找不到这个项目的文件夹，先把它找回来。";
 "main.error.not_a_folder" = "这不是文件夹。";
 "main.error.reserved" = "这是口喷鸡自己的文件夹。";
 "main.error.save_title" = "没能保存";

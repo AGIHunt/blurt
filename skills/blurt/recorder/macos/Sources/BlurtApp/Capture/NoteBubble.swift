@@ -1516,6 +1516,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func picked(_ p: Project?) {
         guard let s = shot else { return }
+        // a project whose folder can't be found takes nothing: the capture stays where it was, the island says why
+        if let p = p, !p.exists { closePick(); MissingFolder.warn(p); return refreshStatus() }
         if s.project != p?.id { snapper.retarget(s, to: p?.id) }
         closePick()
         refreshStatus()

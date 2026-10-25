@@ -141,4 +141,32 @@ final class AssignmentTests: XCTestCase {
         u.refiled(to: "atlas", from: "atlas")
         XCTAssertEqual(u.movesFrom, [])
     }
+
+    // MARK: a current project whose folder moved
+
+    /// dogfood v0.9-2: a snap with a current project whose folder had been moved made the folder again at the old
+    /// path (and its items started at BA-1 there). Captures go to Unassigned until the folder is located.
+    func testACurrentProjectWhoseFolderIsGoneTakesNoCaptures() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-target-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func project(_ id: String, at u: URL, inbox: Bool = false) -> Project {
+            Project(id: id, name: id, key: id.uppercased(), slug: id, description: "", path: u, store: u.appendingPathComponent(".blurt"),
+                    isInbox: inbox, isGitRepo: false, worktree: false, defaultAgent: nil, modules: [], lastUsed: nil, pinned: false)
+        }
+        let inbox = project("inbox", at: dir.appendingPathComponent("inbox"), inbox: true)
+        let here = project("ba", at: dir)
+        let gone = project("ba", at: dir.appendingPathComponent("billing-api"))
+        XCTAssertEqual(ProjectStore.captureTarget(current: here, inbox: inbox).id, "ba")
+        XCTAssertEqual(ProjectStore.captureTarget(current: gone, inbox: inbox).id, "inbox")
+        XCTAssertEqual(ProjectStore.captureTarget(current: nil, inbox: inbox).id, "inbox")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: gone.path.path))
+        // Locate…: the moved folder holds this project's store; another project's is refused
+        let moved = dir.appendingPathComponent("billing-api-moved")
+        XCTAssertEqual(ProjectStore.locatePick(moved, projectID: "ba"), .empty)
+        try FileManager.default.createDirectory(at: moved.appendingPathComponent(".blurt"), withIntermediateDirectories: true)
+        try Data(#"{"project": "ba", "key": "BA", "next": 13}"#.utf8).write(to: moved.appendingPathComponent(".blurt/store.json"))
+        XCTAssertEqual(ProjectStore.locatePick(moved, projectID: "ba"), .same)
+        XCTAssertEqual(ProjectStore.locatePick(moved, projectID: "aw"), .other)
+    }
 }
