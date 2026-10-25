@@ -3,7 +3,8 @@
 The chick that blurts it out: a front-facing round chick in one even line — a tuft of three bumps, two dot eyes, a
 small diamond beak, wing nubs — with two sound arcs at its top right. Monochrome and graphic: black line on light,
 white line on dark. It replaces direction A (the side-profile hen, kept in git history before this change and as
-`assets/logo-v0.8a.png`). The colour 1A chick in `assets/mascot/` stays the mascot for moments; this is the mark.
+`assets/logo-v0.8a.png`). It is also the mascot: the app's chick for moments is this drawing in colour (see "The
+mascot" below), so there is one chick. (The earlier 1A round chick in `assets/mascot/` is left only for the web UIs.)
 
 Everything here is vector, and `chick.swift` is the one source of the drawing: it holds the geometry and writes every
 SVG below. The icon tile's colour is not in it: `chick.swift` reads `gradient.field`, `gradient.deep`,
@@ -22,6 +23,7 @@ SVG below. The icon tile's colour is not in it: `chick.swift` reads `gradient.fi
 | `logo.svg` | The logo: the app icon's chick without the tile, on a white sticker edge so the black line and arcs read on dark pages too (GitHub dark). |
 | `glyph.svg` | The macOS menu-bar icon (an 18 pt template image) and the tray glyph. Drawn directly on the 18 pt grid with a 1.5 pt line (3 px at 2x), slightly heavier than SF Symbols at menu-bar size so the small face reads, and stored as filled outlines in the family's 24 grid (the family strokes at a fixed 1.75). Hinted by construction: the body's outer edges sit on whole points, the eyes are 2 pt dots centred on whole points (2 × 2 px at 1x). Three layers: the chick, the inner arc, the outer arc. `assets/icons/blurt.svg` is a copy of it. |
 | `build.py` | Renders every bitmap below. |
+| `…/BlurtApp/Icons/MascotGeometry.swift` | The mascot's drawing for the mac app (generated): the master and small chicks' outline as a path, their wings, eyes, glints, beak and arcs as numbers, and the mascot palette. |
 
 ### The tile: the brand gradient field
 
@@ -56,10 +58,26 @@ menu-bar icon", `Icons/MenuHen.swift`) is gone; the old setting keys are removed
 moves it: while voice input listens the arcs pulse outward (inner, then outer), and it hops when something is done;
 with Reduce Motion it stays still.
 
+## The mascot
+
+The mac app's mascot (onboarding hero, the island, notifications) is this chick in colour, moved in code — no frames:
+
+- `chick.swift` writes `skills/blurt/recorder/macos/Sources/BlurtApp/Icons/MascotGeometry.swift` from `master` and
+  `small`, plus the mascot palette (`mascotPalette`): the icon's `#17140F` line and eyes, a warm butter-yellow body
+  `#FFC83D` (the yellow of the earlier 1A mascot), wings `#F7B52A`, a coral beak `#FF7A45`, faint cheeks, the egg's
+  shell, and `#F4F1EA` for the free marks (arcs, thought dots) on dark backdrops. The art's colours live here with
+  the art; the UI's live in `tokens.json`.
+- `Icons/MascotArt.swift` poses it part by part (hops, tilt, flapping wings drawn whole behind the body, blinks, ^ ^
+  eyes, open beak, pulsing arcs, the egg it hatches from, sparkles, the bug in `peck`); `Icons/Mascot.swift` plays the
+  clips on layers (`MascotView`, `MascotLayer`, `MascotImage`). At 32 pt and below it draws `small`.
+- `docs/design/system.md` §6.1 has the clips and the rules; `swift assets/brand/chick.swift --check` (run by
+  `tests/test_icons.py`) fails when the generated file is stale.
+
 ## Regenerate
 
 ```sh
-swift assets/brand/chick.swift                      # the SVGs, after a geometry or tokens.json gradient change
+swift assets/brand/chick.swift                      # the SVGs and MascotGeometry.swift, after a geometry, palette or
+                                                    # tokens.json gradient change (--check: list stale outputs, write none)
                                                     # (add --alts DIR for the three v0.8 tile treatments)
 python3 assets/brand/build.py                       # the brand bitmaps (needs rsvg-convert and Pillow; .icns needs macOS)
 python3 assets/brand/build.py --site                # …plus the site/ outputs: for the site redo, off by default

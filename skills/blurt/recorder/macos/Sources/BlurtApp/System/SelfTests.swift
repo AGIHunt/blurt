@@ -8,7 +8,7 @@
 //   spotlight-clear              remove our domain's entries
 //   service TEXT                 "Add to Blurt" with TEXT on a private pasteboard, through the real service method
 //   fix UIDS                     the dispatch panel for those items (agent, mode, worktree)
-//   peck TITLE | peckframes DIR [dark] | perms
+//   peck TITLE | peckframes DIR [dark] | mascotcheck | perms
 //   menuglyph DIR                the menu-bar chick: the template glyph (rest / listen / hop; 1x / 2x) and the real
 //                                status button with a count of 3 (aqua / dark; rest / open) as PNGs
 //   design system v2 moments (screenshots, no real work behind them):
@@ -148,7 +148,9 @@ enum SelfTests {
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.contains("dark"))])
-        case "menuglyph":               // menuglyph DIR: the menu-bar chick as the status item draws it, as PNGs
+        case "mascotcheck":             // the mascot's clips: one-shots end at rest, loops join up (MascotArt.check)
+            out(["problems": MascotArt.check()])
+        case "menuglyph":              // menuglyph DIR: the menu-bar chick as the status item draws it, as PNGs
             out(["files": MenuGlyph.renderPoses(to: URL(fileURLWithPath: arg.isEmpty ? "/tmp/menuglyph" : arg))])
         case "install":                 // install ID: the dry-run preview (sheet in Settings → Agents); install-apply: confirm it
             SettingsController.shared.show(pane: "agents")

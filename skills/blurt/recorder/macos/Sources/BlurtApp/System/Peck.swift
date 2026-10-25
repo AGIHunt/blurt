@@ -2,10 +2,10 @@
 // it), the island shows one quiet line with the chick beside it — never a window of its own, never one per item: news
 // within 10 s of each other becomes one line ("3 items to verify"). Click = that item (or the inbox).
 //
-// The chick is the colour mascot (Icons/Mascot.swift, frame animations):
-//   to verify   it pecks a ladybug, which vanishes with a sparkle (`peck`)
-//   done        a happy hop, wings up, sparkles (`happy`)
-// Reduce Motion: the clip's still frame.
+// The chick is the mascot, the brand's chick in colour (Icons/Mascot.swift, drawn and moved in code):
+//   to verify   it spots a bug, pounces on it, the bug goes in a sparkle, a happy hop back (`peck`)
+//   done        two happy hops, wings up, ^ ^ eyes, sparkles (`happy`)
+// Reduce Motion: the clip's still moment.
 import AppKit
 import BlurtCore
 
@@ -42,7 +42,7 @@ final class PeckCard: NSObject {
             text = Loc.plural(done ? "capture.peck.done_many" : "capture.peck.verify_many", table: "Capture", count: items.count)
         }
         let clip: MascotClip = done ? .happy : .peck
-        let chick = MascotView(clip: clip, size: 50)
+        let chick = MascotView(clip: clip, size: 50, backdrop: .dark)
         chick.show(clip, frame: 0)
         let uid = items.count == 1 ? items[0].uid : nil
         var t = Island.Toast(text: text, actionTitle: nil, action: {
@@ -55,21 +55,13 @@ final class PeckCard: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + leadIn) { chick.play(clip) }
     }
 
-    /// The clip's frames in timeline order as PNGs on a light or dark backdrop (docs / tests make GIFs of them).
-    static func renderFrames(to dir: URL, clip: MascotClip = .peck, scale: CGFloat = 1, dark: Bool = false) -> Int {
+    /// The clip at 12 fps as 80 pt PNGs (× `scale` pixels) on a light or dark backdrop (docs / tests make GIFs of them).
+    static func renderFrames(to dir: URL, clip: MascotClip = .peck, scale: CGFloat = 2, dark: Bool = false) -> Int {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let frames = MascotLibrary.shared.timelineFrames(clip)
+        let bg = dark ? CGColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1) : CGColor(srgbRed: 0.97, green: 0.96, blue: 0.94, alpha: 1)
+        let frames = MascotLibrary.shared.timelineFrames(clip, points: 80, scale: scale, dark: dark, backdrop: bg)
         for (i, f) in frames.enumerated() {
-            let w = Int(CGFloat(f.width) * scale), h = Int(CGFloat(f.height) * scale)
-            guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            else { continue }
-            ctx.setFillColor(dark ? CGColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1) : CGColor(srgbRed: 0.97, green: 0.96, blue: 0.94, alpha: 1))
-            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-            ctx.interpolationQuality = .high
-            ctx.draw(f, in: CGRect(x: 0, y: 0, width: w, height: h))
-            guard let img = ctx.makeImage() else { continue }
-            let rep = NSBitmapImageRep(cgImage: img)
+            let rep = NSBitmapImageRep(cgImage: f)
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent(String(format: "f%03d.png", i)))
         }
         return frames.count

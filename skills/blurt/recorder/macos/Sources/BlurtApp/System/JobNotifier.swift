@@ -78,7 +78,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     private func quiet(_ text: String, action: String, art: MascotClip? = nil, launch: LaunchRank? = nil, _ run: @escaping () -> Void) {
         if AppEnvironment.island != nil, let clip = art {
             // done: the chick hops beside the line (the mascot, Icons/Mascot.swift)
-            let chick = MascotView(clip: clip, size: 50)
+            let chick = MascotView(clip: clip, size: 50, backdrop: .dark)
             chick.show(clip, frame: 0)
             var t = Island.Toast(text: text, actionTitle: action, action: run)
             t.art = chick

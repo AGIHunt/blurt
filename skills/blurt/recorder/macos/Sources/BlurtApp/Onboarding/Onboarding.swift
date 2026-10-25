@@ -475,7 +475,7 @@ struct OnboardingHero: View {
                 Spacer()
                 ZStack {
                     SpectrumGlow(size: 150, opacity: 0.5)
-                    MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 96)
+                    MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 96, backdrop: .light)
                         .frame(width: 96, height: 96)
                 }
                 .frame(width: 128, height: 128)

@@ -13,6 +13,7 @@
 > - 实时文字面板下的渐变横线去掉了。所有装饰性的渐变、光晕、描边的去留见 §14。
 > - 红 = 正在录，琥珀 = 要你处理，叶绿 + ✓ = 完成。珊瑚只剩画笔。task 类型改为紫色。
 > - **App 图标**：白身黑线的鸡（方案 A）放在渐变 field 底板上。
+> - **吉祥物就是 logo 那只鸡**（§6.1）：4A 线条小鸡本身的几何，暖黄身体、图标的黑线、珊瑚色嘴，用代码画、用代码动（跳、眨眼、扇翅膀、声波跳动、破壳）；之前那只 1A 位图圆鸡在 Mac 上退役，网页端暂时还在用。
 > - 唯一来源：`assets/color/tokens.json` + `assets/color/build.py`（生成 Swift `BrandColor`、CSS 变量、`AccentColor`，`--check` 检查过期和对比度）。
 
 Status: **v2, implemented; toned down (v2.1, "restrained", §14)** in the macOS app (`skills/blurt/recorder/macos`), the web UI packages (`web/packages/ui`,
@@ -312,7 +313,7 @@ redo:
 - Product mock-ups on the site follow the product rules exactly: a recording frame is `rec`, annotations are
   `markup`, the capture selection is the **G** stroke.
 - The app icon (§6) replaces the yellow tile everywhere (favicon, og image, README logo tile).
-- Yellow is no longer a brand colour. It remains only as `kind.idea` and in illustrations (the egg).
+- Yellow is no longer a brand colour. It remains only as `kind.idea` and in the mascot (the chick's body, §6.1).
 - CSS: the variables and recipes in §5.2 (`--brand-gradient`, `--brand-field`, `--grain`), from the same
   `tokens.json`.
 
@@ -438,6 +439,39 @@ brand gradients.
   `.appiconset` with dark entries is ignored for the mac idiom. It would fit the actool run `assets/color/build.py`
   already does, at the cost of a 2–6 MB `Assets.car` (`assets/brand/README.md`).
 - **Menu bar**: unchanged (template glyph).
+
+### 6.1 The mascot (shipped, v0.9)
+
+**One chick.** The mascot for moments (the onboarding hero, the island's ears and quiet lines, the voice note,
+notification pictures) is the mark itself — the 4A line chick of the icon, logo and menu bar — in colour. It replaces
+the 1A round raster chick (frames from an image model), which did not look like the logo; the user kept its warm
+yellow and its bounce.
+
+- **Drawing**: the mark's own geometry (`assets/brand/chick.swift` writes `Icons/MascotGeometry.swift`: the outline,
+  wings, eyes, beak, arcs), so it is the logo's chick by construction. 32 pt and below use the 32 px icon's drawing
+  (heavier line, one arc, filled beak). The line is the icon's (`#17140F`, as thick relative to the art as on the
+  1024 icon).
+- **Colour**: a warm butter-yellow body (`#FFC83D`, the 1A yellow) under the line, wings a shade deeper, a coral beak,
+  faint cheeks, a soft shade low on the body. The art's colours live in `chick.swift` with the art, like the icon's
+  line and white body; the UI's colours stay in `tokens.json`. On a dark backdrop (the island, dark mode) the free
+  marks (sound arcs, thought dots) turn light (`#F4F1EA`) and the ground shadow goes; the body keeps its line. On
+  the onboarding field it reads as on a light backdrop, like the icon on its tile. Notification pictures carry the
+  logo's white sticker edge.
+- **Motion** (`Icons/MascotArt.swift`, vector, drawn for each moment at 60 fps while it plays): posed part by part
+  about the foot — hops with squash and stretch, tilt, wings that flap (drawn whole behind the body, so at rest only
+  the nub shows, as on the icon), blinks, glances, ^ ^ eyes, an open beak, sound arcs that pulse. Clips: `idle`
+  (breathes, blinks, glances), `listening` (head tilted, the arcs pulse outward, inner then outer — like the menu-bar
+  glyph), `thinking` (eyes up, thought dots where the arcs were), `wobble` (the egg rocking: organizing), `hatching`
+  (the egg cracks, the cap flies off, the chick pops up and hops out, ending where `idle` begins), `happy` (two hops,
+  wings up, sparkles), `peck` (spots a bug, pounces on it, the bug goes in a sparkle, a hop back). Sparkles are warm
+  yellow and coral, without a line.
+- **Reduce Motion**: each clip's still moment, which says the same thing (the happy face, the listening tilt with
+  both arcs, the chick out of its egg).
+- **Restraint**: the mascot is illustration, not UI: it never carries brand mint or the gradient, and only one
+  mascot moves at a time on a screen. Empty states keep the app icon (§3.5).
+- **Web** (Windows / Linux overlays, Tauri) still plays the 1A strips from `assets/mascot/`; porting is in TODO.md.
+- Comparison sheet (untracked): `promo/cases/v0.9-polish/mascot/compare.png`, every clip before / after, light and
+  dark, next to the app icon.
 
 ## 7. Typography (as used today)
 

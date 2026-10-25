@@ -589,7 +589,7 @@ final class IslandContent: NSView {
         let v = VoiceInput.shared
         var y: CGFloat = top + 8
         // the chick listens (head tilted, sound arcs) beside the live waveform
-        let chick = MascotView(size: 56)
+        let chick = MascotView(size: 56, backdrop: .dark)
         chick.frame.origin = NSPoint(x: 8, y: y - 13)
         addSubview(chick)
         chick.play(.listening)

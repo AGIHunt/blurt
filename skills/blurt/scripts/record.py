@@ -614,9 +614,6 @@ def native_binary(build: bool = True) -> Path | None:
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     for lproj in sorted((SWIFT_DIR / "Sources" / "BlurtApp" / "Resources").glob("*.lproj")):   # K10 string tables
         shutil.copytree(lproj, APP_BUNDLE / "Contents" / "Resources" / lproj.name, dirs_exist_ok=True)
-    mascot = SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Mascot"    # the chick's frame strips (Icons/Mascot.swift)
-    if mascot.is_dir():
-        shutil.copytree(mascot, APP_BUNDLE / "Contents" / "Resources" / "Mascot", dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
     # the AccentColor (Info.plist NSAccentColorName): compiled by assets/color/build.py with Xcode's actool and

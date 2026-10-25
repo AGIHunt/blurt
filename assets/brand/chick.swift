@@ -1,9 +1,11 @@
 // The blurt brand mark — the 4A line chick (v0.8): front-facing round chick, a tuft of three bumps, dot eyes, a small
 // diamond beak, wing nubs and two sound arcs at the top right, in one even line. This file is the geometry; it writes
-// every SVG source in assets/brand/ (build.py renders the bitmaps from those):
+// every SVG source in assets/brand/ (build.py renders the bitmaps from those) and the mac app's mascot drawing:
 //
-//     swift assets/brand/chick.swift                 # → chick-line.svg, chick-filled.svg, app-icon*.svg, glyph.svg
+//     swift assets/brand/chick.swift                 # → chick-line.svg, chick-filled.svg, app-icon*.svg, glyph.svg,
+//                                                    #   …/BlurtApp/Icons/MascotGeometry.swift (the mascot, in colour)
 //     swift assets/brand/chick.swift --alts DIR      # also the three v0.8 yellow / dark / white tile treatments
+//     swift assets/brand/chick.swift --check         # write nothing; exit 1 if an output is stale (tests run this)
 //
 // The icon tile's colour is not here: it is `gradient.field` (and `gradient.linear` for 32 / 16 px, `gradient.deep`
 // for the dark variant, `gradient.grain` for the grain) in assets/color/tokens.json, read at run time, so colour stays
@@ -424,9 +426,17 @@ func glyphSVG(_ c: Chick, w wPt: CGFloat = 1.5) -> String {
 
 let args = CommandLine.arguments
 let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+/// `--check`: write nothing, list the outputs that differ from what this run would write, exit 1 if any (tests run it).
+let checkOnly = args.contains("--check")
+var stale: [String] = []
 func write(_ s: String, _ name: String, dir: URL = here) {
-    try! s.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
-    print("wrote", dir.appendingPathComponent(name).path)
+    let url = dir.appendingPathComponent(name)
+    if checkOnly {
+        if (try? String(contentsOf: url, encoding: .utf8)) != s { stale.append(url.path) }
+        return
+    }
+    try! s.write(to: url, atomically: true, encoding: .utf8)
+    print("wrote", url.path)
 }
 
 // MARK: - the tile's colour, from assets/color/tokens.json
@@ -528,6 +538,90 @@ do {
 
 write(glyphSVG(glyphChick), "glyph.svg")
 
+// MARK: - the mascot (the app's animated chick)
+
+/// The mascot's palette: the 4A chick in colour, for moments (onboarding, the island, notifications). The line, the
+/// eyes and the glints are the icon's; the body is the warm yellow the earlier 1A mascot had (#FFC83D), the beak coral.
+/// Colours of the art live with the art (like the icon's #17140f line and white body above); the UI's colours live in
+/// assets/color/tokens.json.
+let mascotPalette: [(String, String, String)] = [
+    ("line", "17140F", "the line and the eyes (the icon's)"),
+    ("inkOnDark", "F4F1EA", "the free marks (sound arcs, thought dots) on a dark backdrop, where the line would vanish"),
+    ("body", "FFC83D", "body and tuft: warm butter yellow"),
+    ("wing", "F7B52A", "the wings, a shade deeper than the body"),
+    ("shade", "F2A81E", "the soft shade low on the body"),
+    ("beak", "FF7A45", "the beak, coral"),
+    ("blush", "FF8A65", "the cheeks (drawn at 30 %)"),
+    ("glint", "FFFFFF", "the eye glints"),
+    ("shell", "FFF8EC", "the egg's shell"),
+    ("shellIn", "F3E2C2", "the shell's inside"),
+]
+
+/// The chick's parts as the app draws them (Icons/MascotArt.swift): the outline as a path, everything else as the
+/// numbers chick.swift draws it from, so the app can pose each part (wings flap, eyes blink, arcs pulse).
+func mascotSwift() -> String {
+    func n(_ v: CGFloat) -> String { fmt(v, 2) }
+    func pathCode(_ path: CGPath, indent: String) -> String {
+        var out: [String] = []
+        var cur = CGPoint.zero, start = CGPoint.zero
+        func P(_ p: CGPoint) -> String { n(p.x) + ", " + n(p.y) }
+        path.applyWithBlock { e in
+            let el = e.pointee, pts = el.points
+            switch el.type {
+            case .moveToPoint: out.append("p.m(\(P(pts[0])))"); cur = pts[0]; start = cur
+            case .addLineToPoint: out.append("p.l(\(P(pts[0])))"); cur = pts[0]
+            case .addQuadCurveToPoint:
+                let c1 = CGPoint(x: cur.x + 2 / 3 * (pts[0].x - cur.x), y: cur.y + 2 / 3 * (pts[0].y - cur.y))
+                let c2 = CGPoint(x: pts[1].x + 2 / 3 * (pts[0].x - pts[1].x), y: pts[1].y + 2 / 3 * (pts[0].y - pts[1].y))
+                out.append("p.c(\(P(c1)), \(P(c2)), \(P(pts[1])))"); cur = pts[1]
+            case .addCurveToPoint: out.append("p.c(\(P(pts[0])), \(P(pts[1])), \(P(pts[2])))"); cur = pts[2]
+            case .closeSubpath: out.append("p.z()"); cur = start
+            @unknown default: break
+            }
+        }
+        return out.map { indent + $0 }.joined(separator: "\n")
+    }
+    func geometry(_ name: String, _ c: Chick, line: CGFloat, doc: String) -> String {
+        let (wdx, wcy, wrx, wry, wdeg) = c.wing
+        let (edx, ecy, er) = c.eye
+        let (gx, gy, gr) = c.glint
+        let (bcy, bw, bup, bdown) = c.beak
+        let arcs = c.arcs.map { "(r: \(n($0.0)), from: \(n($0.1)), to: \(n($0.2)))" }.joined(separator: ", ")
+        var s = "    /// \(doc)\n"
+        s += "    static let \(name) = MascotGeometry(\n"
+        s += "        cx: \(n(c.cx)), foot: \(n(c.yb)), line: \(n(line)),\n"
+        s += "        outline: MascotGeometry.path { p in\n" + pathCode(c.outline, indent: "            ") + "\n        },\n"
+        s += "        wing: (dx: \(n(wdx)), cy: \(n(wcy)), rx: \(n(wrx)), ry: \(n(wry)), deg: \(n(wdeg))),\n"
+        s += "        eye: (dx: \(n(edx)), cy: \(n(ecy)), r: \(n(er))), glint: (dx: \(n(gx)), dy: \(n(gy)), r: \(n(gr))),\n"
+        s += "        beak: (cy: \(n(bcy)), w: \(n(bw)), up: \(n(bup)), down: \(n(bdown))), slit: \(c.slit && !c.filledBeak), filledBeak: \(c.filledBeak),\n"
+        s += "        arcCentre: CGPoint(x: \(n(c.arcCentre.x)), y: \(n(c.arcCentre.y))), arcs: [\(arcs)])\n"
+        return s
+    }
+    // the line in hero units, as thick as on the app icon (30 px of 1024; 54 px in the 32 px slot)
+    let lineMaster = iconW / place(master, w: iconW, width: iconArtW, centre: .zero).a
+    let lineSmall = 54 / place(small, w: 54, width: 690, centre: .zero).a
+    var s = """
+    // GENERATED by assets/brand/chick.swift — do not edit; edit chick.swift and run `swift assets/brand/chick.swift`.
+    //
+    // The mascot is the brand mark: the 4A line chick's own geometry, in the hero space chick.swift draws in (y down; the
+    // body's foot at `foot`), for Icons/MascotArt.swift to pose and animate part by part. `master` is the logo's chick;
+    // `small` the 32 px icon's (heavier line, one sound arc, a filled beak, no glints), for mascots of 32 pt and less.
+    import CoreGraphics
+
+    extension MascotGeometry {
+
+    """
+    s += geometry("master", master, line: lineMaster, doc: "The logo's chick (app-icon.svg, chick-line.svg); the line as on the 1024 icon.") + "\n"
+    s += geometry("small", small, line: lineSmall, doc: "The 32 px icon's chick (app-icon-small.svg): for mascots of 32 pt and less.")
+    s += "}\n\nextension MascotPalette {\n"
+    for (k, hex, what) in mascotPalette { s += "    /// \(what)\n    static let \(k): UInt32 = 0x\(hex)\n" }
+    s += "}\n"
+    return s
+}
+write(mascotSwift(), "MascotGeometry.swift",
+      dir: here.deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("skills/blurt/recorder/macos/Sources/BlurtApp/Icons"))
+
 if let i = args.firstIndex(of: "--alts"), i + 1 < args.count {
     let dir = URL(fileURLWithPath: args[i + 1])
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -536,4 +630,9 @@ if let i = args.firstIndex(of: "--alts"), i + 1 < args.count {
         write(iconSVG(small, look, w: 54, artWidth: 690, nudge: CGPoint(x: -4, y: 10), title: look.title, desc: ""), "tile-\(look.name)-small.svg", dir: dir)
         write(iconSVG(tiny, look, w: 76, artWidth: 640, nudge: CGPoint(x: 0, y: 14), title: look.title, desc: ""), "tile-\(look.name)-16.svg", dir: dir)
     }
+}
+
+if checkOnly {
+    for p in stale { print("stale:", p) }
+    exit(stale.isEmpty ? 0 : 1)
 }

@@ -103,6 +103,7 @@ final class EarSlot {
         for l in [icon, label, dot, bars, level, chick] { layer.addSublayer(l); l.isHidden = true }
         icon.contentsGravity = .resizeAspect
         icon.contentsScale = 2
+        chick.backdrop = .dark                 // the island is always black
     }
 
     var animating: Bool {

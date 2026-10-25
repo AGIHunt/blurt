@@ -65,27 +65,33 @@ BlurtIcon(named: "close")                             // names and aliases, the 
 **Tk**: `skills/blurt/assets/icons/NAME.png`, `@1.5x` and `@2x` (light `#f4f4f5` glyphs for the dark bar), loaded with
 `tk_icon(widget, name)`.
 
-## The mascot (colour, frame-animated)
+## The mascot (colour, animated)
 
-Two chicks, one family. The line glyph (`chicken`, `blurt`, `peck`, `hatched`: the 4A design, front-facing round chick)
-is the icon: template-tinted, in menus, the menu bar and small marks. It moves in code only — `GlyphMotion.tilt / hop`
-(Core Animation) and `App/MenuGlyph.swift` (the menu-bar chick's sound arcs pulse while voice input listens, it hops
-when something is done); on the web `.ico.tilt` / `.ico.hop` from `@blurt/icons/mascot.css`.
-The colour chick (1A) is for moments: `assets/mascot/` holds one WebP strip per animation (160 px frames) and
-`mascot.json` (clips: idle, listening, thinking, wobble, hatching, happy, peck — timelines at 12 fps). `assets/mascot/tools/
-cut.py` makes the strips from the codex-generated sheets (prompts in `assets/mascot/prompts/`), `build.py` copies them to
-`Resources/Mascot/` (mac) and `web/packages/icons/mascot/` (web, with the CSS keyframes).
+One chick. The line glyph (`chicken`, `blurt`, `peck`, `hatched`: the 4A design, front-facing round chick) is the icon:
+template-tinted, in menus, the menu bar and small marks. It moves in code only — `GlyphMotion.tilt / hop` (Core
+Animation) and `App/MenuGlyph.swift` (the menu-bar chick's sound arcs pulse while voice input listens, it hops when
+something is done); on the web `.ico.tilt` / `.ico.hop` from `@blurt/icons/mascot.css`.
+The mascot for moments is the same chick in colour: the mark's own geometry (`assets/brand/chick.swift` writes
+`Icons/MascotGeometry.swift`), a warm yellow body under the icon's line, a coral beak, posed part by part and moved in
+code (`Icons/MascotArt.swift`: clips idle, listening, thinking, wobble, hatching, happy, peck), vector at any size.
+`assets/brand/README.md` describes it.
 
 ```swift
-let v = MascotView(clip: .idle, size: 64); v.play(.happy) { … }   // AppKit; MascotLayer for layer-built UIs
-MascotImage(clip: .hatching, then: .idle, size: 64)                // SwiftUI
+let v = MascotView(clip: .idle, size: 64, backdrop: .dark); v.play(.happy) { … }   // AppKit; MascotLayer for layer UIs
+MascotImage(clip: .hatching, then: .idle, size: 64, backdrop: .light)                // SwiftUI
 ```
-Web: `import "@blurt/icons/mascot.css"` once, then `<Mascot clip="happy" size={80}/>` or `mascotHtml("wobble", { size: 24 })`.
-Reduce Motion / prefers-reduced-motion: the clip's still frame.
+Reduce Motion: the clip's still moment.
+
+Web (Windows / Linux overlays, Tauri) still plays the earlier 1A round chick: `assets/mascot/` holds one WebP strip per
+animation and `mascot.json`; `assets/mascot/tools/build.py` copies them to `web/packages/icons/mascot/` with the CSS
+keyframes. `import "@blurt/icons/mascot.css"` once, then `<Mascot clip="happy" size={80}/>` or
+`mascotHtml("wobble", { size: 24 })`; prefers-reduced-motion: the clip's still frame. Porting the vector chick is in
+TODO.md.
 
 Where: island ear while captures are organised (`wobble` → `hatching`), voice input (`listening`), the organised line and
-item done (`happy`), item to verify (`peck`), onboarding header (`hatching` → `idle`, last step `happy`), the main
-window's friendly empty states, notification attachments (still frames).
+item done (`happy`), item to verify (`peck`), the onboarding hero panel (`hatching` → `idle`, last step `happy`),
+notification attachments (the still moment on the logo's white sticker edge). Empty states show the app icon, not the
+mascot (`docs/design/system.md` §3.5).
 
 ## SF Symbols on macOS (generic icons)
 

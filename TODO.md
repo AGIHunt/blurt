@@ -130,3 +130,8 @@
 - [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
 - [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
 - [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)
+- [ ] One chick on the web too: the Mac mascot is now the 4A logo chick in colour, drawn and moved in code
+      (Icons/MascotArt.swift + the generated MascotGeometry.swift; docs/design/system.md §6.1). The overlays and the
+      Tauri app still play the 1A raster strips (`@blurt/icons/mascot`, assets/mascot). Port: have chick.swift also write
+      the geometry for TS (or SVG parts), draw it in a canvas / SVG with the same clips and timings, then drop the webp
+      strips and assets/mascot.

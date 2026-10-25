@@ -36,7 +36,7 @@
 //     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
-//     mascotframes DIR CLIP [dark]  the clip's frames as PNGs, in timeline order
+//     mascotframes DIR CLIP [dark]  the clip at 12 fps as PNGs (80 pt, 2x), in order
 //     menuicon DIR            renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x
 //     dictation keys SCRIPT   synthetic key events into the dictation trigger, at their script times (no event tap,
 //                             nothing posted to any app): "ropt-down@0 ropt-up@120" — BlurtCore DictationTrigger.parse
@@ -202,7 +202,7 @@ extension App {
             let a = arg.split(separator: " ").map(String.init)
             if a.count == 2, let n = Int(a[0]), let s = snapper.cards.first(where: { $0.n == n }) { snapper.assign(s, to: a[1]) }
         case "framerec": FrameCapture.start(arg)      // framerec DIR SECS X,Y,W,H [BACKDROP|-] [FPS] [cursor]
-        case "mascotframes":                            // mascotframes DIR CLIP [dark]: the clip's frames, timeline order
+        case "mascotframes":                            // mascotframes DIR CLIP [dark]: the clip at 12 fps
             let a = arg.split(separator: " ").map(String.init)
             guard let d = a.first else { return }
             let n = PeckCard.renderFrames(to: URL(fileURLWithPath: d), clip: MascotClip(rawValue: a.count > 1 ? a[1] : "") ?? .peck,
