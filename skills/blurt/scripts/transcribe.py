@@ -89,7 +89,7 @@ from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ff
                      load_json, probe_duration, save_json, serve_exit_reason, serve_said, update_global_config,
                      use_system_certs)
 from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
-                     safetensors_complete, watch_parent)
+                     safetensors_complete, watch_parent, write_text_atomic)
 
 use_system_certs()
 
@@ -726,15 +726,41 @@ def hf_cache() -> Path:
     return Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface") / "hub"
 
 
+def _hf_record(repo: str) -> Path:
+    """What a finished `snapshot_download` of `repo` left: MODELS_DIR/asr/.hf/<repo>.json (its snapshot and files)."""
+    return MODELS_DIR / "asr" / ".hf" / (repo.replace("/", "--") + ".json")
+
+
+def _snapshot_complete(s: Path, repo: str) -> bool:
+    """A Hugging Face snapshot is a whole model. One `setup` saw finish: every file it listed is there. One from before
+    that record (or fetched by something else): its weights, its config, every shard its index names, and the
+    tokenizer its tokenizer_config.json asks for — a setup cut short between files leaves one of them out."""
+    rec = load_json(_hf_record(repo), None)
+    if isinstance(rec, dict) and rec.get("snapshot") == s.name and isinstance(rec.get("files"), list):
+        return all((s / f).is_file() for f in rec["files"])
+    names = {f.name for f in s.iterdir()} if s.is_dir() else set()
+    if not any(f.endswith((".safetensors", ".npz", ".bin")) and not f.startswith("training_args") for f in names):
+        return False
+    if "config.json" not in names or any(f.endswith((".part", ".incomplete")) for f in names):
+        return False
+    if any(f.endswith(".safetensors") for f in names) and not safetensors_complete(s):
+        return False
+    if "tokenizer_config.json" in names and not names & {"tokenizer.json", "vocab.json", "tokenizer.model"}:
+        return False
+    if "tokenizer_config.json" in names and "vocab.json" in names and "tokenizer.json" not in names \
+            and "merges.txt" not in names:          # a BPE tokenizer in two files: both
+        return False
+    return True
+
+
 def hf_snapshot(repo: str) -> Path | None:
-    """The newest complete snapshot of `repo` in the Hugging Face cache, else None."""
+    """The newest complete snapshot of `repo` in the Hugging Face cache (_snapshot_complete), else None."""
     root = hf_cache() / ("models--" + repo.replace("/", "--"))
     snaps = sorted((root / "snapshots").glob("*"), key=lambda p: p.stat().st_mtime, reverse=True) if root.is_dir() else []
     if any((root / "blobs").glob("*.incomplete")):
         return None
     for s in snaps:
-        files = [f.name for f in s.iterdir()]
-        if any(f.endswith((".safetensors", ".npz", ".bin")) and not f.startswith("training_args") for f in files):
+        if _snapshot_complete(s, repo):
             return s
     return None
 
@@ -837,7 +863,10 @@ def _install_unlocked(m: dict) -> Path:
             th = threading.Thread(target=_progress_poller, args=(target, float(m["size_mb"]), stop), daemon=True)
             th.start()
             try:
-                snapshot_download(inst["hf"])
+                snap = Path(snapshot_download(inst["hf"]))
+                # it finished: what it brought is the model (hf_snapshot checks against this list from now on)
+                write_text_atomic(_hf_record(inst["hf"]), json.dumps(
+                    {"snapshot": snap.name, "files": sorted(str(f.relative_to(snap)) for f in snap.rglob("*") if f.is_file())}))
             except Exception as e:  # noqa: BLE001
                 if not mirrored:
                     raise Fail(f"could not download {inst['hf']}: {e}", "network")
@@ -2296,15 +2325,20 @@ def dictation_models(hw: dict | None = None) -> dict:
     fallback = QWEN_MLX if rec == QWEN_MLX_17 else None
     selected = next((mid for mid in (configured, rec, fallback) if mid and entry(mid) and runs_here(entry(mid))
                      and installed(entry(mid))), note_pick["id"])
+    # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
+    # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
+    # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
+    vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     rows = []
     for mid in DICTATION_MODELS:
         m = entry(mid)
         if not m or not runs_here(m):
             continue
+        have = installed(m)
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
-                     "ram_mb": m.get("ram_mb"), "installed": installed(m), "vocab": m.get("vocab") or "none",
-                     "recommended": mid == rec, "fits": _fits(m, hw)})
-    return {"configured": configured, "recommended": rec, "selected": selected, "models": rows}
+                     "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True)), "files": have,
+                     "vocab": m.get("vocab") or "none", "recommended": mid == rec, "fits": _fits(m, hw)})
+    return {"configured": configured, "recommended": rec, "selected": selected, "vad": vad, "models": rows}
 
 
 def cmd_dictation_models(_a):

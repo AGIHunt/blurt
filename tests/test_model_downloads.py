@@ -119,6 +119,75 @@ class MirrorDownloadIsCompleteOrNotInstalled(unittest.TestCase):
         self.assertEqual(T.model_path(asr_entry(self.name)), self.dest)
 
 
+class HuggingFaceSnapshotIsCompleteOrNotInstalled(unittest.TestCase):
+    """The Hugging Face cache side of transcribe.py's model_path: a snapshot that a setup cut short between files
+    (no *.incomplete blob left, but a shard or the tokenizer missing) is not installed."""
+
+    def setUp(self):
+        self.hub = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.hub, ignore_errors=True))
+        self.name = f"Test-HF-{os.getpid()}-{time.time_ns()}"
+        self.repo = f"mlx-community/{self.name}"
+        self.snap = self.hub / ("models--" + self.repo.replace("/", "--")) / "snapshots" / "abc123"
+        self.snap.mkdir(parents=True)
+        (self.hub / ("models--" + self.repo.replace("/", "--")) / "blobs").mkdir()
+        rec = T._hf_record(self.repo)
+        self.addCleanup(lambda: rec.unlink(missing_ok=True))
+        p = mock.patch.dict(os.environ, {"HF_HUB_CACHE": str(self.hub)})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def put(self, *names):
+        for n in names:
+            (self.snap / n).write_text("{}" if n.endswith(".json") else "x")
+
+    def test_a_snapshot_missing_a_shard_or_its_tokenizer_is_not_installed(self):
+        m = asr_entry(self.name)
+        self.put("config.json", "model-00001-of-00002.safetensors", "tokenizer_config.json")
+        (self.snap / "model.safetensors.index.json").write_text(json.dumps(
+            {"weight_map": {"a": "model-00001-of-00002.safetensors", "b": "model-00002-of-00002.safetensors"}}))
+        self.assertIsNone(T.model_path(m))                       # a shard missing
+        self.put("model-00002-of-00002.safetensors")
+        self.assertIsNone(T.model_path(m))                       # the tokenizer its config asks for missing
+        self.put("vocab.json")
+        self.assertIsNone(T.model_path(m))                       # BPE: merges.txt too
+        self.put("merges.txt")
+        self.assertEqual(T.model_path(m), self.snap)
+
+    def test_no_config_is_not_a_model(self):
+        self.put("weights.safetensors")
+        self.assertIsNone(T.hf_snapshot(self.repo))
+        self.put("config.json")
+        self.assertEqual(T.hf_snapshot(self.repo), self.snap)    # mlx whisper: config + one weights file
+
+    def test_a_finished_setup_lists_its_files(self):
+        self.put("config.json", "weights.safetensors", "extra.json")
+        C.write_text_atomic(T._hf_record(self.repo), json.dumps({"snapshot": "abc123", "files": ["config.json", "weights.safetensors", "extra.json"]}))
+        self.assertEqual(T.hf_snapshot(self.repo), self.snap)
+        (self.snap / "extra.json").unlink()
+        self.assertIsNone(T.hf_snapshot(self.repo))             # a file the finished setup had is gone
+
+
+class DictationNeedsTheVad(unittest.TestCase):
+    """dictation-models: a model whose files are in but whose VAD (silero_vad.onnx) isn't can't dictate — the warm
+    server answers model_missing under BLURT_NO_DOWNLOAD — so it isn't "installed" for the dictation key."""
+
+    def test_files_without_the_vad_are_not_installed(self):
+        vad = T.MODELS_DIR / "silero_vad.onnx"
+        had = vad.read_bytes() if vad.is_file() else None
+        self.addCleanup(lambda: vad.write_bytes(had) if had is not None else vad.unlink(missing_ok=True))
+        vad.unlink(missing_ok=True)
+        with mock.patch.object(T, "installed", return_value=True):
+            d = T.dictation_models()
+            self.assertFalse(d["vad"])
+            local = [r for r in d["models"] if r["files"]]
+            self.assertTrue(local)
+            self.assertFalse(any(r["installed"] for r in local if T.entry(r["id"]).get("local", True)))
+            vad.parent.mkdir(parents=True, exist_ok=True)
+            vad.write_bytes(b"onnx")
+            self.assertTrue(all(r["installed"] for r in T.dictation_models()["models"]))
+
+
 class PolishSetupNeverSaysOkOnAPartialModel(unittest.TestCase):
     def test_both_sources_failing_is_an_error(self):
         name = f"Test-Polish-{os.getpid()}-{time.time_ns()}"

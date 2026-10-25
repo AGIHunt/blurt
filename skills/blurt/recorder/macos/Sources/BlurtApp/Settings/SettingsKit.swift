@@ -457,9 +457,10 @@ struct PermissionRows: View {
     }
 
     /// One permission: the dot, its name and why, then one word or one button. Allowed: "Allowed" (quiet). Turned off
-    /// in System Settings: "Turned off" in attention ink, and Allow…. Never asked: just Allow… (the dot and the button
-    /// already say it's missing). Not needed for what Blurt does now (Input Monitoring once Accessibility hears the
-    /// dictation key): a neutral dot and "Not needed". System Settings' own pane is in the Allow button's menu.
+    /// in System Settings: "Turned off" in attention ink, and System Settings… (macOS won't ask again, so the button
+    /// says where it goes). Never asked: just Allow… (the dot and the button already say it's missing; System
+    /// Settings' own pane is in its menu). Not needed for what Blurt does now (Input Monitoring once Accessibility
+    /// hears the dictation key): a neutral dot and "Not needed".
     func row(_ k: PermissionKind, _ st: Permissions.State) -> some View {
         let now = guide.running && guide.current == k
         let notNeeded = st != .granted && guide.satisfied(k)
@@ -478,8 +479,13 @@ struct PermissionRows: View {
                 Text(T("settings.kit.allowed")).foregroundStyle(.secondary).font(.callout)
             } else if notNeeded {
                 Text(T("settings.perm.not_needed")).foregroundStyle(.secondary).font(.callout)
+            } else if st == .denied {
+                // macOS won't ask again: the way back is System Settings, said on the button itself (the guide opens
+                // the exact pane, with its helper panel beside it)
+                Text(T("settings.kit.not_allowed")).foregroundStyle(Color.brandAttnInk).font(.callout)
+                Button(T("settings.kit.system_settings")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
+                    .accessibilityIdentifier("perm.\(k).open_settings")
             } else {
-                if st == .denied { Text(T("settings.kit.not_allowed")).foregroundStyle(Color.brandAttnInk).font(.callout) }
                 Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
                     .contextMenu {
                         if paneLink { Button(T("settings.kit.system_settings")) { Permissions.openPane(k) } }

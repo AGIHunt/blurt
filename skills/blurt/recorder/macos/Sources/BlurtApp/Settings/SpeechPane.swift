@@ -184,6 +184,7 @@ final class SpeechModel: ObservableObject {
     func download(_ id: String) -> (done: Double, total: Double, text: String)? {
         let dl = ModelDownloads.shared
         if let p = dl.progress(id) {
+            if dl.isUnpacking(id) { return (p.total, p.total, S("speech.download.unpacking")) }
             return (p.done, p.total, p.done == 0 ? S("speech.download.preparing") : S("speech.download.progress", mb(p.done), mb(p.total)))
         }
         if dl.isQueued(id) { return (0, model(id)?.sizeMB ?? 1, S("speech.download.queued")) }

@@ -108,6 +108,8 @@ final class DictationStream {
         var pieces: [[String: Any]] = []
         /// Structured: the structuring pass's text (nil: not asked, or it refused — then `text` is typed)
         var structured: String?
+        /// why the speech model gave nothing, when it said (`code` of the server's / CLI's answer: "model_missing"…)
+        var asrCode: String?
         /// why the structuring pass refused (nil: it didn't, or wasn't asked)
         var structureReason: String?
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -463,12 +465,14 @@ final class DictationStream {
         }
         let first = ps.first { $0.asr != nil }?.asr ?? [:]
         let repaired = ps.flatMap { ($0.polish?["repaired"] as? [String]) ?? [] }
-        return Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: polished, fellBack: fellBack,
+        var result = Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: polished, fellBack: fellBack,
                       reason: reason, model: pol.first { $0["model"] is String }?["model"] as? String,
                       asrModel: first["model"] as? String, language: first["language"] as? String,
                       biased: first["biased"] as? Bool ?? false, terms: terms,
                       contextUsed: pol.contains { $0["context"] as? Bool == true }, repaired: repaired,
                       segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
+        result.asrCode = ps.lazy.compactMap { $0.asr?["ok"] as? Bool == false ? $0.asr?["code"] as? String : nil }.first
+        return result
     }
 
     /// One piece for the Dictation Lab (what each stage made of it, and how long it took).
@@ -500,7 +504,7 @@ final class DictationStream {
         var timing = ["asr_ms": Int((t1 - t0) * 1000), "polish_ms": Int((t2 - t1) * 1000), "segments": n,
                       "load_ms": (r["load_ms"] as? Int ?? 0) + (pol?["load_ms"] as? Int ?? 0)]
         timing["total_ms"] = Int((t2 - keyUp) * 1000)
-        return Result(raw: raw, asrText: r["asr_text"] as? String ?? raw, text: text, polished: pol?["polished"] as? String,
+        var res = Result(raw: raw, asrText: r["asr_text"] as? String ?? raw, text: text, polished: pol?["polished"] as? String,
                       fellBack: pol?["fell_back"] as? Bool ?? false, reason: pol?["reason"] as? String,
                       model: pol?["model"] as? String, asrModel: r["model"] as? String, language: r["language"] as? String,
                       biased: r["biased"] as? Bool ?? false, terms: (r["terms"] as? [String] ?? []) + (pol?["terms"] as? [String] ?? []),
@@ -511,6 +515,8 @@ final class DictationStream {
                                 "text": text, "polish_in": raw, "polished": pol?["polished"] ?? NSNull(),
                                 "polish_ms": timing["polish_ms"] ?? 0, "fell_back": pol?["fell_back"] as? Bool ?? false,
                                 "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? []]])
+        res.asrCode = r["ok"] as? Bool == false ? r["code"] as? String : nil
+        return res
     }
 
     /// What the user waited for after key-up (the work before it was hidden behind the talking), and the total.

@@ -22,6 +22,9 @@
 "dictation.toast.on.hold" = "Dictation is on: hold %@ and talk";
 "dictation.toast.recording_busy" = "Recording — dictation is off while the recording has the microphone";
 "dictation.toast.voice_busy" = "A voice note is listening — finish it first";
+"dictation.toast.nothing.named" = "Didn’t catch anything (%@)";
+"dictation.toast.nothing.silent" = "No sound from %@";
+"dictation.toast.nothing.change" = "Change Mic…";
 "dictation.toast.nothing" = "Didn’t catch anything";
 "dictation.toast.copied" = "Copied — paste it with Command-V";
 "dictation.toast.pasted_unsure" = "Pasted";
@@ -129,9 +132,9 @@
 "dictation.vocab.ignore" = "Ignore";
 "dictation.vocab.remove" = "Remove";
 "dictation.vocab.context" = "Use the text around the cursor";
-"dictation.vocab.context.detail" = "Names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
+"dictation.vocab.context.detail" = "On: names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
 "dictation.vocab.learn" = "Learn from my fixes";
-"dictation.vocab.learn.detail" = "When you fix a name Blurt got wrong, it learns the word.";
+"dictation.vocab.learn.detail" = "On: when you fix a name Blurt got wrong, it learns the word.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
 "dictation.mode.auto" = "Tap or hold";
@@ -479,4 +482,6 @@
 "dictation.toast.model_downloading.action" = "Show";
 "dictation.toast.model_started" = "Downloading the speech model (%1$@) · %2$@ dictates once it’s in";
 "dictation.toast.no_model" = "Dictation needs a speech model (%@)";
+"dictation.toast.no_model_plain" = "Dictation needs a speech model";
+"dictation.toast.no_model.settings" = "Models…";
 "dictation.toast.no_model.action" = "Download";

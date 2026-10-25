@@ -150,6 +150,15 @@
       suggestion stays pending (`app.model_suggest_pending`) until seen
 - [ ] Storage: Move to Trash at once with Undo (only the auto-delete policy asks); Privacy's "Never use cloud speech
       recognition" says what it does where things stand; Settings → General's language change offers Relaunch Now
+- [ ] After the v0.9 shell review (Mac counterparts): a failed model ends only its own request (ModelDownloadQueue
+      `group` / `ended`), Stop-all spares a model asked for while stopping, "Unpacking…" on the row and tray item,
+      "Stop" everywhere; a model counts as installed only with the VAD (`dictation-models` `files` / `vad`) and the
+      HF snapshot check (`transcribe.py _snapshot_complete`, shared); "nothing heard" names the mic with Change Mic…
+      (BlurtCore NothingHeard); the Try-it step's second exercise (double tap = send); the Shortcuts swap is an
+      exchange ("Move Here" when there's nothing to give); registry entries count only while their pid's start time
+      matches (HotkeyCenter.isLive), and the dictation key goes to the instance that hears it; a denied permission's
+      button says System Settings…; Storage Undo merges into a recreated folder and says what couldn't come back;
+      toggle help phrased by state ("On: …" / "Off: …"); Feishu links on a private domain with a /base/ path
 - [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
 - [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
 - [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)

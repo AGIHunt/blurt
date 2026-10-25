@@ -27,7 +27,10 @@
 //    memory back. A key press never downloads anything: the servers and the CLI run with BLURT_NO_DOWNLOAD, and without
 //    an installed recogniser (DictationModels.dictationReady) the key starts nothing — the island says the model is
 //    still downloading (Show) or offers to download it (App/ModelDownloads.swift).
-//  • two running Blurts: the first to listen keeps the key (HotkeyCenter.dictationOwner); the other one listens once
+//  • nothing heard: the island names the mic it listened with and offers Change Mic… ("No sound from AirPods" when
+//    its level never left the floor: BlurtCore NothingHeard).
+//  • two running Blurts: the first that hears the key keeps it (HotkeyCenter.dictationOwner — an instance publishes
+//    the key only while its listener is in, so a deaf one never holds it); the other one listens once
 //    it quits.
 //  • text: DictationStream cuts the audio at pauses while the user talks and transcribes + polishes each piece as it
 //    completes (the warm servers; a model still loading gets record.dictation.load_budget_ms, never counted against
@@ -283,7 +286,7 @@ final class Dictation {
             // DictationKeys polls (and listens for Blurt being activated) until the key is heard everywhere; test
             // builds only simulate macOS, and only when a test says something about it
             keys.start()
-            hk.dictationKey = trigger.key.rawValue
+            hk.dictationKey = keys.installed ? trigger.key.rawValue : nil     // published only while it is heard
         } else {
             keys.stop()
             hk.dictationKey = nil
@@ -324,6 +327,14 @@ final class Dictation {
 
     /// The listener changed (a poll, Blurt activated, a tap made again): say once that dictation works now.
     private func listenerChanged() {
+        // the key is heard now: unless another Blurt already hears it (then that one keeps it, this one stops
+        // listening), publish it; not heard any more: unpublish, so another instance that can hear it takes over
+        let hk = Hotkeys.shared
+        if Dictation.enabled, hk.resident, deferredTo == nil {
+            let heard = keys.installed ? trigger.key.rawValue : nil
+            if heard != nil, hk.dictationKey == nil, hk.dictationOwner(trigger.key.rawValue) != nil { return checkOwner(via: "heard") }
+            hk.dictationKey = heard
+        }
         let now = access
         if let before = lastAccess, DictationAccess.confirm(before: before, after: now) { confirmOn() }
         lastAccess = now
@@ -585,8 +596,10 @@ final class Dictation {
     }
 
     /// Dictation has a recogniser installed (DictationModels.dictationReady, read at launch and after every download or
-    /// removal; not read yet = yes). Without one the key starts nothing — a key press is never a hidden download —
-    /// and says so: "still downloading (1.2 of 2.5 GB) · Show", or "no speech model yet · Download".
+    /// removal). Without one the key starts nothing — a key press is never a hidden download — and says so: "still
+    /// downloading (1.2 of 2.5 GB) · Show", or "no speech model yet · Download". Not known (not read yet, or the list
+    /// couldn't be read): the take goes ahead, and a "model_missing" answer from the speech model ends it with that
+    /// same line, never "nothing heard".
     private func hasModel(toast: Bool) -> Bool {
         guard MainActor.assumeIsolated({ DictationModels.shared.dictationReady }) == false else { return true }
         if toast {
@@ -600,7 +613,13 @@ final class Dictation {
     /// the offer to download it (through the app's download manager).
     @MainActor static func toastNoModel() {
         let dl = ModelDownloads.shared
-        guard let j = DictationModels.shared.dictationJob else { return }
+        guard let j = DictationModels.shared.dictationJob else {
+            // the model list couldn't be read (or not yet): no size to offer, the models' page instead
+            var t = Island.Toast(text: Loc.t("dictation.toast.no_model_plain", table: "Dictation"),
+                                 actionTitle: Loc.t("dictation.toast.no_model.settings", table: "Dictation")) { SpeechPane.showDictationModels() }
+            t.seconds = 6
+            return island.toast(t)
+        }
         var t: Island.Toast
         if dl.queue.contains(j.id) {
             let p = dl.progress(j.id) ?? (0, j.sizeMB)
@@ -838,7 +857,12 @@ final class Dictation {
         pressReturn(after: "tap")
     }
 
+    /// How many times a double tap asked for Return (pressed or not — Blurt's own window never gets one): the setup
+    /// assistant's Try-it step watches it to see the send gesture was tried.
+    private(set) var sendAttempts = 0
+
     private func pressReturn(after: String) {
+        sendAttempts += 1
         let r = DictationInsert.pressReturn()
         emit(["event": "dictation_send", "result": r.result, "why": r.why ?? NSNull(), "after": after])
         if r.pressed {
@@ -861,7 +885,34 @@ final class Dictation {
         precaptured = false
         releaseEsc()
         phase = .idle
-        if !quietly { island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil) }
+        if !quietly { toastNothing() }
+    }
+
+    /// "Didn't catch anything (AirPods) · Change Mic…" / "No sound from AirPods" (BlurtCore NothingHeard): the mic it
+    /// listened with, and the way to another — Settings → Dictation's microphone.
+    private func toastNothing() {
+        let why = NothingHeard.why(levels: levels)
+        let name = micName
+        emit(["event": "dictation_nothing", "why": why.rawValue, "mic": name ?? NSNull(),
+              "peak": Double(levels.max() ?? 0)])
+        var t = Island.Toast(text: Loc.t(NothingHeard.key(why, hasName: name != nil), table: "Dictation", name ?? ""),
+                             actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
+            AppEnvironment.settings?.show(pane: "dictation/mic")
+        }
+        t.seconds = 5
+        island.toast(t)
+    }
+
+    /// The microphone dictation listens with: the Mac's own (when it uses it) or the default input; a test build's
+    /// stand-in wav by its file name. nil = not known.
+    var micName: String? {
+        if DictationInsert.testMode {
+            let env = ProcessInfo.processInfo.environment
+            return (testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]).map { URL(fileURLWithPath: $0).lastPathComponent }
+        }
+        let useBuiltInMic = Dictation.useBuiltInMic
+        let id = useBuiltInMic ? AudioDevices.builtInInput() : AudioDevices.defaultInput
+        return id.flatMap { d in AudioDevices.inputs().first { $0.id == d }?.name }
     }
 
     // MARK: the words
@@ -901,11 +952,16 @@ final class Dictation {
                     emit(["event": "dictation_send", "result": "skipped", "why": "nothing_dictated", "after": "paste"])
                 }
                 self.phase = .idle
-                // no recogniser (removed while running): say that, not "nothing heard", which blames the voice
-                if MainActor.assumeIsolated({ DictationModels.shared.dictationReady }) == false {
-                    MainActor.assumeIsolated { Dictation.toastNoModel() }
+                // no recogniser (removed while running, or the speech model answered model_missing — the model
+                // list couldn't be read, or not yet): say that, not "nothing heard", which blames the voice
+                if r.asrCode == "model_missing" || MainActor.assumeIsolated({ DictationModels.shared.dictationReady }) == false {
+                    emit(["event": "dictation_no_model", "via": r.asrCode ?? "state"])
+                    MainActor.assumeIsolated {
+                        if r.asrCode == "model_missing" { Task { await DictationModels.shared.load() } }   // the gate learns it
+                        Dictation.toastNoModel()
+                    }
                 } else {
-                    island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
+                    self.toastNothing()
                 }
                 emit(["event": "dictation_text", "id": id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
                 return

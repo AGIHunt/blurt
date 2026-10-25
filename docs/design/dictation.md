@@ -621,7 +621,12 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
 - never downloads: the servers and the CLI fallback run with `BLURT_NO_DOWNLOAD=1` (a missing model is `model_missing`,
   never a three-minute hidden download behind a key press), and without an installed recogniser
   (`DictationModels.dictationReady`) the key starts nothing — the island says "no speech model yet (2.5 GB) ·
-  Download" or "still downloading (1.2 of 2.5 GB) · Show" instead of a false "nothing heard";
+  Download" or "still downloading (1.2 of 2.5 GB) · Show" instead of a false "nothing heard" (a model counts only with
+  its VAD, `silero_vad.onnx`; when that is all that's missing, the offer is just it); while that isn't known yet (the
+  list not read, or unreadable) the take goes ahead, and a `model_missing` answer ends it with the same line;
+- says which mic when nothing was heard: "Didn't catch anything (AirPods) · Change Mic…", or "No sound from AirPods"
+  when the level never left the floor the whole take (muted, the wrong input, a headset still connecting —
+  `BlurtCore/NothingHeard`); Change Mic… opens Settings → Dictation's microphone;
 - uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
   Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
 

@@ -11,7 +11,8 @@
 //
 // What the field refuses, with the reason under the action's name: a key without ⌃ / ⌥ / ⌘, ⌘ / ⇧⌘ with a typing key
 // (⌘C is Copy in every app: KeyCombo.reserved) and a macOS system shortcut. Keys another action has ask first — a
-// sheet on this window, "Swap" moves them here and turns the other one off — never a silent duplicate. Every change
+// sheet on this window: "Swap" exchanges the two actions' keys, or, when this one had none, "Move Here" moves them
+// and leaves the other without — never a silent duplicate. Every change
 // (set, clear, swap, restore) can be undone with ⌘Z. The field works from the keyboard: Tab reaches it (focus ring),
 // Space or Return starts recording, Delete clears it.
 
@@ -143,12 +144,13 @@ final class ShortcutField: NSView {
         if (Int(e.keyCode) == kVK_Delete || Int(e.keyCode) == kVK_ForwardDelete) && mods == 0 { stop(); onSet?(nil); return }
         guard let s = Shortcut(mods: mods, code: Int(e.keyCode)) else { flash(Loc.t("capture.keys.bad_key", table: "Capture")); return }
         guard s.isAcceptable else { flash(Loc.t("capture.keys.needs_mod", table: "Capture")); return }
-        // ⌘C would take Copy away from every app; a macOS shortcut would go to macOS: say why, keep listening
-        if let r = s.reserved { flash(r.short(s), reason: r.reason(s)); return }
+        // a macOS shortcut would go to macOS (⇧⌘3 is the screenshot, named as macOS's — checked first); ⌘C would take
+        // Copy away from every app: say why, keep listening
         if Hotkeys.shared.systemShortcuts().contains(s) {
             flash(Loc.t("capture.keys.system_short", table: "Capture"), reason: Loc.t("capture.keys.system_refused", table: "Capture", s.label))
             return
         }
+        if let r = s.reserved { flash(r.short(s), reason: r.reason(s)); return }
         stop()
         onSet?(s)
     }
@@ -231,9 +233,12 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
 
     private func askSwap(_ s: Shortcut, to a: HotAction, from other: HotAction, window: NSWindow?) {
         let alert = NSAlert()
+        // an exchange when this action has keys to give; otherwise the keys move here and the other one has none
+        let mine = Hotkeys.shared.shortcut(a).flatMap { $0.reserved == nil ? $0 : nil }
         alert.messageText = Loc.t("capture.keys.swap.title", table: "Capture", s.label, other.title)
-        alert.informativeText = Loc.t("capture.keys.swap.detail", table: "Capture", a.title, s.label, other.title)
-        alert.addButton(withTitle: Loc.t("capture.keys.swap.ok", table: "Capture"))
+        alert.informativeText = mine.map { Loc.t("capture.keys.swap.detail", table: "Capture", a.title, s.label, other.title, $0.label) }
+            ?? Loc.t("capture.keys.move.detail", table: "Capture", a.title, s.label, other.title)
+        alert.addButton(withTitle: Loc.t(mine == nil ? "capture.keys.move.ok" : "capture.keys.swap.ok", table: "Capture"))
         alert.addButton(withTitle: Loc.t("capture.keys.swap.cancel", table: "Capture"))
         asking = alert
         emit(["event": "shortcut_swap_ask", "action": a.rawValue, "keys": s.spec, "other": other.rawValue])

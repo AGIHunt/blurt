@@ -34,11 +34,14 @@ struct DictationASRModel: Decodable, Identifiable, Hashable {
     var id: String
     var name: String?
     var sizeMB: Double
+    /// it can run: its files and the VAD every local model hears through
     var installed: Bool
+    /// its own files are in (without the VAD: `setup` of it fetches only that, 0.6 MB); nil from an older script
+    var files: Bool?
     var recommended: Bool
     /// none | prompt | context | hotwords: how the model takes the custom words
     var vocab: String
-    enum CodingKeys: String, CodingKey { case id, name, installed, recommended, vocab, sizeMB = "size_mb" }
+    enum CodingKeys: String, CodingKey { case id, name, installed, files, recommended, vocab, sizeMB = "size_mb" }
 }
 
 struct DictationASRState: Decodable {
@@ -79,6 +82,7 @@ final class DictationModels: ObservableObject {
     /// A model's download: its bar while it runs, "Queued" (0 of its size) while it waits, nil otherwise.
     func progress(_ id: String) -> (done: Double, total: Double)? { dl.progress(id) }
     func queued(_ id: String) -> Bool { dl.isQueued(id) }
+    func unpacking(_ id: String) -> Bool { dl.isUnpacking(id) }
     func failed(_ id: String) -> Bool { dl.failed[id] != nil }
     /// any of dictation's models is coming down or waiting
     var downloading: Bool { (asr?.models.map(\.id) ?? []).contains(where: dl.queue.contains) || (polish?.models.map(\.id) ?? []).contains(where: dl.queue.contains) }
@@ -86,10 +90,16 @@ final class DictationModels: ObservableObject {
     /// Dictation has a recogniser to run on: the selected model is installed. nil = not read yet, or the selected one
     /// isn't one of dictation's rows (the Fn key then doesn't wait on this).
     var dictationReady: Bool? { selectedASR.map(\.installed) }
-    /// The recogniser dictation would download: the recommended one.
+    /// The recogniser dictation would download: the selected one when its files are in and only the VAD is missing
+    /// (0.6 MB, not the model again), else the recommended one.
     var dictationJob: ModelDownloadQueue.Job? {
-        recommendedASR.map { ModelDownloadQueue.Job(id: $0.id, kind: .dictation, name: $0.name ?? $0.id, sizeMB: $0.sizeMB) }
+        if let s = selectedASR, s.files == true, !s.installed {
+            return ModelDownloadQueue.Job(id: s.id, kind: .dictation, name: s.name ?? s.id, sizeMB: DictationModels.vadMB)
+        }
+        return recommendedASR.map { ModelDownloadQueue.Job(id: $0.id, kind: .dictation, name: $0.name ?? $0.id, sizeMB: $0.sizeMB) }
     }
+    /// silero_vad.onnx
+    static let vadMB = 0.6
 
     func load() async {
         loaded = true
@@ -276,13 +286,13 @@ struct DictationModelsSection: View {
     func asrRow(_ x: DictationASRModel, selected: Bool) -> some View {
         DictationModelRow(name: x.name ?? x.id, sizeMB: x.sizeMB, recommended: x.recommended, installed: x.installed,
                           selected: selected, detail: x.vocab == "none" ? S("speech.dictation.no_words") : nil,
-                          progress: m.progress(x.id), queued: m.queued(x.id), failed: m.failed(x.id),
+                          progress: m.progress(x.id), queued: m.queued(x.id), unpacking: m.unpacking(x.id), failed: m.failed(x.id),
                           use: { m.chooseASR(x) }, download: { m.installASR(x) }, cancel: { m.cancel(x.id) })
     }
 
     func polishRow(_ x: PolishModel, selected: Bool) -> some View {
         DictationModelRow(name: x.name, sizeMB: x.sizeMB, recommended: x.recommended, installed: x.installed,
-                          selected: selected, detail: nil, progress: m.progress(x.id), queued: m.queued(x.id), failed: m.failed(x.id),
+                          selected: selected, detail: nil, progress: m.progress(x.id), queued: m.queued(x.id), unpacking: m.unpacking(x.id), failed: m.failed(x.id),
                           use: { m.choose(x) }, download: { m.install(x) }, cancel: { m.cancel(x.id) })
     }
 }
@@ -298,6 +308,7 @@ struct DictationModelRow: View {
     var progress: (done: Double, total: Double)?
     /// waiting its turn in the download manager's queue
     var queued = false
+    var unpacking = false
     var failed: Bool
     var use: () -> Void
     var download: () -> Void
@@ -314,7 +325,9 @@ struct DictationModelRow: View {
                     if recommended { Badge(S("speech.dictation.recommended.badge")) }
                 }
                 Group {
-                    if let d = progress {
+                    if progress != nil && unpacking {
+                        Text(S("speech.download.unpacking"))
+                    } else if let d = progress {
                         Text(S("speech.dictation.progress", modelSize(d.done), modelSize(max(d.total, sizeMB)))).monospacedDigit()
                     } else if queued {
                         Text([modelSize(sizeMB), S("speech.download.queued")].joined(separator: " · "))
@@ -327,9 +340,9 @@ struct DictationModelRow: View {
             Spacer()
             if let d = progress {
                 ProgressView(value: min(d.done, d.total), total: max(d.total, 1)).frame(width: 90)
-                if let c = cancel { Button(S("speech.cancel"), action: c).controlSize(.small) }
+                if let c = cancel { Button(S("speech.download.stop"), action: c).controlSize(.small) }
             } else if queued {
-                if let c = cancel { Button(S("speech.cancel"), action: c).controlSize(.small) }
+                if let c = cancel { Button(S("speech.download.stop"), action: c).controlSize(.small) }
             } else if installed {
                 if !selected { Button(S("speech.dictation.use"), action: use).controlSize(.small) }
             } else {

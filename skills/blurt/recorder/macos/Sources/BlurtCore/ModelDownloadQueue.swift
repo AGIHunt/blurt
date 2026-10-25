@@ -10,6 +10,8 @@
 //   persistent     $BLURT_HOME/model-downloads.json while anything is left to run, so a quit, a relaunch or a crash
 //                  carries on at the next launch (the scripts resume their partial files); removed when the batch ends
 //                  or the user stops it
+//   requests       each `add` is one request (Job.group): a model that fails ends its own request — the rest of it
+//                  leaves the queue, marked for Try Again — while models other surfaces asked for carry on
 //   outcomes       exit 0 = in; Stop, SIGTERM (15) or `uv run` passing it on (143) = stopped, never "failed"
 import Foundation
 
@@ -21,9 +23,12 @@ public struct ModelDownloadQueue: Codable, Equatable {
         public var sizeMB: Double
         /// once it is in, make it the one in use (dictation's record.dictation.asr_model; polish's `setup --use`)
         public var select: Bool
+        /// the request it came with (one per `add`: the assistant's "Download Recommended", one Settings row…): an
+        /// error ends that request, not the others (nil: a file from before requests had one)
+        public var group: String?
 
-        public init(id: String, kind: ModelBundle.Kind, name: String, sizeMB: Double, select: Bool = false) {
-            self.id = id; self.kind = kind; self.name = name; self.sizeMB = sizeMB; self.select = select
+        public init(id: String, kind: ModelBundle.Kind, name: String, sizeMB: Double, select: Bool = false, group: String? = nil) {
+            self.id = id; self.kind = kind; self.name = name; self.sizeMB = sizeMB; self.select = select; self.group = group
         }
         public var part: ModelBundle.Part { ModelBundle.Part(id: id, kind: kind, name: name, sizeMB: sizeMB, installed: false) }
     }
@@ -48,11 +53,13 @@ public struct ModelDownloadQueue: Codable, Equatable {
 
     /// Queues the jobs not already waiting or running (a finished one may be asked for again: a model removed since).
     /// Returns the ones added.
+    /// `group`: the request's id (`Job.group`), given to every job it adds.
     @discardableResult
-    public mutating func add(_ new: [Job], now: Double = Date().timeIntervalSince1970) -> [Job] {
+    public mutating func add(_ new: [Job], group: String? = nil, now: Double = Date().timeIntervalSince1970) -> [Job] {
         if !active { jobs = []; finished = []; startedAt = now }
         var added: [Job] = []
-        for j in new {
+        for var j in new {
+            if let g = group { j.group = g }
             if let i = jobs.firstIndex(where: { $0.id == j.id }), !finished.contains(j.id) {
                 if j.select { jobs[i].select = true }      // asked again, this time to use it
                 continue
@@ -75,7 +82,18 @@ public struct ModelDownloadQueue: Codable, Equatable {
         if !active { clear() }
     }
 
-    /// Stop for everything, or a failure: the batch ends.
+    /// A download failed: the rest of its request leaves the queue with it — Try Again asks for them again — and the
+    /// other requests carry on. Returns the request's jobs still missing (the failed one first).
+    @discardableResult
+    public mutating func removeGroup(of id: String) -> [Job] {
+        guard let j = pending.first(where: { $0.id == id }) else { return [] }
+        let gone = pending.filter { $0.id == id || (j.group != nil && $0.group == j.group) }
+        for g in gone { jobs.removeAll { $0.id == g.id && !finished.contains(g.id) } }
+        if !active { clear() }
+        return gone
+    }
+
+    /// Stop for everything: the batch ends.
     public mutating func clear() { jobs = []; finished = []; startedAt = 0 }
 
     /// One bar over the batch: the finished jobs whole, the running one (`current`) by its "N/M MB" line.
@@ -96,6 +114,43 @@ public struct ModelDownloadQueue: Codable, Equatable {
         if status == 0 { return .done }
         if stopping || status == 15 || status == 143 { return .stopped }
         return .failed
+    }
+
+    // MARK: a setup ended
+
+    /// The Stop the user pressed while the setup ran: none, one model, or everything — then with the models waiting
+    /// at that moment (one asked for after it isn't among them, and still runs).
+    public enum Stop: Equatable { case none, one(String), all(Set<String>) }
+
+    /// What the app does next.
+    public enum Next: Equatable {
+        /// the next job (none left: the batch is in — say so)
+        case go
+        /// a Stop: the jobs left (if any) carry on, nothing is announced
+        case stopped
+        /// an error: these jobs of its request didn't come in (the failed one first); the other requests carry on
+        case failed([Job])
+    }
+
+    /// Job `id`'s setup ended with `outcome` while `stop` was pending: the queue after it, and what comes next.
+    public mutating func ended(_ id: String, outcome: Outcome, stop: Stop) -> Next {
+        switch outcome {
+        case .done:
+            finish(id)
+            // Stop for everything came as this one finished: it is in, the ones waiting then don't start
+            if case .all(let waiting) = stop { waiting.forEach { remove($0) }; return .stopped }
+            return .go
+        case .stopped:
+            switch stop {
+            case .one(let m): remove(m)
+            case .all(let waiting): waiting.union([id]).forEach { remove($0) }
+            case .none: clear()                        // a SIGTERM from outside: the batch ends
+            }
+            return .stopped
+        case .failed:
+            let request = removeGroup(of: id)
+            return .failed(request.isEmpty ? (jobs.first { $0.id == id }).map { [$0] } ?? [] : request)
+        }
     }
 
     // MARK: on disk

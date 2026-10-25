@@ -22,6 +22,9 @@
 "dictation.toast.on.hold" = "听写已开启：按住%@ 说话";
 "dictation.toast.recording_busy" = "正在录屏，麦克风归录屏用，听写暂不可用";
 "dictation.toast.voice_busy" = "语音备注正在听，先结束它";
+"dictation.toast.nothing.named" = "没听到内容（%@）";
+"dictation.toast.nothing.silent" = "%@ 没有声音";
+"dictation.toast.nothing.change" = "换麦克风…";
 "dictation.toast.nothing" = "没听到内容";
 "dictation.toast.copied" = "已复制，可粘贴";
 "dictation.toast.pasted_unsure" = "已粘贴";
@@ -129,9 +132,9 @@
 "dictation.vocab.ignore" = "忽略";
 "dictation.vocab.remove" = "移除";
 "dictation.vocab.context" = "参考光标附近的文字";
-"dictation.vocab.context.detail" = "名字照文档里的写法。只在开始说话时读，不保存，不读密码框。";
+"dictation.vocab.context.detail" = "打开后，名字照文档里的写法。只在开始说话时读，不保存，不读密码框。";
 "dictation.vocab.learn" = "从我的修改中学习";
-"dictation.vocab.learn.detail" = "你改正口喷鸡打错的名字时，它会记下这个词。";
+"dictation.vocab.learn.detail" = "打开后，你改正口喷鸡打错的名字时，它会记下这个词。";
 
 /* Fn 作为听写键：自动模式、不让 macOS 响应 Fn、macOS 的 🌐 键设置 */
 "dictation.mode.auto" = "按一下或按住";
@@ -479,4 +482,6 @@
 "dictation.toast.model_downloading.action" = "查看";
 "dictation.toast.model_started" = "开始下载语音模型（%1$@）· 下载好就能按%2$@ 听写";
 "dictation.toast.no_model" = "听写还没有语音模型（%@）";
+"dictation.toast.no_model_plain" = "听写还没有语音模型";
+"dictation.toast.no_model.settings" = "查看模型…";
 "dictation.toast.no_model.action" = "下载";

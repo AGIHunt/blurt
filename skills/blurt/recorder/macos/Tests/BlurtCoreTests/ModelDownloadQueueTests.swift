@@ -88,4 +88,69 @@ final class ModelDownloadQueueTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: u.path))
         XCTAssertNil(ModelDownloadQueue.load(from: u))
     }
+
+    func testAFailureEndsOnlyItsOwnRequest() {
+        var q = ModelDownloadQueue()
+        let note = ModelDownloadQueue.Job(id: "sensevoice-small", kind: .note, name: "SenseVoice", sizeMB: 200)
+        q.add([asr, polish], group: "onboarding")
+        q.add([note], group: "settings-row")
+        q.finish(asr.id)
+        // polish fails: the assistant's request ends; the Settings row's model still comes down
+        XCTAssertEqual(q.ended(polish.id, outcome: .failed, stop: .none), .failed([polish.withGroup("onboarding")]))
+        XCTAssertEqual(q.pending.map(\.id), [note.id])
+        XCTAssertTrue(q.active)
+        // the rest of a failed request is handed back with it (Try Again asks for them again)
+        var r = ModelDownloadQueue()
+        r.add([asr, polish], group: "g")
+        guard case .failed(let left) = r.ended(asr.id, outcome: .failed, stop: .none) else { return XCTFail() }
+        XCTAssertEqual(left.map(\.id), [asr.id, polish.id])
+        XCTAssertFalse(r.active)
+    }
+
+    func testStopForEverythingAsTheRunningOneFinishes() {
+        // Stop all pressed just as the setup exits 0: that model is in, the ones waiting then don't start
+        var q = ModelDownloadQueue()
+        q.add([asr, polish])
+        XCTAssertEqual(q.ended(asr.id, outcome: .done, stop: .all([asr.id, polish.id])), .stopped)
+        XCTAssertFalse(q.active)
+        XCTAssertTrue(q.finished.isEmpty)           // the batch is over (cleared)
+    }
+
+    func testAModelAskedForDuringAStopStillRuns() {
+        var q = ModelDownloadQueue()
+        q.add([asr, polish])
+        let waiting = Set(q.pending.map(\.id))      // Stop all pressed now
+        let late = ModelDownloadQueue.Job(id: "late", kind: .note, name: "Late", sizeMB: 10)
+        q.add([late])                                // asked for before the stopped setup has ended
+        XCTAssertEqual(q.ended(asr.id, outcome: .stopped, stop: .all(waiting)), .stopped)
+        XCTAssertEqual(q.pending.map(\.id), ["late"])
+        // the same while the running one finished instead
+        var d = ModelDownloadQueue()
+        d.add([asr, polish])
+        let w2 = Set(d.pending.map(\.id))
+        d.add([late])
+        XCTAssertEqual(d.ended(asr.id, outcome: .done, stop: .all(w2)), .stopped)
+        XCTAssertEqual(d.pending.map(\.id), ["late"])
+    }
+
+    func testStopForOneModelLetsTheRestRun() {
+        var q = ModelDownloadQueue()
+        q.add([asr, polish])
+        XCTAssertEqual(q.ended(asr.id, outcome: .stopped, stop: .one(asr.id)), .stopped)
+        XCTAssertEqual(q.pending.map(\.id), [polish.id])
+        // a SIGTERM from outside (no Stop pressed): the batch ends
+        XCTAssertEqual(q.ended(polish.id, outcome: .stopped, stop: .none), .stopped)
+        XCTAssertFalse(q.active)
+    }
+
+    func testAnOlderQueueFileWithoutRequestsStillLoads() throws {
+        let json = #"{"jobs":[{"id":"a","kind":"dictation","name":"A","sizeMB":1,"select":false}],"finished":[],"startedAt":5}"#
+        let q = try JSONDecoder().decode(ModelDownloadQueue.self, from: Data(json.utf8))
+        XCTAssertEqual(q.pending.map(\.id), ["a"])
+        XCTAssertNil(q.pending.first?.group)
+    }
+}
+
+private extension ModelDownloadQueue.Job {
+    func withGroup(_ g: String) -> Self { var j = self; j.group = g; return j }
 }

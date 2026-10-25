@@ -51,13 +51,13 @@
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
-"settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";
+"settings.general.collect.hint" = "打开后，用 macOS 自带快捷键截的图也会挂成卡片。";
 "settings.general.drag_copy_note" = "拖进去后备注没贴上时，复制到剪贴板";
 "settings.general.drag_copy_note.hint" = "口喷鸡没法把备注贴在图片后面时（没有「辅助功能」权限、上面的开关关了、应用没到前台，或者拖进了访达），备注会放进剪贴板，⌘V 就能贴上。会替换剪贴板里原来的内容；点岛上的「撤销」可以还原。";
 "settings.general.drag_note_file.hint" = "拖进聊天应用或访达时，再附一个只写着备注的 Markdown 小文件（截图-153012-备注.md）。终端总会拿到这个文件的路径，方便 Claude Code、Codex 读到备注。";
 "settings.general.drag_note_file" = "同时附上备注的 .md 文件";
 "settings.general.drag_caption" = "拖出图片时把备注印在图片下方";
-"settings.general.drag_caption.hint" = "拖出去的是一份在下方加了备注条的副本，给只收一张图片的应用用；原来的截图不变。";
+"settings.general.drag_caption.hint" = "打开后，拖出去的是一份在下方加了备注条的副本，给只收一张图片的应用用；原来的截图不变。";
 "settings.general.smart_paste" = "聊天应用：先放图片，再贴备注";
 "settings.general.smart_paste.hint" = "浏览器、Claude、飞书、Slack、微信、QQ 这类聊天应用，拖入或粘贴的内容里只要有图片，就只收图片。打开后，把卡片拖进去时先放下图片，口喷鸡接着把备注贴进同一个输入框；点卡片复制后的 2 分钟内，在这些应用里按 ⌘V 会先贴图片、再贴备注（多张卡片就一张图一段备注依次贴上），之后剪贴板里还是这份卡片，可以再贴。备忘录、邮件、文本编辑这类应用一次就能连图带字收下；终端和访达保持原样。需要「辅助功能」权限。";
 "settings.general.about" = "关于";
@@ -94,7 +94,7 @@
 "settings.privacy.cancel" = "取消";
 "settings.privacy.clean_up" = "清理";
 "settings.privacy.data" = "数据";
-"settings.privacy.deleted_by_default_once" = "默认在转写完成后删除：录屏文件里已经有同样的声音。";
+"settings.privacy.deleted_by_default_once" = "关闭时，转写完成后就删除：录屏文件里已经有同样的声音。";
 "settings.privacy.freed" = "释放了 ";
 "settings.privacy.index_can_be_deleted" = "索引随时可以重建。";
 "settings.privacy.items_appear_spotlight" = "条目出现在 Spotlight 里";
@@ -197,6 +197,8 @@
 "onboarding.try.asr_downloading" = "语音模型还在下载，下载好就能试。";
 "onboarding.try.no_model" = "听写要先下载语音模型。";
 "onboarding.try.polish_coming" = "听写已经能用了；润色模型下载完后文字会更顺（还剩 %@）。";
+"onboarding.try.send_next" = "再试试发送：说完连按两下%@，而不是按一下。";
+"onboarding.try.sent" = "这就是发送：在别的 App 里，文字填进去后会按回车。";
 "onboarding.try.send" = "想直接发送就连按两下：文字填进去并按回车。";
 "onboarding.use.dictation.detail" = "按一下说，再按一下停 · 连按两下发送";
 "onboarding.use.dictation.detail_plain" = "按一下说，再按一下停";
@@ -344,5 +346,7 @@
 "settings.privacy.local_asr.off_none" = "没有设置云端的 API key，语音都在这台 Mac 上识别。打开后，以后设置了 key 也不会用云端。";
 "settings.privacy.local_asr.on" = "即使设置了云端的 API key，语音也只在这台 Mac 上识别。";
 "settings.storage.trashed" = "「%@」已移到废纸篓";
+"settings.storage.undo_failed" = "「%@」没能放回原处";
+"settings.storage.undo_failed_many" = "%d 项没能放回原处";
 "settings.storage.undo" = "撤销";
 "settings.storage.videos.trashed" = "%1$@（%2$@）已移到废纸篓";

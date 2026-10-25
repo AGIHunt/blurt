@@ -8,16 +8,21 @@
 //              (BLURT_HF_MIRROR=1 when ModelBundle.mirror says so); the scripts take a lock per model, resume a partial
 //              file and only call a model installed once every file is complete. --parent: a setup outliving the app
 //              stops by itself. Test builds: BLURT_TEST_ASR_SETUP / BLURT_TEST_POLISH_SETUP stand in for the scripts.
-//   shows      Settings → Speech's rows (the running one's bar and Stop, "Queued" for the rest), the menu-bar menu's
-//              first row while it runs ("Downloading speech models · 2.1 of 6.1 GB": Show / Stop), the assistant's
-//              models step; a toast when the assistant closes mid-download, when the batch is in ("Speech models are
-//              ready · tap Fn to try") and when it stopped on an error (Try Again).
+//   shows      Settings → Speech's rows (the running one's bar and Stop, "Queued" for the rest, "Unpacking…" after an
+//              archive's download), the menu-bar menu's first row while it runs ("Downloading speech models · 2.1 of
+//              6.1 GB": Show / Stop), the assistant's models step; a toast when the assistant closes mid-download, when
+//              the batch is in ("Speech models are ready · tap Fn to try") and when a request stopped on an error (Try
+//              Again). "Stop" on every surface.
+//   errors     a failed model ends its own request (the assistant's batch, one Settings row…): the rest of that
+//              request is marked not downloaded in its rows, and models other surfaces asked for carry on.
+//   Stop       one model: a queued one leaves the queue, the running one ends. Everything: the running one ends and
+//              what was waiting then goes — one that finishes in that moment is kept, and one asked for after Stop runs.
 //   lasts      $BLURT_HOME/model-downloads.json while anything is left: a quit (the setup is ended, its partial file
 //              kept), a relaunch or a crash carries on quietly at the next launch, with one launch line.
 //   after      each model that comes in: dictation's state is read again (DictationModels — the dictation key needs a
 //              model), the voice-note models re-picked (SpeechModel.reapply), polish picks its model up, and once
 //              dictation's model is there it is loaded straight away (Dictation.prewarm), so the first Fn isn't cold.
-// Test hooks: `downloads state|add ID KIND|stop [ID]|resume` (DictationTestHooks → testCommand).
+// Test hooks: `downloads state|add ID[,ID…] KIND|stop [ID]|resume` (DictationTestHooks → testCommand).
 import AppKit
 import BlurtCore
 import Combine
@@ -31,14 +36,18 @@ final class ModelDownloads: ObservableObject {
     /// the running job (nil between jobs and when idle)
     @Published private(set) var current: String?
     /// the running job's last "N/M MB" line
-    @Published private(set) var line: (done: Double, total: Double)? {
-        didSet { if let it = (NSApp.delegate as? App)?.downloadItem, let t = menuTitle { it.title = t } }   // the open menu's row
-    }
-    /// model id → why its last download stopped on an error (cleared when it is asked for again)
+    @Published private(set) var line: (done: Double, total: Double)? { didSet { updateMenuRow() } }
+    /// model id → why its last download stopped on an error, or that it was left out because another model of its
+    /// request failed (cleared when it is asked for again)
     @Published private(set) var failed: [String: String] = [:]
+    /// the running job is unpacking its archive (the setup said "unpacking …"): the bar is full, the row says so
+    @Published private(set) var unpacking = false
     private var proc: Process?
     /// Stop was pressed: nil = not stopping, "" = everything, else that model
     private var stopping: String?
+    /// Stop for everything: the models waiting when it was pressed — one asked for after it (before the running
+    /// setup has ended) is not among them, and runs
+    private var stopSet: Set<String> = []
     /// the app is quitting: the setup's end changes nothing
     private var quitting = false
     /// the surface that started the batch ("onboarding", "settings", "dictation", "launch")
@@ -52,8 +61,11 @@ final class ModelDownloads: ObservableObject {
     /// One model's own bar: the running one's "N/M MB" (its size until the first line), nil when it isn't running.
     func progress(_ id: String) -> (done: Double, total: Double)? {
         guard current == id, let j = queue.pending.first(where: { $0.id == id }) else { return nil }
+        if unpacking { return (j.sizeMB, j.sizeMB) }
         return line ?? (0, j.sizeMB)
     }
+    /// The running model is being unpacked (after its download).
+    func isUnpacking(_ id: String) -> Bool { current == id && unpacking }
 
     // MARK: asking
 
@@ -61,7 +73,7 @@ final class ModelDownloads: ObservableObject {
     func download(_ jobs: [Job], via source: String) {
         for j in jobs { failed[j.id] = nil }
         if !queue.active { via = source }
-        let added = queue.add(jobs)
+        let added = queue.add(jobs, group: String(UUID().uuidString.prefix(8)))
         queue.save()
         emit(["event": "model_download", "op": "add", "via": source, "models": jobs.map(\.id), "added": added.map(\.id),
               "queue": queue.pending.map(\.id)])
@@ -79,6 +91,7 @@ final class ModelDownloads: ObservableObject {
         }
         guard let p = proc else { queue.clear(); queue.save(); return }
         stopping = id ?? ""
+        if id == nil { stopSet = Set(queue.pending.map(\.id)) }
         p.terminate()
     }
 
@@ -118,6 +131,7 @@ final class ModelDownloads: ObservableObject {
         guard let j = queue.next else { return batchDone() }
         current = j.id
         line = nil
+        unpacking = false
         let env = ProcessInfo.processInfo.environment
         let test = env["BLURT_TEST_COMMANDS"] == "1"
         let parent = ["--parent", "\(getpid())"]
@@ -130,7 +144,9 @@ final class ModelDownloads: ObservableObject {
         var lastError = ""
         do {
             proc = try SkillCLI.shared.spawn(script, args, env: extra, onLine: { [weak self] l, isErr in
-                if let q = ModelBundle.parseProgress(l.trimmingCharacters(in: .whitespaces)) { self?.line = q }
+                let t = l.trimmingCharacters(in: .whitespaces)
+                if let q = ModelBundle.parseProgress(t) { self?.line = q }
+                else if t.hasPrefix("unpacking ") { self?.unpacking = true; self?.updateMenuRow() }
                 else if isErr, l.hasPrefix("ERROR") || l.contains("failed") { lastError = String(l.prefix(300)) }
             }, onExit: { [weak self] st in self?.exited(j, status: st, error: lastError) })
         } catch {
@@ -144,6 +160,8 @@ final class ModelDownloads: ObservableObject {
         guard !quitting else { return }        // the queue's file stays as it is: the next launch carries on
         let stop = stopping
         stopping = nil
+        let stopAll = stopSet
+        stopSet = []
         let outcome = ModelDownloadQueue.outcome(status: st, stopping: stop != nil)
         emit(["event": "model_download", "op": "exit", "model": j.id, "status": Int(st), "outcome": outcome.rawValue,
               "error": error.isEmpty ? NSNull() : error])
@@ -151,27 +169,23 @@ final class ModelDownloads: ObservableObject {
         emit(["event": j.kind == .polish ? "polish_download" : "asr_download", "model": j.id, "status": Int(st)])
         current = nil
         line = nil
-        switch outcome {
-        case .done:
-            queue.finish(j.id)
-            queue.save()
-            arrived(j)
+        unpacking = false
+        let request: ModelDownloadQueue.Stop = stop == nil ? .none : stop == "" ? .all(stopAll) : .one(stop!)
+        if outcome == .failed { failed[j.id] = error.isEmpty ? "exit \(st)" : error }
+        let next = queue.ended(j.id, outcome: outcome, stop: request)
+        queue.save()
+        if outcome == .done { arrived(j) } else { Task { await refresh(); await ModelSetup.shared.load() } }
+        switch next {
+        case .go:
             runNext()
         case .stopped:
-            // Stop for this model only: the rest carry on; everything else (Stop all, a SIGTERM from outside): the batch ends
-            if let id = stop, !id.isEmpty { queue.remove(id) } else { queue.clear() }
-            queue.save()
-            Task { await refresh(); await ModelSetup.shared.load() }
             // the rest carry on; nothing left: the batch just ends (no "ready" line after a Stop)
+            if queue.active { runNext() } else { via = ""; Task { await ModelSetup.shared.load() } }
+        case .failed(let left):
+            // its request ends (the other models it asked for are marked, Try Again asks again); other requests go on
+            for r in left where r.id != j.id { failed[r.id] = "not_started" }
+            stoppedOnError(left.isEmpty ? [j] : left, via: via)
             if queue.active { runNext() } else { via = "" }
-        case .failed:
-            failed[j.id] = error.isEmpty ? "exit \(st)" : error
-            let batch = queue.pending                 // what is still missing: Try Again fetches only that
-            let source = via
-            queue.clear()
-            queue.save()
-            Task { await refresh() }
-            stoppedOnError(batch, via: source)
         }
     }
 
@@ -221,25 +235,30 @@ final class ModelDownloads: ObservableObject {
     /// The menu-bar menu's row while a batch runs: "Downloading speech models · 2.1 of 6.1 GB", Show and Stop.
     var menuTitle: String? {
         guard active else { return nil }
+        if unpacking { return T("app.models.menu_unpacking") }
         let p = progress
         return T("app.models.menu", modelSize(p.done), modelSize(p.total))
     }
 
+    /// The open menu's row follows the download.
+    private func updateMenuRow() { if let it = (NSApp.delegate as? App)?.downloadItem, let t = menuTitle { it.title = t } }
+
     // MARK: tests
 
-    /// `downloads state | add ID KIND [select] | stop [ID] | resume`, then a "downloads_state" event.
+    /// `downloads state | add ID[,ID…] KIND [select] | stop [ID] | resume`, then a "downloads_state" event.
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first ?? "state" {
-        case "add" where a.count >= 3:
+        case "add" where a.count >= 3:          // add ID[,ID…] KIND [select]: one request
             let kind = ModelBundle.Kind(rawValue: a[2]) ?? .note
-            download([Job(id: a[1], kind: kind, name: a[1], sizeMB: 100, select: a.contains("select"))], via: "test")
+            download(a[1].split(separator: ",").map { Job(id: String($0), kind: kind, name: String($0), sizeMB: 100, select: a.contains("select")) },
+                     via: "test")
         case "stop": stop(a.count > 1 ? a[1] : nil)
         case "resume": resumeAtLaunch()
         default: break
         }
         let p = progress
-        emit(["event": "downloads_state", "current": current ?? NSNull(), "queue": queue.pending.map(\.id),
+        emit(["event": "downloads_state", "current": current ?? NSNull(), "queue": queue.pending.map(\.id), "unpacking": unpacking,
               "finished": queue.finished, "progress": [Int(p.done), Int(p.total)], "failed": failed,
               "file": FileManager.default.fileExists(atPath: ModelDownloadQueue.url.path), "menu": menuTitle ?? NSNull()])
     }

@@ -250,21 +250,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in
             await DictationModels.shared.load()         // has dictation a speech model?
             let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
-                : DictationModels.shared.dictationReady == false ? .noModel : .works
+                : DictationModels.shared.asr == nil ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
                                            record: working(.toggleRecord), conflicts: conflicts)
-            var text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
+            let text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
             // one line, one button: with a more urgent button (turn dictation on, download its model) the shortcut
             // conflicts aren't squeezed in — those keys aren't advertised, and their own line comes at a later launch
             let saysConflicts = line.action == .changeShortcut
-            if !saysConflicts {
-            } else if line.conflicts.count > 2 {
-                text += " · " + T("app.toast.welcome_keys_many", line.conflicts.count)      // the list is in Settings
-            } else if !line.conflicts.isEmpty {
-                text += " · " + Loc.t("capture.keys.wont_work", table: "Capture", ListFormatter.localizedString(byJoining: line.conflicts))
-            }
             var t: Island.Toast
             switch line.action {
             case .turnOnDictation?:
@@ -299,11 +293,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { App.otherInstancesChanged("launch") }
         // a background app's end isn't always announced: while another instance holds something of ours, look every
-        // few seconds whether it is still there (a signal-0 per pid)
+        // few seconds whether it is still there (its registry entry still live: HotkeyCenter.isLive) — and whether the
+        // one that has the dictation key still hears it (it unpublishes the key when its listener goes)
         let t = Timer(timeInterval: 3, repeats: true) { _ in
             var holders = Set(Hotkeys.shared.states.values.compactMap { s -> pid_t? in if case .taken(let p) = s { return p }; return nil })
-            if let p = Dictation.shared.deferredTo { holders.insert(p) }
-            if holders.contains(where: { kill($0, 0) != 0 && errno == ESRCH }) { App.otherInstancesChanged("gone") }
+            let deferred = Dictation.shared.deferredTo
+            if let p = deferred { holders.insert(p) }
+            guard !holders.isEmpty else { return }
+            let alive = Set(Hotkeys.shared.otherInstances().map(\.pid))
+            if holders.contains(where: { !alive.contains($0) }) { App.otherInstancesChanged("gone") }
+            else if let p = deferred, Hotkeys.shared.dictationOwner(Dictation.key.rawValue) != p { App.otherInstancesChanged("owner") }
         }
         t.tolerance = 1
         RunLoop.main.add(t, forMode: .common)

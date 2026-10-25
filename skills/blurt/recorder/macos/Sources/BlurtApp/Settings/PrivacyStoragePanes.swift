@@ -2,7 +2,8 @@
 // kept, Spotlight) and Settings → Storage (rows from SettingsCatalog; the folders, models and files are lines of their
 // groups) (what takes space, model by model and folder by folder, and cleaning what
 // can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default). Move
-// to Trash acts at once, like Finder, with Undo (the island's button, ⌘Z); only turning on automatic deletion asks.
+// to Trash acts at once, like Finder, with Undo (the island's button, ⌘Z; BlurtCore TrashRestore: a folder made again
+// takes its old contents back, what can't come back is said); only turning on automatic deletion asks.
 // Privacy's "never use cloud recognition" says what it does where things stand (no cloud key set: local anyway).
 import AppKit
 import SwiftUI
@@ -298,8 +299,11 @@ final class StorageModel: ObservableObject {
         Housekeeping.trashVideos(c, auto: false) { done in
             Task { @MainActor in
                 await self.load()
-                self.offerUndo(done, text: T("settings.storage.videos.trashed", TP("settings.storage.videos.count", c.count), bytes), window: window) { _ in
-                    for s in c { VideoRetention.unstampRemoved(s.session) }
+                self.offerUndo(done, text: T("settings.storage.videos.trashed", TP("settings.storage.videos.count", c.count), bytes), window: window) { back in
+                    // only the sessions whose video came back stop saying it was removed
+                    for s in c where back.contains(where: { $0.standardizedFileURL.path.hasPrefix(s.session.standardizedFileURL.path + "/") }) {
+                        VideoRetention.unstampRemoved(s.session)
+                    }
                 }
             }
         }
@@ -312,10 +316,18 @@ final class StorageModel: ObservableObject {
         let undo: () -> Void = { [weak self] in
             guard !undone else { return }
             undone = true
-            var back: [URL] = []
-            for (orig, trashed) in moved where (try? FileManager.default.moveItem(at: trashed, to: orig)) != nil { back.append(orig) }
+            // back where it was (a folder made again meanwhile takes its old contents back); what can't come back
+            // — the Trash emptied, the name taken again — is said, not silently skipped
+            let (back, missing) = TrashRestore.restore(moved)
             restored(back)
-            emit(["event": "storage_trash_undo", "files": back.count])
+            emit(["event": "storage_trash_undo", "files": back.count, "missing": missing.map(\.lastPathComponent)])
+            if let first = missing.first {
+                var t = Island.Toast(text: missing.count == 1 ? T("settings.storage.undo_failed", first.lastPathComponent)
+                                                              : T("settings.storage.undo_failed_many", missing.count),
+                                     actionTitle: nil, action: nil)
+                t.seconds = 6
+                island.toast(t)
+            }
             Task { @MainActor in
                 self?.message = nil
                 await self?.load()

@@ -51,13 +51,13 @@
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.system_audio" = "Also record system audio";
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
-"settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
+"settings.general.collect.hint" = "On: screenshots taken with macOS’s own shortcuts hang as cards too.";
 "settings.general.drag_copy_note" = "If the note didn’t go in with a drop, copy it";
 "settings.general.drag_copy_note.hint" = "When Blurt can’t paste the note after the picture (no Accessibility, the setting above off, the app didn’t come forward, or it was the Finder), the note goes on the clipboard so ⌘V pastes it. This replaces what’s on the clipboard; Undo in the island puts it back.";
 "settings.general.drag_note_file.hint" = "A card dragged into a chat app or the Finder also brings its note as a small Markdown file (Screenshot-153012-note.md). Terminals always get that file’s path, so Claude Code or Codex can read the note.";
 "settings.general.drag_note_file" = "Also attach the note as a .md file";
 "settings.general.drag_caption" = "Add the note under the picture when dragging";
-"settings.general.drag_caption.hint" = "The dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The snap itself stays clean.";
+"settings.general.drag_caption.hint" = "On: the dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The snap itself stays clean.";
 "settings.general.smart_paste" = "Chat apps: the picture, then the note";
 "settings.general.smart_paste.hint" = "Browsers, Claude, Feishu, Slack, WeChat, QQ and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go; terminals and the Finder are left as they are. Needs Accessibility.";
 "settings.general.about" = "About";
@@ -94,7 +94,7 @@
 "settings.privacy.cancel" = "Cancel";
 "settings.privacy.clean_up" = "Clean up";
 "settings.privacy.data" = "Data";
-"settings.privacy.deleted_by_default_once" = "Deleted by default once the transcript exists — recording.mp4 has the same audio.";
+"settings.privacy.deleted_by_default_once" = "Off: deleted once the transcript exists — recording.mp4 has the same audio.";
 "settings.privacy.freed" = "Freed ";
 "settings.privacy.index_can_be_deleted" = "The index can be rebuilt any time.";
 "settings.privacy.items_appear_spotlight" = "Items appear in Spotlight";
@@ -197,6 +197,8 @@
 "onboarding.try.asr_downloading" = "The speech model is still downloading. Try it once it’s in.";
 "onboarding.try.no_model" = "Dictation needs its speech model first.";
 "onboarding.try.polish_coming" = "Dictation works now. The polish model is still coming (%@ to go); then the text reads smoother.";
+"onboarding.try.send_next" = "Now try sending: when you finish, double-tap %@ instead of tapping once.";
+"onboarding.try.sent" = "That’s sending: in other apps the text goes in, then Return is pressed.";
 "onboarding.try.send" = " Or double-tap it to type the text and press Return.";
 "onboarding.use.dictation.detail" = "Tap to talk · tap again to stop · double-tap to send";
 "onboarding.use.dictation.detail_plain" = "Tap to talk · tap again to stop";
@@ -345,5 +347,7 @@
 "settings.privacy.local_asr.off_none" = "No cloud API key is set, so speech is recognized on this Mac. Turn on to keep it that way after you set one.";
 "settings.privacy.local_asr.on" = "Speech is recognized on this Mac only, even with a cloud API key set.";
 "settings.storage.trashed" = "“%@” moved to the Trash";
+"settings.storage.undo_failed" = "Couldn’t put “%@” back";
+"settings.storage.undo_failed_many" = "%d items couldn’t be put back";
 "settings.storage.undo" = "Undo";
 "settings.storage.videos.trashed" = "%1$@ (%2$@) moved to the Trash";

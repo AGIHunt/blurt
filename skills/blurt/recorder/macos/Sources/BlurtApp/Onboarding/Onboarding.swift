@@ -13,7 +13,9 @@
 //      dependencies are warmed up in the background as soon as uv is there (only a failure shows: one sentence and
 //      Try Again);
 //   4. try it — a text box ("tap Fn and say something … or double-tap to send it") that shows a check once the first
-//      dictation lands; it waits only while dictation's own recogniser is still coming down (its bar) — with it in and
+//      dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the double tap
+//      came (Dictation.sendAttempts; no Return goes into Blurt's own window); it waits only while dictation's own
+//      recogniser is still coming down (its bar) — with it in and
 //      polish still downloading it says dictation works already — and offers the download when there is no model;
 //      and "Open Blurt at login" (on the first time: dictation needs Blurt running; reopened later, as it is now);
 //      Done applies it and closes.
@@ -52,6 +54,9 @@ final class OnboardingModel: ObservableObject {
     @Published var tryText = ""
     /// the first dictation landed while the last step showed
     @Published var tried = false
+    /// the second exercise once a dictation landed: the double tap that sends (only while double-tap send is on)
+    @Published var sendTried = false
+    private var sendBaseline = 0
     private var tryTimer: Timer?
     private var tryBaseline: String?
 
@@ -147,11 +152,21 @@ final class OnboardingModel: ObservableObject {
     func stopTry() { tryTimer?.invalidate(); tryTimer = nil }
 
     private func checkTry() {
-        guard !tried, let r = Dictation.shared.lastResult, r["ok"] as? Bool == true,
+        if tried {
+            // the second exercise: a double tap asked for Return (in Blurt's own window it isn't pressed — the line says
+            // what it does elsewhere)
+            guard Dictation.shared.sendAttempts > sendBaseline else { return }
+            sendTried = true
+            stopTry()
+            emit(["event": "onboarding_try_send"])
+            return
+        }
+        guard let r = Dictation.shared.lastResult, r["ok"] as? Bool == true,
               let id = r["id"] as? String, id != tryBaseline else { return }
         tried = true
-        stopTry()
         emit(["event": "onboarding_try", "id": id])
+        // a first dictation came in: now the double tap that sends, when it is on
+        if Dictation.doubleTapSend { sendBaseline = Dictation.shared.sendAttempts } else { stopTry() }
     }
 }
 
@@ -451,6 +466,12 @@ struct OnboardingView: View {
                 .focused($tryFocused)
             if m.tried {
                 check(T("onboarding.try.works"))
+                // the second exercise: the double tap that sends (taught here, before it surprises in a chat)
+                if Dictation.doubleTapSend {
+                    if m.sendTried { check(T("onboarding.try.sent")) }
+                    else { Text(T("onboarding.try.send_next", Dictation.keyShort(m.dictationKey))).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true) }
+                }
             } else if !guide.missing(.dictation).isEmpty {
                 HStack(spacing: 10) {
                     Text(T("onboarding.try.needs_permissions")).foregroundStyle(.secondary)
@@ -602,7 +623,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
         }
         let ms = ModelSetup.shared, pr = ms.progress
         emit(["event": "onboarding_state", "shown": true, "step": m.step, "uv": m.uv ?? NSNull(), "warm": m.warm ?? NSNull(),
-              "missing": PermissionGuide.shared.missing(.dictation).map(\.rawValue), "walked": m.walked, "tried": m.tried,
+              "missing": PermissionGuide.shared.missing(.dictation).map(\.rawValue), "walked": m.walked, "tried": m.tried, "send_tried": m.sendTried,
               "login": m.openAtLogin, "models": ms.parts.map { "\($0.kind.rawValue):\($0.id):\($0.installed ? "installed" : "missing")" },
               "total_mb": ms.totalMB, "downloading": ms.current ?? NSNull(), "progress": [pr.done, pr.total].map { Double(Int($0)) },
               "failed": ms.failed, "ready": ms.ready, "dictation_ready": ms.dictationReady,
