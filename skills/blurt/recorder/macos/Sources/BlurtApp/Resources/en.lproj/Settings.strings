@@ -117,6 +117,8 @@
 "settings.perm.accessibility" = "Accessibility";
 "settings.perm.input_monitoring" = "Input Monitoring";
 "settings.perm.fn_key" = "Fn key in macOS";
+"settings.perm.screen.readd" = "Select Blurt, remove it with −, then add it again";
+"settings.perm.screen.readd_why" = "The list still has an older Blurt’s permission, which doesn’t carry over. Then restart Blurt.";
 "settings.perm.screen.why" = "To record your screen and take snaps.";
 "settings.perm.microphone.why" = "To hear you: narration, voice notes and dictation.";
 "settings.perm.accessibility.why" = "To paste dictated text where you’re typing and hear the dictation key in every app; also lets you hold ⌃ to draw.";

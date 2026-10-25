@@ -13,6 +13,9 @@
 //  • "still talking" while 4 of the last 6 frames are loud; 1.8 s without that ends the note. A key press or a mouse
 //    click in the pause doesn't restart the count.
 //  • `speechSeconds`: how much of it was talking — a note abandoned for typing after a cough is dropped, not kept.
+//  • `activity(grace:)`: the snap's bubble is being drawn on — the pause or the no-speech end waits for the pen
+//    (v0.9: a circle drawn as the note ended was lost). `peakDB`: the loudest frame, so a take that is digital silence
+//    can be told from speech the room hid (VoiceKeep).
 // Pure (samples in, events out) so tests feed it synthetic rooms and voices (NoteEndpointerTests).
 
 import Foundation
@@ -41,6 +44,8 @@ public struct NoteEndpointer {
     public private(set) var ended: End?
     /// the last frame's level (dBFS), for tests and logs
     public private(set) var lastDB: Float = -120
+    /// the loudest frame after the mic's warm-up (dBFS): digital silence (a muted or dead input) stays near −120
+    public private(set) var peakDB: Float = -120
 
     static let startWindow = 12, startLoud = 8, lookback = 50, talkWindow = 6, talkLoud = 4
 
@@ -77,6 +82,14 @@ public struct NoteEndpointer {
         return out
     }
 
+    /// The user is still working on the note without talking (drawing on the picture): ending it needs at least
+    /// `grace` more seconds of quiet, and the no-speech end moves out as far.
+    public mutating func activity(grace: Double) {
+        guard ended == nil else { return }
+        quietFor = min(quietFor, silenceToEnd - grace)
+        noSpeechTimeout = max(noSpeechTimeout, heard + grace)
+    }
+
     /// One frame's level in dBFS.
     public static func level<C: Collection>(_ frame: C) -> Float where C.Element == Float {
         guard !frame.isEmpty else { return -120 }
@@ -89,6 +102,7 @@ public struct NoteEndpointer {
         let db = NoteEndpointer.level(f)
         lastDB = db
         heard += NoteEndpointer.frameSeconds
+        if heard > warmup + 1e-9 { peakDB = max(peakDB, db) }
         var out = step(db)
         if ended == nil, heard >= maxLength - 1e-9 { ended = .maxed; out.append(.ended(.maxed)) }
         return out

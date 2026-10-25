@@ -64,6 +64,22 @@ public enum CardPasteSequence {
 
     /// A sequence is only worth it with two things or more: a lone picture or a lone text pastes as it is.
     public static func needsSequence(_ steps: [PasteStep]) -> Bool { steps.count > 1 }
+
+    /// What a card copy does about smart paste (v0.9): armed only when it can run — without Accessibility the ⌘V
+    /// in a chat app can't be caught, so nothing is armed and the user is told that only the picture will paste.
+    public enum Arm: Equatable {
+        case arm
+        /// nothing to sequence (one thing), or smart paste is off
+        case skip(String)
+        /// picture and note, but no Accessibility: "Copied · in chat apps only the picture pastes [Allow…]"
+        case needsAccessibility
+    }
+
+    public static func arm(enabled: Bool, steps: [PasteStep], accessibility: Bool) -> Arm {
+        guard enabled else { return .skip("off") }
+        guard needsSequence(steps) else { return .skip("one_thing") }
+        return accessibility ? .arm : .needsAccessibility
+    }
 }
 
 /// A copy armed for smart paste: the clipboard's change count right after it was written, and until when.

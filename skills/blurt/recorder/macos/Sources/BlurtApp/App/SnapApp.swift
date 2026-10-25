@@ -34,6 +34,8 @@
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
+//     noteclear · noteink down|move|up X,Y · notestall · notestate (the note bubble: ⌘A⌫, the pen, a mic gone, what it shows)
+//     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
 //     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
@@ -115,6 +117,7 @@ extension App {
             Config.shared.set("record.voice.\(a[1])", v)
             emit(["event": "voice_test_set", "key": a[1], "value": v.map { "\($0)" } ?? "default"])
         case "voice" where arg == "esc": captureHotkey(.voiceEsc)       // = Esc while it listens (its Carbon hotkey)
+        case "voice" where arg == "stall": VoiceInput.shared.testStall()  // its mic stops delivering (a headset gone)
         case "voice" where arg == "state":
             emit(["event": "voice_state", "active": VoiceInput.shared.active, "holding": VoiceInput.shared.holding,
                   "elapsed": VoiceInput.shared.elapsed, "hint": IslandContent.voiceHint(), "live": VoiceInput.shared.liveText ?? NSNull()])
@@ -225,6 +228,14 @@ extension App {
         case "organize": snapper.handToAI(project: ProjectStore.shared.currentID)   // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
         case "notekey": NoteBubble.shared.testKey(arg == "esc" ? 53 : 36)           // notekey esc|return: a real key event
+        case "noteclear": NoteBubble.shared.testClear()                             // ⌘A ⌫ in the note's field
+        case "noteink":                                 // noteink down|move|up X,Y: the pen on the bubble's picture (0–1)
+            let a = arg.split(separator: " ")
+            let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
+            NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5)
+        case "notestall": NoteBubble.shared.testStall()                             // the bubble's mic stops delivering
+        case "notestate": emit(["event": "note_state"].merging(NoteBubble.shared.testState) { $1 })
+        case "quit": RunLoop.main.perform { NSApp.terminate(nil) }                 // = Quit Blurt (applicationShouldTerminate)
         case "toastaction":                             // toastaction [1|2]: click the island toast's (or question's) answer
             guard let t = island.currentToast else { return }
             island.dismissToast()

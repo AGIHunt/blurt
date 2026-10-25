@@ -116,6 +116,28 @@ class FileCaptures(TmpCase):
         out = ok("captures.py", "file", self.s, "--captures", "3", env=self.e.env())
         self.assertEqual([r["n"] for r in out["items"]], [3])
 
+    def test_project_capture_without_a_note_and_a_retried_card_are_filed(self):
+        """v0.9: with a current project a snap without a note is filed there too ("Screenshot 14:32"); a card whose
+        words failed remembers its project (`intended_project`) and, once Retry has them, is assigned back and filed
+        (the app's lines, later ones winning key by key)."""
+        jl = self.s / "shots.jsonl"
+        (self.s / "shots/005.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        (self.s / "shots/006.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        lines = [{"n": 5, "type": "shot", "file": "shots/005.png", "wall": 1761100400, "text": None, "project": self.p["id"],
+                  "assigned_by": "capture"},
+                 {"n": 6, "type": "shot", "file": "shots/006.png", "wall": 1761100500, "voice": "shots/006.wav",
+                  "project": self.p["id"], "assigned_by": "capture"},
+                 {"n": 6, "project": None, "assigned_by": None, "intended_project": self.p["id"]},
+                 {"n": 6, "said": "the coupon field is cut off"},
+                 {"n": 6, "project": self.p["id"], "assigned_by": "capture", "intended_project": None}]
+        jl.write_text(jl.read_text() + "".join(json.dumps(o) + "\n" for o in lines))
+        out = ok("captures.py", "file", self.s, "--captures", "5", "6", env=self.e.env())
+        made = {r["n"]: r for r in out["items"]}
+        self.assertEqual(sorted(made), [5, 6])
+        self.assertEqual({r["project"] for r in made.values()}, {self.p["id"]})
+        self.assertRegex(made[5]["title"], r"^Screenshot \d\d:\d\d$")
+        self.assertEqual(made[6]["title"], "the coupon field is cut off")
+
     def test_explicit_project_wins(self):
         other = ok("projects.py", "add", make_repo(self.tmp / "docs"), env=self.e.env())["project"]
         out = ok("captures.py", "file", self.s, "--captures", "3", "--project", other["id"], env=self.e.env())

@@ -41,12 +41,10 @@
 "app.migrate.keep" = "Keep %@";
 "app.name" = "Blurt";
 
-"app.permission.detail" = "Turn on Blurt in System Settings, under Privacy & Security, Screen & System Audio Recording. Then quit and reopen Blurt: macOS reads the permission at launch.\n\nAlready on? Remove Blurt from that list with the minus button, reopen Blurt and allow it again: a grant from an older build doesn’t carry over.";
-"app.permission.later" = "Later";
-"app.permission.open_settings" = "Open System Settings";
-"app.permission.title" = "Blurt needs Screen Recording permission";
 
 "app.record.failed" = "The recording couldn’t be saved";
+"app.record.failed_kept" = "The recording couldn’t be saved · its %d stills and notes are kept";
+"app.record.organize" = "Organize";
 
 "app.status.ax_count" = "Blurt — %@";
 

@@ -25,7 +25,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             s.setEventHandler { [weak self] in
                 guard let self = self else { return }
-                if self.rec != nil { self.command("stop") } else if !self.resident { self.command("stop") } else { NSApp.terminate(nil) }
+                // (from the run loop, not this main-queue block: quitting waits for captures on the main queue)
+                if self.rec != nil { self.command("stop") } else if !self.resident { self.command("stop") } else { RunLoop.main.perform { NSApp.terminate(nil) } }
             }
             s.resume()
             signalSources.append(s)
@@ -72,6 +73,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEnter: picker?.finish(true)
         case .pickEsc: picker?.finish(false)
         case .pickFull: picker?.fullScreen()
+        case .pickLast: picker?.useLast()
         case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the chick pulses now, not at the idle timer's next tick
@@ -100,7 +102,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let p = PickerController()
         p.onDone = { [weak self] r in
             guard let self = self else { return }
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull)
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
             self.picker = nil
             guard let r = r else { self.busy = false; sessionEnded(2, ["event": "cancelled"]); return }
             self.begin(r)
@@ -283,6 +285,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Quitting (the menu, an update's relaunch, logging out, SIGTERM) never loses a capture on its way: the open note
+    /// is saved, a voice note finished, words and filings get a moment, shots.jsonl is flushed (Snapper.prepareForQuit;
+    /// at most ~3 s). What is still on its way comes back at the next launch (Snapper.restore).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard resident, !quitting else { return .terminateNow }
+        quitting = true
+        snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
+    }
+    private var quitting = false
+
     func applicationWillTerminate(_ notification: Notification) {
         guard resident else { return }
         Housekeeping.atQuit()
@@ -359,16 +372,22 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if autoProcess {
             AgentHub.shared.check(AgentHub.shared.order(), force: true) { _ in }   // warm the cache while recording
         }
-        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
-            DispatchQueue.main.async {
-                if err != nil {
-                    self.busy = false
-                    try? FileManager.default.removeItem(at: dir)
-                    self.permissionHelp()
-                    return
-                }
-                if useLast, let r = opts.lastRegion { self.begin(r) } else { self.pick() }
+        // no Screen Recording: the island says so, with the permission guide (the snap's way; no alert) — and a grant
+        // macOS reports but ScreenCaptureKit refuses (an older build's) is "re-allow Screen Recording" (ScreenHelp)
+        guard SystemAccess.granted(.screen) else {
+            busy = false
+            try? FileManager.default.removeItem(at: dir)
+            emit(["event": "record_blocked", "grant": ScreenGrant.missing.rawValue])
+            return ScreenHelp.show(.record, grant: .missing)
+        }
+        ScreenHelp.probe { ok in
+            guard ok else {
+                self.busy = false
+                try? FileManager.default.removeItem(at: dir)
+                emit(["event": "record_blocked", "grant": ScreenGrant.stale.rawValue])
+                return ScreenHelp.show(.record, grant: .stale)
             }
+            if useLast, let r = opts.lastRegion { self.begin(r) } else { self.pick() }
         }
     }
 
@@ -382,9 +401,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let dir = lastSession else { return }
         cleanupLive(dir)
         if code != 0 {
-            try? FileManager.default.removeItem(at: dir)       // cancelled / failed take: leave no empty folder
-            if event["event"] as? String == "error" {
-                alert(T("app.record.failed"), event["message"] as? String ?? "")
+            // a failed take keeps what was taken during it — the stills, their notes, the live transcript (BlurtCore
+            // TakeEnd); only a cancelled or empty one leaves no folder behind
+            let stills = ((try? FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("shots").path)) ?? [])
+                .filter { $0.hasSuffix(".png") && !$0.contains(".marked") }.count
+            let notes = ["shots.jsonl", "live"].contains { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) }
+            if TakeEnd.keepsFolder(code: code, stills: stills, notes: notes) {
+                keepFailedTake(dir, code: code, event: event, stills: stills)
+            } else {
+                try? FileManager.default.removeItem(at: dir)
+                if event["event"] as? String == "error" {
+                    alert(T("app.record.failed"), event["message"] as? String ?? "")
+                }
             }
             refreshStatus()
             return
@@ -407,6 +435,27 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toast(T("app.toast.saved", Loc.duration(dur)), icon: .check)
         }
         refreshStatus()
+    }
+
+    /// A recording that couldn't be saved but has stills (and notes) in it: the folder stays, meta.json says it failed,
+    /// and the island offers to organise what was saved (the stills are the session's frames).
+    private func keepFailedTake(_ dir: URL, code: Int32, event: [String: Any], stills: Int) {
+        let project = ProjectStore.shared.current
+        let meta: [String: Any] = [
+            "engine": "native-app", "state": "failed", "error": event["message"] as? String ?? "",
+            "started_at": ISO8601DateFormatter().string(from: Date()),
+            "author": recordConfig()["author"] as? String ?? NSFullUserName(),
+            "project": project?.id as Any? ?? NSNull(), "workspace": currentWorkspace().path,
+        ]
+        if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: dir.appendingPathComponent("meta.json"))
+        }
+        emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills])
+        var t = Island.Toast(text: T("app.record.failed_kept", stills), actionTitle: T("app.record.organize")) { [weak self] in
+            self?.process(dir, project: project?.id)
+        }
+        t.seconds = 12
+        island.toast(t)
     }
 
     /// The status item: the clock while recording, the chick (moving while voice input listens) and the count of what
@@ -703,27 +752,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         toastWin = win
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self, weak win] in
             if self?.toastWin === win { win?.orderOut(nil) }
-        }
-    }
-
-    func permissionHelp() {
-        let a = NSAlert()
-        a.messageText = T("app.permission.title")
-        a.informativeText = T("app.permission.detail")
-        a.addButton(withTitle: T("app.permission.open_settings"))
-        a.addButton(withTitle: T("app.menu.quit"))
-        a.addButton(withTitle: T("app.permission.later"))
-        activateApp()
-        switch a.runModal() {
-        case .alertFirstButtonReturn:
-            // the permission guide (Blurt in the list, the pane, the helper panel with Restart Blurt); a grant macOS
-            // already reports (an older build's): just the pane, to remove and add Blurt again
-            if SystemAccess.granted(.screen) { SystemAccess.openPane(.screen) } else {
-                MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: .capture) }
-            }
-        case .alertSecondButtonReturn:
-            NSApp.terminate(nil)
-        default: break
         }
     }
 

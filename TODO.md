@@ -145,3 +145,15 @@
       row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in
       `--brand-ink` and its length; never a bare mic glyph). Done toasts ("Saved", "Copied") carry the `ok` check in
       the overlay island too; search hits that span lines show on one line (" · ") in the desktop app's lists.
+- [ ] Capture fixes from the Mac v0.9 dogfood run (docs/design/next-round.md §K7 细则 v0.9; port BlurtCore
+      `CaptureRules.swift` with its tests): the snap's note shows the words as they are heard and "Saved" with the final
+      words; it never closes under the pen (a stroke holds the pause end; 2.5 s after the last stroke) or while typed
+      text waits (committed text only, not an IME composition); Esc clears typed text first, then discards (Undo 5 s);
+      a project capture without a note is filed into the project; a failed transcription keeps its project
+      (`intended_project`), says so with Retry and files once Retry has the words; a voice note the user ends is kept
+      unless it is short or digital silence ("No words recognised · Retry"); "check the microphone" when nothing was
+      heard; a mic lost mid-note ends it with what was said; one listener at a time (a snap during a voice note is
+      typed only); quitting saves what is on its way and the next launch files it (and repairs a cut-off wav);
+      Screen Recording missing / stale → one island line and the permission guide (re-add form for a stale grant);
+      auto-sort with no agent leaves the cards; click-copy without the paste permission says only the picture pastes;
+      a failed recording keeps its stills.

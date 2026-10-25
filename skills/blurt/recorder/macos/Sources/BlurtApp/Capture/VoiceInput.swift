@@ -13,8 +13,9 @@
 //  • the snap's spoken note (⌥⇧A, NoteBubble) keeps its silence end: it is a sentence about one picture.
 //  • the words while you talk (record.live_text, on — "Show text while I talk"): VoiceNoteStream cuts the audio at
 //    pauses as it comes in (BlurtCore's DictationSegmenter, as dictation does) and each piece goes to the warm speech
-//    server as soon as it is complete (`note`, the voice-note model, the text so far as context); the text so far
-//    shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
+//    server as soon as it is complete (`note`, the voice-note model, the text so far as context); about once a second
+//    the piece still being said is decoded as an interim request (v0.9, as dictation's live text: quieter until its
+//    piece is final; record.dictation.live_partial); the text so far shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
 //    as soon as it is caught. A piece that failed → the whole wav through `transcribe.py note`, the old way. (The
 //    pieces run whether or not the panel shows: the words are ready at stop either way. record.voice.stream false =
 //    the old path only.)
@@ -27,6 +28,12 @@
 //    a vibe coder presses Esc in Claude Code or vim all the time, so it is given back as soon as a mistaken start is
 //    no longer likely (the island stops saying "Esc to cancel"); after that, the key again or Done ends it. A cancel
 //    keeps the audio for 5 s: "Voice note discarded · Undo" files it after all (v0.8.6 deleted it at once).
+//  • what is kept (BlurtCore VoiceKeep, v0.9): a note the user ends (the key, Done, letting go, quitting) is kept when
+//    it lasted 1.5 s and wasn't digital silence, even if the room hid the speech from the endpointer — the speech
+//    model decides; no words → the card says "No words recognised" with Retry. Nothing heard for the whole wait:
+//    "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone mid-note (a headset out, the
+//    input switched: NoteVoice's watchdog) ends it with what was said.
+//  • Blurt quitting finishes it (finishForQuit); a snap's bubble opened meanwhile has Esc (yieldEsc).
 // Tests: BLURT_TEST_MIC_WAV (or BLURT_NOTE_WAV) is fed through the same path instead of the microphone;
 // BLURT_TEST_NO_SERVERS=1 starts no warm server (the pieces go through the CLI: no local port is opened).
 
@@ -70,7 +77,7 @@ final class VoiceInput {
     /// the longest voice note (seconds)
     var maxSeconds: Double { max(30, (settings["max_seconds"] as? Double) ?? 600) }
     /// transcribe while talking (off: the whole wav after stop, the old path)
-    private var streams: Bool { settings["stream"] as? Bool ?? true }
+    var streams: Bool { settings["stream"] as? Bool ?? true }
     /// what the island says it will take to finish: the key, else the Done button
     var endsOnPause: Bool { VoiceInput.endOnPause && !holding }
 
@@ -142,14 +149,15 @@ final class VoiceInput {
         v.onEnd = { [weak self] e in
             guard let self = self, self.voice === v else { return }
             if e == .maxed { island.toast(Loc.t("capture.voice.maxed", table: "Capture", Island.clock(self.maxSeconds)), actionTitle: nil, action: nil) }
-            self.finish(keep: e != .noSpeech, ended: true, via: "\(e)")
+            self.finish(keep: e != .noSpeech, ended: true, via: e == .micLost ? "mic_lost" : "\(e)")
         }
         let live = LiveTranscript.shared.begin(.voice)
         liveSession = live
-        let st = streams ? VoiceNoteStream(id: "\(ShotBatch.name(k))-\(Int(Date().timeIntervalSince1970))") : nil
-        st?.onText = { [weak self] t in
-            if let self = self, self.stream === st { self.liveText = t }
-            LiveTranscript.shared.update(t, session: live)
+        let st = streams ? VoiceNoteStream(id: "\(ShotBatch.name(k))-\(Int(Date().timeIntervalSince1970))",
+                                           interim: Dictation.livePartial && LiveTranscript.enabled) : nil
+        st?.onLive = { [weak self] committed, pending in
+            if let self = self, self.stream === st { self.liveText = committed + pending }
+            LiveTranscript.shared.update(committed, pending: pending, session: live)
         }
         if let s = st { v.onSamples = { [weak s] x in s?.append(x) } }
         voice = v
@@ -163,7 +171,7 @@ final class VoiceInput {
         startedAt = Date()
         active = true
         Self.warmSpeechModel()
-        registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0)
+        if !NoteBubble.shared.isOpen { registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0) }
         escCancels = true
         escTimer?.invalidate()
         escTimer = Timer.scheduledTimer(withTimeInterval: VoiceInput.escSeconds, repeats: false) { [weak self] _ in
@@ -230,12 +238,34 @@ final class VoiceInput {
         return out.flatMap { ($0["ok"] as? Bool ?? true) ? $0 : nil }
     }
 
+    /// Tests (test commands only): the microphone stops delivering mid-note.
+    func testStall() { voice?.testStall() }
+
+    /// Blurt is quitting (App.applicationShouldTerminate): the note is finished and filed as if the key ended it — its
+    /// wav is closed (a header that says how long it is) and its shots.jsonl line written.
+    func finishForQuit() { if active { finish(keep: true, via: "quit") } }
+
+    /// The snap's note bubble opened while this listens (a snap taken during a voice note): plain Esc is the bubble's
+    /// until it closes, then the voice note's again for what is left of `escSeconds`.
+    func yieldEsc(_ yield: Bool) {
+        guard active, escCancels else { return }
+        if yield { unregisterHotkey(.voiceEsc) } else { registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0) }
+    }
+
     private func finish(keep: Bool, ended: Bool = false, via: String) {
         guard active, let v = voice, let b = batch else { return }
         let dur = v.elapsed
-        let kept = keep && heardSpeech
-        // Esc after something was said: kept a moment longer, for Undo
-        let undoable = !keep && via == "esc" && heardSpeech
+        // BlurtCore VoiceKeep: a note the user ended is kept when it lasted and wasn't digital silence, even if the room
+        // hid the speech from the endpointer — the speech model decides (no words → kept as audio, "Retry")
+        let how: VoiceKeep.Ended = via == "esc" ? .cancel : via == "no_mic" ? .noMic : via == "noSpeech" ? .noSpeech
+            : via == "mic_lost" ? .micLost : via == "silence" ? .silence : via == "maxed" ? .maxed : .user
+        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, peakDB: v.peakDB)
+        var kept = false, undoable = false, toast = VoiceKeep.Toast.none
+        switch decision {
+        case .keep(let t): kept = true; toast = t
+        case .undoable: undoable = true             // Esc after something was said: kept a moment longer, for Undo
+        case .drop(let t): toast = t
+        }
         if !ended { v.stop(keep: kept || undoable) } else if !kept { v.stop(keep: false) }
         let st = stream
         voice = nil
@@ -245,7 +275,9 @@ final class VoiceInput {
         holding = false
         releaseEsc()
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
-              "pieces": st?.count ?? 0, "wall": Date().timeIntervalSince1970])
+              "pieces": st?.count ?? 0, "heard_speech": heardSpeech, "peak_db": Double((v.peakDB * 10).rounded() / 10),
+              "wall": Date().timeIntervalSince1970])
+        VoiceInput.say(toast)
         let project = snapper.target
         island.voiceChanged()
         let live = liveSession
@@ -264,8 +296,33 @@ final class VoiceInput {
         } else {
             st?.cancel()
             LiveTranscript.shared.end(session: live)
-            if keep { island.toast(Loc.t("capture.voice.nothing", table: "Capture"), actionTitle: nil, action: nil) }
         }
+    }
+
+    /// What the island says when a voice note ends without being kept as it was (BlurtCore VoiceKeep.Toast).
+    static func say(_ t: VoiceKeep.Toast) {
+        switch t {
+        case .none: return
+        case .nothing: island.toast(Loc.t("capture.voice.nothing", table: "Capture"), actionTitle: nil, action: nil)
+        case .micLost: island.toast(Loc.t("capture.voice.mic_lost", table: "Capture"), actionTitle: nil, action: nil)
+        case .checkMic:
+            // nothing at all for the whole wait: a muted or wrong microphone, most likely
+            var toast = Island.Toast(text: Loc.t("capture.voice.check_mic", table: "Capture"),
+                                     actionTitle: Loc.t("capture.voice.sound_settings", table: "Capture")) {
+                if let u = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension?input") { NSWorkspace.shared.open(u) }
+            }
+            toast.seconds = 6
+            island.toast(toast)
+        }
+    }
+
+    /// The voice-note model on the piece still being said (the live text): the warm server only, never a CLI — an
+    /// interim answer that has to load a model isn't worth it. Blocking: off the main thread.
+    static func transcribeInterim(_ wav: URL, prior: String) -> [String: Any]? {
+        guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
+        var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto", "interim": true]
+        if !prior.isEmpty { req["prior"] = prior }
+        return WarmServer.call("asr-serve", req, timeout: 15)
     }
 
     /// A cancelled voice note: "Voice note discarded · Undo" for `undoSeconds` — Undo files it as if it had been
@@ -295,10 +352,16 @@ final class VoiceInput {
 /// does: ≥ 0.5 s of quiet, pieces of ≥ 3 s, at most 20 s) and each piece goes to the speech model as soon as it is
 /// complete, on one serial queue, the text so far as context. `finish` sends the rest and answers with the whole
 /// text (DictationStitch.joinPieces) — nil when a piece failed (the caller transcribes the whole wav then).
+/// Live text (`interim`, v0.9 — the same as dictation's, docs/design/dictation.md §Live text): about once a second the
+/// piece still being said is decoded by the warm server as an *interim* request (BlurtCore DictationLiveDecode decides
+/// when; a final piece always goes first) and `onLive` gets the finished pieces' text and, after it, the interim
+/// text. The ⌥⇧V panel and the snap's note bubble show it; nothing filed comes from an interim answer.
 final class VoiceNoteStream {
     let id: String
-    /// the text so far, on the main queue, after each piece
+    /// the finished pieces' text so far, on the main queue, after each piece
     var onText: ((String) -> Void)?
+    /// the live text (main queue): the finished pieces' text, then the interim text of the piece still being said
+    var onLive: ((_ committed: String, _ pending: String) -> Void)?
     /// the whole text (nil: a piece failed), on the main queue, just before `finish`'s own answer
     var onFinished: ((String?) -> Void)?
     private var segmenter = DictationSegmenter(sampleRate: NoteVoice.rate)
@@ -309,17 +372,24 @@ final class VoiceNoteStream {
     private var pieceHard = false
     private var queued = 0
     private let q = DispatchQueue(label: "blurt.voice.pieces", qos: .userInitiated)
+    private let liveQ = DispatchQueue(label: "blurt.voice.live", qos: .userInitiated)
     private let lock = NSLock()
     private var texts: [String] = []        // q
     private var pauses: [Double?] = []      // under lock
     private var failed = false              // q
     private var cancelled = false           // under lock
     private let dir: URL
+    // the live text (main thread)
+    private var live: DictationLiveDecode
+    private var finals: [Int: String] = [:]
+    private var hards: [Int: Bool] = [:]
+    private var interims: [Int: String] = [:]
 
     var count: Int { queued }
 
-    init(id: String) {
+    init(id: String, interim: Bool = false) {
         self.id = id
+        live = DictationLiveDecode(sampleRate: NoteVoice.rate, off: interim ? nil : .setting)
         dir = BlurtPaths.home.appendingPathComponent("tmp/voice", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
@@ -340,6 +410,7 @@ final class VoiceNoteStream {
             let drop = pieceStart - base
             if drop > 0 { audio.removeFirst(min(drop, audio.count)); base = pieceStart }
         }
+        interimIfDue()
     }
 
     private func enqueue(start: Int, end: Int, hard: Bool) {
@@ -347,6 +418,8 @@ final class VoiceNoteStream {
         let samples = Array(audio[max(0, start - base)..<max(0, min(end - base, audio.count))])
         let i = queued
         queued += 1
+        hards[i] = hard
+        live.finalQueued()          // no interim goes out until this piece's text is in
         emit(["event": "voice_piece", "id": id, "index": i, "start": Double(start) / NoteVoice.rate, "end": Double(end) / NoteVoice.rate,
               "hard": hard])
         q.async { self.transcribe(i, samples, hard: hard) }
@@ -373,13 +446,76 @@ final class VoiceNoteStream {
         emit(["event": "voice_piece_text", "id": id, "index": i, "ok": r != nil, "chars": text.count,
               "ms": Int((CACurrentMediaTime() - t0) * 1000), "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100])
         guard !isCancelled else { return }
-        DispatchQueue.main.async { if !joined.isEmpty { self.onText?(joined) } }
+        DispatchQueue.main.async {
+            if !joined.isEmpty { self.onText?(joined) }
+            self.finalLanded(i, text)
+        }
+    }
+
+    // MARK: live text (main thread; the interim requests on liveQ)
+
+    /// As audio arrives: the open piece's audio so far to the warm server when DictationLiveDecode says so.
+    private func interimIfDue() {
+        guard onLive != nil, !isCancelled else { return }
+        guard let t = live.next(now: CACurrentMediaTime(), piece: queued, pieceStart: pieceStart, audioEnd: total,
+                                hasSpeech: segmenter.pieceHasSpeech) else { return }
+        let lo = max(0, t.start - base), hi = max(lo, min(audio.count, t.end - base))
+        let samples = Array(audio[lo..<hi])
+        let prior = String(DictationStitch.joinPieces((0..<queued).compactMap { finals[$0] }, pauses: segmenter.pauses).suffix(200))
+        let url = dir.appendingPathComponent("\(id)-live.wav")
+        liveQ.async { [weak self] in
+            guard let self = self, !self.isCancelled else { return }
+            DictationStream.writeWav(samples, to: url)
+            let t0 = CACurrentMediaTime()
+            let r = VoiceInput.transcribeInterim(url, prior: prior)
+            let secs = CACurrentMediaTime() - t0
+            try? FileManager.default.removeItem(at: url)
+            DispatchQueue.main.async { self.interimDone(t, r, seconds: secs) }
+        }
+    }
+
+    private func interimDone(_ t: DictationLiveDecode.Ticket, _ r: [String: Any]?, seconds: Double) {
+        let code = r?["code"] as? String
+        let load = Double(r?["load_ms"] as? Int ?? 0) / 1000
+        let a: DictationLiveDecode.Answer = r?["ok"] as? Bool == true ? .text(seconds: max(0, seconds - load))
+            : code == "interrupted" || code == "no_server" ? .interrupted : code == "interim_unsupported" ? .unsupported : .failed
+        let show = !isCancelled && live.done(t, a)
+        let text = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        emit(["event": "voice_interim", "id": id, "piece": t.piece, "ms": Int(seconds * 1000),
+              "result": r?["ok"] as? Bool == true ? "text" : code ?? "failed", "shown": show && !text.isEmpty, "chars": text.count])
+        if show, !text.isEmpty {
+            interims[t.piece] = text
+            publish()
+        }
+    }
+
+    /// A final piece's transcript is in: it replaces its interim text (and interim requests may go again).
+    private func finalLanded(_ i: Int, _ text: String) {
+        finals[i] = text
+        interims[i] = nil
+        live.finalDone(piece: i)
+        publish()
+        if !live.stopped { interimIfDue() }
+    }
+
+    private func publish() {
+        guard let f = onLive, !isCancelled else { return }
+        var items: [DictationLiveDecode.Piece] = []
+        for i in 0..<queued {
+            if let t = finals[i] { items.append(.final(t)) }
+            else if let t = interims[i] { items.append(.interim(t, hard: hards[i] ?? false)) }
+            else { items.append(.none) }
+        }
+        if let t = interims[queued] { items.append(.interim(t, hard: pieceHard)) }
+        let (committed, pending) = DictationLiveDecode.compose(items, pauses: segmenter.pauses)
+        if !(committed + pending).isEmpty { f(committed, pending) }
     }
 
     // MARK: stop
 
     /// The rest of the audio as the last piece, then the whole text (main queue). nil: a piece failed.
     func finish(_ done: @escaping (String?) -> Void) {
+        live.stop()             // no more interim requests: one under way still shows until its piece is in
         let tail = total - pieceStart
         if queued == 0 || (tail > Int(0.3 * NoteVoice.rate) && segmenter.pieceHasSpeech) {
             enqueue(start: pieceStart, end: total, hard: pieceHard)
@@ -392,7 +528,8 @@ final class VoiceNoteStream {
             DispatchQueue.main.async {
                 self.onFinished?(text)
                 self.onFinished = nil
-                self.onText = nil           // (its closure holds the stream)
+                self.onText = nil           // (its closures hold the stream)
+                self.onLive = nil
                 done(text)
             }
         }
@@ -400,7 +537,9 @@ final class VoiceNoteStream {
 
     func cancel() {
         lock.lock(); cancelled = true; lock.unlock()
+        live.stop()
         onText = nil
+        onLive = nil
         onFinished = nil
         audio = []
     }

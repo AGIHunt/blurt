@@ -26,13 +26,22 @@ Linux) is where capture starts. Hover it to see your current project and the thr
 
 | | Shortcut | What happens |
 |---|---|---|
-| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong; stop talking for about 2 s and it's saved (room noise doesn't keep it open). Drag on the picture to circle the exact spot. |
+| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment (click into the words to fix them). Drag on the picture to circle the exact spot: the note never closes while you're drawing. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
 | **Voice note** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* on the island) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the island as you talk. |
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* on the island) stops. |
 
 While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
 screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. Use a recording for flows, animations and timing;
 use a snap or a voice note for everything that fits in one screen or one sentence.
+
+**When something gets in the way.** A snap or a recording without Screen Recording permission says so on the island
+before you pick an area, with *Open Settings*. After an update macOS sometimes keeps an old build's permission that no
+longer works: Blurt then says *Couldn't snap — macOS needs Screen Recording allowed again* and *Re-allow…* shows how to
+remove Blurt from the list, add it again and restart it. A voice note you end yourself is kept even in a noisy room;
+if no words come out of it, its card says *No words recognised* with *Retry*. A note whose words couldn't be
+transcribed says so on the island with *Retry*, and still goes to its project once Retry has the words. If the
+microphone goes away mid-note (AirPods taken out), the note ends with what you said. Quitting Blurt never loses a
+capture on its way: it is saved first, or picked up again the next time Blurt starts.
 
 **Long voice notes.** A voice note no longer ends when you stop to think: it goes on until you press `⌥⇧V` again,
 click *Done*, or let go of the keys if you held them (10 minutes at most; the island shows the time, and the time left
@@ -62,7 +71,8 @@ drag a folder onto it. Items live inside the folder in `.blurt/`, which Blurt ke
 
 The **current project** decides where new captures go. Press `⌥⇧O` (or click the project name on the island) to
 switch:
-- **A project** — every snap and voice note goes straight into it and is processed right away.
+- **A project** — every snap and voice note goes straight into it and is processed right away, with a note or
+  without one.
 - **Auto** — captures wait as cards (below) until you say where they belong.
 
 A recording is never a card: when it ends it is processed, and each item is filed into the project it is about.
@@ -413,12 +423,14 @@ so the two must speak the same version: when one is older than the other, the is
 
 | | 快捷键 | 做什么 |
 |---|---|---|
-| **截图** | `⌥⇧A` | 框一块区域，松手，接着说（或者打字）哪里不对。在图上直接拖动，可以圈出具体位置。 |
+| **截图** | `⌥⇧A` | 框一块区域，松手，接着说（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已记下」旁边会显示听到的内容（点进文字可以改）。在图上直接拖动，可以圈出具体位置：正在画的时候备注不会关掉。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
 | **语音备注** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点岛上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的应用。说的时候，识别出的文字显示在岛下方。 |
 | **录屏** | `⌥⇧R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥⇧R`（或岛上的「完成」）结束。 |
 
 录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
+
+**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下；要是没识别出文字，卡片上会写「没识别出文字」，可以「重试」。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；岛上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
@@ -434,7 +446,7 @@ so the two must speak the same version: when one is older than the other, the is
 条目存在这个文件夹的 `.blurt/` 里，口喷鸡会自动让它不进 git。
 
 **当前项目**决定新的截图和语音备注去哪。按 `⌥⇧O`（或点刘海上的项目名）切换：
-- **某个项目**：截图和语音备注直接进这个项目，马上开始整理。
+- **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。
 - **自动**：它们先挂成卡片（见下），等你决定放哪。
 
 录屏不会挂卡片：结束就开始整理，每一条按内容归到对应的项目。归不了类的进「**未归类**」，之后在侧栏里拖到项目上就行。

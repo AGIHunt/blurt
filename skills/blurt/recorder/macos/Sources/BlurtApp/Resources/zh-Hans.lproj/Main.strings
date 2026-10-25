@@ -41,12 +41,10 @@
 "app.migrate.keep" = "放进 %@";
 "app.name" = "口喷鸡";
 
-"app.permission.detail" = "在「系统设置」的「隐私与安全性」中，打开「录屏与系统录音」里的「Blurt」，然后退出并重新打开口喷鸡（macOS 只在启动时读取权限）。\n\n如果已经是打开的：在列表里选中「Blurt」，点减号删掉，再重新打开口喷鸡授权一次（旧版本的授权对新版本无效）。";
-"app.permission.later" = "稍后";
-"app.permission.open_settings" = "打开系统设置";
-"app.permission.title" = "需要「录屏」权限";
 
 "app.record.failed" = "录屏没能保存";
+"app.record.failed_kept" = "录屏没能保存 · 其中的 %d 张截图和备注都留着";
+"app.record.organize" = "整理";
 
 "app.status.ax_count" = "口喷鸡 · %@";
 

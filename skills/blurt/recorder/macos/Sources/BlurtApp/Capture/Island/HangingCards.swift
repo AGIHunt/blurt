@@ -39,7 +39,8 @@
 //    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (top right
 //    once there is a caption) only when the note was spoken *and* its words are here. A spoken note still being
 //    transcribed: "Transcribing…" under whatever was typed, never an empty mic; failed: "Couldn't transcribe" and
-//    Retry Transcription in the right-click menu. A spoken note with no speech in it (the room, a cough, abandoned
+//    Retry Transcription in the right-click menu — in the island's amber, with the mic mark kept (there is audio to
+//    try again; v0.9); a voice note the model found no words in: "No words recognised", the same way. A spoken note with no speech in it (the room, a cough, abandoned
 //    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
 //  • hover shortens the thread and lifts the card (its neighbours make room); its note, under the whole row (never over
 //    a neighbour), only adds what the card can't show (CardTip): the rest of a note cut short, the play button of a
@@ -499,7 +500,8 @@ final class HangingCards: NSObject {
         c.card.shadowOpacity = dark ? 0.55 : 0.3
         stylePick(c)                    // a ⌘-click selection's ring survives a restyle (appearance, a new note)
         // the mic mark: these words were spoken — never on a card without them
-        let marks: [BlurtIcon] = (s.kind == .shot && note.showsMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
+        // (a note that needs Retry keeps its mark too: the audio is there to try again)
+        let marks: [BlurtIcon] = (s.kind == .shot && (note.showsMic || note.status.needsRetry) ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
         c.badge.contents = marks.isEmpty ? nil : HangingCards.badgeImage(marks)
         c.badge.isHidden = marks.isEmpty
         // with a caption along the bottom, the marks move to the top right corner (the × has the top left)
@@ -507,12 +509,13 @@ final class HangingCards: NSObject {
         c.badge.frame = CGRect(x: w - 6 - 31, y: c.caption.isHidden && c.captionStatus.isHidden ? h - 6 - 16 : 6, width: 31, height: 16)
     }
 
-    /// "Transcribing…" / "Couldn't transcribe" (nil: nothing pending).
+    /// "Transcribing…" / "Couldn't transcribe" / "No words recognised" (nil: nothing pending).
     static func statusText(_ s: CardNote.Status) -> String? {
         switch s {
         case .none: return nil
         case .transcribing: return Loc.t("capture.card.transcribing", table: "Capture")
         case .failed: return Loc.t("capture.card.transcribe_failed", table: "Capture")
+        case .noWords: return Loc.t("capture.card.no_words", table: "Capture")
         }
     }
 
@@ -539,7 +542,10 @@ final class HangingCards: NSObject {
             c.truncated = hgt > lines * lineH + 2             // more than the card's one or two lines: the hover note has it
             setText(c.caption, t, font: f, color: NSColor(white: 1, alpha: 0.96))
         }
-        if let st = status { setText(c.captionStatus, st, font: sf, color: NSColor(white: 1, alpha: 0.72)) }
+        // a note that needs the user (Retry) in the island's amber, not the quiet white of "Transcribing…"
+        if let st = status {
+            setText(c.captionStatus, st, font: sf, color: note.status.needsRetry ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.72))
+        }
         let statusH: CGFloat = status == nil ? 0 : 12
         let band = 5 + lines * lineH + statusH + 5
         c.caption.frame = CGRect(x: 7, y: h - 5 - statusH - lines * lineH, width: inner, height: lines * lineH + 1)
@@ -1753,7 +1759,7 @@ final class HangingCards: NSObject {
         if all > 1 {
             m.addItem(ClosureMenuItem(Loc.plural("capture.card.copy_all", table: "Capture", count: all)) { [weak self] in self?.copyAll() })
         }
-        if s.note.status == .failed {
+        if s.note.status.needsRetry {
             m.addItem(ClosureMenuItem(Loc.t("capture.card.retry_transcribe", table: "Capture")) { snapper.retryWords(s) })
         }
         m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })

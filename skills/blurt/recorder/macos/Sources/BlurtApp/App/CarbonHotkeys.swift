@@ -8,11 +8,11 @@ import ServiceManagement
 
 // MARK: - Hotkeys (Carbon via BlurtCore.HotkeyCenter: work without Accessibility permission, even when we're not the
 // active app). Configurable actions arrive through HotkeyCenter.onFire (and onRelease: voice input's push-to-talk);
-// the fixed keys below (Esc for the pen and for voice input, ↩ / Esc / F in the picker) through onRaw.
+// the fixed keys below (Esc for the pen and for voice input, ↩ / Esc / F / L in the picker) through onRaw.
 
 enum HK: UInt32 {
     case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11,
-         pickFull = 12, voice = 13, project = 14, voiceEsc = 15, cards = 16, cardsEsc = 17, dictationEsc = 18, reformat = 19
+         pickFull = 12, voice = 13, project = 14, voiceEsc = 15, cards = 16, cardsEsc = 17, dictationEsc = 18, reformat = 19, pickLast = 20
 }
 var hotkeyHandler: ((HK) -> Void)?
 
