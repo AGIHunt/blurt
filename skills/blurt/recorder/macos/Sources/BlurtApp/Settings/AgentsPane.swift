@@ -1,8 +1,9 @@
 // Settings → Agents (a page of SettingsKit lines; its sections are in SettingsCatalog): which coding agents Blurt uses — organizing recordings and snaps, auto-sort, AI fill-in —
 // (record.agents, in order — drag to reorder, untick to leave one out) and which can run in Blurt's sessions
 // (sessions.py doctor), each one's state (agents.py detect). The rows are there at once (agents.json, "Checking…"),
-// then a quick look, then the sign-in check. Only what stops Blurt is red; the command that fixes an agent shows only
-// where it matters (a ticked agent tried before the one that runs). Connect installs the blurt skill + MCP server into
+// then a quick look, then the sign-in check — "Runs first" only once the sign-in check is in, so it never jumps from one
+// agent to another. Only what stops Blurt is red; amber exactly where a row shows the command that fixes it (a ticked
+// agent tried before the one that runs); an agent that isn't installed can't be ticked. Connect installs the blurt skill + MCP server into
 // an agent (agents.py install: a --dry-run preview first, applied only after the user confirms) and is offered only
 // while they are missing (a dry run per installed agent says so). The current project's default agent for sessions
 // (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart.
@@ -18,6 +19,8 @@ final class AgentsModel: ObservableObject {
     @Published var rows: [CoreAgent] = []
     @Published var enabled = Set<String>()
     @Published var pick: String?
+    /// a full check (with the sign-in probe) has come back: `pick` is final (the quick look can't tell who is signed in)
+    @Published var signInChecked = false
     @Published var loading = false
     @Published var error: String?
     @Published var plan: (agent: CoreAgent, plan: InstallPlan, applied: Bool)?
@@ -107,6 +110,7 @@ final class AgentsModel: ObservableObject {
             }.first ?? d.pick
             enabled = Set(Agents.shared.order ?? d.agents.filter(\.headless).map(\.id))
             if enabled.isEmpty { enabled = Set(d.order) }
+            if login { signInChecked = true }
             error = nil
         } catch {
             self.error = "\(error)"
@@ -311,14 +315,18 @@ struct AgentsPane: View {
 
     /// Red only for a problem that stops Blurt: a ticked agent that can't run while no agent can. An agent the user
     /// doesn't use (not installed, not signed in, a fallback below the one that runs) is a quiet grey.
-    func tone(_ a: CoreAgent) -> Tone {
+    /// Amber exactly where the row shows a fix to do (the colour and the message agree); "configured, can't check
+    /// ahead" needs nothing from the user: quiet.
+    func tone(_ a: CoreAgent, ordered: Bool = true) -> Tone {
         switch a.state {
         case "ready": return .good
-        case "configured", "unknown": return a.installed ? .warn : .off
-        case "logged_out": return m.enabled.contains(a.id) && m.pick == nil ? .bad : .off
-        default: return .off
+        case "logged_out" where m.enabled.contains(a.id) && m.pick == nil: return .bad
+        default: return showsFix(a, ordered: ordered) && a.state != "checking" ? .warn : .off
         }
     }
+
+    /// Every row's check is in: only then is one marked as the one that runs first (no badge that jumps).
+    var checked: Bool { m.signInChecked && !m.rows.contains { $0.state == "checking" } }
 
     /// The fix (sign in, install) only where it matters: a ticked agent tried before the one that runs, or any
     /// ticked one while none can run. Fallbacks below the one that runs say their state and nothing more.
@@ -338,14 +346,16 @@ struct AgentsPane: View {
             HStack(spacing: 8) {
                 if ordered {
                     Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).help(TL("agents.drag"))
-                    Toggle("", isOn: Binding(get: { on }, set: { m.toggle(a.id, $0) })).labelsHidden().toggleStyle(.checkbox)
+                    // not installed: nothing to tick (it couldn't run)
+                    Toggle("", isOn: Binding(get: { on && (a.installed || a.state == "checking") }, set: { m.toggle(a.id, $0) }))
+                        .labelsHidden().toggleStyle(.checkbox).disabled(!a.installed && a.state != "checking")
                 }
-                StatusDot(tone: tone(a))
+                StatusDot(tone: tone(a, ordered: ordered))
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(a.name).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).foregroundStyle(on || !ordered ? .primary : .secondary)
-                        if let v = a.version { Text(shortVersion(v)).font(.caption).foregroundStyle(.tertiary) }
-                        if ordered && a.id == m.pick { badge(TL("agents.runs_first"), nil) }
+                        if let v = a.version { Text(shortVersion(v)).font(.caption).foregroundStyle(.secondary) }
+                        if ordered && a.id == m.pick && checked { badge(TL("agents.runs_first"), nil) }
                         if a.installed && m.sessions(a) {
                             badge(TL("agents.sessions_badge"), Color.secondary).help(TL("agents.sessions_badge.help"))
                         }

@@ -72,9 +72,13 @@ final class GeneralModel: ObservableObject {
         panel.allowsMultipleSelection = true
         panel.prompt = T("main.open.prompt")
         panel.message = T("main.open.message")
-        guard panel.runModal() == .OK else { return }
-        let urls = panel.urls
-        run { for u in urls { _ = try await ProjectStore.shared.open(folder: u) } }
+        let open: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            guard r == .OK else { return }
+            let urls = panel.urls
+            self?.run { for u in urls { _ = try await ProjectStore.shared.open(folder: u) } }
+        }
+        // a sheet on the Settings window, not an app-wide modal panel
+        if let w = NSApp.keyWindow { panel.beginSheetModal(for: w, completionHandler: open) } else { open(panel.runModal()) }
     }
     func setLogin(_ on: Bool) {
         do {
@@ -139,12 +143,18 @@ struct GeneralPane: View {
             SettingsGroup("general.app") {
                 SettingToggle("general.login", isOn: Binding(get: { m.openAtLogin }, set: { m.setLogin($0) }),
                               detail: m.loginError)
-                // the running app keeps the language it opened with
-                SettingRow("general.language", detail: Loc.normalize(m.language) != Loc.language ? T("settings.general.language.restart") : nil) {
-                    RowPicker(label: T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
-                        Text(T("settings.general.language.system")).tag("auto")
-                        Text("English").tag("en")
-                        Text("简体中文").tag("zh-Hans")
+                // the running app keeps the language it opened with: say so, and offer to reopen it now
+                let pendingLanguage = Loc.normalize(m.language) != Loc.language
+                SettingRow("general.language", detail: pendingLanguage ? T("settings.general.language.restart") : nil) {
+                    HStack(spacing: 8) {
+                        if pendingLanguage {
+                            Button(T("settings.general.language.relaunch")) { SystemAccess.relaunch(source: "language", guide: false) }
+                        }
+                        RowPicker(label: T("settings.general.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
+                            Text(T("settings.general.language.system")).tag("auto")
+                            Text("English").tag("en")
+                            Text("简体中文").tag("zh-Hans")
+                        }
                     }
                 }
             }
@@ -184,10 +194,15 @@ struct GeneralPane: View {
             }
 
             SettingsGroup("general.about") {
-                SettingRow("general.version") {
+                // the skill and the app don't speak the same contract: said here for as long as it lasts
+                let mismatch = SkillContract.check(skill: SkillContract.skillVersion())
+                SettingRow("general.version", detail: mismatch.map { T($0.appIsOlder ? "app.contract.app_older" : "app.contract.skill_older") },
+                           detailColor: mismatch == nil ? nil : Color.brandAttnInk) {
                     HStack(spacing: 10) {
                         Text(Self.version).monospacedDigit().foregroundStyle(.secondary).textSelection(.enabled)
-                        if Updater.shared.available {
+                        if mismatch != nil {
+                            Button(T("app.contract.how")) { Housekeeping.contractHelp() }
+                        } else if Updater.shared.available {
                             Button(T("app.menu.updates")) { Updater.shared.checkForUpdates(nil) }.disabled(!Updater.shared.canCheck)
                         }
                     }

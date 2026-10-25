@@ -472,6 +472,9 @@
 "dictation.history.saved" = "Saved dictations";
 "dictation.history.saved.detail" = "Every dictation, its text before and after polish.";
 "dictation.mode.send_suffix" = "double-tap to send";
+"dictation.models.downloading" = "Downloading · %1$@ of %2$@";
+"dictation.status.other_instance" = "Another Blurt listens to the key (pid %@)";
+"dictation.status.other_instance.detail" = "This one takes over when that one quits.";
 "dictation.toast.model_downloading" = "The speech model is still downloading (%1$@ of %2$@)";
 "dictation.toast.model_downloading.action" = "Show";
 "dictation.toast.model_started" = "Downloading the speech model (%1$@) · %2$@ dictates once it’s in";

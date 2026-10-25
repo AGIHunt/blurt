@@ -104,8 +104,12 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                 let nav = SettingsNavigator.shared
                 // "speech" or "speech/dictation": the pane, then a row or section of it
                 let parts = (pane ?? "").split(separator: "/", maxSplits: 1).map(String.init)
-                let want = parts.first.flatMap(SettingsPane.init(rawValue:))
-                    ?? SettingsPane(rawValue: Config.shared["app.settings_pane"] as? String ?? "") ?? .general
+                let asked = parts.first.flatMap(SettingsPane.init(rawValue:))
+                // no pane named: the last one picked; a name that isn't a pane (a stale link): General, never an
+                // unrelated pane from last time
+                if asked == nil, let p = parts.first, !p.isEmpty { emit(["event": "settings_unknown_pane", "pane": p]) }
+                let want = asked ?? (parts.first?.isEmpty == false ? .general
+                    : SettingsPane(rawValue: Config.shared["app.settings_pane"] as? String ?? "") ?? .general)
                 nav.go(want)                    // before the window is made: only the pane asked for is built
                 if window == nil { build() }
                 if parts.count > 1 { nav.reveal(parts[1].contains(".") ? parts[1] : "\(want.rawValue).\(parts[1])") }

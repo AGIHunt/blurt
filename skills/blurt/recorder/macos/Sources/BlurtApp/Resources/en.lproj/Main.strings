@@ -434,6 +434,7 @@
 "app.models.show" = "Show";
 "app.models.stop" = "Stop Download";
 "app.toast.welcome_dictation_only" = "Blurt is in the menu bar · %@ to dictate";
+"app.toast.welcome_keys_many" = "%d shortcuts won’t work";
 "app.toast.welcome_no_model" = "Blurt is in the menu bar · download the speech model to dictate";
 "app.toast.welcome_no_model.action" = "Download";
 "app.toast.welcome_plain" = "Blurt is in the menu bar";

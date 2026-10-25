@@ -68,7 +68,7 @@
 "capture.keys.duplicate" = "Same as “%@” — not active";
 "capture.keys.failed" = "Couldn’t register it (%@) — probably taken";
 "capture.keys.fn" = "fn";
-"capture.keys.hint" = "Click, then press the new keys · Esc cancels · ⌫ turns it off";
+"capture.keys.hint" = "Click (or press Space), then the new keys · Esc cancels · ⌫ removes it";
 "capture.keys.hold_draw" = "Hold to draw";
 "capture.keys.menu_bar_only" = "Only in the menu-bar app";
 "capture.keys.needs_mod" = "Needs ⌃ / ⌥ / ⌘";

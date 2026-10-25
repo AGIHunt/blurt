@@ -236,6 +236,7 @@
 "settings.export.ready" = "Ready";
 "settings.export.not_set_up" = "Not set up";
 "settings.export.footer" = "Ask your agent to export, for example “export the to-dos to GitHub”. Exporting again never makes duplicates.";
+"settings.export.url_invalid" = "That isn’t a Feishu or Lark table link";
 
 /* The Settings window: sidebar groups, search, the shorter descriptions under each row (the long text is the row's
    tooltip), and search keywords per row (settings.kw.<id>) and per pane (settings.kw.pane.<pane>): comma-separated
@@ -261,6 +262,7 @@
 "settings.general.help.detail" = "Everything Blurt does, with its shortcuts.";
 "settings.general.assistant.title" = "Setup Assistant";
 "settings.general.assistant.detail" = "Permissions, models and a first try, in four steps.";
+"settings.general.language.relaunch" = "Relaunch Now";
 "settings.kit.allow_help" = "Control-click for the System Settings pane";
 "settings.privacy.spotlight.detail" = "Find items by their title from Spotlight (⌘Space).";
 "settings.shortcuts.restore" = "Restore";

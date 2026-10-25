@@ -28,6 +28,8 @@ import BlurtCore
 enum SelfTests {
     /// The jobs `mainfakejob` started (finished by `mainfakejob done|clear`).
     @MainActor static var fakeJobs: [JobWriter] = []
+    /// `storagetrash`: the Storage model whose last Move to Trash `storagetrash undo` takes back
+    @MainActor static var storage: StorageModel?
     static var channel: String { "dev.blurt.recorder.wp6" + (ProcessInfo.processInfo.environment["BLURT_TEST_CHANNEL"].map { ".\($0)" } ?? "") }
 
     static func install() {
@@ -160,6 +162,15 @@ enum SelfTests {
                          "asking": m.asking?.messageText ?? NSNull()])
                     if f.recording { f.stop() }
                 }
+            }
+        case "storagetrash":            // storagetrash REL: Settings → Storage's Move to Trash on $BLURT_HOME/REL; storagetrash undo
+            MainActor.assumeIsolated {
+                if arg == "undo" { SelfTests.storage?.lastTrash?(); out(["undo": true]); return }
+                let m = StorageModel()
+                SelfTests.storage = m
+                let u = BlurtPaths.home.appendingPathComponent(arg)
+                m.trash([u], name: arg, window: NSApp.keyWindow)
+                out(["trashing": u.path])
             }
         case "shortcutswap":            // shortcutswap yes|no: answer the "already used" question; undo: ⌘Z's undo
             let m = HotkeySettings.shared

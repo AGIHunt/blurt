@@ -68,7 +68,7 @@
 "capture.keys.duplicate" = "和「%@」重复，没生效";
 "capture.keys.failed" = "注册失败（%@），可能被占用";
 "capture.keys.fn" = "fn 键";
-"capture.keys.hint" = "点一下再按新的组合键 · Esc 取消 · ⌫ 关闭";
+"capture.keys.hint" = "点一下（或按空格）再按新的组合键 · Esc 取消 · ⌫ 去掉";
 "capture.keys.hold_draw" = "按住画图";
 "capture.keys.menu_bar_only" = "只在菜单栏 App 里生效";
 "capture.keys.needs_mod" = "要带 ⌃ / ⌥ / ⌘";

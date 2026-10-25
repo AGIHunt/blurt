@@ -236,6 +236,7 @@
 "settings.export.ready" = "可用";
 "settings.export.not_set_up" = "未设置";
 "settings.export.footer" = "让 Agent 导出就行，比如「把待办导出到 GitHub」。重复导出不会产生重复记录。";
+"settings.export.url_invalid" = "这不是飞书或 Lark 多维表格的链接";
 
 /* 设置窗口：侧栏分组、搜索、每行下面较短的说明（长说明放在这一行的提示里），以及每行（settings.kw.<id>）和每个面板
    （settings.kw.pane.<pane>）的搜索关键词：逗号分隔，两种语言都会匹配（SettingsCatalog）。 */
@@ -260,6 +261,7 @@
 "settings.general.help.detail" = "口喷鸡能做的事和对应的快捷键。";
 "settings.general.assistant.title" = "设置助手";
 "settings.general.assistant.detail" = "权限、模型和第一次试用，四步完成。";
+"settings.general.language.relaunch" = "现在重新打开";
 "settings.kit.allow_help" = "按住 Control 点按可打开「系统设置」";
 "settings.privacy.spotlight.detail" = "在 Spotlight（⌘空格）里按标题找到条目。";
 "settings.shortcuts.restore" = "恢复";

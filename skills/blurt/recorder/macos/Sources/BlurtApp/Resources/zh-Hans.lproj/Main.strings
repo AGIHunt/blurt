@@ -434,6 +434,7 @@
 "app.models.show" = "查看";
 "app.models.stop" = "停止下载";
 "app.toast.welcome_dictation_only" = "口喷鸡在菜单栏里 · 按%@ 听写";
+"app.toast.welcome_keys_many" = "%d 个快捷键用不了";
 "app.toast.welcome_no_model" = "口喷鸡在菜单栏里 · 下载语音模型后就能听写";
 "app.toast.welcome_no_model.action" = "下载";
 "app.toast.welcome_plain" = "口喷鸡在菜单栏里";

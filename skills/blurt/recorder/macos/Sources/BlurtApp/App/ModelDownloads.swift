@@ -161,8 +161,9 @@ final class ModelDownloads: ObservableObject {
             // Stop for this model only: the rest carry on; everything else (Stop all, a SIGTERM from outside): the batch ends
             if let id = stop, !id.isEmpty { queue.remove(id) } else { queue.clear() }
             queue.save()
-            Task { await refresh() }
-            runNext()
+            Task { await refresh(); await ModelSetup.shared.load() }
+            // the rest carry on; nothing left: the batch just ends (no "ready" line after a Stop)
+            if queue.active { runNext() } else { via = "" }
         case .failed:
             failed[j.id] = error.isEmpty ? "exit \(st)" : error
             let batch = queue.jobs

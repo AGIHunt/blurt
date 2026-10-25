@@ -472,6 +472,9 @@
 "dictation.history.saved" = "已保存的听写";
 "dictation.history.saved.detail" = "每次听写的文字，润色前后都在。";
 "dictation.mode.send_suffix" = "连按两下发送";
+"dictation.models.downloading" = "正在下载 · %1$@ / %2$@";
+"dictation.status.other_instance" = "听写由另一个口喷鸡负责（pid %@）";
+"dictation.status.other_instance.detail" = "那个口喷鸡退出后，这里会接手。";
 "dictation.toast.model_downloading" = "语音模型还在下载（%1$@ / %2$@）";
 "dictation.toast.model_downloading.action" = "查看";
 "dictation.toast.model_started" = "开始下载语音模型（%1$@）· 下载好就能按%2$@ 听写";

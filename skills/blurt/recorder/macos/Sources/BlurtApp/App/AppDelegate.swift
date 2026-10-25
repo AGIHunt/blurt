@@ -256,7 +256,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
                                            record: working(.toggleRecord), conflicts: conflicts)
             var text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
-            if !line.conflicts.isEmpty {
+            if line.conflicts.count > 2 {
+                text += " · " + T("app.toast.welcome_keys_many", line.conflicts.count)      // the list is in Settings
+            } else if !line.conflicts.isEmpty {
                 text += " · " + Loc.t("capture.keys.wont_work", table: "Capture", ListFormatter.localizedString(byJoining: line.conflicts))
             }
             var t: Island.Toast
@@ -292,6 +294,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { App.otherInstancesChanged("quit \(app.processIdentifier)") }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { App.otherInstancesChanged("launch") }
+        // a background app's end isn't always announced: while another instance holds something of ours, look every
+        // few seconds whether it is still there (a signal-0 per pid)
+        let t = Timer(timeInterval: 3, repeats: true) { _ in
+            var holders = Set(Hotkeys.shared.states.values.compactMap { s -> pid_t? in if case .taken(let p) = s { return p }; return nil })
+            if let p = Dictation.shared.deferredTo { holders.insert(p) }
+            if holders.contains(where: { kill($0, 0) != 0 && errno == ESRCH }) { App.otherInstancesChanged("gone") }
+        }
+        t.tolerance = 1
+        RunLoop.main.add(t, forMode: .common)
     }
 
     static func otherInstancesChanged(_ why: String) {

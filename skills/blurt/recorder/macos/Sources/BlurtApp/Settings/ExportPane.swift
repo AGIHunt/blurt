@@ -49,19 +49,37 @@ final class ExportModel: ObservableObject {
         if let ws = ws { ProjectConfig.set(ws, "export", key, value) } else { Config.shared.set("export.\(key)", value) }
     }
     func setTarget(_ t: String) { target = t; set("target", t == "ask" ? nil : t) }
-    func commitURL() { set("url", url.isEmpty ? nil : url) }
+    /// Saved on Return, when the field loses focus and when the pane goes — a link that isn't a table's is kept in
+    /// the field (with the reason under it) but not saved.
+    func commitURL() {
+        let u = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ExportModel.urlProblem(u) == nil else { return }
+        set("url", u.isEmpty ? nil : u)
+        emit(["event": "export_url", "saved": !u.isEmpty])
+    }
+
+    /// Why a pasted link can't be a Feishu / Lark table (nil: it can, or the field is empty).
+    static func urlProblem(_ s: String) -> String? {
+        FeishuLink.plausible(s) ? nil : T("settings.export.url_invalid")
+    }
+
     func chooseOut() {
         let p = NSOpenPanel()
         p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
         p.prompt = T("settings.export.choose")
-        guard p.runModal() == .OK, let u = p.url else { return }
-        outDir = u.path
-        set("out", u.path)
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            guard r == .OK, let u = p.url else { return }
+            self?.outDir = u.path
+            self?.set("out", u.path)
+        }
+        // a sheet on the Settings window, not an app-wide modal panel
+        if let w = NSApp.keyWindow { p.beginSheetModal(for: w, completionHandler: done) } else { done(p.runModal()) }
     }
 }
 
 struct ExportPane: View {
     @StateObject var m = ExportModel()
+    @FocusState private var urlFocused: Bool
 
     var body: some View {
         SettingsPage(.export) {
@@ -81,8 +99,15 @@ struct ExportPane: View {
                         VStack(alignment: .leading, spacing: 6) {
                             TextField(T("settings.export.table_url"), text: $m.url, prompt: Text("https://….feishu.cn/base/…?table=…"))
                                 .textFieldStyle(.roundedBorder)
+                                .focused($urlFocused)
                                 .onSubmit { m.commitURL() }
-                            Hint(T("settings.export.open_table_browser_copy"))
+                                .onChange(of: urlFocused) { f in if !f { m.commitURL() } }
+                                .onDisappear { m.commitURL() }
+                            if let p = ExportModel.urlProblem(m.url) {
+                                Text(p).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk)
+                            } else {
+                                Hint(T("settings.export.open_table_browser_copy"))
+                            }
                         }
                     }
                 }
