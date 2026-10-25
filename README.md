@@ -1,211 +1,209 @@
-<p align="center"><img src="assets/logo.png" width="132" alt="blurt"></p>
-<h1 align="center">blurt 🐔</h1>
-<p align="center"><b>Show it. Say it. Your AI gets it.</b><br>
-Record your screen, think out loud — your coding agent turns it into bug tickets, idea boards and todos.<br>
-<a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · works with Claude Code, Codex and any agent that runs skills</p>
+<p align="center"><img src="assets/logo.png" width="132" alt="Blurt"></p>
+<h1 align="center">Blurt</h1>
+<p align="center"><b>The keyboard for the agent era.</b><br>
+The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
+<a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
 
 https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
 
-<p align="center"><sub>▶ 80 seconds, sound on 🐔 · made entirely in code — <a href="promo/">source</a></sub></p>
+<p align="center"><sub>80 seconds, sound on · made in code: <a href="promo/">source</a></sub></p>
 
 ---
 
-**Voice alone is blind. Screenshots plus typing is slow.** The most natural way to tell an AI what you mean is the
-way you'd tell a colleague sitting next to you: point at the screen and talk. blurt records exactly that, and
-your agent does the rest:
+Blurt is a menu-bar app for the Mac. It works next to the agents you already use, such as Claude Code, Codex, Cursor,
+Claude and ChatGPT, and handles the part before they start: getting what you mean into the agent's input box. It has
+no agent of its own and doesn't replace yours.
 
-- splits a rambling half hour into separate items, even when you jump between topics and correct yourself
-- picks the right frame for each one and boxes the exact spot, using where your mouse actually was. Want it exact?
-  **Hold ⌃ and circle it on screen**
-- writes it up: actual vs. expected, repro steps, owner, and **the code that's probably responsible**
-- lets you triage it one item at a time with the keyboard (in the Blurt app on a Mac, a review page elsewhere)
-- hands it to your team as Markdown, CSV or a hand-off .zip, or through the tools your agent already has (GitHub, Linear, Slack, Feishu/Lark…), or goes straight to fixing it
+## What it does
 
-> What used to take two days of screenshots, red boxes and spreadsheet rows is now a 30-minute walkthrough.
+**Dictation (`Fn`).** Press `Fn` in any app, talk, and press it again (or hold `Fn` while you talk). The words are
+typed where your cursor is. A local model removes fillers and stutters and adds punctuation; it doesn't rewrite,
+summarize or translate. The words show under the notch as you talk. Double-tap `Fn` to send, press `⇧` while talking
+for a list, and `⌥⇧L` reformats the last dictation.
 
-## What people blurt
+**Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong. The snap becomes a card
+under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
+your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
 
-| | |
-|---|---|
-| 🐞 **Polish a vibe-coded product** | An agent built it overnight; now you walk through every page and rant. You get a clean bug list with code pointers, ready for the agent to fix. That's how you push AI to the finish line. |
-| 💡 **Capture ideas while browsing** | "I like how this site does onboarding… and this pricing page…" You get an idea board: each idea, why you had it, where it came from, the next step, plus a one-page digest. |
-| 📐 **Browse, then get the spec** | Building a landing page or a store? Tour a few dozen reference sites, circle what you like and say why. Your agent turns it into a requirements doc and a design doc, each requirement next to the frame you circled, ready to build from. |
-| 🤝 **Hand off from anyone** | PMs, designers, ops, clients: anyone can record with the Blurt app, no repo needed, and send the video. The developer's agent processes it with the code at hand. |
-| 🔎 **Research and walkthroughs** | Competitor tours, UX research, "how this works": you get notes and findings with the frames to prove them. |
-| 🖥️ **Not just web apps** | Terminals, TUIs and desktop apps record and get boxed the same way. For phones, use the built-in screen recorder with the mic on; for hardware, film it with your phone. Hand the video to your agent: "process this video". |
+**Record (`⌥⇧R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
+the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
+that is probably involved. You go through them with the keyboard, then hand them to an agent or export them.
 
-One recording can mix all of these. The agent decides what each item is, and teams can add their own
-[lenses](skills/blurt/reference/schema.md#custom-lenses) (e.g. `ux-research`, `sales-call`, `sop`).
+Snaps, voice notes and recordings go into the current project (a folder you open in Blurt). Without one, recordings
+go to Unassigned and snaps stay as cards until you pick a project. Every shortcut can be changed in Settings.
 
-## Get it
+## Install
+
+You need macOS 13 or later. Dictation and the recommended speech models need Apple silicon.
+
+A signed DMG will be on [GitHub Releases](https://github.com/AGIHunt/blurt/releases) soon. Until then, install Blurt
+through its agent skill:
 
 ```bash
 npx skills add AGIHunt/blurt
 ```
-<sub>Claude Code: <code>/plugin marketplace add AGIHunt/blurt</code> · or just paste this repo's URL to your agent and ask it to install the skill.</sub>
 
-Then, in any project, tell your agent **"start blurt"** / **「开始口喷」**.
-The first run picks a speech model for your machine and installs the **Blurt** menu-bar app. Its setup assistant walks
-you through the permissions (Screen Recording, Microphone, Accessibility, Input Monitoring); then press `Fn` in any
-text field to dictate, or `⌥⇧A` to snap. The [user guide](docs/guide.md) covers the whole app.
+<sub>In Claude Code you can also run <code>/plugin marketplace add AGIHunt/blurt</code>, or paste this repository's URL
+to your agent and ask it to install the skill.</sub>
 
-## How it feels
+Then tell your agent **"start blurt"**. The first run checks your machine, picks a speech model and builds the Blurt
+app into `~/Applications`. It needs the Xcode Command Line Tools and [uv](https://docs.astral.sh/uv/); the agent offers
+to install what's missing.
 
-1. **Draw the area** to record: drag a region, click a window, or go full screen. Tabs, bookmarks and everything
-   else stay out of the video.
-2. **3-2-1**, then talk. On a Mac the island at the top of the screen shows the time and the mic level, with pause,
-   snap, discard and **Finish**; it is never recorded (Windows and Linux: a small floating bar).
-   Shortcuts: `⌥⇧P` pause, `⌥⇧A` snap, `⌥⇧R` or `⌥⇧S` finish (Windows: `Alt+Shift+P` / `A` / `S`).
-   When you say "this", **hold `⌃` and drag** to circle or underline it (macOS). The ink fades after 3 seconds, and
-   your agent sees exactly what you meant. To keep the pen on, press `⌥⇧D`; while it's on, clicks draw instead of
-   reaching your app, and **`Esc`** or `⌥⇧D` again turns it off.
-3. Click **Finish** and get back to work. Speech is transcribed locally while you talk, so the transcript is done when
-   you stop; your agent writes the items as text and they show up in about a minute (in Blurt's main window on a Mac,
-   on the review page elsewhere), with frames and code pointers streaming in while you review.
-4. **Triage like a feed**: `A` keep · `X` discard · `J/K` next/prev · `Z` undo · `G` list · `V` overview. Then export,
-   or say "fix them".
+**First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
+key than `Fn`), then downloads the speech models: about 5.9 GB on a Mac with 32 GB of memory, 4.4 GB on 16–24 GB.
+Nothing is downloaded until you click Download. Then press `Fn` in any text field. Screen Recording is asked for the
+first time you snap or record.
 
-**Snaps and voice notes:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go,
-then say what's wrong (or type it, or circle it with `⌃`). With a current project the snap goes straight into it;
-without one it hangs as a **card** under the island until you drag it onto a project or click **Organize** (it then
-lands in Unassigned with a suggested project you accept with one click — Blurt never files anything by guessing). Cards also
-copy and drag into any app — a chat, a terminal, Notes — picture and note together. `⌥⇧V` does the same with just
-your voice. Snapping during a recording (`⌥⇧A`) grabs a full-resolution still of that exact moment without pausing.
-Use video for flows, animations and timing.
+## How it works with your agents
 
-**Always on:** the Blurt app lives in your menu bar. `⌥⇧R` starts a recording from anywhere and `⌥⇧R` again
-finishes it; `⌥⇧B` opens the menu. Recordings are filed into your projects (folders you open in Blurt), or kept in
-`~/Blurt` when they aren't about one. With *Settings → General → After a recording* set to *Organize into Items*,
-every recording gets processed in the background (Claude Code first; if it isn't installed or logged in, Codex, then
-Kimi Code, OpenCode or Gemini CLI), and the items land in Blurt's Inbox when they're ready. Every shortcut can be
-changed in *Settings → Shortcuts* (`⌘,` in the menu). *Settings → Storage* shows what takes space and can delete the
-videos of organized recordings (never by default).
+Blurt gets your words, pictures and recordings into an agent. The agent does the work.
 
-**Dictation (macOS):** tap **Fn** in any app, talk, and tap it again (or hold Fn while you talk). What you said is typed where your
-cursor is: a local speech model (Qwen3-ASR on Apple silicon) transcribes it on your Mac, then a small local model (Gemma 4
-or Qwen, via MLX) removes fillers and stutters and adds punctuation, in under half a second once it's warm. It never
-rewrites, summarizes or translates. If the polish tries to, you get exactly what you said. Press `⇧` while you talk for
-the *Structured* style (a list when you listed things, only the version you settled on when you corrected yourself);
-`⌥⇧L` reformats the last dictation. `Esc` cancels. You can switch to right Option or to hold-to-talk in
-*Settings → Dictation*, and give each kind of app its own style there. Dictation needs Input Monitoring (for the key) and Accessibility (to paste); without
-Accessibility the text lands on your clipboard. Everything you dictate is kept in *Dictation History* for 30 days,
-and any entry can be turned into an item. The voice note (`⌥⇧V`) still files what you say into Blurt instead.
-
-## Item lifecycle
-
-Every item has **one** state. The two that need you — **New** and **To verify** — make up your Inbox; everything
-else is either waiting on someone or finished.
-
-```
-New ──keep──▶ To do ──hand off──▶ Handed off ──▶ In progress ──▶ To verify ──mark as done──▶ Done
-                ▲                      │              │              │
-                ├── take back ─────────┴──────────────┘              │
-                └── send back ───────────────────────────────────────┘
-```
-
-| State | What it means |
+| | What it does |
 |---|---|
-| **New** | Just captured; you haven't looked at it yet. |
-| **To do** | You kept it. |
-| **Handed off** | Handed to an agent in Blurt, or an instruction copied to your own agent. |
-| **In progress** | The agent is working on it. |
-| **To verify** | The agent says it's finished. Check it, then mark it done — or send it back. |
-| **Done** | You confirmed it. |
-| **Won't do** | You decided not to. Possible from any state that isn't finished; out of your inbox, kept on record. |
-| **Discarded** | The trash. Restore puts it back where it was. |
+| **Dictation and cards** | Text and pictures go into any chat box or terminal, so they work with every agent. |
+| **Skill** | The `blurt` skill lets your agent record, transcribe, write items, open the review page and export. |
+| **MCP server** | `blurt` gives agents `search_items`, `get_item` (with screenshots), `get_transcript`, `update_item`, `mark_fixed` and `bundle_items`. *Settings → Agents → Connect…* installs the skill and the MCP server into an agent, after showing what it changes. |
+| **Hand off to agent** (`⌘↩`) | Runs Claude Code or Codex in Blurt's terminal, in the project folder, optionally with one git worktree per item. Claude Code can also run in the Claude desktop app. |
+| **Copy instruction** | One line for any other agent, pointing to a hand-off note with every detail and screenshot. |
+| **Hand-off bundle** | One `.zip` with a summary, every item and its screenshots, for a person rather than an agent. |
 
-An agent can only move an item to *In progress* or *To verify*: "fixed" means *to verify* until you say it's done.
-Click an item's status ring to see what you can do next — only the steps that make sense right now. Keys:
-`A` keep · `D` done · `R` back (send back, take back, reopen or restore) · `W` won't do · `X` discard · `S` the menu.
-More in the [user guide](docs/guide.md).
+Agents report back through the MCP server: an item moves to *In progress*, then *To verify*. "Fixed" from an agent
+always means *to verify* until you mark it done.
 
-## Solo or team
+Recordings are organized by the first agent that is installed and signed in: Claude Code, then Codex, Kimi Code,
+OpenCode and Gemini CLI. You can change the order in *Settings → Agents*.
 
-- **Solo:** record → your agent in the same repo processes and fixes. No forms, no copy-paste.
-- **Team:** teammates without a repo just [download Blurt for macOS](https://github.com/AGIHunt/blurt/releases/latest)
-  (if macOS says it can't check the app the first time: *System Settings → Privacy & Security → Open Anyway*) and
-  press `⌥⇧R`. Anyone records with the app, then drags the video from Finder into
-  Slack/Feishu. Or bind a shared project folder. Items keep the recorder's name, and exports land in the team's
-  existing tables with your column names.
+**No connectors, by design.** Your agent already has tools for Slack, Linear, GitHub, Notion, Jira and Feishu/Lark.
+Blurt writes files (Markdown, CSV and the hand-off bundle) and leaves delivery to the agent. To send items somewhere,
+ask it, for example: "Bundle the checkout issues and post them to #web in Slack."
 
-## Under the hood
+## How Blurt compares
 
-- **Local-first speech recognition.** [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) via sherpa-onnx is
-  about 240 MB, very fast on any CPU, and handles mixed Chinese/English well. Whisper on Apple Silicon or NVIDIA.
-  You can also bring your own Groq, OpenAI or DashScope key. By default nothing leaves your machine.
-- **Native recorder.** ScreenCaptureKit on macOS with audio and video in sync to within one frame. Turn on system
-  audio for calls and demos: it goes on its own track, so the transcript tells your words from the other side's. Tk + ffmpeg on
-  Windows and Linux (X11).
-- **Deterministic tools, flexible model.** Scripts handle the recording, speech-to-text, frames, the items
-  and exports. All the judgement is left to your agent (see [SKILL.md](skills/blurt/SKILL.md)), so it adapts to your
-  product, your language and your team.
-- **Any language in, same language out.** SenseVoice covers Chinese, English, Japanese, Korean and Cantonese; for
-  German, French, Spanish and the rest (99 languages) use Whisper locally or a cloud key. The first run picks one for
-  the language you speak, and items come back in that language.
+Checked on **2026-10-25**. Prices and policies change.
+
+Blurt's numbers come from its own tests on one machine, an Apple M5 Max with 128 GB, with speech generated by macOS
+`say`. Synthetic speech is cleaner than a real microphone, so error rates are optimistic; smaller Macs, real
+microphones and accents were not measured. Competitor numbers come from other people and methods, some from a
+competing vendor, and are not directly comparable.
+
+| | **Blurt** | Typeless | Wispr Flow | Superwhisper | Aqua Voice |
+|---|---|---|---|---|---|
+| Price | Free, MIT licence, no word limit | Free with a weekly limit; Pro $12/month yearly, $30 monthly [1] | Free 2,000 words/week on desktop; Pro $15/month, $12/month yearly [2] | Free with local models; Pro $8.49/month [3] | Free 1,000 words; Pro $12/month, $10/month yearly [4] |
+| Where speech is processed | On your Mac | Cloud [5] | Cloud [6] | Local or cloud, your choice [7] | Cloud [8] |
+| End of speech → text | 0.29–0.54 s after 3–60 s of speech | about 3.0 s [9] | about 1.5 s [9] | not published | "about 450ms" (vendor) [8] |
+| English accuracy | WER 1.9 % (speech model alone) | WER about 7.9 % [9] | WER about 3.9 % [9] | depends on the model; not published | OpenASR average WER 6.24 (vendor) [10] |
+| Chinese accuracy | CER 1.3 % (speech model alone) | not published | not published | not published | not published |
+| Platforms | Dictation and cards: macOS. Recording → items: macOS, Windows, Linux (X11) | macOS, Windows, Linux, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
+| Offline | Dictation needs no network once the models are downloaded (not yet tested with the network off) | No | No | Yes, with local models | No |
+| Snap and voice-note cards for agents | Yes | No | No | No | No |
+| Screen recording → items with screenshots and code pointers | Yes | No | No | No | No |
+| Hand-off to coding agents, status back through MCP | Yes | No | No | No | Lists "MCP/CLI" on its free plan; not examined |
+
+<sub>Blurt sources: latency `docs/design/dictation.md` (median of 3 takes, warm models); accuracy
+`docs/design/asr-benchmark.md` (Qwen3-ASR 1.7B, 7 sentences × 2 voices per language). Full detail and the numbers we
+could not verify: [docs/positioning/facts.md](docs/positioning/facts.md).
+[1] [typeless.com/pricing](https://www.typeless.com/pricing) ·
+[2] [wisprflow.ai/pricing](https://wisprflow.ai/pricing) ·
+[3] [superwhisper.com](https://superwhisper.com/) ·
+[4] [aquavoice.com/pricing](https://aquavoice.com/pricing) ·
+[5] [Typeless data controls](https://typeless.com/data-controls), updated 2026-10-13 ·
+[6] [Wispr Flow data controls](https://wisprflow.ai/data-controls), updated 2026-08-18 ·
+[7] [Superwhisper docs](https://superwhisper.com/docs/llms-full.txt) ·
+[8] [Aqua blog, 2026-08-17](https://aquavoice.com/blog/wispr-flow-alternatives) ·
+[9] [VoiceDash](https://voicedash.ai/wispr-flow-vs-typeless/), a competing vendor; the same article also gives about 20 % for Typeless ·
+[10] [Aqua blog, 2025-10-08](https://aquavoice.com/blog/avalon-openasr-leaderboard).</sub>
+
+## What users complain about in other dictation apps, and what Blurt does
+
+From low-rated App Store reviews of Typeless and Wispr Flow (US store, read on 2026-10-24) and posts on r/macapps,
+V2EX and Product Hunt. Counts and quotes are in [facts.md §3](docs/positioning/facts.md#3-what-users-complain-about-and-what-blurt-does).
+
+| Complaint | What Blurt does |
+|---|---|
+| It rewrites what I said | The default style only removes fillers and adds punctuation. If polish drops or adds words, the raw transcript is typed instead. Lists happen only when you press `⇧`. |
+| Words get lost or cut off | The words show while you talk. Every dictation stays in Dictation History for 30 days. The microphone opens on the key press, so the first words aren't cut. |
+| Word limits and subscriptions | Free, no word limit, no account. |
+| Names and mixed languages come out wrong | Words, a list of names and terms the speech model listens for, learned from your fixes (as hints, never as replacements), plus the text around the cursor. |
+| The microphone stays on; privacy | Speech is processed on your Mac. The microphone is on only while you dictate. No screenshots are taken for dictation. |
+| Slow | About 0.3–0.5 s from releasing the key to the text on the test Mac. |
+| The hotkey clashes with Fn | Blurt keeps `Fn` for dictation and tells you when macOS or another dictation app also reacts to it. Right Option or either Option can be used instead. |
+| Long dictations collapse into "[Pasted N lines]" in Claude Code | Terminals and code editors get the text on one line. |
+
+Not built yet: keeping a dictation's audio until the paste is confirmed, and a setting that limits dictation to your
+languages.
+
+## Privacy
+
+- Speech recognition and polish run on your Mac. A dictation's audio is deleted after transcription unless you choose
+  to keep it; the text stays in Dictation History for 30 days (you can change this).
+- When you start talking, Blurt reads about 500 characters around the cursor so names come out right. It uses them for
+  that dictation only and never reads password fields. You can turn this off.
+- Snaps, voice notes, recordings and items stay in your folders: `~/Blurt`, or `.blurt/` inside a project, which Blurt
+  keeps out of git.
+- When your agent organizes a recording, the transcript text and a few screenshots go to that agent's provider, like
+  anything else you give it.
+- There is no Blurt server and no account. Network use is limited to model downloads, update checks, a cloud speech
+  key if you add one (Groq, OpenAI or DashScope, for recordings), and what your agent sends to its provider.
+  *Settings → Privacy → Never use cloud speech recognition* keeps speech on your Mac even when a key is set.
 
 ## FAQ
 
-**Does it burn a lot of tokens?** The video is never fed to the model. Speech is transcribed locally (free), the agent
-reads the text, and it looks at a few frames only for the moments that become items. A longer recording barely costs
-more; silence and clicking around cost nothing. Quality follows the model: use one with
-vision, the stronger the better. Three real sessions (Claude Code, Opus 5.5, a production web app):
+**Does Blurt replace my agent?** No. It feeds the agents you already use: Claude Code, Codex, Cursor, Claude, ChatGPT
+or any chat box.
 
-| recording | speech | items | transcription (local) | new input / output tokens | at API prices |
+**What does it cost?** Nothing. Turning a recording into items uses your own agent's tokens. The video is never sent
+to the model: speech is transcribed locally, the agent reads the text and looks at a few frames. Three real sessions
+(Claude Code, Opus 5.5, a production web app):
+
+| Recording | Speech | Items | Transcription (local) | New input / output tokens | At API prices |
 |---|---|---|---|---|---|
 | 7.0 min | 2.8 min | 9 | 4 s | ~142k / ~19k | ~$2 |
 | 14.3 min | 12.3 min | 23 | 12 s | ~138k / ~27k | ~$2.6 |
 | 20.0 min | 17.7 min | 34 | 15 s | ~122k / ~27k | ~$2.1 |
 
-<sub>Plus cache reads of the ongoing conversation (~3–5M tokens, 1/20 of the input price, included above), which depend
-on how long your chat already is. The live drafts written while you record use a small model (Claude Haiku or Codex's
-small one) and aren't in the table.</sub>
+<sub>Cache reads of the ongoing conversation (about 3–5M tokens at 1/20 of the input price) are included above.</sub>
 
-**How long until I can review?** About a minute after you click Finish; frames stream in while you review. Measured: a
-111-second recording (Codex) opened for review after 74 s, with every frame in by 115 s; a real 5-minute, 12-item
-session opened in 51 s.
+**How long until I can review a recording?** About a minute after you click Finish; screenshots fill in while you
+review. A real 5-minute, 12-item session was ready in 51 s.
 
-**Does it run on Windows and Linux?** Yes. Recording, local transcription, frames, the review page and exports are
-tested step by step on Windows and Linux, and CI runs on both. On Windows your agent starts the recorder, and after
-the first recording there's a **Blurt** entry in the Start menu. Linux needs an X11 desktop. The tray app, the pen and
-system audio are macOS-only for now. Setup (`doctor.py` tells you what's missing): Windows
-`winget install astral-sh.uv` and `winget install Gyan.FFmpeg`; Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk`, plus
-[uv](https://docs.astral.sh/uv/).
+**Which models does it use, and how big are they?**
 
-**Which agent processes my recordings?** The first one in *Settings → Agents* that is installed and logged in: by
-default Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. The list shows each one's state and the command that
-fixes it; drag one to the top to try it first. When Blurt falls back it says so ("Claude Code isn't logged in — processing with Codex
-this time"), and if a run fails the toast names the reason (login expired, quota / rate limit, network, model, skill
-not found); details are in `agent.log` next to the recording. In `~/.blurt/config.json`:
+| Use | Model | Download |
+|---|---|---|
+| Dictation, Macs with 32 GB or more | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
+| Dictation, 16–24 GB | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
+| Polish, 16 GB and up | Gemma 4 E2B, 4-bit | 3.4 GB |
+| Polish, 8 GB | Qwen3 1.7B, 4-bit | 0.9 GB |
+| Voice notes; CPU-only machines | SenseVoice Small | 228 MB |
+| Recordings in other languages | Whisper large-v3-turbo, MLX | 1.5 GB |
+
+Idle models unload after 10 minutes.
+
+**Which languages?** Dictation was tested in Chinese, English and mixed Chinese–English. Recordings: SenseVoice covers
+Chinese, English, Japanese, Korean and Cantonese; Whisper covers 99 languages. Items come back in the language you
+spoke. The app is in English and Simplified Chinese.
+
+**Does it run on Windows and Linux?** Recording, local transcription, screenshots, the review page and exports do;
+Linux needs an X11 desktop. Dictation, cards and the menu-bar app are macOS only for now. Setup: Windows
+`winget install astral-sh.uv` and `winget install Gyan.FFmpeg`; Ubuntu/Debian
+`sudo apt install ffmpeg libportaudio2 python3-tk` plus [uv](https://docs.astral.sh/uv/). `doctor.py` tells you
+what's missing.
+
+**What permissions does it need?** Microphone; Accessibility, to paste and to hear `Fn`; Input Monitoring, for other
+keys; Screen Recording, for snaps and recordings.
+
+**Can teammates without the code use it?** Yes. They record with the app and send you the video; your agent processes
+it with the code at hand. Items keep the name of the person who recorded them.
+
+**Can I change the shortcuts?** Yes, in *Settings → Shortcuts*. Blurt warns when a shortcut is taken by another
+action, another app or macOS. The same setting works in `~/.blurt/config.json`, also on Windows:
 
 ```json
-{"record": {"process": "auto", "agents": ["codex", "claude"]},
- "review": {"open_in": "app"}}
+{"record": {"hotkeys": {"record": "ctrl+opt+R", "snap": "opt+shift+A", "pause": "off"}, "draw_key": "control"}}
 ```
 
-`agents` lists the ones to use, in order (leave it out for all of them); `review.open_in` is `"app"` (a Blurt window,
-the default on macOS) or `"browser"`. `uv run skills/blurt/scripts/agents.py status` prints the same check.
+**Where is the full manual?** The [user guide](docs/guide.md) covers every feature, and
+[SKILL.md](skills/blurt/SKILL.md) is what your agent reads.
 
-**Can I change the shortcuts?** On macOS: *Settings → Shortcuts* records a new combination per action, turns one off
-(⌫), restores the defaults, and warns when a shortcut is already taken (two actions on the same keys, another app,
-a macOS system shortcut). The hints on the bar and in the menu follow your keys. The same setting in
-`~/.blurt/config.json` also works on Windows (pause, snap, marker, finish):
-
-```json
-{"record": {"hotkeys": {"record": "ctrl+opt+R", "snap": "opt+shift+A", "pause": "off"},
-            "draw_key": "control"}}
-```
-
-Actions: `record`, `menu`, `snap`, `pause`, `marker`, `pen`, `stop`. Modifiers `ctrl`, `opt`/`alt`, `shift`,
-`cmd`/`win`; keys A–Z, 0–9, F1–F20, `Space`, arrows, punctuation. `draw_key` (hold to draw): `control`, `option`,
-`fn` or `off`.
-
-**I don't do frontend. Is it for me?** Yes, if you can see the problem on screen or film it with a phone. See
-*Not just web apps* above.
-
-## Roadmap
-
-Browser capture (console errors and network failures lined up with the video) · the pen on Windows ·
-Windows tray app · a hosted speech API · more lenses and exporters · toward a personal assistant that watches,
-listens and keeps your projects moving. See [TODO.md](TODO.md).
-
-<p align="center"><sub>MIT · made by <a href="https://github.com/AGIHunt">AGI Hunt</a> · 🐔 if blurt saved you a day, a ⭐ helps others find it</sub></p>
+<p align="center"><sub>MIT · made by <a href="https://github.com/AGIHunt">AGI Hunt</a></sub></p>

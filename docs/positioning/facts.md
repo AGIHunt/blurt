@@ -214,8 +214,8 @@ the capital letter was kept ("I think The new layout is fine").
   Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. Your agent gets better on its own schedule, and Blurt
   works with the next one too.
 - **No cloud service.** There is no Blurt server and no account. Speech is transcribed on your computer. The only
-  network traffic is the model downloads, a cloud speech key if you add one, and whatever your own agent sends to its
-  provider.
+  network traffic is the model downloads, update checks, a cloud speech key if you add one, and whatever your own
+  agent sends to its provider.
 - **No rewriting in dictation.** It doesn't summarize, translate, answer or change your tone. A tidier version is one
   key away (`⇧`, `⌥⇧L`).
 - **No spoken commands.** 「帮我列个清单」 or "make a list" is typed as words, because you are often dictating an

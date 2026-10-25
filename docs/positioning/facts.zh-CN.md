@@ -185,7 +185,7 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
   （`skills/blurt/SKILL.md` §6、`export_local.py bundle`、MCP `bundle_items`）
 - **不做自己的 Agent。** 录屏由你已经安装并登录的第一个 coding agent 处理：先 Claude Code，然后 Codex、Kimi Code、OpenCode、
   Gemini CLI。Agent 自己会变强，下一个新 Agent 出来，口喷鸡也能配合。
-- **不做云服务。** 没有口喷鸡的服务器，也不用注册账号。语音在你的电脑上转写。联网只有这几种情况：下载模型、你自己加的云端语音密钥、
+- **不做云服务。** 没有口喷鸡的服务器，也不用注册账号。语音在你的电脑上转写。联网只有这几种情况：下载模型、检查更新、你自己加的云端语音密钥、
   你的 Agent 发给它的服务商的内容。
 - **听写不改写。** 不概括、不翻译、不回答、不改语气。想要更整齐的版本，按 `⇧` 或 `⌥⇧L`。
 - **不认口头指令。** 「帮我列个清单」「make a list」照原样打出来，因为你常常是在给 Agent 口述指令。
@@ -222,7 +222,7 @@ Windows、Linux（X11）。Windows 和 Linux 上的听写在计划中，还没�
 **支持哪些语言？** 听写测过中文、英文和中英混说。口喷鸡的模型清单里 Qwen3-ASR 列了 30 种语言，其他语言没有测过听写。录屏：SenseVoice
 支持中、英、日、韩、粤语；Whisper 支持 99 种语言。条目用你说的语言写。App 界面有英文和简体中文。
 
-**会取代我的 Agent 吗？** 不会。它给你在用的 Agent 供料：Claude Code、Codex、Cursor、Claude、ChatGPT、豆包，或者任何聊天框。
+**会取代我的 Agent 吗？** 不会。它配合你在用的 Agent：Claude Code、Codex、Cursor、Claude、ChatGPT、豆包，或者任何聊天框。
 
 **需要哪些权限？** 麦克风；辅助功能（粘贴、识别 `Fn`）；输入监控（识别其他按键）；录屏（截图和录屏用，第一次用到时才问）。
 
