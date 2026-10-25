@@ -79,8 +79,7 @@
 "main.banner.show_progress" = "查看进度";
 "main.banner.with_agent" = "已交给 %@ · %@";
 
-"main.captures.show" = "在刘海下展开";
-"main.captures.tip" = "刘海下方有还没归类的卡片，点一下全部显示";
+"main.captures.tip" = "它们挂在屏幕顶部的刘海下方。点一下会在那里全部展开，给每一条选个项目。";
 "main.captures.taken" = "最近拖走的：%ld 张";
 "main.captures.taken.show" = "查看";
 "main.captures.taken.tip" = "最近 7 天拖进别的 App 的卡片：可以再复制、再拖出去，或者放回刘海下方";

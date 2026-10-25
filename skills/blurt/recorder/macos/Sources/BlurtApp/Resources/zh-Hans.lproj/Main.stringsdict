@@ -44,7 +44,7 @@
 			<string>%ld 条待验证</string>
 		</dict>
 	</dict>
-	<key>main.captures.unfiled</key>
+	<key>main.captures.choose</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@n@</string>
@@ -55,7 +55,21 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>未归类的卡片 %ld 张</string>
+			<string>选项目…</string>
+		</dict>
+	</dict>
+	<key>main.captures.waiting</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%ld 条新记下的内容还没选项目</string>
 		</dict>
 	</dict>
 	<key>main.detail.multi</key>

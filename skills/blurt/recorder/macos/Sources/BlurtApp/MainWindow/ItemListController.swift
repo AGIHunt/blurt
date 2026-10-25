@@ -258,94 +258,205 @@ final class EmptyStateView: NSView {
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
 }
 
-/// The inbox's top row while captures hang under the island waiting for a project (K7): "Unfiled captures: 3" — a click
-/// opens the island with every card down (they stay until the pointer has come and gone). Hidden when there are none.
-final class CapturesBanner: NSView {
+/// A notice above the list (system.md §3.3, "Notices above the list"): one card a list row high, inset on the list's own
+/// grid — the glyph on the kind-icon column, the sentence on the title column, one small button ending where the times
+/// end, the card's edges where a selected row's wash would be (ItemListController.alignNotices). No hairline of its
+/// own: the wash sets it apart, and the filter bar below keeps the one rule above the rows. The whole card is the click
+/// target (a pointer cursor, a hover wash); the keyboard reaches it with ↑ from the first item (micro 15) and draws it
+/// selected like a row. Tones: `attn`, something waits on you (§2.3 "needs you": the attn-soft wash, the glyph in
+/// `attn`); `quiet`, information (a neutral wash, the glyph in secondary). Text is 13 pt regular like a row's title,
+/// the count in medium inside the sentence; never brand colour — mint stays live, primary and selection.
+class NoticeCard: NSView {
+    enum Tone { case attn, quiet }
     var onClick: (() -> Void)?
-    private let row = JobRow()
+    /// it came back on screen: the list puts it on the grid (alignNotices)
+    var onShow: (() -> Void)?
+    override var isHidden: Bool { didSet { if oldValue && !isHidden { onShow?() } } }
+    let glyph = NSImageView()
+    let text = NSTextField(labelWithString: "")
+    let action = NSButton(title: "", target: nil, action: nil)
+    private let tone: Tone
     /// the keyboard cursor is on it (↑ from the first item, micro 15)
-    var selected: Bool {
-        get { row.selected }
-        set { row.selected = newValue }
-    }
+    var selected = false { didSet { if selected != oldValue { needsDisplay = true; setAccessibilitySelected(selected) } } }
+    private var hover = false { didSet { if hover != oldValue { needsDisplay = true } } }
+    private var pressed = false { didSet { if pressed != oldValue { needsDisplay = true } } }
+    private var area: NSTrackingArea?
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.title.font = .systemFont(ofSize: 12, weight: .semibold)
-        row.status.textColor = BrandColor.ink
-        row.spinner.isHidden = true
-        row.icon.image = BlurtIcon.snap.image(size: 15)
-        row.icon.contentTintColor = BrandColor.ink
-        row.onClick = { [weak self] in self?.onClick?() }
-        addSubview(row)
-        let line = NSBox()
-        line.boxType = .separator
-        line.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(line)
+    /// The gap above the card (to the toolbar, or to the card above it) and the card itself: one list row.
+    static let gap: CGFloat = 8
+    static let height: CGFloat = Look.rowHeight
+    static let radius: CGFloat = 6          // the row selection's radius (BrandRowView)
+
+    // the grid, set by the list (align): leading things from the left edge, trailing ones from the right edge
+    private var cardLead: NSLayoutConstraint!, cardTrail: NSLayoutConstraint!
+    private var glyphX: NSLayoutConstraint!, textLead: NSLayoutConstraint!, actionTrail: NSLayoutConstraint!
+    private let plate = NSLayoutGuide()
+
+    /// attn-soft (web `--attn-soft`): attn at 14 % in light, 12 % in dark
+    static let attnSoft = BrandColor.dynamic(0xB86E00, 0.14, 0xF5A524, 0.12)
+    /// the neutral notice wash: black 5 % in light, white 7 % in dark
+    static let quietWash = BrandColor.dynamic(0x000000, 0.05, 0xFFFFFF, 0.07)
+
+    init(tone: Tone, glyph image: NSImage?) {
+        self.tone = tone
+        super.init(frame: .zero)
+        glyph.image = image
+        glyph.imageScaling = .scaleNone
+        glyph.contentTintColor = tone == .attn ? BrandColor.attn : .secondaryLabelColor
+        glyph.setAccessibilityElement(false)
+        text.font = Look.titleFont
+        text.textColor = .labelColor
+        text.lineBreakMode = .byTruncatingTail
+        text.maximumNumberOfLines = 1
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        text.setAccessibilityElement(false)
+        action.bezelStyle = .push
+        action.controlSize = .small
+        action.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
+        action.target = self
+        action.action = #selector(tapped)
+        action.setContentCompressionResistancePriority(.required, for: .horizontal)
+        action.setContentHuggingPriority(.required, for: .horizontal)
+        action.setAccessibilityElement(false)          // the card is the one button VoiceOver reads (its label names the action)
+        addLayoutGuide(plate)
+        for v in [glyph, text, action] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        cardLead = plate.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10)
+        cardTrail = trailingAnchor.constraint(equalTo: plate.trailingAnchor, constant: 10)
+        glyphX = glyph.centerXAnchor.constraint(equalTo: leadingAnchor, constant: 25)
+        textLead = text.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 64)
+        actionTrail = trailingAnchor.constraint(equalTo: action.trailingAnchor, constant: 16)
         NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: topAnchor, constant: 6), row.bottomAnchor.constraint(equalTo: line.topAnchor, constant: -6),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10), row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
-            line.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: Self.gap + Self.height),
+            plate.topAnchor.constraint(equalTo: topAnchor, constant: Self.gap), plate.heightAnchor.constraint(equalToConstant: Self.height),
+            cardLead, cardTrail, glyphX, textLead, actionTrail,
+            glyph.centerYAnchor.constraint(equalTo: plate.centerYAnchor), glyph.widthAnchor.constraint(equalToConstant: 18),
+            text.centerYAnchor.constraint(equalTo: plate.centerYAnchor),
+            text.trailingAnchor.constraint(lessThanOrEqualTo: action.leadingAnchor, constant: -12),
+            action.centerYAnchor.constraint(equalTo: plate.centerYAnchor),
         ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
         isHidden = true
     }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    /// Puts the card on the list's grid (x in this view's coordinates; trailing values from its right edge).
+    func align(cardLeading: CGFloat, glyphCenter: CGFloat, textLeading: CGFloat, actionTrailing: CGFloat, cardTrailing: CGFloat) {
+        let want: [(NSLayoutConstraint, CGFloat)] = [(cardLead, cardLeading), (glyphX, glyphCenter), (textLead, textLeading),
+                                                     (actionTrail, actionTrailing), (cardTrail, cardTrailing)]
+        var moved = false
+        for (c, v) in want where abs(c.constant - v) > 0.25 { c.constant = v; moved = true }
+        if moved { needsDisplay = true; window?.invalidateCursorRects(for: self) }
+    }
+
+    /// The sentence with its count in medium (the count is the part to read first).
+    func say(_ s: String, count: Int, action label: String, tip: String) {
+        let a = NSMutableAttributedString(string: s, attributes: [.font: Look.titleFont, .foregroundColor: NSColor.labelColor])
+        if let r = s.range(of: "\(count)") { a.addAttribute(.font, value: Look.titleUnread, range: NSRange(r, in: s)) }
+        text.attributedStringValue = a
+        action.title = Look.menuCase(label)
+        toolTip = tip
+        action.toolTip = tip
+        setAccessibilityLabel("\(s), \(action.title)")
+        setAccessibilityHelp(tip)
+    }
+
+    var card: NSRect { plate.frame }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: card, xRadius: Self.radius, yRadius: Self.radius)
+        // the keyboard cursor on it: drawn as a selected row is
+        (selected ? BrandColor.tint : tone == .attn ? Self.attnSoft : Self.quietWash).setFill()
+        path.fill()
+        if (hover || pressed) && !selected {
+            NSColor.labelColor.withAlphaComponent(pressed ? 0.08 : 0.04).setFill()
+            path.fill()
+        }
+    }
+
+    // the whole card is the target; the button keeps its own clicks
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = convert(point, from: superview)
+        guard !isHidden, card.contains(p) else { return nil }
+        if action.frame.contains(p) { return super.hitTest(point) }
+        return self
+    }
+    override func mouseDown(with event: NSEvent) { pressed = true }
+    override func mouseDragged(with event: NSEvent) { pressed = card.contains(convert(event.locationInWindow, from: nil)) }
+    override func mouseUp(with event: NSEvent) {
+        let inside = card.contains(convert(event.locationInWindow, from: nil))
+        pressed = false
+        if inside { onClick?() }
+    }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    @objc private func tapped() { onClick?() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let a = area { removeTrackingArea(a) }
+        let a = NSTrackingArea(rect: card, options: [.mouseEnteredAndExited, .activeInActiveApp], owner: self)
+        addTrackingArea(a)
+        area = a
+    }
+    override func layout() {
+        super.layout()
+        updateTrackingAreas()
+        window?.invalidateCursorRects(for: self)
+    }
+    override func mouseEntered(with event: NSEvent) { hover = true }
+    override func mouseExited(with event: NSEvent) { hover = false; pressed = false }
+    override func resetCursorRects() { addCursorRect(card, cursor: .pointingHand) }
+}
+
+/// The Inbox's notice while captures hang under the island waiting for a project (K7): "3 captures are waiting for a
+/// project · Choose Projects…" (attn: they wait on you). A click opens the island with every card down (they stay until
+/// the pointer has come and gone), where each one gets its project. Hidden when there are none.
+final class CapturesBanner: NoticeCard {
+    init() { super.init(tone: .attn, glyph: BlurtIcon.cards.image(size: 16)) }     // the island's own count glyph (§3.2)
     required init?(coder: NSCoder) { fatalError() }
 
     func set(count: Int) {
         isHidden = count == 0
         guard count > 0 else { return }
-        row.title.stringValue = TP("main.captures.unfiled", count)
-        row.status.stringValue = T("main.captures.show")
-        row.setAccessibilityLabel("\(row.title.stringValue), \(row.status.stringValue)")
-        row.toolTip = T("main.captures.tip")
+        say(TP("main.captures.waiting", count), count: count, action: TP("main.captures.choose", count), tip: T("main.captures.tip"))
     }
 }
 
 /// "Recently dragged out: 2" on top of the Inbox and Unassigned (v0.8.1): cards dragged out into other apps in the last 7
-/// days — a click opens Recently Taken (TakenPanel: copy, drag out again, put back). Hidden when there are none.
-final class TakenBanner: NSView {
-    var onClick: (() -> Void)?
-    private let row = JobRow()
-    /// the keyboard cursor is on it (↑ from the first item, micro 15)
-    var selected: Bool {
-        get { row.selected }
-        set { row.selected = newValue }
-    }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.title.font = .systemFont(ofSize: 12, weight: .regular)
-        row.status.textColor = BrandColor.ink
-        row.spinner.isHidden = true
-        row.icon.image = Look.symbol("arrow.up.right.square", "", size: 14)
-        row.icon.contentTintColor = .secondaryLabelColor
-        row.onClick = { [weak self] in self?.onClick?() }
-        addSubview(row)
-        let line = NSBox()
-        line.boxType = .separator
-        line.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(line)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: topAnchor, constant: 4), row.bottomAnchor.constraint(equalTo: line.topAnchor, constant: -4),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10), row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
-            line.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-        isHidden = true
-    }
+/// days — a click opens Recently Dragged Out (TakenPanel: copy, drag out again, put back). Information only: the quiet
+/// tone. Hidden when there are none.
+final class TakenBanner: NoticeCard {
+    init() { super.init(tone: .quiet, glyph: Look.symbol("arrow.up.right.square", "", size: 14)) }
     required init?(coder: NSCoder) { fatalError() }
 
     func set(count: Int) {
         isHidden = count == 0
         guard count > 0 else { return }
-        row.title.stringValue = T("main.captures.taken", count)
-        row.status.stringValue = T("main.captures.taken.show")
-        row.setAccessibilityLabel("\(row.title.stringValue), \(row.status.stringValue)")
-        row.toolTip = T("main.captures.taken.tip")
+        say(T("main.captures.taken", count), count: count, action: T("main.captures.taken.show"), tip: T("main.captures.taken.tip"))
     }
+}
+
+/// The dense list's time: right-aligned on the column's trailing edge, so every row's time (and the notices' buttons
+/// above the list) end on one line.
+final class TimeCell: NSTableCellView {
+    let label = NSTextField(labelWithString: "")
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = Look.monoSub
+        label.textColor = .secondaryLabelColor
+        label.alignment = .right
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        addSubview(label)
+        textField = label
+        NSLayoutConstraint.activate([label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+                                     label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 2),
+                                     label.centerYAnchor.constraint(equalTo: centerYAnchor)])
+    }
+    required init?(coder: NSCoder) { fatalError() }
 }
 
 /// On top of a project whose folder is gone (moved, renamed, an unplugged disk): what happened, and "Locate…" — the
@@ -602,6 +713,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
         captures.onClick = { AppEnvironment.island?.revealCards() }
+        for n in [captures, taken] as [NoticeCard] { n.onShow = { [weak self] in self?.noticesChanged() } }
         missing.onLocate = { [weak self] in self?.actions?.emptyAction(7) }
         NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
         taken.onClick = { [weak self] in
@@ -667,6 +779,36 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     override func viewDidLayout() {
         super.viewDidLayout()
         fitTitle()
+        alignNotices()
+    }
+
+    /// The notices above the list sit on its grid (NoticeCard): the glyph on the kind icons' column, the sentence where
+    /// the titles start, the button's edge where the times end, the card's edges where a selected row's wash is.
+    /// Measured from the table's own columns, so they follow a resized column, the inset style's margins and the
+    /// scroller.
+    func alignNotices() {
+        let cards: [NoticeCard] = [captures, taken].filter { !$0.isHidden }
+        guard !cards.isEmpty, view.bounds.width > 0, table.bounds.width > 0 else { return }
+        func rect(_ id: String) -> NSRect? {
+            let i = table.column(withIdentifier: .init(id))
+            guard i >= 0, !table.tableColumns[i].isHidden else { return nil }
+            // a cell sits in its column inset by half the intercell spacing (frameOfCell)
+            return table.rect(ofColumn: i).insetBy(dx: table.intercellSpacing.width / 2, dy: 0)
+        }
+        guard let lead = rect("lead"), let title = rect("title"), let time = rect("time") else { return }
+        func x(_ v: CGFloat) -> CGFloat { table.convert(NSPoint(x: v, y: 0), to: view).x }
+        let w = view.bounds.width
+        // a selected row's wash: the row view's frame (the inset style insets it), or the columns' span with no rows
+        let row: NSRect = table.numberOfRows > 0 ? table.rect(ofRow: 0) : lead.union(time)
+        let pad: CGFloat = row.minX < 1 && abs(row.width - table.bounds.width) < 1 ? 10 : 0      // as BrandRowView draws it
+        let edges = (x(row.minX + pad), x(row.maxX - pad))
+        for c in cards {
+            c.align(cardLeading: edges.0, glyphCenter: x(lead.minX + 2 + 9),       // LeadCell: the icon 2 pt in, 18 wide
+                    textLeading: x(title.minX + 2),                                 // TitleCell: the title 2 pt in
+                    // TimeCell: the label 2 pt from the cell's end, its text 2 more (the field's padding)
+                    actionTrailing: w - x(time.maxX - 4),
+                    cardTrailing: w - edges.1)
+        }
     }
 
     func fitTitle() {
@@ -709,6 +851,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     static let yielding: [(String, CGFloat)] = [("project", 100), ("state", 120), ("time", 72), ("meta", 58)]
 
     func tableViewColumnDidResize(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in self?.alignNotices() }
         guard let c = notification.userInfo?["NSTableColumn"] as? NSTableColumn, c.identifier.rawValue != "title" else { return }
         DispatchQueue.main.async { [weak self] in self?.fitTitle() }
     }
@@ -809,11 +952,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
-    /// "Unfiled captures: N" on top of the inbox while cards hang under the island.
-    /// "Recently taken: N" on top of the Inbox and Unassigned while cards dragged out in the last 7 days are there.
+    /// "N captures are waiting for a project" on top of the inbox while cards hang under the island.
+    /// "Recently dragged out: N" on top of the Inbox and Unassigned while cards dragged out in the last 7 days are there.
     func reloadCaptures() {
         captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0)
         taken.set(count: model.scope == .inbox || model.scope == .unassigned ? snapper.recentlyTaken.count : 0)
+    }
+
+    /// A notice came or went: put it on the grid once the stack has laid it out.
+    func noticesChanged() {
+        DispatchQueue.main.async { [weak self] in self?.view.layoutSubtreeIfNeeded(); self?.alignNotices() }
     }
 
     /// "Can't find this folder" over a registered project whose folder is gone.
@@ -991,9 +1139,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             c.button.isEnabled = !it.legacy
             return c
         case "time":
-            let c = make("time") { IconTextCell() }
-            c.set(MainModel.listDate(it.updated), font: Look.monoSub, align: .right)
-            c.label.textColor = .secondaryLabelColor
+            let c = make("time") { TimeCell() }
+            c.label.stringValue = MainModel.listDate(it.updated)
             c.toolTip = MainModel.shortDate(it.updated)
             return c
         default: return nil

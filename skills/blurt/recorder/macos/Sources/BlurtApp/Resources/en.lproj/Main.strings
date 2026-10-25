@@ -79,8 +79,7 @@
 "main.banner.show_progress" = "Show Progress";
 "main.banner.with_agent" = "Handed off to %@ · %@";
 
-"main.captures.show" = "Show under the notch";
-"main.captures.tip" = "Cards under the notch that aren’t in a project yet. Click to show them all.";
+"main.captures.tip" = "They’re waiting at the top of your screen, under the notch. This brings them all down there, so you can choose a project for each.";
 "main.captures.taken" = "Recently dragged out: %ld";
 "main.captures.taken.show" = "Show";
 "main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back under the notch";

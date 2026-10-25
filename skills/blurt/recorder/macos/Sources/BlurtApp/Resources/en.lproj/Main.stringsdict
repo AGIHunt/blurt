@@ -50,7 +50,7 @@
 			<string>%ld to verify</string>
 		</dict>
 	</dict>
-	<key>main.captures.unfiled</key>
+	<key>main.captures.choose</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@n@</string>
@@ -61,9 +61,25 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Unfiled cards: %ld</string>
+			<string>Choose a project…</string>
 			<key>other</key>
-			<string>Unfiled cards: %ld</string>
+			<string>Choose projects…</string>
+		</dict>
+	</dict>
+	<key>main.captures.waiting</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld capture is waiting for a project</string>
+			<key>other</key>
+			<string>%ld captures are waiting for a project</string>
 		</dict>
 	</dict>
 	<key>main.detail.multi</key>
