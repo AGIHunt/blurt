@@ -271,6 +271,7 @@
 "capture.voice.maxed" = "Reached %@ — the voice note is saved";
 "capture.voice.words_failed" = "Couldn’t turn the note into words";
 "capture.live.ax" = "What you’ve said so far";
+"capture.live.more" = "… %ld more lines";
 "capture.voice_drop.hint_paste" = "Let go to paste into %@";
 "capture.voice_drop.hint_copy" = "Let go, then ⌘V in %@";
 "capture.voice_drop.pasted" = "Pasted into %@";

@@ -7,8 +7,9 @@
 //    fixing it by hand and double-tapping to send. A take's panel doesn't jump: it keeps the height it reached, and
 //    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor). When the take stops and its text
 //    goes in, the panel shows that text — the polished or structured version actually typed, not the transcript —
-//    for about 1.5 s (`showTyped`), the caret after the words turned into the ok check (it is in): the moment to check
-//    before a double tap sends it. When there is text above the top line, that line's start fades in from the left
+//    for about 1.5 s (`showTyped`; a little longer for a longer text, at most 4 s), the caret after the words turned
+//    into the ok check (it is in): the moment to check before a double tap sends it. It grows to show that text from
+//    its top, up to eight lines (the eighth says how many more), so a list's heading and first item are in view. When there is text above the top line, that line's start fades in from the left
 //    edge, so a line that begins mid-sentence reads as continued, not cut.
 //
 //  • It is the island's lower half, not a second pop-up (v0.9 dogfood: a 460 pt grey glass card under a 297 pt black
@@ -112,9 +113,12 @@ final class LiveTranscript {
             pending = ""
             view.show(committed: t, pending: "", animated: !reduceMotion)
         }
-        emit(["event": "live_typed", "chars": t.count, "session": s, "seconds": seconds])
         if !shown { show() } else { place(animated: true) }
-        end(session: s, after: seconds)
+        // a longer text (a Structured list) stays up a little longer: it is read before a double tap sends it
+        let lines = view.lineCount(width: view.frame.width)
+        let hold = min(4, seconds + 0.35 * Double(max(0, lines - LiveTextLines.maxLines)))
+        emit(["event": "live_typed", "chars": t.count, "session": s, "seconds": hold, "lines": lines])
+        end(session: s, after: hold)
     }
 
     /// The take is over: the panel goes after `after` seconds (now: at once).
@@ -298,6 +302,8 @@ final class LiveTextView: NSView {
     var shownLines: [String] { text.lines }
     func reset() { text.reset() }
     func fittingHeight(width: CGFloat) -> CGFloat { text.fittingHeight(width: width) }
+    /// the text's lines at this width (the typed text: all of them)
+    func lineCount(width: CGFloat) -> Int { text.lineCount(width: width) }
     func show(committed: String, pending: String, animated: Bool) { text.show(committed: committed, pending: pending, animated: animated) }
 }
 
@@ -347,11 +353,19 @@ final class LiveTextLines: NSView {
         needsDisplay = true
     }
 
-    /// As many lines as the text needs, up to three — and never fewer than this take already showed.
+    /// Once the text is what was typed, the panel shows it from the top, up to this many lines (the last says how many
+    /// more): the heading and item 1 of a Structured list are what the user checks before a double tap sends it
+    /// (v0.9 dogfood: three lines from the bottom cut them off). While listening: the last three.
+    static let typedMaxLines = 8
+    private var visibleMax: Int { typed ? LiveTextLines.typedMaxLines : LiveTextLines.maxLines }
+
+    /// As many lines as the text needs, up to three (eight once typed) — and never fewer than this take already showed.
     func fittingHeight(width: CGFloat) -> CGFloat {
-        tallest = max(tallest, min(LiveTextLines.maxLines, max(1, layout(width: width).count)))
+        tallest = max(tallest, min(visibleMax, max(1, layout(width: width).count)))
         return LiveTextLines.pad.height * 2 + CGFloat(tallest) * LiveTextLines.lineH
     }
+
+    func lineCount(width: CGFloat) -> Int { layout(width: width).count }
 
     /// `committed` then `pending` (provisional: the piece still being said).
     func show(committed: String, pending: String, animated: Bool) {
@@ -384,12 +398,13 @@ final class LiveTextLines: NSView {
     /// The text's lines at this width from the anchor on, as (range in `text`, the line).
     private func layout(width: CGFloat) -> [(NSRange, String)] {
         // the island ticks this every frame while it moves: the same text at the same width is laid out once
-        if let c = cached, c.text == text, c.width == width { return c.lines }
-        let out = layoutTail(width: width)
-        cached = (text, width, out)
+        if let c = cached, c.text == text, c.width == width, c.typed == typed { return c.lines }
+        // the typed text: all of it, from its start (it is shown from the top)
+        let out = typed ? lineRanges(text as NSString, from: 0, width: width) : layoutTail(width: width)
+        cached = (text, width, typed, out)
         return out
     }
-    private var cached: (text: String, width: CGFloat, lines: [(NSRange, String)])?
+    private var cached: (text: String, width: CGFloat, typed: Bool, lines: [(NSRange, String)])?
 
     private func layoutTail(width: CGFloat) -> [(NSRange, String)] {
         let ns = text as NSString
@@ -434,9 +449,21 @@ final class LiveTextLines: NSView {
 
     override func draw(_ dirty: NSRect) {
         let all = layout(width: bounds.width)
-        let shown = Array(all.suffix(LiveTextLines.maxLines))
+        var shown: [(NSRange, String)]
+        if typed {
+            // from the top; past eight lines the last one says how many more
+            shown = Array(all.prefix(LiveTextLines.typedMaxLines))
+            if all.count > LiveTextLines.typedMaxLines {
+                shown = Array(all.prefix(LiveTextLines.typedMaxLines - 1))
+                let more = all.count - shown.count
+                shown.append((NSRange(location: (text as NSString).length, length: 0),
+                              Loc.t("capture.live.more", table: "Capture", more)))
+            }
+        } else {
+            shown = Array(all.suffix(LiveTextLines.maxLines))
+        }
         lines = shown.map(\.1)
-        continued = (shown.first?.0.location ?? 0) > 0
+        continued = !typed && (shown.first?.0.location ?? 0) > 0
         let ink = NSColor(white: 1, alpha: 0.92), dim = NSColor(white: 1, alpha: 0.6)      // neutral, never brand
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byClipping
@@ -457,8 +484,9 @@ final class LiveTextLines: NSView {
                     s.addAttribute(.foregroundColor, value: c.withAlphaComponent(c.alphaComponent * fade), range: r)
                 }
             }
-            // newest at the bottom: a take that showed more lines before keeps them in place from below
-            let row = rows - shown.count + i
+            // newest at the bottom while listening (a take that showed more lines before keeps them in place from
+            // below); the typed text from the top
+            let row = typed ? i : rows - shown.count + i
             let y = LiveTextLines.pad.height + CGFloat(row) * LiveTextLines.lineH + 1
             s.draw(with: NSRect(x: LiveTextLines.pad.width, y: y, width: room, height: LiveTextLines.lineH),
                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])

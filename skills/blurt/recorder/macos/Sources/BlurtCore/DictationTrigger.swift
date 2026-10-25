@@ -232,6 +232,12 @@ public struct DictationTrigger {
     /// How long after the time limit a tap is the late stop: as long as the island's line about it shows.
     public static let limitGrace = 4.0
 
+    /// A cancel that is a shortcut, not a cancelled dictation: another key (not Esc) or a click joined push-to-talk
+    /// within its first second, before any piece of it was cut for transcription — said quietly (no "Cancelled").
+    public static func joinedEarly(esc: Bool, listening: Bool, elapsed: Double, finalPieces: Int) -> Bool {
+        !esc && listening && elapsed < 1.0 && finalPieces == 0
+    }
+
     /// Not dictating any more: a key still held is waited out (its release must not start or stop anything).
     private mutating func settle() {
         if state == .holding { state = .waitRelease } else if case .down = state { state = .idle }

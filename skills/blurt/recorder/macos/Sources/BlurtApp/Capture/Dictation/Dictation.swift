@@ -157,6 +157,8 @@ final class Dictation {
     private var generation = 0
     /// this take's live transcript (LiveTranscript's session)
     private var liveSession = 0
+    /// the words of a press that hasn't started yet (shown once it does)
+    private var heldLive: (committed: String, pending: String)?
     /// the text around the cursor when this dictation started (polish's hints; never stored unless debugging)
     private var context: DictationContext?
     /// a double tap came for a take still on its way (DictationTake.sendAfterPaste): Return once it has been pasted
@@ -616,7 +618,9 @@ final class Dictation {
             case .arm: arm()
             case .start: start()
             case .stop: stop()
-            case .cancel: cancel(quietly: outs.contains(.send))
+            // another key joining push-to-talk right away (Fn+← is Home) is a shortcut, not a cancelled dictation:
+            // no "Cancelled" for it (v0.9 dogfood: grey words flashed, then the line)
+            case .cancel: cancel(quietly: outs.contains(.send) || joinedEarly(e))
             case .send: send()
             case .style: toggleStyle(via: wasIsland ? .island : .shift)
             }
@@ -628,6 +632,13 @@ final class Dictation {
         if let m = trigger.takeMiss() { missedPress(m) }
         updateShiftFilter()
         scheduleHoldTick()
+    }
+
+    /// A key (not Esc) or a click ended push-to-talk within its first second, before any of it was transcribed: the
+    /// press was a shortcut (DictationTrigger.joinedEarly).
+    private func joinedEarly(_ e: DictationTrigger.Event) -> Bool {
+        let esc: Bool = { if case let .keyDown(c, _) = e { return c == DictationTrigger.escape }; return false }()
+        return DictationTrigger.joinedEarly(esc: esc, listening: listening, elapsed: elapsed, finalPieces: stream?.segments ?? 0)
     }
 
     private var lastTraced: Double?
@@ -811,7 +822,13 @@ final class Dictation {
         // the words while talking: the pieces' transcripts as they come in, the piece still being said after them
         let live = LiveTranscript.shared.begin(.dictation)
         liveSession = live
-        s.onLive = { committed, pending in LiveTranscript.shared.update(committed, pending: pending, session: live) }
+        heldLive = nil
+        // nothing shows while the press hasn't become a dictation yet (a shortcut such as Fn+←, a hold in tap-only
+        // mode): its words would flash and vanish (v0.9 dogfood); they show as soon as it starts
+        s.onLive = { [weak self] committed, pending in
+            guard let self = self, self.liveSession == live else { return }
+            if self.listening { LiveTranscript.shared.update(committed, pending: pending, session: live) } else { self.heldLive = (committed, pending) }
+        }
         voice = v
         stream = s
         wav = url
@@ -893,6 +910,8 @@ final class Dictation {
         voice?.noSpeechTimeout = trigger.pushToTalk ? .infinity : 30     // push-to-talk ends when the key comes up
         if trigger.startShift { explicitStyle = (.structured, .chord); routeStyle() }      // Fn+⇧: start in Structured
         listening = true
+        if let h = heldLive { LiveTranscript.shared.update(h.committed, pending: h.pending, session: liveSession) }
+        heldLive = nil
         // a tap-started take may be a double tap's first tap (a send): the listening aura waits out the window, so a
         // send never flashes it
         glowFrom = CACurrentMediaTime() + DictationGlow.delay(pushToTalk: trigger.pushToTalk,

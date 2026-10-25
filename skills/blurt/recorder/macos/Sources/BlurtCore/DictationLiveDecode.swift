@@ -174,6 +174,17 @@ public struct DictationLiveDecode {
         while a < committed.endIndex, b < full.endIndex, committed[a] == full[b] {
             a = committed.index(after: a); b = full.index(after: b)
         }
-        return (String(full[..<b]), String(full[b...]))
+        return (String(full[..<b]), openEnded(String(full[b...])))
+    }
+
+    /// The piece still being said, as shown: without the one sentence-final mark the speech model gives every
+    /// fragment ("我现在。", "nothing on?") — while the user talks it read as Blurt deciding they were done (v0.9
+    /// dogfood). Display only: what is typed keeps its punctuation.
+    public static func openEnded(_ pending: String) -> String {
+        var t = Substring(pending)
+        while let c = t.last, c.isWhitespace { t.removeLast() }
+        guard let c = t.last, "。．.？?！!".contains(c), !t.hasSuffix("...") else { return pending }
+        t.removeLast()
+        return String(t)
     }
 }

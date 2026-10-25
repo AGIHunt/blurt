@@ -427,6 +427,15 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(d.run("fn-down@300500 fn-up@300580 fn-down@300700 fn-up@300780"), [.send])
     }
 
+    /// Fn+← (Home) within the first second is a shortcut: no "Cancelled" line; Esc, or later, still says it.
+    func testAKeyJoiningRightAwayIsAShortcut() {
+        XCTAssertTrue(DictationTrigger.joinedEarly(esc: false, listening: true, elapsed: 0.4, finalPieces: 0))
+        XCTAssertFalse(DictationTrigger.joinedEarly(esc: true, listening: true, elapsed: 0.4, finalPieces: 0))
+        XCTAssertFalse(DictationTrigger.joinedEarly(esc: false, listening: true, elapsed: 1.5, finalPieces: 0))
+        XCTAssertFalse(DictationTrigger.joinedEarly(esc: false, listening: true, elapsed: 0.8, finalPieces: 1))
+        XCTAssertFalse(DictationTrigger.joinedEarly(esc: false, listening: false, elapsed: 0.2, finalPieces: 0))
+    }
+
     func testMissesSayWhatTheModeWants() {
         var h = DictationTrigger(key: .fn, mode: .hold)
         XCTAssertEqual(h.run("fn-down@0 fn-up@90"), [.arm])
