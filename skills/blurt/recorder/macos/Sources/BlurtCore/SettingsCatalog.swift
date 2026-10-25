@@ -281,8 +281,14 @@ public enum SettingsCatalog {
             row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture")),
 
             // Agents
-            whole("agents.list", detail: SettingsText("agents.footer", "Terminal")),
-            whole("agents.sessions", detail: SettingsText("agents.tmux.ok.detail", "Terminal")),
+            whole("agents.list", detail: SettingsText("agents.lead", "Terminal")),
+            whole("agents.sessions", detail: SettingsText("agents.sessions.about", "Terminal")),
+            row("agents.keep_sessions", "agents.sessions", SettingsText("agents.keep_sessions", "Terminal"),
+                detail: SettingsText("agents.keep_sessions.ok", "Terminal")),
+            row("agents.project_agent", "agents.sessions", SettingsText("agents.project_agent", "Terminal"),
+                detail: SettingsText("agents.project_agent.hint", "Terminal")),
+            row("agents.handoff", "agents.sessions", SettingsText("agents.handoff_target", "Terminal"),
+                detail: SettingsText("agents.handoff_target.hint", "Terminal")),
             whole("agents.ask", detail: SettingsText("agents.ask.footer", "Terminal")),
 
             // Privacy

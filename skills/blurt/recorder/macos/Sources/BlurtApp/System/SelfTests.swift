@@ -241,6 +241,13 @@ enum SelfTests {
                 switch a.first ?? "state" {
                 case "toggle" where a.count == 3: m.toggle(a[1], a[2] == "on")
                 case "up" where a.count == 2: m.moveUp(a[1])
+                case "down" where a.count == 2: m.moveDown(a[1])
+                // the pane's sheet and popovers, for screenshots: details ID | fix ID | examples | hover ID | close
+                case "details" where a.count == 2: m.details = a[1]
+                case "fix" where a.count == 2: m.fixFor = a[1]
+                case "examples": m.examplesShown = true
+                case "hover" where a.count == 2: m.hovered = a[1]
+                case "close": m.details = nil; m.fixFor = nil; m.examplesShown = false; m.hovered = nil
                 case "processing" where a.count >= 3:
                     // processing AGENT [recording|cards] MODEL [EFFORT] (no kind: cards)
                     let kind = ProcessingKind(rawValue: a[2])
