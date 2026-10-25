@@ -55,6 +55,8 @@ extension NSMenuItem {
         let st = Hotkeys.shared.state(a)
         guard st.worksInMenu else {
             toolTip = Loc.t("capture.keys.menu_not_working", table: "Capture", s.label, st.text)
+            // the key column never just goes blank: the row says, under its title, that its key isn't working
+            if #available(macOS 14.4, *) { subtitle = T("app.menu.key_off", s.label) }
             return
         }
         let (k, f) = s.menuKeyEquivalent

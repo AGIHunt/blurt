@@ -280,10 +280,23 @@ final class PermissionGuide: ObservableObject {
     func headline(_ k: PermissionKind) -> String {
         if stepDone { return T("settings.perm.step_done", PermissionGuide.name(k)) }
         switch k {
-        case .microphone where SystemAccess.state(.microphone) == .notAsked: return T("settings.perm.mic_prompt")
+        case .microphone where SystemAccess.state(.microphone) == .notAsked: return T("onboarding.guide.mic_prompt")
         case .screen where reauthorize: return T("settings.perm.screen.readd")
-        case .fnKey: return T("settings.perm.fn_key.headline")
-        default: return T("settings.perm.turn_on")
+        case .fnKey: return T("onboarding.guide.fn_headline")
+        default: return T("onboarding.guide.turn_on")
+        }
+    }
+
+    /// The panel's line under the headline: why, in one short clause (Settings' rows say it at length). For the
+    /// microphone's dialog: where that dialog is.
+    func guideWhy(_ k: PermissionKind) -> String {
+        if k == .screen, reauthorize { return T("settings.perm.screen.readd_why") }
+        switch k {
+        case .microphone: return SystemAccess.state(.microphone) == .notAsked ? T("onboarding.guide.mic_where") : T("onboarding.guide.why.microphone")
+        case .accessibility: return T("onboarding.guide.why.accessibility")
+        case .inputMonitoring: return T("onboarding.guide.why.input_monitoring", Dictation.keyInline)
+        case .screen: return T("onboarding.guide.why.screen")
+        case .fnKey: return T("onboarding.guide.why.fn_key")
         }
     }
 }

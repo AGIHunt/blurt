@@ -503,14 +503,21 @@ extension App {
         }
         item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
-        let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
-        dict.target = self
-        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline) }
-        menu.addItem(dict)
+    }
+
+    /// The menu's "what waits for you" rows after Open Blurt: the cards while some hang, the cards dragged out lately,
+    /// Dictation History. Counts are the rows' badges (macOS 14+), never part of their titles.
+    func addWaitingMenuItems(_ menu: NSMenu) {
         // only while something hangs (⌥⇧H itself is listed in Settings → Shortcuts)
         if hanging.count > 0 {
-            let cards = NSMenuItem(title: Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count),
+            let cards: NSMenuItem
+            if #available(macOS 14.0, *) {
+                cards = NSMenuItem(title: T("app.menu.cards"), action: #selector(mShowCards), keyEquivalent: "")
+                cards.badge = NSMenuItemBadge(count: hanging.count)
+            } else {
+                cards = NSMenuItem(title: Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count),
                                    action: #selector(mShowCards), keyEquivalent: "")
+            }
             cards.target = self
             cards.showHotkey(.cards)
             menu.addItem(cards)
@@ -518,10 +525,20 @@ extension App {
         // cards dragged out into other apps in the last 7 days (never lost: copy them, drag them again, put them back)
         let taken = snapper.recentlyTaken.count
         if taken > 0 {
-            let it = NSMenuItem(title: Loc.t("capture.taken.menu", table: "Capture", taken) + "…", action: #selector(mShowTaken), keyEquivalent: "")
+            let it: NSMenuItem
+            if #available(macOS 14.0, *) {
+                it = NSMenuItem(title: Loc.t("capture.taken.title", table: "Capture"), action: #selector(mShowTaken), keyEquivalent: "")
+                it.badge = NSMenuItemBadge(count: taken)
+            } else {
+                it = NSMenuItem(title: Loc.t("capture.taken.menu", table: "Capture", taken), action: #selector(mShowTaken), keyEquivalent: "")
+            }
             it.target = self
             menu.addItem(it)
         }
+        let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
+        dict.target = self
+        if Dictation.enabled { dict.toolTip = Loc.t("dictation.menu.history.tip", table: "Dictation", Dictation.keyInline) }
+        menu.addItem(dict)
     }
 
     @objc func mShowTaken() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { TakenPanel.shared.show() } }
@@ -552,7 +569,12 @@ func menuDumpLines(_ menu: NSMenu, depth: Int = 0) -> [String] {
             key = (f.contains(.control) ? "⌃" : "") + (f.contains(.option) ? "⌥" : "") + (f.contains(.shift) ? "⇧" : "")
                 + (f.contains(.command) ? "⌘" : "") + it.keyEquivalent.uppercased()
         }
-        let title = it.attributedTitle?.string ?? it.title
+        var title = it.attributedTitle?.string ?? it.title
+        if #available(macOS 14.0, *) {
+            if it.isSectionHeader { out.append(pad + "## " + title); continue }
+            if let b = it.badge { title += "  [" + ((b.stringValue ?? "").isEmpty ? "\(b.itemCount)" : b.stringValue ?? "") + "]" }
+        }
+        if #available(macOS 14.4, *), let s = it.subtitle, !s.isEmpty { title += "  / " + s }
         var row = pad + (it.isAlternate ? "⌥ alt: " : "") + (it.state == .on ? "[on] " : "") + title
         if it.indentationLevel > 0 { row = pad + String(repeating: "  ", count: it.indentationLevel) + row.dropFirst(pad.count) }
         if !key.isEmpty { row += "\t" + key }

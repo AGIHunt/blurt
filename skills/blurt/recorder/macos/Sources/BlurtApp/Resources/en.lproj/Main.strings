@@ -42,12 +42,12 @@
 "app.name" = "Blurt";
 
 
-"app.record.failed" = "The recording couldn’t be saved";
-"app.record.failed.disk_full" = "The disk is full. Free some space, then record again.";
-"app.record.failed.permission" = "macOS didn’t let Blurt record the screen. Check Screen Recording in System Settings.";
-"app.record.failed.stopped" = "macOS stopped the screen recording partway.";
-"app.record.failed.no_frames" = "No picture came in from the screen. Try again.";
-"app.record.failed.unknown" = "Something went wrong while saving it. The details are in the log.";
+"app.record.failed" = "Recording not saved";
+"app.record.failed.disk_full" = "The disk is full, so nothing from this take was kept. Free some space, then record again.";
+"app.record.failed.permission" = "macOS didn’t let Blurt record the screen. Turn on Screen Recording for Blurt in System Settings.";
+"app.record.failed.stopped" = "macOS stopped the screen recording partway, so nothing from this take was kept.";
+"app.record.failed.no_frames" = "No picture came in from the screen, so nothing was recorded.";
+"app.record.failed.unknown" = "Blurt couldn’t finish writing the video, so nothing from this take was kept.";
 "app.record.reason.disk_full" = "The disk is full";
 "app.record.reason.permission" = "Screen Recording was refused";
 "app.record.reason.stopped" = "macOS stopped the recording";
@@ -558,3 +558,8 @@
 "app.config.show" = "Show File";
 "app.models.offline" = "The speech models finish once you’re online";
 "main.speech.recommended_recordings" = "A better model for recordings · %@";
+"app.menu.cards" = "Show Cards";
+"app.menu.project_header" = "Project";
+"app.menu.key_off" = "%@ isn’t working";
+"app.alert.not_now" = "Not Now";
+"app.record.again" = "Record Again";

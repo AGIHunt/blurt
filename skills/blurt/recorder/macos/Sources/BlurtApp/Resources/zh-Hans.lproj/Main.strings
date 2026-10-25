@@ -42,12 +42,12 @@
 "app.name" = "口喷鸡";
 
 
-"app.record.failed" = "录屏没能保存";
-"app.record.failed.disk_full" = "磁盘满了。腾出一些空间后再录。";
-"app.record.failed.permission" = "macOS 不让口喷鸡录屏。到系统设置里检查「屏幕录制」。";
-"app.record.failed.stopped" = "录到一半，macOS 停止了录屏。";
-"app.record.failed.no_frames" = "没有收到屏幕画面，再试一次。";
-"app.record.failed.unknown" = "保存时出了问题，详情见日志。";
+"app.record.failed" = "录屏没有保存下来";
+"app.record.failed.disk_full" = "磁盘满了，这次录的内容没有留下。腾出一些空间后再录。";
+"app.record.failed.permission" = "macOS 不让口喷鸡录屏。到「系统设置」里为口喷鸡打开「屏幕录制」。";
+"app.record.failed.stopped" = "录到一半 macOS 停止了录屏，这次录的内容没有留下。";
+"app.record.failed.no_frames" = "没有收到屏幕画面，什么都没录下来。";
+"app.record.failed.unknown" = "视频没能写完，这次录的内容没有留下。";
 "app.record.reason.disk_full" = "磁盘满了";
 "app.record.reason.permission" = "屏幕录制被拒绝";
 "app.record.reason.stopped" = "macOS 中途停掉了录制";
@@ -558,3 +558,8 @@
 "app.config.show" = "显示文件";
 "app.models.offline" = "联网后会接着下载语音模型";
 "main.speech.recommended_recordings" = "录屏用的更好模型 · %@";
+"app.menu.cards" = "显示卡片";
+"app.menu.project_header" = "项目";
+"app.menu.key_off" = "%@ 用不了";
+"app.alert.not_now" = "以后再说";
+"app.record.again" = "重新录";
