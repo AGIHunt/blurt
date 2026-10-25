@@ -107,7 +107,7 @@
 "finish.subtitle" = "%1$@ → %2$@";
 "finish.loading" = "正在和基础分支比较…";
 "finish.open_patch" = "打开 diff";
-"finish.no_changes" = "这个分支上还没有改动。";
+"finish.no_changes" = "这个分支上没有改动。";
 "finish.help" = "合并会把分支并进项目文件夹里的 %@。只有开 PR 时才会推送。";
 "finish.merge" = "合并";
 "finish.end_and.merge" = "结束会话并合并";
@@ -177,9 +177,9 @@
 "error.no_terminal" = "没有装受支持的终端 App。";
 "error.no_tmux" = "没有安装 tmux 3.2 或更新的版本。";
 "error.gone" = "这个会话已经结束，或者它的文件夹已经不在了。";
-"error.running" = "Agent 的会话还开在这个 worktree 里，先结束会话再合并。";
+"error.running" = "Agent 还在这个 worktree 里运行，先结束会话。";
 "error.uncommitted" = "worktree 里有未提交的改动，让 Agent 提交或自己提交后再试。";
-"error.nothing" = "这个分支上还没有可以合并的提交。";
+"error.nothing" = "这个分支上没有改动。";
 
 /* 设置 → Agent */
 "agents.header" = "Agent（按顺序使用）";
@@ -236,3 +236,29 @@
 "agents.state.unknown" = "已安装 · 未确认登录";
 "agents.state.configured" = "已安装 · 已配置";
 "agents.state.logged_out" = "未登录";
+
+/* Sessions that end without the work (v0.9 dogfood) */
+"row.failed_start" = "没能启动";
+"row.failed" = "出错停下了";
+"row.no_changes" = "已结束 · 没有改动";
+"finish.state.keep" = "已保留";
+"finish.state.restart" = "已重新开始";
+"header.show_items" = "在列表中显示条目";
+"header.show_log" = "显示日志";
+"overlay.show_output" = "查看输出";
+"overlay.take_back" = "收回";
+"overlay.restart" = "重新开始会话";
+"overlay.failed_start.title" = "%@ 启动失败";
+"overlay.failed.title" = "%@ 出错停下了";
+"overlay.no_changes.title" = "会话已结束 · 没有改动";
+"finish.commit_merge" = "提交并合并";
+"finish.show_item" = "查看 %@";
+"finish.show_items" = "查看条目";
+"error.commit" = "提交 Agent 的改动失败，可能被 git hook 拒绝了。在 worktree 里提交后再试。";
+"error.has_changes" = "这个会话留下了改动，先查看改动。";
+"error.already_dispatched" = "这些条目已经交给了一个还在进行的会话。";
+"dispatch.logged_out" = "%@ 还没登录。";
+"dispatch.logged_out.fix" = "%1$@ 还没登录：%2$@。";
+"dispatch.use_agent" = "改用 %@";
+"dispatch.checking_login" = "正在检查登录…";
+"dispatch.open_session" = "打开那个会话";

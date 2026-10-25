@@ -86,7 +86,7 @@ final class MainModel {
     private(set) var uids: [String] = []
     private(set) var counts = IndexCounts()
     private(set) var projects: [ProjectEntry] = []
-    private(set) var jobs: [Job] = []            // active ones for this place, newest first
+    private(set) var jobs: [Job] = []            // active ones for this place (and failures waiting), newest first
     private(set) var lastReloadMS = 0.0
 
     private var pages: [Int: [ItemRow]] = [:]
@@ -215,8 +215,10 @@ final class MainModel {
         onSidebar?()
     }
 
+    /// The running jobs, and organising that failed and still waits for a Retry or Dismiss (JobFailures): a recording
+    /// whose organising failed has no items to be found by, so its job stays in its place until then.
     func reloadJobs() {
-        let all = JobStore.shared.active
+        let all = JobStore.shared.active + JobFailures.waiting(JobStore.shared.jobs)
         switch scope {
         case .project(let p): jobs = all.filter { $0.project == p }
         case .unassigned: jobs = all.filter { $0.project == "inbox" || $0.project == nil }

@@ -65,14 +65,16 @@ function Finish() {
   const s = useStore();
   const c = s.counts();
   const n = s.i18n.formatNumber;
+  // only an agent that waits (review.py) gets the batch "handed back"; a review started in Blurt just finishes
+  const back = s.handsBack;
   return (
     <>
-      <h3>{s.t("finish.title")}</h3>
+      <h3>{s.t(back ? "finish.title" : "finish.title_app")}</h3>
       <p>{s.finishError ? s.t("finish.error") : s.t("finish.body", { k: c.k, d: c.d, p: c.p })}</p>
       {s.finishWarn && (
         <div className="warn">
           <Icon name="hatch" className="hatching" />
-          <span>{s.t("finish.still_processing")}</span>
+          <span>{s.t(back ? "finish.still_processing" : "finish.still_processing_app")}</span>
         </div>
       )}
       <div className="sum">
@@ -99,7 +101,7 @@ function Finish() {
             {s.t("action.cancel")}
           </button>
         )}
-        <button className="btn primary" id="mOk" onClick={s.finish} disabled={s.confirming}>
+        <button className="btn primary" id="mOk" onClick={s.finish} disabled={s.confirming} autoFocus>
           {c.p ? s.t("finish.pending_as_kept") : s.t("finish.confirm")}
         </button>
       </div>
@@ -137,8 +139,8 @@ export function Done() {
             <Logo className="big" />
           </span>
         )}
-        <h2>{s.t("done.title")}</h2>
-        <p>{s.host.inApp ? s.t("done.body_app") : s.t("done.body")}</p>
+        <h2>{s.t(s.handsBack ? "done.title" : "done.title_app")}</h2>
+        <p>{!s.handsBack ? s.i18n.plural("done.body_app_todo", s.doneTodo) : s.host.inApp ? s.t("done.body_app") : s.t("done.body")}</p>
       </div>
     </div>
   );

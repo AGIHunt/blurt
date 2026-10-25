@@ -38,4 +38,17 @@ func shell(_ cmd: String, cwd: URL, log: URL, append: Bool = false, env: [String
     try? p.run()
 }
 
+/// `shell`, in a process group of its own (ProcessGroup): an agent run that must stop with the app — the agent and
+/// every tool it started — and that a later launch can find again by its group id. Throws when it can't start.
+@discardableResult
+func shellGroup(_ cmd: String, cwd: URL, log: URL, append: Bool = false, env: [String: String] = [:],
+                done: @escaping (Int32) -> Void) throws -> ProcessGroup {
+    if !append || !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
+    let fh = try FileHandle(forWritingTo: log)
+    fh.seekToEndOfFile()
+    defer { try? fh.close() }       // the child has its own copy of the descriptor
+    return try ProcessGroup.spawn("/bin/zsh", ["-c", cmd], env: agentEnvironment().merging(env) { _, mine in mine },
+                                  cwd: cwd, output: fh, onExit: done)
+}
+
 func shq(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }

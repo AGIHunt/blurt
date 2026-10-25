@@ -83,13 +83,15 @@ final class TerminalSurface: NSView, LocalProcessTerminalViewDelegate {
         return true
     }
 
-    /// Show `job` (nil = nothing). Re-attaching the job already shown is a no-op unless it detached.
-    func attach(_ job: String?, force: Bool = false) {
+    /// Show `job` (nil = nothing). Re-attaching the job already shown is a no-op unless it detached. A session that
+    /// has ended shows its ended card (state .ended); `output` attaches to what it left on screen instead.
+    func attach(_ job: String?, force: Bool = false, output: Bool = false) {
         if job == self.job, !force, [.attached, .connecting, .elsewhere].contains(state) { return }
         detach()
         self.job = job
         guard let job = job else { state = .none; return }
         guard let j = JobStore.shared.job(job), let a = j.agent else { state = .failed(TL("error.no_job")); return }
+        if !j.isActive, !output { state = .ended; return }
         if a.runner == "app" {
             guard let v = AppRunner.shared.view(for: job) else { state = j.isActive ? .failed(TL("error.app_runner_lost")) : .ended; return }
             guard v.superview == nil || v.superview === self else { state = .elsewhere; return }

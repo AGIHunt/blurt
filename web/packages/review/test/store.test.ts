@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BlurtHost, SessionDoc, UserOp } from "../src/host";
 import { applyUserOps } from "./apply";
-import { ReviewStore } from "../src/store";
+import { DONE_SHOWN_MS, ReviewStore } from "../src/store";
 import { clone } from "../src/sync";
 
 /** an in-memory host that behaves like the macOS bridge: sendOps only acknowledges (no doc), like `items.py user-ops` */
@@ -94,6 +94,56 @@ describe("ReviewStore over an acknowledging host (macos / tauri)", () => {
     expect(s.confirmed).toBe(true);
     s.dispose();
     vi.useRealTimers();
+  });
+  it("finishing a review started in the app claims no agent, says how many are to do, then shows the batch again", async () => {
+    vi.useFakeTimers();
+    const m = memHost(DOC, true);
+    m.host.inApp = true; // a review the user opened in Blurt: no review.py waits for it
+    const s = new ReviewStore(m.host);
+    await s.load();
+    expect(s.handsBack).toBe(false);
+    await s.finish();
+    expect(s.confirmed).toBe(true);
+    expect(s.doneTodo).toBe(2);
+    await vi.advanceTimersByTimeAsync(DONE_SHOWN_MS + 10);
+    expect(s.confirmed).toBe(false); // back to the batch, as it now is
+    s.dispose();
+    const w = memHost(DOC, true);
+    w.host.inApp = true;
+    w.host.agentWaiting = true; // review.py asked for it: confirming hands it back, the end screen stays
+    const s2 = new ReviewStore(w.host);
+    await s2.load();
+    expect(s2.handsBack).toBe(true);
+    await s2.finish();
+    await vi.advanceTimersByTimeAsync(DONE_SHOWN_MS + 10);
+    expect(s2.confirmed).toBe(true);
+    s2.dispose();
+    vi.useRealTimers();
+  });
+  it("the Finish dialog keeps the keyboard: ⌘⏎ confirms, Tab cycles its buttons", async () => {
+    const m = memHost({ items: [{ id: "I-001", kind: "issue", title: "a", status: "draft" }], session: "/s" } as SessionDoc, true);
+    const s = new ReviewStore(m.host);
+    await s.load();
+    s.openFinish();
+    expect(s.modal).toBe("finish");
+    const box = document.createElement("div");
+    box.id = "modal";
+    box.innerHTML = '<button id="a">a</button><button id="b">b</button>';
+    document.body.appendChild(box);
+    const key = (init: KeyboardEventInit) => s.onKeyDown(new KeyboardEvent("keydown", { cancelable: true, ...init }));
+    key({ key: "Tab" });
+    expect(document.activeElement?.id).toBe("a");
+    key({ key: "Tab" });
+    expect(document.activeElement?.id).toBe("b");
+    key({ key: "Tab" });
+    expect(document.activeElement?.id).toBe("a"); // it wraps, never leaves the dialog
+    key({ key: "Tab", shiftKey: true });
+    expect(document.activeElement?.id).toBe("b");
+    box.remove();
+    key({ key: "Enter", metaKey: true });
+    await vi.waitFor(() => expect(s.confirmed).toBe(true));
+    expect(m.sent.at(-1)!.confirm).toBe(true);
+    s.dispose();
   });
   it("item mode follows the item by uid; review-only keys do nothing, the state keys work in place", async () => {
     const m = memHost({ items: [{ id: "I-001", uid: "U1" }, { id: "I-002", uid: "U2" }] });

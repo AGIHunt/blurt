@@ -138,6 +138,8 @@ function WorkPanel({ i }: { i: Item }) {
   const verify = st === "to_verify";
   const meta = who || when || rec.commit || rec.pr;
   if (!meta && !verify && !rec.note && !session) return null;
+  // the host's banner already says who has it and when: a card with only that line would repeat it
+  if (banner && !verify && !rec.note && !rec.commit && !rec.pr) return null;
   return (
     <div className={cx("work", "s-" + st)} id="workRow">
       {meta && (

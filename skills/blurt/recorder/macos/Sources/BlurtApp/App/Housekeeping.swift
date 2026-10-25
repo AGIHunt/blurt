@@ -163,28 +163,30 @@ enum Housekeeping {
                 return j.created < launchedAt.addingTimeInterval(-5)
             }.map(\.id)
         }
-        let now = JobFold.now()
         for id in stale {
-            let url = JobFiles.json(id)
-            guard let d = try? Data(contentsOf: url), var doc = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
-            doc["state"] = "failed"
-            doc["ended"] = now
-            doc["updated"] = now
-            doc["error"] = ["code": "unknown", "message": "Blurt quit before this job finished", "hint_key": "main.job.hint.interrupted"]
-            doc["steps"] = (doc["steps"] as? [[String: Any]] ?? []).map { st -> [String: Any] in
-                var st = st
-                switch st["state"] as? String {
-                case "running": st["state"] = "failed"; st["ended"] = now
-                case "pending": st["state"] = "skipped"
-                default: break
-                }
-                return st
+            // the last run crashed with an organiser still at work: stop it before anything can start a second one on
+            // the same recording (its process group, recorded when it started)
+            if let g = (JobStore.shared.job(id)?.raw["agent_pgid"] as? NSNumber)?.int32Value, ProcessGroup.alive(g) {
+                ProcessGroup.stop(g)
+                emit(["event": "orphan_organiser_stopped", "job": id, "pgid": Int(g)])
             }
-            if let out = try? JSONSerialization.data(withJSONObject: doc, options: [.sortedKeys]) { try? out.write(to: url, options: .atomic) }
+            markInterrupted(id, hint: "main.job.hint.interrupted")
         }
         if !stale.isEmpty {
             await MainActor.run { JobStore.shared.rescan() }
             emit(["event": "jobs_interrupted", "jobs": stale])
+        }
+    }
+
+    /// A job the app owned that will never finish now: failed, its running step failed and the rest skipped.
+    static func markInterrupted(_ id: String, hint: String) {
+        JobFiles.rewrite(id) { doc in
+            guard ["running", "queued"].contains(doc["state"] as? String ?? "") else { return }
+            let now = JobFold.now()
+            doc["state"] = "failed"
+            doc["ended"] = now
+            doc["error"] = ["code": "unknown", "message": "Blurt quit before this job finished", "hint_key": hint]
+            doc["steps"] = JobFold.closeSteps(doc["steps"] as? [[String: Any]] ?? [], at: now)
         }
     }
 

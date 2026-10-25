@@ -24,6 +24,8 @@ export interface HostInfo {
   session?: string;
   /** the native banner above the page has the item's Open Session (BlurtHost.sessionBanner) */
   sessionBanner?: boolean;
+  /** review.py asked for this batch and waits for its confirmation (BlurtHost.agentWaiting) */
+  agentWaiting?: boolean;
 }
 type W = Window & {
   webkit?: { messageHandlers?: { blurt?: Handler } };
@@ -123,6 +125,7 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
   if (has.has("handoff")) host.handoff = (uids, what) => call<HandoffResult>("handoff", { uids, what });
   if (has.has("openSession")) host.openSession = (job) => notify("openSession", { job });  // WebHostController reads {job}
   if (info.sessionBanner) host.sessionBanner = true;
+  if (info.agentWaiting) host.agentWaiting = true;
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });
   if (has.has("download")) host.download = (path) => notify("download", { path });
   return host;

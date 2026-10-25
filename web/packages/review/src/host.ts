@@ -201,6 +201,10 @@ export interface BlurtHost {
   downloadUrl?(path: string): string;
   /** inside a Blurt app window (theme follows the system, no theme toggle) */
   inApp?: boolean;
+  /** an agent (review.py) waits for this review's confirmation: "hand it back" is true. In the app it is only when
+   * review.py asked for the batch; a review the user started in Blurt hands nothing to anyone. Browser pages are
+   * always review.py's. */
+  agentWaiting?: boolean;
 }
 
 export interface MountOptions {

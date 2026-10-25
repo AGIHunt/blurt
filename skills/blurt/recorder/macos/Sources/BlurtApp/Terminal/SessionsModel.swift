@@ -32,10 +32,26 @@ struct AgentSessionRow: Identifiable {
         return items.count > 1 ? TL("session.items.more", first.title, items.count - 1) : first.title
     }
     var agentName: String { AgentNames.name(agent.agent) }
-    var since: Date { agent.statusAt ?? job.started ?? job.created }
-    /// A worktree whose result hasn't been merged, turned into a PR or discarded yet.
-    var awaitsFinish: Bool { agent.worktree != nil && agent.finishAction == nil }
+    /// When it started — the moment the item list shows for the same hand-off.
+    var since: Date { job.started ?? job.created }
+    var outcome: SessionOutcome { SessionOutcome.of(job) }
+    /// Ended with changes on its branch that haven't been merged, turned into a PR or discarded yet.
+    var awaitsFinish: Bool { outcome == .review }
     var isAppRunner: Bool { agent.runner == "app" }
+    /// What the list and the header say about it: its live status, else how it ended ("Ready to review" only when
+    /// there is something to review).
+    var stateText: String {
+        switch outcome {
+        case .live(let st): return st.title
+        case .review: return TL("row.ready_to_review")
+        case .failed(let atStart): return atStart ? TL("row.failed_start") : TL("row.failed")
+        case .noChanges: return TL("row.no_changes")
+        case .ended: return AgentSessionStatus.exited.title
+        case .finished(let f):
+            // "pr" without a pull request url = only pushed (no gh, or a host it doesn't know)
+            return TL(f == "pr" && agent.finishResult?["pr"] as? String == nil ? "finish.state.pushed" : "finish.state.\(f)")
+        }
+    }
 }
 
 struct AgentSessionGroup: Identifiable {

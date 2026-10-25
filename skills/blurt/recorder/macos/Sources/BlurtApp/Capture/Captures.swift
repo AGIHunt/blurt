@@ -654,7 +654,7 @@ final class Snapper {
     private func process(_ b: ShotBatch, _ ns: [Int], project: String?) {
         b.sync {
             emit(["event": "process", "session": b.dir.path, "captures": ns, "project": project ?? NSNull()])
-            AppEnvironment.process?(b.dir, ns, project)
+            _ = AppEnvironment.process?(b.dir, ns, project)
         }
     }
 

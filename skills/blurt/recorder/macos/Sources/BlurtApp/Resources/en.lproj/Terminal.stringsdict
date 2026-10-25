@@ -93,9 +93,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>%ld change in the worktree isn’t committed yet and won’t be merged.</string>
+			<string>Blurt commits the %ld uncommitted change on this branch first.</string>
 			<key>other</key>
-			<string>%ld changes in the worktree aren’t committed yet and won’t be merged.</string>
+			<string>Blurt commits the %ld uncommitted changes on this branch first.</string>
 		</dict>
 	</dict>
 	<key>list.live</key>
@@ -192,6 +192,22 @@
 			<string>%ld session needs your input</string>
 			<key>other</key>
 			<string>%ld sessions need your input</string>
+		</dict>
+	</dict>
+	<key>finish.done.discard_taken_back</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Discarded. Its item is back in To Do.</string>
+			<key>other</key>
+			<string>Discarded. Its %ld items are back in To Do.</string>
 		</dict>
 	</dict>
 </dict>

@@ -227,6 +227,10 @@
   "done.title": "搞定，交回给 Agent 了",
   "done.body": "可以关掉这个页面了，Agent 会接着处理。",
   "done.body_app": "Agent 会接着处理。",
+  "finish.title_app": "完成这次审核？",
+  "finish.still_processing_app": "截图还在补充中。现在完成也可以，截图会陆续补上。",
+  "done.title_app": "审核完了",
+  "done.body_app_todo_other": "要做的 {n} 条在「待处理」和所在项目里。",
 
   "item.gone": "这一条已经不在这里了。",
   "load.failed": "条目没能加载：{error}"

@@ -83,7 +83,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>worktree 里还有 %ld 处改动没有提交，不会被合并。</string>
+			<string>Blurt 会先在这个分支上提交 %ld 处未提交的改动。</string>
 		</dict>
 	</dict>
 	<key>list.live</key>
@@ -168,6 +168,20 @@
 			<string>ld</string>
 			<key>other</key>
 			<string>%ld 个会话在等你回答</string>
+		</dict>
+	</dict>
+	<key>finish.done.discard_taken_back</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>已丢弃，%ld 条回到了要做。</string>
 		</dict>
 	</dict>
 </dict>

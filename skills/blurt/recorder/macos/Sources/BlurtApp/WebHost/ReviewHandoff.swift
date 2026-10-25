@@ -17,9 +17,12 @@ enum ReviewHandoff {
 
     static func show(url: String?, session: String) {
         let dir = URL(fileURLWithPath: session)
-        guard let mw = AppEnvironment.mainWindow, mw.reveal(session: dir) else { return }
-        guard let u = url, ReviewLink.endpoint(u, "api/attached") != nil else { return }
-        pending[FixWatcher.real(dir.path)] = u
+        let key = FixWatcher.real(dir.path)
+        let link = url.flatMap { ReviewLink.endpoint($0, "api/attached") != nil ? $0 : nil }
+        // known before the page loads: it says "hand this back to your agent" only when an agent waits (agentWaiting)
+        if let u = link { pending[key] = u }
+        guard let mw = AppEnvironment.mainWindow, mw.reveal(session: dir) else { pending[key] = nil; return }
+        guard let u = link else { return }
         call(u, "api/attached", post: false)
         if keepAlive == nil {
             keepAlive = Timer.scheduledTimer(withTimeInterval: 240, repeats: true) { _ in stillOpen() }
@@ -40,6 +43,9 @@ enum ReviewHandoff {
             call(u, "api/attached", post: false) { ok in if !ok { pending[session] = nil } }
         }
     }
+
+    /// review.py waits for this batch's confirmation.
+    static func waiting(_ session: URL) -> Bool { pending[FixWatcher.real(session.path)] != nil }
 
     /// The page in the main window confirmed this batch.
     static func confirmed(session: URL) {

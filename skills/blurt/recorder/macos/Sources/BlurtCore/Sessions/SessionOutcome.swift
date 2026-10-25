@@ -1,0 +1,88 @@
+// How an agent session stands, in the words every surface uses (the session list, the pane's ended card, the item's
+// banner): still going, failed (at start or later), ended with changes to review, ended with nothing to review, or
+// finished by the user (merged, PR, discarded, kept, restarted). And what the item's banner offers for each.
+import Foundation
+
+public enum SessionOutcome: Equatable {
+    /// running, waiting for you or between turns
+    case live(AgentSessionStatus)
+    /// the user decided: merge | pr | discard | keep | restart
+    case finished(String)
+    /// ended, and its worktree has something to merge, turn into a PR or discard (a failed agent may have left work)
+    case review
+    /// it couldn't work: a non-zero exit, or a screen it can't get past (not logged in). atStart = it never got going
+    case failed(atStart: Bool)
+    /// ended in a worktree that has nothing on it
+    case noChanges
+    /// ended in the project folder (nothing for Blurt to merge)
+    case ended
+
+    public static func of(_ j: Job) -> SessionOutcome {
+        guard let a = j.agent else { return .ended }
+        if let f = a.finishAction { return .finished(f) }
+        if j.isActive, a.status != .exited, a.status != .error { return .live(a.status) }
+        if a.hasChanges { return .review }
+        if a.status == .error || j.state == .failed { return .failed(atStart: !a.started) }
+        return a.worktree != nil ? .noChanges : .ended
+    }
+
+    /// Ended, and the same items can simply be started again (nothing of it to keep).
+    public var canRestart: Bool {
+        switch self {
+        case .failed, .noChanges, .ended: return true
+        default: return false
+        }
+    }
+}
+
+/// The item banner of an item handed to a session: its tone and buttons (action ids the banner sends), the first
+/// one the primary. `brand` while the agent works for you (system.md §1.1), `attn` when it needs you, `neutral` once
+/// the session is over and the user decides.
+public struct SessionBannerPlan: Equatable {
+    public enum Tone: Equatable { case brand, attn, neutral }
+    public let tone: Tone
+    public let actions: [String]
+
+    public init(tone: Tone, actions: [String]) { self.tone = tone; self.actions = actions }
+
+    /// `work`: the item's session (WorkSession.of); `outcome`: its job's (nil when the job is gone).
+    public static func plan(_ work: WorkSession, outcome: SessionOutcome?) -> SessionBannerPlan {
+        switch work {
+        case .live(let st):
+            return SessionBannerPlan(tone: st == .waitingInput ? .attn : .brand, actions: ["session"])
+        case .gone:
+            return SessionBannerPlan(tone: .neutral, actions: ["take_back", "done"])
+        case .ended:
+            switch outcome {
+            case .failed?:
+                // it couldn't start or crashed with nothing done: start it again, or take the items back
+                return SessionBannerPlan(tone: .neutral, actions: ["restart", "take_back", "session"])
+            case .review?:
+                return SessionBannerPlan(tone: .neutral, actions: ["review", "take_back", "done"])
+            default:
+                // it ended without saying the items are done: see what it did first, then decide
+                return SessionBannerPlan(tone: .neutral, actions: outcome?.canRestart == true ? ["session", "restart", "done", "take_back"]
+                                                                                             : ["session", "done", "take_back"])
+            }
+        }
+    }
+}
+
+/// The jobs section's failures (K4): organising or routing that failed in the last week stays listed — a recording
+/// whose organising failed has no items to reach it from — until it is dismissed, retried (a newer job for the same
+/// recording) or old.
+public enum JobFailures {
+    public static let keep: TimeInterval = 7 * 24 * 3600
+
+    public static func waiting(_ jobs: [Job], now: Date = Date()) -> [Job] {
+        jobs.filter { j in
+            guard j.state == .failed, j.type == .process || j.type == .route, !j.dismissed,
+                  now.timeIntervalSince(j.ended ?? j.created) < keep else { return false }
+            // a later run for the same recording (or the same items) replaced it
+            return !jobs.contains { o in
+                o.id != j.id && o.type == j.type && o.created > j.created
+                    && (j.session.map { o.session?.path == $0.path } ?? (!j.items.isEmpty && Set(o.items) == Set(j.items)))
+            }
+        }
+    }
+}

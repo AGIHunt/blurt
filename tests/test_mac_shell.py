@@ -69,7 +69,7 @@ class Layout(unittest.TestCase):
         # still said "Pull request opened." and the session row "Pull request opened"
         src = (MAC / "Sources/BlurtApp/Terminal/FinishPanel.swift").read_text()
         self.assertIn('phase = .done(prURL == nil ? "pushed" : "compare")', src)
-        self.assertIn('"finish.state.pushed"', (MAC / "Sources/BlurtApp/Terminal/SessionsViews.swift").read_text())
+        self.assertIn('"finish.state.pushed"', (MAC / "Sources/BlurtApp/Terminal/SessionsModel.swift").read_text())  # stateText
 
     def test_no_review_window_and_nothing_opens_by_itself(self):
         # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
@@ -129,6 +129,48 @@ class BuildAndSelftest(unittest.TestCase):
         out = json.loads(r.stdout.strip().splitlines()[-1])
         self.assertTrue(out["ok"], json.dumps(out["checks"], indent=1))
         self.assertEqual(r.returncode, 0)
+
+
+class SessionRecoveryWiring(unittest.TestCase):
+    """dogfood v0.9 (work): the app-side rules the BlurtCore tests (SessionOutcomeTests) can't reach."""
+
+    def src(self, rel):
+        return (MAC / "Sources/BlurtApp" / rel).read_text()
+
+    def test_an_ended_session_shows_its_card_not_the_dead_window(self):
+        surf = self.src("Terminal/TerminalSurface.swift")
+        self.assertIn("if !j.isActive, !output { state = .ended; return }", surf)
+        pane = self.src("Terminal/SessionsPane.swift")
+        self.assertIn("state.listShown = paneID != \"main\"", pane)    # the item list already picks the session
+        self.assertIn("func showOutput(", pane)
+        views = self.src("Terminal/SessionsViews.swift")
+        self.assertIn('.buttonStyle(.bordered).controlSize(.small).fixedSize()', views)  # header Review: never the pill
+        self.assertNotIn("DateComponentsFormatter", views)                     # times read "2 min. ago", as the list
+
+    def test_finish_sheet_keys_and_empty_branch(self):
+        fin = self.src("Terminal/FinishPanel.swift")
+        self.assertEqual(fin.count(".keyboardShortcut(.cancelAction)"), 4)   # Esc in every phase
+        self.assertIn(".keyboardShortcut(.return, modifiers: .command)", fin)   # ⌘⏎ merges, ⏎ alone doesn't
+        self.assertIn("disabled(busy != nil || m.empty)", fin)                  # no PR or merge of an empty branch
+        self.assertIn('"finish.commit_merge"', fin)
+
+    def test_dispatch_blocks_a_logged_out_agent_and_says_why_before(self):
+        d = self.src("Terminal/DispatchPanel.swift")
+        self.assertIn("loginChecked && chosenAgent?.loggedOut != true", d)
+        mw = self.src("MainWindow/MainWindowController.swift")
+        self.assertNotIn("concurrentEditReminder", mw)                          # the panel's inline callout only
+        self.assertIn("item.toolTip = why", mw)
+
+    def test_organisers_stop_with_the_app_and_one_per_recording(self):
+        app = self.src("App/AppDelegate.swift")
+        self.assertIn("func applicationShouldTerminate(", app)
+        self.assertIn("stopOrganisers()", app)
+        hub = self.src("App/AgentHub.swift")
+        self.assertIn("try shellGroup(", hub)
+        self.assertIn('job.set("agent_pgid"', hub)
+        self.assertIn("process_already_running", hub)
+        hk = self.src("App/Housekeeping.swift")
+        self.assertIn("ProcessGroup.stop(g)", hk)
 
 
 if __name__ == "__main__":

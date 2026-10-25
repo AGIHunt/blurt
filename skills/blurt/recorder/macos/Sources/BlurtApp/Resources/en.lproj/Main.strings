@@ -430,3 +430,17 @@
 "app.url.ask_record" = "A link wants to start a screen recording";
 "app.url.ask_snap" = "A link wants to take a snap";
 "app.url.snap" = "Snap";
+
+/* Sessions that end without the work (v0.9 dogfood) */
+"main.dispatch.move_first" = "Move to Project…";
+"main.job.dismiss" = "Dismiss";
+"main.job.hint.stopped_at_quit" = "Blurt stopped organizing when it quit. Try again to organize it.";
+"main.banner.failed_start" = "%1$@ couldn’t start: %2$@";
+"main.banner.failed" = "%1$@ stopped with an error: %2$@";
+"main.banner.review" = "Review Changes…";
+"main.banner.restart" = "Restart Session";
+"main.banner.ended_review" = "Session ended, ready to review";
+"app.quit.organizing.title" = "Blurt is still organizing “%@”.";
+"app.quit.organizing.title_n" = "Blurt is still organizing %ld batches.";
+"app.quit.organizing.detail" = "Quitting stops it. You can organize it again from In Progress.";
+"app.quit.organizing.quit" = "Quit";

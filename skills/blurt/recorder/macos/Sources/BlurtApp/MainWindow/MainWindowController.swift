@@ -656,57 +656,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: handing off (K5 in Blurt, K6 to your own agent)
 
-    /// Start an agent session in Blurt: P3's panel (agent, mode, worktree, the concurrent-edit reminder) when it is
-    /// installed, else straight to sessions.py with the project's defaults — after the same reminder.
+    /// Why these items can't go to a session in Blurt, before anyone tries (the menus show it as the item's tooltip,
+    /// ⌘Return as a toast): nil = they can.
+    func dispatchBlocker(_ items: [ItemRow]) -> String? {
+        let items = items.filter { !$0.discarded && !$0.legacy }
+        if items.isEmpty { return nil }
+        if Set(items.map(\.projectID)).count > 1 { return T("main.dispatch.one_project") }
+        if items.first?.projectID == "inbox" { return T("main.dispatch.needs_project") }
+        return nil
+    }
+
+    /// Start an agent session in Blurt: the dispatch panel (agent, mode, worktree, the concurrent-edit reminder —
+    /// inline, Terminal/DispatchPanel). Items that can't go say why at once, with the way out (Move to Project…).
     func dispatch(uids: [String]) {
         let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
         guard !items.isEmpty else { NSSound.beep(); return }
-        if Set(items.map(\.projectID)).count > 1 { return alert(T("main.dispatch.one_project"), T("main.dispatch.one_project.detail")) }
-        if items.first?.projectID == "inbox" { return alert(T("main.dispatch.needs_project"), T("main.dispatch.needs_project.detail")) }
-        if let d = AppEnvironment.dispatch { return d(items.map(\.uid)) }
-        Task { @MainActor in
-            let s = AgentSessions.shared
-            do {
-                let dry = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: .auto, dryRun: true)
-                var worktree = WorktreeChoice.auto
-                if dry.warnings.contains(where: { $0.code == "concurrent_edit" }) {
-                    guard let choice = await concurrentEditReminder(project: items[0].projectName) else { return }
-                    worktree = choice
-                }
-                let r = try await s.dispatch(items: items.map(\.uid), agent: nil, mode: .together, worktree: worktree, dryRun: false)
-                wrote(items)
-                if let j = r.jobs.first {
-                    JobStore.shared.rescan()
-                    reveal(job: j)
-                }
-            } catch let e as SessionsError {
-                alert(T("main.dispatch.failed"), Scripts.Failure(code: e.code, message: "\(e)").localized)
-            } catch {
-                alert(T("main.dispatch.failed"), "\(error)")
+        if let why = dispatchBlocker(items) {
+            NSSound.beep()
+            let inbox = items.first?.projectID == "inbox" && Set(items.map(\.projectID)).count == 1
+            if let island = AppEnvironment.island {
+                island.toast(why, actionTitle: inbox ? T("main.dispatch.move_first") : nil,
+                             action: inbox ? { [weak self] in self?.showMoveMenu() } : nil)
+            } else {
+                appDelegate?.toast(why)
             }
+            return
         }
-    }
-
-    /// K5: never a block, just a reminder (a sheet on the window). nil = cancelled.
-    @MainActor
-    func concurrentEditReminder(project: String) async -> WorktreeChoice? {
-        let a = NSAlert()
-        a.messageText = T("main.dispatch.concurrent.title")
-        a.informativeText = T("main.dispatch.concurrent", project)
-        a.icon = Look.symbol("arrow.triangle.branch", "", size: 32)
-        a.addButton(withTitle: T("main.dispatch.use_worktree"))
-        a.addButton(withTitle: T("action.continue"))
-        a.addButton(withTitle: T("action.cancel"))
-        a.buttons.last?.keyEquivalent = "\u{1b}"
-        guard let w = window, w.isVisible else { return nil }
-        openAlert = a
-        let r: NSApplication.ModalResponse = await withCheckedContinuation { c in a.beginSheetModal(for: w) { c.resume(returning: $0) } }
-        openAlert = nil
-        switch r {
-        case .alertFirstButtonReturn: return .on
-        case .alertSecondButtonReturn: return .off
-        default: return nil
-        }
+        guard let d = AppEnvironment.dispatch else { NSSound.beep(); return }
+        d(items.map(\.uid))
     }
 
     /// Copy instruction / full text for your own agent app (K6). The sheet is written and the items marked handed off
@@ -794,6 +771,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     /// Projects (most recent first) and Unassigned — the selection's current one checked.
+    /// The Move to Project menu at the selected row (the way out of "Move these items to a project first").
+    func showMoveMenu() {
+        let t = list.table
+        let r = t.selectedRow >= 0 ? t.rect(ofRow: t.selectedRow) : t.visibleRect
+        window?.makeKeyAndOrderFront(nil)
+        moveMenu().popUp(positioning: nil, at: NSPoint(x: r.minX + 40, y: r.maxY), in: t)
+    }
+
     func moveMenu() -> NSMenu {
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
@@ -902,7 +887,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return false        // a menu-bar item's single key: the list's keyDown handles it there (MainMenu.displayKey)
         }
         switch item.action {
-        case #selector(mHandOff), #selector(mCopyInstruction), #selector(mCopyFull):
+        case #selector(mHandOff):
+            // disabled with the reason as its tooltip, never an alert after the click (micro 23)
+            let why = dispatchBlocker(items)
+            item.toolTip = why
+            return Scripts.canWrite && why == nil && items.contains { !$0.discarded && !$0.legacy }
+        case #selector(mCopyInstruction), #selector(mCopyFull):
             return Scripts.canWrite && items.contains { !$0.discarded && !$0.legacy }
         case #selector(mState(_:)):
             guard Scripts.canWrite, let a = item.representedObject as? String else { return false }
@@ -944,8 +934,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch action {
         case "log": NSWorkspace.shared.open(JobFiles.log(job.id))
         case "retry":
-            if let s = job.session { AppEnvironment.process?(s, job.captures.isEmpty ? nil : job.captures, job.project == "inbox" ? nil : job.project) }
-            else if !job.items.isEmpty { (NSApp.delegate as? App)?.enrich(job.items, project: job.project == "inbox" ? nil : job.project) }   // AI fill-in
+            // the detail follows the new run (or the one already at it), never the failed one's Try Again
+            var new: String?
+            if let s = job.session { new = AppEnvironment.process?(s, job.captures.isEmpty ? nil : job.captures, job.project == "inbox" ? nil : job.project) ?? nil }
+            else if !job.items.isEmpty { new = (NSApp.delegate as? App)?.enrich(job.items, project: job.project == "inbox" ? nil : job.project) }   // AI fill-in
+            if let n = new {
+                JobStore.shared.rescan()
+                selectJob(n)
+            }
+        case "dismiss":
+            // a failure put away: it leaves the jobs section; the recording keeps its files
+            JobFiles.rewrite(job.id) { $0["dismissed"] = true }
+            JobStore.shared.rescan()
+            if shownJob == job.id { shownJob = nil; list.jobs.selected = nil; listSelectionChanged() }
         case "items":
             if let first = job.items.first { reveal(uid: first) }
         // a failure is said, never dropped (the Sessions pane says the same for the same calls)

@@ -2,6 +2,9 @@
 // session — which agent, together (one conversation) or in parallel (a window each), in a worktree or in the project
 // folder. Every change re-runs `sessions.py dispatch --dry-run`, which says what would happen (branch, folder) and
 // warns — never blocks — when another session is already editing the same folder without a worktree (K5 wording).
+// What does block, said next to the choice instead of after it: an agent that isn't logged in (its fix, and the
+// other agent to use; Start waits up to 3 s for the sign-in check after a launch), and items already with a session
+// that is still going (Open Its Session).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -16,7 +19,7 @@ struct DispatchItem: Identifiable, Hashable {
 @MainActor
 final class DispatchModel: ObservableObject {
     struct AgentChoice: Identifiable, Hashable { let id: String; let name: String; let installed: Bool; let session: Bool
-        var loggedOut = false }
+        var loggedOut = false; var fix = "" }
     enum Phase: Equatable { case idle, checking, starting, failed(String) }
 
     @Published var items: [DispatchItem]
@@ -40,6 +43,10 @@ final class DispatchModel: ObservableObject {
     @Published var warnings: [DispatchWarning] = []
     @Published var preview: [[String: Any]] = []
     @Published var phase: Phase = .idle
+    /// The sign-in check has answered (or 3 s passed): until then Start waits, so it never starts a logged-out agent.
+    @Published var loginChecked = false
+    /// The session the items are already with (sessions.py already_dispatched): the failure offers to open it.
+    @Published var busyJob: String?
     private var checkGen = 0
 
     init(items: [String], project: String?) {
@@ -86,7 +93,12 @@ final class DispatchModel: ObservableObject {
     var branchPreview: String? { preview.first?["branch"] as? String }
     var cwdPreview: String? { preview.first?["cwd"] as? String }
     var concurrent: DispatchWarning? { warnings.first { $0.code == "concurrent_edit" } }
-    var canStart: Bool { count > 0 && !agent.isEmpty && phase != .starting && !(agents.first { $0.id == agent }?.session == false) }
+    var chosenAgent: AgentChoice? { agents.first { $0.id == agent } }
+    /// Another agent that can take over from a logged-out one.
+    var alternative: AgentChoice? { agents.first { $0.id != agent && !$0.loggedOut } }
+    var canStart: Bool {
+        count > 0 && !agent.isEmpty && phase != .starting && chosenAgent?.session != false && loginChecked && chosenAgent?.loggedOut != true
+    }
 
     func load() async {
         async let detect = try? Agents.shared.detect(login: false)
@@ -108,11 +120,16 @@ final class DispatchModel: ObservableObject {
         await loadModels()
         await check()
         // the quick detect can't tell who is logged in; the full one (a few seconds) can: never default to an agent
-        // that would stop at its login screen, and say so next to its name
+        // that would stop at its login screen, and say so next to its name. Start waits for it, 3 s at most.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            self?.loginChecked = true
+        }
+        defer { loginChecked = true }
         if let full = try? await Agents.shared.detect(login: true) {
-            let out = Set(full.agents.filter { $0.state == "logged_out" }.map(\.id))
-            agents = agents.map { var a = $0; a.loggedOut = out.contains(a.id); return a }
-            if !agentTouched, out.contains(agent),
+            let out = Dictionary(full.agents.filter { $0.state == "logged_out" }.map { ($0.id, $0.fix) }) { a, _ in a }
+            agents = agents.map { var a = $0; a.loggedOut = out[a.id] != nil; a.fix = out[a.id] ?? ""; return a }
+            if !agentTouched, out[agent] != nil,
                let better = ([projectDefault, globalDefault, full.pick] + agents.map(\.id)).compactMap({ $0 })
                 .first(where: { id in agents.contains { $0.id == id && !$0.loggedOut } }) {
                 agent = better
@@ -164,6 +181,7 @@ final class DispatchModel: ObservableObject {
         checkGen += 1
         let gen = checkGen
         if phase != .starting { phase = .checking }
+        busyJob = nil
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent.isEmpty ? nil : agent, mode: mode,
                                                             worktree: mode == .parallel ? .on : worktree, dryRun: true, model: model)
@@ -175,6 +193,7 @@ final class DispatchModel: ObservableObject {
             guard gen == checkGen else { return }
             warnings = []
             preview = []
+            busyJob = (error as? SessionsError).flatMap { $0.code == "already_dispatched" ? $0.job : nil }
             phase = .failed(sessionsErrorText(error))
         }
     }
@@ -193,6 +212,7 @@ final class DispatchModel: ObservableObject {
             phase = .idle
             return r
         } catch {
+            busyJob = (error as? SessionsError).flatMap { $0.code == "already_dispatched" ? $0.job : nil }
             phase = .failed(sessionsErrorText(error))
             return nil
         }
@@ -232,6 +252,11 @@ struct DispatchView: View {
                             }
                         }
                             .labelsHidden().fixedSize()
+                        if let a = m.chosenAgent, a.loggedOut {
+                            loggedOutCallout(a)
+                        } else if !m.loginChecked {
+                            Text(TL("dispatch.checking_login")).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 if !m.models.isEmpty {
@@ -281,8 +306,14 @@ struct DispatchView: View {
             if m.concurrent != nil && !m.worktreeOn { concurrentCallout }
 
             if case .failed(let why) = m.phase {
-                Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(Color.brandAttnInk).font(.callout).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(Color.brandAttnInk).font(.callout).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let j = m.busyJob {
+                        Spacer(minLength: 0)
+                        Button(TL("dispatch.open_session")) { close(); TerminalModule.reveal(job: j) }.controlSize(.small)
+                    }
+                }
             }
 
             HStack {
@@ -308,6 +339,23 @@ struct DispatchView: View {
         .onChange(of: m.worktree) { _ in Task { await m.check() } }
         .onChange(of: m.chosen) { _ in Task { await m.check() } }
         .onChange(of: m.projectID) { _ in Task { await m.loadCandidates(); await m.check() } }
+    }
+
+    /// The chosen agent isn't logged in: what to run, and the agent to use instead. Start stays off.
+    func loggedOutCallout(_ a: DispatchModel.AgentChoice) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle").foregroundStyle(AgentSessionStatus.waitingInput.color)
+                Text(a.fix.isEmpty ? TL("dispatch.logged_out", a.name) : TL("dispatch.logged_out.fix", a.name, a.fix))
+                    .font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+            if let other = m.alternative {
+                Button(TL("dispatch.use_agent", other.name)) { m.agent = other.id; m.agentTouched = true }.controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AgentSessionStatus.waitingInput.color.opacity(0.10)))
     }
 
     /// A label column of fixed width and a content column that fills the rest (wrapping text needs a known width).
