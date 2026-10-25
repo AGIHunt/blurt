@@ -19,22 +19,6 @@
 
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
 
-"settings.export.ask_each_time" = "每次问我";
-"settings.export.blurt_config_json_shared" = "这是 %@ 的设置（.blurt/config.json），团队共用。";
-"settings.export.checking" = "正在检查…";
-"settings.export.choose" = "选择";
-"settings.export.choose_2" = "选择…";
-"settings.export.default_destination" = "默认去向";
-"settings.export.default_workspace_blurt" = "这是「未归类」条目的设置。每个项目的设置在它自己的 .blurt/config.json 里。";
-"settings.export.exporters" = "导出去处";
-"settings.export.feishu_app_id_set" = "FEISHU_APP_ID 已设置";
-"settings.export.feishu_lark_bitable" = "飞书多维表格";
-"settings.export.not_logged" = "未登录";
-"settings.export.open_table_browser_copy" = "在浏览器里打开那张表，复制地址栏。列按含义自动对应，缺的列会自动建。";
-"settings.export.save" = "保存到";
-"settings.export.send_confirmed_items" = "导出到";
-"settings.export.session_folder" = "录屏所在的文件夹";
-"settings.export.table_url" = "表格链接";
 
 "settings.general.after_recording" = "录完之后";
 "settings.general.app" = "应用";
@@ -70,7 +54,6 @@
 "settings.kit.allowed" = "已允许";
 "settings.kit.conflicts_are_checked_three" = "快捷键和口喷鸡自己的其它快捷键、macOS 系统快捷键或别的 App 冲突时，这里会提示。改动立即生效。";
 "settings.kit.copy" = "复制";
-"settings.kit.export" = "导出";
 "settings.kit.general" = "通用";
 "settings.kit.hold_pen_reads_modifier" = "听写时把字粘贴进去；按住 ⌃ 画图也要用";
 "settings.kit.input_monitoring" = "输入监控";
@@ -237,12 +220,6 @@
 "settings.storage.videos.auto_confirm_title" = "%ld 天后自动删除视频？";
 "settings.storage.videos.auto_confirm" = "已经超过的会马上移到废纸篓：";
 "settings.storage.videos.auto_on" = "打开";
-"settings.export.feishu" = "飞书";
-"settings.export.local" = "Markdown 和 CSV";
-"settings.export.ready" = "可用";
-"settings.export.not_set_up" = "未设置";
-"settings.export.footer" = "让 Agent 导出就行，比如「把待办导出到 GitHub」。重复导出不会产生重复记录。";
-"settings.export.url_invalid" = "这不是飞书或 Lark 多维表格的链接";
 
 /* 设置窗口：侧栏分组、搜索、每行下面较短的说明（长说明放在这一行的提示里），以及每行（settings.kw.<id>）和每个面板
    （settings.kw.pane.<pane>）的搜索关键词：逗号分隔，两种语言都会匹配（SettingsCatalog）。 */
@@ -277,7 +254,6 @@
 "settings.kw.pane.speech" = "语音识别, 转写, 识别模型, ASR, 模型";
 "settings.kw.pane.shortcuts" = "快捷键, 热键, 键盘, 按键, 组合键";
 "settings.kw.pane.agents" = "Agent, AI, 编程助手";
-"settings.kw.pane.export" = "导出, 发送, 分享";
 "settings.kw.pane.privacy" = "权限, 隐私, 安全";
 "settings.kw.pane.storage" = "磁盘, 空间, 大小, 删除, 清理, 废纸篓";
 "settings.kw.general.capture_into" = "项目, 文件夹, 待处理, 归到哪里, 自动归类";
@@ -332,8 +308,7 @@
 "settings.kw.shortcuts.restore" = "重置, 默认, 冲突";
 "settings.kw.agents.list" = "顺序, 整理, 自动归类, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
-"settings.kw.export.target" = "去向, 飞书, Lark, GitHub, Markdown, CSV, 多维表格";
-"settings.kw.export.destinations" = "lark-cli, gh, GitHub CLI, 设置导出";
+"settings.kw.agents.ask" = "导出, 发送, 分享, 打包, 交接包, zip, Slack, 飞书, Lark, Linear, GitHub, Notion, Jira, 邮件";
 "settings.kw.privacy.permissions" = "录屏, 麦克风, 辅助功能, 输入监控, 允许, 屏幕录制";
 "settings.kw.privacy.local_asr" = "本地, 离线, 端侧, 云端";
 "settings.kw.privacy.keep_live" = "实时音频, 原始音频, pcm";

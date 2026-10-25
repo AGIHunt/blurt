@@ -235,6 +235,16 @@ Select one or more items and choose how they get done:
   answer or has finished a turn.
 - **Copy instruction** — a one-line instruction pointing at a note with everything the agent needs (screenshots
   included). Paste it into the agent you already use. **Copy full text** copies the note itself.
+- **Export Hand-off Bundle…** — for a person rather than an agent: one `.zip` with a summary (counts by kind and
+  state, then each item with its state, what you said, the steps, suspected code and screenshots), a file per item,
+  and the screenshots and clips. It uses relative paths only, so it opens on a teammate's computer. Pick where to
+  save it; it is named after the project, the date and the number of items. The items keep their state. It is in the
+  Item menu, the context menu, the **Hand Off** toolbar menu and `⌘K`.
+
+To send items somewhere — a Slack channel, a Feishu group, Linear, GitHub, Notion — ask your agent, for example
+"Bundle the checkout issues and post them to #web in Slack". It packs them (the `bundle_items` tool) and sends them
+with the tools it already has; Blurt has no connectors of its own. *Settings → Agents → Ask your agent* has a few
+more examples.
 
 Agents that have the Blurt MCP installed (Blurt offers it when you set it up) report back on their own: you'll see the item move to
 *In progress*, then *To verify*. If a session ends without the agent reporting back (it quit, crashed, or the Mac
@@ -492,10 +502,11 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
 
 - **Agents** lists the coding agents Blurt uses to organize recordings and snaps, auto-sort and fill in with AI, in
   order: the first that works runs, and the next takes over on a sign-in or quota problem. Untick the ones you don't
-  use. Only a problem that stops Blurt shows in red; *Connect…* (the blurt skill and MCP for that agent) appears only
-  while they are missing, and shows what it will change before it does.
-- **Export** sets where your agent sends items when you ask it to export (Feishu / Lark, GitHub Issues, Markdown and
-  CSV) and says which of them are ready. Exporting again never makes duplicates.
+  use. Only a problem that stops Blurt shows in red. Each installed agent shows *Skill + MCP* once the blurt skill and
+  MCP are in it, or *No skill or MCP yet* with *Connect…*, which shows what it will change before it does. **Ask your
+  agent** at the bottom has three requests to start from (copy one with the button next to it): sending items to a
+  chat, filing them in a tracker, fixing one. There is no Export pane any more: your agent sends items with its own
+  tools, and old links to it open here.
 - **Storage** shows what takes space: recordings and snaps per folder, every model with its size (*In use* or not),
   dictation history and audio, and Blurt's own files. A model nothing uses can go to the Trash. Videos are most of the
   space (about 9 MB a minute): *Delete* removes the videos of organized recordings older than 30, 90 or 180 days, or
@@ -645,6 +656,13 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - **交给 Agent**（`⌘↩`）：在口喷鸡内置的终端里、在项目文件夹中运行 Claude Code 或 Codex。几条可以放进一个对话（**一起处理**），
   也可以每条一个（**并行**，各自在独立的 git worktree 里，互不改到同一个文件）。关掉窗口会话也继续跑；需要你回答、或者一轮做完了，口喷鸡会提醒你。
 - **复制指令**：一句话的指令，指向一份交接单，Agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 Agent 就行。「**复制全文**」复制的是交接单本身。
+- **导出交接包…**：给人看，而不是给 Agent：一个 `.zip`，里面有概要（按类型、按状态的条数，然后每一条的状态、你的原话、复现步骤、
+  疑似代码位置和截图）、每条一个文件，以及截图和录屏片段。里面只用相对路径，同事的电脑上也能打开。选好保存位置即可，文件名是
+  项目、日期和条数。条目的状态不会变。「条目」菜单、右键菜单、工具栏的「**交给 Agent**」菜单和 `⌘K` 里都有。
+
+想把条目发到别处——Slack 频道、飞书群、Linear、GitHub、Notion——直接跟 Agent 说，比如「把 A 模块的问题打包发给飞书群里的张三」。
+它会打包（`bundle_items` 工具），再用它自己已有的工具发出去；口喷鸡本身不接任何第三方服务。「设置 → Agent → 可以这样跟 Agent 说」
+里还有几个例子。
 
 装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
 如果会话结束了 Agent 却没回报（它退出了、崩溃了，或者 Mac 重启过），条目会留在「进行中」，上方写着「会话已结束，未报告完成」：
@@ -737,8 +755,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 ### 8. 设置、存储和隐私
 
-- **Agent**：口喷鸡用来整理录屏和截图、自动归类、AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。只有会让口喷鸡用不了的问题才标红；「连接…」（给这个 Agent 装上 blurt skill 和 MCP）只在还没装时出现，装之前先列出要改的地方。
-- **导出**：你让 Agent 导出时条目发到哪（飞书、GitHub Issues、Markdown 和 CSV），以及哪些已经可用。重复导出不会产生重复记录。
+- **Agent**：口喷鸡用来整理录屏和截图、自动归类、AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」，还没有时显示「还没装 skill 和 MCP」和「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条。「导出」设置页已经去掉：发到哪里由 Agent 用它自己的工具完成，以前指向「导出」的链接会打开这里。
 - **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，岛上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），岛上会说。
 - **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
 - **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API key 时，语音本来就只在你的 Mac 上识别；打开它，以后设置了 key 也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。

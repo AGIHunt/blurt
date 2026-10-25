@@ -13,7 +13,8 @@ Register it: `agents.py install <agent> --mcp` (claude / codex / kimi / opencode
   codex mcp add blurt -- uv run --script <this file>
 
 Reads go through index.py's index.db (built on first use) and the item files; every write goes through items.py
-(locked, keeps the user's own edits), never straight to a file. The 7 tools keep their v0.6 names and parameters.
+(locked, keeps the user's own edits), never straight to a file. The 7 tools keep their v0.6 names and parameters;
+bundle_items (export_local.py bundle) packs items into a hand-off .zip for the agent to send with its own tools.
 """
 from __future__ import annotations
 
@@ -50,7 +51,9 @@ mcp = FastMCP("blurt", instructions=(
     "Blurt holds the user's captured work — narrated screen recordings, screenshots, voice notes — turned into items "
     "(issue / idea / note / task) and filed into projects. Find items with search_items or list_sessions, read one "
     "with get_item (it shows its screenshots), and when you work on one, call mark_fixed(uid, state='fixing') first "
-    "and mark_fixed(uid, state='fixed', note=…) after. " + DONE_RULE + " " + WRITE_RULE))
+    "and mark_fixed(uid, state='fixed', note=…) after. To pass items to someone (a teammate, a chat, a tracker), "
+    "bundle_items packs them into one .zip and you send it with the tools you already have. " + DONE_RULE + " "
+    + WRITE_RULE))
 
 
 # ------------------------------------------------------------------ helpers
@@ -284,6 +287,34 @@ def mark_fixed(uid: str, state: str = "fixed", commit: str | None = None, pr: st
     return {"ok": True, "uid": uid, "id": w.get("id"), "state": w.get("state"), "work": w.get("work"),
             **({"note": w["note"]} if w.get("note") else {}),
             "next": "the user verifies it" if to == "to_verify" else None}
+
+
+@mcp.tool(description=(
+    "Pack items into one hand-off bundle: a self-contained .zip (summary.md with counts by kind and state and one "
+    "section per item — state, what the user said, steps, suspected code, screenshots inline — plus items/*.md with "
+    "every field, frames/ and clips/), relative paths only, so it opens on a teammate's machine. Named "
+    "\"<project>-<date>-<n items>.zip\". Pass uids (from search_items), or a filter: project (+ state, kind; default "
+    "every state but discarded). Grouping is yours: for \"the A module's issues for Zhang San\" pick those items and "
+    "call once per group; title names the bundle (e.g. \"Payment issues for Zhang San\"). out_dir = a folder or a "
+    "path ending in .zip (default: the project's .blurt/exports/). Returns the zip's path and `summary`, one "
+    "paragraph to paste next to the file. Blurt sends nothing anywhere: post or upload the zip with the tool you "
+    "already have for that destination (Slack, Feishu/Lark, Notion, Google Drive, Linear, GitHub, email…), after the "
+    "user confirms where. No item changes state."))
+def bundle_items(uids: list[str] | None = None, project: str | None = None, state: list[str] | None = None,
+                 kind: list[str] | None = None, title: str | None = None, out_dir: str | None = None,
+                 lang: str | None = None) -> dict:
+    import export_local  # noqa: PLC0415
+    if not uids and not project:
+        raise ValueError("pass uids, or project (+ state / kind)")
+    for u in uids or []:
+        _known(u)
+    try:
+        out = export_local.bundle_items(uids or None, _project(project) if project else None, state or None,
+                                        kind or None, out_dir, title, lang)
+    except export_local.BundleError as e:
+        raise ValueError(str(e)) from None
+    keep = ("path", "name", "title", "items", "kinds", "states", "uids", "bytes", "summary", "missing")
+    return {k: out[k] for k in keep}
 
 
 def main() -> None:

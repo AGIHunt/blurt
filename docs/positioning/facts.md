@@ -68,7 +68,8 @@ items your agent can work on.
 - Your coding agent splits the recording into items (bugs, ideas, notes, todos), picks a frame for each, marks the
   spot, and writes actual vs. expected, repro steps and suspected code. (`README.md`)
 - You review each item with the keyboard (`A` keep, `X` discard, `J/K` next and previous), then export to
-  Markdown/CSV, Feishu/Lark Bitable or GitHub Issues, or let the agent fix them. (`README.md`, `skills/blurt/reference/export-other.md`)
+  Markdown/CSV or a hand-off bundle (`.zip`), have your agent file them wherever your team works (GitHub, Linear,
+  Feishu/Lark, Slack…) with its own tools, or let the agent fix them. (`README.md`, `skills/blurt/reference/export-other.md`)
 - **Hand Off to Agent** (`⌘↩`) starts Claude Code or Codex inside Blurt, in the project folder, optionally one git
   worktree per item. **Copy instruction** gives your own agent one line that points at a hand-off note with the
   items, what you said, steps, suspected code and screenshots. Agents report back through Blurt's MCP; "fixed" from an
@@ -203,9 +204,12 @@ the capital letter was kept ("I think The new layout is fine").
 
 ## 5. What Blurt doesn't do, and why
 
-- **No connectors.** Your agent already has MCP servers and CLIs for Linear, Jira, Notion, Slack and the rest. Blurt
-  gets your words, pictures and recordings into the agent and leaves delivery to it. The exports it ships are files
-  (Markdown, CSV), Feishu/Lark Bitable and GitHub Issues through `gh`.
+- **No connectors.** Your agent already has MCP servers and CLIs for Feishu/Lark, Linear, Jira, Notion, Slack, GitHub
+  and the rest. Blurt gets your words, pictures and recordings into the agent and leaves delivery to it. What Blurt
+  itself writes is files: Markdown and CSV, and a hand-off bundle (one `.zip` with a summary, every item and its
+  screenshots, relative paths only) that the agent or you send wherever the team is. There is no Feishu exporter
+  and no export settings; "Bundle the checkout issues and post them to #web in Slack" is a request to your agent.
+  (`skills/blurt/SKILL.md` §6, `export_local.py bundle`, MCP `bundle_items`)
 - **No agent of its own.** Recordings are processed by the first coding agent you have installed and signed in:
   Claude Code, then Codex, Kimi Code, OpenCode, Gemini CLI. Your agent gets better on its own schedule, and Blurt
   works with the next one too.

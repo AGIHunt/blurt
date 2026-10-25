@@ -216,6 +216,11 @@
 "main.menu.change_state" = "更改状态…";
 "main.menu.copy_link" = "复制链接";
 "main.menu.enrich" = "AI 补全";
+"main.menu.export_bundle" = "导出交接包…";
+"main.bundle.save" = "导出";
+"main.bundle.message" = "一个 .zip：概要、每一条的详情和截图，在别的电脑上也能打开。";
+"main.bundle.saved" = "交接包已保存：%@";
+"main.bundle.failed" = "没能导出交接包";
 "main.menu.kind" = "种类";
 "main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";

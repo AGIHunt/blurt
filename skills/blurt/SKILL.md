@@ -3,11 +3,13 @@ name: blurt
 description: >-
   Screen + voice → structured work. The user records their screen while talking (demoing their product, browsing,
   exploring an idea); turn the recording into items — bug/polish issues with repro steps, frames and suspected code,
-  ideas with the inspiration behind them, notes, todos — let them review on a local page, then export (Feishu/Lark
-  Bitable, CSV/Markdown, GitHub Issues…) or start fixing. Use when the user wants to record feedback / QA / ideas by
-  talking while using their screen, hands over such a video, or wants to process recordings from the Blurt app.
+  ideas with the inspiration behind them, notes, todos — let them review on a local page, then export (Markdown/CSV,
+  a hand-off .zip, or any tracker or chat through the tools you already have) or start fixing. Use when the user
+  wants to record feedback / QA / ideas by talking while using their screen, hands over such a video, wants to
+  process recordings from the Blurt app, or wants their Blurt items packed up and sent somewhere.
   Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
-  "turn this recording into issues", "处理我录的视频", "process my recordings".
+  "turn this recording into issues", "处理我录的视频", "process my recordings", "把这些问题打包发给…",
+  "bundle these items for…".
 ---
 
 # blurt — show it, say it, get structured work back
@@ -203,22 +205,27 @@ Never export to external systems unattended.
 
 ## 6. Export / act
 
-Ask once where things go (remember in `.blurt/config.json` → `export`). Typical: issues → the team's bug table;
-ideas → an ideas board / doc; notes → Markdown; tasks → the user's todo tool.
-- Feishu/Lark Bitable → `feishu.py export <session> "<table url>" [--kind issue|idea|…]` (`--project <key>` for a
-  whole project; lark-cli if installed,
-  else app credentials; default columns per kind, creates missing ones, uploads frames + clips, resumable).
-  No table yet → `feishu.py create "<name>"`. Other columns → `feishu.py fields` then `--map`.
-  Details: `reference/export-feishu.md`.
+Ask once where things go (remember in `.blurt/config.json` → `export`). Typical: issues → the team's tracker or
+chat; ideas → an ideas board / doc; notes → Markdown; tasks → the user's todo tool. Blurt writes files only; every
+other destination goes through the tools you already have.
 - Markdown + CSV → `export_local.py <session>` or `export_local.py --project <key>` (all kinds: one document and a
   CSV per kind; the items themselves are Markdown files already).
-- GitHub Issues / Linear / Jira / Notion / Obsidian / anything else → `reference/export-other.md`; use the CLI or
-  MCP tool the user has; map fields by meaning.
+- Any other destination — Feishu/Lark, Notion, Google Docs, Linear, Jira, GitHub, Slack, email… → use the CLI, MCP
+  server or skill this session already has for it (`reference/export-other.md`); map fields by meaning. No tool for
+  it → say so and offer the bundle or Markdown instead; don't install one unasked.
+- **Hand-off bundle**: the portable form for a person or a place that takes files —
+  `export_local.py bundle --items <uid|id> … [-o DIR|FILE.zip] [--title "…"]`, or `--project <key> [--state todo …]
+  [--kind issue …]` (MCP: `bundle_items`). One `.zip` named `<project>-<date>-<n items>.zip`: `summary.md` (counts by
+  kind and state; per item its state, quote, steps, suspected code, screenshots inline), `items/*.md` (every field),
+  `frames/`, `clips/` — relative paths only, so it opens on a teammate's machine. It prints `summary`, one paragraph
+  to post with the file. Grouping is your judgement, not a rule: "把 A 模块的问题打包发给飞书群里的张三" → find A's
+  issues (`search_items` / `index.py search`, read their `module`, `owner`, titles), one bundle per group with a
+  `--title` that says who it is for, then send it with the user's own tool for that chat. Bundling changes no state.
 - A document rather than a list ("整理成需求文档和设计文档", a brief, a comparison — typically after walking through
   reference sites or a competitor, often across several recordings) → `reference/docs.md`.
-Confirm destination and count before creating anything remotely; report links afterwards. Then offer the natural
-next step — for issues "want me to start fixing these?" (you have `code_refs`), for ideas "want a quick prototype /
-spec of the top one?".
+Confirm destination and count before creating or sending anything remotely; report links afterwards. Then offer the
+natural next step — for issues "want me to start fixing these?" (you have `code_refs`), for ideas "want a quick
+prototype / spec of the top one?".
 
 ## 7. Work on items (and say so)
 
@@ -250,7 +257,8 @@ it on start).
 
 The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_server.py`, stdio): `list_projects`,
 `list_sessions`, `search_items`, `get_item` (returns the screenshots as images), `get_transcript`, `update_item`
-(= `items.py patch`, keeps the user's edits), `mark_fixed` (fixing → in progress; fixed / wontfix → to verify). The
+(= `items.py patch`, keeps the user's edits), `mark_fixed` (fixing → in progress; fixed / wontfix → to verify),
+`bundle_items` (= `export_local.py bundle`: the hand-off .zip and a paragraph to post with it, §6). The
 plugin registers it for Claude Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first
 shows what changes). Prefer the tools when they are there; they write through items.py like everything else.
 

@@ -266,8 +266,9 @@ Windows/Linux: Blurt（Tauri 2）
 ### 2.3 设置
 
 - **窗口（Mac，v0.9）**：一个可调大小的窗口（860 × 620，最小 760 × 520），不再是系统偏好设置那种顶部工具栏分页。左边是侧栏：
-  最上面一个搜索框（⌘F 聚焦，Esc 清空，↓ / ↑ 选结果，↩ 打开），下面按三组列出面板——偏好：通用、听写、语音、快捷键；工作：Agent、
-  导出；这台 Mac：隐私、存储——选中行是品牌浅薄荷底，↑ / ↓ 切换面板。右边是一页可滚动的设置：面板标题，然后分组，每行左边是
+  最上面一个搜索框（⌘F 聚焦，Esc 清空，↓ / ↑ 选结果，↩ 打开），下面按三组列出面板——偏好：通用、听写、语音、快捷键；工作：Agent；
+  这台 Mac：隐私、存储——选中行是品牌浅薄荷底，↑ / ↓ 切换面板。（v0.9 去掉了「导出」面板：`blurt://settings/export` 和记住的
+  上次面板 `export` 都打开 Agent 的「可以这样跟 Agent 说」，`SettingsCatalog.moved`。）右边是一页可滚动的设置：面板标题，然后分组，每行左边是
   标题和一行说明，右边是控件。搜索覆盖所有面板的每一行（标题、说明、每行几个中英文关键词，两种语言都能搜），结果按面板分组；
   打开一个结果会切到那个面板、滚到那一行并短暂高亮（被折叠的行会先展开）。行的定义只有一份：`BlurtCore/SettingsCatalog.swift`，
   面板按 id 渲染（`SettingRow("general.login")`），搜索也用它，`SettingsCatalogTests` 保证两边对得上、每个设置只出现一次。
@@ -290,9 +291,13 @@ Windows/Linux: Blurt（Tauri 2）
   一行的图标是中性灰，不用品牌薄荷色（那是口喷鸡在做事、主按钮和选中的颜色）。
 - **Agent**：默认 agent，可按项目覆盖；草稿模型；无人值守时的权限档位；安装和卸载 skill、MCP。「先用这个」的标记要等登录检查回来
   才显示，不会先挂在一个 agent 上再跳走；只有那行显示了修复命令时圆点才是提醒色；没安装的 agent 不能勾选；版本号用次要灰，不用淡灰。
-- **导出目标**：飞书 / Lark 表格链接在回车、离开输入框、离开面板时都保存；不像表格链接时当场说明，不保存。飞书 / Lark 的域名，
-  或任何 http(s) 链接只要路径是表格的 `/base/…`（私有部署的自有域名）都算。选文件夹用窗口上的表单，
-  不是整个 App 的模态面板（通用 →「打开文件夹…」也一样）。
+  每个装好的 agent 写明 blurt skill 和 MCP 在不在（「skill + MCP」小标签，或「还没装 skill 和 MCP」+「连接…」）。页尾「可以这样跟
+  Agent 说」：三句真实的请求（发到群里、建到项目管理工具、修一条），各带复制按钮，页脚说明发送靠 Agent 自己已有的工具。没有任何
+  连接器设置：口喷鸡不做 Agent 已经有的连接器。
+- **导出**（v0.9 起没有设置页）：口喷鸡只写文件。主窗口选中条目后「导出交接包…」（条目菜单、右键菜单、工具栏「交给 Agent」菜单、
+  ⌘K）：窗口上的存储表单，建议的文件名是 `<项目>-<日期>-<n 条>.zip`（`BlurtCore/HandoffBundle`，与 `export_local.py bundle_name`
+  一致），然后跑 `export_local.py bundle --items … -o <路径>`；完成后刘海说「交接包已保存」并带「在访达中显示」。条目状态不变。
+  选文件夹、选保存位置都用窗口上的表单，不是整个 App 的模态面板（通用 →「打开文件夹…」也一样）。
 - **隐私**：权限一行一个事实：已允许（灰字）；在系统设置里关掉了（「已关闭」提醒色 + 「系统设置…」：macOS 不会再问，按钮直接
   说去哪）；没问过（只有「允许…」）；现在用不到（比如辅助功能已经听到 Fn 时的输入监控：灰点 +「不需要」）。没问过时系统设置的面板
   在「允许…」的右键菜单里；「设置权限…」
@@ -896,7 +901,7 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   菜单栏下的小 HUD 只在没有刘海的构建里用。
 - **隐私**：`$BLURT_HOME` 和里面放数据的文件夹 0700，听写历史、模型服务的 token、config.json 0600（App 启动时 `FilePrivacy.lockDown`，
   脚本写 `$BLURT_HOME` 下的 JSON 时 `_common.save_json` 也是 0600）；默认工作区 `~/Blurt` 0700。
-  导出默认去向：项目写 `<repo>/.blurt/config.json` → `export`，默认工作区写全局 `export`。
+  导出去向由 Agent 记在 `<repo>/.blurt/config.json` → `export`（SKILL §6），App 不再写它。
 - **index.db 只读打开的坑**（C3 的读者都要注意）：WAL 库在最后一个连接关闭后 SQLite 会删掉 `-wal` / `-shm`，这时
   `?mode=ro` 打开会在 prepare 时报 `SQLITE_CANTOPEN`。读者先试 `mode=ro`，失败就用 READWRITE（不带 CREATE）加
   `PRAGMA query_only = 1` 重开——只会重建 `-shm`，不写数据（WP5 的 IndexReader 和 WP6 的 IndexLookup 都这样做）。
@@ -1097,7 +1102,7 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
 ### WP6 · mac-settings-system
 
 - **范围**：
-  - 设置窗口：快捷键（录入、三层冲突检测）、语音（`transcribe.py models|bench|setup`）、Agent（`agents.py`）、导出、隐私、存储；
+  - 设置窗口：快捷键（录入、三层冲突检测）、语音（`transcribe.py models|bench|setup`）、Agent（`agents.py`）、隐私、存储；
   - 引导流程（§2.2）；
   - `blurt://` URL 处理；CoreSpotlight 索引条目（标题、原话、主帧缩略图），点结果打开对应条目；
   - Services 里的「Add to Blurt」：把选中的文字或图片作为 note 放进收件箱；

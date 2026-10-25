@@ -1,11 +1,21 @@
 # /// script
 # requires-python = ">=3.10"
 # ///
-"""Export a session's items (or a project's) to Markdown + CSV (no services needed). Works for any mix of kinds
-(issue / idea / note / task / custom lenses): one Markdown document grouped by kind, one CSV per kind.
+"""Export items to files, no services needed. Works for any mix of kinds (issue / idea / note / task / custom lenses).
 
+Markdown + CSV: one Markdown document grouped by kind, one CSV per kind, images linked relatively.
   export_local.py SESSION_DIR [--out DIR] [--lang zh|en]          default --out: the session dir
   export_local.py --project P|inbox [--out DIR] [--lang zh|en]    default --out: <store>/exports
+
+Hand-off bundle: one self-contained .zip to pass to a teammate or post wherever the team talks: summary.md (title,
+counts by kind and state, one section per item with its state, quote, steps, suspected code and frames inline),
+items/*.md (every field of each item) and frames/ + clips/. Only relative paths inside, so it opens on any machine.
+Named "<project>-<date>-<n items>.zip". No item changes state. Grouping (by module, owner, …) is the caller's call:
+one bundle per group.
+  export_local.py bundle (--items REF … | --project P|inbox [--state S …] [--kind K …]) [-o DIR|FILE.zip]
+                  [--title TEXT] [--lang zh|en]                   default -o: the project's <store>/exports
+  → {"ok", "path", "name", "items", "kinds", "states", "summary", "missing", …}; "summary" is one paragraph to paste
+  next to the file. REF = a uid, an id (BA-12) or an item's .md path. --state default: all but discarded.
 """
 from __future__ import annotations
 
@@ -13,11 +23,14 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
+import zipfile
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import die, fmt_ts, state_of  # noqa: E402
+from _common import STATES, die, fmt_ts, state_of  # noqa: E402
 import items as items_mod  # noqa: E402
 
 LABELS = {
@@ -77,6 +90,8 @@ def load_doc(session: str | None, project: str | None) -> tuple[dict, Path]:
 
 
 def main():
+    if sys.argv[1:2] == ["bundle"]:
+        return bundle_main(sys.argv[2:])
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("session", nargs="?")
     p.add_argument("--project")
@@ -160,6 +175,345 @@ def main():
     md_path.write_text("\n".join(md), encoding="utf-8")
     print(json.dumps({"items": len(items), "kinds": {k: sum(1 for i in items if i["kind"] == k) for k in kinds},
                       "files": [str(md_path), *files]}, ensure_ascii=False))
+
+
+# ------------------------------------------------------------------ hand-off bundle
+# Every word the bundle writes, per language: adding a language is adding a table here (and to LABELS / KINDS).
+B = {
+    "en": {"title": "{project} hand-off", "title_bare": "Hand-off", "n_items": "{n} items", "n_item": "{n} item",
+           "file_n": "{n}-items", "file_1": "1-item", "by_kind": "By kind", "by_state": "By state",
+           "state": "State", "project": "Project", "full": "All fields", "frame": "Frame", "clip": "Clip",
+           "read": "Each item also has its own file in items/ with every field; screenshots are in frames/, clips in "
+                   "clips/.",
+           "made": "Made with Blurt on {date}.",
+           "para": "{title}: {n} ({kinds}; {states}). Open summary.md in the zip: each item with its state, what was "
+                   "said, the steps, suspected code and screenshots. {list}",
+           "list": "Items: {items}.", "more": "and {k} more", "sep": "; ", "comma": ", ", "colon": "**: ",
+           "kinds": {"issue": "Issues", "idea": "Ideas", "note": "Notes", "task": "Tasks"},
+           "kind": {"issue": "Issue", "idea": "Idea", "note": "Note", "task": "Task"},
+           "states": {"new": "New", "todo": "To do", "handed_off": "Handed off", "in_progress": "In progress",
+                      "to_verify": "To verify", "done": "Done", "wontfix": "Won't do", "discarded": "Discarded"}},
+    "zh": {"title": "{project} 交接包", "title_bare": "交接包", "n_items": "{n} 条", "n_item": "{n} 条",
+           "file_n": "{n}条", "file_1": "1条", "by_kind": "按类型", "by_state": "按状态",
+           "state": "状态", "project": "项目", "full": "全部字段", "frame": "截图", "clip": "录屏片段",
+           "read": "items/ 里每一条还有单独的文件，字段齐全；截图在 frames/，录屏片段在 clips/。",
+           "made": "{date} 用口喷鸡整理。",
+           "para": "{title}：{n}（{kinds}；{states}）。解压后打开 summary.md：每一条都有状态、原话、复现步骤、疑似代码位置和截图。"
+                   "{list}",
+           "list": "包括：{items}。", "more": "等 {k} 条", "sep": "；", "comma": "，", "colon": "**：",
+           "kinds": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
+           "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
+           "states": {"new": "新", "todo": "要做", "handed_off": "已交给 Agent", "in_progress": "进行中",
+                      "to_verify": "待验证", "done": "完成", "wontfix": "不做", "discarded": "已丢弃"}},
+}
+# what items/*.md shows generically: not bookkeeping, not what has its own place, nothing that holds a local path
+BUNDLE_SKIP = SKIP | {"id", "title", "kind", "frames", "clip", "quote", "time", "source", "tags", "questions", "answer",
+                      "fix", "fix_history", "source_session", "project_reason", "handoff", "note", "steps",
+                      "code_refs", "summary", "actual", "expected", "module", "owner", "severity", "type", "due"}
+LEAD = ("summary", "actual", "expected")
+UNSAFE = re.compile(r"[^\w.-]+")
+
+
+class BundleError(Exception):
+    def __init__(self, msg: str, code: str = "bad_args"):
+        super().__init__(msg)
+        self.code = code
+
+
+def slug(s: str, fallback: str = "blurt", lower: bool = True) -> str:
+    """A file-name-safe form of a name: letters (any script), digits, '.', '_' kept, the rest '-' (a project's name
+    also ASCII-lowercased; an id keeps its case)."""
+    out = re.sub(r"-{2,}", "-", UNSAFE.sub("-", (s or "").strip())).strip("-._")
+    return "".join(c.lower() if lower and c.isascii() else c for c in out)[:60].strip("-._") or fallback
+
+
+def bundle_name(project: str | None, n: int, lang: str, day: date | None = None) -> str:
+    """"<project>-<date>-<n items>.zip". The Mac app suggests the same name in its Save panel (BlurtCore
+    HandoffBundle.fileName): keep the two in step."""
+    t = B[lang if lang in B else "en"]
+    count = t["file_1"] if n == 1 else t["file_n"].format(n=n)
+    return f"{slug(project or '')}-{(day or date.today()).isoformat()}-{count}.zip"
+
+
+def _natural(i: dict):
+    m = re.fullmatch(r"([A-Za-z0-9]+)-(\d+)", str(i.get("id") or ""))
+    return (m.group(1), int(m.group(2))) if m else (str(i.get("id") or ""), 0)
+
+
+def collect(refs: list[str] | None, project: str | None, states: list[str] | None, kinds: list[str] | None
+            ) -> tuple[list[dict], Path]:
+    """The items to bundle (every path absolute) and the default output folder. REFs keep their order (a REF given
+    twice counts once); a project's items come by kind, then id. states None = all but discarded."""
+    items_mod._NAMES = None
+    bad = [s for s in states or [] if s not in STATES]
+    if bad:
+        raise BundleError(f"unknown state {bad[0]!r} (one of {', '.join(STATES)})")
+    try:
+        if refs:
+            out, seen = [], set()
+            for r in refs:
+                it = items_mod.get(None, r)["item"]
+                if it["uid"] not in seen:
+                    seen.add(it["uid"])
+                    out.append(it)
+            pids = {i.get("project") for i in out}
+            home = items_mod.store_for_project(next(iter(pids))) if len(pids) == 1 else items_mod.st.inbox_store()
+            return out, home.root / "exports"
+        if project:
+            pid = items_mod.resolve_project(project)
+            rows = items_mod.list_items(None, pid, kinds or (), states or None)["items"]
+            rows.sort(key=lambda i: (KIND_ORDER.index(i["kind"]) if i.get("kind") in KIND_ORDER else 99,
+                                     str(i.get("kind")), _natural(i)))
+            return rows, items_mod.store_for_project(pid).root / "exports"
+    except items_mod.ItemsError as e:
+        raise BundleError(str(e), e.code) from None
+    raise BundleError("pass --items REF … or --project P")
+
+
+def _lang(items: list[dict], lang: str | None) -> str:
+    """--lang, else the language most items were spoken in, else the UI language (config "lang", else the system's)."""
+    if lang:
+        return "zh" if lang.lower().startswith("zh") else "en"
+    spoken = [str(i.get("language")) for i in items if i.get("language")]
+    if spoken:
+        return "zh" if 2 * sum(s.startswith("zh") for s in spoken) >= len(spoken) else "en"
+    import handoff  # noqa: PLC0415
+    return handoff.ui_lang()
+
+
+def _counts(items: list[dict], key, order: list[str]) -> list[tuple[str, int]]:
+    seen: dict[str, int] = {}
+    for i in items:
+        seen[key(i)] = seen.get(key(i), 0) + 1
+    return [(k, seen[k]) for k in sorted(seen, key=lambda k: (order.index(k) if k in order else 99, k))]
+
+
+class _Scrub:
+    """This machine's paths, made to mean something elsewhere: a project's folder → relative to it (code refs), the
+    home folder → ~. Applied to every text the bundle writes, so no absolute local path leaves in it."""
+
+    def __init__(self, items: list[dict]):
+        names = items_mod._project_names()
+        roots = {str(Path(r)) for i in items for r in ((names.get(i.get("project")) or {}).get("path"), i.get("store"))
+                 if r}
+        self.roots = sorted(roots, key=len, reverse=True)
+        self.home = str(Path.home())
+
+    def __call__(self, s: str) -> str:
+        for r in self.roots:
+            s = s.replace(r + os.sep, "")
+        return s.replace(self.home + os.sep, "~" + os.sep) if len(self.home) > 1 else s
+
+
+def _md(v) -> str:
+    if isinstance(v, list):
+        return "\n".join(f"- {_md(x)}" for x in v if x not in (None, ""))
+    if isinstance(v, dict):
+        return " · ".join(f"{k}: {x}" for k, x in v.items() if x not in (None, "", [], {}))
+    return "" if v is None else str(v).strip()
+
+
+def _quote(q: str) -> list[str]:
+    return ["\n".join(f"> {ln}" if ln else ">" for ln in q.strip().splitlines()), ""]
+
+
+def _head(i: dict, t: dict, L: dict, show_project: bool) -> str:
+    st_ = state_of(i)
+    meta = [f"**{t['state']}**: {t['states'].get(st_, st_)}",
+            f"**{L['kind']}**: {t['kind'].get(i.get('kind'), i.get('kind') or '')}"]
+    meta += [f"**{L[k]}**: {_md(i[k])}" for k in ("module", "owner", "severity", "type", "due") if _md(i.get(k))]
+    if show_project and (i.get("_project") or {}).get("name"):
+        meta.append(f"**{t['project']}**: {i['_project']['name']}")
+    if i.get("time") and text(i["time"]):
+        meta.append(f"**{L['time']}**: {text(i['time'])}")
+    url = i["source"].get("url") if isinstance(i.get("source"), dict) else None
+    if isinstance(url, str) and url.startswith(("http://", "https://")):
+        meta.append(f"**{L['source']}**: {url}")
+    return " · ".join(meta)
+
+
+def _lead(i: dict, L: dict) -> list[str]:
+    out = _quote(str(i["quote"])) if _md(i.get("quote")) else []
+    for k in LEAD:
+        if _md(i.get(k)):
+            out += [f"**{L[k]}**: {_md(i[k])}", ""]
+    steps = [s for s in i["steps"] if _md(s)] if isinstance(i.get("steps"), list) else []
+    if steps:
+        out += [f"**{L['steps']}**", *[f"{n}. {_md(s)}" for n, s in enumerate(steps, 1)], ""]
+    return out
+
+
+def _refs(i: dict, L: dict) -> list[str]:
+    refs = [r for r in i["code_refs"] if _md(r)] if isinstance(i.get("code_refs"), list) else []
+    return [f"**{L['code_refs']}**: " + ", ".join(f"`{_md(r)}`" for r in refs), ""] if refs else []
+
+
+def _media(m: dict, t: dict, up: str) -> list[str]:
+    out = []
+    for n, (rel, f) in enumerate(m.get("frames", []), 1):
+        cap = str(f.get("caption") or "").replace("[", "(").replace("]", ")").replace("\n", " ").strip()
+        out += [f"![{t['frame']} {n}{' — ' + cap if cap else ''}](<{up}{rel}>)", ""]
+    if m.get("clip"):
+        out += [f"[{t['clip']}](<{up}{m['clip']}>)", ""]
+    return out
+
+
+def _title(i: dict) -> str:
+    return " · ".join(x for x in (str(i.get("id") or i["uid"]), _md(i.get("title"))) if x)
+
+
+def summary_section(i: dict, t: dict, L: dict, m: dict, file: str, show_project: bool) -> list[str]:
+    return ([f"## {_title(i)}", "", _head(i, t, L, show_project), ""] + _lead(i, L) + _refs(i, L) + _media(m, t, "")
+            + [f"[{t['full']}](<items/{file}>)", ""])
+
+
+def item_file(i: dict, t: dict, L: dict, m: dict) -> str:
+    out = [f"# {_title(i)}", "", _head(i, t, L, True), ""] + _lead(i, L)
+    for k, v in i.items():  # the lens's own fields: why, inspired_by, next_steps, details, a custom lens's …
+        if k in BUNDLE_SKIP or k.startswith("_") or not _md(v):
+            continue
+        out += [f"**{L.get(k, k)}**", _md(v), ""] if isinstance(v, list) else [f"**{L.get(k, k)}**: {_md(v)}", ""]
+    out += _refs(i, L)
+    if i.get("tags"):
+        out += [" ".join(f"`#{x}`" for x in i["tags"]), ""]
+    if i.get("questions"):
+        out += [f"**{L['questions']}**", *[f"- {q}" for q in i["questions"]], ""]
+        if _md(i.get("answer")):
+            out += [f"**{L['answer']}**: {_md(i['answer'])}", ""]
+    return "\n".join(out + _media(m, t, "../") + [f"uid `{i['uid']}`", ""])
+
+
+def _target(out: Path, name: str) -> Path:
+    """`out` a folder: the file in it, "~2" … when the name is taken (never overwrite an earlier bundle); a path
+    ending in .zip: that file (a Save panel already asked about replacing it)."""
+    if out.suffix.lower() == ".zip":
+        return out
+    path, n = out / name, 2
+    while path.exists():
+        path = out / f"{name[:-4]}~{n}.zip"
+        n += 1
+    return path
+
+
+def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str | None = None,
+           day: date | None = None) -> dict:
+    """Write the zip; `out` = a folder (the file gets bundle_name) or a path ending in .zip."""
+    if not items:
+        raise BundleError("no items to bundle", "no_items")
+    lang, day = _lang(items, lang), day or date.today()
+    t, L = B[lang], LABELS[lang]
+    pids = {i.get("project") for i in items}
+    pname = (items[0].get("_project") or {}).get("name") if len(pids) == 1 else None
+    title = (title or "").strip() or (t["title"].format(project=pname) if pname else t["title_bare"])
+    count = t["n_item" if len(items) == 1 else "n_items"].format(n=len(items))
+    path = _target(Path(out).expanduser(), bundle_name(pname, len(items), lang, day))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    root, paths = path.stem, _Scrub(items)
+
+    def scrub(s: str) -> str:  # no local paths; and "**状态**：" in Chinese, with its own colon
+        s = paths(s)
+        return s.replace("**: ", t["colon"]) if t["colon"] != "**: " else s
+
+    # frames/<ID>-<n>.<ext>, clips/<ID>.<ext>, items/<the item's file name>; a file that is gone is listed, not fatal
+    media: dict[str, dict] = {}
+    copies: list[tuple[Path, str]] = []
+    missing: list[str] = []
+    used: set[str] = set()
+
+    def unique(name: str) -> str:
+        base, ext = os.path.splitext(name)
+        cand, k = name, 2
+        while cand in used:
+            cand, k = f"{base}-{k}{ext}", k + 1
+        used.add(cand)
+        return cand
+
+    files: dict[str, str] = {}
+    for i in items:
+        ident = slug(str(i.get("id") or ""), i["uid"], lower=False)
+        m = media.setdefault(i["uid"], {"frames": []})
+        for n, f in enumerate([f for f in i.get("frames") or [] if isinstance(f, dict) and f.get("path")], 1):
+            src = Path(f["path"])
+            if not src.is_file():
+                missing.append(f"{ident}: {src.name}")
+                continue
+            m["frames"].append(("frames/" + unique(f"{ident}-{n}{src.suffix.lower() or '.png'}"), f))
+            copies.append((src, m["frames"][-1][0]))
+        if isinstance(i.get("clip"), str) and i["clip"]:
+            src = Path(i["clip"])
+            if src.is_file():
+                m["clip"] = "clips/" + unique(f"{ident}{src.suffix.lower() or '.mp4'}")
+                copies.append((src, m["clip"]))
+            else:
+                missing.append(f"{ident}: {src.name}")
+        files[i["uid"]] = unique("items/" + slug(Path(i.get("path") or "").stem, ident, lower=False) + ".md")[len("items/"):]
+
+    kinds = _counts(items, lambda i: i.get("kind") or "", KIND_ORDER)
+    states = _counts(items, state_of, list(STATES))
+    kinds_t = [(t["kinds"].get(k, k), n) for k, n in kinds]
+    states_t = [(t["states"].get(k, k), n) for k, n in states]
+    md = [f"# {title}", "", " · ".join([count, *([pname] if pname else []), day.isoformat()]), "",
+          f"**{t['by_kind']}**: " + " · ".join(f"{k} {n}" for k, n in kinds_t), "",
+          f"**{t['by_state']}**: " + " · ".join(f"{k} {n}" for k, n in states_t), "", t["read"], ""]
+    for i in items:
+        md += summary_section(i, t, L, media[i["uid"]], files[i["uid"]], len(pids) > 1)
+    md += [f"_{t['made'].format(date=day.isoformat())}_", ""]
+
+    tmp = path.with_name(f".{path.name}.tmp")
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr(f"{root}/summary.md", scrub("\n".join(md)))
+            for i in items:
+                z.writestr(f"{root}/items/{files[i['uid']]}", scrub(item_file(i, t, L, media[i["uid"]])))
+            for src, rel in copies:  # pictures and video are compressed already
+                z.write(src, f"{root}/{rel}", compress_type=zipfile.ZIP_STORED)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+    shown = [_title(i).replace(" · ", " ", 1) for i in items[:5]]
+    if len(items) > 5:
+        shown.append(t["more"].format(k=len(items) - 5))
+    para = t["para"].format(title=title, n=count, kinds=t["comma"].join(f"{k} {n}" for k, n in kinds_t),
+                            states=t["comma"].join(f"{k} {n}" for k, n in states_t),
+                            list=t["list"].format(items=t["sep"].join(shown)))
+    return {"ok": True, "path": str(path), "name": path.name, "title": title, "items": len(items),
+            "kinds": dict(kinds), "states": dict(states), "uids": [i["uid"] for i in items], "files": len(copies),
+            "bytes": path.stat().st_size, "summary": scrub(para), "missing": missing}
+
+
+def bundle_items(refs: list[str] | None = None, project: str | None = None, states: list[str] | None = None,
+                 kinds: list[str] | None = None, out: str | None = None, title: str | None = None,
+                 lang: str | None = None) -> dict:
+    """What the CLI and the MCP tool bundle_items call: collect, then bundle."""
+    if refs and project:
+        raise BundleError("pass --items or --project, not both")
+    items, default_out = collect(refs, project, states, kinds)
+    if not items:
+        raise BundleError("no items match", "no_items")
+    return bundle(items, Path(out) if out else default_out, title=title, lang=lang)
+
+
+def bundle_main(argv: list[str]) -> None:
+    p = argparse.ArgumentParser(prog="export_local.py bundle", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--items", nargs="+", metavar="REF")
+    p.add_argument("--project")
+    p.add_argument("--state", action="append", nargs="+", metavar="S")
+    p.add_argument("--kind", action="append", nargs="+", metavar="K")
+    p.add_argument("-o", "--out")
+    p.add_argument("--title")
+    p.add_argument("--lang")
+    a = p.parse_args(argv)
+    flat = lambda v: [x for group in v or [] for x in group] or None  # noqa: E731
+    try:
+        out = bundle_items(a.items, a.project, flat(a.state), flat(a.kind), a.out, a.title, a.lang)
+    except BundleError as e:
+        print(json.dumps({"ok": False, "error": str(e), "code": e.code}, ensure_ascii=False), flush=True)
+        print(f"ERROR: {e}", file=sys.stderr, flush=True)
+        sys.exit(1)
+    print(json.dumps(out, ensure_ascii=False), flush=True)
 
 
 if __name__ == "__main__":

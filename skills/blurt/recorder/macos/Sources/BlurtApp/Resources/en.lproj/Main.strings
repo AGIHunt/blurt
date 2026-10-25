@@ -216,6 +216,11 @@
 "main.menu.change_state" = "Change State…";
 "main.menu.copy_link" = "Copy Link";
 "main.menu.enrich" = "AI Fill-in";
+"main.menu.export_bundle" = "Export Hand-off Bundle…";
+"main.bundle.save" = "Export";
+"main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
+"main.bundle.saved" = "Hand-off bundle saved: %@";
+"main.bundle.failed" = "Couldn’t export the hand-off bundle";
 "main.menu.kind" = "Kind";
 "main.undo.kind" = "Change Kind";
 "main.menu.move_to" = "Move to Project";

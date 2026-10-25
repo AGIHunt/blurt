@@ -214,6 +214,15 @@
 "agents.project_agent.default" = "上面排第一的";
 "agents.project_agent.hint" = "交出这个项目的条目时默认用它，每次仍可另选。";
 "agents.move_up" = "往前挪";
+"agents.connected" = "skill + MCP";
+"agents.connected.help" = "这个 Agent 里装好了 blurt skill 和 MCP：能查找、读取和更新你的条目。";
+"agents.not_connected" = "还没装 skill 和 MCP";
+"agents.ask.header" = "可以这样跟 Agent 说";
+"agents.ask.footer" = "发到哪里，用的是 Agent 自己已有的工具：Slack、飞书、Linear、GitHub、邮件。口喷鸡给它条目；别人也要看时，再给一个交接包（一个带截图的 .zip）。";
+"agents.ask.1" = "把 A 模块的问题打包发给飞书群里的张三";
+"agents.ask.2" = "把这个项目要做的问题建到 Linear 里，带上截图";
+"agents.ask.3" = "修好 BA-12，改完标成待验证";
+"agents.ask.copy" = "复制";
 
 /* 安装确认 */
 "install.title" = "把口喷鸡装进 %@";

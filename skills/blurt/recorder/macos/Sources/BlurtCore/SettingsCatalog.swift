@@ -72,12 +72,21 @@ public enum SettingsCatalog {
         pane("speech", "settings.kit.speech", "Settings", "waveform", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
         pane("agents", "settings.kit.agents", "Settings", "wand.and.stars", "work"),
-        pane("export", "settings.kit.export", "Settings", "square.and.arrow.up", "work"),
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
         pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
     ]
 
     public static func pane(_ id: String) -> SettingsPaneInfo? { panes.first { $0.id == id } }
+
+    /// Panes that are gone, and where their links (blurt://settings/<pane>[/<row>], a remembered last pane) land now.
+    /// Export went in v0.9: the user's agent sends items with its own tools, so Agents says how to ask it.
+    public static let moved: [String: String] = ["export": "agents/agents.ask"]
+
+    /// "export" or "export/target" → "agents/agents.ask"; anything else as it is.
+    public static func redirect(_ link: String) -> String {
+        let pane = String(link.prefix { $0 != "/" })
+        return moved[pane] ?? link
+    }
 
     // MARK: sections
 
@@ -112,9 +121,7 @@ public enum SettingsCatalog {
         sec("agents.list", "agents.header", "Terminal"),
         sec("agents.sessions", "agents.sessions.header", "Terminal"),
         sec("agents.manual", "agents.manual.header", "Terminal"),
-
-        sec("export.default", "settings.export.default_destination"),
-        sec("export.destinations", "settings.export.exporters"),
+        sec("agents.ask", "agents.ask.header", "Terminal"),
 
         sec("privacy.permissions", "settings.privacy.permissions_live"),
         sec("privacy.data", "settings.privacy.data"),
@@ -227,10 +234,7 @@ public enum SettingsCatalog {
             // Agents
             whole("agents.list", detail: SettingsText("agents.footer", "Terminal")),
             whole("agents.sessions", detail: SettingsText("agents.tmux.ok.detail", "Terminal")),
-
-            // Export
-            row("export.target", "export.default", "settings.export.send_confirmed_items"),
-            whole("export.destinations", detail: S("settings.export.footer")),
+            whole("agents.ask", detail: SettingsText("agents.ask.footer", "Terminal")),
 
             // Privacy
             whole("privacy.permissions", detail: S("settings.privacy.macos_applies_screen_recording")),

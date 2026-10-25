@@ -214,6 +214,15 @@
 "agents.project_agent.default" = "The first one above";
 "agents.project_agent.hint" = "Used when you hand off this project’s items. You can still pick another each time.";
 "agents.move_up" = "Move Up";
+"agents.connected" = "Skill + MCP";
+"agents.connected.help" = "The blurt skill and MCP server are installed in this agent: it can find, read and update your items.";
+"agents.not_connected" = "No skill or MCP yet";
+"agents.ask.header" = "Ask your agent";
+"agents.ask.footer" = "Your agent sends things with the tools it already has: Slack, Feishu, Linear, GitHub, email. Blurt gives it the items, and a hand-off bundle (one .zip with the screenshots) when someone else needs to see them.";
+"agents.ask.1" = "Bundle the checkout issues and post them to #web in Slack";
+"agents.ask.2" = "File this project’s to-do issues in Linear, with their screenshots";
+"agents.ask.3" = "Fix BA-12, then mark it for me to verify";
+"agents.ask.copy" = "Copy";
 
 /* Install sheet */
 "install.title" = "Install Blurt into %@";
