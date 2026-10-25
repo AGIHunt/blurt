@@ -291,7 +291,8 @@ final class DictationStream {
                                                    heardEnd: DictationStitch.splitTrailing(prev.raw).end)
             }
         } else if DictationStitch.midSentence(so) {
-            // the model capitalised a window that continues a sentence
+            // the model capitalised a window that continues a sentence: polish.py already asked its model whether the
+            // capital is a name's (`case`); this keeps a lower-case transcript's case when it was not asked
             out = DictationStitch.keepCase(input: input, output: out)
         }
         let model = (r?["polished"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? out
@@ -494,7 +495,7 @@ final class DictationStream {
                                 "polish_in": p.polishInput, "polished": p.polishedPart, "polish_ms": ms(p.polishSpan),
                                 "fell_back": p.polish?["fell_back"] as? Bool ?? false, "reason": p.polish?["reason"] ?? NSNull(),
                                 "repaired": p.polish?["repaired"] as? [String] ?? [], "load_ms": p.loadMS,
-                                "tag": p.asr?["tag"] ?? NSNull()]
+                                "tag": p.asr?["tag"] ?? NSNull(), "case": p.polish?["case"] ?? NSNull()]
         let g: Double? = p.index < gaps.count ? gaps[p.index] : nil
         o["pause_after"] = g.map { ($0 * 100).rounded() / 100 as Any } ?? NSNull()
         return o
@@ -551,7 +552,8 @@ final class DictationStream {
                                 "asr_text": r["asr_text"] as? String ?? raw, "raw": raw, "asr_ms": timing["asr_ms"] ?? 0,
                                 "text": text, "polish_in": raw, "polished": pol?["polished"] ?? NSNull(),
                                 "polish_ms": timing["polish_ms"] ?? 0, "fell_back": pol?["fell_back"] as? Bool ?? false,
-                                "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? []]])
+                                "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? [],
+                                "case": pol?["case"] ?? NSNull()]])
         if let t = r["tag"] as? [String: Any] { out.tags = [t] }
         return out
     }

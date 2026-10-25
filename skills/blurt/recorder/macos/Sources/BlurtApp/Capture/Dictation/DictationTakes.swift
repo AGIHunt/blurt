@@ -376,9 +376,10 @@ extension Dictation {
             let len = min(max(0, f.selection.length), ns.length - loc)
             let before = String(ns.substring(to: loc).suffix(500))
             let after = String(ns.substring(from: loc + len).prefix(500))
-            // the field's sentence goes on before the cursor ("I think ▮"): a capital polish gave the first word only
-            // for starting a sentence goes — the transcript's own case decides (names keep theirs; v0.9 dogfood:
-            // "I think The new layout is fine")
+            // the field's sentence goes on before the cursor ("I think ▮"): polish's model already lowered a capital
+            // that only started a sentence (polish.py `sentence_case`, also for a reply too short to polish; v0.9
+            // dogfood: "I think The new layout is fine"). Without polish the words go in as heard, except that a
+            // transcript heard in lower case keeps it (keepCase)
             let cased = !styleRecord.rendered && DictationStitch.midSentence(before)
                 ? DictationStitch.keepCase(input: r.raw, output: text) : text
             var fit = Dictation.fit(cased, before: before, after: after, list: styleRecord.rendered)

@@ -620,6 +620,102 @@ class RequestNotes(unittest.TestCase):
         self.assertEqual(polish.user_message("get status", None, None), "get status")
 
 
+class CasedEngine(FakeEngine):
+    """A scripted model that also answers the case question: `scores` maps a word to its log-probability."""
+
+    def __init__(self, reply, scores):
+        super().__init__(reply)
+        self.scores, self.scored = scores, []
+
+    def continuation_scores(self, before, words):
+        self.scored.append((before, list(words)))
+        return [self.scores[w] for w in words]
+
+
+class SentenceCase(unittest.TestCase):
+    """v0.9 dogfood: "I think ▮" + "the new layout is fine" was typed "I think The new layout is fine." — the speech
+    model capitalises every piece and the 2B polish model ignored the note. The model is asked as a language model
+    which form is likelier after the text before; a name keeps its capital."""
+
+    def test_only_a_word_written_like_a_sentence_start_is_a_candidate(self):
+        self.assertEqual(polish.case_candidate("The new layout").group(1), "The")
+        self.assertEqual(polish.case_candidate("Let's go").group(1), "Let's")
+        for t in ("I think so", "I'm in", "iOS 18 ships", "GitHub is down", "API keys", "the new layout", "这个 feature",
+                  "3 things"):
+            self.assertIsNone(polish.case_candidate(t), t)
+
+    def test_stops_mid_sentence_is_punctuation_only(self):
+        self.assertTrue(polish.stops_mid_sentence("I think "))
+        self.assertTrue(polish.stops_mid_sentence("so,"))
+        for t in ("Done. ", "好的。", "first line\n", "", None, "他说：“好的。”"):
+            self.assertFalse(polish.stops_mid_sentence(t), t)
+
+    def test_a_sentence_capital_goes_and_the_model_was_asked(self):
+        e = CasedEngine("The new layout is fine.", {"The": -11.5, "the": -2.3})
+        r = e.polish("the new layout is fine", "fake", 3, [], {"before": "I think "})
+        self.assertEqual(r["text"], "the new layout is fine.")
+        self.assertEqual((r["case"]["word"], r["case"]["lower"], r["case"]["margin"]), ("The", True, 9.2))
+        self.assertEqual(e.scored, [("I think", ["The", "the"])])
+        # the speech model's own capital, which polish kept, goes the same way
+        r = CasedEngine("The new layout is fine.", {"The": -11.5, "the": -2.3}).polish(
+            "The new layout is fine", "fake", 3, [], {"before": "I think "})
+        self.assertEqual(r["text"], "the new layout is fine.")
+
+    def test_a_name_keeps_its_capital(self):
+        e = CasedEngine("Thursday after the review.", {"Thursday": -5.4, "thursday": -14.8})
+        r = e.polish("Thursday after the review", "fake", 3, [], {"before": "Let's meet on "})
+        self.assertEqual((r["text"], r["case"]["lower"]), ("Thursday after the review.", False))
+        # close: kept as written (a product name the model hasn't seen scores ~1.3 the other way)
+        r = CasedEngine("Blurt app is great.", {"Blurt": -23.5, "blurt": -22.3}).polish(
+            "Blurt app is great", "fake", 3, [], {"before": "the "})
+        self.assertEqual(r["text"], "Blurt app is great.")
+
+    def test_a_word_of_the_users_list_is_not_asked(self):
+        e = CasedEngine("Linear has it.", {"Linear": -30.0, "linear": -1.0})
+        r = e.polish("Linear has it", "fake", 3, [{"term": "Linear"}], {"before": "we use "})
+        self.assertEqual(r["text"], "Linear has it.")
+        self.assertTrue(r["case"]["listed"])
+        self.assertEqual(e.scored, [])
+
+    def test_nothing_is_asked_after_a_sentence_end_or_without_context(self):
+        for ctx in ({"before": "Done. "}, {"before": ""}, None, "a window title"):
+            e = CasedEngine("The new layout is fine.", {"The": -11.5, "the": -2.3})
+            r = e.polish("the new layout is fine", "fake", 3, [], ctx)
+            self.assertEqual(r["text"], "The new layout is fine.", ctx)
+            self.assertNotIn("case", r)
+            self.assertEqual(e.scored, [])
+
+    def test_the_text_so_far_of_a_streamed_dictation_counts(self):
+        e = CasedEngine("It broke again.", {"It": -19.3, "it": -16.2})
+        r = e.polish("it broke again", "fake", 3, [], {"before": "", "dictated": "I opened the settings and then"})
+        self.assertEqual(r["text"], "it broke again.")
+
+    def test_a_short_reply_is_cased_only_by_a_loaded_model(self):
+        e = CasedEngine("", {"Fine": -21.4, "fine": -15.0})
+        res = {"text": "Fine.", "reason": "short"}
+        self.assertEqual(e.cased(res, {"before": "I think "}, []), res)          # nothing loaded: as it is
+        e.model = object()
+        self.assertEqual(e.cased(res, {"before": "I think "}, [])["text"], "fine.")
+        e.preloading = True                                                        # never behind the preload
+        self.assertEqual(e.cased(res, {"before": "I think "}, [])["text"], "Fine.")
+
+    def test_a_failed_case_check_leaves_the_text(self):
+        class Broken(FakeEngine):
+            def continuation_scores(self, before, words):
+                raise RuntimeError("no stream")
+        e = Broken("The new layout is fine.")
+        with contextlib.redirect_stderr(io.StringIO()):
+            r = e.polish("the new layout is fine", "fake", 3, [], {"before": "I think "})
+        self.assertEqual(r["text"], "The new layout is fine.")
+
+    def test_a_structured_list_is_left_alone(self):
+        e = CasedEngine({"structure": "Two things:\n1. Tests\n2. Docs"}, {"Two": -20.0, "two": -1.0})
+        r = e.structure("two things first tests second docs", "fake", 10, [], {"before": "I think "})
+        self.assertTrue(r["list"])
+        self.assertTrue(r["text"].startswith("Two things"))
+        self.assertEqual(e.scored, [])
+
+
 class ServeWhileLoading(unittest.TestCase):
     """polish.py serve loads its model beside the loop (v0.9 dogfood: after the 10-minute idle exit, a one-word take
     waited ~2 s in the listen backlog for a model load, then was answered "short" in 0 ms — counted as polish time)."""
@@ -658,6 +754,8 @@ class ServeWhileLoading(unittest.TestCase):
                 short = self.call({"cmd": "polish", "text": "OK", "vocab": []})
                 self.assertEqual((short["reason"], short["text"]), ("short", "OK"))
                 self.assertTrue(self.call({"cmd": "load"})["loading"])           # the key-down's warm-up: no wait
+                case = self.call({"cmd": "case", "text": "Fine.", "context": {"before": "I think "}, "vocab": []})
+                self.assertEqual((case["text"], case["loaded"]), ("Fine.", False))  # the case: never behind the load
                 self.assertLess(time.time() - t0, 0.8)                           # none of it waited for the model
                 full = self.call({"cmd": "polish", "text": "我们下午三点开会讨论一下", "vocab": []})
                 self.assertFalse(full["fell_back"])

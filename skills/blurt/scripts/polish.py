@@ -6,7 +6,9 @@
 heard — hesitations, stutters, punctuation, paragraphs, obvious homophones — and nothing else (Light: every word the
 speaker said stays, self-corrections included). Structured is a second pass of the same model over a whole take: it
 resolves self-corrections and lays out what the speaker enumerated. A mechanical content-loss guard falls back to the
-text before the pass whenever the model rewrote, shortened, added or translated.
+text before the pass whenever the model rewrote, shortened, added or translated. When the field's text before the
+cursor stops mid-sentence, the same model, as a language model, decides whether the first word's capital is only a
+sentence start's (`Engine.sentence_case`).
 
   polish.py models                          the registry (polish_models.json) + installed, selected, recommended
   polish.py setup --model ID [--parent PID] download a model (progress "  N/M MB" on stderr); ModelScope when the
@@ -17,7 +19,7 @@ text before the pass whenever the model rewrote, shortened, added or translated.
   polish.py serve [--preload] [--idle 600] [--parent PID]   keep the model warm (127.0.0.1,
                                             $BLURT_HOME/run/polish-serve.json); ends after --idle s unused (the
                                             memory goes back), with the --parent app, or on "exit"
-  polish.py run (--text T | --stdin) [--model ID] [--timeout S] [--no-server] [--context TEXT] [--no-vocab]
+  polish.py run (--text T | --stdin) [--model ID] [--timeout S] [--no-server] [--context TEXT] [--before TEXT] [--no-vocab]
               [--variant chat] [--style structured]
         → {"ok","text","raw","polished","fell_back","reason","model","ms","terms"}   (uses a running `serve` when
         there is one). The custom words ($BLURT_HOME/dictation/vocabulary.json, dictation_vocab.py) and the text
@@ -657,17 +659,31 @@ def user_message(text: str, terms: list[dict] | None = None, context: dict | str
 _ENDS = "。.!?！？"
 
 
-def continues_sentence(context: dict | str | None) -> bool:
-    """The field's text right before the cursor stops mid-sentence: there is some, on the same line, and it doesn't end
-    in a sentence mark (a closing quote or bracket after one counts as ended) — DictationFit's rule."""
-    if not isinstance(context, dict):
-        return False
-    before = str(context.get("before") or "")
-    t = before.rstrip(" \t")
+def stops_mid_sentence(text: str | None) -> bool:
+    """The text stops inside a sentence: there is some, on the same line, and it doesn't end in a sentence mark (a
+    closing quote or bracket after one counts as ended) — DictationFit's rule. Punctuation only."""
+    t = (text or "").rstrip(" \t")
     if not t or t.endswith("\n"):
         return False
     core = t.rstrip("）)」』”\"’'")
     return bool(core) and core[-1] not in _ENDS
+
+
+def continues_sentence(context: dict | str | None) -> bool:
+    """The field's text right before the cursor stops mid-sentence (`stops_mid_sentence`)."""
+    return isinstance(context, dict) and stops_mid_sentence(str(context.get("before") or ""))
+
+
+CASE_CHARS = 200        # of the text before, for the first word's case
+CASE_MARGIN = 2.0       # nats the lower-case form must be more likely by (Gemma 4 E2B: a sentence word after "I think"
+#                         5–11; product names it hasn't seen ("Linear", "Blurt") 1.2–1.4 the other way round — kept)
+_CASE_WORD = re.compile(r"\s*([A-Z][a-z]+(?:['’][a-z]+)?)(?![A-Za-z])")
+
+
+def case_candidate(text: str) -> re.Match | None:
+    """The text's first word when it is written like a sentence start — one capital, the rest lower case ("The",
+    "Thursday"): only then can the capital be the sentence's alone. "I", "iOS", "GitHub", "API" are never touched."""
+    return _CASE_WORD.match(text or "")
 
 
 def context_text(context: dict | str | None) -> str:
@@ -1059,6 +1075,61 @@ class Engine:
                 break
         return "".join(out), cut
 
+    def continuation_scores(self, before: str, words: list[str]) -> list[float]:
+        """log P(" " + word | before) for each word, on the model's thread. Each is scored after the tokens every
+        candidate shares, so the numbers compare."""
+        return self.on_model_thread(self._scores_now, before, words)
+
+    def _scores_now(self, before: str, words: list[str]) -> list[float]:
+        import mlx.core as mx
+        bos = [self.tok.bos_token_id] if getattr(self.tok, "bos_token_id", None) is not None else []
+        fulls = [bos + self.tok.encode(before + " " + w, add_special_tokens=False) for w in words]
+        n = 0
+        while all(len(f) > n + 1 for f in fulls) and len({f[n] for f in fulls}) == 1:
+            n += 1
+        n = max(n, 1)
+        out = []
+        for f in fulls:
+            logits = self.model(mx.array(f)[None])[0].astype(mx.float32)
+            lp = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+            out.append(sum(lp[i - 1, f[i]].item() for i in range(n, len(f))))
+        return out
+
+    def sentence_case(self, text: str, context: dict | str | None, terms: list[dict] | None = None) -> tuple[str, dict | None]:
+        """The text with its first word in lower case when it continues the sentence before the cursor and its capital
+        was only a sentence start's (v0.9 dogfood: "I think The new layout is fine" — the speech model capitalises
+        every piece, and the prompt's note alone didn't move a 2B model). The model decides, as a language model: is
+        " the" or " The" the likelier next word after the text before? A name ("Thursday", "John", "Python") stays;
+        so does a word of the user's own list as they spell it. → (text, {"word","margin","lower"} or None)."""
+        before = context_before(context)
+        m = case_candidate(text)
+        if not m or not stops_mid_sentence(before):
+            return text, None
+        w = m.group(1)
+        if any(str(t.get("term") or "").split()[:1] == [w] for t in terms or []):
+            return text, {"word": w, "margin": None, "lower": False, "listed": True}
+        tail = " ".join(before.split())[-CASE_CHARS:]
+        up, lo = self.continuation_scores(tail, [w, w.lower()])
+        info = {"word": w, "margin": round(lo - up, 2), "lower": lo - up > CASE_MARGIN}
+        if info["lower"]:
+            text = text[:m.start(1)] + w.lower() + text[m.end(1):]
+        return text, info
+
+    def cased(self, res: dict, context: dict | str | None, terms: list[dict] | None) -> dict:
+        """`res` with its text's first word cased for the sentence before the cursor (`sentence_case`) — only with the
+        model already loaded (a short reply never waits for a load) and never after a model error."""
+        if self.model is None or self.preloading or res.get("reason") == "error" or not res.get("text"):
+            return res
+        t0 = time.perf_counter()
+        try:
+            text, info = self.sentence_case(res["text"], context, terms)
+        except Exception as e:  # noqa: BLE001 — the case is a nicety; the text stands as it is
+            serve_said(f"polish: case check failed ({type(e).__name__}: {e})"[:300])
+            return res
+        if info:
+            res = {**res, "text": text, "case": info, "ms": res.get("ms", 0) + int((time.perf_counter() - t0) * 1000)}
+        return res
+
     def _ready(self, res: dict, model_id: str | None) -> None:
         """The model, loaded: a load — this request's own, or the server's preload it waits for — is `load_ms`, never
         polish time (the deadline starts after it)."""
@@ -1070,6 +1141,12 @@ class Engine:
         res["model"] = self.model_id
 
     def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
+               terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
+        """Light (`_light`), its first word cased for the sentence it continues (`cased`)."""
+        res = self._light(text, model_id, timeout, terms, context, variant)
+        return self.cased(res, context, vocab.load() if terms is None else vocab.normalize(terms))
+
+    def _light(self, text: str, model_id: str | None = None, timeout: float | None = None,
                terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
         """Light. terms: the custom words (None = $BLURT_HOME/dictation/vocabulary.json, [] = none); context: the text
         around the cursor ({"before","after","selection","title","app"}) — in the prompt and the guard's allowance
@@ -1132,6 +1209,12 @@ class Engine:
 
     def structure(self, text: str, model_id: str | None = None, timeout: float | None = None,
                   terms: list | None = None, context: dict | str | None = None) -> dict:
+        """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`)."""
+        res = self._structure(text, model_id, timeout, terms, context)
+        return res if res.get("list") else self.cased(res, context, vocab.load() if terms is None else vocab.normalize(terms))
+
+    def _structure(self, text: str, model_id: str | None = None, timeout: float | None = None,
+                   terms: list | None = None, context: dict | str | None = None) -> dict:
         """Structured: one pass over a whole take (Light's text, or the stream's text so far + the last piece as heard).
         The model resolves self-corrections and lays out what was enumerated as "1. …" lines — or leaves the text a
         paragraph when nothing was. The guard checks that nothing was lost beyond a taken-back phrase (STRUCT_SPAN),
@@ -1204,7 +1287,7 @@ def _server_call(req: dict, timeout: float) -> dict | None:
 
 def cmd_serve(a):
     """One warm polish model per machine. Protocol: one JSON line in ({"token","cmd":"ping"|"load"|"polish"|
-    "structure"|"guard"|"exit",…}), one JSON line out — the same as transcribe.py serve, and it ends the same way
+    "structure"|"case"|"guard"|"exit",…}), one JSON line out — the same as transcribe.py serve, and it ends the same way
     (serve_exit_reason: the model unused for --idle s, the --parent app gone, "exit")."""
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
         return emit({"ok": True, "already": True, "pid": r.get("pid"), "model": r.get("model")})
@@ -1278,6 +1361,12 @@ def cmd_serve(a):
                         del uses[:-50]
                         resp = eng.structure(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
                                              req.get("vocab"), req.get("context"))
+                    elif req.get("cmd") == "case":        # a reply too short to polish, cased for the sentence it
+                        # continues — only by a model already loaded (never a wait for a load, or behind the preload)
+                        text = str(req.get("text") or "")
+                        resp = {"ok": True, **eng.cased({"text": text}, req.get("context"),
+                                                        vocab.normalize(req.get("vocab") or []))}
+                        resp["loaded"] = eng.model is not None and not eng.preloading
                     elif req.get("cmd") == "guard":       # a streamed dictation's joined pieces, checked once more
                         terms = vocab.normalize(req.get("vocab") or [])
                         ctx = req.get("context")
@@ -1311,6 +1400,8 @@ def cmd_run(a):
     text = sys.stdin.read() if a.stdin else (a.text or "")
     timeout = a.timeout or timeout_s()
     terms = [] if a.no_vocab else None
+    # --before: the field's text before the cursor, as the app sends it (the first word's case follows it)
+    context = {"before": a.before, "title": a.context or ""} if a.before is not None else a.context
     if a.style == "structured":
         timeout = a.timeout or structure_timeout_s()
         if not a.no_server:
@@ -1325,7 +1416,7 @@ def cmd_run(a):
         return emit(Engine().structure(text, a.model_id or selected(), timeout, terms))
     if not a.no_server:
         r = _server_call({"cmd": "polish", "text": text, "model": a.model_id, "timeout": timeout, "vocab": terms,
-                          "context": a.context, "variant": a.variant}, timeout + 5)
+                          "context": context, "variant": a.variant}, timeout + 5)
         if r is not None:
             if not r.get("ok"):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
@@ -1338,7 +1429,7 @@ def cmd_run(a):
         raise Fail(f"{want or 'no polish model'} is not installed (polish.py setup --model ID)", "model_missing")
     ensure_mlx()
     throttle(a.priority)
-    emit(Engine().polish(text, want, timeout, terms, a.context, a.variant))
+    emit(Engine().polish(text, want, timeout, terms, context, a.variant))
 
 
 def stitch_guard(raw: str, out: str, allowed: set[str] | None, terms: list[str], context: str | None,
@@ -1577,6 +1668,7 @@ def main():
     r.add_argument("--no-server", action="store_true")
     r.add_argument("--priority", choices=["utility", "background", "user-initiated", "default"])
     r.add_argument("--context", help="text around the cursor (for spelling; never stored)")
+    r.add_argument("--before", help="the field's text before the cursor (as the app sends it)")
     r.add_argument("--no-vocab", action="store_true", help="ignore the custom words")
     r.add_argument("--variant", choices=["chat", "terminal"],
                    help="the app category's variant of light (chat keeps 吧 呢 啊; terminal: a command stays a command)")
