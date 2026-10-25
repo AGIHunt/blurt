@@ -24,6 +24,17 @@ final class SearchHitTests: XCTestCase {
         XCTAssertEqual(SearchHit.oneLine("登录按钮"), "登录按钮")
     }
 
+    func testACutHitEndsAtTheCut() {
+        // the palette then read "Open /login · Cl": a two-letter scrap, and the "…" that said it was cut stripped
+        XCTAssertEqual(SearchHit.shown("Open /[login]\nCl…"), "Open /[login] …")
+        XCTAssertEqual(SearchHit.unmarked(SearchHit.shown("Open /[login]\nCl…")), "Open /login …")
+        // a longer last line, or the hit itself, stays — with its "…"
+        XCTAssertEqual(SearchHit.shown("Open /login\nClick Sign…"), "Open /login · Click Sign…")
+        XCTAssertEqual(SearchHit.shown("Open\n[Cl]…"), "Open · [Cl]…")
+        XCTAssertEqual(SearchHit.shown("…the [login] button…"), "…the [login] button…")
+        XCTAssertEqual(SearchHit.shown("Cl…"), "Cl…")                          // the only line: nothing else to end at
+    }
+
     func testAHitInAnotherFieldIsShown() {
         XCTAssertTrue(SearchHit.adds("…returns a [500] from /api/avatar…", to: "Avatar upload fails"))
     }

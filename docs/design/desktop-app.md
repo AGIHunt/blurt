@@ -447,6 +447,7 @@ WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] ORDER B
   （`"` 写成 `""`，所以用户输入里的 FTS 语法只当普通文字）；1–2 个字符的词用
   `(i.title LIKE ? ESCAPE '\' OR i.quote LIKE ? ESCAPE '\' OR i.body LIKE ? ESCAPE '\')`，`%` `_` `\` 要转义。
   snippet：走 FTS 时用 `snippet(items_fts, -1, '[', ']', '…', 12)`；只有短词时由宿主自己截（`index.py` 截命中处前后约 20 字）。
+  Mac 上显示成一行（`SearchHit.shown`）：多行用 ` · ` 连起来，截断处的 `…` 保留；最后一行被截成不到 4 个字的碎片（不含命中）时去掉，止于 ` …`。
 - **筛选**：`--kind` / `--status` / `--fix-state` 都可以重复给；不带 `--status` 时排除 `deleted`；`--fix-state none` = `fix_state IS NULL`。
   `--workspace` / `--session` 接受 id 或目录（`--workspace` 还接受名字）。
   排序：`updated` = `i.updated DESC`；`created` = `s.created DESC, i.t_start`；`t_start` = `i.t_start, s.created DESC`；最后都按 `item_id`。

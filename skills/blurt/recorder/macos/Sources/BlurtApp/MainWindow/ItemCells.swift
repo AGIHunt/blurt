@@ -225,7 +225,7 @@ final class TitleCell: NSTableCellView {
         let s = NSMutableAttributedString(string: t.isEmpty ? T("main.item.untitled") : t, attributes: attrs)
         if let h = hit {
             s.append(NSAttributedString(string: "   ", attributes: [.font: Look.subFont]))
-            s.append(TitleCell.marked(SearchHit.oneLine(h)))
+            s.append(TitleCell.marked(SearchHit.shown(h)))
         }
         // an attributed value drops the field's line break mode: without this a long title is clipped, no ellipsis
         let p = NSMutableParagraphStyle()

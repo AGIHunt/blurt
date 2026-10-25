@@ -14,7 +14,9 @@
 // and how long it stays (in attention ink on its last day). Pointing at a row gives it the brand-tint wash and shows
 // its actions: one primary, Copy (picture and note, the thing people come back for; a BrandButton), and a quiet "···"
 // with the rest — Copy Image · Copy Note · Hang Back on the Notch · Show in Finder (the same menu on a right-click of
-// the row). Only the row under the pointer shows them, so there is one primary at a time. A hairline, then the hint.
+// the row). Only the row under the pointer — or holding keyboard focus (Full Keyboard Access: Tab never lands on a
+// hidden button) — shows them, so there is one primary at a time. A hairline, then the hint. VoiceOver reads a tile
+// as what it is ("Voice note 3, 00:07"), with the drag tip as its help.
 // v0.8.6 had four buttons of the same weight on every row; v0.9.0 a 56 pt mic glyph as a voice note's picture.
 
 import AppKit
@@ -135,7 +137,7 @@ final class TakenPanel: NSObject, NSWindowDelegate {
     }
 
     /// Tests: the row of capture N as if the pointer were on it (its wash and its actions); nil = none.
-    func testHover(_ n: Int?) { for r in rows { r.hovering = r.shot.n == n } }
+    func testHover(_ n: Int?) { for r in rows { r.pointed = r.shot.n == n } }
 
     func windowWillClose(_ notification: Notification) { emit(["event": "taken_panel", "open": false]) }
 
@@ -236,8 +238,13 @@ final class TakenRow: NSView {
     private var copyRun: ClosureButton?
     /// the note ends before the actions (only while they show)
     private var beside: NSLayoutConstraint?
-    /// The pointer is on it: the brand-tint wash, and its actions show (they stay in the accessibility tree anyway).
-    var hovering = false {
+    /// The pointer is on it.
+    var pointed = false { didSet { hovering = pointed || focused } }
+    /// Keyboard focus is on one of its buttons.
+    private var focused = false { didSet { hovering = pointed || focused } }
+    private var focusWatch: NSKeyValueObservation?
+    /// Pointed at or focused: the brand-tint wash, and its actions show (they stay in the accessibility tree anyway).
+    private(set) var hovering = false {
         didSet {
             guard hovering != oldValue else { return }
             needsDisplay = true
@@ -306,7 +313,12 @@ final class TakenRow: NSView {
         text.spacing = 2
         for v in [thumb, text, actions] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         beside = actions.leadingAnchor.constraint(greaterThanOrEqualTo: text.trailingAnchor, constant: 8)
+        // the note fills the row (to its edge) unless the actions show: beside wins over this
+        let fill = text.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16)
+        fill.priority = .defaultHigh - 1
+        title.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
         NSLayoutConstraint.activate([
+            fill,
             heightAnchor.constraint(equalToConstant: TakenRow.height),
             thumb.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16), thumb.centerYAnchor.constraint(equalTo: centerYAnchor),
             thumb.widthAnchor.constraint(equalToConstant: TakenThumb.size.width),
@@ -347,8 +359,19 @@ final class TakenRow: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { pointed = true }
+    override func mouseExited(with event: NSEvent) { pointed = false }
+
+    /// Tab onto Copy or "···" (Full Keyboard Access) shows them, as the pointer does.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        focusWatch = window?.observe(\.firstResponder, options: [.initial, .new]) { [weak self] w, _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.focused = (w.firstResponder as? NSView).map { $0 !== self && $0.isDescendant(of: self) } ?? false
+            }
+        }
+    }
 
     /// the right-click menu: the same as the "more" button's
     private var rowMenu: NSMenu?
@@ -369,9 +392,17 @@ final class TakenThumb: NSView, NSDraggingSource {
         toolTip = Loc.t("capture.taken.drag_tip", table: "Capture")
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
-        setAccessibilityLabel(Loc.t("capture.taken.drag_tip", table: "Capture"))
+        setAccessibilityLabel(TakenThumb.label(s))
+        setAccessibilityHelp(Loc.t("capture.taken.drag_tip", table: "Capture"))
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// What the tile is, for VoiceOver: "Screenshot 3" / "Voice note 3, 00:07" (the length it shows).
+    static func label(_ s: Shot) -> String {
+        let what = Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n)
+        guard s.kind == .voice, let d = s.duration, d > 0 else { return what }
+        return what + ", " + Loc.duration(d)
+    }
 
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) { CaptureThumb.draw(shot, in: bounds, radius: 6) }
