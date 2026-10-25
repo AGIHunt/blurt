@@ -156,7 +156,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         try? FileManager.default.removeItem(at: url)
         writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         writer.shouldOptimizeForNetworkUse = false  // true leaves .sb-* temp files if we exit right after
-        // fragments: a take whose writer fails partway still has a playable file up to the last fragment
+        // fragments: a take whose writer fails partway still has a file that plays (and seeks) up to the last fragment —
+        // the app keeps it as the take's video (App.failedTake, BlurtCore TakeEnd.keepsVideo)
         writer.movieFragmentInterval = CMTime(seconds: 10, preferredTimescale: 600)
         vIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: W, AVVideoHeightKey: H,

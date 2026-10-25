@@ -50,9 +50,10 @@ and is never thrown away without asking: if Blurt heard nothing in it, the notch
 empty item. A note whose words couldn't be transcribed says so at the notch with *Retry*, and still goes to its
 project once Retry has the words. If the microphone goes away mid-note (AirPods taken out), the note ends with what
 you said; before you said anything, a snap's note says *Mic disconnected* and you can type it instead. A recording
-that can't be saved says why — *The disk is full*, *Screen Recording was refused* — and keeps the snaps you took
-during it; it stops as soon as the disk fills up instead of running on, and warns before it starts when little space
-is left. Quitting Blurt
+that can't be finished says why — *The disk is full*, *Screen Recording was refused* — and keeps what it had: the
+video up to where it stopped (*The disk is full — the first 3:12 is kept*) and the snaps you took during it, ready to
+**Organize**; it stops as soon as the disk fills up instead of running on, and warns before it starts when little
+space is left. Quitting Blurt
 never loses a capture on its way: it is saved first, or picked up again the next time Blurt starts — and a voice note
 you cancelled stays cancelled, even if you quit before its *Undo* was gone.
 
@@ -94,8 +95,10 @@ window's command palette (`⌘K`) do the same.
 
 If you move or rename a project's folder, Blurt doesn't write to the old place: a snap or voice note stays as a card,
 a recording goes to **Unassigned**, and the notch says *Can't find billing-api's folder* with **Locate…**. Pick the
-folder where it is now and it is the same project again (its items, key and IDs), and new captures go there. The
-switcher shows such a project with a question-mark folder and *Folder not found*.
+folder where it is now and it is the same project again (its items, key and IDs), and new captures go there; a
+folder that isn't that project's is refused right in the panel, so you can pick again. The switcher shows such a
+project with a question-mark folder and *Folder not found*, and picking it there (or in a snap note's list) asks
+where it is.
 
 When a recording ends, the notch says where it went — *Filed to Atlas Web · Change* — and **Change** puts it in
 another project (it waits until organizing is done if it has to). A snap filed straight into a project says the same:
@@ -613,7 +616,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 截下的画面有几张；标记（`⌥⇧M`）单独计数。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
-**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，几秒内可以点「留下」；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能保存时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），录屏期间截的图都留着；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
+**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，几秒内可以点「留下」；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能录完时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），并留下已有的内容：停下之前录到的那段视频（「磁盘满了，前 3:12 已保留」）和录屏期间截的图，可以直接「整理」；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
@@ -634,7 +637,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的条目也进这里。
 - **未归类**（不选当前项目）：截图和语音备注先作为卡片留在刘海下方（见下），等你决定放哪；录屏的条目进「**未归类**」。
 
-如果你移动了项目文件夹或改了名，口喷鸡不会往原来的位置写：截图和语音备注先留作卡片，录屏进「**未归类**」，刘海上会提示「找不到「billing-api」的文件夹」和「**找到它…**」。选一下它现在的位置，就还是原来那个项目（条目、代号和编号都在），之后的内容也会归到这里。切换项目的列表里，这样的项目显示成带问号的文件夹，写着「文件夹不见了」。
+如果你移动了项目文件夹或改了名，口喷鸡不会往原来的位置写：截图和语音备注先留作卡片，录屏进「**未归类**」，刘海上会提示「找不到「billing-api」的文件夹」和「**找到它…**」。选一下它现在的位置，就还是原来那个项目（条目、代号和编号都在），之后的内容也会归到这里；选错了文件夹，面板里会直接说「这不是「billing-api」的文件夹」，可以重选。切换项目的列表里，这样的项目显示成带问号的文件夹，写着「文件夹不见了」，在那里（或截图备注的列表里）选它，会问你它现在在哪。
 
 录屏结束时，刘海上会写明它去了哪——「已归到 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
 直接归进项目的截图也一样：「已归到 Atlas Web · AW-14 · 更改」。换了之后会提示「已移到 … · 撤销」，点撤销就移回来。

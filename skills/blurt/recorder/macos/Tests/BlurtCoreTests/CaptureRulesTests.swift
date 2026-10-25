@@ -345,6 +345,13 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertTrue(TakeEnd.keepsFolder(code: 5, stills: 3, notes: false), "the writer failed: the stills stay")
         XCTAssertTrue(TakeEnd.keepsFolder(code: 4, stills: 0, notes: true))
         XCTAssertFalse(TakeEnd.keepsFolder(code: 3, stills: 0, notes: false), "nothing in it: no empty folder")
+        // review of v0.9-fix2: the video written up to its last fragment is worth keeping on its own
+        XCTAssertTrue(TakeEnd.keepsFolder(code: 5, stills: 0, notes: false, video: true), "the part that plays stays")
+        XCTAssertFalse(TakeEnd.keepsFolder(code: 2, stills: 0, notes: false, video: true), "discarded on purpose")
+        XCTAssertTrue(TakeEnd.keepsVideo(seconds: 30))
+        XCTAssertTrue(TakeEnd.keepsVideo(seconds: 1))
+        XCTAssertFalse(TakeEnd.keepsVideo(seconds: 0.4), "nothing to watch")
+        XCTAssertFalse(TakeEnd.keepsVideo(seconds: 0), "no file, or it doesn't play")
     }
 
     // MARK: cards

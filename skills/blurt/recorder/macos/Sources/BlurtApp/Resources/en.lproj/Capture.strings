@@ -103,6 +103,7 @@
 "capture.project.locate" = "Locate…";
 "capture.project.locate_message" = "Choose where “%@” is now.";
 "capture.project.not_this" = "That isn’t %@’s folder";
+"capture.project.not_this_hint" = "Choose the folder %@ was moved or renamed to.";
 "capture.project.found" = "Found %@ — new captures go there again";
 "capture.drawer.missing_sub" = "Folder not found · Locate…";
 "capture.note.discard_tip" = "Discard this snap (Esc)";
@@ -219,8 +220,8 @@
 "capture.voice.mic_settings" = "Open Settings";
 "capture.voice.goes_card" = "Stays as a card until you pick a project";
 "capture.voice.goes_to" = "Goes to %@";
-"capture.voice.hint" = "Listening — pause to finish";
-"capture.voice.hold_hint" = "Listening — let go to finish";
+"capture.voice.hint" = "Listening · pause to finish";
+"capture.voice.hold_hint" = "Listening · let go to finish";
 "capture.voice.no_mic" = "The microphone isn’t available";
 "capture.voice.no_words" = "No words recognized";
 "capture.voice.nothing" = "Didn’t hear anything";
@@ -276,9 +277,9 @@
 "capture.keys.system_refused" = "%@ is a macOS shortcut (System Settings, Keyboard) — pick another";
 "capture.keys.system_short" = "macOS uses it";
 "capture.keys.undo_set" = "Change Shortcut";
-"capture.voice.hint_key" = "Listening — press %@ again to finish";
-"capture.voice.hint_done" = "Listening — Done to finish";
-"capture.voice.esc_hint" = "Esc to discard";
+"capture.voice.hint_key" = "Listening · %@ done";
+"capture.voice.hint_done" = "Listening · click Done";
+"capture.voice.esc_hint" = "Esc discard";
 "capture.voice.done" = "Done";
 "capture.voice.done_tip" = "Finish the voice note";
 "capture.voice.sound_settings" = "Sound Settings";

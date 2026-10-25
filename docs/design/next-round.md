@@ -71,8 +71,13 @@ Claude Code、Codex 是「干活的」：一个文件夹里跑各种会话。口
    开始，跟搬走的那份撞号，之后再打开搬走的文件夹也认不回来（v0.9 第二轮试用）。现在 `store.py ensure` / `projects.py store_for`
    报 `folder_missing`；App 端 `ProjectStore.captureTarget` 在当前项目的文件夹不在时退回未归类（截图、语音先挂成卡片，录屏进未归类），
    刘海提示「找不到「X」的文件夹 · 找到它…」（`MissingFolder`）；往这个项目归档（拖卡片、移到项目、备注的「归入」）一律拒绝、留作卡片。
-   「找到它…」选到带本项目 store 的文件夹就 `projects.py add` 重新定位（id、代号、编号都不变）；别的项目的 store 拒绝。
-   切换列表和备注的「归入」列表里，这样的项目画成带问号的文件夹，写「文件夹不见了」。
+   「找到它…」选到带本项目 store 的文件夹就 `projects.py add` 重新定位（id、代号、编号都不变）；别的项目的 store、没有 store 的文件夹
+   （每个登记过的项目打开时都建了 store，所以那是上级目录或选错了）都在面板里直接拒绝（`MissingFolder.Validator`，面板不关）。
+   切换列表和备注的「归入」列表里，这样的项目画成带问号的文件夹，写「文件夹不见了」；在原地标注的备注里选它，提示等备注收起后再说（刘海提示在备注下看不见）。
+   复查补丁：App 以前按项目 id 缓存打开的 shots 批次，重新定位后下一张截图还写进旧路径的批次目录——旧文件夹又被建出来，captures.py
+   随后在里面又建了同 id 的 store。现在按 store 路径缓存，旧批次目录不在就不用（`StoreFolders.batchKey / stillUsable`），
+   store 以下的目录一律经 `StoreFolders.make`：项目文件夹不在就不建。「整理全部卡片」也走 `organizeTarget`，不会往文件夹不在的项目整理。
+   录屏的去处在开始时定下（`App.takeProject`），中途「找到它…」不会让 meta 和目录对不上。
 
 项目本身 = 名称 + 描述 + 可选的本机代码文件夹（没有文件夹就是纯记录型项目，比如「日常想法」）+ 默认 agent + worktree 偏好。
 
@@ -1131,7 +1136,10 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
 - **退出不丢**：`applicationShouldTerminate` 保存气泡、结束语音备注（wav 头写完整）、最多等 3 s 文字和归档、同步刷 shots.jsonl；
   启动时 `restore` 把带项目却没归档的捕获（无 batch.json `C-NNN`）接着转写归档，把没有 jsonl 行的 `NNN.wav` 修好头（`WavRepair`）补回来。
 - **录屏失败不删截图**（`TakeEnd`）：只有取消、或什么都没有的失败才删目录；有截图 / 备注时 meta `state: failed`（`started_at` 是这次录屏开始的时间，`error` 写进 meta 和日志），
-  岛上「录屏没能保存 · 其中的 N 张截图和备注都留着 · 整理」（复数走 stringsdict）。
+  岛上「磁盘满了，录屏没能保存 · 其中的 N 张截图都留着 · 整理」（复数走 stringsdict）。录屏按 10 s 一段（fragmented mp4）写，
+  写到一半失败时已写完的段能播放、能 seek（ffmpeg / frames.py 实测）：能播 ≥1 s 就留下（`TakeEnd.keepsVideo`），meta 写
+  `video` + `duration` + `partial: true`，岛上「磁盘满了，前 3:12 已保留 · 整理」；播不了的 recording.mp4 删掉。
+  权限被拒的提示框带「打开系统设置」。
 - **录屏中的截图备注**（`RecordingNotes`）：一次备注会话只暂停一次；气泡在这次录屏的截图之间切换时沿用这次会话的「关闭后继续」，被替换的气泡不会在新气泡下面恢复录屏。
 - **交给 AI 前先看有没有 agent**：没有可用的就不收卡片，岛上「整理需要 Claude Code 或 Codex，卡片先留着 · 去设置…」。
 - **没有辅助功能时点击复制不武装两步粘贴**（`CardPasteSequence.arm`）：每次会话说一次「已复制 · 在聊天应用里只会粘贴图片 · 去开启…」。

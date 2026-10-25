@@ -15,6 +15,8 @@
 //
 // A card dragged out and taken by another app is "taken", not discarded: it leaves its thread but stays findable for
 // TakenCaptures.keepDays (the island's right-click "Recently Taken", the main window), then housekeeping trashes it.
+// Its rows (and VoiceOver) name it by when it was taken, as the Mac writes times (CaptureTime: 12/24-hour, the day
+// for anything before today).
 
 import Foundation
 
@@ -284,4 +286,19 @@ public enum TakenCaptures {
     public static func daysLeft(taken: Double, now: Double) -> Int { max(0, Int(ceil((keep - (now - taken)) / 86400))) }
     /// A row says how long it stays only near the end (the panel's footer says "7 days" once for all of them).
     public static func saysDaysLeft(_ days: Int) -> Bool { days <= 1 }
+}
+
+/// When a capture was taken, as its plain name says it ("Snap · 7:03 PM", "Snap · Oct 24, 7:03 PM"): the time as the
+/// user's Mac writes it (12- or 24-hour, the region's order), and the day too for anything before today.
+public enum CaptureTime {
+    public static func label(_ date: Date, now: Date, locale: Locale, calendar: Calendar = .current) -> String {
+        var cal = calendar
+        cal.locale = locale
+        let f = DateFormatter()
+        f.locale = locale
+        f.calendar = cal
+        f.timeZone = cal.timeZone
+        f.setLocalizedDateFormatFromTemplate(cal.isDate(date, inSameDayAs: now) ? "jm" : "MMMdjm")
+        return f.string(from: date)
+    }
 }

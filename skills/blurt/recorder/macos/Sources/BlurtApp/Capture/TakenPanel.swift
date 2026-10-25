@@ -42,16 +42,41 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         if window == nil { build() }
         reload()
         guard let w = window else { return }
-        let anchor = near ?? island.frameOnScreen
-        let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens[0]
-        let size = w.frame.size
-        var x = anchor.midX - size.width / 2
-        x = min(max(x, screen.visibleFrame.minX + 12), screen.visibleFrame.maxX - size.width - 12)
-        let top = min(anchor.minY - 12, island.frameOnScreen.minY - TakenPanel.cardBand, screen.visibleFrame.maxY)
-        let y = top - size.height
-        w.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, y)))
+        anchor = near
+        place(w, animate: false, cardsHang: hanging.count > 0)
         w.orderFrontRegardless()
-        emit(["event": "taken_panel", "open": true, "count": rows.count])
+        emit(["event": "taken_panel", "open": true, "count": rows.count, "below_cards": hanging.count > 0])
+    }
+
+    private var anchor: NSRect?
+
+    /// Under the island — and under its hanging cards while there are any, so they never cover it (a Put Back makes
+    /// one hang: `makeRoomForCards`).
+    private func place(_ w: NSWindow, animate: Bool, cardsHang: Bool) {
+        let a = anchor ?? island.frameOnScreen
+        let screen = NSScreen.screens.first { $0.frame.intersects(a) } ?? NSScreen.main ?? NSScreen.screens[0]
+        let size = w.frame.size
+        var x = a.midX - size.width / 2
+        x = min(max(x, screen.visibleFrame.minX + 12), screen.visibleFrame.maxX - size.width - 12)
+        let top = TakenPanel.top(anchorMinY: a.minY, islandMinY: island.frameOnScreen.minY, cardsHang: cardsHang,
+                                 screenMaxY: screen.visibleFrame.maxY)
+        let o = NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, top - size.height))
+        guard o != w.frame.origin else { return }
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        w.setFrame(NSRect(origin: o, size: size), display: true, animate: animate && !reduce)
+    }
+
+    /// A card was put back from here: the panel moves down out of the card band (when it isn't there already) —
+    /// right away, while the card is still on its way (it counts as hanging only once it has landed).
+    func makeRoomForCards() {
+        guard isOpen, let w = window else { return }
+        place(w, animate: true, cardsHang: true)
+        emit(["event": "taken_panel_moved", "frame": [w.frame.minX, w.frame.minY, w.frame.width, w.frame.height]])
+    }
+
+    /// The panel's top edge: 12 pt under its anchor, and under the card band while cards hang below the island.
+    static func top(anchorMinY: CGFloat, islandMinY: CGFloat, cardsHang: Bool, screenMaxY: CGFloat) -> CGFloat {
+        min(anchorMinY - 12, cardsHang ? islandMinY - cardBand : .infinity, screenMaxY)
     }
 
     func hide() { window?.orderOut(nil) }

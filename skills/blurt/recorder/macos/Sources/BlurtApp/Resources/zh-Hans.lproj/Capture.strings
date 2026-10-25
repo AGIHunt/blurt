@@ -103,6 +103,7 @@
 "capture.project.locate" = "找到它…";
 "capture.project.locate_message" = "选一下「%@」现在在哪里。";
 "capture.project.not_this" = "这不是「%@」的文件夹";
+"capture.project.not_this_hint" = "选「%@」移动或改名后的那个文件夹。";
 "capture.project.found" = "找到「%@」了，之后的内容会归到这里";
 "capture.drawer.missing_sub" = "文件夹不见了 · 找到它…";
 "capture.note.discard_tip" = "丢弃这张截图（Esc）";
@@ -276,8 +277,8 @@
 "capture.keys.system_refused" = "%@ 是 macOS 的系统快捷键（系统设置里的「键盘」），换一个";
 "capture.keys.system_short" = "macOS 在用";
 "capture.keys.undo_set" = "更改快捷键";
-"capture.voice.hint_key" = "在听 · 再按 %@ 结束";
-"capture.voice.hint_done" = "在听 · 点「完成」结束";
+"capture.voice.hint_key" = "在听 · %@ 完成";
+"capture.voice.hint_done" = "在听 · 点「完成」";
 "capture.voice.esc_hint" = "Esc 丢弃";
 "capture.voice.done" = "完成";
 "capture.voice.done_tip" = "结束这条语音备注";

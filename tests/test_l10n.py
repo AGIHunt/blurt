@@ -2,7 +2,8 @@
 
   • every table exists in both languages with exactly the same keys (.strings and .stringsdict);
   • a key's placeholders are the same in both languages (positions may differ: %1$@ … %2$@ is fine);
-  • every key the Swift code looks up by name (T("…"), TP("…"), Loc.t / Loc.plural) is in its table;
+  • every key the Swift code looks up by name (T("…"), TP("…"), Loc.t / Loc.plural) is in its table, and every
+    key-like literal anywhere in the code (a key held in a variable first) is in a table;
   • the .strings files parse the way Foundation reads them, and every plural has an "other" form;
   • the shared words of K10 (kind.*, state.*, action.*, session.*, project.*, handoff.*) are all in Common.
 
@@ -116,6 +117,37 @@ def keys(table: str, lang: str) -> dict:
     return d
 
 
+def swift_sources() -> dict:
+    """{path under Sources: its code without whole-line comments} for every Swift file of the app."""
+    return {str(f.relative_to(SOURCES)): "\n".join(l for l in f.read_text(encoding="utf-8").splitlines()
+                                                   if not l.lstrip().startswith("//"))
+            for f in SOURCES.rglob("*.swift")}
+
+
+def table_keys() -> dict:
+    """{lang: every key of every table}."""
+    return {lang: set().union(*[set(keys(t, lang)) for t in tables()]) for lang in LANGS}
+
+
+# "list." is also an SF Symbol family (list.bullet.rectangle), so a literal starting with it isn't taken for a key
+NOT_KEY_HEADS = {"list"}
+
+
+def unknown_keys(sources: dict, have: dict) -> list:
+    """Literals anywhere in `sources` that read like a key of our tables (a table's key head, three or more parts,
+    written whole) but are missing from `have[lang]` — "file: key (lang)", sorted."""
+    heads = {k.split(".")[0] for ks in have.values() for k in ks} - NOT_KEY_HEADS
+    out = set()
+    for name, code in sources.items():
+        for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', code):
+            s = m.group(1)
+            if s.count(".") < 2 or s.split(".")[0] not in heads or not KEYISH.match(s) or "\\(" in s \
+                    or s.endswith((".", "_")):
+                continue        # not a key, or a glued piece (the scan above refuses those)
+            out |= {f"{name}: {s} ({lang})" for lang in LANGS if s not in have[lang]}
+    return sorted(out)
+
+
 class Tables(unittest.TestCase):
     def test_both_languages_have_every_table_and_key(self):
         self.assertTrue({"Common", "Main", "Settings"} <= tables(), tables())
@@ -224,6 +256,27 @@ class Tables(unittest.TestCase):
                             missing.append(f"{f.name}: {table(s)}.{s} ({lang})")
         self.assertEqual(sorted(set(glued)), [], "write the key out whole (a ternary of whole keys), or list the family")
         self.assertEqual(sorted(set(missing)), [])
+
+    def test_every_key_written_anywhere_in_the_code_exists(self):
+        """A key held in a variable first (`let key = micGone ? "capture.note.mic_gone_done" : …; Loc.t(key, …)`) is
+        missed by both scans above, which only read a lookup's own argument (review of v0.9-fix2). So every string
+        literal anywhere in the sources that reads like a key of one of our tables — it starts with a table's key head
+        (capture., main., dictation., …) and has at least three parts — must be in a table, in both languages.
+        (Two-part literals with those heads are mostly settings ids and stored names, e.g. "dictation.style".)"""
+        self.assertEqual(unknown_keys(swift_sources(), table_keys()), [])
+
+    def test_the_whole_source_scan_catches_a_key_held_in_a_variable(self):
+        # the dogfood bug's shape: the key is chosen into a variable, and a table lacks it
+        src = {"NoteBubble.swift": 'let key = micGone ? (staged ? "capture.note.mic_gone_done" : "capture.note.mic_gone")\n'
+                                   '    : (staged ? "capture.note.no_mic_done" : "capture.note.no_mic")\n'
+                                   'status.stringValue = Loc.t(key, table: "Capture")\n'
+                                   'let icon = NSImage(systemSymbolName: "list.bullet.rectangle", accessibilityDescription: nil)\n'
+                                   'let id = "dictation.style"   // a settings id, not a key\n'}
+        have = table_keys()
+        self.assertEqual(unknown_keys(src, have), [])
+        for lang in LANGS:
+            gone = {l: set(k) - ({"capture.note.no_mic_done"} if l == lang else set()) for l, k in have.items()}
+            self.assertEqual(unknown_keys(src, gone), [f"NoteBubble.swift: capture.note.no_mic_done ({lang})"])
 
     def test_the_build_ships_the_tables(self):
         src = (ROOT / "skills" / "blurt" / "scripts" / "record.py").read_text()

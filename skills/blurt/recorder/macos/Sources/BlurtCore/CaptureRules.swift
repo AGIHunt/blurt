@@ -368,10 +368,14 @@ public enum RecordingNotes {
 public enum TakeEnd {
     /// sessionEnded codes: 0 saved, 2 cancelled / discarded, 3 capture / setup error, 4 no frames, 5 writer error.
     /// The session folder goes only when nothing in it is worth keeping: a cancelled take, or a failed one with no
-    /// stills and no notes.
-    public static func keepsFolder(code: Int32, stills: Int, notes: Bool) -> Bool {
+    /// stills, no notes and no video that plays (`video`: keepsVideo).
+    public static func keepsFolder(code: Int32, stills: Int, notes: Bool, video: Bool = false) -> Bool {
         if code == 0 { return true }
         if code == 2 { return false }
-        return stills > 0 || notes
+        return stills > 0 || notes || video
     }
+
+    /// A failed take's video is kept when this much of it plays (the recorder writes it in 10 s fragments, so a take
+    /// whose writer failed partway plays up to its last fragment). Less than a second is nothing to watch.
+    public static func keepsVideo(seconds: Double) -> Bool { seconds >= 1 }
 }

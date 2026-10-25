@@ -182,4 +182,23 @@ final class CardFilesTests: XCTestCase {
         XCTAssertFalse(TakenCaptures.saysDaysLeft(7))
         XCTAssertTrue(TakenCaptures.saysDaysLeft(1))
     }
+
+    // MARK: when it was taken (review of v0.9-fix2: a fixed "HH:mm", no day, ignored a 12-hour Mac)
+
+    func testCaptureTimeFollowsTheLocaleAndSaysTheDayBeforeToday() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 22, minute: 0))!
+        let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 19, minute: 3))!
+        let yesterday = cal.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 19, minute: 3))!
+        let us = Locale(identifier: "en_US"), gb = Locale(identifier: "en_GB"), zh = Locale(identifier: "zh_Hans_CN")
+        let t = CaptureTime.label(today, now: now, locale: us, calendar: cal)
+        XCTAssertTrue(t.contains("7:03") && t.contains("PM"), t)                 // 12-hour where the region writes it so
+        XCTAssertFalse(t.contains("Oct"), t)                                       // today: the time alone
+        XCTAssertEqual(CaptureTime.label(today, now: now, locale: gb, calendar: cal), "19:03")
+        let y = CaptureTime.label(yesterday, now: now, locale: us, calendar: cal)
+        XCTAssertTrue(y.contains("Oct") && y.contains("24") && y.contains("7:03"), y)   // before today: the day too
+        let z = CaptureTime.label(yesterday, now: now, locale: zh, calendar: cal)
+        XCTAssertTrue(z.contains("10月24日"), z)
+    }
 }
