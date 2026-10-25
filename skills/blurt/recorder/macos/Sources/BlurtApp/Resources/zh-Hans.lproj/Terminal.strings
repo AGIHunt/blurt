@@ -268,7 +268,7 @@
 "row.no_response" = "没有反应";
 "overlay.more" = "更多";
 // 在口喷鸡终端以外交给 Agent：Agent 的桌面端（Claude）
-"dispatch.run_in" = "运行位置";
+"dispatch.run_in" = "会话";
 "dispatch.run_in.terminal" = "在口喷鸡终端运行（推荐）";
 "dispatch.run_in.desktop" = "在 %@ 桌面端运行";
 "dispatch.desktop.send" = "在 %@ 里确认文件夹并点发送。";
@@ -298,3 +298,4 @@
 "error.desktop_failed" = "桌面端没有接过这个对话。重新开始会话就能在这里继续。";
 "error.no_session_id" = "Agent 还没报告这是哪个对话，稍后再试。";
 "error.bad_runner" = "只有在口喷鸡终端里运行的会话才能这样做。";
+"dispatch.start.desktop" = "在 %@ 里打开";

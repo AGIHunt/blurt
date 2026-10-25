@@ -268,7 +268,7 @@
 "row.no_response" = "No response";
 "overlay.more" = "More";
 // hand-offs outside Blurt's terminal: the agent's desktop app (Claude)
-"dispatch.run_in" = "Where";
+"dispatch.run_in" = "Session";
 "dispatch.run_in.terminal" = "Run in Blurt’s terminal (recommended)";
 "dispatch.run_in.desktop" = "Run in %@ desktop";
 "dispatch.desktop.send" = "In %@, confirm the folder and press Send.";
@@ -298,3 +298,4 @@
 "error.desktop_failed" = "The desktop app didn’t take over the conversation. Restart the session to go on here.";
 "error.no_session_id" = "The agent hasn’t said which conversation this is yet. Try again in a moment.";
 "error.bad_runner" = "Only a session running in Blurt’s terminal can do that.";
+"dispatch.start.desktop" = "Open in %@";

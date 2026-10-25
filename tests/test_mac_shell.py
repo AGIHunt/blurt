@@ -216,7 +216,8 @@ class SessionRecoveryWiring(unittest.TestCase):
 
     def test_primaries_use_the_brand_style(self):
         d = self.src("Terminal/DispatchPanel.swift")
-        self.assertIn('Button(TL("dispatch.start"))', d)
+        self.assertIn('TL("dispatch.start"))', d)       # "Open in Claude" when the hand-off goes to the desktop app
+        self.assertIn('TL("dispatch.start.desktop", DesktopApp.name(m.agent))', d)
         self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
         self.assertIn("loginChecked: loginVerified", d)
         ilc = self.src("MainWindow/ItemListController.swift")

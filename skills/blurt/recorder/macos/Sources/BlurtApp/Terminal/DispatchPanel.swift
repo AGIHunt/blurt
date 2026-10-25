@@ -362,7 +362,7 @@ struct DispatchView: View {
                 Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction)
                 // while the concurrent-edit reminder is up, its two buttons are the choice
                 if !(m.concurrent != nil && !m.worktreeOn) {
-                    Button(TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
+                    Button(m.desktop ? TL("dispatch.start.desktop", DesktopApp.name(m.agent)) : TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
                         .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                         .disabled(!m.canStart)
                 }

@@ -182,10 +182,6 @@ struct SessionHeader: View {
                     .buttonStyle(.bordered).controlSize(.small).fixedSize()
                     .help(TL("header.review.help"))
             }
-            if r.alive && r.agent.isDesktop {
-                Button(TL("header.go_desktop", DesktopApp.name(r.agent.agent))) { actions?.goToDesktop(r.id) }
-                    .buttonStyle(.bordered).controlSize(.small).fixedSize()
-            }
             if r.alive && !r.isAppRunner && !r.agent.isDesktop {
                 Menu {
                     ForEach(ExternalTerminals.installed, id: \.id) { t in
@@ -202,7 +198,9 @@ struct SessionHeader: View {
             }
             Menu {
                 if r.alive {
-                    if !r.agent.isDesktop { Button(TL("header.interrupt")) { actions?.interrupt(r.id) } }
+                    // the desktop card has Go to Claude as its primary; the menu has it too
+                    if r.agent.isDesktop { Button(TL("header.go_desktop", DesktopApp.name(r.agent.agent))) { actions?.goToDesktop(r.id) } }
+                    else { Button(TL("header.interrupt")) { actions?.interrupt(r.id) } }
                     Button(TL(r.agent.isDesktop ? "header.end_desktop" : "header.end")) { actions?.end(r.id) }
                     if DesktopContinue.offered(r.agent, alive: r.alive, supported: DesktopApp.supports(r.agent.agent),
                                                check: DesktopApp.continueCheck(r.agent.agent) { model.objectWillChange.send() }) {

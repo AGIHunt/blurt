@@ -117,7 +117,7 @@ def test_desktop_dispatch_is_a_job_only_the_agent_reports_on(p2):
     assert p2.tmux("list-windows", "-a") == ""  # nothing started here: the app opens the link
     j = p2.job(jid)
     assert j["agent"]["runner"] == "desktop" and j["agent"]["status_source"] == "desktop" and j["state"] == "running"
-    assert j["agent"]["desktop"] == {"inline": True, "url_chars": len(row["url"])}
+    assert j["agent"]["desktop"] == {"inline": True, "url_chars": len(row["url"])} and j["agent"]["items_handed"] is True
     p2.run("sessions.py", "monitor", "--once", "--job", jid)
     item = p2.get(it["uid"])
     assert item["state"] == "handed_off" and item["work"]["job"] == jid  # only the agent says it started
@@ -134,6 +134,21 @@ def test_desktop_dispatch_is_a_job_only_the_agent_reports_on(p2):
     assert j["state"] == "done" and j["agent"]["status"] == "exited" and j["agent"]["changes"] == {"ahead": 1, "dirty": 0}
     merged = p2.run("sessions.py", "finish", jid, "--action", "merge")  # Review / Merge work on the worktree as usual
     assert merged["removed"] and (repo / "src" / "login.txt").read_text() == "button: blue\n"
+
+
+def test_desktop_job_is_not_over_before_its_items_reach_it(p2):
+    """A monitor pass between the job's creation and the items being handed to it (dogfood: the job ended at once)
+    sees items still in To Do: that is not "none is still with it"."""
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    jid = p2.run("sessions.py", "dispatch", "--items", it["uid"], "--agent", "claude", "--runner", "desktop")["jobs"][0]["id"]
+    f = p2.home / "jobs" / f"{jid}.json"
+    j = json.loads(f.read_text())
+    del j["agent"]["items_handed"]  # as it is before set_work
+    f.write_text(json.dumps(j))
+    p2.run("items.py", "state", it["uid"], "--state", "todo", "--by", "user")
+    p2.run("sessions.py", "monitor", "--once", "--job", jid)
+    assert p2.job(jid)["state"] == "running"
 
 
 def test_desktop_long_note_points_at_the_file(p2):

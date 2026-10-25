@@ -496,7 +496,7 @@ def sync(only: list[str] | None = None) -> list[dict]:
                                 job["error"] = exit_error(a["last_output"], w["exit"])
                     elif active:
                         _tty_fallback(job, w, now)
-                elif a.get("runner") == "desktop" and active and (only or _desktop_due(job["id"], now)):
+                elif a.get("runner") == "desktop" and active and a.get("items_handed") and (only or _desktop_due(job["id"], now)):
                     # in the desktop app only the agent reports (mark_fixed): once none of its items is still with
                     # it — reported, taken back, marked done — the session is over and its worktree can be reviewed
                     if not _items_in(job.get("items") or [], ("handed_off", "in_progress")):
@@ -738,7 +738,7 @@ def continue_desktop(job_id: str) -> dict:
     def moved(j):  # first: the hooks of the agent about to end must not end the job
         ag = j.setdefault("agent", {})
         ag.update(runner="desktop", status="running", status_at=now, status_source="desktop",
-                  continued={"from": "tmux", "at": now, "tmux": ag.get("tmux")})
+                  continued={"from": "tmux", "at": now, "tmux": ag.get("tmux")}, items_handed=True)
     jobs.update(job_id, moved)
     tmux("send-keys", "-t", w["pane"], "C-c", check=False)
     time.sleep(0.4)
@@ -1056,6 +1056,8 @@ def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
         try:  # the items: handed to this session (new ones too: handing off is keeping them, K3)
             handoff.set_work(e["items"], "handed_off", to="session", agent=pl["agent"], job=jid,
                              handoff=agent_obj["handoff"], by="app")
+            if desktop:  # only from now on can "none of its items is still with it" mean it is over (sync)
+                jobs.update(jid, lambda j: j.setdefault("agent", {}).update(items_handed=True))
         except handoff.CliError as err:
             warnings.append({"code": "items_not_updated", "items": e["items"], "message": str(err)[:300]})
         row = {"id": jid, "project": project["id"], "window": e["window"], "cwd": e["cwd"], "items": e["items"],
