@@ -61,8 +61,8 @@ The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED
 the chat you can also `record.py stop | pause | resume | restart | snap`.
 
 **Snap mode** (macOS app, not recording): ⌥⇧A → drag an area, let go = shot, with a spoken (or typed) note; ⌃-drag on
-it circles things. With a current project the shot goes straight to it; in auto mode it waits as a card until the
-user files it (or lets AI sort). The batch is `<ts>-shots/` (`meta.json` `"mode": "shots"`, no video; a line of
+it circles things. With a current project the shot goes straight to it; without one it waits as a card until the
+user files it (or has the cards organized into Unassigned). The batch is `<ts>-shots/` (`meta.json` `"mode": "shots"`, no video; a line of
 `shots.jsonl` may carry the `project` the user filed it into). Suggest it for "one screen + one sentence"
 feedback (a wrong label, a layout glitch): faster to give and to process. Video is for flows, animations, timing and
 long rambles — anything where what happened *between* screens matters.
@@ -79,9 +79,11 @@ Blurt), continue with §2.
 **Projects and the inbox.** A project is a folder the user opened in Blurt (`projects.py list`: id, key such as `BA`,
 name, description, modules). Each has a store `<folder>/.blurt/`: items in `items/<KEY-n>-<slug>.md`, screenshots in
 `assets/<uid>/`, raw captures in `sessions/<ts>/`. Captures that belong to no project yet live in the inbox store
-`~/Blurt/inbox/` (shown as "Unassigned"). The user picks a current project, or "auto" (`projects.py current`).
+`~/Blurt/inbox/` (shown as "Unassigned"). The user picks a current project, or none (`projects.py current`:
+`current` null) — then captures go to Unassigned. Only the user moves items between projects: never guess a project
+from the app in front, and never `items.py move` an item yourself unless the user asked for that one.
 
-**Blurt app recordings:** the menu-bar app records into the current project's store, or the inbox in auto mode.
+**Blurt app recordings:** the menu-bar app records into the current project's store, or the inbox when there is none.
 `record.py inbox` lists them all with `processed` / `reviewed` flags (v0.6 recordings in `~/Blurt/recordings/` too).
 "Process my recordings" → do §2–§4 for each unprocessed one (fan out to subagents if available), then one review per
 session (or merge into one session dir if the user wants a single list). `meta.json` has `author` — keep it on items
@@ -132,11 +134,14 @@ Principles — judgement, not rules:
 - Give the session a `title`. For idea-heavy or exploratory recordings a `digest` (markdown: themes, the strongest
   ideas, how they connect, suggested next step) becomes the page's Overview — it can follow in §4.
 
-**Which project** (only when the session is in the inbox — auto mode — and `projects.py list` has projects): for
-each item propose `"project": "<id or key>"` with `"project_confidence": 0–1` and a few words in `"project_reason"`.
-Evidence, strongest first: `code_refs` that exist in one project's folder, the source URL / app (the project's
-`hints`), a module name, the project's description. 0.75 or more files the item there; below that it stays in
-Unassigned with your suggestion for the user to accept. Unsure → leave `project` out; Blurt routes those itself.
+**Which project** (only when the session is in the inbox — no current project — and there are projects): the
+app's prompt lists them; in a chat run `projects.py candidates` (each project's id, key, name, description, folder and
+its newest item titles). Where an item clearly belongs to one, add `"project": "<id or key>"` to that item and a few
+words in `"project_reason"`; unsure → leave it out (a `project` at the top of items.json counts only as a suggestion
+for every item, never as where they go). It is only a suggestion: the item stays in Unassigned and the user moves
+it with one click ("Looks like X · Move"). Don't spend tokens on it — what the capture already told you is enough; a
+quick look in a project's folder only if that settles it. With a current project, write no `project`: the items go
+there.
 
 Write `<session>/items.json` (schema: `reference/schema.md`) with `"processing": true` and every item's text, no
 picked frames yet — but a snap's shot goes in its item's `frames` now (nothing to pick). Then `items.py ingest

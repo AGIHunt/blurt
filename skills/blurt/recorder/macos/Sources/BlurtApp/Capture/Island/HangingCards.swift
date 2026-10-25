@@ -1,4 +1,4 @@
-// The hanging cards (K7): every capture that has no project yet (auto mode) hangs from the island on a thin thread,
+// The hanging cards (K7): every capture that has no project yet (no current project) hangs from the island on a thread,
 // a small clasp in the brand colour where it holds the card. A few cards read like a wind chime: one thread each,
 // lengths a little uneven. Replaces the v0.6 perch and its rope.
 //
@@ -34,7 +34,7 @@
 //    keyboard straight back (the next ⌘V pastes it where the user was), the cards going up a moment later · ↩ on the
 //    tile opens the overview with the keyboard in it · ⌫ deletes · Esc sends them up. Any other key, a click
 //    elsewhere or the cards going up hands the keyboard back (that key itself is not passed on). VoiceOver: each card
-//    is a button (its words, or "Screenshot N"; press = copy; actions: edit, move, auto-sort, delete), then the
+//    is a button (its words, or "Screenshot N"; press = copy; actions: edit, move, organize, delete), then the
 //    tile ("Show all N cards", press = the overview, with the keyboard in it).
 //  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
 //    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (leading the
@@ -50,12 +50,15 @@
 //    spoken one (mint, `brand.on` glyph) — else no note · click = copy (rich content, see below), once the
 //    double-click interval has passed (DeferredClick): double-click = edit the note, and never copies first · ⌘-click =
 //    add the card to a selection that is copied as one (a ring in the brand colour; a plain click or the cards going
-//    up ends it) · right-click (HangingCards.cardMenu, this card): Copy Image / Copy Text (only with text), Copy All N
-//    Cards (more than one), Retry Transcription (after a failure), Edit Note…, Show in Finder, Move To ▸, Auto-sort
-//    (this card only), Delete · drag = into any app, or onto a project in the island: the thread stretches after it,
-//    then snaps and springs back up · × = the thread lets go and the card falls. Delete never asks: "Deleted · Undo"
+//    up ends it) — and moved as one: drag any card of it onto a project in the island, or Move N Cards To ▸ in its
+//    menu (withSelection) · right-click (HangingCards.cardMenu, this card or its selection): Copy Image / Copy Text
+//    (only with text), Copy All N Cards (more than one), Retry Transcription (after a failure), Edit Note…, Show in
+//    Finder, Move To ▸ (projects recently used first, then Unassigned), Organize (these cards: into Unassigned with a
+//    suggested project each), Delete · drag = into any app, or onto a project in the island: the thread stretches after
+//    it, then snaps and springs back up · × = the thread lets go and the card falls. Delete never asks: "Deleted · Undo"
 //    in the island for 5 s (Snapper.delete; the files stay until then). The island's right-click menu (and the "+N"
-//    tile's) is about every card: Show, Copy All, Auto-sort All Cards, Delete All N Cards (one Undo for all).
+//    tile's) is about every card: Show, Copy All, Organize All Cards, Delete All N Cards (one Undo for all). Filed
+//    cards say so in the island — "Filed to X · AW-14 · Change" (Refile.swift: Change picks another project).
 //  • the first card ever says what it is for, once, under it: "Click to copy, or drag into any app" (record
 //    cards_hint_shown), after its note bubble has closed.
 //  • the picture, then the note (v0.8.5; BlurtCore CardDropTarget.swift has the table and the why, CardPasteboard the
@@ -1792,10 +1795,18 @@ final class HangingCards: NSObject {
         return copyCards(cards.reversed().filter { $0.shot.isCard }, pill: nil)
     }
 
-    /// A card's right-click menu (on its thread and in the overview): what to do with this one card — Copy Image / Copy
-    /// Text, Copy All N Cards, Retry Transcription (after a failure), Edit Note…, Show in Finder · Move To ▸, Sort with
-    /// AI (this card only) · Delete (Undo in the island). What concerns every card at once — Auto-sort All Cards, Delete
-    /// All — is in the island's menu (islandMenuItems). `copy`: copies it with the feedback of where it was clicked.
+    /// `s` with the ⌘-click selection it is part of (the order they hang in), else `s` alone: what a drag onto a
+    /// project, Move To ▸ and Organize take.
+    func withSelection(_ s: Shot) -> [Shot] {
+        let sel = picked.map(\.shot).filter(\.isCard)
+        return sel.contains { $0 === s } && sel.count > 1 ? sel : [s]
+    }
+
+    /// A card's right-click menu (on its thread and in the overview): what to do with this card — Copy Image / Copy
+    /// Text, Copy All N Cards, Retry Transcription (after a failure), Edit Note…, Show in Finder · Move To ▸ and
+    /// Organize (this card, or its ⌘-click selection) · Delete (Undo in the island). What concerns every card at once —
+    /// Organize All Cards, Delete All — is in the island's menu (islandMenuItems). `copy`: copies it with the feedback
+    /// of where it was clicked.
     func cardMenu(_ s: Shot, copy: @escaping (Copy) -> Void) -> NSMenu {
         let m = NSMenu()
         if s.kind == .shot, s.bestURL != nil { m.addItem(ClosureMenuItem(Loc.t("capture.card.copy_image", table: "Capture")) { copy(.image) }) }
@@ -1810,30 +1821,37 @@ final class HangingCards: NSObject {
         m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })
         m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } })
         m.addItem(.separator())
-        let move = NSMenuItem(title: Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
+        let these = withSelection(s)
+        let move = NSMenuItem(title: these.count > 1 ? Loc.plural("capture.card.move_n", table: "Capture", count: these.count)
+                                                     : Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
         let sub = NSMenu()
-        for proj in ProjectStore.shared.projects.prefix(12) {
-            sub.addItem(ClosureMenuItem(proj.name) { snapper.assign(s, to: proj.id) })
+        for proj in ProjectStore.shared.projects.prefix(12) {       // recently used first
+            let i = ClosureMenuItem(proj.name) { snapper.assign(these, to: proj.id) }
+            i.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(paletteColors: [ProjectLook.color(proj)]))
+            sub.addItem(i)
         }
-        sub.addItem(.separator())
-        sub.addItem(ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(s, to: "inbox") })
+        if !ProjectStore.shared.projects.isEmpty { sub.addItem(.separator()) }
+        sub.addItem(ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(these, to: "inbox") })
         move.submenu = sub
         m.addItem(move)
-        m.addItem(ClosureMenuItem(Loc.t("capture.card.ai_sort", table: "Capture")) { snapper.handToAI(shots: [s]) })
+        m.addItem(ClosureMenuItem(these.count > 1 ? Loc.plural("capture.card.organize_n", table: "Capture", count: these.count)
+                                                  : Loc.t("capture.card.organize", table: "Capture")) { snapper.handToAI(shots: these) })
         m.addItem(.separator())
         m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
         return m
     }
 
     /// The island's right-click menu, about every hanging card at once (TakenPanel.islandMenu puts Recently Taken under
-    /// them): Show N Hanging Cards, Copy All, Auto-sort All Cards, Delete All N Cards (one Undo for all).
+    /// them): Show N Hanging Cards, Copy All, Organize All Cards (into the current project, or Unassigned with a
+    /// suggested project each), Delete All N Cards (one Undo for all).
     func islandMenuItems() -> [(String, () -> Void)] {
         let n = count
         guard n > 0 else { return [] }
         var out: [(String, () -> Void)] = [
             (Loc.plural("capture.menu.show_cards", table: "Capture", count: n), { hanging.reveal(via: "island_menu") }),
             (Loc.plural("capture.menu.copy_cards", table: "Capture", count: n), { hanging.copyAll() }),
-            (Loc.t("capture.menu.ai_sort_all", table: "Capture"), { snapper.handToAI() }),
+            (Loc.t("capture.menu.organize_all", table: "Capture"), { snapper.handToAI(project: ProjectStore.shared.currentID) }),
         ]
         out.append((Loc.plural("capture.card.delete_all", table: "Capture", count: n), { snapper.deleteAllCards() }))
         return out
@@ -1851,6 +1869,8 @@ final class HangingCards: NSObject {
     func testCopy(n: Int, _ what: Copy) -> Bool { cards.first { $0.shot.n == n }.map { copy($0, what) } ?? false }
     func testPick(n: Int) -> Bool { cards.first { $0.shot.n == n }.map { pick($0); return true } ?? false }
     var pickedNumbers: [Int] { picked.map(\.shot.n) }
+    /// Tests: a ⌘-click selection of these captures, without the copy a ⌘-click also makes (no clipboard touched).
+    func testSelect(_ ns: [Int]) { setPicked(cards.filter { ns.contains($0.shot.n) }) }
     func testMenu(n: Int) -> [String] {
         cards.first { $0.shot.n == n }.map { cardMenu($0.shot) { _ in }.items.filter { !$0.isSeparatorItem }.map(\.title) } ?? []
     }
@@ -2076,7 +2096,7 @@ final class HangingCards: NSObject {
         for p in ProjectStore.shared.projects.prefix(8) {
             actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ax_move", table: "Capture", p.name)) { snapper.assign(s, to: p.id); return true })
         }
-        actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.ai_sort", table: "Capture")) { snapper.handToAI(shots: [s]); return true })
+        actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.organize", table: "Capture")) { snapper.handToAI(shots: [s]); return true })
         actions.append(NSAccessibilityCustomAction(name: Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s); return true })
         return actions
     }

@@ -727,8 +727,31 @@ final class Island: NSObject, IslandHosting {
 
     // MARK: drawer: switcher (⌥⇧O) and drop targets (a card dragged in)
 
+    /// The switcher's pick form: where one thing already captured goes ("Filed to X · Change" after a recording or a
+    /// filed card). The same rows, type to filter; choosing calls `choose` with a project id or "inbox" and leaves the
+    /// current project as it is.
+    struct Pick {
+        let title: String
+        /// where it went: a project id, or "inbox"
+        let current: String
+        let choose: (String) -> Void
+    }
+    private(set) var pick: Pick?
+
+    func showPicker(_ p: Pick) {
+        showSwitcher()
+        pick = p
+        content.rebuild()
+        wake()
+        emit(["event": "island_pick", "current": p.current])
+    }
+
+    /// How many cards a drop on "Organize" would take: the dragged card's ⌘-click selection, else that one card.
+    var dropCount: Int { hanging.dragging.map { hanging.withSelection($0.shot).count } ?? cardCount }
+
     func showSwitcher() {
         ensurePanel(on: screenWithPointer())
+        pick = nil
         drawer = .switcher
         content.query = ""
         content.rebuild()
@@ -742,6 +765,7 @@ final class Island: NSObject, IslandHosting {
     func closeSwitcher() {
         guard drawer == .switcher else { return }
         drawer = nil
+        pick = nil
         panel?.keyable = false
         panel?.resignKey()
         content.rebuild()

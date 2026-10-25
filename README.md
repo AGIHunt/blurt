@@ -67,7 +67,8 @@ text field to dictate, or `⌥⇧A` to snap. The [user guide](docs/guide.md) cov
 
 **Snaps and voice notes:** one screen and one sentence is often all you need. Press `⌥⇧A`, drag an area and let go,
 then say what's wrong (or type it, or circle it with `⌃`). With a current project the snap goes straight into it;
-on *Auto* it hangs as a **card** under the island until you drag it onto a project or click **Auto-sort**. Cards also
+without one it hangs as a **card** under the island until you drag it onto a project or click **Organize** (it then
+lands in Unassigned with a suggested project you accept with one click — Blurt never files anything by guessing). Cards also
 copy and drag into any app — a chat, a terminal, Notes — picture and note together. `⌥⇧V` does the same with just
 your voice. Snapping during a recording (`⌥⇧A`) grabs a full-resolution still of that exact moment without pausing.
 Use video for flows, animations and timing.

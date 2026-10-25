@@ -893,9 +893,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         DispatchQueue.main.async { [weak self] in self?.sidebar.renameSelected() }   // after the context menu closed
     }
 
+    /// The current project — where new captures go — set by the user (nil = none: Unassigned).
     func useProject(_ id: String?) {
         Task { @MainActor in
             do { try await ProjectStore.shared.use(id) } catch { appDelegate?.toast(T("main.project.use_failed")) }
+            AppEnvironment.island?.projectChanged()
         }
     }
 
@@ -1102,6 +1104,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         moveMenu().popUp(positioning: nil, at: NSPoint(x: r.minX + 40, y: r.maxY), in: t)
     }
 
+    /// M (and Move to Project… in the palette): a small popover at the selection — type to filter, ↩ moves every
+    /// selected item there (one ⌘Z for all of them). Nothing selected, or items that can't move: a beep.
+    func pickProject() {
+        let items = list.selectedItems.filter { !$0.legacy }
+        guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
+        let t = list.table
+        let rows = t.selectedRowIndexes
+        let visible = rows.filter { t.rows(in: t.visibleRect).contains($0) }
+        let anchor = visible.last ?? rows.first ?? 0       // under the selection, not over part of it
+        if visible.isEmpty { t.scrollRowToVisible(anchor) }
+        var r = t.rect(ofRow: anchor)
+        if let col = t.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) {
+            r = r.intersection(t.rect(ofColumn: col))
+            r.size.width = min(r.width, 120)
+        }
+        let here = Set(items.map(\.projectID))
+        let uids = items.map(\.uid)
+        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil) { [weak self] pid in self?.move(uids: uids, to: pid) }
+        movePopover = p
+        p.show(relativeTo: r, of: t)
+    }
+    /// the Move popover on show (wp6 tests read it)
+    private(set) weak var movePopover: ProjectPopover?
+
     func moveMenu() -> NSMenu {
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
@@ -1139,7 +1165,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             m.addItem(.separator())
         }
         let cur = ProjectStore.shared.currentID == id
-        let use = add(m, cur ? T("main.project.use_auto") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
+        let use = add(m, cur ? T("main.project.use_none") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
         use.toolTip = T("main.project.use.tip")
         _ = add(m, T("main.project.rename"), #selector(mRenameProject(_:)), "pencil", obj: id)
         _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
@@ -1252,7 +1278,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mRenameShownProject), #selector(mShownProjectSettings), #selector(mRevealShownProject):
             return shownProject != nil
         case #selector(mUseShownProject):
-            item.title = shownProject != nil && ProjectStore.shared.currentID == shownProject ? T("main.project.use_auto") : T("main.project.use")
+            item.title = shownProject != nil && ProjectStore.shared.currentID == shownProject ? T("main.project.use_none") : T("main.project.use")
             return shownProject != nil
         case #selector(mRemoveShownProject):
             return shownProject != nil

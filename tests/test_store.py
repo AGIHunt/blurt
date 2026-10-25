@@ -48,7 +48,7 @@ class Env:
         self.ws = tmp / "Blurt"
         self.home.mkdir(parents=True, exist_ok=True)
         (self.home / "config.json").write_text(json.dumps({"record": {"install_app": False}, "lang": "en"}))
-        self.vars = {"BLURT_HOME": str(self.home), "BLURT_WORKSPACE": str(self.ws), "BLURT_NO_ROUTE": "1",
+        self.vars = {"BLURT_HOME": str(self.home), "BLURT_WORKSPACE": str(self.ws),
                      "BLURT_NO_INDEX": "1", "BLURT_AGENT": "", "BLURT_JOB": "", "BLURT_RUN_ID": "",
                      "BLURT_PROJECT": ""}
         self._patch = patch.dict(os.environ, self.vars)

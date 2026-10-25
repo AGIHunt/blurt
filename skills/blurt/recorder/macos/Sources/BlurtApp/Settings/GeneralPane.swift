@@ -17,7 +17,8 @@ import BlurtCore
 @MainActor
 final class GeneralModel: ObservableObject {
     @Published var projects: [Project] = []
-    @Published var current: String = "auto"
+    /// the current project's id, or "inbox": none — captures go to Unassigned
+    @Published var current: String = "inbox"
     @Published var openAtLogin = false
     @Published var loginError: String?
     @Published var language = "auto"
@@ -40,7 +41,7 @@ final class GeneralModel: ObservableObject {
         let s = ProjectStore.shared
         s.reload()
         projects = s.projects
-        current = s.currentID ?? "auto"
+        current = s.currentID ?? "inbox"
         openAtLogin = SMAppService.mainApp.status == .enabled
         let l = Config.shared["lang"] as? String ?? "auto"
         language = l == "zh" ? "zh-Hans" : (["en", "zh-Hans"].contains(l) ? l : "auto")
@@ -65,7 +66,12 @@ final class GeneralModel: ObservableObject {
         }
     }
 
-    func setCurrent(_ id: String) { run { try await ProjectStore.shared.use(id == "auto" ? nil : id) } }
+    func setCurrent(_ id: String) {
+        run {
+            try await ProjectStore.shared.use(id == "inbox" ? nil : id)
+            await MainActor.run { island.projectChanged() }
+        }
+    }
     func remove(_ p: Project) { run { try await ProjectStore.shared.remove(p.id) } }
     func openFolder() {
         let panel = NSOpenPanel()
@@ -127,8 +133,9 @@ struct GeneralPane: View {
             SettingsGroup("general.projects", footer: T("settings.general.projects.hint")) {
                 SettingRow("general.capture_into") {
                     RowPicker(label: T("settings.general.capture_into"), selection: Binding(get: { m.current }, set: { m.setCurrent($0) })) {
-                        Text(T("settings.general.auto")).tag("auto")
                         ForEach(m.projects, id: \.id) { p in Text(p.name).tag(p.id) }
+                        Divider()
+                        Text(T("settings.general.none")).tag("inbox")
                     }
                 }
                 ForEach(m.projects, id: \.id) { p in projectLine(p) }

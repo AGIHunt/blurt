@@ -11,14 +11,17 @@ described (contract C5): the apps and live.py run what this returns instead of b
                                    → {"order": [...], "pick": id|null, "agents": [{id, name, path, state, why, fix,
                                       installed, version, login, headless, interactive}]}
   agents.py command ID headless|interactive --prompt TEXT|--prompt-file F --repo DIR [--var k=v …] [--no-events]
-                   [--no-mcp] [--processing]
+                   [--no-mcp] [--processing [recording|cards]]
                                    → {"id","mode","argv","cwd","env","url","events","terminal","clipboard","open_app",
                                       "retry_exit","prompt_file"}; --processing (an unattended organising run): the
-                                      processing model + effort and the usage flags → also "processing", "usage";
+                                      processing model + effort for that kind of run (recording: organizing a
+                                      recording; cards, the default: snaps, voice notes, AI fill-in and other small
+                                      runs) and the usage flags → also "processing", "usage";
                                       "scripts" = the folder the run may call (`uv run <scripts>/<name>.py`: name it
                                       so in the prompt), env = what a sandboxed run needs (sandbox_env)
   agents.py models ID              → {"ok","id","models":[{id,name,description,cheap}],"cheapest","cli_default",
-                                      "efforts","processing":{model,effort}}   (no network, no tokens)
+                                      "efforts","processing":{model,effort (= cards),"recording":{model,effort},
+                                      "cards":{model,effort}}}   (no network, no tokens)
   agents.py usage ID FILE [--offset N]   tokens a run reported in its output (from byte N) → {"ok","usage"|null}
   agents.py install ID [--skill] [--mcp] [--dry-run]   → {"changes": [{action, path|argv, …}], "applied": bool}
   agents.py prompt work --items REF … [--mode session|external] [--worktree on|off] [--branch B] [--handoff H]
@@ -385,11 +388,12 @@ def _prompt_file(prompt: str, agent: str) -> Path:
 
 
 def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | None = None, events: bool = True,
-            cfg: dict | None = None, env: dict | None = None, mcp: bool = True, processing_run: bool = False) -> dict:
+            cfg: dict | None = None, env: dict | None = None, mcp: bool = True, processing_run: bool | str = False) -> dict:
     """What to execute for `agent`. headless: argv (absolute bin when found) run in cwd with env added; interactive:
     a url to open, or argv to run in the user's terminal, and/or text to put on the clipboard. processing_run: an
-    unattended organising run — the processing model / effort (processing()) and the flags that make the CLI report
-    its token usage (out["processing"], out["usage"]: parse its output with parse_usage)."""
+    unattended organising run — the processing model / effort (processing(); "recording" or "cards", True = cards)
+    and the flags that make the CLI report its token usage (out["processing"], out["usage"]: parse its output with
+    parse_usage)."""
     from urllib.parse import quote
     cfg = cfg if cfg is not None else config(repo)
     defs = definitions(cfg)
@@ -418,7 +422,7 @@ def command(agent: str, mode: str, prompt: str, repo: str | Path, vars: dict | N
         if mcp and hm.get("args"):  # the blurt MCP server, usable without approval prompts in an unattended run
             argv += _fill(hm["args"], {**vals, "mcp_server": str(MCP_SERVER), "mcp_server_json": json.dumps(str(MCP_SERVER))})
         if processing_run:
-            p = processing(agent, cfg, env)
+            p = processing(agent, cfg, env, kind=processing_run if processing_run in KINDS else "cards")
             argv += p["args"]
             out["processing"] = {"model": p["model"], "effort": p["effort"]}
         ev = d.get("events") or {}
@@ -523,18 +527,33 @@ def model_args(defn: dict, model: str | None = None, effort: str | None = None) 
     return out
 
 
-def processing(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict:
-    """The model and effort an unattended organising run (整理, AI sort, AI fill-in, recordings) uses: config
-    record.agent_processing.<id> = {model, effort} over agents.json `processing`. model "cheapest" = the cheap one
-    from models() (none known → the CLI's default), "default" = the CLI's own setting.
+KINDS = ("recording", "cards")
+
+
+def _kind_of(spec, kind: str) -> dict:
+    """One kind's {model, effort} from a processing spec: {"recording": {…}, "cards": {…}}, or the v0.8 shape
+    {model, effort} that stood for every run (a custom agent_defs entry, a user's earlier choice)."""
+    if not isinstance(spec, dict):
+        return {}
+    if isinstance(spec.get(kind), dict):
+        return spec[kind]
+    return {k: spec[k] for k in ("model", "effort") if k in spec}
+
+
+def processing(agent: str, cfg: dict | None = None, env: dict | None = None, kind: str = "cards") -> dict:
+    """The model and effort an unattended organising run uses. kind "recording": organizing a recording (agents.json:
+    the CLI's own default model at low effort — a recording is long and its items need judgement); "cards": snap
+    and voice-note batches, AI fill-in and other small runs (the cheapest model, low effort). Config
+    record.agent_processing.<id>.<kind> = {model, effort} (Settings → Agents) over agents.json `processing`. model
+    "cheapest" = the cheap one from models() (none known → the CLI's default), "default" = the CLI's own setting.
     → {"model": id|None, "effort": level|None, "args": [...]}"""
     cfg = cfg if cfg is not None else config()
     d = definitions(cfg).get(agent)
     if not d:
         raise ValueError(f"unknown agent {agent!r}")
-    base = d.get("processing") if isinstance(d.get("processing"), dict) else {}
-    over = ((cfg.get("record") or {}).get("agent_processing") or {}).get(agent)
-    over = over if isinstance(over, dict) else {}
+    kind = kind if kind in KINDS else "cards"
+    base = _kind_of(d.get("processing"), kind)
+    over = _kind_of(((cfg.get("record") or {}).get("agent_processing") or {}).get(agent), kind)
     want_model = over.get("model", base.get("model"))
     want_effort = over.get("effort", base.get("effort"))
     model = None
@@ -1125,7 +1144,8 @@ def main():
     s.add_argument("--var", action="append", default=[], metavar="K=V", help="placeholder values; run_id → $BLURT_RUN_ID")
     s.add_argument("--no-events", action="store_true", help="plain output instead of the stream-json flags")
     s.add_argument("--no-mcp", action="store_true", help="leave out the headless_mcp args (blurt MCP server)")
-    s.add_argument("--processing", action="store_true", help="an unattended organising run: processing model + usage")
+    s.add_argument("--processing", nargs="?", const="cards", choices=KINDS,
+                   help="an unattended organising run: processing model + usage (recording | cards, the default)")
     s = sub.add_parser("models")
     s.add_argument("id")
     s = sub.add_parser("usage")
@@ -1155,12 +1175,14 @@ def main():
             prompt = a.prompt if a.prompt is not None else Path(a.prompt_file).read_text(encoding="utf-8")
             vars = dict(kv.partition("=")[::2] for kv in a.var)
             _emit(command(a.id, a.mode, prompt, a.repo, vars, events=not a.no_events, mcp=not a.no_mcp,
-                          processing_run=a.processing))
+                          processing_run=a.processing or False))
             return
         if a.cmd == "models":
             cfg = config()
-            p = processing(a.id, cfg)
-            _emit({"ok": True, **models(a.id, cfg), "processing": {"model": p["model"], "effort": p["effort"]}})
+            ps = {k: processing(a.id, cfg, kind=k) for k in KINDS}
+            _emit({"ok": True, **models(a.id, cfg),
+                   "processing": {"model": ps["cards"]["model"], "effort": ps["cards"]["effort"],
+                                  **{k: {"model": v["model"], "effort": v["effort"]} for k, v in ps.items()}}})
             return
         if a.cmd == "usage":
             d = definitions(config()).get(a.id)

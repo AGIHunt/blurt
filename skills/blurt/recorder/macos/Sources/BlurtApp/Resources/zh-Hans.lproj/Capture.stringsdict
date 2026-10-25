@@ -26,18 +26,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>复制全部 %d 张挂着的卡片</string></dict>
   </dict>
-  <key>capture.drawer.ai_sub</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>按内容把 %d 张卡片归到各自的项目</string></dict>
-  </dict>
-  <key>capture.island.ai_sort_tip</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>按内容把挂着的 %d 张卡片自动归到对应项目</string></dict>
-  </dict>
   <key>capture.island.cards_waiting</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
@@ -115,6 +103,30 @@
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>挂着的卡片（%d）</string></dict>
+  </dict>
+  <key>capture.card.move_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>把 %d 张卡片移到</string></dict>
+  </dict>
+  <key>capture.card.organize_n</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>整理这 %d 张卡片</string></dict>
+  </dict>
+  <key>capture.drawer.organize_sub</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张整理到未归类，附上建议的项目</string></dict>
+  </dict>
+  <key>capture.island.organize_all_tip</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>把挂着的 %d 张卡片整理到未归类（调用一次 AI，附上建议的项目）</string></dict>
   </dict>
 </dict>
 </plist>

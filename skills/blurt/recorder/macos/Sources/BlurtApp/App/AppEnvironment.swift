@@ -34,9 +34,11 @@ protocol TerminalHosting: AnyObject {
     func newSession(project: String?, items: [String])
 }
 
-/// The notch island (P5): the project switcher and the quiet in-island line (K4's notification rules).
+/// The notch island (P5): the project switcher (⌥⇧O; type to filter) and the quiet in-island line (K4's rules).
 protocol IslandHosting: AnyObject {
     func showSwitcher()
+    /// The current project changed (the chip, a recording under way).
+    func projectChanged()
     func toast(_ text: String, actionTitle: String?, action: (() -> Void)?)
     /// One line about `key`: a newer one with the same key takes its place at once (a "Packing…" line, then
     /// "Saved"); `seconds` how long it may stay.
@@ -66,7 +68,8 @@ enum AppEnvironment {
     /// reminder). nil until the terminal module is installed — the main window then dispatches with the defaults.
     static var dispatch: (([String]) -> Void)?
     /// Process captures: a session dir, which captures (shots.jsonl n; nil = the whole session) and the project to file
-    /// them under (nil = let the AI route each item). Set by AgentHub (P4): it creates the process job (K4).
+    /// them under (nil = the session's own, or Unassigned: the run only suggests projects). Set by AgentHub (P4): it
+    /// creates the process job (K4).
     /// Returns the job organising it (the one already at it, when there is one).
     static var process: ((_ session: URL, _ captures: [Int]?, _ project: String?) -> String?)?
     /// blurt:// and blurt-app:// URLs handed to the app by macOS (blurt://item/<uid>, session/<path>, record, snap…).

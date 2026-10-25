@@ -25,8 +25,8 @@
 "app.menu.finish" = "Finish Recording";
 "app.menu.open" = "Open Blurt";
 "app.menu.pause" = "Pause";
-"app.menu.project" = "Project: %@";
-"app.menu.project.auto_tip" = "Each capture goes to the project it’s about";
+"app.menu.project" = "Current Project: %@";
+"app.menu.project.none_tip" = "No current project: recordings go to Unassigned, snaps and voice notes hang as cards";
 "app.menu.quit" = "Quit Blurt";
 "app.menu.record" = "Start Recording";
 "app.menu.record_last" = "Record the Last Area";
@@ -36,8 +36,7 @@
 "app.menu.shortcuts" = "Shortcuts…";
 "app.menu.updates" = "Check for Updates…";
 
-"app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or be sorted automatically?";
-"app.migrate.auto" = "Auto-sort";
+"app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or wait in Unassigned until you pick a project?";
 "app.migrate.keep" = "Keep %@";
 "app.name" = "Blurt";
 
@@ -59,11 +58,9 @@
 "main.banner.agent" = "an agent";
 "main.banner.ended" = "Session ended without reporting back";
 "main.banner.external" = "Copied to your agent. Mark it done when it is.";
-"main.banner.move" = "Move There";
 "main.banner.open_session" = "Open Session";
 "main.banner.organizing" = "Still being organized · %@";
 "main.banner.show_progress" = "Show Progress";
-"main.banner.suggested" = "Looks like it belongs in %@ (%@ sure).";
 "main.banner.with_agent" = "Handed off to %@ · %@";
 "main.banner.handed_off" = "Handed off to %@";
 
@@ -100,7 +97,7 @@
 "main.dispatch.use_worktree" = "Use a Separate Branch";
 
 "main.empty.all_filed" = "Everything is filed";
-"main.empty.all_filed.detail" = "Items without a project wait here until you pick one or auto-sort them.";
+"main.empty.all_filed.detail" = "Items without a project wait here until you move them to one.";
 "main.empty.clear_all" = "Clear Search & Filters";
 "main.empty.clear_filters" = "Clear Filters";
 "main.empty.discarded" = "Nothing discarded";
@@ -150,6 +147,19 @@
 "main.error.save_title" = "Couldn’t save";
 "main.error.timeout" = "It took too long. Try again in a moment.";
 "main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
+"main.keys.move" = "Move to Project";
+"main.list.move" = "Move";
+"main.list.move.tip" = "Move it to %@ (⌘Z moves it back)";
+"main.list.suggested" = "Looks like %@";
+"main.move.here" = "here now";
+"main.move.list" = "Projects";
+"main.move.no_match" = "No project matches";
+"main.move.placeholder" = "Move to…";
+"main.palette.move_pick" = "Move to Project…";
+"main.palette.switch_project" = "Switch Project…";
+"main.palette.use_none" = "No Current Project (new snaps and recordings to Unassigned)";
+"main.palette.use_project" = "Make %@ the Current Project";
+"main.project.use_none" = "Stop Using as Current Project";
 "main.state.toast" = "%1$@ · %2$@";
 "main.state.not_here" = "Can’t do that from %@. Press S to see what you can do.";
 "main.state.restore_first" = "It’s in Discarded. Press R to restore it first.";
@@ -224,6 +234,11 @@
 "main.bundle.failed" = "Couldn’t export the hand-off bundle";
 "main.bundle.packing" = "Packing the hand-off bundle (%@)…";
 "main.menu.kind" = "Kind";
+"main.suggest.label" = "Suggested projects";
+"main.suggest.looks_like" = "Looks like %@";
+"main.suggest.more" = "Suggestions for %ld more projects below";
+"main.suggest.move_all" = "Move All (%ld)";
+"main.suggest.move_all.tip" = "Move these %1$ld items to %2$@ — one ⌘Z moves them all back";
 "main.undo.kind" = "Change Kind";
 "main.menu.move_to" = "Move to Project";
 "main.menu.open_in" = "Open in %@";
@@ -263,7 +278,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "Default";
 "main.project.description" = "Description";
-"main.project.description.note" = "What this project is about. Auto-sort reads it to decide where captures go.";
+"main.project.description.note" = "What this project is about. When a snap or recording without a project is organized, this helps suggest where it goes.";
 "main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
 "main.project.key" = "Key";
 "main.project.key.invalid" = "2–5 letters or digits, starting with a letter (IN is taken).";
@@ -284,7 +299,6 @@
 "main.project.settings.title" = "%@ Settings";
 "main.project.use" = "Make Current Project";
 "main.project.use.tip" = "New recordings, snaps and voice notes go to the current project";
-"main.project.use_auto" = "Stop Using as Current (Auto)";
 "main.project.worktree" = "Give each hand-off its own worktree";
 "main.project.worktree.no_git" = "Not a git repository: agents work in the folder itself.";
 "main.project.worktree.note" = "The agent works on a branch beside your checkout; you merge, open a PR or discard it.";

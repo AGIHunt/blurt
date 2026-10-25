@@ -174,6 +174,27 @@ class Processing(TmpCase):
         p = agents.processing("claude", self.cfg(), env)
         self.assertEqual(p["args"], ["--model", "haiku", "--effort", "low"])
 
+    def test_recordings_and_cards_have_their_own_model(self):
+        """A recording is organized with the CLI's own model at low effort, a batch of cards (and AI fill-in) with the
+        cheapest; each is the user's to change (record.agent_processing.<id>.<kind>), and v0.8's one {model, effort}
+        still stands for both."""
+        rec = agents.processing("claude", self.cfg(), kind="recording")
+        self.assertEqual((rec["model"], rec["effort"], rec["args"]), (None, "low", ["--effort", "low"]))
+        cards = agents.processing("claude", self.cfg(), kind="cards")
+        self.assertEqual((cards["model"], cards["effort"]), ("haiku", "low"))
+        self.assertEqual(agents.processing("claude", self.cfg())["model"], "haiku")  # cards unless said otherwise
+        mine = self.cfg(agent_processing={"claude": {"recording": {"model": "opus", "effort": "medium"},
+                                                     "cards": {"model": "sonnet"}}})
+        self.assertEqual(agents.processing("claude", mine, kind="recording")["args"], ["--model", "opus", "--effort", "medium"])
+        self.assertEqual(agents.processing("claude", mine, kind="cards")["args"], ["--model", "sonnet", "--effort", "low"])
+        old = self.cfg(agent_processing={"claude": {"model": "sonnet", "effort": "high"}})
+        for k in agents.KINDS:
+            self.assertEqual(agents.processing("claude", old, kind=k)["args"], ["--model", "sonnet", "--effort", "high"], k)
+        out = agents.command("claude", "headless", "hi", self.tmp, events=False, mcp=False, processing_run="recording",
+                             cfg=self.cfg())
+        self.assertEqual(out["processing"], {"model": None, "effort": "low"})
+        self.assertNotIn("--model", out["argv"])
+
     def test_command_processing_adds_model_and_usage_flags(self):
         out = agents.command("claude", "headless", "hi", self.tmp, events=False, mcp=False, processing_run=True,
                              cfg=self.cfg())

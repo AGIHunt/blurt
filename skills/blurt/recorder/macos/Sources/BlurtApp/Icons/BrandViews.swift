@@ -445,7 +445,7 @@ final class BrandSpinner: NSView {
     }
 }
 
-/// "blurt's AI is working on this" (auto-sort, organising a batch, the Lab processing a take): one static 1 pt
+/// "blurt's AI is working on this" (organizing cards or a batch, the Lab processing a take): one static 1 pt
 /// hairline in translucent brand ink (`brand.working`; `BrandColor.Island.working` on the island) just inside the
 /// working view's rounded edge. The spinner next to it carries the state; the line only says
 /// which row the AI is on. No rotation, no spectrum, no halo — so Reduce Motion and Reduce Transparency change nothing.

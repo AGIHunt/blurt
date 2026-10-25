@@ -44,7 +44,6 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("BLURT_HOME", str(bh))
     monkeypatch.setenv("BLURT_WORKSPACE", str(home / "Blurt"))
-    monkeypatch.setenv("BLURT_NO_ROUTE", "1")
     for k in ("BLURT_NO_INDEX", "BLURT_AGENT", "BLURT_JOB", "BLURT_RUN_ID", "BLURT_PROJECT"):
         monkeypatch.delenv(k, raising=False)
     st._MAPS.clear()

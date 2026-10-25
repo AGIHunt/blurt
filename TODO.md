@@ -134,14 +134,28 @@
 - [ ] Windows / Linux (Tauri) counterparts of the Mac's session fixes (2026-10): an item whose session ended without
       a report stays in progress — say "Session ended without reporting back" with Open Session / Mark as Done (Take
       Back + Mark as Done when the job is gone), one Open Session per item, failed session actions toasted; an organizing
-      run there should also set BLURT_NO_ROUTE and run `projects.py route --apply --session DIR` itself afterwards
-      (agents.json `run` is now least-privilege, `{writable}` = `--add-dir` per folder, Linux codex: landlock). Also:
+      run there (agents.json `run` is now least-privilege, `{writable}` = `--add-dir` per folder, Linux codex: landlock). Also:
       run it with cwd = the session folder (never the project), put `agents.py command`'s `env` (UV_CACHE_DIR,
       BLURT_NO_INDEX) in its environment, name `uv run <scripts>/<name>.py` with its `scripts` path in the prompt
       (Claude / Gemini may run nothing else), and re-index the batch afterwards
 - [ ] Windows/Linux app (web/apps/desktop): follow the Mac main window's copy — the inbox subtitle is just the parts
       ("3 new · 2 to verify" under "Inbox", no "Needs you:" prefix; `inbox.needs_you`), the Dictation page without
       the items' toolbar actions, no filter chips and a blank detail while there are no items at all
+
+## Windows / Linux app (Tauri) — project assignment as on the Mac (v0.9, docs/design/next-round.md §1.2 / K2)
+- [ ] No "Auto" project mode: the current project is the user's pick or none (projects.json `"current": null`;
+      `projects.py use inbox`); the switcher's first row is Unassigned, the island chip says Unassigned. `projects.py
+      route` is gone — drop its job (`route` type, the process job's `route` step: apps/desktop/src-tauri/src/sessions.rs
+      still lists it) and the `project.auto` / `project.ai_sort` words (still in web/packages/i18n's common catalog for
+      this app; the Mac dropped them).
+- [ ] Organizing an Unassigned capture: append `projects.py candidates`' `text` to the prompt (the Mac's
+      OrganizerPrompt); ingest keeps the agent's `project` as `suggested_project` only. Recordings with
+      `agents.py command … --processing recording` (the CLI's own model, low effort), cards / AI fill-in with
+      `--processing cards` (the cheapest); Settings → Agents: the two lines (Recordings, Cards).
+- [ ] Unassigned in the main window (web/apps/desktop ItemList.tsx): "Looks like X · Move" on a row, rows grouped by
+      suggestion with "Move All (N)", one Undo; a type-to-filter Move popover on `M`; "Filed to X · Change" when a
+      recording ends and when a card is filed; cards: Ctrl-click selection dragged onto a project or "Move N Cards
+      To ▸"; command palette entries (switch project, move to project).
 
 ## Windows / Linux app (Tauri) — counterparts of the Mac shell fixes (audit E2)
 - [ ] **Export → hand-off bundle** (Mac v0.9, area nxbundle): feishu.py and reference/export-feishu.md are gone (git

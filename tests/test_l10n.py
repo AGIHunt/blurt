@@ -26,8 +26,8 @@ ACTIONS = ["keep", "hand_off", "done", "send_back", "take_back", "reopen", "rest
 COMMON = ["kind.issue", "kind.idea", "kind.note", "kind.task", *[f"state.{s}" for s in STATES], "state.menu",
           "state.handed_off.session", "state.handed_off.external", *[f"action.{a}" for a in ACTIONS],
           *[f"action.{a}.hint" for a in ACTIONS], "action.done.hint_verify", "session.running",
-          "session.waiting_input", "session.turn_done", "session.exited", "session.error", "project.auto", "project.inbox",
-          "project.ai_sort", "project.open_folder", "handoff.copy_instruction", "handoff.copy_full"]
+          "session.waiting_input", "session.turn_done", "session.exited", "session.error", "project.inbox",
+          "project.open_folder", "handoff.copy_instruction", "handoff.copy_full"]  # v0.9: no "auto" project, no auto-sort
 JOB_TYPES = ["record", "snap", "voice", "process", "route", "agent"]
 JOB_STEPS = ["capture", "finalize", "listen", "transcribe", "file", "prepare", "write", "frames", "route", "launch", "work", "finish"]
 

@@ -80,8 +80,7 @@ def env(tmp_path):
     # uv keeps its cache and Pythons under HOME: point it at the real ones before HOME moves
     for var, cmd in (("UV_CACHE_DIR", ["uv", "cache", "dir"]), ("UV_PYTHON_INSTALL_DIR", ["uv", "python", "dir"])):
         e.setdefault(var, subprocess.run(cmd, capture_output=True, text=True).stdout.strip())
-    e.update(HOME=str(home), BLURT_HOME=str(bh), BLURT_WORKSPACE=str(home / "Blurt"), BLURT_AGENT="claude",
-             BLURT_NO_ROUTE="1")
+    e.update(HOME=str(home), BLURT_HOME=str(bh), BLURT_WORKSPACE=str(home / "Blurt"), BLURT_AGENT="claude")
     for k in ("BLURT_NO_INDEX", "BLURT_JOB", "BLURT_RUN_ID", "BLURT_PROJECT"):
         e.pop(k, None)
     (bh / "config.json").write_text('{"record": {"install_app": false}, "lang": "en"}')

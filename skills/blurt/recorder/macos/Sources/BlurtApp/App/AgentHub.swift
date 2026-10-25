@@ -41,7 +41,7 @@ struct AgentDef {
         install = o["install"] as? [String: String] ?? [:]
         headless = o["headless"] as? Bool ?? true
         modelArgs = o["model_args"] as? [String: [String]] ?? [:]
-        processingDefault = o["processing"] as? [String: String] ?? [:]
+        processingDefault = o["processing"]
         modelsSpec = o["models"] as? [String: Any] ?? [:]
         usageSpec = o["usage"] as? [String: Any] ?? [:]
         desktop = (o["interactive"] as? [String: Any])?["desktop"] as? [String: Any]
@@ -51,7 +51,8 @@ struct AgentDef {
     /// false = an app / interactive-only entry (WP2's zcode): never in the background chain or its menus.
     let headless: Bool
     let modelArgs: [String: [String]]
-    let processingDefault: [String: String]
+    /// agents.json `processing`: per kind (recording / cards), or v0.8's one {model, effort} (ProcessingSpec)
+    let processingDefault: Any?
     let modelsSpec: [String: Any]
     let usageSpec: [String: Any]
     var fixText: String { Loc.pick(fix) ?? "" }
@@ -92,20 +93,20 @@ struct AgentDef {
         }?["slug"] as? String
     }
 
-    /// record.agent_processing.<id> over agents.json `processing`: model id | "cheapest" | "default", effort | "default".
-    func processing(env: [String: String]) -> (model: String?, effort: String?) {
-        let over = (recordConfig()["agent_processing"] as? [String: Any])?[id] as? [String: Any] ?? [:]
-        let wantModel = over["model"] as? String ?? processingDefault["model"]
-        let wantEffort = over["effort"] as? String ?? processingDefault["effort"]
+    /// record.agent_processing.<id>.<kind> over agents.json `processing`: model id | "cheapest" | "default", effort |
+    /// "default". A recording: the CLI's own model at low effort; cards and AI fill-in: the cheapest (ProcessingSpec).
+    func processing(env: [String: String], kind: ProcessingKind) -> (model: String?, effort: String?) {
+        let over = (recordConfig()["agent_processing"] as? [String: Any])?[id]
+        let want = ProcessingSpec.wanted(base: processingDefault, over: over, kind: kind)
         var model: String?
-        if let w = wantModel, !w.isEmpty, w != "default" { model = w == "cheapest" ? cheapestModel(env: env) : w }
-        let effort = wantEffort.flatMap { AgentDef.efforts.contains($0) ? $0 : nil }
+        if !want.model.isEmpty, want.model != "default" { model = want.model == "cheapest" ? cheapestModel(env: env) : want.model }
+        let effort = AgentDef.efforts.contains(want.effort) ? want.effort : nil
         return (modelArgs["model"] == nil ? nil : model, modelArgs["effort"] == nil ? nil : effort)
     }
 
     /// The flags an unattended organising run adds: model, effort, and the ones that make the CLI report its usage.
-    func processingArgs(env: [String: String]) -> (args: [String], model: String?, effort: String?) {
-        let p = processing(env: env)
+    func processingArgs(env: [String: String], kind: ProcessingKind) -> (args: [String], model: String?, effort: String?) {
+        let p = processing(env: env, kind: kind)
         var out: [String] = []
         if let m = p.model { out += (modelArgs["model"] ?? []).map { $0.replacingOccurrences(of: "{model}", with: m) } }
         if let e = p.effort { out += (modelArgs["effort"] ?? []).map { $0.replacingOccurrences(of: "{effort}", with: e) } }
@@ -416,7 +417,8 @@ func agentFailureNote(_ dir: URL) -> String? {
 extension App {
     /// Organise a capture session with a coding agent, headless, as a process job (K4) the main window, the island
     /// and the menu bar follow. `captures`: only these shots.jsonl entries (nil = the whole session); `project`: file
-    /// the items there (nil = the session's own project, or the AI routes each item). `only`: that agent, no fallback.
+    /// the items there (nil = the session's own project, or Unassigned — then the run is told the projects and may
+    /// suggest one per item; nothing moves). `only`: that agent, no fallback.
     /// Nothing opens when it finishes — JobNotifier says so quietly (K4 notification rules).
     /// → the job organising it: the new one, or the one already at it — one organiser per recording, whatever asks
     /// (a Retry, a second batch, a relaunch), checked against the job files, not only this run's memory.
@@ -462,11 +464,29 @@ extension App {
                 appendLog(log, "── blurt \(nowStamp()) · " + skipped.map { "\($0.def.name): \($0.why)" }.joined(separator: " · ") + "\n")
                 self.noteFallback(skipped, using: queue[0])
             }
-            job.step("prepare", .done)
-            self.attempt(dir, queue: queue, skipped: skipped.map { ($0.def, $0.def.name + $0.shortWhy) }, job: job, captures: captures,
-                         project: project)
+            // an Unassigned capture: the run is told the projects, so it can leave a suggestion per item (nothing moves)
+            self.candidates(for: dir, project: project) { text in
+                job.step("prepare", .done)
+                self.attempt(dir, queue: queue, skipped: skipped.map { ($0.def, $0.def.name + $0.shortWhy) }, job: job, captures: captures,
+                             project: project, candidates: text)
+            }
         }
         return job.id
+    }
+
+    /// `projects.py candidates` → its prompt text, when the capture has no project (OrganizerPrompt.wantsCandidates);
+    /// nil otherwise, or when it can't be had (the run then simply suggests nothing). Main thread.
+    func candidates(for dir: URL, project: String?, then: @escaping (String?) -> Void) {
+        let sessionProject = ProjectStore.shared.project(containing: dir)?.id
+        guard OrganizerPrompt.wantsCandidates(runProject: project, sessionProject: sessionProject),
+              !ProjectStore.shared.projects.isEmpty else { return then(nil) }
+        Scripts.call("projects.py", ["candidates"], timeout: 30) { r in
+            var text: String?
+            if case .success(let o) = r { text = o["text"] as? String }
+            emit(["event": "organize_candidates", "session": dir.path, "projects": ProjectStore.shared.projects.count,
+                  "chars": text?.count ?? 0])
+            then(text)
+        }
     }
 
     /// The first agent in the user's order can't run (not logged in, not installed): say once, on the island, which
@@ -491,10 +511,15 @@ extension App {
                           "agents": statuses.map { ["id": $0.def.id, "state": $0.state.rawValue, "why": $0.why] }]
         }
         job.finish(.failed, error: JobError(code: "auth", message: lines.joined(separator: "; "), hintKey: "main.job.hint.no_agent"))
+        Refile.runEnded(dir)
     }
 
     /// The agent's instructions for an unattended run (English: agents read it, the user never does).
-    func processPrompt(_ dir: URL, captures: [Int]?, project: String? = nil) -> String {
+    func processPrompt(_ dir: URL, captures: [Int]?, project: String? = nil, candidates: String? = nil) -> String {
+        OrganizerPrompt.with(basePrompt(dir, captures: captures, project: project), candidates: candidates)
+    }
+
+    private func basePrompt(_ dir: URL, captures: [Int]?, project: String?) -> String {
         let what = isShotsSession(dir)
             ? "Use the blurt skill to process this batch of captures: \(dir.path)\nIt is a shots session (no video): each shot "
               + "anchors one item and is that item's primary frame; voice notes are transcribed first; .marked.png files carry the user's ink."
@@ -507,16 +532,21 @@ extension App {
     }
 
     /// Run queue[0]; on a failure another agent wouldn't share (login, quota, model), move on to the next.
-    func attempt(_ dir: URL, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter, captures: [Int]?, project: String?) {
+    func attempt(_ dir: URL, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter, captures: [Int]?, project: String?,
+                 candidates: String? = nil) {
         guard let a = queue.first, let bin = a.bin else { return noAgent(dir, queue, job: job) }
         let cwd = dir  // never the project: what an injected run could change there is the user's code
-        // v0.7: organising is a small job — the processing model (cheap, low effort) unless the user chose otherwise
-        let pa = a.def.processingArgs(env: agentEnvironment())
-        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures, project: project), extra: pa.args)
+        // the processing model for this kind of run (Settings → Agents): a recording with the CLI's own model at low
+        // effort, a batch of cards with the cheapest one
+        let kind = ProcessingSpec.kind(forSession: dir, isShots: isShotsSession(dir))
+        let pa = a.def.processingArgs(env: agentEnvironment(), kind: kind)
+        let cmd = a.def.command(bin: bin, prompt: processPrompt(dir, captures: captures, project: project, candidates: candidates), extra: pa.args)
         let log = dir.appendingPathComponent("agent.log")
-        appendLog(log, "── blurt \(nowStamp()) · processing with \(a.def.name) (\(bin))"
-                  + " · model \(pa.model ?? "CLI default")" + (pa.effort.map { ", effort \($0)" } ?? "")
-                  + (skipped.isEmpty ? "" : " · skipped: " + skipped.map(\.1).joined(separator: "; ")) + " · job \(job.id)\n")
+        let withCandidates: String = candidates == nil ? "" : " · with the candidate projects"
+        let model: String = " · model \(pa.model ?? "CLI default")" + (pa.effort.map { ", effort \($0)" } ?? "")
+        let skips: String = skipped.isEmpty ? "" : " · skipped: " + skipped.map(\.1).joined(separator: "; ")
+        appendLog(log, "── blurt \(nowStamp()) · processing (\(kind.rawValue)) with \(a.def.name) (\(bin))" + withCandidates + model
+                  + skips + " · job \(job.id)\n")
         let started = (try? FileManager.default.attributesOfItem(atPath: log.path)[.size] as? Int) ?? 0
         updateMeta(dir) { m in
             var rec: [String: Any] = ["id": a.def.id, "name": a.def.name, "result": "running", "at": nowStamp(), "job": job.id]
@@ -525,23 +555,21 @@ extension App {
         }
         job.step("transcribe", .running)
         refreshStatus()
-        // routing the inbox items asks a model and moves files between projects: the app does it after the run, not
-        // the sandboxed agent (BLURT_NO_ROUTE; routeAfter)
-        var env = a.def.sandboxEnv.merging(["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id,
-                                            "BLURT_NO_ROUTE": "1"]) { _, n in n }
+        var env = a.def.sandboxEnv.merging(["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]) { _, n in n }
         if let p = project { env["BLURT_PROJECT"] = p }
         let group: ProcessGroup
         do {
             group = try shellGroup(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
                 self?.organisers[job.id] = nil
                 self?.attemptEnded(dir, status: status, a: a, pa: pa, started: started, queue: queue, skipped: skipped, job: job,
-                                   captures: captures, project: project)
+                                   captures: captures, project: project, candidates: candidates)
             }
         } catch {
             // it never started: say so on the job instead of leaving it "running" and the recording blocked
             processing.removeAll { $0 == dir.path }
             appendLog(log, "── blurt \(nowStamp()) · couldn't start \(a.def.name): \(error)\n")
             job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name): \(error)"))
+            Refile.runEnded(dir)
             refreshStatus()
             return
         }
@@ -554,7 +582,7 @@ extension App {
     /// wouldn't share).
     private func attemptEnded(_ dir: URL, status: Int32, a: AgentStatus, pa: (args: [String], model: String?, effort: String?),
                               started: Int, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter,
-                              captures: [Int]?, project: String?) {
+                              captures: [Int]?, project: String?, candidates: String?) {
         let log = dir.appendingPathComponent("agent.log")
         do {
             let tail = (try? Data(contentsOf: log)).map { d in String(decoding: d.dropFirst(min(started, d.count)), as: UTF8.self) } ?? ""
@@ -574,11 +602,10 @@ extension App {
                     .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })?["items"] as? [String], !uids.isEmpty {
                     job.setItems(uids)
                 }
-                // a filed capture needs no routing; otherwise its inbox items get their own route job, started here
-                job.step("route", project != nil ? .skipped : .done)
                 job.finish(.done)
                 Scripts.indexUpdate([dir])
-                if project == nil { self.routeAfter(dir) }
+                // a recording re-filed while it ran ("Filed to X · Change"): its items go where the user said
+                Refile.organized(dir)
                 self.refreshStatus()
                 return
             }
@@ -589,7 +616,7 @@ extension App {
             let next = Array(queue.dropFirst())
             if ["auth", "quota", "model"].contains(f?.id ?? ""), !next.isEmpty {
                 self.attempt(dir, queue: next, skipped: skipped + [(a.def, "\(a.def.name) " + (f?.shortText ?? ""))], job: job,
-                             captures: captures, project: project)
+                             captures: captures, project: project, candidates: candidates)
                 return
             }
             self.processing.removeAll { $0 == dir.path }
@@ -600,15 +627,8 @@ extension App {
             }
             let code = ["auth", "quota", "network", "model"].contains(f?.id ?? "") ? f!.id : "unknown"
             job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil))
+            Refile.runEnded(dir)
             self.refreshStatus()
-        }
-    }
-
-    /// Auto mode: the batch's items still in the inbox get a project (projects.py route --apply --session, its own
-    /// route job), outside the organizing run's sandbox. A failure leaves them in the inbox, where they are anyway.
-    func routeAfter(_ dir: URL) {
-        Scripts.run("projects.py", ["route", "--apply", "--session", dir.path], timeout: 300) { r in
-            if case .failure(let e) = r { emit(["event": "route_after", "session": dir.path, "error": "\(e)"]) }
         }
     }
 
@@ -633,7 +653,7 @@ extension App {
             }
             job.step("prepare", .done)
             job.step("write", .running)
-            let pa = a.def.processingArgs(env: agentEnvironment())
+            let pa = a.def.processingArgs(env: agentEnvironment(), kind: .cards)
             // a scratch cwd: never the project (the prompt names its code for reading)
             let cwd = BlurtPaths.home.appendingPathComponent("tmp/\(job.id)")
             try? FileManager.default.createDirectory(at: cwd, withIntermediateDirectories: true)
@@ -660,7 +680,7 @@ extension App {
                 job.setUsage(tokens: tokens, agent: a.def.id, model: pa.model, effort: pa.effort)
                 emit(["event": "process_usage", "job": job.id, "agent": a.def.id, "model": pa.model ?? NSNull(), "tokens": tokens ?? NSNull()])
                 job.step("write", status == 0 ? .done : .failed)
-                for s in ["transcribe", "frames", "route"] { job.step(s, .skipped) }
+                for s in ["transcribe", "frames"] { job.step(s, .skipped) }
                 job.finish(status == 0 ? .done : .failed,
                            error: status == 0 ? nil : JobError(code: AgentHub.shared.classify((try? String(contentsOf: log, encoding: .utf8)) ?? "")?.id ?? "unknown",
                                                                message: T("app.agent.unfinished", a.def.name, Int(status)), hintKey: nil))

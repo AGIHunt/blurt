@@ -344,15 +344,23 @@ describe("v3 UI", () => {
     done();
   });
 
-  it("an inbox item shows the AI's suggestion; accepting moves it", async () => {
+  it("an Unassigned item shows its organizing run's suggestion; Move moves it, and it shows only in Unassigned", async () => {
     vi.useFakeTimers();
     const { el, s, sent, done } = await mount(<Inspector />);
     await act(async () => s.go(1));
     expect(el.querySelector(".prov-sug")?.textContent).toContain("Looks like website");
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized · mentions the pricing page");
+    // no reason given: no dangling separator
+    await act(async () => { s.data.items[1].suggested_project!.reason = ""; s.go(0); });
+    await act(async () => s.go(1));
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized");
     await act(async () => (el.querySelector("#acceptSuggestion") as HTMLButtonElement).click());
     await act(flush);
     expect(sent[0][0]).toEqual({ op: "set", id: U(1), set: { project: "p-site" }, unset: [] });
     expect(s.data.items[1].id).toBe("WS-8");
+    // moved: the suggestion stays on the item (for ⌘Z) but isn't offered outside Unassigned
+    await act(flush);
+    expect(el.querySelector(".prov-sug")).toBeNull();
     done();
   });
 

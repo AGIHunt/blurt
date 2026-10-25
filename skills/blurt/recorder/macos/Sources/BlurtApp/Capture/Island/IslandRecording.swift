@@ -103,7 +103,7 @@ extension Island {
             m["project"] = ProjectStore.shared.currentID ?? NSNull()
             if let d = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: meta) }
         }
-        emit(["event": "project", "current": ProjectStore.shared.currentID ?? "auto"])
+        emit(["event": "project", "current": ProjectStore.shared.currentID ?? "inbox"])
         refresh()
     }
 

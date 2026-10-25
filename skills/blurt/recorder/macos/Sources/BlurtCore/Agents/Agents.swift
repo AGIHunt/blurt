@@ -214,7 +214,12 @@ public struct AgentModels: Decodable {
         public var description: String
         public var cheap: Bool
     }
-    public struct Processing: Decodable { public var model: String?; public var effort: String? }
+    /// model / effort: the cards kind (v0.8's one setting); recording / cards: each kind (ProcessingSpec)
+    public struct Processing: Decodable {
+        public struct Kind: Decodable { public var model: String?; public var effort: String? }
+        public var model: String?; public var effort: String?
+        public var recording: Kind?; public var cards: Kind?
+    }
     public var id: String
     public var models: [Model]
     public var cheapest: String?
@@ -370,19 +375,18 @@ public final class Agents {
         return m
     }
 
-    /// record.agent_processing.<id> = {model, effort}: what organising runs use ("cheapest" / "default" / an id).
-    public func setProcessing(_ id: String, model: String?, effort: String?) {
+    /// record.agent_processing.<id>.<kind> = {model, effort}: what organizing runs of that kind use ("cheapest" /
+    /// "default" / an id; nil = the default). ProcessingSpec.swift has the rules.
+    public func setProcessing(_ id: String, kind: ProcessingKind, model: String?, effort: String?) {
         var all = Config.shared["record.agent_processing"] as? [String: Any] ?? [:]
-        var o = all[id] as? [String: Any] ?? [:]
-        o["model"] = model
-        o["effort"] = effort
-        all[id] = o.isEmpty ? nil : o
+        all[id] = ProcessingSpec.setting(all[id], kind: kind, model: model, effort: effort)
         Config.shared.set("record.agent_processing", all.isEmpty ? nil : all)
     }
 
-    public func processingSetting(_ id: String) -> (model: String?, effort: String?) {
-        let o = (Config.shared["record.agent_processing"] as? [String: Any])?[id] as? [String: Any]
-        return (o?["model"] as? String, o?["effort"] as? String)
+    /// The user's own choice for `kind` (nil = not changed from the default).
+    public func processingSetting(_ id: String, kind: ProcessingKind) -> (model: String?, effort: String?) {
+        let o = ProcessingSpec.of((Config.shared["record.agent_processing"] as? [String: Any])?[id], kind)
+        return (o["model"], o["effort"])
     }
 
     public func command(_ id: String, mode: String, prompt: String, repo: URL, vars: [String: String] = [:],

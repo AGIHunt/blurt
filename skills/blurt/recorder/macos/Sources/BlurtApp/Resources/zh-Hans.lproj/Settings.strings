@@ -23,12 +23,12 @@
 "settings.general.after_recording" = "录完之后";
 "settings.general.app" = "应用";
 "settings.general.assistant" = "重新运行设置助手…";
-"settings.general.auto" = "自动：按内容归到各项目";
 "settings.general.capture_into" = "截图和语音备注归到";
 "settings.general.language" = "语言";
 "settings.general.language.restart" = "下次打开口喷鸡时生效。";
 "settings.general.language.system" = "跟随系统";
 "settings.general.login" = "登录时打开口喷鸡";
+"settings.general.none" = "未归类，之后再选项目";
 "settings.general.open_unassigned" = "在访达中显示未归类";
 "settings.general.projects.hint" = "项目就是本机上的一个文件夹。条目放在它的 .blurt 里，口喷鸡会帮你把它排除在 git 之外。";
 "settings.general.recording" = "录制";
@@ -256,7 +256,7 @@
 "settings.kw.pane.agents" = "Agent, AI, 编程助手";
 "settings.kw.pane.privacy" = "权限, 隐私, 安全";
 "settings.kw.pane.storage" = "磁盘, 空间, 大小, 删除, 清理, 废纸篓";
-"settings.kw.general.capture_into" = "项目, 文件夹, 待处理, 归到哪里, 自动归类";
+"settings.kw.general.capture_into" = "项目, 文件夹, 待处理, 归到哪里, 未归类, 当前项目";
 "settings.kw.general.projects" = "文件夹, 仓库, 添加项目, 移除项目, 未归类";
 "settings.kw.general.login" = "开机启动, 自动启动, 登录项, 开机";
 "settings.kw.general.language" = "英文, 中文, 界面语言, 翻译";
@@ -306,7 +306,7 @@
 "settings.kw.speech.mirror" = "镜像, Hugging Face, 国内, 下载速度, hf-mirror";
 "settings.kw.shortcuts.draw_key" = "画笔, 画图, 圈出, Control, 标注";
 "settings.kw.shortcuts.restore" = "重置, 默认, 冲突";
-"settings.kw.agents.list" = "顺序, 整理, 自动归类, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
+"settings.kw.agents.list" = "顺序, 整理, 模型, 思考强度, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
 "settings.kw.agents.ask" = "导出, 发送, 分享, 打包, 交接包, zip, Slack, 飞书, Lark, Linear, GitHub, Notion, Jira, 邮件";
 "settings.kw.privacy.permissions" = "录屏, 麦克风, 辅助功能, 输入监控, 允许, 屏幕录制";

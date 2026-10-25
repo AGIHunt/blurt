@@ -1,9 +1,10 @@
 // The middle column: the running jobs (K4) above a filter bar and a view-based NSTableView with a fixed row height.
 // Dense one-line rows everywhere; All Items shows the same table with a header and every column. Keyboard-first:
-// J/K, ↩, ⌘↩ (hand off), E, 1–4 (kind), Space (Quick Look), ⌘C (path), and K3's state keys — A keep, D done,
-// R the one way back (send back / take back / reopen / restore), W won't do, X / ⌫ discard, S the state menu. Rows
-// drag out as their primary frame (a file) and onto a project in the sidebar (move). Empty states for first run, no
-// matches, nothing yet.
+// J/K, ↩, ⌘↩ (hand off), E, M (move to a project: a type-to-filter popover), 1–4 (kind), Space (Quick Look), ⌘C
+// (path), and K3's state keys — A keep, D done, R the one way back (send back / take back / reopen / restore), W won't
+// do, X / ⌫ discard, S the state menu. Rows drag out as their primary frame (a file) and onto a project in the sidebar
+// (move). In Unassigned, a row an organizing run suggested a project for ends in "Looks like X · Move", and the groups
+// of them sit above the list with Move All (ProjectPicking.swift). Empty states for first run, no matches, nothing yet.
 import AppKit
 import BlurtCore
 import Quartz
@@ -24,6 +25,9 @@ protocol ItemListActions: AnyObject {
     func selectJob(_ id: String)               // a row of the jobs section
     /// ↑ / ↓ at the edge between the jobs and the items: true when it moved among the jobs (or back to the items)
     func stepJobs(_ d: Int, fromRow row: Int) -> Bool
+    /// Items to a project, the user's move (⌘Z puts them back): a row's "Looks like X · Move", a group's Move All
+    func move(uids: [String], to project: String)
+    func pickProject()                         // M: the Move popover at the selection
 }
 
 /// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
@@ -52,6 +56,7 @@ final class ItemTableView: NSTableView {
             case (125, _) where mods.isEmpty: move(1); return
             case (126, _) where mods.isEmpty: move(-1); return
             case (_, "e"): actions?.renameSelection(); return
+            case (_, "m") where mods.isEmpty: actions?.pickProject(); return
             case (_, "s"): actions?.showStateMenu(row: selectedRowIndexes.first, from: nil); return
             case (_, "a"), (_, "d"), (_, "r"), (_, "w"), (_, "x"): actions?.act(key: ch.lowercased()); return
             case (_, "/"): actions?.focusSearch(); return
@@ -483,6 +488,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let captures = CapturesBanner()
     let taken = TakenBanner()
     let missing = MissingFolderBanner()
+    let suggestions = SuggestionsBanner()
     let bar = FilterBar()
     let empty = EmptyStateView()
     /// the item the empty state's "Show AW-11" goes to
@@ -573,13 +579,14 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
         }
         NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
-        let stack = NSStackView(views: [captures, taken, missing, jobs, bar])
+        suggestions.onMoveAll = { [weak self] p, uids in self?.actions?.move(uids: uids, to: p) }
+        let stack = NSStackView(views: [captures, taken, missing, jobs, suggestions, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             captures.widthAnchor.constraint(equalTo: stack.widthAnchor), taken.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            missing.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            missing.widthAnchor.constraint(equalTo: stack.widthAnchor), suggestions.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor), stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -733,6 +740,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         bar.sync(model)
         reloadCaptures()
         reloadMissing()
+        suggestions.set(model.indexState == .ready && Scripts.canWrite ? model.suggestionGroups : [], projects: model.projects)
         updateEmpty()
         if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().reloadData() }
         let ids = set.compactMap { id(at: $0) }
@@ -922,6 +930,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             let hit = searching && SearchHit.adds(it.snippet, to: it.title) ? it.snippet : nil
             c.set(title: it.title, unread: it.state == "new", dimmed: quiet, struck: false, hit: hit)
             c.toolTip = [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
+            // an Unassigned item the organizing run suggested a project for: one click files it there (⌘Z undoes)
+            let sug = it.projectID == "inbox" && !it.discarded && Scripts.canWrite
+                ? it.suggestedProject.flatMap { s in model.project(id: s).flatMap { $0.registered ? $0 : nil } } : nil
+            c.setSuggestion(sug?.name, move: sug.map { p in { [weak self] in self?.actions?.move(uids: [it.uid], to: p.id) } })
             return c
         case "meta":
             let c = make("meta") { MetaCell() }

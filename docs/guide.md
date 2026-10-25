@@ -77,15 +77,29 @@ Speech is transcribed on your computer. Nothing leaves it unless you choose a cl
 A **project** is a folder on your computer, the way an editor opens one: *Open Folder…* (`⌘O`) in the main window, or
 drag a folder onto it. Items live inside the folder in `.blurt/`, which Blurt keeps out of git for you.
 
-The **current project** decides where new captures go. Press `⌥⇧O` (or click the project name on the island) to
-switch:
+The **current project** decides where new captures go. You pick it; Blurt never guesses one from the app you're in,
+and never moves an item on its own. Press `⌥⇧O` (or click the project name on the island) and type a few letters of
+its name or key to switch; the menu bar's *Current Project ▸* (recently used first), *Settings → General* and the main
+window's command palette (`⌘K`) do the same.
 - **A project** — every snap and voice note goes straight into it and is processed right away, with a note or
-  without one.
-- **Auto** — captures wait as cards (below) until you say where they belong.
+  without one. A recording's items go there too.
+- **Unassigned** (no current project) — snaps and voice notes wait as cards (below) until you say where they belong;
+  a recording's items go to **Unassigned**.
 
-A recording is never a card: when it ends it is processed, and each item is filed into the project it is about.
-Items Blurt can't place go to **Unassigned**; move them later by dragging them onto a project in the sidebar.
-`⌘Z` moves them back (with the IDs they had).
+When a recording ends, the island says where it went — *Filed to Atlas Web · Change* — and **Change** puts it in
+another project (it waits until organizing is done if it has to). A snap filed straight into a project says the same:
+*Filed to Atlas Web · AW-14 · Change*. Either way *Moved to … · Undo* takes it back. An item you have already moved
+somewhere yourself stays where you put it: Change and Undo only move the ones still where the recording put them.
+
+When something is organized without a project, the agent is told your projects (their names, descriptions, folders and
+newest titles) and may **suggest** one per item. It is only a suggestion: in **Unassigned** the item ends with *Looks
+like Atlas Web · Move*, one click files it there, and items with the same suggestion are listed together under a line
+*Looks like Atlas Web* with **Move All (3)**. `⌘Z` (or the toast's Undo) moves them back, with the IDs they
+had — and the suggestion is still there.
+
+In the main window, select items (`⌘`-click, `⇧`-click, `⌘A`) and press **`M`**: a small list opens at the selection —
+type to filter, `↩` moves them all, `Esc` closes. You can also drag them onto a project in the sidebar, or use *Move to
+Project* in the toolbar, the right-click menu or `⌘K`. Every move has `⌘Z`.
 
 Projects stay in the sidebar in your order: a folder you open goes last, drag a project to move it, and using one
 never reorders them — so `⌘5`…`⌘9` always open the same five. Double-click a project (or select it and press Return)
@@ -94,7 +108,7 @@ to rename it in place. **Remove from Blurt** happens right away (the folder and 
 
 ### 3. Hanging cards
 
-In Auto mode each snap or voice note hangs under the island on a thin thread, like a wind chime. They tuck away into
+With no current project each snap or voice note hangs under the island on a thin thread, like a wind chime. They tuck away into
 the island when you're not looking (the number left of the notch counts them) and come back when you need them:
 
 - **Rest the pointer on the island** for a moment (or open it): every card drops down with the island's details and
@@ -115,10 +129,11 @@ the island when you're not looking (the number left of the notch counts them) an
 
 What you can do with a card:
 
-- **Drag a card onto a project** in the island's list to file it there and start processing.
-- Drag it onto **Unassigned** to process it without a project. *Auto-sort* in a card's right-click menu sends that
-  card to the AI, which files it into the project it is about; *Auto-sort All Cards* in the island's right-click menu (or
-  **Auto-sort** in the island) does it for every card.
+- **Drag a card onto a project** in the island's list to file it there and start processing. `⌘`-click several cards
+  first to move them together: drag any of them, or right-click → *Move N Cards To ▸* (projects recently used first).
+- Drag it onto **Unassigned** to file it without a project. **Organize** (in the island, in a card's right-click menu,
+  or *Organize All Cards* in the island's right-click menu) hands the cards to the agent in one run: into the current
+  project when there is one, otherwise into Unassigned with a suggested project for each item (see above).
 - **Read it on the card**: a snap shows its note along the bottom of the picture — what you typed first, then what you
   said. The small mic mark means the words were spoken. While your words are still being written down the card says
   *Transcribing…*; if that fails it says *Couldn't transcribe* and the right-click menu has *Retry Transcription*. If
@@ -205,6 +220,7 @@ brings back an empty one. To go through a freshly processed capture quickly, ope
 previous, `A` keep, `X` discard, `Z` undo, `M` merge into the previous item, `G` list view, `?` all shortcuts.
 
 Editing, the Mac way:
+- `M` moves the selected items to a project: type to filter, `↩` to move (see Projects).
 - `E` renames the selected item right in the list (Return keeps it, Esc puts the old title back); Return moves into the
   item's details with the cursor at the end of its title. In a field, Esc puts back what was there; Esc again (or `⇧Tab`
   from the first control) goes back to the list.
@@ -519,13 +535,15 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
 
 ### 8. Settings, storage and privacy
 
-- **Agents** lists the coding agents Blurt uses to organize recordings and snaps, auto-sort and fill in with AI, in
-  order: the first that works runs, and the next takes over on a sign-in or quota problem. Untick the ones you don't
-  use. Only a problem that stops Blurt shows in red. Each installed agent shows *Skill + MCP* once the blurt skill and
-  MCP are in it, or *No skill or MCP yet* with *Connect…*, which shows what it will change before it does. **Ask your
-  agent** at the bottom has three requests to start from (copy one with the button next to it): sending items to a
-  chat, filing them in a tracker, fixing one. There is no Export pane any more: your agent sends items with its own
-  tools, and old links to it open here.
+- **Agents** lists the coding agents Blurt uses to organize recordings, snaps and voice notes and to fill in with AI,
+  in order: the first that works runs, and the next takes over on a sign-in or quota problem. Under each agent,
+  **Recordings** and **Cards** say which model and effort it uses: recordings get the agent's own model at low effort,
+  cards (and AI fill-in) the cheapest model; change either there. Untick the ones you don't use. Only a problem that
+  stops Blurt shows in red. Each installed agent shows *Skill + MCP* once the blurt skill and MCP are in it; while they
+  are missing it offers *Connect…*, which shows what it will change before it does. **Ask your agent** at the bottom
+  has three requests to start from (copy one with the button next to it): sending items to a chat, filing them in a
+  tracker, fixing one. There is no Export pane any more: your agent sends items with its own tools, and old links to
+  it open here.
 - **Storage** shows what takes space: recordings and snaps per folder, every model with its size (*In use* or not),
   dictation history and audio, and Blurt's own files. A model nothing uses can go to the Trash. Videos are most of the
   space (about 9 MB a minute): *Delete* removes the videos of organized recordings older than 30, 90 or 180 days, or
@@ -599,12 +617,22 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 **项目**就是你电脑上的一个文件夹，跟编辑器打开文件夹一样：在主窗口里「打开文件夹…」（`⌘O`），或者把文件夹拖进来。
 条目存在这个文件夹的 `.blurt/` 里，口喷鸡会自动让它不进 git。
 
-**当前项目**决定新的截图和语音备注去哪。按 `⌥⇧O`（或点刘海上的项目名）切换：
-- **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。
-- **自动**：它们先挂成卡片（见下），等你决定放哪。
+**当前项目**决定新的截图、语音备注和录屏去哪。由你来选：口喷鸡不会按你正在用的 App 去猜，也不会自己移动条目。按
+`⌥⇧O`（或点刘海上的项目名），打几个字母（项目名或代号）就能切换；菜单栏的「当前项目 ▸」（最近用过的在前）、「设置 →
+通用」和主窗口的命令面板（`⌘K`）也一样。
+- **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的条目也进这里。
+- **未归类**（不选当前项目）：截图和语音备注先挂成卡片（见下），等你决定放哪；录屏的条目进「**未归类**」。
 
-录屏不会挂卡片：结束就开始整理，每一条按内容归到对应的项目。归不了类的进「**未归类**」，之后在侧栏里拖到项目上就行。
-`⌘Z` 能移回去（编号也回到原来的）。
+录屏结束时，刘海上会写明它去了哪——「已归到 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
+直接归进项目的截图也一样：「已归到 Atlas Web · AW-14 · 更改」。换了之后会提示「已移到 … · 撤销」，点撤销就移回来。
+你自己已经挪走的条目留在你放的地方：「更改」和「撤销」只移动还在原处的那些。
+
+没选项目的内容整理时，Agent 会拿到你的项目列表（名字、描述、文件夹和最近几条的标题），可以给每一条**建议**一个项目。
+这只是建议：在「**未归类**」里，这一条后面会写「像是 Atlas Web 的 · 归过去」，点一下就归过去；建议同一个项目的条目排在一起，
+上方有一行「像是 Atlas Web 的」和「**全部归过去 (3)**」。`⌘Z`（或提示里的「撤销」）能移回去，编号回到原来的，建议也还在。
+
+在主窗口里选中条目（`⌘` 点、`⇧` 点、`⌘A`）后按 **`M`**：在选中的地方弹出一个小列表，打字筛选，`↩` 全部移过去，`Esc` 关闭。
+也可以拖到侧栏的项目上，或者用工具栏、右键菜单、`⌘K` 里的「移到项目」。每次移动都能 `⌘Z`。
 
 侧栏里的项目按你的顺序排：新打开的文件夹排在最后，拖动项目就能调整，用哪个都不会改变顺序——所以 `⌘5`…`⌘9` 永远对应同样的五个项目。
 双击项目（或选中后按回车）可以直接改名。「**从口喷鸡移除**」立刻生效（文件夹和条目都不动），「**撤销**」会把项目原样放回来。
@@ -612,7 +640,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 ### 3. 挂着的卡片
 
-自动模式下，每张截图、每段语音备注用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
+没选当前项目时，每张截图、每段语音备注用一根细线挂在岛的下方，像风铃。你不看的时候它们会收进岛里（刘海左边的数字就是有几张），需要时再放下来：
 
 - **鼠标在岛上停一下**（或者打开岛）：所有卡片跟着岛的详情一起垂下来，岛展开时跟着岛一起往下走。只是路过刘海去点菜单，卡片不会掉下来。鼠标在岛上、卡片上或卡片的线上时一直挂着，离开后很快收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
 - **点刘海左边的数字**、按 **`⌥⇧H`**（「显示挂着的卡片」），或者用菜单里的「显示 N 张挂着的卡片」：卡片放下来并一直挂着，直到你把鼠标移过来再移走（一直没移过来的话，10 秒后收起），或者鼠标在卡片上、或刚放下来的几秒内按 `Esc`（给别的 App 的 `Esc` 不会被拦下）。
@@ -621,8 +649,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 卡片能做的事：
 
-- **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。
-- 拖到「**未归类**」：先整理，稍后再选项目。卡片右键菜单里的「自动归类」只把这一张交给 AI，按内容归到对应的项目；岛的右键菜单里的「自动归类全部卡片」（或者岛上的「**自动归类**」）把所有卡片一起交给 AI。
+- **把卡片拖到岛上列出的某个项目**：归到那个项目，开始整理。先按住 `⌘` 点选几张，就能一起移：拖其中任意一张，或者右键 →「把 N 张卡片移到 ▸」（最近用过的项目在前）。
+- 拖到「**未归类**」：先存着，稍后再选项目。「**整理**」（岛上的按钮、卡片右键菜单，或岛右键菜单里的「整理全部卡片」）把卡片一次交给 Agent：有当前项目就整理进这个项目，没有就整理进「未归类」，每一条附上建议的项目（见上）。
 - **单击复制**，然后在任何地方 `⌘V`：截图会把图片和备注一起复制。备忘录、文本编辑、邮件、Pages 这类一次就能连图带字收下的应用，直接一起贴进去，就像复制一条图文消息。聊天应用——浏览器（网页版 DeepSeek、ChatGPT、Claude）、Claude、飞书/Lark、Slack、微信、QQ，以及其他粘贴里只要有图片就只收图片的应用——会先贴图片，再把备注作为第二次粘贴贴上（多张卡片就一张图一段备注依次贴），岛上显示「图 + 文已粘贴」。点卡片后的 2 分钟内有效，前提是你没有再复制别的；贴完剪贴板里还是这份卡片，可以再按 `⌘V`。终端和访达拿到的是普通的粘贴。语音卡片复制说的话。右键可以单独「复制图片」或「复制文字」。（单击后会等一个双击的间隔再复制，所以双击改备注不会先把你的剪贴板换掉。）
 - **一次复制好几张**：按住 `⌘` 点卡片来选（选中的有一圈彩色边框），每次 `⌘` 点都会把选中的卡片作为一份内容复制好——图片和备注按挂着的顺序排（最新的在前），就像对一串消息 `⌘A` `⌘C`。普通单击或者卡片收起来，选择就结束。卡片右键菜单里的「复制全部 N 张卡片」（或者岛的右键菜单里「复制全部 N 张挂着的卡片」）一次复制所有卡片，最新的在前。
 - **拖到别的应用里**：截图拖出去是图片（`截图-153012.png`，画过就带笔迹）连同备注——先图片，后文字：
@@ -658,6 +686,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 `A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键。
 
 按 Mac 的习惯编辑：
+- `M` 把选中的条目移到项目：打字筛选，`↩` 移过去（见「项目和当前项目」）。
 - `E` 直接在列表里改标题（回车保存，Esc 恢复原标题）；回车进入右边的详情，光标停在标题末尾。在字段里按 Esc 恢复原来的内容，再按一次（或在第一个控件上按 `⇧Tab`）回到列表。
 - 在「**复现步骤**」里，回车开始下一步，在空的一步上回车结束列表，`⌃⌘↑` / `⌃⌘↓` 移动一步。
 - 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、任务），列表和详情里一样。
@@ -787,7 +816,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 
 ### 8. 设置、存储和隐私
 
-- **Agent**：口喷鸡用来整理录屏和截图、自动归类、AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」，还没有时显示「还没装 skill 和 MCP」和「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条。「导出」设置页已经去掉：发到哪里由 Agent 用它自己的工具完成，以前指向「导出」的链接会打开这里。
+- **Agent**：口喷鸡用来整理录屏、截图和语音备注以及 AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。每个 Agent 下面的「**录屏**」和「**卡片**」是各自用的模型和思考强度：录屏默认用 Agent 自己的模型、低思考强度，卡片（和 AI 补全）默认用最省的模型，都能在这里改。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」；还没装时有「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条。「导出」设置页已经去掉：发到哪里由 Agent 用它自己的工具完成，以前指向「导出」的链接会打开这里。
 - **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，岛上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），岛上会说。
 - **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
 - **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API key 时，语音本来就只在你的 Mac 上识别；打开它，以后设置了 key 也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。

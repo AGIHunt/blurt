@@ -34,7 +34,8 @@ public struct JobError {
 /// The fixed step ids per job type (K4; the UI shows `job.step.<id>`).
 public let jobSteps: [JobType: [String]] = [
     .record: ["capture", "finalize"], .snap: ["capture"], .voice: ["listen", "transcribe", "file"],
-    .process: ["prepare", "transcribe", "write", "frames", "route"], .route: ["route"], .agent: ["launch", "work", "finish"],
+    // no routing step any more: an organizing run only suggests projects (route jobs are v0.8 files, still read)
+    .process: ["prepare", "transcribe", "write", "frames"], .route: ["route"], .agent: ["launch", "work", "finish"],
 ]
 
 /// The `agent` object of an agent job (K5).
