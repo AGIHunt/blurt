@@ -37,6 +37,9 @@ or in the agent's desktop app (Claude: --runner desktop).
   sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch]
                        merge / pr commit what the agent left uncommitted in its worktree first ("Commit and Merge":
                        a sandboxed agent can't commit there); discard takes the items back to To Do
+  sessions.py take-back JOB                  收回: the items still with it go back to To Do; a session that is over
+                                             and left no change also goes (its window, worktree and branch: finish
+                                             action take_back) — with changes, they stay ({"has_changes"}) for review
   sessions.py restart JOB                    the same items, agent and model in a fresh session (the old one ended
                                              without changes: its window, worktree and branch go); once per job
                                              (code finished after that)
@@ -301,6 +304,21 @@ def worktree_root(project: dict, root: Path) -> Path:
     return Path(custom).expanduser().resolve() if custom else root.parent / f".{root.name}-worktrees"
 
 
+def remove_worktree(repo: Path, wt_path: str, branch: str | None, force: bool = True, keep_branch: bool = False) -> bool:
+    """`git worktree remove` (+ its branch), then the folder that held it when nothing else is left there (Blurt made
+    .<repo>-worktrees/ next to the user's project: it doesn't stay behind empty). → the worktree is gone."""
+    git(repo, "worktree", "remove", *(["--force"] if force else []), wt_path, check=False)
+    if branch and not keep_branch:
+        git(repo, "branch", "-D" if force else "-d", branch, check=False)
+    parent = Path(wt_path).parent
+    try:
+        if parent.is_dir() and parent != repo and not any(parent.iterdir()):
+            parent.rmdir()
+    except OSError:
+        pass
+    return not Path(wt_path).exists()
+
+
 # ------------------------------------------------------------------ jobs of type agent
 def agent_jobs() -> list[dict]:
     return [j for j in jobs.all_jobs() if j.get("type") == "agent"]
@@ -395,15 +413,23 @@ def pane_tail(pane: str, n: int = TAIL_LINES) -> list[str]:
     return [ln for ln in lines if ln.strip() and not ln.startswith("Pane is dead (")][-n:]
 
 
-def exit_error(tail: list[str], exit_code: int | None) -> dict:
+def exit_error(tail: list[str], exit_code: int | None, agent: str | None = None, cwd: str | None = None) -> dict:
     """job.error of an agent that ended with a non-zero exit (or can't start): the class its last words fit (login,
-    quota…), else agent_exit; the message is its last line, the detail the tail."""
+    quota, too old…), else agent_exit; the message is its last line (for the log), the detail the tail. A known class
+    also gets `reason`: the sentence for people in the UI language, naming the agent and what to do."""
     import agents
+    import handoff
     text = "\n".join(tail)
     cls = agents.classify(text)
     last = next((ln.strip() for ln in reversed(tail) if ln.strip()), "")
-    return {"code": cls if cls in jobs.ERROR_CODES else "agent_exit",
-            "message": (last or f"exit {exit_code}")[:300], "hint_key": None, "detail": text[-2000:] or None}
+    out = {"code": cls if cls in jobs.ERROR_CODES else "agent_exit",
+           "message": (last or f"exit {exit_code}")[:300], "hint_key": None, "detail": text[-2000:] or None}
+    if cls and agent:
+        defn = agents.definitions(agents.config(cwd)).get(agent) or {}
+        lang = handoff.ui_lang()
+        fix = (defn.get("fix") or {}).get(lang) or ""
+        out["reason"] = agents.failure_reason(cls, defn.get("name") or agent, fix, lang)
+    return out
 
 
 def _hooks_kind(a: dict) -> str | None:
@@ -437,7 +463,7 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
         a["last_output"] = text.splitlines()[-TAIL_LINES:]
         if a.get("status") != "error":
             _set_status(job, "error", "tty")
-            job["error"] = {**exit_error([bad.strip()], None), "detail": text[-2000:]}
+            job["error"] = {**exit_error([bad.strip()], None, a.get("id"), a.get("cwd")), "detail": text[-2000:]}
         return
     hit = any(re.search(pat, text, re.I | re.M) for pat in patterns) if text else False
     if hit and hooks and a.get("hooks_live") and a.get("status_source") != "tty" and w["activity"] <= since:
@@ -497,7 +523,7 @@ def sync(only: list[str] | None = None) -> list[dict]:
                             failed = (w["exit"] or 0) != 0
                             _set_status(job, "error" if failed else "exited", "tmux", w["exit"])
                             if failed and not job.get("error"):
-                                job["error"] = exit_error(a["last_output"], w["exit"])
+                                job["error"] = exit_error(a["last_output"], w["exit"], a.get("id"), a.get("cwd"))
                     elif active:
                         _tty_fallback(job, w, now)
                 elif a.get("runner") == "desktop" and active and a.get("items_handed") and (only or _desktop_due(job["id"], now)):
@@ -853,20 +879,23 @@ def plan(refs: list[str], agent: str | None, mode: str, worktree: str, runner: s
     gone = [i["uid"] for i in items if i.get("state") == "discarded"]
     if gone:
         raise SessionError("deleted", "discarded items can't be handed to an agent", items=gone)
-    busy = [i["uid"] for i in items if i.get("state") not in ("new", "todo", "handed_off")]
-    if busy:
-        raise SessionError("bad_transition", "some items are already being worked on or done — reopen them first",
-                           items=busy)
+    done = [i["uid"] for i in items if i.get("state") not in ("new", "todo", "handed_off", "in_progress")]
+    if done:
+        raise SessionError("bad_transition", "some items are waiting to be verified or are done — reopen them first",
+                           items=done)
     wins = panes()
-    for i in items:  # handed off to a session that is still going (an agent at its first prompt): not a second time
-        jid = (i.get("work") or {}).get("job") if i.get("state") == "handed_off" else None
+    stale = []  # in progress with a session that is over (it failed to start, or ended without saying it's done)
+    for i in items:  # with a session that is still going (an agent at its first prompt, or at work): not a second time
+        jid = (i.get("work") or {}).get("job") if i.get("state") in ("handed_off", "in_progress") else None
         try:
             other = jobs.get(jid) if jid else None
         except jobs.JobError:
             other = None
         if other and other.get("type") == "agent" and other.get("state") in ("running", "queued") and is_alive(other, wins):
             raise SessionError("already_dispatched", f"{i.get('id') or i['uid']} is already with a session",
-                               job=jid, items=[i["uid"]])
+                               job=jid, items=[i["uid"]], id=i.get("id") or "")
+        if i.get("state") == "in_progress":
+            stale.append(i["uid"])
     try:
         project = handoff.project(pid)
     except handoff.CliError as e:
@@ -917,8 +946,10 @@ def plan(refs: list[str], agent: str | None, mode: str, worktree: str, runner: s
     drafts = [it["uid"] for it in items if it.get("state") == "new"]  # handing them off is keeping them
     if drafts:
         warnings.append({"code": "draft_confirmed", "items": drafts})
+    if stale:  # taken back from the session that ended, then handed to this one (both in the item's history)
+        warnings.append({"code": "taken_back", "items": stale})
     return {"project": project, "agent": agent_id, "mode": mode, "runner": use_runner, "worktree": want_wt,
-            "jobs": out, "warnings": warnings, "root": str(root) if root else None}
+            "jobs": out, "warnings": warnings, "root": str(root) if root else None, "stale": stale}
 
 
 def _public(entry: dict) -> dict:
@@ -992,6 +1023,11 @@ def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
     mcp = None
     out_jobs, launch = [], []
     warnings = list(pl["warnings"])
+    if pl.get("stale"):  # in progress with a session that is over: back to To Do first, as 收回 would
+        try:
+            handoff.set_work(pl["stale"], "todo", by="user")
+        except handoff.CliError as err:
+            raise SessionError(err.code, str(err)) from None
     for e in pl["jobs"]:
         jid = jobs.new_id()
         agent_obj = {"id": pl["agent"], "model": model, "mode": mode, "runner": pl["runner"], "tmux": None, "cwd": e["cwd"],
@@ -1365,6 +1401,40 @@ def _take_back(job_id: str, uids: list[str]) -> list[str]:
     return mine
 
 
+def take_back(job_id: str) -> dict:
+    """收回: the items still with this session go back to To Do (the user's move, in their history). A session that
+    is over then cleans up after itself when nothing of it would be lost — its dead window, and a worktree with no
+    commit and no uncommitted change (with its branch): no folder or blurt/… branch left next to the user's repo, no
+    -2 / -3 on the next hand-off. A worktree with changes stays for review (has_changes); a live session keeps going."""
+    import handoff
+    job = _job(job_id)
+    a = job.get("agent") or {}
+    try:
+        taken = _take_back(job_id, job.get("items") or [])
+    except handoff.CliError as e:
+        raise SessionError(e.code, str(e)) from None
+    out: dict = {"ok": True, "taken_back": taken, "cleaned": False}
+    wins = panes()
+    if a.get("finish") or (job.get("state") in ("running", "queued") and is_alive(job, wins)):
+        return out
+    wt = a.get("worktree")
+    if wt and Path(wt.get("path") or "").is_dir():
+        ch = changes(wt)
+        if ch["ahead"] or ch["dirty"]:
+            return {**out, "has_changes": ch}
+        if not _shared_worktree(job, wt):
+            remove_worktree(Path(wt["repo"]), wt["path"], wt["branch"])
+    w = wins.get(job_id)
+    if w:
+        tmux("kill-window", "-t", w["window"], check=False)
+
+    def done(j):
+        j.setdefault("agent", {})["finish"] = {"action": "take_back", "at": jobs.now_iso(), "result": {"taken_back": taken}}
+        _step(j, "finish", "done")
+    jobs.update(job_id, done)
+    return {**out, "cleaned": True}
+
+
 def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
     import handoff
     job = _job(job_id)
@@ -1405,10 +1475,7 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
         result["commit"] = git(main, "rev-parse", "HEAD").stdout.strip()
         if live:
             tmux("kill-window", "-t", live["window"], check=False)
-        git(main, "worktree", "remove", wt["path"], check=False)
-        if not keep_branch:
-            git(main, "branch", "-d", wt["branch"], check=False)
-        result["removed"] = not Path(wt["path"]).exists()
+        result["removed"] = remove_worktree(main, wt["path"], wt["branch"], force=False, keep_branch=keep_branch)
     elif action == "pr":
         remote = git(main, "remote", "get-url", "origin", check=False).stdout.strip()
         if not remote:
@@ -1433,10 +1500,7 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
             if not live["dead"]:
                 stop(job_id, kill=False)
             tmux("kill-window", "-t", live["window"], check=False)
-        git(main, "worktree", "remove", "--force", wt["path"], check=False)
-        if not keep_branch:
-            git(main, "branch", "-D", wt["branch"], check=False)
-        result["removed"] = not Path(wt["path"]).exists()
+        result["removed"] = remove_worktree(main, wt["path"], wt["branch"], keep_branch=keep_branch)
     moved = []
     if action in ("merge", "pr"):
         moved = _items_in(job.get("items") or [], ("handed_off", "in_progress"))
@@ -1518,9 +1582,7 @@ def _restart(job_id: str, lang: str | None) -> dict:
     if w:
         tmux("kill-window", "-t", w["window"], check=False)
     if wt and not _shared_worktree(job, wt):
-        root = Path(wt["repo"])
-        git(root, "worktree", "remove", "--force", wt["path"], check=False)
-        git(root, "branch", "-D", wt["branch"], check=False)
+        remove_worktree(Path(wt["repo"]), wt["path"], wt["branch"])
 
     def ended(j):
         if j.get("state") in ("running", "queued"):
@@ -1616,6 +1678,8 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("job")
     s.add_argument("--action", required=True, choices=["diff", "merge", "pr", "discard", "keep"])
     s.add_argument("--keep-branch", action="store_true")
+    s = sub.add_parser("take-back")
+    s.add_argument("job")
     s = sub.add_parser("restart")
     s.add_argument("job")
     s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
@@ -1654,6 +1718,8 @@ def main(argv: list[str] | None = None) -> None:
             emit(stop(a.job, a.kill))
         elif a.cmd == "finish":
             emit(finish(a.job, a.action, a.keep_branch))
+        elif a.cmd == "take-back":
+            emit(take_back(a.job))
         elif a.cmd == "restart":
             emit(restart(a.job, a.lang))
         elif a.cmd == "event":

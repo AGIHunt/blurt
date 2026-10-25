@@ -27,15 +27,11 @@ final class HandoffBundleTests: XCTestCase {
         XCTAssertEqual(HandoffBundle.slug(String(repeating: "x", count: 80)).count, 60)
     }
 
-    func testTheFailureAlertSaysWhy() {
-        // ours, then the script's reason; the general sentence only when there is neither
-        XCTAssertEqual(HandoffBundle.failureText(ours: "Choose another folder.", script: "can't write /System/x.zip: Permission denied",
-                                                 fallback: "Something went wrong."),
-                       "Choose another folder.\n\ncan't write /System/x.zip: Permission denied")
-        XCTAssertEqual(HandoffBundle.failureText(ours: nil, script: " can't read pay.png: Permission denied\n", fallback: "G"),
-                       "can't read pay.png: Permission denied")
-        XCTAssertEqual(HandoffBundle.failureText(ours: "No items match.", script: "No items match.", fallback: "G"), "No items match.")
-        XCTAssertEqual(HandoffBundle.failureText(ours: nil, script: "", fallback: "G"), "G")
+    func testTheFailureAlertSaysWhyInWords() {
+        // the app's sentence for the code (with what to do), else the general one — never the script's English
+        XCTAssertEqual(HandoffBundle.failureText(ours: "Choose another folder.", fallback: "Something went wrong."), "Choose another folder.")
+        XCTAssertEqual(HandoffBundle.failureText(ours: nil, fallback: "G"), "G")
+        XCTAssertEqual(HandoffBundle.failureText(ours: "  ", fallback: "G"), "G")
     }
 
     func testTheExportPaneMovedToAgents() {

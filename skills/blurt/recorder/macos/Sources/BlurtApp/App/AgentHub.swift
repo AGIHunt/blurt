@@ -5,7 +5,11 @@
 // — Claude Code, Codex, Kimi Code, OpenCode, Gemini CLI); record.agent_defs adds or overrides an agent.
 // The first one that is installed and not known to be logged out runs. If it fails before items.json exists for a
 // reason another agent wouldn't share (login, quota, model), the next one gets the recording. Every attempt and every
-// skipped agent is written to <session>/agent.log and meta.json → "agent"; the toasts say the same in one line.
+// skipped agent is written to <session>/agent.log and meta.json → "agent"; the toasts say the same in one line, for
+// every switch (before the run or during it), once per job — and the job itself keeps it (`organizer`: its detail says
+// "由 Codex 整理（Claude Code 没登录）"). A run the app starts re-checks every agent that wasn't ready (a probe spends no
+// tokens): logging in and pressing Retry works at once, never "no usable agent" from a minute-old answer. With none
+// usable, the job says each agent of the user's order with its own fix.
 // Every run here is unattended on recording-derived text, so it gets the least privilege (BlurtCore UnattendedRun):
 // cwd = the session folder (AI fill-in: a scratch folder under $BLURT_HOME/tmp), never the project, whose code the
 // prompt names for reading only; Claude / Gemini may run only the skill's scripts by absolute path; Codex's sandbox
@@ -288,10 +292,13 @@ final class AgentHub {
     func cached(_ id: String) -> AgentStatus? { cache[id] }
 
     /// Statuses in order; fresh ones from the cache (OK: 10 min, anything else: 1 min), the rest checked in parallel.
-    func check(_ list: [AgentDef], force: Bool = false, then: @escaping ([AgentStatus]) -> Void) {
+    /// `recheck`: anything not ready is checked again whatever its age (a run about to start: the user may just have
+    /// logged in).
+    func check(_ list: [AgentDef], force: Bool = false, recheck: Bool = false, then: @escaping ([AgentStatus]) -> Void) {
         let group = DispatchGroup()
         for d in list {
-            if !force, let c = cache[d.id], Date().timeIntervalSince(c.at) < (c.state == .ready ? 600 : 60) { continue }
+            if !force, let c = cache[d.id], !(recheck && c.state != .ready),
+               Date().timeIntervalSince(c.at) < (c.state == .ready ? 600 : 60) { continue }
             group.enter()
             if inFlight[d.id] != nil { inFlight[d.id]!.append { _ in group.leave() }; continue }
             inFlight[d.id] = [{ _ in group.leave() }]
@@ -455,14 +462,14 @@ extension App {
         hub.reload()
         let order = only.flatMap { hub.def($0) }.map { [$0] } ?? hub.order()
         let log = dir.appendingPathComponent("agent.log")
-        hub.check(order) { [weak self] statuses in
+        hub.check(order, recheck: true) { [weak self] statuses in
             guard let self = self else { return }
             let skipped = Array(statuses.prefix { !$0.state.usable })
             let queue = statuses.filter { $0.state.usable }
             guard !queue.isEmpty else { return self.noAgent(dir, statuses, job: job) }
             if !skipped.isEmpty {
                 appendLog(log, "── blurt \(nowStamp()) · " + skipped.map { "\($0.def.name): \($0.why)" }.joined(separator: " · ") + "\n")
-                self.noteFallback(skipped, using: queue[0])
+                self.noteFallback(skipped.map { $0.def.name + $0.shortWhy }, using: queue[0].def, job: job)
             }
             // an Unassigned capture: the run is told the projects, so it can leave a suggestion per item (nothing moves)
             self.candidates(for: dir, project: project) { text in
@@ -489,16 +496,26 @@ extension App {
         }
     }
 
-    /// The first agent in the user's order can't run (not logged in, not installed): say once, on the island, which
-    /// one organises instead — otherwise the switch is only in agent.log. Again only when the reason changes.
-    func noteFallback(_ skipped: [AgentStatus], using: AgentStatus) {
-        let key = skipped.map { "\($0.def.id):\($0.state.rawValue)" }.joined(separator: ",") + ">" + using.def.id
-        guard App.fallbackNoted != key else { return }
-        App.fallbackNoted = key
-        let why = skipped.map { $0.def.name + $0.shortWhy }.joined(separator: T("app.agent.list_sep"))
-        AppEnvironment.island?.toast(T("app.agent.fallback_notice", why, using.def.name), actionTitle: nil, action: nil)
+    /// Another agent organises instead of the first in the user's order (it couldn't run, or stopped on login, quota
+    /// or model during the run): say so on the island — every switch, once per job — and keep it on the job, whose
+    /// detail says who organised it instead of whom. `why`: "Claude Code 没登录", one per agent passed over.
+    func noteFallback(_ why: [String], using: AgentDef, job: JobWriter) {
+        let key = why.joined(separator: ",") + ">" + using.id
+        guard App.fallbackNoted[job.id] != key else { return }
+        App.fallbackNoted[job.id] = key
+        job.set("organizer", ["agent": using.id, "instead_of": why] as [String: Any])
+        emit(["event": "organize_fallback", "job": job.id, "agent": using.id, "instead_of": why])
+        AppEnvironment.island?.toast(T("app.agent.fallback_notice", why.joined(separator: T("app.agent.list_sep")), using.name),
+                                     actionTitle: nil, action: nil)
     }
-    static var fallbackNoted: String?
+    /// job id → the switch already said for it
+    static var fallbackNoted: [String: String] = [:]
+
+    /// "还没有能用的 Agent：Claude Code 没登录 — 在终端运行 claude，然后输入 /login；Codex 没安装 — …" — each agent of the
+    /// user's order with its own fix, never a fixed list.
+    static func noAgentReason(_ statuses: [AgentStatus]) -> String {
+        T("main.job.no_agent", statuses.map { "\($0.def.name) \($0.why)" }.joined(separator: T("main.job.no_agent.sep")))
+    }
 
     func noAgent(_ dir: URL, _ statuses: [AgentStatus], job: JobWriter) {
         processing.removeAll { $0 == dir.path }
@@ -510,7 +527,7 @@ extension App {
             m["agent"] = ["result": "none", "short": T("app.agent.none_short"), "at": nowStamp(),
                           "agents": statuses.map { ["id": $0.def.id, "state": $0.state.rawValue, "why": $0.why] }]
         }
-        job.finish(.failed, error: JobError(code: "auth", message: lines.joined(separator: "; "), hintKey: "main.job.hint.no_agent"))
+        job.finish(.failed, error: JobError(code: "auth", message: lines.joined(separator: "; "), reason: App.noAgentReason(statuses)))
         Refile.runEnded(dir)
     }
 
@@ -568,7 +585,7 @@ extension App {
             // it never started: say so on the job instead of leaving it "running" and the recording blocked
             processing.removeAll { $0 == dir.path }
             appendLog(log, "── blurt \(nowStamp()) · couldn't start \(a.def.name): \(error)\n")
-            job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name): \(error)"))
+            job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name): \(error)", reason: T("app.agent.couldnt_start", a.def.name)))
             Refile.runEnded(dir)
             refreshStatus()
             return
@@ -615,8 +632,10 @@ extension App {
             if f?.id == "auth" { AgentHub.shared.invalidate(a.def.id, as: .loggedOut) }
             let next = Array(queue.dropFirst())
             if ["auth", "quota", "model"].contains(f?.id ?? ""), !next.isEmpty {
-                self.attempt(dir, queue: next, skipped: skipped + [(a.def, "\(a.def.name) " + (f?.shortText ?? ""))], job: job,
-                             captures: captures, project: project, candidates: candidates)
+                // switching agents mid-run is said like a switch before it (and kept on the job)
+                let passed = skipped + [(a.def, "\(a.def.name) " + (f?.shortText ?? ""))]
+                self.noteFallback(passed.map(\.1), using: next[0].def, job: job)
+                self.attempt(dir, queue: next, skipped: passed, job: job, captures: captures, project: project, candidates: candidates)
                 return
             }
             self.processing.removeAll { $0 == dir.path }
@@ -625,8 +644,10 @@ extension App {
                     ["result": "failed", "class": f?.id ?? "unknown", "short": f?.shortText ?? T("job.state.failed"), "reason": reason,
                      "exit": Int(status), "done_at": nowStamp()]) { _, n in n }
             }
-            let code = ["auth", "quota", "network", "model"].contains(f?.id ?? "") ? f!.id : "unknown"
-            job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil))
+            let code = OrganizeSteps.agentLevel.contains(f?.id ?? "") ? f!.id : "unknown"
+            let transcribed = FileManager.default.fileExists(atPath: dir.appendingPathComponent("transcript.json").path)
+            for (s, st) in OrganizeSteps.onFailure(failureClass: f?.id, transcribed: transcribed) { job.step(s, st) }
+            job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil, reason: reason))
             Refile.runEnded(dir)
             self.refreshStatus()
         }
@@ -645,10 +666,10 @@ extension App {
         job.step("prepare", .running)
         let hub = AgentHub.shared
         hub.reload()
-        hub.check(hub.order()) { statuses in
+        hub.check(hub.order(), recheck: true) { statuses in
             guard let a = statuses.first(where: { $0.state.usable }), let bin = a.bin else {
                 job.finish(.failed, error: JobError(code: "auth", message: statuses.map { "\($0.def.name): \($0.why)" }.joined(separator: "; "),
-                                                    hintKey: "main.job.hint.no_agent"))
+                                                    reason: App.noAgentReason(statuses)))
                 return
             }
             job.step("prepare", .done)
@@ -690,7 +711,7 @@ extension App {
                 job.set("agent_pgid", Int(g.pgid))
                 if let t = g.started { job.set("agent_pgid_start", NSNumber(value: t)) }
             } else {
-                job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name) couldn't start"))
+                job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name) couldn't start", reason: T("app.agent.couldnt_start", a.def.name)))
             }
         }
         return job.id

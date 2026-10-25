@@ -5,6 +5,18 @@
 import AppKit
 import BlurtCore
 
+/// Any error as a sentence for people (K10: codes are localised, raw text only logged): a script's or projects.py's
+/// code → its sentence, a timeout → "等太久了", else the general one. `context` names the call in the log line.
+func peopleText(_ e: Error, context: String) -> String {
+    NSLog("blurt %@: %@", context, "\(e)")
+    switch e {
+    case let f as Scripts.Failure: return f.localized
+    case let p as ProjectError: return Scripts.Failure(code: p.code, message: "\(p)").localized
+    case ScriptError.timeout: return T("main.error.timeout")
+    default: return T("main.error.generic")
+    }
+}
+
 enum Scripts {
     static var dir: URL { BlurtPaths.scripts }
     static func url(_ name: String) -> URL { dir.appendingPathComponent(name) }

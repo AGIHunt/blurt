@@ -25,7 +25,10 @@ enum Look {
     static func stateLabel(_ it: ItemRow) -> String {
         guard it.state == "handed_off" else { return stateName(it.state) }
         if it.workTo == "external" { return T("state.handed_off.external") }
-        if let a = it.workAgent, let d = AgentHub.shared.def(a) { return T("state.handed_off.session", d.name) }
+        if let j = it.workJob.flatMap({ JobStore.shared.job($0) }), let a = j.agent, a.isDesktop {
+            return T("state.handed_off.desktop", DesktopApp.name(a.agent))
+        }
+        if let a = it.workAgent { return T("state.handed_off.session", AgentNames.name(a)) }
         return stateName("handed_off")
     }
     /// The state's text colour next to its ring: the ring's own colour where it asks for you, quiet otherwise.

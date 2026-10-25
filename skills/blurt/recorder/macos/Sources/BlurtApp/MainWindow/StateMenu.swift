@@ -12,12 +12,12 @@ import BlurtCore
 enum StateMenu {
     /// The actions offered for these items, in lifecycle order (= each state's own menu order for one item).
     static func actions(for items: [ItemRow], canHandOff: Bool) -> [String] {
-        let live = items.filter { !$0.legacy }
+        let live = items.filter { !$0.readOnly }
         return Lifecycle.actions.filter { a in (a != "hand_off" || canHandOff) && live.contains { Lifecycle.canDo(a, $0.state) } }
     }
 
     static func valid(_ action: String, _ items: [ItemRow]) -> [ItemRow] {
-        items.filter { !$0.legacy && Lifecycle.canDo(action, $0.state) }
+        items.filter { !$0.readOnly && Lifecycle.canDo(action, $0.state) }
     }
 
     /// "Mark as done — You checked, it's fixed" when every item it applies to is waiting to be verified.

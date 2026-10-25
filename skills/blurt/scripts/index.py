@@ -7,7 +7,8 @@ nothing, `index.py scan` rebuilds it. Schema v3: docs/contracts/index-schema.sql
 
   index.py path                        → {"db": "…/index.db"}
   index.py scan [--root DIR …] [--full]   projects.json's projects, the inbox, ~/Blurt/recordings (v0.6), projects
-                                       found earlier, --root → {"projects","sessions","items","ms"}
+                                       found earlier, --root → {"projects","sessions","items","unreadable":[{uid,id,path}],"ms"}, plus
+                                       "skipped":[{path,error}] for files that could not be indexed at all
                                        (unchanged files are skipped unless --full)
   index.py update PATH …               re-index .md files, store dirs or session dirs (gone → their rows go)
   index.py update --workspace DIR      re-index DIR's store (<DIR>/.blurt) if it has one (no-op otherwise)
@@ -411,8 +412,25 @@ def _session_id_for(con, d, now: float, reg: dict) -> str | None:
     return None
 
 
+def _guarded(con, report: dict | None, path, fn, *a, **kw):
+    """One file or session, in its own SAVEPOINT: whatever goes wrong with it is rolled back alone and listed in
+    report["skipped"] — one bad file never stops a scan or an update batch (the rest still commits)."""
+    con.execute("SAVEPOINT one")
+    try:
+        r = fn(*a, **kw)
+    except Exception as e:  # noqa: BLE001 — anything: the file is skipped, the scan goes on
+        con.execute("ROLLBACK TO one")
+        con.execute("RELEASE one")
+        if report is not None:
+            report.setdefault("skipped", []).append({"path": str(path), "error": f"{type(e).__name__}: {e}"[:300]})
+        return None
+    con.execute("RELEASE one")
+    return r
+
+
 def index_file(con, p: Path, now: float, reg: dict, s: st.Store | None = None, force: bool = True) -> str:
-    """(Re)index one .md. Returns "skipped" | "indexed" | "removed"."""
+    """(Re)index one .md. Returns "skipped" | "indexed" | "unreadable" | "removed". A file that doesn't parse keeps
+    its row (and uid) with parse_error set: lists still show it, its detail says it can't be read."""
     p = real(p)
     if not p.is_file():
         n = con.execute("DELETE FROM items WHERE path = ?", (str(p),)).rowcount
@@ -427,12 +445,15 @@ def index_file(con, p: Path, now: float, reg: dict, s: st.Store | None = None, f
     try:
         item = st.read_item(p)
     except (st.Unparseable, OSError) as e:
-        h = st.read_header(p)
-        uid = h.get("uid") if isinstance(h.get("uid"), str) else "X" + hashlib.sha1(str(p).encode()).hexdigest()[:25]
+        h = st.salvage_header(p)  # uid / id / title from the lines that still parse
+        was = con.execute("SELECT uid FROM items WHERE path = ?", (str(p),)).fetchone()
+        uid = h.get("uid") if isinstance(h.get("uid"), str) else \
+            was["uid"] if was else "X" + hashlib.sha1(str(p).encode()).hexdigest()[:25]
+        con.execute("DELETE FROM items WHERE path = ? AND uid != ?", (str(p), uid))  # one row per file, always
         r = {**item_row({"uid": uid, "id": h.get("id") or p.stem, "title": h.get("title") or p.stem,
                          "kind": h.get("kind")}, s.root, pid, None, str(p), mtime), "parse_error": str(e)[:300]}
         _insert_item(con, r)
-        return "indexed"
+        return "unreadable"
     src = item.get("source") if isinstance(item.get("source"), dict) else {}
     sid = _session_id_for(con, src.get("session"), now, reg)
     _insert_item(con, item_row(item, s.root, pid, sid, str(p), mtime))
@@ -531,18 +552,19 @@ def _count(con, sids=None) -> None:
             con.execute(sql + " WHERE id = ?", (sid,))
 
 
-def index_store(con, s: st.Store, now: float, reg: dict, force: bool = False) -> dict:
-    """Every session and item file of a store; rows of files that went away are dropped."""
+def index_store(con, s: st.Store, now: float, reg: dict, force: bool = False, report: dict | None = None) -> dict:
+    """Every session and item file of a store; rows of files that went away are dropped. Each file on its own
+    (_guarded): one that can't be indexed is listed in report["skipped"] and the rest go on."""
     pid = _ensure_project(con, s, now, reg)
     sessions = []
     if s.sessions_dir.is_dir():
         for d in sorted(s.sessions_dir.iterdir()):
             if is_session(d):
-                index_session(con, d, now, reg, force=force)
+                _guarded(con, report, d, index_session, con, d, now, reg, force=force)
                 sessions.append(str(real(d)))
     files = s.files()
     for p in files:
-        index_file(con, p, now, reg, s, force=force)
+        _guarded(con, report, p, index_file, con, p, now, reg, s, force=force)
     keep = {str(real(p)) for p in files}
     for r in con.execute("SELECT path FROM items WHERE project_id = ? AND path NOT LIKE '%#%'", (pid,)).fetchall():
         if r["path"] not in keep and Path(r["path"]).parent == s.items_dir:
@@ -587,14 +609,15 @@ def scan(extra: list[Path] | None = None, full: bool = False) -> dict:
     try:
         stores, loose = _stores(extra, con)
         found: set[str] = set()
+        report: dict = {}
         with _Tx(con):
             for s in stores:
-                found.update(index_store(con, s, now, reg, force=full)["sessions"])
+                found.update(index_store(con, s, now, reg, force=full, report=report)["sessions"])
             for c in loose:
                 for d in sorted(c.iterdir()):
                     if is_session(d):
                         found.add(str(real(d)))
-                        index_session(con, d, now, reg, force=full)
+                        _guarded(con, report, d, index_session, con, d, now, reg, force=full)
             for r in con.execute("SELECT id, dir FROM sessions").fetchall():
                 if r["dir"] not in found and not is_session(Path(r["dir"])):
                     con.execute("DELETE FROM sessions WHERE id = ?", (r["id"],))
@@ -611,9 +634,16 @@ def scan(extra: list[Path] | None = None, full: bool = False) -> dict:
             con.execute("INSERT INTO meta(key, value) VALUES ('last_full_scan', ?) "
                         "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(round(now, 3)),))
         counts = {k: con.execute(f"SELECT COUNT(*) FROM {k}").fetchone()[0] for k in ("projects", "sessions", "items")}
+        counts["unreadable"] = _unreadable(con)
     finally:
         con.close()
-    return {**counts, "ms": round((time.perf_counter() - t0) * 1000, 1)}
+    return {**counts, **report, "ms": round((time.perf_counter() - t0) * 1000, 1)}
+
+
+def _unreadable(con) -> list[dict]:
+    """Item files that don't parse (indexed with parse_error): the app says so once, and their detail explains."""
+    return [{"uid": r["uid"], "id": r["item_id"], "path": r["path"]} for r in
+            con.execute("SELECT uid, item_id, path FROM items WHERE parse_error IS NOT NULL ORDER BY path")]
 
 
 def update_paths(paths, force: bool = True) -> dict:
@@ -631,12 +661,12 @@ def update_paths(paths, force: bool = True) -> dict:
                 if p.name in ("items.json", "batch.json", "shots.jsonl", "meta.json"):
                     p = p.parent
                 if p.suffix == ".md":
-                    n += int(index_file(con, p, now, reg) != "skipped")
+                    n += int(_guarded(con, extra, p, index_file, con, p, now, reg) not in ("skipped", None))
                 elif (p / "store.json").exists() or (p / "items").is_dir() and not is_session(p):
-                    index_store(con, st.Store(p), now, reg, force=force)
+                    index_store(con, st.Store(p), now, reg, force=force, report=extra)
                     n += 1
                 else:
-                    r = index_session(con, p, now, reg, force=force)
+                    r = _guarded(con, extra, p, index_session, con, p, now, reg, force=force) or {"skipped": True}
                     n += 0 if r.get("skipped") else 1
                     if r.get("error"):
                         extra.setdefault("error", []).append(r["error"])
@@ -660,7 +690,7 @@ def update_workspace(folder: Path) -> dict:
     con = connect()
     try:
         with _Tx(con):
-            r = index_store(con, s, time.time(), _registry(), force=False)
+            r = index_store(con, s, time.time(), _registry(), force=False, report={})
     finally:
         con.close()
     return {"updated": len(r["sessions"]) + r["items"], "ms": round((time.perf_counter() - t0) * 1000, 1)}

@@ -305,3 +305,18 @@
     (BlurtCore `SerialWork` / `UndoStep`), drop a failed write's step; ⌘⌫ / Delete on the list discards items (never a
     project); an id typed in the search that this place doesn't list says where the item is (Show it); ↑ from the first
     row reaches the banners above the list. (The page's per-step state undo is in the shared review store already.)
+- [ ] Work fixes after dogfood pass 2 (Mac, branch fxwork) — the Tauri app's counterparts:
+  - Hand-off checked before the panel opens (BlurtCore `HandOffCheck`): discarded → Restore, to verify / done →
+    Reopen, still with a live session → Open Session, unreadable → Open in Editor; the panel takes the items' own
+    project (default agent, remembered model), keeps Start off after a failed dry run, shows every warning in one
+    tinted box and never a raw code (`error.bad_transition`, `error.auth.fix`, `warning.taken_back` …).
+  - An unreadable item file: the detail's "can't be read" state with Open in Editor / Show in Folder, its state
+    actions refused with that reason; the launch scan's `unreadable` said once, a failed scan said with Try Again.
+  - Organising: Retry re-checks agents that weren't ready; `job.error.reason` shown before the code's sentence, never
+    `message`; the failed step from `OrganizeSteps`; `organizer` ("Organized by Codex (Claude Code …)") on the job
+    and a notch line for every switch (mid-run too); the no-agent reason lists the user's order with each fix.
+  - Take Back through `sessions.py take-back` (cleans a no-change ended session's worktree, branch and window).
+  - Desktop hand-off without the blurt MCP: banner "no progress comes back here" + Mark as Done; row "waiting for you".
+  - Codex hooks: the `blurt-hook` shim is sh only — Windows needs a `.cmd` / PowerShell shim so the hook command stays
+    byte-stable there too (agents.py `hook_command` keeps the old interpreter path on `os.name == "nt"`).
+  - Shortcuts panel on Ctrl+/ (not Ctrl+Shift+/); jobs strip "Running"; quit alert with Cancel as the default.

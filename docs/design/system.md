@@ -222,6 +222,22 @@ that read as bold digits) and is now two open rounded marks. Still to look at: `
 circles close up at 13–14 px), `merge` (a narrow Y, lighter than its neighbours), `film` (a dense grid at 14) and
 `languages` (letters, busier than the rest).
 
+### 2.7 Work surfaces: marks that must not collide (dogfood-2)
+
+- **Session status marks** (TerminalStyle `SessionStatusMark`): one shape per state, so they read in grayscale — running a
+  turning arc, waiting an attn disc with "!", turn done an ok disc with a check, error an err disc with "×" (never a bare
+  red dot: that is the recording dot, §2.3), exited a hollow ring, in the desktop app an outward arrow.
+- **Places**: 进行中 (In Progress) uses the in-progress ring's shape (`circle.righthalf.filled`) in the sidebar and ⌘K —
+  never `circle.dashed`, which is the new ring. All Items is `list.bullet.rectangle` everywhere.
+- **⌘K / menus**: Copy Instruction `doc.on.doc` (the copy glyph, not the dense clipboard), Reveal in Finder
+  `arrow.up.forward.app`, Move to Project… / Move to X `arrow.turn.up.right` — `folder` means a project only.
+- **Organise** is `sparkles` on every surface (job rows, the item banner); the wand stays dictation polish, and the
+  Settings → Agents pane uses the hand-off `paperplane`.
+- **Key hints** (`kbd`) are set in the UI font, tabular figures, as macOS menus set their keys — in a monospace the letter
+  O reads as zero.
+- **The quote mark** (`quote`) is two open comma marks, a dot and a hook each — no closed counters, so it never reads as
+  "66" at 16 px.
+
 ## 3. Usage by surface
 
 Legend: **G** = gradient (`linear` unless noted), **B** = `gradient.button` with a white title, **S** = the
@@ -297,7 +313,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Move popover (M in the main window) | the system popover | type-to-filter field, rows: check (brand ink) where the items are now, folder glyph in the project's colour, name, key in mono secondary; Unassigned last |
 | Job running (process) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. The spinner is always the brand arc (`BrandSpinner`), never the system's grey spokes. |
 | Item banner of a hand-off | I wash while the agent works · `attn` wash when it waits for you · neutral 5 % wash once the session ended | `SessionBannerPlan`: the first button is the one primary; two inline at most, the rest in a borderless ⋯ menu (`more`). Ended without a report: Open Session, Restart Session · ⋯ Mark as Done, Take Back. Failed: Restart Session, Take Back · ⋯ Open Session, with the reason ("Codex couldn't start: …") and an `err` icon. Ready to review: Review Changes… (opens the sheet), Take Back · ⋯ Mark as Done. No response (watchdog): `attn`, Open Session, Restart Session. In Claude desktop (`desktop:`): I wash, "In Claude desktop · progress comes from the agent", Go to Claude · ⋯ Open Session, Review Changes… (with a worktree), Take Back — nothing live is claimed. Never Mark as Done as the primary. |
-| A session in the agent's desktop app | neutral card | In place of the terminal: "Working in Claude" (the header line doesn't repeat where it is), that Blurt doesn't see it live (and, without the blurt MCP there, that the items need marking by hand) and progress comes from the agent, its items, Go to Claude as the B primary and Review Changes… plain (worktree). The hand-off panel's *Session* row is a radio pair, the terminal first and marked recommended; the desktop choice says once, in a caption, to confirm the folder and press Send in Claude, and without the blurt MCP a quiet info line with Install… (never a blocker). Continue in Claude Desktop… sits in the session's ⋯ menu only when it can work, and asks first; without the blurt MCP the question says progress can't be reported and offers Install… beside Continue. Its status mark is a still ring with a dot, never the spinner, and it isn't counted as running. |
+| A session in the agent's desktop app | neutral card | In place of the terminal: "Working in Claude" (the header line doesn't repeat where it is), that Blurt doesn't see it live (and, without the blurt MCP there, that the items need marking by hand) and progress comes from the agent, its items, Go to Claude as the B primary and Review Changes… plain (worktree). The hand-off panel's *Session* row is a radio pair, the terminal first and marked recommended; the desktop choice says once, in a caption, to confirm the folder and press Send in Claude, and without the blurt MCP a quiet info line with Install… (never a blocker). Continue in Claude Desktop… sits in the session's ⋯ menu only when it can work, and asks first; without the blurt MCP the question says progress can't be reported and offers Install… beside Continue. Its status mark is an outward arrow in a ring (`arrow.up.right.circle`), never the spinner and never the handed-off ring's dot, and it isn't counted as running. Without the blurt MCP the item's banner says no progress comes back and puts Mark as Done next to Go to Claude, and the session row reads "waiting for you to mark it". |
 | A session's ended card | neutral | How it ended (`SessionOutcome`), the agent's last lines when it failed, one B primary: Review Changes… (changes) or Restart Session (failed); Take Back / Show Output plain. The dead terminal is never shown first. The header's Review Changes… is plain `.bordered` and only appears while the output is shown. Restart / Take Back are off while one runs. One wording per state everywhere (`AgentSessionRow.stateText`: the list, the header, the job row and detail): *Couldn't start* / 启动失败 in both the card title and the row. The review sheet's Merge / Commit and Merge is the B primary on ⌘↩ (no bare Return); Discard's confirmation defaults to Cancel. |
 | Progress bars | I (light) / M (dark) | flat: too thin for the gradient |
 | Kind icons | kind tokens | |

@@ -20,7 +20,7 @@
 
 
 "settings.general.after_recording" = "录完之后";
-"settings.general.app" = "App";
+"settings.general.app" = "应用";
 "settings.general.capture_into" = "截图和语音备注归到";
 "settings.general.language" = "语言";
 "settings.general.language.restart" = "下次打开口喷鸡时生效。";

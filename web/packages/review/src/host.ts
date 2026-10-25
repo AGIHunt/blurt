@@ -42,7 +42,7 @@ export interface WorkRecord {
   by?: "user" | "agent" | "app";
 }
 export interface ItemSource {
-  type?: "recording" | "snap" | "voice" | "url" | "import" | "service";
+  type?: "recording" | "snap" | "voice" | "dictation" | "url" | "import" | "service";
   by?: string | null;
   role?: string | null;
   app?: string | null;
@@ -118,6 +118,10 @@ export interface ReviewDoc {
   _removed?: Record<string, string>;
   /** v3: every project an item can move to (the inbox has id "inbox") */
   projects?: ProjectRef[];
+  /** agent id → its display name (agents.json + the user's agent_defs) and its desktop app's name, if it has one */
+  agents?: Record<string, { name: string; desktop?: string | null }>;
+  /** item mode: the item asked for, when its file can't be read (it is there; Blurt won't overwrite it) */
+  _unreadable?: { uid: string | null; id: string; title?: string | null; path: string }[];
   [k: string]: unknown;
 }
 /** @deprecated v2 name */

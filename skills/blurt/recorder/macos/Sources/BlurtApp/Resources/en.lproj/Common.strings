@@ -19,6 +19,7 @@
 "state.handed_off" = "Handed off";
 "state.handed_off.session" = "Handed off to %@";
 "state.handed_off.external" = "Copied to your agent";
+"state.handed_off.desktop" = "Handed off to the %@ desktop app";
 "state.in_progress" = "In progress";
 "state.to_verify" = "To verify";
 "state.done" = "Done";

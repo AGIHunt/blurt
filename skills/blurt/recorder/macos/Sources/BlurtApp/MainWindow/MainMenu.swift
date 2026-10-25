@@ -102,7 +102,9 @@ enum MainMenu {
                                      item(T("main.project.remove"), #selector(MainWindowController.mRemoveShownProject))])
         _ = menu(T("menu.window"), [item(T("menu.minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil),
                                     item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil)])
-        let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),
+        // ⌘/ (as Linear and Raycast): AppKit keeps ⇧⌘/ (⌘?) for the Help menu's search field, so that key never
+        // reached this item
+        let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command]),
                                          item(T("menu.website"), #selector(MainWindowController.mHelp))])
         NSApp.helpMenu = help
         NSApp.windowsMenu = main.items.first { $0.title == T("menu.window") }?.submenu
@@ -219,7 +221,7 @@ enum ShortcutsSheet {
          (T("main.keys.section.window"), [
             ("⌘Z  ⇧⌘Z", T("main.keys.undo")), ("⌃⌘S", T("menu.toggle_sidebar")), ("⌥⌘I", T("main.keys.detail")),
             ("⌘I", T("main.project.settings").replacingOccurrences(of: "…", with: "")), ("⌘W  ⌘Q", T("main.keys.close_window")),
-            ("?", T("main.keys.this")),
+            ("?  ⌘/", T("main.keys.this")),
          ])]
     }
 
@@ -278,7 +280,8 @@ enum ShortcutsSheet {
 final class ShortcutsPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { orderOut(nil) }
     override func keyDown(with e: NSEvent) {
-        if e.charactersIgnoringModifiers == "?" { orderOut(nil) } else { super.keyDown(with: e) }
+        let k = e.charactersIgnoringModifiers
+        if k == "?" || (k == "/" && e.modifierFlags.contains(.command)) { orderOut(nil) } else { super.keyDown(with: e) }
     }
 }
 

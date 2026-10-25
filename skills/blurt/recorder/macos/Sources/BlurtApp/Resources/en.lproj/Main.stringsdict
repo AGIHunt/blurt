@@ -141,9 +141,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>In progress · %ld</string>
+			<string>Running · %ld</string>
 			<key>other</key>
-			<string>In progress · %ld</string>
+			<string>Running · %ld</string>
 		</dict>
 	</dict>
 	<key>main.jobs.failed</key>

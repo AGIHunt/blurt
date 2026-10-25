@@ -15,6 +15,7 @@
 "app.agent.not_installed" = "not installed";
 "app.agent.not_logged" = "not signed in";
 "app.agent.unfinished" = "%@ stopped before it finished";
+"app.agent.couldnt_start" = "%@ couldn’t start. Check that it runs in a terminal, then retry.";
 
 "app.menu.after.keep" = "Just keep the video";
 "app.menu.after.organize" = "Organize into items";
@@ -49,8 +50,9 @@
 "app.toast.saved" = "Recording saved (%@)";
 "app.toast.welcome" = "Blurt is in the menu bar · %1$@ to dictate · %2$@ to snap";
 
-"app.url.no_item" = "Can’t find that item (%@)";
-"app.url.no_session" = "That recording or snap is gone: %@";
+"main.project.removed_name" = "a removed project";
+"app.url.no_item" = "Can’t find that item. It may have been deleted or moved.";
+"app.url.no_session" = "That recording or snap is gone. It may have been deleted or moved.";
 
 "main.action.record" = "Record";
 "main.action.snap" = "Snap";
@@ -85,9 +87,20 @@
 "main.detail.none" = "Nothing selected";
 "main.detail.none.detail" = "Pick an item on the left · J / K to move, Space to preview";
 "main.detail.parse_error" = "This item’s file can’t be read";
+"main.detail.parse_error.detail" = "It was edited into something Blurt can’t read, so Blurt won’t overwrite it. Fix it in an editor and save; it shows up here again.";
+"main.unreadable.fix_first" = "This item’s file can’t be read. Fix it in an editor first.";
+"main.unreadable.open" = "Open in Editor";
+"main.unreadable.show" = "Show";
+"main.unreadable.found" = "%@’s file can’t be read. Fix it in an editor.";
+"main.unreadable.found.many" = "%d item files can’t be read. Fix them in an editor.";
+"main.scan.failed" = "Couldn’t refresh the list.";
 
 "main.dispatch.needs_project" = "Move these items to a project first";
 "main.dispatch.one_project" = "Choose items from one project";
+"main.dispatch.discarded" = "Discarded items can’t be handed off.";
+"main.dispatch.reopen_first" = "This item is %@. Reopen it to hand it off again.";
+"main.dispatch.with_session" = "%@ is already with a session.";
+"main.dispatch.open_session" = "Open Session";
 
 "main.empty.all_filed" = "Everything is filed";
 "main.empty.all_filed.detail" = "Items without a project wait here until you move them to one.";
@@ -181,7 +194,19 @@
 "main.job.error.quota" = "The agent ran out of quota.";
 "main.job.error.quota.named" = "%@ ran out of quota.";
 "main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
-"main.job.hint.no_agent" = "No coding agent is set up. Install or log in to Claude Code or Codex in Settings, under Agents.";
+"main.job.hint.no_agent" = "No coding agent is ready. Install or sign in to one in Settings, under Agents.";
+"main.job.capture" = "A capture";
+"main.job.no_agent" = "No coding agent is ready: %@.";
+"main.job.no_agent.sep" = "; ";
+"main.job.organized_by" = "Organized by %1$@ (%2$@)";
+"main.job.error.agent_exit" = "The agent stopped before it finished.";
+"main.job.error.agent_exit.named" = "%@ stopped before it finished.";
+"main.job.error.io" = "Blurt couldn’t read or write a file it needs. Retry; if it keeps failing, the details are in the log.";
+"main.job.error.model.named" = "The model %@ uses isn’t available right now.";
+"main.job.error.network.named" = "Couldn’t reach %@’s service. Check your network or proxy, then retry.";
+"main.job.error.skill" = "The Blurt skill isn’t ready. Update the skill, then retry.";
+"main.job.error.unknown" = "It stopped before it finished. Retry; if it keeps failing, the details are in the log.";
+"main.job.error.unknown.named" = "%@ stopped before it finished. Retry; if it keeps failing, the details are in the log.";
 "main.job.hint.interrupted" = "Blurt quit before this finished. Retry to run it again.";
 "main.job.no_terminal" = "The terminal isn’t available";
 "main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
@@ -223,6 +248,9 @@
 "main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
 "main.bundle.saved" = "Hand-off bundle saved: %@";
 "main.bundle.failed" = "Couldn’t export the hand-off bundle";
+"main.bundle.error.io" = "Blurt couldn’t write there. Choose another folder.";
+"main.bundle.error.unreadable" = "A screenshot or clip couldn’t be read, so nothing was packed.";
+"main.bundle.error.no_items" = "There are no items to pack.";
 "main.bundle.packing" = "Packing the hand-off bundle (%@)…";
 "main.menu.kind" = "Kind";
 "main.suggest.label" = "Suggested projects";
@@ -242,10 +270,6 @@
 "main.misc.by_codex" = "Fixed by Codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
 "main.misc.fixed" = " · fixed";
-"main.misc.idea" = "Idea";
-"main.misc.issue" = "Issue";
-"main.misc.note" = "Note";
-"main.misc.task" = "Task";
 
 "main.move.failed" = "Couldn’t move the items";
 "main.move.undo_name" = "Move to %@";
@@ -317,7 +341,7 @@
 "main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
 
 "main.state.ax" = "State: %@. Click to change it.";
-"main.toast.download_failed" = "Couldn’t save it: %@";
+"main.toast.download_failed" = "Couldn’t save it to Downloads.";
 "main.toast.downloaded" = "Saved to Downloads: %@";
 "main.toast.session_gone" = "This session has ended and its record was cleared.";
 "main.speech.recommended" = "Recommended speech model for this Mac · %@";
@@ -493,8 +517,9 @@
 "main.banner.restart" = "Restart Session";
 "main.banner.ended_review" = "Session ended, ready to review";
 "app.quit.organizing.title" = "Blurt is still organizing “%@”.";
+"app.quit.organizing.title_at" = "Blurt is still organizing what you captured %@.";
 "app.quit.organizing.title_n" = "Blurt is still organizing %ld batches.";
-"app.quit.organizing.detail" = "Quitting stops it. You can retry it from the jobs above the list.";
+"app.quit.organizing.detail" = "Quitting stops it. You can retry it later under Running, above the list.";
 "app.quit.organizing.quit" = "Quit Anyway";
 
 // dogfood v0.9 review
@@ -502,4 +527,5 @@
 "main.banner.more" = "More";
 // the agent's desktop app (Claude)
 "main.banner.desktop" = "In the %@ desktop app · the agent reports progress";
+"main.banner.desktop.no_mcp" = "In the %@ desktop app · no progress comes back here: mark it done when it is";
 "main.banner.go_desktop" = "Go to %@";

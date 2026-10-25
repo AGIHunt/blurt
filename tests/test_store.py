@@ -233,7 +233,10 @@ class HandEdits(TmpCase):
         code, out = run_cli("items.py", "patch", str(p), "--set", "owner=x", env=self.e.env())
         self.assertEqual((code, out["code"]), (1, "unparseable"))
         self.assertEqual(p.read_text(), bad)
-        self.assertIsNone(s.find(uid="01JB7ZK3Q4M8W2E5R6T9Y0ABCD"))
+        # still found by its uid (dogfood-2 W56: the app addresses items by uid, and a broken one must say it can't be
+        # read, never that it's gone) — through the lines that do parse; reading it still refuses
+        self.assertEqual(s.find(uid="01JB7ZK3Q4M8W2E5R6T9Y0ABCD"), p)
+        self.assertEqual(st.salvage_header(p).get("uid"), "01JB7ZK3Q4M8W2E5R6T9Y0ABCD")
 
 
 class StoreBasics(TmpCase):

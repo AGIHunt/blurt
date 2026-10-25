@@ -10,6 +10,9 @@
 // worktree; Start opens its claude:// link (DesktopApp) and the sheet has said once that the user confirms the folder
 // and presses Send there. Without the blurt MCP for that agent nothing reports progress: the sheet says the items
 // then need marking by hand and offers Install (the Settings → Agents installer).
+// The project (its default agent, the remembered model, the header) is the items' own — never the sidebar's current
+// one; the current project only seeds New Session's picker. A dry run that fails keeps Start off, its reason in the
+// same tinted box as every other warning here (never a raw code: sessionsErrorText).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -65,12 +68,21 @@ final class DispatchModel: ObservableObject {
     init(items: [String], project: String?) {
         self.items = items.map(DispatchModel.label)
         pickItems = items.isEmpty
-        projectID = project ?? ProjectStore.shared.currentID ?? ProjectStore.shared.projects.first?.id
+        projectID = Self.projectOf(items: items, given: project, current: ProjectStore.shared.currentID,
+                                   first: ProjectStore.shared.projects.first?.id) { IndexLookup.item(uid: $0)?.projectID }
+    }
+
+    /// The items' own project (the first one the index knows); without items (New Session), the one given, else the
+    /// current one.
+    static func projectOf(items: [String], given: String?, current: String?, first: String?,
+                          lookup: (String) -> String?) -> String? {
+        if let p = items.lazy.compactMap(lookup).first { return p }
+        return given ?? current ?? first
     }
 
     static func label(_ uid: String) -> DispatchItem {
         if let it = IndexLookup.item(uid: uid) { return DispatchItem(uid: uid, ref: it.itemID, title: it.title) }
-        return DispatchItem(uid: uid, ref: String(uid.prefix(8)), title: "")
+        return DispatchItem(uid: uid, ref: "", title: "")          // filled in by loadLabels (items.py get)
     }
 
     /// Item ids and titles from the store (`items.py get`), for items the index doesn't know yet.
@@ -82,7 +94,7 @@ final class DispatchModel: ObservableObject {
                 g.addTask {
                     guard let o = try? await ScriptRunner.shared.json("items.py", ["get", u], timeout: 30),
                           let it = o["item"] as? [String: Any] else { return nil }
-                    return DispatchItem(uid: u, ref: it["id"] as? String ?? String(u.prefix(8)), title: it["title"] as? String ?? "")
+                    return DispatchItem(uid: u, ref: it["id"] as? String ?? "", title: it["title"] as? String ?? "")
                 }
             }
             var out: [String: DispatchItem] = [:]
@@ -109,9 +121,12 @@ final class DispatchModel: ObservableObject {
     var chosenAgent: AgentChoice? { agents.first { $0.id == agent } }
     /// Another agent that can take over from a logged-out one.
     var alternative: AgentChoice? { agents.first { $0.id != agent && !$0.loggedOut } }
+    var failed: Bool { if case .failed = phase { return true } else { return false } }
     var canStart: Bool {
-        // the desktop app signs in on its own: the CLI's login only matters in the terminal
-        count > 0 && !agent.isEmpty && phase != .starting && chosenAgent?.session != false && (desktop || (loginChecked && chosenAgent?.loggedOut != true))
+        // the desktop app signs in on its own: the CLI's login only matters in the terminal. A dry run that failed
+        // would fail the same way: Start stays off until a choice changes and the check passes.
+        count > 0 && !agent.isEmpty && phase != .starting && !failed && chosenAgent?.session != false
+            && (desktop || (loginChecked && chosenAgent?.loggedOut != true))
     }
 
     func load() async {
@@ -181,7 +196,7 @@ final class DispatchModel: ObservableObject {
             let o = try await ScriptRunner.shared.json("items.py", ["list", "--project", p, "--work", "todo"], timeout: 60)
             candidates = (o["items"] as? [[String: Any]] ?? []).compactMap {
                 guard let uid = $0["uid"] as? String, ($0["state"] as? String) != "discarded" else { return nil }
-                return DispatchItem(uid: uid, ref: $0["id"] as? String ?? String(uid.prefix(8)), title: $0["title"] as? String ?? "")
+                return DispatchItem(uid: uid, ref: $0["id"] as? String ?? "", title: $0["title"] as? String ?? "")
             }
             candidatesError = nil
         } catch {
@@ -345,16 +360,7 @@ struct DispatchView: View {
 
             if m.concurrent != nil && !m.worktreeOn { concurrentCallout }
 
-            if case .failed(let why) = m.phase {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(Color.brandAttnInk).font(.callout).textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let j = m.busyJob {
-                        Spacer(minLength: 0)
-                        Button(TL("dispatch.open_session")) { close(); TerminalModule.reveal(job: j) }.controlSize(.small)
-                    }
-                }
-            }
+            if case .failed(let why) = m.phase { failedCallout(why) }
 
             HStack {
                 if m.phase == .checking || m.phase == .starting { ProgressView().controlSize(.small) }
@@ -429,6 +435,22 @@ struct DispatchView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AgentSessionStatus.waitingInput.color.opacity(0.10)))
     }
 
+    /// Why this can't start (the dry run's answer, in words): the same tinted box as the logged-out one, with the way
+    /// out when there is one (the session the items are already with).
+    func failedCallout(_ why: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(AgentSessionStatus.waitingInput.color)
+            Text(why).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            if let j = m.busyJob {
+                Spacer(minLength: 0)
+                Button(TL("dispatch.open_session")) { close(); TerminalModule.reveal(job: j) }.controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AgentSessionStatus.waitingInput.color.opacity(0.10)))
+    }
+
     /// A label column of fixed width and a content column that fills the rest (wrapping text needs a known width).
     func field<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
@@ -461,8 +483,9 @@ struct DispatchView: View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(items.prefix(4)) { i in
                 HStack(spacing: 8) {
-                    Text(i.ref).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
-                    Text(i.title.isEmpty ? i.uid : i.title).lineLimit(1)
+                    if !i.ref.isEmpty { Text(i.ref).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary) }
+                    Text(i.title.isEmpty ? TL("dispatch.untitled") : i.title).lineLimit(1)
+                        .foregroundStyle(i.title.isEmpty ? .secondary : .primary)
                 }.font(.callout)
             }
             if items.count > 4 {

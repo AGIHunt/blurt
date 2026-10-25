@@ -80,7 +80,21 @@ public struct SessionsError: Error, CustomStringConvertible {
     public let message: String
     /// The session it is about (already_dispatched: the one the item is with).
     public var job: String? = nil
+    /// What sessions.py adds for people: auth's fix ("run `claude` and log in"), the item id it is about (BA-12), the
+    /// agent. The message itself is for the log only.
+    public var fix: String? = nil, itemID: String? = nil, agent: String? = nil
     public var description: String { "\(code): \(message)" }
+
+    public init(code: String, message: String, job: String? = nil, fix: String? = nil, itemID: String? = nil, agent: String? = nil) {
+        self.code = code; self.message = message; self.job = job; self.fix = fix; self.itemID = itemID; self.agent = agent
+    }
+
+    /// From sessions.py's {"ok": false, "code", "error", …} line.
+    public init(json o: [String: Any], fallback: String) {
+        self.init(code: o["code"] as? String ?? fallback, message: o["error"] as? String ?? "", job: o["job"] as? String,
+                  fix: (o["fix"] as? String).flatMap { $0.isEmpty ? nil : $0 }, itemID: (o["id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                  agent: o["agent"] as? String)
+    }
 }
 
 /// sessions.py doctor
@@ -131,8 +145,9 @@ public final class AgentSessions {
             out = try await ScriptRunner.shared.run("sessions.py", args, timeout: timeout)
         } catch ScriptError.failed(let status, let stdout, let stderr) {
             let o = Self.lastJSON(stdout)
-            throw SessionsError(code: o["code"] as? String ?? (status == 4 ? "missing_dependency" : "failed"),
-                                message: o["error"] as? String ?? String(stderr.suffix(400)), job: o["job"] as? String)
+            var e = SessionsError(json: o, fallback: status == 4 ? "missing_dependency" : "failed")
+            if o["error"] == nil { e = SessionsError(code: e.code, message: String(stderr.suffix(400)), job: e.job) }
+            throw e
         } catch ScriptError.scriptMissing(let p) {
             throw SessionsError(code: "no_sessions_cli", message: "missing \(p)")
         } catch ScriptError.uvMissing {
@@ -141,9 +156,7 @@ public final class AgentSessions {
             throw SessionsError(code: "timeout", message: "sessions.py timed out after \(Int(t)) s")
         }
         let o = Self.lastJSON(out)
-        if o["ok"] as? Bool == false {
-            throw SessionsError(code: o["code"] as? String ?? "failed", message: o["error"] as? String ?? "", job: o["job"] as? String)
-        }
+        if o["ok"] as? Bool == false { throw SessionsError(json: o, fallback: "failed") }
         return o
     }
 
@@ -227,6 +240,13 @@ public final class AgentSessions {
     /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted).
     public func finish(job: String, action: String) async throws -> [String: Any] {
         try await call(["finish", job, "--action", action], timeout: action == "pr" ? 180 : 90)
+    }
+
+    /// 收回 (`sessions.py take-back`): its items back to To Do; an ended session with no change also goes (window,
+    /// worktree, branch). → has changes left in its worktree (they stay, for review).
+    public func takeBack(job: String) async throws -> Bool {
+        let o = try await call(["take-back", job], timeout: 60)
+        return o["has_changes"] != nil
     }
 
     /// The same items, agent and model in a fresh session (`sessions.py restart`): for one that ended without

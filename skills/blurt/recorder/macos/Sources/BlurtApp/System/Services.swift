@@ -25,7 +25,8 @@ final class ServiceProvider: NSObject {
                 Spotlight.shared.refreshSoon()
             } catch {
                 emit(["event": "service_note", "error": "\(error)"])
-                island.toast(Loc.t("capture.service.failed", table: "Capture", "\(error)"), actionTitle: nil, action: nil)
+                NSLog("blurt services: couldn't add the note: %@", "\(error)")
+                island.toast(Loc.t("capture.service.failed", table: "Capture"), actionTitle: nil, action: nil)
             }
         }
     }
@@ -93,8 +94,7 @@ final class ServiceProvider: NSObject {
         let dir = try inboxSession()
         var item: [String: Any] = ["kind": "note", "title": note.title]       // state: new (K3's default)
         if !note.text.isEmpty { item["quote"] = note.text }
-        if let f = note.from { item["source"] = ["app": f] }
-        item["tags"] = ["inbox"]
+        item["source"] = ["type": "service"].merging(note.from.map { ["app": $0] } ?? [:]) { a, _ in a }
         let json = String(decoding: try JSONSerialization.data(withJSONObject: item), as: UTF8.self)
         let r = try await SkillCLI.shared.run("items.py", ["add", dir.path, "--json", json], timeout: 60)
         guard r.ok, let o = r.json, let id = o["id"] as? String, let uid = o["uid"] as? String else {

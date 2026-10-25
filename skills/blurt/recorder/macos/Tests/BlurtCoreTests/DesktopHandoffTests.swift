@@ -94,6 +94,10 @@ final class DesktopHandoffTests: XCTestCase {
                        ["review", "take_back"])
         // a terminal session is untouched by the flag being false
         XCTAssertEqual(SessionBannerPlan.plan(.live(.waitingInput), outcome: nil).actions, ["session"])
+        // no blurt MCP there (dogfood-2 W35): nothing will report, so the banner doesn't promise progress — it is
+        // quiet, and marking it done sits next to Go to Claude
+        XCTAssertEqual(SessionBannerPlan.plan(.live(.running), outcome: nil, desktop: true, worktree: true, reports: false),
+                       SessionBannerPlan(tone: .neutral, actions: ["desktop", "done"], more: ["session", "review", "take_back"]))
     }
 
     func testContinueIsOfferedOnlyWhereItWorks() {

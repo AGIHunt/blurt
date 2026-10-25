@@ -375,12 +375,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !organisers.isEmpty, !quitBySignal, !Self.quitBySystem {
             let jobs = organisers.keys.compactMap { JobStore.shared.job($0) }
             let a = NSAlert()
-            a.messageText = jobs.count == 1 ? T("app.quit.organizing.title", JobLook.title(jobs[0])) : T("app.quit.organizing.title_n", jobs.count)
+            a.messageText = jobs.count == 1 ? JobLook.quitTitle(jobs[0]) : T("app.quit.organizing.title_n", jobs.count)
             a.informativeText = T("app.quit.organizing.detail")
-            a.addButton(withTitle: T("app.quit.organizing.quit"))
+            // Return keeps the work going: Cancel is the default, Quit Anyway the destructive second choice
             a.addButton(withTitle: T("action.cancel"))
+            let quit = a.addButton(withTitle: T("app.quit.organizing.quit"))
+            quit.hasDestructiveAction = true
+            quit.keyEquivalent = ""
+            a.buttons[0].keyEquivalent = "\r"
             activateApp()
-            guard a.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+            guard a.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
         }
         quitting = true
         snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) }

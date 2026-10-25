@@ -102,7 +102,7 @@ final class TerminalSurface: NSView, LocalProcessTerminalViewDelegate {
             state = AppRunner.shared.isRunning(job) ? .attached : .ended
             return
         }
-        let windowGone = j.state == .cancelled || ["merge", "discard"].contains(a.finishAction ?? "")
+        let windowGone = j.state == .cancelled || ["merge", "discard", "take_back"].contains(a.finishAction ?? "")
         guard j.isActive || (a.tmuxWindow != nil && !windowGone) else { state = .ended; return }
         state = .connecting
         generation += 1

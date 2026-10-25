@@ -58,7 +58,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import global_config  # noqa: E402
+from _common import blurt_home, global_config  # noqa: E402
 
 REGISTRY = Path(__file__).with_name("agents.json")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -746,9 +746,33 @@ def hook_python() -> str:
     return base if base and os.path.exists(base) else sys.executable
 
 
+def hook_shim(python: str | None = None) -> Path:
+    """$BLURT_HOME/bin/blurt-hook: a two-line sh script that runs `sessions.py hook` with today's interpreter and
+    skill folder, rewritten whenever those change. Codex keys the user's trust on the hook command's text, so that
+    text must never change: it names only this file (a uv / Homebrew python upgrade or a moved skill used to bring
+    back the "Hooks need review" screen on every session)."""
+    path = blurt_home() / "bin" / "blurt-hook"
+    text = ("#!/bin/sh\n# Blurt's agent hooks (agents.py writes this on every hand-off; the hook command never changes)\n"
+            f'exec {_q(python or hook_python())} {_q(str(SESSIONS_PY))} hook "$@"\n')
+    try:
+        same = path.read_text(encoding="utf-8") == text
+    except OSError:
+        same = False
+    if not same:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".blurt-hook.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.chmod(0o755)
+        os.replace(tmp, path)
+    return path
+
+
 def hook_command(agent: str, job: str | None, python: str | None = None) -> str:
-    """The shell command an agent's hooks run. job None = take it from $BLURT_JOB (Codex: its hooks need the
-    user's trust once per distinct command, so the command must not change from one session to the next)."""
+    """The shell command an agent's hooks run. job None = take it from $BLURT_JOB, through the fixed shim (Codex:
+    its hooks need the user's trust once per distinct command, so the command must not change from one session — or
+    one interpreter, or one Blurt update — to the next)."""
+    if job is None and os.name != "nt":  # Windows: no sh shim yet (TODO.md)
+        return f"{_q(str(hook_shim(python)))} --agent {agent}"
     cmd = f"{_q(python or hook_python())} {_q(str(SESSIONS_PY))} hook"
     if job:
         cmd += f" --job {job}"

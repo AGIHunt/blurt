@@ -32,7 +32,10 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
              the item, so moving it back to Unassigned (⌘Z) shows it again. --from: only the items still in Q
              move; the rest (moved by the user since) stay and come back in "kept" (the island's Change / Undo)
   doc        SESSION | --project P|inbox [--state S]… [--kind K]… [--item REF]   what the review page shows; --item:
-             that item is always in it, whatever the filters (the one a detail pane shows, a discarded one too)
+             that item is always in it, whatever the filters (the one a detail pane shows, a discarded one too);
+             when its file can't be read it is listed in `_unreadable` [{uid, id, title, path}] instead (the page says
+             so, never "gone"). The doc also carries `agents` {id: {name, desktop}} (names people know, never ids)
+             and, on items with a session in the agent's desktop app, `_work_runner: "desktop"`
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm] [--item REF]   the user's edits (apps)
   migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items; --all also
@@ -163,7 +166,7 @@ def find_path(ref: str, hint: Store | None = None) -> Path | None:
                 return p
         return None
     p = _index_path(ref)
-    if p and st.read_header(p).get("uid") == ref:
+    if p and st.salvage_header(p).get("uid") == ref:  # a broken file is found too: load() says it's unreadable
         return real(p)
     for s in stores:
         p = s.find(uid=ref)
@@ -1030,9 +1033,15 @@ def filter_states(states=(), statuses=(), works=(), fix_states=()) -> list[str] 
     return [s for s in states if old is None or s in old]
 
 
-def scope_items(scope: dict) -> tuple[list[tuple[Path, dict]], dict | None]:
+def scope_items(scope: dict, unreadable: list | None = None) -> tuple[list[tuple[Path, dict]], dict | None]:
     """The items a scope covers, in review order, and the session's batch (None for a project scope). Unreadable
-    files are skipped."""
+    files are skipped (and their identity added to `unreadable`, when given: a page that asked for one says it can't
+    be read, never that it's gone)."""
+    def skip(p: Path) -> None:
+        if unreadable is not None:
+            h = st.salvage_header(p)
+            unreadable.append({"uid": h.get("uid"), "id": h.get("id") or p.stem, "title": h.get("title"),
+                               "path": str(p), "aliases": h.get("aliases") or []})
     if scope.get("session"):
         session = Path(scope["session"])
         b = load_batch(session) or new_batch(session)
@@ -1045,7 +1054,7 @@ def scope_items(scope: dict) -> tuple[list[tuple[Path, dict]], dict | None]:
             try:
                 out.append((p, st.read_item(p)))
             except (Unparseable, OSError):
-                continue
+                skip(p)
         return out, b
     stores = [store_for_project(scope["project"])] if scope.get("project") else all_stores()
     out = []
@@ -1054,7 +1063,7 @@ def scope_items(scope: dict) -> tuple[list[tuple[Path, dict]], dict | None]:
             try:
                 out.append((p, st.read_item(p)))
             except (Unparseable, OSError):
-                continue
+                skip(p)
     out.sort(key=lambda x: (to_epoch(x[1].get("created")) or 0, x[1].get("id") or ""), reverse=True)
     return out, None
 
@@ -1076,7 +1085,8 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
     the one item a detail pane shows is always in its doc, whatever the filters say — a discarded item opened from
     the Discarded filter must not show its neighbour instead."""
     import projects  # noqa: PLC0415
-    pairs, b = scope_items(scope)
+    unreadable: list = []
+    pairs, b = scope_items(scope, unreadable)
     names = _project_names()
     removed = dict((b or {}).get("removed") or {})
     items = []
@@ -1108,10 +1118,35 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
         doc = {"schema": st.SCHEMA, "scope": sc, "title": meta.get("name"), "digest": None,
                "language": None, "processing": False, "reviewed": False, "agent_at": None, "source_video": None,
                "_video": False, "project": pid}
+    for it in items:  # handed to the agent's desktop app: the page names that app, not the CLI
+        jid = (it.get("work") or {}).get("job") if state_of(it) in ("handed_off", "in_progress") else None
+        if jid and _job_runner(jid) == "desktop":
+            it["_work_runner"] = "desktop"
     doc["items"] = items
     doc["_removed"] = removed
+    doc["agents"] = _agent_names()
+    if include is not None:  # the one item a detail pane asked for, when its file can't be read: the page says so
+        doc["_unreadable"] = [u for u in unreadable if include in (u["uid"], u["id"], *u["aliases"])]
     doc["projects"] = plist
     return doc
+
+
+def _agent_names() -> dict:
+    """agent id → {name, desktop}: the names people know (agents.json plus their own agent_defs), never the ids."""
+    try:
+        import agents  # noqa: PLC0415
+        return {k: {"name": d.get("name") or k, "desktop": (agents.desktop_spec(d) or {}).get("name")}
+                for k, d in agents.definitions(agents.config(None)).items()}
+    except Exception:  # noqa: BLE001 — names are a nicety: the page falls back to "Agent"
+        return {}
+
+
+def _job_runner(jid: str) -> str | None:
+    try:
+        o = json.loads((blurt_home() / "jobs" / f"{jid}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return ((o.get("agent") or {}) if isinstance(o, dict) else {}).get("runner")
 
 
 def doc_etag(doc: dict) -> str:

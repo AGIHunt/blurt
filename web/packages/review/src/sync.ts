@@ -37,6 +37,13 @@ export const SERVER_OWNED = new Set(["uid", "_user", "fix", "fix_history", "sche
     bookkeeping are the pre-v0.7 two-axis model, read (stateOf) but not written */
 const NOT_FIELDS = new Set(["state", "restore_to", "status", "_touched", "_dropped"]);
 
+/** What the user said (`quote`) is never edited on the page: it changes here only when the user merges items into
+    this one (mergeInto joins the quotes). Otherwise the server's is the truth, both ways — a quote that differs here
+    without a merge is never sent, and the server's replaces it (dogfood-2 W10: AW-3's detail once showed AW-1's
+    quote; it must never reach AW-3's file). */
+const quoteOwned = (k: string, l: Item | undefined, b: Item | undefined) =>
+  k === "quote" && canon(l?.merged_from ?? []) === canon(b?.merged_from ?? []);
+
 export const norm = (items: Item[] | undefined): Item[] => (items || []).map((i) => (i.kind ? i : { ...i, kind: "issue" }));
 
 export type Status = "keep" | "drop" | "pending";
@@ -78,7 +85,7 @@ export function rebase(L: Item[], B: Map<string, Item>, S: Item[], undoing: bool
     const ch = new Set<string>();
     for (const k of new Set([...Object.keys(s), ...Object.keys(b || {}), ...Object.keys(l)])) {
       if (v3 ? k === "uid" : k === "id") continue;
-      const owned = v3 && (k === "id" || SERVER_OWNED.has(k));
+      const owned = (v3 && (k === "id" || SERVER_OWNED.has(k))) || quoteOwned(k, l, b);
       const bv = canon(b?.[k]);
       if (owned) {
         if (canon(l[k]) === canon(s[k])) continue;
@@ -131,7 +138,7 @@ export function diffOps(items: Item[], base: Map<string, Item>, key: KeyFn = byI
     const set: Record<string, unknown> = {};
     const unset: string[] = [];
     for (const f of new Set([...Object.keys(i), ...Object.keys(b)])) {
-      if (f === "id" || f === "_user" || NOT_FIELDS.has(f) || (v3 && SERVER_OWNED.has(f))) continue;
+      if (f === "id" || f === "_user" || NOT_FIELDS.has(f) || (v3 && SERVER_OWNED.has(f)) || quoteOwned(f, i, b)) continue;
       if (canon(i[f]) !== canon(b[f])) {
         if (i[f] === undefined) unset.push(f);
         else set[f] = i[f];

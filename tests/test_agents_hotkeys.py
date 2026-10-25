@@ -129,6 +129,16 @@ class Failures(unittest.TestCase):
         self.assertIsNone(c("Wrote 5 items: 2 issues, 1 idea.\nDone."))
         self.assertIsNone(c(""))
 
+    def test_codex_offline_and_outdated(self):
+        # dogfood-2 W25: Codex's own offline line (reqwest) matched no class, so it read "Codex stopped" with no hint
+        c = agents.classify
+        self.assertEqual(c("ERROR: stream error: error sending request for url (https://api.openai.com/v1/responses): "
+                           "dns error: failed to lookup address information: nodename nor servname provided, or not known"), "network")
+        self.assertEqual(c("Error: connect: Network is unreachable (os error 51)"), "network")
+        # Codex 0.157 at start-up in a terminal that is still attaching: too old, not "stopped"
+        self.assertEqual(c("Error: timed out discarding buffered terminal input"), "outdated")
+        self.assertIn("更新", agents.failure_reason("outdated", "Codex", lang="zh"))
+
     def test_only_the_tail_and_errors_first(self):
         # a codex log echoes tool output: an old "quota" line far up doesn't make it a quota failure
         log = "exec grep -rn quota src/\nsrc/billing/quota.py:12 def quota():\n" + "ok\n" * 200 + "ERROR: stream disconnected before completion"

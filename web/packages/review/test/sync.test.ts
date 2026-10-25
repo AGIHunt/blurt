@@ -11,6 +11,23 @@ describe("canon", () => {
   });
 });
 
+describe("the quote", () => {
+  it("is never sent unless the user merged into the item, and the server's always wins otherwise", () => {
+    const base = [it2("AW-1", { quote: "Safari 上点登录没反应" }), it2("AW-3", { quote: "价格页在手机上横着溢出了。" })];
+    const local = clone(base);
+    local[1].quote = local[0].quote; // a mixed-up page: AW-3 carrying AW-1's words
+    expect(diffOps(local, B(base))).toEqual([]);
+    const r = rebase(local, B(base), clone(base), false);
+    expect(r.items[1].quote).toBe("价格页在手机上横着溢出了。");
+    // a merge (AW-3 folded into AW-1) sends the joined quote with it
+    const merged = clone(base);
+    merged[0].quote = "Safari 上点登录没反应 … 价格页在手机上横着溢出了。";
+    merged[0].merged_from = ["AW-3"];
+    const ops = diffOps([merged[0]], B(base));
+    expect(ops[0]).toMatchObject({ op: "set", id: "AW-1", set: { quote: merged[0].quote, merged_from: ["AW-3"] } });
+  });
+});
+
 describe("norm / statusOf", () => {
   it("defaults kind; the review's view of the K3 state: new = to review, discarded = dropped, the rest kept", () => {
     const n = norm([it2("I-1", { status: "deleted" }), { id: "I-3" }]);

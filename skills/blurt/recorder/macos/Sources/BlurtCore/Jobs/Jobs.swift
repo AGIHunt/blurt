@@ -26,9 +26,15 @@ public struct JobStep {
 
 public struct JobError {
     public let code: String
+    /// For the log: whatever the run said (a traceback, an exit status). Never shown as is.
     public let message: String
     public let hintKey: String?
-    public init(code: String, message: String, hintKey: String? = nil) { self.code = code; self.message = message; self.hintKey = hintKey }
+    /// For people: a sentence already in their language, composed when it failed (which agent, why, what to do) —
+    /// "Claude Code 没登录 — 在终端运行 claude，然后输入 /login". Shown before the code's generic sentence.
+    public let reason: String?
+    public init(code: String, message: String, hintKey: String? = nil, reason: String? = nil) {
+        self.code = code; self.message = message; self.hintKey = hintKey; self.reason = reason
+    }
 }
 
 /// The fixed step ids per job type (K4; the UI shows `job.step.<id>`).
@@ -116,6 +122,14 @@ public struct Job: Identifiable {
 
     /// The effective state as a dictionary, as jobs.py get prints it.
     public let raw: [String: Any]
+
+    /// Which agent organised it when the first in the user's order couldn't (AgentHub: `organizer`): its id, and the
+    /// ones it stood in for with why, in words ("Claude Code 没登录"). nil = the first one did.
+    public var organizer: (agent: String, insteadOf: [String])? {
+        guard let o = raw["organizer"] as? [String: Any], let a = o["agent"] as? String else { return nil }
+        let instead = o["instead_of"] as? [String] ?? []
+        return instead.isEmpty ? nil : (a, instead)
+    }
 
     /// What an organising run cost (JobWriter.setUsage): tokens nil = the CLI didn't say; agent nil = no agent ran.
     public var usage: (tokens: Int?, agent: String?, model: String?, effort: String?)? {
@@ -226,7 +240,8 @@ public enum JobFold {
             return JobStep(id: sid, state: StepState(rawValue: s["state"] as? String ?? "") ?? .pending, progress: s["progress"] as? Double)
         }
         let err = (o["error"] as? [String: Any]).map {
-            JobError(code: $0["code"] as? String ?? "unknown", message: $0["message"] as? String ?? "", hintKey: $0["hint_key"] as? String)
+            JobError(code: $0["code"] as? String ?? "unknown", message: $0["message"] as? String ?? "", hintKey: $0["hint_key"] as? String,
+                     reason: ($0["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 })
         }
         var agent: AgentInfo?
         if let a = o["agent"] as? [String: Any] {
@@ -479,7 +494,9 @@ public final class JobWriter {
         mutate { d in
             d["state"] = state.rawValue
             d["ended"] = JobFold.now()
-            if let e = error { d["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey ?? NSNull()] as [String: Any] }
+            if let e = error {
+                d["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey ?? NSNull(), "reason": e.reason ?? NSNull()] as [String: Any]
+            }
             if state != .done { d["steps"] = JobFold.closeSteps(d["steps"] as? [[String: Any]] ?? [], at: d["ended"] as? String ?? JobFold.now()) }
         }
     }

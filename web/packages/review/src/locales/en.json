@@ -5,13 +5,10 @@
   "lang.switch": "Language",
   "theme.switch": "Switch theme",
   "keys.open": "Keyboard shortcuts",
-
   "review.finish": "Finish Review",
-
   "view.overview": "Overview",
   "view.focus": "Focus",
   "view.list": "List",
-
   "action.merge": "Merge Up",
   "action.undo": "Undo",
   "action.prev": "Previous",
@@ -19,15 +16,12 @@
   "action.close": "Close",
   "action.ok": "OK",
   "action.cancel": "Cancel",
-
   "counts.pending": "new",
   "counts.kept": "kept",
   "counts.dropped": "discarded",
-
   "save.saving": "Saving…",
   "save.saved": "Saved",
   "save.error": "Couldn’t save. Retrying when you edit again.",
-
   "toast.merged": "Merged into {id}",
   "toast.state": "{state} · {id}",
   "toast.undone": "Undone",
@@ -41,13 +35,11 @@
   "undo.field": "Edit {field}",
   "toast.copied": "Copied {text}",
   "field.title_required": "A title can’t be empty. Esc puts the old one back.",
-
   "proc.working_one": "Organizing — {n} item so far, adding screenshots",
   "proc.working_other": "Organizing — {n} items so far, adding screenshots",
   "proc.stalled_one": "{n} item · the agent seems to have stopped",
   "proc.stalled_other": "{n} items · the agent seems to have stopped",
   "proc.finished": "Screenshots are in",
-
   "media.frame": "Frame {n}",
   "media.clip": "Clip",
   "media.recording": "Recording",
@@ -60,7 +52,6 @@
   "media.quick_look": "Quick Look",
   "media.open_code": "Open in editor",
   "media.copy": "Copy",
-
   "field.title": "Title",
   "field.module": "Module",
   "field.owner": "Owner",
@@ -127,14 +118,12 @@
   "field.links": "Links",
   "field.references": "References",
   "field.related": "Related",
-
   "ask.title": "Needs your input",
   "chip.low_confidence": "Not sure",
   "chip.low_confidence.hint": "The agent wasn’t confident about this one",
   "chip.type": "Type",
   "chip.kind": "Kind",
   "chip.severity": "Severity",
-
   "severity.high": "High",
   "severity.medium": "Medium",
   "severity.low": "Low",
@@ -143,7 +132,6 @@
   "type.ux": "UX",
   "type.copy": "Copy",
   "type.perf": "Performance",
-
   "work.by": "by {who}",
   "work.by_you": "by you",
   "work.history": "History",
@@ -152,7 +140,6 @@
   "work.open_session": "Open Session",
   "work.commit": "Commit {sha}",
   "work.pr": "Pull request",
-
   "handoff.title": "Hand off",
   "handoff.dispatch": "Hand Off to Agent",
   "handoff.dispatch.hint": "Run Claude Code or Codex on it in Blurt’s terminal",
@@ -161,7 +148,6 @@
   "handoff.copied.instruction": "Instruction copied · {id}",
   "handoff.copied.full": "Full text copied · {id}",
   "handoff.failed": "Couldn’t prepare the hand-off",
-
   "project.label": "Project",
   "project.move_to": "Move to…",
   "project.moved_one": "Moved to {project}",
@@ -174,7 +160,6 @@
   "project.by.ai": "Sorted by an earlier version · {pct} sure",
   "project.by.user": "Moved here by you",
   "project.by.migrate": "Brought over from an earlier version",
-
   "source.title": "Where it came from",
   "source.type.recording": "Screen recording",
   "source.type.snap": "Snap",
@@ -187,11 +172,10 @@
   "source.by": "By",
   "source.app": "App",
   "source.page": "Page",
-  "source.session": "Session",
-  "source.session.reveal": "Show the session folder",
+  "source.session": "Original capture",
+  "source.session.reveal": "Show the original capture in Finder",
   "source.aliases": "Earlier IDs",
   "source.merged_from": "Merged in",
-
   "select.count_one": "{n} selected",
   "select.count_other": "{n} selected",
   "select.toggle": "Select",
@@ -199,16 +183,13 @@
   "select.clear": "Clear selection",
   "select.drop_hint_one": "Drop on a project to move this item",
   "select.drop_hint_other": "Drop on a project to move {n} items",
-
   "list.search": "Search titles, modules, tags…",
   "list.empty": "Nothing matches",
   "filter.all_kinds": "All kinds",
   "filter.state": "State",
   "filter.live": "All",
   "filter.inbox": "Inbox",
-
   "overview.kinds": "By kind",
-
   "keys.title": "Keyboard shortcuts",
   "keys.next": "Next / previous",
   "keys.keep": "Keep, then the next one",
@@ -231,7 +212,6 @@
   "keys.state": "Change state…",
   "keys.hand_off": "Hand off to agent…",
   "keys.select": "Select (in the list)",
-
   "finish.title": "Hand this back to your agent?",
   "finish.body": "{k} kept · {d} discarded · {p} not reviewed yet.",
   "finish.pending_as_kept": "Keep the unreviewed ones too",
@@ -247,7 +227,15 @@
   "done.title_app": "Review done",
   "done.body_app_todo_one": "{n} item to do is in the Inbox and its project.",
   "done.body_app_todo_other": "{n} items to do are in the Inbox and their projects.",
-
   "item.gone": "This item isn’t here any more.",
-  "load.failed": "Couldn’t load the items: {error}"
+  "load.failed": "Couldn’t load the items. Close and open this again; if it keeps happening, the details are in the log.",
+  "agent.generic": "Agent",
+  "state.handed_off.desktop": "Handed off to the {app} desktop app",
+  "field.done_when": "Done when",
+  "field.task_steps": "Steps",
+  "source.type.dictation": "Dictation",
+  "source.session.unnamed": "Open",
+  "source.merged_earlier_one": "{n} earlier item",
+  "source.merged_earlier_other": "{n} earlier items",
+  "item.unreadable": "This item’s file can’t be read. Blurt won’t overwrite it; fix it in an editor and it shows up here."
 }

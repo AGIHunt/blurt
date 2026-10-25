@@ -154,7 +154,7 @@ T = {
         "said": "原话", "summary": "概要", "why": "为什么", "inspired_by": "灵感来源", "actual": "实际效果",
         "expected": "预期效果", "steps": "复现步骤", "details": "详情", "next_steps": "下一步", "open_questions": "待定问题",
         "answer": "用户的回答", "code": "疑似代码位置", "frame": "截图", "module": "模块", "project": "项目",
-        "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "任务"},
+        "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
         "severity": {"critical": "严重", "high": "高", "medium": "中", "low": "低"},
         "instr_one": "请处理 {id}，详情和截图见 {path}。做完后如果有 blurt MCP，调用 mark_fixed。",
         "instr_many": "请处理这 {n} 个条目，详情和截图见 {path}。做完后如果有 blurt MCP，逐条调用 mark_fixed。",

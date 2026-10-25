@@ -244,7 +244,71 @@ def test_cards_and_unparseable_files(env):
     bad.write_text("---\nuid: 01JB7ZK3Q4M8W2E5R6T9Y0ABD1\nid: IN-9\ntitle: half\nx: {broken\n---\n")
     cli("update", bad)
     r = db().execute("SELECT * FROM items WHERE path = ?", (str(bad),)).fetchone()
-    assert r["parse_error"] and r["item_id"] == "IN-9-bad"
+    # the lines that still parse give its identity: found by its uid, listed under its own id
+    assert r["parse_error"] and r["item_id"] == "IN-9" and r["uid"] == "01JB7ZK3Q4M8W2E5R6T9Y0ABD1"
+
+
+def _retitle(path: Path, title: str) -> None:
+    lines = path.read_text(encoding="utf-8").split("\n")
+    k = next(i for i, ln in enumerate(lines) if ln.startswith("title:"))
+    lines[k] = f"title: {json.dumps(title)}"
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _break(path: Path) -> None:
+    """Hand-edit one front-matter line of an item file into something that doesn't parse."""
+    lines = path.read_text(encoding="utf-8").split("\n")
+    k = next(i for i, ln in enumerate(lines) if ln.startswith("kind:"))
+    lines[k] = "kind: [broken"
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_one_broken_file_never_stops_a_scan_or_an_update(env):
+    """dogfood-2 W56: a previously indexed item broken by hand made every scan and every batch update fail
+    (UNIQUE items.path, the whole transaction rolled back), so other edits never reached the lists."""
+    migrated(env)
+    files = sorted((env["repo"] / ".blurt" / "items").glob("*.md"))
+    assert len(files) >= 3
+    broken, a, b = files[0], files[1], files[2]
+    uid = st.read_header(broken)["uid"]
+    _break(broken)
+    _retitle(a, "edited on disk A")
+    _retitle(b, "edited on disk B")
+    r = cli("update", a, broken, b)
+    assert r["updated"] == 3 and "skipped" not in r
+    con = db()
+    titles = {x["path"]: x["title"] for x in con.execute("SELECT path, title FROM items")}
+    assert titles[str(a)] == "edited on disk A" and titles[str(b)] == "edited on disk B"
+    row = con.execute("SELECT * FROM items WHERE path = ?", (str(broken),)).fetchone()
+    assert row["uid"] == uid and row["parse_error"]                      # the same row, marked unreadable in place
+    _retitle(a, "again A")
+    s = cli("scan")
+    assert s["unreadable"] == [{"uid": uid, "id": row["item_id"], "path": str(broken)}] and "skipped" not in s
+    assert db().execute("SELECT title FROM items WHERE path = ?", (str(a),)).fetchone()[0] == "again A"
+    # the app addresses items by uid: a broken one says it can't be read (never "not found"), and a detail's doc
+    # lists it as unreadable instead of leaving it out
+    p = subprocess.run([sys.executable, str(SCRIPTS / "items.py"), "state", uid, "--action", "done"],
+                       capture_output=True, text=True, env=os.environ.copy())
+    assert json.loads(p.stdout.strip().splitlines()[-1])["code"] == "unparseable"
+    doc = cli("doc", "--project", row["project_id"], "--item", uid, script="items.py")["doc"]
+    assert [u["uid"] for u in doc["_unreadable"]] == [uid] and uid not in [i["uid"] for i in doc["items"]]
+
+
+def test_a_file_that_throws_is_skipped_and_reported(env, monkeypatch):
+    """Whatever else goes wrong with one file is rolled back alone (SAVEPOINT) and listed, never the whole batch."""
+    migrated(env)
+    files = sorted((env["repo"] / ".blurt" / "items").glob("*.md"))
+    real_index_file = index.index_file
+
+    def flaky(con, p, *a, **kw):
+        if Path(p) == files[0]:
+            raise RuntimeError("boom")
+        return real_index_file(con, p, *a, **kw)
+    monkeypatch.setattr(index, "index_file", flaky)
+    _retitle(files[1], "still indexed")
+    r = index.update_paths([files[0], files[1]])
+    assert r["skipped"][0]["path"] == str(files[0]) and "boom" in r["skipped"][0]["error"]
+    assert db().execute("SELECT title FROM items WHERE path = ?", (str(files[1]),)).fetchone()[0] == "still indexed"
 
 
 def test_readonly_reader_and_wal(env):

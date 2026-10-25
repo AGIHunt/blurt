@@ -125,7 +125,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>进行中 · %ld</string>
+			<string>正在运行 · %ld</string>
 		</dict>
 	</dict>
 	<key>main.jobs.failed</key>

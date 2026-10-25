@@ -168,6 +168,10 @@ final class MainModel {
         onIndexState?()
         Scripts.indexScan { [weak self] r in
             guard let self = self else { return }
+            // files it skipped are said once; a failure with lists already showing says so (Try Again) instead of
+            // staying quiet — the empty window shows its own failed state
+            let failed: Bool = { if case .failure = r { return true } else { return false } }()
+            if !failed || before == .ready { ScanReport.handle(r, retry: { [weak self] in self?.scan() }) }
             switch r {
             case .success:
                 self.reader = nil

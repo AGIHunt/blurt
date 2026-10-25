@@ -163,7 +163,7 @@
 "capture.retry" = "Retry";
 "capture.service.added" = "Added to the Inbox: %@";
 "capture.service.empty" = "Nothing to add: select text or an image";
-"capture.service.failed" = "Couldn’t add it: %@";
+"capture.service.failed" = "Couldn’t add it. Try again.";
 "capture.service.image" = "Image";
 "capture.service.image_from" = "Image from %@";
 "capture.service.title" = "Collected notes";

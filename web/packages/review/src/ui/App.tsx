@@ -19,7 +19,7 @@ function Shell({ onTheme }: { onTheme: () => void }) {
   if (s.loadError)
     return (
       <div className="fail">
-        <p>{s.t("load.failed", { error: s.loadError })}</p>
+        <p>{s.t("load.failed")}</p>
       </div>
     );
   if (!s.loaded) return <div className="boot" aria-busy="true" />;
@@ -30,11 +30,12 @@ function Shell({ onTheme }: { onTheme: () => void }) {
           // an item with nothing to show (a typed or spoken one) gets no picture well: the details start at the top
           <main id="itemView" className={cx("focus item-mode", s.mediaItems(s.item).length === 0 && "bare")}>
             {s.mediaItems(s.item).length > 0 && <Stage />}
-            <Inspector />
+            {/* a fresh inspector per item: nothing of one item's editing state can show under another's title */}
+            <Inspector key={s.keyOf(s.item)} />
           </main>
         ) : (
           <div className="fail">
-            <p>{s.t("item.gone")}</p>
+            <p>{s.t(s.unreadable ? "item.unreadable" : "item.gone")}</p>
           </div>
         )}
         <span className={cx("saved item-saved", s.saveState === "error" && "err")} id="saved" aria-live="polite">
