@@ -569,24 +569,41 @@ final class IslandContent: NSView {
         guard let i = island, let rec = i.rec else { return 0 }
         var y: CGFloat = top + 6
         if i.isConfirmingDiscard {
-            // the stills taken meanwhile go with it: the question says so
-            let stills = rec.snaps?.count ?? 0
-            let q = label(stills > 0 ? Loc.plural("capture.rec.discard_q_stills", table: "Capture", count: stills)
-                          : Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .medium)
-            place(q, x: 18, y: y + 7)
+            // what goes with it, as the island counts it: the snaps taken and the markers, apart (BlurtCore
+            // RecordingDiscard); the answers left to right Discard · Restart · Keep Recording — the safe one where
+            // Finish was; the question beside them when it fits, else on its own line above them (it never runs under)
+            let q = Self.wrapping(IslandContent.discardQuestion(rec), size: 13, weight: .medium, color: ink)
+            let buttons: [IslandButton] = RecordingDiscard.order.map { a in
+                switch a {
+                case .discard:
+                    let t = Loc.t("capture.rec.discard", table: "Capture")
+                    return IslandButton(symbol: "", title: t, tip: t, fill: NSColor.systemRed.withAlphaComponent(0.9)) { rec.stop(discard: true) }
+                case .restart:
+                    let t = Loc.t("capture.rec.restart", table: "Capture")
+                    return IslandButton(symbol: "", title: t, tip: t) { rec.stop(discard: true, restart: true) }
+                case .keep:
+                    let t = Loc.t("capture.rec.keep", table: "Capture")
+                    return IslandButton(symbol: "", title: t, tip: t, fill: NSColor(white: 1, alpha: 0.14)) { [weak i] in i?.confirmDiscard(false) }
+                }
+            }
+            let row = buttons.reduce(0) { $0 + $1.frame.width } + 8 * CGFloat(buttons.count - 1)
+            let one = ceil(q.sizeThatFits(NSSize(width: 2000, height: 40)).width)
+            var by = y + 2
+            if RecordingDiscard.ownLine(question: one, answers: row, width: w) {
+                q.preferredMaxLayoutWidth = w - 36
+                let h = ceil(q.sizeThatFits(NSSize(width: w - 36, height: 200)).height)
+                place(q, x: 18, y: y + 4, w: w - 36, h: h)
+                by = y + 4 + h + 10
+            } else {
+                place(q, x: 18, y: y + 7, w: one, h: ceil(q.sizeThatFits(NSSize(width: one, height: 40)).height))
+            }
             var bx = w - 12
-            let items: [(String, NSColor?, () -> Void)] = [
-                (Loc.t("capture.rec.discard", table: "Capture"), NSColor.systemRed.withAlphaComponent(0.9), { rec.stop(discard: true) }),
-                (Loc.t("capture.rec.restart", table: "Capture"), nil, { rec.stop(discard: true, restart: true) }),
-                (Loc.t("capture.rec.keep", table: "Capture"), nil, { [weak i] in i?.confirmDiscard(false) }),
-            ]
-            for (t, f, a) in items {
-                let b = IslandButton(symbol: "", title: t, tip: t, fill: f, action: a)
+            for b in buttons.reversed() {
                 bx -= b.frame.width
-                place(b, x: bx, y: y + 2)
+                place(b, x: bx, y: by)
                 bx -= 8
             }
-            return y + 40 + 8
+            return by + 38 + 8
         }
         let paused = rec.isPaused
         let pb = IslandButton(symbol: paused ? "play.fill" : "pause.fill", tip: tip(paused ? "capture.rec.resume" : "capture.rec.pause", .pause)) {
@@ -639,6 +656,29 @@ final class IslandContent: NSView {
         }
         y += 34
         return y + 6
+    }
+
+    /// "Discard this recording?" / "…and its 2 snaps?" / "…, with 1 snap and 2 markers?" (RecordingDiscard.lost).
+    static func discardQuestion(_ rec: Recorder) -> String {
+        switch RecordingDiscard.lost(stills: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0) {
+        case .nothing: return Loc.t("capture.rec.discard_q", table: "Capture")
+        case let .snaps(n): return Loc.plural("capture.rec.discard_q_stills", table: "Capture", count: n)
+        case let .markers(m):
+            return Loc.t("capture.rec.discard_q_with", table: "Capture", Loc.plural("capture.rec.markers", table: "Capture", count: m))
+        case let .both(n, m):
+            let what = Loc.t("capture.rec.and", table: "Capture", Loc.plural("capture.rec.n_snaps", table: "Capture", count: n),
+                             Loc.plural("capture.rec.markers", table: "Capture", count: m))
+            return Loc.t("capture.rec.discard_q_with", table: "Capture", what)
+        }
+    }
+
+    /// A label that wraps (the island's labels are one line, cut at the end).
+    static func wrapping(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
+        let l = NSTextField(wrappingLabelWithString: text)
+        l.font = .systemFont(ofSize: size, weight: weight)
+        l.textColor = color
+        l.isSelectable = false
+        return l
     }
 
     /// A one-line hint with a key in it ("Hold [⌃] and drag to draw"): the format's %@ becomes a small keycap.

@@ -155,6 +155,8 @@
 "capture.prompt.shots" = "Use the blurt skill to process this batch of captures: %@\nIt is a shots session (mode: shots, no video). Each line of shots.jsonl is one capture and anchors one item: \"type\": \"shot\" is a screenshot (its primary frame; .marked.png files already carry the user’s ink; a .wav is a voice note on it — transcribe it first), \"type\": \"voice\" is a voice note with no image (\"said\" is its transcript when it is already there, else transcribe the wav).\nThis is an unattended background run started by the Blurt app: don’t ask questions and don’t start the review page; write items.json, then summarise in 2–3 sentences.";
 "capture.rec.discard" = "Discard";
 "capture.rec.discard_q" = "Discard this recording?";
+"capture.rec.discard_q_with" = "Discard this recording, with %@?";
+"capture.rec.and" = "%1$@ and %2$@";
 "capture.rec.discard_tip" = "Discard or restart…";
 "capture.rec.finish" = "Finish";
 "capture.rec.finish_tip" = "Stop and organize";
@@ -273,7 +275,7 @@
 "capture.keys.undo_set" = "Change Shortcut";
 "capture.voice.hint_key" = "Listening — press %@ again to finish";
 "capture.voice.hint_done" = "Listening — Done to finish";
-"capture.voice.esc_hint" = "Esc to cancel";
+"capture.voice.esc_hint" = "Esc to discard";
 "capture.voice.done" = "Done";
 "capture.voice.done_tip" = "Finish the voice note";
 "capture.voice.sound_settings" = "Sound Settings";

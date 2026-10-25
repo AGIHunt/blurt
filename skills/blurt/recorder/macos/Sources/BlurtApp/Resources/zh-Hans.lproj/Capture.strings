@@ -153,9 +153,11 @@
 "capture.picker.window_record" = "单击选中这个窗口 · 或直接拖拽框选";
 "capture.picker.window_snap" = "单击截这个窗口 · 或直接拖拽框选";
 "capture.prompt.shots" = "用 blurt skill 处理这批素材：%@\n这是截图模式的 session（mode: shots，没有录屏视频）。shots.jsonl 的每一行是一条素材，锚定一条条目：\"type\": \"shot\" 是截图（就是这一条的首帧；.marked.png 上已经有用户的笔迹；有 .wav 的是语音备注，先转写），\"type\": \"voice\" 是没有图的语音备注（\"said\" 有就是转写，没有就转写 wav）。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页；写好 items.json 后用两三句话总结。";
-"capture.rec.discard" = "放弃";
-"capture.rec.discard_q" = "放弃这段录屏？";
-"capture.rec.discard_tip" = "放弃或重录…";
+"capture.rec.discard" = "丢弃";
+"capture.rec.discard_q" = "丢弃这段录屏？";
+"capture.rec.discard_q_with" = "丢弃这段录屏，连同%@？";
+"capture.rec.and" = "%1$@和 %2$@";
+"capture.rec.discard_tip" = "丢弃或重录…";
 "capture.rec.finish" = "完成";
 "capture.rec.finish_tip" = "结束录制并整理";
 "capture.rec.keep" = "继续录屏";
@@ -273,7 +275,7 @@
 "capture.keys.undo_set" = "更改快捷键";
 "capture.voice.hint_key" = "在听 · 再按 %@ 结束";
 "capture.voice.hint_done" = "在听 · 点「完成」结束";
-"capture.voice.esc_hint" = "Esc 取消";
+"capture.voice.esc_hint" = "Esc 丢弃";
 "capture.voice.done" = "完成";
 "capture.voice.done_tip" = "结束这条语音备注";
 "capture.voice.sound_settings" = "声音设置";
