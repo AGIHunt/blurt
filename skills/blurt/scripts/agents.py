@@ -702,6 +702,12 @@ def waiting_patterns(defn: dict) -> list[str]:
     return [p for p in (defn.get("interactive") or {}).get("waiting_patterns") or [] if isinstance(p, str)]
 
 
+def error_patterns(defn: dict) -> list[str]:
+    """interactive.error_patterns: what an interactive agent draws when it can't work at all (Claude Code's "Not
+    logged in · Please run /login") while it stays open — read from the terminal until its hooks report."""
+    return [p for p in (defn.get("interactive") or {}).get("error_patterns") or [] if isinstance(p, str)]
+
+
 def _q(s: str) -> str:
     """Quote a path for the shell an agent runs its hook commands with."""
     if os.name == "nt":
@@ -811,18 +817,19 @@ WORK_PROMPT = {
 
 
 def prompt_work(refs: list[str], mode: str = "session", worktree: bool = False, handoff_id: str | None = None,
-                lang: str | None = None, branch: str | None = None, items: list[dict] | None = None) -> dict:
+                lang: str | None = None, branch: str | None = None, items: list[dict] | None = None,
+                sandboxed: bool = False) -> dict:
     """The short prompt that starts an agent on some items: it points at their hand-off note (K6), written here
-    unless handoff_id names one already."""
+    unless handoff_id names one already. sandboxed = the agent can't commit in a worktree (interactive.session
+    `sandboxed`): it leaves its changes for Blurt to commit (handoff.rule_text)."""
     import handoff
     lang = handoff.ui_lang(lang)
     if handoff_id:
         h = handoff.describe(handoff_id)
     else:
-        h = handoff.create(refs, lang, to=mode, branch=branch, worktree=worktree, items=items)
+        h = handoff.create(refs, lang, to=mode, branch=branch, worktree=worktree, items=items, sandboxed=sandboxed)
     t = handoff.T[lang]
-    rule = (t["rule_worktree"].format(branch=branch or "") if mode == "session" and worktree
-            else t["rule_direct"] if mode == "session" else t["rule_external"])
+    rule = handoff.rule_text(t, mode, worktree, branch, sandboxed)
     return {"prompt": WORK_PROMPT[lang].format(note=h["path"], rule=rule), "handoff": h["id"], "path": h["path"],
             "items": h["items"]}
 

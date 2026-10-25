@@ -33,6 +33,9 @@ if a[:2] == ["mcp", "get"]:
     sys.exit(0 if os.environ.get("FAKE_MCP", "1") == "1" else 1)
 if a[:1] == ["--version"]:
     print("2.1.259 (Claude Code)"); sys.exit(0)
+if os.environ.get("FAKE_LOGGED_OUT"):  # what Claude Code 2.1 draws when it has no login: no hook fires, it stays open
+    print("Not logged in · Please run /login", flush=True)
+    input(); sys.exit(0)
 settings = json.load(open(a[a.index("--settings") + 1]))["hooks"]
 def fire(ev, **kw):
     for group in settings.get(ev, []):
@@ -40,6 +43,12 @@ def fire(ev, **kw):
             subprocess.run(h["command"], shell=True, input=json.dumps({"session_id": "fake-claude-1", "cwd": os.getcwd(),
                            "hook_event_name": ev, **kw}), text=True, timeout=h.get("timeout", 5))
 print("fake claude in", os.getcwd(), "job", os.environ.get("BLURT_JOB"), flush=True)
+if os.environ.get("FAKE_TRUST"):  # the workspace-trust dialog: no hook fires before it is answered
+    print("Do you trust the files in this folder?", flush=True)
+    print(" ❯ 1. Yes, proceed", flush=True)
+    print("   2. No, exit", flush=True)
+    print(" Enter to confirm · Esc to exit", flush=True)
+    input()
 fire("SessionStart", source="startup")
 fire("UserPromptSubmit", prompt=a[-1])
 print("Claude needs your permission to use Bash", flush=True)
@@ -80,6 +89,11 @@ def fire(ev, **kw):
 def turn(thread):
     subprocess.run(notify + [json.dumps({"type": "agent-turn-complete", "thread-id": thread, "turn-id": "t1",
                                          "cwd": os.getcwd(), "client": "codex-tui"})], timeout=5)
+early = os.environ.get("FAKE_EARLY_FILE")  # dies at startup with a reason, as Codex 0.157 did on its update screen
+if early and os.path.exists(early):
+    print("fake codex", flush=True)
+    print("Error: " + open(early).read().strip(), flush=True)
+    sys.exit(1)
 print("fake codex", flush=True)
 fire("SessionStart", source="startup")
 fire("UserPromptSubmit", prompt=a[-1])

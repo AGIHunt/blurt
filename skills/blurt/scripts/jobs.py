@@ -19,7 +19,8 @@ processes may write it), <id>.events.jsonl (everyone else: one O_APPEND line eac
 and a session's <id>.claude-settings.json / <id>.diff / <id>.prompt.md.
 
 Effective state = the JSON plus every event after "events_offset", in order: a step replaces the step with its id,
-"status" sets agent.status / status_at / status_source, "state" and "progress" replace, "items" are unioned. The
+"status" sets agent.status / status_at / status_source, "state" and "progress" replace, "items" are unioned, and a
+finish event's detail.error becomes "error" when the job has none (a reason reported by a non-owner). The
 Swift (JobStore) and Rust readers apply the same rule, so a job is current even while its owner isn't running.
 
 `step` / `event` / `finish` from this CLI are appends (any process may call them); the owner's own processes use
@@ -43,7 +44,7 @@ STEP_STATES = ("pending", "running", "done", "failed", "skipped")
 STEPS = {"record": ["capture", "finalize"], "snap": ["capture"], "voice": ["listen", "transcribe", "file"],
          "process": ["prepare", "transcribe", "write", "frames", "route"], "route": ["route"],
          "agent": ["launch", "work", "finish"]}
-ERROR_CODES = ("auth", "quota", "network", "model", "skill", "tmux", "git", "conflict", "io", "unknown")
+ERROR_CODES = ("auth", "quota", "network", "model", "skill", "tmux", "git", "conflict", "io", "agent_exit", "unknown")
 FINAL = ("done", "failed", "cancelled")
 ATTACHED = (".json", ".events.jsonl", ".log", ".lock", ".claude-settings.json", ".diff", ".prompt.md")
 MAX_LINE = 4000
@@ -196,6 +197,10 @@ def apply_event(job: dict, ev: dict) -> None:
         job["state"] = ev["state"]
         if ev["state"] in FINAL and not job.get("ended"):
             job["ended"] = at
+    # a failure someone else reported (`jobs.py finish --error-code`): its reason, unless the owner wrote one
+    err = (ev.get("detail") or {}).get("error") if isinstance(ev.get("detail"), dict) else None
+    if isinstance(err, dict) and err.get("code") and not job.get("error"):
+        job["error"] = err
     if "progress" in ev:
         job["progress"] = ev["progress"]
     if ev.get("items"):

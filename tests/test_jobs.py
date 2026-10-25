@@ -89,7 +89,9 @@ def test_cli(home):
     assert [(s["id"], s["state"]) for s in got["steps"]] == [("listen", "done"), ("transcribe", "running"), ("file", "pending")]
     assert got["items"] == ["01ABC"] and next(s for s in got["steps"] if s["id"] == "transcribe")["progress"] == 0.3
     cli("finish", jid, "--state", "failed", "--error-code", "model", "--message", "no model")
-    assert cli("get", jid)["job"]["state"] == "failed"
+    got = cli("get", jid)["job"]
+    # a reason reported by a non-owner is the job's reason (the app shows it), not lost in the event's detail
+    assert got["state"] == "failed" and got["error"] == {"code": "model", "message": "no model", "hint_key": None}
     assert [j["id"] for j in cli("list")["jobs"]] == [jid] and cli("list", "--active")["jobs"] == []
     assert cli("list", "--type", "record")["jobs"] == []
     assert cli("get", "j-nope", ok=False)["code"] == "no_job"

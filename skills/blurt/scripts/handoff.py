@@ -125,6 +125,8 @@ T = {
         "verify": "The user confirms each item before it counts as done.",
         "rule_worktree": "Don't push. You're on your own branch, {branch}, in a separate worktree: commit your work "
                          "there.",
+        "rule_worktree_sandboxed": "Don't push, and leave your changes uncommitted: you're on your own branch, {branch}, "
+                                   "in a separate worktree, and Blurt commits them when the user merges.",
         "rule_direct": "Don't push, and don't commit — you're working directly in the project folder and the user "
                        "reviews the changes first.",
         "rule_external": "Don't push, and don't commit unless the user asks you to.",
@@ -146,6 +148,7 @@ T = {
         "nomcp": "没有 MCP 时：`{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`。",
         "verify": "每一条都要用户确认后才算完成。",
         "rule_worktree": "不要推送。你在单独的 worktree 和自己的分支 {branch} 上，改完在这个分支上提交。",
+        "rule_worktree_sandboxed": "不要推送，改动也不用提交：你在单独的 worktree 和自己的分支 {branch} 上，用户合并时由 Blurt 提交。",
         "rule_direct": "不要推送，也不要提交：你直接在项目文件夹里改，用户会先看改动。",
         "rule_external": "不要推送；除非用户要求，也不要提交。",
         "said": "原话", "summary": "概要", "why": "为什么", "inspired_by": "灵感来源", "actual": "实际效果",
@@ -249,8 +252,17 @@ def render_item(n: int, it: dict, lang: str, show_project: bool = False) -> str:
     return "\n\n".join(parts)
 
 
+def rule_text(t: dict, to: str, worktree: bool | None, branch: str | None, sandboxed: bool = False) -> str:
+    """The commit / push rule of a hand-off. A sandboxed agent (Codex) in a worktree can't write the repository's
+    .git (a linked worktree's index and refs live outside it), so it leaves its changes uncommitted and
+    `sessions.py finish` commits them; the sandbox is never widened to .git."""
+    if to == "session" and worktree:
+        return t["rule_worktree_sandboxed" if sandboxed else "rule_worktree"].format(branch=branch or "")
+    return t["rule_direct"] if to == "session" else t["rule_external"]
+
+
 def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: str, to: str,
-           branch: str | None = None, worktree: bool | None = None) -> str:
+           branch: str | None = None, worktree: bool | None = None, sandboxed: bool = False) -> str:
     t = T[lang]
     same = proj is not None
     pname = (proj or {}).get("name") or ""
@@ -267,8 +279,7 @@ def render(hid: str, created: str, items: list[dict], proj: dict | None, lang: s
     if branch:
         fm.append(f"branch: {json.dumps(branch)}")
     fm.append("---")
-    rule = (t["rule_worktree"].format(branch=branch) if to == "session" and worktree
-            else t["rule_direct"] if to == "session" else t["rule_external"])
+    rule = rule_text(t, to, worktree, branch, sandboxed)
     intro = []
     if same and proj.get("id") != "inbox" and proj.get("path"):
         intro.append(t["folder"].format(path=proj["path"]))
@@ -333,8 +344,10 @@ def front_matter(text: str) -> dict:
 
 
 def create(refs: list[str], lang: str | None = None, to: str = "external", mark: bool = False,
-           branch: str | None = None, worktree: bool | None = None, items: list[dict] | None = None) -> dict:
-    """Write a note for these items. `items` = already-fetched items (sessions.py), else each REF is looked up."""
+           branch: str | None = None, worktree: bool | None = None, items: list[dict] | None = None,
+           sandboxed: bool = False) -> dict:
+    """Write a note for these items. `items` = already-fetched items (sessions.py), else each REF is looked up.
+    sandboxed = the session's agent can't commit in its worktree (rule_text)."""
     lang = ui_lang(lang)
     its = items if items is not None else [item(r) for r in refs]
     if not its:
@@ -355,7 +368,7 @@ def create(refs: list[str], lang: str | None = None, to: str = "external", mark:
             it["_project"] = rows.get(it.get("project")) or {"name": it.get("project")}
     hid = next_id()
     note = handoff_dir() / f"{hid}.md"
-    text = render(hid, jobs.now_iso(), uniq, proj, lang, to, branch=branch, worktree=worktree)
+    text = render(hid, jobs.now_iso(), uniq, proj, lang, to, branch=branch, worktree=worktree, sandboxed=sandboxed)
     tmp = note.with_name(f".{note.name}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, note)

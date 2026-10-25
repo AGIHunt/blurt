@@ -292,7 +292,9 @@ def test_session_command(env, tmp_path):
     # the same command for every session (Codex asks the user to trust each distinct hook once): job from $BLURT_JOB
     assert {h["hooks"][0]["command"] for g in hk.values() for h in g} == {agents.hook_command("codex", None)}
     assert any(v.startswith("mcp_servers.blurt.command") for v in sets) and x["argv"][-1] == "p"
-    assert x["patterns"] and agents.session_command("codex", "p", tmp_path, job="j-3", mcp=False)["argv"].count("-c") == 7
+    plain = agents.session_command("codex", "p", tmp_path, job="j-3", mcp=False)["argv"]
+    # notify + 6 hooks + no update check at startup (its update screen drained input while the terminal attached)
+    assert x["patterns"] and plain.count("-c") == 8 and plain[-3:] == ["-c", "check_for_update_on_startup=false", "p"]
     k = agents.session_command("kimi", "long prompt", tmp_path, job="j-4", mcp=False)
     assert k["argv"][1:] == [] and k["paste"] == "long prompt" and k["hooks"] is None
     for bad in ("zcode", "opencode", "nope"):  # no session / not installed / unknown

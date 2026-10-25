@@ -14,6 +14,10 @@ socket (one tmux session per project, one window per dispatch), or in the app's 
   sessions.py send JOB --text T [--enter]
   sessions.py stop JOB [--kill]
   sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch]
+                       merge / pr commit what the agent left uncommitted in its worktree first ("Commit and Merge":
+                       a sandboxed agent can't commit there); discard takes the items back to To Do
+  sessions.py restart JOB                    the same items, agent and model in a fresh session (the old one ended
+                                             without changes: its window, worktree and branch go)
   sessions.py hook --job J --agent A         an agent's hooks call this (stdin or last argv = their JSON)
   sessions.py event --job J --event pane-dead --exit N     the app runner reports an exit
   sessions.py monitor [--once] [--interval 1.0] [--job J]
@@ -44,6 +48,7 @@ MIN_TMUX = (3, 2)
 EXIT_DEP = 4
 IDLE_TURN_DONE = 8.0
 TTY_BOTTOM = 6  # waiting_patterns are looked for in the last non-empty lines of the window
+TAIL_LINES = 15  # what a dead window last showed, kept on the job (agent.last_output) and shown by the app
 LIVE = ("running", "waiting_input", "turn_done")
 STATUS_STATE = {"exited": "done", "error": "failed"}
 TERMINALS = ("terminal", "iterm", "ghostty", "wezterm", "kitty", "gnome-terminal", "konsole", "wt")
@@ -108,12 +113,21 @@ def write_conf() -> Path:
             term = "screen-256color"
     except (OSError, subprocess.SubprocessError):
         term = "screen-256color"
-    text = "\n".join([
-        "# Written by Blurt (sessions.py) for its own tmux socket; changes are overwritten.",
-        "set -g status off", "set -g mouse on", "set -g history-limit 50000", "set -s escape-time 10",
-        "set -g focus-events on", "set -s set-clipboard on", "set -s extended-keys on",
-        f'set -g default-terminal "{term}"', "set -g remain-on-exit on",
-        "set -g allow-rename off", "setw -g automatic-rename off", "set -g renumber-windows off", ""])
+    # focus-events off: the ESC[I an attaching terminal sends was the only input reaching an agent while it starts
+    # (Codex drains its input then, and timed out on it); escape-time 50: an Esc and the key after it stay apart.
+    # default-size 80x24: a window starts small and grows when the app's terminal attaches — starting at 200x50 and
+    # shrinking to the pane pushed the agent's last lines into history, where the app's terminal doesn't show them.
+    # remain-on-exit keeps a dead window readable; the empty format (tmux ≥ 3.3) drops tmux's "Pane is dead" line —
+    # the app says how the session ended.
+    lines = ["# Written by Blurt (sessions.py) for its own tmux socket; changes are overwritten.",
+             "set -g status off", "set -g mouse on", "set -g history-limit 50000", "set -s escape-time 50",
+             "set -g focus-events off", "set -s set-clipboard on", "set -s extended-keys on",
+             f'set -g default-terminal "{term}"', "set -g default-size 80x24", "set -g remain-on-exit on",
+             "set -g allow-rename off", "setw -g automatic-rename off", "set -g renumber-windows off"]
+    v = tuple(int(x) for x in ((tmux_info() or {}).get("version") or "0.0").split("."))
+    if v >= (3, 3):
+        lines.append('set -g remain-on-exit-format ""')
+    text = "\n".join(lines + [""])
     p = conf_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     if not p.exists() or p.read_text(encoding="utf-8") != text:
@@ -329,8 +343,37 @@ def _advance_items(job: dict, running: bool) -> None:
             a["started"] = True
         if a.get("status") in ("exited", "error") and not a.get("closed"):
             a["closed"] = True
+            wt = a.get("worktree")
+            if wt and Path(wt.get("path") or "").is_dir():
+                a["changes"] = changes(wt)  # "Ready to review" only when there is something to review
     except handoff.CliError as e:
         a["items_error"] = {"code": e.code, "message": str(e)[:300]}
+
+
+def changes(wt: dict) -> dict:
+    """What a worktree session left: commits on its branch since it started, and uncommitted paths."""
+    path = Path(wt["path"])
+    ahead = git(path, "rev-list", "--count", f"{wt['base_sha']}..HEAD", check=False).stdout.strip()
+    dirty = [ln for ln in git(path, "status", "--porcelain", check=False).stdout.splitlines() if ln.strip()]
+    return {"ahead": int(ahead) if ahead.isdigit() else 0, "dirty": len(dirty)}
+
+
+def pane_tail(pane: str, n: int = TAIL_LINES) -> list[str]:
+    """The last non-empty lines a window shows (its history included): what an agent said before it exited."""
+    p = tmux("capture-pane", "-p", "-J", "-S", "-200", "-t", pane, check=False)
+    lines = [ln.rstrip() for ln in (p.stdout if p.returncode == 0 else "").splitlines()]
+    return [ln for ln in lines if ln.strip() and not ln.startswith("Pane is dead (")][-n:]
+
+
+def exit_error(tail: list[str], exit_code: int | None) -> dict:
+    """job.error of an agent that ended with a non-zero exit (or can't start): the class its last words fit (login,
+    quota…), else agent_exit; the message is its last line, the detail the tail."""
+    import agents
+    text = "\n".join(tail)
+    cls = agents.classify(text)
+    last = next((ln.strip() for ln in reversed(tail) if ln.strip()), "")
+    return {"code": cls if cls in jobs.ERROR_CODES else "agent_exit",
+            "message": (last or f"exit {exit_code}")[:300], "hint_key": None, "detail": text[-2000:] or None}
 
 
 def _hooks_kind(a: dict) -> str | None:
@@ -340,22 +383,32 @@ def _hooks_kind(a: dict) -> str | None:
 
 
 def _tty_fallback(job: dict, w: dict, now: float) -> None:
-    """Status from the terminal, for agents whose hooks aren't reporting (K5)."""
+    """Status from the terminal, for agents whose hooks aren't reporting (K5). Claude Code's hooks report everything
+    once they are live, but none fires before its workspace-trust dialog is answered, nor when it refuses to start
+    ("Not logged in · Please run /login"): until its first hook, its window is read like any other."""
     import agents
     a = job["agent"]
     defn = agents.definitions(agents.config(a.get("cwd"))).get(a.get("id")) or {}
     hooks = (agents.session_spec(defn) or {}).get("hooks")
-    if hooks == "claude":
+    if hooks == "claude" and a.get("hooks_live"):
         return
     # Codex's hooks report turns and command approvals, not the questions its tools ask (an MCP tool's "Allow
     # Browser use to access …?" elicitation): those still come from the terminal while its hooks are live
     patterns = agents.waiting_patterns(defn)
+    errors = [] if a.get("hooks_live") else agents.error_patterns(defn)
     since = jobs.parse_iso(a.get("status_at")) or 0
     text = ""
-    if patterns:
+    if patterns or errors:
         p = tmux("capture-pane", "-p", "-J", "-S", "-15", "-t", w["pane"], check=False)
         lines = [ln for ln in (p.stdout if p.returncode == 0 else "").splitlines() if ln.strip()]
         text = "\n".join(lines[-TTY_BOTTOM:])  # a prompt that has scrolled up was answered
+    bad = next((ln for ln in text.splitlines() if any(re.search(pat, ln, re.I) for pat in errors)), None)
+    if bad:  # it can't work: an error in its own words, never "Running" for good (the window stays open to read)
+        a["last_output"] = text.splitlines()[-TAIL_LINES:]
+        if a.get("status") != "error":
+            _set_status(job, "error", "tty")
+            job["error"] = {**exit_error([bad.strip()], None), "detail": text[-2000:]}
+        return
     hit = any(re.search(pat, text, re.I | re.M) for pat in patterns) if text else False
     if hit and hooks and a.get("hooks_live") and a.get("status_source") != "tty" and w["activity"] <= since:
         hit = False  # drawn before the hooks' latest word (an approval they already reported): not a new question
@@ -401,7 +454,13 @@ def sync(only: list[str] | None = None) -> list[dict]:
                             _set_status(job, "exited", "tmux")
                     elif w["dead"]:
                         if active or a.get("exit") is None:
-                            _set_status(job, "exited" if (w["exit"] or 0) == 0 else "error", "tmux", w["exit"])
+                            # what it said last stays on the job: the app shows it, and it is a failure's reason
+                            if "last_output" not in a:
+                                a["last_output"] = pane_tail(w["pane"])
+                            failed = (w["exit"] or 0) != 0
+                            _set_status(job, "error" if failed else "exited", "tmux", w["exit"])
+                            if failed and not job.get("error"):
+                                job["error"] = exit_error(a["last_output"], w["exit"])
                     elif active:
                         _tty_fallback(job, w, now)
                 if a.get("status") in LIVE and job.get("state") == "running":
@@ -595,6 +654,16 @@ def plan(refs: list[str], agent: str | None, mode: str, worktree: str, runner: s
     if busy:
         raise SessionError("bad_transition", "some items are already being worked on or done — reopen them first",
                            items=busy)
+    wins = panes()
+    for i in items:  # handed off to a session that is still going (an agent at its first prompt): not a second time
+        jid = (i.get("work") or {}).get("job") if i.get("state") == "handed_off" else None
+        try:
+            other = jobs.get(jid) if jid else None
+        except jobs.JobError:
+            other = None
+        if other and other.get("type") == "agent" and other.get("state") in ("running", "queued") and is_alive(other, wins):
+            raise SessionError("already_dispatched", f"{i.get('id') or i['uid']} is already with a session",
+                               job=jid, items=[i["uid"]])
     try:
         project = handoff.project(pid)
     except handoff.CliError as e:
@@ -632,7 +701,6 @@ def plan(refs: list[str], agent: str | None, mode: str, worktree: str, runner: s
             entry.update(worktree=str(base), branch=br, cwd=str(base / rel), _root=str(root))
         out.append(entry)
     # editing the project folder directly while another session does the same: say so, never block
-    wins = panes()
     direct = [j["id"] for j in agent_jobs() if j.get("project") == pid and not (j.get("agent") or {}).get("worktree")
               and is_alive(j, wins)]
     if not want_wt and (direct or len(out) > 1):
@@ -665,19 +733,28 @@ def _new_window(session: str, name: str, cwd: str, env: dict, argv: list[str]) -
                  *e_args, "--", *argv)
     else:
         p = tmux("new-session", "-d", "-P", "-F", "#{window_id}", "-s", session, "-n", name, "-c", cwd,
-                 "-x", "200", "-y", "50", *e_args, "--", *argv)
+                 "-x", "80", "-y", "24", *e_args, "--", *argv)
     return p.stdout.strip().splitlines()[-1]
 
 
 def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", worktree: str = "auto",
              runner: str = "auto", dry_run: bool = False, lang: str | None = None, model: str | None = None) -> dict:
-    import agents
-    import handoff
-    pl = plan(refs, agent, mode, worktree, runner)
-    project = pl["project"]
     if dry_run:
+        pl = plan(refs, agent, mode, worktree, runner)
         return {"ok": True, "dry_run": True, "agent": pl["agent"], "model": model, "mode": mode, "runner": pl["runner"],
                 "worktree": pl["worktree"], "jobs": [_public(e) for e in pl["jobs"]], "warnings": pl["warnings"]}
+    # one dispatch at a time, from the check to the items marked handed off: two clicks (or the app and an agent)
+    # never start two sessions on one item
+    with jobs.file_lock(jobs.home() / "run" / "dispatch.lock", timeout=60):
+        return _dispatch(plan(refs, agent, mode, worktree, runner), mode, lang, model)
+
+
+def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
+    import agents
+    import handoff
+    project = pl["project"]
+    defn = agents.definitions(agents.config(project["path"])).get(pl["agent"]) or {}
+    sandboxed = bool((agents.session_spec(defn) or {}).get("sandboxed"))
     mcp = None
     out_jobs, launch = [], []
     warnings = list(pl["warnings"])
@@ -701,11 +778,10 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
             elif pl["root"]:
                 agent_obj["base_sha"] = git(Path(pl["root"]), "rev-parse", "HEAD", check=False).stdout.strip() or None
             pr = agents.prompt_work([], "session", bool(e.get("worktree")), lang=lang, branch=e.get("branch"),
-                                    items=e["_items"])
+                                    items=e["_items"], sandboxed=sandboxed)
             agent_obj["handoff"] = pr["handoff"]
             jobs.path(jid, ".prompt.md").write_text(pr["prompt"] + "\n", encoding="utf-8")
             if mcp is None:
-                defn = agents.definitions(agents.config(project["path"])).get(pl["agent"]) or {}
                 mcp = agents.mcp_installed(defn) is False
             cmd = agents.session_command(pl["agent"], pr["prompt"], e["cwd"], job=jid, mcp=mcp, model=model,
                                          settings=jobs.path(jid, ".claude-settings.json"))
@@ -730,6 +806,7 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
                 agent_obj["worktree"] = None
 
             def failed(j, err=err, code=code):
+                agent_obj.update(status="error", status_at=jobs.now_iso(), status_source="app")  # never "running"
                 j["agent"] = agent_obj
                 jobs.finish(j, "failed", {"code": code if code in jobs.ERROR_CODES else "unknown",
                                           "message": str(err)[:500], "hint_key": None})
@@ -971,8 +1048,9 @@ def diff(job: dict) -> dict:
     out = jobs.path(job["id"], ".diff")
     out.write_text(patch, encoding="utf-8")
     uncommitted = len([ln for ln in git(cwd, "status", "--porcelain", check=False).stdout.splitlines() if ln.strip()])
+    ahead = changes(wt)["ahead"] if wt else 0
     return {"base": (wt or {}).get("base") or base, "branch": (wt or {}).get("branch"), "stat": stat,
-            "patch": str(out), "uncommitted": uncommitted}
+            "patch": str(out), "uncommitted": uncommitted, "ahead": ahead}
 
 
 def _compare_url(remote: str, base: str, branch: str) -> str | None:
@@ -983,13 +1061,66 @@ def _compare_url(remote: str, base: str, branch: str) -> str | None:
     return f"https://{m.group(1)}/{m.group(2)}/compare/{base}...{branch}?expand=1"
 
 
+def commit_message(job: dict) -> str:
+    """"BA-12 Login button does nothing (Blurt hand-off)"; several items: their ids, then the first title."""
+    import handoff
+    labels = []
+    for u in job.get("items") or []:
+        try:
+            it = handoff.item(u)
+        except handoff.CliError:
+            continue
+        labels.append((it.get("id") or u[:8], (it.get("title") or "").strip()))
+    if not labels:
+        return f"{job.get('title') or 'Agent session'} (Blurt hand-off)"
+    ids = ", ".join(i for i, _ in labels[:4]) + (f" +{len(labels) - 4}" if len(labels) > 4 else "")
+    title = labels[0][1] if len(labels) == 1 else ""
+    return " ".join(x for x in (ids, title, "(Blurt hand-off)") if x)[:200]
+
+
+def _commit_left_over(job: dict, wt: dict) -> str | None:
+    """Commit what the agent left uncommitted on its own branch (a sandboxed agent can't commit in a linked worktree:
+    its index lives in the repository's .git, outside the sandbox). Runs here, outside any sandbox; the user's git
+    hooks apply. → the new commit, or None when there was nothing to commit."""
+    path = Path(wt["path"])
+    if not [ln for ln in git(path, "status", "--porcelain").stdout.splitlines() if ln.strip()]:
+        return None
+    git(path, "add", "-A")
+    c = git(path, "commit", "-q", "-m", commit_message(job), check=False)
+    if c.returncode != 0:
+        raise SessionError("commit", "committing the session's changes failed",
+                           detail=(c.stderr or c.stdout).strip()[-600:])
+    return git(path, "rev-parse", "HEAD").stdout.strip()
+
+
+def _take_back(job_id: str, uids: list[str]) -> list[str]:
+    """The user gave up on this session (discard, restart): its items still with it go back to To Do. Items handed
+    to another session since are left alone."""
+    import handoff
+    mine = []
+    for u in uids:
+        try:
+            it = handoff.item(u)
+        except handoff.CliError:
+            continue
+        if it.get("state") in ("handed_off", "in_progress") and (it.get("work") or {}).get("job") == job_id:
+            mine.append(u)
+    if mine:
+        handoff.set_work(mine, "todo", by="user")
+    return mine
+
+
 def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
     import handoff
     job = _job(job_id)
     a = job.get("agent") or {}
     wt = a.get("worktree")
     if action == "diff":
-        return {"ok": True, **diff(job)}
+        res = diff(job)
+        if wt:  # the sheet and the session list agree on whether there is anything to review
+            jobs.update(job_id, lambda j: j.setdefault("agent", {}).update(
+                changes={"ahead": res["ahead"], "dirty": res["uncommitted"]}))
+        return {"ok": True, **res}
     if action != "keep" and not wt:
         raise SessionError("no_worktree", "this session worked in the project folder directly — nothing to "
                                           f"{action}")
@@ -997,21 +1128,20 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
     main = Path(wt["repo"]) if wt else None
     if action in ("merge", "pr") and not Path(wt["path"]).is_dir():
         raise SessionError("gone", "the worktree is gone")
-    if action == "merge":
-        live = panes().get(job_id)
+    live = panes().get(job_id)
+    if action in ("merge", "pr"):
         if live and not live["dead"]:
             raise SessionError("running", "the agent is still running in this worktree — stop it first")
-        dirty = [ln for ln in git(Path(wt["path"]), "status", "--porcelain").stdout.splitlines() if ln.strip()]
-        if dirty:
-            raise SessionError("uncommitted", f"{len(dirty)} uncommitted change(s) in the worktree", count=len(dirty))
+        ch = changes(wt)
+        if ch["ahead"] == 0 and ch["dirty"] == 0:
+            raise SessionError("nothing", "the session's branch has no changes")
+    if action == "merge":
         head = git(main, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
         if head != wt["base"]:
             raise SessionError("wrong_branch", f"the project folder is on {head}, not {wt['base']}", branch=head)
         if [ln for ln in git(main, "status", "--porcelain", "--untracked-files=no").stdout.splitlines() if ln.strip()]:
             raise SessionError("dirty", "the project folder has uncommitted changes")
-        ahead = int(git(main, "rev-list", "--count", f"{wt['base_sha']}..{wt['branch']}").stdout.strip() or 0)
-        if ahead == 0:
-            raise SessionError("nothing", "the session's branch has no commits to merge")
+        result["committed"] = _commit_left_over(job, wt)
         m = git(main, "merge", "--no-ff", "--no-edit", wt["branch"], check=False)
         if m.returncode != 0:
             git(main, "merge", "--abort", check=False)
@@ -1025,12 +1155,10 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
             git(main, "branch", "-d", wt["branch"], check=False)
         result["removed"] = not Path(wt["path"]).exists()
     elif action == "pr":
-        dirty = [ln for ln in git(Path(wt["path"]), "status", "--porcelain").stdout.splitlines() if ln.strip()]
-        if dirty:
-            raise SessionError("uncommitted", f"{len(dirty)} uncommitted change(s) in the worktree", count=len(dirty))
         remote = git(main, "remote", "get-url", "origin", check=False).stdout.strip()
         if not remote:
             raise SessionError("no_remote", "the repository has no origin remote")
+        result["committed"] = _commit_left_over(job, wt)
         push = git(Path(wt["path"]), "push", "-u", "origin", wt["branch"], check=False, timeout=300)
         if push.returncode != 0:
             raise SessionError("push", "git push failed", detail=(push.stderr or push.stdout).strip()[-600:])
@@ -1046,7 +1174,6 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
                 url = None
         result.update(pr=url, compare=None if url else _compare_url(remote, wt["base"], wt["branch"]))
     elif action == "discard":
-        live = panes().get(job_id)
         if live:
             if not live["dead"]:
                 stop(job_id, kill=False)
@@ -1065,6 +1192,11 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
             except handoff.CliError as e:
                 result["items_error"] = {"code": e.code, "message": str(e)[:300]}
                 moved = []
+    elif action == "discard":  # nothing of it is left: its items are To Do again, not "in progress" for good
+        try:
+            result["taken_back"] = _take_back(job_id, job.get("items") or [])
+        except handoff.CliError as e:
+            result["items_error"] = {"code": e.code, "message": str(e)[:300]}
 
     def done(j):
         j.setdefault("agent", {})["finish"] = {"action": action, "at": jobs.now_iso(), "result": result}
@@ -1073,6 +1205,50 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
             _set_status(j, "exited", "app")
     jobs.update(job_id, done)
     return {"ok": True, "action": action, "items": moved, **result}
+
+
+def restart(job_id: str, lang: str | None = None) -> dict:
+    """Start the session again: the same items, agent, model and worktree choice, in a fresh window (and worktree).
+    For a session that ended without changes — it failed to start, or stopped at once; one that left changes is
+    reviewed first (code has_changes). The old one's window, worktree and branch go; its items go back to To Do and
+    straight on to the new session."""
+    import handoff
+    job = _job(job_id)
+    a = job.get("agent") or {}
+    wins = panes()
+    if job.get("state") in ("running", "queued") and is_alive(job, wins) and a.get("status") != "error":
+        raise SessionError("running", "the session is still running — stop it first")
+    wt = a.get("worktree")
+    if wt and Path(wt.get("path") or "").is_dir():
+        ch = changes(wt)
+        if ch["ahead"] or ch["dirty"]:
+            raise SessionError("has_changes", "the session left changes — review them first", **ch)
+    try:
+        _take_back(job_id, job.get("items") or [])
+    except handoff.CliError as e:
+        raise SessionError(e.code, str(e)) from None
+    w = wins.get(job_id)
+    if w:
+        tmux("kill-window", "-t", w["window"], check=False)
+    if wt:
+        root = Path(wt["repo"])
+        git(root, "worktree", "remove", "--force", wt["path"], check=False)
+        git(root, "branch", "-D", wt["branch"], check=False)
+    again = _items_in(job.get("items") or [], ("new", "todo"))
+    if not again:
+        raise SessionError("nothing", "the session's items have moved on")
+
+    def ended(j):
+        if j.get("state") in ("running", "queued"):
+            _set_status(j, "exited", "app")
+            j["state"] = "cancelled"
+        j.setdefault("agent", {})["finish"] = {"action": "restart", "at": jobs.now_iso(), "result": {}}
+    jobs.update(job_id, ended)
+    out = dispatch(again, agent=a.get("id"), mode="together", worktree="on" if wt else "off",
+                   runner=a.get("runner") or "auto", lang=lang, model=a.get("model"))
+    new = [r["id"] for r in out.get("jobs", [])]
+    jobs.update(job_id, lambda j: j["agent"]["finish"]["result"].update(jobs=new))
+    return {**out, "restarted": job_id}
 
 
 def doctor() -> dict:
@@ -1142,6 +1318,9 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("job")
     s.add_argument("--action", required=True, choices=["diff", "merge", "pr", "discard", "keep"])
     s.add_argument("--keep-branch", action="store_true")
+    s = sub.add_parser("restart")
+    s.add_argument("job")
+    s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
     s = sub.add_parser("event")
     s.add_argument("--job", required=True)
     s.add_argument("--event", required=True)
@@ -1169,6 +1348,8 @@ def main(argv: list[str] | None = None) -> None:
             emit(stop(a.job, a.kill))
         elif a.cmd == "finish":
             emit(finish(a.job, a.action, a.keep_branch))
+        elif a.cmd == "restart":
+            emit(restart(a.job, a.lang))
         elif a.cmd == "event":
             emit(app_event(a.job, a.event, a.exit))
         elif a.cmd == "monitor":
