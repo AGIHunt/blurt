@@ -31,8 +31,7 @@
 "dictation.toast.copy_again" = "Copy Again";
 "dictation.toast.copy" = "Copy";
 "dictation.toast.secure_held" = "A password field has the cursor — nothing typed";
-"dictation.mic.builtin" = "Use the Mac’s microphone for dictation";
-"dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start, so the first words are lost. Automatic: on when the default input is Bluetooth.";
+"dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start listening, so your first words are lost. Automatic uses this Mac’s microphone whenever the default input is Bluetooth.";
 "dictation.mic.start_sound" = "Play a sound when listening starts";
 
 /* menus */
@@ -46,11 +45,10 @@
 "dictation.settings.tab" = "Dictation";
 "dictation.settings.section" = "Dictation";
 "dictation.settings.enable" = "Dictate into any app";
-"dictation.settings.key" = "Key";
-"dictation.settings.mode" = "How it works";
-"dictation.settings.voice_note_hint" = "To keep what you say in Blurt, use a voice note (%@).";
+"dictation.settings.key" = "Shortcut";
+"dictation.settings.mode" = "Start and stop";
 "dictation.settings.voice_note_off" = "its shortcut is off";
-"dictation.settings.either_hint" = "A tap counts only when no other key or click comes in between, so Option shortcuts keep working.";
+"dictation.settings.either_hint" = "Counts only when pressed on its own, so ⌥ shortcuts still work.";
 
 /* whether the key is heard right now (the event tap) */
 "dictation.status.off" = "Blurt can’t hear %@ yet";
@@ -63,7 +61,6 @@
 "dictation.heard.other" = "Last heard in another app: %@.";
 "dictation.heard.never" = "Not heard in another app yet: press %@ in another app to check.";
 
-"dictation.perm.section" = "Permissions";
 "dictation.perm.input_monitoring" = "Input Monitoring";
 "dictation.perm.input_monitoring.why" = "To notice %@ in every app. Blurt only listens for that key — it never records what you type.";
 "dictation.perm.accessibility" = "Accessibility";
@@ -78,7 +75,7 @@
 "dictation.history.keep" = "Keep dictations for";
 "dictation.history.days" = "%ld days";
 "dictation.history.keep_audio" = "Keep the audio";
-"dictation.history.keep_audio.detail" = "Off: the recording is deleted as soon as it is typed.";
+"dictation.history.keep_audio.detail" = "Off: the recording is deleted as soon as the text is in.";
 "dictation.history.open" = "Open History…";
 "dictation.history.clear" = "Clear History…";
 "dictation.history.clear.title" = "Clear the dictation history?";
@@ -136,23 +133,21 @@
 "dictation.vocab.ignore" = "Ignore";
 "dictation.vocab.remove" = "Remove";
 "dictation.vocab.context" = "Use the text around the cursor";
-"dictation.vocab.context.detail" = "On: names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
+"dictation.vocab.context.detail" = "Names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
 "dictation.vocab.learn" = "Learn from my corrections";
-"dictation.vocab.learn.detail" = "On: when you fix a name Blurt got wrong, it learns the word.";
+"dictation.vocab.learn.detail" = "When you fix a name Blurt got wrong, it learns the word.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
 "dictation.mode.auto" = "Tap or hold";
-"dictation.mode.auto.detail" = "Tap %@ to start and again to stop, or hold it while you talk. Esc cancels.";
-"dictation.mode.tap.detail" = "Tap %@ to start, and tap it again to stop. Esc cancels.";
-"dictation.mode.hold.detail" = "Hold %@ while you talk; let go to stop. Esc cancels.";
+"dictation.mode.auto.detail" = "Tap %@ to start and stop, or hold it while you talk.";
+"dictation.mode.tap.detail" = "Tap %@ to start, and tap it again to stop.";
+"dictation.mode.hold.detail" = "Hold %@ while you talk; let go to stop.";
 "dictation.toast.on.auto" = "Dictation is on: tap %@ to talk, or hold it";
 "dictation.listener.filter" = "Listening in every app, and keeping Fn from macOS (Accessibility).";
 "dictation.perm.input_monitoring.why_fn" = "Not needed for Fn: Blurt hears it through Accessibility. Other keys use it.";
 "dictation.perm.microphone.why" = "To hear what you say.";
-"dictation.fn.capture" = "Keep Fn for dictation";
-"dictation.fn.capture.on" = "macOS’s own Fn action doesn’t run while Blurt listens for Fn.";
-"dictation.fn.capture.needs_ax" = "Needs Accessibility. Until it’s allowed, macOS may also react to Fn.";
-"dictation.fn.capture.detail" = "Off: Fn reaches macOS as well, so set what it does to Do Nothing below.";
+"dictation.fn.capture" = "Use Fn only for dictation";
+"dictation.fn.capture.detail" = "macOS’s own Fn action (emoji, input source) doesn’t run as well. Needs Accessibility.";
 "dictation.fn.usage" = "macOS “Press Globe key to”: %@";
 "dictation.fn_usage.0" = "Do Nothing";
 "dictation.fn_usage.1" = "Change Input Source";
@@ -161,12 +156,12 @@
 "dictation.fn_usage.default" = "macOS default";
 "dictation.fn.usage.clash" = "Pressing Fn may do this as well. Set it to Do Nothing — Blurt never changes it for you.";
 "dictation.fn.usage.fix" = "Fix…";
-"dictation.settings.fn_clash" = "%@ is running and also uses Fn: both will react. Quit it, or give one of them another key.";
+"dictation.settings.fn_clash" = "%@ also uses Fn, so both will react.";
 
 /* double tap = Return */
 "dictation.toast.sent" = "Sent";
-"dictation.settings.double_tap" = "Double-tap %@ to send (Return)";
-"dictation.settings.double_tap.detail" = "Tap to stop, check the text, then double-tap to send. Or double-tap instead of the stop tap.";
+"dictation.settings.double_tap" = "Double-tap to send";
+"dictation.settings.double_tap.detail" = "Double-tap the key to press Return after the text.";
 
 /* Dictation Lab (the Dictation page's Lab tab; MainWindow/DictationLab*.swift) */
 "dictation.lab.tab.history" = "History";
@@ -425,7 +420,7 @@
 "dictation.style.suggest" = "Offer a list when a take sounds like one";
 "dictation.style.learn_toggle" = "Suggest an app’s style from how I switch";
 "dictation.style.learn_toggle.detail" = "It only asks; it never changes a style by itself";
-"dictation.style.verbatim.detail" = "What the speech model heard, with its punctuation. No polish.";
+"dictation.style.verbatim.detail" = "Exactly what the speech model heard. No polish.";
 "dictation.history.style" = "Style: %@";
 "dictation.history.style.reformatted" = "reformatted %ld×";
 
@@ -433,24 +428,17 @@
 "dictation.lab.compare.style" = "Style: %@";
 
 /* Settings → Dictation's style, models and words summary; the Dictation page's Words tab (MainWindow/DictationWords.swift) */
-"dictation.style.light.detail" = "Drops ums and stutters, adds punctuation. Every word you said stays, corrections too.";
-"dictation.style.structured.detail" = "When you finish, the take is tidied once more: only what you settled on stays, and points you count off become a list.";
-"dictation.style.auto.detail" = "Like Light, until you count off points: then it makes a list.";
+"dictation.style.light.detail" = "Drops ums and stutters, adds punctuation, keeps every word.";
+"dictation.style.structured.detail" = "Keeps what you settled on; points you count off become a list.";
+"dictation.style.auto.detail" = "Like Light, until you count off points: then a list.";
 "dictation.style.by_app" = "By kind of app";
 "dictation.style.follow" = "Same as above (%@)";
 "dictation.models.section" = "Models";
-"dictation.models.asr" = "Speech model";
-"dictation.models.polish" = "Polish model";
-"dictation.models.none" = "Not downloaded yet";
-"dictation.models.change" = "Change…";
-"dictation.models.get" = "Download…";
-"dictation.models.unsupported" = "Needs Apple silicon";
-"dictation.vocab.summary.title" = "Names and terms you say";
-"dictation.vocab.summary.mine" = "Yours: %ld";
-"dictation.vocab.summary.builtin" = "Built-in: %ld";
-"dictation.vocab.summary.suggested" = "To review: %ld";
+"dictation.models.change" = "Change in Speech…";
+"dictation.vocab.summary.title" = "Names and terms";
+"dictation.vocab.summary.mine" = "%ld of your own";
+"dictation.vocab.summary.suggested" = "%ld to review";
 "dictation.vocab.manage" = "Manage…";
-"dictation.perm.all_set" = "All allowed";
 "dictation.mic.section" = "Microphone";
 "dictation.words.tab" = "Words";
 "dictation.words.add.placeholder" = "Add a word, like Claude Code";
@@ -480,10 +468,10 @@
 "dictation.words.info.heard" = "Heard as";
 "dictation.words.info.added" = "Added";
 "dictation.settings.enable.detail" = "Talk, and the text is typed where your cursor is.";
-"dictation.style.default" = "Default style";
+"dictation.style.default" = "Style";
 "dictation.style.by_app.detail" = "Chat, code, mail and notes can each have their own.";
-"dictation.history.saved" = "Saved dictations";
-"dictation.history.saved.detail" = "Every dictation, its text before and after polish.";
+"dictation.history.saved" = "History";
+"dictation.history.saved.detail" = "Every dictation, before and after polish.";
 
 /* takes in flight (DictationTakes.swift): cancel, the limit, no model, failures, notices, tips */
 "dictation.style.toast.structured.first" = "%@: a list when you finish, with only what you settled on · ⇧ to go back";
@@ -550,3 +538,20 @@
 "dictation.menu.get_model.subtitle_plain" = "Dictation needs it";
 "dictation.models.queued" = "Waiting to download · %@";
 "dictation.models.show" = "Show";
+"dictation.mode.help" = "Esc cancels a take. To keep what you say in Blurt instead of typing it, use a voice note (%@).";
+"dictation.settings.double_tap.key" = "Double-tap %@ to press Return after the text.";
+"dictation.settings.double_tap.help" = "Tap to stop, check the text, then double-tap to send. Or double-tap instead of the stop tap.";
+"dictation.settings.fn_clash.help" = "Quit it, or give one of them another key.";
+"dictation.mic.auto" = "Automatic";
+"dictation.mic.mac" = "This Mac’s microphone";
+"dictation.mic.default" = "Default input";
+"dictation.mic.detail" = "Automatic avoids the lag of Bluetooth headsets.";
+"dictation.style.by_app.pair" = "%1$@: %2$@";
+"dictation.style.by_app.apps" = "%ld apps on their own";
+"dictation.text.section" = "Text";
+"dictation.vocab.summary.detail" = "Spelled the way you write them.";
+"dictation.history.summary" = "%1$ld saved · deleted after %2$@";
+"dictation.models.detail" = "The speech and polish models dictation runs on.";
+"dictation.models.missing" = "Not on this Mac yet · %@";
+"dictation.models.download" = "Download";
+"dictation.notice.needs" = "Dictation needs %@";

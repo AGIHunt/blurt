@@ -101,8 +101,9 @@ enum SettingsMetrics {
     /// titles, the hairlines between rows), its corner radius.
     static let boxInset: CGFloat = 12
     static let boxRadius: CGFloat = 10
-    /// The trailing column: every pop-up of a page the same width, so the controls share one left and one right edge.
-    static let pickerWidth: CGFloat = 220
+    /// The trailing column: every pop-up of a page the same width, so the controls share one left and one right edge
+    /// (RowPicker, ChoicePopup).
+    static let controlWidth: CGFloat = 200
     static let ground = Color(nsColor: .controlBackgroundColor)
     /// the box on the page's ground: a few percent of ink, so it holds in light, dark and Increase Contrast alike
     static let boxFill = Color.primary.opacity(0.035)
@@ -174,6 +175,7 @@ struct SettingsPage<Content: View>: View {
             .onReceive(flash.$request) { _ in go(proxy) }
         }
         .settingsPageGround()
+        .background { if SettingsTestKeyLook.on { SettingsTestKeyLook.Reader() } }
     }
 
     /// The page grew or shrank: the row a request landed on goes back where it was put, while the hold lasts.
@@ -202,6 +204,43 @@ struct SettingsPage<Content: View>: View {
                 proxy.scrollTo(r.id, anchor: anchor)
                 if i == 0 { flash.flash(r.id) }
                 if i == 3 { flash.request = nil }
+            }
+        }
+    }
+}
+
+/// Screenshots of a test build launched in the background (BLURT_TEST_COMMANDS=1 and BLURT_TEST_KEY_LOOK=1, as
+/// BrandRowView.testKeyLook): the Settings window draws as the key window, so its switches and popups show the brand
+/// accent as the user sees them — without taking the focus from the app the user is in.
+enum SettingsTestKeyLook {
+    static let on = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+        && ProcessInfo.processInfo.environment["BLURT_TEST_KEY_LOOK"] == "1"
+    @MainActor private static var patched: Set<ObjectIdentifier> = []
+
+    @MainActor static func apply(to w: NSWindow) {
+        let cls: AnyClass = type(of: w)
+        guard on, patched.insert(ObjectIdentifier(cls)).inserted else { return }
+        // the public getters, and the ones AppKit's controls ask when they pick their active look
+        let names = ["isKeyWindow", "isMainWindow", "_hasActiveAppearance", "_hasActiveAppearanceIgnoringKeyFocus", "_hasKeyAppearance",
+                     "_hasMainAppearance", "hasKeyAppearance", "hasMainAppearance", "_hasActiveControls"]
+        for sel in names.map(NSSelectorFromString) {
+            guard let m = class_getInstanceMethod(cls, sel) else { continue }
+            let yes: @convention(block) (AnyObject) -> Bool = { _ in true }
+            class_replaceMethod(cls, sel, imp_implementationWithBlock(yes), method_getTypeEncoding(m))
+        }
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
+        NotificationCenter.default.post(name: NSWindow.didBecomeMainNotification, object: w)
+        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if let v = w.contentView { redraw(v) } }
+    }
+
+    struct Reader: NSViewRepresentable {
+        func makeNSView(context: Context) -> NSView { Probe() }
+        func updateNSView(_ v: NSView, context: Context) {}
+        final class Probe: NSView {
+            override func viewDidMoveToWindow() {
+                super.viewDidMoveToWindow()
+                if let w = window { MainActor.assumeIsolated { SettingsTestKeyLook.apply(to: w) } }
             }
         }
     }
@@ -344,6 +383,8 @@ extension SettingsGroup where Accessory == EmptyView {
 /// setting of its own (a project, a model, a permission) uses it directly; settings use SettingRow.
 struct SettingsLine<Content: View>: View {
     var flashID: String?
+    /// settings that live in this line's menu (SettingMenuToggle / SettingMenuPicker): a search for one lands here
+    var hosts: [String] = []
     var padding: CGFloat = SettingsMetrics.rowPadding
     @ViewBuilder var content: Content
     @ObservedObject private var flash = SettingsFlash.shared
@@ -356,7 +397,9 @@ struct SettingsLine<Content: View>: View {
             .overlay(alignment: .top) {
                 Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).allowsHitTesting(false)
             }
-            .background(FlashWash(on: flashID != nil && flash.row == flashID))
+            .background(FlashWash(on: flash.row.map { $0 == flashID || hosts.contains($0) } ?? false))
+            // the menu's settings scroll here (a search or a link to one of them)
+            .background(alignment: .top) { ForEach(hosts, id: \.self) { h in Color.clear.frame(height: 1).id(h) } }
     }
 }
 
@@ -364,28 +407,34 @@ struct SettingsLine<Content: View>: View {
 /// control on the right. `title` / `detail` override the catalogue's text where it depends on state (the dictation
 /// key, the chosen mode); `help` is the longer explanation (the catalogue's `more` by default), behind a small ⓘ after
 /// the title that opens it in a popover — the description itself stays one line.
-/// `detailBelow` puts the description under the whole row, for a wide control (the style's segmented choice).
+/// `detailBelow` puts the description under the whole row, for a wide control. `richDetail`: a description with a
+/// part in another ink (a count that needs you). `hosts`: the settings in the control's menu (SettingMenuToggle /
+/// SettingMenuPicker), which a search lands on this row for.
 struct SettingRow<Control: View>: View {
     let id: String
     var title: String?
     var detail: String?
+    var richDetail: Text?
     var help: String?
     var icon: String?
     var detailBelow = false
     /// a description that is a warning (a shortcut's conflict): attention ink
     var detailColor: Color?
+    var hosts: [String] = []
     var control: Control
     @Environment(\.isEnabled) private var enabled
 
-    init(_ id: String, title: String? = nil, detail: String? = nil, help: String? = nil, icon: String? = nil, detailBelow: Bool = false,
-         detailColor: Color? = nil, @ViewBuilder control: () -> Control) {
+    init(_ id: String, title: String? = nil, detail: String? = nil, richDetail: Text? = nil, help: String? = nil, icon: String? = nil,
+         detailBelow: Bool = false, detailColor: Color? = nil, hosts: [String] = [], @ViewBuilder control: () -> Control) {
         self.id = id
         self.title = title
         self.detail = detail
+        self.richDetail = richDetail
         self.help = help
         self.icon = icon
         self.detailBelow = detailBelow
         self.detailColor = detailColor
+        self.hosts = hosts
         self.control = control()
     }
 
@@ -395,7 +444,7 @@ struct SettingRow<Control: View>: View {
     var helpText: String? { help ?? entry?.more.flatMap { SettingsCatalog.text($0) } }
 
     var body: some View {
-        SettingsLine(flashID: id) {
+        SettingsLine(flashID: id, hosts: hosts) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center, spacing: 14) {
                     if let i = icon {
@@ -408,7 +457,10 @@ struct SettingRow<Control: View>: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             if let h = helpText, !h.isEmpty { InfoButton(title: titleText, text: h) }
                         }
-                        if !detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
+                        if let r = richDetail {
+                            r.font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(enabled ? .secondary : .tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if !detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     control
@@ -476,9 +528,9 @@ struct SettingToggle: View {
     }
 }
 
-/// A menu of choices on a row's right, sized to its longest choice and flush with the column's trailing edge; `width`
-/// caps it (SettingsMetrics.pickerWidth): a choice longer than that — a long project name — is cut short in the
-/// button and shown whole in its menu, so one row can't stretch the column.
+/// A menu of choices on a row's right, at the page's one control width (SettingsMetrics.controlWidth), flush with the
+/// column's trailing edge, so every pop-up of every pane shares one left and one right edge (as ChoicePopup); a choice
+/// longer than that — a long project name — is cut short in the button and shown whole in its menu.
 struct RowPicker<Value: Hashable, Choices: View>: View {
     var label: String
     var selection: Binding<Value>
@@ -493,30 +545,154 @@ struct RowPicker<Value: Hashable, Choices: View>: View {
     }
 
     var body: some View {
-        if let w = width {
-            // its own size up to `w`, flush with the column's trailing edge; a longer choice is cut short in the button
-            CapWidth(limit: w) { picker }
-        } else {
-            picker.fixedSize()
-        }
+        Picker(label, selection: selection) { choices }.labelsHidden()
+            .frame(width: width ?? SettingsMetrics.controlWidth, alignment: .trailing)
     }
-
-    private var picker: some View { Picker(label, selection: selection) { choices }.labelsHidden() }
 }
 
-/// Its one subview at its ideal width, but never wider than `limit` (a frame(maxWidth:) would take the whole limit and
-/// leave a gap beside a short pop-up; a fixedSize() would let a long one stretch the column).
-private struct CapWidth: Layout {
-    var limit: CGFloat
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        guard let v = subviews.first else { return .zero }
-        let ideal = v.sizeThatFits(.unspecified)
-        return CGSize(width: min(ideal.width, limit, proposal.width ?? .infinity), height: ideal.height)
+/// A catalogue setting that is a check item in a row's menu (a split button's, ChoicePopup's): its title from
+/// SettingsCatalog, its description as the item's tooltip. Its row names it in `hosts`, so a search for it lands there.
+struct SettingMenuToggle: View {
+    let id: String
+    var isOn: Binding<Bool>
+    var title: String?
+    init(_ id: String, isOn: Binding<Bool>, title: String? = nil) {
+        self.id = id
+        self.isOn = isOn
+        self.title = title
     }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews.first?.place(at: CGPoint(x: bounds.maxX, y: bounds.midY), anchor: .trailing,
-                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    var titleText: String { title ?? SettingsCatalog.entry(id).map(SettingsCatalog.title) ?? id }
+    var helpText: String? {
+        guard let e = SettingsCatalog.entry(id) else { return nil }
+        let parts = [SettingsCatalog.detail(e), e.more.flatMap { SettingsCatalog.text($0) }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
+    var body: some View { Toggle(titleText, isOn: isOn).help(helpText ?? "") }
+}
+
+/// A catalogue setting that is a submenu of choices in a row's menu (History's "Keep dictations for").
+struct SettingMenuPicker<Value: Hashable, Choices: View>: View {
+    let id: String
+    var selection: Binding<Value>
+    @ViewBuilder var choices: Choices
+    init(_ id: String, selection: Binding<Value>, @ViewBuilder choices: () -> Choices) {
+        self.id = id
+        self.selection = selection
+        self.choices = choices()
+    }
+    var body: some View {
+        Picker(SettingsCatalog.entry(id).map(SettingsCatalog.title) ?? id, selection: selection) { choices }
+    }
+}
+
+/// A popup at a fixed width (SettingsMetrics.controlWidth: a page's popups line up, left edges too, as in Linear's
+/// and Raycast's settings), and, as System Settings' Shortcut menus, optional check items after a separator: the
+/// choices are one selection; a check item (a SettingMenuToggle) turns its setting on or off and leaves the choice as
+/// it was. The same NSPopUpButton a Picker draws.
+struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
+    var label: String
+    var choices: [(value: Value, title: String)]
+    var selection: Binding<Value>
+    var checks: [SettingMenuToggle] = []
+    var width: CGFloat = SettingsMetrics.controlWidth
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let b = NSPopUpButton(frame: .zero, pullsDown: false)
+        (b.cell as? NSPopUpButtonCell)?.altersStateOfSelectedItem = false     // the check items keep their own marks
+        b.target = context.coordinator
+        b.action = #selector(Coordinator.picked(_:))
+        b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)   // the column's width, not its longest item
+        return b
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView b: NSPopUpButton, context: Context) -> CGSize? {
+        CGSize(width: width, height: b.intrinsicContentSize.height)
+    }
+
+    func updateNSView(_ b: NSPopUpButton, context: Context) {
+        context.coordinator.parent = self
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for (i, c) in choices.enumerated() {
+            let it = NSMenuItem(title: c.title, action: nil, keyEquivalent: "")
+            it.tag = i
+            it.state = c.value == selection.wrappedValue ? .on : .off
+            menu.addItem(it)
+        }
+        if !checks.isEmpty {
+            menu.addItem(.separator())
+            for (j, t) in checks.enumerated() {
+                let it = NSMenuItem(title: t.titleText, action: nil, keyEquivalent: "")
+                it.tag = 1000 + j
+                it.state = t.isOn.wrappedValue ? .on : .off
+                it.toolTip = t.helpText
+                it.setAccessibilityIdentifier(t.id)
+                menu.addItem(it)
+            }
+        }
+        b.menu = menu
+        if let i = choices.firstIndex(where: { $0.value == selection.wrappedValue }) { b.selectItem(at: i) }
+        b.isEnabled = context.environment.isEnabled
+        b.setAccessibilityLabel(label)
+    }
+
+    final class Coordinator: NSObject {
+        var parent: ChoicePopup?
+        @MainActor @objc func picked(_ b: NSPopUpButton) {
+            guard let p = parent, let it = b.selectedItem else { return }
+            if it.tag >= 1000, p.checks.indices.contains(it.tag - 1000) {
+                p.checks[it.tag - 1000].isOn.wrappedValue.toggle()
+                if let i = p.choices.firstIndex(where: { $0.value == p.selection.wrappedValue }) { b.selectItem(at: i) }
+            } else if p.choices.indices.contains(it.tag) {
+                p.selection.wrappedValue = p.choices[it.tag].value
+            }
+        }
+    }
+}
+
+/// A plain text button in `brand.ink` (§3.4: "Change in Speech…"), not the system's link blue.
+struct TextLinkButton: View {
+    var title: String
+    var tint: Color
+    var action: () -> Void
+    init(_ title: String, tint: Color = .brandInk, action: @escaping () -> Void) {
+        self.title = title
+        self.tint = tint
+        self.action = action
+    }
+    var body: some View {
+        Button(action: action) { Text(title).foregroundStyle(tint) }.buttonStyle(.plain)
+    }
+}
+
+/// What stops a page's feature from working now, above its first section: the attention dot, what is missing, one
+/// line on why, and the one thing to do (§3.4: `attn` for what's missing). Nothing at all while all is well.
+struct SettingsNotice<Action: View>: View {
+    var title: String
+    var detail: String?
+    var tone: Tone = .warn
+    @ViewBuilder var action: Action
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            StatusDot(tone: tone)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
+                if let d = detail {
+                    Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            action
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
+    private var tint: Color { tone == .off ? Color(nsColor: .tertiaryLabelColor) : tone == .bad ? .brandErr : .brandAttn }
 }
 
 /// The brief brand wash on the row a search or a link landed on (§3.3: the selection colour), fading out. In a box

@@ -123,7 +123,7 @@ struct ProjectsPane: View {
             SettingsGroup {
                 SettingRow("projects.capture_into") {
                     RowPicker(label: T("settings.general.capture_into"), selection: Binding(get: { m.current }, set: { m.setCurrent($0) }),
-                              width: SettingsMetrics.pickerWidth) {
+                              width: SettingsMetrics.controlWidth) {
                         ForEach(m.projects, id: \.id) { p in Text(p.name).tag(p.id) }
                         Divider()
                         Text(T("project.inbox")).tag("inbox")

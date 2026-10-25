@@ -7,7 +7,8 @@
 //
 // Ids are "<pane>.<name>". A `.section` entry is a whole section (a list like the projects or the models) that search
 // can land on; `generated` rows come out of a ForEach over an enum (the shortcuts, the dictation app categories, the
-// speech purposes); `fold` names the row whose disclosure hides the entry until a search jumps there.
+// speech purposes); `fold` names the row whose disclosure hides the entry until a search jumps there, or whose menu
+// holds it (SettingMenuToggle / SettingMenuPicker: a search lands on that row).
 // Search: every word of the query has to appear in the entry's title, description, keywords or section — in the UI
 // language or in the other one — scored title first; a query that only names a pane lists that pane's rows. Plain
 // substring matching, no language rules.
@@ -29,7 +30,7 @@ public struct SettingsEntry: Hashable {
     public let detail: SettingsText?
     /// A longer explanation (the row's tooltip), searched too.
     public let more: SettingsText?
-    /// The row whose disclosure folds this one away.
+    /// The row whose disclosure folds this one away, or whose menu holds it.
     public let fold: String?
     public let generated: Bool
     public var pane: String { String(id.prefix { $0 != "." }) }
@@ -114,13 +115,10 @@ public enum SettingsCatalog {
 
         sec("projects.list", "main.sidebar.projects", "Main"),
 
+        // Dictation: how dictating works (untitled: named like the page), then what comes out — the style, the words,
+        // the history, the models. Permissions are a notice at the top only while one is missing.
         sec("dictation.main", "dictation.settings.section", "Dictation"),
-        sec("dictation.style", "dictation.style.section", "Dictation"),
-        sec("dictation.models", "dictation.models.section", "Dictation"),
-        sec("dictation.words", "dictation.vocab.section", "Dictation"),
-        sec("dictation.history", "dictation.history.section", "Dictation"),
-        sec("dictation.mic", "dictation.mic.section", "Dictation"),
-        sec("dictation.permissions", "dictation.perm.section", "Dictation"),
+        sec("dictation.text", "dictation.text.section", "Dictation"),
         sec("dictation.advanced", "settings.general.section.developer"),
 
         sec("speech.machine", "speech.section.machine", "Speech"),
@@ -179,33 +177,37 @@ public enum SettingsCatalog {
 
             // Dictation
             row("dictation.enable", "dictation.main", D("dictation.settings.enable"), detail: D("dictation.settings.enable.detail")),
+            // the key's menu: keeping Fn from macOS (Fn only)
             row("dictation.key", "dictation.main", D("dictation.settings.key")),
+            row("dictation.fn_capture", "dictation.main", D("dictation.fn.capture"), detail: D("dictation.fn.capture.detail"), fold: "dictation.key"),
             row("dictation.mode", "dictation.main", D("dictation.settings.mode")),
             row("dictation.double_tap", "dictation.main", D("dictation.settings.double_tap"), detail: D("dictation.settings.double_tap.detail")),
-            row("dictation.fn_capture", "dictation.main", D("dictation.fn.capture"), detail: D("dictation.fn.capture.detail")),
-            row("dictation.default_style", "dictation.style", D("dictation.style.default")),
-            row("dictation.by_app", "dictation.style", D("dictation.style.by_app"), detail: D("dictation.style.by_app.detail")),
+            row("dictation.mic", "dictation.main", D("dictation.mic.section"), detail: D("dictation.mic.detail"), more: D("dictation.mic.builtin.detail")),
+            row("dictation.start_sound", "dictation.main", D("dictation.mic.start_sound")),
+            row("dictation.default_style", "dictation.text", D("dictation.style.default")),
+            row("dictation.by_app", "dictation.text", D("dictation.style.by_app"), detail: D("dictation.style.by_app.detail")),
         ]
         for c in ["chat", "code", "mail", "notes", "other"] {
-            e.append(row("dictation.cat.\(c)", "dictation.style", D("dictation.style.cat.\(c)"), detail: D("dictation.style.cat.\(c).detail"),
+            e.append(row("dictation.cat.\(c)", "dictation.text", D("dictation.style.cat.\(c)"), detail: D("dictation.style.cat.\(c).detail"),
                          fold: "dictation.by_app", generated: true))
         }
         e += [
-            row("dictation.suggest_lists", "dictation.style", D("dictation.style.suggest"), fold: "dictation.by_app"),
-            row("dictation.learn_styles", "dictation.style", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
+            row("dictation.suggest_lists", "dictation.text", D("dictation.style.suggest"), fold: "dictation.by_app"),
+            row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
-            row("dictation.polish_timeout", "dictation.style", D("dictation.polish.timeout"), fold: "dictation.by_app"),
-            row("dictation.asr_model", "dictation.models", D("dictation.models.asr")),
-            row("dictation.polish_model", "dictation.models", D("dictation.models.polish")),
-            row("dictation.word_list", "dictation.words", D("dictation.vocab.summary.title")),
-            row("dictation.context", "dictation.words", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail")),
-            row("dictation.learn", "dictation.words", D("dictation.vocab.learn"), detail: D("dictation.vocab.learn.detail")),
-            row("dictation.history_keep", "dictation.history", D("dictation.history.keep")),
-            row("dictation.keep_audio", "dictation.history", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail")),
-            row("dictation.history_saved", "dictation.history", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
-            row("dictation.builtin_mic", "dictation.mic", D("dictation.mic.builtin"), detail: D("dictation.mic.builtin.detail")),
-            row("dictation.start_sound", "dictation.mic", D("dictation.mic.start_sound")),
-            whole("dictation.permissions"),
+            row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
+            // the words' menu: reading the context, learning
+            row("dictation.word_list", "dictation.text", D("dictation.vocab.summary.title"), detail: D("dictation.vocab.summary.detail")),
+            row("dictation.context", "dictation.text", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail"),
+                fold: "dictation.word_list"),
+            row("dictation.learn", "dictation.text", D("dictation.vocab.learn"), detail: D("dictation.vocab.learn.detail"), fold: "dictation.word_list"),
+            // the history's menu: how long it is kept, the audio, clearing it
+            row("dictation.history_saved", "dictation.text", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
+            row("dictation.history_keep", "dictation.text", D("dictation.history.keep"), fold: "dictation.history_saved"),
+            row("dictation.keep_audio", "dictation.text", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail"),
+                fold: "dictation.history_saved"),
+            // chosen and listed in Settings → Speech
+            row("dictation.models", "dictation.text", D("dictation.models.section"), detail: D("dictation.models.detail")),
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
             // Speech

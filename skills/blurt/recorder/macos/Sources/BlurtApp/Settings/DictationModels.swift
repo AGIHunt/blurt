@@ -4,8 +4,9 @@
 // fetching shows its bar here, "Queued" while it waits, never a second Download), whether dictation has a recogniser
 // to run on (`dictationReady`: the dictation key waits on it), the choice, the recommended pair with its total size, and
 // their names (the Dictation page's history shows names, not ids). Settings → Speech lists and picks them
-// (`DictationModelsSection`, the "speech.dictation" group); Settings → Dictation shows the current choice with a link
-// there (show(pane: "speech/dictation")).
+// (`DictationModelsSection`, the "speech.dictation" group); Settings → Dictation shows them as one row: the names in
+// use with a link there (show(pane: "speech/dictation")), or what is missing with one Download for all of it
+// (`missingJobs`), or the download's progress.
 // One verb per state: Download (not on this Mac) / Use (on this Mac) / the selected one is marked. Sizes come from
 // the catalogues' size_mb, formatted by `modelSize`.
 // Strings: Resources/*.lproj/Speech.strings ("speech.dictation.*").
@@ -201,6 +202,25 @@ final class DictationModels: ObservableObject {
         if !jobs.isEmpty { dl.download(jobs, via: "settings") }
     }
 
+    // MARK: what dictation still needs (Settings → Dictation's Models row: one Download for all of it)
+
+    /// The models dictation can't run without yet, as the download manager's jobs: the recogniser
+    /// (`dictationJob`: the configured or recommended one, or only the VAD) and — when a style polishes — the polish
+    /// model in use (or the recommended one). Nothing a download already has, nothing pinned. Empty: all in.
+    func missingJobs(polish needsPolish: Bool) -> [ModelDownloadQueue.Job] {
+        var jobs: [ModelDownloadQueue.Job] = []
+        if dictationReady == false, let j = dictationJob { jobs.append(j) }
+        if needsPolish, let p = polish, p.supported, selectedPolish?.installed != true,
+           let x = selectedPolish ?? recommendedPolish {
+            jobs.append(.init(id: x.id, kind: .polish, name: x.name, sizeMB: x.sizeMB))
+        }
+        return jobs.filter { !dl.queue.contains($0.id) }
+    }
+    func downloadMissing(polish: Bool) {
+        let jobs = missingJobs(polish: polish)
+        if !jobs.isEmpty { dl.download(jobs, via: "settings") }
+    }
+
     // MARK: speech model
 
     func chooseASR(_ m: DictationASRModel) {
@@ -236,9 +256,22 @@ final class DictationModels: ObservableObject {
     }
 
     /// tests: `dictation polish install ID | cancel ID | use ID | state` — the model rows' buttons, then a
-    /// "polish_settings" event with every row's state (whichever pane is showing)
+    /// "polish_settings" event with every row's state (whichever pane is showing); `fake ready|missing`: what the two
+    /// lists say, without running them (a screenshot of either state on a Mac with nothing downloaded)
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
+        if a.first == "fake", a.count == 2 {
+            let ok = a[1] == "ready"
+            asr = DictationASRState(configured: nil, recommended: "qwen3-asr-1.7b-mlx", selected: "qwen3-asr-1.7b-mlx",
+                                    models: [DictationASRModel(id: "qwen3-asr-1.7b-mlx", name: "Qwen3-ASR 1.7B", sizeMB: 1_740, installed: ok,
+                                                               files: ok, recommended: true, vocab: "context")],
+                                    ready: ok, selectedInstalled: ok, configuredInstalled: nil, missing: ok ? [] : ["qwen3-asr-1.7b-mlx"])
+            polish = PolishState(supported: true, tier: "pro", recommended: "gemma-4-e2b", selected: "gemma-4-e2b", configured: nil,
+                                 models: [PolishModel(id: "gemma-4-e2b", name: "Gemma 4 E2B", family: "gemma", sizeMB: 3_200, installed: ok,
+                                                      recommended: true)])
+            emit(["event": "polish_settings", "fake": a[1]])
+            return
+        }
         Task {
             if polish == nil { await load() }
             if a.count == 2, let model = polish?.models.first(where: { $0.id == a[1] }) {

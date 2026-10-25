@@ -16,7 +16,7 @@
 //                ink, with How to Update, for as long as it lasts.
 // The projects have their own pane (ProjectsPane.swift); the Dictation Lab is under Dictation's Advanced. Rows and
 // their descriptions come from SettingsCatalog; longer explanations are behind each row's ⓘ. Every pop-up is the same
-// width (SettingsMetrics.pickerWidth), so the controls share one column.
+// width (SettingsMetrics.controlWidth), so the controls share one column.
 import AppKit
 import ServiceManagement
 import SwiftUI
@@ -102,7 +102,7 @@ struct GeneralPane: View {
         return v.isEmpty ? "—" : v
     }
 
-    private let w = SettingsMetrics.pickerWidth
+    private let w = SettingsMetrics.controlWidth
 
     var body: some View {
         SettingsPage(.general) {
