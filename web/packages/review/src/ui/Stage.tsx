@@ -125,7 +125,7 @@ function Caption({ m }: { m: Media | undefined }) {
 }
 
 /** report where the frames are, so a native layer can drag them out as files (C6 registerDragRects) */
-export function useDragRects(root: React.RefObject<HTMLElement | null>, deps: unknown[]) {
+function useDragRects(root: React.RefObject<HTMLElement | null>, deps: unknown[]) {
   const s = useStore();
   const reg = s.host.registerDragRects;
   useEffect(() => {
@@ -164,73 +164,82 @@ export function useDragRects(root: React.RefObject<HTMLElement | null>, deps: un
   }, deps);
 }
 
-/** The main window's detail (item mode): the item's pictures and clips inside its column, edge to edge with a 1 px
-    inner stroke — no grey well around them. What you can do with one (Quick Look, Download, Show in Finder) sits in a
-    small bar over its top corner while the pointer is on it (or a key is in it); a frame's time only where it says
-    something (a clip, a frame of a recording among others). Several: a row of thumbnails under it. */
-export function ItemMedia({ i }: { i: import("../host").Item }) {
+/** The item's pictures inline in the detail document (item mode), the way an attachment sits in an issue: one card on
+    the page's own ground, at most ~260 pt tall, a hairline and r 8. Over the picture: where it is in the recording
+    (bottom left) and, on hover or focus, Quick Look / Show in Finder / Download (top right). A click opens Quick Look
+    (the lightbox where the host has none). Several pictures: thumbnails under it. */
+export function Attachment() {
   const s = useStore();
-  const h = s.host;
+  const i = s.item;
   const ref = useRef<HTMLElement>(null);
   const items = s.mediaItems(i);
   const k = s.mediaIndex(items);
+  useDragRects(ref, [s.cur, k, items.length, s.slideKey]);
+  if (!i || !items.length) return null;
   const m = items[k];
-  useDragRects(ref, [s.keyOf(i), k, items.length]);
-  if (!m) return null;
+  const h = s.host;
   const rel = m.rel || "";
-  const many = items.length >= 2;
+  const look = h.quickLook && m.kind === "img" ? () => h.quickLook!(rel) : m.kind === "img" ? () => s.openLightbox(m.src) : null;
+  const at = m.kind === "img" && /^\d+:\d\d/.test(m.label) ? m.label : null;
   const reveal = s.t(h.host === "macos" ? "media.reveal_mac" : "media.reveal");
+  const tools = m.kind !== "wait" && (h.quickLook || h.reveal || h.download || h.downloadUrl);
   return (
-    <section className={cx("imedia", many && "many")} ref={ref} id="itemMedia" aria-label={s.t("media.title")}>
-      {m.kind === "wait" ? (
-        <div className={cx("iwait", !s.stalled && "shim")}>
-          <Icon name="hatch" className="hatching" />
-          <span>{s.stalled ? s.t("media.none") : s.t("media.adding")}</span>
+    <section ref={ref} className="attach" id="attachment" aria-label={s.t("media.title")}>
+      <div className="att-card">
+        <div className="att-pic" onClickCapture={(e) => {
+            if (look && (e.target as HTMLElement).tagName === "IMG") {
+              e.preventDefault();
+              e.stopPropagation();
+              look();
+            }
+          }}>
+          <MediaBox items={items} k={k} />
         </div>
-      ) : (
-        <figure className="imain" data-rel={rel} tabIndex={-1}>
-          {m.kind === "img" ? (
-            <img key={m.src} src={m.src} alt={m.cap || ""} onClick={() => (h.quickLook ? h.quickLook(rel) : s.openLightbox(m.src))} />
-          ) : (
-            <video key={m.src + m.kind} src={m.src} controls playsInline preload="metadata"
-              onLoadedMetadata={(e) => {
-                if (m.kind === "orig" && m.start != null) e.currentTarget.currentTime = Math.max(0, m.start - 1.5);
-              }} />
-          )}
-          <figcaption className="ibar">
-            {(m.kind !== "img" || many) && <span className="tm">{m.label}{m.kind === "orig" && m.start != null ? ` · ${s.clock(m.start)}` : ""}</span>}
-            {h.quickLook && (
-              <button onClick={() => h.quickLook!(rel)} title={s.t("media.quick_look")} aria-label={s.t("media.quick_look")}>
+        {at && (
+          <span className="att-time" title={s.t("media.at.hint")}>
+            {s.t("media.at", { time: at })}
+          </span>
+        )}
+        {tools && (
+          <div className="att-tools" id="mediaCap">
+            {h.quickLook && m.kind === "img" && (
+              <button className="dl" onClick={() => h.quickLook!(rel)} title={s.t("media.quick_look")} aria-label={s.t("media.quick_look")}>
                 <Icon name="eye" size={15} />
               </button>
             )}
-            {h.downloadUrl ? (
-              <a href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
-                <Icon name="download" size={15} />
-              </a>
-            ) : h.download ? (
-              <button onClick={() => h.download!(rel)} title={s.t("media.download")} aria-label={s.t("media.download")}>
-                <Icon name="download" size={15} />
-              </button>
-            ) : null}
             {h.reveal && (
-              <button onClick={() => h.reveal!(rel)} title={reveal} aria-label={reveal}>
+              <button className="dl" onClick={() => h.reveal!(rel)} title={reveal} aria-label={reveal}>
                 <Icon name="reveal" size={15} />
               </button>
             )}
-          </figcaption>
-          {m.cap ? <p className="icap">{m.cap}</p> : null}
-        </figure>
-      )}
-      {many && (
-        <div className="ithumbs">
+            {h.downloadUrl ? (
+              <a className="dl" href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
+                <Icon name="download" size={15} />
+              </a>
+            ) : h.download ? (
+              <button className="dl" onClick={() => h.download!(rel)} title={s.t("media.download")} aria-label={s.t("media.download")}>
+                <Icon name="download" size={15} />
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+      {m.cap ? <p className="att-cap">{m.cap}</p> : null}
+      {items.length >= 2 && (
+        <div className="strip att-strip scroll">
           {items.map((x, n) =>
             x.kind === "img" ? (
-              <button key={x.src} className={cx("th", n === k && "on")} data-m={n} data-rel={x.rel} onClick={() => s.selectMedia(x.src)} aria-label={x.label}>
+              <button key={x.src} className={cx("th", n === k && "on", s.fresh.has(x.src) && "fresh")} data-m={n} data-rel={x.rel} onClick={() => s.selectMedia(x.src)}
+                aria-label={x.label} aria-pressed={n === k}>
                 <img src={x.src} alt="" />
+                <span className="lbl">{x.label}</span>
               </button>
-            ) : x.kind === "wait" ? null : (
-              <button key={x.src + x.kind} className={cx("th vid", n === k && "on")} data-m={n} onClick={() => s.selectMedia(x.src)}>
+            ) : x.kind === "wait" ? (
+              <button key={x.src} className={cx("th shim", n === k && "on")} data-m={n} onClick={() => s.selectMedia(x.src)}>
+                <span className="lbl">…</span>
+              </button>
+            ) : (
+              <button key={x.src + x.kind} className={cx("th vid", n === k && "on")} data-m={n} onClick={() => s.selectMedia(x.src)} aria-pressed={n === k}>
                 <Icon name={x.kind === "clip" ? "film" : "video"} className="ic" />
                 {x.label}
               </button>

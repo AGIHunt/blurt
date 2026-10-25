@@ -3,7 +3,7 @@ import type { ReviewStore } from "../store";
 import { Inspector } from "./Inspector";
 import { Done, Lightbox, Modal, Toast } from "./Overlays";
 import { Queue } from "./Queue";
-import { Stage } from "./Stage";
+import { Attachment, Stage } from "./Stage";
 import { TopBar } from "./TopBar";
 import { ListView, Overview } from "./Views";
 import { cx, StoreCtx, useStore } from "./ctx";
@@ -27,11 +27,10 @@ function Shell({ onTheme }: { onTheme: () => void }) {
     return (
       <>
         {s.item ? (
-          // one document column: the header, the properties and actions, then what it is (the recording, the
-          // pictures, the words) — the pictures sit inside the column, never in a well above the title
+          // one document: the item's words first, its pictures inline after its fields (an attachment, not a hero)
           <main id="itemView" className={cx("focus item-mode", s.mediaItems(s.item).length === 0 && "bare")}>
             {/* a fresh inspector per item: nothing of one item's editing state can show under another's title */}
-            <Inspector key={s.keyOf(s.item)} />
+            <Inspector key={s.keyOf(s.item)} media={<Attachment />} />
           </main>
         ) : (
           <div className="fail">

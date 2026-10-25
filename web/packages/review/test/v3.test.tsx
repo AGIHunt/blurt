@@ -281,7 +281,9 @@ describe("v3 UI", () => {
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
     expect(el.querySelector("#workSession")).not.toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
-    expect(el.querySelector("#provenance")?.textContent).toContain("Captured in this project");
+    // one footer line (how · when · who); captured in its own project says nothing the breadcrumb doesn't: not repeated
+    expect(el.querySelector("#provenance .prov-line")?.textContent).toMatch(/^Screen recording at 0:12·.+·by max$/);
+    expect(el.querySelector("#provenance")?.textContent).not.toContain("Captured in this project");
     expect(el.querySelector("#provenance")?.textContent).toContain("blurt.dev/login");
     expect(el.querySelector("#handoffRow")).toBeNull(); // to verify: nothing to hand off
     // the pill's menu: only what to-verify allows, hand off not among them

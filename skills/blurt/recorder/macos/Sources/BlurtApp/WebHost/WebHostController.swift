@@ -71,6 +71,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     let schemes = SchemeHandler()
     let placeholder = EmptyStateView()
     let banner = ItemBanner()
+    /// An item's pane: the list's own surface behind the (transparent) page, so list and detail read as one sheet
+    let surface = PaneSurface()
     let jobView = JobDetailView()
     private var loadedScope: DocScope?
     private var loadedMode = ""
@@ -107,12 +109,13 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             guard let self = self, let j = self.currentJob else { return }
             self.actions?.jobAction(a, job: j)
         }
-        for v in [banner, web!, overlay, placeholder, jobView] as [NSView] {
+        for v in [surface, banner, web!, overlay, placeholder, jobView] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
             NSLayoutConstraint.activate([v.leadingAnchor.constraint(equalTo: root.leadingAnchor), v.trailingAnchor.constraint(equalTo: root.trailingAnchor)])
         }
         NSLayoutConstraint.activate([
+            surface.topAnchor.constraint(equalTo: root.topAnchor), surface.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             banner.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             web.topAnchor.constraint(equalTo: banner.bottomAnchor), web.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             overlay.topAnchor.constraint(equalTo: web.topAnchor), overlay.bottomAnchor.constraint(equalTo: web.bottomAnchor),
@@ -187,6 +190,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private func only(_ v: NSView?) {
         for x in [web!, overlay, placeholder, jobView] as [NSView] { x.isHidden = x !== v && !(v === web && x === overlay) }
         if v !== web { banner.set(nil); overlay.set([]) }
+        surface.isHidden = true
         showsNothing = false
         showsQuietNothing = false
     }
@@ -241,6 +245,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             return only(placeholder)
         }
         only(web)
+        surface.isHidden = false
         banner.set(item)
         let scope: DocScope = item.sessionURL.map { .session($0) } ?? .project(item.projectID)
         if loadedScope == scope, loadedMode == "item" {
@@ -796,4 +801,17 @@ final class ItemBanner: NSView {
         default: return StateMenu.title(action)        // done, take_back, wontfix
         }
     }
+}
+
+/// The item pane's ground: the material the list column stands on (a content list's `contentBackground`: white in
+/// light, the wallpaper-tinted dark in dark), so the detail isn't a second grey beside the list. The page in item
+/// mode is transparent over it.
+final class PaneSurface: NSVisualEffectView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        material = .contentBackground
+        blendingMode = .behindWindow
+        state = .followsWindowActiveState
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
