@@ -3,7 +3,7 @@
 //            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Projects, Agents ·
 //            This Mac: Privacy, Storage (SettingsCatalog.panes) — in an NSOutlineView like the main window's sidebar:
 //            the brand-tint selection (BrandRowView), ↑ / ↓ move between panes. While searching, the panes with
-//            matches show how many; the others are dimmed.
+//            matches show how many; the others are dimmed (with no match anywhere, none are).
 //   Page     the pane (SwiftUI, SettingsKit's SettingsPage), or the search results (SettingsSearch.swift). Each pane's
 //            page is kept once made, so switching back doesn't reload it.
 // State (pane, query) lives in SettingsNavigator, the row to scroll to in SettingsFlash. The last pane is remembered
@@ -431,7 +431,7 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         let id = NSUserInterfaceItemIdentifier("SettingsPaneCell")
         let v = o.makeView(withIdentifier: id, owner: self) as? SettingsPaneCell ?? SettingsPaneCell(id: id)
         let nav = SettingsNavigator.shared
-        v.set(title: n.title, symbol: pane.symbol, count: nav.searching ? nav.count(pane) : nil)
+        v.set(title: n.title, symbol: pane.symbol, count: nav.sidebarCount(pane))
         return v
     }
 

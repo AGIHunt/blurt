@@ -358,7 +358,12 @@ sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)
 - 10 pt to a **neutral title** (15 pt semibold), 4 pt to a **neutral hint** (12 pt, secondary, ≤ 320 pt wide), 16 pt
   to at most **one primary** when it moves you on (Open Folder, Turn On Dictation…).
 - Trouble states (scan failed, missing folder) and detail-pane placeholders keep a quiet SF symbol: warnings are never
-  brand. A path in one is one line, cut in the middle; a missing project folder offers **Locate…**.
+  brand. So does **Settings search with no match**: a miss is a result, not a welcome. The page keeps its frame (the
+  22 pt Search results title where the hits start) and, where the first group would be, shows `magnifyingglass` in
+  tertiary, “No settings match “…”” (14 pt semibold, one line, the query cut in the middle past 24 characters), the
+  hint, a few common searches in `brand.ink` that always find something (`SettingsCatalog.suggestions`), and a plain
+  Clear Search (Esc in the field does the same). The sidebar's panes stay at rest: dimming means "no hits here" only
+  when some pane has hits. A path in one is one line, cut in the middle; a missing project folder offers **Locate…**.
 - One rule for the buttons: the first button is the brand primary (with ↩) only when it moves you on; a button that
   only undoes a filter (Clear Filters) is a plain native button and never takes ↩ (so it never draws as the system
   default). Sheets and dialogs (Project Settings, Rename, Hand Off) keep the native default button.

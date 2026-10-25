@@ -242,6 +242,13 @@
 "settings.search.hint.open" = "打开";
 "settings.search.none.title" = "没有和「%@」相关的设置";
 "settings.search.none.hint" = "换个词试试，中文英文都可以。";
+"settings.search.none.common" = "常用搜索：";
+"settings.search.none.common.ax" = "搜索%@";
+"settings.search.clear" = "清除搜索";
+"settings.search.try.shortcut" = "快捷键";
+"settings.search.try.model" = "模型";
+"settings.search.try.microphone" = "麦克风";
+"settings.search.try.language" = "语言";
 "settings.search.result.ax" = "%1$@，在%2$@";
 "settings.general.section.voice" = "语音备注";
 "settings.general.section.cards" = "卡片";

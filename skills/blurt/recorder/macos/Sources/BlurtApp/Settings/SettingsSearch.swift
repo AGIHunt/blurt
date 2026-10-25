@@ -13,7 +13,10 @@
 //                       found by its name ("short") leads with "Open Shortcuts settings", then its first rows and
 //                       "Show 9 more". Restore defaults is an action: only found by its own words, in brand ink. One
 //                       stop is tinted (brand tint when the window is key) with ↩ at its end; the pointer moving onto
-//                       a row makes it the keyboard's choice, as in Raycast. Click or ↩ opens it in its pane.
+//                       a row makes it the keyboard's choice, as in Raycast. Click or ↩ opens it in its pane. With
+//                       no hits the page keeps its frame and says so in one quiet block where the count line goes: the
+//                       query, a hint, a few common searches and a plain Clear Search — a miss is a result, not a
+//                       friendly empty state (system.md §3.5).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -137,6 +140,18 @@ final class SettingsNavigator: ObservableObject {
 
     func count(_ p: SettingsPane) -> Int { hits.filter { $0.entry.pane == p.rawValue }.count }
 
+    /// The sidebar's count for a pane: nil when not searching, and when nothing matches anywhere — dimming every pane
+    /// would only say the whole sidebar is off, so the panes stay at rest and the page says there is no match.
+    func sidebarCount(_ p: SettingsPane) -> Int? { searching && !hits.isEmpty ? count(p) : nil }
+
+    /// The no-match page's Clear Search (Esc in the field does the same): the search ends, the last pane comes back
+    /// and the field takes the focus again, ready for another word.
+    func clearSearch() {
+        query = ""
+        (NSApp.windows.first { $0 is SettingsWindow } as? SettingsWindow)?.mFind()
+        emit(["event": "settings_search_clear"])
+    }
+
     /// Show a pane (the sidebar, a link): the search ends.
     func go(_ p: SettingsPane) {
         if !query.isEmpty { query = "" }
@@ -242,33 +257,31 @@ struct SettingsSearchResults: View {
     @ObservedObject private var keys = HotkeySettings.shared
 
     var body: some View {
-        Group {
-            if nav.items.isEmpty {
-                EmptyStateContent(title: T("settings.search.none.title", query),
-                                  message: T("settings.search.none.hint"))
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            header
-                            ForEach(Array(nav.lines.enumerated()), id: \.element.id) { k, line in
-                                lineView(line, at: k)
-                            }
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                // one frame for hits and no hits: nothing jumps while a letter more or less kills the last hit
+                VStack(alignment: .leading, spacing: 0) {
+                    if nav.items.isEmpty {
+                        NoMatch(query: query)
+                    } else {
+                        header
+                        ForEach(Array(nav.lines.enumerated()), id: \.element.id) { k, line in
+                            lineView(line, at: k)
                         }
-                        .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 16).padding(.bottom, 40)
-                        .frame(maxWidth: ResultsMetrics.width, alignment: .leading)
-                        .frame(maxWidth: .infinity)
                     }
-                    .onChange(of: nav.keyMoves) { _ in proxy.scrollTo(nav.selected) }
                 }
-                // the bottom edge as the top: rows go under a short fade instead of being cut by the window
-                .overlay(alignment: .bottom) {
-                    LinearGradient(colors: [SettingsMetrics.ground.opacity(0), SettingsMetrics.ground], startPoint: .top, endPoint: .bottom)
-                        .frame(height: SettingsMetrics.topFade)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
+                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 16).padding(.bottom, 40)
+                .frame(maxWidth: ResultsMetrics.width, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
+            // the bottom edge as the top: rows go under a short fade instead of being cut by the window
+            .overlay(alignment: .bottom) {
+                LinearGradient(colors: [SettingsMetrics.ground.opacity(0), SettingsMetrics.ground], startPoint: .top, endPoint: .bottom)
+                    .frame(height: SettingsMetrics.topFade)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .onChange(of: nav.keyMoves) { _ in proxy.scrollTo(nav.selected) }
         }
         .settingsPageGround()
     }
@@ -416,6 +429,62 @@ struct SettingsSearchResults: View {
     }
 }
 
+/// No setting matches: where the first group would start, one quiet block — what was searched (cut in the middle when
+/// long, one line), a hint, a few searches that always find something, and a plain Clear Search (never ↩; Esc in the
+/// field does the same). No brand mark: a typo is not a welcome (system.md §3.5).
+private struct NoMatch: View {
+    @ObservedObject var nav = SettingsNavigator.shared
+    let query: String
+
+    /// The query as the title quotes it: a pasted sentence or a path keeps its start and end, cut in the middle.
+    static func clipped(_ q: String, max: Int = 24) -> String {
+        guard q.count > max else { return q }
+        let head = (max - 1) / 2
+        return String(q.prefix(head)) + "…" + String(q.suffix(max - 1 - head))
+    }
+
+    var body: some View {
+        // laid out like a results group: the symbol in the slot a pane's symbol takes, then the text column
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(T("settings.search.none.title", Self.clipped(query)))
+                    .font(.system(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityLabel(T("settings.search.none.title", query))
+                Text(T("settings.search.none.hint")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                suggestions.padding(.top, 10)
+                Button(T("settings.search.clear")) { nav.clearSearch() }
+                    .controlSize(.regular)
+                    .padding(.top, 16)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Searches that always find something (SettingsCatalog.suggestions): a click puts the word in the field.
+    var suggestions: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(T("settings.search.none.common")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            ForEach(SettingsCatalog.suggestions, id: \.key) { t in
+                let word = SettingsCatalog.text(t) ?? ""
+                Button { nav.query = word } label: {
+                    Text(word).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandInk)
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+                .accessibilityLabel(T("settings.search.none.common.ax", word))
+            }
+        }
+    }
+}
+
+/// One hit: its title with the words that matched in semibold, its section on the right, its description under it.
+private struct ResultRow: View {
+    let hit: SettingsHit
 /// One stop: its title (the matched words in semibold) and, when the title doesn't say why it matched, the reason after
 /// it in secondary; the accessory (keycaps) on the right, then ↩ on the chosen one. One line, the same height for all.
 private struct ResultRow<Accessory: View>: View {

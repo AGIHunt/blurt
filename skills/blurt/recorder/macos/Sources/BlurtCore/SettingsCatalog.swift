@@ -92,6 +92,11 @@ public enum SettingsCatalog {
         pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
     ]
 
+    /// The searches the no-match page offers (in the UI language): each finds rows in every language
+    /// (SettingsCatalogTests), so a miss always has somewhere to go.
+    public static let suggestions: [SettingsText] = ["shortcut", "model", "microphone", "language"]
+        .map { SettingsText("settings.search.try.\($0)", "Settings") }
+
     public static func pane(_ id: String) -> SettingsPaneInfo? { panes.first { $0.id == id } }
 
     /// Panes that are gone, and where their links (blurt://settings/<pane>[/<row>], a remembered last pane) land now.

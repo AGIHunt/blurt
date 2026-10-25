@@ -241,8 +241,15 @@
 "settings.search.fewer" = "Show fewer";
 "settings.search.hint.choose" = "Choose";
 "settings.search.hint.open" = "Open";
-"settings.search.none.title" = "Nothing matches “%@”";
-"settings.search.none.hint" = "Try another word, in English or Chinese.";
+"settings.search.none.title" = "No settings match “%@”";
+"settings.search.none.hint" = "Try another word. English and Chinese both work.";
+"settings.search.none.common" = "Common searches:";
+"settings.search.none.common.ax" = "Search for %@";
+"settings.search.clear" = "Clear Search";
+"settings.search.try.shortcut" = "shortcut";
+"settings.search.try.model" = "model";
+"settings.search.try.microphone" = "microphone";
+"settings.search.try.language" = "language";
 "settings.search.result.ax" = "%1$@, in %2$@";
 "settings.general.section.voice" = "Voice notes";
 "settings.general.section.cards" = "Cards";

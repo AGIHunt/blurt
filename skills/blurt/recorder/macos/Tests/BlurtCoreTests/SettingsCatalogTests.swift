@@ -142,6 +142,8 @@ final class SettingsCatalogTests: XCTestCase {
             XCTAssertNil(SettingsCatalog.entry(old), "\(old) moved but is still in the catalogue")
             XCTAssertTrue(SettingsCatalog.entry(new) != nil || SettingsCatalog.section(new) != nil, "\(old) → \(new): no such row")
         }
+    }
+
     func testResultsComeByPaneAndAPaneNameFindsThePane() {
         defer { Loc.setting = nil }
         for lang in ["en", "zh-Hans"] {
@@ -185,6 +187,20 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.reason(login, query: "startup"), "startup")
         XCTAssertEqual(SettingsCatalog.excerpt(["Blurt tells you when a shortcut clashes with another Blurt action"], ["another"]),
                        "…clashes with another Blurt action")
+    }
+
+    /// The no-match page's common searches each land somewhere, in either UI language.
+    func testSuggestionsAlwaysFindSomething() {
+        XCTAssertFalse(SettingsCatalog.suggestions.isEmpty)
+        for lang in Loc.languages {
+            Loc.setting = lang
+            for t in SettingsCatalog.suggestions {
+                let word = SettingsCatalog.text(t)
+                XCTAssertNotNil(word, "\(t.key) missing in \(lang)")
+                XCTAssertFalse(SettingsCatalog.search(word ?? "").isEmpty, "\(lang): “\(word ?? "")” finds nothing")
+            }
+        }
+        XCTAssertTrue(SettingsCatalog.search("zzqx").isEmpty)
     }
 
     func testPlaceholdersReadAsAGapWithoutArguments() {
