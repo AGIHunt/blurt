@@ -188,15 +188,17 @@ function SelectionBar() {
 }
 
 /** a native select styled as a button: "Move to…" + the projects (the inbox last) */
-export function MovePicker({ items, id, current }: { items: Item[]; id?: string; current?: string }) {
+/** `primary`: the view's one primary, "Move to Project…" (an Unassigned item's detail: filing it is the next step). */
+export function MovePicker({ items, id, current, primary }: { items: Item[]; id?: string; current?: string; primary?: boolean }) {
   const s = useStore();
-  const projects = [...s.projects.filter((p) => p.id !== "inbox"), s.project("inbox")!];
+  // the one project order (pinned, then recent) as the host lists them; Unassigned last, and never offered as a primary
+  const projects = [...s.projects.filter((p) => p.id !== "inbox"), ...(primary ? [] : [s.project("inbox")!])];
   const value = current ?? "";
   return (
-    <label className={cx("pick", current !== undefined ? "proj" : "btn sm")}>
+    <label className={cx("pick", current !== undefined ? "proj" : "btn sm", primary && "primary")}>
       {current === undefined && <Icon name="folder" size={14} />}
       {current !== undefined && <Icon name={current === "inbox" ? "inbox" : "folder"} size={14} />}
-      <span className="pick-l">{current !== undefined ? s.projectName(s.project(current)) || current : s.t("project.move_to")}</span>
+      <span className="pick-l">{current !== undefined ? s.projectName(s.project(current)) || current : s.t(primary ? "project.move_to_project" : "project.move_to")}</span>
       <select
         id={id}
         value={value}

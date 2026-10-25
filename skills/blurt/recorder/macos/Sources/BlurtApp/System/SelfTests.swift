@@ -266,6 +266,8 @@ enum SelfTests {
         case "main":                    // main SCOPE (inbox | progress | unassigned | all | project:<id>): go there
             let c = MainWindowController.shared
             c.show()
+            // a test empty state ends when the test goes somewhere: the real world comes back
+            if c.model.testEmpty != nil || c.model.testMissing != nil || c.model.testEmptyProject != nil { c.list.testEmpty("off") { c.go($0) } }
             if let s = Scope(key: arg) { c.go(s) }
             out(["scope": c.model.scope.key, "rows": c.model.rowCount, "jobs": c.model.jobs.count, "ms": c.model.lastReloadMS])
         case "mainsel":                 // mainsel N[,M…]: select those rows of the list
@@ -280,6 +282,7 @@ enum SelfTests {
             let byID = { (id: String) -> Int? in (0..<c.model.rowCount).first { c.model.item(at: $0)?.itemID == id } }
             let rows = IndexSet(arg.split(separator: ",").compactMap { c.model.row(of: String($0)) ?? byID(String($0)) })
             c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
+            if let f = rows.first { c.list.table.scrollRowToVisible(f) }
             c.window?.makeFirstResponder(c.list.table)
             out(["selected": c.list.selectedIDs, "states": c.list.selectedItems.map(\.state)])
         case "maincounts":              // what the sidebar and the menu-bar badge say

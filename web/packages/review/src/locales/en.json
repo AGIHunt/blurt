@@ -153,6 +153,7 @@
   "handoff.copied.full": "Full text copied · {id}",
   "handoff.failed": "Couldn’t prepare the hand-off",
   "project.label": "Project",
+  "project.move_to_project": "Move to Project…",
   "project.move_to": "Move to…",
   "project.moved_one": "Moved to {project}",
   "project.moved_other": "Moved {n} items to {project}",

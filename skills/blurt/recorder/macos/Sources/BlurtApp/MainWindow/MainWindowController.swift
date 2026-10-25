@@ -138,6 +138,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 self.listSelectionChanged()     // the first item arrived (or the last one went): "Nothing selected" or blank
             }
             self.updateTitle()
+            self.fitDetailToPlace()
             self.scheduleSave()
         }
         model.onSidebar = { [weak self] in self?.sidebar.rebuild(); self?.updateWatcher() }
@@ -147,6 +148,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             self.list.reload()
             self.updateTitle()
             self.syncIndexChrome()
+            self.fitDetailToPlace()
             if self.model.indexState == .ready, self.list.table.selectedRow < 0, self.model.rowCount > 0 {
                 self.list.table.selectRowIndexes([0], byExtendingSelection: false)
             }
@@ -388,7 +390,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// "12 of 52" (and where) while a search or a filter narrows the place; the Inbox's "3 new · 2 to verify"; a
     /// project's count, and that it is the current one (where new captures go) — the one mark of it everywhere.
     var listSubtitle: String {
-        if model.indexState != .ready || model.placeIsEmpty { return "" }
+        // nothing listed, or no rows: the empty state speaks
+        if model.indexState != .ready || model.rowCount == 0 { return "" }
         if model.rescanning { return T("main.updating") }
         let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
         if model.filtered {
@@ -400,6 +403,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return T("main.project.current_count", TP("main.items.count", model.rowCount))
         }
         return TP("main.items.count", model.rowCount)
+    }
+
+    /// An empty place (no rows, no search or filter emptied it) or nothing listed yet: the detail column steps aside, so
+    /// the empty state is the window's one focus; it comes back at its width with the first row (or a job shown). A
+    /// detail the user hides or shows (⌥⌘I) is theirs.
+    private(set) var foldedForEmpty = false
+    func forgetFold() { foldedForEmpty = false }
+    private var detailWidthBeforeFold = 0.0
+    func fitDetailToPlace() {
+        let items = split.splitViewItems
+        guard items.count == 3 else { return }
+        let d = items[2]
+        let fold = model.scope != .dictation && shownJob == nil && (model.placeIsEmpty || model.nothingListed)
+        if fold, !d.isCollapsed {
+            detailWidthBeforeFold = Double(d.viewController.view.frame.width)
+            foldedForEmpty = true
+            d.isCollapsed = true
+        } else if !fold, foldedForEmpty {
+            foldedForEmpty = false
+            d.isCollapsed = false
+        }
     }
 
     /// The detail stays blank (no placeholder pointing at rows that aren't there) while the list has no rows or there
@@ -584,6 +608,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         shownJob = id
         list.jobs.selected = id
         detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
+        fitDetailToPlace()          // a job shown over an empty place brings the detail back
     }
 
     /// ↩: into the detail, the caret at the end of its title (E renames in the row instead).
@@ -1723,6 +1748,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             s.searchField.sendsWholeSearchString = false
             s.searchField.setAccessibilityLabel(T("main.search.label"))
             s.preferredWidthForSearchField = 220
+            // a fixed field (Mail's, Linear's), not one that takes a third of the window
+            let cap = s.searchField.widthAnchor.constraint(lessThanOrEqualToConstant: 240)
+            cap.priority = .required
+            cap.isActive = true
             searchItem = s
             return s
         default: return nil
@@ -1885,7 +1914,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.frame = w.frameDescriptor
         s.sidebar = items[0].isCollapsed ? nil : Double(items[0].viewController.view.frame.width)
         s.sidebarCollapsed = items[0].isCollapsed
-        s.detail = Double(items[2].viewController.view.frame.width)
+        s.detail = foldedForEmpty ? detailWidthBeforeFold : Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
         s.filters = model.allFilters
         s.quitHint = quitHintShown ? true : nil

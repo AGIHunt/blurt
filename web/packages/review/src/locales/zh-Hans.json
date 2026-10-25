@@ -151,6 +151,7 @@
   "handoff.copied.full": "已复制全文 · {id}",
   "handoff.failed": "没能准备交接内容",
   "project.label": "项目",
+  "project.move_to_project": "移到项目…",
   "project.move_to": "移到…",
   "project.moved_one": "已移到 {project}",
   "project.moved_other": "已把 {n} 条移到 {project}",

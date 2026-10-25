@@ -546,7 +546,7 @@ final class TimeCell: NSTableCellView {
         textField = label
         NSLayoutConstraint.activate([label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
                                      label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 2),
-                                     label.centerYAnchor.constraint(equalTo: centerYAnchor)])
+                                     rowMiddle(label, in: self)])
     }
     required init?(coder: NSCoder) { fatalError() }
 }

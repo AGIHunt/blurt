@@ -431,9 +431,9 @@ function WorkPanel({ i }: { i: Item }) {
           <button className="btn sm" id="workBack" aria-haspopup="dialog" title={s.t("work.back.hint")} onClick={() => setBack("")}>
             {s.t("work.back")}
           </button>
-          <button className="btn sm primary" id="workDone" data-action={primary} onClick={() => s.act([i], primary)}>
+          <button className="btn sm primary" id="workDone" data-action={primary} title={s.label(wont ? "action.wontfix" : "action.done") + " · " + (wont ? "W" : "D")}
+            aria-keyshortcuts={wont ? "w" : "d"} onClick={() => s.act([i], primary)}>
             {s.label(wont ? "action.wontfix" : "action.done")}
-            <kbd>{wont ? "W" : "D"}</kbd>
           </button>
           <MoreMenu id="workMore" label={s.t("work.more")} options={more}
             onPick={(v) => (v === "review" ? session && s.host.reviewChanges?.(session) : s.act([i], v as "done" | "wontfix"))} />
@@ -483,6 +483,7 @@ function HandoffPanel({ i }: { i: Item }) {
   if (!h.dispatch && !s.canHandoff) return null;
   if (!canDo("hand_off", s.stateOf(i))) return null;
   const key = isMacLike() ? "⌘⏎" : "Ctrl+⏎";
+  const unfiled = s.mode === "item" && s.canMove && (i.project || "inbox") === "inbox";
   return (
     <div className="handoff" id="handoffRow" role="group" aria-label={s.t("handoff.title")}>
       {s.canHandoff && (
@@ -511,7 +512,10 @@ function HandoffPanel({ i }: { i: Item }) {
           </label>
         </div>
       )}
-      {h.dispatch && (
+      {/* an item in no project is there to be filed: an agent works in a project's folder, so the one primary is
+          Move to Project… until it has one (hand-off stays in the menus and ⌘⏎, which say why it can't go yet) */}
+      {unfiled && <MovePicker items={[i]} id="fileBtn" primary />}
+      {h.dispatch && !unfiled && (
         <button className="btn sm primary" id="dispatchBtn"
           title={s.mode === "item" ? `${s.t("handoff.dispatch.hint")} (${key})` : s.t("handoff.dispatch.hint")}
           aria-keyshortcuts={s.mode === "item" ? (isMacLike() ? "Meta+Enter" : "Control+Enter") : undefined}
@@ -777,7 +781,10 @@ export function Inspector({ media }: { media?: React.ReactNode } = {}) {
   const { body: main, prompt, rest } = specsOf(i, kind, s);
   const kept = opened.ik === ik ? opened.keys : [];
   const shown = rest.filter((f) => kept.includes(f.k) || format(i, f.k, f.type ?? "area").trim() !== "");
-  const body: React.ReactNode[] = [F(main, prompt)];
+  // the kind's body field is always there to fill in — except on a voice note, whose words already are its body: an
+  // empty Summary there only waits in Add Field
+  const mainShown = !said || kept.includes(main.k) || format(i, main.k, main.type ?? "area").trim() !== "";
+  const body: React.ReactNode[] = mainShown ? [F(main, prompt)] : [];
   if (kind === "issue" && (i.code_refs || []).length)
     body.push(
       <div className="f" key="code">
@@ -807,7 +814,7 @@ export function Inspector({ media }: { media?: React.ReactNode } = {}) {
     } else body.push(F(f));
   }
   const typeChoices: [string, string][] = kind === "issue" && !i.type ? s.types.map((t) => [t, s.typeLabel(t)]) : [];
-  body.push(<AddField key="add" specs={rest.filter((f) => !shown.includes(f))} types={typeChoices} onAdd={(k) => open(k, true)} onType={s.setType} />);
+  body.push(<AddField key="add" specs={[...(mainShown ? [] : [main]), ...rest.filter((f) => !shown.includes(f))]} types={typeChoices} onAdd={(k) => open(k, true)} onType={s.setType} />);
 
   const item = s.mode === "item";
   const props = (

@@ -184,6 +184,7 @@ extension MainWindowController {
 
     @objc func mToggleDetail() {
         let d = split.splitViewItems[2]
+        if foldedForEmpty { forgetFold() }          // the user's call from here on
         d.animator().isCollapsed.toggle()
     }
 

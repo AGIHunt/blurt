@@ -1203,9 +1203,18 @@ button.chip:hover {
   min-width: 0;
   color: var(--ink-2);
 }
+/* the capture folder is a quiet link in the footer (underlined under the pointer), never a brand-coloured word */
 .prov .linkbtn {
   margin: -4px -8px;
   font-size: inherit;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.prov .linkbtn:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--brand-ink);
+  text-underline-offset: 2px;
 }
 .trunc {
   display: inline-block;
