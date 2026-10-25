@@ -7,7 +7,8 @@
 //   app pastes its words), or onto a project in the island · with the keyboard (a click puts it on the panel; ↩ on the
 //   tile or its VoiceOver press opens it with the keyboard on the newest card): arrows move, ↩ / ⌘C copies and closes
 //   it (the keyboard back where the user was, so ⌘V pastes), ⌫ deletes (Undo in the island), Esc closes.
-// A small utility panel under the cards, like Recently Taken; it follows the cards as they change (never in the middle
+// A small utility panel under the strip the cards hang in (HangingCards.panelTop, whether they are down or not, so
+// cards that come down again never cover its title), like Recently Taken; it follows the cards as they change (never in the middle
 // of a drag out of it or a click's pending copy: that waits until they are done) and closes itself when none are left.
 // It never activates Blurt.
 
@@ -56,7 +57,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         let size = w.frame.size
         let anchor = island.frameOnScreen
         let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens[0]
-        let top = min(hanging.shownBottom ?? anchor.minY, anchor.minY) - 12
+        let top = min(hanging.panelTop, anchor.minY - 12)
         var x = anchor.midX - size.width / 2
         x = min(max(x, screen.visibleFrame.minX + 12), screen.visibleFrame.maxX - size.width - 12)
         w.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, min(top, screen.visibleFrame.maxY) - size.height)))
@@ -347,15 +348,13 @@ final class OverviewTile: NSView, NSDraggingSource {
 
     override func accessibilityPerformPress() -> Bool { overview?.copy(self, .click); return true }
 
-    /// Under the picture: its note (a voice tile has its words on it already: when it was said).
+    /// Under the picture: its note; a snap without one says what it is and when ("Snap · 19:03", as its card's name);
+    /// a voice tile has its words on it already: when it was said.
     static func line(_ s: Shot) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        let when = f.string(from: Date(timeIntervalSince1970: s.wall))
         if s.kind == .shot, let w = s.words { return w.replacingOccurrences(of: "\n", with: " · ") }
-        // a snap whose note couldn't be transcribed says so (in amber), not just its time
-        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(when) · \(st)" }
-        return when
+        // a snap whose note couldn't be transcribed says so (in amber), not just its name
+        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(HangingCards.cardName(s)) · \(st)" }
+        return s.kind == .shot ? HangingCards.cardName(s) : HangingCards.takenAt(s.wall)
     }
 
     func flashCopied() {

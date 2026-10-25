@@ -21,7 +21,7 @@
 "app.menu.countdown" = "倒计时";
 "app.menu.countdown.none" = "不倒计时";
 "app.menu.countdown.seconds" = "%ld 秒";
-"app.menu.discard" = "放弃这次录屏";
+"app.menu.discard" = "丢弃这次录屏";
 "app.menu.finish" = "完成录屏";
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";
@@ -310,6 +310,7 @@
 "main.missing.detail_empty" = "可能被移走或改了名。找到它，条目就会回来。";
 "main.missing.locate" = "找到它…";
 "main.missing.locate.message" = "选择「%@」现在所在的文件夹。";
+"main.missing.other" = "那是「%1$@」的文件夹，不是「%2$@」";
 "main.sidebar.not_opened" = "还没作为项目打开";
 "main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
 "main.sidebar.progress.ax" = "进行中：交给 Agent 的条目和正在运行的任务";

@@ -8,8 +8,10 @@
 //    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor). When the take stops and its text
 //    goes in, the panel shows that text — the polished or structured version actually typed, not the transcript —
 //    for about 1.5 s (`showTyped`), the caret after the words turned into the ok check (it is in): the moment to check
-//    before a double tap sends it. When there is text above the top line, that line's start fades in from the left
-//    edge, so a line that begins mid-sentence reads as continued, not cut.
+//    before a double tap sends it — so it shows that text from its top, up to eight lines (IslandLayout.liveLines: a
+//    Structured list keeps its heading and its first item; the last line fades out when there is more), where a
+//    listening take shows its last three. When there is text above the top line, that line's start fades in from the
+//    left edge, so a line that begins mid-sentence reads as continued, not cut.
 //
 //  • It is the island's lower half, not a second pop-up (v0.9 dogfood: a 460 pt grey glass card under a 297 pt black
 //    notch read as two unrelated things): the island's own black, 6 pt under it, in its width family — exactly the
@@ -19,7 +21,10 @@
 //    wallpaper. On a capsule screen the capsule widens to the same family while the panel shows (15 pt corners).
 //  • Settings → General → "Show text while I talk" (边说边显示文字; record.live_text, on).
 //  • It shows nothing until there are words (the island already says it is listening), follows the island's bottom
-//    edge (and goes below the hanging cards when they are down), and fades away a moment after the take ends.
+//    edge (and goes below the hanging cards when they are down), and fades away a moment after the take ends. While
+//    it fades it stays the island's lower half: the width its words were laid out at, on the island's bottom edge,
+//    never re-placed below cards that came down meanwhile; under an open island that closes (a voice note finishing:
+//    its card has the words) it goes at once (IslandLayout.livePanelGoes) rather than narrowing and floating loose.
 //  • It never takes the focus or a click (a non-activating panel that ignores the mouse), is never captured
 //    (sharingType none, like the other chrome; excluded from Blurt's own recordings by process), and stays clear of
 //    what you type into: when dictation's caret (Accessibility, read once at the start, read-only) is under where
@@ -53,6 +58,12 @@ final class LiveTranscript {
     /// where the take types (dictation's caret, global Cocoa points): the panel stays off it
     private var avoid: NSRect?
     private var bottom = false
+    /// The take is over and the panel goes in a moment: it holds its width and stays on the island's edge.
+    private var ending = false
+    /// The island was open when the panel took its width (a voice note): when it closes, the panel goes with it.
+    private var laidOutOpen = false
+    /// The width the panel's words were laid out at (kept while it fades).
+    private var heldWidth: CGFloat?
     /// tests: `live caret …`
     var testCaret: NSRect?
 
@@ -67,6 +78,8 @@ final class LiveTranscript {
         pending = ""
         avoid = caret
         hideToken += 1
+        ending = false
+        heldWidth = nil
         view.reset()
         view.setListening(true)
         view.setTyped(false)
@@ -121,6 +134,7 @@ final class LiveTranscript {
     func end(session s: Int, after: Double = 0) {
         guard s == session else { return }
         view.setListening(false)            // the line is committed: the caret goes
+        if shown, !ending, let p = panel { ending = true; heldWidth = p.frame.width }
         hideToken += 1
         let tok = hideToken
         let go = { [weak self] in
@@ -131,8 +145,20 @@ final class LiveTranscript {
         if after > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + after, execute: go) } else { go() }
     }
 
-    /// The island grew, shrank or moved: the panel follows its bottom edge.
-    func islandMoved() { if shown { place(animated: false) } }
+    /// The island grew, shrank or moved: the panel follows its bottom edge — or, under an open island that has just
+    /// closed, goes now (IslandLayout.livePanelGoes).
+    func islandMoved() {
+        guard shown else { return }
+        if IslandLayout.livePanelGoes(laidOutOpen: laidOutOpen, open: island.open) {
+            emit(["event": "live_end_with_island", "session": session])
+            // this take's panel is over: its late words (the last piece's transcript) go to its card, not back up here
+            session += 1
+            hideToken += 1
+            source = nil
+            return hide(animated: true)
+        }
+        place(animated: false)
+    }
 
     // MARK: the panel
 
@@ -176,6 +202,9 @@ final class LiveTranscript {
     private func hide(animated: Bool) {
         guard shown, let p = panel else { return }
         shown = false
+        ending = false
+        heldWidth = nil
+        laidOutOpen = false
         island.wake()                       // a capsule goes back to its ears' width
         emit(["event": "live_hidden", "chars": text.count + pending.count])
         guard animated else { p.orderOut(nil); return }
@@ -195,12 +224,14 @@ final class LiveTranscript {
         let isl = island.frameOnScreen
         let screen = island.screen ?? NSScreen.screens.first { $0.frame.contains(NSPoint(x: isl.midX, y: isl.midY)) } ?? NSScreen.main
         guard let s = screen else { return }
-        let w = IslandLayout.livePanelWidth(islandWidth: island.restingWidth, open: island.open, screenWidth: s.frame.width)
+        // fading: the width its words were laid out at (no re-wrap as the island settles), under the island's edge
+        let w = heldWidth ?? IslandLayout.livePanelWidth(islandWidth: island.restingWidth, open: island.open, screenWidth: s.frame.width)
+        if !ending { laidOutOpen = island.open }
         let h = view.fittingHeight(width: w)
-        view.radius = IslandLayout.livePanelRadius(open: island.open, notch: island.onNotch)
+        if !ending { view.radius = IslandLayout.livePanelRadius(open: island.open, notch: island.onNotch) }
         if view.frame.size != NSSize(width: w, height: h) { view.frame = NSRect(x: 0, y: 0, width: w, height: h) }
         var top = isl.minY - LiveTranscript.gap
-        if let cards = hanging.shownBottom { top = min(top, cards - LiveTranscript.gap) }
+        if !ending, let cards = hanging.shownBottom { top = min(top, cards - LiveTranscript.gap) }
         var f = NSRect(x: (isl.midX - w / 2).clamped(s.frame.minX + 16, s.frame.maxX - 16 - w), y: top - h, width: w, height: h)
         let caret = testCaret ?? avoid
         bottom = false
@@ -230,7 +261,8 @@ final class LiveTranscript {
 
     // MARK: tests
 
-    /// `live state | caret X,Y,W,H | caret - | set on|off | show TEXT[|PENDING] | end` — `show` puts TEXT up as a
+    /// `live state | caret X,Y,W,H | caret - | set on|off | show TEXT[|PENDING] | typed TEXT | end` — `typed` shows TEXT
+    /// as dictation's text that went in (4 s; `\\n` breaks a line); `show` puts TEXT up as a
     /// listening voice note's words would (a take begins if none is on; no microphone), PENDING after it as
     /// dictation's provisional words; `end` commits it (the caret goes, the panel goes 1.5 s later).
     func testCommand(_ arg: String) {
@@ -243,6 +275,9 @@ final class LiveTranscript {
             update(String(parts.first ?? ""), pending: parts.count > 1 ? String(parts[1]) : "", session: session)
         case "end":
             end(session: session, after: 1.5)
+        case "typed":                                   // typed TEXT (\n = a line break): as dictation's text going in
+            if source == nil { begin(.dictation) }
+            showTyped(String(arg.dropFirst(5)).replacingOccurrences(of: "\\n", with: "\n"), session: session, seconds: 4)
         case "caret":
             let v = (a.count > 1 ? a[1] : "-").split(separator: ",").compactMap { Double($0) }
             testCaret = v.count == 4 ? toNS(CGRect(x: v[0], y: v[1], width: v[2], height: v[3])) : nil
@@ -253,7 +288,7 @@ final class LiveTranscript {
         }
         emit(["event": "live_state", "enabled": LiveTranscript.enabled, "shown": shown, "source": source?.rawValue ?? NSNull(),
               "text": text, "pending": pending, "lines": view.shownLines, "bottom": bottom, "frame": frameDump,
-              "typed": view.typed, "continued": view.continued,
+              "typed": view.typed, "continued": view.continued, "more": view.more, "ending": ending,
               "session": session])
     }
 }
@@ -293,6 +328,8 @@ final class LiveTextView: NSView {
     var typed: Bool { text.typed }
     /// the top line continues text above it (its start fades in)
     var continued: Bool { text.continued }
+    /// typed text with more lines than show
+    var more: Bool { text.more }
 
     /// the lines drawn now (tests)
     var shownLines: [String] { text.lines }
@@ -304,12 +341,13 @@ final class LiveTextView: NSView {
 /// The last three lines of the text, newest at the bottom: the committed words 92 % white, the pending ones (the piece
 /// still being said, provisional) 60 %; the words new since the last update fade in. No jumping: the lines are laid
 /// out from a line start that only moves forward (a long take doesn't re-wrap what is showing), and the panel keeps
-/// the height it reached during the take.
+/// the height it reached during the take. Once the text is what was typed (`typed`): from its top, up to eight lines
+/// (IslandLayout.liveLines), the last one fading out when there is more.
 final class LiveTextLines: NSView {
     static let font = NSFont.systemFont(ofSize: 14, weight: .regular)
     static let pad = NSSize(width: 16, height: 10)
     static let lineH: CGFloat = 20
-    static let maxLines = 3
+    static let maxLines = IslandLayout.liveListeningLines
 
     private var text = ""
     /// where the pending words start in `text` (UTF-16; = its length when everything is committed)
@@ -330,7 +368,9 @@ final class LiveTextLines: NSView {
     /// the take listens: a flat 2 pt mint caret after the last word (steady: the island's level moves)
     var listening = false { didSet { if listening != oldValue { needsDisplay = true } } }
     /// the text is what was typed: the ok check after the last word, where the caret was
-    var typed = false { didSet { if typed != oldValue { needsDisplay = true } } }
+    var typed = false { didSet { if typed != oldValue { cached = nil; needsDisplay = true } } }
+    /// typed text with more lines than show (the last shown fades out; tests)
+    private(set) var more = false
     /// there is text above the top line shown (tests)
     private(set) var continued = false
     /// the top line's start fades in over this much when it continues text above
@@ -347,9 +387,9 @@ final class LiveTextLines: NSView {
         needsDisplay = true
     }
 
-    /// As many lines as the text needs, up to three — and never fewer than this take already showed.
+    /// As many lines as the text needs, up to three (typed: up to eight) — and never fewer than this take already showed.
     func fittingHeight(width: CGFloat) -> CGFloat {
-        tallest = max(tallest, min(LiveTextLines.maxLines, max(1, layout(width: width).count)))
+        tallest = max(tallest, max(1, IslandLayout.liveLines(total: layout(width: width).count, typed: typed).range.count))
         return LiveTextLines.pad.height * 2 + CGFloat(tallest) * LiveTextLines.lineH
     }
 
@@ -385,7 +425,8 @@ final class LiveTextLines: NSView {
     private func layout(width: CGFloat) -> [(NSRange, String)] {
         // the island ticks this every frame while it moves: the same text at the same width is laid out once
         if let c = cached, c.text == text, c.width == width { return c.lines }
-        let out = layoutTail(width: width)
+        // typed: the whole text from its start (it shows from the top); listening: the tail from the anchor
+        let out = typed ? lineRanges(text as NSString, from: 0, width: width) : layoutTail(width: width)
         cached = (text, width, out)
         return out
     }
@@ -434,7 +475,9 @@ final class LiveTextLines: NSView {
 
     override func draw(_ dirty: NSRect) {
         let all = layout(width: bounds.width)
-        let shown = Array(all.suffix(LiveTextLines.maxLines))
+        let pick = IslandLayout.liveLines(total: all.count, typed: typed)
+        let shown = Array(all[pick.range])
+        more = pick.more
         lines = shown.map(\.1)
         continued = (shown.first?.0.location ?? 0) > 0
         let ink = NSColor(white: 1, alpha: 0.92), dim = NSColor(white: 1, alpha: 0.6)      // neutral, never brand
@@ -463,6 +506,15 @@ final class LiveTextLines: NSView {
             s.draw(with: NSRect(x: LiveTextLines.pad.width, y: y, width: room, height: LiveTextLines.lineH),
                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             // a top line that continues text above: its start fades in from the edge (it doesn't look cut off)
+            // typed text with more below the last line shown: that line fades out towards its end (there is more)
+            if i == shown.count - 1, more, let ctx = NSGraphicsContext.current,
+               let g = NSGradient(starting: NSColor(white: 0, alpha: 0), ending: NSColor(white: 0, alpha: 1)) {
+                ctx.saveGraphicsState()
+                ctx.compositingOperation = .destinationOut
+                g.draw(in: NSRect(x: bounds.width - LiveTextLines.pad.width - 64, y: y - 1, width: 64 + 1, height: LiveTextLines.lineH),
+                       angle: 0)
+                ctx.restoreGraphicsState()
+            }
             if i == 0, continued, let ctx = NSGraphicsContext.current,
                let g = NSGradient(starting: NSColor(white: 0, alpha: 1), ending: NSColor(white: 0, alpha: 0)) {
                 ctx.saveGraphicsState()
@@ -471,7 +523,7 @@ final class LiveTextLines: NSView {
                        angle: 0)
                 ctx.restoreGraphicsState()
             }
-            if (listening || typed) && i == shown.count - 1 {
+            if (listening || typed) && i == shown.count - 1 && !more {
                 let tw = min(room, ceil(s.size().width))
                 if listening {
                     BrandColor.Island.fill.setFill()

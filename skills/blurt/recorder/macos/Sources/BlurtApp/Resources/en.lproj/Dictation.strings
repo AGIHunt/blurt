@@ -380,7 +380,7 @@
 "dictation.style.light" = "Light";
 "dictation.style.structured" = "Structured";
 "dictation.style.auto" = "Auto";
-"dictation.style.toast.structured" = "%@: becomes a list when you finish · ⇧ to go back";
+"dictation.style.toast.structured" = "%@: a list when you finish · ⇧ to go back";
 "dictation.style.toast.back" = "Back to %@";
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";
@@ -476,7 +476,7 @@
 "dictation.history.saved.detail" = "Every dictation, its text before and after polish.";
 
 /* takes in flight (DictationTakes.swift): cancel, the limit, no model, failures, notices, tips */
-"dictation.style.toast.structured.first" = "%@: becomes a list when you finish, keeping only what you settled on · ⇧ to go back";
+"dictation.style.toast.structured.first" = "%@: a list when you finish, with only what you settled on · ⇧ to go back";
 "dictation.toast.cancelled" = "Cancelled";
 "dictation.toast.limit" = "Stopped at the 5-minute limit";
 "dictation.toast.still_listening" = "Still listening · %@ to finish · Esc to cancel";
@@ -494,7 +494,7 @@
 "dictation.toast.not_sent" = "Not sent";
 "dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
 "dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
-"dictation.toast.not_sent.copied" = "Copied, not sent";
+"dictation.toast.not_sent.copied" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
 "dictation.toast.tap_mode" = "Tap %@ to start talking";
 "dictation.toast.no_polish" = "No polish model yet — typed as you said it";

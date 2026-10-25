@@ -126,6 +126,20 @@
       for "Voice note discarded · Undo" (5 s); editing a card's note shows its spoken words to correct, and a re-record
       never overwrites the old wav until it is kept; cards never age out of the thread; when drag-out pastes notes,
       never into a code editor (VS Code, Cursor, Zed, JetBrains…)
+- [ ] Windows / Linux counterparts of the Mac island fixes from dogfood 2 (macOS done; docs/design/system.md §3.2,
+      BlurtCore IslandLayout / CardRow / IslandToasts): ear glyphs and island buttons in the line family (cards, inbox,
+      snap, flag; no filled symbols beside line ones); ears that widen for wide content ("✓ Sent" keeps its inset);
+      toasts that wrap to two lines instead of "…"; dictation toasts dropped when a new take starts / ⇧'s line when it
+      stops listening, and one "Copied, not sent" line; the recording Discard question on its own line, snaps and
+      markers counted apart, Keep Recording where Finish was; a switcher row for a project whose folder is gone
+      (Locate…, never filing into the old path); the live panel showing typed text from the top (≤ 8 lines) and going
+      with an open island that closes; no "+1" tile for a card that fits; Recently Dragged Out and the overview below
+      the card band; cards named "Snap · 19:03" instead of a counter; the Unassigned glyph distinct from the Inbox's.
+      Review pass: nothing filed into a project whose folder is gone from any path (Move To, AX actions, the note's
+      chip, the current project's captures and recordings: cards / Unassigned + "folder not found · Locate…", Locate
+      takes only the same project back); toasts wrap to three lines; Keep Recording as the default with ↩; the ear
+      across the notch keeps its glyph still when one ear widens; card times in the user's 12/24-hour clock with a day
+      once not today; Recently Dragged Out under the island while no card hangs, the days left only on the last day.
 - [ ] Hanging cards on Windows / Linux (web/apps/overlays island.ts, crates/blurt-capture overlay.rs): bring over the
       v0.9 Mac rules (BlurtCore CardRow.swift): newest first, at most 5 + a "+N" tile that opens an overview of every
       card (no paging); a 180 ms dwell before they drop and 0.25 s to go up; Delete / Delete All with Undo instead of

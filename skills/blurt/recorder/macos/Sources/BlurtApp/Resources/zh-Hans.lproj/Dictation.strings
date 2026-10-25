@@ -494,7 +494,7 @@
 "dictation.toast.not_sent" = "没有发送";
 "dictation.toast.not_sent.ax" = "没有发送：需要辅助功能权限";
 "dictation.toast.not_sent.secure" = "没有发送：光标在密码框里";
-"dictation.toast.not_sent.copied" = "文字已复制，没有发送";
+"dictation.toast.not_sent.copied" = "已复制，没有发送 · ⌘V 粘贴";
 "dictation.toast.hold_mode" = "按住%@ 说话（设置里可以改成单按）";
 "dictation.toast.tap_mode" = "单按%@ 开始说话";
 "dictation.toast.no_polish" = "润色模型还没下载，这次按原话输入";

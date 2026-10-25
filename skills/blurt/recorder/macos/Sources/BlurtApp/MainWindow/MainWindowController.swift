@@ -638,24 +638,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// A project whose folder is gone: pick where it is now. Opening it again is the same project (projects.py add
-    /// relocates a store whose registered folder has disappeared), and the index follows.
+    /// A project whose folder is gone: pick where it is now (ProjectLocate, the island's Locate… too). Opening it again
+    /// is the same project (projects.py add relocates a store whose registered folder has disappeared), and the index
+    /// follows. A folder that is another project opens as that one, and the alert says it isn't the missing one.
     func locateFolder(_ id: String) {
         guard let p = model.project(id: id) else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = T("main.open.prompt")
-        panel.message = T("main.missing.locate.message", p.name)
-        var up = p.path.deletingLastPathComponent()
-        while !FileManager.default.fileExists(atPath: up.path), up.path != "/" { up.deleteLastPathComponent() }
-        panel.directoryURL = up
-        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
-            guard r == .OK, let u = panel.url else { return }
-            self?.openFolders([u])
+        ProjectLocate.ask(id: p.id, name: p.name, path: p.path, on: window) { [weak self] r in
+            guard let self = self else { return }
+            switch r {
+            case .found(let f):
+                self.model.reloadSidebar()
+                self.reveal(project: f.id)
+            case .other(let f):
+                self.model.reloadSidebar()
+                self.alert(ProjectLocate.otherLine(f, wanted: p.name), T("main.missing.detail_empty"))
+            case .failed(let why):
+                self.alert(T("main.open.failed", p.name), why)
+            }
         }
-        if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
     }
 
     func clearFilters() {

@@ -139,4 +139,70 @@ final class IslandLayoutTests: XCTestCase {
         XCTAssertFalse(CardShape.fills(picture: CGSize(width: 20, height: 1), box: CGSize(width: 56, height: 40)))
         XCTAssertTrue(CardShape.shot(nil).fills)
     }
+    // MARK: dogfood 2
+
+    /// "✓ 已发送" (16 + 39 pt) after a double tap sat 4 pt from the rounded corner: the ears widen to keep 14 pt.
+    func testWideEarContentWidensTheEarsInsteadOfGivingUpTheInset() {
+        let sent: CGFloat = 16 + 39
+        let span = IslandLayout.earSpan(left: 39, right: sent)
+        XCTAssertGreaterThan(span, IslandLayout.earWidth)
+        let r = notch + span            // the right ear's outer edge, from the notch's left edge at 0
+        let x = IslandLayout.earOrigin(.right, width: sent, outer: r, inner: notch)
+        XCTAssertEqual(r - (x + sent), IslandLayout.earInset, "the same 14 pt as the clock and the count")
+        XCTAssertGreaterThanOrEqual(x, notch + 2, "clear of the notch")
+        // the usual ears stay 56 pt
+        XCTAssertEqual(IslandLayout.earSpan(left: 39, right: 28), IslandLayout.earWidth)
+    }
+
+    /// The review: "✓ 已发送" widened both ears, and the keyboard glyph across the notch jumped 11 pt out and back.
+    /// The ear that doesn't need the room keeps its content where it was; the one that does rides the shape's edge.
+    func testTheOtherEarsGlyphStaysPutWhenOneEarWidens() {
+        let glyph: CGFloat = 16, sent: CGFloat = 16 + 39
+        let span = IslandLayout.earSpan(left: glyph, right: sent)
+        let before = IslandLayout.earOrigin(.left, width: glyph, outer: -IslandLayout.earReach(content: glyph, shape: IslandLayout.earWidth), inner: 0)
+        for shape in [IslandLayout.earWidth, (IslandLayout.earWidth + span) / 2, span] {     // as the shape springs out
+            let reach = IslandLayout.earReach(content: glyph, shape: shape)
+            XCTAssertEqual(IslandLayout.earOrigin(.left, width: glyph, outer: -reach, inner: 0), before)
+        }
+        // the wide one is never outside the black while it grows, and ends 14 pt in
+        XCTAssertEqual(IslandLayout.earReach(content: sent, shape: IslandLayout.earWidth + 3), IslandLayout.earWidth + 3)
+        XCTAssertEqual(IslandLayout.earReach(content: sent, shape: span), span)
+    }
+
+    /// "Couldn't snap — macOS needs Screen Recording allo…": a line too long for the open width wraps, never "…".
+    func testALineTooLongForTheOpenWidthWraps() {
+        let t = IslandLayout.toast(text: 520, lead: 0, button: 90, floor: 297, maxWidth: 480)
+        XCTAssertTrue(t.wraps)
+        XCTAssertEqual(t.width, 480)
+        XCTAssertEqual(t.leadX + t.textWidth + 10 + 90 + IslandLayout.earInset, 480, accuracy: 0.5, "wraps beside the button")
+        XCTAssertFalse(IslandLayout.toast(text: 200, lead: 0, button: 90, floor: 297, maxWidth: 480).wraps)
+        XCTAssertEqual(IslandLayout.toastHeight(lines: 1), 46)
+        XCTAssertEqual(IslandLayout.toastHeight(lines: 2), 46 + IslandLayout.toastLineHeight)
+        // the launch line with a list of shortcuts was cut at two ("…and ⌃⌥⇧⌘L w…"): a third line holds it
+        XCTAssertEqual(IslandLayout.toastLines(wrapped: 16, line: 16), 1)
+        XCTAssertEqual(IslandLayout.toastLines(wrapped: 32, line: 16), 2)
+        XCTAssertEqual(IslandLayout.toastLines(wrapped: 48, line: 16), 3)
+        XCTAssertEqual(IslandLayout.toastLines(wrapped: 80, line: 16), IslandLayout.toastMaxLines, "never past the cap")
+        XCTAssertEqual(IslandLayout.toastHeight(lines: 3), 46 + 2 * IslandLayout.toastLineHeight)
+        XCTAssertEqual(IslandLayout.toastHeight(lines: 5), IslandLayout.toastHeight(lines: IslandLayout.toastMaxLines))
+    }
+
+    /// After stop the panel showed the last three lines, so a Structured list lost its heading before a double tap.
+    func testTypedTextShowsFromTheTopUpToEightLines() {
+        XCTAssertEqual(IslandLayout.liveLines(total: 6, typed: false).range, 3..<6, "listening: the newest three")
+        let list = IslandLayout.liveLines(total: 6, typed: true)
+        XCTAssertEqual(list.range, 0..<6, "typed: the heading and every item")
+        XCTAssertFalse(list.more)
+        let long = IslandLayout.liveLines(total: 12, typed: true)
+        XCTAssertEqual(long.range, 0..<IslandLayout.liveTypedLines)
+        XCTAssertTrue(long.more, "the last line fades: there is more")
+        XCTAssertEqual(IslandLayout.liveLines(total: 0, typed: true).range, 0..<0)
+    }
+
+    /// A voice note's finish: the panel under the open island narrowed and dropped below the new card for 1.2 s.
+    func testThePanelUnderAnOpenIslandGoesWhenItCloses() {
+        XCTAssertTrue(IslandLayout.livePanelGoes(laidOutOpen: true, open: false))
+        XCTAssertFalse(IslandLayout.livePanelGoes(laidOutOpen: true, open: true))
+        XCTAssertFalse(IslandLayout.livePanelGoes(laidOutOpen: false, open: false), "dictation's panel under the ears stays")
+    }
 }

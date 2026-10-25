@@ -5,11 +5,18 @@
 //
 //  • the row (CardRow.layout): newest first, left to right — at most `maxShown` cards, and no wider than `maxWidth` (a
 //    voice card is wider, so fewer of those hang); the rest wait behind a quiet "+N" tile at the row's end, which opens
-//    the overview of every card. Centred under the island, never off the screen's edge. Nothing rotates the cards any
+//    the overview of every card. A "+1" tile never stands in for a card that would fit: when only one would wait
+//    behind it, there is room for one more under `maxShown`, and every card fits in the room the tile row may take
+//    (`maxWidth` plus the tile), all of them hang — five snaps of
+//    150 pt are 798 pt, and the dogfood saw four and a "+1" the size of the card it hid. Centred under the island,
+//    never off the screen's edge. Nothing rotates the cards any
 //    more: the order is always the time they were taken, newest first (Copy All and a ⌘-click selection too).
 //  • the threads (CardRow.threadX): straight above their card while the row fits under the island; a wider row is
 //    mapped onto the island's bottom edge in proportion, so the threads keep their order, never cross and hang close to
 //    vertical — not a fan from the island's two corners.
+//  • the band (CardRow.panelTop): the strip under the island the cards hang in. Recently Dragged Out and the cards'
+//    overview open below it, so a card hung back (Put Back, Undo) or brought down by the pointer never covers them;
+//    with no card hanging, right under the island (and down below the band once Put Back hangs one).
 //  • coming down (CardReveal): only after the pointer has rested on the island `dwell` (brushing past the notch on the
 //    way to a menu drops nothing); up again `away` after it has left the cards' region. Brought down on purpose (the
 //    ear, ⌥⇧H, the menu, the main window) they stay until the pointer has been on them and left — or, if it never
@@ -58,6 +65,9 @@ public enum CardRow {
         }
         var n = min(widths.count, max(1, maxShown))
         while n > 1, width(n) > room { n -= 1 }
+        // no "+1" for a card that fits: the one card it would hide hangs instead, in the room the tile row may take
+        let screen = bounds.upperBound - bounds.lowerBound
+        if widths.count == n + 1, n + 1 <= max(1, maxShown), width(n + 1) <= min(screen, room + gap + tile) { n += 1 }
         let shown = Array((widths.count - n ..< widths.count).reversed())          // newest first
         let total = width(n)
         // centred on the island, but never off the screen's edge
@@ -70,6 +80,20 @@ public enum CardRow {
         }
         let more = widths.count - n
         return Layout(shown: shown, centres: centres, more: more, tileX: more > 0 ? x + tile / 2 : nil, span: left...(left + total))
+    }
+
+    /// How far under the island's bottom edge the cards reach: the shortest thread (`below`), the longest slack, a
+    /// card at its tallest (`cardHeight`), and the "Copied" pill or first-card hint under it (`under`).
+    public static func bandDepth(below: CGFloat, slacks: [CGFloat], cardHeight: CGFloat, under: CGFloat = 30) -> CGFloat {
+        below + (slacks.max() ?? 0) + cardHeight + under
+    }
+
+    /// The top edge (screen points, y up) of a panel that opens under the cards — Recently Dragged Out, the overview:
+    /// below the band whether the cards are down or not, so ones hung back later never cover its title or rows. With
+    /// no card hanging at all (`cardsHang` false) right under the island instead — 150 pt down it read as a window
+    /// of its own; Put Back then moves it below the band as the card hangs again (TakenPanel).
+    public static func panelTop(islandBottom: CGFloat, band: CGFloat, cardsHang: Bool = true, gap: CGFloat = 12) -> CGFloat {
+        islandBottom - (cardsHang ? band : 0) - gap
     }
 
     /// Where the thread of a card at `x` comes out of the island's bottom edge (`edge`: the part of it a thread may

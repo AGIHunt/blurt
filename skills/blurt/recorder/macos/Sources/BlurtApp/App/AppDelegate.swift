@@ -533,7 +533,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let dur = event["duration"] as? Double ?? 0
-        let project = ProjectStore.shared.current
+        let project = currentCaptureProject()        // nil while its folder is gone: the take is in the inbox
         let meta: [String: Any] = [
             "engine": "native-app", "duration": dur, "video": "recording.mp4", "region": event["region"] ?? [],
             "started_at": ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -dur)),
@@ -557,7 +557,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A recording that couldn't be saved but has stills (and notes) in it: the folder stays, meta.json says it failed,
     /// and the island offers to organise what was saved (the stills are the session's frames).
     private func keepFailedTake(_ dir: URL, code: Int32, event: [String: Any], stills: Int) {
-        let project = ProjectStore.shared.current
+        let project = currentCaptureProject()        // nil while its folder is gone: the take is in the inbox
         let meta: [String: Any] = [
             "engine": "native-app", "state": "failed", "error": event["message"] as? String ?? "",
             "started_at": ISO8601DateFormatter().string(from: takeStartedAt ?? Date()),
@@ -738,7 +738,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
         none.toolTip = T("app.menu.project.none_tip")
-        none.image = App.menuSymbol("tray")              // like the island's chip with no project
+        none.image = App.menuSymbol("tray.2")            // Unassigned, as the island and the sidebar (the tray is the Inbox)
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
         _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)

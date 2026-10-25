@@ -157,4 +157,28 @@ final class CardRowTests: XCTestCase {
         XCTAssertGreaterThan(CardDelete.recycleAfter, CardDelete.undoSeconds)
         XCTAssertGreaterThanOrEqual(CardDelete.undoSeconds, 3)
     }
+    /// Five 150 pt snaps are 798 pt, just over 780: the row showed four and a "+1" the size of the card it hid.
+    func testNoPlusOneTileForACardThatFits() {
+        let l = layout(Array(repeating: 150, count: 5))
+        XCTAssertEqual(l.shown.count, 5)
+        XCTAssertEqual(l.more, 0)
+        XCTAssertNil(l.tileX)
+        // more than five still wait behind the tile, and a narrow screen still gets the tile
+        XCTAssertGreaterThan(layout(Array(repeating: 150, count: 6)).more, 1, "two or more wait behind the tile")
+        let narrow = layout(Array(repeating: 150, count: 5), centre: 400, screen: 800)
+        XCTAssertLessThanOrEqual(narrow.span.upperBound - narrow.span.lowerBound, 776)
+        XCTAssertEqual(narrow.shown.count + narrow.more, 5)
+    }
+
+    /// Put Back re-hung a card over Recently Dragged Out: panels under the cards open below the strip they hang in.
+    func testPanelsOpenBelowTheCardBand() {
+        let depth = CardRow.bandDepth(below: 18, slacks: [0, 9, 3, 12, 5, 10, 2], cardHeight: 84)
+        XCTAssertEqual(depth, 18 + 12 + 84 + 30)
+        let islandBottom: CGFloat = 1117 - 32
+        let top = CardRow.panelTop(islandBottom: islandBottom, band: depth)
+        XCTAssertLessThanOrEqual(top, islandBottom - 18 - 12 - 84, "below the lowest card")
+        XCTAssertEqual(top, islandBottom - depth - 12)
+        // no card hangs: right under the island, not floating 150 pt down
+        XCTAssertEqual(CardRow.panelTop(islandBottom: islandBottom, band: depth, cardsHang: false), islandBottom - 12)
+    }
 }

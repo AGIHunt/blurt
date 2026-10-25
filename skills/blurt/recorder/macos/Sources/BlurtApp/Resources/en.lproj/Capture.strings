@@ -14,10 +14,10 @@
 "capture.card.allow_ax" = "Allow…";
 "capture.card.ax_help" = "Press to copy · actions: edit the note, move to a project, organize, delete";
 "capture.card.ax_move" = "Move to %@";
-"capture.card.ax_shot" = "screenshot";
-"capture.card.ax_shot_n" = "Screenshot %d";
+"capture.card.ax_shot" = "snap";
+"capture.card.ax_shot_at" = "Snap · %@";
 "capture.card.ax_voice" = "voice note";
-"capture.card.ax_voice_n" = "Voice note %d";
+"capture.card.ax_voice_at" = "Voice note · %@";
 "capture.card.copied" = "Copied";
 "capture.card.copied_no_ax" = "Copied · in chat apps only the picture pastes";
 "capture.card.copy_image" = "Copy Image";
@@ -44,6 +44,8 @@
 "capture.discarded" = "Discarded";
 "capture.drawer.drop_title" = "MOVE TO";
 "capture.drawer.inbox_sub" = "File it now, pick a project later";
+"capture.drawer.missing_sub" = "Folder not found · choose to locate it";
+"capture.drawer.missing_toast" = "“%@” folder not found · the card stays";
 "capture.drawer.more" = "More…";
 "capture.drawer.no_projects" = "No projects yet — open a folder and it becomes one.";
 "capture.drawer.none_sub" = "Recordings go to Unassigned; snaps stay as cards under the notch";
@@ -145,6 +147,7 @@
 "capture.prompt.shots" = "Use the blurt skill to process this batch of captures: %@\nIt is a shots session (mode: shots, no video). Each line of shots.jsonl is one capture and anchors one item: \"type\": \"shot\" is a screenshot (its primary frame; .marked.png files already carry the user’s ink; a .wav is a voice note on it — transcribe it first), \"type\": \"voice\" is a voice note with no image (\"said\" is its transcript when it is already there, else transcribe the wav).\nThis is an unattended background run started by the Blurt app: don’t ask questions and don’t start the review page; write items.json, then summarise in 2–3 sentences.";
 "capture.rec.discard" = "Discard";
 "capture.rec.discard_q" = "Discard this recording?";
+"capture.rec.discard_also" = "Goes with it: %@";
 "capture.rec.discard_tip" = "Discard or restart…";
 "capture.rec.finish" = "Finish";
 "capture.rec.finish_tip" = "Stop and organize";
@@ -170,7 +173,7 @@
 "capture.snap.no_permission" = "Snapping needs Screen Recording";
 "capture.snap.failed" = "Couldn’t snap — try again";
 "capture.snap.open_settings" = "Open Settings";
-"capture.snap.stale" = "Couldn’t snap — macOS needs Screen Recording allowed again";
+"capture.snap.stale" = "Can’t snap — allow Screen Recording again";
 "capture.taken_out" = "Dragged out";
 "capture.taken_out_note" = "Dragged out · ⌘V to paste the note";
 "capture.taken_out_text" = "Dragged out · picture and note";
@@ -263,7 +266,7 @@
 "capture.keys.undo_set" = "Change Shortcut";
 "capture.voice.hint_key" = "Listening — press %@ again to finish";
 "capture.voice.hint_done" = "Listening — Done to finish";
-"capture.voice.esc_hint" = "Esc to cancel";
+"capture.voice.esc_hint" = "Esc to discard";
 "capture.voice.done" = "Done";
 "capture.voice.done_tip" = "Finish the voice note";
 "capture.voice.sound_settings" = "Sound Settings";
@@ -276,7 +279,7 @@
 "capture.voice_drop.pasted" = "Pasted into %@";
 "capture.voice_drop.copied" = "Copied — ⌘V to paste into %@";
 "capture.record.no_permission" = "Recording needs Screen Recording";
-"capture.record.stale" = "Couldn’t record — macOS needs Screen Recording allowed again";
+"capture.record.stale" = "Can’t record — allow Screen Recording again";
 "capture.screen.reallow" = "Re-allow…";
-"capture.sort.no_agent" = "Organizing needs Claude Code or Codex — the cards stay";
+"capture.sort.no_agent" = "Organizing needs Claude Code or Codex · the cards stay";
 "capture.sort.set_up" = "Set Up…";

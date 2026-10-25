@@ -331,6 +331,7 @@ extension App {
             guard let t = island.currentToast else { return }
             island.dismissToast()
             if arg == "2" { t.second?() } else { t.action?() }
+        case "locatepick": ProjectLocate.testPick = URL(fileURLWithPath: arg)   // locatepick PATH: the next Locate… picks it
         case "islandclick": island.testClickToastLine()   // a click on the toast's line (not its button), as mouseDown sends it
         case "askproject": Housekeeping.askAboutCarriedOverProject()
         case "enrich":                                  // enrich UID,UID…: "AI fill-in" for those items
