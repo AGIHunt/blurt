@@ -522,7 +522,9 @@ struct StoragePane: View {
                     }
                     let detail = [r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · ")
                     if !detail.isEmpty {
-                        Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        // a sentence ("… Hugging Face cache, which other apps may share"): wraps, never cut in the middle
+                        Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
@@ -546,7 +548,9 @@ struct StoragePane: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name).font(.system(size: SettingsMetrics.titleSize))
+                    // a path, cut in the middle when long: the whole of it on hover
                     Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        .help(detail)
                 }
                 Spacer()
                 Text(byteString(bytes)).monospacedDigit().foregroundStyle(.secondary)

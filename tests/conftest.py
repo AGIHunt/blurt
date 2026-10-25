@@ -13,3 +13,8 @@ os.environ["BLURT_HOME"] = os.path.join(_root, "home")
 os.environ["BLURT_WORKSPACE"] = os.path.join(_root, "ws")
 os.makedirs(os.environ["BLURT_HOME"], exist_ok=True)
 os.makedirs(os.environ["BLURT_WORKSPACE"], exist_ok=True)
+
+
+def pytest_configure(config):
+    # opt-in GUI tests (they open the app's windows on screen): BLURT_GUI_TESTS=1, see tests/test_gui_layout.py
+    config.addinivalue_line("markers", "gui: opens the app's windows on screen; skipped unless BLURT_GUI_TESTS=1")
