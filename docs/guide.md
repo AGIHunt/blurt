@@ -49,7 +49,10 @@ and is never thrown away without asking: if Blurt heard nothing in it, the notch
 *Keep* for a few seconds. If no words come out of it, it waits as a card that says *No words recognized* with *Retry* — also with a current project, where it goes once Retry has the words, never as an
 empty item. A note whose words couldn't be transcribed says so at the notch with *Retry*, and still goes to its
 project once Retry has the words. If the microphone goes away mid-note (AirPods taken out), the note ends with what
-you said; before you said anything, a snap's note says *Mic disconnected* and you can type it instead. Quitting Blurt
+you said; before you said anything, a snap's note says *Mic disconnected* and you can type it instead. A recording
+that can't be saved says why — *The disk is full*, *Screen Recording was refused* — and keeps the snaps you took
+during it; it stops as soon as the disk fills up instead of running on, and warns before it starts when little space
+is left. Quitting Blurt
 never loses a capture on its way: it is saved first, or picked up again the next time Blurt starts — and a voice note
 you cancelled stays cancelled, even if you quit before its *Undo* was gone.
 
@@ -610,7 +613,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 截下的画面有几张；标记（`⌥⇧M`）单独计数。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
-**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，几秒内可以点「留下」；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
+**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，几秒内可以点「留下」；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能保存时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），录屏期间截的图都留着；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 

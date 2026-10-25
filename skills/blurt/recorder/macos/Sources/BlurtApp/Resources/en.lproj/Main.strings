@@ -42,6 +42,18 @@
 
 
 "app.record.failed" = "The recording couldn’t be saved";
+"app.record.failed.disk_full" = "The disk is full. Free some space, then record again.";
+"app.record.failed.permission" = "macOS didn’t let Blurt record the screen. Check Screen Recording in System Settings.";
+"app.record.failed.stopped" = "macOS stopped the screen recording partway.";
+"app.record.failed.no_frames" = "No picture came in from the screen. Try again.";
+"app.record.failed.unknown" = "Something went wrong while saving it. The details are in the log.";
+"app.record.failed_short.disk_full" = "The disk is full — recording not saved";
+"app.record.failed_short.permission" = "Screen Recording was refused — recording not saved";
+"app.record.failed_short.stopped" = "macOS stopped the recording — not saved";
+"app.record.failed_short.no_frames" = "No picture came in — recording not saved";
+"app.record.failed_short.unknown" = "Recording not saved";
+"app.record.failed_why" = "%1$@ · %2$@";
+"app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
 "app.record.organize" = "Organize";
 
 "app.status.ax_count" = "Blurt — %@";

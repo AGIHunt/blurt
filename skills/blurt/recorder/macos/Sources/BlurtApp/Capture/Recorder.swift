@@ -7,6 +7,11 @@ import ScreenCaptureKit
 import ServiceManagement
 
 // MARK: - Recorder
+//
+// A take's failures carry a reason (BlurtCore RecordingFailure: disk_full, permission, stopped, no_frames, unknown) next
+// to the raw message: the app says the reason, the log and meta.json keep the message. A writer that fails mid-take
+// (the disk filled up, the encoder gave up) ends the take at once — not at Finish, minutes of a clock running over
+// nothing later — and the mp4 is written in 10 s fragments, so what was recorded before still plays.
 
 func audioInputDevices() -> [AVCaptureDevice] {
     if #available(macOS 14.0, *) {
@@ -151,6 +156,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         try? FileManager.default.removeItem(at: url)
         writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         writer.shouldOptimizeForNetworkUse = false  // true leaves .sb-* temp files if we exit right after
+        // fragments: a take whose writer fails partway still has a playable file up to the last fragment
+        writer.movieFragmentInterval = CMTime(seconds: 10, preferredTimescale: 600)
         vIn = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: W, AVVideoHeightKey: H,
             AVVideoCompressionPropertiesKey: [
@@ -218,7 +225,10 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     func start() {
         stream?.startCapture { err in
             if let err = err {
-                DispatchQueue.main.async { sessionEnded(3, ["event": "error", "code": "capture", "message": err.localizedDescription]) }
+                DispatchQueue.main.async {
+                    sessionEnded(3, ["event": "error", "code": "capture", "message": err.localizedDescription,
+                                     "reason": RecordingFailure.reason(code: "capture", error: err).rawValue])
+                }
             }
         }
         captureSession?.startRunning()
@@ -400,7 +410,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        emit(["event": "error", "code": "stream_stopped", "message": error.localizedDescription])
+        emit(["event": "error", "code": "stream_stopped", "message": error.localizedDescription,
+              "reason": RecordingFailure.reason(code: "stream_stopped", error: error).rawValue])
         DispatchQueue.main.async { self.stop() }
     }
 
@@ -418,10 +429,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     func handleVideo(_ sb: CMSampleBuffer) {
         if !started {
             let pts = CMSampleBufferGetPresentationTimeStamp(sb)
-            guard writer.startWriting() else {
-                emit(["event": "error", "code": "writer", "message": writer.error?.localizedDescription ?? "?"])
-                return
-            }
+            guard writer.startWriting() else { return writerFailed() }
             writer.startSession(atSourceTime: pts)
             sessionStart = pts
             started = true
@@ -433,6 +441,19 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         if vIn.append(s) {
             frames += 1
             lastVideo = CMSampleBufferGetPresentationTimeStamp(s)
+        } else if writer.status == .failed {
+            writerFailed()
+        }
+    }
+
+    /// The writer can't go on (capture queue): end the take now; stop() reports it from the writer's status.
+    private func writerFailed() {
+        let e = writer.error
+        DispatchQueue.main.async {
+            guard !self.stopping else { return }
+            emit(["event": "error", "code": "writer", "message": e?.localizedDescription ?? "the writer failed", "mid_take": true,
+                  "reason": RecordingFailure.reason(code: "writer", error: e).rawValue])
+            self.stop()
         }
     }
 
@@ -443,7 +464,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         guard CMTimeCompare(pts, sessionStart) >= 0, let s = adjusted(sb) else { return }
         live?.append(s, at: CMTimeGetSeconds(CMTimeSubtract(CMSampleBufferGetPresentationTimeStamp(s), sessionStart)))
         guard a.isReadyForMoreMediaData else { return }
-        if a.append(s) { audioBuffers += 1 }
+        if a.append(s) { audioBuffers += 1 } else if writer.status == .failed { writerFailed() }
     }
 
     func isSystemAudio(_ type: SCStreamOutputType) -> Bool {
@@ -455,7 +476,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         guard started, !isPaused, let a = sysIn else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sb)
         guard CMTimeCompare(pts, sessionStart) >= 0, let s = adjusted(sb), a.isReadyForMoreMediaData else { return }
-        if a.append(s) { systemBuffers += 1 }
+        if a.append(s) { systemBuffers += 1 } else if writer.status == .failed { writerFailed() }
     }
 
     func rms(_ sb: CMSampleBuffer) -> Float {
@@ -511,7 +532,23 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                     DispatchQueue.main.async {
                         if restart { emit(["event": "restarting"]); self.onRestart?(); return }
                         sessionEnded(discard ? 2 : 4, discard ? ["event": "cancelled"]
-                                     : ["event": "error", "code": "no_frames", "message": "no video frames captured"])
+                                     : ["event": "error", "code": "no_frames", "message": "no video frames captured",
+                                        "reason": RecordingFailure.noFrames.rawValue])
+                    }
+                    return
+                }
+                // a writer that failed partway can't be finished (AVAssetWriter raises): what it wrote stays
+                if self.writer.status == .failed {
+                    let e = self.writer.error
+                    DispatchQueue.main.async {
+                        if discard {
+                            try? FileManager.default.removeItem(atPath: opts.out)
+                            if let ev = opts.events { try? FileManager.default.removeItem(atPath: ev) }
+                            if restart { emit(["event": "restarting"]); self.onRestart?(); return }
+                            return sessionEnded(2, ["event": "cancelled", "reason": "discarded"])
+                        }
+                        sessionEnded(5, ["event": "error", "code": "writer", "message": e?.localizedDescription ?? "the writer failed",
+                                         "reason": RecordingFailure.reason(code: "writer", error: e).rawValue])
                     }
                     return
                 }
@@ -530,7 +567,9 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                             return
                         }
                         if self.writer.status == .failed {
-                            sessionEnded(5, ["event": "error", "code": "writer", "message": self.writer.error?.localizedDescription ?? "?"])
+                            sessionEnded(5, ["event": "error", "code": "writer",
+                                             "message": self.writer.error?.localizedDescription ?? "the writer failed",
+                                             "reason": RecordingFailure.reason(code: "writer", error: self.writer.error).rawValue])
                             return
                         }
                         NSSound(named: "Submarine")?.play()

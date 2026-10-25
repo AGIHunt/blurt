@@ -42,6 +42,18 @@
 
 
 "app.record.failed" = "录屏没能保存";
+"app.record.failed.disk_full" = "磁盘满了。腾出一些空间后再录。";
+"app.record.failed.permission" = "macOS 不让口喷鸡录屏。到系统设置里检查「屏幕录制」。";
+"app.record.failed.stopped" = "录到一半，macOS 停止了录屏。";
+"app.record.failed.no_frames" = "没有收到屏幕画面，再试一次。";
+"app.record.failed.unknown" = "保存时出了问题，详情见日志。";
+"app.record.failed_short.disk_full" = "磁盘满了，录屏没能保存";
+"app.record.failed_short.permission" = "屏幕录制被拒绝，录屏没能保存";
+"app.record.failed_short.stopped" = "录屏中途被 macOS 停止，没能保存";
+"app.record.failed_short.no_frames" = "没收到屏幕画面，录屏没能保存";
+"app.record.failed_short.unknown" = "录屏没能保存";
+"app.record.failed_why" = "%1$@ · %2$@";
+"app.record.low_space" = "这块磁盘只剩 %@，长时间录屏可能放不下";
 "app.record.organize" = "整理";
 
 "app.status.ax_count" = "口喷鸡 · %@";

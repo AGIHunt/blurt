@@ -62,7 +62,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
             DispatchQueue.main.async {
                 if let err = err {
-                    sessionEnded(3, ["event": "error", "code": "screen_permission", "message": err.localizedDescription])
+                    sessionEnded(3, ["event": "error", "code": "screen_permission", "message": err.localizedDescription,
+                                     "reason": RecordingFailure.permission.rawValue])
                     return
                 }
                 if let r = opts.region { self.begin(r) } else { self.pick() }
@@ -140,7 +141,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()                 // the clock's timer (twice a second) from here
         r.prepare { err in
             if let err = err {
-                sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription])
+                sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription,
+                                 "reason": RecordingFailure.reason(code: "setup", error: err).rawValue])
                 return
             }
             self.countdown(opts.countdown, over: region) {
@@ -477,6 +479,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard !busy else { return }
         MissingFolder.warnIfCurrentMissing(recording: true)     // its folder is gone: this one goes to Unassigned
         let dir = newSessionDir()
+        // little room left: say so before the take, not after it failed (BlurtCore RecordingFailure.lowSpace)
+        let free = (try? dir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage
+        if RecordingFailure.lowSpace(freeBytes: free), let f = free {
+            emit(["event": "record_low_space", "free_bytes": f])
+            island.toast(T("app.record.low_space", ByteCountFormatter.string(fromByteCount: f, countStyle: .file)), key: "record-low-space", seconds: 6)
+        }
         opts.out = dir.appendingPathComponent("recording.mp4").path
         opts.events = dir.appendingPathComponent("events.jsonl").path
         opts.lastRegion = lastRegionFromConfig()
@@ -527,14 +535,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 try? FileManager.default.removeItem(at: dir)
                 if event["event"] as? String == "error" {
-                    alert(T("app.record.failed"), event["message"] as? String ?? "")
+                    // the reason in words (BlurtCore RecordingFailure); the raw message is in the log already
+                    alert(T("app.record.failed"), App.failureText(event))
                 }
             }
             refreshStatus()
             return
         }
         let dur = event["duration"] as? Double ?? 0
-        let project = ProjectStore.shared.current
+        // where the take went: the current project while its folder is there (ProjectStore.captureTarget)
+        let project = App.recordingProject
         let meta: [String: Any] = [
             "engine": "native-app", "duration": dur, "video": "recording.mp4", "region": event["region"] ?? [],
             "started_at": ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -dur)),
@@ -555,12 +565,41 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
+    /// The project a take that just ended went to (nil: Unassigned): the current one while its folder is there.
+    static var recordingProject: Project? {
+        let t = ProjectStore.shared.captureTarget
+        return t.isInbox ? nil : t
+    }
+
+    /// Why a take failed, for the alert (BlurtCore RecordingFailure; never the raw error).
+    static func failureText(_ event: [String: Any]) -> String {
+        switch RecordingFailure(rawValue: event["reason"] as? String ?? "") ?? .unknown {
+        case .diskFull: return T("app.record.failed.disk_full")
+        case .permission: return T("app.record.failed.permission")
+        case .stopped: return T("app.record.failed.stopped")
+        case .noFrames: return T("app.record.failed.no_frames")
+        case .unknown: return T("app.record.failed.unknown")
+        }
+    }
+
+    /// The same, short, for the island line ("The disk is full — recording not saved · its 2 snaps are kept").
+    static func failureShort(_ event: [String: Any]) -> String {
+        switch RecordingFailure(rawValue: event["reason"] as? String ?? "") ?? .unknown {
+        case .diskFull: return T("app.record.failed_short.disk_full")
+        case .permission: return T("app.record.failed_short.permission")
+        case .stopped: return T("app.record.failed_short.stopped")
+        case .noFrames: return T("app.record.failed_short.no_frames")
+        case .unknown: return T("app.record.failed_short.unknown")
+        }
+    }
+
     /// A recording that couldn't be saved but has stills (and notes) in it: the folder stays, meta.json says it failed,
     /// and the island offers to organise what was saved (the stills are the session's frames).
     private func keepFailedTake(_ dir: URL, code: Int32, event: [String: Any], stills: Int) {
-        let project = ProjectStore.shared.current
+        let project = App.recordingProject
         let meta: [String: Any] = [
             "engine": "native-app", "state": "failed", "error": event["message"] as? String ?? "",
+            "reason": event["reason"] as? String ?? RecordingFailure.unknown.rawValue,
             "started_at": ISO8601DateFormatter().string(from: takeStartedAt ?? Date()),
             "author": recordConfig()["author"] as? String ?? NSFullUserName(),
             "project": project?.id as Any? ?? NSNull(), "workspace": currentWorkspace().path,
@@ -568,10 +607,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
-        // (the error is in meta.json and the log: the island line says what is kept)
+        // (the raw error is in meta.json and the log: the island line says why, in words, and what is kept)
         emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills,
-              "error": event["message"] as? String ?? NSNull()])
-        var t = Island.Toast(text: TP("app.record.failed_kept", stills), actionTitle: T("app.record.organize")) { [weak self] in
+              "error": event["message"] as? String ?? NSNull(), "reason": event["reason"] as? String ?? NSNull()])
+        let why = App.failureShort(event)
+        var t = Island.Toast(text: T("app.record.failed_why", why, TP("app.record.kept", stills)),
+                             actionTitle: T("app.record.organize")) { [weak self] in
             self?.process(dir, project: project?.id)
         }
         t.seconds = 12

@@ -306,7 +306,7 @@
 			<string>%ld words</string>
 		</dict>
 	</dict>
-	<key>app.record.failed_kept</key>
+	<key>app.record.kept</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@n@</string>
@@ -317,9 +317,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>The recording couldn’t be saved · its snap and notes are kept</string>
+			<string>its snap is kept</string>
 			<key>other</key>
-			<string>The recording couldn’t be saved · its %ld snaps and notes are kept</string>
+			<string>its %ld snaps are kept</string>
 		</dict>
 	</dict>
 </dict>
