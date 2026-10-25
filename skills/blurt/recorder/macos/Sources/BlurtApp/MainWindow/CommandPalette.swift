@@ -1,6 +1,7 @@
 // ⌘K: one field for every action, place and item. Commands and places match by fuzzy subsequence; items come from
 // the index (same search as the toolbar field, top 8), each with its ID, project, state (past To do) and the search
-// hit when it isn't just the title again. ↑/↓ choose, ↩ runs, Esc closes. The list shows whole rows only (up to 9).
+// hit when it isn't just the title again (on one line, ending where index.db cut it: SearchHit.shown). ↑/↓ choose,
+// ↩ runs, Esc closes. The list shows whole rows only (up to 9).
 import AppKit
 import BlurtCore
 
@@ -193,7 +194,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             let rows = (try? r.items(ItemQuery(text: q, limit: 8))) ?? []
             let items = rows.map { it in
                 let title = it.title.isEmpty ? it.itemID : it.title
-                let hit = SearchHit.adds(it.snippet, to: title) ? it.snippet.map(SearchHit.plain) : nil
+                let hit = SearchHit.adds(it.snippet, to: title) ? it.snippet.map { SearchHit.unmarked(SearchHit.shown($0)) } : nil
                 // where it stands, once it is past To do (in progress, done…): the same words as the list
                 let state = ["new", "todo"].contains(it.state) ? nil : Look.stateLabel(it)
                 return Entry(title: title, detail: [it.itemID, it.projectName, state, hit].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
@@ -314,9 +315,9 @@ final class PaletteCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
     func set(_ e: CommandPalette.Entry) {
         icon.image = e.image
-        title.stringValue = e.title
+        title.stringValue = SearchHit.oneLine(e.title)
         title.textColor = e.enabled ? .labelColor : .tertiaryLabelColor
-        detail.stringValue = e.detail
+        detail.stringValue = SearchHit.oneLine(e.detail)
         keys.stringValue = e.keys
         setAccessibilityLabel([e.title, e.detail, e.keys].filter { !$0.isEmpty }.joined(separator: ", "))
     }

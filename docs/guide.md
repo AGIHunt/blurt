@@ -141,10 +141,10 @@ What you can do with a card:
   its thread and your clipboard as it was. You can turn this off in *Settings → General → If the note didn't go in
   with a drop, copy it*; the two-step paste itself is *Settings → General → Chat apps: the picture, then the note*.
 - **Recently Dragged Out**: cards you dragged out stay findable for 7 days. Right-click the island (or the count left
-  of the notch) → *Recently Dragged Out (N)*, or click *Recently taken: N* at the top of the Inbox or Unassigned in the
-  main window. Each row has one button, *Copy* (picture and note); its *More* menu (or a right-click) copies the
-  picture or the note alone, *Hang Back on the Notch* makes it a card again, and you can drag its picture out again.
-  After 7 days it goes to the Trash.
+  of the notch) → *Recently Dragged Out (N)*, or click *Recently dragged out: N* at the top of the Inbox or Unassigned
+  in the main window. Point at a row and it shows one button, *Copy* (picture and note), and a *···* menu (or
+  right-click the row) that copies the picture or the note alone, or *Hang Back on the Notch* to make it a card again;
+  drag its picture (a voice note's tile) out to use it again. After 7 days it goes to the Trash.
 - Optional: *Settings → General → Add the note under the picture when dragging* drops a copy of the picture with the
   note in a strip under it, for apps that take one picture and nothing else. Off by default; the capture itself stays
   clean.
@@ -458,7 +458,7 @@ so the two must speak the same version: when one is older than the other, the is
 
   备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天应用和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音备注本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天应用——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些应用只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑、代码编辑器和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音备注还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
 - **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。岛上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天应用：先放图片，再贴备注」、应用没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，复制到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天应用：先放图片，再贴备注」。
-- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。每一行只有一个「复制」按钮（图片和备注一起）；「更多」菜单（或者右键）里可以单独复制图片或备注，或者「挂回刘海」让它重新成为卡片；图片也可以再拖出去。7 天后移到废纸篓。
+- **最近拖走的**：拖出去的卡片保留 7 天。右键点岛（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。鼠标指到某一行，会出现一个「复制」按钮（图片和备注一起）和「···」菜单（或者右键这一行），里面可以单独复制图片或备注，或者「挂回刘海」让它重新成为卡片；把图片（语音备注是它的小方块）再拖出去就能再用一次。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的应用用。默认关闭；原来的截图不变。
 - 卡片上备注显示不全时，悬停可以看全文（语音备注那里还有播放按钮）。
 - 双击卡片改备注。「编辑备注…」显示完整的备注，说的话也在里面，识别错了可以直接改；点麦克风可以重录，按 `Esc` 备注保持原样。卡片会一直挂着，直到你处理它，放多久都不会自己消失。

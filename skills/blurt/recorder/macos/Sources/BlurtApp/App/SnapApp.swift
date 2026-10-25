@@ -24,6 +24,7 @@
 //                             ("taken_row": n + the picture's rect, global top-left), housekeeping now, the island's
 //                             right-click menu as text ("island_menu_dump")
 //     taken putback N · taken copy N [click|image|text] · taken drag N PASTEBOARD   a taken capture's actions
+//     taken hover [N]         the panel's row of capture N as if pointed at (its wash, Copy and ···); no N: none
 //     clock SECONDS           move Recently Taken's clock (Snapper.clockOffset) to see 7 days pass
 //     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
 //                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
@@ -173,6 +174,7 @@ extension App {
             switch a.first ?? "list" {
             case "show": TakenPanel.shared.show()
             case "hide": TakenPanel.shared.hide()
+            case "hover": TakenPanel.shared.testHover(a.count > 1 ? Int(a[1]) : nil)    // hover N: as if pointed at
             case "expire": emit(["event": "taken_expire", "trashed": snapper.expireTaken()])
             case "putback": if let s = find(1) { snapper.putBack(s) }
             case "copy": if let s = find(1) { TakenPanel.copy(s, HangingCards.Copy(rawValue: a.count > 2 ? a[2] : "click") ?? .click) }

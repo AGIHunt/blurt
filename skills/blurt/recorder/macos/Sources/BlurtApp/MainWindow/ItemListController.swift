@@ -217,7 +217,7 @@ final class CapturesBanner: NSView {
     }
 }
 
-/// "Recently taken: 2" on top of the Inbox and Unassigned (v0.8.1): cards dragged out into other apps in the last 7
+/// "Recently dragged out: 2" on top of the Inbox and Unassigned (v0.8.1): cards dragged out into other apps in the last 7
 /// days — a click opens Recently Taken (TakenPanel: copy, drag out again, put back). Hidden when there are none.
 final class TakenBanner: NSView {
     var onClick: (() -> Void)?

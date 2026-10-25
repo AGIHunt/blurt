@@ -784,6 +784,12 @@ final class IslandContent: NSView {
             addSubview(art)
             x = 64
         }
+        if let i = t.icon {
+            let im = NSImageView(image: i.symbolImage(pointSize: 13, weight: .semibold))
+            im.contentTintColor = i == .check ? BrandColor.Island.ok : ink
+            place(im, x: x, y: top + 14, w: 18, h: 18)
+            x += 24
+        }
         if let b = t.badge {
             let s = ProjectLook.badgeSize(b.text, height: 18)
             let v = BadgeView(text: b.text, color: b.color)
