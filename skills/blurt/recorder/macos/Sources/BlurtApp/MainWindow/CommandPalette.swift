@@ -339,7 +339,8 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         let current = ProjectStore.shared.currentID
         for p in c.model.projects where p.registered {
             let path = (p.path.path as NSString).abbreviatingWithTildeInPath
-            out.append(e(p.name, "folder", hint: T("main.palette.project", path), kind: .place) { c.reveal(project: p.id) })
+            out.append(e(p.name, "folder", hint: p.id == current ? T("main.project.current_count", path) : T("main.palette.project", path),
+                         kind: .place) { c.reveal(project: p.id) })
             if has {
                 out.append(e(T("main.palette.move_to", p.name), "arrow.turn.up.right", section: .selected, mutates: true) {
                     c.move(uids: items.map(\.uid), to: p.id)

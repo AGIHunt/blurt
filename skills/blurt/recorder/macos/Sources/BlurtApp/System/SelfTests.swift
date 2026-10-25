@@ -88,7 +88,7 @@ enum SelfTests {
         case "mainempty":
             let c = MainWindowController.shared
             c.show()
-            c.list.testEmpty(arg)
+            c.list.testEmpty(arg) { c.go($0) }
             out(["empty": arg])
         case "mainfakejob":
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
@@ -276,7 +276,9 @@ enum SelfTests {
             out(["selected": c.list.selectedIDs])
         case "mainselid":               // mainselid UID[,UID…]: select those items in the current list
             let c = MainWindowController.shared
-            let rows = IndexSet(arg.split(separator: ",").compactMap { c.model.row(of: String($0)) })
+            // a uid, or an item's id as the list shows it ("AW-12")
+            let byID = { (id: String) -> Int? in (0..<c.model.rowCount).first { c.model.item(at: $0)?.itemID == id } }
+            let rows = IndexSet(arg.split(separator: ",").compactMap { c.model.row(of: String($0)) ?? byID(String($0)) })
             c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
             c.window?.makeFirstResponder(c.list.table)
             out(["selected": c.list.selectedIDs, "states": c.list.selectedItems.map(\.state)])

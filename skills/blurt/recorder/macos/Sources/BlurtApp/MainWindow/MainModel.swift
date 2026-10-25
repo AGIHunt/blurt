@@ -51,11 +51,18 @@ enum Scope: Hashable {
         }
     }
 
-    /// The full table (every column, a header) — elsewhere the list is a dense one-line list.
-    var isTable: Bool { self == .all }
-    /// Places that gather items from every project: their list comes grouped by project (Unassigned first), a quiet
-    /// header above each run, so a row never repeats its project's name.
-    var groupsByProject: Bool { self == .inbox || self == .inProgress }
+    /// Every place is the one dense list (one row grammar: kind, id, title, state, date) — no column table anywhere.
+    var isTable: Bool { false }
+    /// How the place groups its rows (ListSections): the Inbox by project (the one project order, Unassigned last), so a
+    /// row never repeats its project's name; In Progress, All Items and a project by state, what needs you first, so a
+    /// row needs no state mark at rest. Unassigned keeps its suggested-project runs; a session its capture order.
+    var grouping: Grouping {
+        switch self {
+        case .inbox: return .project
+        case .inProgress, .all, .project: return .state
+        default: return .none
+        }
+    }
     /// Whether the running jobs show above the list.
     var showsJobs: Bool {
         switch self { case .inbox, .inProgress, .project, .unassigned: return true; default: return false }
@@ -65,6 +72,8 @@ enum Scope: Hashable {
         switch self { case .project(let p): return p; case .unassigned: return "inbox"; default: return nil }
     }
 }
+
+enum Grouping { case none, project, state }
 
 /// The state of the index itself, for the first-run / empty states.
 enum IndexState: Equatable {
@@ -106,9 +115,28 @@ final class MainModel {
     /// Unassigned only: its items by the project an organizing run suggested (the sidebar's order)
     private(set) var suggestionGroups: [SuggestionGroup] = []
     private(set) var lastReloadMS = 0.0
-    /// The grouped places: the project run starting at each row that starts one (the row draws its header).
+    /// The grouped places: the run starting at each row that starts one (the row draws its header) — none when the
+    /// list is one group only.
     private(set) var sections: [Int: ListSection] = [:]
     func section(at row: Int) -> ListSection? { sections[row] }
+    /// Each row's group key (a project id or a state), in row order, while the list is grouped.
+    private var rowKeys: [String] = []
+    /// How the list on show is grouped: the place's way, none while searching (a search is one ranked list).
+    var grouping: Grouping { text.trimmingCharacters(in: .whitespaces).isEmpty ? scope.grouping : .none }
+    /// How many items the place holds with no search and no filter: "12 of 52" while one is on.
+    private(set) var placeTotal = 0
+
+    /// Tests (wp6 `mainempty KIND`): the place really shows as empty — no rows, the counts a world like that has, the
+    /// index in that state — so the whole window (sidebar, heading, detail, filter line) follows, as it would. nil: off.
+    var testEmpty: String? {
+        didSet { if testEmpty == nil, oldValue != nil { reader = nil; open(); reloadAll() } }
+    }
+    /// The project the `missing` test treats as moved away.
+    var testMissing: String?
+    /// The project the `project` test shows as having nothing yet.
+    var testEmptyProject: String?
+    /// The first scan was started (once a launch, when the window finds no index).
+    private var firstScanStarted = false
 
     private var pages: [Int: [ItemRow]] = [:]
     private let pageSize = 100
@@ -140,6 +168,29 @@ final class MainModel {
     }
     /// No items anywhere yet, discarded ones included (a first run): no filters to offer, no detail to point at.
     var isEmptyWorld: Bool { indexState == .ready && counts.all == 0 && counts.discarded == 0 }
+    /// Nothing is listed at all: the index isn't ready (missing, being read, outdated, failed) and holds nothing to show.
+    var nothingListed: Bool { indexState != .ready }
+    /// The place has no rows and no search or filter emptied it: the empty state owns the window (no detail, no
+    /// filter line, no counts beside the title).
+    var placeIsEmpty: Bool { rowCount == 0 && !filtered }
+    /// Whether a project's folder is gone (moved, renamed, an unplugged disk).
+    func folderMissing(_ p: String) -> Bool {
+        if testMissing == p { return true }
+        guard let e = project(id: p), e.registered else { return false }
+        return !FileManager.default.fileExists(atPath: e.path.path)
+    }
+
+    /// The first scan, started by itself when the window finds no index (once a launch): "Listing your items…" —
+    /// there is nothing to ask the user.
+    func startFirstScan() {
+        guard indexState == .missing, !firstScanStarted, testEmpty == nil, Scripts.has("index.py") else { return }
+        firstScanStarted = true
+        scan()
+    }
+    /// Whether the scan running is the first (nothing was listed before it).
+    private(set) var firstScan = false
+    /// A rescan runs over the list on show (the heading says "Updating…").
+    private(set) var rescanning = false
 
     init() {
         open()
@@ -170,10 +221,15 @@ final class MainModel {
     func scan() {
         guard Scripts.has("index.py") else { indexState = .noScripts; onIndexState?(); return }
         let before = indexState
-        indexState = .scanning
+        // a rescan over a list on show keeps the list (its rows, selection and detail stay usable); only a first read,
+        // with nothing listed yet, takes the window
+        firstScan = before != .ready
+        if firstScan { indexState = .scanning } else { rescanning = true }
         onIndexState?()
         Scripts.indexScan { [weak self] r in
             guard let self = self else { return }
+            self.rescanning = false
+            self.firstScan = false
             // files it skipped are said once; a failure with lists already showing says so (Try Again) instead of
             // staying quiet — the empty window shows its own failed state
             let failed: Bool = { if case .failure = r { return true } else { return false } }()
@@ -193,8 +249,25 @@ final class MainModel {
         }
     }
 
+    /// Tests: show the place as it is in that state (see `testEmpty`); nil puts the real world back.
+    func setTestEmpty(_ k: String?) {
+        testEmpty = k
+        guard let k = k else { return }
+        firstScan = false
+        switch k {
+        case "no_index": indexState = .missing
+        case "outdated": indexState = .outdated
+        case "failed": indexState = .failed("index.py scan: exit 1")
+        case "scanning": indexState = .scanning; firstScan = true
+        default: indexState = .ready
+        }
+        onIndexState?()
+        reloadAll()
+    }
+
     /// index.py committed something (an agent's items.py write, our own ops, the watcher's update).
     private func tick() {
+        guard testEmpty == nil else { return }
         guard let r = reader else {
             if FileManager.default.fileExists(atPath: BlurtPaths.indexDB.path), indexState != .scanning {
                 open()
@@ -220,8 +293,8 @@ final class MainModel {
                           inbox: state == "inbox", sort: sort, limit: 0)
         q.ascending = ascending
         switch scope {
-        case .inbox: q.inbox = true; q.byProject = true
-        case .inProgress: q.byProject = true; if state == nil { q.states = Lifecycle.states.filter(Lifecycle.active.contains) }
+        case .inbox: q.inbox = true
+        case .inProgress: if state == nil { q.states = Lifecycle.states.filter(Lifecycle.active.contains) }
         case .unassigned: q.project = "inbox"; q.bySuggestion = true     // each suggested project's items together
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
@@ -238,15 +311,34 @@ final class MainModel {
     func reloadSidebar() {
         let byID = Dictionary(((try? reader?.projects()) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         counts = (try? reader?.counts()) ?? IndexCounts()
-        var list = ProjectStore.shared.ordered.map { p -> ProjectEntry in
-            var e = ProjectEntry(id: p.id, name: p.name, key: p.key, path: p.path, registered: true, exists: p.exists, pinned: p.pinned)
+        // the one project order everywhere (the pickers, the switcher, ⌘K, the Inbox's groups): pinned, then the most
+        // recently used
+        var list = ProjectStore.shared.projects.map { p -> ProjectEntry in
+            var e = ProjectEntry(id: p.id, name: p.name, key: p.key, path: p.path, registered: true, exists: p.exists && testMissing != p.id,
+                                 pinned: p.pinned)
             e.open = byID[p.id]?.openItems ?? 0
             e.inbox = byID[p.id]?.inbox ?? 0
             return e
         }
+        if let k = testEmpty {
+            // the counts a world in that state has (tests: `mainempty KIND`)
+            switch k {
+            case "inbox_zero":
+                counts.inbox = 0; counts.new = 0; counts.toVerify = 0
+                for i in list.indices { list[i].inbox = 0 }
+            case "progress": counts.active = 0; counts.toVerify = 0; counts.inbox = counts.new
+            case "unassigned": counts.unassigned = 0
+            case "project": if let i = list.firstIndex(where: { $0.id == testEmptyProject }) { list[i].inbox = 0; list[i].open = 0 }
+            case "discarded": counts.discarded = 0
+            case "first", "no_index", "outdated", "failed", "scanning":
+                counts = IndexCounts()
+                if k == "first" { list = [] } else { for i in list.indices { list[i].inbox = 0; list[i].open = 0 } }
+            default: break
+            }
+        }
         // folders the index found that aren't opened as projects (v0.6 workspaces): listed, dimmed, with their items
         let known = Set(list.map(\.id))
-        for r in byID.values.sorted(by: { $0.name < $1.name }) where !r.isInbox && !known.contains(r.id) && (r.openItems > 0 || r.inbox > 0) {
+        for r in byID.values.sorted(by: { $0.name < $1.name }) where testEmpty == nil && !r.isInbox && !known.contains(r.id) && (r.openItems > 0 || r.inbox > 0) {
             var e = ProjectEntry(id: r.id, name: r.name, key: r.key, path: URL(fileURLWithPath: r.path), registered: false,
                                  exists: FileManager.default.fileExists(atPath: r.path), pinned: false)
             e.open = r.openItems
@@ -273,13 +365,31 @@ final class MainModel {
         let t0 = DispatchTime.now().uptimeNanoseconds
         pages.removeAll()
         overrides.removeAll()
-        if scope.groupsByProject, scope != .dictation {
-            let rows = (try? reader?.uidProjects(query)) ?? []
-            uids = rows.map(\.uid)
-            sections = ListSections.starts(ListSections.runs(rows.map(\.project)))
+        let emptied = testEmpty.map { !["no_results", "no_match"].contains($0) } ?? false
+        if scope == .dictation || emptied {
+            uids = []
+            rowKeys = []
+        } else if grouping != .none {
+            let rows = (try? reader?.uidGroups(query)) ?? []
+            let byProject = grouping == .project
+            let g = ListSections.grouped(rows.map { (uid: $0.uid, key: byProject ? $0.project : $0.state) },
+                                         rank: byProject ? ListSections.projectRank(projects.map(\.id)) : ListSections.stateRank)
+            uids = g.uids
+            rowKeys = g.keys
         } else {
-            uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
-            sections = [:]
+            uids = (try? reader?.uids(query)) ?? []
+            rowKeys = []
+        }
+        recut()
+        // "12 of 52": the place's own count, while a search or a filter narrows it
+        if filtered, scope != .dictation, let r = reader {
+            let (k, s, t) = (kinds, state, text)
+            kinds = []; state = nil; text = ""
+            let q = query
+            kinds = k; state = s; text = t
+            placeTotal = (try? r.count(q)) ?? 0
+        } else {
+            placeTotal = rowCount
         }
         rowByUID = nil
         // Unassigned: "Looks like X · Move All (3)" — what an organizing run suggested, per registered project, in the
@@ -305,24 +415,22 @@ final class MainModel {
         let leaving = Set(states.filter { _, s in allowed.map { !$0.contains(s) } ?? (s == "discarded") }.keys)
         if !leaving.isEmpty {
             // the runs shift with the rows that leave: recut them from what stays
-            if !sections.isEmpty {
-                var projects: [String] = []
-                var runs = sections.values.sorted { $0.start < $1.start }.makeIterator()
-                var run = runs.next()
-                for (k, u) in uids.enumerated() {
-                    while let r = run, k >= r.start + r.count { run = runs.next() }
-                    if !leaving.contains(u) { projects.append(run?.project ?? "") }
-                }
-                uids.removeAll(where: leaving.contains)
-                sections = ListSections.starts(ListSections.runs(projects))
-            } else {
-                uids.removeAll(where: leaving.contains)
+            if !rowKeys.isEmpty {
+                rowKeys = zip(uids, rowKeys).filter { !leaving.contains($0.0) }.map(\.1)
             }
+            uids.removeAll(where: leaving.contains)
+            recut()
             rowByUID = nil
         }
         pages.removeAll()           // refetched for what's on screen, with the overrides
         onReload?()
     }
+    /// The section headers from the rows' keys: one group alone has none (it would only repeat the place, or the filter).
+    private func recut() {
+        let runs = ListSections.runs(rowKeys)
+        sections = runs.count > 1 ? ListSections.starts(runs) : [:]
+    }
+
     /// States shown before the index has them (optimistic); a reload from the index drops them.
     private var overrides: [String: String] = [:]
 
@@ -362,6 +470,13 @@ final class MainModel {
             out[k] = try? r.count(q)
         }
         return out
+    }
+
+    /// How many items in All Items the search on show finds (no place, no filters): "Search All Items" in a place's
+    /// empty search offers them.
+    func matchesInAllItems() -> Int {
+        guard let r = reader, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return 0 }
+        return (try? r.count(ItemQuery(text: text, limit: 0))) ?? 0
     }
 
     func project(id: String) -> ProjectEntry? { projects.first { $0.id == id } }

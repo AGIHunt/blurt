@@ -265,10 +265,23 @@ final class ProjectPopover: NSViewController, NSTextFieldDelegate, NSTableViewDa
         if e.kind == .project || e.kind == .inbox, let r = Self.match(e.name, query) {
             s.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(r, in: e.name))
         }
+        // the current project (where new captures go) wears the same mark as in the sidebar
+        if e.kind == .project, e.id == ProjectStore.shared.currentID, let img = SourceCell.currentImage {
+            let a = NSTextAttachment()
+            let tinted = img.copy() as! NSImage
+            tinted.isTemplate = true
+            a.image = tinted
+            a.bounds = NSRect(x: 0, y: -1, width: img.size.width, height: img.size.height)
+            s.append(NSAttributedString(string: "  "))
+            let m = NSMutableAttributedString(attachment: a)
+            m.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: NSRange(location: 0, length: m.length))
+            s.append(m)
+        }
         name.attributedStringValue = s
+        name.toolTip = e.kind == .project && e.id == ProjectStore.shared.currentID ? T("main.project.current_mark") : nil
         name.lineBreakMode = .byTruncatingMiddle
         name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        // trailing: the key, as in the sidebar; where the items are now, a check and "Current" instead
+        // trailing: the key, as in the sidebar; where the items are now, a check and "Here now" instead
         let trail: NSView
         if here {
             let check = NSImageView(image: Look.symbol("checkmark", "", size: 10, weight: .semibold) ?? NSImage())

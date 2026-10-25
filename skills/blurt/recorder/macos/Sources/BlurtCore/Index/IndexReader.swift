@@ -288,6 +288,16 @@ public final class IndexReader {
         }
     }
 
+    /// Every match in display order with its project and state: what the grouped lists bucket (ListSections.grouped)
+    /// and cut their section headers from — one cheap pass, no full rows.
+    public func uidGroups(_ q: ItemQuery) throws -> [(uid: String, project: String, state: String)] {
+        let (base, args, _) = whereClause(q)
+        let lim = q.limit > 0 ? q.limit : -1
+        return try rows("SELECT i.uid, i.project_id, i.state \(base) ORDER BY \(order(q)) LIMIT ? OFFSET ?", args + [lim, q.offset]) {
+            (uid: $0.text(0), project: $0.text(1), state: $0.text(2))
+        }
+    }
+
     /// Full rows for these uids, in the same order (missing uids are skipped). `terms` fills `snippet`.
     public func items(uids: [String], terms: [String] = []) throws -> [ItemRow] {
         guard !uids.isEmpty else { return [] }

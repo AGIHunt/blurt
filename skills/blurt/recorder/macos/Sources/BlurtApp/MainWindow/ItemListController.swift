@@ -182,91 +182,169 @@ final class InlineRename: NSObject, NSTextFieldDelegate {
     }
 }
 
-/// Big centred message with an image and up to two buttons — the one empty state (docs/design/system.md §3.5,
-/// `EmptyState` metrics, the same as SwiftUI's `EmptyStateContent`). The friendly states (first launch, inbox zero,
-/// nothing here yet, no results) show the brand mark: the app icon, the 4A chick on its tile. Trouble (scan failed, a
-/// missing folder) keeps a quiet symbol: warnings are never brand. The first button is the view's one primary
-/// (BrandButton, ↩) when it moves you on (scan, open a folder, record); a button that only clears filters stays a
-/// secondary native one.
+/// The one empty state (docs/design/system.md §3.5, `EmptyState` metrics, the same as SwiftUI's `EmptyStateContent`).
+/// Three looks, one layout:
+///   • friendly — the brand mark (the app icon: the 4A chick on its tile): first run, inbox zero, nothing here yet, a
+///     first read of your items. Its first button is the view's one primary (BrandButton, ↩) when it moves you on.
+///   • miss — a quiet symbol (a search or a filter that matched nothing): no brand, and its buttons only undo the
+///     search or the filter, so they are plain and never take ↩.
+///   • trouble — a quiet symbol (a scan that failed, a folder that's gone): warnings are never brand; its first button
+///     is the native default (↩).
+/// Everything sits on one centre line, its middle about 40 % down the pane (the optical centre: the space above is
+/// two thirds of the space below); a hint that wraps is balanced (no word alone on its last line); a path is one line,
+/// cut in the middle, the whole path its tooltip; a quiet text link (brand ink, never ↩) can follow the buttons.
 final class EmptyStateView: NSView {
+    enum Tone { case friendly, miss, trouble }
     let icon = NSImageView()
     let mark = BrandMarkView()
-    let title = NSTextField(labelWithString: "")
+    let title = NSTextField(wrappingLabelWithString: "")
     let message = NSTextField(wrappingLabelWithString: "")
+    let path = NSTextField(labelWithString: "")
     let buttons = NSStackView()
-    let spinner = BrandSpinner(size: 26)
+    let link = NSButton()
+    let spinner = BrandSpinner(size: 18)
     var onButton: ((Int) -> Void)?
-    /// tags whose button is never the primary (they undo a filter rather than move on)
-    static let secondaryTags: Set<Int> = [2]
+    /// tags whose button only undoes a search or a filter: never the primary, never ↩
+    static let secondaryTags: Set<Int> = [2, 9]
     private let stack = NSStackView()
+    private var messageWidth: NSLayoutConstraint!
+    private(set) var tone: Tone = .friendly
+    private var primary: NSButton?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         title.font = .systemFont(ofSize: EmptyState.titleSize, weight: .semibold)
         title.alignment = .center
+        title.maximumNumberOfLines = 2
+        title.lineBreakMode = .byTruncatingTail
+        title.preferredMaxLayoutWidth = 360
         message.font = .systemFont(ofSize: EmptyState.messageSize)
         message.textColor = .secondaryLabelColor
         message.alignment = .center
-        message.preferredMaxLayoutWidth = EmptyState.messageWidth
+        path.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        path.textColor = .secondaryLabelColor
+        path.alignment = .center
+        path.lineBreakMode = .byTruncatingMiddle
+        path.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         icon.symbolConfiguration = .init(pointSize: 34, weight: .light)
         icon.contentTintColor = .tertiaryLabelColor
+        icon.setAccessibilityElement(false)
         buttons.orientation = .horizontal
         buttons.spacing = 8
-        for v in [icon, mark, spinner, title, message, buttons] as [NSView] { stack.addArrangedSubview(v) }
+        buttons.setHuggingPriority(.required, for: .horizontal)
+        link.isBordered = false
+        link.font = .systemFont(ofSize: 12)
+        link.contentTintColor = BrandColor.ink
+        link.target = self
+        link.action = #selector(tap(_:))
+        for v in [icon, mark, title, message, path, spinner, buttons, link] as [NSView] { stack.addArrangedSubview(v) }
         stack.orientation = .vertical
+        stack.alignment = .centerX
         stack.spacing = 0
         stack.setCustomSpacing(EmptyState.markToTitle, after: mark)
-        stack.setCustomSpacing(12, after: icon)
-        stack.setCustomSpacing(12, after: spinner)
+        stack.setCustomSpacing(14, after: icon)
         stack.setCustomSpacing(EmptyState.titleToMessage, after: title)
-        stack.setCustomSpacing(EmptyState.messageToButtons, after: message)
+        stack.setCustomSpacing(6, after: message)
+        stack.setCustomSpacing(EmptyState.messageToButtons, after: path)
+        stack.setCustomSpacing(EmptyState.messageToButtons, after: spinner)
+        stack.setCustomSpacing(10, after: buttons)
         mark.isHidden = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor),
-                                     stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -20),
-                                     stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -40)])
+        // the optical centre: the space above the group is two thirds of the space below it, never under 16 pt
+        let above = NSLayoutGuide(), below = NSLayoutGuide()
+        addLayoutGuide(above)
+        addLayoutGuide(below)
+        messageWidth = message.widthAnchor.constraint(equalToConstant: EmptyState.messageWidth)
+        let ratio = above.heightAnchor.constraint(equalTo: below.heightAnchor, multiplier: 2.0 / 3.0)
+        ratio.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            above.topAnchor.constraint(equalTo: topAnchor), above.bottomAnchor.constraint(equalTo: stack.topAnchor),
+            below.topAnchor.constraint(equalTo: stack.bottomAnchor), below.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ratio, above.heightAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -40),
+            messageWidth,
+            path.widthAnchor.constraint(lessThanOrEqualToConstant: EmptyState.messageWidth),
+        ])
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// `mark`: the brand mark instead of the symbol (the friendly states).
-    /// `oneLine`: a path — one line, cut in the middle (both ends say where it was).
+    /// `mark`: the brand mark (the friendly states) instead of the symbol. `busy`: the brand spinner where the buttons
+    /// go (a first read of your items). `path`: one line under the hint, cut in the middle. `link`: a quiet text button
+    /// after the buttons (tag). `oneLine` is kept for callers that pass a path as the message.
     func show(symbol: String?, image: NSImage? = nil, mark showMark: Bool = false, title t: String,
-              message m: String, oneLine: Bool = false, buttons bs: [(String, Int)] = [], busy: Bool = false) {
+              message m: String, oneLine: Bool = false, path p: String? = nil, buttons bs: [(String, Int)] = [],
+              link l: (String, Int)? = nil, busy: Bool = false, tone forced: Tone? = nil) {
+        tone = forced ?? (showMark ? .friendly : bs.contains { Self.secondaryTags.contains($0.1) } ? .miss : .trouble)
         message.maximumNumberOfLines = oneLine ? 1 : 0
         message.lineBreakMode = oneLine ? .byTruncatingMiddle : .byWordWrapping
         message.toolTip = oneLine ? m : nil
-        message.cell?.wraps = !oneLine
-        message.usesSingleLineMode = oneLine
         icon.image = showMark ? nil : image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
-        icon.isHidden = icon.image == nil || busy
-        mark.isHidden = !showMark || busy
-        icon.setAccessibilityElement(false); icon.cell?.setAccessibilityElement(false)      // decoration (an SF Symbol's own name, e.g. "split view", says nothing here)
+        icon.isHidden = icon.image == nil
+        mark.isHidden = !showMark
         busy ? spinner.startAnimation() : spinner.stopAnimation()     // stopped, it is hidden: it takes no room
         title.stringValue = t
         message.stringValue = m
         message.isHidden = m.isEmpty
-        // with no hint the title takes the hint's gap to the buttons
-        stack.setCustomSpacing(m.isEmpty ? EmptyState.messageToButtons : EmptyState.titleToMessage, after: title)
+        messageWidth.constant = oneLine ? EmptyState.messageWidth : Self.balancedWidth(m, font: message.font!, max: EmptyState.messageWidth)
+        path.stringValue = p ?? ""
+        path.toolTip = p
+        path.isHidden = p == nil
+        // with no hint (and no path) the title takes the hint's gap to what follows
+        stack.setCustomSpacing(m.isEmpty && p == nil ? EmptyState.messageToButtons : EmptyState.titleToMessage, after: title)
+        stack.setCustomSpacing(p == nil ? EmptyState.messageToButtons : 6, after: message)
         buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        primary = nil
         for (k, (label, tag)) in bs.enumerated() {
             let b: NSButton
-            if k == 0 && !Self.secondaryTags.contains(tag) {
+            let first = k == 0 && !Self.secondaryTags.contains(tag)
+            if first && tone == .friendly {
                 b = BrandButton(title: label, target: self, action: #selector(tap(_:)))
             } else {
                 b = NSButton(title: label, target: self, action: #selector(tap(_:)))
                 b.bezelStyle = .rounded
             }
             b.tag = tag
-            // the brand primary takes Return; a plain button never does (it would draw as the system default)
-            if k == 0 && !Self.secondaryTags.contains(tag) { b.keyEquivalent = "\r" }
+            // the primary takes Return; a button that only undoes a search or a filter never does
+            if first && tone != .miss { b.keyEquivalent = "\r"; primary = b }
             buttons.addArrangedSubview(b)
         }
         buttons.isHidden = bs.isEmpty
+        link.isHidden = l == nil
+        if let l = l {
+            link.title = l.0
+            link.tag = l.1
+        }
         isHidden = false
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel([t, m].filter { !$0.isEmpty }.joined(separator: ". "))
+        setAccessibilityLabel([t, m, p ?? ""].filter { !$0.isEmpty }.joined(separator: ". "))
+    }
+
+    /// Return on the list while the empty state shows: its primary (when it has one).
+    @discardableResult func pressPrimary() -> Bool {
+        guard !isHidden, let b = primary else { return false }
+        b.performClick(nil)
+        return true
+    }
+
+    /// The narrowest width (≤ `max`) that keeps the hint's line count: the lines come out even, no word alone at the end.
+    static func balancedWidth(_ s: String, font: NSFont, max: CGFloat) -> CGFloat {
+        guard !s.isEmpty else { return max }
+        func lines(_ w: CGFloat) -> Int {
+            let r = (s as NSString).boundingRect(with: NSSize(width: w, height: 10_000), options: [.usesLineFragmentOrigin],
+                                                 attributes: [.font: font])
+            return Int((r.height / ceil(font.ascender - font.descender + font.leading)).rounded())
+        }
+        let n = lines(max)
+        guard n > 1 else { return ceil((s as NSString).size(withAttributes: [.font: font]).width) + 4 }
+        var lo: CGFloat = 80, hi = max
+        while hi - lo > 2 {
+            let mid = (lo + hi) / 2
+            if lines(mid) > n { lo = mid } else { hi = mid }
+        }
+        return ceil(hi) + 4
     }
 
     @objc func tap(_ b: NSButton) { onButton?(b.tag) }
@@ -614,13 +692,19 @@ final class FilterBar: NSView {
 
     /// What the line says: the kinds picked and the state, in the menu's own words.
     static func describe(_ m: MainModel) -> String? {
+        let parts = parts(m)
+        return parts.isEmpty ? nil : T("main.filter.showing", parts.joined(separator: " · "))
+    }
+
+    /// The filter's parts: "Issues, Ideas", "To Verify".
+    static func parts(_ m: MainModel) -> [String] {
         var parts: [String] = []
         if !m.kinds.isEmpty {
             parts.append(Loc.list(KindStyle.builtIn.filter(m.kinds.contains).map { Look.kindPlural($0) }
                                   + m.kinds.filter { !KindStyle.builtIn.contains($0) }.sorted().map(Look.kindName)))
         }
         if let st = m.shownState { parts.append(st == "inbox" ? T("main.filter.needs_you") : Look.stateName(st)) }
-        return parts.isEmpty ? nil : T("main.filter.showing", parts.joined(separator: " · "))
+        return parts
     }
 
     func sync(_ m: MainModel) {
@@ -995,95 +1079,121 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         missing.isHidden = !e.registered || model.rowCount == 0 || FileManager.default.fileExists(atPath: e.path.path)
     }
 
-    /// Tests (wp6 `mainempty KIND`): one empty state on show, whatever the index holds, for screenshots; the next
-    /// reload puts the real one back. KIND: first | inbox_zero | progress | unassigned | project | no_results |
-    /// no_match | no_index | outdated | failed | missing | scanning | discarded.
-    func testEmpty(_ kind: String) {
-        scroll.isHidden = true
+    /// Tests (wp6 `mainempty KIND`): the place really in that state — the model shows it empty (MainModel.testEmpty),
+    /// with the counts and the index state such a world has, so the sidebar, the heading, the filter line and the
+    /// detail all follow, as they would. `off` puts the real world back. KIND: first | inbox_zero | progress |
+    /// unassigned | project | no_results | no_match | no_index | outdated | failed | missing | scanning | discarded.
+    func testEmpty(_ kind: String, go: (Scope) -> Void) {
+        model.testMissing = nil
+        model.testEmptyProject = nil
+        guard kind != "off" else { model.kinds = []; model.state = nil; model.text = ""; model.setTestEmpty(nil); return }
+        let firstProject = model.projects.first(where: \.registered)?.id ?? ""
+        model.kinds = []
+        model.state = nil
+        model.text = ""
         switch kind {
-        case "inbox_zero": empty.show(symbol: nil, mark: true, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
-        case "progress": empty.show(symbol: nil, mark: true, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
-        case "unassigned": empty.show(symbol: nil, mark: true, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
-        case "project":
-            empty.show(symbol: nil, mark: true, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
-                       buttons: [(T("main.action.record"), 3), (T("main.action.snap"), 4)])
-        case "no_results":
-            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", "zebra"), message: T("main.empty.try_shorter"),
-                       buttons: [(T("main.empty.clear_all"), 2)])
-        case "no_match": empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "", buttons: [(T("main.empty.clear_filters"), 2)])
-        case "no_index": empty.show(symbol: nil, mark: true, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"), buttons: [(T("main.empty.scan"), 1)])
-        case "outdated": empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"), buttons: [(T("main.empty.rebuild"), 1)])
-        case "failed": empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: T("main.empty.scan_failed.detail"), buttons: [(T("action.retry"), 1)])
-        case "missing": empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"), buttons: [(T("main.missing.locate"), 7)])
-        case "scanning": empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
-        case "discarded":
-            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
-                       buttons: [(T("main.empty.clear_filters"), 2)])
-        default:
-            empty.show(symbol: nil, mark: true, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
-                       buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])
+        case "project": model.testEmptyProject = firstProject
+        case "missing": model.testMissing = firstProject
+        default: break
         }
+        model.setTestEmpty(["no_results", "no_match"].contains(kind) ? nil : kind)
+        switch kind {
+        case "inbox_zero", "first", "no_index", "outdated", "failed", "scanning": go(.inbox)
+        case "progress": go(.inProgress)
+        case "unassigned": go(.unassigned)
+        case "project", "missing": go(.project(firstProject))
+        case "discarded":
+            go(.all)
+            model.state = "discarded"
+        case "no_results":
+            go(.inbox)
+            model.text = "zebra"
+        case "no_match":
+            go(.inbox)
+            model.kinds = ["task"]
+        default: break
+        }
+        model.reloadAll()
     }
 
     func updateEmpty() {
+        elsewhereUID = nil
+        let tilde = { (u: URL) in (u.path as NSString).abbreviatingWithTildeInPath }
         switch model.indexState {
-        case .scanning:
-            empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
+        case .scanning where model.firstScan || model.rowCount == 0:
+            empty.show(symbol: nil, mark: true, title: T("main.empty.scanning"), message: T("main.empty.scanning.detail"), busy: true)
             return
+        case .scanning: break
         case .noScripts:
-            empty.show(symbol: "puzzlepiece.extension", title: T("main.empty.no_scripts"), message: T("main.empty.no_scripts.detail"))
+            empty.show(symbol: "puzzlepiece.extension", title: T("main.empty.no_scripts"), message: T("main.empty.no_scripts.detail"), tone: .trouble)
             return
         case .missing:
             empty.show(symbol: nil, mark: true, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"),
                        buttons: [(T("main.empty.scan"), 1)])
             return
         case .outdated:
-            empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"),
-                       buttons: [(T("main.empty.rebuild"), 1)])
+            empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"), busy: true)
             return
         case .failed:
-            empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: T("main.empty.scan_failed.detail"), buttons: [(T("action.retry"), 1)])
+            empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: T("main.empty.scan_failed.detail"),
+                       path: tilde(BlurtPaths.workspace), buttons: [(T("action.retry"), 1)], tone: .trouble)
             return
         case .ready: break
         }
         guard model.rowCount == 0 else { empty.isHidden = true; return }
         let q = model.text.trimmingCharacters(in: .whitespaces)
+        let filters = !model.kinds.isEmpty || model.shownState != nil
         if !q.isEmpty, let (it, why) = elsewhere(q) {
             // an id typed here for an item this place doesn't list (discarded, filtered out, another project): say
             // where it is and take you there — ⌘K finds it anywhere, the search shouldn't just say "no results"
             elsewhereUID = it.uid
-            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q), message: why,
-                       buttons: [(T("main.empty.show_item", it.itemID), 8), (T("main.empty.clear_all"), 2)])
+            empty.show(symbol: "magnifyingglass", title: T("main.empty.no_results", q), message: why,
+                       buttons: [(T("main.empty.show_item", it.itemID), 8), (T(filters ? "main.empty.clear_all" : "main.empty.clear_search"), 2)],
+                       tone: .miss)
         } else if !q.isEmpty {
-            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q),
-                       message: model.kinds.count + (model.shownState == nil ? 0 : 1) > 0
-                           ? T("main.empty.filters_on") : T("main.empty.try_shorter"),
-                       buttons: [(T("main.empty.clear_all"), 2)])
+            let elsewhereCount = model.scope == .all ? 0 : model.matchesInAllItems()
+            let hint = filters ? T("main.empty.filters_on", FilterBar.parts(model).joined(separator: " · "))
+                : elsewhereCount > 0 ? TP("main.empty.elsewhere", elsewhereCount) : T("main.empty.try_shorter")
+            var bs: [(String, Int)] = []
+            if elsewhereCount > 0, !filters { bs.append((T("main.empty.search_all"), 9)) }
+            bs.append((T(filters ? "main.empty.clear_all" : "main.empty.clear_search"), 2))
+            empty.show(symbol: "magnifyingglass", title: model.scope == .all ? T("main.empty.no_results", q)
+                           : T("main.empty.no_results_in", q, model.scopeTitle),
+                       message: hint, buttons: bs, tone: .miss)
         } else if model.shownState == "discarded", model.kinds.isEmpty {
-            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"),
-                       buttons: [(T("main.empty.clear_filters"), 2)])
+            empty.show(symbol: nil, mark: true, title: T("main.empty.discarded"), message: T("main.empty.discarded.detail"))
         } else if model.filtered {
-            empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "",
-                       buttons: [(T("main.empty.clear_filters"), 2)])
+            empty.show(symbol: "line.3.horizontal.decrease.circle", title: T("main.empty.no_match"),
+                       message: T("main.empty.no_match.detail", FilterBar.parts(model).joined(separator: " · ")),
+                       buttons: [(T("main.empty.clear_filters"), 2)], tone: .miss)
         } else {
             switch model.scope {
-            case .inbox where model.counts.all > 0:
+            case .inbox where model.counts.all > 0 || model.testEmpty == "inbox_zero":
                 empty.show(symbol: nil, mark: true, title: T("main.empty.inbox_zero"), message: T("main.empty.inbox_zero.detail"))
             case .inProgress:
-                empty.show(symbol: nil, mark: true, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"))
+                empty.show(symbol: nil, mark: true, title: T("main.empty.nothing_in_progress"), message: T("main.empty.nothing_in_progress.detail"),
+                           buttons: model.counts.inbox > 0 ? [(T("main.empty.go_inbox"), 11)] : [], tone: .friendly)
             case .unassigned:
                 empty.show(symbol: nil, mark: true, title: T("main.empty.all_filed"), message: T("main.empty.all_filed.detail"))
-            case .project(let p) where model.project(id: p).map { $0.registered && !FileManager.default.fileExists(atPath: $0.path.path) } == true:
-                empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"),
-                           buttons: [(T("main.missing.locate"), 7)])
+            case .project(let p) where model.folderMissing(p):
+                let e = model.project(id: p)
+                empty.show(symbol: "questionmark.folder", title: T("main.missing.title_named", e?.name ?? model.scopeTitle),
+                           message: T(ProjectStore.shared.currentID == p ? "main.missing.detail_current" : "main.missing.detail_named"),
+                           path: e.map { tilde($0.path) }, buttons: [(T("main.missing.locate_folder"), 7)],
+                           link: (T("main.missing.remove"), 10), tone: .trouble)
             case .project(let p):
                 let current = ProjectStore.shared.currentID == p
-                empty.show(symbol: nil, mark: true, title: T("main.empty.project"), message: T("main.empty.project.detail", hk(.toggleRecord), hk(.snap)),
+                empty.show(symbol: nil, mark: true, title: T("main.empty.project"),
+                           message: T(current ? "main.empty.project.detail" : "main.empty.project.detail_other"),
                            buttons: current ? [(T("main.action.record"), 3), (T("main.action.snap"), 4)]
                                             : [(T("main.project.use"), 6), (T("main.action.record"), 3)])
             default:
-                empty.show(symbol: nil, mark: true, title: T("main.empty.first"), message: T("main.empty.first.detail", hk(.toggleRecord), hk(.snap)),
-                           buttons: [(T("project.open_folder"), 5), (T("main.action.record"), 3)])
+                // nothing captured anywhere yet: open a folder first — or, with projects already open, record
+                let noProjects = model.projects.filter(\.registered).isEmpty
+                empty.show(symbol: nil, mark: true, title: T("main.empty.first"),
+                           message: T(noProjects ? "main.empty.first.detail" : "main.empty.project.detail"),
+                           buttons: noProjects ? [(T("project.open_folder"), 5), (T("main.action.record"), 3)]
+                                               : [(T("main.action.record"), 3), (T("main.action.snap"), 4)])
             }
         }
     }
@@ -1126,15 +1236,17 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             }
             c.ring.set(it.state, label: Look.stateLabel(it))
             c.ring.isEnabled = !it.legacy
-            c.quietWhenNew = model.scope == .inbox
+            // a row shows its state only where the list doesn't already say it: never "new" (the default of a fresh
+            // item), nothing in a list grouped by state (its header says it) — pointed at or selected, it shows
+            c.quietAtRest = model.grouping == .state || it.state == "new"
             return c
         case "title":
             let c = make("title") { TitleCell() }
             // the search hit, unless it is just the title again
             let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
             let hit = searching && SearchHit.adds(it.snippet, to: it.title) ? it.snippet : nil
-            // medium weight sets a new item apart — except in the Inbox, where every row is new (it would set none apart)
-            c.set(title: it.title, unread: it.state == "new" && !it.unreadable && model.scope != .inbox, dimmed: quiet, struck: false, hit: hit,
+            // one weight for every title: the groups already set new items apart (Linear's list); closed ones dim
+            c.set(title: it.title, unread: false, dimmed: quiet, struck: false, hit: hit,
                   unreadable: it.unreadable)
             c.toolTip = it.unreadable ? T("main.unreadable.fix_first")
                 : [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
@@ -1175,7 +1287,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let v = make("row") { ItemRowView() }
         let sec = model.section(at: row)
-        v.section = sec.map { (sectionName($0), Loc.number($0.count)) }
+        v.section = sec.map { (sectionName($0), Loc.number($0.count), model.grouping == .state ? Look.ring($0.key, size: 14) : nil) }
         v.nextOwnsBand = model.section(at: row + 1) == nil
         if let it = model.item(at: row) {
             v.label = ([sec.map { "\(sectionName($0)), \(TP("main.items.count", $0.count))" }, Look.kindName(it.kind),
@@ -1186,8 +1298,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return v
     }
 
-    /// A project run's header: the project's name (Unassigned for the inbox store).
+    /// A run's header: the state's name (a list grouped by state), else the project's name (Unassigned for the inbox store).
     func sectionName(_ s: ListSection) -> String {
+        if model.grouping == .state { return Look.stateName(s.key) }
         if s.project == "inbox" { return T("project.inbox") }
         return model.project(id: s.project)?.name ?? model.item(at: s.start)?.projectName ?? s.project
     }

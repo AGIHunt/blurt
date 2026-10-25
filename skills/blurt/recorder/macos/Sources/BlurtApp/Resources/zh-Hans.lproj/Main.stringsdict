@@ -408,5 +408,19 @@
 			<string>%ld 个待办</string>
 		</dict>
 	</dict>
+	<key>main.empty.elsewhere</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>别的地方有 %ld 条匹配。</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

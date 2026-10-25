@@ -466,5 +466,21 @@
 			<string>%ld tasks</string>
 		</dict>
 	</dict>
+	<key>main.empty.elsewhere</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld item in other places matches.</string>
+			<key>other</key>
+			<string>%ld items in other places match.</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

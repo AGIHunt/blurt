@@ -133,7 +133,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 self.detail.refresh(item: it, projects: self.model.projects)
             } else if self.shownJob == nil, self.list.selectedIDs.count > 1, self.detail.showsSelection {
                 self.showSelectionSummary()     // a state or a move changed what the buttons can do
-            } else if self.shownJob == nil, self.list.selectedIDs.isEmpty, self.detail.showsQuietNothing != self.model.isEmptyWorld,
+            } else if self.shownJob == nil, self.list.selectedIDs.isEmpty, self.detail.showsQuietNothing != self.quietDetail,
                       self.detail.showsNothing {
                 self.listSelectionChanged()     // the first item arrived (or the last one went): "Nothing selected" or blank
             }
@@ -146,6 +146,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             guard let self = self else { return }
             self.list.reload()
             self.updateTitle()
+            self.syncIndexChrome()
             if self.model.indexState == .ready, self.list.table.selectedRow < 0, self.model.rowCount > 0 {
                 self.list.table.selectRowIndexes([0], byExtendingSelection: false)
             }
@@ -163,8 +164,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: MainWindowHosting
 
+    /// Search follows the index: off (with a placeholder that says when it comes) while nothing is listed yet. A
+    /// window that finds no index starts reading one by itself — there is nothing to ask.
+    func syncIndexChrome() {
+        guard let f = searchItem?.searchField, model.scope != .dictation else { return }
+        let ready = !model.nothingListed
+        if f.isEnabled != ready {
+            if !ready, window?.firstResponder === f.currentEditor() { window?.makeFirstResponder(list.table) }
+            f.isEnabled = ready
+        }
+        f.placeholderString = ready ? T("main.search.placeholder") : T("main.search.placeholder_wait")
+        if window?.isVisible == true { model.startFirstScan() }
+    }
+
     func show() {
         if !restored { restoreState(); restored = true } else { model.reloadAll() }
+        defer { syncIndexChrome() }
         becomeRegular()
         activateApp()
         window?.makeKeyAndOrderFront(nil)
@@ -354,7 +369,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             list.heading.set(title: window?.title ?? "", counts: window?.subtitle ?? "")
             syncFilterItem()
         }
-        window?.title = model.scopeTitle
+        let q = model.text.trimmingCharacters(in: .whitespaces)
+        // a search is a mode of its own: the heading says what it looks for, the counts how much of the place it found
+        window?.title = q.isEmpty || model.scope == .dictation ? model.scopeTitle : T("main.search.title", q)
         if model.scope == .dictation {
             if let p = page, p.model.tab == .lab {
                 window?.subtitle = T("dictation.lab.subtitle", T("dictation.lab.cases", p.lab.cases.count))
@@ -364,8 +381,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             window?.subtitle = n > 0 ? TP("main.dictation.count", n) : ""
             return
         }
-        window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)
+        window?.subtitle = listSubtitle
     }
+
+    /// What the heading says beside the place's name: nothing while the empty state speaks; "Updating…" over a rescan;
+    /// "12 of 52" (and where) while a search or a filter narrows the place; the Inbox's "3 new · 2 to verify"; a
+    /// project's count, and that it is the current one (where new captures go) — the one mark of it everywhere.
+    var listSubtitle: String {
+        if model.indexState != .ready || model.placeIsEmpty { return "" }
+        if model.rescanning { return T("main.updating") }
+        let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
+        if model.filtered {
+            let of = T("main.items.of", Loc.number(model.rowCount), Loc.number(model.placeTotal))
+            return searching ? T("main.items.of_in", of, model.scopeTitle) : of
+        }
+        if model.scope == .inbox { return needsYou }
+        if case .project(let p) = model.scope, ProjectStore.shared.currentID == p {
+            return T("main.project.current_count", TP("main.items.count", model.rowCount))
+        }
+        return TP("main.items.count", model.rowCount)
+    }
+
+    /// The detail stays blank (no placeholder pointing at rows that aren't there) while the list has no rows or there
+    /// is nothing listed at all: the list's empty state is the window's one focus.
+    var quietDetail: Bool { model.isEmptyWorld || model.nothingListed || model.rowCount == 0 }
 
     /// The Dictation page's title in the toolbar (the item places have the list's heading instead).
     let titleView = ToolbarTitle()
@@ -397,7 +436,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         } else if items.count > 1 {
             showSelectionSummary()
         } else {
-            detail.showNothing(quiet: model.isEmptyWorld)
+            detail.showNothing(quiet: quietDetail)
         }
         scheduleSave()
     }
@@ -550,6 +589,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// ↩: into the detail, the caret at the end of its title (E renames in the row instead).
     func openSelection() {
         if let b = focusedBanner { (b == "captures" ? list.captures.onClick : list.taken.onClick)?(); return }
+        // ↩ on a list with no rows: the empty state's primary (Open Folder…, Record, Locate Folder…)
+        if model.rowCount == 0, list.empty.pressPrimary() { return }
         guard !detail.web.isHidden else { return }
         window?.makeFirstResponder(detail.web)
         detail.web.evaluateJavaScript("window.blurtReview && window.blurtReview.focusTitle && window.blurtReview.focusTitle()")
@@ -754,6 +795,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case 6: if case .project(let p) = model.scope { useProject(p) }
         case 7: if case .project(let p) = model.scope { locateFolder(p) }
         case 8: list.elsewhereUID.map(reveal(uid:))
+        case 9: go(.all)                // the search stays: the same words over every item
+        case 10: if case .project(let p) = model.scope { removeProject(p) }
+        case 11: go(.inbox)
         default: break
         }
     }
@@ -1007,6 +1051,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
     @objc func mRevealShownProject() { shownProject.flatMap { model.project(id: $0) }.map { NSWorkspace.shared.activateFileViewerSelecting([$0.path]) } }
     @objc func mRemoveShownProject() { shownProject.map(removeProject) }
+    /// Pin to Top / Unpin (the sidebar's project menu): ⌘Z puts it back.
+    @objc func mPinProject(_ i: NSMenuItem) {
+        guard let id = i.representedObject as? String, let p = ProjectStore.shared.project(id: id) else { return }
+        setPinned(id, !p.pinned)
+    }
+
+    func setPinned(_ id: String, _ on: Bool) {
+        let step = UndoStep<Bool>()
+        register(T("main.project.pin.undo_name"), step) { c, s in c.setPinned(id, s.value ?? !on) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            guard let p = ProjectStore.shared.project(id: id), p.pinned != on else { return self.drop(step) }
+            step.value = p.pinned
+            do { try await ProjectStore.shared.update(id, ["pinned": on]) }
+            catch {
+                self.drop(step)
+                self.alert(T("main.project.save_failed"), Self.projectFailure(error))
+            }
+        }
+    }
+
     @objc func mRenameProject(_ i: NSMenuItem) {
         guard let p = i.representedObject as? String else { return }
         sidebar.select(.project(p))
@@ -1319,7 +1384,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func moveMenu() -> NSMenu {
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
-        for p in ProjectStore.shared.ordered {
+        for p in ProjectStore.shared.projects {         // the one order: pinned, then the most recently used
             let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
             i.state = here == [p.id] ? .on : .off
         }
@@ -1355,6 +1420,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let cur = ProjectStore.shared.currentID == id
         let use = add(m, cur ? T("main.project.use_none") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
         use.toolTip = T("main.project.use.tip")
+        // the projects' one order is pinned, then the most recently used: pinning is how one stays on top
+        _ = add(m, p.pinned ? T("main.project.unpin") : T("main.project.pin"), #selector(mPinProject(_:)), p.pinned ? "pin.slash" : "pin", obj: id)
         _ = add(m, T("main.project.rename"), #selector(mRenameProject(_:)), "pencil", obj: id)
         _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
         m.addItem(.separator())

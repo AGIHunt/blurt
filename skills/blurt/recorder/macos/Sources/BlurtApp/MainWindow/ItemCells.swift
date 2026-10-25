@@ -161,8 +161,9 @@ final class LeadCell: NSTableCellView {
 /// (S opens the state menu for the selection), so it stays one click away without a column of identical rings.
 final class MarkCell: NSTableCellView {
     let ring = StateRingButton()
-    /// a "new" ring stays hidden until the row is pointed at or selected
-    var quietWhenNew = false { didSet { update() } }
+    /// the list already says the state (a "new" ring, a list grouped by state): the ring waits for the pointer or the
+    /// selection — it is still the click that opens the state menu
+    var quietAtRest = false { didSet { update() } }
     var rowActive = false { didSet { if rowActive != oldValue { update() } } }
     override var backgroundStyle: NSView.BackgroundStyle { didSet { ring.emphasized = backgroundStyle == .emphasized } }
     override init(frame: NSRect) {
@@ -175,7 +176,7 @@ final class MarkCell: NSTableCellView {
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
-    func update() { ring.isHidden = quietWhenNew && ring.ringState == "new" && !rowActive }
+    func update() { ring.isHidden = quietAtRest && !rowActive }
 }
 
 /// The state ring as a borderless button (14 pt ring in a 20 pt target). Hover shows a soft circle, like a toolbar
@@ -651,14 +652,15 @@ final class MetaCell: NSTableCellView {
 }
 
 /// Row view: VoiceOver reads the whole row as one sentence (kind, title, id, state, project, time). Selection is the
-/// brand tint (BrandRowView). The first row of a project run (the grouped Inbox) is taller and draws the run's header
-/// — the project's name and how many items it has here — in its top band; the selection covers the row's own band only.
-/// The row under the pointer tells its state mark (the Inbox's hidden "new" ring shows then).
+/// brand tint (BrandRowView). The first row of a run (a grouped list) is taller and draws the run's header in its top
+/// band — a state group's ring and name, or a project's name, then how many items it has here; the selection covers
+/// the row's own band only. The row under the pointer, or selected, shows its state mark where the list keeps it quiet.
 final class ItemRowView: BrandRowView {
     var label = "" { didSet { setAccessibilityLabel(label) } }
-    /// (name, count) of the run this row starts, nil for every other row
-    var section: (name: String, count: String)? { didSet { needsDisplay = true } }
+    /// (name, count, a state group's ring) of the run this row starts, nil for every other row
+    var section: (name: String, count: String, ring: NSImage?)? { didSet { needsDisplay = true } }
     private(set) var hovering = false { didSet { if hovering != oldValue { tellMark() } } }
+    override var isSelected: Bool { didSet { if isSelected != oldValue { tellMark() } } }
     private var area: NSTrackingArea?
 
     override var selectionBand: NSRect {
@@ -667,11 +669,11 @@ final class ItemRowView: BrandRowView {
     }
 
     func tellMark() {
-        for case let c as MarkCell in subviews { c.rowActive = hovering }
+        for case let c as MarkCell in subviews { c.rowActive = hovering || isSelected }
     }
     override func didAddSubview(_ v: NSView) {
         super.didAddSubview(v)
-        if let c = v as? MarkCell { c.rowActive = hovering }
+        if let c = v as? MarkCell { c.rowActive = hovering || isSelected }
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -695,10 +697,18 @@ final class ItemRowView: BrandRowView {
         let name = NSAttributedString(string: s.name, attributes: [.font: Look.sectionFont, .foregroundColor: NSColor.labelColor])
         let count = NSAttributedString(string: s.count, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
                                                                     .foregroundColor: NSColor.secondaryLabelColor])
-        // the header ends 5 pt above the row's own band, its text where the kind icons start
-        let x = (subviews.first { $0 is LeadCell }?.frame.minX ?? 4) + 2
+        // the header ends 5 pt above the row's own band; a state group's ring sits on the kind icons' column, its
+        // name on the ids' (a project's name starts on the kind column: there is no ring to lead it)
+        let lead = subviews.first { $0 is LeadCell }?.frame ?? NSRect(x: 4, y: 0, width: 22, height: 0)
         let nh = ceil(name.size().height)
         let y = isFlipped ? bounds.maxY - Look.rowHeight - 5 - nh : bounds.minY + Look.rowHeight + 5
+        var x = lead.minX + 2
+        if let r = s.ring {
+            let side: CGFloat = 14
+            r.draw(in: NSRect(x: lead.minX + 2 + (18 - side) / 2, y: y + (nh - side) / 2, width: side, height: side),
+                   from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            x = (subviews.first { $0 is MetaCell }?.frame.minX ?? lead.maxX + 6) + 2
+        }
         let room = max(0, bounds.width - x - 16 - count.size().width - 6)
         let w = min(ceil(name.size().width), room)
         let p = NSMutableParagraphStyle()

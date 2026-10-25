@@ -14,8 +14,11 @@ final class SidebarNode: NSObject {
     var children: [SidebarNode] = []
     var accessibility: String?
     var dimmed = false
+    var current = false
     var detail: String?          // quiet text after the name (unused by the places and projects today)
     var tip: String?             // the row's tooltip: a project's name and its id prefix
+    /// the current project (where new recordings and snaps go): the scope mark after its name — the same mark the
+    /// Move popover, ⌘K and the project's heading use
     /// counts of what needs you are tinted (attention), plain counts aren't
     var alert = false
 
@@ -168,6 +171,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             n.alert = false
             n.tip = p.key.isEmpty ? p.name : T("main.sidebar.project_tip", p.name, p.key)
             n.dimmed = !p.registered || !p.exists
+            n.current = ProjectStore.shared.currentID == p.id
             let path = (p.path.path as NSString).abbreviatingWithTildeInPath
             n.accessibility = [p.name, path, !p.exists ? T("main.sidebar.missing") : nil, !p.registered ? T("main.sidebar.not_opened") : nil]
                 .compactMap { $0 }.joined(separator: ", ")
@@ -248,11 +252,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     // MARK: drags: projects reorder (Finder's Favorites); folders open as projects; items move
 
     func outlineView(_ o: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        guard let n = item as? SidebarNode, case .project(let id)? = n.scope, model.project(id: id)?.registered == true else { return nil }
+        // the projects keep the one order every list uses (pinned, then the most recently used: Pin to Top in their
+        // menu), so a project isn't dragged into an order of its own
+        guard Self.reorderByDrag, let n = item as? SidebarNode, case .project(let id)? = n.scope, model.project(id: id)?.registered == true else { return nil }
         let pb = NSPasteboardItem()
         pb.setString(id, forType: .blurtProject)
         return pb
     }
+
+    static let reorderByDrag = false
 
     /// The projects group node (where a dragged project lands).
     private var projectsGroup: SidebarNode? { roots.first(where: \.isGroup) }
@@ -363,11 +371,17 @@ final class SourceCell: NSTableCellView, InlineEditable {
     }
     let key = NSTextField(labelWithString: "")
     let badge = CountPill()
+    /// the current project's mark (SidebarNode.current)
+    let mark = NSImageView()
 
     init(id: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
         identifier = id
-        for v in [icon, title, key, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        for v in [icon, title, key, mark, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        mark.image = SourceCell.currentImage
+        mark.contentTintColor = .secondaryLabelColor
+        mark.isHidden = true
+        mark.setContentCompressionResistancePriority(.required, for: .horizontal)
         // a long project name keeps both ends ("口喷鸡 iOS…截断）"): the tooltip has it whole
         title.lineBreakMode = .byTruncatingMiddle
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -388,7 +402,9 @@ final class SourceCell: NSTableCellView, InlineEditable {
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
             key.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 5),
             key.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            badge.leadingAnchor.constraint(greaterThanOrEqualTo: key.trailingAnchor, constant: 6),
+            mark.leadingAnchor.constraint(equalTo: key.trailingAnchor, constant: 5),
+            mark.centerYAnchor.constraint(equalTo: centerYAnchor),
+            badge.leadingAnchor.constraint(greaterThanOrEqualTo: mark.trailingAnchor, constant: 6),
             badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             badge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -415,12 +431,17 @@ final class SourceCell: NSTableCellView, InlineEditable {
         key.isHidden = n.detail == nil
         icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.alphaValue = 1
-        toolTip = n.tip
+        toolTip = n.current ? [n.tip, T("main.project.current_mark")].compactMap { $0 }.joined(separator: "\n") : n.tip
+        mark.isHidden = !n.current
         applyInk()
         badge.text = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
         badge.mint = n.alert
-        setAccessibilityLabel([n.accessibility ?? n.title, badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))
+        setAccessibilityLabel([n.accessibility ?? n.title, n.current ? T("main.project.current_mark") : nil,
+                               badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))
     }
+
+    /// The current project's mark: the scope (a target), small and quiet — "Make Current Project" uses the same glyph.
+    static let currentImage = Look.symbol("scope", T("main.project.current_mark"), size: 11, weight: .medium)
 }
 
 /// A count at the end of a sidebar row. What's new for you (the Inbox, a project's inbox) is a mint pill with
