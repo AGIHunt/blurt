@@ -172,6 +172,18 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: false, seconds: 5, soundSeconds: 0, streamHeard: true), .undoable)
     }
 
+    func testTheLastAreaIsOfferedOnlyOnADisplayThatIsThere() {
+        let main = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+        let r = CGRect(x: 100, y: 100, width: 400, height: 300)
+        XCTAssertEqual(LastArea.usable(r, screens: [main]), r)
+        // on a display unplugged since
+        XCTAssertNil(LastArea.usable(CGRect(x: 2000, y: 100, width: 400, height: 300), screens: [main]))
+        XCTAssertEqual(LastArea.usable(CGRect(x: 2000, y: 100, width: 400, height: 300),
+                                       screens: [main, CGRect(x: 1728, y: 0, width: 1920, height: 1080)])?.minX, 2000)
+        XCTAssertNil(LastArea.usable(nil, screens: [main]))
+        XCTAssertNil(LastArea.usable(CGRect(x: 10, y: 10, width: 0, height: 5), screens: [main]))
+    }
+
     func testANoteThatHeardNothingSaysToCheckTheMic() {
         XCTAssertEqual(VoiceKeep.decide(.noSpeech, heardSpeech: false, seconds: 20, soundSeconds: 0), .drop(toast: .checkMic))
         XCTAssertEqual(VoiceKeep.decide(.noMic, heardSpeech: false, seconds: 0, soundSeconds: 0), .drop(toast: .none))

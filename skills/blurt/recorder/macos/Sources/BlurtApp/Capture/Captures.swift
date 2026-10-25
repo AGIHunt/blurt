@@ -103,18 +103,17 @@ final class Snapper {
             app?.picker = nil
             app?.busy = false
             guard let r = r else { self?.restoreFocus(); return }
-            setRecordConfig("last_snap_region", [Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)])
-            self?.capture(r, picker: p)
+            self?.capture(r, picker: p, remember: true)
         }
         app.picker = p
         registerHotkey(.pickEnter, key: kVK_Return, mods: 0)
         registerHotkey(.pickEsc, key: kVK_Escape, mods: 0)
         registerHotkey(.pickFull, key: kVK_ANSI_F, mods: 0)
-        if let r = recordConfig()["last_snap_region"] as? [Double], r.count == 4 {
-            opts.lastRegion = CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
-        } else {
-            opts.lastRegion = lastRegionFromConfig()
-        }
+        let saved = (recordConfig()["last_snap_region"] as? [Double]).flatMap { r in
+            r.count == 4 ? CGRect(x: r[0], y: r[1], width: r[2], height: r[3]) : nil
+        } ?? lastRegionFromConfig()
+        // a display unplugged since: no L (BlurtCore LastArea)
+        opts.lastRegion = LastArea.usable(saved, screens: NSScreen.screens.map { toCG($0.frame) })
         // L = the last area, like F and ⏎ — only when there is one (the hint says it only then too)
         if opts.lastRegion != nil { registerHotkey(.pickLast, key: kVK_ANSI_L, mods: 0) }
         p.show(preselect: preselect)
@@ -167,7 +166,7 @@ final class Snapper {
     /// `region`: global top-left points. Also used directly by tests (`snapregion x,y,w,h`). With a note (v0.9-next):
     /// the picture freezes in place and the pen is on it (InkStage), the note bubble beside it; it flies up to become
     /// the card when the note is done (NoteBubble.close). `picker`: its dim stays until the stage is up.
-    func capture(_ region: CGRect, withNote: Bool = true, picker: PickerController? = nil) {
+    func capture(_ region: CGRect, withNote: Bool = true, picker: PickerController? = nil, remember: Bool = false) {
         let ns = toNS(region)
         captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
             guard let self = self else { picker?.closeWindows(); return }
@@ -177,6 +176,8 @@ final class Snapper {
                 self.restoreFocus()
                 return
             }
+            // "L last area" next time: only an area that gave a picture (BlurtCore LastArea)
+            if remember { setRecordConfig("last_snap_region", [Int(region.minX), Int(region.minY), Int(region.width), Int(region.height)]) }
             self.playShutter()
             let p = self.target
             let b = self.openBatch(for: p)

@@ -32,6 +32,19 @@
 //  • TakeEnd — a recording that failed (writer error, no frames) keeps the stills and notes taken during it.
 import Foundation
 
+// MARK: - The picker's last area
+
+/// "L last area" (the snap picker): the area of the last snap that produced a picture — saved only once the picture
+/// exists (v0.9-fix2: a snap that failed still saved its area), and offered only while it is on a display that is
+/// still there (one unplugged since: no L).
+public enum LastArea {
+    /// `saved`: global top-left points; `screens`: the displays' frames in the same coordinates.
+    public static func usable(_ saved: CGRect?, screens: [CGRect]) -> CGRect? {
+        guard let r = saved, r.width >= 1, r.height >= 1 else { return nil }
+        return screens.contains { $0.intersects(r) } ? r : nil
+    }
+}
+
 // MARK: - Screen Recording
 
 public enum ScreenGrant: String, Equatable {
