@@ -3,10 +3,11 @@
 //  • a plain drag draws freehand, ⇧-drag a box, ⌥-drag an ellipse (the modifiers are read on every move, so ⇧ pressed
 //    mid-drag turns the stroke into a box); holding still ~0.5 s at the end of a freehand stroke snaps a rough line,
 //    box or ellipse to a clean one (InkFit — plain geometry). While recording the same modifiers go with the pen key:
-//    ⌃-drag, ⌃⇧, ⌃⌥ (record.draw_key; with ⌥ as the pen key the ellipse is ⌃⌥).
+//    ⌃-drag, ⌃⇧, ⌃⌥ (record.draw_key; with ⌥ as the pen key the ellipse is ⌃⌥), the pen key first (PenArm: a ⌃⌥
+//    chord pressed together is the window manager's). Letting go of ⇧ / ⌥ mid-drag carries on freehand from the pointer.
 //  • one colour, BrandColor.markup, with a soft dark shadow so it reads on any background; the line is wider on a
 //    bigger display (InkStyle.width).
-//  • InkStroke builds the stroke being drawn (shared by both views); inkPath draws a point list the way every renderer
+//  • InkStroke (BlurtCore) builds the stroke being drawn (shared by both views); inkPath draws a point list the way every renderer
 //    does (quadratic curves through the midpoints; renderMarked, the review page and frames.py read the same points).
 //  • InkCanvas: the pen on a picture — the snap's frozen selection (InkStage) and Edit Note's picture (NoteBubble).
 //    Strokes are 0–1 point lists of the picture (shots.jsonl "strokes"); ⌘Z takes back the last one (undo()).
@@ -21,80 +22,6 @@ import Carbon.HIToolbox
 import CoreMedia
 import ScreenCaptureKit
 import ServiceManagement
-
-// MARK: - The stroke being drawn
-
-/// One stroke from mouse-down to mouse-up: freehand points, or the box / ellipse a modifier asks for, or the clean shape
-/// a rough freehand stroke snapped to when the pen rested at its end.
-final class InkStroke {
-    let start: CGPoint
-    private(set) var pts: [CGPoint]
-    private(set) var tool: InkTool
-    /// the box / ellipse being dragged, or the shape the stroke snapped to (what is shown and kept)
-    private(set) var shape: [CGPoint]?
-    /// how it snapped (held still): "line" | "rect" | "ellipse"
-    private(set) var snappedAs: String?
-    private var restAt: CGPoint
-    private var restSince: CFTimeInterval
-
-    init(at p: CGPoint, tool: InkTool, now: CFTimeInterval = CACurrentMediaTime()) {
-        start = p
-        pts = [p]
-        self.tool = tool
-        restAt = p
-        restSince = now
-    }
-
-    /// What to draw now.
-    var display: [CGPoint] { shape ?? pts }
-    var isShape: Bool { shape != nil }
-    var length: CGFloat { zip(pts, pts.dropFirst()).reduce(0) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) } }
-    /// for the event log
-    var kind: String { snappedAs ?? tool.rawValue }
-
-    /// The pen moved (with these modifiers down): true when what is shown changed.
-    @discardableResult
-    func move(to p: CGPoint, tool t: InkTool, now: CFTimeInterval = CACurrentMediaTime()) -> Bool {
-        if hypot(p.x - restAt.x, p.y - restAt.y) > InkHold.radius * (snappedAs != nil ? 2 : 1) {
-            restAt = p
-            restSince = now
-            if snappedAs != nil { snappedAs = nil; shape = nil }     // moved on after a snap: freehand again
-        }
-        tool = t
-        if t != .free {
-            shape = InkFit.shape(t, from: start, to: p).map(InkFit.points)
-            return true
-        }
-        if snappedAs == nil { shape = nil }
-        guard let last = pts.last, hypot(p.x - last.x, p.y - last.y) >= 1.5 else { return false }
-        pts.append(p)
-        return snappedAs == nil
-    }
-
-    /// Called while the button is down (a timer): a freehand stroke the pen rested on snaps to its clean shape.
-    /// True when it just snapped.
-    func checkRest(now: CFTimeInterval = CACurrentMediaTime()) -> Bool {
-        guard tool == .free, snappedAs == nil, InkHold.rested(lastMove: restSince, now: now), let s = InkFit.fit(pts) else { return false }
-        shape = InkFit.points(s)
-        switch s {
-        case .line: snappedAs = "line"
-        case .rect: snappedAs = "rect"
-        case .ellipse: snappedAs = "ellipse"
-        }
-        return true
-    }
-
-    /// The kept points: a shape as it is (its doubled corners matter), freehand thinned to ≥ `minGap` apart; a tap is
-    /// its one point (drawn as a ring).
-    func kept(minGap: CGFloat) -> [CGPoint] {
-        if let s = shape { return s }
-        guard length >= 6 else { return [pts[0]] }
-        var keep: [CGPoint] = []
-        for p in pts where keep.last.map({ hypot(p.x - $0.x, p.y - $0.y) >= minGap }) ?? true { keep.append(p) }
-        if let end = pts.last, keep.last != end { keep.append(end) }
-        return keep
-    }
-}
 
 /// A stroke's path, as every renderer draws it: through the midpoints (smooth without lagging behind the hand; a doubled
 /// point is a sharp corner), a single point as a ring of radius `ring`.

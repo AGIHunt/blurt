@@ -124,6 +124,11 @@
 "capture.note.done" = "Done";
 "capture.note.done_tip" = "Done (⏎)";
 "capture.note.done_discard" = "⏎ done · Esc discard";
+"capture.note.done_clear" = "⏎ done · Esc clears the text";
+"capture.note.listening_done" = "pause to finish · ⏎ now";
+"capture.note.no_mic_done" = "Mic unavailable · ⏎ done · Esc discard";
+"capture.note.mic_gone_done" = "Mic disconnected · type a note · ⏎ done";
+"capture.note.voice_busy_done" = "The voice note is listening · type a note · ⏎ done";
 "capture.note.chip_tip" = "Where this capture goes (Tab)";
 "capture.note.chip_find" = "Find a project";
 "capture.note.chip_none" = "No matching project";

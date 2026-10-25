@@ -45,6 +45,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var inkTicker: Timer?
     var penSticky = false             // toggled with ⌥⇧D
     var inkOn = false
+    var penArm = PenArm()             // the pen key first, then ⇧ / ⌥ (a ⌃⌥ chord is the window manager's)
+    var testFlags: CGEventFlags?      // scripted checks (recflags): the modifiers the poll sees instead of the keyboard's
     /// record.draw_key in ~/.blurt/config.json: "control" (default) | "option" | "fn" | "off"
     let penKey: (CGEventFlags, String)? = {
         switch recordConfig()["draw_key"] as? String ?? "control" {
@@ -338,17 +340,20 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
     /// The pen is on while its key is held — alone, or with ⇧ (a box) or ⌥ (an ellipse; ⌃ when ⌥ is the pen key), the
     /// same modifiers as a snap's (BlurtCore InkModifiers) — polled: needs no Accessibility permission; or after a toggle.
+    /// The pen key has to go down first (PenArm): a ⌃⌥ / ⌃⇧ chord pressed together stays the window manager's.
     func syncInk() {
         var held = false
         if let pen = penKind {
-            let f = CGEventSource.flagsState(.combinedSessionState)
-            held = InkModifiers.recordingTool(pen: pen, control: f.contains(.maskControl), option: f.contains(.maskAlternate),
-                                              shift: f.contains(.maskShift), command: f.contains(.maskCommand),
-                                              fn: f.contains(.maskSecondaryFn)) != nil
+            let f = testFlags ?? CGEventSource.flagsState(.combinedSessionState)
+            let tool = InkModifiers.recordingTool(pen: pen, control: f.contains(.maskControl), option: f.contains(.maskAlternate),
+                                                  shift: f.contains(.maskShift), command: f.contains(.maskCommand),
+                                                  fn: f.contains(.maskSecondaryFn))
+            held = penArm.update(tool, now: ProcessInfo.processInfo.systemUptime) != nil
         }
         let on = !isPaused && !stopping && sessionStart.isValid && (penSticky || held)
         guard on != inkOn, inkView?.live == nil else { return }
         inkOn = on
+        if testFlags != nil { emit(["event": "rec_pen", "on": on]) }
         inkView?.setOn(on)
         island.orderFront()
     }

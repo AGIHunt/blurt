@@ -113,7 +113,13 @@
       selection (`BubbleDock`: right, left, below, above; the selection's display); a spoken note ends on the pause but
       not within 1.5 s of a stroke, ink / typing only ends with Enter, Done or a click outside; the marked picture flies
       to the notch as the card; the "Goes to X" chip switches project in place (recent projects, type to filter, Enter);
-      the recording pen gets the same modifiers under its key (Ctrl+Shift box, Ctrl+Alt ellipse, rest to snap)
+      the recording pen gets the same modifiers under its key (Ctrl+Shift box, Ctrl+Alt ellipse, rest to snap), armed
+      only when the pen key goes down first (`PenArm`: a Ctrl+Alt / Super chord pressed together stays the window
+      manager's — on Linux Alt-drag / Super-drag moves windows in many desktops, on Windows Ctrl+Alt is AltGr)
+- [ ] macOS in-place markup, real pointer input: the strokes, ⇧/⌥ mid-drag, the crosshair, a click on the dim as Done and
+      the bubble staying key were checked through test hooks only (noteink/recink); a second display (only the
+      selection's display is frozen; a click on another display is not "outside") and the fly-to-notch animation
+      mid-flight were not checked live
 - [ ] Windows / Linux counterparts of the v0.8.7 capture fixes (macOS done): a cancelled voice note keeps its audio
       for "Voice note discarded · Undo" (5 s); editing a card's note shows its spoken words to correct, and a re-record
       never overwrites the old wav until it is kept; cards never age out of the thread; when drag-out pastes notes,

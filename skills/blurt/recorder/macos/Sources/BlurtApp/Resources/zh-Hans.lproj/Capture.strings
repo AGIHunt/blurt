@@ -124,6 +124,11 @@
 "capture.note.done" = "完成";
 "capture.note.done_tip" = "完成（⏎）";
 "capture.note.done_discard" = "⏎ 完成 · Esc 丢弃";
+"capture.note.done_clear" = "⏎ 完成 · Esc 清掉文字";
+"capture.note.listening_done" = "停一下就完成 · ⏎ 立即完成";
+"capture.note.no_mic_done" = "麦克风不可用 · ⏎ 完成 · Esc 丢弃";
+"capture.note.mic_gone_done" = "麦克风断开了 · 打字记下 · ⏎ 完成";
+"capture.note.voice_busy_done" = "语音备注正在听 · 在这里打字 · ⏎ 完成";
 "capture.note.chip_tip" = "这张截图归入哪里（Tab）";
 "capture.note.chip_find" = "查找项目";
 "capture.note.chip_none" = "没有匹配的项目";

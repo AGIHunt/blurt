@@ -32,11 +32,13 @@
 //  • in place (v0.9-next): a fresh snap's picture stays frozen where it was taken and the pen is on it (InkStage); the
 //    bubble docks beside it (BlurtCore BubbleDock: never over it, flipped near the screen's edges, the selection's
 //    display), its caret pointing at it. A plain drag draws, ⇧ a box, ⌥ an ellipse, holding still snaps a rough shape
-//    clean, ⌘Z takes the last stroke back (InkView.swift). Done (⏎, the Done button, a click outside the picture): the
+//    clean, ⌘Z (or the undo button by the bin, shown while there are strokes) takes the last stroke back
+//    (InkView.swift); the status line says "⏎ done", the button's word. Done (⏎, the Done button, a click outside): the
 //    marked picture flies from the selection to the notch and becomes the card. The ink is burnt into
 //    shots/NNN.marked.png (what a copy or a drag hands out); shots/NNN.png stays unmarked, the strokes stay editable.
 //  • the "Goes to X" chip (ProjectChip.swift): a click, or Tab from the field, lists the recent projects in the bubble;
-//    typing filters, ↩ picks — this capture goes there instead (Snapper.retarget), the island's project stays.
+//    typing filters, ↩ picks — this capture goes there instead (Snapper.retarget), the island's project stays. While
+//    the list is open the bubble never closes (NoteHold.picking, apart from `pinned`: closing it keeps the words pinned).
 //  • ⌥⇧A while it is open saves the note and takes the next shot. Listening starts the warm speech server
 //    (VoiceInput.warmSpeechModel), so the note's words come back in well under a second, not a cold model load.
 //  • every open has a generation: a close still fading out never orders out (or takes the focus from) a bubble opened
@@ -924,6 +926,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             discardBtn.isHidden = false
             discardBtn.frame.origin = staged ? NSPoint(x: bx, y: rowY - 3) : NSPoint(x: bx, y: rowY + fieldH - 2)
             bx -= 26
+            // in place the picture is outside the bubble: its undo sits by the bin while there are strokes (⌘Z too)
+            if staged, !ink.strokes.isEmpty {
+                undoBtn.isHidden = false
+                undoBtn.layer?.backgroundColor = nil
+                undoBtn.frame.origin = NSPoint(x: bx, y: rowY - 3)
+                bx -= 26
+                fieldRight = bx - 2
+            }
         }
         field.frame = NSRect(x: x0 + pad + 34, y: rowY + 1, width: fieldRight - (x0 + pad + 34), height: fieldH)
         let buttons: CGFloat = mode == .recording && recordingShots.count > 1 ? 56 : mode == .edit || (fresh && !staged) ? 56 : 0
@@ -1321,6 +1331,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         status.textColor = .secondaryLabelColor
         switch mode {
         case .listen:
+            // in place the one button says Done, so the line says "⏎ done" too (one name for one action); under the
+            // notch it stays "⏎ save"
             // where it goes, in every state, is the chip before this line ("Goes to X ⌄"): with a project, straight
             // into it (with a note or without); Auto: a card
             let dest = ""
@@ -1337,20 +1349,20 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 status.stringValue = Loc.t("capture.note.saved", table: "Capture")
             } else if typed {
                 let said = voiceKept ? Loc.t("capture.note.said", table: "Capture", fmt(voiceSpeech)) + " · " : ""
-                status.stringValue = dest + said + Loc.t("capture.note.save_clear", table: "Capture")
+                status.stringValue = dest + said + Loc.t(staged ? "capture.note.done_clear" : "capture.note.save_clear", table: "Capture")
             } else if voiceBusy {
-                status.stringValue = Loc.t("capture.note.voice_busy", table: "Capture")
+                status.stringValue = Loc.t(staged ? "capture.note.voice_busy_done" : "capture.note.voice_busy", table: "Capture")
             } else if listening && speechStarted {
-                status.stringValue = fmt(voice?.elapsed ?? 0) + " · " + dest + Loc.t("capture.note.listening_save", table: "Capture")
+                status.stringValue = fmt(voice?.elapsed ?? 0) + " · " + dest + Loc.t(staged ? "capture.note.listening_done" : "capture.note.listening_save", table: "Capture")
             } else if listening {
                 status.stringValue = dest + Loc.t(staged ? "capture.note.done_discard" : "capture.note.keep_discard", table: "Capture") + next
             } else if hold.voiceDone && voiceKept {
-                status.stringValue = dest + Loc.t("capture.note.save_discard", table: "Capture")
+                status.stringValue = dest + Loc.t(staged ? "capture.note.done_discard" : "capture.note.save_discard", table: "Capture")
             } else if staged && hold.voiceDone && !micGone {
                 // in place, nothing said (the mic has stopped listening): it waits for ⏎, Done or a click outside
                 status.stringValue = Loc.t("capture.note.done_discard", table: "Capture")
             } else {
-                status.stringValue = dest + Loc.t(micGone ? "capture.note.mic_gone" : "capture.note.no_mic", table: "Capture")
+                status.stringValue = dest + Loc.t((micGone ? "capture.note.mic_gone" : "capture.note.no_mic") + (staged ? "_done" : ""), table: "Capture")
             }
         case .edit:
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
@@ -1480,7 +1492,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         pick.filter.stringValue = ""
         pick.reload()
         pick.select(max(0, pick.rows.firstIndex { $0?.id == s.project && s.project != nil } ?? 0))
-        hold.pinned = true                       // choosing: it doesn't close by itself under the list
+        hold.picking = true                      // choosing: it doesn't close by itself under the list
         holdWork?.cancel()
         layout()
         panel?.makeFirstResponder(pick.filter)
@@ -1490,7 +1502,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func closePick() {
         guard picking else { return }
         picking = false
-        hold.pinned = false
+        hold.picking = false                     // `pinned` (words being fixed, text just cleared) stays as it was
         layout()
         panel?.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
@@ -1592,6 +1604,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
     }
 
+    /// A click on the undo button by the bin (in place), when it shows.
+    func testUndoButton() {
+        guard isOpen, let b = undoBtn, !b.isHidden else { emit(["event": "note_undo_button", "shown": false]); return }
+        b.performClick(nil)
+        emit(["event": "note_undo_button", "shown": true, "strokes": ink.strokes.count])
+    }
+
     /// ⌘Z through the panel, as the key press arrives.
     func testUndo() {
         guard let p = panel, isOpen,
@@ -1631,9 +1650,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
          "field": field.stringValue, "placeholder": field.placeholderAttributedString?.string ?? field.placeholderString ?? "",
          "status": status.stringValue, "listening": isListening, "typed": typed, "words_in_field": wordsInField ?? NSNull(),
          "voice_busy": voiceBusy, "strokes": ink.strokes.count, "drawing": ink.isDrawing, "generation": generation,
-         "in_place": staged, "dock": dockSide?.rawValue ?? NSNull(), "chip": chip?.title ?? "", "picking": picking,
+         "in_place": staged, "dock": dockSide?.rawValue ?? NSNull(), "chip": chip?.title ?? "", "picking": picking, "undo_button": undoBtn.map { !$0.isHidden } ?? false,
          "project": shot?.project ?? NSNull(), "frame": panel.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] } ?? [],
-         "hold": ["voice_done": hold.voiceDone, "waiting_words": hold.waitingWords, "pinned": hold.pinned,
+         "hold": ["voice_done": hold.voiceDone, "waiting_words": hold.waitingWords, "pinned": hold.pinned, "picking": hold.picking,
                   "saved": hold.savedUntil != nil, "hovering": hold.hovering, "spoke": hold.spoke, "inked": hold.inked], "mic_gone": micGone,
          "recording_paused": island.rec.map { $0.isPaused as Any } ?? NSNull(), "resume_on_close": recordingResume as Any? ?? NSNull()]
     }

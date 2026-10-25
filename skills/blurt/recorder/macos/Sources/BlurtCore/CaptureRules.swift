@@ -98,12 +98,15 @@ public struct NoteHold: Equatable {
     public var inked = false
     /// the picture is frozen in place for the pen (a fresh snap): only speech ends it by itself
     public var inPlace = false
+    /// the "Goes to X" list is open: it never closes under the list (kept apart from `pinned`, which the list
+    /// must not clear)
+    public var picking = false
 
     public init() {}
 
     /// nil: stay open (⏎ / Esc, or the voice decides); 0: close now; t > 0: ask again in t seconds.
     public func closeIn(now: Double) -> Double? {
-        guard voiceDone, !typed, !drawing, !pinned, !waitingWords else { return nil }
+        guard voiceDone, !typed, !drawing, !pinned, !picking, !waitingWords else { return nil }
         // nothing said (only ink, or nothing yet on a picture frozen for the pen): the user says when it is done —
         // ⏎, Done, or a click outside the picture
         if (inked || inPlace) && !spoke { return nil }

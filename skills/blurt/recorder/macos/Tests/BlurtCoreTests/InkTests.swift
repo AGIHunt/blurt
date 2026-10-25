@@ -1,7 +1,8 @@
 // BlurtCore/Ink.swift (+ NoteHold.spoke / inked): the in-place markup's rules — the same modifiers for a snap and the
 // recording pen, the rough stroke that snaps to a clean line / box / ellipse, shapes stored as point lists every renderer
 // draws with sharp corners, the line width, the first-times hint, where the note bubble docks beside the selection,
-// the project chip's list, and when a note with ink may end by itself.
+// the project chip's list, and when a note with ink may end by itself; the recording pen's key-first arming (PenArm),
+// the stroke being drawn (InkStroke) when a modifier comes and goes mid-drag, and the chip list's own hold.
 import CoreGraphics
 import Foundation
 import XCTest
@@ -220,5 +221,81 @@ final class InkTests: XCTestCase {
         XCTAssertNil(bare.closeIn(now: 60))
         bare.spoke = true
         XCTAssertEqual(bare.closeIn(now: 0), 0, "said something, paused: it ends")
+    }
+
+    // MARK: the recording pen arms only when its key goes down first
+
+    func testThePenKeyFirstThenTheShapeKey() {
+        var a = PenArm()
+        XCTAssertNil(a.update(.free, now: 0), "⌃ just went down: not yet")
+        XCTAssertNil(a.update(.free, now: 0.1))
+        XCTAssertEqual(a.update(.free, now: PenArm.settle), .free, "⌃ held alone a moment: on")
+        XCTAssertEqual(a.update(.ellipse, now: 0.3), .ellipse, "⌥ joins: an ellipse")
+        XCTAssertEqual(a.update(.box, now: 0.4), .box, "⇧ joins: a box")
+        XCTAssertNil(a.update(nil, now: 0.5), "all up: off")
+        XCTAssertFalse(a.armed)
+    }
+
+    func testAChordPressedTogetherStaysTheWindowManagers() {
+        var a = PenArm()
+        // ⌃⌥ together (one poll may see ⌃ alone for a moment first)
+        XCTAssertNil(a.update(.free, now: 0))
+        XCTAssertNil(a.update(.ellipse, now: 0.03))
+        for t in stride(from: 0.06, to: 2, by: 0.033) { XCTAssertNil(a.update(.ellipse, now: t), "⌃⌥-drag moves the window") }
+        XCTAssertNil(a.update(.box, now: 2.1), "⌃⇧ the same")
+        // ⌥ let go, ⌃ still held: now it is the pen key alone, so it arms after the settle
+        XCTAssertNil(a.update(.free, now: 3))
+        XCTAssertEqual(a.update(.free, now: 3 + PenArm.settle + 0.01), .free)
+        // a shortcut (⌘ joins: recordingTool says nil) turns it off and disarms
+        XCTAssertNil(a.update(nil, now: 4))
+        XCTAssertNil(a.update(.ellipse, now: 4.1))
+    }
+
+    // MARK: the stroke being drawn
+
+    func testAModifierLetGoMidDragCarriesOnFromThePointer() {
+        let s = InkStroke(at: CGPoint(x: 0, y: 0), tool: .free, now: 0)
+        s.move(to: CGPoint(x: 10, y: 0), tool: .free, now: 0.01)
+        // ⇧ down: a box from the start to the pointer
+        for (i, x) in stride(from: 20, through: 60, by: 10).enumerated() {
+            s.move(to: CGPoint(x: CGFloat(x), y: CGFloat(x) / 2), tool: .box, now: 0.02 + Double(i) * 0.01)
+        }
+        XCTAssertTrue(s.isShape)
+        XCTAssertEqual(s.kind, "box")
+        // ⇧ up: freehand again, and the path is where the pointer went (no straight jump from x 10)
+        XCTAssertTrue(s.move(to: CGPoint(x: 70, y: 35), tool: .free, now: 0.1))
+        XCTAssertFalse(s.isShape)
+        XCTAssertEqual(s.kind, "free")
+        let pts = s.display
+        XCTAssertEqual(pts.last, CGPoint(x: 70, y: 35))
+        for (a, b) in zip(pts, pts.dropFirst()) {
+            XCTAssertLessThan(hypot(b.x - a.x, b.y - a.y), 15, "no jump in the freehand path")
+        }
+    }
+
+    func testAShapeAfterASnapIsTheShapeNotTheSnap() {
+        let s = InkStroke(at: CGPoint(x: 0, y: 0), tool: .free, now: 0)
+        for i in 1...20 { s.move(to: CGPoint(x: CGFloat(i * 5), y: 0), tool: .free, now: Double(i) * 0.01) }
+        XCTAssertTrue(s.checkRest(now: 5))
+        XCTAssertEqual(s.kind, "line")
+        s.move(to: CGPoint(x: 101, y: 1), tool: .ellipse, now: 5.1)
+        XCTAssertEqual(s.kind, "ellipse")
+    }
+
+    // MARK: the chip list holds the bubble without touching `pinned`
+
+    func testClosingTheChipListKeepsTheWordsPinned() {
+        var h = NoteHold()
+        h.voiceDone = true
+        h.spoke = true
+        h.pinned = true                  // the user clicked into the words to fix one
+        h.picking = true                 // …then opened the chip
+        XCTAssertNil(h.closeIn(now: 0))
+        h.picking = false                // picked a project
+        XCTAssertNil(h.closeIn(now: 0), "still fixing the words: only ⏎ or Esc closes it")
+        h.pinned = false
+        XCTAssertEqual(h.closeIn(now: 0), 0)
+        h.picking = true
+        XCTAssertNil(h.closeIn(now: 0), "never closes under the list")
     }
 }

@@ -125,11 +125,12 @@ final class InkStage {
         p.contentView = view
         view.addSubview(canvas)
         view.addSubview(outline)
-        hintLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        hintLabel.textColor = NSColor(white: 1, alpha: 0.82)
+        // faint: quieter than the picture and the bubble — a soft glass tint, regular weight (never a banner)
+        hintLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        hintLabel.textColor = NSColor(white: 1, alpha: 0.65)
         hintLabel.alignment = .center
         hint.wantsLayer = true
-        hint.layer?.backgroundColor = NSColor(white: 0.06, alpha: 0.62).cgColor
+        hint.layer?.backgroundColor = NSColor(white: 0.06, alpha: 0.42).cgColor
         hint.layer?.cornerRadius = 11
         hint.addSubview(hintLabel)
         view.addSubview(hint)

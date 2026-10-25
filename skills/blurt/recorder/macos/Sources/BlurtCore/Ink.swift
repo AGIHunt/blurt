@@ -6,7 +6,11 @@
 //  • InkTool / InkModifiers — the same modifiers for a snap and for the recording pen: a plain drag = freehand,
 //    ⇧ = box, ⌥ = ellipse. A snap needs no key (the frozen picture takes the drag); while recording the pen key (⌃ by
 //    default, record.draw_key) is held as well: ⌃-drag freehand, ⌃⇧ box, ⌃⌥ ellipse. With ⌥ as the pen key the
-//    ellipse is ⌃⌥ (the pen key and ⌃). ⌘ never draws (it is a shortcut).
+//    ellipse is ⌃⌥ (the pen key and ⌃). ⌘ never draws (it is a shortcut). PenArm: the pen key goes down first (held
+//    alone a moment), then ⇧ / ⌥ may join; a chord pressed together (⌃⌥-drag moves windows in some window managers)
+//    never turns the pen on.
+//  • InkStroke — the stroke being drawn (both views): the freehand path keeps following the pointer while a modifier
+//    shows a box / ellipse, so letting go of it mid-drag carries on from where the pointer is.
 //  • InkFit — holding still ~0.5 s (InkHold) at the end of a freehand stroke snaps it to a clean straight line,
 //    rectangle or ellipse when it is close to one (plain geometry: the chord for a line, the mean distance to the
 //    bounding box's edges or its inscribed ellipse for a closed loop); anything else stays freehand.
@@ -49,6 +53,109 @@ public enum InkModifiers {
         if shift { return .box }
         if down[ell] == true { return .ellipse }
         return .free
+    }
+}
+
+// MARK: - The stroke being drawn
+
+/// One stroke from mouse-down to mouse-up: freehand points, or the box / ellipse a modifier asks for, or the clean shape
+/// a rough freehand stroke snapped to when the pen rested at its end.
+public final class InkStroke {
+    public let start: CGPoint
+    public private(set) var pts: [CGPoint]
+    public private(set) var tool: InkTool
+    /// the box / ellipse being dragged, or the shape the stroke snapped to (what is shown and kept)
+    public private(set) var shape: [CGPoint]?
+    /// how it snapped (held still): "line" | "rect" | "ellipse"
+    public private(set) var snappedAs: String?
+    private var restAt: CGPoint
+    private var restSince: Double
+
+    public init(at p: CGPoint, tool: InkTool, now: Double = ProcessInfo.processInfo.systemUptime) {
+        start = p
+        pts = [p]
+        self.tool = tool
+        restAt = p
+        restSince = now
+    }
+
+    /// What to draw now.
+    public var display: [CGPoint] { shape ?? pts }
+    public var isShape: Bool { shape != nil }
+    public var length: CGFloat { zip(pts, pts.dropFirst()).reduce(0) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) } }
+    /// for the event log
+    public var kind: String { snappedAs ?? tool.rawValue }
+
+    /// The pen moved (with these modifiers down): true when what is shown changed.
+    @discardableResult
+    public func move(to p: CGPoint, tool t: InkTool, now: Double = ProcessInfo.processInfo.systemUptime) -> Bool {
+        if hypot(p.x - restAt.x, p.y - restAt.y) > InkHold.radius * (snappedAs != nil ? 2 : 1) {
+            restAt = p
+            restSince = now
+            if snappedAs != nil { snappedAs = nil; shape = nil }     // moved on after a snap: freehand again
+        }
+        tool = t
+        // the freehand path follows the pointer even while ⇧ / ⌥ shows a box or ellipse, so letting go of the modifier
+        // mid-drag goes back to the line as drawn (never a straight jump from where the shape began)
+        var added = false
+        if let last = pts.last, hypot(p.x - last.x, p.y - last.y) >= 1.5 { pts.append(p); added = true }
+        if t != .free {
+            snappedAs = nil
+            shape = InkFit.shape(t, from: start, to: p).map(InkFit.points)
+            return true
+        }
+        if snappedAs == nil {
+            let wasShape = shape != nil
+            shape = nil
+            return added || wasShape
+        }
+        return false
+    }
+
+    /// Called while the button is down (a timer): a freehand stroke the pen rested on snaps to its clean shape.
+    /// True when it just snapped.
+    public func checkRest(now: Double = ProcessInfo.processInfo.systemUptime) -> Bool {
+        guard tool == .free, snappedAs == nil, InkHold.rested(lastMove: restSince, now: now), let s = InkFit.fit(pts) else { return false }
+        shape = InkFit.points(s)
+        switch s {
+        case .line: snappedAs = "line"
+        case .rect: snappedAs = "rect"
+        case .ellipse: snappedAs = "ellipse"
+        }
+        return true
+    }
+
+    /// The kept points: a shape as it is (its doubled corners matter), freehand thinned to ≥ `minGap` apart; a tap is
+    /// its one point (drawn as a ring).
+    public func kept(minGap: CGFloat) -> [CGPoint] {
+        if let s = shape { return s }
+        guard length >= 6 else { return [pts[0]] }
+        var keep: [CGPoint] = []
+        for p in pts where keep.last.map({ hypot(p.x - $0.x, p.y - $0.y) >= minGap }) ?? true { keep.append(p) }
+        if let end = pts.last, keep.last != end { keep.append(end) }
+        return keep
+    }
+}
+
+/// The recording pen turns on only when its key goes down first: held alone for `settle`, after which ⇧ (box) or the
+/// ellipse key may join and keep it on. A chord pressed together — ⌃⌥ or ⌃⇧, which some window managers use for
+/// shortcuts or ⌃⌥-drag to move windows — keeps it off until every key is up again. Fed by the 30 Hz modifier poll.
+public struct PenArm: Equatable {
+    public static let settle = 0.15
+    public private(set) var armed = false
+    private var aloneSince: Double?
+
+    public init() {}
+
+    /// `tool`: InkModifiers.recordingTool for the keys down now (nil: the pen key is up, or a shortcut). Returns the
+    /// tool while the pen is on, else nil.
+    public mutating func update(_ tool: InkTool?, now: Double) -> InkTool? {
+        guard let tool else { armed = false; aloneSince = nil; return nil }
+        if armed { return tool }
+        guard tool == .free else { aloneSince = nil; return nil }      // a chord: never arms until it is let go
+        if aloneSince == nil { aloneSince = now }
+        if now - aloneSince! >= PenArm.settle { armed = true; return tool }
+        return nil
     }
 }
 

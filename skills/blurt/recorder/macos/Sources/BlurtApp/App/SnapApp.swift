@@ -270,6 +270,22 @@ extension App {
             let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
             rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
                          shift: a.contains("shift"), option: a.contains("option"))
+        case "recflags":                                // recflags ctl,opt,shift,cmd | none | real: what the pen's poll sees
+            if arg == "real" { rec?.testFlags = nil } else {
+                var f: CGEventFlags = []
+                for k in arg.split(separator: ",") {
+                    switch k {
+                    case "ctl": f.insert(.maskControl)
+                    case "opt": f.insert(.maskAlternate)
+                    case "shift": f.insert(.maskShift)
+                    case "cmd": f.insert(.maskCommand)
+                    default: break
+                    }
+                }
+                rec?.testFlags = f
+            }
+            emit(["event": "rec_pen_state", "on": rec?.inkOn ?? false, "armed": rec?.penArm.armed ?? false])
+        case "noteundobtn": NoteBubble.shared.testUndoButton()                      // a click on the in-place undo button
         case "notestall": NoteBubble.shared.testStall()                             // the bubble's mic stops delivering
         case "notestate": emit(["event": "note_state"].merging(NoteBubble.shared.testState) { $1 })
         case "quit": RunLoop.main.perform { NSApp.terminate(nil) }                 // = Quit Blurt (applicationShouldTerminate)
