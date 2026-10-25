@@ -305,3 +305,17 @@
     (BlurtCore `SerialWork` / `UndoStep`), drop a failed write's step; ⌘⌫ / Delete on the list discards items (never a
     project); an id typed in the search that this place doesn't list says where the item is (Show it); ↑ from the first
     row reaches the banners above the list. (The page's per-step state undo is in the shared review store already.)
+- [ ] Shell v0.9 pass-2 fixes (Mac, branch fxshell) — the Tauri app's (Windows / Linux) counterparts:
+  - Offline / blocked-network first run as one state (BlurtCore `SpeechSetup`): the setup flow's models step shows one
+    sentence and one Try Again (warm-up → list → download), Skip for Now instead of Next, no Download button with
+    nothing to download on Try it; the dictation key refuses before listening when `transcribe.py dictation-models`
+    can't run ("isn't set up yet · Set Up…"); the tray menu's first row says why dictation can't work; retry on
+    the OS's "back online" (Windows `NetworkListManager` / Linux NetworkManager), only on offline → online.
+  - config.json: read with trailing commas forgiven, exactly as `_common.parse_config_text` (Rust side); an unreadable
+    file = defaults, a `config.json.bad-<time>` copy, one launch line with Show File, never a first-run welcome.
+  - Model downloads: accept only the running model's own progress lines (total within ±50 % of its size, never
+    backwards; `  vad N/M MB` lines are not the model's), "to go" = batch total − what came down, a launch batch
+    that is offline keeps model-downloads.json and carries on when online; the resume line only once it moves.
+  - Tray menu shows a shortcut only when it is registered; Settings: download-aware model rows, filled radio only
+    for an installed model, Storage names from `asr_models.json` / `polish_models.json`, an unknown model folder
+    as an older model (Move to Trash), project remove with Undo, open-at-login with the test-build guard.

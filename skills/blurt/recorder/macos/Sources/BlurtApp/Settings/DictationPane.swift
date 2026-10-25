@@ -7,7 +7,8 @@
 //               the styles' default); per kind of app, apps set on their own, list suggestions, learning and the
 //               polish time limit folded under "By kind of app" (unfolded when a search lands in it)
 //   Models      the speech and polish model in use, with Change… / Download… → Settings → Speech, where they are chosen
-//               (DictationModels.swift)
+//               (DictationModels.swift); while the download manager has one, "Downloading · 1.2 GB of 2.5 GB" or
+//               "Waiting to download · 3.4 GB" with Show — never "Not downloaded yet · Download…" beside it
 //   Words       a one-line summary with Manage… → the Dictation page's Words tab; reading the context and learning
 //   History     retention, keeping audio, opening and clearing it
 //   (the voice-note line — what to use to keep what you say — is the first group's footnote)

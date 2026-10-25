@@ -14,9 +14,12 @@ changed in *Settings → Shortcuts*. Settings (`⌘,`) lists its panes in a side
 are looking for (`⌘F`), in English or Chinese — "login", "mirror", "快捷键" — and pick a result (or press `↩`) to jump
 to that setting.
 
-**First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through the permissions
-(Screen Recording, Microphone, Accessibility, Input Monitoring) and a speech model; after that, try `Fn` in any text
-field to dictate and `⌥⇧A` to snap. The notch at the top of the screen says one short line when there is something
+**First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through what dictation
+needs — the Microphone and Accessibility (Input Monitoring only if your key needs it) — and the speech models; Screen
+Recording is asked for the first time you snap or record. After that, try `Fn` in any text field to dictate and `⌥⇧A`
+to snap. Setting up speech needs the internet once: if the Mac is offline (or a proxy blocks it), the models step says
+so in one sentence with *Try Again*, it tries again by itself when the Mac is back online, and until then `Fn` says
+*Dictation isn't set up yet · Set Up…* instead of listening. The notch at the top of the screen says one short line when there is something
 to know — at most one at launch. It always says the latest thing you did (a newer line takes the place of an older
 one about the same thing); a line with *Undo* stays at least 5 seconds and waits while the pointer is on it. Clicking the line opens the
 notch; only its button undoes. The main window's messages ("Moved to …", "Done · Undo") show there too, and `⌘Z`
@@ -546,8 +549,9 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
   has three requests to start from (copy one with the button next to it): sending items to a chat, filing them in a
   tracker, fixing one. There is no Export pane any more: your agent sends items with its own tools, and old links to
   it open here.
-- **Storage** shows what takes space: recordings and snaps per folder, every model with its size (*In use* or not),
-  dictation history and audio, and Blurt's own files. A model nothing uses can go to the Trash. Videos are most of the
+- **Storage** shows what takes space: recordings and snaps per folder, every model by name with its size (*In use* or
+  not), dictation history and audio, and Blurt's own files. A model nothing uses — an older one this version doesn't
+  use included — can go to the Trash. Videos are most of the
   space (about 9 MB a minute): *Delete* removes the videos of organized recordings older than 30, 90 or 180 days, or
   all of them, and *Delete videos automatically* does it for you (it asks first if that would delete videos right
   away). It is off by default — Blurt never deletes what you made unless you ask. Only the video goes, to the Trash: items, frames and transcripts stay.
@@ -562,7 +566,15 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
   cloud API key set, speech is recognized on your Mac anyway; turn it on to keep it that way after you set one. A
   permission Blurt doesn't need right now (Input Monitoring once Accessibility hears the Fn key) says *Not needed*;
   one you turned off says so, with *System Settings…* (macOS won't ask again).
-  Blurt's own data (`~/.blurt`, `~/Blurt`) can only be read by your macOS account.
+  Blurt's own data (`~/.blurt`, `~/Blurt`) can only be read by your macOS account. Recordings, snaps and items stay on
+  your Mac; when you organise them or hand them off, what's needed goes to the agent you use, under its terms (the
+  footer says so while an agent is on).
+- **Editing `~/.blurt/config.json` by hand:** a comma left before `}` or `]` is fine. If the file can't be read at
+  all, Blurt and its scripts use the defaults (dictation, voice notes and processing keep working), keep a copy as
+  `config.json.bad-<time>`, and say so once at launch with *Show File*; changes aren't saved until you fix it.
+- **The menu** shows a shortcut next to a row only when it works; one another app or another Blurt holds has none,
+  and its tooltip says why. When dictation can't work yet, the menu's first row says why: *Turn On Dictation…*
+  (permissions), *Set Up Dictation…* (the speech tools didn't download) or *Download Speech Model…*.
 - **Two Blurts at once** (a release and a development build): the first one keeps the shortcuts, and the dictation
   key stays with the one that can hear it (a build macOS hasn't given the permission to never holds it); the other
   takes them over when that one quits.
@@ -579,14 +591,16 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 ## 中文
 
-口喷鸡把你说的、截的、录的整理成条目——问题、想法、笔记、任务——放在你的项目里，再交给写代码的 Agent 去做。
+口喷鸡把你说的、截的、录的整理成条目——问题、想法、笔记、待办——放在你的项目里，再交给写代码的 Agent 去做。
 在 Mac 上，它还能把你说的话直接打在光标处（**听写**，按 `Fn`）。这页讲的是在 App 里怎么用；菜单「帮助 → 口喷鸡使用指南」和
 「设置 → 通用 → 使用指南」都会打开这一页。下面的快捷键是 macOS 的默认值；Windows 和 Linux 上 `⌥` 是 `Alt`，`⇧` 是 `Shift`。
 所有快捷键都能在「设置 → 快捷键」里改。设置（`⌘,`）左边是面板列表，最上面有搜索框：按 `⌘F` 输入想找的设置，中文英文都行
 ——「开机」「镜像」「hotkey」——点一个结果（或按 `↩`）就跳到那一项。
 
-**第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好权限（屏幕录制、麦克风、辅助功能、输入监控）、下好语音模型；
-之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。它说的总是你刚做的事
+**第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好听写要用的权限（麦克风、辅助功能；你选的按键需要时才有输入监控）、下好语音模型；
+屏幕录制等你第一次截图或录屏时再开。之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。设置语音要联一次网：Mac 没联网（或被代理挡住）时，
+模型这一步只用一句话说明，配一个「重试」，联网后会自己再试；在那之前按 `Fn` 会提示「听写还没设置好 · 设置…」，而不是听半天。
+屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。它说的总是你刚做的事
 （关于同一件事的新话会直接替换旧的）；带「撤销」的话至少停留 5 秒，鼠标指着时一直等着。点这句话会打开刘海，只有点它的按钮才会撤销。主窗口的提示（「已移到…」「已完成 · 撤销」）也在这里，提示消失后在主窗口按 `⌘Z` 照样能撤销。
 
 ### 1. 截图、语音备注和录屏
@@ -691,7 +705,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - `M` 把选中的条目移到项目：打字筛选，`↩` 移过去（见「项目和当前项目」）。
 - `E` 直接在列表里改标题（回车保存，Esc 恢复原标题）；回车进入右边的详情，光标停在标题末尾。在字段里按 Esc 恢复原来的内容，再按一次（或在第一个控件上按 `⇧Tab`）回到列表。
 - 在「**复现步骤**」里，回车开始下一步，在空的一步上回车结束列表，`⌃⌘↑` / `⌃⌘↓` 移动一步。
-- 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、任务），列表和详情里一样。
+- 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、待办），列表和详情里一样。
 - **整个窗口一个撤销**：`⌘Z` / `⇧⌘Z` 撤销或重做最近一步，不管是在哪做的——改状态、移动、改标题、在详情里改的字段——「编辑」菜单会写明是哪一步（「撤销改种类」「撤销编辑标题」）。它只撤销你自己的这一步：Agent 之后写的状态不受影响；口喷鸡还在保存时按下的 `⌘Z` 会等保存完再执行。
 - `⌫` 或 `⌘⌫` 丢弃选中的条目，和访达一样。把项目从口喷鸡移除没有快捷键，在项目的菜单里。
 - 搜索也能按编号找条目（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。条目不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
@@ -819,9 +833,11 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 ### 8. 设置、存储和隐私
 
 - **Agent**：口喷鸡用来整理录屏、截图和语音备注以及 AI 补全的 Agent，按顺序用：排在前面、能用的先用，没登录或额度用完时自动换下一个。用不到的取消勾选。每个 Agent 下面的「**录屏**」和「**卡片**」是各自用的模型和思考强度：录屏默认用 Agent 自己的模型、低思考强度，卡片（和 AI 补全）默认用最省的模型，都能在这里改。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」；还没装时有「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条。「导出」设置页已经去掉：发到哪里由 Agent 用它自己的工具完成，以前指向「导出」的链接会打开这里。
-- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，刘海上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），刘海上会说。
+- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的名字和大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型（包括这个版本用不到的旧模型）可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，刘海上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），刘海上会说。
 - **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
-- **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API 密钥时，语音本来就只在你的 Mac 上识别；打开它，以后设置了密钥也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。
+- **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API 密钥时，语音本来就只在你的 Mac 上识别；打开它，以后设置了密钥也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。录屏、截图、条目都存在你的 Mac 上；整理或交给 Agent 时，需要的内容会发给你用的 Agent，按它的条款处理（开着 Agent 时，页面底部会写明）。
+- **手改 `~/.blurt/config.json`**：`}` 或 `]` 前面多一个逗号没关系。文件完全读不了时，口喷鸡和它的脚本都先用默认设置（听写、语音备注和整理照常能用），把原文件另存为 `config.json.bad-<时间>`，启动时说一次，配「显示文件」；改好之前，设置的改动不会保存。
+- **菜单**里只给能用的快捷键标上按键；被别的 App 或另一个口喷鸡占着的不标，鼠标停上去会说明原因。听写还用不了时，菜单第一行会说为什么：「开启听写…」（权限）、「设置听写…」（语音工具没下载下来）或「下载语音模型…」。
 - **同时开着两个口喷鸡**（正式版和开发版）：先打开的那个负责快捷键；听写键交给能听到它的那个（macOS 没给权限的版本不会占着它）；它退出后，另一个接管。
 
 ### 9. 更新

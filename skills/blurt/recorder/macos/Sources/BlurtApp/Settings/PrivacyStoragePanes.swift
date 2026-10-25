@@ -239,13 +239,19 @@ final class StorageModel: ObservableObject {
             if ["asr", "polish"].contains(e.lastPathComponent) {
                 for m in ((try? fm.contentsOfDirectory(at: e, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
                     where !m.lastPathComponent.hasPrefix(".") {
-                    out.append(Row(name: displayName(m.lastPathComponent), path: m, bytes: diskSize(m), family: nil))
+                    out.append(Row(name: displayName(m.lastPathComponent), path: m, bytes: diskSize(m), family: family(m.lastPathComponent)))
                 }
             } else {
-                out.append(Row(name: displayName(e.lastPathComponent), path: e, bytes: diskSize(e), family: nil))
+                out.append(Row(name: displayName(e.lastPathComponent), path: e, bytes: diskSize(e), family: family(e.lastPathComponent)))
             }
         }
         return out
+    }
+
+    /// What a model folder is for, from the catalogues (nil: not known — annotateModels says it).
+    nonisolated static func family(_ folder: String) -> String? {
+        if folder == "silero_vad.onnx" { return T("settings.storage.model.vad") }
+        return ModelCatalog.entry(folder: folder).map { T($0.polish ? "settings.storage.model.polish" : "settings.storage.model.asr") }
     }
 
     /// A model folder's name for people: the catalogue's name, the voice detector by what it is, anything else as a
@@ -514,8 +520,10 @@ struct StoragePane: View {
                         Text(r.name).font(.system(size: SettingsMetrics.titleSize))
                         if r.inUse { Badge(T("settings.storage.model.in_use")) }
                     }
-                    Text([r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    let detail = [r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · ")
+                    if !detail.isEmpty {
+                        Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
                 }
                 Spacer()
                 Text(byteString(r.bytes)).monospacedDigit().foregroundStyle(.secondary)

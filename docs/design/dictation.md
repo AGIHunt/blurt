@@ -1329,14 +1329,22 @@ rewrite teaches nothing):
 
 ## Recognition model
 
-`record.dictation.asr_model` (unset = automatic: the recommended model when installed, else the voice-note model).
+`record.dictation.asr_model` (unset = automatic: the recommended model when installed; else the best Qwen3-ASR MLX
+already on this Mac that fits next to the polish model — it takes the Words list — e.g. a 1.7B brought from a bigger
+Mac, or the 0.6B on a pro Mac until the 1.7B is in; else the voice-note model). Memory is judged for the pair a
+dictation holds warm, recogniser + polish model (`transcribe.py fits_with_polish`: within the 40 % share of RAM one
+model may take; on a 16 GB Mac 0.6B 2.1 GB + Gemma 4 E2B 3.9 GB fits, 1.7B 3.1 GB + 3.9 GB doesn't; with polish off or
+a smaller polish model it does). The rows' `fits` say the same.
 `transcribe.py dictation-models` lists them for **Settings → Speech → Dictation** (`Settings/DictationModels.swift`,
 the one place dictation's speech and polish models are chosen: the recommended pair with its total size and one
 *Download (5.7 GB)* for what's missing; per model one verb — *Download* when it isn't on this Mac, *Use* when it is,
 the one in use marked; sizes from the catalogues' `size_mb`, whole MB below 1 GB, one decimal above; the selected,
 recommended and downloaded models shown, the rest under *Other models (n)*). Settings → Dictation shows the model in
-use with *Change…* (or *Not downloaded yet · Download…*), which opens it there. Nothing is downloaded until
-**Download**.
+use with *Change…* (or *Not downloaded yet · Download…*), which opens it there — while the download manager has it,
+*Downloading · 1.2 GB of 2.5 GB* or *Waiting to download · 3.4 GB* with *Show*, never *Download…* beside a running
+download. A radio is filled only for a model on this Mac (none while none is in; the recommended one says *Used once
+it's downloaded*). Names come from the shipped catalogues (BlurtCore `ModelCatalog`) while the list loads or can't be
+read — never an id. Nothing is downloaded until **Download**.
 
 Test set: 30 clips of 4.7–7 s made with `say`: 12 mixed Chinese + English terms, 8 Chinese, 10 English (Tingting,
 Reed and Eddy zh_CN, Samantha), with 52 expected terms (Claude Code, Codex, blurt, 口喷鸡, tmux, worktree, option,

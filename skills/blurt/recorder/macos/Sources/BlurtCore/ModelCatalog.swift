@@ -12,6 +12,8 @@ public enum ModelCatalog {
         /// the folder (or Hugging Face repo's last part) the model's files land in, for Storage's rows
         public var folders: [String]
         public var sizeMB: Double
+        /// a polish model (polish_models.json), else speech recognition
+        public var polish: Bool
     }
 
     private static let lock = NSLock()
@@ -28,7 +30,8 @@ public enum ModelCatalog {
                   let models = o["models"] as? [[String: Any]] else { continue }
             for m in models {
                 guard let id = m["id"] as? String, let name = m["name"] as? String else { continue }
-                out.append(Entry(id: id, name: name, folders: folders(m), sizeMB: (m["size_mb"] as? Double) ?? 0))
+                out.append(Entry(id: id, name: name, folders: folders(m), sizeMB: (m["size_mb"] as? Double) ?? 0,
+                                 polish: file.hasPrefix("polish")))
             }
         }
         if dir == BlurtPaths.scripts { cached = out }

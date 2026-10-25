@@ -9,7 +9,9 @@
 // (asr.limits: threads, transcriptions at once, GPU memory share, lighter models on battery), cloud keys (never
 // stored or shown: only whether each variable is set), recognition language and the download mirror. Every download
 // here goes through the app's one download manager (App/ModelDownloads.swift): the running one's bar and Stop, "Queued"
-// for the next, never a second copy of a model the assistant is already fetching.
+// for the next, never a second copy of a model the assistant is already fetching. A purpose whose model isn't on this
+// Mac says "· downloading" or "None yet" (never names it as if in use), and while a batch runs no new "X is recommended
+// · Download" offer joins it.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
 import Combine
