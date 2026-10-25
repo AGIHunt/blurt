@@ -1520,6 +1520,11 @@ button.chip:hover {
 [data-theme="dark"] .card.sel {
   box-shadow: 0 0 0 2px var(--brand-ink);
 }
+/* the keyboard's place in the list view: the focus ring, not the selection */
+.card.cursor {
+  outline: 3px solid var(--focus-soft);
+  outline-offset: 2px;
+}
 .card.sel:hover {
   box-shadow: 0 0 0 2px var(--brand-ink), var(--shadow);
 }

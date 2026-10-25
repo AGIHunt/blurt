@@ -115,6 +115,29 @@ describe("ReviewStore over an acknowledging host (macos / tauri)", () => {
     expect(s.item!.id).toBe("I-001");
     s.dispose();
   });
+  it("the list view works from the keyboard: move, extend, select, open, act (micro 29)", async () => {
+    const m = memHost({ title: "t", items: [{ id: "I-001", title: "a" }, { id: "I-002", title: "b" }, { id: "I-003", title: "c" }] });
+    const s = new ReviewStore(m.host);
+    await s.load();
+    s.setView("list");
+    const key = (k: string, o: KeyboardEventInit = {}) => s.onKeyDown(new KeyboardEvent("keydown", { key: k, cancelable: true, ...o }));
+    key("a", { metaKey: true });
+    expect(s.selected.size).toBe(3);
+    s.clearSelection();
+    key("ArrowDown");
+    expect(s.listCur).toBe("I-001");
+    key("ArrowDown", { shiftKey: true });
+    expect([s.listCur, [...s.selected]]).toEqual(["I-002", ["I-001", "I-002"]]);
+    key("x"); // the selection
+    expect(s.data.items.map((i) => s.stateOf(i))).toEqual(["discarded", "discarded", "new"]);
+    s.clearSelection();
+    key("j");
+    key(" ");
+    expect([...s.selected]).toEqual(["I-003"]);
+    key("Enter");
+    expect([s.view, s.item!.id]).toEqual(["focus", "I-003"]); // (the view is remembered: back in focus for the next test)
+    s.dispose();
+  });
   it("item mode never shows another item in place of one the doc doesn't have (a discarded one, say)", async () => {
     const m = memHost({ items: [{ id: "I-001", uid: "U1" }, { id: "I-002", uid: "U2" }] });
     // asked for at load: not item 0

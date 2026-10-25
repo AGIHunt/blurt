@@ -29,7 +29,7 @@ function Keys() {
          ...(s.canHandOff ? [[mod, "keys.hand_off"] as [string, string]] : []),
          ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["1 2 3 4", "keys.kind"], [isMacLike() ? "⌘Z ⇧⌘Z" : "Ctrl+Z", "keys.undo"], ["?", "keys.help"]]
       : [["↓ ↑ / J K", "keys.next"], ["A / ⏎", "keys.keep"], ["X / ⌫", "keys.discard"], ...states, ["Z", "keys.undo"], ["M", "keys.merge"],
-         ["1 2 3 4", "keys.kind"], ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["G", "keys.view"],
+         ["1 2 3 4", "keys.kind"], ["← →", "keys.media"], ["Space / O", "keys.play"], ["E", "keys.edit"], ["G", "keys.view"], ["Space", "keys.select"],
          ["V", "keys.overview"], ...(s.isSession ? [[mod, "keys.finish"] as [string, string]] : []), ["?", "keys.help"]];
   return (
     <>

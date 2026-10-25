@@ -1,6 +1,6 @@
 import { STATES, targetOf, type Action } from "@blurt/ui";
 import { KindIcon } from "@blurt/ui/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Item } from "../host";
 import { kindOf, SEV, type StateFilter } from "../store";
 import { Icon } from "./Icon";
@@ -68,6 +68,11 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
   const wait = !img && !!s.data.processing && !s.stalled;
   const sel = s.isSelected(i);
   const w = s.stateOf(i);
+  const cursor = s.listCur === s.keyOf(i);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (cursor) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [cursor]);
   const meta = [
     kd === "issue" ? (
       <span key="sev" className={"sev sev-" + sev}>
@@ -85,7 +90,9 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
   ].filter(Boolean);
   return (
     <article
-      className={cx("card", st, sel && "sel", ch?.has("*") && "fresh", "s-" + w)}
+      ref={ref}
+      className={cx("card", st, sel && "sel", cursor && "cursor", ch?.has("*") && "fresh", "s-" + w)}
+      aria-current={cursor ? "true" : undefined}
       data-k={k}
       draggable={s.canMove}
       onDragStart={(e) => {

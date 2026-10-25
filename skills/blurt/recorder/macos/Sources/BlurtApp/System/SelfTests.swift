@@ -312,7 +312,7 @@ enum SelfTests {
                 + " loaded: s ? s.loaded : false}); })()"
             c.detail.web.evaluateJavaScript(js) { r, e in
                 out(["page": (r as? String) ?? "\(e.map { "\($0)" } ?? "nil")", "selected": c.list.selectedIDs,
-                     "shown": c.detail.currentItem?.uid ?? NSNull()])
+                     "shown": c.detail.currentItem?.uid ?? NSNull(), "job": c.shownJob ?? NSNull()])
             }
         case "mainsearch":
             let c = MainWindowController.shared

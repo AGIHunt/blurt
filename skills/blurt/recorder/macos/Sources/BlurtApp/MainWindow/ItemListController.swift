@@ -22,6 +22,8 @@ protocol ItemListActions: AnyObject {
     func focusSearch()                         // /
     func emptyAction(_ tag: Int)               // buttons in the empty states
     func selectJob(_ id: String)               // a row of the jobs section
+    /// ↑ / ↓ at the edge between the jobs and the items: true when it moved among the jobs (or back to the items)
+    func stepJobs(_ d: Int, fromRow row: Int) -> Bool
 }
 
 /// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
@@ -44,6 +46,9 @@ final class ItemTableView: NSTableView {
             case (51, _), (117, _): actions?.act(key: "delete"); return
             case (_, "j"): move(1); return
             case (_, "k"): move(-1); return
+            // plain ↑ / ↓ as J / K, so they reach the jobs above the list too (⇧ extends the selection as usual)
+            case (125, _) where mods.isEmpty: move(1); return
+            case (126, _) where mods.isEmpty: move(-1); return
             case (_, "e"): actions?.renameSelection(); return
             case (_, "s"): actions?.showStateMenu(row: selectedRowIndexes.first, from: nil); return
             case (_, "a"), (_, "d"), (_, "r"), (_, "w"), (_, "x"): actions?.act(key: ch.lowercased()); return
@@ -60,6 +65,8 @@ final class ItemTableView: NSTableView {
     }
 
     func move(_ d: Int) {
+        // ↑ from the first item enters the running jobs above the list, ↓ from the last job comes back (micro 15)
+        if actions?.stepJobs(d, fromRow: selectedRow) == true { return }
         guard numberOfRows > 0 else { return }
         let cur = selectedRow < 0 ? (d > 0 ? -1 : numberOfRows) : selectedRow
         let n = max(0, min(numberOfRows - 1, cur + d))

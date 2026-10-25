@@ -163,6 +163,10 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                 c.model.kinds = [k]; c.model.reload()
             })
         }
+        // what's running (organising, agent sessions): its progress or its terminal, as a click on its row
+        for j in JobStore.shared.active {
+            out.append(e(JobLook.title(j), JobLook.symbol(j), detail: JobLook.status(j)) { c.reveal(job: j.id) })
+        }
         if AppEnvironment.settings != nil { out.append(e(T("menu.settings"), "gearshape", "⌘,") { AppEnvironment.settings?.show(pane: nil) }) }
         for p in c.model.projects where p.registered {
             out.append(e(p.name, "folder", detail: T("main.palette.project", (p.path.path as NSString).abbreviatingWithTildeInPath)) { c.reveal(project: p.id) })

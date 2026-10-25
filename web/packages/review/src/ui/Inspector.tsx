@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FixRecord, Item, WorkRecord } from "../host";
 import { fieldLabel } from "../fields";
 import { isEnter } from "../ime";
+import { listKey, type ListKey } from "../listedit";
 import { isTitle, kindOf, SEV, type ReviewStore } from "../store";
 import { Icon, type IconName } from "./Icon";
 import { cx, useStore } from "./ctx";
@@ -49,8 +50,13 @@ function Field({ i, k, label, type = "area", cls, title, placeholder, onFocus }:
   const atFocus = useRef("");
   const value = draft ?? format(i, k, type);
   const multiline = type === "area" || type === "list" || title;
+  const caretAfter = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (multiline) autosize(ref.current, title ? 200 : 260);
+    if (caretAfter.current != null && ref.current && document.activeElement === ref.current) {
+      ref.current.setSelectionRange(caretAfter.current, caretAfter.current);
+    }
+    caretAfter.current = null;
   }, [value, multiline, title]);
   // the pane can change width after the first layout (the embedded detail settles, fonts load): fit the height again,
   // or a title that wraps differently shows half of its second line
@@ -91,6 +97,24 @@ function Field({ i, k, label, type = "area", cls, title, placeholder, onFocus }:
     },
     onKeyDown: (e: React.KeyboardEvent) => {
       const el = e.currentTarget as HTMLElement;
+      // a list field edits as a list: Return continues it, ⌫ drops a marker, ⌃⌘↑↓ move an item (listedit.ts)
+      if (type === "list" && !e.nativeEvent.isComposing) {
+        const plain = !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+        const lk: ListKey | null = e.key === "Enter" && plain && isEnter(e) ? "enter" : e.key === "Backspace" && plain ? "backspace"
+          : e.metaKey && e.ctrlKey && e.key === "ArrowUp" ? "up" : e.metaKey && e.ctrlKey && e.key === "ArrowDown" ? "down" : null;
+        const ta = el as HTMLTextAreaElement;
+        const r = lk && (ta.selectionStart === ta.selectionEnd || lk === "up" || lk === "down")
+          ? listKey(ta.value, ta.selectionStart, lk, k === "steps") : null;
+        if (r) {
+          e.preventDefault();
+          e.stopPropagation();
+          setDraft(r.value);
+          s.setField(i, k, parse(r.value, type));
+          caretAfter.current = r.caret;
+          if (r.done) el.blur();
+          return;
+        }
+      }
       const done = () => {
         e.preventDefault();
         e.stopPropagation(); // the field's own key: never also the page's (Enter = keep, ⌘Enter = hand off, Esc)

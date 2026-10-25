@@ -372,6 +372,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         scheduleSave()
     }
 
+    /// The running jobs above the list from the keyboard (micro 15): ↑ on the first item goes to the last job, ↑ / ↓
+    /// walk the jobs (the detail shows each, as a click does), ↓ from the last job is the first item again.
+    func stepJobs(_ d: Int, fromRow row: Int) -> Bool {
+        let ids = model.jobs.map(\.id)
+        if let cur = shownJob, let k = ids.firstIndex(of: cur) {
+            let n = k + d
+            if n < 0 { NSSound.beep(); return true }
+            if n >= ids.count {
+                guard model.rowCount > 0 else { NSSound.beep(); return true }
+                list.table.selectRowIndexes([0], byExtendingSelection: false)
+                list.table.scrollRowToVisible(0)
+                return true
+            }
+            selectJob(ids[n])
+            return true
+        }
+        guard d < 0, row <= 0, let last = ids.last else { return false }
+        selectJob(last)
+        return true
+    }
+
     func selectJob(_ id: String) {
         guard let j = JobStore.shared.job(id) else { return }
         list.table.deselectAll(nil)

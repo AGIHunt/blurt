@@ -900,6 +900,12 @@ export class ReviewStore {
       } else ae?.blur();
       return;
     }
+    // ⌘A in the list view: every card shown
+    if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A") && !typing && this.mode === "review" && this.view === "list") {
+      e.preventDefault();
+      this.selectAll();
+      return;
+    }
     // ⌘Z / ⇧⌘Z outside a text field: the user's last step (a text field keeps its own typing undo)
     if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "z" || e.key === "Z") && !typing) {
       e.preventDefault();
@@ -916,6 +922,7 @@ export class ReviewStore {
     if (this.mode === "review") {
       if (k === "g" || k === "G") return this.setView(this.view === "focus" ? "list" : "focus");
       if ((k === "v" || k === "V") && this.hasOverview) return this.setView("overview");
+      if (this.view === "list" && this.listKey(k, e.shiftKey)) return e.preventDefault();
       if (this.view !== "focus") return;
     }
     const review = this.mode === "review";
@@ -954,6 +961,52 @@ export class ReviewStore {
       f();
     }
   };
+
+  /** List view, from the keyboard (micro 29): ↑↓ / J K move the cursor (⇧ extends the selection), Space selects,
+      Return opens, A keeps and X / ⌫ discards the selection (or the card under the cursor) — undoable like the rest. */
+  listCur: string | null = null;
+  private listKey(k: string, shift: boolean): boolean {
+    const vis = this.listed();
+    if (!vis.length) return false;
+    const keys = vis.map(({ i }) => this.key(i));
+    const n = this.listCur ? keys.indexOf(this.listCur) : -1;
+    const move = (d: number) => {
+      const m = n < 0 ? 0 : Math.max(0, Math.min(keys.length - 1, n + d));
+      if (shift) {
+        this.selected.add(keys[n < 0 ? m : n]);
+        this.selected.add(keys[m]);
+      }
+      this.listCur = keys[m];
+      this.emit();
+    };
+    switch (k) {
+      case "ArrowDown":
+      case "j":
+      case "J":
+        move(1);
+        return true;
+      case "ArrowUp":
+      case "k":
+      case "K":
+        move(-1);
+        return true;
+      case " ":
+        if (n >= 0) this.toggleSelect(vis[n].i);
+        return n >= 0;
+      case "Enter":
+        if (n >= 0) this.openItem(vis[n].k);
+        return n >= 0;
+      case "a":
+      case "x":
+      case "Backspace":
+      case "Delete": {
+        const items = this.selected.size ? this.selectedItems() : n >= 0 ? [vis[n].i] : [];
+        if (items.length) this.act(items, k === "a" ? "keep" : "discard");
+        return items.length > 0;
+      }
+    }
+    return false;
+  }
 
   /** wheel / swipe on the stage moves between items */
   private wheelLock = 0;
