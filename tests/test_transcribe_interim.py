@@ -39,7 +39,17 @@ class Stoppable(A.FakeBackend):
 
 
 class Plain(A.FakeBackend):
-    """A backend that can't stop halfway (SenseVoice, Whisper…)."""
+    """A slow backend that can't stop halfway (Whisper on CT2, Qwen3-ASR on the CPU…)."""
+
+
+class Quick(A.FakeBackend):
+    """A backend whose decode is one short pass (SenseVoice): interim requests are decoded whole."""
+    quick_decode = True
+    calls: list = []
+
+    def transcribe(self, x):
+        Quick.calls.append(getattr(self, "stop_check", None))
+        return super().transcribe(x)
 
 
 class Interim(unittest.TestCase):
@@ -111,6 +121,34 @@ class Interim(unittest.TestCase):
                 self.stop(th)
         self.assertEqual((r["ok"], r["code"]), (False, "interim_unsupported"))
         self.assertTrue(f["ok"])
+
+    def test_a_quick_model_answers_interim_requests_whole(self):
+        """dogfood: SenseVoice, every tier's note model, refused every interim request — no live words in a voice
+        note or a snap's note on any Mac. It decodes a piece in ~0.1 s, so it answers them, without a stop check."""
+        Quick.calls = []
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(Quick)
+            try:
+                r = self.note(2.0, interim=True)
+                f = self.note(1.0)
+            finally:
+                self.stop(th)
+        self.assertEqual((r["ok"], r["text"], r.get("interim")), (True, "heard 2.0s", True), r)
+        self.assertTrue(f["ok"])
+        self.assertEqual(Quick.calls, [None, None])     # never handed a stop check it couldn't use
+
+    def test_a_quick_model_skips_an_interim_request_when_a_final_one_already_waits(self):
+        e = T.NoteEngine()
+        e.backend, e.name, e.model_id, e.language = Quick(Namespace(language=None)), "sensevoice", None, None
+        e.load = lambda *a, **k: e
+        wav = A.write_wav(self.tmp / "w.wav", 1.0)
+        with self.assertRaises(T.Interrupted):
+            e.note(wav, stop=lambda: True)
+        self.assertEqual(e.note(wav, stop=lambda: False)["text"], "heard 1.0s")
+
+    def test_sensevoice_is_marked_quick(self):
+        self.assertTrue(getattr(T.SenseVoice, "quick_decode", False))
+        self.assertFalse(getattr(T.FasterWhisper, "quick_decode", False))
 
 
 class SeesNoDownload(A.FakeBackend):

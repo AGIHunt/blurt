@@ -15,7 +15,7 @@
 //    pauses as it comes in (BlurtCore's DictationSegmenter, as dictation does) and each piece goes to the warm speech
 //    server as soon as it is complete (`note`, the voice-note model, the text so far as context); about once a second
 //    the piece still being said is decoded as an interim request (v0.9, as dictation's live text: quieter until its
-//    piece is final; record.dictation.live_partial); the text so far shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
+//    piece is final) on every tier — the note model is quick (`liveWords`); the text so far shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
 //    as soon as it is caught. A piece that failed → the whole wav through `transcribe.py note`, the old way. (The
 //    pieces run whether or not the panel shows: the words are ready at stop either way. record.voice.stream false =
 //    the old path only.)
@@ -74,6 +74,13 @@ final class VoiceInput {
     private var mode: String { settings["mode"] as? String ?? "auto" }
     private var silence: Double { (settings["silence_ms"] as? Double ?? 1500) / 1000 }
     /// "End a voice note when I pause" (off): a pause of `silence` ends it, as before v0.8.6
+    /// The live words of a note — ⌥⇧V's panel and a snap's note field — on every tier: the note model is quick
+    /// (SenseVoice answers an interim request whole in ~0.1 s; a slow model says so and DictationLiveDecode asks again
+    /// later, then stops for that take). Dictation's tier gate is about its larger model on the GPU, so it isn't
+    /// applied here; only the user's own switches turn them off: record.live_text ("Show text while I talk") and an
+    /// explicit record.dictation.live_partial = false.
+    static var liveWords: Bool { (Dictation.settings["live_partial"] as? Bool ?? true) && LiveTranscript.enabled }
+
     static var endOnPause: Bool { (recordConfig()["voice"] as? [String: Any])?["end_on_pause"] as? Bool ?? false }
     static func setEndOnPause(_ on: Bool) { Config.shared.set("record.voice.end_on_pause", on ? true : nil) }
     /// the longest voice note (seconds)
@@ -156,7 +163,7 @@ final class VoiceInput {
         let live = LiveTranscript.shared.begin(.voice)
         liveSession = live
         let st = streams ? VoiceNoteStream(id: "\(ShotBatch.name(k))-\(Int(Date().timeIntervalSince1970))",
-                                           interim: Dictation.livePartial && LiveTranscript.enabled) : nil
+                                           interim: VoiceInput.liveWords) : nil
         st?.onLive = { [weak self] committed, pending in
             if let self = self, self.stream === st { self.liveText = committed + pending }
             LiveTranscript.shared.update(committed, pending: pending, session: live)

@@ -1093,7 +1093,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let v = NoteVoice(url: dir.appendingPathComponent(rel))
         // a fresh shot's words while they are said (the voice note's live text), in the field's place
         let st = mode == .listen && VoiceInput.shared.streams ? VoiceNoteStream(id: "note-\(ShotBatch.name(s.n))-\(Int(Date().timeIntervalSince1970))",
-                                                   interim: Dictation.livePartial && LiveTranscript.enabled) : nil
+                                                   interim: VoiceInput.liveWords) : nil
         st?.onLive = { [weak self] committed, pending in
             guard let self = self, self.stream === st else { return }
             self.heard = (committed, pending)

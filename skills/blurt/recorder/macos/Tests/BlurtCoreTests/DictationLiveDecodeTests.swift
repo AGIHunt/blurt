@@ -106,10 +106,21 @@ final class DictationLiveDecodeTests: XCTestCase {
         var off = DictationLiveDecode(sampleRate: sr, off: .tier)
         XCTAssertNil(off.next(now: 5, piece: 0, pieceStart: 0, audioEnd: s(5), hasSpeech: true))
 
+        // one refusal never turns live words off (dogfood: the note model refused once and the take stayed wordless):
+        // it waits refusalBackoff, asks again, and only maxRefusals in a row stop it for the take
         var u = DictationLiveDecode(sampleRate: sr)
         let t = u.next(now: 2, piece: 0, pieceStart: 0, audioEnd: s(2), hasSpeech: true)!
         XCTAssertFalse(u.done(t, .unsupported))
-        XCTAssertEqual(u.off, .unsupported)
+        XCTAssertNil(u.off)
+        XCTAssertNil(u.next(now: 4, piece: 0, pieceStart: 0, audioEnd: s(4), hasSpeech: true))     // backing off
+        let t2 = u.next(now: 6.1, piece: 0, pieceStart: 0, audioEnd: s(6.1), hasSpeech: true)!
+        XCTAssertTrue(u.done(t2, .text(seconds: 0.1)))                                            // it answers now
+        for k in 0..<3 {
+            let now = 9.0 + Double(k) * 5
+            let r = u.next(now: now, piece: 0, pieceStart: 0, audioEnd: s(now), hasSpeech: true)!
+            XCTAssertFalse(u.done(r, .unsupported))
+            XCTAssertEqual(u.off, k == 2 ? .unsupported : nil)
+        }
 
         var f = DictationLiveDecode(sampleRate: sr)
         let a = f.next(now: 2, piece: 0, pieceStart: 0, audioEnd: s(2), hasSpeech: true)!

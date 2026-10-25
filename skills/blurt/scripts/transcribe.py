@@ -20,8 +20,9 @@ video, so any backend (even ones without timestamps) works.
   transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--no-download] [--idle 600] [--parent PID]   keep the
                                                      voice-note (or dictation) model warm; ends after --idle s unused
                                                      (the memory goes back), with the --parent app, or on "exit".
-                                                     A request with "interim": true (dictation's live text) is
+                                                     A request with "interim": true (live words while talking) is
                                                      stopped as soon as another request waits → code "interrupted"
+                                                     (a quick model, SenseVoice, decodes it whole)
   transcribe.py dictation-models                     the models dictation can use here: selected, recommended, ready (runs with nothing downloaded, VAD included), missing
   transcribe.py probe                                hardware → tier (pro / standard / light / minimal)
   transcribe.py recommend [--languages zh,en] [--purpose batch|live|note]
@@ -1115,6 +1116,10 @@ class SenseVoice:
     # SenseVoice degrades on long, mixed-language chunks (drops whole clauses); keep utterances short
     max_chunk = 10
     model = "sense-voice-small-int8"
+    # Non-autoregressive (one CTC pass): a piece decodes in one call of about 60–120 ms on the CPU (a 4 s piece:
+    # 59–84 ms, M-series), so there is nothing to stop halfway — an interim request (the live words of a voice note,
+    # a snap's note, dictation) is served whole after one look for a waiting request (NoteEngine.note).
+    quick_decode = True
 
     def __init__(self, args):
         import sherpa_onnx
@@ -2068,8 +2073,11 @@ class NoteEngine:
         the sentence.
         hint: the target app's window title and the text around the cursor — words seen there are listed to the model
         first.
-        stop: an interim request (dictation's live text) — a callable that says another request is waiting; the decode
-        then raises Interrupted. Only an interruptible backend takes one (else Fail "interim_unsupported")."""
+        stop: an interim request (the live words of dictation and of notes) — a callable that says another request is
+        waiting; the decode then raises Interrupted. An interruptible backend looks at it between steps; a quick one
+        (`quick_decode`: SenseVoice, one ~0.1 s pass) is asked once before and then decodes whole — a waiting final
+        piece waits that long at most. Any other backend (a slow one that can't stop: Whisper on CT2, Qwen3-ASR on the
+        CPU) answers Fail "interim_unsupported"."""
         t0 = time.perf_counter()
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
@@ -2079,7 +2087,12 @@ class NoteEngine:
         self.load(language, model_id)
         load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not before else 0
         if stop is not None and not getattr(self.backend, "interruptible", False):
-            raise Fail(f"{self.name} can't stop a decode halfway: no interim requests", "interim_unsupported")
+            if not getattr(self.backend, "quick_decode", False):
+                raise Fail(f"{self.name} can't stop a decode halfway: no interim requests", "interim_unsupported")
+            if stop():
+                raise Interrupted("another request is waiting")
+            stop = None     # one short pass: nothing to look at halfway
+
         x = read_wav(wav)
         terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
         biased = False
@@ -2180,7 +2193,8 @@ def cmd_serve(a):
     """One warm voice-note model per machine. Protocol: one JSON line in ({"token","cmd":"note"|"load"|"ping"|"exit",
     …}), one JSON line out. A "note" with "interim": true (dictation's live text: the piece still being said) is
     stopped as soon as another connection waits — a final piece never waits for it — and answers
-    {"ok": false, "code": "interrupted"}; on a model that can't stop halfway it answers "interim_unsupported". Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
+    {"ok": false, "code": "interrupted"}; a quick model (SenseVoice) decodes it whole; a slow model that can't stop
+    halfway answers "interim_unsupported". Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
     the memory resident, so the process goes and the app starts it again on the next key-down — when the app that
     started it (--parent) is gone, on "exit", or after --exit-after s without a request while no model is loaded."""
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):

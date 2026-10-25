@@ -59,9 +59,10 @@ in the last minute). Prefer the old way? *Settings → General → End a voice n
 silence. A snap's spoken note still ends when you pause — it's a sentence about one picture.
 
 **The words while you talk.** While a voice note or a dictation listens, what has been recognized so far shows in a
-small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in. In a dictation
-the words keep up with you even when you don't pause: the part you're still saying shows in a lighter grey and firms
-up to white as each stretch is finished. It never takes the focus or a click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
+small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in; a snap's spoken
+note fills its own field the same way. The words keep up with you even when you don't pause: the part you're still
+saying shows in a lighter grey and firms up to white as each stretch is finished — on every Mac for notes, whose
+speech model is quick. It never takes the focus or a click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
 a recording. Because a voice note is transcribed piece by piece while you talk, its card has its words about as soon
 as you stop. Turn it off in *Settings → General → Show text while I talk*.
 
@@ -608,7 +609,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
-**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入。听写时即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
+**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入；截图时说的备注也一样，文字直接出现在备注框里。即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。备注用的语音模型很快，所以每台 Mac 上都这样。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
 菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的线条小鸡，和菜单栏里其他图标一致：语音备注在听时它的声波会跳动，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
 
