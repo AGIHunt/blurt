@@ -781,9 +781,10 @@ export function Inspector({ media }: { media?: React.ReactNode } = {}) {
   const { body: main, prompt, rest } = specsOf(i, kind, s);
   const kept = opened.ik === ik ? opened.keys : [];
   const shown = rest.filter((f) => kept.includes(f.k) || format(i, f.k, f.type ?? "area").trim() !== "");
-  // the kind's body field is always there to fill in — except on a voice note, whose words already are its body: an
-  // empty Summary there only waits in Add Field
-  const mainShown = !said || kept.includes(main.k) || format(i, main.k, main.type ?? "area").trim() !== "";
+  // the kind's body field waits empty (with its prompt) only on an item that has nothing else yet; once it has what
+  // was said, a recording or a picture, an empty Summary / Actual is no content: it waits in Add Field like the rest
+  const bare = !said && !(i.quote || "").trim() && s.mediaItems(i).length === 0;
+  const mainShown = bare || kept.includes(main.k) || format(i, main.k, main.type ?? "area").trim() !== "";
   const body: React.ReactNode[] = mainShown ? [F(main, prompt)] : [];
   if (kind === "issue" && (i.code_refs || []).length)
     body.push(
