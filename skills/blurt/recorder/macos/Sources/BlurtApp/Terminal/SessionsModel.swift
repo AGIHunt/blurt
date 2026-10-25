@@ -55,6 +55,7 @@ struct AgentSessionRow: Identifiable {
     static func stateText(_ job: Job) -> String {
         guard let agent = job.agent else { return "" }
         switch SessionOutcome.of(job) {
+        case .live where agent.isDesktop: return TL("row.desktop", DesktopApp.name(agent.agent))
         case .live(let st): return agent.stalled ? TL("row.no_response") : st.title
         case .review: return TL("row.ready_to_review")
         case .failed(let atStart): return atStart ? TL("row.failed_start") : TL("row.failed")

@@ -44,7 +44,10 @@ struct AgentDef {
         processingDefault = o["processing"] as? [String: String] ?? [:]
         modelsSpec = o["models"] as? [String: Any] ?? [:]
         usageSpec = o["usage"] as? [String: Any] ?? [:]
+        desktop = (o["interactive"] as? [String: Any])?["desktop"] as? [String: Any]
     }
+    /// interactive.desktop: the agent's desktop app as a hand-off target (Claude) — name, url, app {macos: bundle id}.
+    let desktop: [String: Any]?
     /// false = an app / interactive-only entry (WP2's zcode): never in the background chain or its menus.
     let headless: Bool
     let modelArgs: [String: [String]]

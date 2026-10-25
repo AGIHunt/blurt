@@ -63,6 +63,15 @@ public struct AgentInfo {
     /// The agent was seen up and working (its items moved to in progress); false = it never got going.
     public let started: Bool
     public let model: String?
+    /// The hand-off's title ("AW-12 · … (Blurt hand-off)"): the prompt's first line, the Codex thread's name.
+    public var title: String? = nil
+    /// The agent's own conversation id (its hooks' session id): what Continue in Claude Desktop resumes.
+    public var agentSessionID: String? = nil
+    /// Moved here from another runner ("tmux": Continue in Claude Desktop).
+    public var continuedFrom: String? = nil
+
+    /// It runs in the agent's desktop app: no terminal and no live status; only the agent's own reports move its items.
+    public var isDesktop: Bool { runner == "desktop" }
 
     /// sessions.py's watchdog gave up on it: no hook and nothing new in its window for a minute since it started
     /// (a screen nothing recognises). It reads "No response" and offers Restart Session beside Open Session.
@@ -227,7 +236,9 @@ public enum JobFold {
                 finishAction: fin?["action"] as? String, finishResult: fin?["result"] as? [String: Any],
                 lastOutput: a["last_output"] as? [String] ?? [],
                 changes: (a["changes"] as? [String: Any]).map { (($0["ahead"] as? NSNumber)?.intValue ?? 0, ($0["dirty"] as? NSNumber)?.intValue ?? 0) },
-                started: a["started"] as? Bool ?? false, model: a["model"] as? String)
+                started: a["started"] as? Bool ?? false, model: a["model"] as? String,
+                title: a["title"] as? String, agentSessionID: a["agent_session_id"] as? String,
+                continuedFrom: (a["continued"] as? [String: Any])?["from"] as? String)
         }
         return Job(id: id, type: type, state: JobState(rawValue: o["state"] as? String ?? "") ?? .queued,
                    project: o["project"] as? String, session: (o["session"] as? String).map { URL(fileURLWithPath: $0) },

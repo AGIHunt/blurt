@@ -22,8 +22,13 @@ described (contract C5): the apps and live.py run what this returns instead of b
   agents.py usage ID FILE [--offset N]   tokens a run reported in its output (from byte N) → {"ok","usage"|null}
   agents.py install ID [--skill] [--mcp] [--dry-run]   → {"changes": [{action, path|argv, …}], "applied": bool}
   agents.py prompt work --items REF … [--mode session|external] [--worktree on|off] [--branch B] [--handoff H]
-                   [--lang en|zh]   → {"ok","prompt","handoff","path","items"}: a short prompt pointing at the
-                                      items' hand-off note (K6; written unless --handoff names one)
+                   [--lang en|zh]   → {"ok","prompt","title","handoff","path","items"}: a short prompt pointing at
+                                      the items' hand-off note (K6; written unless --handoff names one), its first
+                                      line the title ("AW-12 · <title> (Blurt hand-off)" — work_title)
+
+The desktop app as a hand-off target (interactive.desktop): desktop_prompt / desktop_url build its claude:// link,
+desktop_continue_check says whether a running terminal session may move there. set_thread_name names a Codex
+thread through `codex app-server` (interactive.session.thread_name).
 
 sessions.py builds interactive sessions with session_command() (K5): the agent's interactive.session, its per-session
 hooks (Claude: a --settings file; Codex: -c notify and hooks.*) and the blurt MCP server when it isn't installed.
@@ -809,29 +814,268 @@ def session_command(agent: str, prompt: str, cwd: str | Path, *, job: str, setti
 
 
 WORK_PROMPT = {
-    "en": "Read {note} and handle the items in it. {rule} When you finish an item, call the blurt MCP tool "
+    "en": "{title}\n\nRead {note} and handle the items in it. {rule} When you finish an item, call the blurt MCP tool "
           "mark_fixed with its uid (or, without the MCP, run the items.py command the note gives).",
-    "zh": "读 {note}，处理里面的条目。{rule}每做完一条，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
+    "zh": "{title}\n\n读 {note}，处理里面的条目。{rule}每做完一条，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
           "items.py 命令）。",
 }
+# The desktop app's prompt carries the note itself: the app starts in the worktree and would have to ask before it
+# reads a file outside it. Progress comes only from the agent there (no hooks), so it says when it starts an item too.
+DESKTOP_PROMPT = {
+    "en": "{title}\n\nHandle the items below (the same note is saved at {note}). {rule} When you start an item, call the "
+          "blurt MCP tool mark_fixed with its uid and state \"fixing\"; when you finish it, mark_fixed with state "
+          "\"fixed\" (or \"wontfix\") and a short note. Blurt shows the user only what you report this way.\n\n{body}",
+    "zh": "{title}\n\n处理下面的条目（同一份交接单也存在 {note}）。{rule}开始做某一条时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
+          "state 填 \"fixing\"；做完后再调用 mark_fixed，state 填 \"fixed\"（或 \"wontfix\"），附一句说明。口喷鸡只能通过这些报告"
+          "告诉用户进度。\n\n{body}",
+}
+TITLE = {"en": {"one": "{id} · {title} (Blurt hand-off)", "id_only": "{id} (Blurt hand-off)",
+                "many": "{n} items · {project} (Blurt hand-off)", "bare": "{n} items (Blurt hand-off)"},
+         "zh": {"one": "{id} · {title}（口喷鸡交接）", "id_only": "{id}（口喷鸡交接）",
+                "many": "{n} 个条目 · {project}（口喷鸡交接）", "bare": "{n} 个条目（口喷鸡交接）"}}
+TITLE_MAX = 120
+
+
+def _one_line(s) -> str:
+    return " ".join(str(s or "").split())
+
+
+def work_title(items: list[dict], project: str | None, lang: str = "en") -> str:
+    """The first line of a hand-off prompt, and the name its Codex thread gets: "AW-12 · Login button does nothing
+    (Blurt hand-off)"; several items: "3 items · Atlas Web (Blurt hand-off)". One line of at most TITLE_MAX chars:
+    a long item title is cut, never the id or the suffix."""
+    t = TITLE["zh" if (lang or "").startswith("zh") else "en"]
+    if len(items) == 1:
+        it = items[0]
+        ref = _one_line(it.get("id") or (it.get("uid") or "")[:8])
+        title = _one_line(it.get("title")) or _one_line(it.get("summary"))
+        if not title:
+            return t["id_only"].format(id=ref)
+        room = TITLE_MAX - len(t["one"].format(id=ref, title=""))
+        if len(title) > room:
+            title = title[:max(8, room - 1)].rstrip() + "…"
+        return t["one"].format(id=ref, title=title)
+    name = _one_line(project)
+    return (t["many"].format(n=len(items), project=name) if name else t["bare"].format(n=len(items)))[:TITLE_MAX]
+
+
+def _project_name(items: list[dict]) -> str | None:
+    import handoff
+    pids = {it.get("project") for it in items}
+    if len(pids) != 1:
+        return None
+    try:
+        p = handoff.project(next(iter(pids)))
+    except handoff.CliError:
+        return None
+    return (p or {}).get("name")
 
 
 def prompt_work(refs: list[str], mode: str = "session", worktree: bool = False, handoff_id: str | None = None,
                 lang: str | None = None, branch: str | None = None, items: list[dict] | None = None,
-                sandboxed: bool = False) -> dict:
-    """The short prompt that starts an agent on some items: it points at their hand-off note (K6), written here
-    unless handoff_id names one already. sandboxed = the agent can't commit in a worktree (interactive.session
-    `sandboxed`): it leaves its changes for Blurt to commit (handoff.rule_text)."""
+                sandboxed: bool = False, project_name: str | None = None) -> dict:
+    """The short prompt that starts an agent on some items: a title line first (work_title: what the agent's own
+    session list shows), then a pointer at their hand-off note (K6), written here unless handoff_id names one
+    already. sandboxed = the agent can't commit in a worktree (interactive.session `sandboxed`): it leaves its
+    changes for Blurt to commit (handoff.rule_text). project_name None = looked up from the items' project."""
     import handoff
     lang = handoff.ui_lang(lang)
     if handoff_id:
         h = handoff.describe(handoff_id)
     else:
         h = handoff.create(refs, lang, to=mode, branch=branch, worktree=worktree, items=items, sandboxed=sandboxed)
+    its = list(items) if items is not None else []
+    if not its:
+        for u in h["items"]:
+            try:
+                its.append(handoff.item(u))
+            except handoff.CliError:
+                its.append({"uid": u})
+    title = work_title(its, project_name if project_name is not None else _project_name(its), lang)
     t = handoff.T[lang]
     rule = handoff.rule_text(t, mode, worktree, branch, sandboxed)
-    return {"prompt": WORK_PROMPT[lang].format(note=h["path"], rule=rule), "handoff": h["id"], "path": h["path"],
-            "items": h["items"]}
+    return {"prompt": WORK_PROMPT[lang].format(title=title, note=h["path"], rule=rule), "title": title,
+            "handoff": h["id"], "path": h["path"], "items": h["items"], "full": h.get("full") or "", "rule": rule,
+            "lang": lang}
+
+
+# ------------------------------------------------------------------ the agent's desktop app (interactive.desktop)
+def desktop_spec(defn: dict) -> dict | None:
+    d = (defn.get("interactive") or {}).get("desktop")
+    return d if isinstance(d, dict) and d.get("url") else None
+
+
+def desktop_url(spec: dict, folder: str, prompt: str) -> str:
+    """claude://code/new?folder=…&q=…: the app opens a new conversation in `folder` with the prompt filled in (the
+    user confirms the folder and presses Send). Both values fully percent-encoded."""
+    from urllib.parse import quote
+    return spec["url"].replace("{folder_q}", quote(str(folder), safe="")).replace("{prompt_q}", quote(prompt, safe=""))
+
+
+def desktop_prompt(work: dict, spec: dict, folder: str) -> dict:
+    """The prompt and URL for the desktop app (`work` = prompt_work's answer): the note inline while the URL stays
+    within spec max_url (about 14k chars), else the short prompt pointing at the note. → {"prompt", "url", "inline"}"""
+    body = (work.get("full") or "").strip()
+    limit = int(spec.get("max_url") or 14000)
+    if body:
+        full = DESKTOP_PROMPT[work.get("lang") or "en"].format(title=work["title"], note=work["path"],
+                                                               rule=work["rule"], body=body)
+        url = desktop_url(spec, folder, full)
+        if len(url) <= limit:
+            return {"prompt": full, "url": url, "inline": True}
+    return {"prompt": work["prompt"], "url": desktop_url(spec, folder, work["prompt"]), "inline": False}
+
+
+def version_tuple(v: str | None) -> tuple[int, ...] | None:
+    """"2.1.285 (Claude Code)" → (2, 1, 285); None when there is no dotted number."""
+    m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", v or "")
+    return tuple(int(x) for x in m.groups() if x is not None) if m else None
+
+
+def subscription_login(text: str, auth: dict) -> bool | None:
+    """Does the auth probe's JSON say logged in with a subscription (not an API key)? None = nothing readable."""
+    if "{" not in (text or ""):
+        return None
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text[text.index("{"):])
+    except ValueError:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    if obj.get(auth.get("json_key") or "loggedIn") is not True:
+        return False
+    if any(str(obj.get(k) or "").strip().lower() not in ("", "none", "null")
+           for k in auth.get("subscription_keys", [])):
+        return True
+    return str(obj.get("authMethod") or "").strip().lower() in {str(m).lower() for m in auth.get("auth_methods", [])}
+
+
+def desktop_continue_check(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict:
+    """Can a running terminal session of `agent` move to its desktop app (claude --desktop --resume <id>)? Only from
+    interactive.desktop.continue.min_version, and when its status probe says logged in with a subscription. Probes
+    only (--version, auth status): never logs in, upgrades or starts anything.
+    → {"available": bool, "reason": None | "unsupported" | "not_installed" | "version" | "login", "version"}"""
+    d = definitions(cfg if cfg is not None else config()).get(agent) or {}
+    cont = (desktop_spec(d) or {}).get("continue")
+    if not isinstance(cont, dict) or not cont.get("argv"):
+        return {"available": False, "reason": "unsupported", "version": None}
+    env = clean_env(env)
+    bin_ = find_bin(d, env)
+    if not bin_:
+        return {"available": False, "reason": "not_installed", "version": None}
+    v = version_of(d, bin_, env)
+    have, need = version_tuple(v), version_tuple(cont.get("min_version"))
+    if need and (have is None or have < need):
+        return {"available": False, "reason": "version", "version": v}
+    args = (d.get("status") or {}).get("args")
+    ok = False
+    if args:
+        code, out = _run([bin_, *args], env, timeout=15)
+        ok = code == 0 and subscription_login(out, cont.get("auth") or {}) is True
+    if not ok:
+        return {"available": False, "reason": "login", "version": v}
+    return {"available": True, "reason": None, "version": v}
+
+
+# ------------------------------------------------------------------ thread names (interactive.session.thread_name)
+class RpcError(Exception):
+    pass
+
+
+def rpc_exchange(argv: list[str], calls: list[tuple[str, dict | None]], env: dict, timeout: float = 20,
+                 client: dict | None = None) -> list:
+    """JSON-RPC over stdio, one JSON object per line in Codex app-server's dialect (no "jsonrpc" field): initialize →
+    initialized → each (method, params) in turn, waiting for its answer. → the results, in order. The server's own
+    notifications and requests are skipped. RpcError on an error answer, a timeout, or the server ending first; the
+    server is always stopped (stdin closed, then terminated)."""
+    import queue
+    import threading
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                env=env, text=True, encoding="utf-8", errors="replace", bufsize=1)
+    except OSError as e:
+        raise RpcError(f"can't start {argv[0]}: {e}") from None
+    lines: queue.Queue = queue.Queue()
+
+    def pump():
+        for ln in proc.stdout:  # type: ignore[union-attr]
+            lines.put(ln)
+        lines.put(None)
+    threading.Thread(target=pump, daemon=True).start()
+    import time as _time
+    deadline = _time.monotonic() + timeout
+
+    def send(obj: dict) -> None:
+        try:
+            proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")  # type: ignore[union-attr]
+            proc.stdin.flush()  # type: ignore[union-attr]
+        except (OSError, ValueError) as e:
+            raise RpcError(f"the server stopped reading: {e}") from None
+
+    def answer(want: int):
+        while True:
+            left = deadline - _time.monotonic()
+            if left <= 0:
+                raise RpcError("timed out")
+            try:
+                ln = lines.get(timeout=left)
+            except queue.Empty:
+                raise RpcError("timed out") from None
+            if ln is None:
+                raise RpcError("the server exited")
+            try:
+                msg = json.loads(ln)
+            except ValueError:
+                continue
+            if not isinstance(msg, dict) or "method" in msg or msg.get("id") != want:
+                continue
+            if msg.get("error") is not None:
+                e = msg["error"]
+                raise RpcError(str(e.get("message") if isinstance(e, dict) else e)[:300])
+            return msg.get("result")
+    try:
+        send({"method": "initialize", "id": 0,
+              "params": {"clientInfo": client or {"name": "blurt", "title": "Blurt", "version": "1"}}})
+        answer(0)
+        send({"method": "initialized"})
+        out = []
+        for i, (method, params) in enumerate(calls, 1):
+            send({"method": method, "id": i, "params": params or {}})
+            out.append(answer(i))
+        return out
+    finally:
+        try:
+            proc.stdin.close()  # type: ignore[union-attr]
+        except OSError:
+            pass
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+def set_thread_name(agent: str, thread_id: str, name: str, cfg: dict | None = None, env: dict | None = None,
+                    timeout: float = 20) -> dict:
+    """Name an agent's thread officially (interactive.session.thread_name — Codex: `codex app-server`,
+    thread/name/set {threadId, name}), with the CODEX_HOME of `env`: the session's own. → {"ok", "error"?}; never
+    raises."""
+    d = definitions(cfg if cfg is not None else config()).get(agent) or {}
+    spec = (session_spec(d) or {}).get("thread_name")
+    if not isinstance(spec, dict) or not spec.get("argv") or not spec.get("method"):
+        return {"ok": False, "error": "unsupported"}
+    env = clean_env(env)
+    bin_ = find_bin(d, env)
+    if not bin_:
+        return {"ok": False, "error": "not installed"}
+    try:
+        rpc_exchange([bin_, *spec["argv"]], [(spec["method"], {"threadId": thread_id, "name": name})], env, timeout)
+    except RpcError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True}
 
 
 def _emit(obj) -> None:
@@ -924,7 +1168,8 @@ def main():
             _emit(install(a.id, skill=a.skill or both, mcp=a.mcp or both, dry_run=a.dry_run))
             return
         if a.cmd == "prompt":
-            _emit({"ok": True, **prompt_work(a.items, a.mode, a.worktree == "on", a.handoff, a.lang, a.branch)})
+            pw = prompt_work(a.items, a.mode, a.worktree == "on", a.handoff, a.lang, a.branch)
+            _emit({"ok": True, **{k: pw[k] for k in ("prompt", "title", "handoff", "path", "items")}})
             return
     except ValueError as e:
         _fail(str(e))

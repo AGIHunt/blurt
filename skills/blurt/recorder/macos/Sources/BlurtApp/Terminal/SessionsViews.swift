@@ -1,7 +1,8 @@
 // SwiftUI parts of a sessions pane: the list, the header above the terminal, the overlay for the states in which the
 // terminal has nothing to show — above all the card a session ends on: how it ended in words (SessionOutcome), what
 // the agent said last when it failed, and the one next step (Review Changes…, Restart Session), with Take Back and
-// Show Output beside it. A dead window is never the first thing shown; Show Output opens it.
+// Show Output beside it. A dead window is never the first thing shown; Show Output opens it. A session in the agent's
+// desktop app shows its desktop card instead of a terminal: it isn't live here, progress comes from the agent.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -21,6 +22,10 @@ protocol SessionActions: AnyObject {
     func takeBack(_ job: String)
     /// the ended session's terminal, as the agent left it
     func showOutput(_ job: String)
+    /// the agent's desktop app comes forward (Go to Claude)
+    func goToDesktop(_ job: String)
+    /// a terminal session moves to the agent's desktop app (asks first)
+    func continueDesktop(_ job: String)
 }
 
 // MARK: - List
@@ -177,7 +182,11 @@ struct SessionHeader: View {
                     .buttonStyle(.bordered).controlSize(.small).fixedSize()
                     .help(TL("header.review.help"))
             }
-            if r.alive && !r.isAppRunner {
+            if r.alive && r.agent.isDesktop {
+                Button(TL("header.go_desktop", DesktopApp.name(r.agent.agent))) { actions?.goToDesktop(r.id) }
+                    .buttonStyle(.bordered).controlSize(.small).fixedSize()
+            }
+            if r.alive && !r.isAppRunner && !r.agent.isDesktop {
                 Menu {
                     ForEach(ExternalTerminals.installed, id: \.id) { t in
                         Button(t.name) { actions?.openExternal(r.id, terminal: t.id) }
@@ -193,8 +202,12 @@ struct SessionHeader: View {
             }
             Menu {
                 if r.alive {
-                    Button(TL("header.interrupt")) { actions?.interrupt(r.id) }
-                    Button(TL("header.end")) { actions?.end(r.id) }
+                    if !r.agent.isDesktop { Button(TL("header.interrupt")) { actions?.interrupt(r.id) } }
+                    Button(TL(r.agent.isDesktop ? "header.end_desktop" : "header.end")) { actions?.end(r.id) }
+                    if DesktopContinue.offered(r.agent, alive: r.alive, supported: DesktopApp.supports(r.agent.agent),
+                                               check: DesktopApp.continueCheck(r.agent.agent) { model.objectWillChange.send() }) {
+                        Button(TL("header.continue_desktop", DesktopApp.name(r.agent.agent))) { actions?.continueDesktop(r.id) }
+                    }
                     // no response for a minute (the watchdog): start it again from here
                     if r.agent.stalled { Button(TL("overlay.restart")) { actions?.restart(r.id) } }
                     Divider()
@@ -270,6 +283,10 @@ struct SessionOverlay: View {
             case .ended:
                 card {
                     if let r = row { endedSummary(r) } else { Text(TL("overlay.ended.title")).font(.headline) }
+                }
+            case .desktop:
+                card {
+                    if let r = row { desktopCard(r) }
                 }
             case .elsewhere:
                 card {
@@ -350,6 +367,33 @@ struct SessionOverlay: View {
             case .finished, .live:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
             }
+        }
+        .padding(.top, 4)
+    }
+
+    /// A session in the agent's desktop app: nothing live here. Its items, what moves them (the agent's reports), and
+    /// the way there; its worktree's changes can be reviewed and merged as usual.
+    @ViewBuilder
+    func desktopCard(_ r: AgentSessionRow) -> some View {
+        let app = DesktopApp.name(r.agent.agent)
+        Image(systemName: "macwindow").font(.system(size: 22, weight: .light)).foregroundStyle(Color.brandInk)
+        Text(TL("overlay.desktop.title", app)).font(.headline)
+        Text(TL(r.agent.continuedFrom != nil ? "overlay.desktop.body_continued" : "overlay.desktop.body", app))
+            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+            .fixedSize(horizontal: false, vertical: true)
+        if !r.items.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(r.items.prefix(5), id: \.self) { i in
+                    HStack(spacing: 6) {
+                        Text(i.id).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(i.title).lineLimit(1)
+                    }.font(.callout)
+                }
+            }
+        }
+        HStack(spacing: 8) {
+            if r.agent.worktree != nil { Button(TL("header.review")) { actions?.review(r.id) } }
+            Button(TL("header.go_desktop", app)) { actions?.goToDesktop(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
         }
         .padding(.top, 4)
     }

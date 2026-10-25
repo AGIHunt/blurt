@@ -238,6 +238,9 @@ wontfix and discarded. You only ever move items to `in_progress` / `to_verify` (
 claim back). `--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set by the app). The older forms
 `items.py work …` and `items.py fix <session> <id> --state fixing|fixed|wontfix` still work. Never set `state` or
 `work` with `patch`, and never edit item files yourself.
+A hand-off prompt's first line is just its title ("AW-12 · … (Blurt hand-off)"); the instructions follow it. Started
+from Claude desktop with the items in the prompt itself, your reports (steps 2 and 4) are the only progress the user
+sees — make both.
 
 ## 8. Across recordings: index and MCP
 
@@ -254,4 +257,5 @@ The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_serv
 plugin registers it for Claude Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first
 shows what changes). Prefer the tools when they are there; they write through items.py like everything else.
 
-Agent sessions inside Blurt (tmux), worktrees, handoff files and the jobs the app shows: `reference/sessions.md`.
+Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, handoff files and the jobs the app shows:
+`reference/sessions.md`.

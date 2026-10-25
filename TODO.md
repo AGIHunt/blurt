@@ -153,6 +153,17 @@
       shows two buttons and a ⋯ menu (`SessionBannerPlan.more`), its Review Changes… opens the sheet; the watchdog's
       *No response* (`status_source: "watchdog"`) with Restart; the panel passes `--force` only after its own login
       check; one state wording everywhere (`AgentSessionRow.stateText`).
+- [ ] Hand-offs beyond Blurt's terminal (Mac v0.9-next, next-round.md K5 "交接标题、Claude 桌面端"): the scripts do the
+      title line and the Codex thread name on every platform already. The app side: the hand-off panel's *Run in
+      Blurt's terminal (recommended) / Run in Claude desktop* (only when the Claude desktop app is installed: on
+      Windows its install folder / protocol handler for `claude:`, on Linux whether `xdg-mime query default
+      x-scheme-handler/claude` answers), remembered per agent in `sessions.target`, and the same row in Settings →
+      Agents; `sessions.py dispatch --runner desktop` and open each row's `url` (only the `claude:` scheme, BlurtCore
+      `DesktopLink`) — never under the test channel; the one line "confirm the folder and press Send"; the no-MCP
+      callout with Install…; the banner *In Claude desktop · progress comes from the agent* + Go to Claude
+      (`SessionBannerPlan` with `desktop:`); the session pane's desktop card instead of a terminal; *Continue in Claude
+      Desktop…* only when `sessions.py desktop-check` says available (`DesktopContinue.offered`), asking first.
+      `claude --desktop` itself: check on Windows that it opens the desktop app as on the Mac.
 - [ ] Organising runs: start the agent in its own process group / job object (Mac: BlurtCore `ProcessGroup`), record
       `agent_pgid` and its leader's start time (`agent_pgid_start`), stop it on quit (ask first — not on logout /
       shutdown) and stop a leftover one at launch only while it is still that group (`ProcessGroup.isOurs`; a reused

@@ -59,9 +59,14 @@ public struct SessionBannerPlan: Equatable {
     public init(tone: Tone, actions: [String], more: [String] = []) { self.tone = tone; self.actions = actions; self.more = more }
 
     /// `work`: the item's session (WorkSession.of); `outcome`: its job's (nil when the job is gone); `stalled`: the
-    /// watchdog says it isn't responding (AgentInfo.stalled).
-    public static func plan(_ work: WorkSession, outcome: SessionOutcome?, stalled: Bool = false) -> SessionBannerPlan {
+    /// watchdog says it isn't responding (AgentInfo.stalled); `desktop`: it runs in the agent's desktop app
+    /// (AgentInfo.isDesktop), where nothing here is live — Go to Claude, and its worktree's changes when it has one.
+    public static func plan(_ work: WorkSession, outcome: SessionOutcome?, stalled: Bool = false, desktop: Bool = false,
+                            worktree: Bool = false) -> SessionBannerPlan {
         switch work {
+        case .live where desktop:
+            return SessionBannerPlan(tone: .brand, actions: ["desktop"],
+                                     more: ["session"] + (worktree ? ["review"] : []) + ["take_back"])
         case .live(let st):
             // no response for a minute: look at it, or start it again
             if stalled { return SessionBannerPlan(tone: .attn, actions: ["session", "restart"], more: ["take_back"]) }

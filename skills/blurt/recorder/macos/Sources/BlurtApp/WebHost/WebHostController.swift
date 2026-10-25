@@ -320,6 +320,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         switch a {
         case "done", "wontfix": actions?.applyState(a, uids: [it.uid])
         case "session": if let j = it.workJob { actions?.revealJob(j) }
+        case "desktop":
+            if let j = it.workJob, let a = JobStore.shared.job(j)?.agent { DesktopApp.goTo(a.agent) }
         case "review":
             // what the ellipsis promises: the session, and its review sheet over the window
             guard let j = it.workJob else { return }
@@ -566,6 +568,7 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
 /// once the session is over — the first button is the primary.
 /// Two buttons at most, the rest in a ⋯ menu (SessionBannerPlan.more), so the line keeps its words at a detail's width:
 ///   with an agent  "Handed off to Claude Code · Needs your input"                  [Open Session]
+///   desktop app    "In Claude desktop · progress comes from the agent"             [Go to Claude] ⋯
 ///   no response    "Handed off to Codex · No response for a minute…"             [Open Session] [Restart Session] ⋯
 ///   failed         "Codex couldn’t start: Error: timed out …"                      [Restart Session] [Take Back] ⋯
 ///   with changes   "Handed off to Codex · Session ended, ready to review"          [Review Changes…] [Take Back] ⋯
@@ -658,13 +661,19 @@ final class ItemBanner: NSView {
             let job = it.workJob.flatMap { JobStore.shared.job($0) }
             let outcome = job.map(SessionOutcome.of)
             let stalled = job?.agent?.stalled ?? false
-            let plan = SessionBannerPlan.plan(work, outcome: outcome, stalled: stalled)
+            let desktop = job?.agent?.isDesktop ?? false
+            let app = job?.agent.map { DesktopApp.name($0.agent) } ?? ""
+            let plan = SessionBannerPlan.plan(work, outcome: outcome, stalled: stalled, desktop: desktop,
+                                              worktree: job?.agent?.worktree != nil)
             switch plan.tone {
             case .brand: tint = BrandColor.ink
             case .attn: tint = BrandColor.attn
             case .neutral: tint = .labelColor
             }
             switch (work, outcome) {
+            case (.live, _) where desktop:
+                // nothing here is live: only the agent's reports move the item
+                text.stringValue = T("main.banner.desktop", app)
             case (.live, _) where stalled:
                 text.stringValue = T("main.banner.with_agent", who, T("main.banner.no_response"))
             case (.live(let st), _):
@@ -681,7 +690,7 @@ final class ItemBanner: NSView {
                 text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
             }
             for (k, a) in plan.actions.enumerated() {
-                button(Self.title(a), a, primary: k == 0)
+                button(a == "desktop" ? T("main.banner.go_desktop", app) : Self.title(a), a, primary: k == 0)
             }
             if !plan.more.isEmpty { moreButton(plan.more) }
         case "external":

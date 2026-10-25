@@ -4,7 +4,8 @@
 // remembers what it showed in $BLURT_HOME/ui/terminal.json, so a relaunched app reattaches to the same session.
 // In the main window (pane "main") the item list already picks the session, so the sessions list starts hidden
 // (the header's sidebar button shows it). A session that ends shows its ended card (SessionsViews), not the dead
-// window; Show Output attaches to what the agent left on screen.
+// window; Show Output attaches to what the agent left on screen. A session in the agent's desktop app has no terminal:
+// its card says so (Go to Claude, Review Changes…); Continue in Claude Desktop moves a terminal session there.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -128,6 +129,11 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
             return
         }
         guard let j = changed.first(where: { $0.id == cur }) else { return }
+        // it moved to the desktop app (Continue in Claude Desktop): the terminal it had is gone
+        if j.isActive, j.agent?.isDesktop == true, state.attach != .desktop {
+            surface.attach(cur, force: true)
+            return
+        }
         // The agent ended: say how (the ended card: its reason, Review Changes… or Restart), not tmux's dead window.
         // The window stays readable (remain-on-exit) behind Show Output — until it is gone (merged, discarded,
         // restarted, ended with --kill), when a grouped view session would slide onto another session's window.
@@ -155,9 +161,12 @@ extension SessionsPaneController: SessionActions {
 
     func end(_ job: String) {
         let a = NSAlert()
-        a.messageText = TL("end.title")
-        a.informativeText = TL("end.body")
-        a.addButton(withTitle: TL("end.confirm"))
+        // in the desktop app the conversation goes on: Blurt only stops following it here
+        let ag = JobStore.shared.job(job)?.agent
+        let desktop = ag?.isDesktop == true
+        a.messageText = desktop ? TL("end_desktop.title") : TL("end.title")
+        a.informativeText = desktop ? TL("end_desktop.body", DesktopApp.name(ag?.agent ?? "")) : TL("end.body")
+        a.addButton(withTitle: TL(desktop ? "end_desktop.confirm" : "end.confirm"))
         a.addButton(withTitle: TL("common.cancel"))
         a.buttons.first?.hasDestructiveAction = true
         guard let w = view.window else { return }
@@ -170,6 +179,38 @@ extension SessionsPaneController: SessionActions {
     }
 
     func review(_ job: String) { FinishPanel.show(job: job, over: view.window) }
+
+    func goToDesktop(_ job: String) {
+        guard let a = JobStore.shared.job(job)?.agent else { return }
+        DesktopApp.goTo(a.agent)
+    }
+
+    /// Continue in Claude Desktop: say first what changes (the terminal here closes, live status stops, progress comes
+    /// from the agent), then move it.
+    func continueDesktop(_ job: String) {
+        guard let a = JobStore.shared.job(job)?.agent, let w = view.window else { return }
+        let app = DesktopApp.name(a.agent)
+        let alert = NSAlert()
+        alert.messageText = TL("continue_desktop.title", app)
+        alert.informativeText = TL("continue_desktop.body", app)
+        alert.addButton(withTitle: TL("continue_desktop.confirm"))
+        alert.addButton(withTitle: TL("common.cancel"))
+        alert.beginSheetModal(for: w) { r in
+            guard r == .alertFirstButtonReturn else { return }
+            self.performContinueDesktop(job) { err in if let e = err { self.presentError(e) } }
+        }
+    }
+
+    func performContinueDesktop(_ job: String, done: @escaping (String?) -> Void) {
+        Task { @MainActor in
+            do {
+                try await AgentSessions.shared.continueInDesktop(job: job)
+                emit(["event": "session_continue_desktop", "job": job])
+                JobStore.shared.rescan()
+                done(nil)
+            } catch { done(sessionsErrorText(error)) }
+        }
+    }
 
     func restart(_ job: String) {
         SessionRecovery.restart(job) { [weak self] r in

@@ -702,7 +702,8 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
   - 其他（Kimi Code、OpenCode…）：有交互式命令就 `interactive.session.argv`，提示词放不进参数的就启动后用 `sessions.py send` 粘贴；状态只有运行中 / 已退出。
   - 环境：`BLURT_JOB`、`BLURT_AGENT`、`BLURT_PROJECT`、`BLURT_HOME`、`BLURT_WORKSPACE`，以及 `BLURT_RUN_ID = BLURT_JOB`（旧别名）。
   - 提示词（`agents.py prompt work --items … --mode session|external --worktree on|off`，P2，替代 C5 的 `prompt fix`）总是很短：
-    指向 K6 的交接单，例如「Read /Users/john/.blurt/handoff/H-0012.md and handle the items in it. …」，说明完成后调 `mark_fixed`（或 `items.py work`）、提交规则见上。
+    第一行是标题（「AW-12 · <标题> (Blurt hand-off)」，见下面的细则），然后指向 K6 的交接单，例如「Read /Users/john/.blurt/handoff/H-0012.md
+    and handle the items in it. …」，说明完成后调 `mark_fixed`（或 `items.py work`）、提交规则见上。
 - **状态**（`agent.status`）：`running` 运行中 / `waiting_input` 等你回答 / `turn_done` 本轮完成 / `exited` 已退出 / `error` 出错。
 
   | 来源 | 事件 | → 状态 |
@@ -862,6 +863,39 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
   整理（parent = record 任务），失败的原因按输出归到 `auth / quota / network / unknown`。
 - **测试通道**（只给脚本化冒烟用）：`BLURT_TEST_EVAL=<文件>`——文件一变，第一行是窗口 label、其余是在那个窗口里执行的 JS；页面用
   `emit('blurt://test-result', …)` 回报，Rust 追加到 `<文件>.out`。不碰真实的鼠标键盘。
+
+**细则（交接标题、Claude 桌面端，2026-10-25）**：
+- **标题在第一行**：交接提示词的第一行是给人看的标题，后面空一行才是指令——一条：`AW-12 · <条目标题> (Blurt hand-off)`（中文
+  `AW-12 · <标题>（口喷鸡交接）`），几条：`3 items · <项目> (Blurt hand-off)`（`3 个条目 · <项目>（口喷鸡交接）`）。一行、最多 120 字，
+  太长只截条目标题（`agents.work_title`）。Claude Code、Codex 的会话列表都拿第一条消息当预览，所以列表里看到的是这一行。
+  标题另存为 `agent.title`。
+- **Codex 线程名**：拿到线程 id（hook 的 `session_id`，记为 `agent_session_id`）后，hook 在后台起 `sessions.py name-thread`：
+  用同一个 `CODEX_HOME` 跑 `codex app-server`（stdio，每行一个 JSON，不带 `jsonrpc` 字段），`initialize` → `initialized` →
+  `thread/name/set {threadId, name}`，名字 = `agent.title`。尽力而为：最多 4 次（等 1 / 4 / 10 / 30 秒），结果记在
+  `agent.thread_name = {name, ok, error?, at, tries}`，从不影响会话本身。agents.json `interactive.session.thread_name` 描述怎么做；
+  别的 agent 没有就不做。2026-10-25 用 Codex 0.164 实测：`~/.codex/session_index.jsonl` 和 state 库 `threads.name` 都写上了这个名字
+  （`title` 仍是整条首消息）。用户没信任 Blurt 的 hooks（选了「Continue without trusting」）时拿不到线程 id，就只有第一行的标题。
+- **在 Claude 桌面端运行**（P2 决定）：交接面板里「在口喷鸡终端运行（推荐）/ 在 Claude 桌面端运行」，按 agent 记住
+  （config `sessions.target = {"claude": "desktop"}`，设置 → Agent 里同一个键）；只在装了 Claude 桌面端（agents.json
+  `interactive.desktop.app.macos` 的 bundle id）时出现。`sessions.py dispatch --runner desktop`：照常建 worktree 和交接单，然后每个
+  任务返回 `url = claude://code/new?folder=<worktree>&q=<提示词>`——提示词带上交接单全文（桌面端在 worktree 里，读外面的文件要先问），
+  整个链接超过 `max_url`（约 1.4 万字符）就换成指向交接单文件的短提示词。sessions.py 不启动任何东西，链接由应用打开（只认 `claude:`
+  scheme），面板说一次「在 Claude 里确认文件夹并点发送」。任务 `agent.runner = "desktop"`、`status_source = "desktop"`，没有窗口、
+  没有 hooks、没有实时状态：条目只随 Agent 自己的报告移动（MCP `mark_fixed` state fixing → 进行中，fixed → 待验证），monitor 每 10 秒
+  看一次，没有条目还在它手上时任务结束（exited → done，worktree 的改动照常「查看改动 / 合并」）。dry run 多一个 `mcp`：blurt MCP
+  没装给 Claude（false）时面板说「Agent 没法回报进度，做完后要你自己标记条目」，并给「安装…」（设置里同一个安装器，先预览）。
+  条目上方：「在 Claude 桌面端进行 · 由 Agent 回报进度」+「前往 Claude」，⋯ 里是打开会话、查看改动（有 worktree 时）、收回。
+  不装全局 hooks，不升级、不重启任何人的 Claude。
+- **在 Claude 桌面端继续**：终端里正在跑的 Claude 会话，菜单里有「在 Claude 桌面端继续…」，只在 `sessions.py desktop-check` 说可以时出现：
+  `claude --version` ≥ `interactive.desktop.continue.min_version`（2.1.285），且 `claude auth status --json` 说用订阅登录
+  （`subscriptionType` 非空，或 `authMethod` 是 claude.ai / oauth）；只做这两个探测，查不清就不显示（结果在应用里留 10 分钟）。
+  确认后 `sessions.py continue-desktop JOB`：先把任务改成 desktop（结束中的进程再发的 hook 一律忽略），给窗口发两次 C-c、最多等 4 秒、
+  关窗口，再在会话目录里跑 `claude --desktop --resume <agent_session_id>`（8 秒内非 0 退出 = 失败：任务 error，可以重新开始）。
+  之后同上：实时状态停止，进度由 Agent 回报；`agent.continued = {from: "tmux", at, tmux}`，`agent.tmux = null`。
+  错误码：`desktop_version` / `desktop_login` / `desktop_unsupported` / `desktop_not_installed`、`no_session_id`、`bad_runner`、
+  `desktop_failed`、`no_desktop`。
+- 测试：`BLURT_TEST_PROMPT_PREFIX`（只给真实 agent 的测试运行）加在提示词最前面；`BLURT_TEST_COMMANDS=1` 下应用不打开任何链接、
+  不切到 Claude，只在 stdout 报 `desktop_open` / `desktop_go`。
 
 ### K6 · 交给外部 agent：交接单
 

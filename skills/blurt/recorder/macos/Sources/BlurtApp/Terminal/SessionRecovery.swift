@@ -30,6 +30,7 @@ enum SessionRecovery {
             do {
                 let r = try await AgentSessions.shared.restart(job: job)
                 for l in r.launch { AppRunner.shared.launch(l) }
+                for l in r.links { DesktopApp.open(l.url, job: l.job) }     // a desktop session starts there again
                 emit(["event": "session_restart", "job": job, "jobs": r.jobs])
                 JobStore.shared.rescan()
                 done(.success(r.jobs.first))
