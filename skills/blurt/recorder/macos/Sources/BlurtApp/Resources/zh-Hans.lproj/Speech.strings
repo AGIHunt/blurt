@@ -9,7 +9,7 @@
 "speech.section.cloud" = "云端";
 "speech.section.advanced" = "高级";
 "speech.loading" = "正在检查这台 Mac…";
-"speech.error.read" = "读取语音模型失败。请确认已安装 uv（设置 → 通用）。";
+"speech.error.read" = "读取语音模型失败。请确认已安装 uv（在「设置」的「通用」里）。";
 "speech.cancel" = "取消";
 
 /* The machine and its tier */
@@ -22,14 +22,14 @@
 "speech.tier.standard" = "标准";
 "speech.tier.light" = "轻量";
 "speech.tier.minimal" = "基础";
-"speech.tier.pro.help" = "可以从容运行最准确的本地模型，并给其他应用留足余量。";
+"speech.tier.pro.help" = "可以从容运行最准确的本地模型，并给其他 App 留足余量。";
 "speech.tier.standard.help" = "可以运行准确的本地模型；需要快的场合用更轻的模型。";
-"speech.tier.light.help" = "使用小巧的模型，识别不会拖慢其他应用。";
+"speech.tier.light.help" = "使用小巧的模型，识别不会拖慢其他 App。";
 "speech.tier.minimal.help" = "这台电脑的本地识别能力有限，用云端服务效果更好。";
 
 /* Automatic choice and the three jobs */
 "speech.auto.title" = "按这台 Mac 自动选择模型";
-"speech.auto.detail" = "按你说的语言，选这台 Mac 能从容运行的最准确的模型，并给其他应用留出余量。";
+"speech.auto.detail" = "按你说的语言，选这台 Mac 能从容运行的最准确的模型，并给其他 App 留出余量。";
 "speech.purpose.batch" = "录屏";
 "speech.purpose.batch.detail" = "录完后转写，准确优先。";
 "speech.purpose.live" = "实时字幕";
@@ -84,20 +84,20 @@
 
 /* Resources */
 "speech.limits.threads" = "处理器线程";
-"speech.limits.threads.detail" = "共 %@ 核，其余留给其他应用。";
+"speech.limits.threads.detail" = "共 %@ 核，其余留给其他 App。";
 "speech.limits.concurrent" = "同时转写数";
 "speech.limits.concurrent.detail" = "更多录屏会排队等待。";
 "speech.limits.memory" = "GPU 内存";
 "speech.limits.memory.detail" = "语音模型最多使用 %@。";
 "speech.limits.battery" = "用电池时使用更轻的模型";
 "speech.limits.battery.detail" = "没接电源时，录屏改用更小的模型。";
-"speech.limits.footer" = "录屏以低优先级转写，其他应用保持流畅；实时字幕和语音备注以正常优先级运行。";
+"speech.limits.footer" = "录屏以低优先级转写，其他 App 保持流畅；实时字幕和语音备注以正常优先级运行。";
 
 /* Cloud */
 "speech.cloud.keys" = "口喷鸡不保存云端密钥：在 shell 配置文件（例如 ~/.zshrc）里 export 对应的变量，口喷鸡从那里读取。这里只显示是否已设置。";
 "speech.cloud.set" = "已设置密钥";
 "speech.cloud.not_set" = "未设置密钥";
-"speech.cloud.local_only" = "已打开「只用本地识别」（隐私），不会使用云端服务。";
+"speech.cloud.local_only" = "「隐私」里已关闭云端语音识别，这些密钥不会被使用。";
 
 /* Advanced */
 "speech.advanced.language" = "识别语言";

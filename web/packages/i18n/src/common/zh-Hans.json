@@ -57,7 +57,7 @@
   "job.type.agent": "Agent 会话",
   "job.step.capture": "采集",
   "job.step.finalize": "保存录屏",
-  "job.step.listen": "聆听",
+  "job.step.listen": "收音",
   "job.step.transcribe": "转写",
   "job.step.file": "归档",
   "job.step.prepare": "准备",

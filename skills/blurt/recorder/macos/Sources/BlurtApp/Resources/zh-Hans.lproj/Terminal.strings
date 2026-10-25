@@ -25,13 +25,12 @@
 "dispatch.model.default_named" = "默认（跟随 CLI 设置：%@）";
 "window.title" = "会话";
 "agent.you" = "你";
-"time.now" = "刚刚";
 
 /* 会话列表 */
 "list.new" = "新建会话…";
 "list.new.help" = "把一个项目里的条目交给 Claude Code 或 Codex，开一个新会话";
 "list.empty.title" = "还没有会话";
-"list.empty.body" = "交给 Agent 的任务会出现在这里，按项目分组。";
+"list.empty.body" = "交给 Agent 的条目会在这里以会话的形式运行，按项目分组。";
 "row.ready_to_review" = "可以查看改动";
 "session.items.more" = "%1$@ 等 %2$ld 条";
 
@@ -50,7 +49,7 @@
 "header.review.help" = "看看分支上改了什么，再选择合并、开 PR 或丢弃";
 "header.pop_out" = "在新窗口中打开";
 "header.reveal_folder" = "在访达中显示文件夹";
-"header.open_handoff" = "打开交接单";
+"header.open_handoff" = "打开交接说明";
 "header.more" = "更多";
 
 /* 结束会话 */
@@ -67,12 +66,11 @@
 "overlay.elsewhere.title" = "在另一个窗口中显示";
 "overlay.elsewhere.body" = "这个会话在口喷鸡里运行，正显示在另一个窗口中。";
 "overlay.pick" = "选择一个会话来查看它的终端。";
-"overlay.empty.title" = "Agent 在这里干活";
-"overlay.empty.body" = "把条目交给 Claude Code 或 Codex，每个会话都有自己的终端。你可以看着、随时接手打字，也可以走开——需要你的时候口喷鸡会提醒。";
+"overlay.empty.title" = "Agent 在这里工作";
+"overlay.empty.body" = "把条目交给 Claude Code 或 Codex，每个会话都有自己的终端。你可以看着它、在里面打字，也可以先去做别的，需要你的时候口喷鸡会提醒。";
 "overlay.ended.title" = "会话已结束";
-"overlay.ended.error" = "会话出错结束（退出码 %ld）";
-"overlay.ended.review_hint" = "Agent 在单独的分支上干活。查看改动后，可以合并、开 PR 或丢弃。";
-"overlay.ended.verify_hint" = "相关条目现在等你验证，确认没问题后标为已完成。";
+"overlay.ended.review_hint" = "Agent 在单独的分支上工作。查看改动后，可以合并、开 PR 或丢弃。";
+"overlay.ended.verify_hint" = "相关条目现在等你验证，确认没问题后标为完成。";
 "overlay.ended.unreported_hint" = "Agent 没有报告做完，条目还在进行中。看过之后，在条目上标为完成或收回。";
 
 /* 派发面板 */
@@ -80,7 +78,7 @@
 "dispatch.subtitle.none" = "选择要处理的条目";
 "dispatch.agent" = "Agent";
 "dispatch.agent.logged_out" = "%@（未登录）";
-"dispatch.agent.none" = "还没有装能跑会话的 Agent。装好 Claude Code 或 Codex 后，到「设置 → Agent」重新检查。";
+"dispatch.agent.none" = "还没有装能跑会话的 Agent。装好 Claude Code 或 Codex 后，到「设置」的「Agent」里重新检查。";
 "dispatch.mode" = "方式";
 "dispatch.mode.together" = "一起处理";
 "dispatch.mode.parallel" = "并行";
@@ -102,7 +100,7 @@
 "warning.concurrent_edit.continue" = "继续";
 "warning.no_git" = "这个文件夹不是 git 仓库，Agent 会直接在里面改。";
 "warning.no_tmux" = "没有安装 tmux：会话在口喷鸡里运行，退出口喷鸡就会结束。";
-"warning.draft_confirmed" = "其中还没审的条目会标为「要做」。";
+"warning.draft_confirmed" = "其中还没审核的条目会标为「要做」。";
 
 /* 收尾面板（worktree 的结果） */
 "finish.title" = "查看改动";
@@ -115,8 +113,8 @@
 "finish.end_and.merge" = "结束会话并合并";
 "finish.merge.help" = "合并进 %@，并删除 worktree";
 "finish.pr" = "开 PR";
-"finish.pr.help" = "推送分支并创建 pull request";
-"finish.keep" = "以后再说";
+"finish.pr.help" = "推送分支并创建 PR";
+"finish.keep" = "先保留";
 "finish.keep.help" = "分支和 worktree 原样保留";
 "finish.discard" = "丢弃";
 "finish.discard.confirm.title" = "丢弃这些改动？";
@@ -155,13 +153,13 @@
 "error.timeout" = "会话命令超时了。";
 "error.missing_dependency" = "这台 Mac 上缺少 tmux 或 git。";
 "error.no_sessions_cli" = "当前版本的口喷鸡 skill 还不支持会话，更新 skill 后再试。";
-"error.uv_missing" = "没有安装 uv，口喷鸡需要它来运行工具——见「设置 → 通用」。";
+"error.uv_missing" = "没有安装 uv，口喷鸡需要它来运行工具，设置助手可以帮你装。";
 "error.no_window" = "这个会话的终端窗口已经不在了。";
 "error.no_job" = "这个会话已经不存在。";
 "error.app_runner_lost" = "这个会话在口喷鸡里运行，口喷鸡退出时就结束了。";
 "error.needs_project" = "这些条目还没归到有文件夹的项目里，先把它们移到一个项目。";
-"error.mixed_projects" = "这些条目属于不同的项目，请一次交出一个项目的条目。";
-"error.deleted" = "已丢弃的条目不能交出。";
+"error.mixed_projects" = "这些条目属于不同的项目，请一次只把一个项目的条目交给 Agent。";
+"error.deleted" = "已丢弃的条目不能交给 Agent。";
 "error.bad_agent" = "这个 Agent 还不能用来跑会话。";
 "error.tmux" = "tmux 没能启动这个会话。";
 "error.git" = "git 没能准备好 worktree。";
@@ -185,7 +183,7 @@
 
 /* 设置 → Agent */
 "agents.header" = "Agent（按顺序使用）";
-"agents.footer" = "用于整理录屏、截图和语音备注，以及 AI 补全。拖动调整顺序：第一个能用的来干活，没登录或额度用完时自动换下一个。取消勾选的不会被用到。";
+"agents.footer" = "用于整理录屏、截图和语音备注，以及 AI 补全。拖动调整顺序：排在前面、能用的先用，没登录或额度用完时自动换下一个。取消勾选的不会被用到。";
 "agents.check_again" = "重新检查";
 "agents.drag" = "拖动排序";
 "agents.runs_first" = "当前首选";
@@ -214,14 +212,14 @@
 "agents.tmux.missing.detail" = "会话仍然可用，但在口喷鸡里运行，退出口喷鸡就会结束。";
 "agents.project_agent" = "%@ 的默认 Agent";
 "agents.project_agent.default" = "上面排第一的";
-"agents.project_agent.hint" = "交出这个项目的条目时默认用它，每次仍可另选。";
-"agents.move_up" = "往前挪";
+"agents.project_agent.hint" = "把这个项目的条目交给 Agent 时默认用它，每次仍可另选。";
+"agents.move_up" = "上移";
 "agents.connected" = "skill + MCP";
 "agents.connected.help" = "这个 Agent 里装好了 blurt skill 和 MCP：能查找、读取和更新你的条目。";
 "agents.not_connected.help" = "这个 Agent 里还没装 blurt skill 和 MCP。点「连接…」安装，装之前先列出要改的地方。";
 "agents.ask.header" = "可以这样跟 Agent 说";
 "agents.ask.footer" = "发到哪里，用的是 Agent 自己已有的工具：Slack、飞书、Linear、GitHub、邮件。口喷鸡给它条目；别人也要看时，再给一个交接包（一个带截图的 .zip）。";
-"agents.ask.1" = "把 A 模块的问题打包发给飞书群里的张三";
+"agents.ask.1" = "把结账页的问题打包，发到 Slack 的 #web 频道";
 "agents.ask.2" = "把这个项目要做的问题建到 Linear 里，带上截图";
 "agents.ask.3" = "修好 BA-12，改完标成待验证";
 "agents.ask.copy" = "复制";
@@ -277,7 +275,6 @@
 // dogfood v0.9 review: one wording per state; the watchdog
 "overlay.review.title" = "会话已结束 · 可以查看改动";
 "row.no_response" = "没有反应";
-"overlay.more" = "更多";
 // 在口喷鸡终端以外交给 Agent：Agent 的桌面端（Claude）
 "dispatch.run_in" = "会话";
 "dispatch.run_in.terminal" = "在口喷鸡终端运行（推荐）";
@@ -310,7 +307,7 @@
 "error.desktop_login" = "需要用 Claude 订阅账号登录 Claude Code。";
 "error.desktop_unsupported" = "这个 Agent 不能在桌面端继续。";
 "error.desktop_not_installed" = "没有安装 Claude Code。";
-"error.desktop_failed" = "桌面端没有接过这个对话，这里的 Agent 也已经停下。“重新开始会话”会在口喷鸡终端里为这些条目开一个新会话。";
+"error.desktop_failed" = "桌面端没有接过这个对话，这里的 Agent 也已经停下。「重新开始会话」会在口喷鸡终端里为这些条目开一个新会话。";
 "error.no_session_id" = "Agent 还没报告这是哪个对话，稍后再试。";
 "error.bad_runner" = "只有在口喷鸡终端里运行的会话才能这样做。";
 "dispatch.start.desktop" = "在 %@ 里打开";

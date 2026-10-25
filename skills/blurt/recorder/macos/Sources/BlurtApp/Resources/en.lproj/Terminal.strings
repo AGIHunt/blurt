@@ -25,13 +25,12 @@
 "dispatch.model.default_named" = "Default (the CLI’s setting: %@)";
 "window.title" = "Sessions";
 "agent.you" = "You";
-"time.now" = "now";
 
 /* Sessions list */
 "list.new" = "New Session…";
 "list.new.help" = "Hand items from a project to Claude Code or Codex in a new session";
 "list.empty.title" = "No sessions yet";
-"list.empty.body" = "Sessions you start from the inbox appear here, grouped by project.";
+"list.empty.body" = "Items you hand off to an agent run here as sessions, grouped by project.";
 "row.ready_to_review" = "Ready to review";
 "session.items.more" = "%1$@ and %2$ld more";
 
@@ -70,7 +69,6 @@
 "overlay.empty.title" = "Your agents work here";
 "overlay.empty.body" = "Hand items to Claude Code or Codex and each runs in its own terminal. Watch it, type into it, or step away — Blurt tells you when it needs you.";
 "overlay.ended.title" = "Session ended";
-"overlay.ended.error" = "Session ended with an error (exit %ld)";
 "overlay.ended.review_hint" = "The agent worked on its own branch. Review the changes to merge them, open a pull request or discard them.";
 "overlay.ended.verify_hint" = "Its items are now waiting for you to verify. Mark them done once you’ve checked.";
 "overlay.ended.unreported_hint" = "The agent didn’t report back, so its items are still in progress. Once you’ve looked, mark them done or take them back.";
@@ -79,8 +77,8 @@
 "dispatch.title" = "Hand Off to Agent";
 "dispatch.subtitle.none" = "Choose the items to work on";
 "dispatch.agent" = "Agent";
-"dispatch.agent.logged_out" = "%@ (not logged in)";
-"dispatch.agent.none" = "No agent that can run a session is installed. Install Claude Code or Codex, then check again in Settings → Agents.";
+"dispatch.agent.logged_out" = "%@ (not signed in)";
+"dispatch.agent.none" = "No agent that can run a session is installed. Install Claude Code or Codex, then check again in Settings, under Agents.";
 "dispatch.mode" = "Approach";
 "dispatch.mode.together" = "Together";
 "dispatch.mode.parallel" = "In Parallel";
@@ -155,13 +153,13 @@
 "error.timeout" = "The session command took too long.";
 "error.missing_dependency" = "tmux or git is missing on this Mac.";
 "error.no_sessions_cli" = "This version of the Blurt skill can’t run sessions yet. Update the skill, then try again.";
-"error.uv_missing" = "uv isn’t installed. Blurt needs it to run its tools — see Settings → General.";
+"error.uv_missing" = "uv isn’t installed. Blurt needs it to run its tools; the setup assistant can install it.";
 "error.no_window" = "The session’s terminal window is gone.";
 "error.no_job" = "This session no longer exists.";
 "error.app_runner_lost" = "This session ran inside Blurt and ended when Blurt quit.";
 "error.needs_project" = "These items aren’t in a project with a folder yet. Move them to a project first.";
 "error.mixed_projects" = "The items belong to different projects. Hand off one project at a time.";
-"error.deleted" = "Dropped items can’t be handed off.";
+"error.deleted" = "Discarded items can’t be handed off.";
 "error.bad_agent" = "That agent isn’t set up for sessions.";
 "error.tmux" = "tmux couldn’t start the session.";
 "error.git" = "git couldn’t prepare the worktree.";
@@ -268,8 +266,8 @@
 "error.commit" = "Committing the agent’s changes failed — a git hook may have refused them. Commit them in the worktree, then try again.";
 "error.has_changes" = "This session left changes. Review them first.";
 "error.already_dispatched" = "These items are already with a session that is still going.";
-"dispatch.logged_out" = "%@ isn’t logged in.";
-"dispatch.logged_out.fix" = "%1$@ isn’t logged in: %2$@.";
+"dispatch.logged_out" = "%@ isn’t signed in.";
+"dispatch.logged_out.fix" = "%1$@ isn’t signed in: %2$@.";
 "dispatch.use_agent" = "Use %@";
 "dispatch.checking_login" = "Checking sign-in…";
 "dispatch.open_session" = "Open Its Session";
@@ -277,7 +275,6 @@
 // dogfood v0.9 review: one wording per state; the watchdog
 "overlay.review.title" = "Session ended · ready to review";
 "row.no_response" = "No response";
-"overlay.more" = "More";
 // hand-offs outside Blurt's terminal: the agent's desktop app (Claude)
 "dispatch.run_in" = "Session";
 "dispatch.run_in.terminal" = "Run in Blurt’s terminal (recommended)";

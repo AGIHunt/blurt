@@ -176,6 +176,7 @@ final class MainModel {
                 self.onIndexState?()
                 self.reloadAll()
             case .failure(let e):
+                NSLog("blurt main window: index scan failed: %@", "\(e)")
                 self.indexState = before == .ready ? .ready : .failed("\(e)")
                 self.onIndexState?()
             }

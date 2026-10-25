@@ -13,7 +13,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个已转写完的录屏里的 live/audio.pcm</string>
+			<string>%ld 个已转写录屏的实时字幕音频</string>
 		</dict>
 	</dict>
 	<key>settings.privacy.sessions</key>

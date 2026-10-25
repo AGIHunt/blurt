@@ -9,7 +9,7 @@
 "speech.section.cloud" = "Cloud";
 "speech.section.advanced" = "Advanced";
 "speech.loading" = "Checking this Mac…";
-"speech.error.read" = "Couldn’t read the speech models. Check that uv is installed (Settings → General).";
+"speech.error.read" = "Couldn’t read the speech models. Check that uv is installed (in Settings, under General).";
 "speech.cancel" = "Cancel";
 
 /* The machine and its tier */
@@ -64,7 +64,7 @@
 "speech.note.whisper_turbo_q4" = "Nearly the same accuracy at a third of the size. Suits Macs with 8 GB of memory.";
 "speech.note.whisper_turbo_cpu" = "Whisper large-v3-turbo on an NVIDIA GPU.";
 "speech.note.qwen3_cpu" = "Thirty languages on the processor, on any computer.";
-"speech.note.qwen3_mlx" = "Fast on the GPU, and it can be told your own words. Recommended for dictation on Macs with 16–24 GB.";
+"speech.note.qwen3_mlx" = "Fast on the GPU, and it uses your Words. Recommended for dictation on Macs with 16–24 GB.";
 "speech.note.qwen3_mlx_17" = "The larger Qwen3-ASR: fewer mistakes on names and in a noisy room, about 25 ms slower per sentence, 3 GB of memory. Recommended for dictation on Macs with 32 GB or more.";
 "speech.note.cloud" = "Runs in the cloud with your own key.";
 
@@ -97,7 +97,7 @@
 "speech.cloud.keys" = "Cloud keys aren’t stored in Blurt. Export the variable in your shell profile (for example ~/.zshrc) and Blurt reads it from there. This list only shows whether each one is set.";
 "speech.cloud.set" = "Key set";
 "speech.cloud.not_set" = "No key";
-"speech.cloud.local_only" = "Local-only recognition is on (Privacy), so cloud services aren’t used.";
+"speech.cloud.local_only" = "Cloud speech recognition is turned off in Privacy, so these keys aren’t used.";
 
 /* Advanced */
 "speech.advanced.language" = "Recognition language";
@@ -119,6 +119,6 @@
 "speech.dictation.use" = "Use";
 "speech.dictation.failed" = "Download failed";
 "speech.dictation.progress" = "%1$@ of %2$@";
-"speech.dictation.no_words" = "can’t take your words";
+"speech.dictation.no_words" = "doesn’t use your Words";
 "speech.dictation.footer" = "Both run on this Mac. Nothing is downloaded until you click Download.";
 "speech.download.queued" = "Queued";

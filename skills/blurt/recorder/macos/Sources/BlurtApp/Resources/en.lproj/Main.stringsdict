@@ -317,9 +317,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>The recording couldn’t be saved · its still and notes are kept</string>
+			<string>The recording couldn’t be saved · its snap and notes are kept</string>
 			<key>other</key>
-			<string>The recording couldn’t be saved · its %ld stills and notes are kept</string>
+			<string>The recording couldn’t be saved · its %ld snaps and notes are kept</string>
 		</dict>
 	</dict>
 </dict>

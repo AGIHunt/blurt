@@ -5,16 +5,16 @@
 "app.agent.list_sep" = ", ";
 "app.agent.can_be_used" = " can’t be used";
 "app.agent.checking" = "checking…";
-"app.agent.configured_can_verify_advance" = "configured (can’t verify in advance)";
+"app.agent.configured_can_verify_advance" = "set up (can’t be checked in advance)";
 "app.agent.failed" = "failed";
 "app.agent.isn_installed" = " isn’t installed";
-"app.agent.isn_logged" = " isn’t logged in";
-"app.agent.logged" = "logged in";
-"app.agent.login_unknown_will_just" = "login unknown — will just try";
+"app.agent.isn_logged" = " isn’t signed in";
+"app.agent.logged" = "signed in";
+"app.agent.login_unknown_will_just" = "sign-in not checked — will try anyway";
 "app.agent.none_short" = "No agent available";
 "app.agent.not_installed" = "not installed";
-"app.agent.not_logged" = "not logged in";
-"app.agent.unfinished" = "%@ stopped before it finished (exit %ld)";
+"app.agent.not_logged" = "not signed in";
+"app.agent.unfinished" = "%@ stopped before it finished";
 
 "app.menu.after.keep" = "Just keep the video";
 "app.menu.after.organize" = "Organize into items";
@@ -26,7 +26,7 @@
 "app.menu.open" = "Open Blurt";
 "app.menu.pause" = "Pause";
 "app.menu.project" = "Current Project: %@";
-"app.menu.project.none_tip" = "No current project: recordings go to Unassigned, snaps and voice notes hang as cards";
+"app.menu.project.none_tip" = "No current project: recordings go to Unassigned, snaps and voice notes stay as cards under the notch";
 "app.menu.quit" = "Quit Blurt";
 "app.menu.record" = "Start Recording";
 "app.menu.record_last" = "Record the Last Area";
@@ -49,26 +49,25 @@
 "app.toast.saved" = "Recording saved (%@)";
 "app.toast.welcome" = "Blurt is in the menu bar · %1$@ to dictate · %2$@ to snap";
 
-"app.url.no_item" = "That item isn’t in the index (%@)";
+"app.url.no_item" = "Can’t find that item (%@)";
 "app.url.no_session" = "That recording or snap is gone: %@";
 
 "main.action.record" = "Record";
 "main.action.snap" = "Snap";
 
 "main.banner.agent" = "an agent";
-"main.banner.ended" = "Session ended without reporting back";
+"main.banner.ended" = "Session ended without the agent reporting back";
 "main.banner.external" = "Copied to your agent. Mark it done when it is.";
 "main.banner.open_session" = "Open Session";
 "main.banner.organizing" = "Still being organized · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.with_agent" = "Handed off to %@ · %@";
-"main.banner.handed_off" = "Handed off to %@";
 
 "main.captures.show" = "Show under the notch";
-"main.captures.tip" = "Cards hanging under the notch, waiting for a project: click to bring them all down";
+"main.captures.tip" = "Cards under the notch that aren’t in a project yet. Click to show them all.";
 "main.captures.taken" = "Recently dragged out: %ld";
 "main.captures.taken.show" = "Show";
-"main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back";
+"main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back under the notch";
 "main.cmd.copy_full" = "Copy Full Text";
 "main.cmd.copy_instruction" = "Copy Instruction";
 
@@ -87,14 +86,8 @@
 "main.detail.none.detail" = "Pick an item on the left · J / K to move, Space to preview";
 "main.detail.parse_error" = "This item’s file can’t be read";
 
-"main.dispatch.concurrent" = "Another session is already changing files in %@. Editing the same files at the same time can cause conflicts — a separate branch keeps them apart.";
-"main.dispatch.concurrent.title" = "Work on a separate branch this time?";
-"main.dispatch.failed" = "Couldn’t start the session";
 "main.dispatch.needs_project" = "Move these items to a project first";
-"main.dispatch.needs_project.detail" = "An agent needs the project’s folder to work in. Use Move to Project, then hand them off.";
 "main.dispatch.one_project" = "Choose items from one project";
-"main.dispatch.one_project.detail" = "An agent session works in one project folder. Hand these off per project.";
-"main.dispatch.use_worktree" = "Use a Separate Branch";
 
 "main.empty.all_filed" = "Everything is filed";
 "main.empty.all_filed.detail" = "Items without a project wait here until you move them to one.";
@@ -116,12 +109,13 @@
 "main.empty.nothing_in_progress" = "Nothing in progress";
 "main.empty.nothing_in_progress.detail" = "Items you hand to an agent show up here until you’ve checked them.";
 "main.empty.outdated" = "The index needs a rebuild";
-"main.empty.outdated.detail" = "This version of Blurt keeps items as Markdown files. Rebuilding takes a moment; nothing is lost.";
+"main.empty.outdated.detail" = "This version of Blurt stores items differently. Rebuilding takes a moment, and nothing is lost.";
 "main.empty.project" = "Nothing in this project yet";
 "main.empty.project.detail" = "Make it the current project and talk through it: record your screen (%@) or snap a few shots (%@).";
 "main.empty.rebuild" = "Rebuild";
 "main.empty.scan" = "Build the Index";
 "main.empty.scan_failed" = "The scan failed";
+"main.empty.scan_failed.detail" = "Try again. If it keeps failing, the details are in the log.";
 "main.empty.scanning" = "Scanning your items…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
 "main.empty.show_item" = "Show %@";
@@ -137,7 +131,7 @@
 "main.error.key_in_use" = "The key can’t change once the project has items.";
 "main.error.key_taken" = "Another project already uses that key.";
 "main.error.needs_project" = "Move the items to a project first.";
-"main.error.no_scripts" = "This needs the blurt skill’s scripts and uv. Run record.py build once, or reinstall the skill.";
+"main.error.no_scripts" = "This needs the Blurt skill and uv. Reinstall the skill (npx skills add AGIHunt/blurt), then try again.";
 "main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
 "main.error.not_found" = "Blurt can’t find that any more.";
 "main.error.no_project" = "That project isn’t in Blurt any more.";
@@ -178,8 +172,8 @@
 "main.inbox.verify" = "%ld to verify";
 "main.item.untitled" = "Untitled";
 
-"main.job.error.auth" = "The agent isn’t logged in.";
-"main.job.error.auth.named" = "%@ isn’t logged in.";
+"main.job.error.auth" = "The agent isn’t signed in.";
+"main.job.error.auth.named" = "%@ isn’t signed in.";
 "main.job.error.conflict" = "The changes conflict with yours.";
 "main.job.error.git" = "Git couldn’t finish.";
 "main.job.error.model" = "The model isn’t available.";
@@ -191,7 +185,6 @@
 "main.job.hint.interrupted" = "Blurt quit before this finished. Retry to run it again.";
 "main.job.no_terminal" = "The terminal isn’t available";
 "main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
-"main.job.open_terminal_app" = "Open in Terminal";
 "main.job.show_log" = "Show Log";
 "main.job.skipped" = "skipped";
 "main.job.step_state.done" = "done";
@@ -199,7 +192,6 @@
 "main.job.step_state.pending" = "not started";
 "main.job.step_state.running" = "in progress";
 "main.job.step_state.skipped" = "skipped";
-"main.job.stop" = "Stop";
 
 "main.keys.back" = "Send back · take back · reopen · restore";
 "main.keys.kind" = "Kind: issue, idea, note, task";
@@ -247,7 +239,7 @@
 "main.menu.start_session" = "Hand Off to Agent";
 "main.menu.open_session" = "Open Session";
 
-"main.misc.by_codex" = "by codex";
+"main.misc.by_codex" = "Fixed by Codex";
 "main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
 "main.misc.fixed" = " · fixed";
 "main.misc.idea" = "Idea";
@@ -290,7 +282,6 @@
 "main.project.removed" = "Removed “%@” from Blurt — the folder and its items stay where they are";
 "main.project.rename" = "Rename";
 "main.project.rename.undo_name" = "Rename Project";
-"main.project.rename.empty" = "A project needs a name";
 "main.project.reorder.undo_name" = "Reorder Projects";
 "main.project.save_failed" = "Couldn’t save the project";
 "main.project.use_failed" = "Couldn’t switch the project";
@@ -338,7 +329,7 @@
 "main.toolbar.move" = "Move";
 "main.toolbar.move.tip" = "Move the selected items to a project";
 "main.toolbar.record.tip" = "Record your screen and voice %@";
-"main.toolbar.snap.tip" = "Snap a shot and say a word %@";
+"main.toolbar.snap.tip" = "Snap an area and add a note %@";
 
 "main.window.label" = "Blurt";
 
@@ -400,7 +391,7 @@
 
 "notify.done.generic" = "Organized";
 "notify.done.recording" = "Recording organized";
-"notify.done.snaps" = "Captures organized";
+"notify.done.snaps" = "Snaps organized";
 
 "notify.failed" = "%@ didn’t finish";
 
@@ -413,14 +404,13 @@
 "main.dictation.today" = "Today";
 "main.dictation.today.none" = "Nothing dictated today yet";
 "main.dictation.stat.saved" = "about %ld min saved";
-"main.dictation.stat.saved.tip" = "Compared with typing the same text at about 40 words a minute";
+"main.dictation.stat.saved.tip" = "Compared with typing it at about 40 English words or 50 Chinese characters a minute, minus the time you spent talking";
 "main.dictation.settings" = "Dictation Settings…";
 "main.dictation.off" = "Dictation is off";
 "main.dictation.off.detail" = "Turn it on in Settings, under Dictation.";
-"main.dictation.deaf.short" = "Dictation can’t hear its key yet";
 "main.dictation.ready" = "Dictation is on";
 "main.dictation.unknown_app" = "Unknown app";
-"main.dictation.mark.terms" = "Terms applied: %@";
+"main.dictation.mark.terms" = "Words used: %@";
 "main.dictation.mode.label" = "Show";
 "main.dictation.mode.polished" = "Polished";
 "main.dictation.mode.raw" = "As Heard";
@@ -456,13 +446,11 @@
 "main.dictation.info.polish.off" = "Off";
 "main.dictation.info.asr" = "Speech model";
 "main.dictation.info.language" = "Language";
-"main.dictation.info.terms" = "Terms applied";
+"main.dictation.info.terms" = "Words used";
 "main.dictation.info.context" = "Context";
 "main.dictation.info.context.yes" = "Used";
 "main.dictation.none" = "No dictation selected";
 "main.dictation.none.detail" = "Pick one on the left. ↑↓ to move, ⌘C to copy, ⌫ to delete.";
-"main.dictation.none.empty" = "Nothing here yet";
-"main.dictation.none.empty.detail" = "Each dictation shows here: what was typed, what was heard, and where it went.";
 "main.dictation.copy_all" = "Copy All";
 
 /* The Dictation page's detail: what polish did */
@@ -513,5 +501,5 @@
 "main.banner.no_response" = "No response for a minute";
 "main.banner.more" = "More";
 // the agent's desktop app (Claude)
-"main.banner.desktop" = "In %@ desktop · progress comes from the agent";
+"main.banner.desktop" = "In the %@ desktop app · the agent reports progress";
 "main.banner.go_desktop" = "Go to %@";

@@ -13,9 +13,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>live/audio.pcm in %ld transcribed recording</string>
+			<string>Live-caption audio from %ld transcribed recording</string>
 			<key>other</key>
-			<string>live/audio.pcm in %ld transcribed recordings</string>
+			<string>Live-caption audio from %ld transcribed recordings</string>
 		</dict>
 	</dict>
 	<key>settings.privacy.sessions</key>

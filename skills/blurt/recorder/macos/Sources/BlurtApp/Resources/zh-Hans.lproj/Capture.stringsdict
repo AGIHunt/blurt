@@ -24,13 +24,13 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>复制全部 %d 张挂着的卡片</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>复制全部 %d 张卡片</string></dict>
   </dict>
   <key>capture.island.cards_waiting</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张卡片未归类</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张未归类的卡片</string></dict>
   </dict>
   <key>capture.island.to_review</key>
   <dict>
@@ -42,7 +42,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>显示 %d 张挂着的卡片</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>显示 %d 张卡片</string></dict>
   </dict>
   <key>capture.taken.days_left</key>
   <dict>
@@ -84,7 +84,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张图 + 文已粘贴</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 张图片和备注已粘贴</string></dict>
   </dict>
   <key>capture.card.deleted_n</key>
   <dict>
@@ -102,7 +102,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>挂着的卡片（%d）</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>卡片（%d）</string></dict>
   </dict>
   <key>capture.card.move_n</key>
   <dict>
@@ -126,7 +126,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>把挂着的 %d 张卡片整理到未归类（调用一次 AI，附上建议的项目）</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>把这 %d 张卡片整理到未归类（调用一次 AI，附上建议的项目）</string></dict>
   </dict>
 </dict>
 </plist>

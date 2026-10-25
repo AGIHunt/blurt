@@ -24,13 +24,13 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Copy the Hanging Card</string><key>other</key><string>Copy All %d Hanging Cards</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Copy the Card</string><key>other</key><string>Copy All %d Cards</string></dict>
   </dict>
   <key>capture.island.cards_waiting</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 capture waiting</string><key>other</key><string>%d captures waiting</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 unfiled card</string><key>other</key><string>%d unfiled cards</string></dict>
   </dict>
   <key>capture.island.to_review</key>
   <dict>
@@ -42,7 +42,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the Hanging Card</string><key>other</key><string>Show %d Hanging Cards</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the Card</string><key>other</key><string>Show %d Cards</string></dict>
   </dict>
   <key>capture.taken.days_left</key>
   <dict>
@@ -84,7 +84,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Picture + text pasted</string><key>other</key><string>%d pictures + text pasted</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Picture and note pasted</string><key>other</key><string>%d pictures and notes pasted</string></dict>
   </dict>
   <key>capture.card.deleted_n</key>
   <dict>
@@ -102,7 +102,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Hanging Card</string><key>other</key><string>Hanging Cards (%d)</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Card</string><key>other</key><string>Cards (%d)</string></dict>
   </dict>
   <key>capture.card.move_n</key>
   <dict>
@@ -126,7 +126,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the waiting card into Unassigned — one AI run, with a project suggested</string><key>other</key><string>Organize the %d waiting cards into Unassigned — one AI run, each with a project suggested</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the card into Unassigned (uses AI once), with a suggested project</string><key>other</key><string>Organize the %d cards into Unassigned (uses AI once), each with a suggested project</string></dict>
   </dict>
 </dict>
 </plist>

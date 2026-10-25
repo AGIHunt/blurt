@@ -15,14 +15,12 @@
 
 "onboarding.skip_setup" = "Skip Setup";
 
-"onboarding.step" = "Step %@ · ";
 
 "onboarding.welcome_blurt" = "Welcome to Blurt";
 
 
 "settings.general.after_recording" = "After a recording";
 "settings.general.app" = "App";
-"settings.general.assistant" = "Run the Setup Assistant Again…";
 "settings.general.capture_into" = "Snaps and voice notes go to";
 "settings.general.language" = "Language";
 "settings.general.language.restart" = "Takes effect the next time Blurt opens.";
@@ -35,57 +33,49 @@
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.system_audio" = "Also record system audio";
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
-"settings.general.collect.hint" = "On: screenshots taken with macOS’s own shortcuts hang as cards too.";
+"settings.general.collect.hint" = "On: screenshots taken with macOS’s own shortcuts become cards too.";
 "settings.general.drag_copy_note" = "If the note didn’t go in with a drop, copy it";
-"settings.general.drag_copy_note.hint" = "When Blurt can’t paste the note after the picture (no Accessibility, the setting above off, the app didn’t come forward, or it was the Finder), the note goes on the clipboard so ⌘V pastes it. This replaces what’s on the clipboard; Undo in the island puts it back.";
+"settings.general.drag_copy_note.hint" = "When Blurt can’t paste the note after the picture (no Accessibility, the setting above off, the app didn’t come forward, or it was the Finder), the note goes on the clipboard so ⌘V pastes it. This replaces what’s on the clipboard; Undo under the notch puts it back.";
 "settings.general.drag_note_file.hint" = "A card dragged into a chat app or the Finder also brings its note as a small Markdown file (Screenshot-153012-note.md). Terminals always get that file’s path, so Claude Code or Codex can read the note.";
 "settings.general.drag_note_file" = "Also attach the note as a .md file";
 "settings.general.drag_caption" = "Add the note under the picture when dragging";
 "settings.general.drag_caption.hint" = "On: the dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The snap itself stays clean.";
 "settings.general.smart_paste" = "Chat apps: the picture, then the note";
-"settings.general.smart_paste.hint" = "Browsers, Claude, Feishu, Slack, WeChat, QQ and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go; terminals and the Finder are left as they are. Needs Accessibility.";
+"settings.general.smart_paste.hint" = "Browsers, Claude, ChatGPT, Slack, Feishu, WeChat and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go; terminals and the Finder are left as they are. Needs Accessibility.";
 "settings.general.about" = "About";
 "settings.general.version" = "Version";
 "settings.general.help" = "User Guide";
 
-"settings.kit.accessibility" = "Accessibility";
 "settings.kit.agents" = "Agents";
 "settings.kit.allow" = "Allow…";
 "settings.kit.allowed" = "Allowed";
 "settings.kit.conflicts_are_checked_three" = "Blurt tells you when a shortcut clashes with another Blurt action, a macOS shortcut or another app. Changes apply at once.";
 "settings.kit.copy" = "Copy";
 "settings.kit.general" = "General";
-"settings.kit.hold_pen_reads_modifier" = "Pastes dictated text, and lets you hold ⌃ to draw";
-"settings.kit.input_monitoring" = "Input Monitoring";
-"settings.kit.microphone" = "Microphone";
-"settings.kit.needed_record_snap" = "Needed to record and to snap";
 "settings.kit.not_allowed" = "Turned off";
 "settings.kit.not_set" = "Not set";
 "settings.kit.privacy" = "Privacy";
-"settings.kit.screen_recording" = "Screen Recording";
 "settings.kit.shortcuts" = "Shortcuts";
 "settings.kit.speech" = "Speech";
 "settings.kit.storage" = "Storage";
 "settings.kit.system_settings" = "System Settings…";
-"settings.kit.your_narration_recording_works" = "Your narration; recording works without it, just silent";
 
 "settings.privacy.agent_runs" = "Agent runs";
-"settings.privacy.audio_never_goes_cloud" = "Audio never goes to a cloud recognition service. Processing and fixing are done by the agent you chose, under its own terms.";
+"settings.privacy.audio_never_goes_cloud" = "On: audio never goes to a cloud recognition service. Organizing and fixing are done by the agent you chose, under its own terms.";
 "settings.privacy.benchmark_samples" = "Benchmark samples";
 "settings.privacy.blurt_own_files" = "Blurt’s own files";
 "settings.privacy.build_cache" = "Build cache";
 "settings.privacy.cancel" = "Cancel";
 "settings.privacy.clean_up" = "Clean up";
 "settings.privacy.data" = "Data";
-"settings.privacy.deleted_by_default_once" = "Off: deleted once the transcript exists — recording.mp4 has the same audio.";
+"settings.privacy.deleted_by_default_once" = "Off: deleted once it is transcribed. The video has the same sound.";
 "settings.privacy.freed" = "Freed ";
 "settings.privacy.index_can_be_deleted" = "The index can be rebuilt any time.";
 "settings.privacy.items_appear_spotlight" = "Items appear in Spotlight";
-"settings.privacy.keep_raw_live_caption" = "Keep the raw live-caption audio (live/audio.pcm)";
+"settings.privacy.keep_raw_live_caption" = "Keep the raw audio from live captions";
 "settings.privacy.local_speech_recognition_only" = "Never use cloud speech recognition";
 "settings.privacy.macos_applies_screen_recording" = "macOS applies a Screen Recording change after Blurt restarts.";
 "settings.privacy.move_trash" = "Move to Trash";
-"settings.privacy.move_trash_2" = "Move to the Trash?";
 "settings.privacy.no_recordings" = "No recordings or snaps yet";
 "settings.privacy.permissions_live" = "Permissions";
 "settings.privacy.prompts" = "Prompts";
@@ -141,9 +131,9 @@
 "settings.general.voice_end_on_pause" = "End a voice note when I pause";
 "settings.general.voice_end_on_pause.hint" = "Off: a voice note (⌥⇧V) goes on through your thinking pauses until you press the key again or click Done, up to 10 minutes; Esc cancels. On: 1.5 seconds of silence ends it. A screenshot’s spoken note always ends when you pause.";
 "settings.general.live_text" = "Show text while I talk";
-"settings.general.live_text.hint" = "While a voice note or a dictation listens, the words recognized so far show in a small panel under the island, the newest fading in. It never takes the focus, moves out of the way of where you type, and is never recorded.";
+"settings.general.live_text.hint" = "While a voice note or a dictation listens, the words recognized so far show in a small panel under the notch, the newest fading in. It never takes the focus, moves out of the way of where you type, and never shows up in a screen recording.";
 
-"onboarding.subtitle" = "Dictate anywhere with %@, snap and leave voice notes as cards, record and let an Agent fix it.";
+"onboarding.subtitle" = "Dictate in any app with %@. Snaps and voice notes become cards you can drag into your agent’s chat. Recordings become items for your agent.";
 "onboarding.use.dictation" = "Dictation";
 "onboarding.use.snap" = "Snap";
 "onboarding.use.voice" = "Voice Note";
@@ -179,7 +169,6 @@
 "onboarding.try.placeholder" = "Your words appear here";
 "onboarding.try.works" = "Dictation works.";
 "onboarding.try.needs_permissions" = "Dictation needs its permissions first.";
-"onboarding.try.downloading" = "The models are still downloading. Try it once they’re in.";
 "onboarding.login.detail" = "So the dictation key always works.";
 "onboarding.try.asr_downloading" = "The speech model is still downloading. Try it once it’s in.";
 "onboarding.try.no_model" = "Dictation needs its speech model first.";
@@ -214,7 +203,6 @@
 "settings.storage.videos.never" = "Never";
 "settings.storage.videos.after" = "After %ld days";
 "settings.storage.videos.footer" = "Only the video goes, to the Trash. Items, frames and transcripts stay.";
-"settings.storage.videos.confirm_title" = "Move these videos to the Trash?";
 "settings.storage.videos.confirm" = "Their items, frames and transcripts stay.";
 "settings.storage.videos.freed" = "Moved %@ of videos to the Trash";
 "settings.storage.videos.auto_confirm_title" = "Delete videos after %ld days?";
@@ -238,7 +226,7 @@
 "settings.general.section.developer" = "Advanced";
 "settings.general.login.detail" = "Dictation and the shortcuts work only while Blurt runs.";
 "settings.general.voice_end_on_pause.detail" = "Off: a voice note runs until you press its key again or click Done. On: 1.5 seconds of silence ends it.";
-"settings.general.live_text.detail" = "The words heard so far, in a small panel under the island. Never recorded.";
+"settings.general.live_text.detail" = "The words heard so far, in a small panel under the notch. Never recorded.";
 "settings.general.smart_paste.detail" = "A card dragged into a chat app drops its picture, then Blurt pastes the note. Needs Accessibility.";
 "settings.general.drag_copy_note.detail" = "When the note can’t follow the picture, it goes on the clipboard for ⌘V.";
 "settings.general.drag_note_file.detail" = "Chat apps and the Finder also get the note as a small Markdown file.";

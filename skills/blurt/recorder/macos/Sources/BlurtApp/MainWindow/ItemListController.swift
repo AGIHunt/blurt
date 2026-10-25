@@ -813,7 +813,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         case "no_match": empty.show(symbol: nil, mark: true, title: T("main.empty.no_match"), message: "", buttons: [(T("main.empty.clear_filters"), 2)])
         case "no_index": empty.show(symbol: nil, mark: true, title: T("main.empty.no_index"), message: T("main.empty.no_index.detail"), buttons: [(T("main.empty.scan"), 1)])
         case "outdated": empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"), buttons: [(T("main.empty.rebuild"), 1)])
-        case "failed": empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: "index.py scan: exit 1", buttons: [(T("action.retry"), 1)])
+        case "failed": empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: T("main.empty.scan_failed.detail"), buttons: [(T("action.retry"), 1)])
         case "missing": empty.show(symbol: "questionmark.folder", title: T("main.missing.title"), message: T("main.missing.detail_empty"), buttons: [(T("main.missing.locate"), 7)])
         case "scanning": empty.show(symbol: nil, title: T("main.empty.scanning"), message: "", busy: true)
         case "discarded":
@@ -841,8 +841,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             empty.show(symbol: nil, mark: true, title: T("main.empty.outdated"), message: T("main.empty.outdated.detail"),
                        buttons: [(T("main.empty.rebuild"), 1)])
             return
-        case .failed(let e):
-            empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: e, buttons: [(T("action.retry"), 1)])
+        case .failed:
+            empty.show(symbol: "exclamationmark.triangle", title: T("main.empty.scan_failed"), message: T("main.empty.scan_failed.detail"), buttons: [(T("action.retry"), 1)])
             return
         case .ready: break
         }

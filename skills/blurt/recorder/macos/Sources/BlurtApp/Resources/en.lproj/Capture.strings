@@ -1,6 +1,6 @@
 /* Capture (P5): the island and its hanging cards, voice input, snaps, the picker, shortcuts */
 
-"capture.action.cards" = "Show hanging cards";
+"capture.action.cards" = "Show cards";
 "capture.action.main" = "Open the Blurt window";
 "capture.action.marker" = "Marker (also snaps)";
 "capture.action.menu" = "Open the menu";
@@ -35,7 +35,7 @@
 "capture.card.deleted" = "Deleted";
 "capture.card.first_hint" = "Click to copy, or drag into any app";
 "capture.cards.ax" = "Cards waiting for a project";
-"capture.cards.none" = "No cards waiting";
+"capture.cards.none" = "No cards";
 "capture.change" = "Change";
 "capture.countdown.finish" = "finish";
 "capture.countdown.pause" = "pause / resume";
@@ -46,7 +46,7 @@
 "capture.drawer.inbox_sub" = "File it now, pick a project later";
 "capture.drawer.more" = "More…";
 "capture.drawer.no_projects" = "No projects yet — open a folder and it becomes one.";
-"capture.drawer.none_sub" = "Recordings go to Unassigned; snaps hang as cards";
+"capture.drawer.none_sub" = "Recordings go to Unassigned; snaps stay as cards under the notch";
 "capture.drawer.open_failed" = "Couldn’t open that folder as a project";
 "capture.drawer.open_message" = "Pick a folder. Its items are kept in a .blurt folder inside it, never committed to git.";
 "capture.drawer.open_prompt" = "Open";
@@ -57,7 +57,7 @@
 "capture.hotkey.tip" = " (%@)";
 "capture.island.ax" = "Blurt notch";
 "capture.island.organize" = "Organize";
-"capture.island.organize_tip" = "Organize the waiting cards into %@ — one AI run";
+"capture.island.organize_tip" = "Organize these cards into %@ (uses AI once)";
 "capture.island.project_ax" = "Current project: %@";
 "capture.island.record" = "Record";
 "capture.island.snap" = "Snap";
@@ -66,12 +66,12 @@
 "capture.island.voice" = "Voice note";
 "capture.keys.anytime" = "Anytime";
 "capture.keys.bad_key" = "That key can’t be used";
-"capture.keys.change_it" = " · change it in Settings → Shortcuts";
+"capture.keys.change_it" = " · change it in Settings, under Shortcuts";
 "capture.keys.control" = "⌃ Control";
 "capture.keys.dictation_change" = "Change in Dictation…";
 "capture.keys.draw_note" = "Hold it and drag to circle things while recording";
 "capture.keys.duplicate" = "Same as “%@” — not active";
-"capture.keys.failed" = "Couldn’t register it (%@) — probably taken";
+"capture.keys.failed" = "Can’t use this shortcut (%@). Another app may have it.";
 "capture.keys.fn" = "fn";
 "capture.keys.hint" = "Click (or press Space), then the new keys · Esc cancels · ⌫ removes it";
 "capture.keys.hold_draw" = "Hold to draw";
@@ -85,9 +85,8 @@
 "capture.keys.taken" = "Taken by another Blurt (pid %@)";
 "capture.keys.taken_or_twice" = "taken by another app or used twice";
 "capture.keys.title" = "Shortcuts";
-"capture.keys.turn_off" = "Turn this shortcut off";
 "capture.keys.type" = "Type a shortcut…";
-"capture.keys.unreadable" = "Couldn’t read “%@” in the config — using the default";
+"capture.keys.unreadable" = "Couldn’t read “%@” in the settings file, so the default is used";
 "capture.keys.while_recording" = "While recording";
 "capture.keys.why" = "%1$@: %2$@";
 "capture.keys.wont_work" = "Shortcut %@ won’t work";
@@ -123,15 +122,13 @@
 "capture.note.save_discard" = "⏎ save · Esc discard";
 "capture.note.saved" = "Saved";
 "capture.note.undo" = "Undo the last stroke (⌘Z)";
-"capture.note.voice_busy" = "The voice note is listening · type a note · ⏎ save";
+"capture.note.voice_busy" = "A voice note is recording · type a note · ⏎ save";
 "capture.note.done" = "Done";
 "capture.note.done_tip" = "Done (⏎)";
 "capture.note.done_discard" = "⏎ done · Esc discard";
 "capture.note.done_clear" = "⏎ done · Esc clears the text";
 "capture.note.listening_done" = "pause to finish · ⏎ now";
-"capture.note.no_mic_done" = "Mic unavailable · ⏎ done · Esc discard";
-"capture.note.mic_gone_done" = "Mic disconnected · type a note · ⏎ done";
-"capture.note.voice_busy_done" = "The voice note is listening · type a note · ⏎ done";
+"capture.note.voice_busy_done" = "A voice note is recording · type a note · ⏎ done";
 "capture.note.chip_tip" = "Where this capture goes (Tab)";
 "capture.peck.done_one" = "Done: %@";
 "capture.peck.verify_one" = "Ready to verify: %@";
@@ -150,7 +147,7 @@
 "capture.rec.discard_q" = "Discard this recording?";
 "capture.rec.discard_tip" = "Discard or restart…";
 "capture.rec.finish" = "Finish";
-"capture.rec.finish_tip" = "Stop and process";
+"capture.rec.finish_tip" = "Stop and organize";
 "capture.rec.keep" = "Keep Recording";
 "capture.rec.mic_level" = "Microphone level";
 "capture.rec.pause" = "Pause";
@@ -164,7 +161,7 @@
 "capture.rec.snap_note" = "Snap and add a note (pauses)";
 "capture.recording.filed" = "Filed to %@";
 "capture.retry" = "Retry";
-"capture.service.added" = "Added to the inbox: %@";
+"capture.service.added" = "Added to the Inbox: %@";
 "capture.service.empty" = "Nothing to add: select text or an image";
 "capture.service.failed" = "Couldn’t add it: %@";
 "capture.service.image" = "Image";
@@ -182,11 +179,11 @@
 "capture.taken_out_files_note" = "Dragged out · picture and note file · ⌘V to paste the note";
 "capture.taken_out_picture" = "Dragged out · picture";
 "capture.taken_out_picture_note" = "Dragged out · picture · ⌘V to paste the note";
-"capture.smart_paste.done" = "Picture + text pasted";
+"capture.smart_paste.done" = "Picture and note pasted";
 "capture.file.shot" = "Screenshot";
 "capture.file.note" = "note";
 "capture.taken.title" = "Recently Dragged Out";
-"capture.taken.hint" = "Cards you dragged into other apps stay here for 7 days. Drag one out again, copy it, or hang it back on the notch.";
+"capture.taken.hint" = "Cards you dragged into other apps stay here for 7 days. Drag one out again, copy it, or put it back under the notch.";
 "capture.taken.empty" = "Nothing dragged out in the last 7 days";
 "capture.taken.menu" = "Recently Dragged Out (%d)";
 "capture.taken.show_all" = "Show All…";
@@ -195,7 +192,7 @@
 "capture.taken.copy" = "Copy";
 "capture.taken.copy_note" = "Copy Note";
 "capture.taken.more" = "More";
-"capture.taken.put_back" = "Hang Back on the Notch";
+"capture.taken.put_back" = "Put Back Under the Notch";
 "capture.taken.when" = "Dragged out %@";
 "capture.undo" = "Undo";
 "capture.voice.card_empty" = "Voice note · %@";
@@ -206,15 +203,14 @@
 "capture.voice.mic_lost" = "The microphone disconnected — what was said is kept";
 "capture.voice.mic_gone" = "The microphone disconnected";
 "capture.voice.mic_settings" = "Open Settings";
-"capture.voice.goes_card" = "Waits on a card until you pick a project";
+"capture.voice.goes_card" = "Stays as a card until you pick a project";
 "capture.voice.goes_to" = "Goes to %@";
 "capture.voice.hint" = "Listening — pause to finish";
 "capture.voice.hold_hint" = "Listening — let go to finish";
-"capture.voice.listening" = "Listening…";
 "capture.voice.no_mic" = "The microphone isn’t available";
 "capture.voice.no_words" = "No words recognized";
 "capture.voice.nothing" = "Didn’t hear anything";
-"capture.voice.recording_busy" = "The recording already has the microphone";
+"capture.voice.recording_busy" = "A screen recording is using the microphone";
 
 /* dictation styles (docs/design/dictation-styles.md) */
 "capture.action.reformat" = "Reformat last dictation";
@@ -265,7 +261,6 @@
 "capture.keys.system_refused" = "%@ is a macOS shortcut (System Settings, Keyboard) — pick another";
 "capture.keys.system_short" = "macOS uses it";
 "capture.keys.undo_set" = "Change Shortcut";
-"capture.keys.used_by" = "Used by %@";
 "capture.voice.hint_key" = "Listening — press %@ again to finish";
 "capture.voice.hint_done" = "Listening — Done to finish";
 "capture.voice.esc_hint" = "Esc to cancel";

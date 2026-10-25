@@ -50,6 +50,24 @@ class Glossary(unittest.TestCase):
                 for word in ("捕获", "拷贝", "刘海岛", "语音输入", "交出"):
                     self.assertNotIn(word, v, f"{name} {k}: {word}")
 
+    def test_the_glossary_holds_in_every_table(self):
+        # docs/positioning/facts.md and the README use the same words: the notch (never "the island"), cards (never
+        # "hanging"), 条目, 复制, 未归类, App; agents are "signed in"; suggestions say 可能属于 / 移过去
+        def every(lang):
+            out = {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
+            for p in (RES / f"{lang}.lproj").glob("*.stringsdict"):
+                out[p.name] = {k: json.dumps(v, ensure_ascii=False) for k, v in plistlib.loads(p.read_bytes()).items()}
+            out.update({n: t for n, t in tables(lang).items() if n in ("review", "common")})
+            return out
+        for name, t in every("zh-Hans").items():
+            for k, v in t.items():
+                for word in ("挂成", "挂着", "挂回", "岛", "其它", "归过去", "像是", "智能体", "事项", "交接单", "一键", "随手", "递给"):
+                    self.assertNotIn(word, v, f"{name} {k}: {word}")
+        for name, t in every("en").items():
+            for k, v in t.items():
+                self.assertNotRegex(v, r"(?i)\bisland\b|\bhanging\b|\bhang (as|back)\b|logged (in|out)|seamless|effortless|supercharge",
+                                    f"{name} {k}")
+
     def test_one_name_for_the_hand_off(self):
         en, zh = tables("en"), tables("zh-Hans")
         for name, t in en.items():
