@@ -13,6 +13,9 @@
 //                                      line. Replaced in the field: "text" becomes the entry's text (what is there
 //                                      now), the first version is kept as `typedFirst`.
 // Since the styles work: "style", "style_source", "style_router" (DictationStyleRecord: the router's inputs and decision).
+// Since v0.9: "asr_tags" — per piece, the speech model's language tag and how sure it was (DictationLanguageTag: the
+// tag, p_en / p_<lang> read without the Words, p_en_words with them, the margin to the threshold, redone), so a take
+// typed in the wrong language shows in the history and the Dictation Lab.
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio), and any recording there
 // no entry points at that is over an hour old (a take dropped, cancelled, or cut short by a quit or a crash). It runs
@@ -62,6 +65,8 @@ public struct DictationEntry: Identifiable, Hashable {
     public var style: DictationStyleRecord?
     /// what was typed first, when reformat-last replaced it in the field since (`text` is then the current version)
     public var typedFirst: String?
+    /// the speech model's language tag per piece (nil: an older entry, or a model without one)
+    public var asrTags: [DictationLanguageTag]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -101,6 +106,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let r = repaired, !r.isEmpty { o["repaired"] = r }
         if let f = fitted, !f.isEmpty { o["fitted"] = f }
         if let c = corrected { o["corrected"] = c }
+        if let t = asrTags, !t.isEmpty { o["asr_tags"] = t.map(\.json) }
         style?.write(into: &o)
         return o
     }
@@ -131,7 +137,56 @@ public struct DictationEntry: Identifiable, Hashable {
         repaired = o["repaired"] as? [String]
         fitted = o["fitted"] as? [String]
         corrected = o["corrected"] as? String
+        asrTags = (o["asr_tags"] as? [[String: Any]])?.compactMap(DictationLanguageTag.init(json:))
         style = DictationStyleRecord(json: o)
+    }
+}
+
+/// The speech model's language tag for one piece (transcribe.py's `tag`): which language it wrote in, the
+/// probabilities it gave English and the user's language without the Words (what decided) and with them, and how far
+/// the decision was from the line (`margin` = English share − threshold: > 0 English). Within `fragileMargin` the tag
+/// could flip with a slightly different take — the Dictation Lab flags it.
+public struct DictationLanguageTag: Hashable {
+    public var tag: String?
+    public var pEn: Double?
+    /// the user's language's probability (p_zh, p_ja …) and its code
+    public var pPref: Double?
+    public var prefer: String?
+    public var pEnWords: Double?
+    public var margin: Double?
+    public var redone: Bool
+    public static let fragileMargin = 0.02
+
+    public var fragile: Bool { margin.map { abs($0) < DictationLanguageTag.fragileMargin } ?? false }
+
+    /// The pieces' closest call (the smallest margin either way): what the Lab shows for a take.
+    public static func closest(_ tags: [DictationLanguageTag]) -> DictationLanguageTag? {
+        tags.filter { $0.margin != nil }.min { abs($0.margin!) < abs($1.margin!) }
+    }
+    public static func closest(_ json: [[String: Any]]) -> DictationLanguageTag? { closest(json.compactMap(DictationLanguageTag.init(json:))) }
+
+    public init?(json o: [String: Any]) {
+        guard !o.isEmpty else { return nil }
+        tag = o["tag"] as? String
+        pEn = (o["p_en"] as? NSNumber)?.doubleValue
+        if let (k, v) = o.first(where: { $0.key.hasPrefix("p_") && $0.key != "p_en" && $0.key != "p_en_words" }) {
+            prefer = String(k.dropFirst(2))
+            pPref = (v as? NSNumber)?.doubleValue
+        }
+        pEnWords = (o["p_en_words"] as? NSNumber)?.doubleValue
+        margin = (o["margin"] as? NSNumber)?.doubleValue
+        redone = o["redone"] as? Bool ?? false
+    }
+
+    public var json: [String: Any] {
+        var o: [String: Any] = [:]
+        if let t = tag { o["tag"] = t }
+        if let p = pEn { o["p_en"] = p }
+        if let k = prefer, let p = pPref { o["p_\(k)"] = p }
+        if let p = pEnWords { o["p_en_words"] = p }
+        if let m = margin { o["margin"] = m }
+        if redone { o["redone"] = true }
+        return o
     }
 }
 

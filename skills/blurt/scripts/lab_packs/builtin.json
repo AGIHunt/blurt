@@ -36,6 +36,7 @@
     {"id": "b027", "read": "我用 Cursor 写了个小工具，可以把录音转成文字，然后用 Qwen 做总结，最后再发到飞书群里，整个流程大概三十秒就能跑完，你有空可以试一下，有问题告诉我。", "tags": {"length": "long", "scenario": "chat", "languages": "zh-terms", "features": ["names", "numbers"]}},
     {"id": "b028", "read": "这周的花费一共是三千四百二十元，其中打车八百，吃饭一千二，剩下的是买书和办公用品。", "tags": {"length": "medium", "scenario": "notes", "languages": "zh", "features": ["numbers"]}},
     {"id": "b029", "read": "Can you check whether the API key expired?", "tags": {"length": "short", "scenario": "coding", "languages": "en", "features": ["question"]}},
-    {"id": "b030", "read": "明天的会我去不了，那个，你帮我跟大家说一下，就说我在外地出差，资料我晚上发群里，不对，下午就发。", "expected": "明天的会我去不了，你帮我跟大家说一下，就说我在外地出差，资料我下午就发群里。", "tags": {"length": "long", "scenario": "chat", "languages": "zh", "features": ["fillers", "correction"]}}
+    {"id": "b030", "read": "明天的会我去不了，那个，你帮我跟大家说一下，就说我在外地出差，资料我晚上发群里，不对，下午就发。", "expected": "明天的会我去不了，你帮我跟大家说一下，就说我在外地出差，资料我下午就发群里。", "tags": {"length": "long", "scenario": "chat", "languages": "zh", "features": ["fillers", "correction"]}},
+    {"id": "b031", "read": "这个 feature 下周上线。", "tags": {"length": "short", "scenario": "chat", "languages": "zh-terms", "features": []}, "note": "v0.9 regression: with the default Words on, the app typed this as an English translation (the speech model's language tag). Keep the Words on when you read it."}
   ]
 }

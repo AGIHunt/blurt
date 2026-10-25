@@ -1161,7 +1161,25 @@ probabilities of " English" and of the user's language are read, and the tag is
   model; it caught 1 piece of 218 in the names eval).
 - English-only users, or a language set in Settings (`asr.language`), keep the plain decode. If the library changes
   under it, the first failure switches back to the library's `transcribe` for good (`TaggedDecode` tests).
-- Cost: none — it is the same one decode (the probe is the tag step the model would run anyway).
+- **The tag is read without the Words** (v0.9 dogfood). With the Words on — the default, seeded with the project
+  names — the app typed 「这个 feature 下周上线」 as "This feature will be launched next week." 3 times in 3: the
+  Words' English sentence put the tag at p_en 0.9956 (0.948 without them), 0.0006 over the line, and a clean
+  translation has no Chinese left for the redo to catch. Which side of the line it fell on also depended on the
+  words' order (sorted by hits, so it changed after every take: 0.9958 in the app's order, 0.9886 in the file's).
+  Now the tag comes from its own prefill of the prompt with only the text so far (`tag_context`: what
+  `EN_TAG_THRESHOLD` was measured with), and the text is decoded with the full context — the Words still bias the
+  spelling — under that tag. In-app takes (34: 20 mixed, 11 English, 3 Chinese): CER over the mixed ones 10.6 % →
+  2.9 %; only the translated one changed. The request is also deterministic: `dictation_vocab.ranked` picks the terms
+  by relevance, source and use, and orders them by name; the app sends the file's source and hits with each word,
+  so the app and the Dictation Lab send the same words in the same order (`StableOrder` tests).
+- What decided is kept: the server's `tag` (`p_en` / `p_<lang>` without the Words, `p_en_words` with them, `margin` =
+  English share − threshold, `redone`) goes into the history entry (`asr_tags`, one per piece) and the Lab's runs;
+  the Lab flags a tag within 0.02 of the line as a close call (`fragile_tag`, the CLI's "fragile language tag", the
+  stage view's line). The app-captured wav is a regression test
+  (`tests/test_dictation_codeswitch_model.py`, with the model: `BLURT_TEST_QWEN_MODEL=…`), the decode path a model-free
+  one (`tests/test_transcribe_language_tag.py`), and the built-in reading script has the sentence (b031).
+- Cost: one more prefill of the prompt when the Words are in it (tens of ms; none without them — the one prefill
+  does both). The probe is the tag step the model would run anyway.
 
 Found on the way: on a noisy piece it couldn't make out, the model answered with the word list itself
 ("Claude Code、Codex、blurt、口喷鸡…" — the old pipeline would have pasted that). `dictation_vocab.context_dump` (≥ 4

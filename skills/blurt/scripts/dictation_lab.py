@@ -615,7 +615,9 @@ class Servers:
                 time.sleep(0.3)
         return False
 
-    def asr(self, wav: Path, model: str | None, vocab: bool, prior: str, language: str | None) -> dict:
+    def asr(self, wav: Path, model: str | None, vocab: bool, prior: str, language: str | None, hint: str = "") -> dict:
+        """The app's request: the file's words (the server ranks them as it ranks the app's payload — the same terms
+        in the same order), the text so far, and the window title / text around the cursor when the case kept them."""
         if not self.ensure("asr-serve", "transcribe.py", ["serve", "--purpose", "dictation", "--idle", "300", "--exit-after", "900"]):
             raise Fail("the speech model server did not start", "asr_unavailable")
         req = {"cmd": "note", "wav": str(wav), "language": language or "auto", "purpose": "dictation",
@@ -624,6 +626,8 @@ class Servers:
             req["model_id"] = model
         if prior:
             req["prior"] = prior
+        if hint:
+            req["hint"] = hint
         r = self.call("asr-serve", req, 180)
         for _ in range(2):
             # a fresh server re-runs itself under `uv run --with <the backend's package>` on its first request: that
@@ -724,6 +728,27 @@ def context_payload(c: dict) -> dict | None:
     return p or None
 
 
+def asr_hint(ctx: dict | None) -> str:
+    """The speech request's hint, as the app builds it (DictationContext.hint): the title and 300 characters each side
+    of the cursor — only which custom words appear in it is used."""
+    if not ctx:
+        return ""
+    parts = [ctx.get("title") or "", (ctx.get("before") or "")[-300:], ctx.get("selection") or "",
+             (ctx.get("after") or "")[:300]]
+    return "\n".join(p for p in parts if p)
+
+
+def tag_summary(tags: list[dict]) -> dict:
+    """The pieces' language tags → the closest call: its margin to the threshold and whether it is fragile (a tag
+    that close could flip with a slightly different take — the v0.9 translated sentence sat 0.0006 over the line)."""
+    import dictation_vocab  # noqa: PLC0415
+    margins = [t["margin"] for t in tags if isinstance(t, dict) and isinstance(t.get("margin"), (int, float))]
+    if not margins:
+        return {"tag_margin": None, "fragile_tag": False}
+    m = min(margins, key=abs)
+    return {"tag_margin": m, "fragile_tag": abs(m) < dictation_vocab.FRAGILE_MARGIN}
+
+
 def run_case(c: dict, cfg: dict, backend) -> dict:
     """One case through one configuration → {"outputs", "metrics", "config"}. `backend` has .asr / .polish (Servers,
     or a fake in tests)."""
@@ -744,13 +769,15 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
     pieces, asr_ms, load_ms = [], 0, 0
     model = language = None
     terms: list[str] = []
+    hint = asr_hint(context_payload(c)) if cfg.get("context") else ""
     with tempfile.TemporaryDirectory(prefix="blurt-lab-") as td:
         for i, (a, b, pause) in enumerate(cuts):
             p = Path(td) / f"p{i}.wav"
             write_samples(p, x[a:b])
             prior = join_pieces([q["raw"] for q in pieces], [q["pause_after"] for q in pieces])[-200:] if pieces else ""
             t1 = time.perf_counter()
-            r = backend.asr(p, cfg.get("asr"), bool(cfg.get("vocab")), prior, cfg.get("language"))
+            r = backend.asr(p, cfg.get("asr"), bool(cfg.get("vocab")), prior, cfg.get("language"),
+                            **({"hint": hint} if hint else {}))
             ms = int((time.perf_counter() - t1) * 1000)
             asr_ms += ms
             load_ms += int(r.get("load_ms") or 0)
@@ -759,12 +786,13 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
             terms += [t for t in r.get("terms") or [] if t not in terms]
             pieces.append({"index": i, "start": round(a / SR, 2), "end": round(b / SR, 2), "pause_after": pause,
                            "raw": (r.get("text") or "").strip(), "asr_text": (r.get("asr_text") or r.get("text") or "").strip(),
-                           "asr_ms": ms})
+                           "asr_ms": ms, "tag": r.get("tag")})
     raw = join_pieces([q["raw"] for q in pieces], [q["pause_after"] for q in pieces])
     heard = join_pieces([q["asr_text"] for q in pieces], [q["pause_after"] for q in pieces])
+    tags = [q["tag"] for q in pieces if q.get("tag")]
     out = {"segments": pieces, "raw": raw, "asr_text": heard, "polished": None, "text": raw, "fell_back": False,
            "reason": None, "repaired": [], "terms_applied": terms, "asr_model": model, "polish_model": None,
-           "language": language}
+           "language": language, "tags": tags, **tag_summary(tags)}
     polish_ms = structure_ms = 0
     style = cfg.get("style") or "light"
     cat = cfg.get("category") or styles.category((c.get("app") or {}).get("bundle"))
@@ -872,7 +900,8 @@ def overall(rows: list[dict]) -> dict:
             "score": round(max(0.0, 100 * (1 - mean)), 1) if mean is not None else None,
             "better": count("better"), "worse": count("worse"), "same": count("same"), "new": count("new"),
             "errors": count("error"), "fell_back": sum(1 for r in rows if r.get("fell_back")),
-            "listed": sum(1 for r in rows if r.get("listed"))}
+            "listed": sum(1 for r in rows if r.get("listed")),
+            "fragile_tags": sum(1 for r in rows if r.get("fragile_tag"))}
 
 
 def regression(cfg: dict, backend, ids: list[str] | None = None, save: bool = True, progress=None) -> dict:
@@ -888,7 +917,9 @@ def regression(cfg: dict, backend, ids: list[str] | None = None, save: bool = Tr
             row.update(after=r["metrics"], text=r["outputs"]["text"], raw=r["outputs"]["raw"],
                        fell_back=r["outputs"]["fell_back"], reason=r["outputs"]["reason"],
                        timings=r["outputs"]["timings"], change=compare(row["before"], r["metrics"]),
-                       listed=r["outputs"].get("listed", False), style=r["outputs"].get("style"))
+                       listed=r["outputs"].get("listed", False), style=r["outputs"].get("style"),
+                       language=r["outputs"].get("language"), tag_margin=r["outputs"].get("tag_margin"),
+                       fragile_tag=r["outputs"].get("fragile_tag", False))
             if r["outputs"].get("structured"):
                 st = r["outputs"]["structured"]
                 row["structured"] = {k: st.get(k) for k in ("list", "fell_back", "reason", "ms")}
@@ -1263,7 +1294,8 @@ def cmd_from_history(a) -> None:
                  "terms_applied": e.get("terms_applied") or [], "fell_back": bool(e.get("fell_back")),
                  "reason": e.get("reason"), "repaired": e.get("repaired") or [],
                  "timings": {k: e[k] for k in ("asr_ms", "polish_ms", "load_ms", "total_ms", "segments") if k in e},
-                 "language": e.get("language"), "asr_model": e.get("asr_model"), "polish_model": e.get("model")}
+                 "language": e.get("language"), "asr_model": e.get("asr_model"), "polish_model": e.get("model"),
+                 "tags": e.get("asr_tags") or [], **tag_summary(e.get("asr_tags") or [])}
     c["reference"] = e.get("text") or None       # a starting point for the ground truth: what was typed
     c["app_version"] = a.app_version
     refresh_metrics(c)
@@ -1322,16 +1354,20 @@ def cmd_run(a) -> None:
         emit(res)
     else:
         print(f"config: {cfg['key']}")
-        print(f"{'case':<24} {'before WER':>10} {'after WER':>10} {'terms':>7}  change")
+        print(f"{'case':<24} {'before WER':>10} {'after WER':>10} {'terms':>7} {'lang':>5} {'tag ±':>7}  change")
         for r in res["rows"]:
             b, af = r.get("before") or {}, r.get("after") or {}
             ta = (af.get("terms") or {}).get("accuracy")
-            print(f"{r['id']:<24} {_fmt(b.get('wer')):>10} {_fmt(af.get('wer')):>10} {_fmt(ta):>7}  "
-                  f"{r.get('change')}{' (text changed)' if r.get('changed_text') else ''}{'  ' + r['error'] if r.get('error') else ''}")
+            m = r.get("tag_margin")
+            print(f"{r['id']:<24} {_fmt(b.get('wer')):>10} {_fmt(af.get('wer')):>10} {_fmt(ta):>7} "
+                  f"{r.get('language') or '—':>5} {'—' if m is None else f'{m:+.3f}':>7}  "
+                  f"{r.get('change')}{' (text changed)' if r.get('changed_text') else ''}"
+                  f"{'  fragile language tag' if r.get('fragile_tag') else ''}{'  ' + r['error'] if r.get('error') else ''}")
         o = res["overall"]
         print(f"overall: score {_fmt(o['score'], False)}  WER {_fmt(o['wer'])}  CER {_fmt(o['cer'])}  terms "
               f"{_fmt(o['term_accuracy'])}  better {o['better']}  worse {o['worse']}  same {o['same']}  new {o['new']}"
-              f"  errors {o['errors']}  fell back {o['fell_back']}  light made a list {o['listed']}")
+              f"  errors {o['errors']}  fell back {o['fell_back']}  light made a list {o['listed']}"
+              f"  fragile language tags {o['fragile_tags']}")
         if res.get("by_tag"):
             print("by tag:")
             for t, v in res["by_tag"].items():

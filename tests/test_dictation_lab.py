@@ -162,15 +162,19 @@ def test_from_history_with_and_without_audio(home):
 class FakePipeline:
     """A speech model that answers from a table by audio length (seconds, 1 decimal), and a polish that capitalises."""
 
-    def __init__(self, heard: dict[float, str], polish=None, structure=None):
+    def __init__(self, heard: dict[float, str], polish=None, structure=None, tags: dict[float, dict] | None = None):
         self.heard, self.calls, self.polish_fn, self.structure_fn = heard, [], polish, structure
+        self.tags = tags or {}
 
-    def asr(self, wav, model, vocab, prior, language):
+    def asr(self, wav, model, vocab, prior, language, hint=""):
         with wave.open(str(wav)) as w:
             secs = round(w.getnframes() / 16000, 1)
-        self.calls.append({"secs": secs, "model": model, "vocab": vocab, "prior": prior})
-        return {"ok": True, "text": self.heard.get(secs, ""), "asr_text": self.heard.get(secs, ""), "model": model or "m-current",
-                "language": "zh", "terms": []}
+        self.calls.append({"secs": secs, "model": model, "vocab": vocab, "prior": prior, "hint": hint})
+        r = {"ok": True, "text": self.heard.get(secs, ""), "asr_text": self.heard.get(secs, ""), "model": model or "m-current",
+             "language": "zh", "terms": []}
+        if secs in self.tags:
+            r["tag"] = self.tags[secs]
+        return r
 
     def polish(self, text, model, vocab, context, timeout, variant=None):
         self.calls.append({"polish": text, "model": model, "context": context})
@@ -247,6 +251,29 @@ def test_context_goes_to_polish_only_when_the_user_included_it(home):
     fake = FakePipeline({1.0: "好的"})
     L.run_case(a, L.parse_spec("context=off"), fake)
     assert [x["context"] for x in fake.calls if "polish" in x] == [None]
+
+
+def test_the_speech_request_gets_the_apps_hint(home):
+    # the window title and the text around the cursor, as the app sends them (DictationContext.hint)
+    a = make_case(home, "a", 1.0, "好的", context={"before": "用 tmux 跑", "after": "", "title": "Claude"})
+    fake = FakePipeline({1.0: "好的"})
+    L.run_case(a, L.parse_spec("current"), fake)
+    assert [x["hint"] for x in fake.calls if "secs" in x] == ["Claude\n用 tmux 跑"]
+
+
+def test_a_language_tag_near_the_line_is_flagged(home):
+    # v0.9: the translated sentence sat 0.0006 over the English line; the Lab scored it as perfect and said nothing
+    make_case(home, "near", 1.0, "这个 feature 下周上线")
+    make_case(home, "clear", 2.0, "好的")
+    fake = FakePipeline({1.0: "这个 feature 下周上线", 2.0: "好的"},
+                        tags={1.0: {"tag": "Chinese", "p_en": 0.98, "p_zh": 0.02, "margin": -0.015},
+                              2.0: {"tag": "Chinese", "p_en": 0.2, "p_zh": 0.8, "margin": -0.795}})
+    res = L.regression(L.parse_spec("current"), fake, save=False)
+    by = {r["id"]: r for r in res["rows"]}
+    assert by["near"]["fragile_tag"] and by["near"]["tag_margin"] == -0.015
+    assert not by["clear"]["fragile_tag"]
+    assert res["overall"]["fragile_tags"] == 1
+    assert L.tag_summary([]) == {"tag_margin": None, "fragile_tag": False}
 
 
 def test_regression_before_after_and_overall(home):

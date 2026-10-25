@@ -262,7 +262,9 @@
 "dictation.lab.stage.polish_off" = "Polish off";
 "dictation.lab.ms" = "%ld ms";
 "dictation.lab.ms.total" = "%ld ms after release";
-"dictation.lab.fell_back" = "Fell back: %@";
+"dictation.lab.fell_back" = "Not polished: %@";
+"dictation.lab.tag" = "Language: %1$@ · %2$@ from the English line";
+"dictation.lab.tag.fragile" = "Close call on the language (%@ from the English line)";
 "dictation.lab.guard.passed" = "Passed";
 "dictation.lab.piece.whole" = "whole take";
 "dictation.lab.piece.committed" = "polished: %@";

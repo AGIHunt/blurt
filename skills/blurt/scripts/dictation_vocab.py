@@ -118,7 +118,8 @@ def similar(a: str, b: str) -> bool:
 # ------------------------------------------------------------------ which terms matter now
 def ranked(terms: list[dict], raw: str = "", context: str = "", limit: int = MAX_TERMS) -> list[dict]:
     """Relevant first: a sounds-like heard in `raw`, a term (or something spelled like it) in `raw` or the context,
-    then manual before learned before project, then by hits. At most `limit`."""
+    then manual before learned before project; the most used of those when there are more than `limit`. Within the
+    same relevance and source, by name: the order never depends on the hit counts."""
     low_raw = unicodedata.normalize("NFKC", raw or "").lower()
     low_ctx = unicodedata.normalize("NFKC", context or "").lower()
     words = [w.lower() for w in _WORD.findall(low_raw)]
@@ -137,7 +138,11 @@ def ranked(terms: list[dict], raw: str = "", context: str = "", limit: int = MAX
         src = {"manual": 2, "learned": 1}.get(t.get("source"), 0)
         return (-s, -src, -t.get("hits", 0))
 
-    return sorted(terms, key=score)[:limit]
+    # which terms make the cut: relevance, then whose, then use; their order in the prompt: the same without the hit
+    # counts (a name order), so the request doesn't change every time a word is used — the app and the Dictation Lab
+    # send the same terms in the same order (v0.9 dogfood: the order alone moved the language tag)
+    chosen = sorted(terms, key=score)[:limit]
+    return sorted(chosen, key=lambda t: (score(t)[:2], t["term"].casefold(), t["term"]))
 
 
 def relevant(terms: list[dict], raw: str = "", context: str = "") -> list[dict]:
@@ -189,9 +194,20 @@ def cjk_share(text: str) -> float:
 
 def choose_tag(p_en: float, p_pref: float, prefer: str, threshold: float = EN_TAG_THRESHOLD) -> str:
     """Qwen3-ASR's language tag for a user who mixes English into `prefer` (e.g. "Chinese"): English only when the
-    model puts nearly all of the two tags' probability on it."""
+    model puts nearly all of the two tags' probability on it. The probabilities come from a prompt without the Words
+    (transcribe.py Qwen3Mlx._decode_tagged): the threshold was measured that way."""
     total = p_en + p_pref
     return "English" if total > 0 and p_en / total > threshold else prefer
+
+
+FRAGILE_MARGIN = 0.02       # a tag this close to the threshold could flip with a slightly different take
+
+
+def tag_margin(p_en: float, p_pref: float, threshold: float = EN_TAG_THRESHOLD) -> float:
+    """How far the English share (p_en / (p_en + p_pref)) is from the threshold: > 0 tagged English, < 0 the user's
+    language. The history and the Dictation Lab show it; within FRAGILE_MARGIN the tag is fragile."""
+    total = p_en + p_pref
+    return round((p_en / total if total > 0 else 0.0) - threshold, 4)
 
 
 def translated_glue(text: str, names=()) -> bool:

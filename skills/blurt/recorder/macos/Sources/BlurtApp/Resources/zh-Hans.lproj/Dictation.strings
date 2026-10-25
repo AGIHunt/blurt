@@ -262,7 +262,9 @@
 "dictation.lab.stage.polish_off" = "没开润色";
 "dictation.lab.ms" = "%ld ms";
 "dictation.lab.ms.total" = "松开后 %ld ms";
-"dictation.lab.fell_back" = "退回原文：%@";
+"dictation.lab.fell_back" = "未润色：%@";
+"dictation.lab.tag" = "语言：%1$@ · 离英文判定线 %2$@";
+"dictation.lab.tag.fragile" = "语言判断很接近（离英文判定线 %@）";
 "dictation.lab.guard.passed" = "通过";
 "dictation.lab.piece.whole" = "整段";
 "dictation.lab.piece.committed" = "润色：%@";

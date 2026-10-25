@@ -149,8 +149,12 @@ public final class DictationVocabulary {
     /// The active built-in words (the Words tab shows them on one folded line).
     public func builtInWords() -> [VocabTerm] { load().filter { $0.state == .active && $0.source == .builtIn } }
 
-    /// What a request to the speech / polish server carries: [{"term","sounds_like"}].
-    public func payload() -> [[String: Any]] { active().map { ["term": $0.term, "sounds_like": $0.soundsLike] } }
+    /// What a request to the speech / polish server carries: [{"term","sounds_like","source","hits"}] — what the file
+    /// says, so the server ranks them exactly as it does the file's own words (the Dictation Lab, the CLI's --vocab):
+    /// dictation_vocab.ranked picks by relevance, source and use, and orders by name, never by the hit counts.
+    public func payload() -> [[String: Any]] {
+        active().map { ["term": $0.term, "sounds_like": $0.soundsLike, "source": $0.source.rawValue, "hits": $0.hits] }
+    }
 
     static func key(_ s: String) -> String {
         s.lowercased().components(separatedBy: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-_.·"))).joined()

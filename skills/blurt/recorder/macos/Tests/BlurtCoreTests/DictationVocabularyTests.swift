@@ -30,6 +30,10 @@ final class DictationVocabularyTests: XCTestCase {
         v.remove("tmux")                                              // a manual word just goes
         XCTAssertEqual(v.load().map(\.term), ["Claude Code"])
         XCTAssertEqual(v.payload().first?["term"] as? String, "Claude Code")
+        // the request carries what the file says (source, hits): the server ranks the app's words exactly as it ranks
+        // the file's own (the Dictation Lab), so both send the speech model the same words in the same order
+        XCTAssertEqual(v.payload().first?["source"] as? String, "manual")
+        XCTAssertEqual(v.payload().first?["hits"] as? Int, 0)
     }
 
     func testSeedOnceAndRemovedStaysRemoved() {

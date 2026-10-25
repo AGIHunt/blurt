@@ -406,6 +406,7 @@ extension Dictation {
                                        timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
+            entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
             DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
@@ -434,7 +435,8 @@ extension Dictation {
                                       "style": styleRecord.style, "style_source": styleRecord.source,
                                       "category": styleRecord.category, "structure_reason": r.structureReason ?? NSNull(),
                                       "rendered": styleRecord.rendered, "variant": styleRecord.variant,
-                                      "style_ms": styled.ms, "app_changed": appChanged]
+                                      "style_ms": styled.ms, "app_changed": appChanged, "language": r.language ?? NSNull(),
+                                      "tags": r.tags]
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)

@@ -9,6 +9,30 @@ final class DictationHistoryTests: XCTestCase {
                        polished: nil, text: text, model: nil, fellBack: false, reason: nil, insert: "pasted")
     }
 
+    /// v0.9: the speech model's language call is kept per piece, so a take typed in the wrong language shows in the
+    /// history and in the Lab (with how close the call was).
+    func testTheLanguageTagIsKeptAndACloseCallIsFlagged() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        var e = entry("d-t", "这个 feature 下周上线。", 1000)
+        e.asrTags = [["tag": "Chinese", "p_en": 0.9497, "p_zh": 0.0503, "margin": -0.0453, "p_en_words": 0.994],
+                     ["tag": "Chinese", "p_en": 0.98, "p_zh": 0.02, "margin": -0.015, "redone": true]]
+            .compactMap(DictationLanguageTag.init(json:))
+        h.append(e)
+        let back = try XCTUnwrap(h.load().first?.asrTags)
+        XCTAssertEqual(back.count, 2)
+        XCTAssertEqual(back[0].prefer, "zh")
+        XCTAssertEqual(back[0].pPref ?? 0, 0.0503, accuracy: 1e-6)
+        XCTAssertEqual(back[0].pEnWords ?? 0, 0.994, accuracy: 1e-6)
+        XCTAssertFalse(back[0].fragile)
+        XCTAssertTrue(back[1].redone)
+        XCTAssertEqual(DictationLanguageTag.closest(back)?.margin ?? 0, -0.015, accuracy: 1e-6)
+        XCTAssertTrue(DictationLanguageTag.closest(back)?.fragile ?? false)
+        XCTAssertNil(DictationLanguageTag.closest([[String: Any]]()))
+        XCTAssertNil(entry("d-old", "x", 1).asrTags)                 // an older entry has none
+    }
+
     func testDeleteThenWriteAgainComesBackOnce() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

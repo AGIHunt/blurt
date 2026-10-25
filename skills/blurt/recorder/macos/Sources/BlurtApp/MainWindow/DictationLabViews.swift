@@ -467,6 +467,18 @@ struct LabWorkbench: View {
 
     func ms(_ t: [String: Any], _ k: String) -> Int? { t[k] as? Int }
 
+    /// The speech model's language call for the take: the language and how far it was from the English line — a close
+    /// call is flagged (v0.9: a sentence 0.0006 over the line was typed as an English translation, and scored perfect).
+    @ViewBuilder func tagLine(_ outputs: [String: Any]) -> some View {
+        if let t = DictationLanguageTag.closest(outputs["tags"] as? [[String: Any]] ?? []), let m = t.margin {
+            let margin = String(format: "%+.3f", m)
+            Text(t.fragile ? T("dictation.lab.tag.fragile", margin)
+                 : T("dictation.lab.tag", Loc.locale.localizedString(forLanguageCode: outputs["language"] as? String ?? "") ?? (t.tag ?? "—"), margin))
+                .font(.system(size: 11)).monospacedDigit()
+                .foregroundStyle(t.fragile ? Color.brandAttnInk : .secondary)
+        }
+    }
+
     @ViewBuilder func stages(_ take: [String: Any]) -> some View {
         let t = take["timings"] as? [String: Any] ?? [:]
         let polished = take["polished"] as? String
@@ -484,6 +496,7 @@ struct LabWorkbench: View {
                           caption: T("dictation.lab.ms.total", ms(t, "total_ms") ?? 0))
             }
             .fixedSize(horizontal: false, vertical: true)
+            tagLine(take)
             if pieces.count > 0 { piecesTable(pieces) }
             details(take, t)
         }
@@ -683,6 +696,7 @@ struct LabWorkbench: View {
                     Text(T("dictation.lab.fell_back", DictationHistoryModel.reasonText(r.outputs["reason"] as? String)))
                         .font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
                 }
+                tagLine(r.outputs)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 2) {
@@ -979,6 +993,10 @@ struct LabRegressionView: View {
                         LabDiffText(ref: truth, hyp: t).lineLimit(2)
                     } else if let e = row["error"] as? String {
                         Text(e).font(.system(size: 11)).foregroundStyle(Color.brandErr)
+                    }
+                    if row["fragile_tag"] as? Bool == true, let m = row["tag_margin"] as? Double {
+                        Text(T("dictation.lab.tag.fragile", String(format: "%+.3f", m)))
+                            .font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
