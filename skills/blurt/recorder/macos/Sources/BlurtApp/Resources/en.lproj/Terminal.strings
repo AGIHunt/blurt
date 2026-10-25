@@ -9,13 +9,13 @@
 "agents.effort.medium" = "Medium effort";
 "agents.effort.xhigh" = "Extra-high effort";
 "agents.processing.cards" = "Cards";
-"agents.processing.cards.help" = "The model for organizing snaps and voice notes, and for AI fill-in. Shipped: the cheapest model at low effort — plenty for a picture and a note, at far fewer tokens.";
+"agents.processing.cards.help" = "The model for organizing snaps and voice notes, and for AI fill-in. By default, the cheapest model at low effort: enough for a picture and a note, with far fewer tokens.";
 "agents.processing.cheapest" = "Cheapest";
 "agents.processing.cheapest_named" = "Cheapest (%@)";
 "agents.processing.default" = "The CLI’s setting";
 "agents.processing.default_named" = "The CLI’s setting (%@)";
 "agents.processing.recording" = "Recordings";
-"agents.processing.recording.help" = "The model for organizing recordings. Shipped: the CLI’s own model at low effort — a long recording needs it.";
+"agents.processing.recording.help" = "The model for organizing recordings. By default, the CLI’s own model at low effort: a long recording needs it.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";

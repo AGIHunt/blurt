@@ -18,22 +18,20 @@ import BlurtCore
 final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSPopoverDelegate {
     struct Entry { let id: String; let name: String; let key: String; let color: NSColor; let inbox: Bool }
 
-    private let all: [Entry]
+    private let projects: [Project]
     private let checked: String?
     private let choose: (String) -> Void
     private var shown: [Entry] = []
     private let field = NSSearchField()
     private let table = NSTableView()
-    private let none = NSTextField(labelWithString: T("main.move.no_match"))
+    private let none = NSTextField(labelWithString: T("project.no_match"))
     // held while it shows (it holds us as its content): let go in popoverDidClose
     private var popover: NSPopover?
     private var listHeight: NSLayoutConstraint!
 
     /// `checked`: where the items are now (all of them), "inbox" for Unassigned; `choose` gets a project id or "inbox".
     init(checked: String?, choose: @escaping (String) -> Void) {
-        let store = ProjectStore.shared
-        all = store.projects.map { Entry(id: $0.id, name: $0.name, key: $0.key, color: ProjectLook.color($0), inbox: false) }
-            + [Entry(id: "inbox", name: T("project.inbox"), key: "", color: .systemGray, inbox: true)]
+        projects = ProjectStore.shared.projects
         self.checked = checked
         self.choose = choose
         super.init(nibName: nil, bundle: nil)
@@ -110,10 +108,12 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
     func close() { popover?.close() }
 
     private func refresh() {
-        let projects = all.filter { !$0.inbox }, inbox = all.filter(\.inbox)
         let q = field.stringValue
-        // Unassigned stays last; it matches its own name too
-        shown = ProjectPick.filter(projects, q, name: \.name, key: \.key) + ProjectPick.filter(inbox, q, name: \.name, key: \.key)
+        // the rows every project picker shows: recent projects, then Unassigned last (it matches its own name too)
+        shown = ProjectPick.choices(projects, query: q, unassigned: T("project.inbox")).map { c in
+            c.project.map { Entry(id: $0.id, name: $0.name, key: $0.key, color: ProjectLook.color($0), inbox: false) }
+                ?? Entry(id: "inbox", name: T("project.inbox"), key: "", color: .systemGray, inbox: true)
+        }
         table.reloadData()
         none.isHidden = !shown.isEmpty
         listHeight.constant = Self.rowHeight * CGFloat(min(max(shown.count, 2), Self.maxRows))

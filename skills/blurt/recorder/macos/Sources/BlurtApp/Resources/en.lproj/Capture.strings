@@ -99,7 +99,6 @@
 "capture.move_failed" = "Couldn’t move it — it stays where it was";
 "capture.moved" = "Moved to %@";
 "capture.note.discard_tip" = "Discard this shot (Esc)";
-"capture.note.goes_card" = "Hangs as a card";
 "capture.note.goes_to" = "Goes to %@";
 "capture.note.keep_discard" = "⏎ keep without a note · Esc discard";
 "capture.note.keep_tip" = "Keep (⏎)";
@@ -110,7 +109,7 @@
 "capture.note.no_mic" = "Mic unavailable · ⏎ save · Esc discard";
 "capture.note.mic_gone" = "Mic disconnected · type a note · ⏎ save";
 "capture.note.paused" = "Paused · ⏎ save & resume · Esc resume";
-"capture.note.pen_hint" = "Drag to circle";
+"capture.note.pen_hint" = "Drag to draw · ⇧ box · ⌥ ellipse";
 "capture.note.placeholder" = "Write a note";
 "capture.note.placeholder_optional" = "Add a note (optional)";
 "capture.note.placeholder_shot" = "Add a line about this shot (optional)";
@@ -123,8 +122,17 @@
 "capture.note.save_clear" = "⏎ save · Esc clears the text";
 "capture.note.save_discard" = "⏎ save · Esc discard";
 "capture.note.saved" = "Saved";
-"capture.note.undo" = "Undo ink (⌘Z)";
+"capture.note.undo" = "Undo the last stroke (⌘Z)";
 "capture.note.voice_busy" = "The voice note is listening · type a note · ⏎ save";
+"capture.note.done" = "Done";
+"capture.note.done_tip" = "Done (⏎)";
+"capture.note.done_discard" = "⏎ done · Esc discard";
+"capture.note.done_clear" = "⏎ done · Esc clears the text";
+"capture.note.listening_done" = "pause to finish · ⏎ now";
+"capture.note.no_mic_done" = "Mic unavailable · ⏎ done · Esc discard";
+"capture.note.mic_gone_done" = "Mic disconnected · type a note · ⏎ done";
+"capture.note.voice_busy_done" = "The voice note is listening · type a note · ⏎ done";
+"capture.note.chip_tip" = "Where this capture goes (Tab)";
 "capture.peck.done_one" = "Done: %@";
 "capture.peck.verify_one" = "Ready to verify: %@";
 "capture.picker.cancel" = "Cancel";
@@ -147,7 +155,8 @@
 "capture.rec.mic_level" = "Microphone level";
 "capture.rec.pause" = "Pause";
 "capture.rec.paused" = "Paused";
-"capture.rec.pen_hint" = "Hold %@ and drag to draw";
+"capture.rec.pen_hint" = "Hold %@ to draw · ⇧ box · ⌥ ellipse";
+"capture.rec.pen_hint_opt" = "Hold %@ to draw · ⇧ box · ⌃ ellipse";
 "capture.rec.pen_off_tip" = "Turn the pen off";
 "capture.rec.pen_on" = "Pen on · Esc to stop";
 "capture.rec.restart" = "Restart";

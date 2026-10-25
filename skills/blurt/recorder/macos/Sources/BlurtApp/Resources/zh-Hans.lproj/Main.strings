@@ -153,7 +153,6 @@
 "main.list.suggested" = "像是 %@ 的";
 "main.move.here" = "当前所在";
 "main.move.list" = "项目";
-"main.move.no_match" = "没有匹配的项目";
 "main.move.placeholder" = "移到…";
 "main.palette.move_pick" = "移到项目…";
 "main.palette.switch_project" = "切换项目…";

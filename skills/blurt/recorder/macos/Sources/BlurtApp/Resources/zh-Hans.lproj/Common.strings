@@ -56,6 +56,8 @@
 
 /* 项目 */
 "project.inbox" = "未归类";
+"project.find" = "查找项目";
+"project.no_match" = "没有匹配的项目";
 "project.open_folder" = "打开文件夹…";
 
 /* 交给外部 agent */

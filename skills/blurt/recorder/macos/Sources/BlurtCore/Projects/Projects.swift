@@ -126,10 +126,7 @@ public final class ProjectStore {
     public func reload() {
         let raw = (try? Data(contentsOf: registryURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         let list = (raw["projects"] as? [[String: Any]] ?? []).compactMap(Self.parse)
-        projects = list.sorted { a, b in
-            if a.pinned != b.pinned { return a.pinned }
-            return (a.lastUsed ?? .distantPast) > (b.lastUsed ?? .distantPast)
-        }
+        projects = ProjectPick.recent(list)        // pinned, then recently used: every picker's order
         ordered = Self.userOrder(list)
         let cur = raw["current"] as? String
         currentID = cur == nil || cur == "auto" || !list.contains(where: { $0.id == cur }) ? nil : cur

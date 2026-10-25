@@ -6,8 +6,9 @@
 //     name, description, folder, the newest few titles; no extra model call, no stored profile, nothing learnt) and
 //     may leave a suggestion per item (suggested_project). The user accepts one with a click ("Looks like X · Move"),
 //     a group of them at once ("Move All (3)"), each undoable.
-//   • picking a project anywhere — the island's switcher (⌥⇧O), the main window's Move popover (M), the command
-//     palette — filters the same way as you type (ProjectPick).
+//   • picking a project anywhere — the island's switcher (⌥⇧O) and pick form, the main window's Move popover (M), the
+//     note bubble's "Goes to X" chip, the command palette — lists the same rows in the same order and filters the same
+//     way as you type (ProjectPick.choices: recent projects, then Unassigned last).
 import Foundation
 
 /// Type-to-filter over projects, best first.
@@ -36,6 +37,43 @@ public enum ProjectPick {
 
     public static func filter(_ projects: [Project], _ query: String) -> [Project] {
         filter(projects, query, name: \.name, key: \.key)
+    }
+
+    /// The one "recent projects" order every picker starts from: pinned first, then the most recently used (never the
+    /// Unassigned store). ProjectStore.projects is kept in this order.
+    public static func recent(_ projects: [Project]) -> [Project] {
+        projects.filter { !$0.isInbox }.enumerated().sorted { x, y in
+            let (a, b) = (x.element, y.element)
+            if a.pinned != b.pinned { return a.pinned }
+            let (ua, ub) = (a.lastUsed ?? .distantPast, b.lastUsed ?? .distantPast)
+            return ua != ub ? ua > ub : x.offset < y.offset
+        }.map(\.element)
+    }
+
+    /// The projects a picker lists for `query`: recent first, filtered as above, at most `limit`.
+    public static func rows(_ projects: [Project], query: String, limit: Int? = nil) -> [Project] {
+        let hits = filter(recent(projects), query)
+        return limit.map { Array(hits.prefix($0)) } ?? hits
+    }
+
+    /// One row of a project picker: a project, or Unassigned (no project: a recording goes to Unassigned, a snap
+    /// hangs as a card).
+    public enum Choice: Equatable {
+        case project(Project)
+        case unassigned
+        /// The project's id, "inbox" for Unassigned (the id the stores and the hooks use).
+        public var id: String { if case .project(let p) = self { return p.id }; return "inbox" }
+        public var project: Project? { if case .project(let p) = self { return p }; return nil }
+    }
+
+    /// What every project picker shows — the island's switcher and pick form, the main window's Move popover, the note
+    /// bubble's chip: `rows` (at most `limit` projects), then Unassigned last, while nothing is typed or its own name
+    /// (`unassigned`, "Unassigned" / "未归类") matches what is.
+    public static func choices(_ projects: [Project], query: String, unassigned: String, limit: Int? = nil) -> [Choice] {
+        let ps = rows(projects, query: query, limit: limit).map(Choice.project)
+        let typed = !query.trimmingCharacters(in: .whitespaces).isEmpty
+        let none = !typed || !filter([unassigned], query, name: { $0 }, key: { _ in "" }).isEmpty
+        return ps + (none ? [.unassigned] : [])
     }
 
     static func fold(_ s: String) -> String { s.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil) }

@@ -199,7 +199,8 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Recording frame | `rec` | solid 2.5 pt. Paused: `attn` dashed. The switch from mint to red at the end of the countdown *is* the "now recording" signal. |
 | Snap while recording (`borderFlash`) | M | 3 pt flat mint ring, 450 ms, outside the red frame (v2.1: no halo) |
 | Standalone snap shutter | — | white flash |
-| Pen strokes (InkView, NoteBubble sketch, `renderMarked`) | `markup` | coral, with a 45 % black halo |
+| Pen strokes (InkView, InkCanvas on the frozen snap and in Edit Note, `renderMarked`) | `markup` | coral, with a 45 % black halo (shadow radius 0.4 × the width); 3–6 pt by display size (`InkStyle`) |
+| Frozen snap (in-place markup) | G outline (still) | the picture at 1:1 where it was taken, the outside dimmed 42 % as in the picker; the selection outline stays, without handles and without marching; the pen hint is a faint pill above it (black 42 %, text white 65 %, 12 pt regular — quieter than the picture and the bubble; first 3 times only, gone at the first stroke) |
 | Live caption, HUD text | — | white on glass |
 
 ### 3.2 Notch island and hanging cards
@@ -391,6 +392,23 @@ glow (`reduceTransparency`, `prefers-reduced-transparency`); the working hairlin
 values (deeper ink, stronger tint) and flat ink instead of gradient text (`BrandColor.increaseContrast`,
 `prefers-contrast: more`). **Reduce Motion** → no marching dashes, no glow breathing, the working hairline appears without a fade.
 Test builds force them with `BLURT_REDUCE_TRANSPARENCY=1`, `BLURT_INCREASE_CONTRAST=1`, `BLURT_REDUCE_MOTION=1`.
+
+## 4a. Interaction (the Mac way)
+
+- **Edit in place, undo over confirm.** A snap is marked up where it was taken, not in a copy; a wrong stroke is `⌘Z`,
+  a discarded snap is *Undo* for 5 s — no "Are you sure?".
+- **Return / Esc / ⌘Z everywhere.** `⏎` finishes, `Esc` steps back (typed text first, then the capture), `⌘Z` takes
+  back the last stroke; a click outside the frozen picture is "done" too. Every pointer path has a keyboard path
+  (Tab reaches the bubble's *Goes to* chip; ↑ ↓ ↩ in its list).
+- **Same modifiers for snap and recording.** The pen draws the same strokes in both: a plain drag is freehand, ⇧ a
+  box, ⌥ an ellipse, resting ~0.5 s at the end of a rough stroke snaps it to a clean line, box or ellipse. While
+  recording the pen key is held as well (⌃-drag, ⌃⇧, ⌃⌥; with ⌥ as the pen key the ellipse is ⌃⌥), and it goes down
+  first: ⌃ held alone a moment, then ⇧ or ⌥ joins. A chord pressed together (⌃⌥-drag moves windows in some window
+  managers) stays the window manager's and never draws. One colour (`markup`), one width rule, one hint wording. The
+  recording's hint is the open island's key line ("Hold ⌃ to draw · ⇧ box · ⌥ ellipse"), not a pill over the
+  recorded area: nothing but the ink itself may land in the video, and the island is never captured.
+- **Never cover what the user is pointing at.** The note bubble docks beside the frozen selection (right, left, below,
+  above, on the selection's display), with its caret toward it.
 
 ## 5. Gradient recipes
 

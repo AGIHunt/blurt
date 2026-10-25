@@ -210,6 +210,8 @@ final class Shot {
         self.n = n; self.file = file; self.wall = wall; self.region = region
     }
 
+    /// where it was taken (global top-left points), when known
+    var regionRect: CGRect? { region.count == 4 ? CGRect(x: region[0], y: region[1], width: region[2], height: region[3]) : nil }
     var url: URL? { file.flatMap { batch?.dir.appendingPathComponent($0) } }
     var markedURL: URL? { marked.flatMap { batch?.dir.appendingPathComponent($0) } }
     /// What gets copied / dragged: the inked version if there is one (a voice note: its wav).
@@ -516,9 +518,11 @@ func chromeWindow(_ frame: NSRect) -> NSWindow {
     return w
 }
 
-/// White shutter flash over a freshly captured area (standalone snaps — the area is already captured).
-func shutterFlash(_ r: NSRect) {
+/// White shutter flash over a freshly captured area (standalone snaps — the area is already captured). `above`: over
+/// the in-place markup stage (the frozen picture) too.
+func shutterFlash(_ r: NSRect, above: Bool = false) {
     let w = chromeWindow(r)
+    if above { w.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3) }
     let l = w.contentView!.layer!
     l.backgroundColor = NSColor.white.cgColor
     l.opacity = 0

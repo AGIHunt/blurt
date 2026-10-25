@@ -30,6 +30,9 @@ final class PickerController {
     var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
     /// A drag is drawing / moving / resizing the selection: its dashes march.
     var dragging = false
+    /// The snap was taken: the dim stays up (no hint, no toolbar, no handles, no pointer) until the in-place markup
+    /// stage is there (InkStage) — `closeWindows()` — so the screen never flickers between the two.
+    private(set) var frozen = false
 
     /// Visual checks (test commands only), all global top-left points: BLURT_TEST_PICKER_SELECTION=X,Y,W,H opens the
     /// picker with that selection, BLURT_TEST_PICKER_HOVER=X,Y,W,H with that window hovered (no selection), and
@@ -91,7 +94,7 @@ final class PickerController {
 
     func placeToolbar() {
         toolbar.removeFromSuperview()
-        guard let sel = selection, sel.width >= 8, sel.height >= 8,
+        guard !frozen, let sel = selection, sel.width >= 8, sel.height >= 8,
               let win = windows.first(where: { $0.frame.intersects(sel) }), let host = win.contentView else { return }
         toolbar.layoutButtons(hasLast: opts.lastRegion != nil)
         let size = toolbar.frame.size
@@ -106,10 +109,27 @@ final class PickerController {
     }
 
     func finish(_ start: Bool) {
+        guard !frozen else { return }
         let result = start ? selection.map { toCG($0).integral } : nil
+        if start, snapMode, result != nil {
+            // the shot is being taken: keep the dim until the stage takes over (never longer than a moment)
+            frozen = true
+            dragging = false
+            toolbar.removeFromSuperview()
+            windows.forEach { $0.ignoresMouseEvents = true }
+            refresh()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.closeWindows() }
+            onDone?(result)
+            return
+        }
+        closeWindows()
+        onDone?(result)
+    }
+
+    /// The picker's windows go (the stage is up, or the snap failed).
+    func closeWindows() {
         windows.forEach { $0.orderOut(nil) }
         windows.removeAll()
-        onDone?(result)
     }
 
     func fullScreen() {
@@ -146,7 +166,7 @@ final class PickerView: NSView {
     func syncOutline() {
         guard let c = controller, window != nil else { outline.update(nil, handles: [], marching: false); return }
         let sel = c.selection.map(local)
-        outline.update(sel, handles: sel.map(handles) ?? [], marching: c.dragging)
+        outline.update(sel, handles: c.frozen ? [] : sel.map(handles) ?? [], marching: c.dragging)
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -184,6 +204,7 @@ final class PickerView: NSView {
             NSBezierPath(rect: h).fill()
         }
 
+        if c.frozen { return }      // taken: only the dim, until the stage is up
         if let sel = c.selection.map(local) {
             // the outline and the handles are layers (SelectionOutline); the size label: a mint pill, dark digits
             let scale = screen?.backingScaleFactor ?? 2
@@ -245,7 +266,7 @@ final class PickerView: NSView {
     }
 
     override func mouseDown(with e: NSEvent) {
-        guard let c = controller else { return }
+        guard let c = controller, !c.frozen else { return }
         let p = global(e)
         downAt = p
         if e.clickCount == 2, let s = c.selection, s.contains(p) { c.finish(true); return }
@@ -312,7 +333,7 @@ final class PickerView: NSView {
     }
 
     override func keyDown(with e: NSEvent) {
-        guard let c = controller else { return }
+        guard let c = controller, !c.frozen else { return }
         switch Int(e.keyCode) {
         case kVK_Escape:
             if c.selection != nil && e.modifierFlags.contains(.shift) { c.selection = nil; c.refresh() } else { c.finish(false) }

@@ -624,7 +624,9 @@ final class IslandContent: NSView {
             place(pen, x: 12, y: y + 3)
             hintEnd = pen.frame.maxX
         } else if let key = rec.penKey?.1 {
-            let h = keyHint(Loc.string("capture.rec.pen_hint", table: "Capture"), key: key, maxWidth: w - 230)
+            // the snap's modifiers under the pen key: ⇧ box, ⌥ ellipse (⌃ when ⌥ is the pen key)
+            let fmt = rec.penKind == .option ? "capture.rec.pen_hint_opt" : "capture.rec.pen_hint"
+            let h = keyHint(Loc.string(fmt, table: "Capture"), key: key, maxWidth: w - 230)
             place(h, x: 18, y: y + 6)
             hintEnd = h.frame.maxX
         }
@@ -761,8 +763,10 @@ final class IslandContent: NSView {
         }
         // what is checked: the current project (nil = none), or where the thing being re-filed went
         let checkedID: String? = pick.map { $0.current } ?? (store.currentID ?? "inbox")
-        let none = d == .switcher && (query.isEmpty || !ProjectPick.filter([Loc.t("project.inbox")], query, name: { $0 }, key: { _ in "" }).isEmpty)
-        let matches = ProjectPick.filter(store.projects, query)
+        // the rows every project picker shows (ProjectPick.choices): recent projects, then Unassigned last
+        let choices = ProjectPick.choices(store.projects, query: query, unassigned: Loc.t("project.inbox"))
+        let none = d == .switcher && choices.last == .unassigned
+        let matches = choices.compactMap(\.project)
         let shown = query.isEmpty && !showAll ? Array(matches.prefix(8)) : matches
         for p in shown {
             let r = IslandRow(icon: ic("folder.fill", ProjectLook.color(p)), title: p.name, height: 36)     // the project's colour

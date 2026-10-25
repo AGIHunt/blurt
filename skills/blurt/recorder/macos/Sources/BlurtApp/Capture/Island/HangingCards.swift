@@ -875,7 +875,8 @@ final class HangingCards: NSObject {
     // MARK: arrivals and departures
 
     /// A capture is complete: a thread drops out of the island and catches it as it flies up from `from` (a screen rect).
-    func catchCapture(_ s: Shot, from: NSRect?) {
+    /// `image`: what flies (the marked picture at full size, from an in-place markup); else the card's thumbnail.
+    func catchCapture(_ s: Shot, from: NSRect?, image: CGImage? = nil) {
         let target = island.screen ?? from.flatMap { r in NSScreen.screens.first { $0.frame.intersects(r) } } ?? NSScreen.main ?? NSScreen.screens[0]
         if panel == nil || screen != target { ensurePanel(on: target) }
         // the batch's change callback may have hung it already (quietly): catch that card
@@ -899,7 +900,7 @@ final class HangingCards: NSObject {
         c.flying = true
         c.grip.value = threadTop
         c.reach = (CACurrentMediaTime() + 0.15, c.grip.value, restY)   // reaches the catch point as the capture arrives
-        let img = s.kind == .voice ? HangingCards.voiceSnapshot(c) : (s.markedThumb ?? s.thumb)
+        let img = s.kind == .voice ? HangingCards.voiceSnapshot(c) : (image ?? s.markedThumb ?? s.thumb)
         if let f = from, let img = img {
             flyImage(img, from: f, to: screenRect(of: c, at: restY), springy: true, cornerRadius: c.card.cornerRadius) { [weak self] in
                 self?.caught(c)

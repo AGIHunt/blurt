@@ -41,7 +41,11 @@
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
 //     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
-//     noteclear · noteink down|move|up X,Y · notestall · notestate (the note bubble: ⌘A⌫, the pen, a mic gone, what it shows)
+//     noteclear · noteink down|move|up X,Y [shift|option] · noteundo · notestall · notestate (the note bubble: ⌘A⌫, the
+//                             pen — on the frozen picture in place, else the bubble's —, ⌘Z, a mic gone, what it shows)
+//     notechip open|close|type T|down|up|return|pick ID|inbox   the bubble's "Goes to X" chip and its list
+//     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
+//     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
 //     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
 //     project ID|inbox        switch the current project (inbox: none — captures go to Unassigned)
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
@@ -262,6 +266,14 @@ extension App {
             opts.out = snapper.openBatch(for: ProjectStore.shared.inbox).dir.deletingLastPathComponent().appendingPathComponent("fake-rec/recording.mp4").path
             try? FileManager.default.createDirectory(at: URL(fileURLWithPath: opts.out).deletingLastPathComponent(), withIntermediateDirectories: true)
             r.snaps = RecordingSnaps(rec: r, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
+            if arg == "ink" {                           // fakerecording ink: with the pen's window and an events.jsonl
+                let ev = URL(fileURLWithPath: opts.out).deletingLastPathComponent().appendingPathComponent("events.jsonl")
+                FileManager.default.createFile(atPath: ev.path, contents: nil)
+                r.events = try? FileHandle(forWritingTo: ev)
+                r.makeInk()
+                r.snaps = RecordingSnaps(rec: r, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
+                emit(["event": "fake_ink", "events": ev.path])
+            }
             island.recordingStarted(r, on: NSScreen.main)
         case "failtake":                                // failtake STILL.png: a take whose writer failed, with a still and its note
             let dir = newSessionDir()
@@ -279,10 +291,39 @@ extension App {
         case "notekey": NoteBubble.shared.testKey(arg == "esc" ? 53 : 36)           // notekey esc|return: a real key event
         case "noteclear": NoteBubble.shared.testClear()                             // ⌘A ⌫ in the note's field
         case "noteclick": NoteBubble.shared.testClickField()                        // a click into the note's field
-        case "noteink":                                 // noteink down|move|up X,Y: the pen on the bubble's picture (0–1)
+        case "noteink":                                 // noteink down|move|up X,Y [shift|option]: the pen on the note's
+            let a = arg.split(separator: " ")           // picture (0–1): the frozen one in place, else the bubble's
+            let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
+            var mods: NSEvent.ModifierFlags = []
+            if a.contains("shift") { mods.insert(.shift) }
+            if a.contains("option") { mods.insert(.option) }
+            NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5, mods: mods)
+        case "noteundo": NoteBubble.shared.testUndo()                               // ⌘Z in the note bubble
+        case "notechip": NoteBubble.shared.testChip(arg)                            // notechip open|close|type T|down|up|return|pick ID|inbox
+        case "stage":                                   // stage [click]: the in-place markup stage; click = outside the picture
+            if arg == "click" { InkStage.shared.testClickOutside() }
+            emit(["event": "stage_state"].merging(InkStage.shared.testState) { $1 })
+        case "recink":                                  // recink down|move|up X,Y [shift|option|control]: the recording pen
             let a = arg.split(separator: " ")
             let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
-            NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5)
+            rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
+                         shift: a.contains("shift"), option: a.contains("option"))
+        case "recflags":                                // recflags ctl,opt,shift,cmd | none | real: what the pen's poll sees
+            if arg == "real" { rec?.testFlags = nil } else {
+                var f: CGEventFlags = []
+                for k in arg.split(separator: ",") {
+                    switch k {
+                    case "ctl": f.insert(.maskControl)
+                    case "opt": f.insert(.maskAlternate)
+                    case "shift": f.insert(.maskShift)
+                    case "cmd": f.insert(.maskCommand)
+                    default: break
+                    }
+                }
+                rec?.testFlags = f
+            }
+            emit(["event": "rec_pen_state", "on": rec?.inkOn ?? false, "armed": rec?.penArm.armed ?? false])
+        case "noteundobtn": NoteBubble.shared.testUndoButton()                      // a click on the in-place undo button
         case "notestall": NoteBubble.shared.testStall()                             // the bubble's mic stops delivering
         case "notestate": emit(["event": "note_state"].merging(NoteBubble.shared.testState) { $1 })
         case "quit": RunLoop.main.perform { NSApp.terminate(nil) }                 // = Quit Blurt (applicationShouldTerminate)

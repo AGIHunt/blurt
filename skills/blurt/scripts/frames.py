@@ -248,8 +248,13 @@ def strokes(video: Path) -> list[dict]:
         px = [(x * w, y * h) for x, y in pts]            # shape is judged in pixels, not in stretched 0–1 space
         length = sum(math.dist(a, b) for a, b in zip(px, px[1:]))
         gap, diag = math.dist(px[0], px[-1]), math.hypot(box[2] * w, box[3] * h)
-        if len(pts) == 1:
+        drawn = e.get("shape")                            # the pen's own: box / ellipse (⌃⇧ / ⌃⌥), rect / line
+        if len(pts) == 1:                                 # (a rough one snapped clean), free — v0.9-next
             shape = "tap"                                 # the recorder rings the spot
+        elif drawn in ("box", "rect", "ellipse"):
+            shape = "loop"                                # a box or an ellipse round something: the box is the thing
+        elif drawn == "line":
+            shape = "line"
         elif gap < 0.4 * diag and length > 2.2 * diag:
             shape = "loop"                                # circled something: the box is the thing
         elif length < 1.3 * gap:

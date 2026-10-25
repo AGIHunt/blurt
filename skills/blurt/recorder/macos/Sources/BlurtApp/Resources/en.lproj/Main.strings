@@ -153,7 +153,6 @@
 "main.list.suggested" = "Looks like %@";
 "main.move.here" = "here now";
 "main.move.list" = "Projects";
-"main.move.no_match" = "No project matches";
 "main.move.placeholder" = "Move to…";
 "main.palette.move_pick" = "Move to Project…";
 "main.palette.switch_project" = "Switch Project…";

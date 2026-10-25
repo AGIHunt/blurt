@@ -52,8 +52,8 @@ what happens:
   **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift; these are the defaults — the user may have changed
   them in the app's Settings → Shortcuts / config `record.hotkeys`, and the countdown shows the real ones). The bar is
   never in the recording;
-- talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; the ink
-  fades after 3 s; the pen button on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D turns it off); click **完成** — no need
+- talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; ⌃⇧ box,
+  ⌃⌥ ellipse — ⌃ first, then the other key — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D turns it off); click **完成** — no need
   to send another chat message.
 - **⌥⇧A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥⇧M too): a full-resolution still of
   the area right now, no pause → `shots/`. Best evidence there is — mention it in one line.

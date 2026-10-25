@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import BlurtCore
 import Carbon.HIToolbox
 import CoreMedia
 import ScreenCaptureKit
@@ -44,6 +45,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var inkTicker: Timer?
     var penSticky = false             // toggled with ⌥⇧D
     var inkOn = false
+    var penArm = PenArm()             // the pen key first, then ⇧ / ⌥ (a ⌃⌥ chord is the window manager's)
+    var testFlags: CGEventFlags?      // scripted checks (recflags): the modifiers the poll sees instead of the keyboard's
     /// record.draw_key in ~/.blurt/config.json: "control" (default) | "option" | "fn" | "off"
     let penKey: (CGEventFlags, String)? = {
         switch recordConfig()["draw_key"] as? String ?? "control" {
@@ -53,6 +56,15 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         default: return (.maskControl, "⌃")
         }
     }()
+    /// the same key as BlurtCore's (the pen's modifiers: ⇧ box, ⌥ ellipse — ⌃ when ⌥ is the pen key)
+    var penKind: InkModifiers.PenKey? {
+        switch penKey?.0 {
+        case CGEventFlags.maskAlternate?: return .option
+        case CGEventFlags.maskSecondaryFn?: return .fn
+        case nil: return nil
+        default: return .control
+        }
+    }
     var snaps: RecordingSnaps?       // ⌥⇧A stills (Snap.swift)
     var lastFrame: CVImageBuffer?     // latest video frame (capture queue): a snap's fallback
     var frames = 0
@@ -233,9 +245,25 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     }
 
     func showChrome() {
+        makeInk()
+        showFrame()
+        island.recordingStarted(self, on: NSScreen.screens.first(where: { $0.frame.intersects(toNS(region)) }))
+        cursorTicker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self, !self.isPaused, self.sessionStart.isValid else { return }
+            self.logCursor()
+        }
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+            guard let self = self, !self.isPaused, let p = self.relative(NSEvent.mouseLocation) else { return }
+            self.log("click", ["x": p.x, "y": p.y, "button": e.type == .rightMouseDown ? "right" : "left"])
+        }
+    }
+
+    /// The pen's window over the recorded area (and the snaps' batch).
+    func makeInk() {
         let r = toNS(region)
         let iv = InkView(frame: NSRect(origin: .zero, size: r.size))
         iv.rec = self
+        iv.lineWidth = inkWidth(for: NSScreen.screens.first(where: { $0.frame.intersects(r) }))
         let ip = NSPanel(contentRect: r, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         ip.level = .statusBar
         ip.isFloatingPanel = true
@@ -253,15 +281,25 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         snaps = RecordingSnaps(rec: self, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
         inkTicker = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.syncInk() }
         RunLoop.main.add(inkTicker!, forMode: .common)
-        showFrame()
-        island.recordingStarted(self, on: NSScreen.screens.first(where: { $0.frame.intersects(r) }))
-        cursorTicker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, !self.isPaused, self.sessionStart.isValid else { return }
-            self.logCursor()
+    }
+
+    /// Tests (`recink`): a stroke through the pen, its key (the pen key) and `shift` / `option` held — the same tool
+    /// rule a drag gets. The pen's window shows it; events.jsonl gets the "stroke" line.
+    func testInk(_ phase: String, x: Double, y: Double, shift: Bool, option: Bool) {
+        guard let iv = inkView else { return }
+        var f: NSEvent.ModifierFlags = []
+        switch penKind {
+        case .option?: f.insert(.option)
+        case .fn?: f.insert(.function)
+        default: f.insert(.control)
         }
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
-            guard let self = self, !self.isPaused, let p = self.relative(NSEvent.mouseLocation) else { return }
-            self.log("click", ["x": p.x, "y": p.y, "button": e.type == .rightMouseDown ? "right" : "left"])
+        if shift { f.insert(.shift) }
+        if option { f.insert(penKind == .option ? .control : .option) }
+        let p = CGPoint(x: iv.bounds.width * x, y: iv.bounds.height * y)
+        switch phase {
+        case "down": inkWin?.orderFrontRegardless(); iv.begin(at: p, tool: iv.tool(f))
+        case "up": iv.end()
+        default: iv.move(to: p, tool: iv.tool(f))
         }
     }
 
@@ -300,17 +338,22 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         syncInk()
     }
 
-    /// The pen is on while its key is held alone (polled: needs no Accessibility permission) or after a toggle.
+    /// The pen is on while its key is held — alone, or with ⇧ (a box) or ⌥ (an ellipse; ⌃ when ⌥ is the pen key), the
+    /// same modifiers as a snap's (BlurtCore InkModifiers) — polled: needs no Accessibility permission; or after a toggle.
+    /// The pen key has to go down first (PenArm): a ⌃⌥ / ⌃⇧ chord pressed together stays the window manager's.
     func syncInk() {
         var held = false
-        if let key = penKey?.0 {
-            let f = CGEventSource.flagsState(.combinedSessionState)
-            let mods: [CGEventFlags] = [.maskControl, .maskAlternate, .maskCommand, .maskShift, .maskSecondaryFn]
-            held = mods.allSatisfy { f.contains($0) == ($0 == key) }
+        if let pen = penKind {
+            let f = testFlags ?? CGEventSource.flagsState(.combinedSessionState)
+            let tool = InkModifiers.recordingTool(pen: pen, control: f.contains(.maskControl), option: f.contains(.maskAlternate),
+                                                  shift: f.contains(.maskShift), command: f.contains(.maskCommand),
+                                                  fn: f.contains(.maskSecondaryFn))
+            held = penArm.update(tool, now: ProcessInfo.processInfo.systemUptime) != nil
         }
         let on = !isPaused && !stopping && sessionStart.isValid && (penSticky || held)
         guard on != inkOn, inkView?.live == nil else { return }
         inkOn = on
+        if testFlags != nil { emit(["event": "rec_pen", "on": on]) }
         inkView?.setOn(on)
         island.orderFront()
     }
