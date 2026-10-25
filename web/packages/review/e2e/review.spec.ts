@@ -275,7 +275,7 @@ test("severity keys and chips, language switch", async ({ page, session }) => {
   await page.locator("#sevChip").click();
   await expect(page.locator("#sevChip")).toHaveClass(/sev-high/);
   await page.locator("#langBtn").click();
-  await expect(page.locator("#keepBtn")).toContainText("Keep");
+  await expect(page.locator("#keepBtn")).toContainText("Accept");
   await page.locator("#langBtn").click();
   await expect(page.locator("#keepBtn")).toContainText("要做");
 });

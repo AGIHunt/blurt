@@ -584,8 +584,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
         let m = StateMenu.menu(for: items, canHandOff: true, selector: #selector(mState(_:)), target: self)
         guard !m.items.isEmpty else { NSSound.beep(); return }
-        if let v = view ?? row.flatMap(list.ringView(row:)), v.window != nil {
-            m.popUp(positioning: nil, at: NSPoint(x: -4, y: v.isFlipped ? v.bounds.height + 3 : -3), in: v)
+        if let r = row ?? list.table.selectedRowIndexes.first, let v = view ?? list.ringView(row: r), v.window != nil {
+            StateMenu.popUp(m, from: v, in: list.table, row: r)
         } else if let r = row ?? list.table.selectedRowIndexes.first {
             let rect = list.table.rect(ofRow: r)
             m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.maxY), in: list.table)

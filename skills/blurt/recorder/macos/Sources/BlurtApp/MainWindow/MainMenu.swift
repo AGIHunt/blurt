@@ -84,7 +84,7 @@ enum MainMenu {
         // handles A D R W X ⌫ S E 1–4 itself, so typing in the search field or the detail never triggers them
         func state(_ a: String, _ key: String) -> NSMenuItem {
             let i = item(StateMenu.title(a == "back" ? "send_back" : a), #selector(MainWindowController.mState(_:)), obj: a)
-            i.image = Look.ring(Lifecycle.transitions[a]?.to ?? "todo", size: 14)
+            i.image = Look.target(Lifecycle.transitions[a]?.to ?? "todo", size: 14)
             displayKey(i, key)
             return i
         }

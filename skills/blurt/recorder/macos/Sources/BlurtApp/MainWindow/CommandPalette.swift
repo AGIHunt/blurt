@@ -158,7 +158,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         ] + (DictationLabModel.enabled ? [e(T("dictation.lab.menu"), "waveform", "⌥⌘L") { c.showDictationLab() }] : [])
         // K3: what the selection can do from its state (hand off is above), with the hint as the detail
         out.insert(contentsOf: StateMenu.actions(for: items, canHandOff: false).map { a in
-            Entry(title: StateMenu.title(a), detail: StateMenu.hint(a, items), image: Look.ring(StateMenu.target(a, items), size: 14),
+            Entry(title: StateMenu.title(a), detail: StateMenu.hint(a, items), image: StateMenu.icon(a, items, size: 14),
                   keys: a == "discard" ? "⌫" : Lifecycle.keyLabel(a), enabled: Scripts.canWrite) { c.apply(a, to: items) }
         }, at: min(out.count, 6))
         for k in KindStyle.builtIn {

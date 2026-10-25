@@ -396,11 +396,14 @@ enum SelfTests {
             let c = MainWindowController.shared
             let w = Int(arg).flatMap { c.list.tableView(c.list.table, pasteboardWriterForRow: $0) } as? NSPasteboardItem
             out(["types": w?.types.map(\.rawValue) ?? [], "file": w?.string(forType: .fileURL) ?? NSNull()])
-        case "mainringclick":           // mainringclick ROW: a click on that row's state ring (selects it, opens the state menu)
+        case "mainringclick":           // mainringclick ROW [front]: a click on that row's state ring (selects it, opens the
+                                        // state menu); front: the window key first, as after a real click (screenshots)
             let c = MainWindowController.shared
-            let b = Int(arg).flatMap { c.list.ringView(row: $0) } as? NSButton
-            out(["found": b != nil])
-            DispatchQueue.main.async { b?.performClick(nil) }
+            let a = arg.split(separator: " ").map(String.init)
+            if a.contains("front") { NSApp.activate(ignoringOtherApps: true); c.window?.makeKeyAndOrderFront(nil) }
+            let b = a.first.flatMap(Int.init).flatMap { c.list.ringView(row: $0) } as? NSButton
+            out(["found": b != nil, "ring": b.map { "\($0.convert($0.bounds, to: nil))" } ?? ""])
+            DispatchQueue.main.asyncAfter(deadline: .now() + (a.contains("front") ? 0.3 : 0)) { b?.performClick(nil) }
         case "mainsearchkey", "mainlistkey":   // CHAR typed into the search field / the list, through NSApp (menus first)
             let c = MainWindowController.shared
             if parts[0] == "mainsearchkey" { c.focusSearch() } else { c.window?.makeFirstResponder(c.list.table) }

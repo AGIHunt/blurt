@@ -586,15 +586,20 @@ v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --
 
 | 动作 | 从 | 到 | 快捷键 | en | zh-Hans |
 |---|---|---|---|---|---|
-| `keep` | new | todo | A（审核模式还有 ↩） | Keep — add it to To do | 要做 — 留下，放进要做 |
-| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off to agent… — hand it to an agent in Blurt, or copy an instruction | 交给 Agent… — 在口喷鸡里交给 Agent，或复制指令 |
+| `keep` | new | todo | A（审核模式还有 ↩） | Accept — leaves the inbox as To do | 放进要做 — 移出待处理，记为要做 |
+| `hand_off` | new, todo | handed_off | ⌘↩ | Hand off to agent… — run it in Blurt, or copy the instruction | 交给 Agent… — 在口喷鸡里运行，或复制指令 |
 | `done` | todo, handed_off, in_progress, to_verify | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
 | `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
 | `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |
-| `wontfix` | new, todo, handed_off, in_progress, to_verify | wontfix | W | Won't do — keep a record, out of your inbox | 不做了 — 留个记录，移出收件箱 |
+| `wontfix` | new, todo, handed_off, in_progress, to_verify | wontfix | W | Won't do — closes it; it stays in All Items | 不做 — 关闭，仍可在全部条目里找到 |
 | `reopen` | done, wontfix | todo | R | Reopen — back to To do | 重新打开 — 回到要做 |
-| `discard` | 除 discarded 外都可以 | discarded | X、⌫ | Discard — move to Discarded; you can restore it | 丢弃 — 放进已丢弃，可以恢复 |
+| `discard` | 除 discarded 外都可以 | discarded | X、⌫ | Discard — you can restore it | 丢弃 — 可以恢复 |
 | `restore` | discarded | `restore_to`（没有就 new） | R | Restore — put it back where it was | 恢复 — 放回丢弃前的状态 |
+
+状态菜单（点行上的圆环或按 S）先是一行「现在在哪」（条目自己的圆环、状态名、勾；不可选），分隔线，再是单行动词：
+往前走的在前，「不做 / 丢弃」最后一组；每项的图是它通往的状态的形状（统一次要灰、同一线宽；交给 Agent 是品牌色纸飞机），
+右边是列表里同一个键。只有结果从标题看不出的才在标题下加一行（丢弃：可以恢复），其余说明在悬停提示和 VoiceOver 里。
+菜单从圆环下方展开，图标列正对圆环。
 
 - 每个状态最多一个「往回」的动作（send_back / take_back / reopen / restore），所以 R 总是唯一的；`S` 打开当前条目的状态菜单。
   `hand_off` 只在宿主能派发 / 交接时出现：它打开派发面板或复制指令，状态由 `sessions.py dispatch`（app，to: session）或
