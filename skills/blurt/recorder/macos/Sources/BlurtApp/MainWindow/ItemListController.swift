@@ -113,9 +113,10 @@ protocol InlineEditable: AnyObject {
     func endEditing(showing text: String?)
 }
 
-/// Rename in place (micro 1, 10): the row's title turns into a field with the whole title selected. Return, Tab or a click
-/// elsewhere commits; Esc puts the title back. An empty title is refused right there (a red ring and a beep — it
-/// never commits). The focus goes back to the list with the row still selected; ⌘Z undoes it ("Undo Rename").
+/// Rename in place (micro 1, 10): the row's title turns into a field with the whole title selected, its glyphs where they
+/// were. Return, Tab or a click elsewhere commits; Esc puts the title back. An empty title is refused right there (the
+/// field's edge in `err`, the reason at its end, a beep — it never commits). The focus goes back to the list with the
+/// row still selected; ⌘Z undoes it ("Undo Rename").
 final class InlineRename: NSObject, NSTextFieldDelegate {
     let cell: InlineEditable
     let uid: String
@@ -137,6 +138,18 @@ final class InlineRename: NSObject, NSTextFieldDelegate {
         cell.beginEditing(original, delegate: self)
         cell.editField.window?.makeFirstResponder(cell.editField)
         cell.editField.currentEditor()?.selectAll(nil)
+        // a test build shot in the background draws the key window's look (BrandRowView.testKeyLook): a window that isn't
+        // key greys its selection whatever the text view's attributes say, so the whole title is painted as selected
+        if BrandRowView.testKeyLook, let tv = cell.editField.currentEditor() as? NSTextView {
+            let all = NSRange(location: 0, length: (tv.string as NSString).length)
+            tv.setSelectedRange(NSRange(location: all.length, length: 0))
+            tv.layoutManager?.addTemporaryAttribute(.backgroundColor, value: NSColor.selectedTextBackgroundColor, forCharacterRange: all)
+        }
+    }
+
+    private func clearTestSelection() {
+        guard BrandRowView.testKeyLook, let tv = cell.editField.currentEditor() as? NSTextView else { return }
+        tv.layoutManager?.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: (tv.string as NSString).length))
     }
 
     var text: String { cell.editField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -160,6 +173,7 @@ final class InlineRename: NSObject, NSTextFieldDelegate {
     func finish(save: Bool) {
         guard !finished else { return }
         finished = true
+        clearTestSelection()
         let t = text
         let changed = save && t != original
         cell.endEditing(showing: changed ? t : nil)
@@ -869,8 +883,18 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
               let col = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) else { return false }
         table.scrollRowToVisible(r)
         guard let cell = table.view(atColumn: col, row: r, makeIfNecessary: true) as? TitleCell else { return false }
+        // the kind icon and ring step back while the title is the one thing in focus (a click on the ring only commits);
+        // the id's place says how to save or cancel
+        func rowCell<C: NSView>(_ id: String) -> C? {
+            table.tableColumns.firstIndex { $0.identifier.rawValue == id }.flatMap { table.view(atColumn: $0, row: r, makeIfNecessary: false) as? C }
+        }
+        let lead: LeadCell? = rowCell("lead"), meta: MetaCell? = rowCell("meta")
+        lead?.quiet = true
+        meta?.showsRenameKeys = true
         let e = InlineRename(cell: cell, uid: it.uid, original: it.title, commit: { commit(it, $0) }) { [weak self] in
             guard let self = self else { return }
+            lead?.quiet = false
+            meta?.showsRenameKeys = false
             self.renaming = nil
             self.view.window?.makeFirstResponder(self.table)       // back to the list, the row still selected
             if self.reloadAfterRename { self.reloadAfterRename = false; self.reload() }
@@ -1090,6 +1114,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             let voice = it.sourceType == "voice" && it.kind == "note"
             c.kindImage = Look.leadImage(kind: it.kind, voice: voice)
             c.icon.alphaValue = it.discarded ? 0.4 : 1
+            c.quiet = renaming?.uid == it.uid
             c.icon.setAccessibilityLabel(voice ? T("main.kind.voice_note") : Look.kindName(it.kind))
             return c
         case "mark":
@@ -1190,6 +1215,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     /// A row's ring (or the State column): select that row unless it is part of the selection, then its state menu.
     @objc func ringClicked(_ sender: NSButton) {
+        // during a rename a click on a ring only ends it (commits, like any click outside the field), no menu on top
+        if renaming != nil { view.window?.makeFirstResponder(table); return }
         let r = table.row(for: sender)
         guard r >= 0 else { return }
         if !table.selectedRowIndexes.contains(r) { table.selectRowIndexes([r], byExtendingSelection: false) }

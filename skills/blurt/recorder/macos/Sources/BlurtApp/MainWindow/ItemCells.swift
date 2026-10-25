@@ -135,6 +135,8 @@ final class LeadCell: NSTableCellView {
     let icon = NSImageView()
     /// The kind icon in its colour; white on a selected (emphasized) row, like the text next to it.
     var kindImage: NSImage? { didSet { restyle() } }
+    /// The row's title is being renamed: the icon steps back (60 %), so the field is the one thing in focus.
+    var quiet = false { didSet { alphaValue = quiet ? 0.6 : 1 } }
     override var backgroundStyle: NSView.BackgroundStyle { didSet { restyle() } }
     private func restyle() {
         let on = backgroundStyle == .emphasized
@@ -272,9 +274,16 @@ final class StateCell: NSTableCellView {
 /// The title (one line), with the search hit after it when the hit isn't in the title.
 final class TitleCell: NSTableCellView, InlineEditable {
     let title = NSTextField(labelWithString: "")
-    var editField: NSTextField { title }
+    /// Rename in place: a field of its own over the label (the label keeps the row's look for when it ends).
+    let editor = TitleRenameField()
+    var editField: NSTextField { editor }
+    private let editFrame = TitleRenameFrame()
+    /// Why the title can't be saved, at the field's end (the keys to save or cancel sit in the id's place: MetaCell).
+    private let hint = NSTextField(labelWithString: "")
+    private var editorToHint: NSLayoutConstraint!, editorToFrame: NSLayoutConstraint!
     /// Unassigned rows with a suggested project: "Looks like X · Move" after the title (ProjectPicking.swift)
     let suggest = SuggestChip()
+    private var unread = false
     override init(frame: NSRect) {
         super.init(frame: frame)
         title.lineBreakMode = .byTruncatingTail
@@ -285,15 +294,36 @@ final class TitleCell: NSTableCellView, InlineEditable {
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         suggest.translatesAutoresizingMaskIntoConstraints = false
         suggest.isHidden = true
-        addSubview(title)
-        addSubview(suggest)
+        hint.font = Look.subFont
+        hint.lineBreakMode = .byClipping
+        hint.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for v in [title, suggest, editFrame, editor, hint] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+        }
+        for v in [editFrame, editor, hint] as [NSView] { v.isHidden = true }
         textField = title
+        editorToHint = editor.trailingAnchor.constraint(equalTo: hint.leadingAnchor, constant: -10)
+        editorToFrame = editor.trailingAnchor.constraint(equalTo: editFrame.trailingAnchor, constant: -TitleRenameFrame.pad)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             title.trailingAnchor.constraint(lessThanOrEqualTo: suggest.leadingAnchor, constant: -8),
             rowMiddle(title, in: self),
             suggest.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             rowMiddle(suggest, in: self),
+            // the field: a borderless field on the label's own frame sets its glyphs exactly where the label drew them
+            // (checked on screen, rest vs editing: the same pixel column and baseline), so nothing moves on E or on
+            // commit; its edge runs from just before the title to 12 pt before the id column (6 here + the table's
+            // 6 pt intercell spacing), the same rule on every row
+            editor.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            editor.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+            editFrame.leadingAnchor.constraint(equalTo: title.leadingAnchor, constant: -TitleRenameFrame.pad),
+            editFrame.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            editFrame.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+            editFrame.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3),
+            hint.trailingAnchor.constraint(equalTo: editFrame.trailingAnchor, constant: -TitleRenameFrame.pad - 2),
+            hint.centerYAnchor.constraint(equalTo: editor.centerYAnchor),
+            editorToFrame,
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -308,6 +338,7 @@ final class TitleCell: NSTableCellView, InlineEditable {
     /// unreadable: the item's file doesn't parse — a small warning mark before the title says so in the list,
     /// before the row is even selected (its detail then says what to do).
     func set(title t: String, unread: Bool, dimmed: Bool, struck: Bool, hit: String?, unreadable: Bool = false) {
+        self.unread = unread
         var attrs: [NSAttributedString.Key: Any] = [.font: unread ? Look.titleUnread : Look.titleFont,
                                                     .foregroundColor: dimmed ? NSColor.secondaryLabelColor : NSColor.labelColor]
         if struck { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue; attrs[.strikethroughColor] = NSColor.tertiaryLabelColor }
@@ -335,32 +366,54 @@ final class TitleCell: NSTableCellView, InlineEditable {
     // MARK: rename in place (E, the menus' Rename)
 
     private var shown: NSAttributedString?
-    /// The title becomes an editable field over the row, the whole title selected (InlineRename drives it).
+    private var suggestWasHidden = true
+    /// The title becomes a field in place (InlineRename drives it, the whole title selected): same font and weight, same
+    /// x and baseline, inside one rounded edge (TitleRenameFrame) that stops short of the id. The row keeps its wash.
     func beginEditing(_ text: String, delegate: NSTextFieldDelegate) {
         shown = title.attributedStringValue
-        title.isEditable = true
-        title.isSelectable = true
-        title.drawsBackground = true
-        title.backgroundColor = .textBackgroundColor
-        title.font = Look.titleFont
-        title.textColor = .labelColor
-        title.stringValue = text
-        title.delegate = delegate
-        title.setAccessibilityLabel(T("main.rename.title"))
+        editor.font = unread ? Look.titleUnread : Look.titleFont
+        editor.stringValue = text
+        editor.delegate = delegate
+        editor.setAccessibilityLabel(T("main.rename.title"))
+        suggestWasHidden = suggest.isHidden
+        suggest.isHidden = true
+        title.isHidden = true
+        editFrame.invalid = false
+        editFrame.isHidden = false
+        editor.isHidden = false
+        setHint(invalid: false)
     }
+    /// An empty title: the edge turns `err` and the hint's place says why (with its "!" — not colour alone).
     func setInvalid(_ on: Bool) {
-        title.wantsLayer = true
-        title.layer?.borderWidth = on ? 1 : 0
-        title.layer?.borderColor = NSColor.systemRed.cgColor
-        title.layer?.cornerRadius = 3
+        if on && !editFrame.invalid {
+            NSAccessibility.post(element: editor, notification: .announcementRequested,
+                                 userInfo: [.announcement: T("main.rename.empty"), .priority: NSAccessibilityPriorityLevel.high.rawValue])
+        }
+        editFrame.invalid = on
+        setHint(invalid: on)
+    }
+    private func setHint(invalid: Bool) {
+        let s = NSMutableAttributedString()
+        if invalid {
+            if let mark = NSImage(systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 11, weight: .regular).applying(.init(paletteColors: [.white, BrandColor.err]))) {
+                let a = NSTextAttachment()
+                a.image = mark
+                a.bounds = NSRect(x: 0, y: -1.5, width: mark.size.width, height: mark.size.height)
+                s.append(NSAttributedString(attachment: a))
+                s.append(NSAttributedString(string: " "))
+            }
+            s.append(NSAttributedString(string: T("main.rename.empty"), attributes: [.font: Look.subFont, .foregroundColor: BrandColor.err]))
+        }
+        hint.attributedStringValue = s
+        hint.isHidden = !invalid
+        NSLayoutConstraint.deactivate(invalid ? [editorToFrame] : [editorToHint])
+        NSLayoutConstraint.activate(invalid ? [editorToHint] : [editorToFrame])
     }
     /// Back to a label: `text` (the new title, shown at once — the index follows) or what it showed before.
     func endEditing(showing text: String?) {
-        setInvalid(false)
-        title.delegate = nil
-        title.isEditable = false
-        title.isSelectable = false
-        title.drawsBackground = false
+        editor.delegate = nil
+        if editor.currentEditor() != nil { editor.abortEditing() }
         if let t = text, let s = shown?.mutableCopy() as? NSMutableAttributedString {
             s.replaceCharacters(in: NSRange(location: 0, length: s.length), with: t)
             title.attributedStringValue = s
@@ -368,6 +421,10 @@ final class TitleCell: NSTableCellView, InlineEditable {
             title.attributedStringValue = s
         }
         shown = nil
+        title.isHidden = false
+        suggest.isHidden = suggestWasHidden
+        for v in [editFrame, editor, hint] as [NSView] { v.isHidden = true }
+        editFrame.invalid = false
     }
 
     /// index.py snippets mark the hit as [hit]
@@ -384,6 +441,94 @@ final class TitleCell: NSTableCellView, InlineEditable {
         out.append(NSAttributedString(string: String(rest), attributes: base))
         return out
     }
+}
+
+/// The rename field itself: borderless, no fill and no focus ring of its own — TitleRenameFrame under it is the one edge.
+final class TitleRenameField: NSTextField {
+    override class var cellClass: AnyClass? { get { Cell.self } set {} }
+    /// The window's shared field editor (and the clip view AppKit wraps it in) paints `textBackgroundColor` behind the
+    /// text unless told not to — a black bar in dark mode: the frame under the field is its only fill.
+    final class Cell: NSTextFieldCell {
+        override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
+            let t = super.setUpFieldEditorAttributes(textObj)
+            t.drawsBackground = false
+            t.backgroundColor = .clear
+            return t
+        }
+    }
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if let t = currentEditor() {
+            t.drawsBackground = false
+            (t.superview as? NSClipView)?.drawsBackground = false
+        }
+        return ok
+    }
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        isBordered = false
+        isBezeled = false
+        drawsBackground = false
+        focusRingType = .none
+        isEditable = true
+        isSelectable = true
+        usesSingleLineMode = true
+        lineBreakMode = .byClipping
+        cell?.wraps = false
+        cell?.isScrollable = true
+        textColor = .labelColor
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+/// The edge of a title being renamed (docs/design/system.md §3.3): a rounded field inside the row's own wash, r 5 (the
+/// row's 6 less its inset), 3 pt in from the row's top and bottom. Light: the panel's white. Dark: white 8 % over the
+/// row, so it reads raised, never darker than the row. One 1.5 pt stroke and nothing else: the system focus colour at
+/// full strength while you type in the key window (brand.accent through the AccentColor asset, unless the user picked
+/// their own accent), a `line-2` hairline while the window isn't key, `err` when the title can't be saved — never a
+/// second ring.
+final class TitleRenameFrame: NSView {
+    static let radius: CGFloat = 5
+    /// From the frame's edge to the text, both ends.
+    static let pad: CGFloat = 6
+    var invalid = false { didSet { if invalid != oldValue { needsDisplay = true } } }
+    private var observers: [NSObjectProtocol] = []
+
+    private var focused: Bool { window?.isKeyWindow == true && NSApp.isActive || BrandRowView.testKeyLook }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let strong = invalid || focused
+        let w: CGFloat = strong ? 1.5 : 1
+        let r = bounds.insetBy(dx: w / 2, dy: w / 2)
+        let path = NSBezierPath(roundedRect: r, xRadius: Self.radius - w / 2, yRadius: Self.radius - w / 2)
+        (dark ? NSColor.white.withAlphaComponent(0.08) : NSColor.white).setFill()
+        path.fill()
+        let stroke: NSColor = invalid ? BrandColor.err
+            : focused ? NSColor.keyboardFocusIndicatorColor.withAlphaComponent(1)
+            : (dark ? NSColor.white : NSColor.black).withAlphaComponent(0.13)
+        stroke.setStroke()
+        path.lineWidth = w
+        path.stroke()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        guard let w = window else { return }
+        let redraw: (Notification) -> Void = { [weak self] _ in self?.needsDisplay = true }
+        for n in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: n, object: w, queue: .main, using: redraw))
+        }
+        for n in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: n, object: nil, queue: .main, using: redraw))
+        }
+    }
+
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 }
 
 /// An image (ring, icon) + quiet text — or just the text.
@@ -465,6 +610,18 @@ final class PillView: NSView {
 /// The item's id ("BA-12"), left-aligned in its own fixed column so every id starts at one x (Linear's list).
 final class MetaCell: NSTableCellView {
     let key = NSTextField(labelWithString: "")
+    /// While the row's title is renamed: "↩ Save   esc Cancel" in the id's place (the detail still shows the id), so the
+    /// row says it is in a mode and stays at its few elements. Only where it fits whole (not in a project's narrow id column).
+    private let keys = NSTextField(labelWithString: "")
+    var showsRenameKeys = false {
+        didSet {
+            guard showsRenameKeys != oldValue else { return }
+            if showsRenameKeys { keys.attributedStringValue = MetaCell.renameKeys() }
+            let on = showsRenameKeys && keys.intrinsicContentSize.width <= bounds.width - 4
+            keys.isHidden = !on
+            key.isHidden = on
+        }
+    }
     override init(frame: NSRect) {
         super.init(frame: frame)
         key.translatesAutoresizingMaskIntoConstraints = false
@@ -479,6 +636,18 @@ final class MetaCell: NSTableCellView {
                                      rowMiddle(key, in: self)])
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// "↩ Save   esc Cancel": the keys in medium, the words regular, both `mute` (a hint that must be read).
+    static func renameKeys() -> NSAttributedString {
+        let s = NSMutableAttributedString()
+        let key: [NSAttributedString.Key: Any] = [.font: Look.smallFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let word: [NSAttributedString.Key: Any] = [.font: Look.subFont, .foregroundColor: NSColor.secondaryLabelColor]
+        for (k, w, gap) in [("↩", T("action.save"), "   "), ("esc", T("action.cancel"), "")] {
+            s.append(NSAttributedString(string: k + " ", attributes: key))
+            s.append(NSAttributedString(string: w + gap, attributes: word))
+        }
+        return s
+    }
 }
 
 /// Row view: VoiceOver reads the whole row as one sentence (kind, title, id, state, project, time). Selection is the

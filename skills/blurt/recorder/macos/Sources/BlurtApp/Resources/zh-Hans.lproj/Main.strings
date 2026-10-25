@@ -358,6 +358,7 @@
 "main.project.settings.subtitle" = "项目设置";
 
 "main.rename.title" = "改标题";
+"main.rename.empty" = "标题不能为空";
 
 "main.search.label" = "搜索";
 "main.search.placeholder" = "搜索条目、原话和字段";
