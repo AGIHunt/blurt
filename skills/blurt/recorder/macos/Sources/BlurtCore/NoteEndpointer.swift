@@ -13,6 +13,11 @@
 //  • "still talking" while 4 of the last 6 frames are loud; 1.8 s without that ends the note. A key press or a mouse
 //    click in the pause doesn't restart the count.
 //  • `speechSeconds`: how much of it was talking — a note abandoned for typing after a cough is dropped, not kept.
+//  • `activity(grace:)`: the snap's bubble is being drawn on — the pause or the no-speech end waits for the pen
+//    (v0.9: a circle drawn as the note ended was lost). `peakDB`: the loudest frame, so a take that is digital silence
+//    can be told from speech the room hid. `soundSeconds`: how long a sound was held above the room (3 of 5 frames
+//    6 dB over the floor) — speech too quiet for the endpointer in a café still holds some, a fan or a hum none
+//    (VoiceKeep: a note the user ended is kept on it).
 // Pure (samples in, events out) so tests feed it synthetic rooms and voices (NoteEndpointerTests).
 
 import Foundation
@@ -44,6 +49,11 @@ public struct NoteEndpointer {
     /// How long it has been quiet: since the last talking stretch, or since the start when nobody has spoken yet
     /// (dictation's "still listening" reminder; `speaking` stays true through any pause when silence never ends a take).
     public var quietSeconds: Double { speaking ? quietFor : heard }
+    /// the loudest frame after the mic's warm-up (dBFS): digital silence (a muted or dead input) stays near −120
+    public private(set) var peakDB: Float = -120
+    /// how long a sound was held above the room (seconds): `soundDelta` over the floor in 3 of the last 5 frames
+    public private(set) var soundSeconds: Double = 0
+    public var soundDelta: Float = 6
 
     static let startWindow = 12, startLoud = 8, lookback = 50, talkWindow = 6, talkLoud = 4
 
@@ -53,6 +63,7 @@ public struct NoteEndpointer {
     private var historyAt = 0
     private var recent: [Float] = []          // the last second's frame levels
     private var quietFor: Double = 0
+    private var soundRecent: [Bool] = []      // the last 5 frames: above floor + soundDelta
 
     public init(sampleRate: Double = 16000) {
         self.sampleRate = sampleRate
@@ -80,6 +91,14 @@ public struct NoteEndpointer {
         return out
     }
 
+    /// The user is still working on the note without talking (drawing on the picture): ending it needs at least
+    /// `grace` more seconds of quiet, and the no-speech end moves out as far.
+    public mutating func activity(grace: Double) {
+        guard ended == nil else { return }
+        quietFor = min(quietFor, silenceToEnd - grace)
+        noSpeechTimeout = max(noSpeechTimeout, heard + grace)
+    }
+
     /// One frame's level in dBFS.
     public static func level<C: Collection>(_ frame: C) -> Float where C.Element == Float {
         guard !frame.isEmpty else { return -120 }
@@ -92,6 +111,7 @@ public struct NoteEndpointer {
         let db = NoteEndpointer.level(f)
         lastDB = db
         heard += NoteEndpointer.frameSeconds
+        if heard > warmup + 1e-9 { peakDB = max(peakDB, db) }
         var out = step(db)
         if ended == nil, heard >= maxLength - 1e-9 { ended = .maxed; out.append(.ended(.maxed)) }
         return out
@@ -111,6 +131,11 @@ public struct NoteEndpointer {
             let sorted = history.sorted()
             let p10 = sorted[min(sorted.count - 1, sorted.count / 10)]
             floorDB = speaking ? min(p10, floorDB + Float(2 * dt)) : p10
+        }
+        if heard > warmup + 1e-9, history.count >= 12 {
+            soundRecent.append(db > max(floorDB + soundDelta, minLoudDB))
+            if soundRecent.count > 5 { soundRecent.removeFirst() }
+            if soundRecent.last == true, soundRecent.filter({ $0 }).count >= 3 { soundSeconds += dt }
         }
         if !speaking {
             // judged once a quarter second of the room is known, over the last second, against today's floor

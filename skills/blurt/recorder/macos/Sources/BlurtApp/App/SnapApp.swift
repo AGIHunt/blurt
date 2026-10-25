@@ -35,6 +35,8 @@
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
 //     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
+//     noteclear · noteink down|move|up X,Y · notestall · notestate (the note bubble: ⌘A⌫, the pen, a mic gone, what it shows)
+//     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
 //     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
@@ -116,6 +118,7 @@ extension App {
             Config.shared.set("record.voice.\(a[1])", v)
             emit(["event": "voice_test_set", "key": a[1], "value": v.map { "\($0)" } ?? "default"])
         case "voice" where arg == "esc": captureHotkey(.voiceEsc)       // = Esc while it listens (its Carbon hotkey)
+        case "voice" where arg == "stall": VoiceInput.shared.testStall()  // its mic stops delivering (a headset gone)
         case "voice" where arg == "state":
             emit(["event": "voice_state", "active": VoiceInput.shared.active, "holding": VoiceInput.shared.holding,
                   "elapsed": VoiceInput.shared.elapsed, "hint": IslandContent.voiceHint(), "live": VoiceInput.shared.liveText ?? NSNull()])
@@ -222,10 +225,29 @@ extension App {
             try? FileManager.default.createDirectory(at: URL(fileURLWithPath: opts.out).deletingLastPathComponent(), withIntermediateDirectories: true)
             r.snaps = RecordingSnaps(rec: r, session: URL(fileURLWithPath: opts.out).deletingLastPathComponent())
             island.recordingStarted(r, on: NSScreen.main)
+        case "failtake":                                // failtake STILL.png: a take whose writer failed, with a still and its note
+            let dir = newSessionDir()
+            let shots = dir.appendingPathComponent("shots")
+            try? FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: URL(fileURLWithPath: arg), to: shots.appendingPathComponent("001.png"))
+            try? Data(#"{"n":1,"t":2.0,"file":"shots/001.png","text":"the total is cut off"}"#.utf8 + [10])
+                .write(to: dir.appendingPathComponent("shots.jsonl"))
+            lastSession = dir
+            takeStartedAt = Date(timeIntervalSinceNow: -30)
+            takeEnded(5, ["event": "error", "message": "writer failed (test)"])
         case "aisort": snapper.handToAI()
         case "organize": snapper.handToAI(project: ProjectStore.shared.currentID)   // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
         case "notekey": NoteBubble.shared.testKey(arg == "esc" ? 53 : 36)           // notekey esc|return: a real key event
+        case "noteclear": NoteBubble.shared.testClear()                             // ⌘A ⌫ in the note's field
+        case "noteclick": NoteBubble.shared.testClickField()                        // a click into the note's field
+        case "noteink":                                 // noteink down|move|up X,Y: the pen on the bubble's picture (0–1)
+            let a = arg.split(separator: " ")
+            let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
+            NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5)
+        case "notestall": NoteBubble.shared.testStall()                             // the bubble's mic stops delivering
+        case "notestate": emit(["event": "note_state"].merging(NoteBubble.shared.testState) { $1 })
+        case "quit": RunLoop.main.perform { NSApp.terminate(nil) }                 // = Quit Blurt (applicationShouldTerminate)
         case "toastaction":                             // toastaction [1|2]: click the island toast's (or question's) answer
             guard let t = island.currentToast else { return }
             island.dismissToast()
@@ -247,6 +269,7 @@ extension App {
             let title = a.count > 1 || !["to_verify", "done"].contains(a.first ?? "") ? (a.last ?? "") : "Login button does nothing"
             PeckCard.shared.play(title: title, detail: "", uid: "test", state: state)
         case "notes": island.openRecordingNotes()
+        case "recsnap": island.snapWithNote()                                      // the recording island's snap button
         case "shortcuts": HotkeySettings.shared.show()
         case "raise", "lower":                          // the main window above everything for a screenshot, and back
             if let w = MainWindowController.shared.window {

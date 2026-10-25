@@ -5,11 +5,20 @@
 //  • a current project is set and the capture has a note (typed, or spoken and transcribed here) → it is filed
 //    straight away by captures.py, no agent, no tokens: it flies up, a thread reels it into the island, and the island
 //    says where it went ("Filed to ordo-platform · OP-14"). The item carries `enrich: pending` for a later AI fill-in.
-//  • no note (or no project: current = auto) → it hangs from the island on a thread, as a card, until the user drags
+//  • v0.9: with a project, a capture without a note is filed there too ("Screenshot 14:32") — the island said "Goes to
+//    <project>" and the guide promises every capture goes straight in. Only a spoken note whose words couldn't be had
+//    hangs as a card, remembering its project ("intended_project"): Retry files it there (BlurtCore CaptureRoute).
+//  • no project (current = auto) → it hangs from the island on a thread, as a card, until the user drags
 //    it onto a project in the island (filed there the same way, no agent), onto "Unassigned", or hands the cards to
 //    the AI: "Organize" (into the current project) / "Auto-sort" (one card, its menu) / "Auto-sort All Cards" (the
 //    island's menu) — one agent run per batch with the processing model.
-//  • Esc in the note bubble discards the capture (Trash, with Undo for 3 s); ⏎ keeps it without a note (→ a card).
+//  • Esc in the note bubble clears what was typed first, then discards the capture (Trash, with Undo for 5 s, as a voice
+//    note's); ⏎ keeps it without a note.
+//  • Screen Recording missing → the snap doesn't open the picker: the island says so, Open Settings starts the guide.
+//    macOS says it is on but ScreenCaptureKit refuses (an older build's grant) → "re-allow Screen Recording", the guide
+//    in its re-add form (BlurtCore ScreenGrant). A recording asks the same way (ScreenHelp; no alert).
+//  • quitting (App.applicationShouldTerminate → prepareForQuit) saves the open note, finishes a voice note, waits a
+//    moment for words and filings, and flushes shots.jsonl; what still waits is picked up at the next launch (restore).
 //  • Delete / Delete All on cards: no question, "Deleted · Undo" for 5 s; the files stay until then (CardDelete).
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
 
@@ -69,12 +78,17 @@ final class Snapper {
 
     func pick(preselect: CGRect? = nil) {
         guard let app = app else { return }
+        // no Screen Recording: say so before an area is dragged for nothing
+        guard Snapper.screenAllowed else {
+            emit(["event": "snap_failed", "screen_recording": false, "stage": "picker"])
+            return ScreenHelp.show(.snap, grant: .missing)
+        }
         rememberFrontApp()
         app.busy = true
         let p = PickerController()
         p.snapMode = true
         p.onDone = { [weak self, weak app] r in
-            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull)
+            unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
             app?.picker = nil
             app?.busy = false
             guard let r = r else { self?.restoreFocus(); return }
@@ -90,7 +104,16 @@ final class Snapper {
         } else {
             opts.lastRegion = lastRegionFromConfig()
         }
+        // L = the last area, like F and ⏎ — only when there is one (the hint says it only then too)
+        if opts.lastRegion != nil { registerHotkey(.pickLast, key: kVK_ANSI_L, mods: 0) }
         p.show(preselect: preselect)
+    }
+
+    /// Screen Recording as a snap sees it: allowed, or a test still stands in for the screen.
+    static var screenAllowed: Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", let still = env["BLURT_TEST_STILL"], still != "none" { return true }
+        return SystemAccess.granted(.screen)
     }
 
     // MARK: batches
@@ -151,21 +174,20 @@ final class Snapper {
         }
     }
 
-    /// No picture came back. Without Screen Recording access that is why: the toast's "Open Settings" starts the
-    /// permission guide for it (System Settings at the right list, the helper panel beside it). With access, it was
-    /// a passing failure: "try again".
+    /// No picture came back. Without Screen Recording access that is why: "Open Settings" starts the permission guide.
+    /// With access, ScreenCaptureKit is asked once more: refused = a stale grant (an older build's: "re-allow Screen
+    /// Recording", the guide's re-add form) — else a passing failure, "try again" (BlurtCore ScreenGrant).
     private func snapFailed() {
         let allowed = SystemAccess.granted(.screen)
-        emit(["event": "snap_failed", "screen_recording": allowed])
-        guard !allowed else {
-            return island.toast(Loc.t("capture.snap.failed", table: "Capture"), actionTitle: nil, action: nil)
+        guard allowed else {
+            emit(["event": "snap_failed", "screen_recording": false])
+            return ScreenHelp.show(.snap, grant: .missing)
         }
-        var t = Island.Toast(text: Loc.t("capture.snap.no_permission", table: "Capture"),
-                             actionTitle: Loc.t("capture.snap.open_settings", table: "Capture")) {
-            MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: .island) }
+        ScreenHelp.probe { ok in
+            let grant = ScreenGrant.diagnose(preflight: true, probe: ok)
+            emit(["event": "snap_failed", "screen_recording": true, "probe": ok, "grant": grant.rawValue])
+            ScreenHelp.show(.snap, grant: grant)
         }
-        t.seconds = 8
-        island.toast(t)
     }
 
     func playShutter() {
@@ -246,6 +268,7 @@ final class Snapper {
         }
         emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false, "via": via,
               "wall": Date().timeIntervalSince1970])
+        let quiet = quietWords.remove(key) != nil
         if !s.deleted {
             if let t = text, !t.isEmpty {
                 s.said = t
@@ -253,9 +276,16 @@ final class Snapper {
                 s.batch?.save(s)
             } else if text != nil {
                 s.transcription = .idle
-                if s.kind == .shot { dropVoice(s, reason: "no_speech") } else { s.said = ""; s.batch?.save(s) }
+                if s.kind == .shot { dropVoice(s, reason: "no_speech") } else {
+                    // a voice note the speech model found no words in: kept as audio, "No words recognized · Retry"
+                    s.said = ""
+                    s.batch?.save(s)
+                    if !quiet { wordsToast(s, "capture.voice.no_words") }
+                }
             } else {
                 s.transcription = .failed
+                // the cards may be tucked away: the island says it, with Retry (the card's menu has it too)
+                if !quiet { wordsToast(s, "capture.voice.words_failed") }
             }
             hanging.update(s)
         } else if s.transcription == .pending {
@@ -263,9 +293,40 @@ final class Snapper {
         }
         for f in pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
     }
+
+    /// "Couldn't turn the note into words · Retry" / "No words recognized · Retry".
+    private func wordsToast(_ s: Shot, _ key: String) {
+        var t = Island.Toast(text: Loc.t(key, table: "Capture"), actionTitle: Loc.t("capture.retry", table: "Capture")) { [weak self] in
+            self?.retryWords(s)
+        }
+        t.seconds = 8
+        // one per capture (Island's ToastQueue): two notes that failed each keep their Retry — keyless toasts with the
+        // same text would take each other's place
+        t.key = Snapper.wordsToastKey(s)
+        island.toast(t)
+    }
+    static func wordsToastKey(_ s: Shot) -> String { "capture.words.\(ObjectIdentifier(s).hashValue)" }
+    /// transcriptions started at launch (restore): no toast each — the cards show it
+    private var quietWords = Set<ObjectIdentifier>()
     private var pendingWords: [ObjectIdentifier: [(String?) -> Void]] = [:]
     /// how many times a capture's recording was replaced (Edit Note's re-record): words of an older take are stale
     private var wordsTake: [ObjectIdentifier: Int] = [:]
+
+    /// The note bubble's live stream for `s` (its words were transcribed while they were said): the card's words come
+    /// from it — only its last piece is left.
+    func attach(_ st: VoiceNoteStream, to s: Shot) { streamed[ObjectIdentifier(s)] = st }
+
+    /// `s`'s words (they may already be coming), then `then` with them (nil: none / failed).
+    func fetchWords(_ s: Shot, then: @escaping (String?) -> Void) { transcribe(s, then: then) }
+
+    /// The bubble dropped `s`'s voice (abandoned for typing): words still coming for it are not its words.
+    func forgetWords(_ s: Shot) {
+        let key = ObjectIdentifier(s)
+        wordsTake[key, default: 0] += 1
+        streamed.removeValue(forKey: key)?.cancel()
+        s.transcription = .idle
+        for f in pendingWords.removeValue(forKey: key) ?? [] { f(nil) }
+    }
 
     /// An edit kept a re-record over `s`'s voice (its `said` is nil again). Words still coming for the old take are
     /// dropped when they land, and whoever waited for them gets the new take's words instead.
@@ -309,8 +370,11 @@ final class Snapper {
 
     /// "Retry Transcription" (a card's menu, after "Couldn't transcribe").
     func retryWords(_ s: Shot) {
-        guard s.voice != nil, s.said == nil else { return }
+        guard s.voice != nil, CardNote.clean(s.said) == nil, !s.deleted else { return }
+        if s.said != nil { s.said = nil }             // "No words recognized": ask again
         if s.transcription == .failed { s.transcription = .idle }
+        island.dropToasts(key: Snapper.wordsToastKey(s))       // its Retry is being done
+        emit(["event": "voice_retry", "n": s.n, "intended_project": s.intendedProject ?? NSNull()])
         transcribe(s) { [weak self] _ in self?.settled(s) }
     }
 
@@ -327,25 +391,37 @@ final class Snapper {
 
     // MARK: where a capture goes once it is complete
 
-    /// The note bubble closed (or there was none). With a project and a note it is filed now, without an agent; a
-    /// spoken note is transcribed first (also next to typed text: the item gets both). No note → it lets go of the
-    /// project and hangs as a card.
+    /// The note bubble closed (or there was none), or a capture's words came in: where it goes now (BlurtCore
+    /// CaptureRoute). With a project it is filed without an agent — with its note, or without one; a spoken note is
+    /// transcribed first (also next to typed text: the item gets both). Its words couldn't be had and nothing was
+    /// typed → a card that remembers the project (Retry files it there). Auto: a card, its words fetched for it.
     func settled(_ s: Shot) {
-        guard !s.deleted else { return }
-        let filing = s.project != nil && s.assignedBy == "capture"
-        // a card (auto mode) with a spoken note: its words now, for the card, a copy and the item it becomes
-        if !filing, s.needsWords { transcribe(s) { _ in } }
-        guard filing, let p = s.project, let b = s.batch else { return }
-        if s.needsWords { return transcribe(s) { [weak self] _ in self?.settled(s) } }
-        if s.words != nil { return file([s], in: b, project: p) }
-        hangAsCard(s)       // nothing typed, and the words couldn't be had here: a card (an agent transcribes it later)
+        guard !s.deleted, let b = s.batch else { return }
+        let filing = s.assignedBy == "capture" ? s.project : nil
+        // no words: the transcription failed, or a voice note held none (a shot's empty voice was dropped already)
+        let noWords = s.transcription == .failed || (s.kind == .voice && s.voice != nil && s.said?.isEmpty == true)
+        let route = CaptureRoute.decide(project: filing, intended: s.intendedProject, isCard: s.isCard, needsWords: s.needsWords,
+                                        noWords: noWords, hasNote: s.words != nil)
+        switch route {
+        case .transcribeFirst:
+            // a card's words in auto mode: for the card, a copy and the item it becomes; otherwise routed again after
+            if filing == nil && s.intendedProject == nil { transcribe(s) { _ in } }
+            else { transcribe(s) { [weak self] _ in self?.settled(s) } }
+        case .file(let p):
+            if filing == nil { b.assign(s, project: p, by: "capture") }      // a card filed where it was taken for
+            file([s], in: b, project: p)
+        case .cardKeepingProject(let p):
+            hangAsCard(s, keeping: p)
+        case .card, .none:
+            break
+        }
     }
 
-    /// Captured with a project but nothing said about it: not worth filing on its own — a card, like in auto mode.
-    private func hangAsCard(_ s: Shot) {
+    /// Taken with a project, but its words couldn't be had: a card until Retry gets them, then it is filed there.
+    private func hangAsCard(_ s: Shot, keeping p: String) {
         guard let b = s.batch else { return }
-        b.release(s)
-        emit(["event": "card", "n": s.n, "session": b.dir.path, "reason": "no_note"])
+        b.release(s, keeping: p)
+        emit(["event": "card", "n": s.n, "session": b.dir.path, "reason": "no_words", "intended_project": p])
         if hanging.screenRect(of: s) == nil { hanging.catchCapture(s, from: island.frameOnScreen) }
         hanging.refresh()
     }
@@ -356,8 +432,11 @@ final class Snapper {
         let ns = shots.map(\.n)
         for s in shots { hanging.pullIn(s) }
         island.expectProcess(session: b.dir, captures: ns)
+        filing += 1
         words(for: shots) { b.sync { self.write(shots, in: b, project: project) } }
     }
+    /// filings under way (prepareForQuit waits for them a moment)
+    private var filing = 0
 
     private func write(_ shots: [Shot], in b: ShotBatch, project: String) {
         let ns = shots.map(\.n)
@@ -381,6 +460,7 @@ final class Snapper {
                     job.step("write", r == nil ? .failed : .done)
                     for st in ["transcribe", "frames", "route"] { job.step(st, .skipped) }
                     job.finish(r == nil ? .failed : .done, error: why.map { JobError(code: "io", message: $0, hintKey: nil) })
+                    self.filing = max(0, self.filing - 1)
                     emit(["event": "filed", "job": job.id, "items": made.compactMap { $0["id"] as? String }, "tokens": 0])
                     guard let first = made.first else { return }
                     self.announceFiled(project: project, id: first["id"] as? String, count: made.count)
@@ -415,6 +495,34 @@ final class Snapper {
         let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
         NoteBubble.shared.commit()
+        // the cards come off the notch only once an agent can take them: none usable → they stay, and the island says why
+        agentReady { [weak self] ok in
+            guard let self = self else { return }
+            guard ok else {
+                emit(["event": "ai_sort_no_agent", "captures": all.map(\.n)])
+                var t = Island.Toast(text: Loc.t("capture.sort.no_agent", table: "Capture"),
+                                     actionTitle: Loc.t("capture.sort.set_up", table: "Capture")) {
+                    AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
+                }
+                t.seconds = 8
+                return island.toast(t)
+            }
+            self.giveToAI(all.filter(\.isCard), project: project)
+        }
+    }
+
+    /// Is any coding agent usable now (AgentHub's cached check)? Tests: BLURT_TEST_AGENTS=none|ready; a stubbed
+    /// process (BLURT_TEST_PROCESS) counts as ready.
+    private func agentReady(_ then: @escaping (Bool) -> Void) {
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", let t = env["BLURT_TEST_AGENTS"] { return then(t != "none") }
+        if env["BLURT_TEST_PROCESS"] != nil { return then(true) }
+        let hub = AgentHub.shared
+        hub.check(hub.order()) { st in then(st.contains { $0.state.usable }) }
+    }
+
+    private func giveToAI(_ all: [Shot], project: String?) {
+        guard !all.isEmpty else { return }
         var by: [ObjectIdentifier: (ShotBatch, [Int])] = [:]
         for s in all {
             guard let b = s.batch else { continue }
@@ -478,8 +586,8 @@ final class Snapper {
         hanging.show(peek: 2.5)
     }
 
-    /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 3 s brings it back (with what
-    /// was typed or said), and it then goes where a capture without Esc would have gone.
+    /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 5 s (as long as a discarded voice
+    /// note's) brings it back (with what was typed, said and drawn), and it then goes where it would have gone.
     func discard(_ s: Shot) {
         guard let b = s.batch else { return }
         hanging.drop(s)
@@ -488,7 +596,7 @@ final class Snapper {
             var t = Island.Toast(text: Loc.t("capture.discarded", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
                 self?.undoDiscard(s, trashed: trashed)
             }
-            t.seconds = 3
+            t.seconds = VoiceInput.undoSeconds
             island.toast(t)
         }
     }
@@ -669,14 +777,30 @@ final class Snapper {
             return ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [])
                 .filter { $0.lastPathComponent.hasSuffix("-shots") }
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var unsettled: [Shot] = []
         for d in dirs where !cardBatches.contains(where: { canonicalPath($0.dir) == canonicalPath(d) }) {
+            let raw = (try? String(contentsOf: d.appendingPathComponent("shots.jsonl"), encoding: .utf8)) ?? ""
+            // left half-done by a quit or a crash (v0.9): a project capture never filed, a voice note's wav without its line
+            let filed = Set((Snapper.batchJSON(d)["local"] as? [String: Any])?.keys.map { $0 } ?? [])
+            let unfiled = CaptureRestore.unfiled(jsonl: raw, filed: filed)
+            var files = (try? FileManager.default.contentsOfDirectory(atPath: d.appendingPathComponent("shots").path)) ?? []
+            // voice notes cancelled with Esc whose Undo a quit cut short: discarded, as the user asked
+            if files.contains(where: VoiceDiscard.isParked) {
+                VoiceDiscard.sweep(d.appendingPathComponent("shots"))
+                files.removeAll(where: VoiceDiscard.isParked)
+            }
+            let orphans = CaptureRestore.orphanVoices(files: files, known: Set(CaptureRestore.fold(raw).keys))
             // cards, and captures dragged out (Recently Taken — or past their days, for expireTaken)
-            guard let raw = try? String(contentsOf: d.appendingPathComponent("shots.jsonl"), encoding: .utf8),
-                  CardBatches.holdsCards(jsonl: raw),
-                  let b = ShotBatch.load(d), b.live.contains(where: { $0.isCard || $0.taken != nil }) else { continue }
+            guard CardBatches.holdsCards(jsonl: raw) || !unfiled.isEmpty || !orphans.isEmpty,
+                  let b = ShotBatch.load(d) ?? (orphans.isEmpty ? nil : ShotBatch(dir: d, inRecording: false)) else { continue }
+            VoiceRetake.sweep(d.appendingPathComponent("shots"))
+            let back = orphans.compactMap { recoverVoice($0, in: b) }
+            let pending = unfiled.compactMap { n in b.live.first { $0.n == n } } + back
+            guard b.live.contains(where: { $0.isCard || $0.taken != nil }) || !pending.isEmpty else { continue }
             b.onChange = { hanging.refresh() }
             cardBatches.append(b)
-            VoiceRetake.sweep(d.appendingPathComponent("shots"))
+            if !pending.isEmpty { emit(["event": "restore_unsettled", "session": d.path, "unfiled": unfiled, "voices": orphans]) }
+            unsettled += pending
         }
         hanging.refresh(quiet: true)
         expireTaken()
@@ -684,13 +808,68 @@ final class Snapper {
         expiryTimer?.invalidate()
         expiryTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in self?.expireTaken() }
         // a spoken note left without words (the app quit first, or an older version skipped it): its words now — or,
-        // if it holds none, it is dropped. One after another (not a model process per card at launch).
-        transcribeInTurn(cards.filter(\.needsWords))
+        // if it holds none, it is dropped — and a capture left on its way into a project goes on there. One after
+        // another (not a model process per card at launch).
+        let wanting = cards.filter(\.needsWords)
+        settleInTurn(wanting + unsettled.filter { u in !wanting.contains { $0 === u } })
     }
 
-    private func transcribeInTurn(_ shots: [Shot]) {
+    private func settleInTurn(_ shots: [Shot]) {
         guard let s = shots.first else { return }
-        transcribe(s) { [weak self] _ in self?.transcribeInTurn(Array(shots.dropFirst())) }
+        let next = { [weak self] in self?.settleInTurn(Array(shots.dropFirst())) }
+        guard s.needsWords else { settled(s); next(); return }
+        quietWords.insert(ObjectIdentifier(s))
+        transcribe(s) { [weak self] _ in self?.settled(s); next() }
+    }
+
+    /// A voice note's wav that never got its shots.jsonl line (Blurt quit or crashed while it listened): its header is
+    /// written from the file's size (BlurtCore WavRepair) and it comes back — into the batch's project, else as a card.
+    private func recoverVoice(_ n: Int, in b: ShotBatch) -> Shot? {
+        let url = b.shotsDir.appendingPathComponent("\(ShotBatch.name(n)).wav")
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int,
+              let fh = try? FileHandle(forUpdating: url) else { return nil }
+        defer { try? fh.close() }
+        let head = fh.readData(ofLength: 8192)
+        guard let start = WavRepair.dataStart(header: head), size > start else { return nil }
+        if let fixed = WavRepair.repair(header: head, fileSize: size) {
+            try? fh.seek(toOffset: 0)
+            fh.write(fixed)
+        }
+        let seconds = Double(size - start) / (NoteVoice.rate * 2)       // 16 kHz, 16-bit mono (NoteVoice)
+        let project = b.meta["project"] as? String
+        emit(["event": "voice_recovered", "n": n, "session": b.dir.path, "seconds": (seconds * 10).rounded() / 10,
+              "project": project ?? NSNull()])
+        let s = b.addVoice(n: n, duration: seconds, project: project)
+        if project == nil { hanging.catchCapture(s, from: island.frameOnScreen) }
+        return s
+    }
+
+    /// batch.json of a session ({} when there is none): its "local" ids say which captures captures.py filed.
+    static func batchJSON(_ dir: URL) -> [String: Any] {
+        (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("batch.json")))) as? [String: Any] ?? [:]
+    }
+
+    // MARK: quitting
+
+    /// Blurt is quitting: the open note is saved, a voice note finished (its wav closed, its line written), words and
+    /// filings under way get a moment (`cap`), and every batch's shots.jsonl is flushed — then `done`. What is still
+    /// on its way is picked up at the next launch (restore).
+    func prepareForQuit(cap: Double = 3, _ done: @escaping () -> Void) {
+        VoiceInput.shared.finishForQuit()
+        NoteBubble.shared.commitNow()
+        let until = Date().addingTimeInterval(cap)
+        emit(["event": "quit_wait", "words": pendingWords.count, "filing": filing])
+        // a run-loop timer in the common modes, not the main queue: AppKit waits for the reply in a modal loop, and
+        // a quit that came from a main-queue block (a signal, a scripted command) never gets the main queue back
+        let t = Timer(timeInterval: 0.1, repeats: true) { [weak self] t in
+            guard let self = self else { t.invalidate(); return done() }
+            guard (self.pendingWords.isEmpty && self.filing == 0) || Date() >= until else { return }
+            t.invalidate()
+            emit(["event": "quit_ready", "words": self.pendingWords.count, "filing": self.filing])
+            for b in self.cardBatches + Array(self.open.values) { b.flush() }       // every shots.jsonl line is on disk
+            done()
+        }
+        RunLoop.main.add(t, forMode: .common)
     }
 
     // MARK: the system's own screenshots (⌘⇧3/4/5), optional

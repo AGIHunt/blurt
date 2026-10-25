@@ -220,13 +220,15 @@ struct HelperPanelView: View {
             Text(g.headline(k)).font(.headline).fixedSize(horizontal: false, vertical: true)
         }
         Text(PermissionGuide.why(k)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        // re-adding a stale Screen Recording grant: the tile is its second step, not a "not in the list?" aside
+        let readd = k == .screen && g.reauthorize
         if !g.stepDone && k.acceptsDrop {
             HStack(spacing: 10) {
                 AppTile().frame(width: 52, height: 52)
                     .help(T("settings.perm.drag_hint"))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(T("settings.perm.drag")).font(.callout.weight(.medium))
-                    Text(T("settings.perm.drag_detail")).font(.caption).foregroundStyle(.secondary)
+                    Text(T(readd ? "settings.perm.screen.readd_drag" : "settings.perm.drag")).font(.callout.weight(.medium))
+                    Text(T(readd ? "settings.perm.screen.readd_drag_detail" : "settings.perm.drag_detail")).font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -245,7 +247,7 @@ struct HelperPanelView: View {
                 Spacer()
                 Button(T("settings.perm.skip")) { g.skip() }.controlSize(.small).buttonStyle(.link).foregroundStyle(Color.brandInk)
             }
-            if k == .screen && g.suggestRestart {
+            if k == .screen && g.suggestRestart && !readd {
                 Text(T("settings.perm.restart_hint")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }

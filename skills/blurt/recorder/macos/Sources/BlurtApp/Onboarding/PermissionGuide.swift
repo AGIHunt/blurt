@@ -11,6 +11,9 @@
 //      dictation's listener again at once (the tap made before the grant only hears Blurt).
 // At the end the panel closes, Blurt comes back to the front where the walk started, with a check mark: "Done —
 // dictation works in every app now." Nothing in System Settings is ever clicked or changed by Blurt.
+// Re-add (`reauthorize`, v0.9): macOS lists Blurt as allowed but ScreenCaptureKit refuses — the grant was made for an
+// older build (ScreenHelp, BlurtCore ScreenGrant.stale). The Screen Recording step then isn't satisfied by the switch
+// being on: the panel says to remove Blurt with − and add it again, and Restart Blurt is what finishes it.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -37,6 +40,8 @@ final class PermissionGuide: ObservableObject {
     @Published var noWindow = false
     /// Screen Recording's step has waited a while: maybe macOS wants Blurt restarted
     @Published private(set) var suggestRestart = false
+    /// the re-add form: Screen Recording is on in the list but doesn't work (a stale grant)
+    @Published private(set) var reauthorize = false
 
     private(set) var source: Source = .test
     private var timer: Timer?
@@ -55,6 +60,8 @@ final class PermissionGuide: ObservableObject {
             return SystemAccess.granted(.inputMonitoring) || (Dictation.enabled && Dictation.shared.listenerKind == .tap && Dictation.key == .fn)
         case .fnKey:
             return !Dictation.enabled || Dictation.key != .fn || SystemAccess.granted(.fnKey)
+        case .screen where reauthorize:
+            return false                // the switch is on already: only a relaunch after re-adding Blurt tells
         default:
             return SystemAccess.granted(k)
         }
@@ -68,12 +75,14 @@ final class PermissionGuide: ObservableObject {
     // MARK: walk
 
     /// Starts a walk (or restarts it: a click elsewhere while one runs). `only` = just these kinds (a row's Allow).
-    func start(_ flow: PermissionFlowKind, only: [PermissionKind]? = nil, source: Source) {
+    func start(_ flow: PermissionFlowKind, only: [PermissionKind]? = nil, source: Source, reauthorize: Bool = false) {
         self.flow = flow
         self.source = source
+        self.reauthorize = reauthorize && (only ?? []).contains(.screen)
         finished = nil
         let walk = PermissionPlan.steps(flow, only: only, satisfied: satisfiedSet)
-        emit(["event": "perm_guide", "op": "start", "flow": flow.rawValue, "source": source.rawValue, "steps": walk.map(\.rawValue)])
+        emit(["event": "perm_guide", "op": "start", "flow": flow.rawValue, "source": source.rawValue, "steps": walk.map(\.rawValue),
+              "reauthorize": self.reauthorize])
         guard !walk.isEmpty else {
             steps = []
             return finish(already: true)
@@ -103,6 +112,11 @@ final class PermissionGuide: ObservableObject {
             HelperPanel.shared.show()
         case .fnKey:
             SystemAccess.openPane(.fnKey)
+            HelperPanel.shared.show()
+        case .screen where reauthorize:
+            // macOS has Blurt in the list already: the pane, and the panel saying to remove it and add it again
+            suggestRestart = true
+            SystemAccess.openPane(.screen)
             HelperPanel.shared.show()
         default:
             if SystemAccess.register(k, via: "guide") { return poll() }
@@ -171,6 +185,7 @@ final class PermissionGuide: ObservableObject {
         timer?.invalidate()
         timer = nil
         running = false
+        reauthorize = false
         current = nil
         stepDone = false
     }
@@ -228,13 +243,15 @@ final class PermissionGuide: ObservableObject {
 
     static func name(_ k: PermissionKind) -> String { T("settings.perm.\(k.rawValue)") }
     static func why(_ k: PermissionKind) -> String {
-        k == .inputMonitoring || k == .fnKey ? T("settings.perm.\(k.rawValue).why", Dictation.keyInline) : T("settings.perm.\(k.rawValue).why")
+        if k == .screen, shared.reauthorize { return T("settings.perm.screen.readd_why") }
+        return k == .inputMonitoring || k == .fnKey ? T("settings.perm.\(k.rawValue).why", Dictation.keyInline) : T("settings.perm.\(k.rawValue).why")
     }
     /// The panel's one line for the current step.
     func headline(_ k: PermissionKind) -> String {
         if stepDone { return T("settings.perm.step_done", PermissionGuide.name(k)) }
         switch k {
         case .microphone where SystemAccess.state(.microphone) == .notAsked: return T("settings.perm.mic_prompt")
+        case .screen where reauthorize: return T("settings.perm.screen.readd")
         case .fnKey: return T("settings.perm.fn_key.headline")
         default: return T("settings.perm.turn_on")
         }

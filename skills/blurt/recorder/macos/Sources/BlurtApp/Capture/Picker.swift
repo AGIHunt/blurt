@@ -207,7 +207,8 @@ final class PickerView: NSView {
         }
 
         // hint on every screen, top centre
-        let hint = c.snapMode ? Loc.t("capture.picker.hint_snap", table: "Capture")
+        // "L last area" only when there is one (L does nothing otherwise)
+        let hint = c.snapMode ? Loc.t(opts.lastRegion != nil ? "capture.picker.hint_snap" : "capture.picker.hint_snap_nolast", table: "Capture")
                               : Loc.t("capture.picker.hint_record", table: "Capture")
         let f = NSFont.systemFont(ofSize: 13, weight: .medium)
         let icon: BlurtIcon? = c.snapMode ? .snap : nil

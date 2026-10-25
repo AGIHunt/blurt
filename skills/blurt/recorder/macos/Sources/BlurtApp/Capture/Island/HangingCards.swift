@@ -39,10 +39,11 @@
 //  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
 //    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (leading the
 //    band's first line in white — the note's, or the status's when that is all there is; a small capsule bottom right
-//    only on a bare picture) when the note was spoken *and* its words are here, or its transcription failed (the audio
-//    is there to retry). A spoken note still being transcribed: a quiet "Transcribing…" under whatever was typed,
-//    never an empty mic; failed: "Couldn't transcribe" in the attention amber (it needs you; not a caption) and Retry
-//    Transcription in the right-click menu. A spoken note with no speech in it (the room, a cough, abandoned
+//    only on a bare picture) when the note was spoken *and* its words are here, or it needs a retry (the audio is
+//    there to try again: CardNote.marksMic). A spoken note still being transcribed: a quiet "Transcribing…" under
+//    whatever was typed, never an empty mic; failed: "Couldn't transcribe" in the attention amber (it needs you; not a
+//    caption) and Retry Transcription in the right-click menu; a voice note the model found no words in (v0.9): "No
+//    words recognized", the same way (CardNote.needsYou). A spoken note with no speech in it (the room, a cough, abandoned
 //    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
 //  • hover shortens the thread and lifts the card (its neighbours make room); its note, under the whole row (never over
 //    a neighbour), only adds what the card can't show (CardTip): the rest of a note cut short, the play button of a
@@ -537,12 +538,13 @@ final class HangingCards: NSObject {
         (s.kind == .shot && s.note.marksMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
     }
 
-    /// "Transcribing…" / "Couldn't transcribe" (nil: nothing pending).
+    /// "Transcribing…" / "Couldn't transcribe" / "No words recognized" (nil: nothing pending).
     static func statusText(_ s: CardNote.Status) -> String? {
         switch s {
         case .none: return nil
         case .transcribing: return Loc.t("capture.card.transcribing", table: "Capture")
         case .failed: return Loc.t("capture.card.transcribe_failed", table: "Capture")
+        case .noWords: return Loc.t("capture.card.no_words", table: "Capture")
         }
     }
 
@@ -1802,7 +1804,7 @@ final class HangingCards: NSObject {
         if all > 1 {
             m.addItem(ClosureMenuItem(Loc.plural("capture.card.copy_all", table: "Capture", count: all)) { [weak self] in self?.copyAll() })
         }
-        if s.note.status == .failed {
+        if s.note.status.needsRetry {
             m.addItem(ClosureMenuItem(Loc.t("capture.card.retry_transcribe", table: "Capture")) { snapper.retryWords(s) })
         }
         m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })

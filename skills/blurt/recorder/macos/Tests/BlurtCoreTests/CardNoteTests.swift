@@ -61,6 +61,15 @@ final class CardNoteTests: XCTestCase {
         XCTAssertFalse(make("typed", nil, voice: false).marksMic)
     }
 
+    /// A voice note the model found no words in (v0.9) is drawn like a failed one: the mic mark kept, in amber, Retry.
+    func testANoWordsCardKeepsTheMicAndNeedsYouLikeAFailedOne() {
+        let n = make(nil, "", voice: true)
+        XCTAssertEqual(n.status, .noWords)
+        XCTAssertTrue(n.status.needsRetry)
+        XCTAssertTrue(n.marksMic)
+        XCTAssertTrue(n.needsYou)
+    }
+
     func testNoVoiceNoStatus() {
         XCTAssertEqual(make(nil, nil, voice: false, .pending), CardNote(text: nil, showsMic: false, status: .none))
         XCTAssertFalse(make(nil, "stale words", voice: false).showsMic, "a dropped voice note leaves no mark")

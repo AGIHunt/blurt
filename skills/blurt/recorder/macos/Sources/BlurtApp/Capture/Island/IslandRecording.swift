@@ -46,14 +46,22 @@ extension Island {
     /// The notes for this take's snaps (the "notes" command; the snap button lands here with its new shot).
     func openRecordingNotes(at shot: Shot? = nil) {
         guard let r = rec, let snaps = r.snaps, let s = shot ?? snaps.batch.live.last else { return }
-        let wasPaused = r.isPaused
-        if !wasPaused { r.togglePause() }
         let nb = NoteBubble.shared
+        // one pause per note session (BlurtCore RecordingNotes): the bubble switching to another snap of this take
+        // keeps the session's resume — the bubble it replaces must not resume the take under the new one
+        let open = nb.isOpen && nb.mode == .recording && nb.recordingResume != nil
+        let plan = RecordingNotes.open(alreadyOpen: open, carriedResume: nb.recordingResume ?? false, paused: r.isPaused)
+        nb.recordingResume = nil
+        nb.onClose = nil
+        if plan.pause { r.togglePause() }
         nb.recordingShots = snaps.batch.live
         nb.begin(s, mode: .recording, anchor: { [weak self] in self?.frameOnScreen })
+        let resume = plan.resumeOnClose
+        nb.recordingResume = resume
         nb.onClose = { [weak r] in
-            guard let r = r, !r.stopping else { return }
-            if !wasPaused && r.isPaused { r.togglePause() }
+            NoteBubble.shared.recordingResume = nil
+            guard resume, let r = r, !r.stopping, r.isPaused else { return }
+            r.togglePause()
         }
         refresh()
     }

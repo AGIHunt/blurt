@@ -274,5 +274,21 @@
 			<string>%ld words</string>
 		</dict>
 	</dict>
+	<key>app.record.failed_kept</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>The recording couldn’t be saved · its still and notes are kept</string>
+			<key>other</key>
+			<string>The recording couldn’t be saved · its %ld stills and notes are kept</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

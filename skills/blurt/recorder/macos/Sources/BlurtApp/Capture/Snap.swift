@@ -7,7 +7,8 @@
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
 // {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
-// same n win key by key; {"n","project","assigned_by"} assigns a card, {"n","deleted":true} deletes one,
+// same n win key by key; {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
+// remembers the project it was taken with, v0.9), {"n","deleted":true} deletes one,
 // {"n","taken":<wall>} marks a card dragged out and taken by another app (kept 7 days, BlurtCore TakenCaptures; put
 // back: {"n","taken":null}). What a card hands out as files (the picture with its note inside, the note as .md) is
 // written to out/<NNN>/ next to shots/ (CardExport.swift) and goes with the capture.
@@ -37,8 +38,11 @@ func loadCGImage(_ url: URL) -> CGImage? {
     return CGImageSourceCreateImageAtIndex(src, 0, nil)
 }
 
-func thumbnail(_ img: CGImage, maxPixels: CGFloat) -> CGImage {
-    let s = min(1, maxPixels / CGFloat(max(img.width, img.height)))
+/// `maxPixels` on the long side — but never below `minShort` on the short side: a wide toolbar or a tall sidebar
+/// snap stays sharp on its card (v0.9: a 2400×120 snap became a 520×26 thumb, upscaled 6× and unreadable).
+func thumbnail(_ img: CGImage, maxPixels: CGFloat, minShort: CGFloat = 200) -> CGImage {
+    let long = CGFloat(max(img.width, img.height)), short = CGFloat(max(1, min(img.width, img.height)))
+    let s = min(1, max(maxPixels / long, min(minShort / short, 4096 / long)))
     guard s < 1 else { return img }
     let w = max(1, Int(CGFloat(img.width) * s)), h = max(1, Int(CGFloat(img.height) * s))
     guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
@@ -191,6 +195,9 @@ final class Shot {
     var deletions = 0
     /// project id | "inbox" | nil (nil and not assigned = a card waiting on a thread)
     var project: String?
+    /// a card that was taken with a project but whose words couldn't be had (transcription failed): filed there once
+    /// Retry has them (shots.jsonl "intended_project"; BlurtCore CaptureRoute)
+    var intendedProject: String?
     var assignedBy: String?      // capture | user | ai
     var pixelSize: CGSize = .zero
     var scale: CGFloat = 2
@@ -233,6 +240,7 @@ final class Shot {
         if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
         if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
         if let a = assignedBy { o["assigned_by"] = a }
+        if let p = intendedProject { o["intended_project"] = p }
         if let t = taken { o["taken"] = (t * 1000).rounded() / 1000 }
         if deleted { o["deleted"] = true }
         return o
@@ -332,16 +340,19 @@ final class ShotBatch {
     func assign(_ s: Shot, project: String?, by: String) {
         s.project = by == "ai" ? nil : project
         s.assignedBy = by
-        let o: [String: Any] = ["n": s.n, "project": s.project ?? NSNull(), "assigned_by": by]
+        s.intendedProject = nil
+        let o: [String: Any] = ["n": s.n, "project": s.project ?? NSNull(), "assigned_by": by, "intended_project": NSNull()]
         io.async { appendJSONL(self.jsonl, o) }
         onChange?()
     }
 
-    /// Captured with a project, but it hangs as a card after all (no note): `{"n", "project": null, "assigned_by": null}`.
-    func release(_ s: Shot) {
+    /// Captured with a project, but it hangs as a card after all (its words couldn't be had): `{"n", "project": null,
+    /// "assigned_by": null, "intended_project"}` — `keeping`: the project it is filed into once Retry has its words.
+    func release(_ s: Shot, keeping: String? = nil) {
         s.project = nil
         s.assignedBy = nil
-        io.async { appendJSONL(self.jsonl, ["n": s.n, "project": NSNull(), "assigned_by": NSNull()]) }
+        s.intendedProject = keeping
+        io.async { appendJSONL(self.jsonl, ["n": s.n, "project": NSNull(), "assigned_by": NSNull(), "intended_project": keeping ?? NSNull()]) }
         onChange?()
     }
 
@@ -396,6 +407,9 @@ final class ShotBatch {
 
     func sync(_ then: @escaping () -> Void) { io.async { DispatchQueue.main.async(execute: then) } }
 
+    /// Every line queued so far is written (blocking; quitting).
+    func flush() { io.sync {} }
+
     // --- batch session (-shots) bookkeeping
     var meta: [String: Any] {
         (try? JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("meta.json")))) as? [String: Any] ?? [:]
@@ -442,6 +456,7 @@ final class ShotBatch {
             s.deleted = o["deleted"] as? Bool ?? false
             s.project = o["project"] as? String
             s.assignedBy = o["assigned_by"] as? String
+            s.intendedProject = o["intended_project"] as? String
             s.taken = (o["taken"] as? NSNumber)?.doubleValue
             s.batch = b
             if kind == .shot, !s.deleted, let u = s.url, let img = loadCGImage(u) {
@@ -454,6 +469,9 @@ final class ShotBatch {
             b.shots.append(s)
             b.nextN = max(b.nextN, n + 1)
         }
+        // a file a quit or a crash left without its line (a cut-off voice note) is never written over
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: b.shotsDir.path)) ?? []
+        b.nextN = max(b.nextN, CaptureRestore.highestN(files: files, known: Set(byN.keys)) + 1)
         return b
     }
 }

@@ -11,7 +11,9 @@
 //    asked for the data (or after 1.5 s); then the card copy is written back and armed again. Any other ⌘V, any other
 //    app, or anything copied since: the event passes untouched. If the main thread then finds it shouldn't run after
 //    all (the clipboard changed a moment ago), the ⌘V is posted again as it was, so the user's paste is never lost.
-//    The island says "图 + 文已粘贴".
+//    The island says "图 + 文已粘贴". Without Accessibility nothing is armed (the ⌘V can't be caught; BlurtCore
+//    CardPasteSequence.arm): the copy pastes as it is, and the island says once a session that in a chat app only the
+//    picture goes in, with Allow… (v0.9: it armed anyway and the note was silently lost).
 //  • DragNoteFollowUp: a card dropped into a chat app brought its picture as the only file; the app is brought
 //    forward at the window it landed on (Accessibility: raise that window, make the app frontmost); the composer that
 //    received the drop gets the focus if it hasn't (the editable text under the drop point, else the nearest one in
@@ -217,6 +219,8 @@ final class SmartPaste {
     static var now: Double { Snapper.now }
 
     let gate = SmartPasteGate()
+    /// "only the picture pastes" was said this session (once is enough)
+    private var toldAccessibility = false
     private(set) var arm: SmartPasteArm?
     /// writes the armed card copy again (after a sequence)
     private var rewrite: (() -> Bool)?
@@ -234,9 +238,24 @@ final class SmartPaste {
     /// A card copy was written to the clipboard (`cards`, in order); `rewrite` writes it again.
     func armed(cards: [CardPasteboard.Card], rewrite: @escaping () -> Bool) {
         let steps = CardPasteSequence.steps(cards)
-        guard SmartPaste.enabled, CardPasteSequence.needsSequence(steps) else {
-            disarm(SmartPaste.enabled ? "one_thing" : "off")
+        switch CardPasteSequence.arm(enabled: SmartPaste.enabled, steps: steps, accessibility: SmartPaste.accessibility) {
+        case .skip(let why):
+            disarm(why)
             return
+        case .needsAccessibility:
+            // the ⌘V can't be caught: the copy pastes as it is (the picture, in a chat app) — say so, once a session
+            disarm("no_accessibility")
+            emit(["event": "smart_paste_unarmed", "why": "no_accessibility", "told": !toldAccessibility])
+            guard !toldAccessibility else { return }
+            toldAccessibility = true
+            var t = Island.Toast(text: Loc.t("capture.card.copied_no_ax", table: "Capture"),
+                                 actionTitle: Loc.t("capture.card.allow_ax", table: "Capture")) {
+                MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.accessibility], source: .island) }
+            }
+            t.seconds = 8
+            island.toast(t)
+            return
+        case .arm: break
         }
         arm = SmartPasteArm(changeCount: pasteboard.changeCount, steps: steps, now: SmartPaste.now)
         self.rewrite = rewrite
