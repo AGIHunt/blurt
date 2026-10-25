@@ -2,10 +2,12 @@
 //
 //   ProjectPopover     M (or Move to Project… in the palette, the toolbar's Move ▸ Other…): a small popover at the
 //                      selection — type to filter (ProjectPick: key, name, a word of it), ↑↓, ↩ moves, Esc closes.
-//                      Projects recently used first, Unassigned last; the place the items are in is checked.
+//                      Projects recently used first, then a line and Unassigned (last, as in every project picker);
+//                      the place the items are in is checked. The highlighted row uses the accent selection, as in
+//                      Spotlight — the field keeps the keys, the list still reads as the one in use.
 //   SuggestChip        an Unassigned row an organizing run suggested a project for: "Looks like Atlas Web · Move" at
 //                      the end of its title — one click moves it (⌘Z / the toast's Undo moves it back).
-//   SuggestionsBanner  above the Unassigned list, one line per suggested project: "Looks like Atlas Web · 3 items"
+//   SuggestionsBanner  above the Unassigned list, one line per suggested project: "Looks like Atlas Web"
 //                      [Move All (3)] — one move, one Undo for the whole group. The rows below are in the same groups.
 // Every move goes through MainWindowController.move(uids:to:) (items.py move, the user's own; ⌘Z puts each item back).
 import AppKit
@@ -154,9 +156,15 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let r = PickRowView()
+        r.lineAbove = shown[row].inbox && row > 0
+        return r
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let e = shown[row]
-        let c = NSTableCellView()
+        let c = PickCell()
         let icon = NSImageView(image: Look.symbol(e.inbox ? "tray.2" : "folder.fill", e.name, size: 12) ?? NSImage())
         icon.contentTintColor = e.inbox ? .secondaryLabelColor : e.color
         let name = NSTextField(labelWithString: e.name)
@@ -179,6 +187,8 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
             key.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -8), key.centerYAnchor.constraint(equalTo: c.centerYAnchor),
         ])
         c.textField = name
+        c.icon = icon; c.key = key; c.check = check
+        c.iconTint = icon.contentTintColor
         c.setAccessibilityLabel(e.id == checked ? "\(e.name), \(T("main.move.here"))" : e.name)
         return c
     }
@@ -188,6 +198,35 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
     func type(_ s: String) { field.stringValue = s; refresh() }
     /// Tests: ↩ on the selected row.
     func testPick() { pick(table.selectedRow) }
+}
+
+/// The popover's row: always drawn with the accent ("emphasized") selection — the search field keeps first responder,
+/// which would otherwise grey the highlight out — and a hairline above Unassigned.
+private final class PickRowView: NSTableRowView {
+    var lineAbove = false
+    override var isEmphasized: Bool { get { true } set {} }
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard lineAbove else { return }
+        NSColor.separatorColor.setFill()
+        NSRect(x: 8, y: 0, width: bounds.width - 16, height: 1).fill()
+    }
+}
+
+/// Its cell: the key, the check and a project's colour turn white on the accent selection, like a menu item.
+private final class PickCell: NSTableCellView {
+    weak var icon: NSImageView?
+    weak var key: NSTextField?
+    weak var check: NSImageView?
+    var iconTint: NSColor?
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet {
+            let on = backgroundStyle == .emphasized
+            icon?.contentTintColor = on ? .alternateSelectedControlTextColor : iconTint
+            key?.textColor = on ? .alternateSelectedControlTextColor : .secondaryLabelColor
+            check?.contentTintColor = on ? .alternateSelectedControlTextColor : BrandColor.ink
+        }
+    }
 }
 
 // MARK: - "Looks like X · Move" at the end of an Unassigned row
@@ -296,10 +335,9 @@ final class SuggestionsBanner: NSView {
         icon.contentTintColor = color
         let text = NSTextField(labelWithString: "")
         text.lineBreakMode = .byTruncatingTail
-        let s = NSMutableAttributedString(string: T("main.suggest.looks_like", p.name), attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium)])
-        s.append(NSAttributedString(string: " · " + TP("main.suggest.items", g.uids.count),
-                                    attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor]))
-        text.attributedStringValue = s
+        // the count is on the button (Move All (3)): the line names the project only
+        text.attributedStringValue = NSAttributedString(string: T("main.suggest.looks_like", p.name),
+                                                        attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium)])
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let title = g.uids.count > 1 ? T("main.suggest.move_all", g.uids.count) : T("main.list.move")
         let b = NSButton(title: title, target: self, action: #selector(moveAll(_:)))

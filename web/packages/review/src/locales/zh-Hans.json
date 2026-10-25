@@ -166,6 +166,7 @@
   "project.moved_other": "已把 {n} 条移到 {project}",
   "project.suggested": "像是 {project} 的",
   "project.suggested.hint": "整理时建议的 · {reason}",
+  "project.suggested.hint_plain": "整理时建议的",
   "project.accept": "归过去",
   "project.by.capture": "记录时就在这个项目",
   "project.by.ai": "旧版本自动归的 · 把握 {pct}",

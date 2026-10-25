@@ -168,7 +168,7 @@ final class JobRow: NSView {
     let bar = NSProgressIndicator()
     private var hover = false { didSet { needsDisplay = true } }
     var selected = false { didSet { needsDisplay = true; setAccessibilitySelected(selected) } }
-    /// While AI works on this job (processing a recording into items, auto-sort): the spinner plus one static 1 pt
+    /// While AI works on this job (processing a recording into items, organizing cards): the spinner plus one static 1 pt
     /// brand hairline round the row (design system §4) — no rim, no glow, no motion of its own.
     private let working = WorkingOutline(frame: .zero)
     private var aiWorking = false

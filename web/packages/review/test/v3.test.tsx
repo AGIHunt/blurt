@@ -349,6 +349,11 @@ describe("v3 UI", () => {
     const { el, s, sent, done } = await mount(<Inspector />);
     await act(async () => s.go(1));
     expect(el.querySelector(".prov-sug")?.textContent).toContain("Looks like website");
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized · mentions the pricing page");
+    // no reason given: no dangling separator
+    await act(async () => { s.data.items[1].suggested_project!.reason = ""; s.go(0); });
+    await act(async () => s.go(1));
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized");
     await act(async () => (el.querySelector("#acceptSuggestion") as HTMLButtonElement).click());
     await act(flush);
     expect(sent[0][0]).toEqual({ op: "set", id: U(1), set: { project: "p-site" }, unset: [] });

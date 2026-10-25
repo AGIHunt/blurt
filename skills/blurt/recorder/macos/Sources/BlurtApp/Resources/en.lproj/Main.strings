@@ -155,7 +155,7 @@
 "main.move.no_match" = "No project matches";
 "main.move.placeholder" = "Move to…";
 "main.palette.move_pick" = "Move to Project…";
-"main.palette.switch_project" = "Switch Current Project…";
+"main.palette.switch_project" = "Switch Project…";
 "main.palette.use_none" = "No Current Project (new snaps and recordings to Unassigned)";
 "main.palette.use_project" = "Make %@ the Current Project";
 "main.project.use_none" = "Stop Using as Current Project";

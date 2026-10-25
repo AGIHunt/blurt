@@ -27,9 +27,10 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
              to_verify --claim fixed: only the user marks done, won't do, keeps or discards. `work` = old name.
   fix        REF | SESSION ID --state fixing|fixed|wontfix|reopened [--agent A] [--run-id R] [--commit] [--pr] [--note]
              v2 alias of state (fixing → in_progress, fixed / wontfix → to_verify with that claim, reopened → todo)
-  move       REF … --project P|inbox                 the user's move (only the user moves items between projects;
+  move       REF … --project P|inbox [--from Q …]    the user's move (only the user moves items between projects;
              an organizing run leaves a suggested_project on Unassigned items instead). The suggestion stays on
-             the item, so moving it back to Unassigned (⌘Z) shows it again
+             the item, so moving it back to Unassigned (⌘Z) shows it again. --from: only the items still in Q
+             move; the rest (moved by the user since) stay and come back in "kept" (the island's Change / Undo)
   doc        SESSION | --project P|inbox [--state S]… [--kind K]… [--item REF]   what the review page shows; --item:
              that item is always in it, whatever the filters (the one a detail pane shows, a discarded one too)
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
@@ -597,7 +598,12 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
         meta = load_json(session / "meta.json", {}) or {}
         b = load_batch(session) or new_batch(session)
         shots = read_shots(session)
-        default = data.get("project") or b.get("project") or meta.get("project") or os.environ.get("BLURT_PROJECT") \
+        # Where the items go is the user's word only: the batch, meta.json (the island's "Filed to X · Change"),
+        # BLURT_PROJECT, the session's own store. A top-level "project" the organizing run wrote is never a
+        # destination — for an Unassigned capture it is a suggestion like an item's own "project" (below). v1/v2
+        # sessions being migrated kept their project there.
+        legacy = data.get("project") if mode == "migrate" else None
+        default = legacy or b.get("project") or meta.get("project") or os.environ.get("BLURT_PROJECT") \
             or (None if home.is_inbox else home.project_id)
         import projects  # noqa: PLC0415
         if default and default != st.INBOX and projects.by_id(default) is None:
@@ -610,8 +616,8 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
         b["processing"] = bool(data.get("processing")) and mode == "ingest"
         b["reviewed"] = bool(b.get("reviewed") or data.get("reviewed"))
         b["agent_at"] = now_iso(data["agent_at"]) if isinstance(data.get("agent_at"), (int, float)) else now_iso()
-        if b.get("project") is None and data.get("project"):
-            b["project"] = data["project"]
+        if b.get("project") is None and legacy:
+            b["project"] = legacy
         local = b.setdefault("local", {})
         removed = b.setdefault("removed", {})
         order = b.setdefault("items", [])
@@ -650,10 +656,12 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
                 pid = shots[shot]["project"]  # the user filed this capture on the island (or it was taken with one)
                 by = "user" if shots[shot].get("assigned_by") == "user" else by
             pid = pid or default
-            if not pid and isinstance(it.get("project"), str):
+            said = it.get("project") if isinstance(it.get("project"), str) else \
+                (data.get("project") if mode == "ingest" and isinstance(data.get("project"), str) else None)
+            if not pid and said:
                 # Unassigned: the organizing run may suggest a project (SKILL.md §3) — only a suggestion, the item
                 # stays here until the user moves it. With a project (the user's current one) the items go there.
-                hit = projects.find(it["project"])
+                hit = projects.find(said)
                 if hit is not None and hit["id"] != st.INBOX:
                     c = it.get("project_confidence")
                     suggestion = {"id": hit["id"], "reason": str(it.get("project_reason") or "")[:200]}
@@ -661,7 +669,7 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
                         suggestion["confidence"] = round(max(0.0, min(1.0, float(c))), 2)
             target = store_for_project(pid) if pid else st.inbox_store()
             target.ensure()
-            fields = {k: v for k, v in it.items() if k not in ("project_confidence", "project_reason")}
+            fields = {k: v for k, v in it.items() if k not in ("project", "project_confidence", "project_reason")}
             if shot is not None and (shots.get(shot) or {}).get("type") == "voice":
                 # a voice input in a shots batch is a voice capture, not a snap (K1 source.type)
                 fields["source"] = {**(it["source"] if isinstance(it.get("source"), dict) else {}), "type": "voice"}
@@ -905,13 +913,20 @@ def fix(session: Path | None, ref: str, state: str, given: dict) -> dict:
 
 
 # ------------------------------------------------------------------ moving between projects
-def move_items(paths: list[Path], pid: str, by: str = "user") -> list[dict]:
+def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str] | None = None,
+               kept: list[dict] | None = None) -> list[dict]:
     """Items into another store. Only ever the user's choice (by "user"; "migrate" for the v0.6 carry-over): nothing
-    moves an item on its own. A suggested_project stays (it is shown only while the item is in Unassigned)."""
+    moves an item on its own. A suggested_project stays (it is shown only while the item is in Unassigned).
+    only_from: move only the items that are still in one of these projects; the others (moved since by the user)
+    stay where they are and are listed in `kept`."""
     dst = store_for_project(pid)
     moved = []
     for path in paths:
         src = st.store_of_item(path)
+        if only_from is not None and src.project_id not in only_from:
+            if kept is not None:
+                kept.append({"uid": st.read_header(path).get("uid"), "project": src.project_id})
+            continue
         locks = sorted({src, dst}, key=lambda s: str(s.root))
         with contextlib.ExitStack() as stack:
             for s in locks:
@@ -966,15 +981,22 @@ def _former_id(aliases: list[str], dst: Store) -> str | None:
     return None
 
 
-def move(session: Path | None, refs: list[str], project: str) -> dict:
+def move(session: Path | None, refs: list[str], project: str, only_from: list[str] | None = None) -> dict:
+    """`move REF… --project P [--from Q …]`: --from moves only the items still in Q — "Filed to X · Change" on a
+    recording, and its Undo, leave alone the items the user has moved by hand since."""
     pid = resolve_project(project)
+    froms = {resolve_project(f) for f in only_from} if only_from else None
     paths = []
     for ref in refs:
         path, uid, into = locate(session, ref)
         if path is None:
             fail(f"no item {ref}" if into is None else f"{ref} was merged away by the user", "not_found")
         paths.append(path)
-    return {"ok": True, "moved": move_items(paths, pid, "user")}
+    kept: list[dict] = []
+    out = {"ok": True, "moved": move_items(paths, pid, "user", froms, kept)}
+    if froms is not None:
+        out["kept"] = kept
+    return out
 
 
 # ------------------------------------------------------------------ reading: get / list / doc
@@ -1521,6 +1543,8 @@ def build_parser() -> Parser:
     s = sub.add_parser("move")
     s.add_argument("target", nargs="+", metavar="REF")
     s.add_argument("--project", required=True)
+    s.add_argument("--from", dest="only_from", action="append", metavar="PROJECT",
+                   help="move only the items still in this project (repeatable); the rest stay where they are")
     s.add_argument("--by", choices=["user"], default="user", help=argparse.SUPPRESS)  # older callers pass it
     for name in ("doc", "poll"):
         s = sub.add_parser(name)
@@ -1623,7 +1647,7 @@ def run(a) -> dict:
         return change_state(session, refs, a.state, a.action, given, a.by, a.undo)
     if a.cmd == "move":
         session, refs = target_of(a.target)
-        return move(session, refs, a.project)
+        return move(session, refs, a.project, a.only_from)
     if a.cmd in ("doc", "poll"):
         scope = scope_of(_session_arg(a.session), a.project)
         doc = make_doc(scope, a.kind, filter_states(a.state, a.status, a.work), a.item)

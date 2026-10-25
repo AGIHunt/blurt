@@ -155,7 +155,7 @@
 "main.move.no_match" = "没有匹配的项目";
 "main.move.placeholder" = "移到…";
 "main.palette.move_pick" = "移到项目…";
-"main.palette.switch_project" = "切换当前项目…";
+"main.palette.switch_project" = "切换项目…";
 "main.palette.use_none" = "不指定当前项目（新的截图和录屏进未归类）";
 "main.palette.use_project" = "把 %@ 设为当前项目";
 "main.project.use_none" = "不再作为当前项目";

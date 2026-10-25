@@ -299,6 +299,46 @@ class Assignment(TmpCase):
         self.assertEqual((it["project"], it["project_by"]), (self.pw["id"], "capture"))
         self.assertNotIn("suggested_project", it)
 
+    def test_a_top_level_project_is_only_a_suggestion(self):
+        """A run that writes "project" at the top of items.json (instead of per item) moves nothing: the Unassigned
+        batch stays in Unassigned, each item suggesting that project; the batch doesn't remember it as its place."""
+        session = self.e.ws / "inbox" / "sessions" / "20261022-143000"
+        session.mkdir(parents=True)
+        (session / "items.json").write_text(json.dumps({"project": "WA", "items": [
+            {"id": "I-001", "kind": "issue", "title": "one"},
+            {"id": "I-002", "kind": "issue", "title": "two", "project": self.pd["key"]}]}))
+        out = ok("items.py", "ingest", session, env=self.e.env())
+        self.assertEqual(out["inbox"], 2)
+        by = {r["local"]: ok("items.py", "get", r["uid"], env=self.e.env())["item"] for r in out["items"]}
+        self.assertEqual({k: v["project"] for k, v in by.items()}, {"I-001": "inbox", "I-002": "inbox"})
+        self.assertEqual(by["I-001"]["suggested_project"]["id"], self.pw["id"])
+        self.assertEqual(by["I-002"]["suggested_project"]["id"], self.pd["id"])  # its own word comes first
+        self.assertIsNone(json.loads((session / "batch.json").read_text()).get("project"))
+        # a later ingest of the same session (the run adds an item) still files nothing
+        (session / "items.json").write_text(json.dumps({"project": "WA", "items": [
+            {"id": "I-003", "kind": "note", "title": "three"}]}))
+        again = ok("items.py", "ingest", session, env=self.e.env())
+        self.assertEqual(again["items"][0]["project"], "inbox")
+
+    def test_move_from_leaves_items_the_user_moved(self):
+        """`move --from Q`: "Filed to X · Change" and its Undo move only the items still where the recording put
+        them; one the user has moved by hand since stays where they put it, and comes back in "kept"."""
+        a, b, c = (self.inbox(title=t) for t in ("a", "b", "c"))
+        ok("items.py", "move", c, "--project", self.pd["id"], env=self.e.env())  # the user's own move
+        out = ok("items.py", "move", a, b, c, "--project", self.pw["id"], "--from", "inbox", env=self.e.env())
+        self.assertEqual(sorted(m["uid"] for m in out["moved"]), sorted([a, b]))
+        self.assertEqual(out["kept"], [{"uid": c, "project": self.pd["id"]}])
+        self.assertEqual(ok("items.py", "get", c, env=self.e.env())["item"]["project"], self.pd["id"])
+        # Undo: those two back, from where they went (by key works too); c is still left alone
+        back = ok("items.py", "move", a, b, "--project", "inbox", "--from", "WA", env=self.e.env())
+        self.assertEqual(len(back["moved"]), 2)
+        self.assertEqual({ok("items.py", "get", u, env=self.e.env())["item"]["project"] for u in (a, b)}, {"inbox"})
+        # several --from: any of them; without --from every item moves and there is no "kept"
+        both = ok("items.py", "move", a, c, "--project", self.pw["id"], "--from", "inbox", "--from", self.pd["id"],
+                  env=self.e.env())
+        self.assertEqual(len(both["moved"]), 2)
+        self.assertNotIn("kept", ok("items.py", "move", a, "--project", "inbox", env=self.e.env()))
+
     def test_moving_keeps_the_suggestion_for_undo(self):
         """Looks like X · Move = the user's move; ⌘Z moves it back, and the suggestion is still there to show."""
         session = self.e.ws / "inbox" / "sessions" / "20261022-161500"

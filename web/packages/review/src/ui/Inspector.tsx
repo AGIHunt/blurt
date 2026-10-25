@@ -357,7 +357,11 @@ function Provenance({ i }: { i: Item }) {
       )}
       {/* an Unassigned item's suggestion from its organizing run: only a suggestion, one click moves it (K2) */}
       {sug && (i.project || "inbox") === "inbox" && s.canMove && (
-        <div className="prov-sug" title={s.t("project.suggested.hint", { reason: i.suggested_project!.reason || "" })}>
+        <div className="prov-sug" title={
+            i.suggested_project!.reason
+              ? s.t("project.suggested.hint", { reason: i.suggested_project!.reason })
+              : s.t("project.suggested.hint_plain")
+          }>
           <Icon name="spark" size={14} />
           <span>{s.t("project.suggested", { project: s.projectName(sug) })}</span>
           <button className="btn sm" id="acceptSuggestion" onClick={() => s.moveTo([i], sug.id)}>

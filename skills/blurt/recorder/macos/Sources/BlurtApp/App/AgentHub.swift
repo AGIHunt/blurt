@@ -508,6 +508,7 @@ extension App {
                           "agents": statuses.map { ["id": $0.def.id, "state": $0.state.rawValue, "why": $0.why] }]
         }
         job.finish(.failed, error: JobError(code: "auth", message: lines.joined(separator: "; "), hintKey: "main.job.hint.no_agent"))
+        Refile.runEnded(dir)
     }
 
     /// The agent's instructions for an unattended run (English: agents read it, the user never does).
@@ -565,6 +566,7 @@ extension App {
             processing.removeAll { $0 == dir.path }
             appendLog(log, "── blurt \(nowStamp()) · couldn't start \(a.def.name): \(error)\n")
             job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name): \(error)"))
+            Refile.runEnded(dir)
             refreshStatus()
             return
         }
@@ -622,6 +624,7 @@ extension App {
             }
             let code = ["auth", "quota", "network", "model"].contains(f?.id ?? "") ? f!.id : "unknown"
             job.finish(.failed, error: JobError(code: code, message: reason, hintKey: nil))
+            Refile.runEnded(dir)
             self.refreshStatus()
         }
     }

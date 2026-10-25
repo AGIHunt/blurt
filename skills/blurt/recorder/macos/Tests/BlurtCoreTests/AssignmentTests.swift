@@ -118,4 +118,27 @@ final class AssignmentTests: XCTestCase {
         XCTAssertEqual(ProcessingSpec.kind(forSession: base.appendingPathComponent("20261025-100000-shots"), isShots: true), .cards)
         XCTAssertEqual(ProcessingSpec.kind(forSession: base.appendingPathComponent("20261025-100000-voice"), isShots: false), .cards)
     }
+
+    // "Filed to X · Change" while the recording is still being organized: the run's end moves items only from the
+    // places the recording was filed to before, never from where the user wants it now.
+    func testRefileTrailRemembersEarlierPlaces() {
+        var t = RefileTrail(to: "atlas")
+        t.refiled(to: "inbox", from: "atlas")
+        XCTAssertEqual(t.to, "inbox")
+        XCTAssertEqual(t.movesFrom, ["atlas"])
+        t.refiled(to: "ios", from: "inbox")
+        XCTAssertEqual(t.to, "ios")
+        XCTAssertEqual(t.movesFrom, ["atlas", "inbox"])
+    }
+
+    func testRefileTrailUndoneLeavesNothingToMove() {
+        var t = RefileTrail(to: "atlas")
+        t.refiled(to: "ios", from: "atlas")
+        t.refiled(to: "atlas", from: "ios")   // Undo
+        XCTAssertEqual(t.to, "atlas")
+        XCTAssertEqual(t.movesFrom, ["ios"])  // the run may have written them to iOS in between
+        var u = RefileTrail(to: "atlas")
+        u.refiled(to: "atlas", from: "atlas")
+        XCTAssertEqual(u.movesFrom, [])
+    }
 }

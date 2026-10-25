@@ -3,7 +3,7 @@
 // VoiceOver press) opens this panel: every card, newest first, in a grid — with what a card on its thread can do:
 //   click = copy (once the double-click interval has passed: a double-click edits the note instead, and never copies
 //   first) · right-click = the card's menu (HangingCards.cardMenu: Copy Image / Text, Copy All, Edit Note…, Move To ▸,
-//   Auto-sort, Delete) · drag = out into any app (the same items as a card's drag, CardDrag; a voice card over a chat
+//   Organize, Delete) · drag = out into any app (the same items as a card's drag, CardDrag; a voice card over a chat
 //   app pastes its words), or onto a project in the island · with the keyboard (a click puts it on the panel; ↩ on the
 //   tile or its VoiceOver press opens it with the keyboard on the newest card): arrows move, ↩ / ⌘C copies and closes
 //   it (the keyboard back where the user was, so ⌘V pastes), ⌫ deletes (Undo in the island), Esc closes.

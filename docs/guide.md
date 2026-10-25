@@ -88,12 +88,13 @@ window's command palette (`⌘K`) do the same.
 
 When a recording ends, the island says where it went — *Filed to Atlas Web · Change* — and **Change** puts it in
 another project (it waits until organizing is done if it has to). A snap filed straight into a project says the same:
-*Filed to Atlas Web · AW-14 · Change*. Either way *Moved to … · Undo* takes it back.
+*Filed to Atlas Web · AW-14 · Change*. Either way *Moved to … · Undo* takes it back. An item you have already moved
+somewhere yourself stays where you put it: Change and Undo only move the ones still where the recording put them.
 
 When something is organized without a project, the agent is told your projects (their names, descriptions, folders and
 newest titles) and may **suggest** one per item. It is only a suggestion: in **Unassigned** the item ends with *Looks
 like Atlas Web · Move*, one click files it there, and items with the same suggestion are listed together under a line
-*Looks like Atlas Web · 3 items* with **Move All (3)**. `⌘Z` (or the toast's Undo) moves them back, with the IDs they
+*Looks like Atlas Web* with **Move All (3)**. `⌘Z` (or the toast's Undo) moves them back, with the IDs they
 had — and the suggestion is still there.
 
 In the main window, select items (`⌘`-click, `⇧`-click, `⌘A`) and press **`M`**: a small list opens at the selection —
@@ -592,12 +593,13 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的条目也进这里。
 - **未归类**（不选当前项目）：截图和语音备注先挂成卡片（见下），等你决定放哪；录屏的条目进「**未归类**」。
 
-录屏结束时，刘海上会写明它去了哪——「归入 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
+录屏结束时，刘海上会写明它去了哪——「已归到 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
 直接归进项目的截图也一样：「已归到 Atlas Web · AW-14 · 更改」。换了之后会提示「已移到 … · 撤销」，点撤销就移回来。
+你自己已经挪走的条目留在你放的地方：「更改」和「撤销」只移动还在原处的那些。
 
 没选项目的内容整理时，Agent 会拿到你的项目列表（名字、描述、文件夹和最近几条的标题），可以给每一条**建议**一个项目。
 这只是建议：在「**未归类**」里，这一条后面会写「像是 Atlas Web 的 · 归过去」，点一下就归过去；建议同一个项目的条目排在一起，
-上方有一行「像是 Atlas Web 的 · 3 条」和「**全部归过去 (3)**」。`⌘Z`（或提示里的「撤销」）能移回去，编号回到原来的，建议也还在。
+上方有一行「像是 Atlas Web 的」和「**全部归过去 (3)**」。`⌘Z`（或提示里的「撤销」）能移回去，编号回到原来的，建议也还在。
 
 在主窗口里选中条目（`⌘` 点、`⇧` 点、`⌘A`）后按 **`M`**：在选中的地方弹出一个小列表，打字筛选，`↩` 全部移过去，`Esc` 关闭。
 也可以拖到侧栏的项目上，或者用工具栏、右键菜单、`⌘K` 里的「移到项目」。每次移动都能 `⌘Z`。

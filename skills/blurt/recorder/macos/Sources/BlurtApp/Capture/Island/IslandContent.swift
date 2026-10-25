@@ -43,6 +43,10 @@ final class IslandButton: NSView {
     var tip: String
     /// A project's key badge before the title — the current-project chip.
     var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
+    /// Where a titled button's symbol starts. The project chip sets it to the key badge's inset, so "Unassigned" (a
+    /// tray) sits where "AW Atlas Web" does.
+    var symbolInset: CGFloat = 14 { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
+    static let badgeInset: CGFloat = 7
     private var hover = false, pressed = false
     private let gradientLayer = CAGradientLayer()
     private let film = CALayer()             // hover / pressed
@@ -93,8 +97,8 @@ final class IslandButton: NSView {
     override var intrinsicContentSize: NSSize {
         guard let t = title else { return NSSize(width: 30, height: 30) }
         let tw = (t as NSString).size(withAttributes: [.font: IslandButton.titleFont]).width
-        if let b = badge { return NSSize(width: ceil(tw) + ProjectLook.badgeSize(b.text).width + 7 + 7 + 13, height: 28) }
-        return NSSize(width: ceil(tw) + (symbol.isEmpty ? 26 : 44), height: 28)
+        if let b = badge { return NSSize(width: ceil(tw) + ProjectLook.badgeSize(b.text).width + Self.badgeInset + 7 + 13, height: 28) }
+        return NSSize(width: ceil(tw) + (symbol.isEmpty ? 26 : 30 + symbolInset), height: 28)
     }
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
@@ -137,7 +141,7 @@ final class IslandButton: NSView {
             film.backgroundColor = nil
         }
         film.frame = b
-        var x: CGFloat = title == nil ? 0 : 14
+        var x: CGFloat = title == nil ? 0 : symbolInset
         iconLayer.isHidden = true
         if !symbol.isEmpty, let img = symbolImage(symbol, size: 12, weight: .semibold, color: fg) {
             let s = CGSize(width: CGFloat(img.width) / 2, height: CGFloat(img.height) / 2)
@@ -160,8 +164,8 @@ final class IslandButton: NSView {
                 let img = NSImage(size: bs, flipped: true) { r in ProjectLook.drawBadge(bd.text, color: bd.color, in: r); return true }
                 badgeLayer.contents = img.layerContents(forContentsScale: scale)
                 badgeLayer.contentsScale = scale
-                badgeLayer.frame = CGRect(x: 7, y: ((b.height - bs.height) / 2).rounded(), width: bs.width, height: bs.height)
-                tx = 7 + bs.width + 7
+                badgeLayer.frame = CGRect(x: Self.badgeInset, y: ((b.height - bs.height) / 2).rounded(), width: bs.width, height: bs.height)
+                tx = Self.badgeInset + bs.width + 7
                 room = b.width - tx - (subviews.isEmpty ? 12 : 22)
             }
             var name = t
@@ -423,6 +427,7 @@ final class IslandContent: NSView {
             b.badge = (p.key, c)
         } else {
             b.fill = NSColor(white: 1, alpha: 0.1)
+            b.symbolInset = IslandButton.badgeInset + 2     // the tray where the key badge would start (its glyph has air)
         }
         b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", name))
         let maxW = small ? 200 : max(110, side(w) - 14)
@@ -757,13 +762,6 @@ final class IslandContent: NSView {
         // what is checked: the current project (nil = none), or where the thing being re-filed went
         let checkedID: String? = pick.map { $0.current } ?? (store.currentID ?? "inbox")
         let none = d == .switcher && (query.isEmpty || !ProjectPick.filter([Loc.t("project.inbox")], query, name: { $0 }, key: { _ in "" }).isEmpty)
-        if none {
-            // no current project: captures go to Unassigned until the user picks one — never a guess
-            let r = IslandRow(icon: ic("tray"), title: Loc.t("project.inbox"),
-                              subtitle: Loc.t(pick == nil ? "capture.drawer.none_sub" : "capture.drawer.inbox_sub", table: "Capture"), height: 44)
-            r.checked = checkedID == "inbox"
-            add(r, .none)
-        }
         let matches = ProjectPick.filter(store.projects, query)
         let shown = query.isEmpty && !showAll ? Array(matches.prefix(8)) : matches
         for p in shown {
@@ -781,7 +779,9 @@ final class IslandContent: NSView {
             place(l, x: 20, y: y + 6, w: w - 40)
             y += 30
         }
-        if pick == nil {        // the pick form ends with the projects: no Open Folder under a line
+        // Unassigned comes last, under a line, in every project picker (this one, the menu bar's, the main window's
+        // M popover, a card's Move To ▸): the same place each time
+        if d == .switcher && (none || pick == nil) {
             let sep = NSView(frame: NSRect(x: 18, y: y + 4, width: w - 36, height: 1))
             sep.wantsLayer = true
             sep.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
@@ -789,6 +789,13 @@ final class IslandContent: NSView {
             y += 9
         }
         if d == .switcher {
+            if none {
+                // no current project: recordings go to Unassigned until the user picks one — never a guess
+                let r = IslandRow(icon: ic("tray"), title: Loc.t("project.inbox"),
+                                  subtitle: Loc.t(pick == nil ? "capture.drawer.none_sub" : "capture.drawer.inbox_sub", table: "Capture"), height: 44)
+                r.checked = checkedID == "inbox"
+                add(r, .none)
+            }
             if pick == nil {
                 let r = IslandRow(icon: ic("folder.badge.plus"), title: Loc.t("project.open_folder"), height: 36)
                 r.accessory = "\u{2318}O"

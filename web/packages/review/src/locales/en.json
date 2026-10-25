@@ -168,6 +168,7 @@
   "project.moved_other": "Moved {n} items to {project}",
   "project.suggested": "Looks like {project}",
   "project.suggested.hint": "Suggested when it was organized · {reason}",
+  "project.suggested.hint_plain": "Suggested when it was organized",
   "project.accept": "Move",
   "project.by.capture": "Captured in this project",
   "project.by.ai": "Sorted by an earlier version · {pct} sure",

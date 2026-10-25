@@ -93,8 +93,11 @@ enum Scripts {
     }
 
     /// items.py move REF… --project P|inbox --by user (the AI never moves them back).
-    static func move(_ uids: [String], to project: String, done: @escaping (Result<[String: Any], Failure>) -> Void) {
-        call("items.py", ["move"] + uids + ["--project", project, "--by", "user"], timeout: 30, done: done)
+    /// `from`: move only the items still in these projects (the rest come back in the result's "kept").
+    static func move(_ uids: [String], to project: String, from: [String] = [],
+                     done: @escaping (Result<[String: Any], Failure>) -> Void) {
+        call("items.py", ["move"] + uids + ["--project", project, "--by", "user"] + from.flatMap { ["--from", $0] },
+             timeout: 30, done: done)
     }
 
     /// handoff.py create --items … --mark: the hand-off sheet, marked handed_off(external) — called when the user copies.

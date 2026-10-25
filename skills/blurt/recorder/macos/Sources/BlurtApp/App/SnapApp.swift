@@ -36,6 +36,8 @@
 //     cardmove N PROJECT|inbox   card N's menu: Move To ▸ that project (its selection too; "card_move_menu" lists it)
 //     pick PROJECT|inbox · pickrows [QUERY] · refile SESSION   the switcher's pick form ("Filed to X · Change"): choose
 //                             a row / its rows after typing ("pick_rows") / the line a recording leaves as it ends
+//     refilerun start|done|fail SESSION   as if SESSION were being organized: Change only notes it; done = the run's
+//                             end (Refile.organized), fail = a failed run (Refile.runEnded)
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
 //     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
@@ -234,6 +236,15 @@ extension App {
             emit(["event": "pick_rows", "rows": island.content.rowTitles, "pick": island.pick?.title ?? NSNull()])
         case "refile":                                  // refile SESSION: the end-of-recording line for that session
             Refile.offerRecording(URL(fileURLWithPath: arg), project: ProjectStore.shared.currentID)
+        case "refilerun":                               // refilerun start|done|fail SESSION: as if it were being organized
+            let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard a.count == 2 else { return }
+            let dir = URL(fileURLWithPath: a[1])
+            switch a[0] {
+            case "start": Refile.testRunning.insert(dir.path)
+            case "done": Refile.testRunning.remove(dir.path); Refile.organized(dir)
+            default: Refile.testRunning.remove(dir.path); Refile.runEnded(dir)
+            }
         case "framerec": FrameCapture.start(arg)      // framerec DIR SECS X,Y,W,H [BACKDROP|-] [FPS] [cursor]
         case "mascotframes":                            // mascotframes DIR CLIP [dark]: the clip at 12 fps
             let a = arg.split(separator: " ").map(String.init)

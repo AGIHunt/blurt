@@ -46,7 +46,7 @@
 "capture.drawer.inbox_sub" = "File it now, pick a project later";
 "capture.drawer.more" = "More…";
 "capture.drawer.no_projects" = "No projects yet — open a folder and it becomes one.";
-"capture.drawer.none_sub" = "No current project: snaps and recordings wait here until you pick one";
+"capture.drawer.none_sub" = "Recordings go to Unassigned; snaps hang as cards";
 "capture.drawer.open_failed" = "Couldn’t open that folder as a project";
 "capture.drawer.open_message" = "Pick a folder. Its items are kept in a .blurt folder inside it, never committed to git.";
 "capture.drawer.open_prompt" = "Open";

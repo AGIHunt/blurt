@@ -134,8 +134,9 @@ Principles — judgement, not rules:
 
 **Which project** (only when the session is in the inbox — no current project — and there are projects): the
 app's prompt lists them; in a chat run `projects.py candidates` (each project's id, key, name, description, folder and
-its newest item titles). Where an item clearly belongs to one, add `"project": "<id or key>"` and a few words in
-`"project_reason"`; unsure → leave it out. It is only a suggestion: the item stays in Unassigned and the user moves
+its newest item titles). Where an item clearly belongs to one, add `"project": "<id or key>"` to that item and a few
+words in `"project_reason"`; unsure → leave it out (a `project` at the top of items.json counts only as a suggestion
+for every item, never as where they go). It is only a suggestion: the item stays in Unassigned and the user moves
 it with one click ("Looks like X · Move"). Don't spend tokens on it — what the capture already told you is enough; a
 quick look in a project's folder only if that settles it. With a current project, write no `project`: the items go
 there.

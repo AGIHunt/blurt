@@ -50,12 +50,32 @@ public struct SuggestionGroup: Equatable {
 
 public enum Suggestions {
     /// (uid, suggested project) of live Unassigned items → one group per project that is still registered (`known`),
-    /// in the order `order` lists the projects (the sidebar's), uids in the order given.
+    /// in the order `order` lists the projects, uids in the order given. The main window passes them by name — the
+    /// order IndexReader's bySuggestion puts the rows below in, so the banner and the list agree.
     public static func groups(_ rows: [(uid: String, project: String)], known order: [String]) -> [SuggestionGroup] {
         var by: [String: [String]] = [:]
         for r in rows { by[r.project, default: []].append(r.uid) }
         return order.compactMap { p in by[p].map { SuggestionGroup(project: p, uids: $0) } }
     }
+}
+
+/// "Filed to X · Change" on a recording that is still being organized (Refile.swift): where the user wants it now,
+/// and every place it was filed to before — the run may write its items to any of them (it read meta.json once).
+/// When the run is over, the items still in one of `before` move to `to`; the user's own moves since stay.
+public struct RefileTrail: Equatable {
+    public private(set) var to: String
+    public private(set) var before: [String]
+    public init(to: String) { self.to = to; before = [] }
+
+    /// Changed again, from `from` to `to`.
+    public mutating func refiled(to new: String, from: String) {
+        if from != new, !before.contains(from) { before.append(from) }
+        before.removeAll { $0 == new }
+        to = new
+    }
+
+    /// The places to move items from when the run ends (none: it ended up where it started, nothing to do).
+    public var movesFrom: [String] { before.filter { $0 != to } }
 }
 
 /// What an organizing run is told about the projects.

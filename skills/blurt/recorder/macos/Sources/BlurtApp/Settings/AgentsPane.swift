@@ -1,4 +1,4 @@
-// Settings → Agents (a page of SettingsKit lines; its sections are in SettingsCatalog): which coding agents Blurt uses — organizing recordings and snaps, auto-sort, AI fill-in —
+// Settings → Agents (a page of SettingsKit lines; its sections are in SettingsCatalog): which coding agents Blurt uses — organizing recordings and organizing cards (each with its own model), AI fill-in —
 // (record.agents, in order — drag to reorder, untick to leave one out) and which can run in Blurt's sessions
 // (sessions.py doctor), each one's state (agents.py detect). The rows are there at once (agents.json, "Checking…"),
 // then a quick look, then the sign-in check — "Runs first" only once the sign-in check is in, so it never jumps from one

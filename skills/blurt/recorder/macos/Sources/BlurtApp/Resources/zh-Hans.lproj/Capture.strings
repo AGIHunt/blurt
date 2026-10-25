@@ -46,7 +46,7 @@
 "capture.drawer.inbox_sub" = "先存着，之后再选项目";
 "capture.drawer.more" = "更多…";
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";
-"capture.drawer.none_sub" = "不选当前项目：截图和录屏先放在这里，之后再归";
+"capture.drawer.none_sub" = "录屏进未归类，截图先挂成卡片";
 "capture.drawer.open_failed" = "没能把这个文件夹打开成项目";
 "capture.drawer.open_message" = "选一个文件夹。它的条目保存在其中的 .blurt 文件夹里，不进 git。";
 "capture.drawer.open_prompt" = "打开";
@@ -153,7 +153,7 @@
 "capture.rec.restart" = "重录";
 "capture.rec.resume" = "继续";
 "capture.rec.snap_note" = "截图并写备注（会暂停）";
-"capture.recording.filed" = "归入 %@";
+"capture.recording.filed" = "已归到 %@";
 "capture.retry" = "重试";
 "capture.service.added" = "已记下：%@";
 "capture.service.empty" = "没有可以加入的文字或图片";

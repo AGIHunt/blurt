@@ -328,7 +328,7 @@ items.py state      REF … (--state S | --action A)（旧名 work，K3）
                     [--to session|external] [--agent A] [--job J] [--handoff H] [--claim fixed|wontfix]
                     [--commit SHA] [--pr URL] [--note TEXT] [--by user|agent|app]   → {"ok","items":[{"uid","id","state","work"}]}
 items.py fix        REF | SESSION ID --state fixing|fixed|wontfix|reopened …    v2 别名，按 K3 映射成 state
-items.py move       REF … --project P|inbox [--by user|ai] [--confidence X] [--reason T]   → {"ok","moved":[{"uid","from","to","id","path"}]}
+items.py move       REF … --project P|inbox [--from Q …]   → {"ok","moved":[{"uid","from","to","id","path"}],"kept"?:[{"uid","project"}]}
 items.py doc        SESSION | --project P|inbox [--state S]… [--kind K]…     → {"ok","doc":{…},"etag"}
 items.py poll       (同 doc 的范围) --etag E                  → {"ok","etag"} 或 {"ok","doc","etag"}
 items.py user-ops   SESSION | --project P  (--json OPS | --stdin) [--confirm]  → {"ok","etag","doc"}
@@ -498,7 +498,9 @@ projects.py migrate                        → {"ok","added":n,"current"}
 
 **捕获时的归属**：current = 项目 X → 会话写进 X 的 store、条目 `project_by: capture`；current = null → 会话写进 inbox store，
 录屏整理后条目留在未归类（带建议）；截图和语音变成卡片等用户分（K7）。录屏中途在刘海岛上换项目 → 更新该会话 `meta.json.project` 和
-`batch.project`；录屏结束时刘海「归入 X · 更改」：整理还没完就改 `meta.json.project`（整理完再把落错的移过去），整理完了就移动条目。
+`batch.project`；录屏结束时刘海「已归到 X · 更改」：改 `meta.json.project`，已有的条目用 `items.py move --from 原处` 移——只移还在原处的，
+用户自己挪走的留在原地；「撤销」只把这次移走的那些移回（`--from` 新处）。整理还没完时记下它先后归过的地方（BlurtCore `RefileTrail`），
+整理完把落在这些地方的条目移过去；整理失败就忘掉。organizing 写在 items.json 顶层的 `project` 不当去处，只当建议。
 
 **细则（P1）**：
 - **key 默认值**：按 `-_ .` 和驼峰切词时只留 ASCII 字母数字；开头不能是数字（去掉前导数字，不够 2 位就取名字里前 3 个拉丁字母，`3d-viewer` → `DVI`）；
@@ -933,8 +935,8 @@ uid 01JB… · issue · high · module auth
 | 抽屉 | — | 项目列表（见下） |
 
 **抽屉**（项目作为放置目标）：拖着卡片进入岛的范围就展开成抽屉；按 ⌥⇧O 是「切换器」模式。行：最近的项目（按 last_used，最多 8 个，
-再多有「更多…」和输入即过滤）、每行文件夹图标 + 名字 + key；切换器模式顶部多一行「未归类」（= 不选项目；v0.8 是「自动」），底部「打开文件夹…」（⌘O）；
-挑选模式（「归入 X · 更改」打开的，Island.Pick）行一样，选中只把那一样东西移过去，不改当前项目；放置模式底部多
+再多有「更多…」和输入即过滤）、每行文件夹图标 + 名字 + key；项目下面一条分隔线，然后是「未归类」（= 不选项目；v0.8 是「自动」；和菜单栏、主窗口 M 弹窗、卡片「移到项目 ▸」一样放在最后），切换器模式再加「打开文件夹…」（⌘O）；
+挑选模式（「已归到 X · 更改」打开的，Island.Pick）行一样，选中只把那一样东西移过去，不改当前项目；放置模式底部多
 「未归类」和「整理」两个目标（⌘ 点多选的卡片一起放）。↑↓ 选择、↩ 确认、Esc 关闭。放置目标高亮：放大 1.02 + 12% 强调色底。
 
 **鸡爪卡片**：
