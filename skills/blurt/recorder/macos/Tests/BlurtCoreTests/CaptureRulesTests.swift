@@ -156,6 +156,34 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 4, soundSeconds: 0.2), .drop(toast: .nothing))
     }
 
+    /// dogfood v0.9-2: 13 s of quiet speech in fan noise, ended with the key, was deleted ("Didn't hear anything")
+    /// although the stream's segmenter had cut a piece of it and offline ASR found words.
+    func testQuietSpeechTheUserEndedIsNeverDeletedInSilence() {
+        // the segmenter heard something (it hears a fan too): asked, even on a quiet input
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, streamHeard: true,
+                                        peakDB: -80), .unsure)
+        // nothing heard by either, but a real input: ask ("Didn't hear anything · Keep")
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, peakDB: -21.5), .unsure)
+        XCTAssertEqual(VoiceKeep.decide(.maxed, heardSpeech: false, seconds: 600, soundSeconds: 0, peakDB: -40), .unsure)
+        // digital silence, or a slip of the key: nothing to keep, nothing to ask
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, peakDB: -80), .drop(toast: .nothing))
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 0.8, soundSeconds: 0, peakDB: -20), .drop(toast: .nothing))
+        // Esc after the segmenter heard speech: discarded with Undo, as after the endpointer did
+        XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: false, seconds: 5, soundSeconds: 0, streamHeard: true), .undoable)
+    }
+
+    func testTheLastAreaIsOfferedOnlyOnADisplayThatIsThere() {
+        let main = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+        let r = CGRect(x: 100, y: 100, width: 400, height: 300)
+        XCTAssertEqual(LastArea.usable(r, screens: [main]), r)
+        // on a display unplugged since
+        XCTAssertNil(LastArea.usable(CGRect(x: 2000, y: 100, width: 400, height: 300), screens: [main]))
+        XCTAssertEqual(LastArea.usable(CGRect(x: 2000, y: 100, width: 400, height: 300),
+                                       screens: [main, CGRect(x: 1728, y: 0, width: 1920, height: 1080)])?.minX, 2000)
+        XCTAssertNil(LastArea.usable(nil, screens: [main]))
+        XCTAssertNil(LastArea.usable(CGRect(x: 10, y: 10, width: 0, height: 5), screens: [main]))
+    }
+
     func testANoteThatHeardNothingSaysToCheckTheMic() {
         XCTAssertEqual(VoiceKeep.decide(.noSpeech, heardSpeech: false, seconds: 20, soundSeconds: 0), .drop(toast: .checkMic))
         XCTAssertEqual(VoiceKeep.decide(.noMic, heardSpeech: false, seconds: 0, soundSeconds: 0), .drop(toast: .none))
@@ -317,6 +345,13 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertTrue(TakeEnd.keepsFolder(code: 5, stills: 3, notes: false), "the writer failed: the stills stay")
         XCTAssertTrue(TakeEnd.keepsFolder(code: 4, stills: 0, notes: true))
         XCTAssertFalse(TakeEnd.keepsFolder(code: 3, stills: 0, notes: false), "nothing in it: no empty folder")
+        // review of v0.9-fix2: the video written up to its last fragment is worth keeping on its own
+        XCTAssertTrue(TakeEnd.keepsFolder(code: 5, stills: 0, notes: false, video: true), "the part that plays stays")
+        XCTAssertFalse(TakeEnd.keepsFolder(code: 2, stills: 0, notes: false, video: true), "discarded on purpose")
+        XCTAssertTrue(TakeEnd.keepsVideo(seconds: 30))
+        XCTAssertTrue(TakeEnd.keepsVideo(seconds: 1))
+        XCTAssertFalse(TakeEnd.keepsVideo(seconds: 0.4), "nothing to watch")
+        XCTAssertFalse(TakeEnd.keepsVideo(seconds: 0), "no file, or it doesn't play")
     }
 
     // MARK: cards

@@ -15,7 +15,7 @@
 //               will go — the words themselves hang under the island (LiveTranscript.swift)
 //   drawer      switcher (⌥⇧O): Unassigned (no current project; tray.2, as in the sidebar — the tray is the Inbox),
 //               recent projects (≤ 8, "More…", type to filter; a project whose folder is gone shows so, dimmed, and
-//               choosing it asks where the folder is now instead of making it current: Snapper.locate —
+//               choosing it asks where the folder is now instead of making it current: MissingFolder.locate —
 //               ProjectPick), Open Folder… ⌘O. Its pick form (Island.Pick: "Filed to X · Change") has the same rows and
 //               files that one thing instead of changing the current project.
 //               drop (a card dragged in, or a ⌘-click selection of them): recent projects, Unassigned, Organize
@@ -561,7 +561,7 @@ final class IslandContent: NSView {
             if cards > 0 {
                 // with a current project the cards are organised into it; with none, into Unassigned, each item with
                 // the project the run suggests (the user moves it with a click). Either way one agent run for all.
-                let cur = ProjectStore.shared.current
+                let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
                 let b = cur.map { p in
                     IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
                                  tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
@@ -611,44 +611,42 @@ final class IslandContent: NSView {
         guard let i = island, let rec = i.rec else { return 0 }
         var y: CGFloat = top + 6
         if i.isConfirmingDiscard {
-            // the question on its own line (it ran under its buttons when they shared one), then what goes with it —
-            // the stills and the markers apart, as the island counts them (BlurtCore RecordingDiscard)
-            let q = wrapping(Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .medium, color: ink, width: w - 36)
-            place(q, x: 18, y: y + 2)
-            y = q.frame.maxY
-            let parts = RecordingDiscard.lost(stills: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0).map { p -> String in
-                switch p {
-                case .snaps(let n): return Loc.plural("capture.rec.snaps", table: "Capture", count: n)
-                case .markers(let n): return Loc.plural("capture.rec.markers", table: "Capture", count: n)
+            // what goes with it, as the island counts it — the snaps taken and the markers, apart (BlurtCore
+            // RecordingDiscard) — in the question itself, beside the answers when it fits, else on its own line above
+            // them (it never runs under them). Right to left: Keep Recording where Finish was (the hand that stops lands
+            // on keep, never on discard) — the default, filled like every suggested answer in the island, and ↩
+            // chooses it (Island.key) — then Restart, then Discard furthest from it, red but quieter than the default
+            // (a Mac sheet's destructive button is never the one that stands out)
+            let q = wrapping(IslandContent.discardQuestion(rec), size: 13, weight: .medium, color: ink, width: w - 36)
+            let buttons: [IslandButton] = RecordingDiscard.order.map { a in
+                switch a {
+                case .discard:
+                    let t = Loc.t("capture.rec.discard", table: "Capture")
+                    return IslandButton(title: t, tip: t, fill: NSColor.systemRed.withAlphaComponent(0.32)) { rec.stop(discard: true) }
+                case .restart:
+                    let t = Loc.t("capture.rec.restart", table: "Capture")
+                    return IslandButton(title: t, tip: t, fill: NSColor(white: 1, alpha: 0.12)) { rec.stop(discard: true, restart: true) }
+                case .keep:
+                    let t = Loc.t("capture.rec.keep", table: "Capture")
+                    return IslandButton(title: t, tip: t + "  ↩", gradient: BrandGradient.buttonStops) { [weak i] in i?.confirmDiscard(false) }
                 }
             }
-            if !parts.isEmpty {
-                let lf = ListFormatter()
-                lf.locale = Loc.locale
-                let d = wrapping(Loc.t("capture.rec.discard_also", table: "Capture", lf.string(from: parts) ?? parts.joined(separator: ", ")),
-                                 size: 12, color: ink2, width: w - 36)
-                place(d, x: 18, y: y + 3)
-                y = d.frame.maxY
+            let row = buttons.reduce(0) { $0 + $1.frame.width } + 8 * CGFloat(buttons.count - 1)
+            let one = ceil((q.stringValue as NSString).size(withAttributes: [.font: q.font ?? .systemFont(ofSize: 13)]).width)   // on one line
+            var by = y + 2
+            if RecordingDiscard.ownLine(question: one, answers: row, width: w) {
+                place(q, x: 18, y: y + 4)
+                by = q.frame.maxY + 10
+            } else {
+                place(q, x: 18, y: y + 7, w: one + 2, h: q.frame.height)
             }
-            y += 10
-            // right to left: Keep Recording where Finish was (the hand that stops lands on keep, never on discard) —
-            // the default, filled like every suggested answer in the island, and ↩ chooses it (Island.key) — then
-            // Restart, then Discard furthest from it, red but quieter than the default (a Mac sheet's destructive
-            // button is never the one that stands out)
             var bx = w - 14
-            let items: [(String, NSColor?, Bool, () -> Void)] = [
-                (Loc.t("capture.rec.keep", table: "Capture"), nil, true, { [weak i] in i?.confirmDiscard(false) }),
-                (Loc.t("capture.rec.restart", table: "Capture"), NSColor(white: 1, alpha: 0.12), false, { rec.stop(discard: true, restart: true) }),
-                (Loc.t("capture.rec.discard", table: "Capture"), NSColor.systemRed.withAlphaComponent(0.32), false, { rec.stop(discard: true) }),
-            ]
-            for (t, f, isDefault, a) in items {
-                let b = IslandButton(title: t, tip: isDefault ? t + "  ↩" : t, fill: f,
-                                     gradient: isDefault ? BrandGradient.buttonStops : nil, action: a)
+            for b in buttons.reversed() {
                 bx -= b.frame.width
-                place(b, x: bx, y: y)
+                place(b, x: bx, y: by)
                 bx -= 8
             }
-            return y + 28 + 12
+            return by + 28 + 12
         }
         let paused = rec.isPaused
         // one family, one weight across the row: our line glyphs (pause / play, the snap frame, the bin, the stop square)
@@ -704,6 +702,20 @@ final class IslandContent: NSView {
         return y + 6
     }
 
+    /// "Discard this recording?" / "…and its 2 snaps?" / "…, with 1 snap and 2 markers?" (RecordingDiscard.lost).
+    static func discardQuestion(_ rec: Recorder) -> String {
+        switch RecordingDiscard.lost(stills: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0) {
+        case .nothing: return Loc.t("capture.rec.discard_q", table: "Capture")
+        case let .snaps(n): return Loc.plural("capture.rec.discard_q_stills", table: "Capture", count: n)
+        case let .markers(m):
+            return Loc.t("capture.rec.discard_q_with", table: "Capture", Loc.plural("capture.rec.markers", table: "Capture", count: m))
+        case let .both(n, m):
+            let what = Loc.t("capture.rec.and", table: "Capture", Loc.plural("capture.rec.snaps", table: "Capture", count: n),
+                             Loc.plural("capture.rec.markers", table: "Capture", count: m))
+            return Loc.t("capture.rec.discard_q_with", table: "Capture", what)
+        }
+    }
+
     /// A one-line hint with keys in it ("Hold [⌃] to draw · [⇧] box · [⌥] ellipse"): the format's %@ (the pen key)
     /// and every modifier glyph in its text become small keycaps — all of them, so the three modifiers look alike and
     /// "⌃" never reads as "^".
@@ -750,9 +762,9 @@ final class IslandContent: NSView {
 
     // MARK: voice input
 
-    /// How the voice note ends, said on the island: "press ⌥⇧V again to finish · Esc to discard" (the user's key; the
-    /// Done button without one), "pause to finish" with record.voice.end_on_pause, "let go to finish" while held —
-    /// and in its last minute, the time left.
+    /// How the voice note ends, said on the island in the hints' one grammar — key, then verb, as the note bubble and
+    /// the picker say it: "Listening · ⌥⇧V done · Esc discard" (the user's key; "click Done" without one), "pause to
+    /// finish" with record.voice.end_on_pause, "let go to finish" while held — and in its last minute, the time left.
     static func voiceHint() -> String {
         let v = VoiceInput.shared
         var s: String
@@ -798,7 +810,8 @@ final class IslandContent: NSView {
         voiceText = tx
         y += 24
         let dest: String
-        if let p = ProjectStore.shared.current { dest = Loc.t("capture.voice.goes_to", table: "Capture", p.name) } else {
+        if let m = ProjectStore.shared.missingCurrent { dest = Loc.t("capture.project.missing_card", table: "Capture", m.name) }
+        else if let p = ProjectStore.shared.current { dest = Loc.t("capture.voice.goes_to", table: "Capture", p.name) } else {
             dest = Loc.t("capture.voice.goes_card", table: "Capture")
         }
         let d = label(dest, size: 11.5, color: ink3)
@@ -967,7 +980,7 @@ final class IslandContent: NSView {
             island?.setOpen(false)
             emit(["event": "island_missing_project", "project": id, "via": pick == nil ? "switch" : "pick"])
             // found again: the pick form files its one thing there, the switcher makes it current
-            snapper.locate(p) { found in
+            MissingFolder.locate(p) { found in
                 if let pick = pick { pick.choose(found.id); return }
                 Task {
                     do { try await ProjectStore.shared.use(found.id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }

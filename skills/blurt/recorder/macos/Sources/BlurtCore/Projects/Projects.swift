@@ -270,15 +270,53 @@ public final class ProjectStore {
 
     // MARK: where captures go
 
-    /// <current project's store, or the inbox's>/sessions/<yyyyMMdd-HHmmss>[-shots|-voice], created.
-    public func newSessionDir(_ kind: SessionKind) -> URL {
+    /// Where a capture goes now: the current project while its folder is there, else Unassigned (the inbox store). A
+    /// current project whose folder moved or was renamed is never written to — that would make its folder again at
+    /// the old path, with ids that clash with the moved folder's (dogfood v0.9-2) — until the user locates it
+    /// (`missingCurrent` says so; projects.py add relocates).
+    public var captureTarget: Project { Self.captureTarget(current: current, inbox: inbox) }
+    /// The project "Organize" files the cards into (the island's button, its menu): the capture target — nil for
+    /// Unassigned, each item then with a suggested project. Never a current project whose folder is gone.
+    public var organizeTarget: String? { Self.organizeTarget(current: current, inbox: inbox) }
+    public static func organizeTarget(current: Project?, inbox: Project) -> String? {
+        let t = captureTarget(current: current, inbox: inbox)
+        return t.isInbox ? nil : t.id
+    }
+    /// The current project when its folder can't be found (moved, renamed, deleted).
+    public var missingCurrent: Project? { current.flatMap { $0.exists ? nil : $0 } }
+
+    public static func captureTarget(current: Project?, inbox: Project) -> Project {
+        current.flatMap { filing(project: $0.id, exists: $0.exists) == .file ? $0 : nil } ?? inbox
+    }
+
+    /// May captures be filed into `project` now? Never into one whose folder is gone — moved, renamed, on a drive
+    /// that isn't plugged in: filing would make the old folder again, an empty twin whose ids clash with the project's
+    /// own when it is found (the captures stay cards; the island offers Locate…). `exists`: its folder is there (nil:
+    /// not a known project — the scripts decide). Unassigned ("inbox") always may.
+    public enum Filing: Equatable { case file, keepAsCards }
+    public static func filing(project: String, exists: Bool?) -> Filing {
+        project == "inbox" || exists != false ? .file : .keepAsCards
+    }
+
+    /// What a folder picked for "Locate…" is to the project `projectID`: it holds that project's store (opening it
+    /// relocates the project: same id, key and items), another project's (refused), or no store yet.
+    public enum LocatePick: String { case same, other, empty }
+    public static func locatePick(_ folder: URL, projectID: String) -> LocatePick {
+        guard let d = try? Data(contentsOf: folder.appendingPathComponent(".blurt/store.json")),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return .empty }
+        return o["project"] as? String == projectID ? .same : .other
+    }
+
+    /// <capture target's store>/sessions/<yyyyMMdd-HHmmss>[-shots|-voice], created. `target`: the project it was
+    /// decided for (a recording keeps the one its take started with), else the capture target now.
+    public func newSessionDir(_ kind: SessionKind, in target: Project? = nil) -> URL {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
         let suffix = kind == .video ? "" : "-" + kind.rawValue
-        let store = current?.store ?? inbox.store
+        let store = (target ?? captureTarget).store
         let dir = store.appendingPathComponent("sessions").appendingPathComponent(f.string(from: Date()) + suffix)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        StoreFolders.make(dir)          // (never below a project folder that is gone)
         return dir
     }
 }

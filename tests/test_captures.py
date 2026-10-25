@@ -12,6 +12,7 @@ from test_store import TmpCase, make_repo, ok, run_cli  # noqa: E402
 
 import agents  # noqa: E402
 import captures  # noqa: E402
+import store as st  # noqa: E402
 
 
 def shots_session(store: Path, lines: list[dict]) -> Path:
@@ -145,6 +146,36 @@ class FileCaptures(TmpCase):
         it = ok("items.py", "get", out["items"][0]["uid"], env=self.e.env())["item"]
         self.assertEqual(it["project"], other["id"])
         self.assertTrue(it["path"].startswith(str(Path(other["store"]))))
+
+
+    def test_a_project_whose_folder_moved_is_never_made_again(self):
+        """dogfood v0.9-2: filing into a project whose folder was moved ran `mkdir -p` on the old path — an empty
+        project came back there, BA-1 again beside the moved BA-1…, and opening the moved folder made a second project.
+        Now it answers folder_missing and writes nothing; once the folder is located (projects.py add) it files on,
+        with the next id."""
+        a = self.tmp / "billing-api"
+        a.mkdir()
+        ba = ok("projects.py", "add", a, env=self.e.env())["project"]
+        ok("items.py", "add", "--project", ba["id"], "--json", '{"kind":"issue","title":"first"}', env=self.e.env())
+        moved = self.tmp / "billing-api-moved"
+        a.rename(moved)
+        c, o = run_cli("captures.py", "file", self.s, "--captures", "3", "--project", ba["id"], env=self.e.env())
+        self.assertEqual((c, o["code"]), (1, "folder_missing"))
+        self.assertFalse(a.exists())                                     # the old folder isn't made again
+        self.assertEqual(json.loads((moved / ".blurt" / "store.json").read_text())["next"], 2)
+        c, o = run_cli("items.py", "add", "--project", ba["id"], "--json", '{"kind":"note","title":"x"}', env=self.e.env())
+        self.assertEqual((c, o["code"], a.exists()), (1, "folder_missing", False))
+        # located: the same project at its new place, and the capture files there with the next id
+        back = ok("projects.py", "add", moved, env=self.e.env())
+        self.assertEqual((back["project"]["id"], back["relocated"]), (ba["id"], str(a.resolve())))
+        out = ok("captures.py", "file", self.s, "--captures", "3", "--project", ba["id"], env=self.e.env())
+        self.assertEqual(out["items"][0]["id"], "BA-2")
+
+    def test_store_ensure_never_makes_a_project_folder(self):
+        gone = self.tmp / "gone"
+        with self.assertRaises(st.FolderMissing):
+            st.Store(gone / ".blurt").ensure("abc", "GO")
+        self.assertFalse(gone.exists())
 
 
 class Processing(TmpCase):

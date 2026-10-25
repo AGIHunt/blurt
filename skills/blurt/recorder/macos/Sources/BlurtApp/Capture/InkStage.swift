@@ -9,6 +9,8 @@
 //  • a faint one-line hint above the picture, "Drag to draw · ⇧ box · ⌥ ellipse", the first few times only
 //    (record.ink_hint_shown counts them; BlurtCore InkHint); it goes when the first stroke starts.
 //  • a click on the dimmed part outside the picture is "done" (the bubble saves); Esc and ⏎ are the bubble's.
+//  • the words of a spoken note are in ("Saved"): the dim lifts at once (`lift`) — only the picture and the bubble
+//    stay for the short correction window (v0.9-fix2: a 1 s sentence kept the whole screen dimmed for ~4 s).
 //  • finishing: the stage drops below the flight and fades while the marked picture flies from the selection to the
 //    notch and becomes the card (HangingCards.catchCapture; Reduce Motion: it fades in at the card instead). Discarded
 //    (Esc), it just fades. The unmarked picture stays as shots/NNN.png; the strokes stay editable (Edit Note).
@@ -26,13 +28,15 @@ final class StagePanel: NSPanel {
 /// The dim around the frozen picture (black 42 %, as the picker's), and a click outside it.
 final class StageView: NSView {
     var hole: NSRect = .zero { didSet { needsDisplay = true } }
+    static let dim: CGFloat = 0.42
+    var dimAlpha: CGFloat = StageView.dim { didSet { needsDisplay = true } }
     var onClickOutside: (() -> Void)?
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func draw(_ dirty: NSRect) {
         let dim = NSBezierPath(rect: bounds)
         dim.append(NSBezierPath(rect: hole))
         dim.windingRule = .evenOdd
-        NSColor(white: 0, alpha: 0.42).setFill()
+        NSColor(white: 0, alpha: dimAlpha).setFill()
         dim.fill()
     }
     override func mouseDown(with e: NSEvent) {
@@ -86,6 +90,8 @@ final class InkStage {
         let p = panel ?? makePanel()
         panel = p
         p.alphaValue = 1
+        lifting?.invalidate()
+        view.dimAlpha = StageView.dim
         p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
         p.setFrame(scr.frame, display: false)
         view.frame = NSRect(origin: .zero, size: scr.frame.size)
@@ -157,6 +163,21 @@ final class InkStage {
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.generation == g { self?.hideHint() } }
     }
 
+    /// The note is saved: the dim around the picture fades out now (0.2 s); the picture and the bubble stay.
+    func lift() {
+        guard isOpen, view.dimAlpha > 0 else { return }
+        emit(["event": "ink_stage_lift", "n": shot?.n ?? 0])
+        lifting?.invalidate()
+        let from = view.dimAlpha, t0 = CACurrentMediaTime(), d = reduceMotion ? 0.0 : 0.2
+        guard d > 0 else { view.dimAlpha = 0; return }
+        lifting = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] t in
+            let k = min(1, (CACurrentMediaTime() - t0) / d)
+            self?.view.dimAlpha = from * CGFloat(1 - k * k * (3 - 2 * k))
+            if k >= 1 { t.invalidate() }
+        }
+    }
+    private var lifting: Timer?
+
     /// The hint goes (the first stroke, or after a while).
     func hideHint() {
         guard !hint.isHidden else { return }
@@ -202,6 +223,6 @@ final class InkStage {
         ["open": isOpen, "visible": panel?.isVisible == true, "n": shot?.n ?? NSNull(),
          "selection": [selection.minX, selection.minY, selection.width, selection.height],
          "strokes": canvas.strokes.count, "drawing": canvas.isDrawing, "hint": !hint.isHidden,
-         "line_width": Double(canvas.lineWidth), "window": panel?.windowNumber ?? 0]
+         "line_width": Double(canvas.lineWidth), "window": panel?.windowNumber ?? 0, "dim": Double(view.dimAlpha)]
     }
 }

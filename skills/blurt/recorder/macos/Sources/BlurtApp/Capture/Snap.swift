@@ -198,6 +198,19 @@ final class Shot {
     /// a card that was taken with a project but whose words couldn't be had (transcription failed): filed there once
     /// Retry has them (shots.jsonl "intended_project"; BlurtCore CaptureRoute)
     var intendedProject: String?
+    /// A voice note's live text when it ended (in memory only): the card shows it until `said` is in (CardNote.heard).
+    var heard: String?
+    /// What a capture without a note is called — VoiceOver, Recently Dragged Out, the island's menu: "Snap · 19:03" /
+    /// "Voice note · 19:03" (v0.9-fix2: "Screenshot 15", a session counter that skipped numbers).
+    var plainName: String {
+        Loc.t(kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture", takenAt)
+    }
+    /// When it was taken, in the user's clock (12 or 24 hours): "19:03" today, else with its day ("Yesterday 19:03")
+    /// — cards hang until they are used (BlurtCore CardName.when).
+    var takenAt: String {
+        CardName.when(taken: Date(timeIntervalSince1970: wall), now: Date(timeIntervalSince1970: Snapper.now), locale: Loc.locale,
+                      uses24Hour: CardName.systemUses24Hour)
+    }
     var assignedBy: String?      // capture | user | ai
     var pixelSize: CGSize = .zero
     var scale: CGFloat = 2
@@ -227,7 +240,7 @@ final class Shot {
     var needsWords: Bool { voice != nil && said == nil && transcription != .failed }
     /// What the card shows (BlurtCore CardNote): the typed note first, then the words said; the mic mark only with
     /// words; "Transcribing…" / "Couldn't transcribe" while a spoken note has none.
-    var note: CardNote { CardNote.make(typed: text, said: said, hasVoice: voice != nil, transcription: transcription) }
+    var note: CardNote { CardNote.make(typed: text, said: said, hasVoice: voice != nil, transcription: transcription, heard: heard) }
     /// The note's text — what the card says, what a copy or a drag carries, the item's title and quote (nil: none).
     var words: String? { CardNote.merged(typed: text, said: said) }
     var copyText: String? { words }
@@ -297,7 +310,11 @@ final class ShotBatch {
         let dirURL = shotsDir
         let line = s.line
         io.async {
-            try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+            // never below a project folder that is gone (StoreFolders): the picture stays in memory, on the card
+            guard StoreFolders.make(dirURL) else {
+                DispatchQueue.main.async { emit(["event": "shot_write_refused", "n": n, "dir": dirURL.path]); done?(s) }
+                return
+            }
             if let d = pngData(image, scale: scale) { try? d.write(to: url) }
             appendJSONL(self.jsonl, line)
             DispatchQueue.main.async {

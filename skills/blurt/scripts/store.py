@@ -343,6 +343,13 @@ _MAPS: dict[Path, tuple] = {}  # store root → (items dir mtime, {("u", uid) | 
 
 
 # ------------------------------------------------------------------ the store
+class FolderMissing(FileNotFoundError):
+    """A project store whose project folder isn't there (moved, renamed, deleted). It is never made again: that would
+    bring back an empty folder at the old path whose ids clash with the moved one's, and stop `projects.py add NEWPATH`
+    from relocating the project. The app asks the user to locate the folder instead."""
+    code = "folder_missing"
+
+
 class Store:
     def __init__(self, root: Path | str):
         self.root = real(root)
@@ -392,9 +399,14 @@ class Store:
 
     def ensure(self, project: str | None = None, key: str | None = None) -> bool:
         """Create the store (dirs, store.json, the git exclude line) if it isn't there. True when it was created.
-        A project store learns its id and key from projects.json (registering the folder if needed)."""
+        A project store learns its id and key from projects.json (registering the folder if needed). A project store
+        is made only inside a folder that exists: FolderMissing otherwise (never `mkdir -p` the project itself)."""
         if self.exists:
             return False
+        if not self.is_inbox and self.root.name == ".blurt":
+            if not self.project_dir.is_dir():
+                raise FolderMissing(f"{self.project_dir}: the project folder isn't there (moved or renamed?)")
+            self.root.mkdir(exist_ok=True)
         with self.lock():
             self._meta = None
             if self.exists:

@@ -23,6 +23,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var lastSession: URL?
     /// when the take in `lastSession` was started (a failed take's meta.json says so)
     var takeStartedAt: Date?
+    /// where the take in `lastSession` goes — decided when it starts, so a project located (or switched) during the
+    /// take doesn't make its meta.json name another project than the store it is in. nil: Unassigned.
+    var takeProject: Project?
 
     var resident: Bool { opts.standalone }
 
@@ -62,7 +65,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, err in
             DispatchQueue.main.async {
                 if let err = err {
-                    sessionEnded(3, ["event": "error", "code": "screen_permission", "message": err.localizedDescription])
+                    sessionEnded(3, ["event": "error", "code": "screen_permission", "message": err.localizedDescription,
+                                     "reason": RecordingFailure.permission.rawValue])
                     return
                 }
                 if let r = opts.region { self.begin(r) } else { self.pick() }
@@ -140,7 +144,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()                 // the clock's timer (twice a second) from here
         r.prepare { err in
             if let err = err {
-                sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription])
+                sessionEnded(3, ["event": "error", "code": "setup", "message": err.localizedDescription,
+                                 "reason": RecordingFailure.reason(code: "setup", error: err).rawValue])
                 return
             }
             self.countdown(opts.countdown, over: region) {
@@ -475,7 +480,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func startRecording(useLast: Bool) {
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         guard !busy else { return }
-        let dir = newSessionDir()
+        MissingFolder.warnIfCurrentMissing(recording: true)     // its folder is gone: this one goes to Unassigned
+        let target = ProjectStore.shared.captureTarget
+        let dir = newSessionDir(in: target)
+        takeProject = target.isInbox ? nil : target
+        // little room left: say so before the take, not after it failed (BlurtCore RecordingFailure.lowSpace)
+        let free = (try? dir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage
+        if RecordingFailure.lowSpace(freeBytes: free), let f = free {
+            emit(["event": "record_low_space", "free_bytes": f])
+            island.toast(T("app.record.low_space", ByteCountFormatter.string(fromByteCount: f, countStyle: .file)), key: "record-low-space", seconds: 6)
+        }
         opts.out = dir.appendingPathComponent("recording.mp4").path
         opts.events = dir.appendingPathComponent("events.jsonl").path
         opts.lastRegion = lastRegionFromConfig()
@@ -516,24 +530,20 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let dir = lastSession else { return }
         cleanupLive(dir)
         if code != 0 {
-            // a failed take keeps what was taken during it — the stills, their notes, the live transcript (BlurtCore
-            // TakeEnd); only a cancelled or empty one leaves no folder behind
-            let stills = ((try? FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("shots").path)) ?? [])
-                .filter { $0.hasSuffix(".png") && !$0.contains(".marked") }.count
-            let notes = ["shots.jsonl", "live"].contains { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) }
-            if TakeEnd.keepsFolder(code: code, stills: stills, notes: notes) {
-                keepFailedTake(dir, code: code, event: event, stills: stills)
-            } else {
-                try? FileManager.default.removeItem(at: dir)
-                if event["event"] as? String == "error" {
-                    alert(T("app.record.failed"), event["message"] as? String ?? "")
-                }
+            // a failed take keeps what was taken during it — the video up to its last fragment (Recorder writes 10 s
+            // fragments), the stills, their notes, the live transcript (BlurtCore TakeEnd); only a cancelled or empty
+            // one leaves no folder behind
+            let video = dir.appendingPathComponent("recording.mp4")
+            Task { @MainActor in
+                let played = code == 2 ? 0 : await App.playableSeconds(video)
+                self.failedTake(dir, code: code, event: event, video: played)
+                self.refreshStatus()
             }
-            refreshStatus()
             return
         }
         let dur = event["duration"] as? Double ?? 0
-        let project = currentCaptureProject()        // nil while its folder is gone: the take is in the inbox
+        // where the take went: the capture target when it started (`takeProject`)
+        let project = takeProject
         let meta: [String: Any] = [
             "engine": "native-app", "duration": dur, "video": "recording.mp4", "region": event["region"] ?? [],
             "started_at": ISO8601DateFormatter().string(from: Date(timeIntervalSinceNow: -dur)),
@@ -554,23 +564,85 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
-    /// A recording that couldn't be saved but has stills (and notes) in it: the folder stays, meta.json says it failed,
-    /// and the island offers to organise what was saved (the stills are the session's frames).
-    private func keepFailedTake(_ dir: URL, code: Int32, event: [String: Any], stills: Int) {
-        let project = currentCaptureProject()        // nil while its folder is gone: the take is in the inbox
-        let meta: [String: Any] = [
+    private func failedTake(_ dir: URL, code: Int32, event: [String: Any], video: Double) {
+        let fm = FileManager.default
+        let stills = ((try? fm.contentsOfDirectory(atPath: dir.appendingPathComponent("shots").path)) ?? [])
+            .filter { $0.hasSuffix(".png") && !$0.contains(".marked") }.count
+        let notes = ["shots.jsonl", "live"].contains { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
+        let partial = TakeEnd.keepsVideo(seconds: video)
+        if TakeEnd.keepsFolder(code: code, stills: stills, notes: notes, video: partial) {
+            // a file that doesn't play isn't kept as if it were the take's video
+            if !partial { try? fm.removeItem(at: dir.appendingPathComponent("recording.mp4")) }
+            keepFailedTake(dir, code: code, event: event, stills: stills, video: partial ? video : nil)
+        } else {
+            try? fm.removeItem(at: dir)
+            if event["event"] as? String == "error" {
+                // the reason in words (BlurtCore RecordingFailure); the raw message is in the log already. Refused by
+                // macOS: the way to System Settings, as every other permission question in the app offers it
+                let refused = RecordingFailure(rawValue: event["reason"] as? String ?? "") == .permission
+                alert(T("app.record.failed"), App.failureText(event), also: refused ? (T("settings.perm.open_settings"), {
+                    if let u = URL(string: PermissionKind.screen.paneURL) { NSWorkspace.shared.open(u) }
+                }) : nil)
+            }
+        }
+    }
+
+    /// How much of a failed take's video plays (0: none, or no file) — AVFoundation reads the fragments written.
+    static func playableSeconds(_ url: URL) async -> Double {
+        guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
+        let a = AVURLAsset(url: url)
+        guard let d = try? await a.load(.duration), d.isNumeric,
+              let tracks = try? await a.loadTracks(withMediaType: .video), !tracks.isEmpty else { return 0 }
+        return d.seconds
+    }
+
+    /// Why a take failed, for the alert (BlurtCore RecordingFailure; never the raw error).
+    static func failureText(_ event: [String: Any]) -> String {
+        switch RecordingFailure(rawValue: event["reason"] as? String ?? "") ?? .unknown {
+        case .diskFull: return T("app.record.failed.disk_full")
+        case .permission: return T("app.record.failed.permission")
+        case .stopped: return T("app.record.failed.stopped")
+        case .noFrames: return T("app.record.failed.no_frames")
+        case .unknown: return T("app.record.failed.unknown")
+        }
+    }
+
+    /// The reason alone, for the island line ("The disk is full — recording not saved · its 2 snaps are kept",
+    /// "The disk is full — the first 3:12 is kept").
+    static func failureReason(_ event: [String: Any]) -> String {
+        switch RecordingFailure(rawValue: event["reason"] as? String ?? "") ?? .unknown {
+        case .diskFull: return T("app.record.reason.disk_full")
+        case .permission: return T("app.record.reason.permission")
+        case .stopped: return T("app.record.reason.stopped")
+        case .noFrames: return T("app.record.reason.no_frames")
+        case .unknown: return T("app.record.reason.unknown")
+        }
+    }
+
+    /// A recording that couldn't be finished but has something in it — the video up to where it stopped (`video`: its
+    /// playable seconds), stills, notes: the folder stays, meta.json says it failed (and names the partial video),
+    /// and the island offers to organise what was kept.
+    private func keepFailedTake(_ dir: URL, code: Int32, event: [String: Any], stills: Int, video: Double?) {
+        let project = takeProject
+        var meta: [String: Any] = [
             "engine": "native-app", "state": "failed", "error": event["message"] as? String ?? "",
+            "reason": event["reason"] as? String ?? RecordingFailure.unknown.rawValue,
             "started_at": ISO8601DateFormatter().string(from: takeStartedAt ?? Date()),
             "author": recordConfig()["author"] as? String ?? NSFullUserName(),
             "project": project?.id as Any? ?? NSNull(), "workspace": currentWorkspace().path,
         ]
+        if let v = video { meta["video"] = "recording.mp4"; meta["duration"] = v; meta["partial"] = true }
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
-        // (the error is in meta.json and the log: the island line says what is kept)
-        emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills,
-              "error": event["message"] as? String ?? NSNull()])
-        var t = Island.Toast(text: TP("app.record.failed_kept", stills), actionTitle: T("app.record.organize")) { [weak self] in
+        // (the raw error is in meta.json and the log: the island line says why, in words, and what is kept)
+        emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills, "video": video ?? NSNull(),
+              "error": event["message"] as? String ?? NSNull(), "reason": event["reason"] as? String ?? NSNull()])
+        let why = App.failureReason(event)
+        let line = video.map { T("app.record.partial", why, Island.clock($0)) }
+            ?? T("app.record.failed_why", T("app.record.not_saved", why), TP("app.record.kept", stills))
+        var t = Island.Toast(text: line,
+                             actionTitle: T("app.record.organize")) { [weak self] in
             self?.process(dir, project: project?.id)
         }
         t.seconds = 12
@@ -901,11 +973,15 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func alert(_ title: String, _ text: String) {
+    /// `also`: a second button (the first is OK) and what it does.
+    func alert(_ title: String, _ text: String, also: (String, () -> Void)? = nil) {
         let a = NSAlert()
         a.messageText = title
         a.informativeText = text
+        a.addButton(withTitle: T("action.ok"))
+        if let b = also { a.addButton(withTitle: b.0) }
+        emit(["event": "alert", "title": title, "text": text, "buttons": [T("action.ok")] + (also.map { [$0.0] } ?? [])])
         activateApp()
-        a.runModal()
+        if a.runModal() == .alertSecondButtonReturn { also?.1() }
     }
 }

@@ -51,7 +51,15 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         let y = min(anchor.minY - 12, hanging.panelTop, screen.visibleFrame.maxY) - size.height
         w.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, y)))
         w.orderFrontRegardless()
-        emit(["event": "taken_panel", "open": true, "count": rows.count])
+        emit(["event": "taken_panel", "open": true, "count": rows.count, "below_cards": hanging.count > 0])
+    }
+
+    /// A card was put back from here: the panel moves down out of the cards' strip (when it isn't there already) —
+    /// right away, while the card is still on its way (it counts as hanging only once it has landed).
+    func makeRoomForCards() {
+        guard isOpen, let w = window else { return }
+        follow(cardsHang: true)
+        emit(["event": "taken_panel_moved", "frame": [w.frame.minX, w.frame.minY, w.frame.width, w.frame.height]])
     }
 
     func hide() { window?.orderOut(nil) }
@@ -142,10 +150,10 @@ final class TakenPanel: NSObject, NSWindowDelegate {
 
     /// Its top edge: right under the island while no card hangs, below the cards' strip once one does
     /// (HangingCards.panelTop). Put Back hangs a card again: the panel moves down out of its way (never up, under
-    /// the pointer, while it is open).
-    private func follow() {
+    /// the pointer, while it is open). `cardsHang`: a card is on its way back (Put Back) — not hanging yet.
+    private func follow(cardsHang: Bool = false) {
         guard let w = window, w.isVisible else { return }
-        let top = min(island.frameOnScreen.minY - 12, hanging.panelTop)
+        let top = min(island.frameOnScreen.minY - 12, hanging.panelTop(cardsHang: cardsHang || hanging.count > 0))
         guard w.frame.maxY > top + 0.5 else { return }
         let screen = w.screen ?? NSScreen.main ?? NSScreen.screens[0]
         var f = w.frame
@@ -241,7 +249,7 @@ final class TakenPanel: NSObject, NSWindowDelegate {
     }
 
     /// The note's first line, or "Snap · 15:30" / "Voice note · 15:30" (BlurtCore CardName).
-    static func title(_ s: Shot) -> String { CardName.words(s.words) ?? HangingCards.cardName(s) }
+    static func title(_ s: Shot) -> String { CardName.words(s.words) ?? s.plainName }
 }
 
 /// A row of Recently Taken: its tile (drag it out again), the note, when it was taken; pointed at: Copy and "···".
@@ -349,7 +357,8 @@ final class TakenRow: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// "Dragged out 5 minutes ago" — and on its last day "· kept 1 more day" in attention ink.
+    /// "Dragged out 5 minutes ago", and "· kept 1 more day" in attention ink on its last day (the footer says 7 days
+    /// once for all the rows).
     static func detail(_ s: Shot) -> NSAttributedString {
         let ago = RelativeDateTimeFormatter()
         ago.locale = Locale(identifier: Loc.language == "zh-Hans" ? "zh-Hans" : "en")
@@ -418,7 +427,7 @@ final class TakenThumb: NSView, NSDraggingSource {
 
     /// What the tile is, for VoiceOver: "Snap · 15:30" / "Voice note · 15:30, 00:07" (the length it shows).
     static func label(_ s: Shot) -> String {
-        let what = HangingCards.cardName(s)
+        let what = s.plainName
         guard s.kind == .voice, let d = s.duration, d > 0 else { return what }
         return what + ", " + Loc.duration(d)
     }

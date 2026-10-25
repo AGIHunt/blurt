@@ -42,6 +42,20 @@
 
 
 "app.record.failed" = "The recording couldn’t be saved";
+"app.record.failed.disk_full" = "The disk is full. Free some space, then record again.";
+"app.record.failed.permission" = "macOS didn’t let Blurt record the screen. Check Screen Recording in System Settings.";
+"app.record.failed.stopped" = "macOS stopped the screen recording partway.";
+"app.record.failed.no_frames" = "No picture came in from the screen. Try again.";
+"app.record.failed.unknown" = "Something went wrong while saving it. The details are in the log.";
+"app.record.reason.disk_full" = "The disk is full";
+"app.record.reason.permission" = "Screen Recording was refused";
+"app.record.reason.stopped" = "macOS stopped the recording";
+"app.record.reason.no_frames" = "No picture came in";
+"app.record.reason.unknown" = "Something went wrong";
+"app.record.not_saved" = "%@ — recording not saved";
+"app.record.partial" = "%1$@ — the first %2$@ is kept";
+"app.record.failed_why" = "%1$@ · %2$@";
+"app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
 "app.record.organize" = "Organize";
 
 "app.status.ax_count" = "Blurt — %@";
@@ -136,6 +150,7 @@
 "main.error.not_found" = "Blurt can’t find that any more.";
 "main.error.no_project" = "That project isn’t in Blurt any more.";
 "main.error.exists" = "That folder is in Blurt already.";
+"main.error.folder_missing" = "That project’s folder can’t be found. Locate it first.";
 "main.error.not_a_folder" = "That isn’t a folder.";
 "main.error.reserved" = "That’s Blurt’s own folder.";
 "main.error.save_title" = "Couldn’t save";

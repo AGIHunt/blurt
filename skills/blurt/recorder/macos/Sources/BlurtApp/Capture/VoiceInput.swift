@@ -15,7 +15,7 @@
 //    pauses as it comes in (BlurtCore's DictationSegmenter, as dictation does) and each piece goes to the warm speech
 //    server as soon as it is complete (`note`, the voice-note model, the text so far as context); about once a second
 //    the piece still being said is decoded as an interim request (v0.9, as dictation's live text: quieter until its
-//    piece is final; record.dictation.live_partial); the text so far shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
+//    piece is final) on every tier — the note model is quick (`liveWords`); the text so far shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
 //    as soon as it is caught. A piece that failed → the whole wav through `transcribe.py note`, the old way. (The
 //    pieces run whether or not the panel shows: the words are ready at stop either way. record.voice.stream false =
 //    the old path only.)
@@ -32,7 +32,9 @@
 //  • what is kept (BlurtCore VoiceKeep, v0.9): a note the user ends (the key, Done, letting go, quitting) is kept when
 //    it lasted 1.5 s and held a sound above the room, even if the room hid the speech from the endpointer — the speech
 //    model decides; no words → a card that says "No words recognized" with Retry (with a project too: it is filed
-//    there once Retry has words, never as an empty item). A fan or a hum alone is "Didn't hear anything". Nothing
+//    there once Retry has words, never as an empty item). A take the user ended in which nothing was heard (a fan,
+//    a hum, very quiet speech) is never deleted in silence: "Didn't hear anything · Keep" for the Undo window
+//    (v0.9-fix2); only a slip of the key or digital silence goes at once. Nothing
 //    heard for the whole wait: "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone
 //    mid-note (a headset out, the input switched: NoteVoice's watchdog) ends it with what was said.
 //  • Blurt quitting finishes it (finishForQuit); a snap's bubble opened meanwhile has Esc (yieldEsc).
@@ -74,6 +76,13 @@ final class VoiceInput {
     private var mode: String { settings["mode"] as? String ?? "auto" }
     private var silence: Double { (settings["silence_ms"] as? Double ?? 1500) / 1000 }
     /// "End a voice note when I pause" (off): a pause of `silence` ends it, as before v0.8.6
+    /// The live words of a note — ⌥⇧V's panel and a snap's note field — on every tier: the note model is quick
+    /// (SenseVoice answers an interim request whole in ~0.1 s; a slow model says so and DictationLiveDecode asks again
+    /// later, then stops for that take). Dictation's tier gate is about its larger model on the GPU, so it isn't
+    /// applied here; only the user's own switches turn them off: record.live_text ("Show text while I talk") and an
+    /// explicit record.dictation.live_partial = false.
+    static var liveWords: Bool { (Dictation.settings["live_partial"] as? Bool ?? true) && LiveTranscript.enabled }
+
     static var endOnPause: Bool { (recordConfig()["voice"] as? [String: Any])?["end_on_pause"] as? Bool ?? false }
     static func setEndOnPause(_ on: Bool) { Config.shared.set("record.voice.end_on_pause", on ? true : nil) }
     /// the longest voice note (seconds)
@@ -133,6 +142,7 @@ final class VoiceInput {
             return
         }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
+        MissingFolder.warnIfCurrentMissing()      // the current project's folder is gone: a card meanwhile
         let b = snapper.openBatch(for: snapper.target)
         let k = b.reserve()
         let url = b.dir.appendingPathComponent("shots/\(ShotBatch.name(k)).wav")
@@ -156,7 +166,7 @@ final class VoiceInput {
         let live = LiveTranscript.shared.begin(.voice)
         liveSession = live
         let st = streams ? VoiceNoteStream(id: "\(ShotBatch.name(k))-\(Int(Date().timeIntervalSince1970))",
-                                           interim: Dictation.livePartial && LiveTranscript.enabled) : nil
+                                           interim: VoiceInput.liveWords) : nil
         st?.onLive = { [weak self] committed, pending in
             if let self = self, self.stream === st { self.liveText = committed + pending }
             LiveTranscript.shared.update(committed, pending: pending, session: live)
@@ -359,14 +369,16 @@ final class VoiceInput {
         // hid the speech from the endpointer — the speech model decides (no words → kept as audio, "Retry")
         let how: VoiceKeep.Ended = via == "esc" ? .cancel : via == "no_mic" ? .noMic : via == "noSpeech" ? .noSpeech
             : via == "mic_lost" ? .micLost : via == "silence" ? .silence : via == "maxed" ? .maxed : .user
-        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, soundSeconds: v.soundSeconds)
-        var kept = false, undoable = false, toast = VoiceKeep.Toast.none
+        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, soundSeconds: v.soundSeconds,
+                                        streamHeard: stream?.heardSpeech ?? false, peakDB: Double(v.peakDB))
+        var kept = false, undoable = false, unsure = false, toast = VoiceKeep.Toast.none
         switch decision {
         case .keep(let t): kept = true; toast = t
         case .undoable: undoable = true             // Esc after something was said: kept a moment longer, for Undo
+        case .unsure: undoable = true; unsure = true // nothing heard in a take the user ended: "… · Keep", never gone in silence
         case .drop(let t): toast = t
         }
-        if !ended { v.stop(keep: kept || undoable) } else if !kept { v.stop(keep: false) }
+        if !ended { v.stop(keep: kept || undoable) } else if !kept && !undoable { v.stop(keep: false) }
         let st = stream
         voice = nil
         stream = nil
@@ -376,24 +388,32 @@ final class VoiceInput {
         releaseEsc()
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
               "pieces": st?.count ?? 0, "heard_speech": heardSpeech, "peak_db": Double((v.peakDB * 10).rounded() / 10),
-              "sound": (v.soundSeconds * 100).rounded() / 100,
+              "sound": (v.soundSeconds * 100).rounded() / 100, "stream_heard": st?.heardSpeech ?? false, "unsure": unsure,
               "wall": Date().timeIntervalSince1970])
         VoiceInput.say(toast)
         let project = snapper.target
         island.voiceChanged()
         let live = liveSession
         if kept {
-            // the words stay a moment once the last piece is in (the card has them by then)
-            st?.onFinished = { t in
-                if let t = t, !t.isEmpty { LiveTranscript.shared.update(t, session: live) }
-                LiveTranscript.shared.end(session: live, after: 1.2)
+            if project.isInbox {
+                // a card: it shows the words heard so far at once, then its own (CardNote.heard) — the panel goes now,
+                // where it is, instead of lingering over the card row
+                LiveTranscript.shared.end(session: live, after: 0.3)
+            } else {
+                // filed: the words stay a moment once the last piece is in
+                st?.onFinished = { t in
+                    if let t = t, !t.isEmpty { LiveTranscript.shared.update(t, session: live) }
+                    LiveTranscript.shared.end(session: live, after: 1.2)
+                }
+                if st == nil { LiveTranscript.shared.end(session: live, after: 0.4) }
             }
-            if st == nil { LiveTranscript.shared.end(session: live, after: 0.4) }
-            snapper.voiceFinished(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st)
+            snapper.voiceFinished(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st,
+                                  heard: liveText)
         } else if undoable {
             LiveTranscript.shared.end(session: live)
             st?.onText = nil
-            discarded(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st, wav: v.url)
+            discarded(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st, wav: v.url,
+                      unsure: unsure)
         } else {
             st?.cancel()
             LiveTranscript.shared.end(session: live)
@@ -428,14 +448,18 @@ final class VoiceInput {
     }
 
     /// A cancelled voice note: "Voice note discarded · Undo" for `undoSeconds` — Undo files it as if it had been
-    /// finished (Snapper.voiceFinished); else its audio goes.
-    private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL) {
+    /// finished (Snapper.voiceFinished); else its audio goes. `unsure`: a take the user ended in which nothing was
+    /// heard — "Didn't hear anything · Keep", the same wait; Keep files it and the speech model decides (no words: a
+    /// card that says "No words recognized" with Retry).
+    private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL,
+                           unsure: Bool = false) {
         var settled = false
         // waiting for its Undo under another name: a quit or a crash now never brings it back as a note
         let parked = VoiceDiscard.parked(wav)
         let moved = (try? FileManager.default.moveItem(at: wav, to: parked)) != nil
         emit(["event": "voice_discarded", "n": n, "undo_seconds": VoiceInput.undoSeconds, "parked": moved])
-        var t = Island.Toast(text: Loc.t("capture.voice.discarded", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
+        var t = Island.Toast(text: Loc.t(unsure ? "capture.voice.nothing" : "capture.voice.discarded", table: "Capture"),
+                             actionTitle: Loc.t(unsure ? "capture.voice.keep_anyway" : "capture.undo", table: "Capture")) {
             guard !settled else { return }
             settled = true
             if moved { try? FileManager.default.moveItem(at: parked, to: wav) }
@@ -532,6 +556,8 @@ final class VoiceNoteStream {
     }
 
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    /// The segmenter heard speech in some piece of this take (a looser test than NoteEndpointer's: VoiceKeep).
+    var heardSpeech: Bool { queued > 0 || segmenter.pieceHasSpeech }
 
     // MARK: the work (q)
 

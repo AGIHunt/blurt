@@ -1,7 +1,7 @@
 // Where captures go (K2): the current project's store (<folder>/.blurt), or the inbox store ($BLURT_WORKSPACE/inbox)
 // while the current project is "auto". ProjectStore (BlurtCore/Projects) is the source; these are the names the
 // capture code has always used. A current project whose folder is gone (moved, renamed, a drive that isn't there) is
-// never written into — a session there would make the old folder again (BlurtCore MissingFolder): its captures and
+// never written into — a session there would make the old folder again (ProjectStore.filing): its captures and
 // recordings go to the inbox meanwhile, and the island's project chip says the folder is missing.
 import AppKit
 import BlurtCore
@@ -10,15 +10,11 @@ let homeDir = FileManager.default.homeDirectoryForCurrentUser
 /// ~/Blurt (Blurt's own folder: the inbox store lives in it)
 let defaultWorkspace = BlurtPaths.workspace
 
-/// The current project, when captures may go into it: nil with none, or while its folder is gone.
-func currentCaptureProject() -> Project? {
-    guard let c = ProjectStore.shared.current,
-          MissingFolder.filing(project: c.id, exists: c.exists) == .file else { return nil }
-    return c
+/// The current project's folder (while it is there: ProjectStore.captureTarget), else the inbox store.
+func currentWorkspace() -> URL {
+    let t = ProjectStore.shared.captureTarget
+    return t.isInbox ? t.store : t.path
 }
-
-/// The current project's folder, else the inbox store (also while the current project's folder is gone).
-func currentWorkspace() -> URL { currentCaptureProject()?.path ?? ProjectStore.shared.inbox.store }
 
 /// The opened projects' folders.
 func knownWorkspaces() -> [URL] { ProjectStore.shared.projects.filter(\.exists).map(\.path) }
@@ -51,5 +47,5 @@ func ensureDefaultWorkspace() {
     }
 }
 
-/// A new recording's session dir in the current store.
-func newSessionDir() -> URL { ProjectStore.shared.newSessionDir(.video) }
+/// A new recording's session dir in the store of `target` (where its take goes: App.takeTarget).
+func newSessionDir(in target: Project) -> URL { ProjectStore.shared.newSessionDir(.video, in: target) }

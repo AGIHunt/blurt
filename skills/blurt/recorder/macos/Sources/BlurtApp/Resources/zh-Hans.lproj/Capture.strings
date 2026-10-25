@@ -44,7 +44,6 @@
 "capture.discarded" = "已丢弃";
 "capture.drawer.drop_title" = "放到";
 "capture.drawer.inbox_sub" = "先存着，之后再选项目";
-"capture.drawer.missing_sub" = "文件夹不见了 · 选它来重新找到";
 "capture.drawer.missing_toast" = "找不到「%@」的文件夹 · 卡片先留着";
 "capture.drawer.more" = "更多…";
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";
@@ -99,8 +98,19 @@
 "capture.menu.voice" = "语音备注";
 "capture.move_failed" = "没能移过去，还在原来的地方";
 "capture.moved" = "已移到 %@";
+"capture.project.missing_card" = "找不到「%@」的文件夹，先留作卡片";
+"capture.project.missing_rec" = "找不到「%@」的文件夹，这段录屏先放进未归类";
+"capture.project.missing_short" = "文件夹不见了";
+"capture.project.locate" = "找到它…";
+"capture.project.locate_message" = "选一下「%@」现在在哪里。";
+"capture.project.not_this" = "这不是「%@」的文件夹";
+"capture.project.not_this_hint" = "选「%@」移动或改名后的那个文件夹。";
+"capture.project.found" = "找到「%@」了，之后的内容会归到这里";
+"capture.drawer.missing_sub" = "文件夹不见了 · 找到它…";
 "capture.note.discard_tip" = "丢弃这张截图（Esc）";
 "capture.note.goes_to" = "归入 %@";
+"capture.note.goes_missing" = "%@：文件夹不见了";
+"capture.note.stays_card" = "留作卡片";
 "capture.note.keep_discard" = "⏎ 不写备注直接留下 · Esc 丢弃";
 "capture.note.keep_tip" = "留下（⏎）";
 "capture.note.listening" = "说出来，或直接打字…";
@@ -109,6 +119,8 @@
 "capture.note.next_hint" = "下一张";
 "capture.note.no_mic" = "麦克风不可用 · ⏎ 保存 · Esc 丢弃";
 "capture.note.mic_gone" = "麦克风断开了 · 打字记下 · ⏎ 保存";
+"capture.note.no_mic_done" = "麦克风不可用 · ⏎ 完成";
+"capture.note.mic_gone_done" = "麦克风断开了 · ⏎ 完成";
 "capture.note.paused" = "已暂停 · ⏎ 保存并继续 · Esc 继续";
 "capture.note.pen_hint" = "拖动画笔 · ⇧ 方框 · ⌥ 椭圆";
 "capture.note.placeholder" = "写一句备注";
@@ -148,6 +160,8 @@
 "capture.rec.discard" = "丢弃";
 "capture.rec.discard_q" = "丢弃这段录屏？";
 "capture.rec.discard_also" = "会一起丢弃：%@";
+"capture.rec.discard_q_with" = "丢弃这段录屏，连同%@？";
+"capture.rec.and" = "%1$@和 %2$@";
 "capture.rec.discard_tip" = "丢弃或重录…";
 "capture.rec.finish" = "完成";
 "capture.rec.finish_tip" = "结束录制并整理";
@@ -164,9 +178,9 @@
 "capture.rec.snap_note" = "截图并写备注（会暂停）";
 "capture.recording.filed" = "已归到 %@";
 "capture.retry" = "重试";
-"capture.service.added" = "已加入待处理：%@";
+"capture.service.added" = "已加入 %1$@：%2$@";
 "capture.service.empty" = "没有可以加入的文字或图片";
-"capture.service.failed" = "没加进去：%@";
+"capture.service.failed" = "没加进口喷鸡，再试一次";
 "capture.service.image" = "图片";
 "capture.service.image_from" = "图片（来自 %@）";
 "capture.service.title" = "收集的笔记";
@@ -213,6 +227,7 @@
 "capture.voice.no_mic" = "麦克风用不了";
 "capture.voice.no_words" = "没识别出文字";
 "capture.voice.nothing" = "没听到声音";
+"capture.voice.keep_anyway" = "留下";
 "capture.voice.recording_busy" = "录屏正在使用麦克风";
 
 /* dictation styles (docs/design/dictation-styles.md) */
@@ -264,21 +279,22 @@
 "capture.keys.system_refused" = "%@ 是 macOS 的系统快捷键（系统设置里的「键盘」），换一个";
 "capture.keys.system_short" = "macOS 在用";
 "capture.keys.undo_set" = "更改快捷键";
-"capture.voice.hint_key" = "在听 · 再按 %@ 结束";
-"capture.voice.hint_done" = "在听 · 点「完成」结束";
+"capture.voice.hint_key" = "在听 · %@ 完成";
+"capture.voice.hint_done" = "在听 · 点「完成」";
 "capture.voice.esc_hint" = "Esc 丢弃";
 "capture.voice.done" = "完成";
 "capture.voice.done_tip" = "结束这条语音备注";
 "capture.voice.sound_settings" = "声音设置";
 "capture.voice.time_left" = "还剩 %@";
 "capture.voice.maxed" = "已到 %@ 上限，语音备注已保存";
-"capture.voice.words_failed" = "备注没能转成文字";
+"capture.voice.words_failed" = "没能转成文字";
 "capture.live.ax" = "已识别的文字";
 "capture.live.more" = "…还有 %ld 行";
 "capture.voice_drop.hint_paste" = "松手粘贴到 %@";
 "capture.voice_drop.hint_copy" = "松手后在 %@ 里按 ⌘V";
 "capture.voice_drop.pasted" = "已粘贴到 %@";
 "capture.voice_drop.copied" = "已复制，在 %@ 里按 ⌘V 粘贴";
+"capture.voice_drop.that_app" = "那个 App";
 "capture.record.no_permission" = "录屏需要「屏幕录制」权限";
 "capture.record.stale" = "录不了屏：需要重新授权屏幕录制";
 "capture.screen.reallow" = "重新授权…";

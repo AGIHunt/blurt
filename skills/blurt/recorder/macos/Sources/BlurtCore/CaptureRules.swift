@@ -18,7 +18,11 @@
 //  • VoiceKeep — whether a ⌥⇧V voice note is kept: one the user ended (key, Done, letting go, quitting) is kept when it
 //    lasted and held a sound above the room (`soundSeconds`: NoteEndpointer's held sound 6 dB over the noise floor),
 //    even if the room hid the speech from the endpointer — the speech model decides, and a take with no words stays as
-//    audio ("No words recognized · Retry"). A fan, a hum or a muted input alone is not a note.
+//    audio ("No words recognized · Retry"). A take the user ended that the endpointer heard nothing in is never deleted
+//    outright unless it is a slip of the key or digital silence (v0.9-fix2: 13 s of quiet speech in fan noise was
+//    deleted): "Didn't hear anything · Keep" (`unsure`) keeps its audio for the Undo window, and Keep files it (the
+//    speech model then decides). The stream's segmenter hearing something is a reason to ask (its looser test also
+//    hears a fan), and makes an Esc'd take undoable.
 //  • VoiceDiscard — a voice note cancelled with Esc waits for its Undo as NNN.discarded.wav, which a quit or a crash
 //    never brings back (CaptureRestore ignores it; the next launch sweeps it).
 //  • RecordingNotes — a recording's snap notes pause the take once per note session, however often the bubble
@@ -28,6 +32,19 @@
 //    that was never filed, and a voice note's wav without its shots.jsonl line (its header is rewritten from the size).
 //  • TakeEnd — a recording that failed (writer error, no frames) keeps the stills and notes taken during it.
 import Foundation
+
+// MARK: - The picker's last area
+
+/// "L last area" (the snap picker): the area of the last snap that produced a picture — saved only once the picture
+/// exists (v0.9-fix2: a snap that failed still saved its area), and offered only while it is on a display that is
+/// still there (one unplugged since: no L).
+public enum LastArea {
+    /// `saved`: global top-left points; `screens`: the displays' frames in the same coordinates.
+    public static func usable(_ saved: CGRect?, screens: [CGRect]) -> CGRect? {
+        guard let r = saved, r.width >= 1, r.height >= 1 else { return nil }
+        return screens.contains { $0.intersects(r) } ? r : nil
+    }
+}
 
 // MARK: - Screen Recording
 
@@ -194,6 +211,8 @@ public enum VoiceKeep: Equatable {
     case keep(toast: Toast)
     /// discarded with "Voice note discarded · Undo"
     case undoable
+    /// nothing was heard in a take the user ended: "Didn't hear anything · Keep" — the audio waits for the answer
+    case unsure
     case drop(toast: Toast)
 
     /// A take shorter than this the user ended is a slip of the key, not a note.
@@ -201,17 +220,24 @@ public enum VoiceKeep: Equatable {
     /// A take with less held sound above the room than this is the room alone (a fan, a hum, a muted input) — not a
     /// note the endpointer missed. Quiet speech in a café holds 0.7 s in 9 s; steady noise holds none.
     public static let minSoundSeconds = 0.4
+    /// Below this peak a take is digital silence (a muted input, a virtual device with nothing on it): nothing to keep.
+    public static let silencePeakDB = -60.0
 
     /// `heardSpeech`: the endpointer heard speech; `soundSeconds`: how long the take held a sound above the room
-    /// (NoteEndpointer.soundSeconds).
-    public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, soundSeconds: Double) -> VoiceKeep {
+    /// (NoteEndpointer.soundSeconds); `streamHeard`: the stream's segmenter heard speech in a piece (it cuts and
+    /// transcribes pieces with a looser test than the endpointer's); `peakDB`: the take's loudest moment.
+    public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, soundSeconds: Double,
+                              streamHeard: Bool = false, peakDB: Double = -.infinity) -> VoiceKeep {
         let sound = seconds >= minUserSeconds && soundSeconds >= minSoundSeconds
+        // the user ended it after a while and it isn't digital silence (or the segmenter heard something): ask, never
+        // delete in silence — the segmenter's looser test also hears a fan, so it is a reason to ask, not to keep
+        let ask = seconds >= minUserSeconds && (peakDB > silencePeakDB || streamHeard)
         switch ended {
-        case .cancel: return heardSpeech ? .undoable : .drop(toast: .none)
+        case .cancel: return heardSpeech || streamHeard ? .undoable : .drop(toast: .none)
         case .noMic: return .drop(toast: .none)
         case .noSpeech: return .drop(toast: .checkMic)
-        case .user: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
-        case .silence, .maxed: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
+        case .user, .maxed: return heardSpeech || sound ? .keep(toast: .none) : ask ? .unsure : .drop(toast: .nothing)
+        case .silence: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
         case .micLost: return heardSpeech || sound ? .keep(toast: .micLost) : .drop(toast: .micGone)
         }
     }
@@ -342,10 +368,14 @@ public enum RecordingNotes {
 public enum TakeEnd {
     /// sessionEnded codes: 0 saved, 2 cancelled / discarded, 3 capture / setup error, 4 no frames, 5 writer error.
     /// The session folder goes only when nothing in it is worth keeping: a cancelled take, or a failed one with no
-    /// stills and no notes.
-    public static func keepsFolder(code: Int32, stills: Int, notes: Bool) -> Bool {
+    /// stills, no notes and no video that plays (`video`: keepsVideo).
+    public static func keepsFolder(code: Int32, stills: Int, notes: Bool, video: Bool = false) -> Bool {
         if code == 0 { return true }
         if code == 2 { return false }
-        return stills > 0 || notes
+        return stills > 0 || notes || video
     }
+
+    /// A failed take's video is kept when this much of it plays (the recorder writes it in 10 s fragments, so a take
+    /// whose writer failed partway plays up to its last fragment). Less than a second is nothing to watch.
+    public static func keepsVideo(seconds: Double) -> Bool { seconds >= 1 }
 }

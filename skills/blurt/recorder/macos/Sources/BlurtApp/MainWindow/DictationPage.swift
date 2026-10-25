@@ -215,7 +215,7 @@ final class DictationHistoryModel: ObservableObject {
         }
         // said where the user looks while dictating too, with the way back (an Undo only in the Edit menu went unseen)
         island.toast(es.count == 1 ? T("dictation.history.deleted.one") : T("dictation.history.deleted.many", es.count),
-                     key: "dictation.history.deleted", seconds: 5, actionTitle: T("dictation.toast.undo")) { [weak undo] in
+                     key: DictationToastKeys.historyDeleted, seconds: 5, actionTitle: T("dictation.toast.undo")) { [weak undo] in
             if let u = undo, u.canUndo { u.undo() }
         }
         undo?.registerUndo(withTarget: self) { m in

@@ -11,8 +11,11 @@
 // Adaptive: the interval is twice the smoothed decode time, at least 0.8 s — 0.8–1.2 s while a decode takes ≤ 0.6 s
 // (a few seconds of open piece on Qwen3-ASR 1.7B, M5 Max), up to 2.2 s for a long window of mixed speech; interim
 // decodes slower than `slowCutoff` (1.5 s, smoothed over at least three: the first one of a session also waits for the
-// model to warm up) stop for the take — text that far behind isn't worth the GPU. The light / minimal RAM tiers (< 15 GB) never start them
-// (`tierAllows`). Pure (clock and sizes in, decisions out): DictationLiveDecodeTests.
+// model to warm up) stop for the take — text that far behind isn't worth the GPU. Dictation on the light / minimal RAM
+// tiers (< 15 GB) never starts them (`tierAllows`); notes ask on every tier (their model is quick: VoiceInput.liveWords).
+// A server that answers "interim_unsupported" (a slow model that can't stop halfway) is asked again after
+// `refusalBackoff` — one refusal never turns live words off; `maxRefusals` in a row do, for that take only.
+// Pure (clock and sizes in, decisions out): DictationLiveDecodeTests.
 import Foundation
 
 public struct DictationLiveDecode {
@@ -30,7 +33,7 @@ public struct DictationLiveDecode {
         case text(seconds: Double)
         /// the server stopped it for a request that was waiting (a final piece)
         case interrupted
-        /// the server's model can't be interrupted: no interim decodes on it
+        /// the server's model is slow and can't be interrupted: asked again later (`refusalBackoff`)
         case unsupported
         /// no server, a timeout, an error
         case failed
@@ -55,6 +58,10 @@ public struct DictationLiveDecode {
     public var slowAfter = 3
     /// this many failures in a row stop them (a server that went away)
     public var maxFailures = 3
+    /// after the server said its model can't take interim requests, wait this long (s) before asking again…
+    public var refusalBackoff = 4.0
+    /// …and stop for the take after this many refusals in a row
+    public var maxRefusals = 3
 
     public private(set) var off: Off?
     public private(set) var inFlight: Ticket?
@@ -69,6 +76,8 @@ public struct DictationLiveDecode {
     private var finalized = Set<Int>()
     private var shown: [Int: Int] = [:]
     private var failures = 0
+    private var refusals = 0
+    private var heldUntil: Double?
     private var measured = 0
 
     public init(sampleRate: Double, off: Off? = nil) {
@@ -88,6 +97,7 @@ public struct DictationLiveDecode {
         guard off == nil, !stopped, inFlight == nil, finalsPending == 0, hasSpeech else { return nil }
         guard Double(audioEnd - pieceStart) >= minAudio * sampleRate else { return nil }
         if let t = lastSent, now - t < interval { return nil }
+        if let h = heldUntil, now < h { return nil }
         if let l = lastIssued, l.piece == piece, Double(audioEnd - l.end) < minNew * sampleRate { return nil }
         seq += 1
         let t = Ticket(seq: seq, piece: piece, start: max(pieceStart, audioEnd - Int(window * sampleRate)), end: audioEnd)
@@ -117,7 +127,8 @@ public struct DictationLiveDecode {
         case .interrupted:
             return false
         case .unsupported:
-            off = .unsupported
+            refusals += 1
+            if refusals >= maxRefusals { off = .unsupported } else { heldUntil = (lastSent ?? 0) + refusalBackoff }
             return false
         case .failed:
             failures += 1
@@ -125,6 +136,8 @@ public struct DictationLiveDecode {
             return false
         case let .text(s):
             failures = 0
+            refusals = 0
+            heldUntil = nil
             measured += 1
             smoothed = smoothed.map { 0.6 * $0 + 0.4 * s } ?? s
             if let m = smoothed, m > slowCutoff, measured >= slowAfter { off = .slow }

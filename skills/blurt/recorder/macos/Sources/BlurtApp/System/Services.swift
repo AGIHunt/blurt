@@ -3,6 +3,9 @@
 // {"mode": "shots", "source": "service"} — a processed, not yet reviewed batch, i.e. the inbox. The session's
 // items.json is written once, empty (items.py needs it to exist, SKILL §3); every note goes in with `items.py add`
 // (C2), images are copied to frames/ and attached with `items.py set-frames`.
+// The notch says where it went in the filing words snaps use — "Added to Atlas Web: <title>" with the project's key
+// tile, or "Added to Unassigned: …"; with nothing selected it says so there too (macOS only shows its own alert);
+// a failure is one fixed sentence (the error goes to the log only).
 import AppKit
 import BlurtCore
 import UniformTypeIdentifiers
@@ -15,17 +18,23 @@ final class ServiceProvider: NSObject {
         let note = Note(pboard: pboard, from: from)
         guard !note.isEmpty else {
             error.pointee = Loc.t("capture.service.empty", table: "Capture") as NSString
+            emit(["event": "service_note", "empty": true])
+            DispatchQueue.main.async { island.toast(Loc.t("capture.service.empty", table: "Capture"), actionTitle: nil, action: nil) }
             return
         }
         Task { @MainActor in
             do {
                 let r = try await ServiceProvider.add(note)
                 emit(["event": "service_note", "session": r.session.path, "uid": r.uid])
-                island.toast(Loc.t("capture.service.added", table: "Capture", note.title), actionTitle: nil, action: nil)
+                let t = ProjectStore.shared.captureTarget
+                var toast = Island.Toast(text: Loc.t("capture.service.added", table: "Capture", t.isInbox ? Loc.t("project.inbox") : t.name,
+                                                     note.title), actionTitle: nil, action: nil)
+                if !t.isInbox { toast.badge = (t.key, ProjectLook.color(t)) }
+                island.toast(toast)
                 Spotlight.shared.refreshSoon()
             } catch {
                 emit(["event": "service_note", "error": "\(error)"])
-                island.toast(Loc.t("capture.service.failed", table: "Capture", "\(error)"), actionTitle: nil, action: nil)
+                island.toast(Loc.t("capture.service.failed", table: "Capture"), actionTitle: nil, action: nil)
             }
         }
     }
@@ -94,7 +103,6 @@ final class ServiceProvider: NSObject {
         var item: [String: Any] = ["kind": "note", "title": note.title]       // state: new (K3's default)
         if !note.text.isEmpty { item["quote"] = note.text }
         if let f = note.from { item["source"] = ["app": f] }
-        item["tags"] = ["inbox"]
         let json = String(decoding: try JSONSerialization.data(withJSONObject: item), as: UTF8.self)
         let r = try await SkillCLI.shared.run("items.py", ["add", dir.path, "--json", json], timeout: 60)
         guard r.ok, let o = r.json, let id = o["id"] as? String, let uid = o["uid"] as? String else {

@@ -493,7 +493,7 @@ final class HangingCards: NSObject {
             c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.99)).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.08)).cgColor
             let f = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-            let words = s.words
+            let words = s.words ?? note.text      // (note.text: the words heard while it was said, until its own are in)
             let dur = HangingCards.clock(s.duration ?? 0)
             let text = words ?? HangingCards.statusText(note.status) ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
             // "Couldn't transcribe" needs you: the attention colour, never the quiet grey of a placeholder
@@ -883,6 +883,7 @@ final class HangingCards: NSObject {
         if panel == nil || screen != target { ensurePanel(on: target) }
         // the batch's change callback may have hung it already (quietly): catch that card
         let c = cards.first { $0.shot === s } ?? makeCard(s, x: anchor.x)
+        style(c)            // hung quietly before its last details were in (a voice note's heard words): what flies is current
         if !cards.contains(where: { $0 === c }) { cards.append(c) }
         sortCards()
         layout()
@@ -1203,9 +1204,11 @@ final class HangingCards: NSObject {
     /// whether they are down now or not (BlurtCore CardRow.panelTop) — Recently Dragged Out and the overview, so a
     /// card hung back (Put Back, Undo) or brought down by the pointer never covers their title or rows; right under the
     /// island while no card hangs.
-    var panelTop: CGFloat {
+    var panelTop: CGFloat { panelTop(cardsHang: count > 0) }
+    /// `cardsHang`: as if a card hung (one on its way back counts only once it has landed).
+    func panelTop(cardsHang: Bool) -> CGFloat {
         let depth = CardRow.bandDepth(below: HangingCards.below, slacks: HangingCards.slacks, cardHeight: CardShape.height)
-        let top = CardRow.panelTop(islandBottom: island.frameOnScreen.minY, band: depth, cardsHang: count > 0)
+        let top = CardRow.panelTop(islandBottom: island.frameOnScreen.minY, band: depth, cardsHang: cardsHang)
         return min(top, (shownBottom ?? .greatestFiniteMagnitude) - 12)
     }
 
@@ -1871,7 +1874,7 @@ final class HangingCards: NSObject {
         var out: [(String, () -> Void)] = [
             (Loc.plural("capture.menu.show_cards", table: "Capture", count: n), { hanging.reveal(via: "island_menu") }),
             (Loc.plural("capture.menu.copy_cards", table: "Capture", count: n), { hanging.copyAll() }),
-            (Loc.t("capture.menu.organize_all", table: "Capture"), { snapper.handToAI(project: ProjectStore.shared.currentID) }),
+            (Loc.t("capture.menu.organize_all", table: "Capture"), { snapper.handToAI(project: ProjectStore.shared.organizeTarget) }),
         ]
         out.append((Loc.plural("capture.card.delete_all", table: "Capture", count: n), { snapper.deleteAllCards() }))
         return out
@@ -2122,20 +2125,8 @@ final class HangingCards: NSObject {
         return actions
     }
 
-    /// A card's spoken name: its words, or what it is and when ("Snap · 19:03" / "Voice note · 19:03").
-    static func cardLabel(_ s: Shot) -> String { s.words ?? cardName(s) }
-
-    /// What a capture is and when it was taken ("Snap · 19:03"), for where its words can't name it — never the
-    /// session's counter ("Screenshot 15" skipped numbers and told nothing apart).
-    static func cardName(_ s: Shot) -> String {
-        Loc.t(s.kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture", takenAt(s.wall))
-    }
-
-    /// When a card was taken, in the user's clock (12 or 24 hours): "19:03" today, else with its day ("Yesterday
-    /// 19:03") — cards hang until they are used (BlurtCore CardName.when).
-    static func takenAt(_ wall: Double) -> String {
-        CardName.when(taken: Date(timeIntervalSince1970: wall), now: Date(), locale: Loc.locale, uses24Hour: CardName.systemUses24Hour)
-    }
+    /// A card's spoken name: its words, or "Snap · 15:30" / "Voice note · 15:30" (Shot.plainName).
+    static func cardLabel(_ s: Shot) -> String { s.words ?? s.plainName }
 }
 
 final class ClosureMenuItem: NSMenuItem {

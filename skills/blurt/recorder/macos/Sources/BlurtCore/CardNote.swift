@@ -5,7 +5,10 @@
 //    the hover note shows it, a copy / drag / captures.py item carries it.
 //  • the mic mark means "these words were spoken": only when there is a voice note *and* its words — or when its
 //    transcription failed or found no words (`marksMic`): the audio is there to retry, and the card says so.
-//  • a voice note still being transcribed: a quiet "Transcribing…" (never an empty card); failed: "Couldn't
+//  • a voice note whose last words are still being transcribed shows the words already heard while it was said
+//    (`heard`: the live text — v0.9-fix2, the card said "Transcribing…" next to a panel showing the whole sentence);
+//    the card only, never a copy or an item (they wait for `said`). With nothing heard: a quiet "Transcribing…"
+//    (never an empty card); failed: "Couldn't
 //    transcribe" in the attention colour (`needsYou`: it isn't a caption), Retry in the card's right-click menu. A
 //    shot's spoken note that turned out to hold no speech is dropped (no mark, nothing left to transcribe) — the app
 //    does that. A voice note with no words (`said` == "", v0.9: one the user ended in a noisy room is kept) says "No
@@ -51,10 +54,15 @@ public struct CardNote: Equatable {
     /// The card needs the user (its status is drawn in the attention colour, not like a caption): Retry.
     public var needsYou: Bool { status.needsRetry }
 
-    public static func make(typed: String?, said: String?, hasVoice: Bool, transcription: Transcription) -> CardNote {
+    /// `heard`: what the live text showed while the note was said — shown while its words are still pending.
+    public static func make(typed: String?, said: String?, hasVoice: Bool, transcription: Transcription,
+                            heard: String? = nil) -> CardNote {
         let s = clean(said)
         let status: Status = !hasVoice || s != nil ? .none : transcription == .failed ? .failed
             : transcription == .pending || said == nil ? .transcribing : .noWords
+        if status == .transcribing, hasVoice, let h = clean(heard) {
+            return CardNote(text: merged(typed: typed, said: h), showsMic: true, status: .none)
+        }
         return CardNote(text: merged(typed: typed, said: said), showsMic: hasVoice && s != nil, status: status)
     }
 

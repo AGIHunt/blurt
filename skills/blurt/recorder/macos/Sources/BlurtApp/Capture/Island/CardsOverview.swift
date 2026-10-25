@@ -353,8 +353,8 @@ final class OverviewTile: NSView, NSDraggingSource {
     static func line(_ s: Shot) -> String {
         if s.kind == .shot, let w = s.words { return w.replacingOccurrences(of: "\n", with: " · ") }
         // a snap whose note couldn't be transcribed says so (in amber), not just its name
-        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(HangingCards.cardName(s)) · \(st)" }
-        return s.kind == .shot ? HangingCards.cardName(s) : HangingCards.takenAt(s.wall)
+        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(s.plainName) · \(st)" }
+        return s.kind == .shot ? s.plainName : s.takenAt
     }
 
     func flashCopied() {

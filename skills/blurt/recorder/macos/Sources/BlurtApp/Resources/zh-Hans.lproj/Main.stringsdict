@@ -268,7 +268,7 @@
 			<string>%ld 字</string>
 		</dict>
 	</dict>
-	<key>app.record.failed_kept</key>
+	<key>app.record.kept</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
 		<string>%#@n@</string>
@@ -279,7 +279,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>录屏没能保存 · 其中的 %ld 张截图和备注都留着</string>
+			<string>%ld 张截图留着</string>
 		</dict>
 	</dict>
 </dict>

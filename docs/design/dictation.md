@@ -526,15 +526,20 @@ do:
   check — is another connection waiting on the listening socket (`select`, no accept)? — and `Qwen3Mlx` looks at it
   before each chunk, before the prefill and between tokens, raising `Interrupted` (answer `{"ok": false, "code":
   "interrupted"}`). Interim requests always go through the tag-aware decode loop (it is ours, so it can stop; without
-  a preferred language it takes the model's own tag, as the plain decode does). A backend that can't stop halfway
-  (SenseVoice, Whisper, a Qwen whose tag-aware decoder failed) answers `interim_unsupported` and the take has no
-  interim text. Stale answers are dropped: a piece whose final transcript has landed, or an answer older than one
+  a preferred language it takes the model's own tag, as the plain decode does). A quick backend (`quick_decode`:
+  SenseVoice, one ~0.1 s CTC pass) is asked once before and then decodes whole — a final piece waits that long at
+  most. A slow backend that can't stop halfway (Whisper on CT2, Qwen3-ASR on the CPU, a Qwen whose tag-aware decoder
+  failed) answers `interim_unsupported`; the client waits `refusalBackoff` (4 s) and asks again, and only 3 refusals
+  in a row stop interim text for the take (v0.9-fix2: one refusal used to turn it off, and SenseVoice — every tier's
+  note model — refused them all, so notes never showed live words). Stale answers are dropped: a piece whose final transcript has landed, or an answer older than one
   already shown. At key-up nothing more is sent; an answer under way still shows until its piece is in.
 - **Adaptive**: the interval is twice the smoothed decode time, within 0.8–1.2 s; smoothed over ≥ 3 decodes above
   0.9 s (a slow machine, a 20 s window on a slow model) turns interim decodes off for the take
   (`dictation_interim_off`); so do 3 failures in a row. The first decode of a session also waits for the model to
-  warm up and doesn't count alone. The light / minimal tiers (< 16 GB, as `transcribe.py tier_for`) never start them:
-  `record.dictation.live_partial` unset = by the machine, `true` / `false` to force.
+  warm up and doesn't count alone. For dictation the light / minimal tiers (< 16 GB, as `transcribe.py tier_for`)
+  never start them: `record.dictation.live_partial` unset = by the machine, `true` / `false` to force. Voice notes and
+  a snap's spoken note ask on every tier (`VoiceInput.liveWords`): their model is quick; only `record.live_text` off
+  or an explicit `live_partial = false` turns them off.
 - **What shows** (`DictationLiveDecode.compose`, mechanical only): the finished pieces' transcripts joined as the
   transcript is (`DictationStitch.joinPieces`: committed, 92 % white), then the interim texts of the pieces not final
   yet (pending, 60 %); an interim after a hard cut loses the words the piece before already has

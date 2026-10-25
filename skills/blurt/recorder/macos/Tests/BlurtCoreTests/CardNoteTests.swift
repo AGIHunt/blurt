@@ -42,6 +42,20 @@ final class CardNoteTests: XCTestCase {
         XCTAssertEqual(make(nil, "", voice: true, .pending).status, .transcribing)
     }
 
+    /// v0.9-fix2: a voice note's card said "Transcribing…" while the live panel beside it showed the whole sentence.
+    func testAVoiceNoteStillTranscribingShowsTheWordsAlreadyHeard() {
+        let n = CardNote.make(typed: nil, said: nil, hasVoice: true, transcription: .pending, heard: "the export button is broken")
+        XCTAssertEqual(n.text, "the export button is broken")
+        XCTAssertEqual(n.status, .none)
+        XCTAssertTrue(n.showsMic)
+        // nothing heard: as before
+        XCTAssertEqual(CardNote.make(typed: nil, said: nil, hasVoice: true, transcription: .pending, heard: " ").status, .transcribing)
+        // the final words replace them; a failure or no words is still said so
+        XCTAssertEqual(CardNote.make(typed: nil, said: "final", hasVoice: true, transcription: .idle, heard: "heard").text, "final")
+        XCTAssertEqual(CardNote.make(typed: nil, said: nil, hasVoice: true, transcription: .failed, heard: "heard").status, .failed)
+        XCTAssertEqual(CardNote.make(typed: nil, said: "", hasVoice: true, transcription: .idle, heard: "heard").status, .noWords)
+    }
+
     func testFailedTranscription() {
         let n = make(nil, nil, voice: true, .failed)
         XCTAssertEqual(n.status, .failed)

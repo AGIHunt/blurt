@@ -29,7 +29,7 @@ Linux, a small capsule in the same place). Hover it to see your current project 
 
 | | Shortcut | What happens |
 |---|---|---|
-| **Snap** | `⌥⇧A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` takes the last stroke back. A spoken note never ends while you draw or within 1.5 s of a stroke; with only drawing or typing, finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). *Goes to …* under the note changes where this snap goes: click it (or press Tab), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
+| **Snap** | `⌥⇧A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` takes the last stroke back. A spoken note never ends while you draw or within 1.5 s of a stroke; with only drawing or typing, finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). *Goes to …* under the note (or *Stays as a card* when there is no current project) changes where this snap goes: click it (or press Tab), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. When the words are saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
 | **Voice note** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. |
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* at the notch) stops. |
 
@@ -44,12 +44,16 @@ use a snap or a voice note for everything that fits in one screen or one sentenc
 **When something gets in the way.** A snap or a recording without Screen Recording permission says so at the notch
 before you pick an area, with *Open Settings*. After an update macOS sometimes keeps an old build's permission that no
 longer works: Blurt then says *Couldn't snap — macOS needs Screen Recording allowed again* and *Re-allow…* shows how to
-remove Blurt from the list, add it again and restart it. A voice note you end yourself is kept even in a noisy room
-(a room with only a fan or a hum in it isn't a note); if no words come out of it, it waits as a card that says *No
-words recognized* with *Retry* — also with a current project, where it goes once Retry has the words, never as an
+remove Blurt from the list, add it again and restart it. A voice note you end yourself is kept even in a noisy room,
+and is never thrown away without asking: if Blurt heard nothing in it, the notch says *Didn't hear anything* with
+*Keep* for a few seconds. If no words come out of it, it waits as a card that says *No words recognized* with *Retry* — also with a current project, where it goes once Retry has the words, never as an
 empty item. A note whose words couldn't be transcribed says so at the notch with *Retry*, and still goes to its
 project once Retry has the words. If the microphone goes away mid-note (AirPods taken out), the note ends with what
-you said; before you said anything, a snap's note says *Mic disconnected* and you can type it instead. Quitting Blurt
+you said; before you said anything, a snap's note says *Mic disconnected* and you can type it instead. A recording
+that can't be finished says why — *The disk is full*, *Screen Recording was refused* — and keeps what it had: the
+video up to where it stopped (*The disk is full — the first 3:12 is kept*) and the snaps you took during it, ready to
+**Organize**; it stops as soon as the disk fills up instead of running on, and warns before it starts when little
+space is left. Quitting Blurt
 never loses a capture on its way: it is saved first, or picked up again the next time Blurt starts — and a voice note
 you cancelled stays cancelled, even if you quit before its *Undo* was gone.
 
@@ -59,11 +63,11 @@ in the last minute). Prefer the old way? *Settings → General → End a voice n
 silence. A snap's spoken note still ends when you pause — it's a sentence about one picture.
 
 **The words while you talk.** While a voice note or a dictation listens, what has been recognized so far shows in a
-small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in. When a dictation
-stops, the panel shows the text that went in from its top (up to eight lines), so a list keeps its heading while you
-check it before a double tap sends it. In a dictation
-the words keep up with you even when you don't pause: the part you're still saying shows in a lighter grey and firms
-up to white as each stretch is finished. It never takes the focus or a click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
+small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in; a snap's spoken
+note fills its own field the same way. When a dictation stops, the panel shows the text that went in from its top (up
+to eight lines), so a list keeps its heading while you check it before a double tap sends it. The words keep up with
+you even when you don't pause: the part you're still saying shows in a lighter grey and firms up to white as each
+stretch is finished — on every Mac for notes, whose speech model is quick. It never takes the focus or a click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
 a recording. Because a voice note is transcribed piece by piece while you talk, its card has its words about as soon
 as you stop. Turn it off in *Settings → General → Show text while I talk*.
 
@@ -89,6 +93,13 @@ window's command palette (`⌘K`) do the same.
   without one. A recording's items go there too.
 - **Unassigned** (no current project) — snaps and voice notes wait as cards (below) until you say where they belong;
   a recording's items go to **Unassigned**.
+
+If you move or rename a project's folder, Blurt doesn't write to the old place: a snap or voice note stays as a card,
+a recording goes to **Unassigned**, and the notch says *Can't find billing-api's folder* with **Locate…**. Pick the
+folder where it is now and it is the same project again (its items, key and IDs), and new captures go there; a
+folder that isn't that project's is refused right in the panel, so you can pick again. The switcher shows such a
+project with a question-mark folder and *Folder not found*, and picking it there (or in a snap note's list) asks
+where it is.
 
 When a recording ends, the notch says where it went — *Filed to Atlas Web · Change* — and **Change** puts it in
 another project (it waits until organizing is done if it has to). A snap filed straight into a project says the same:
@@ -619,7 +630,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 | | 快捷键 | 做什么 |
 |---|---|---|
-| **截图** | `⌥⇧A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已保存」旁边会显示听到的内容一会儿——鼠标停在上面时不会关，点进文字后会等你按 `⏎`，方便改错字。直接在画面上画：拖动是自由画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。说话的备注不会在你画的时候、也不会在落笔后 1.5 秒内结束；只画了或只打了字，就按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。备注下面的「归入 …」可以改这张截图去哪：点它（或按 Tab），打字筛选最近的项目，按 `⏎`；最下面的「未归类」会让它先作为卡片留在刘海下方，等你选项目。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
+| **截图** | `⌥⇧A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已保存」旁边会显示听到的内容一会儿——鼠标停在上面时不会关，点进文字后会等你按 `⏎`，方便改错字。直接在画面上画：拖动是自由画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。说话的备注不会在你画的时候、也不会在落笔后 1.5 秒内结束；只画了或只打了字，就按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。文字保存后，屏幕其余部分马上恢复亮度。备注下面的「归入 …」（没有当前项目时是「留作卡片」）可以改这张截图去哪：点它（或按 Tab），打字筛选最近的项目，按 `⏎`；最下面的「未归类」会让它先作为卡片留在刘海下方，等你选项目。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
 | **语音备注** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点刘海上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的 App。说的时候，识别出的文字显示在刘海下方。 |
 | **录屏** | `⌥⇧R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥⇧R`（或刘海上的「完成」）结束。 |
 
@@ -628,11 +639,11 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 截下的画面有几张；标记（`⌥⇧M`）单独计数。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
-**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下（只有风扇声、嗡嗡声的不算）；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
+**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，几秒内可以点「留下」；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能录完时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），并留下已有的内容：停下之前录到的那段视频（「磁盘满了，前 3:12 已保留」）和录屏期间截的图，可以直接「整理」；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
-**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入。听写停下后，面板从头显示打进去的文字（最多八行），清单的标题也在，方便双击发送前看一眼。听写时即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
+**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入；截图时说的备注也一样，文字直接出现在备注框里。听写停下后，面板从头显示打进去的文字（最多八行），清单的标题也在，方便按两下发送前看一眼。即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。备注用的语音模型很快，所以每台 Mac 上都这样。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
 菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的线条小鸡，和菜单栏里其他图标一致：语音备注在听时它的声波会跳动，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
 
@@ -648,6 +659,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 通用」和主窗口的命令面板（`⌘K`）也一样。
 - **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的条目也进这里。
 - **未归类**（不选当前项目）：截图和语音备注先作为卡片留在刘海下方（见下），等你决定放哪；录屏的条目进「**未归类**」。
+
+如果你移动了项目文件夹或改了名，口喷鸡不会往原来的位置写：截图和语音备注先留作卡片，录屏进「**未归类**」，刘海上会提示「找不到「billing-api」的文件夹」和「**找到它…**」。选一下它现在的位置，就还是原来那个项目（条目、代号和编号都在），之后的内容也会归到这里；选错了文件夹，面板里会直接说「这不是「billing-api」的文件夹」，可以重选。切换项目的列表里，这样的项目显示成带问号的文件夹，写着「文件夹不见了」，在那里（或截图备注的列表里）选它，会问你它现在在哪。
 
 录屏结束时，刘海上会写明它去了哪——「已归到 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
 直接归进项目的截图也一样：「已归到 Atlas Web · AW-14 · 更改」。换了之后会提示「已移到 … · 撤销」，点撤销就移回来。

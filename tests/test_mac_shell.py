@@ -45,7 +45,7 @@ class Layout(unittest.TestCase):
         # empty window (live check: the `axcards` test command).
         src = (MAC / "Sources/BlurtApp/Capture/Island/HangingCards.swift").read_text()
         for needle in ["override func accessibilityChildren()", "final class LayerAXElement: NSAccessibilityElement",
-                       '"capture.card.ax_shot_at"', "setAccessibilityCustomActions", "override func accessibilityPerformPress()"]:
+                       "s.plainName", "setAccessibilityCustomActions", "override func accessibilityPerformPress()"]:
             self.assertIn(needle, src)
 
     def test_dispatch_panel_never_defaults_to_a_logged_out_agent(self):

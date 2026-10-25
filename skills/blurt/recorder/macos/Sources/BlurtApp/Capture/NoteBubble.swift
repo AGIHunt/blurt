@@ -161,7 +161,7 @@ final class NoteVoice {
     private(set) var failReason: String?
 
     func start(_ ready: @escaping (Bool) -> Void) {
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        StoreFolders.make(url.deletingLastPathComponent())       // never below a project folder that is gone
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: NoteVoice.rate, AVNumberOfChannelsKey: 1,
                                        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
@@ -1093,7 +1093,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let v = NoteVoice(url: dir.appendingPathComponent(rel))
         // a fresh shot's words while they are said (the voice note's live text), in the field's place
         let st = mode == .listen && VoiceInput.shared.streams ? VoiceNoteStream(id: "note-\(ShotBatch.name(s.n))-\(Int(Date().timeIntervalSince1970))",
-                                                   interim: Dictation.livePartial && LiveTranscript.enabled) : nil
+                                                   interim: VoiceInput.liveWords) : nil
         st?.onLive = { [weak self] committed, pending in
             guard let self = self, self.stream === st else { return }
             self.heard = (committed, pending)
@@ -1181,6 +1181,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             field.currentEditor()?.selectedRange = NSRange(location: (w as NSString).length, length: 0)
             hold.savedUntil = CACurrentMediaTime() + NoteBubble.savedSeconds
             emit(["event": "note_words_shown", "n": shot?.n ?? 0, "chars": w.count])
+            // in place: the screen is given back now — only the picture and the bubble wait out the saved window
+            if staged { InkStage.shared.lift() }
             layout()
         }
         refreshStatus()
@@ -1362,7 +1364,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 // in place, nothing said (the mic has stopped listening): it waits for ⏎, Done or a click outside
                 status.stringValue = Loc.t("capture.note.done_discard", table: "Capture")
             } else {
-                status.stringValue = dest + Loc.t((micGone ? "capture.note.mic_gone" : "capture.note.no_mic") + (staged ? "_done" : ""), table: "Capture")
+                // every key written out whole (tests/test_l10n.py checks each one exists in both languages)
+                let key = micGone ? (staged ? "capture.note.mic_gone_done" : "capture.note.mic_gone")
+                                  : (staged ? "capture.note.no_mic_done" : "capture.note.no_mic")
+                status.stringValue = dest + Loc.t(key, table: "Capture")
             }
         case .edit:
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
@@ -1379,11 +1384,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func fmt(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
-    /// "Goes to ordo-platform" for a fresh shot taken with a current project; "Unassigned" without one (the snap hangs
-    /// as a card until a project is picked) — the name every project picker gives that choice.
+    /// "Goes to ordo-platform" for a fresh snap taken with a current project; "Stays as a card" without one — what
+    /// happens to it (it hangs under the notch until a project is picked), as the voice note's island line says it
+    /// (v0.9-fix2: a bare "Unassigned ⌄" didn't read as where the snap goes). The list's row is still "Unassigned".
     private var destination: String {
         guard let pid = shot?.project, let p = ProjectStore.shared.project(id: pid) else {
-            return Loc.t("project.inbox")
+            // the current project's folder is gone (MissingFolder): say why it stays a card
+            if let m = ProjectStore.shared.missingCurrent { return Loc.t("capture.note.goes_missing", table: "Capture", m.name) }
+            return Loc.t("capture.note.stays_card", table: "Capture")
         }
         return Loc.t("capture.note.goes_to", table: "Capture", p.name)
     }
@@ -1513,6 +1521,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func picked(_ p: Project?) {
         guard let s = shot else { return }
+        // a project whose folder can't be found takes nothing: the capture stays a card (what the island's line says,
+        // with Locate…) — in place, said once the note settles (the island can't show it under the note)
+        if let p = p, !p.exists {
+            if s.project != nil { snapper.retarget(s, to: nil) }
+            closePick()
+            if staged { snapper.warnWhenSettled(s, missing: p) } else { MissingFolder.warn(p) }
+            emit(["event": "note_pick_missing", "n": s.n, "project": p.id, "deferred": staged])
+            return refreshStatus()
+        }
         if s.project != p?.id { snapper.retarget(s, to: p?.id) }
         closePick()
         refreshStatus()

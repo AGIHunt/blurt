@@ -49,9 +49,9 @@ final class IslandToastsTests: XCTestCase {
 
     /// "Discard this recording and its 3 snaps?" for one still and two markers.
     func testADiscardedRecordingCountsSnapsAndMarkersApart() {
-        XCTAssertEqual(RecordingDiscard.lost(stills: 1, markers: 2), [.snaps(1), .markers(2)])
-        XCTAssertEqual(RecordingDiscard.lost(stills: 0, markers: 2), [.markers(2)])
-        XCTAssertEqual(RecordingDiscard.lost(stills: 0, markers: 0), [])
+        XCTAssertEqual(RecordingDiscard.lost(stills: 1, markers: 2), .both(snaps: 1, markers: 2))
+        XCTAssertEqual(RecordingDiscard.lost(stills: 0, markers: 2), .markers(2))
+        XCTAssertEqual(RecordingDiscard.lost(stills: 0, markers: 0), .nothing)
     }
 
     func testACardIsNamedByItsWordsNeverACounter() {

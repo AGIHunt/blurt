@@ -15,6 +15,8 @@
 //
 // A card dragged out and taken by another app is "taken", not discarded: it leaves its thread but stays findable for
 // TakenCaptures.keepDays (the island's right-click "Recently Taken", the main window), then housekeeping trashes it.
+// Its rows (and VoiceOver) name it by when it was taken, as the Mac writes times (CardName.when, IslandToasts.swift:
+// 12/24-hour, the day for anything before today).
 
 import Foundation
 
