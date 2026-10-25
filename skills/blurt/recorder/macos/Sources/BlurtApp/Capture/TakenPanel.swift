@@ -8,7 +8,9 @@
 // "Show All…" for this panel) and the main window's "Recently dragged out: N" row (Inbox and Unassigned). After 7 days
 // Snapper.expireTaken moves a taken capture to the Trash.
 //
-// The panel (v0.9 look, docs/design/system.md §3.2): a small utility window on the island's screen, under the island;
+// The panel (v0.9 look, docs/design/system.md §3.2): a small utility window on the island's screen, under the island
+// and under the band where the cards hang (`cardBand`: a card put back drops onto its thread above the panel, never
+// over its rows — v0.9-fix2, the re-hung row covered the panel it was put back from);
 // one compact row per capture, like the main window's lists — its tile (CaptureThumb: the picture, or a voice note's
 // brand-tint tile with the waveform and its length; drag it out), the note on one line, then when it was dragged out
 // and how long it stays (in attention ink on its last day). Pointing at a row gives it the brand-tint wash and shows
@@ -45,13 +47,17 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         let size = w.frame.size
         var x = anchor.midX - size.width / 2
         x = min(max(x, screen.visibleFrame.minX + 12), screen.visibleFrame.maxX - size.width - 12)
-        let y = min(anchor.minY - 12, screen.visibleFrame.maxY) - size.height
+        let top = min(anchor.minY - 12, island.frameOnScreen.minY - TakenPanel.cardBand, screen.visibleFrame.maxY)
+        let y = top - size.height
         w.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, y)))
         w.orderFrontRegardless()
         emit(["event": "taken_panel", "open": true, "count": rows.count])
     }
 
     func hide() { window?.orderOut(nil) }
+
+    /// How far below the island the hanging cards reach: the shortest thread, the longest slack, a card, a margin.
+    static var cardBand: CGFloat { HangingCards.below + (HangingCards.slacks.max() ?? 12) + CardShape.height + 14 }
 
     private func build() {
         let w = NSPanel(contentRect: NSRect(x: 0, y: 0, width: TakenPanel.width, height: 120),
