@@ -261,6 +261,12 @@ final class Dictation {
         watchHistoryClear()
         watchFnApps()
         DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
+        // a fix to an ordinary word (a contraction, an inflection the word list lacks) is grammar, not a term
+        DictationLearn.spelledRight = { w in
+            var count = 0
+            return NSSpellChecker.shared.checkSpelling(of: w, startingAt: 0, language: "en", wrap: false,
+                                                       inSpellDocumentWithTag: 0, wordCount: &count).location == NSNotFound
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.prewarm("launch") }
         // the mic's engine, set up but not started: the key-down only has to start it

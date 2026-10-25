@@ -11,6 +11,15 @@ final class DictationStitchTests: XCTestCase {
         for s in ["好的呀", "OK sure thing", "sounds good to me", "123"] { XCTAssertFalse(DictationStitch.nothingToPolish(s), s) }
     }
 
+    /// The ≡ chip's length gate: the same three points in English and Chinese both qualify (v0.9 dogfood: the 22-word
+    /// English list never got the chip); a short sentence doesn't.
+    func testAListIsWorthSuggestingInEitherLanguage() {
+        XCTAssertTrue(DictationStitch.mayHoldList("There are three things to do. First, fix the login button. Second, update the pricing page. Third, write the release notes."))
+        XCTAssertTrue(DictationStitch.mayHoldList("这次要做三件事。第一，修好登录按钮。第二，改一下价格页面的样式。第三，更新使用文档。"))
+        XCTAssertFalse(DictationStitch.mayHoldList("Sounds good, let's ship it tomorrow."))
+        XCTAssertFalse(DictationStitch.mayHoldList("好的，明天再说。"))
+    }
+
     func testJoinSpacesOnlyBetweenLatinWords() {
         XCTAssertEqual(DictationStitch.join("我们先看一下日志。", "然后再部署。"), "我们先看一下日志。然后再部署。")
         XCTAssertEqual(DictationStitch.join("open the PR", "and merge it"), "open the PR and merge it")

@@ -395,6 +395,8 @@
 "dictation.style.reformat.same" = "This one reads the same in every style";
 "dictation.style.reformatted" = "Reformatted as %@";
 "dictation.style.copied" = "Copied as %@ — the text in the field was left alone";
+"dictation.style.copied.edited" = "Copied your edited text as %@ — the field was left alone";
+"dictation.style.copied.original" = "You edited it — copied the dictation as said, as %@";
 "dictation.style.undone" = "Back to %@";
 "dictation.style.learn.auto" = "Format spoken lists in %@ from now on?";
 "dictation.style.learn.structured" = "Format spoken lists in %@ from now on?";
@@ -454,6 +456,8 @@
 "dictation.words.add.placeholder" = "Add a word, like Claude Code";
 "dictation.words.filter" = "Filter";
 "dictation.words.mine" = "Your words · %ld";
+"dictation.words.projects" = "From your projects · %ld";
+"dictation.words.projects.detail" = "Your projects’ names and keys are added for you. Remove any you don’t say.";
 "dictation.words.mine.empty" = "None yet. Add the names and terms you say often — or correct a dictation in the history and Blurt learns the word.";
 "dictation.words.suggested" = "To review · %ld";
 "dictation.words.builtin" = "Built-in words: %ld";

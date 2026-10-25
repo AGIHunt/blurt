@@ -334,7 +334,7 @@ public enum DictationLearn {
     /// An ordinary English word (macOS's /usr/share/dict/words, lower-case entries; the same list dictation_vocab.py
     /// uses), loaded on first use.
     public static func isCommonWord(_ w: String) -> Bool {
-        wordsLock.lock(); defer { wordsLock.unlock() }
+        wordsLock.lock()
         if words == nil {
             var set = Set<String>()
             if let s = try? String(contentsOfFile: "/usr/share/dict/words", encoding: .utf8) {
@@ -342,6 +342,14 @@ public enum DictationLearn {
             }
             words = set
         }
-        return words!.contains(w.lowercased())
+        let known = words!.contains(w.lowercased())
+        wordsLock.unlock()
+        // the word list has no contractions or inflections ("you're", "doesn't"): the system's spelling dictionary
+        // knows them (v0.9 dogfood: a fix to "you're" was offered as a word to learn)
+        return known || (spelledRight?(w.lowercased()) ?? false)
     }
+
+    /// The system's spelling dictionary (the app sets it: NSSpellChecker): a lower-case word it knows is ordinary
+    /// language, not a term the speech model needs to be told.
+    public static var spelledRight: ((String) -> Bool)?
 }

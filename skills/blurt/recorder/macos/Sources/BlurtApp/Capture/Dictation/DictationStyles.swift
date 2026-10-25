@@ -86,9 +86,6 @@ final class DictationLastPaste {
 }
 
 extension Dictation {
-    /// a light take this long (units) may hold a list: the structuring pass runs after its paste for the chip
-    static let chipMinUnits = 24
-
     // MARK: the router
 
     /// A take begins (the key-down, or the start): the app in front gives the base style.
@@ -178,7 +175,7 @@ extension Dictation {
         }
         // the ≡ chip: the model finds a list in a take that went in as prose — one key (or this click) away. The pass
         // runs after the paste, so the dictation never waits for it.
-        if Dictation.suggestLists, result != .none, original == .light, DictationStitch.units(lp.light ?? lp.raw).count >= Dictation.chipMinUnits {
+        if Dictation.suggestLists, result != .none, original == .light, DictationStitch.mayHoldList(lp.light ?? lp.raw) {
             withStructured(lp) { [weak self] in
                 guard let self = self, self.lastPaste === lp, !self.listening, lp.current == .light,
                       let s = lp.structured, DictationStitch.listLines(s) >= 2 else { return }
@@ -279,6 +276,39 @@ extension Dictation {
         }
     }
 
+    /// The last take as the user edited it in the field, in `style` — the same passes the take's own versions got
+    /// (Light: polish; Structured: the structuring pass; Verbatim: as it stands) — then copied, the field left alone.
+    private func restyleEdited(_ lp: DictationLastPaste, _ edited: String, to style: DictationStyle, action: String, via: String) {
+        let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : nil
+        let t0 = CACurrentMediaTime()
+        DispatchQueue.global(qos: .userInitiated).async {
+            var out = edited
+            switch style {
+            case .structured, .auto:
+                if let r = Dictation.structure(edited, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab),
+                   r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
+            case .light:
+                if let r = Dictation.polish(edited, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
+                                            context: nil, variant: variant),
+                   r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
+            case .verbatim:
+                break
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.lastPaste === lp else { return }
+                DictationInsert.copy(out)
+                lp.current = style
+                lp.currentVersion = out
+                DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: action, from: lp.original.rawValue,
+                                                                               to: style.rawValue, replaced: false, text: nil, before: nil))
+                emit(["event": "dictation_reformat", "result": "copied", "why": "edited", "via": via, "id": lp.id,
+                      "to": style.rawValue, "text": out, "from_edited": true, "ms": Int((CACurrentMediaTime() - t0) * 1000)])
+                island.toast(Loc.t("dictation.style.copied.edited", table: "Dictation", Dictation.styleName(style)),
+                             key: Dictation.toastKey, seconds: 3)
+            }
+        }
+    }
+
     /// Puts `text` where the last take went, if it is still exactly as typed; else on the clipboard.
     private func apply(_ lp: DictationLastPaste, to style: DictationStyle, text: String, action: String, via: String) {
         let t0 = CACurrentMediaTime()
@@ -322,8 +352,18 @@ extension Dictation {
             return done(false, lp.field == nil ? "no_field" : "too_late")
         }
         guard let span = DictationReformat.span(in: now, inserted: lp.typed, prefix: lp.prefix, suffix: lp.suffix, near: loc) else {
-            DictationInsert.copy(text)          // the user changed it: never overwritten
-            return done(false, "edited")
+            // the user changed it: never overwritten — and what they see now is what gets reformatted and copied
+            // (v0.9 dogfood: their 方案→计划 fix was missing from the copy, the stored take reformatted instead)
+            let maxLen = (lp.typed as NSString).length * 3 + 200
+            guard let edited = DictationLearn.locate(in: now, prefix: lp.prefix, suffix: lp.suffix, near: loc, maxLength: maxLen),
+                  !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                DictationInsert.copy(text)      // the edit can't be told apart: the take as said, and the toast says so
+                emit(["event": "dictation_reformat", "result": "copied", "why": "edited_unread", "via": via, "id": lp.id])
+                island.toast(Loc.t("dictation.style.copied.original", table: "Dictation", Dictation.styleName(style)),
+                             key: Dictation.toastKey, seconds: 3)
+                return
+            }
+            return restyleEdited(lp, edited, to: style, action: action, via: via)
         }
         let ns = now as NSString
         let before = String(ns.substring(to: span.location).suffix(500))

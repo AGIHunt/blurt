@@ -395,6 +395,8 @@
 "dictation.style.reformat.same" = "这一条换哪种风格都一样";
 "dictation.style.reformatted" = "已重排为%@";
 "dictation.style.copied" = "已按%@复制，输入框里的文字没动";
+"dictation.style.copied.edited" = "已把你改过的文字按%@复制，输入框里的文字没动";
+"dictation.style.copied.original" = "你改过这段，已按原始听写排成%@并复制";
 "dictation.style.undone" = "已还原为%@";
 "dictation.style.learn.auto" = "以后在 %@ 里自动排清单？";
 "dictation.style.learn.structured" = "以后在 %@ 里自动排清单？";
@@ -454,6 +456,8 @@
 "dictation.words.add.placeholder" = "添加一个词，比如 Claude Code";
 "dictation.words.filter" = "筛选";
 "dictation.words.mine" = "你的词 · %ld";
+"dictation.words.projects" = "来自你的项目 · %ld";
+"dictation.words.projects.detail" = "项目的名字和缩写会自动加进来，用不上的可以移除。";
 "dictation.words.mine.empty" = "还没有。把常说的名字和术语加进来；在听写历史里改正一个词，口喷鸡也会记下来。";
 "dictation.words.suggested" = "待确认 · %ld";
 "dictation.words.builtin" = "内置词 %ld 个";
