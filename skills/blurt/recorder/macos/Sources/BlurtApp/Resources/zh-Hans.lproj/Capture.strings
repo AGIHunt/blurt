@@ -173,9 +173,9 @@
 "capture.rec.snap_note" = "截图并写备注（会暂停）";
 "capture.recording.filed" = "已归到 %@";
 "capture.retry" = "重试";
-"capture.service.added" = "已加入待处理：%@";
+"capture.service.added" = "已加入 %1$@：%2$@";
 "capture.service.empty" = "没有可以加入的文字或图片";
-"capture.service.failed" = "没加进去：%@";
+"capture.service.failed" = "没加进口喷鸡，再试一次";
 "capture.service.image" = "图片";
 "capture.service.image_from" = "图片（来自 %@）";
 "capture.service.title" = "收集的笔记";

@@ -173,9 +173,9 @@
 "capture.rec.snap_note" = "Snap and add a note (pauses)";
 "capture.recording.filed" = "Filed to %@";
 "capture.retry" = "Retry";
-"capture.service.added" = "Added to the Inbox: %@";
+"capture.service.added" = "Added to %1$@: %2$@";
 "capture.service.empty" = "Nothing to add: select text or an image";
-"capture.service.failed" = "Couldn’t add it: %@";
+"capture.service.failed" = "Couldn’t add it to Blurt — try again";
 "capture.service.image" = "Image";
 "capture.service.image_from" = "Image from %@";
 "capture.service.title" = "Collected notes";
