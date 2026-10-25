@@ -186,6 +186,8 @@ describe("v3 UI", () => {
       const { el, s, done } = await mount(<Inspector />, { openSession, sessionBanner: banner });
       await act(async () => s.go(at(s, "BA-15"))); // in progress, with a session
       expect(el.querySelector("#workSession") === null).toBe(banner);
+      // under the banner a card with only "By Codex" would repeat it: no card (dogfood v0.9)
+      expect(el.querySelector("#workRow") === null).toBe(banner);
       await act(async () => s.go(at(s, "BA-12"))); // to verify: no banner above it, so the panel has the button
       expect(el.querySelector("#workSession")).not.toBeNull();
       await act(async () => (el.querySelector("#workSession") as HTMLButtonElement).click());

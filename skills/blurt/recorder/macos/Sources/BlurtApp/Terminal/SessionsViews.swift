@@ -1,5 +1,7 @@
 // SwiftUI parts of a sessions pane: the list, the header above the terminal, the overlay for the states in which the
-// terminal has nothing to show.
+// terminal has nothing to show — above all the card a session ends on: how it ended in words (SessionOutcome), what
+// the agent said last when it failed, and the one next step (Review Changes…, Restart Session), with Take Back and
+// Show Output beside it. A dead window is never the first thing shown; Show Output opens it.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -13,6 +15,12 @@ protocol SessionActions: AnyObject {
     func reconnect()
     func toggleSidebar()
     func popOut(_ job: String)
+    /// the same items, agent and model in a fresh session (SessionRecovery.restart)
+    func restart(_ job: String)
+    /// its items back to To Do
+    func takeBack(_ job: String)
+    /// the ended session's terminal, as the agent left it
+    func showOutput(_ job: String)
 }
 
 // MARK: - List
@@ -72,22 +80,24 @@ struct AgentSessionRowView: View {
     let row: AgentSessionRow
 
     var body: some View {
+        let outcome = row.outcome
+        let needsYou: Bool = { if case .failed = outcome { return true }; return row.status == .waitingInput }()
         HStack(alignment: .top, spacing: 9) {
             SessionStatusMark(status: row.status).padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.label).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                     Spacer(minLength: 4)
+                    // when it started, in the item list's words ("2 min. ago", "2分钟前")
                     TimelineView(.periodic(from: .now, by: 30)) { _ in
-                        Text(shortAgo(row.since)).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+                        Text(Loc.relative(row.since)).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
                     }
                 }
                 if !row.subtitle.isEmpty {
                     Text(row.subtitle).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 HStack(spacing: 5) {
-                    Text(row.alive ? row.status.title : (row.awaitsFinish ? TL("row.ready_to_review") : row.status.title))
-                        .foregroundStyle(row.status == .waitingInput || row.status == .error ? row.status.color : Color.secondary)
+                    Text(row.stateText).foregroundStyle(needsYou ? row.status.color : Color.secondary)
                     Text("·").foregroundStyle(.tertiary)
                     Text(row.agentName).foregroundStyle(.secondary)
                     if row.agent.branch != nil {
@@ -99,23 +109,9 @@ struct AgentSessionRowView: View {
             }
         }
         .padding(.vertical, 3)
-        .opacity(row.alive || row.awaitsFinish ? 1 : 0.62)
+        .opacity(row.alive || row.awaitsFinish || needsYou ? 1 : 0.62)
         .accessibilityElement(children: .combine)
     }
-}
-
-/// "now", "4m", "2h", "3d" — compact, localized by the unit formatter.
-func shortAgo(_ d: Date) -> String {
-    let s = max(0, Date().timeIntervalSince(d))
-    if s < 60 { return TL("time.now") }
-    let f = DateComponentsFormatter()
-    f.unitsStyle = .abbreviated
-    f.maximumUnitCount = 1
-    f.allowedUnits = s < 3600 ? [.minute] : s < 86400 ? [.hour] : [.day]
-    var cal = Calendar.current
-    cal.locale = Loc.locale
-    f.calendar = cal
-    return f.string(from: s) ?? ""
 }
 
 // MARK: - Header
@@ -139,14 +135,11 @@ struct SessionHeader: View {
                             Text(r.projectName).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         HStack(spacing: 5) {
-                            Text(r.status.title).foregroundStyle(r.status == .running ? Color.secondary : r.status.color)
+                            // the user's own decision (merged, restarted…) is past news: no status colour
+                            Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
                             Text("·").foregroundStyle(.tertiary)
                             Text(r.agentName)
-                            if let f = r.agent.finishAction, f != "keep" {
-                                Text("·").foregroundStyle(.tertiary)
-                                // "pr" without a pull request url = only pushed (no gh, or a host it doesn't know)
-                                Text(TL(f == "pr" && r.agent.finishResult?["pr"] as? String == nil ? "finish.state.pushed" : "finish.state.\(f)"))
-                            } else if let b = r.agent.branch {
+                            if r.agent.finishAction == nil, let b = r.agent.branch {
                                 Text("·").foregroundStyle(.tertiary)
                                 Label(b, systemImage: "arrow.triangle.branch").labelStyle(.titleAndIcon)
                                     .font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
@@ -161,9 +154,8 @@ struct SessionHeader: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     }
-                    .layoutPriority(1)
                     Spacer(minLength: 8)
-                    trailing(r)
+                    trailing(r).layoutPriority(1)       // the actions keep their size; the title truncates
                 } else {
                     Text(TL("header.none")).font(.system(size: 13)).foregroundStyle(.secondary)
                     Spacer()
@@ -179,10 +171,10 @@ struct SessionHeader: View {
     @ViewBuilder
     func trailing(_ r: AgentSessionRow) -> some View {
         HStack(spacing: 8) {
-            if r.awaitsFinish && !r.alive {
+            // the ended card has the primary Review Changes…; while its output is shown instead, a plain one here
+            if r.awaitsFinish && !r.alive && pane.attach == .attached {
                 Button(TL("header.review")) { actions?.review(r.id) }
-                    .controlSize(.small)
-                    .buttonStyle(.brand)
+                    .buttonStyle(.bordered).controlSize(.small).fixedSize()
                     .help(TL("header.review.help"))
             }
             if r.alive && !r.isAppRunner {
@@ -203,9 +195,17 @@ struct SessionHeader: View {
                 if r.alive {
                     Button(TL("header.interrupt")) { actions?.interrupt(r.id) }
                     Button(TL("header.end")) { actions?.end(r.id) }
+                    // no response for a minute (the watchdog): start it again from here
+                    if r.agent.stalled { Button(TL("overlay.restart")) { actions?.restart(r.id) } }
+                    Divider()
+                } else if pane.attach != .attached, r.hasOutput {
+                    Button(TL("overlay.show_output")) { actions?.showOutput(r.id) }
                     Divider()
                 }
                 if r.awaitsFinish && r.alive { Button(TL("header.review")) { actions?.review(r.id) } }
+                if !r.job.items.isEmpty, let first = r.job.items.first {
+                    Button(TL("header.show_items")) { AppEnvironment.mainWindow?.reveal(uid: first) }
+                }
                 Button(TL("header.pop_out")) { actions?.popOut(r.id) }
                 if let wt = r.agent.worktree ?? Optional(r.agent.cwd) {
                     Button(TL("header.reveal_folder")) { NSWorkspace.shared.activateFileViewerSelecting([wt]) }
@@ -214,6 +214,9 @@ struct SessionHeader: View {
                     Button(TL("header.open_handoff")) {
                         NSWorkspace.shared.open(BlurtPaths.home.appendingPathComponent("handoff/\(h).md"))
                     }
+                }
+                if FileManager.default.fileExists(atPath: JobFiles.log(r.id).path) {
+                    Button(TL("header.show_log")) { NSWorkspace.shared.open(JobFiles.log(r.id)) }
                 }
             } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
@@ -245,6 +248,7 @@ enum ExternalTerminals {
 struct SessionOverlay: View {
     @ObservedObject var model: SessionsModel
     @ObservedObject var pane: PaneState
+    @ObservedObject var recovering = SessionRecovery.busy
     weak var actions: SessionActions?
 
     var body: some View {
@@ -302,8 +306,14 @@ struct SessionOverlay: View {
 
     @ViewBuilder
     func endedSummary(_ r: AgentSessionRow) -> some View {
+        let outcome = r.outcome
         SessionStatusMark(status: r.status, size: 14)
-        Text(r.status == .error ? TL("overlay.ended.error", Int(r.agent.exit ?? -1)) : TL("overlay.ended.title")).font(.headline)
+        Text(Self.endedTitle(r)).font(.headline).multilineTextAlignment(.center)
+        if case .failed = outcome, let why = JobLook.errorText(r.job), !r.agent.lastOutput.contains(why) {
+            Text(why).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if case .failed = outcome, !r.agent.lastOutput.isEmpty { lastOutput(r.agent.lastOutput) }
         if !r.items.isEmpty {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(r.items.prefix(5), id: \.self) { i in
@@ -314,17 +324,72 @@ struct SessionOverlay: View {
                 }
             }
         }
-        if r.awaitsFinish {
-            Text(TL("overlay.ended.review_hint")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
-        } else if let hint = Self.endedHint(r) {
-            Text(hint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
+        if let hint = Self.endedHint(r) {
+            Text(hint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 400)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        let output = r.hasOutput
+        let inFlight = recovering.contains(r.id)     // a Restart / Take Back already on its way: not twice
+        HStack(spacing: 8) {
+            switch outcome {
+            case .review:
+                if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
+                Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+            case .failed, .noChanges, .ended:
+                if Self.itemsWithIt(r) { Button(TL("overlay.take_back")) { actions?.takeBack(r.id) }.disabled(inFlight) }
+                if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
+                if Self.itemsWithIt(r) {
+                    if case .failed = outcome {
+                        Button(TL("overlay.restart")) { actions?.restart(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                            .disabled(inFlight)
+                    } else {
+                        Button(TL("overlay.restart")) { actions?.restart(r.id) }.disabled(inFlight)
+                    }
+                }
+                if inFlight { ProgressView().controlSize(.small) }
+            case .finished, .live:
+                if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// What the agent said last, as it left its window: the reason in its own words.
+    func lastOutput(_ lines: [String]) -> some View {
+        ScrollView {
+            Text(lines.suffix(8).joined(separator: "\n"))
+                .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(10)
+        }
+        .frame(maxWidth: 460, maxHeight: 140)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
+    }
+
+    /// "Codex couldn’t start", "Session ended · no changes", "Merged"…
+    static func endedTitle(_ r: AgentSessionRow) -> String {
+        switch r.outcome {
+        case .failed(let atStart): return TL(atStart ? "overlay.failed_start.title" : "overlay.failed.title", r.agentName)
+        case .review: return TL("overlay.review.title")
+        case .noChanges: return TL("overlay.no_changes.title")
+        case .ended, .live: return TL("overlay.ended.title")
+        case .finished: return r.stateText
         }
     }
 
-    /// What the session's items are waiting for now (an exit moves nothing; only the agent's report does): still in
-    /// progress (it never reported back), to verify, or nothing at all when they are done.
+    /// Some of its items are still with this session (handed off or in progress): Take Back and Restart apply.
+    static func itemsWithIt(_ r: AgentSessionRow) -> Bool {
+        r.job.items.contains { uid in IndexLookup.item(uid: uid).map { ["handed_off", "in_progress"].contains($0.state) } ?? true }
+    }
+
+    /// What the session's items are waiting for now (an exit moves nothing; only the agent's report does): the
+    /// review, still in progress (it never reported back), to verify, or nothing at all when they are done.
     static func endedHint(_ r: AgentSessionRow) -> String? {
+        if r.outcome == .review { return TL("overlay.ended.review_hint") }
+        if case .failed = r.outcome { return nil }
+        // restarted, merged, discarded…: its items went on elsewhere (a new session, To Do) — nothing to say here
+        if case .finished(let f) = r.outcome, f != "keep" { return nil }
         let states = r.job.items.compactMap { IndexLookup.item(uid: $0)?.state }
         if states.contains(where: { $0 == "handed_off" || $0 == "in_progress" }) { return TL("overlay.ended.unreported_hint") }
         if states.contains("to_verify") { return TL("overlay.ended.verify_hint") }

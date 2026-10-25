@@ -34,6 +34,8 @@ export const SEV = SEVERITIES;
 /** a title worth saving: not empty, not only whitespace (the stores refuse anything else) */
 export const isTitle = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const MEDIA_POLL_PROCESSING = 1500;
+/** how long the in-app end screen stays before the batch comes back (no agent to hand it to) */
+export const DONE_SHOWN_MS = 1800;
 const POLL_IDLE = 2000; // agent writes (set-frames, a chat answer, a work state) show up within ~2 s
 const POLL_HIDDEN = 15000;
 const STALL_S = 600;
@@ -93,6 +95,8 @@ export class ReviewStore {
   saveState: SaveState = "";
   confirming = false;
   confirmed = false;
+  /** items To Do after the last confirmation (the in-app end screen says how many) */
+  doneTodo = 0;
   finishError = false;
   warnedProc = false;
   finishWarn = false;
@@ -756,6 +760,18 @@ export class ReviewStore {
     this.showToast(this.t("toast.copied", { text }), false, "copy");
   };
 
+  /** confirming hands the batch back to an agent that waits (review.py); in the app without one it just finishes */
+  get handsBack() {
+    return !this.host.inApp || !!this.host.agentWaiting;
+  }
+  private reopenAfterDone() {
+    if (!this.confirmed || this.disposed) return;
+    this.confirmed = false;
+    this.confirming = false;
+    this.schedulePoll();
+    this.emit();
+  }
+
   openHelp = () => {
     this.modal = "help";
     this.emit();
@@ -804,9 +820,12 @@ export class ReviewStore {
         for (const i of rest) i.state = "todo";
       });
       this.confirmed = true;
+      this.doneTodo = this.data.items.filter((i) => this.stateOf(i) === "todo").length;
       this.modal = null;
       clearTimeout(this.pollTimer);
       this.host.confirmed?.();
+      // a review started in Blurt hands nothing to an agent: say it is done, then the batch is back, as it now is
+      if (!this.handsBack) setTimeout(() => this.reopenAfterDone(), DONE_SHOWN_MS);
     } catch {
       this.confirming = false;
       this.finishError = true;
@@ -847,6 +866,26 @@ export class ReviewStore {
     if (!this.loaded || this.confirming || this.confirmed || e.defaultPrevented) return;
     const ae = document.activeElement as HTMLElement | null;
     const typing = !!ae && (/INPUT|TEXTAREA|SELECT/.test(ae.tagName) || ae.isContentEditable);
+    if (this.modal) {
+      // a dialog keeps the keyboard: ⌘⏎ confirms Finish, Tab cycles its buttons, Esc closes it (below); ⏎ presses
+      // the focused button, the primary when it opens
+      if (this.modal === "finish" && (e.metaKey || e.ctrlKey) && e.key === "Enter" && !imeBusy(e)) {
+        e.preventDefault();
+        void this.finish();
+        return;
+      }
+      if (e.key === "Tab") {
+        const box = document.getElementById("modal");
+        const all = box ? Array.from(box.querySelectorAll<HTMLElement>("button:not([disabled])")) : [];
+        if (all.length) {
+          e.preventDefault();
+          const k = all.indexOf(ae as HTMLElement);
+          const next = k < 0 ? (e.shiftKey ? all.length - 1 : 0) : (k + (e.shiftKey ? all.length - 1 : 1)) % all.length;
+          all[next].focus();
+        }
+        return;
+      }
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       if (imeBusy(e)) return;
       e.preventDefault();

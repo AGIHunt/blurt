@@ -212,7 +212,25 @@ Select one or more items and choose how they get done:
 Agents that have the Blurt MCP installed (Blurt offers it when you set it up) report back on their own: you'll see the item move to
 *In progress*, then *To verify*. If a session ends without the agent reporting back (it quit, crashed, or the Mac
 restarted), the item stays *In progress* and says *Session ended without reporting back*: **Open Session** to see what
-it did, then **Mark as Done** or take it back. **Open Session** is also in the Item menu and the item's context menu.
+it did, then **Restart Session**, **Mark as Done** or **Take Back**. **Open Session** is also in the Item menu and the
+item's context menu.
+
+When a session ends, its terminal shows how it ended rather than the dead window: *Codex couldn't start* with the
+agent's last words (an expired login, an error), *Ready to review* when its branch has changes, or *Ended · no
+changes*. **Restart Session** runs the same items with the same agent again (once — the button is off while it
+starts); **Take Back** returns them to *To do*; **Show Output** shows what the agent left on screen. The item's
+banner keeps two buttons and puts the rest under **⋯**. An agent that says nothing for a minute after it starts
+reads *No response*: look at its window, or restart it. An agent that isn't logged in can't be picked in the
+hand-off panel — it says what to run, and offers the other agent; agents handing work off from the command line get
+the same answer.
+
+**Review Changes…** shows what changed on the session's branch. **Merge** (`⌘↩`) brings it into your project folder;
+when the agent left its work uncommitted (Codex can't commit inside a worktree), the button reads **Commit and
+Merge** and Blurt commits it first, as "HS-5 Create done.txt (Blurt hand-off)". A branch with no changes can only be
+discarded, never pushed. **Discard** puts the items back in *To do*. `Esc` closes the sheet at any point.
+
+Organizing a recording stops when you quit Blurt (Blurt asks first), and a recording is never organized twice at the
+same time. If organizing fails, it stays under *In progress* with **Try Again** and **Dismiss** until you pick one.
 
 ### 6. Item states
 
@@ -557,7 +575,20 @@ so the two must speak the same version: when one is older than the other, the is
 
 装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
 如果会话结束了 Agent 却没回报（它退出了、崩溃了，或者 Mac 重启过），条目会留在「进行中」，上方写着「会话已结束，未报告完成」：
-点「**打开会话**」看看它做了什么，再「**标为完成**」或收回。「条目」菜单和右键菜单里也有「打开会话」。
+点「**打开会话**」看看它做了什么，再「**重新开始会话**」「**标为完成**」或「**收回**」。「条目」菜单和右键菜单里也有「打开会话」。
+
+会话结束后，终端那里说的是它怎么结束的，而不是一个死掉的窗口：「Codex 启动失败」并附上 Agent 最后说的话（登录失效、报错），
+分支上有改动时是「可以查看改动」，没有就是「已结束 · 没有改动」。「**重新开始会话**」用同一个 Agent 把这些条目再跑一遍
+（只会跑一次，启动时按钮是灰的）；「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。条目上方的提示条
+最多两个按钮，其余的在「**⋯**」里。Agent 启动后一分钟都没有动静，会显示「没有反应」：看看它的窗口，或者重新开始。
+没登录的 Agent 在「交给 Agent」面板里选不了：面板会写明要运行什么，并给出另一个 Agent；Agent 从命令行交接也会得到同样的答复。
+
+「**查看改动…**」列出会话分支上改了什么。「**合并**」（`⌘↩`）把它并进项目文件夹；Agent 没提交的改动（Codex 在 worktree
+里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。
+没有改动的分支只能丢弃，不会被推送。「**丢弃**」会把条目放回「要做」。随时按 `Esc` 关掉这个面板。
+
+整理录屏时退出口喷鸡会停止整理（退出前会先问你），同一段录屏也不会同时整理两次。整理失败的会留在「进行中」，
+带着「**重试**」和「**忽略**」，直到你选一个。
 
 ### 6. 条目状态
 

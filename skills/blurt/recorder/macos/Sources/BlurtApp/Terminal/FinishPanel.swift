@@ -1,6 +1,10 @@
 // What to do with a worktree session's branch once the agent is done (`sessions.py finish`): see the change (files,
 // +/−, uncommitted work), then merge it into the base branch, open a pull request, discard it, or keep it for later.
-// Nothing is pushed until the user clicks "Open Pull Request".
+// Nothing is pushed until the user clicks "Open Pull Request", and never a branch with no changes. Work the agent
+// left uncommitted (a sandboxed agent can't commit in a worktree) is committed by Blurt first: "Commit and Merge".
+// Keys: Esc cancels in every phase; ⌘Return merges — the brand primary — and Return alone does nothing destructive
+// (an empty branch has no default; Discard's confirmation defaults to Cancel). After a merge or a PR
+// the sheet's primary shows the items now waiting to be verified; after Discard they are back in To Do.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -16,14 +20,20 @@ final class FinishModel: ObservableObject {
     @Published var branch = ""
     @Published var files: [FileStat] = []
     @Published var uncommitted = 0
+    @Published var ahead = 0
     @Published var patch: URL?
     @Published var prURL: String?
     @Published var failedCode: String?          // the sessions.py code of the last failure ("running": end the session)
+    @Published var takenBack = 0                // discard: items back in To Do
     private(set) var lastAction: String?
 
     init(job: String) { self.job = job }
 
     var totals: (Int, Int) { (files.reduce(0) { $0 + $1.added }, files.reduce(0) { $0 + $1.deleted }) }
+    /// Nothing on the branch: no commits, nothing uncommitted.
+    var empty: Bool { files.isEmpty && ahead == 0 && uncommitted == 0 }
+    /// The session's items ("HS-1"), for the button that shows them after a merge.
+    var items: [SessionItemLabel] { SessionsModel.shared.row(job)?.items ?? [] }
 
     func load() async {
         phase = .loading
@@ -32,6 +42,7 @@ final class FinishModel: ObservableObject {
             base = o["base"] as? String ?? ""
             branch = o["branch"] as? String ?? ""
             uncommitted = o["uncommitted"] as? Int ?? 0
+            ahead = o["ahead"] as? Int ?? 0
             patch = (o["patch"] as? String).map { URL(fileURLWithPath: $0) }
             files = (o["stat"] as? [[String: Any]] ?? []).map {
                 FileStat(path: $0["path"] as? String ?? "", added: $0["added"] as? Int ?? 0, deleted: $0["deleted"] as? Int ?? 0)
@@ -47,6 +58,7 @@ final class FinishModel: ObservableObject {
         do {
             let o = try await AgentSessions.shared.finish(job: job, action: action)
             prURL = o["pr"] as? String ?? o["compare"] as? String
+            takenBack = (o["taken_back"] as? [String])?.count ?? 0
             // without gh (or a host it knows) nothing was opened: say what did happen
             if action == "pr", o["pr"] as? String == nil {
                 phase = .done(prURL == nil ? "pushed" : "compare")
@@ -98,6 +110,7 @@ struct FinishView: View {
             case .loading:
                 HStack { ProgressView().controlSize(.small); Text(TL("finish.loading")).foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, minHeight: 120)
+                HStack { Spacer(); Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction) }
             case .failed(let why):
                 Label(why, systemImage: "exclamationmark.triangle").foregroundStyle(Color.brandAttnInk).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -112,19 +125,34 @@ struct FinishView: View {
                     }
                 }
             case .done(let action):
-                Label(TL("finish.done.\(action)"), systemImage: "checkmark.circle").foregroundStyle(AgentSessionStatus.turnDone.color)
+                Label(doneText(action), systemImage: "checkmark.circle").foregroundStyle(AgentSessionStatus.turnDone.color)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let u = m.prURL, let url = URL(string: u) {
                     Link(u, destination: url).font(.callout).lineLimit(1).truncationMode(.middle)
                 }
-                if ["merge", "pr", "pushed", "compare"].contains(action) {
+                let verify = ["merge", "pr", "pushed", "compare"].contains(action)
+                if verify {
                     Text(TL("finish.done.verify")).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                HStack { Spacer(); Button(TL("common.done"), action: close).keyboardShortcut(.defaultAction) }
+                HStack {
+                    Spacer()
+                    if verify, let first = m.items.first {
+                        // the next step is checking the work: show the items waiting for it
+                        Button(TL("common.done"), action: close).keyboardShortcut(.cancelAction)
+                        Button(m.items.count == 1 ? TL("finish.show_item", first.id) : TL("finish.show_items")) {
+                            close()
+                            if let uid = SessionsModel.shared.row(m.job)?.job.items.first { AppEnvironment.mainWindow?.reveal(uid: uid) }
+                        }
+                        .buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                    } else {
+                        Button(TL("common.done"), action: close).keyboardShortcut(.defaultAction)
+                    }
+                }
             case .ready, .working:
-                stats
-                if m.uncommitted > 0 {
-                    Label(Loc.plural("finish.uncommitted", table: "Terminal", count: m.uncommitted), systemImage: "exclamationmark.circle")
-                        .font(.caption).foregroundStyle(AgentSessionStatus.waitingInput.color)
+                if m.empty {
+                    Text(TL("finish.no_changes")).font(.callout).foregroundStyle(.secondary).padding(.vertical, 6)
+                } else {
+                    stats
                 }
                 actions
             }
@@ -133,9 +161,15 @@ struct FinishView: View {
         .frame(width: 520)
         .task { await m.load() }
         .alert(TL("finish.discard.confirm.title"), isPresented: $confirmDiscard) {
+            // Return keeps the work: Cancel is the default, Discard has to be clicked
             Button(TL("finish.discard"), role: .destructive) { Task { await m.run("discard") } }
-            Button(TL("common.cancel"), role: .cancel) {}
+            Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)
         } message: { Text(TL("finish.discard.confirm.body", m.branch)) }
+    }
+
+    func doneText(_ action: String) -> String {
+        if action == "discard", m.takenBack > 0 { return Loc.plural("finish.done.discard_taken_back", table: "Terminal", count: m.takenBack) }
+        return TL("finish.done.\(action)")
     }
 
     var stats: some View {
@@ -153,27 +187,28 @@ struct FinishView: View {
                 }
             }
             .padding(.bottom, 8)
-            if m.files.isEmpty {
-                Text(TL("finish.no_changes")).font(.callout).foregroundStyle(.secondary).padding(.vertical, 6)
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(m.files) { f in
-                            HStack(spacing: 8) {
-                                Text(f.path).font(.system(size: 11.5, design: .monospaced)).lineLimit(1).truncationMode(.head)
-                                Spacer()
-                                Text("+\(f.added)").foregroundStyle(AgentSessionStatus.turnDone.color)
-                                Text("−\(f.deleted)").foregroundStyle(AgentSessionStatus.error.color)
-                            }
-                            .font(.system(size: 11, design: .monospaced))
-                            .padding(.vertical, 4).padding(.horizontal, 10)
-                            Divider().opacity(0.5)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(m.files) { f in
+                        HStack(spacing: 8) {
+                            Text(f.path).font(.system(size: 11.5, design: .monospaced)).lineLimit(1).truncationMode(.head)
+                            Spacer()
+                            Text("+\(f.added)").foregroundStyle(AgentSessionStatus.turnDone.color)
+                            Text("−\(f.deleted)").foregroundStyle(AgentSessionStatus.error.color)
                         }
+                        .font(.system(size: 11, design: .monospaced))
+                        .padding(.vertical, 4).padding(.horizontal, 10)
+                        Divider().opacity(0.5)
                     }
                 }
-                .frame(maxHeight: 190)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
+            }
+            .frame(maxHeight: 190)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
+            if m.uncommitted > 0 {
+                // a sandboxed agent leaves its work uncommitted: Blurt commits it on the branch first
+                Text(Loc.plural("finish.uncommitted", table: "Terminal", count: m.uncommitted))
+                    .font(.caption).foregroundStyle(.secondary).padding(.top, 6).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -181,16 +216,22 @@ struct FinishView: View {
     var actions: some View {
         let busy: String? = { if case .working(let a) = m.phase { return a }; return nil }()
         return VStack(alignment: .leading, spacing: 10) {
-            Text(TL("finish.help", m.base)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !m.empty {
+                Text(TL("finish.help", m.base)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 8) {
+                // nothing to keep: discarding is the way out (it asks first) — never on a bare Return
                 Button(TL("finish.discard"), role: .destructive) { confirmDiscard = true }.disabled(busy != nil)
                 Button(TL("finish.keep")) { Task { await m.run("keep") } }.disabled(busy != nil).help(TL("finish.keep.help"))
                 Spacer()
                 if let b = busy { ProgressView().controlSize(.small).help(TL("finish.working.\(b)")) }
-                Button(TL("finish.pr")) { Task { await m.run("pr") } }.disabled(busy != nil).help(TL("finish.pr.help"))
-                Button(TL("finish.merge")) { Task { await m.run("merge") } }
-                    .keyboardShortcut(.defaultAction).disabled(busy != nil || m.files.isEmpty)
-                    .help(TL("finish.merge.help", m.base))
+                Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction).disabled(busy != nil)
+                Button(TL("finish.pr")) { Task { await m.run("pr") } }.disabled(busy != nil || m.empty).help(TL("finish.pr.help"))
+                // the primary, drawn as one (brand) — on ⌘↩, not a bare Return, since it changes the base branch
+                Button(TL(m.uncommitted > 0 ? "finish.commit_merge" : "finish.merge")) { Task { await m.run("merge") } }
+                    .buttonStyle(.brand)
+                    .keyboardShortcut(.return, modifiers: .command).disabled(busy != nil || m.empty)
+                    .help(TL("finish.merge.help", m.base) + "  ⌘↩")
             }
         }
     }
@@ -202,6 +243,8 @@ enum FinishPanel {
     private(set) static weak var current: FinishModel?
 
     static func show(job: String, over parent: NSWindow?) {
+        // one sheet per window: a second Review Changes… replaces the first instead of queueing behind it
+        if let p = parent, let open = p.attachedSheet, open.contentViewController is NSHostingController<FinishView> { p.endSheet(open) }
         let m = FinishModel(job: job)
         current = m
         let w = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 300), styleMask: [.titled, .closable],

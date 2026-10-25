@@ -2,6 +2,9 @@
 // project, live status, New Session), the selected session's terminal on the right under a header with its project,
 // items, agent, branch and actions. Each pane attaches on its own (two panes never move each other's window) and
 // remembers what it showed in $BLURT_HOME/ui/terminal.json, so a relaunched app reattaches to the same session.
+// In the main window (pane "main") the item list already picks the session, so the sessions list starts hidden
+// (the header's sidebar button shows it). A session that ends shows its ended card (SessionsViews), not the dead
+// window; Show Output attaches to what the agent left on screen.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -12,6 +15,8 @@ final class PaneState: ObservableObject {
     @Published var attach: AttachState = .none
     @Published var listShown = true
     @Published var finishing: String?           // job whose worktree result is being reviewed (sheet)
+    /// The ended session whose output the user asked to see (Show Output): its dead window stays attached.
+    var outputShown: String?
 }
 
 @MainActor
@@ -28,6 +33,7 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     init(paneID: String = "main") {
         self.paneID = paneID
         super.init(nibName: nil, bundle: nil)
+        state.listShown = paneID != "main"
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -69,7 +75,8 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         split.setHoldingPriority(.init(260), forSubviewAt: 0)
         listHost.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
         listHost.widthAnchor.constraint(lessThanOrEqualToConstant: 340).isActive = true
-        detail.widthAnchor.constraint(greaterThanOrEqualToConstant: 420).isActive = true
+        detail.widthAnchor.constraint(greaterThanOrEqualToConstant: paneID == "main" ? 360 : 420).isActive = true
+        listHost.isHidden = !state.listShown
         view = split
         surface.onState = { [weak self] s in
             self?.state.attach = s
@@ -82,7 +89,8 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        split.setPosition(250, ofDividerAt: 0)
+        // setting the divider shows a hidden list again: only when it is meant to be seen
+        if state.listShown { split.setPosition(250, ofDividerAt: 0) }
         if state.job == nil { attach(job: nil) }
     }
 
@@ -94,13 +102,14 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     func attach(job: String?) {
         _ = view
         let pick = job ?? PaneMemory.last(paneID).flatMap { model.row($0)?.id } ?? model.preferred?.id
+        if pick != state.job { state.outputShown = nil }
         state.job = pick
-        surface.attach(pick)
+        surface.attach(pick, output: pick != nil && state.outputShown == pick)
         if let p = pick { PaneMemory.set(paneID, p) }
         if pick != nil { view.window?.makeFirstResponder(surface) }
     }
 
-    func reattach() { surface.attach(state.job, force: true) }
+    func reattach() { surface.attach(state.job, force: true, output: state.job != nil && state.outputShown == state.job) }
 
     func toggleList() {
         state.listShown.toggle()
@@ -109,6 +118,7 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
             ctx.allowsImplicitAnimation = true
             listHost.isHidden = !state.listShown
             split.adjustSubviews()
+            if state.listShown { split.setPosition(250, ofDividerAt: 0) }
         }
     }
 
@@ -118,11 +128,12 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
             return
         }
         guard let j = changed.first(where: { $0.id == cur }) else { return }
-        // The tmux client survives the agent's exit (remain-on-exit: the dead pane stays readable). But once the window
-        // itself is gone (merged, discarded, ended with --kill), a grouped view session would slide onto another
-        // session's window — leave instead and show the result.
-        let windowGone = j.state == .cancelled || ["merge", "discard"].contains(j.agent?.finishAction ?? "")
-        if !j.isActive, windowGone || state.attach == .detached {
+        // The agent ended: say how (the ended card: its reason, Review Changes… or Restart), not tmux's dead window.
+        // The window stays readable (remain-on-exit) behind Show Output — until it is gone (merged, discarded,
+        // restarted, ended with --kill), when a grouped view session would slide onto another session's window.
+        let windowGone = j.state == .cancelled || ["merge", "discard", "restart"].contains(j.agent?.finishAction ?? "")
+        if !j.isActive, state.outputShown != cur || windowGone, state.attach != .ended {
+            if windowGone { state.outputShown = nil }
             surface.attach(cur, force: true)        // → .ended without a client
         }
     }
@@ -159,6 +170,25 @@ extension SessionsPaneController: SessionActions {
     }
 
     func review(_ job: String) { FinishPanel.show(job: job, over: view.window) }
+
+    func restart(_ job: String) {
+        SessionRecovery.restart(job) { [weak self] r in
+            switch r {
+            // the main window's pane belongs to its job detail: the new job is shown there, not only attached
+            case .success(let new):
+                guard let n = new, let self = self else { return }
+                if self.paneID == "main" { TerminalModule.reveal(job: n) } else { self.attach(job: n) }
+            case .failure(let e): self?.presentError(sessionsErrorText(e))
+            }
+        }
+    }
+
+    func takeBack(_ job: String) { SessionRecovery.takeBack(job) { [weak self] e in self?.presentError(e) } }
+
+    func showOutput(_ job: String) {
+        state.outputShown = job
+        surface.attach(job, force: true, output: true)
+    }
     func reconnect() { reattach() }
     func toggleSidebar() { toggleList() }
     func popOut(_ job: String) { SessionsWindowController.shared.show(job: job, newWindow: true) }

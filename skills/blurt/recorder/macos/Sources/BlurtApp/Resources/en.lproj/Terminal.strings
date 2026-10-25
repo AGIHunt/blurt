@@ -107,7 +107,7 @@
 "finish.subtitle" = "%1$@ → %2$@";
 "finish.loading" = "Comparing with the base branch…";
 "finish.open_patch" = "Open Diff";
-"finish.no_changes" = "No changes on this branch yet.";
+"finish.no_changes" = "No changes on this branch.";
 "finish.help" = "Merge brings the branch into %@ in your project folder. Nothing is pushed unless you open a pull request.";
 "finish.merge" = "Merge";
 "finish.end_and.merge" = "End Session and Merge";
@@ -177,9 +177,9 @@
 "error.no_terminal" = "None of the supported terminal apps is installed.";
 "error.no_tmux" = "tmux 3.2 or later isn’t installed.";
 "error.gone" = "This session has ended, or its folder is gone.";
-"error.running" = "The agent’s session is still open in this worktree. End it first, then merge.";
+"error.running" = "The agent is still running in this worktree. End the session first.";
 "error.uncommitted" = "The worktree has uncommitted changes. Ask the agent to commit them, or commit them yourself, then try again.";
-"error.nothing" = "The branch has no commits to merge yet.";
+"error.nothing" = "The branch has no changes.";
 
 /* Settings → Agents */
 "agents.header" = "Agents Blurt uses, in order";
@@ -236,3 +236,34 @@
 "agents.state.unknown" = "Installed · sign-in not checked";
 "agents.state.configured" = "Installed · set up";
 "agents.state.logged_out" = "Not signed in";
+
+/* Sessions that end without the work (v0.9 dogfood) */
+"row.failed_start" = "Couldn’t start";
+"row.failed" = "Stopped with an error";
+"row.no_changes" = "Ended · no changes";
+"finish.state.keep" = "Kept for later";
+"finish.state.restart" = "Started again";
+"header.show_items" = "Show Items in List";
+"header.show_log" = "Show Log";
+"overlay.show_output" = "Show Output";
+"overlay.take_back" = "Take Back";
+"overlay.restart" = "Restart Session";
+"overlay.failed_start.title" = "%@ couldn’t start";
+"overlay.failed.title" = "%@ stopped with an error";
+"overlay.no_changes.title" = "Session ended · no changes";
+"finish.commit_merge" = "Commit and Merge";
+"finish.show_item" = "Show %@";
+"finish.show_items" = "Show Items";
+"error.commit" = "Committing the agent’s changes failed — a git hook may have refused them. Commit them in the worktree, then try again.";
+"error.has_changes" = "This session left changes. Review them first.";
+"error.already_dispatched" = "These items are already with a session that is still going.";
+"dispatch.logged_out" = "%@ isn’t logged in.";
+"dispatch.logged_out.fix" = "%1$@ isn’t logged in: %2$@.";
+"dispatch.use_agent" = "Use %@";
+"dispatch.checking_login" = "Checking sign-in…";
+"dispatch.open_session" = "Open Its Session";
+
+// dogfood v0.9 review: one wording per state; the watchdog
+"overlay.review.title" = "Session ended · ready to review";
+"row.no_response" = "No response";
+"overlay.more" = "More";

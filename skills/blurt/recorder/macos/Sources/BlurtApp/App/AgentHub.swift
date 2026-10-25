@@ -11,6 +11,9 @@
 // prompt names for reading only; Claude / Gemini may run only the skill's scripts by absolute path; Codex's sandbox
 // may write the item stores and its own uv cache, nothing in $BLURT_HOME — so the app re-indexes and records the
 // job's items itself after the run.
+// An organising run is its own process group (ProcessGroup, its id on the job as agent_pgid): it stops with the app
+// (AppDelegate asks first), a crashed app's leftover is stopped at the next launch (Housekeeping), and a recording
+// already being organised is never started twice (process() returns the job at it).
 // BLURT_AGENT_PATH (tests): directories searched for agent CLIs before the user's PATH.
 
 import AppKit
@@ -412,8 +415,17 @@ extension App {
     /// and the menu bar follow. `captures`: only these shots.jsonl entries (nil = the whole session); `project`: file
     /// the items there (nil = the session's own project, or the AI routes each item). `only`: that agent, no fallback.
     /// Nothing opens when it finishes — JobNotifier says so quietly (K4 notification rules).
-    func process(_ dir: URL, only: String? = nil, captures: [Int]? = nil, project: String? = nil) {
-        guard !processing.contains(dir.path) else { return }
+    /// → the job organising it: the new one, or the one already at it — one organiser per recording, whatever asks
+    /// (a Retry, a second batch, a relaunch), checked against the job files, not only this run's memory.
+    @discardableResult
+    func process(_ dir: URL, only: String? = nil, captures: [Int]? = nil, project: String? = nil) -> String? {
+        JobStore.shared.rescan()
+        let path = dir.standardizedFileURL.path
+        if let running = JobStore.shared.active.first(where: { $0.type == .process && $0.session?.standardizedFileURL.path == path }) {
+            emit(["event": "process_already_running", "job": running.id, "session": dir.path])
+            return running.id
+        }
+        guard !processing.contains(dir.path) else { return nil }
         processing.append(dir.path)
         refreshStatus()
         let store = ProjectStore.shared
@@ -432,7 +444,7 @@ extension App {
                 self?.processing.removeAll { $0 == dir.path }
                 self?.refreshStatus()
             }
-            return
+            return job.id
         }
         let hub = AgentHub.shared
         hub.reload()
@@ -451,6 +463,7 @@ extension App {
             self.attempt(dir, queue: queue, skipped: skipped.map { ($0.def, $0.def.name + $0.shortWhy) }, job: job, captures: captures,
                          project: project)
         }
+        return job.id
     }
 
     /// The first agent in the user's order can't run (not logged in, not installed): say once, on the island, which
@@ -514,8 +527,33 @@ extension App {
         var env = a.def.sandboxEnv.merging(["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id,
                                             "BLURT_NO_ROUTE": "1"]) { _, n in n }
         if let p = project { env["BLURT_PROJECT"] = p }
-        shell(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
-            guard let self = self else { return }
+        let group: ProcessGroup
+        do {
+            group = try shellGroup(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
+                self?.organisers[job.id] = nil
+                self?.attemptEnded(dir, status: status, a: a, pa: pa, started: started, queue: queue, skipped: skipped, job: job,
+                                   captures: captures, project: project)
+            }
+        } catch {
+            // it never started: say so on the job instead of leaving it "running" and the recording blocked
+            processing.removeAll { $0 == dir.path }
+            appendLog(log, "── blurt \(nowStamp()) · couldn't start \(a.def.name): \(error)\n")
+            job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name): \(error)"))
+            refreshStatus()
+            return
+        }
+        organisers[job.id] = group.pgid
+        job.set("agent_pgid", Int(group.pgid))     // a later launch stops it if this one crashes…
+        if let t = group.started { job.set("agent_pgid_start", NSNumber(value: t)) }  // …and it is still this group
+    }
+
+    /// What one organising run left: its items, or the reason it failed (and the next agent, for a reason another
+    /// wouldn't share).
+    private func attemptEnded(_ dir: URL, status: Int32, a: AgentStatus, pa: (args: [String], model: String?, effort: String?),
+                              started: Int, queue: [AgentStatus], skipped: [(AgentDef, String)], job: JobWriter,
+                              captures: [Int]?, project: String?) {
+        let log = dir.appendingPathComponent("agent.log")
+        do {
             let tail = (try? Data(contentsOf: log)).map { d in String(decoding: d.dropFirst(min(started, d.count)), as: UTF8.self) } ?? ""
             let tokens = a.def.tokensUsed(in: tail)
             job.setUsage(tokens: tokens, agent: a.def.id, model: pa.model, effort: pa.effort)
@@ -576,8 +614,9 @@ extension App {
     /// "AI fill-in" for some items (the ones a note became without an agent carry `enrich: pending`): one agent run
     /// for all of them, with the processing model — kind, steps, code refs, a clearer title. A process job (K4)
     /// without a session; its output goes to jobs/<id>.log.
-    func enrich(_ uids: [String], project: String?) {
-        guard !uids.isEmpty else { return }
+    @discardableResult
+    func enrich(_ uids: [String], project: String?) -> String? {
+        guard !uids.isEmpty else { return nil }
         let job = JobWriter(type: .process, project: project, session: nil, title: T("job.title.enrich"))
         job.setItems(uids)
         job.step("prepare", .running)
@@ -610,7 +649,8 @@ extension App {
             let env = a.def.sandboxEnv.merging(["BLURT_JOB": job.id, "BLURT_RUN_ID": job.id, "BLURT_AGENT": a.def.id]) { _, n in n }
             emit(["event": "enrich", "job": job.id, "items": uids, "agent": a.def.id, "model": pa.model ?? NSNull()])
             let files = ((try? IndexReader(url: BlurtPaths.indexDB)).flatMap { try? $0.items(uids: uids) } ?? []).map { URL(fileURLWithPath: $0.path) }
-            shell(cmd, cwd: cwd, log: log, append: true, env: env) { status in
+            let started = try? shellGroup(cmd, cwd: cwd, log: log, append: true, env: env) { [weak self] status in
+                self?.organisers[job.id] = nil
                 try? FileManager.default.removeItem(at: cwd)
                 Scripts.indexUpdate(files)  // the sandboxed run doesn't touch index.db
                 let tokens = a.def.tokensUsed(in: (try? String(contentsOf: log, encoding: .utf8)) ?? "")
@@ -622,6 +662,14 @@ extension App {
                            error: status == 0 ? nil : JobError(code: AgentHub.shared.classify((try? String(contentsOf: log, encoding: .utf8)) ?? "")?.id ?? "unknown",
                                                                message: T("app.agent.unfinished", a.def.name, Int(status)), hintKey: nil))
             }
+            if let g = started {
+                self.organisers[job.id] = g.pgid
+                job.set("agent_pgid", Int(g.pgid))
+                if let t = g.started { job.set("agent_pgid_start", NSNumber(value: t)) }
+            } else {
+                job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name) couldn't start"))
+            }
         }
+        return job.id
     }
 }

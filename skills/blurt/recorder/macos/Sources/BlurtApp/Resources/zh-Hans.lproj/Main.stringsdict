@@ -128,6 +128,34 @@
 			<string>进行中 · %ld</string>
 		</dict>
 	</dict>
+	<key>main.jobs.failed</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%ld 个失败</string>
+		</dict>
+	</dict>
+	<key>main.jobs.header.failed_only</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>失败 · %ld</string>
+		</dict>
+	</dict>
 	<key>main.jobs.more</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

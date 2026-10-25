@@ -128,8 +128,11 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     private func installHostInfo(_ scope: DocScope, mode: String) {
         let ucc = web.configuration.userContentController
         ucc.removeAllUserScripts()
+        var waiting = false
+        if case .session(let u) = scope { waiting = ReviewHandoff.waiting(u) }
         let info: [String: Any] = ["host": "macos", "methods": methods, "accent": Self.accentHex(), "scope": scope.json,
-                                   "lang": Loc.language, "inApp": true, "sessionBanner": mode == "item"]
+                                   "lang": Loc.language, "inApp": true, "sessionBanner": mode == "item",
+                                   "agentWaiting": waiting]       // only then does confirming "hand it back"
         let json = (try? JSONSerialization.data(withJSONObject: info)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         ucc.addUserScript(WKUserScript(source: "window.blurtHostInfo = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
@@ -255,6 +258,19 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         switch a {
         case "done", "wontfix": actions?.applyState(a, uids: [it.uid])
         case "session": if let j = it.workJob { actions?.revealJob(j) }
+        case "review":
+            // what the ellipsis promises: the session, and its review sheet over the window
+            guard let j = it.workJob else { return }
+            actions?.revealJob(j)
+            FinishPanel.show(job: j, over: view.window)
+        case "restart":
+            guard let j = it.workJob else { return }
+            SessionRecovery.restart(j) { [weak self] r in
+                switch r {
+                case .success(let new): if let n = new { self?.actions?.revealJob(n) }
+                case .failure(let e): appDelegate?.toast(sessionsErrorText(e))
+                }
+            }
         case "take_back": actions?.applyState("take_back", uids: [it.uid])
         case "progress": if let j = banner.processingJob { actions?.revealJob(j) }
         case "move": if let p = it.suggestedProject { actions?.move(uids: [it.uid], to: p) }
@@ -451,10 +467,17 @@ final class WeakHandler: NSObject, WKScriptMessageHandler {
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { target?.userContentController(c, didReceive: m) }
 }
 
-/// The line above an item that tells you what it is waiting for, with the one or two things you can do about it (K3
-/// actions; the detail's state pill has the rest, and its work panel asks about an item waiting to be verified):
-///   with an agent  "Handed off to Claude Code · Needs your input"                         [Open Session]
-///   session ended  "Handed off to Claude Code · Session ended without reporting back"     [Open Session] [Mark as Done]
+/// The line above an item that tells you what it is waiting for, with the things you can do about it (K3 actions;
+/// the detail's state pill has the rest, and its work panel asks about an item waiting to be verified). The buttons
+/// and tone come from SessionBannerPlan (BlurtCore): brand while the agent works, attn when it needs you, neutral
+/// once the session is over — the first button is the primary.
+/// Two buttons at most, the rest in a ⋯ menu (SessionBannerPlan.more), so the line keeps its words at a detail's width:
+///   with an agent  "Handed off to Claude Code · Needs your input"                  [Open Session]
+///   no response    "Handed off to Codex · No response for a minute…"             [Open Session] [Restart Session] ⋯
+///   failed         "Codex couldn’t start: Error: timed out …"                      [Restart Session] [Take Back] ⋯
+///   with changes   "Handed off to Codex · Session ended, ready to review"          [Review Changes…] [Take Back] ⋯
+///   session ended  "Handed off to Claude Code · Session ended without reporting back"
+///                                                                     [Open Session] [Restart Session] ⋯
 ///   session gone   (the same line; nothing left to open)                         [Take Back] [Mark as Done]
 ///   handed out    "Copied to your agent. Mark it done when it is."              [Won't Do] [Mark as Done]
 ///   suggested      "Looks like it belongs in bug-agent (58%)."                  [Move]
@@ -467,9 +490,9 @@ final class ItemBanner: NSView {
     private var tint: NSColor = .clear
     /// The process job the "still organising" line points at.
     private(set) var processingJob: String?
-    /// While the batch is still being organised (AI at work, §4): a small spinner in the icon's place. The banner's own
+    /// While the batch is still being organised (AI at work, §4): the brand arc in the icon's place. The banner's own
     /// quiet ink wash is the accent — no rim, no glow.
-    private let spinner = NSProgressIndicator()
+    private let spinner = BrandSpinner()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -480,9 +503,6 @@ final class ItemBanner: NSView {
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         buttons.orientation = .horizontal
         buttons.spacing = 6
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
         for v in [icon, spinner, text, buttons] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
         height = heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
@@ -490,6 +510,7 @@ final class ItemBanner: NSView {
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16), icon.heightAnchor.constraint(equalToConstant: 16),
             spinner.centerXAnchor.constraint(equalTo: icon.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 14), spinner.heightAnchor.constraint(equalToConstant: 14),
             text.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10), text.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttons.leadingAnchor.constraint(greaterThanOrEqualTo: text.trailingAnchor, constant: 12),
             buttons.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14), buttons.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -502,7 +523,7 @@ final class ItemBanner: NSView {
 
     override var wantsUpdateLayer: Bool { true }
     override func updateLayer() {
-        layer?.backgroundColor = tint.withAlphaComponent(0.1).cgColor
+        layer?.backgroundColor = tint.withAlphaComponent(tint == .labelColor ? 0.05 : 0.1).cgColor
     }
 
     func set(_ it: ItemRow?, suggested: ProjectEntry? = nil) {
@@ -538,23 +559,38 @@ final class ItemBanner: NSView {
         case "to_verify":
             return hide()       // the detail's own work panel asks (Mark as done / Send back), next to the state pill
         case "session":
-            tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
             let who = agent ?? T("main.banner.agent")
-            switch WorkSession.of(state: it.state, to: it.workTo ?? "session", job: it.workJob, lookup: JobStore.shared.job) ?? .gone {
-            case .live(let st):
-                text.stringValue = T("main.banner.with_agent", who, T("session.\(st.rawValue)"))
-                button(T("main.banner.open_session"), "session", primary: true)
-            case .ended:
-                // the agent never said it was done: see what it did, then decide (Take Back is in the state pill)
-                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
-                button(T("main.banner.open_session"), "session")
-                button(StateMenu.title("done"), "done", primary: true)
-            case .gone:
-                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
-                button(StateMenu.title("take_back"), "take_back")
-                button(StateMenu.title("done"), "done", primary: true)
+            let work = WorkSession.of(state: it.state, to: it.workTo ?? "session", job: it.workJob, lookup: JobStore.shared.job) ?? .gone
+            let job = it.workJob.flatMap { JobStore.shared.job($0) }
+            let outcome = job.map(SessionOutcome.of)
+            let stalled = job?.agent?.stalled ?? false
+            let plan = SessionBannerPlan.plan(work, outcome: outcome, stalled: stalled)
+            switch plan.tone {
+            case .brand: tint = BrandColor.ink
+            case .attn: tint = BrandColor.attn
+            case .neutral: tint = .labelColor
             }
+            switch (work, outcome) {
+            case (.live, _) where stalled:
+                text.stringValue = T("main.banner.with_agent", who, T("main.banner.no_response"))
+            case (.live(let st), _):
+                text.stringValue = T("main.banner.with_agent", who, T("session.\(st.rawValue)"))
+            case (.ended, .failed(let atStart)?):
+                // it couldn't work: say why in its own words (job.error), then start again or take the items back
+                let why = job.flatMap { JobLook.errorText($0) } ?? T("session.error")
+                text.stringValue = T(atStart ? "main.banner.failed_start" : "main.banner.failed", who, why)
+                icon.image = Look.symbol("exclamationmark.circle", "", size: 14)
+                icon.contentTintColor = BrandColor.err
+            case (.ended, .review?):
+                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended_review"))
+            default:
+                text.stringValue = T("main.banner.with_agent", who, T("main.banner.ended"))
+            }
+            for (k, a) in plan.actions.enumerated() {
+                button(Self.title(a), a, primary: k == 0)
+            }
+            if !plan.more.isEmpty { moreButton(plan.more) }
         case "external":
             tint = BrandColor.ink
             icon.image = Look.ring(it.state, size: 16)
@@ -594,8 +630,54 @@ final class ItemBanner: NSView {
 
     private func setWorking(_ on: Bool) {
         icon.isHidden = on
-        on ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
+        on ? spinner.startAnimation() : spinner.stopAnimation()
     }
 
-    @objc func tap(_ b: NSButton) { b.identifier.map { onAction?($0.rawValue) } }
+    @objc func tap(_ b: NSButton) {
+        guard let a = b.identifier?.rawValue else { return }
+        if a == "restart" || a == "take_back" { b.isEnabled = false }   // once: the next set() brings it back
+        onAction?(a)
+    }
+
+    /// The ⋯ menu with the plan's other actions.
+    private func moreButton(_ actions: [String]) {
+        let menu = NSMenu()
+        for a in actions {
+            let i = NSMenuItem(title: Self.title(a), action: #selector(menuTap(_:)), keyEquivalent: "")
+            i.target = self
+            i.representedObject = a
+            menu.addItem(i)
+        }
+        let b = NSButton(image: NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: T("main.banner.more"))!,
+                         target: self, action: #selector(showMore(_:)))
+        b.bezelStyle = .rounded
+        b.controlSize = .small
+        b.isBordered = false
+        b.toolTip = T("main.banner.more")
+        b.menu = menu
+        b.identifier = .init("more")
+        buttons.addArrangedSubview(b)
+    }
+
+    @objc private func showMore(_ b: NSButton) {
+        b.menu?.popUp(positioning: nil, at: NSPoint(x: 0, y: b.bounds.maxY + 4), in: b)
+    }
+
+    @objc private func menuTap(_ i: NSMenuItem) { (i.representedObject as? String).map { onAction?($0) } }
+
+    /// The banner's actions, inline and in its menu (self-tests).
+    var actionIDs: [String] {
+        buttons.arrangedSubviews.compactMap { ($0 as? NSButton)?.identifier?.rawValue }.filter { $0 != "more" }
+            + (buttons.arrangedSubviews.compactMap { ($0 as? NSButton)?.menu }.first?.items.compactMap { $0.representedObject as? String } ?? [])
+    }
+
+    /// A banner action's button title (SessionBannerPlan ids).
+    static func title(_ action: String) -> String {
+        switch action {
+        case "session": return T("main.banner.open_session")
+        case "review": return T("main.banner.review")
+        case "restart": return T("main.banner.restart")
+        default: return StateMenu.title(action)        // done, take_back, wontfix
+        }
+    }
 }

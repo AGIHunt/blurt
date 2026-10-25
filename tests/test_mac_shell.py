@@ -69,7 +69,7 @@ class Layout(unittest.TestCase):
         # still said "Pull request opened." and the session row "Pull request opened"
         src = (MAC / "Sources/BlurtApp/Terminal/FinishPanel.swift").read_text()
         self.assertIn('phase = .done(prURL == nil ? "pushed" : "compare")', src)
-        self.assertIn('"finish.state.pushed"', (MAC / "Sources/BlurtApp/Terminal/SessionsViews.swift").read_text())
+        self.assertIn('"finish.state.pushed"', (MAC / "Sources/BlurtApp/Terminal/SessionsModel.swift").read_text())  # stateText
 
     def test_no_review_window_and_nothing_opens_by_itself(self):
         # v0.7 K4 / K7: reviewing happens in the main window; finishing a job never opens a window, a page or a browser
@@ -129,6 +129,99 @@ class BuildAndSelftest(unittest.TestCase):
         out = json.loads(r.stdout.strip().splitlines()[-1])
         self.assertTrue(out["ok"], json.dumps(out["checks"], indent=1))
         self.assertEqual(r.returncode, 0)
+
+
+class SessionRecoveryWiring(unittest.TestCase):
+    """dogfood v0.9 (work): the app-side rules the BlurtCore tests (SessionOutcomeTests) can't reach."""
+
+    def src(self, rel):
+        return (MAC / "Sources/BlurtApp" / rel).read_text()
+
+    def test_an_ended_session_shows_its_card_not_the_dead_window(self):
+        surf = self.src("Terminal/TerminalSurface.swift")
+        self.assertIn("if !j.isActive, !output { state = .ended; return }", surf)
+        pane = self.src("Terminal/SessionsPane.swift")
+        self.assertIn("state.listShown = paneID != \"main\"", pane)    # the item list already picks the session
+        self.assertIn("func showOutput(", pane)
+        views = self.src("Terminal/SessionsViews.swift")
+        self.assertIn('.buttonStyle(.bordered).controlSize(.small).fixedSize()', views)  # header Review: never the pill
+        self.assertNotIn("DateComponentsFormatter", views)                     # times read "2 min. ago", as the list
+
+    def test_finish_sheet_keys_and_empty_branch(self):
+        fin = self.src("Terminal/FinishPanel.swift")
+        self.assertEqual(fin.count(".keyboardShortcut(.cancelAction)"), 4)   # Esc in every phase
+        self.assertIn(".keyboardShortcut(.return, modifiers: .command)", fin)   # ⌘⏎ merges, ⏎ alone doesn't
+        self.assertIn("disabled(busy != nil || m.empty)", fin)                  # no PR or merge of an empty branch
+        self.assertIn('"finish.commit_merge"', fin)
+
+    def test_dispatch_blocks_a_logged_out_agent_and_says_why_before(self):
+        d = self.src("Terminal/DispatchPanel.swift")
+        self.assertIn("loginChecked && chosenAgent?.loggedOut != true", d)
+        mw = self.src("MainWindow/MainWindowController.swift")
+        self.assertNotIn("concurrentEditReminder", mw)                          # the panel's inline callout only
+        self.assertIn("item.toolTip = why", mw)
+
+    def test_organisers_stop_with_the_app_and_one_per_recording(self):
+        app = self.src("App/AppDelegate.swift")
+        self.assertIn("func applicationShouldTerminate(", app)
+        self.assertIn("stopOrganisers()", app)
+        hub = self.src("App/AgentHub.swift")
+        self.assertIn("try shellGroup(", hub)
+        self.assertIn('job.set("agent_pgid"', hub)
+        self.assertIn("process_already_running", hub)
+        hk = self.src("App/Housekeeping.swift")
+        self.assertIn("ProcessGroup.stop(g)", hk)
+        # review: a recorded group is stopped only while it is still that run's (its leader's start time)
+        self.assertIn('ProcessGroup.isOurs(g, started: (raw?["agent_pgid_start"]', hk)
+        self.assertEqual(hub.count('job.set("agent_pgid_start"'), 2)
+        # no modal on logout / restart / shutdown, and the Mac's words for the button
+        self.assertIn("!Self.quitBySystem", app)
+        self.assertIn("kAEQuitReason", app)
+
+    def test_restart_and_take_back_run_once(self):
+        rec = self.src("Terminal/SessionRecovery.swift")
+        self.assertIn("guard busy.begin(job) else { return }", rec)
+        self.assertIn("guard busy.begin(jobID) else { return }", rec)
+        views = self.src("Terminal/SessionsViews.swift")
+        self.assertIn('Button(TL("overlay.restart")) { actions?.restart(r.id) }.disabled(inFlight)', views)
+        self.assertIn('actions?.takeBack(r.id) }.disabled(inFlight)', views)
+        web = self.src("WebHost/WebHostController.swift")
+        self.assertIn('if a == "restart" || a == "take_back" { b.isEnabled = false }', web)
+
+    def test_banner_keeps_two_buttons_and_review_opens_the_sheet(self):
+        web = self.src("WebHost/WebHostController.swift")
+        self.assertIn("if !plan.more.isEmpty { moreButton(plan.more) }", web)
+        self.assertIn("FinishPanel.show(job: j, over: view.window)", web)
+        self.assertIn('T("main.banner.no_response")', web)
+
+    def test_one_wording_per_session_state(self):
+        jv = self.src("MainWindow/JobViews.swift")
+        self.assertIn("AgentSessionRow.stateText(j)", jv)
+        self.assertNotIn('T("session.\\(a.status.rawValue)")', jv)
+        self.assertIn("static func headerText(", jv)                   # failures aren't "in progress"
+        zh = (MAC / "Sources/BlurtApp/Resources/zh-Hans.lproj/Terminal.strings").read_text()
+        self.assertIn('"row.failed_start" = "启动失败";', zh)
+        self.assertIn('"overlay.failed_start.title" = "%@ 启动失败";', zh)
+        for f in ("Main.strings", "Terminal.stringsdict"):
+            text = (MAC / "Sources/BlurtApp/Resources/zh-Hans.lproj" / f).read_text()
+            for line in text.splitlines():
+                if "quit.organizing" in line or "stopped_at_quit" in line or "未提交的改动" in line:
+                    self.assertNotIn("Blurt", line)
+
+    def test_finish_sheet_primary_and_no_destructive_default(self):
+        fin = self.src("Terminal/FinishPanel.swift")
+        self.assertIn(".buttonStyle(.brand)\n                    .keyboardShortcut(.return, modifiers: .command)", fin)
+        self.assertIn('Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)', fin)
+        self.assertNotIn('confirmDiscard = true }.disabled(busy != nil)\n                        .keyboardShortcut(.defaultAction)', fin)
+
+    def test_primaries_use_the_brand_style(self):
+        d = self.src("Terminal/DispatchPanel.swift")
+        self.assertIn('Button(TL("dispatch.start"))', d)
+        self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
+        self.assertIn("loginChecked: loginVerified", d)
+        ilc = self.src("MainWindow/ItemListController.swift")
+        self.assertIn("let spinner = BrandSpinner()", ilc)
+        self.assertNotIn("NSProgressIndicator()", ilc)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,11 @@ struct AgentSessionRow: Identifiable {
     let items: [SessionItemLabel]
 
     var id: String { job.id }
-    var status: AgentSessionStatus { job.isActive ? agent.status : (agent.status == .error || job.state == .failed ? .error : .exited) }
+    /// Once the user decided (merged, restarted, discarded…), a failure is past news: the quiet mark of an ended one.
+    var status: AgentSessionStatus {
+        if agent.finishAction != nil { return .exited }
+        return job.isActive ? agent.status : (agent.status == .error || job.state == .failed ? .error : .exited)
+    }
     var alive: Bool { job.isActive }
     /// "BA-12, BA-13" — the tmux window's name, else the item ids
     var label: String {
@@ -32,10 +36,35 @@ struct AgentSessionRow: Identifiable {
         return items.count > 1 ? TL("session.items.more", first.title, items.count - 1) : first.title
     }
     var agentName: String { AgentNames.name(agent.agent) }
-    var since: Date { agent.statusAt ?? job.started ?? job.created }
-    /// A worktree whose result hasn't been merged, turned into a PR or discarded yet.
-    var awaitsFinish: Bool { agent.worktree != nil && agent.finishAction == nil }
+    /// When it started — the moment the item list shows for the same hand-off.
+    var since: Date { job.started ?? job.created }
+    var outcome: SessionOutcome { SessionOutcome.of(job) }
+    /// Ended with changes on its branch that haven't been merged, turned into a PR or discarded yet.
+    var awaitsFinish: Bool { outcome == .review }
     var isAppRunner: Bool { agent.runner == "app" }
+    /// Its window is still there to read (Show Output): not once merged, discarded or restarted (the window went).
+    var hasOutput: Bool {
+        (agent.tmuxWindow != nil || isAppRunner) && !["merge", "discard", "restart"].contains(agent.finishAction ?? "")
+    }
+    /// What the list and the header say about it: its live status, else how it ended ("Ready to review" only when
+    /// there is something to review).
+    var stateText: String { Self.stateText(job) }
+
+    /// The one wording of a session's state, wherever it shows (the list, the pane header, the ended card's row, the
+    /// job detail's line): its live status — "No response" once the watchdog gave up on it — else how it ended.
+    static func stateText(_ job: Job) -> String {
+        guard let agent = job.agent else { return "" }
+        switch SessionOutcome.of(job) {
+        case .live(let st): return agent.stalled ? TL("row.no_response") : st.title
+        case .review: return TL("row.ready_to_review")
+        case .failed(let atStart): return atStart ? TL("row.failed_start") : TL("row.failed")
+        case .noChanges: return TL("row.no_changes")
+        case .ended: return AgentSessionStatus.exited.title
+        case .finished(let f):
+            // "pr" without a pull request url = only pushed (no gh, or a host it doesn't know)
+            return TL(f == "pr" && agent.finishResult?["pr"] as? String == nil ? "finish.state.pushed" : "finish.state.\(f)")
+        }
+    }
 }
 
 struct AgentSessionGroup: Identifiable {

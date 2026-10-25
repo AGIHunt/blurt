@@ -62,7 +62,8 @@ enum AppEnvironment {
     static var dispatch: (([String]) -> Void)?
     /// Process captures: a session dir, which captures (shots.jsonl n; nil = the whole session) and the project to file
     /// them under (nil = let the AI route each item). Set by AgentHub (P4): it creates the process job (K4).
-    static var process: ((_ session: URL, _ captures: [Int]?, _ project: String?) -> Void)?
+    /// Returns the job organising it (the one already at it, when there is one).
+    static var process: ((_ session: URL, _ captures: [Int]?, _ project: String?) -> String?)?
     /// blurt:// and blurt-app:// URLs handed to the app by macOS (blurt://item/<uid>, session/<path>, record, snap…).
     /// Return false to let the shell try its own handling (record / snap).
     static var openURL: ((URL) -> Bool)?

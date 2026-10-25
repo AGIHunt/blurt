@@ -1,6 +1,9 @@
 // Jobs in the main window (K4): the "In progress" section above the list — one compact row per running job (what,
-// which step, how far, which project; agent sessions with their status) — and the detail page's timeline of a job's
-// steps while it runs. Nothing here opens anything by itself: rows are clicked.
+// which step, how far, which project; agent sessions with their status), plus organising that failed in the last
+// week until it is retried or dismissed (JobFailures) — and the detail page of a job: its steps as a timeline, its
+// reason, Retry / Dismiss. An agent session's detail is its title and status line, then its terminal pane (whose
+// header carries Stop, Open in Terminal, Show Log…): no second timeline above it. Nothing here opens anything by
+// itself: rows are clicked.
 import AppKit
 import BlurtCore
 
@@ -48,10 +51,10 @@ enum JobLook {
         return Loc.has(key, table: "Main") ? T(key) : e.message
     }
 
-    /// What it is doing now: the agent's status, else the current step.
+    /// What it is doing now: a session in the session list's words (AgentSessionRow.stateText), else the current step.
     static func status(_ j: Job) -> String {
+        if j.agent != nil { return AgentSessionRow.stateText(j) }
         if j.state == .failed { return T("job.state.failed") }
-        if let a = j.agent { return T("session.\(a.status.rawValue)") }
         if let s = j.currentStep { return T("job.step.\(s.id)") }
         return T("job.state.\(j.state.rawValue)")
     }
@@ -108,6 +111,14 @@ final class JobsSection: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// "In progress · 2", "In progress · 2 · 1 failed", "Failed · 1": the failures it lists (JobFailures) aren't in
+    /// progress.
+    static func headerText(_ jobs: [Job]) -> String {
+        let failed = jobs.filter { !$0.isActive }.count, active = jobs.count - failed
+        if active == 0 { return TP("main.jobs.header.failed_only", failed) }
+        return TP("main.jobs.header", active) + (failed > 0 ? " · " + TP("main.jobs.failed", failed) : "")
+    }
+
     /// The job the detail shows: its row stays highlighted.
     var selected: String? { didSet { rows.forEach { $0.value.selected = $0.key == selected } } }
 
@@ -115,7 +126,7 @@ final class JobsSection: NSView {
         isHidden = jobs.isEmpty
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !jobs.isEmpty else { return }
-        header.stringValue = TP("main.jobs.header", jobs.count)
+        header.stringValue = Self.headerText(jobs)
         setAccessibilityLabel(header.stringValue)
         let h = NSStackView(views: [header])
         h.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 2, right: 0)
@@ -147,11 +158,11 @@ final class JobsSection: NSView {
     }
 }
 
-/// One job: icon (a spinner while it runs), title, project, what it is doing, a thin progress bar.
+/// One job: icon (the brand arc while it runs), title, project, what it is doing, a thin progress bar.
 final class JobRow: NSView {
     var onClick: (() -> Void)?
     let icon = NSImageView()
-    let spinner = NSProgressIndicator()
+    let spinner = BrandSpinner()
     let title = NSTextField(labelWithString: "")
     let status = NSTextField(labelWithString: "")
     let bar = NSProgressIndicator()
@@ -165,9 +176,6 @@ final class JobRow: NSView {
     init() {
         super.init(frame: .zero)
         working.cornerRadius = 6
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
         title.font = .systemFont(ofSize: 12, weight: .medium)
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -184,6 +192,7 @@ final class JobRow: NSView {
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 16),
             spinner.centerXAnchor.constraint(equalTo: icon.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 14), spinner.heightAnchor.constraint(equalToConstant: 14),
             title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8), title.centerYAnchor.constraint(equalTo: centerYAnchor),
             status.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 10),
             status.trailingAnchor.constraint(equalTo: bar.leadingAnchor, constant: -10), status.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -211,7 +220,7 @@ final class JobRow: NSView {
         icon.image = Look.symbol(waiting ? "exclamationmark.bubble" : JobLook.symbol(j), JobLook.title(j), size: 13)
         icon.contentTintColor = waiting ? BrandColor.attn : .secondaryLabelColor
         icon.isHidden = busy
-        busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
+        busy ? spinner.startAnimation() : spinner.stopAnimation()
         if let p = j.progress ?? j.currentStep?.progress { bar.isIndeterminate = false; bar.doubleValue = p; bar.isHidden = false }
         else { bar.isHidden = true }
         setAccessibilityLabel("\(title.stringValue), \(status.stringValue)")
@@ -237,7 +246,7 @@ final class JobRow: NSView {
 /// The detail column for a job: what it is, its steps as a vertical timeline (done, running with progress, pending,
 /// failed, skipped), the error with what to do, and its items. Agent sessions add the terminal (P3) below.
 final class JobDetailView: NSView {
-    var onAction: ((String) -> Void)?           // "log", "retry", "open:<uid>", "terminal", "stop", "external"
+    var onAction: ((String) -> Void)?           // "log", "retry", "dismiss", "items", "stop", "external"
     private let stack = NSStackView()
     private let header = NSTextField(labelWithString: "")
     private let sub = NSTextField(labelWithString: "")
@@ -301,16 +310,23 @@ final class JobDetailView: NSView {
         var parts = j.type == .agent ? [T("job.type.agent")] : []
         if let p = projectName { parts.append(p) }
         parts.append(Loc.relative(j.started ?? j.created))
-        if let a = j.agent { parts.append(T("session.\(a.status.rawValue)")) }
-        if let b = j.agent?.branch { parts.append(b) }
+        // the session list's words for it (couldn't start, ready to review, merged…), not the agent's raw status
+        if j.agent != nil { parts.append(AgentSessionRow.stateText(j)) }
+        if let b = j.agent?.branch, j.agent?.finishAction == nil { parts.append(b) }
         if let u = j.usage { parts.append(JobDetailView.usageText(u)) }
         sub.stringValue = parts.joined(separator: "  ·  ")
         steps.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // an agent session: its status is in the line above and its terminal below — no timeline in between
+        steps.isHidden = j.type == .agent
         var ids = j.steps.isEmpty ? (jobSteps[j.type] ?? []).map { JobStep(id: $0, state: .pending) } : j.steps
         // AI fill-in has no recording to transcribe, no frames to cut, nothing to file: just prepare and write
         if j.type == .process, j.session == nil { ids = ids.filter { !["transcribe", "frames", "route"].contains($0.id) } }
-        for (k, s) in ids.enumerated() { steps.addArrangedSubview(StepRow(s, last: k == ids.count - 1, failed: j.state == .failed)) }
-        if let why = JobLook.errorText(j) {
+        if j.type != .agent {
+            for (k, s) in ids.enumerated() { steps.addArrangedSubview(StepRow(s, last: k == ids.count - 1, failed: j.state == .failed)) }
+        }
+        stack.setCustomSpacing(j.type == .agent ? 8 : 18, after: sub)
+        // the session pane says why an agent failed, with its last output: only other jobs say it here
+        if j.type != .agent, let why = JobLook.errorText(j) {
             error.stringValue = why
             error.isHidden = false
         } else { error.isHidden = true }
@@ -322,14 +338,12 @@ final class JobDetailView: NSView {
             b.controlSize = .regular
             buttons.addArrangedSubview(b)
         }
-        if j.type == .agent, j.isActive {
-            // only while there is a live window to open: an ended session has its log and the terminal's summary
-            if let a = j.agent, a.status != .exited, a.status != .error { button(T("main.job.open_terminal_app"), "external") }
-            button(T("main.job.stop"), "stop")
+        if j.type != .agent {
+            if j.state == .failed, j.type == .process, j.session != nil || !j.items.isEmpty { button(T("action.retry"), "retry") }
+            if j.state == .failed, !j.dismissed { button(T("main.job.dismiss"), "dismiss") }
+            if FileManager.default.fileExists(atPath: JobFiles.log(j.id).path) { button(T("main.job.show_log"), "log") }
+            if !j.items.isEmpty { button(TP("main.job.show_items", j.items.count), "items") }
         }
-        if j.state == .failed, j.type == .process, j.session != nil || !j.items.isEmpty { button(T("action.retry"), "retry") }
-        if FileManager.default.fileExists(atPath: JobFiles.log(j.id).path) { button(T("main.job.show_log"), "log") }
-        if !j.items.isEmpty { button(TP("main.job.show_items", j.items.count), "items") }
         buttons.isHidden = buttons.arrangedSubviews.isEmpty
         attachTerminal(j, sameJob: sameJob)
     }
@@ -372,7 +386,9 @@ final class StepRow: NSView {
     init(_ s: JobStep, last: Bool, failed: Bool, label: String? = nil) {
         super.init(frame: .zero)
         let marker = StepMarker(state: s.state)
-        let name = NSTextField(labelWithString: label ?? T("job.step.\(s.id)"))
+        // a failed step says so in words, not only in red: "Transcribing · Failed"
+        let base = label ?? T("job.step.\(s.id)")
+        let name = NSTextField(labelWithString: s.state == .failed ? "\(base) · \(T("job.state.failed"))" : base)
         name.font = .systemFont(ofSize: 13, weight: s.state == .running ? .semibold : .regular)
         name.textColor = s.state == .pending || s.state == .skipped ? .tertiaryLabelColor : s.state == .failed ? BrandColor.err : .labelColor
         let extra = NSTextField(labelWithString: s.state == .running ? s.progress.map { Loc.percent($0) } ?? "" : s.state == .skipped ? T("main.job.skipped") : "")

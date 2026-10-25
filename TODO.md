@@ -142,6 +142,23 @@
       the items' toolbar actions, no filter chips and a blank detail while there are no items at all
 
 ## Windows / Linux app (Tauri) — counterparts of the Mac shell fixes (audit E2)
+- [ ] Hand-off sessions (Mac v0.9 dogfood, docs/design/system.md §3.3 "A session's ended card"): show an ended
+      session's card, not the dead terminal (`SessionOutcome`: couldn't start / ready to review only with changes /
+      ended · no changes), with the agent's `agent.last_output` and `job.error`, Restart Session (`sessions.py restart`),
+      Take Back and Show Output; the item banner by `SessionBannerPlan` (neutral once ended, never Mark as Done as the
+      primary); the review sheet's Commit and Merge, no PR / merge of an empty branch, Esc everywhere, ⌘/Ctrl+Enter to
+      merge; the hand-off panel refuses a logged-out agent inline and offers the other one. The Rust job fold: a
+      finish event's `detail.error` becomes `error` (jobs.py / BlurtCore JobFold do). Review follow-ups: Restart /
+      Take Back off while one runs (`sessions.py restart` already refuses a second one: code `finished`); the banner
+      shows two buttons and a ⋯ menu (`SessionBannerPlan.more`), its Review Changes… opens the sheet; the watchdog's
+      *No response* (`status_source: "watchdog"`) with Restart; the panel passes `--force` only after its own login
+      check; one state wording everywhere (`AgentSessionRow.stateText`).
+- [ ] Organising runs: start the agent in its own process group / job object (Mac: BlurtCore `ProcessGroup`), record
+      `agent_pgid` and its leader's start time (`agent_pgid_start`), stop it on quit (ask first — not on logout /
+      shutdown) and stop a leftover one at launch only while it is still that group (`ProcessGroup.isOurs`; a reused
+      id is left alone); one organiser per recording, checked
+      against the job files; failed organising stays in the jobs list with Retry / Dismiss (`dismissed: true`) —
+      `JobFailures` in BlurtCore.
 - [ ] Settings like the Mac's v0.9 window (docs/design/desktop-app.md §2.3): a sidebar with a search field and the
       panes in three groups (Preferences / Work / This Mac), a page of rows (title + one-line description, control on
       the right), search across every row in English and Chinese with per-row keywords (port BlurtCore

@@ -178,8 +178,8 @@ def test_parallel_worktrees_diff_merge_discard(p2):
     assert d["branch"] == ja["branch"] and d["base"] == "main" and d["uncommitted"] == 0
     assert d["stat"] == [{"path": "src/login.txt", "added": 1, "deleted": 1}] and "button: blue" in Path(d["patch"]).read_text()
     db = p2.run("sessions.py", "finish", jb["id"], "--action", "diff")
-    assert db["uncommitted"] == 1 and db["stat"][0]["path"] == "notes.md"
-    assert p2.run("sessions.py", "finish", jb["id"], "--action", "merge", ok=False)["code"] == "uncommitted"
+    assert db["uncommitted"] == 1 and db["ahead"] == 0 and db["stat"][0]["path"] == "notes.md"
+    assert d["ahead"] == 1 and p2.job(ja["id"])["agent"]["changes"] == {"ahead": 1, "dirty": 0}
     m = p2.run("sessions.py", "finish", ja["id"], "--action", "merge")
     assert m["removed"] and not wa.exists() and (repo / "src" / "login.txt").read_text() == "button: blue\n"
     assert p2.git(repo, "log", "-1", "--format=%P").count(" ") == 1  # --no-ff: a merge commit
@@ -187,6 +187,8 @@ def test_parallel_worktrees_diff_merge_discard(p2):
     assert p2.get(a["uid"])["state"] == "to_verify" and m["items"] == [a["uid"]]  # stopping moved nothing; merging did
     disc = p2.run("sessions.py", "finish", jb["id"], "--action", "discard")
     assert disc["removed"] and not wb.exists() and jb["branch"] not in p2.git(repo, "branch", "--list")
+    # nothing of B's session is left: its item is To Do again, not "in progress" for good
+    assert disc["taken_back"] == [b["uid"]] and p2.get(b["uid"])["state"] == "todo"
     assert p2.git(repo, "worktree", "list").count("\n") == 0
     assert p2.job(ja["id"])["agent"]["finish"]["action"] == "merge"
 
@@ -328,7 +330,8 @@ def test_doctor(p2):
     proj = p2.project(p2.repo(), worktree=False)
     dispatch(p2, p2.item(proj["id"])["uid"], agent="claude")
     text = conf.read_text()
-    for opt in ("status off", "mouse on", "history-limit 50000", "remain-on-exit on", "escape-time 10"):
+    for opt in ("status off", "mouse on", "history-limit 50000", "remain-on-exit on", "escape-time 50",
+                "focus-events off", "default-size 80x24", 'remain-on-exit-format ""'):
         assert opt in text
     assert p2.tmux("show-options", "-gv", "remain-on-exit").strip() == "on"
 

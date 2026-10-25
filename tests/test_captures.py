@@ -208,7 +208,7 @@ class Processing(TmpCase):
             (stub / b).chmod(0o755)
         env = {"PATH": str(stub)}
         c = agents.session_command("codex", "do it", self.tmp, job="j-1", mcp=False, model="luna", cfg=self.cfg(), env=env)
-        self.assertEqual(c["argv"][-3:], ["-m", "luna", "do it"])
+        self.assertEqual(c["argv"][-5:], ["-m", "luna", "-c", "check_for_update_on_startup=false", "do it"])
         c = agents.session_command("claude", "do it", self.tmp, job="j-1", mcp=False, model="sonnet", cfg=self.cfg(),
                                    env=env, settings=self.tmp / "s.json")
         self.assertEqual(c["argv"][-4:], ["--model", "sonnet", "--", "do it"])

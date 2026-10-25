@@ -23,6 +23,7 @@ export function createBrowserHost(opts: { base?: string; win?: Window } = {}): B
   return {
     host: "browser",
     inApp: false,
+    agentWaiting: true, // review.py serves this page and prints its summary for the agent when it is confirmed
     async load() {
       const r = await fetch(base + "api/items");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

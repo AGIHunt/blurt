@@ -40,6 +40,8 @@ public struct DispatchResult {
 public struct SessionsError: Error, CustomStringConvertible {
     public let code: String
     public let message: String
+    /// The session it is about (already_dispatched: the one the item is with).
+    public var job: String? = nil
     public var description: String { "\(code): \(message)" }
 }
 
@@ -92,7 +94,7 @@ public final class AgentSessions {
         } catch ScriptError.failed(let status, let stdout, let stderr) {
             let o = Self.lastJSON(stdout)
             throw SessionsError(code: o["code"] as? String ?? (status == 4 ? "missing_dependency" : "failed"),
-                                message: o["error"] as? String ?? String(stderr.suffix(400)))
+                                message: o["error"] as? String ?? String(stderr.suffix(400)), job: o["job"] as? String)
         } catch ScriptError.scriptMissing(let p) {
             throw SessionsError(code: "no_sessions_cli", message: "missing \(p)")
         } catch ScriptError.uvMissing {
@@ -102,7 +104,7 @@ public final class AgentSessions {
         }
         let o = Self.lastJSON(out)
         if o["ok"] as? Bool == false {
-            throw SessionsError(code: o["code"] as? String ?? "failed", message: o["error"] as? String ?? "")
+            throw SessionsError(code: o["code"] as? String ?? "failed", message: o["error"] as? String ?? "", job: o["job"] as? String)
         }
         return o
     }
@@ -117,10 +119,13 @@ public final class AgentSessions {
 
     // MARK: K5 CLI
 
-    /// `model`: the agent's model (Agents.models); nil / "" = whatever the CLI is set to.
+    /// `model`: the agent's model (Agents.models); nil / "" = whatever the CLI is set to. `loginChecked`: the caller
+    /// already knows the agent is logged in (the dispatch panel won't start otherwise) — sessions.py skips its own
+    /// login check (--force); without it, a logged-out agent fails with code auth.
     public func dispatch(items: [String], agent: String?, mode: DispatchMode, worktree: WorktreeChoice, dryRun: Bool,
-                         model: String? = nil) async throws -> DispatchResult {
+                         model: String? = nil, loginChecked: Bool = false) async throws -> DispatchResult {
         var args = ["dispatch", "--items"] + items + ["--mode", mode.rawValue, "--worktree", worktree.rawValue, "--lang", lang]
+        if loginChecked && !dryRun { args.append("--force") }
         if let a = agent, !a.isEmpty { args += ["--agent", a] }
         if let m = model, !m.isEmpty { args += ["--model", m] }
         if dryRun { args.append("--dry-run") }
@@ -158,6 +163,19 @@ public final class AgentSessions {
     /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted).
     public func finish(job: String, action: String) async throws -> [String: Any] {
         try await call(["finish", job, "--action", action], timeout: action == "pr" ? 180 : 90)
+    }
+
+    /// The same items, agent and model in a fresh session (`sessions.py restart`): for one that ended without
+    /// changes. The old window, worktree and branch go.
+    public func restart(job: String) async throws -> DispatchResult {
+        let o = try await call(["restart", job, "--lang", lang], timeout: 120)
+        let rows = o["jobs"] as? [[String: Any]] ?? []
+        let launch = (o["launch"] as? [[String: Any]] ?? []).compactMap { l -> AppLaunch? in
+            guard let job = l["job"] as? String, let argv = l["argv"] as? [String], !argv.isEmpty else { return nil }
+            return AppLaunch(job: job, argv: argv, env: l["env"] as? [String: String] ?? [:],
+                             cwd: URL(fileURLWithPath: l["cwd"] as? String ?? NSHomeDirectory()))
+        }
+        return DispatchResult(jobs: rows.compactMap { $0["id"] as? String }, warnings: [], launch: launch, rows: rows)
     }
 
     /// The app runner's pty exited (`sessions.py event --event pane-dead`): the job and the items move on (K3).

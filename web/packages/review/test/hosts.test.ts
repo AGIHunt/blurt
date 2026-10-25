@@ -74,6 +74,12 @@ describe("macos host (WKWebView bridge, protocol v3)", () => {
     const h = createMacosHost(fakeWindow({ webkit: { messageHandlers: { blurt: post } }, blurtHostInfo: { sessionBanner: true } }) as never);
     expect(h.sessionBanner).toBe(true);
   });
+  it("agentWaiting: only a batch review.py asked for is handed back to an agent", () => {
+    const post = { postMessage: () => {} };
+    const mk = (info: object) => createMacosHost(fakeWindow({ webkit: { messageHandlers: { blurt: post } }, blurtHostInfo: info }) as never);
+    expect(mk({}).agentWaiting).toBeUndefined();
+    expect(mk({ agentWaiting: true }).agentWaiting).toBe(true);
+  });
   it("takes the scope from blurtHostInfo first, a session from the URL otherwise", () => {
     const post = { postMessage: () => {} };
     expect(createMacosHost(fakeWindow({ webkit: { messageHandlers: { blurt: post } }, blurtHostInfo: { scope: { project: "inbox" } } }, "blurt-app://ui/?session=%2Fx") as never).scope).toEqual({ project: "inbox" });

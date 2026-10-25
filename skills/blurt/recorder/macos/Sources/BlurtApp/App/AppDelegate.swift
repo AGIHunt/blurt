@@ -14,6 +14,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem?
     var busy = false                 // picking / counting down / recording
     var processing: [String] = []    // sessions being processed by an agent
+    /// Organising / AI fill-in runs in flight: job id → the process group of the agent's shell (ProcessGroup). They
+    /// stop with the app (applicationWillTerminate); a crash leaves them for the next launch to stop.
+    var organisers: [String: pid_t] = [:]
+    /// The quit came from SIGTERM / SIGINT (a script, a logout): no question to ask.
+    var quitBySignal = false
     var statusTimer: Timer?
     var lastSession: URL?
     /// when the take in `lastSession` was started (a failed take's meta.json says so)
@@ -28,7 +33,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             s.setEventHandler { [weak self] in
                 guard let self = self else { return }
                 // (from the run loop, not this main-queue block: quitting waits for captures on the main queue)
-                if self.rec != nil { self.command("stop") } else if !self.resident { self.command("stop") } else { RunLoop.main.perform { NSApp.terminate(nil) } }
+                if self.rec != nil { self.command("stop") } else if !self.resident { self.command("stop") } else {
+                    self.quitBySignal = true
+                    RunLoop.main.perform { NSApp.terminate(nil) }
+                }
             }
             s.resume()
             signalSources.append(s)
@@ -192,7 +200,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         JobStore.shared.start()
         JobNotifier.shared.start()
         Housekeeping.atLaunch()
-        AppEnvironment.process = { [weak self] session, captures, project in self?.process(session, captures: captures, project: project) }
+        AppEnvironment.process = { [weak self] session, captures, project in self?.process(session, captures: captures, project: project) ?? nil }
         listenForReviews()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let menu = NSMenu()
@@ -290,16 +298,51 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Quitting (the menu, an update's relaunch, logging out, SIGTERM) never loses a capture on its way: the open note
     /// is saved, a voice note finished, words and filings get a moment, shots.jsonl is flushed (Snapper.prepareForQuit;
     /// at most ~3 s). What is still on its way comes back at the next launch (Snapper.restore).
+    /// Quitting while an agent organises a recording stops it (it would go on spending tokens unseen and write items
+    /// after the app said it failed): ask first, as a Mac app asks before it drops work in progress — not on a
+    /// logout, restart or shutdown (the quit Apple Event carries kAEQuitReason: a modal would hold the Mac up behind
+    /// it) nor on SIGTERM / SIGINT; the organisers stop all the same (applicationWillTerminate) and their jobs say so.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard resident, !quitting else { return .terminateNow }
+        if !organisers.isEmpty, !quitBySignal, !Self.quitBySystem {
+            let jobs = organisers.keys.compactMap { JobStore.shared.job($0) }
+            let a = NSAlert()
+            a.messageText = jobs.count == 1 ? T("app.quit.organizing.title", JobLook.title(jobs[0])) : T("app.quit.organizing.title_n", jobs.count)
+            a.informativeText = T("app.quit.organizing.detail")
+            a.addButton(withTitle: T("app.quit.organizing.quit"))
+            a.addButton(withTitle: T("action.cancel"))
+            activateApp()
+            guard a.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        }
         quitting = true
         snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
     }
     private var quitting = false
 
+    /// The quit comes from a logout, restart or shutdown.
+    static var quitBySystem: Bool {
+        guard let e = NSAppleEventManager.shared().currentAppleEvent, e.eventClass == kCoreEventClass,
+              e.eventID == kAEQuitApplication else { return false }
+        return e.attributeDescriptor(forKeyword: kAEQuitReason) != nil
+    }
+
+    /// Every organiser still running stops with the app — together, one grace period — and its job says so.
+    func stopOrganisers() {
+        let groups = organisers
+        organisers.removeAll()
+        guard !groups.isEmpty else { return }
+        for g in groups.values { killpg(g, SIGTERM) }
+        let deadline = Date().addingTimeInterval(1.5)
+        while groups.values.contains(where: ProcessGroup.alive), Date() < deadline { usleep(50_000) }
+        for g in groups.values where ProcessGroup.alive(g) { killpg(g, SIGKILL) }
+        for id in groups.keys { Housekeeping.markInterrupted(id, hint: "main.job.hint.stopped_at_quit") }
+        emit(["event": "organisers_stopped", "jobs": Array(groups.keys)])
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         guard resident else { return }
+        stopOrganisers()
         Housekeeping.atQuit()
         Hotkeys.shared.unpublish()
         let f = blurtHome.appendingPathComponent("app.json")

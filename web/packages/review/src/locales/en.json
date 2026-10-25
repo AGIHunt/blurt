@@ -231,6 +231,11 @@
   "done.title": "All set — back to your agent",
   "done.body": "You can close this tab. Your agent picks it up from here.",
   "done.body_app": "Your agent picks it up from here.",
+  "finish.title_app": "Finish this review?",
+  "finish.still_processing_app": "Screenshots are still coming in. You can finish now — they fill in as they arrive.",
+  "done.title_app": "Review done",
+  "done.body_app_todo_one": "{n} item to do is in the Inbox and its project.",
+  "done.body_app_todo_other": "{n} items to do are in the Inbox and their projects.",
 
   "item.gone": "This item isn’t here any more.",
   "load.failed": "Couldn’t load the items: {error}"

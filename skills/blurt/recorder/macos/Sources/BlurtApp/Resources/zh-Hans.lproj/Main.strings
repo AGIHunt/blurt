@@ -432,3 +432,21 @@
 "app.url.ask_record" = "一个链接想开始录屏";
 "app.url.ask_snap" = "一个链接想截图";
 "app.url.snap" = "截图";
+
+/* Sessions that end without the work (v0.9 dogfood) */
+"main.dispatch.move_first" = "移到项目…";
+"main.job.dismiss" = "忽略";
+"main.job.hint.stopped_at_quit" = "退出口喷鸡时停止了整理。点「重试」重新整理。";
+"main.banner.failed_start" = "%1$@ 启动失败：%2$@";
+"main.banner.failed" = "%1$@ 出错停下了：%2$@";
+"main.banner.review" = "查看改动…";
+"main.banner.restart" = "重新开始会话";
+"main.banner.ended_review" = "会话已结束，可以查看改动";
+"app.quit.organizing.title" = "口喷鸡还在整理「%@」。";
+"app.quit.organizing.title_n" = "口喷鸡还在整理 %ld 批内容。";
+"app.quit.organizing.detail" = "退出会停止整理，之后可以在列表上方的任务里重试。";
+"app.quit.organizing.quit" = "仍然退出";
+
+// dogfood v0.9 review
+"main.banner.no_response" = "一分钟没有反应";
+"main.banner.more" = "更多";

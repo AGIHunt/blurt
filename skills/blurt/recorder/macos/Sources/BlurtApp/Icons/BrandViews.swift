@@ -178,7 +178,9 @@ struct BrandButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let shape = RoundedRectangle(cornerRadius: pill ? 100 : 7, style: .continuous)
+        // one line at its own width: squeezed by its neighbours it never wraps a glyph per line (dogfood v0.9)
         return configuration.label
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(enabled ? Color.white : Color(nsColor: .tertiaryLabelColor))
             .padding(.horizontal, 14).frame(minHeight: 24)

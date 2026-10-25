@@ -55,6 +55,21 @@ public struct AgentInfo {
     /// The finish action taken (merge | pr | discard | keep), once there is one.
     public let finishAction: String?
     public let finishResult: [String: Any]?
+    /// What its window showed last when the agent exited or got stuck (sessions.py agent.last_output).
+    public let lastOutput: [String]
+    /// What a worktree session left once it ended: commits on its branch and uncommitted paths. nil = not known
+    /// (still running, or a job from an older build).
+    public let changes: (ahead: Int, dirty: Int)?
+    /// The agent was seen up and working (its items moved to in progress); false = it never got going.
+    public let started: Bool
+    public let model: String?
+
+    /// sessions.py's watchdog gave up on it: no hook and nothing new in its window for a minute since it started
+    /// (a screen nothing recognises). It reads "No response" and offers Restart Session beside Open Session.
+    public var stalled: Bool { statusSource == "watchdog" }
+
+    /// A worktree session ended with something to merge, turn into a PR or discard (unknown counts as something).
+    public var hasChanges: Bool { worktree != nil && (changes.map { $0.ahead + $0.dirty > 0 } ?? true) }
 }
 
 public struct Job: Identifiable {
@@ -75,6 +90,8 @@ public struct Job: Identifiable {
     public let updated: Date?
 
     public var isActive: Bool { state == .queued || state == .running }
+    /// The user put this failure away: it no longer waits in the jobs section.
+    public var dismissed: Bool { raw["dismissed"] as? Bool ?? false }
     /// The step in progress, else the next one to run.
     public var currentStep: JobStep? { steps.first { $0.state == .running } ?? steps.first { $0.state == .pending } }
 
@@ -110,6 +127,19 @@ public enum JobFold {
         return nil
     }
 
+    /// The steps of a job that ended without finishing: running → failed, pending → skipped.
+    public static func closeSteps(_ steps: [[String: Any]], at: String) -> [[String: Any]] {
+        steps.map { st in
+            var st = st
+            switch st["state"] as? String {
+            case "running": st["state"] = "failed"; st["ended"] = at
+            case "pending": st["state"] = "skipped"
+            default: break
+            }
+            return st
+        }
+    }
+
     /// Apply one events.jsonl line to a job dictionary.
     public static func apply(_ ev: [String: Any], to job: inout [String: Any]) {
         if let st = ev["step"] as? [String: Any], let sid = st["id"] as? String {
@@ -132,6 +162,11 @@ public enum JobFold {
             job["agent"] = a
         }
         if let s = ev["state"] { job["state"] = s }
+        // a failure someone else reported (`jobs.py finish --error-code`): its reason, unless the owner wrote one
+        if let e = (ev["detail"] as? [String: Any])?["error"] as? [String: Any], e["code"] is String,
+           !(job["error"] is [String: Any]) {
+            job["error"] = e
+        }
         if let p = ev["progress"] { job["progress"] = p }
         if let add = ev["items"] as? [String] {
             var items = job["items"] as? [String] ?? []
@@ -189,7 +224,10 @@ public enum JobFold {
                 statusAt: date(a["status_at"]), exit: (a["exit"] as? NSNumber).map { $0.int32Value },
                 tmuxSocket: tmux?["socket"] as? String, statusSource: a["status_source"] as? String,
                 statusMessage: a["status_message"] as? String, baseBranch: wt?["base"] as? String,
-                finishAction: fin?["action"] as? String, finishResult: fin?["result"] as? [String: Any])
+                finishAction: fin?["action"] as? String, finishResult: fin?["result"] as? [String: Any],
+                lastOutput: a["last_output"] as? [String] ?? [],
+                changes: (a["changes"] as? [String: Any]).map { (($0["ahead"] as? NSNumber)?.intValue ?? 0, ($0["dirty"] as? NSNumber)?.intValue ?? 0) },
+                started: a["started"] as? Bool ?? false, model: a["model"] as? String)
         }
         return Job(id: id, type: type, state: JobState(rawValue: o["state"] as? String ?? "") ?? .queued,
                    project: o["project"] as? String, session: (o["session"] as? String).map { URL(fileURLWithPath: $0) },
@@ -215,6 +253,21 @@ public enum JobFiles {
         f.dateFormat = "yyyyMMdd-HHmmss"
         let alphabet = Array("abcdefghijklmnopqrstuvwxyz234567")
         return "j-\(f.string(from: now))-" + String((0..<4).map { _ in alphabet.randomElement()! })
+    }
+
+    /// Rewrite an app-owned job's json under its lock (a job whose writer is gone: the last run's, a failure the user
+    /// dismissed). Events not folded yet stay after events_offset, so nothing reported is lost.
+    public static func rewrite(_ id: String, _ change: (inout [String: Any]) -> Void) {
+        let lfd = open(lock(id).path, O_RDWR | O_CREAT, 0o644)
+        if lfd >= 0 { flock(lfd, LOCK_EX) }
+        defer { if lfd >= 0 { flock(lfd, LOCK_UN); close(lfd) } }
+        guard let d = try? Data(contentsOf: json(id)), var doc = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return }
+        change(&doc)
+        doc["updated"] = JobFold.now()
+        guard let out = try? JSONSerialization.data(withJSONObject: doc, options: [.prettyPrinted, .sortedKeys]) else { return }
+        let tmp = dir.appendingPathComponent(".\(id).\(getpid()).tmp")
+        guard FileManager.default.createFile(atPath: tmp.path, contents: out) else { return }
+        _ = rename(tmp.path, json(id).path)
     }
 
     /// Append one event line (O_APPEND, so concurrent writers never interleave a line).
@@ -398,13 +451,19 @@ public final class JobWriter {
                                 "effort": effort ?? NSNull()] as [String: Any] }
     }
 
+    /// A job that ends without finishing closes its steps: the running one failed, the pending ones skipped — never
+    /// a step that keeps saying it runs on a finished job.
     public func finish(_ state: JobState, error: JobError? = nil) {
         mutate { d in
             d["state"] = state.rawValue
             d["ended"] = JobFold.now()
             if let e = error { d["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey ?? NSNull()] as [String: Any] }
+            if state != .done { d["steps"] = JobFold.closeSteps(d["steps"] as? [[String: Any]] ?? [], at: d["ended"] as? String ?? JobFold.now()) }
         }
     }
+
+    /// Any other field of the job (the organiser's process group: "agent_pgid").
+    public func set(_ key: String, _ value: Any?) { mutate { $0[key] = value ?? NSNull() } }
 
     private func mutate(_ f: (inout [String: Any]) -> Void) { q.sync { write(f) } }
 
