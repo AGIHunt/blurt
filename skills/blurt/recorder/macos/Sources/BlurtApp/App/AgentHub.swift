@@ -164,7 +164,10 @@ struct FailureDef {
 
     var shortText: String { Loc.pick(short) ?? id }
     func reasonText(_ a: AgentDef) -> String {
-        (Loc.pick(reason) ?? id).replacingOccurrences(of: "{name}", with: a.name).replacingOccurrences(of: "{fix}", with: a.fixText)
+        let t = (Loc.pick(reason) ?? id).replacingOccurrences(of: "{name}", with: a.name)
+        // an agent with no fix in its definition: the sentence ends where the fix would start, never on a bare colon
+        guard a.fixText.isEmpty, let r = t.range(of: "{fix}") else { return t.replacingOccurrences(of: "{fix}", with: a.fixText) }
+        return String(t[..<r.lowerBound]).trimmingCharacters(in: CharacterSet(charactersIn: "：:—– ").union(.whitespaces))
     }
 }
 

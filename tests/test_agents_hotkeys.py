@@ -147,6 +147,9 @@ class Failures(unittest.TestCase):
     def test_reason(self):
         self.assertEqual(agents.failure_reason("auth", "Codex", "run `codex login`", "en"), "Codex's login has expired: run `codex login`")
         self.assertIn("限流", agents.failure_reason("quota", "Codex", lang="zh"))
+        # an agent with no fix in its definition: never a sentence ending on a bare colon (dogfood-2 W25)
+        self.assertEqual(agents.failure_reason("auth", "FakeOrg", "", "zh"), "FakeOrg 登录失效了")
+        self.assertEqual(agents.failure_reason("auth", "FakeOrg", "", "en"), "FakeOrg's login has expired")
         self.assertEqual(agents.failure_reason(None, "Kimi Code", lang="en", code=3), "Kimi Code didn't finish (exit 3)")
 
 

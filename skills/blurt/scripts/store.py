@@ -312,12 +312,12 @@ def read_header(path: Path) -> dict:
     return {}
 
 
-IDENTITY = ("uid", "id", "title", "kind", "aliases")
+IDENTITY = ("uid", "id", "title", "kind", "state", "aliases")
 
 
 def salvage_header(path: Path) -> dict:
     """The identity of an item file whose front-matter doesn't parse as a whole (hand-edited, a sync conflict): its
-    uid / id / title / kind / aliases, read one line at a time, a line that doesn't parse skipped. A file that does
+    uid / id / title / kind / state / aliases, read one line at a time, a line that doesn't parse skipped. A file that does
     parse gives the same as read_header. Used to keep finding a broken file by its uid (so it can say it's broken,
     with its own id) — never to write it."""
     h = read_header(path)

@@ -190,7 +190,10 @@ def classify(text: str) -> str | None:
 def failure_reason(cls: str | None, name: str, fix: str = "", lang: str = "en", code: int | None = None) -> str:
     for c in registry()["failures"]:
         if c["id"] == cls:
-            return c["reason"][lang].replace("{name}", name).replace("{fix}", fix or "")
+            text = c["reason"][lang].replace("{name}", name)
+            if not fix and "{fix}" in text:  # no fix known: end the sentence there, never on a bare colon
+                return text.split("{fix}")[0].rstrip("：:—– ")
+            return text.replace("{fix}", fix)
     if lang == "zh":
         return f"{name} 没整理完（退出码 {code}）" if code is not None else f"{name} 没整理完"
     return f"{name} didn't finish (exit {code})" if code is not None else f"{name} didn't finish"

@@ -451,7 +451,8 @@ def index_file(con, p: Path, now: float, reg: dict, s: st.Store | None = None, f
             was["uid"] if was else "X" + hashlib.sha1(str(p).encode()).hexdigest()[:25]
         con.execute("DELETE FROM items WHERE path = ? AND uid != ?", (str(p), uid))  # one row per file, always
         r = {**item_row({"uid": uid, "id": h.get("id") or p.stem, "title": h.get("title") or p.stem,
-                         "kind": h.get("kind")}, s.root, pid, None, str(p), mtime), "parse_error": str(e)[:300]}
+                         "kind": h.get("kind"), "state": h.get("state")}, s.root, pid, None, str(p), mtime),
+             "parse_error": str(e)[:300]}
         _insert_item(con, r)
         return "unreadable"
     src = item.get("source") if isinstance(item.get("source"), dict) else {}
