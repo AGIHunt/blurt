@@ -256,7 +256,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
                                            record: working(.toggleRecord), conflicts: conflicts)
             var text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
-            if line.conflicts.count > 2 {
+            // one line, one button: with a more urgent button (turn dictation on, download its model) the shortcut
+            // conflicts aren't squeezed in — those keys aren't advertised, and their own line comes at a later launch
+            let saysConflicts = line.action == .changeShortcut
+            if !saysConflicts {
+            } else if line.conflicts.count > 2 {
                 text += " · " + T("app.toast.welcome_keys_many", line.conflicts.count)      // the list is in Settings
             } else if !line.conflicts.isEmpty {
                 text += " · " + Loc.t("capture.keys.wont_work", table: "Capture", ListFormatter.localizedString(byJoining: line.conflicts))
@@ -278,7 +282,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts])
             LaunchMessages.shared.post(.welcome, t) {
                 setRecordConfig("welcomed", true)
-                Hotkeys.shared.markWarned()             // the conflicts were named here: no second line for them
+                if saysConflicts { Hotkeys.shared.markWarned() }     // named here: no second line for them
             }
         }
     }
