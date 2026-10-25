@@ -195,7 +195,7 @@ struct SessionHeader: View {
                     Button(TL("header.interrupt")) { actions?.interrupt(r.id) }
                     Button(TL("header.end")) { actions?.end(r.id) }
                     Divider()
-                } else if pane.attach != .attached, r.agent.tmuxWindow != nil || r.isAppRunner {
+                } else if pane.attach != .attached, r.hasOutput {
                     Button(TL("overlay.show_output")) { actions?.showOutput(r.id) }
                     Divider()
                 }
@@ -324,7 +324,7 @@ struct SessionOverlay: View {
             Text(hint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 400)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        let output = r.agent.tmuxWindow != nil || r.isAppRunner
+        let output = r.hasOutput
         HStack(spacing: 8) {
             switch outcome {
             case .review:

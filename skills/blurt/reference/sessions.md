@@ -28,11 +28,15 @@ sessions.py dispatch --items BA-12 BA-13 [--agent claude|codex|…] [--mode toge
 - `together` (default): one window, one conversation for all the items. `parallel`: one window per item, each in
   its own git worktree.
 - Worktrees (default per project, `worktree: true`) live outside the repo in `<repo>/../.<repo>-worktrees/<id>`
-  on a branch `blurt/<id>-<slug>`; the agent commits there and never pushes. Without a worktree the agent edits
+  on a branch `blurt/<id>-<slug>`; the agent commits there and never pushes. A sandboxed agent (agents.json
+  `interactive.session.sandboxed`: Codex, whose sandbox can't write a linked worktree's index in the repo's `.git`)
+  leaves its changes uncommitted instead, and `finish merge|pr` commits them. Without a worktree the agent edits
   the project folder and doesn't commit.
 - Two sessions editing the same folder directly is allowed; `--dry-run` returns a `concurrent_edit` warning first
   so the app can suggest a worktree. Other warnings: `no_git`, `no_tmux`, `draft_confirmed`.
-- Items must be in one project with a folder (`needs_project` otherwise), not dropped, and *to do* or *handed off*.
+- Items must be in one project with a folder (`needs_project` otherwise), not dropped, and *to do* or *handed off*
+  — and not handed off to a session that is still going (`already_dispatched`, with its `job`). One dispatch runs
+  at a time (`$BLURT_HOME/run/dispatch.lock`).
 - Without tmux (or on Windows) the app runs the returned `launch` argv in its own terminal and reports the exit
   with `sessions.py event --job J --event pane-dead --exit N`.
 
@@ -47,7 +51,17 @@ Every session is a job of type `agent` in `$BLURT_HOME/jobs/` (see `jobs.py`). I
 - Codex asks the user once to trust Blurt's hooks ("Hooks need review"); the hook command is the same for every
   session, so it asks only again when Blurt moves. Until then status comes from the terminal.
 - Agents without hooks: `interactive.waiting_patterns` (agents.json) on the bottom lines of the window mean
-  *waiting for you*; 8 s without output after running means *turn finished*.
+  *waiting for you*; 8 s without output after running means *turn finished*. Claude Code's window is read the same
+  way until its first hook: its workspace-trust dialog fires none (→ *waiting for you*), and
+  `interactive.error_patterns` ("Not logged in · Please run /login") make the session an `error` with that line as
+  `job.error`, its window left open to read.
+- When an agent exits, its window's last lines are kept as `agent.last_output`; a non-zero exit becomes `job.error`
+  (`agent_exit`, or the class its words fit: `auth`, `quota`…, message = the last line). A worktree session's
+  `agent.changes` = `{ahead, dirty}` once it ended ("ready to review" only when there is something).
+- tmux (`$BLURT_HOME/tmux.conf`): windows start at 80×24 and grow with the attached terminal (a big window shrunk
+  on attach pushed the last lines out of view), `remain-on-exit` without tmux's "Pane is dead" line,
+  `focus-events off` and `escape-time 50` (nothing reaches an agent while it starts). Codex starts with
+  `-c check_for_update_on_startup=false`.
 - `sessions.py monitor` (the app keeps one running) also notices windows that exited and moves items along:
   the first sign of life → *in progress*. An exit moves nothing: only your own report (`items.py state … --state
   to_verify --claim fixed|wontfix`, MCP `mark_fixed`) takes an item to *to verify*. Exit without it and the item
@@ -59,10 +73,21 @@ Every session is a job of type `agent` in `$BLURT_HOME/jobs/` (see `jobs.py`). I
 sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch]
 ```
 
-`diff` writes `jobs/<id>.diff` and returns per-file counts; `merge` needs a stopped agent, a committed worktree
-and the project folder clean on the base branch (`--no-ff`; a conflict is aborted and reported); `pr` pushes the
-branch and opens a PR with `gh` when it is installed (otherwise a compare URL); `discard` removes the worktree and
-branch. Only run `merge`, `pr` or `discard` when the user asked for it.
+`diff` writes `jobs/<id>.diff` and returns per-file counts, `uncommitted` and `ahead`; `merge` needs a stopped
+agent and the project folder clean on the base branch, commits what the agent left uncommitted ("<IDs> <title>
+(Blurt hand-off)", the user's own hooks apply), then merges (`--no-ff`; a conflict is aborted and reported); `pr`
+needs a stopped agent too, commits the same way, pushes the branch and opens a PR with `gh` when it is installed
+(otherwise a compare URL). Both refuse a branch with no changes (`nothing`). `discard` removes the worktree and
+branch and takes the items still with the session back to *to do*. Only run `merge`, `pr` or `discard` when the
+user asked for it.
+
+```
+sessions.py restart JOB
+```
+
+The same items, agent, model and worktree choice in a fresh session, for one that ended without changes (it
+couldn't start, or stopped at once); one that left changes is refused (`has_changes`). The old window, worktree and
+branch go; the old job's `agent.finish` = `{action: "restart", result: {jobs: [new]}}`.
 
 ## Other commands
 

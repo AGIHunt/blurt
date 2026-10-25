@@ -8,12 +8,14 @@ import XCTest
 
 final class SessionOutcomeTests: XCTestCase {
     func agentJob(state: String = "done", status: String = "exited", worktree: Bool = true, changes: [String: Int]? = nil,
-                  started: Bool = true, finish: String? = nil) -> Job {
+                  started: Bool = true, finish: String? = nil, ended: String? = nil) -> Job {
         var a: [String: Any] = ["id": "codex", "status": status, "cwd": "/tmp", "started": started]
         if worktree { a["worktree"] = ["path": "/tmp/wt", "branch": "blurt/hs-1", "base": "main"] }
         if let c = changes { a["changes"] = c }
         if let f = finish { a["finish"] = ["action": f, "result": [:]] }
-        return JobFold.job(["id": "j-1", "type": "agent", "state": state, "created": "2026-10-25T10:00:00+08:00", "agent": a])!
+        var o: [String: Any] = ["id": "j-1", "type": "agent", "state": state, "created": "2026-10-25T10:00:00+08:00", "agent": a]
+        if let e = ended { o["ended"] = e }
+        return JobFold.job(o)!
     }
 
     func testOutcome() {
@@ -26,6 +28,9 @@ final class SessionOutcomeTests: XCTestCase {
                        .failed(atStart: true))
         XCTAssertEqual(SessionOutcome.of(agentJob(state: "failed", status: "error", changes: ["ahead": 0, "dirty": 0])),
                        .failed(atStart: false))
+        // an agent without hooks is "up" once its window opens; dying 4 s later is still not getting going
+        XCTAssertEqual(SessionOutcome.of(agentJob(state: "failed", status: "error", changes: ["ahead": 0, "dirty": 0],
+                                                  ended: "2026-10-25T10:00:04+08:00")), .failed(atStart: true))
         XCTAssertEqual(SessionOutcome.of(agentJob(worktree: false)), .ended)
         XCTAssertEqual(SessionOutcome.of(agentJob(changes: ["ahead": 3, "dirty": 0], finish: "merge")), .finished("merge"))
         XCTAssertTrue(SessionOutcome.failed(atStart: true).canRestart)

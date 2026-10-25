@@ -38,6 +38,10 @@ struct AgentSessionRow: Identifiable {
     /// Ended with changes on its branch that haven't been merged, turned into a PR or discarded yet.
     var awaitsFinish: Bool { outcome == .review }
     var isAppRunner: Bool { agent.runner == "app" }
+    /// Its window is still there to read (Show Output): not once merged, discarded or restarted (the window went).
+    var hasOutput: Bool {
+        (agent.tmuxWindow != nil || isAppRunner) && !["merge", "discard", "restart"].contains(agent.finishAction ?? "")
+    }
     /// What the list and the header say about it: its live status, else how it ended ("Ready to review" only when
     /// there is something to review).
     var stateText: String {

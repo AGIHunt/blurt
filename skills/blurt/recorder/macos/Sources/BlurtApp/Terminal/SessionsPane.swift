@@ -89,7 +89,8 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        split.setPosition(250, ofDividerAt: 0)
+        // setting the divider shows a hidden list again: only when it is meant to be seen
+        if state.listShown { split.setPosition(250, ofDividerAt: 0) }
         if state.job == nil { attach(job: nil) }
     }
 
@@ -117,6 +118,7 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
             ctx.allowsImplicitAnimation = true
             listHost.isHidden = !state.listShown
             split.adjustSubviews()
+            if state.listShown { split.setPosition(250, ofDividerAt: 0) }
         }
     }
 
@@ -172,7 +174,10 @@ extension SessionsPaneController: SessionActions {
     func restart(_ job: String) {
         SessionRecovery.restart(job) { [weak self] r in
             switch r {
-            case .success(let new): if let n = new { self?.attach(job: n) }
+            // the main window's pane belongs to its job detail: the new job is shown there, not only attached
+            case .success(let new):
+                guard let n = new, let self = self else { return }
+                if self.paneID == "main" { TerminalModule.reveal(job: n) } else { self.attach(job: n) }
             case .failure(let e): self?.presentError(sessionsErrorText(e))
             }
         }

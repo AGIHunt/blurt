@@ -17,12 +17,20 @@ public enum SessionOutcome: Equatable {
     /// ended in the project folder (nothing for Blurt to merge)
     case ended
 
+    /// A session that fails within this long of starting "couldn't start".
+    public static let startupWindow: TimeInterval = 20
+
     public static func of(_ j: Job) -> SessionOutcome {
         guard let a = j.agent else { return .ended }
         if let f = a.finishAction { return .finished(f) }
         if j.isActive, a.status != .exited, a.status != .error { return .live(a.status) }
         if a.hasChanges { return .review }
-        if a.status == .error || j.state == .failed { return .failed(atStart: !a.started) }
+        if a.status == .error || j.state == .failed {
+            // it never got going: no hook or screen said it was up, or it died within its first moments (an agent
+            // without hooks counts as up as soon as its window opens)
+            let lived = (j.ended ?? Date()).timeIntervalSince(j.started ?? j.created)
+            return .failed(atStart: !a.started || lived < startupWindow)
+        }
         return a.worktree != nil ? .noChanges : .ended
     }
 

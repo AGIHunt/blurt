@@ -244,7 +244,9 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | State rings new / handed_off / in_progress, job spinner arc | I | |
 | to_verify / done / todo / wontfix / discarded | `attn` + "!" / `ok` + ✓ / secondary / tertiary | |
 | "New" counts and badges | M | pill, `brand.on` digits (`CountPill`); plain counts neutral |
-| Job running (process / route) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. |
+| Job running (process / route) | `brand.working` | the spinner plus one static 1 pt hairline round the row (`WorkingOutline`). The item's "still organising" banner keeps its quiet ink wash and swaps its wand icon for a small spinner: no line, no rim. The spinner is always the brand arc (`BrandSpinner`), never the system's grey spokes. |
+| Item banner of a hand-off | I wash while the agent works · `attn` wash when it waits for you · neutral 5 % wash once the session ended | `SessionBannerPlan`: the first button is the one primary. Ended without a report: Open Session, Restart Session, Mark as Done, Take Back. Failed: Restart Session, Take Back, Open Session, with the reason ("Codex couldn't start: …") and an `err` icon. Never Mark as Done as the primary. |
+| A session's ended card | neutral | How it ended (`SessionOutcome`), the agent's last lines when it failed, one B primary: Review Changes… (changes) or Restart Session (failed); Take Back / Show Output plain. The dead terminal is never shown first. The header's Review Changes… is plain `.bordered` and only appears while the output is shown. |
 | Progress bars | I (light) / M (dark) | flat: too thin for the gradient |
 | Kind icons | kind tokens | |
 | Severity | `kind.issue` / `attnInk` / `info` | |

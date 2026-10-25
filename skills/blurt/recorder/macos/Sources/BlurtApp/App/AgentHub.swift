@@ -11,6 +11,9 @@
 // prompt names for reading only; Claude / Gemini may run only the skill's scripts by absolute path; Codex's sandbox
 // may write the item stores and its own uv cache, nothing in $BLURT_HOME — so the app re-indexes and records the
 // job's items itself after the run.
+// An organising run is its own process group (ProcessGroup, its id on the job as agent_pgid): it stops with the app
+// (AppDelegate asks first), a crashed app's leftover is stopped at the next launch (Housekeeping), and a recording
+// already being organised is never started twice (process() returns the job at it).
 // BLURT_AGENT_PATH (tests): directories searched for agent CLIs before the user's PATH.
 
 import AppKit
