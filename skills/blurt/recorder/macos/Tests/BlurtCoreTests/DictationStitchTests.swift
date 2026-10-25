@@ -4,6 +4,13 @@ import XCTest
 /// Joining a streamed dictation's pieces (docs/design/dictation.md §Streaming): no doubled and no lost words at the
 /// seams, spaces only between Latin words.
 final class DictationStitchTests: XCTestCase {
+    /// polish.py's own rule (`len(units(raw)) <= 2` → "short", no model): the app doesn't ask for those, so a one-word
+    /// reply never waits for a cold polish model.
+    func testTooShortToPolish() {
+        for s in ["OK", "Okay.", "好的", "好的。", "yes sure", "12"] { XCTAssertTrue(DictationStitch.nothingToPolish(s), s) }
+        for s in ["好的呀", "OK sure thing", "sounds good to me", "123"] { XCTAssertFalse(DictationStitch.nothingToPolish(s), s) }
+    }
+
     func testJoinSpacesOnlyBetweenLatinWords() {
         XCTAssertEqual(DictationStitch.join("我们先看一下日志。", "然后再部署。"), "我们先看一下日志。然后再部署。")
         XCTAssertEqual(DictationStitch.join("open the PR", "and merge it"), "open the PR and merge it")

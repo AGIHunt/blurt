@@ -33,7 +33,9 @@
 //    --purpose dictation` and, with polish on, `polish.py serve --preload`; the speech model also a few seconds after
 //    launch (`prewarm`: dictation on, key heard, ≥ 16 GB, model installed) and as soon as the download manager brings
 //    dictation's model in. The servers end with Blurt (`--parent`) and after 10 idle minutes, which is what gives their
-//    memory back. A key press never downloads anything: the servers and the CLI run with BLURT_NO_DOWNLOAD /
+//    memory back. One that doesn't answer and doesn't work (WarmServer.health: no CPU) is replaced at the key-down,
+//    whoever started it; a request to one is given up on as soon as it hangs (DictationASRFailure.hung), and a take
+//    still on its way 3 s after the stop says so ("Still recognizing… Esc to cancel"). A key press never downloads anything: the servers and the CLI run with BLURT_NO_DOWNLOAD /
 //    --no-download, and without a recogniser to run on (`speechModels.ready`: the selected model and the VAD) the key
 //    starts nothing — the island says the model is still downloading (Show) or offers to download it through the
 //    app's one download manager (App/ModelDownloads.swift; `noSpeechModel`, DictationTakes.swift).
@@ -644,7 +646,29 @@ final class Dictation {
         VoiceInput.warmSpeechModel(dictation: true)
         guard Dictation.polishOn, polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
-            DispatchQueue.global(qos: .userInitiated).async { _ = WarmServer.call("polish-serve", ["cmd": "load"], timeout: 30) }
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                // the polish server's run file can name a stuck process too (VoiceInput.replaceIfStuck): replaced
+                let pid = WarmServer.pid("polish-serve")
+                let h = WarmServer.health("polish-serve", script: "polish.py")
+                switch h {
+                case .answers, .working:
+                    _ = WarmServer.call("polish-serve", ["cmd": "load"], timeout: 30)
+                case .gone, .notAServer, .stuck:
+                    var result = "forgot"
+                    if case .stuck = h, let p = pid {
+                        if let s = self?.polishServer { WarmSpawn.retire(s.processIdentifier) }
+                        result = WarmServer.end("polish-serve", pid: p) ? "ended" : "not_ended"
+                    } else {
+                        WarmServer.forget("polish-serve", pid: pid)
+                    }
+                    emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result])
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        if case .stuck = h, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+                        self.polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
+                    }
+                }
+            }
         } else if polishServer?.isRunning != true {
             polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
         }
@@ -1057,12 +1081,18 @@ final class Dictation {
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
         if WarmServer.running("asr-serve"), !serverGivenUp {
             let t0 = Date()
-            if let r = WarmServer.call("asr-serve", req, timeout: DictationASRFailure.serverTimeout(audioSeconds: audioSeconds)) {
+            let limit = DictationASRFailure.serverTimeout(audioSeconds: audioSeconds)
+            // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit
+            let watch = WarmServer.pid("asr-serve").map { CPUWatch(pid: $0) }
+            let (answer, hung) = WarmServer.call("asr-serve", req, timeout: limit) { waited in
+                watch.map { DictationASRFailure.hung(waited: waited, audioSeconds: audioSeconds, cpuIdle: $0.idle()) } ?? false
+            }
+            if let r = answer {
                 if r["ok"] as? Bool == true { return r }
                 // no model: the CLI would only say the same
                 if r["code"] as? String == "model_missing" { return r }
-            } else if Date().timeIntervalSince(t0) >= DictationASRFailure.serverTimeout(audioSeconds: audioSeconds) - 0.5 {
-                giveUpOnServer()
+            } else if hung || Date().timeIntervalSince(t0) >= limit - 0.5 {
+                giveUpOnServer(hung: hung, waited: Date().timeIntervalSince(t0))
             }
         }
         let sem = DispatchSemaphore(value: 0)
@@ -1098,14 +1128,24 @@ final class Dictation {
         guard let at = serverGivenUpAt, Date().timeIntervalSince(at) < 60 else { return false }
         return DictationServerGiveUp.stillGivenUp(givenUp: serverGivenUpPid, now: WarmServer.pid("asr-serve"))
     }
-    private static func giveUpOnServer() {
+    /// `hung`: its CPU stood still while the request waited — a stuck server, replaced whoever started it (a voice note
+    /// waiting on it is stuck too). Else it was only past the time limit: ours is ended unless a voice note uses it.
+    /// `ended` says whether a process really went. Blocking: off the main thread.
+    private static func giveUpOnServer(hung: Bool, waited: Double) {
         serverLock.lock()
         serverGivenUpAt = Date()
         serverGivenUpPid = WarmServer.pid("asr-serve")
         serverLock.unlock()
-        let busy = VoiceInput.notesWaiting > 0
-        emit(["event": "dictation_asr_server", "state": "given_up", "pid": serverGivenUpPid ?? NSNull(), "ended": !busy])
-        if !busy { DispatchQueue.main.async { VoiceInput.endUnresponsiveServer() } }
+        var ended = false
+        if hung {
+            ended = VoiceInput.endUnresponsiveServer(hung: true)
+        } else if VoiceInput.notesWaiting == 0 {
+            let sem = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async { ended = VoiceInput.endUnresponsiveServer(); sem.signal() }
+            _ = sem.wait(timeout: .now() + 2)
+        }
+        emit(["event": "dictation_asr_server", "state": "given_up", "pid": serverGivenUpPid ?? NSNull(), "hung": hung,
+              "waited_ms": Int(waited * 1000), "ended": ended])
     }
 
     /// An interim request for the live text: the warm server only (no process start, no CLI — a missing server is
@@ -1126,6 +1166,10 @@ final class Dictation {
     /// loaded. nil = no polish (raw text, not a fall-back). Blocking: off the main thread.
     static func polish(_ raw: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]], context: [String: Any]?,
                        variant: String? = nil) -> [String: Any]? {
+        // nothing to tidy: polish.py would answer "short" without its model — no wait for a server or a load
+        if DictationStitch.nothingToPolish(raw) {
+            return ["ok": true, "raw": raw, "text": raw, "fell_back": false, "reason": "short", "ms": 0, "load_ms": 0]
+        }
         let t0 = Date()
         let until = t0.addingTimeInterval(loadBudget)
         while !WarmServer.running("polish-serve") && Date() < until { usleep(50_000) }
@@ -1146,6 +1190,9 @@ final class Dictation {
     /// The warm polish server's structuring pass (Structured): the whole take, its self-corrections resolved and what
     /// was enumerated laid out — or nil (no server: Light's text is typed). Blocking: off the main thread.
     static func structure(_ text: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]]) -> [String: Any]? {
+        if DictationStitch.nothingToPolish(text) {
+            return ["ok": true, "raw": text, "text": text, "fell_back": false, "reason": "short", "list": false, "ms": 0]
+        }
         let until = Date().addingTimeInterval(loadBudget)
         while !WarmServer.running("polish-serve") && Date() < until { usleep(50_000) }
         guard WarmServer.running("polish-serve") else { return nil }
@@ -1169,6 +1216,12 @@ enum WarmSpawn {
         return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_NO_SERVERS"] == "1"
     }()
 
+    /// `uv` processes of servers ended on purpose (WarmServer.end, endUnresponsiveServer): their exit is no failure.
+    private static let retiredLock = NSLock()
+    private static var retiredPids = Set<Int32>()
+    static func retire(_ pid: Int32) { retiredLock.lock(); retiredPids.insert(pid); retiredLock.unlock() }
+    static func retired(_ pid: Int32) -> Bool { retiredLock.lock(); defer { retiredLock.unlock() }; return retiredPids.contains(pid) }
+
     static func start(_ script: String, _ args: [String], server: String) -> Process? {
         if testNoServers {
             emit(["event": "warm_spawn_skipped", "script": script, "server": server])
@@ -1179,7 +1232,10 @@ enum WarmSpawn {
         // when the user asks); a request for a missing model is answered "model_missing"
         let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1", "BLURT_NO_DOWNLOAD": "1"]) { _ in }
         p?.terminationHandler = { proc in
-            guard proc.terminationStatus != 0, !WarmServer.running(server) else { return }
+            // an offline start that failed (nothing cached yet) goes online once; a server ended on purpose (a stuck
+            // one replaced) is not started again here — the replacement is
+            guard !retired(proc.processIdentifier), proc.terminationReason == .exit, proc.terminationStatus != 0,
+                  !WarmServer.running(server) else { return }
             emit(["event": "warm_spawn_online", "script": script, "status": Int(proc.terminationStatus)])
             DispatchQueue.main.async { _ = try? ScriptRunner.shared.spawn(script, args, env: ["BLURT_NO_DOWNLOAD": "1"]) { _ in } }
         }

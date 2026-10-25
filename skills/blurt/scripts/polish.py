@@ -39,6 +39,7 @@ import os
 import re
 import socket
 import sys
+import threading
 import time
 import unicodedata
 import urllib.request
@@ -48,8 +49,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
-from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, serve_exit_reason,  # noqa: E402
-                     serve_said)
+from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, server_exit,  # noqa: E402
+                     serve_exit_reason, serve_said)
 from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent)
 
@@ -903,6 +904,8 @@ class Engine:
         self.prefixes: dict[str, tuple[list[int], object]] = {}
         self.last = time.time()
         self.load_ms = 0
+        # held while a model loads: serve's preload runs beside its loop, and a request that needs the model waits here
+        self.lock = threading.RLock()
 
     @property
     def prefix(self) -> list[int]:              # Light's (the eval reports whether it was cached)
@@ -1000,9 +1003,12 @@ class Engine:
         return "".join(out), cut
 
     def _ready(self, res: dict, model_id: str | None) -> None:
+        """The model, loaded: a load — this request's own, or the server's preload it waits for — is `load_ms`, never
+        polish time (the deadline starts after it)."""
         t_load = time.perf_counter()
         was = self.model is not None and (model_id or selected()) == self.model_id
-        self.load(model_id)        # warm already when the app asked on key-down; a cold load is not timed
+        with self.lock:
+            self.load(model_id)    # warm already when the app asked on key-down; a cold load is not timed
         if not was:
             res["load_ms"] = int((time.perf_counter() - t_load) * 1000)
         res["model"] = self.model_id
@@ -1158,17 +1164,26 @@ def cmd_serve(a):
     save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token, "parent": a.parent,
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = Engine()
-    if a.preload:
-        try:
-            eng.load(a.model_id)
-        except Fail as e:
-            print(f"serve: {e}", file=sys.stderr, flush=True)
-    emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id, "load_ms": eng.load_ms})
-    last = time.time()
-    uses: list[float] = []
-    tier = hardware()["tier"]
     why = None
+    # the run file is ours to remove from here on, whatever happens (the finally below)
     try:
+        if a.preload:
+            # the model loads beside the loop: what needs no model (ping, a reply too short to tidy, the guard) is
+            # answered meanwhile — a one-word take after the idle exit used to wait the whole load (~2 s) for "short";
+            # a request that needs the model waits for it (Engine.lock) and reports that wait as load_ms
+            def preload():
+                try:
+                    with eng.lock:
+                        eng.load(a.model_id)
+                except Fail as e:
+                    serve_said(f"serve: {e}")
+                except Exception as e:  # noqa: BLE001 — a request loads it again and says what failed
+                    serve_said(f"serve: preload failed ({type(e).__name__}: {e})"[:300])
+            threading.Thread(target=preload, name="preload", daemon=True).start()
+        emit({"ok": True, "pid": os.getpid(), "port": port, "model": a.model_id or selected(), "preloading": bool(a.preload)})
+        last = time.time()
+        uses: list[float] = []
+        tier = hardware()["tier"]
         while not why:
             now = time.time()
             why = serve_exit_reason(eng.model is not None, now - eng.last, now - last, uses, tier, a.idle,
@@ -1195,9 +1210,17 @@ def cmd_serve(a):
                         resp = {"ok": True, "pid": os.getpid(), "model": eng.model_id, "loaded": eng.model is not None}
                     elif req.get("cmd") == "load":
                         last = time.time()
-                        eng.load(req.get("model"))
-                        eng.last = time.time()
-                        resp = {"ok": True, "model": eng.model_id, "load_ms": eng.load_ms}
+                        # the key-down's warm-up while the preload is still at it: nothing to add, and the loop
+                        # stays free for the requests that need no model
+                        if eng.lock.acquire(blocking=False):
+                            try:
+                                eng.load(req.get("model"))
+                            finally:
+                                eng.lock.release()
+                            eng.last = time.time()
+                            resp = {"ok": True, "model": eng.model_id, "load_ms": eng.load_ms}
+                        else:
+                            resp = {"ok": True, "model": None, "loading": True}
                     elif req.get("cmd") == "polish":
                         last = time.time()
                         uses.append(last)
@@ -1532,7 +1555,17 @@ def main():
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})
+        if a.cmd == "serve":
+            server_exit(e.exit_code)
         sys.exit(e.exit_code)
+    except Exception:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd != "serve":
+            raise
+        import traceback
+        traceback.print_exc()
+        server_exit(1)
+    if a.cmd == "serve":
+        server_exit(0)
 
 
 if __name__ == "__main__":

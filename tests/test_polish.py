@@ -6,11 +6,16 @@ doesn't load one.
 """
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -588,6 +593,51 @@ class Echo(unittest.TestCase):
         g = polish.stitch_guard("把这个，不对，这两个拿到那一边去", "当然可以！", None, [], None, "把这个，不对，这两个拿到那一边去")
         self.assertFalse(g["pass"])
         self.assertEqual(g["fallback_text"], "把这个，不对，这两个拿到那一边去")
+
+
+class ServeWhileLoading(unittest.TestCase):
+    """polish.py serve loads its model beside the loop (v0.9 dogfood: after the 10-minute idle exit, a one-word take
+    waited ~2 s in the listen backlog for a model load, then was answered "short" in 0 ms — counted as polish time)."""
+
+    class Slow(polish.Engine):
+        loading = 1.5
+
+        def load(self, model_id=None):
+            time.sleep(self.loading)
+            self.model, self.model_id = object(), model_id or "fake"
+            return self
+
+        def generate(self, text, deadline, terms=None, context=None, mode="light", variant=None):
+            return text + "。", False
+
+    def call(self, req, timeout=10):
+        return polish._server_call(req, timeout)
+
+    def test_what_needs_no_model_is_answered_at_once_and_a_wait_is_load_time(self):
+        saved = (polish.Engine, polish.ensure_mlx)
+        polish.Engine, polish.ensure_mlx = self.Slow, (lambda: None)
+        args = argparse.Namespace(preload=True, model_id="fake", priority=None, idle=600, exit_after=1800, parent=None)
+        th = threading.Thread(target=lambda: polish.cmd_serve(args), daemon=True)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                th.start()
+                deadline = time.time() + 5
+                while not polish.SERVE_FILE.exists() and time.time() < deadline:
+                    time.sleep(0.02)
+                t0 = time.time()
+                self.assertTrue(self.call({"cmd": "ping"})["ok"])
+                short = self.call({"cmd": "polish", "text": "OK", "vocab": []})
+                self.assertEqual((short["reason"], short["text"]), ("short", "OK"))
+                self.assertTrue(self.call({"cmd": "load"})["loading"])           # the key-down's warm-up: no wait
+                self.assertLess(time.time() - t0, 0.8)                           # none of it waited for the model
+                full = self.call({"cmd": "polish", "text": "我们下午三点开会讨论一下", "vocab": []})
+                self.assertFalse(full["fell_back"])
+                self.assertGreater(full["load_ms"], 400)                         # the wait for the preload is load time
+                self.call({"cmd": "exit"})
+                th.join(5)
+        finally:
+            polish.Engine, polish.ensure_mlx = saved
+        self.assertFalse(polish.SERVE_FILE.exists())
 
 
 if __name__ == "__main__":

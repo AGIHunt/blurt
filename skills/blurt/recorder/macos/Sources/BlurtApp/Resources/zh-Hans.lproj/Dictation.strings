@@ -490,6 +490,8 @@
 "dictation.toast.model_ready" = "语音模型准备好了，刚才那段录音还在";
 "dictation.toast.asr_failed" = "没能识别这段话，录音还在";
 "dictation.toast.asr_slow" = "语音模型没有回应，录音还在";
+"dictation.toast.slow.asr" = "还在识别… Esc 取消";
+"dictation.toast.slow.polish" = "还在润色… Esc 取消";
 "dictation.toast.retry" = "重试";
 "dictation.toast.retry_gone" = "这段录音已经不在了";
 "dictation.toast.copied_app" = "已复制，⌘V 粘贴";

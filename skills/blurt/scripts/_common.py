@@ -277,6 +277,19 @@ def serve_said(line: str) -> None:
         pass
 
 
+def server_exit(code: int = 0) -> None:
+    """A warm server's very last step, after it removed its run file: out at once, without Python's interpreter
+    teardown. Servers hold native state (MLX, onnxruntime) and daemon threads; a finalizer deadlocked on a lock during
+    teardown left three of them alive for hours here — still holding their models' memory, one still listening on its
+    port with its run file in place (v0.9 dogfood, `sample`: Py_FinalizeEx → slot_tp_finalize → rlock_acquire)."""
+    for f in (sys.stdout, sys.stderr):
+        try:
+            f.flush()
+        except (OSError, ValueError):
+            pass
+    os._exit(code)
+
+
 def serve_exit_reason(loaded: bool, model_idle: float, server_idle: float, uses: list[float], tier: str,
                       idle: float, exit_after: float, parent: int | None = None) -> str | None:
     """Why a warm model server should end now, or None. "parent_gone": the app that started it quit or crashed (a

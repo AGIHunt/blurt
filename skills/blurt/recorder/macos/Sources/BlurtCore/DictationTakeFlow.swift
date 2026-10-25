@@ -157,9 +157,18 @@ public enum DictationASRFailure: Equatable {
         }
     }
 
-    /// How long a speech-server call may take for this much audio: a model load (cold, from disk) plus 1.5× the
-    /// audio — a piece of 20 s gets 45 s, not a flat minute, and a hung server is given up on in proportion.
+    /// How long a speech-server call may take for this much audio at most: a model load (cold, from disk) plus 1.5×
+    /// the audio — a piece of 20 s gets 45 s. A hung server is told well before that (`hung`).
     public static func serverTimeout(audioSeconds: Double) -> Double { 15 + 1.5 * max(0, audioSeconds) }
+
+    /// A request in flight is given up on as hung: no answer after max(3 s, half the audio) — a decode takes ~5 % of
+    /// the audio (p50 ~130 ms for 3 s), a cold load seconds of busy CPU — while the server's CPU time hasn't moved for
+    /// `stalledFor` s (v0.9 dogfood: a stopped server held a 3 s take 21.6 s, only dots on the island). A server that
+    /// works (loading, decoding, another request first) keeps its CPU moving and is waited for, up to serverTimeout.
+    public static let stalledFor = 2.0
+    public static func hung(waited: Double, audioSeconds: Double, cpuIdle: Double) -> Bool {
+        waited >= max(3, 0.5 * max(0, audioSeconds)) && cpuIdle >= stalledFor
+    }
 }
 
 /// `transcribe.py dictation-models` as the key-down needs it. A dictation never downloads anything, so the key listens

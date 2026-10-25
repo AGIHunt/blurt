@@ -679,6 +679,24 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   started it, ended (the Python server, then `uv`), except while a voice note is waiting on it (it may only be busy
   with that note; the note has its own timeout and CLI fallback); the CLI no longer asks that same server first. Measured with the scratch
   app's server stopped (SIGSTOP): 25 s from the stop to the text for a 6 s take (before: 243 s).
+- **A hang is told by the server's behaviour** (v0.9 dogfood: 21.6 s of dots for a 3 s take with the server
+  stopped; most users would dictate again). The call is asked every ¼ s (`WarmServer.call(giveUp:)`) and given up on
+  as soon as there is no answer after max(3 s, half the audio) **and** the server's CPU time hasn't moved for 2 s
+  (`DictationASRFailure.hung`, `CPUWatch`) — a decode takes ~5 % of the audio, and a server that is loading or busy
+  keeps its CPU moving and is waited for, up to `serverTimeout`. 3 s after the stop a take still on its way says so,
+  with the way out: "还在识别… Esc 取消" / "还在润色… Esc 取消" (`Dictation.slowToastKey`; gone when it lands or is
+  cancelled).
+- **A stuck server is replaced, also one an earlier app left behind.** Servers end with `os._exit` after removing
+  their run file (`_common.server_exit`; a preload that fails is inside the same `finally`): three servers of apps
+  long gone sat deadlocked in Python's teardown for hours here, still holding their models, one still listening with
+  its run file in place — and every dictation (relaunches included) waited ~20 s for it, then ran the CLI (~9 s).
+  At the key-down (and the launch prewarm) the server the run file names is pinged (0.5 s) and looked at
+  (`WarmServer.health`, `ProcessProbe`): it answers or its CPU moves → left alone; its process is gone or the pid now
+  belongs to something else (its command line isn't `transcribe.py serve`, it started after the file was written) →
+  the file goes; alive, a server, no answer, no CPU → stuck: ended (SIGKILL) whoever started it, the file removed, a
+  fresh server started (`VoiceInput.replaceIfStuck`; the polish server the same way in `Dictation.warm`). A request
+  that hung does the same. `dictation_asr_server given_up` says `ended` only when a process really went. A `uv` ended
+  on purpose is not started again online (`WarmSpawn.retire`).
 - **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
   "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
   分钟上限，听写已结束" and the text goes in (only into the app it started in); the next tap within 2 s

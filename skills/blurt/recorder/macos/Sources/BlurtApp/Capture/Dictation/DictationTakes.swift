@@ -84,6 +84,8 @@ extension Dictation {
     static func failedToastKey(_ id: String) -> String { "dictation.failed.\(id)" }
     /// Once-a-day notices and the first takes' tips (passive: they wait behind replies).
     static let noticeToastKey = "dictation.notice"
+    /// "Still recognising… Esc to cancel": up while a slow take is on its way, gone when it lands or is cancelled.
+    static let slowToastKey = "dictation.slow"
 
     // MARK: the line of takes
 
@@ -99,10 +101,23 @@ extension Dictation {
         }
         updatePhase()
         take.stream.finish(keyUp: take.keyUp, structure: take.structure) { [weak self] r in self?.landed(take, r) }
+        // a take that is slow to come (a model loading, a server that stopped answering) says so after a few seconds,
+        // with the way out — not only moving dots (v0.9 dogfood: 20 s of dots, and the user dictated it again)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.slowAfter) { [weak self, weak take] in
+            guard let self = self, let take = take, self.takes[take.id] === take, !take.cancelled, take.result == nil,
+                  take.failure == nil else { return }
+            emit(["event": "dictation_slow", "id": take.id, "stage": take.stage.rawValue])
+            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr",
+                       key: Dictation.slowToastKey, seconds: 60)
+        }
     }
+
+    /// How long after the stop a take still on its way says so (and how to cancel it).
+    static let slowAfter = 3.0
 
     /// A take's text is in (or recognition failed, or there were no words).
     private func landed(_ take: DictationTake, _ r: DictationStream.Result) {
+        if !takes.values.contains(where: { $0 !== take && $0.result == nil }) { island.dropToasts(key: Dictation.slowToastKey) }
         guard !take.cancelled, takes[take.id] === take else {
             // a result nobody takes: its audio goes too (not while "Cancelled" still offers Undo for it)
             if cancelledTakes[take.id] !== take { try? FileManager.default.removeItem(at: take.wav) }
@@ -174,6 +189,7 @@ extension Dictation {
             stopped.append(id)
             emit(["event": "dictation_cancel", "id": id, "phase": t.stage.rawValue])
         }
+        island.dropToasts(key: Dictation.slowToastKey)
         // after Undo's time: the audio goes
         DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.undoSeconds + 1) { [weak self] in
             guard let self = self else { return }

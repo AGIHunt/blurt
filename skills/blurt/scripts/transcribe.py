@@ -87,8 +87,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
-                     load_json, probe_duration, save_json, serve_exit_reason, serve_said, update_global_config,
-                     use_system_certs)
+                     load_json, probe_duration, save_json, server_exit, serve_exit_reason, serve_said,
+                     update_global_config, use_system_certs)
 from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent, write_text_atomic)
 
@@ -2224,24 +2224,26 @@ def cmd_serve(a):
     save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token, "parent": a.parent,
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
-    if a.preload:
-        mid = getattr(a, "model_id", None)
-        if not mid and getattr(a, "purpose", None) == "dictation":
-            mid = dictation_models()["selected"]
-        # --no-download: a model that isn't here stays unloaded (the server still answers: model_missing)
-        try:
-            with no_download(getattr(a, "no_download", False)):
-                eng.load(None, mid)
-        except Fail as e:
-            if e.code != "model_missing":
-                raise
-            serve_said(f"serve: preload skipped ({e})")
-    emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
-    last = time.time()
-    uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
-    tier = probe()["tier"]
     why = None
+    # from here on the run file is ours to remove, whatever happens — a preload that fails included (a run file left
+    # pointing at a dead or stuck process made the app wait for a server that never answered)
     try:
+        if a.preload:
+            mid = getattr(a, "model_id", None)
+            if not mid and getattr(a, "purpose", None) == "dictation":
+                mid = dictation_models()["selected"]
+            # --no-download: a model that isn't here stays unloaded (the server still answers: model_missing)
+            try:
+                with no_download(getattr(a, "no_download", False)):
+                    eng.load(None, mid)
+            except Fail as e:
+                if e.code != "model_missing":
+                    raise
+                serve_said(f"serve: preload skipped ({e})")
+        emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
+        last = time.time()
+        uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
+        tier = probe()["tier"]
         while not why:
             now = time.time()
             why = serve_exit_reason(eng.backend is not None, now - eng.last, now - last, uses, tier, a.idle,
@@ -2763,7 +2765,17 @@ def main():
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})
+        if a.cmd == "serve":
+            server_exit(e.exit_code)
         sys.exit(e.exit_code)
+    except Exception:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd != "serve":
+            raise
+        import traceback
+        traceback.print_exc()
+        server_exit(1)
+    if a.cmd == "serve":
+        server_exit(0)
 
 
 if __name__ == "__main__":
