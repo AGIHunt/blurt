@@ -1066,7 +1066,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     /// "Recently dragged out: N" on top of the Inbox and Unassigned while cards dragged out in the last 7 days are there.
     func reloadCaptures() {
         captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0)
-        taken.set(count: model.scope == .inbox || model.scope == .unassigned ? snapper.recentlyTaken.count : 0)
+        taken.set(count: 0)         // Recently Dragged Out is a sidebar row now (SidebarController), not a notice over the list
     }
 
     /// A notice came or went: put it on the grid once the stack has laid it out.

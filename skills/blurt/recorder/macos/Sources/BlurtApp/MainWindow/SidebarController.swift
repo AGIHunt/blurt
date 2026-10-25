@@ -25,7 +25,9 @@ final class SidebarNode: NSObject {
     init(_ title: String, scope: Scope?, symbol: String? = nil, count: Int? = nil, children: [SidebarNode] = []) {
         self.title = title; self.scope = scope; self.symbol = symbol; self.count = count; self.children = children
     }
-    var isGroup: Bool { scope == nil }
+    /// a row that does something instead of going somewhere (Recently Dragged Out opens its panel): never selected
+    var action: (() -> Void)?
+    var isGroup: Bool { scope == nil && action == nil }
 }
 
 protocol SidebarActions: AnyObject {
@@ -60,6 +62,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     private(set) var renaming: InlineRename?
     private var rebuildAfterRename = false
     var roots: [SidebarNode] = []
+    /// Tests (wp6 `mainbanner taken N`): the Recently Dragged Out row with N cards, none needed
+    var testTaken: Int?
     weak var actions: SidebarActions?
     private var reloading = false
 
@@ -93,8 +97,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.target = self
+        outline.action = #selector(clicked)
         outline.doubleAction = #selector(doubleClicked)
         outline.onReturn = { [weak self] in self?.renameSelected() ?? false }
+        NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.rebuild() }
         scroll.documentView = outline
 
         // Notes' "New Folder": a plus and the words, in the rows' own size and ink (secondary), not a faint caption
@@ -156,13 +162,26 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         // not items: what was dictated into other apps — a page of its own (DictationPage.swift); text typed at a cursor, as
         // Settings → Dictation, the menu bar and ⌘K mark it (the mic is a voice note's)
         let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
+        // Recently Dragged Out: a place of its own while it holds cards (Photos' Recently Deleted), not a banner over
+        // the list — a click opens its panel (copy, drag out again, put back); the menu bar and the island reach it too
+        let takenCount = testTaken ?? (AppEnvironment.island == nil ? 0 : snapper.recentlyTaken.count)
+        let taken: [SidebarNode] = takenCount > 0 ? [{
+            let n = SidebarNode(Loc.t("capture.taken.title", table: "Capture"), scope: nil, symbol: "arrow.up.right.square", count: takenCount)
+            n.action = { [weak self] in
+                let w = self?.view.window
+                TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
+            }
+            n.tip = T("main.captures.taken.tip")
+            n.accessibility = Loc.t("capture.taken.title", table: "Capture")
+            return n
+        }()] : []
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
             place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
             dictation,
-        ]
+        ] + taken
         let projectNodes = model.projects.map { p -> SidebarNode in
             // a project's count is plain secondary digits: the one mint pill is the Inbox's (what's new for you, §3.3),
             // so the brand marks on screen stay few. The key ("AW", its ids' prefix) is the row's tooltip, not text.
@@ -189,6 +208,12 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
 
     var selectedScope: Scope? { (outline.item(atRow: outline.selectedRow) as? SidebarNode)?.scope }
 
+    /// A click on an action row (Recently Dragged Out): do it; the selection stays where it was.
+    @objc func clicked() {
+        guard outline.clickedRow >= 0, let n = outline.item(atRow: outline.clickedRow) as? SidebarNode, let a = n.action else { return }
+        a()
+    }
+
     func select(_ scope: Scope) {
         func find(_ nodes: [SidebarNode]) -> SidebarNode? {
             for n in nodes { if n.scope == scope { return n }; if let f = find(n.children) { return f } }
@@ -212,7 +237,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
     func outlineView(_ o: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? SidebarNode)?.isGroup ?? false }
     func outlineView(_ o: NSOutlineView, isGroupItem item: Any) -> Bool { (item as? SidebarNode)?.isGroup ?? false }
-    func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool { !((item as? SidebarNode)?.isGroup ?? true) }
+    func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        guard let n = item as? SidebarNode else { return false }
+        return !n.isGroup && n.action == nil
+    }
     func outlineView(_ o: NSOutlineView, shouldShowOutlineCellForItem item: Any) -> Bool { true }
 
     func outlineView(_ o: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {

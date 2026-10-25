@@ -263,6 +263,10 @@ final class JobsSection: NSView {
     private var rows: [String: JobRow] = [:]
     private var resizeObserver: NSObjectProtocol?
     static let maxRows = 4
+    /// Two or more jobs fold into their header line ("Running · 2 ›", Xcode's activity viewer): a click (or a job
+    /// chosen from the keyboard, ⌘K, the island) opens them, a line each. One job is its line.
+    private(set) var expanded = false
+    private var last: (jobs: [Job], store: ProjectStore, showProject: Bool)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -282,12 +286,20 @@ final class JobsSection: NSView {
         // a column the user resizes, or the list's layout switching: the rows follow the grid
         resizeObserver = NotificationCenter.default.addObserver(forName: NSTableView.columnDidResizeNotification, object: nil,
                                                                 queue: .main) { [weak self] _ in self?.regrid() }
+        header.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(toggle)))
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         isHidden = true
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit { resizeObserver.map(NotificationCenter.default.removeObserver) }
+
+    @objc func toggle() { setExpanded(!expanded) }
+    func setExpanded(_ on: Bool) {
+        guard on != expanded else { return }
+        expanded = on
+        if let l = last { set(l.jobs, store: l.store, showProject: l.showProject) }
+    }
 
     private func regrid() {
         for v in stack.arrangedSubviews { v.needsLayout = true; v.needsDisplay = true }
@@ -307,14 +319,30 @@ final class JobsSection: NSView {
     }
 
     /// The job the detail shows: its row stays highlighted.
-    var selected: String? { didSet { rows.forEach { $0.value.selected = $0.key == selected } } }
+    var selected: String? {
+        didSet {
+            if selected != nil, !expanded { setExpanded(true) }        // a job chosen while folded: show its line
+            rows.forEach { $0.value.selected = $0.key == selected }
+        }
+    }
 
     func set(_ jobs: [Job], store: ProjectStore, showProject: Bool = true) {
+        last = (jobs, store, showProject)
         isHidden = jobs.isEmpty
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !jobs.isEmpty else { return }
-        header.label.stringValue = Self.headerText(jobs)
-        setAccessibilityLabel(header.label.stringValue)
+        let folds = jobs.count > 1
+        let text = NSMutableAttributedString(string: Self.headerText(jobs), attributes: [.font: header.label.font!, .foregroundColor: NSColor.secondaryLabelColor])
+        if folds, let ch = Look.symbol(expanded ? "chevron.down" : "chevron.right", "", size: 9, weight: .semibold) {
+            let a = NSTextAttachment()
+            a.image = ch
+            a.bounds = NSRect(x: 0, y: 0, width: ch.size.width, height: ch.size.height)
+            text.append(NSAttributedString(string: "  "))
+            text.append(NSAttributedString(attachment: a))
+        }
+        header.label.attributedStringValue = text
+        header.toolTip = folds ? jobs.map { JobLook.title($0) }.joined(separator: "\n") : nil
+        setAccessibilityLabel(Self.headerText(jobs))
         stack.addArrangedSubview(header)
         header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         // what needs the user first: an agent waiting for an answer, then failures, then the rest by age
@@ -323,7 +351,7 @@ final class JobsSection: NSView {
             return rank(a) != rank(b) ? rank(a) < rank(b) : a.created > b.created
         }
         var keep: [String: JobRow] = [:]
-        for j in ordered.prefix(Self.maxRows) {
+        for j in ordered.prefix(folds && !expanded ? 0 : Self.maxRows) {
             let r = rows[j.id] ?? JobRow()
             r.set(j, project: showProject ? j.project.flatMap { store.project(id: $0) }?.name : nil)
             r.onClick = { [weak self] in self?.onSelect?(j.id) }
@@ -333,7 +361,7 @@ final class JobsSection: NSView {
             r.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         rows = keep
-        if jobs.count > Self.maxRows {
+        if (!folds || expanded), jobs.count > Self.maxRows {
             let more = GridLabel()
             more.label.stringValue = TP("main.jobs.more", jobs.count - Self.maxRows)
             more.label.font = .systemFont(ofSize: 11)

@@ -523,7 +523,7 @@ enum SelfTests {
             let c = MainWindowController.shared
             let w = arg.split(separator: " ").map(String.init)
             let n = w.count > 1 ? Int(w[1]) ?? 0 : 0
-            if w.first == "captures" { c.list.captures.set(count: n) } else { c.list.taken.set(count: n) }
+            if w.first == "captures" { c.list.captures.set(count: n) } else { c.sidebar.testTaken = n > 0 ? n : nil; c.sidebar.rebuild() }
             out(["captures": !c.list.captures.isHidden, "taken": !c.list.taken.isHidden])
         case "mainresponder":           // the main window's first responder (the list, the detail page, the sidebar…)
             let c = MainWindowController.shared
