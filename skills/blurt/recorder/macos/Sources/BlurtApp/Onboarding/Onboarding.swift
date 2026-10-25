@@ -693,7 +693,12 @@ final class Onboarding: NSObject, NSWindowDelegate {
         let host = NSHostingController(rootView: OnboardingView(m: m))
         host.sizingOptions = []         // the window keeps its size: centred at that size, not at zero
         w.contentViewController = host
-        w.setContentSize(NSSize(width: OnboardingModel.heroWidth + OnboardingModel.contentWidth, height: OnboardingModel.height))
+        // the content view sits under the transparent title bar, but the SwiftUI layout keeps out of it (safe area):
+        // the window is that much taller, so the whole layout — the footer's buttons included — fits inside it
+        let probe = NSRect(x: 0, y: 0, width: 100, height: 100)
+        let titleBar = NSWindow.frameRect(forContentRect: probe, styleMask: [.titled, .closable]).height - probe.height
+        w.setContentSize(NSSize(width: OnboardingModel.heroWidth + OnboardingModel.contentWidth,
+                                height: OnboardingModel.height + titleBar))
         w.center()
         window = w
         model = m
