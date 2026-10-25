@@ -209,9 +209,12 @@ private struct StageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 4)
-                if let c = caption { Text(c).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.tertiary) }
+                if let c = caption {
+                    // the time keeps its line: the label gives way
+                    Text(c).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.tertiary).lineLimit(1).fixedSize()
+                }
             }
             if let t = text, !t.isEmpty {
                 Text(t).font(.system(size: 13)).lineSpacing(2).textSelection(.enabled)
@@ -397,20 +400,22 @@ struct LabWorkbench: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true) }
+                // under the text, not beside it: the text has the card's width (it used to wrap in a narrow column)
+                HStack(spacing: 8) {
+                    Picker(selection: Binding(get: { lab.mic }, set: { lab.setMic($0) })) {
+                        Text(T("dictation.lab.mic.default")).tag("")
+                        ForEach(lab.mics, id: \.self) { Text($0).tag($0) }
+                    } label: { labGlyph(.mic, 11) }
+                    .frame(maxWidth: 220)
+                    .disabled(lab.phase != .idle)
+                    .help(T("dictation.lab.mic.tip"))
+                    Button { lab.importAudio() } label: { Text(T("dictation.lab.import")) }
+                        .disabled(lab.phase != .idle)
+                }
+                .controlSize(.small)
+                .padding(.top, 4)
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 6) {
-                Picker(selection: Binding(get: { lab.mic }, set: { lab.setMic($0) })) {
-                    Text(T("dictation.lab.mic.default")).tag("")
-                    ForEach(lab.mics, id: \.self) { Text($0).tag($0) }
-                } label: { labGlyph(.mic, 11) }
-                .frame(maxWidth: 220)
-                .disabled(lab.phase != .idle)
-                .help(T("dictation.lab.mic.tip"))
-                Button { lab.importAudio() } label: { Text(T("dictation.lab.import")) }
-                    .controlSize(.small).disabled(lab.phase != .idle)
-            }
-            .fixedSize()            // the mic and Import keep their width; the status text wraps instead
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(cardFill))

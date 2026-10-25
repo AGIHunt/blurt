@@ -56,6 +56,16 @@ extension App {
                                                       secureInput: kv["secure"] == "1", accessibility: kv["ax"] != "0")
             emit(["event": "dictation_send_policy", "decision": "\(decision)"])
         case "cancel": d.cancel()
+        case "front":               // front NAME: the app in front as the paste check sees it (a slow take's user moved on)
+            d.testFront = rest.isEmpty ? "test-pad" : rest
+            emit(["event": "dictation_test_front", "front": d.testFront])
+        case "models":              // models missing|installed|-: what dictation-models said (- = ask it again)
+            if rest == "-" { d.refreshSpeechModels() } else {
+                let ok = rest != "missing"
+                d.setSpeechModels(["selected": "test-asr", "recommended": "test-asr",
+                                   "models": [["id": "test-asr", "installed": ok]]])
+            }
+        case "retry": d.retry(rest, via: "test")    // retry ID: a failed take again (the island's / history's Retry)
         case "apply":
             d.apply()
             d.refreshPolishModel { emit(["event": "dictation_polish_model", "model": d.polishModel ?? NSNull()]) }
@@ -91,7 +101,8 @@ extension App {
         case "nudge": d.nudge(rest.isEmpty ? "test" : rest)     // the island's reminder, through its once-a-day rule
         case "setup": d.openSetup()                             // what "Turn On Dictation…" does
         case "status":
-            emit(["event": "dictation_status", "phase": d.phase.rawValue, "tap": d.tapInstalled, "test_mode": DictationInsert.testMode, "polish_model": d.polishModel ?? NSNull(),
+            emit(["event": "dictation_status", "phase": d.phase.rawValue, "pending": d.queue.ids, "inserting": d.inserting,
+                  "speech_model_missing": d.speechModelMissing, "failed": Array(d.failedTakes.keys), "tap": d.tapInstalled, "test_mode": DictationInsert.testMode, "polish_model": d.polishModel ?? NSNull(),
                   "needs_setup": d.needsSetup, "key": Dictation.key.rawValue, "asked_version": Config.shared["app.dictation_asked_version"] ?? NSNull(),
                   "nudged_at": Config.shared["app.dictation_nudged_at"] ?? NSNull(), "prompted_flag": Config.shared["app.dictation_prompted"] ?? NSNull(),
                   "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
@@ -107,8 +118,10 @@ extension App {
             switch a.first ?? "status" {
             case "toggle": d.toggleStyle(via: a.count > 1 && a[1] == "island" ? .island : .shift)
             case "reformat": d.reformatLast(via: "test")
-            case "chip": d.reformat(to: .structured, action: "reformat", via: "chip")
-            case "undo": if let lp = d.lastPaste { d.reformat(to: lp.original, action: "undo", via: "test") }
+            case "chip": if let lp = d.lastPaste { d.reformat(lp, to: .structured, action: "reformat", via: "chip") }
+            case "undo": if let lp = d.lastPaste { d.reformat(lp, to: lp.original, action: "undo", via: "test") }
+            // click: the island's current toast's button, as a click on it (the chip / Undo of the take it was for)
+            case "click": if let t = island.currentToast { island.dismissToast(); t.action?() }
             case "set" where a.count > 2:
                 var c = Dictation.styleConfig
                 let st = DictationStyle(rawValue: a[2])

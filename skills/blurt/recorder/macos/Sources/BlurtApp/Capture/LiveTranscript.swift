@@ -5,7 +5,9 @@
 //    transcripts (committed, 92 % white) comes the piece still being said, decoded about once a second (pending,
 //    60 %: provisional until its piece's own transcript replaces it). Seeing it is how the user decides between
 //    fixing it by hand and double-tapping to send. A take's panel doesn't jump: it keeps the height it reached, and
-//    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor).
+//    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor). When the take stops and its text
+//    goes in, the panel shows that text — the polished or structured version actually typed, not the transcript —
+//    for about 1.5 s (`showTyped`): the moment to check before a double tap sends it.
 //
 //  • Settings → General → "Show text while I talk" (边说边显示文字; record.live_text, on).
 //  • It shows nothing until there are words (the island already says it is listening), follows the island's bottom
@@ -87,6 +89,23 @@ final class LiveTranscript {
         emit(["event": "live_text", "source": source?.rawValue ?? "", "chars": c.count + q.count, "pending": q.count,
               "session": s])
         if !shown { show() } else { place(animated: true) }
+    }
+
+    /// Dictation's text went in: the panel shows what was actually typed (polished, structured — what a double tap
+    /// now sends) in place of the transcript, for `seconds`, then goes. Only while it is still this take's panel.
+    func showTyped(_ typed: String, session s: Int, seconds: Double) {
+        guard s == session, LiveTranscript.enabled else { return }
+        let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return end(session: s) }
+        view.setListening(false)
+        if t != text || !pending.isEmpty {
+            text = t
+            pending = ""
+            view.show(committed: t, pending: "", animated: !reduceMotion)
+        }
+        emit(["event": "live_typed", "chars": t.count, "session": s, "seconds": seconds])
+        if !shown { show() } else { place(animated: true) }
+        end(session: s, after: seconds)
     }
 
     /// The take is over: the panel goes after `after` seconds (now: at once).

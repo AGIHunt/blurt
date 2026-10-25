@@ -7,9 +7,11 @@
 //    dropped that the guard put back), …}
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
 //   {"op":"correct","id","text","t"}  the user's corrected text (the Dictation page's "Save correction"); "corrected"
-//                                      on a rewritten line
-//   {"op":"style","id","action","from","to","replaced","t"}  reformat-last, its undo, or a list the user took apart
-//                                      (action reformat | undo | revert); "reformats" on a rewritten line
+//                                      on a rewritten line; "text": null takes it back (⌘Z)
+//   {"op":"style","id","action","from","to","replaced","text","before","t"}  reformat-last, its undo, or a list the
+//                                      user took apart (action reformat | undo | revert); "reformats" on a rewritten
+//                                      line. Replaced in the field: "text" becomes the entry's text (what is there
+//                                      now), the first version is kept as `typedFirst`.
 // Since the styles work: "style", "style_source", "style_router" (DictationStyleRecord: the router's inputs and decision).
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio), and any recording there
@@ -58,6 +60,8 @@ public struct DictationEntry: Identifiable, Hashable {
     public var finalText: String { corrected ?? text }
     /// the style the take was typed in, why, and what reformat-last did with it (nil: an older entry)
     public var style: DictationStyleRecord?
+    /// what was typed first, when reformat-last replaced it in the field since (`text` is then the current version)
+    public var typedFirst: String?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -159,15 +163,23 @@ public final class DictationHistory {
         let gone = load().filter { ids.contains($0.id) }
         appendLine(["op": "delete", "ids": ids, "t": DictationEntry.iso.string(from: Date())])
         for e in gone { if let a = e.audio { try? FileManager.default.removeItem(at: resolve(a)) } }
+        NotificationCenter.default.post(name: DictationHistory.changed, object: self, userInfo: ["ids": ids])
     }
+
+    /// Posted after `delete` (userInfo "ids") and `clear` (no ids: everything): the app forgets what it kept of
+    /// those takes (reformat-last's last paste, the after-typing watch).
+    public static let changed = Notification.Name("dev.blurt.dictation.history.changed")
+    /// The takes still listening or on their way (the app sets it): `clear` never deletes their audio under them.
+    public static var liveIDs: () -> [String] = { [] }
 
     public func markItem(_ id: String, item: String, uid: String) {
         appendLine(["op": "item", "id": id, "item": item, "uid": uid, "t": DictationEntry.iso.string(from: Date())])
     }
 
-    /// The user corrected what was typed (the Dictation page): the entry keeps both, `text` and `corrected`.
-    public func correct(_ id: String, text: String) {
-        appendLine(["op": "correct", "id": id, "text": text, "t": DictationEntry.iso.string(from: Date())])
+    /// The user corrected what was typed (the Dictation page): the entry keeps both, `text` and `corrected`. nil: the
+    /// correction taken back (⌘Z) — the entry is as typed again.
+    public func correct(_ id: String, text: String?) {
+        appendLine(["op": "correct", "id": id, "text": text ?? NSNull(), "t": DictationEntry.iso.string(from: Date())])
     }
 
     /// Reformat-last (or its undo, or a list taken apart in the field): folded into the entry's `reformats`.
@@ -178,11 +190,18 @@ public final class DictationHistory {
         appendLine(o)
     }
 
-    /// Everything goes: the file is emptied and the audio removed.
+    /// Everything goes: the file is emptied and the audio removed — except the audio of a take still listening or on
+    /// its way (`liveIDs`: its wav and pieces), which would otherwise end as "nothing heard".
     public func clear() {
-        lock.lock(); defer { lock.unlock() }
-        try? FileManager.default.removeItem(at: audioDir)
+        let live = DictationHistory.liveIDs()
+        lock.lock()
+        let fm = FileManager.default
+        for n in (try? fm.contentsOfDirectory(atPath: audioDir.path)) ?? [] where !live.contains(where: { n.hasPrefix($0) }) {
+            try? fm.removeItem(at: audioDir.appendingPathComponent(n))
+        }
         try? Data().write(to: url, options: .atomic)
+        lock.unlock()
+        NotificationCenter.default.post(name: DictationHistory.changed, object: self)
     }
 
     private func appendLine(_ o: [String: Any]) {
@@ -216,11 +235,17 @@ public final class DictationHistory {
                 order.removeAll { gone.contains($0) }
             case "clear": byID = [:]; order = []
             case "correct":
-                if let i = o["id"] as? String, var e = byID[i], let t = o["text"] as? String { e.corrected = t; byID[i] = e }
+                if let i = o["id"] as? String, var e = byID[i] { e.corrected = o["text"] as? String; byID[i] = e }
             case "style":
                 if let i = o["id"] as? String, var e = byID[i], let r = DictationReformatRecord(json: o) {
                     if e.style == nil { e.style = DictationStyleRecord(style: "light", source: "default", category: "other", base: "light") }
                     e.style?.reformats.append(r)
+                    // replaced in the field: the entry's text is what is there now (the first version stays in
+                    // `typedFirst`)
+                    if r.replaced, let t = r.text {
+                        if e.typedFirst == nil { e.typedFirst = e.text }
+                        e.text = t
+                    }
                     byID[i] = e
                 }
             case "item":

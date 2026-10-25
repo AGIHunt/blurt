@@ -11,13 +11,13 @@ video, so any backend (even ones without timestamps) works.
                                                      while it was made (<session>/live/); --force redoes it
   transcribe.py run    <session dir>                 a shots session (snap mode): transcribe each voice note
                                                      shots/NNN.wav into its shots.jsonl record ("said")
-  transcribe.py note   <wav> [--language auto] [--dictation] [--vocab]
+  transcribe.py note   <wav> [--language auto] [--dictation] [--vocab] [--no-server] [--no-download]
                                                      one voice note, fast path → {"ok","text","language","ms","model"}
                                                      (uses a running `serve` when there is one). --dictation: the
                                                      dictation model (record.dictation.asr_model); --vocab: bias it
                                                      toward the words (dictation_vocab.py) where the model can be
                                                      biased; they are hints, the text is as heard → + "asr_text","biased"
-  transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 600] [--parent PID]   keep the
+  transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--no-download] [--idle 600] [--parent PID]   keep the
                                                      voice-note (or dictation) model warm; ends after --idle s unused
                                                      (the memory goes back), with the --parent app, or on "exit".
                                                      A request with "interim": true (dictation's live text) is
@@ -56,6 +56,7 @@ Backends that need a package re-run themselves with `uv run --with <package>` wh
 from __future__ import annotations
 
 import argparse
+import contextlib
 import base64
 import io
 import json
@@ -2094,7 +2095,23 @@ def _server_call(req: dict, timeout: float = 120) -> dict | None:
         return None
 
 
+@contextlib.contextmanager
+def no_download(on: bool):
+    """While on: a model that isn't on this Mac is an error (model_missing), never a download — a dictation never waits
+    for one (`note --no-download`, `serve --no-download` for its preload, a request's "no_download")."""
+    if not on or os.environ.get("BLURT_NO_DOWNLOAD"):
+        yield
+        return
+    os.environ["BLURT_NO_DOWNLOAD"] = "1"
+    try:
+        yield
+    finally:
+        os.environ.pop("BLURT_NO_DOWNLOAD", None)
+
+
 def cmd_note(a):
+    if getattr(a, "no_download", False):
+        os.environ["BLURT_NO_DOWNLOAD"] = "1"
     wav = Path(a.wav).resolve()
     if not wav.exists():
         raise Fail(f"{wav} not found", "not_found")
@@ -2102,7 +2119,7 @@ def cmd_note(a):
     purpose = "dictation" if a.dictation else None
     if not a.no_server:
         r = _server_call({"cmd": "note", "wav": str(wav), "language": a.language, "model_id": a.model_id,
-                          "vocab": vocab, "purpose": purpose})
+                          "vocab": vocab, "purpose": purpose, "no_download": bool(getattr(a, "no_download", False))})
         if r is not None:
             if not r.get("ok"):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
@@ -2135,7 +2152,14 @@ def cmd_serve(a):
         mid = getattr(a, "model_id", None)
         if not mid and getattr(a, "purpose", None) == "dictation":
             mid = dictation_models()["selected"]
-        eng.load(None, mid)
+        # --no-download: a model that isn't here stays unloaded (the server still answers: model_missing)
+        try:
+            with no_download(getattr(a, "no_download", False)):
+                eng.load(None, mid)
+        except Fail as e:
+            if e.code != "model_missing":
+                raise
+            serve_said(f"serve: preload skipped ({e})")
     emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
     last = time.time()
     uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
@@ -2174,14 +2198,16 @@ def cmd_serve(a):
                             del uses[:-50]
                         # an interim decode looks for a waiting connection (a final piece, anything) between steps
                         stop = (lambda: bool(_select.select([srv], [], [], 0)[0])) if interim else None
-                        resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
-                                        req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop)
+                        with no_download(bool(req.get("no_download"))):
+                            resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
+                                            req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop)
                         if interim:
                             resp["interim"] = True
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
                         last = time.time()
                         mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)
-                        eng.load(None, mid)
+                        with no_download(bool(req.get("no_download")) or req.get("purpose") == "dictation"):
+                            eng.load(None, mid)
                         eng.last = time.time()
                         resp = {"ok": True, "model": eng.model_id}
                     elif req.get("cmd") == "exit":       # the app is quitting (or someone wants the memory back now)
@@ -2596,10 +2622,12 @@ def main():
     n.add_argument("--no-server", action="store_true", help="always transcribe in this process")
     n.add_argument("--dictation", action="store_true", help="dictation's model (record.dictation.asr_model)")
     n.add_argument("--vocab", action="store_true", help="the dictation words: bias the model toward them (hints only)")
+    n.add_argument("--no-download", action="store_true", help="a model that isn't here is an error (model_missing), never a download")
     sv = sub.add_parser("serve")
     sv.add_argument("--preload", action="store_true", help="load the voice-note model now (e.g. when recording starts)")
     sv.add_argument("--model-id", dest="model_id", metavar="ID", help="preload this model instead")
     sv.add_argument("--purpose", choices=["note", "dictation"], help="dictation: preload dictation's model")
+    sv.add_argument("--no-download", action="store_true", help="the preload never downloads (a missing model stays unloaded)")
     sv.add_argument("--idle", type=float, default=SERVE_IDLE, help="end after the model went unused this many seconds")
     sv.add_argument("--exit-after", type=float, default=1800, help="with no model loaded: end after this many seconds without a request")
     sv.add_argument("--parent", type=int, help="end when this process (the app that started the server) is gone")

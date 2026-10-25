@@ -3,14 +3,22 @@
 //
 //  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
 //    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
-//    to talk. Esc cancels. With Fn and Accessibility, the tap is an active filter that keeps the Fn press from macOS.
+//    to talk. Esc cancels — while listening, and while the text is still on its way (it is then never pasted). With Fn
+//    and Accessibility, the tap is an active filter that keeps the Fn press from macOS.
 //    A double tap presses Return (record.dictation.double_tap_send, on; the window is macOS's double-click interval,
 //    0.3–0.5 s): idle, it cancels the dictation its first tap started and sends; right after a dictation stopped
-//    (a tap, or letting go of push-to-talk and then a double tap), Return goes in once the paste has landed. While a
-//    take is still being transcribed, polished or pasted the trigger is told (`trigger.busy`): a press starts nothing
-//    and never cancels that take; two taps then still queue Return after the paste. A slightly slow double tap (the
-//    stop tap within 0.8 s of the start, nothing heard) sends instead of saying "nothing heard". A start the app
-//    refuses (a recording has the mic, the mic failed) resets the trigger but keeps the tap, so a second one sends.
+//    (a tap, or letting go of push-to-talk and then a double tap), Return goes in once the paste has landed. So there
+//    are two ways to send: tap to stop → check the words → double-tap; or double-tap instead of the stop tap. A tap
+//    while the last take is still being transcribed, polished or pasted starts the next take once the double-tap
+//    window has passed (the trigger is told `pending`); the takes are pasted in the order they were said
+//    (DictationTakes.swift). A slightly slow double tap (the stop tap within 0.8 s of the start, nothing heard) sends
+//    instead of saying "nothing heard". A start the app refuses (a recording has the mic, the mic failed, no speech
+//    model) resets the trigger but keeps the tap, so a second one sends.
+//  • no speech model (`transcribe.py dictation-models`, read at launch and whenever Settings reloads it): the key
+//    doesn't listen; the island says so, and its button opens Settings → Speech → Dictation with the download started
+//    (`Dictation.getSpeechModel`). A dictation never downloads a model itself (`--no-download`, `no_download`).
+//  • a hands-free take nobody stops: "still listening" after 20 s without speech, the ear counts down from 4:30, and
+//    the 5-minute limit says so when it ends the take (BlurtCore's DictationRunaway); the tap right after is its stop.
 //  • the key needs Accessibility (the Fn filter, or the monitor) or Input Monitoring (the listen-only tap). Until it
 //    is heard (BlurtCore's DictationAccess decides): the menu-bar menu's top row says "Turn On Dictation…", the
 //    island reminds about once a day (launch, the voice-note key, Settings), and both start the permission guide
@@ -31,9 +39,12 @@
 //    DictationStream.onLive): the finished pieces' transcripts, then — quieter, provisional — the piece still being
 //    said, decoded about once a second by the warm speech server as an interim request that never delays a final
 //    piece (BlurtCore's DictationLiveDecode; record.dictation.live_partial, unset = on from 16 GB). Out of the way of
-//    the caret (read once at the start), gone once the text is in.
-//  • insert: DictationInsert (pasteboard → ⌘V into the app in front, DictationPastePolicy → pasteboard back).
-//    History: DictationHistory (history.jsonl, with asr / polish / load / total ms).
+//    the caret (read once at the start). After the stop it shows the text actually typed (polished, structured) for
+//    about 1.5 s — what a double tap would now send — then goes.
+//  • insert: DictationInsert (pasteboard → ⌘V into the app in front, DictationPastePolicy → pasteboard back) — only
+//    into the app the take started in; when the user moved on, the text is copied ("Copied — paste with ⌘V").
+//    History: DictationHistory (history.jsonl, with asr / polish / load / total ms). A take whose speech recognition
+//    failed keeps its audio and a history row, and the island says what failed, with Retry.
 //  • words (DictationVocabulary, vocabulary.json): sent with every request as hints, never rewrites — the speech
 //    model is biased toward them where it can be (transcribe.py), polish gets them as spelling hints with
 //    the text around the cursor (DictationContext, read at the start, never stored). After the text goes in, the
@@ -53,31 +64,61 @@ final class Dictation {
     static let shared = Dictation()
 
     enum Phase: String { case idle, listening, transcribing, polishing }
+    /// What the island shows: listening while a take listens, else the stage of the oldest take still on its way.
     private(set) var phase: Phase = .idle {
         didSet {
             if phase != oldValue { island.dictationChanged() }
-            // the words shown while talking go a moment after the text is in (or at once when nothing was kept)
-            if phase == .idle, oldValue != .idle { LiveTranscript.shared.end(session: liveSession, after: 0.6) }
             updateShiftFilter()
-            updateTriggerBusy()
         }
     }
     private(set) var levels: [Float] = []
-    private(set) var lastResult: [String: Any]?
+    var lastResult: [String: Any]?
     var busy: Bool { phase != .idle }
 
-    private var trigger = DictationTrigger()
+    var trigger = DictationTrigger()
     private let keys = DictationKeys()
     private var voice: NoteVoice?
     private var wav: URL?
+    /// a take is listening (the mic is this take's)
+    private(set) var listening = false
     private(set) var entryID = ""
     private var startedAt = Date()
     private var heardSpeech = false
+    /// the hands-free take nobody stops (BlurtCore's DictationRunaway)
+    private var runaway = DictationRunaway()
+
+    // the takes that stopped and are on their way to the cursor (DictationTakes.swift)
+    var takes: [String: DictationTake] = [:]
+    var queue = DictationPasteQueue<String>()
+    /// ⌥⇧L came while a paste was under way: run once it is in (it is about that take)
+    var reformatAfterPaste: String?
+    /// takes whose speech recognition failed, kept (with their audio) for Retry — the last few
+    var failedTakes: [String: DictationTake] = [:]
+    /// when Return was last pressed (a hint about a missed press doesn't come after a send)
+    var lastSendAt: CFTimeInterval = 0
+    /// Settings' model list (DictationModels) → `speechModels`; the history being cleared or edited
+    var observers: [Any] = []
+    /// `transcribe.py dictation-models`: the selected model, whether it is on this Mac, the recommended one (nil: not
+    /// known yet — the key then listens as before)
+    var speechModels: (selected: String, installed: Bool, recommended: String, recommendedInstalled: Bool)?
+    /// tests (`dictation front NAME`): the app in front as far as the paste check knows (the pad is always the field)
+    var testFront = "test-pad"
+
+    /// The stage changed, a take started or stopped, or one is in or gone: the island's phase and the trigger's
+    /// `pending` follow.
+    func updatePhase() {
+        let first = queue.ids.first { $0 != queue.delivering }.flatMap { takes[$0]?.stage }
+        phase = listening ? .listening : first ?? .idle
+        trigger.pending = !queue.isEmpty || inserting
+        updateShiftFilter()
+    }
     /// pieces transcribed and polished while the user talks (DictationStream)
     private var stream: DictationStream?
     /// the mic was opened on the key-down (`arm`), before the trigger decided: kept by `start`, closed when the press
     /// turns out to be something else
     private var precaptured = false
+    /// the mic is open for a press that hasn't started yet (its audio file must not be deleted under it)
+    var precapturing: Bool { precaptured }
     /// when the key went down (the mic's start latency is measured from here)
     private var armedAt: CFTimeInterval = 0
     /// audio is arriving: the island says "listening" only from here
@@ -89,6 +130,8 @@ final class Dictation {
     /// background test app's timers are coalesced: a wall-clock stop came 0.2–1.8 s late, later when the app was idle)
     var testStopAfter: Double?
     private var front: NSRunningApplication?
+    /// what "the same app" is compared by at paste time: the front app's pid at the key-down (tests: `testFront`)
+    private var frontKey = ""
     private var holdTimer: Timer?
     private var escRegistered = false
     private var polishServer: Process?
@@ -99,15 +142,12 @@ final class Dictation {
     private var liveSession = 0
     /// the text around the cursor when this dictation started (polish's hints; never stored unless debugging)
     private var context: DictationContext?
-    /// a double tap came while the text was still on its way: Return once it has been pasted
-    private var sendAfterPaste = false
     /// the paste is under way (⌘V posted, the clipboard not back yet)
-    private var inserting = false { didSet { updateTriggerBusy() } }
+    var inserting = false { didSet { updatePhase() } }
 
-    /// The trigger knows when the last take is still on its way (transcribing, polishing, pasting): a press then
-    /// starts nothing, and a tap can't cancel that take.
-    private func updateTriggerBusy() {
-        trigger.busy = phase == .transcribing || phase == .polishing || inserting
+    /// The app in front now, as the paste check compares it with the take's start.
+    var currentFrontKey: String {
+        DictationInsert.testMode ? testFront : NSWorkspace.shared.frontmostApplication.map { "\($0.processIdentifier)" } ?? ""
     }
 
     // the style of this take (DictationStyles.swift; docs/design/dictation-styles.md)
@@ -126,6 +166,8 @@ final class Dictation {
     var listeningStyle: DictationStyle? { phase == .listening ? styleDecision?.style : nil }
 
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
+    /// The right ear's clock while listening: the time so far, from 4:30 the time left ("−0:29") before the limit.
+    var earClock: String { DictationRunaway.clock(elapsed: elapsed).text }
 
     // MARK: settings (record.dictation.*)
 
@@ -189,7 +231,10 @@ final class Dictation {
         if Config.shared["app.dictation_prompted"] != nil { Config.shared.set("app.dictation_prompted", nil) }
         apply()
         refreshPolishModel()
+        refreshSpeechModels()
+        watchModelChanges()
         seedVocabulary()
+        watchHistoryClear()
         DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.prewarm("launch") }
@@ -206,18 +251,37 @@ final class Dictation {
         let skip: String? = !Dictation.enabled ? "off" : !keys.installed ? "key_not_heard" : gb < 15 ? "memory" :
             WarmSpawn.testNoServers ? "test" : phase != .idle ? "busy" : nil
         if let s = skip { return emit(["event": "dictation_prewarm", "why": why, "skipped": s]) }
+        refreshSpeechModels { [weak self] in
+            guard let self = self, let m = self.speechModels, m.installed, Dictation.enabled else {
+                return emit(["event": "dictation_prewarm", "why": why, "skipped": "not_installed",
+                             "model": self?.speechModels?.selected ?? NSNull()])
+            }
+            VoiceInput.warmSpeechModel(dictation: true)
+            emit(["event": "dictation_prewarm", "why": why, "model": m.selected])
+        }
+    }
+
+    /// `transcribe.py dictation-models` → `speechModels` (off the main thread; `then` on the main thread).
+    func refreshSpeechModels(then: (() -> Void)? = nil) {
         Task.detached(priority: .utility) {
             let r = try? await ScriptRunner.shared.json("transcribe.py", ["dictation-models"], timeout: 60)
-            let selected = r?["selected"] as? String
-            let rows = r?["models"] as? [[String: Any]] ?? []
-            let installed = rows.contains { $0["id"] as? String == selected && $0["installed"] as? Bool == true }
             await MainActor.run {
-                guard installed, Dictation.enabled else {
-                    return emit(["event": "dictation_prewarm", "why": why, "skipped": "not_installed", "model": selected ?? NSNull()])
-                }
-                VoiceInput.warmSpeechModel(dictation: true)
-                emit(["event": "dictation_prewarm", "why": why, "model": selected ?? NSNull()])
+                if let r = r { self.setSpeechModels(r) }
+                then?()
             }
+        }
+    }
+
+    /// The dictation-models answer (the CLI's, or Settings' when it reloads it).
+    func setSpeechModels(_ r: [String: Any]) {
+        guard let selected = r["selected"] as? String else { return }
+        let rows = r["models"] as? [[String: Any]] ?? []
+        let rec = r["recommended"] as? String ?? selected
+        func installed(_ id: String) -> Bool { rows.contains { $0["id"] as? String == id && $0["installed"] as? Bool == true } }
+        let was = speechModels?.installed
+        speechModels = (selected, installed(selected), rec, installed(rec))
+        if was != speechModels?.installed {
+            emit(["event": "dictation_models", "selected": selected, "installed": installed(selected), "recommended": rec])
         }
     }
 
@@ -460,14 +524,16 @@ final class Dictation {
             case .arm: arm()
             case .start: start()
             case .stop: stop()
-            case .cancel: cancel()
+            case .cancel: cancel(quietly: outs.contains(.send))
             case .send: send()
             case .style: toggleStyle(via: wasIsland ? .island : .shift)
             }
         }
         // the press became a shortcut (Fn-←, ⌥A), a click joined in, or it was let go too early / too late: the mic
         // opened on the key-down closes again, and nothing is kept
-        if precaptured, phase == .idle, !trigger.armedDown { dropPrecapture() }
+        if precaptured, !listening, !trigger.armedDown { dropPrecapture() }
+        // a press this mode doesn't use (a tap in hold mode, a long press in tap mode): say how it starts
+        if let m = trigger.miss { missedPress(m) }
         updateShiftFilter()
         scheduleHoldTick()
     }
@@ -477,7 +543,7 @@ final class Dictation {
     /// what it said — to check a real double tap on the user's own keyboard. Only the dictation key's own changes carry
     /// their flags; any other key is "key" (no key code: this is not a key log).
     private func trace(_ e: DictationTrigger.Event, _ outs: [DictationTrigger.Output]) {
-        var o: [String: Any] = ["event": "dictation_keytrace", "out": outs.map { "\($0)" }, "busy": trigger.busy,
+        var o: [String: Any] = ["event": "dictation_keytrace", "out": outs.map { "\($0)" }, "pending": trigger.pending,
                                 "active": trigger.active, "phase": phase.rawValue]
         let t: Double
         switch e {
@@ -497,7 +563,7 @@ final class Dictation {
     /// While a take listens (or its key is down), a lone ⇧ is the style toggle: the Fn filter keeps it from the app
     /// in front too (an input method would switch between Chinese and English on it).
     func updateShiftFilter() {
-        keys.swallowShift = trigger.active || trigger.armedDown || phase == .listening
+        keys.swallowShift = trigger.active || trigger.armedDown || listening
     }
 
     private func scheduleHoldTick() {
@@ -513,16 +579,22 @@ final class Dictation {
     /// and get the models loaded while the user starts talking.
     private func arm() {
         armedAt = CACurrentMediaTime()
+        // no speech model: nothing to listen for (the start says so) — and nothing to warm, nothing downloaded
+        guard !speechModelMissing else { return }
         warm()
-        guard Dictation.precapture, phase == .idle, voice == nil, canListen(toast: false) else { return }
+        guard Dictation.precapture, !listening, voice == nil, canListen(toast: false) else { return }
         precaptured = true
         beginCapture()
     }
+
+    /// The speech model dictation would use isn't on this Mac (known only once `dictation-models` has answered).
+    var speechModelMissing: Bool { speechModels.map { !$0.installed } ?? false }
 
     /// Key went down alone: get the models loaded while the user starts talking. A server that isn't running is
     /// started offline first (no package index lookup: `uv run` checking PyPI after its cache expired took 13 s here,
     /// which is how a cold polish server missed a 19 s dictation); online only if that fails.
     func warm() {
+        guard !speechModelMissing else { return }
         VoiceInput.warmSpeechModel(dictation: true)
         guard Dictation.polishOn, polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
@@ -536,7 +608,7 @@ final class Dictation {
 
     /// Also the menu's "Start Dictation" (and the test hook): the same as a tap.
     func toggle() {
-        if phase == .listening { trigger.reset(active: false); stop() } else if phase == .idle {
+        if listening { trigger.reset(active: false); stop() } else {
             armedAt = CACurrentMediaTime()
             warm(); trigger.reset(active: true); start()
         }
@@ -558,6 +630,8 @@ final class Dictation {
     /// The mic (or the test wav) → the wav file and the stream. On the key-down (pre-capture) or at the start.
     private func beginCapture() {
         front = NSWorkspace.shared.frontmostApplication
+        frontKey = currentFrontKey
+        runaway = DictationRunaway()
         startedAt = Date()
         entryID = DictationHistory.newID(startedAt)
         let url = DictationHistory.shared.audioDir.appendingPathComponent("\(entryID).wav")
@@ -579,8 +653,15 @@ final class Dictation {
         v.onFirstAudio = { [weak self] in self?.micStarted(v) }
         v.onEnd = { [weak self] e in
             guard let self = self, self.voice === v else { return }
-            self.trigger.reset(active: false)
-            if self.phase != .listening { return self.dropPrecapture() }
+            if !self.listening { self.trigger.reset(active: false); return self.dropPrecapture() }
+            if e == .maxed {
+                // the 5-minute limit: said, and the user's next tap (meant as the stop) doesn't start a new take
+                self.trigger.endedByItself(at: CACurrentMediaTime())
+                self.toast("dictation.toast.limit", seconds: 4)
+                emit(["event": "dictation_limit", "id": self.entryID, "seconds": DictationRunaway.limit])
+            } else {
+                self.trigger.reset(active: false)
+            }
             if e == .noSpeech { self.discard(quietly: false) } else { self.finish(ended: true) }
         }
         // the style: the app in front decides the base now (verbatim skips polish for the whole take); ⇧ or the
@@ -602,10 +683,11 @@ final class Dictation {
         testStopAfter = nil
         v.onSamples = { [weak s, weak v, weak self] x in
             s?.append(x)
+            if let self = self, let v = v, self.voice === v, self.listening { self.watchRunaway(v) }
             // tests: the release at that point of the audio, after this buffer (as a key-up would)
             if let t = stopAt, let v = v, v.elapsed >= t {
                 DispatchQueue.main.async {
-                    guard let self = self, self.voice === v, self.phase == .listening else { return }
+                    guard let self = self, self.voice === v, self.listening else { return }
                     self.trigger.reset(active: false)
                     self.stop()
                 }
@@ -640,7 +722,7 @@ final class Dictation {
         let ms = Int((CACurrentMediaTime() - armedAt) * 1000)
         emit(["event": "dictation_mic_live", "id": entryID, "from_key_ms": ms, "from_open_ms": Int((v.firstAudioAfter ?? 0) * 1000),
               "precaptured": precaptured, "builtin_mic": v.builtInMic])
-        if phase == .listening {
+        if listening {
             island.dictationChanged()
             if Dictation.startSound, (NSApp.delegate as? App)?.rec == nil { NSSound(named: "Tink")?.play() }
         }
@@ -648,7 +730,7 @@ final class Dictation {
 
     /// A pre-capture the trigger didn't turn into a dictation: closed, nothing kept.
     private func dropPrecapture() {
-        guard precaptured, phase == .idle else { return }
+        guard precaptured, !listening else { return }
         precaptured = false
         voice?.stop(keep: false)
         voice = nil
@@ -672,11 +754,18 @@ final class Dictation {
     }
 
     private func start() {
-        // the trigger never asks while a take is on its way (`busy`); should it, it must not think it is dictating
-        guard phase == .idle else {
+        // one take listens at a time (takes still on their way don't stop the next one from starting)
+        guard !listening else {
             trigger.reset(active: false, keepTap: true)
             emit(["event": "dictation_start_refused", "phase": phase.rawValue])
             return
+        }
+        // no speech model: say so (with the way to get one) instead of listening to words that can't be recognised
+        guard !speechModelMissing else {
+            trigger.reset(active: false, keepTap: true)
+            dropPrecapture()
+            emit(["event": "dictation_start_refused", "why": "no_model", "model": speechModels?.selected ?? NSNull()])
+            return noSpeechModel()
         }
         guard canListen(toast: true) else {
             trigger.reset(active: false, keepTap: true)      // a second tap still sends: Return needs no mic
@@ -688,7 +777,9 @@ final class Dictation {
         if !adopted { beginCapture() }
         voice?.noSpeechTimeout = trigger.pushToTalk ? .infinity : 30     // push-to-talk ends when the key comes up
         if trigger.startShift { explicitStyle = (.structured, .chord); routeStyle() }      // Fn+⇧: start in Structured
-        phase = .listening
+        listening = true
+        island.dropToasts(key: Dictation.takeToastKey)      // the last take's Undo / list chip: not this take's
+        updatePhase()
         captureContext()
         readCaret()
         if !keys.installed {        // without the tap, Esc comes as a Carbon hotkey (as for the voice note)
@@ -697,7 +788,7 @@ final class Dictation {
         }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
-              "precaptured": adopted, "mic_live": micLive, "style": styleDecision?.style.rawValue ?? "light",
+              "precaptured": adopted, "mic_live": micLive, "pending": queue.count, "style": styleDecision?.style.rawValue ?? "light",
               "style_source": styleDecision?.source.rawValue ?? "default", "category": styleDecision?.category.rawValue ?? "other"])
         if micLive, Dictation.startSound { NSSound(named: "Tink")?.play() }
     }
@@ -723,7 +814,7 @@ final class Dictation {
     }
 
     private func stop() {
-        guard phase == .listening else {
+        guard listening else {
             trigger.reset(active: false, keepTap: true)     // in step with the app: nothing is listening
             return
         }
@@ -732,45 +823,51 @@ final class Dictation {
         if trigger.quickStop, !heardSpeech, Dictation.doubleTapSend {
             emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "why": "near_miss_double_tap"])
             discard(quietly: true)
-            pressReturn(after: "near_miss")
+            send(after: "near_miss")
             return
         }
         finish(ended: false)
     }
 
-    /// Esc, a double tap's second tap, the menu: ends a take that is listening (nothing kept). A take that already
-    /// stopped is never thrown away by the key — it is on its way to the cursor (and a queued Return stays queued).
-    func cancel() {
-        guard phase == .listening else {
-            if busy { emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": true]) }
+    /// Esc, a double tap's second tap, the menu: ends a take that is listening (nothing kept) — or, when none
+    /// listens, throws away the takes still on their way (never pasted, a queued Return dropped). A paste already
+    /// under way (the 0.6 s of ⌘V) can't be taken back.
+    /// `quietly`: the double tap's own cancel (it sends right after); otherwise the island says "Cancelled".
+    func cancel(quietly: Bool = false) {
+        guard listening else {
             dropPrecapture()
+            if cancelPending(), !quietly { toast("dictation.toast.cancelled", seconds: 1.2) }
             return
         }
-        sendAfterPaste = false
         trigger.reset(active: false)
         emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue])
         discard(quietly: true)
+        if !quietly { toast("dictation.toast.cancelled", seconds: 1.2) }
     }
 
-    /// A double tap: Return in the app in front ("send"). Right after a dictation stopped, once its text has been
-    /// pasted (the clipboard is back by then, so the paste has landed); otherwise now. The dictation the double tap's
-    /// first tap started was cancelled just before (nothing pasted, nothing in the history).
-    private func send() {
-        if phase == .transcribing || phase == .polishing || inserting {
-            sendAfterPaste = true
-            emit(["event": "dictation_send", "result": "queued", "phase": phase.rawValue])
+    /// A double tap: Return in the app in front ("send"). After the takes still on their way, once the last one has
+    /// been pasted (the clipboard is back by then, so the paste has landed); otherwise now. The dictation the double
+    /// tap's first tap started was cancelled just before (nothing pasted, nothing in the history).
+    private func send(after: String = "tap") {
+        if let id = queue.last, let t = takes[id] {
+            t.sendAfterPaste = true
+            emit(["event": "dictation_send", "result": "queued", "phase": phase.rawValue, "id": id])
             return
         }
-        pressReturn(after: "tap")
+        pressReturn(after: after)
     }
 
-    private func pressReturn(after: String) {
+    func pressReturn(after: String) {
         let r = DictationInsert.pressReturn()
         emit(["event": "dictation_send", "result": r.result, "why": r.why ?? NSNull(), "after": after])
         if r.pressed {
+            noteUsed(.send)
             var t = Island.Toast(text: Loc.t("dictation.toast.sent", table: "Dictation"), actionTitle: nil, action: nil)
-            t.seconds = 1.2
+            t.icon = .check
+            t.seconds = 2
             island.toast(t)
+        } else {
+            sendSkipped(r.why)
         }
     }
 
@@ -786,12 +883,39 @@ final class Dictation {
         micLive = false
         precaptured = false
         releaseEsc()
-        phase = .idle
+        listening = false
+        LiveTranscript.shared.end(session: liveSession)
+        updatePhase()
         if !quietly { island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil) }
+    }
+
+    /// The silence watch while a take listens: a reminder after 20 s without speech, the countdown from 4:30.
+    private func watchRunaway(_ v: NoteVoice) {
+        guard let n = runaway.feed(elapsed: v.elapsed, speaking: v.speaking, handsFree: !trigger.pushToTalk) else { return }
+        switch n {
+        case .stillListening:
+            emit(["event": "dictation_runaway", "notice": "still_listening", "id": entryID, "elapsed": Int(v.elapsed)])
+            toast("dictation.toast.still_listening", Dictation.keyShort, seconds: 4)
+        case .endsSoon:
+            emit(["event": "dictation_runaway", "notice": "ends_soon", "id": entryID, "elapsed": Int(v.elapsed)])
+            island.dictationChanged()
+        }
+    }
+
+    /// One quiet line on the island from this table.
+    func toast(_ key: String, _ args: CVarArg..., seconds: Double = 2.4, icon: BlurtIcon? = nil) {
+        let fmt = Loc.string(key, table: "Dictation")
+        var t = Island.Toast(text: args.isEmpty ? fmt : String(format: fmt, locale: Loc.locale, arguments: args),
+                             actionTitle: nil, action: nil)
+        t.seconds = seconds
+        t.icon = icon
+        island.toast(t)
     }
 
     // MARK: the words
 
+    /// The take stops listening: it joins the takes on their way (DictationTakes.swift), and the key is free for the
+    /// next one at once.
     private func finish(ended: Bool) {
         guard let v = voice, let url = wav, let s = stream else { return }
         let keyUp = CACurrentMediaTime()
@@ -800,64 +924,91 @@ final class Dictation {
         voice = nil
         stream = nil
         micLive = false
+        listening = false
         releaseEsc()
-        guard heardSpeech else { s.cancel(); return discard(quietly: false) }
-        phase = .transcribing
-        let gen = generation
-        let id = entryID, app = front, started = startedAt
+        guard heardSpeech else {
+            s.cancel()
+            try? FileManager.default.removeItem(at: url)
+            LiveTranscript.shared.end(session: liveSession)
+            updatePhase()
+            return island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
+        }
         let polish = Dictation.polishOn && polishModel != nil
-        let ctx = polish ? context : nil
-        emit(["event": "dictation_stop", "id": id, "duration": (duration * 100).rounded() / 100, "segments": s.segments])
-        s.setContext(ctx)
-        s.onStage = { [weak self] stage in
-            guard let self = self, gen == self.generation, self.phase != .idle else { return }
-            self.phase = stage == "polish" ? .polishing : .transcribing
-        }
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
-        let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && Dictation.polishOn && polishModel != nil
-        s.finish(keyUp: keyUp, structure: structure) { [weak self] r in
-            guard let self = self, gen == self.generation else {
-                try? FileManager.default.removeItem(at: url)        // a result nobody takes: its audio goes too
-                return
-            }
-            guard !r.empty else {
-                try? FileManager.default.removeItem(at: url)
-                if self.sendAfterPaste {         // nothing to send: Return would send something else
-                    self.sendAfterPaste = false
-                    emit(["event": "dictation_send", "result": "skipped", "why": "nothing_dictated", "after": "paste"])
-                }
-                self.phase = .idle
-                island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
-                emit(["event": "dictation_text", "id": id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
-                return
-            }
-            self.deliver(id: id, r: r, polishTried: polish, app: app, started: started, duration: duration, wav: url,
-                         context: ctx, keyUp: keyUp)
-        }
+        let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish
+        let take = DictationTake(id: entryID, front: front, frontKey: frontKey, started: startedAt, duration: duration,
+                                 wav: url, context: polish ? context : nil, polishTried: polish, keyUp: keyUp,
+                                 style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
+                                 bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
+        emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
+              "pending": queue.count])
+        enqueue(take)
     }
 
-    /// The warm server (no process start; waiting up to `budget` for one starting), else `transcribe.py note` (it
-    /// starts the model itself). Dictation's model (record.dictation.asr_model, else the recommended one when
-    /// installed), biased toward the words, with `prior` (the text so far) as context; the answer's `text` is what the
-    /// model wrote (`asr_text`, when present, the same). Blocking: off the main thread.
+    /// The warm server (no process start; waiting up to `budget` for one starting), else `transcribe.py note
+    /// --no-server` (it loads the model itself). Dictation's model (record.dictation.asr_model, else the recommended
+    /// one when installed), biased toward the words, with `prior` (the text so far) as context; the answer's `text` is
+    /// what the model wrote (`asr_text`, when present, the same). Blocking: off the main thread.
     /// `hint`: the target window's title and the text around the cursor (DictationContext.hint) — words seen there go
     /// to the model first (docs/design/dictation.md §Code-switching).
+    /// Always an answer: `ok` true with the text, or false with `code` (model_missing, timeout, …) and `error` — a
+    /// failure is never mistaken for silence. Nothing is ever downloaded for a dictation (`no_download`,
+    /// `--no-download`). The server gets `DictationASRFailure.serverTimeout` for this much audio, not a flat minute;
+    /// a server that doesn't answer in that time is given up on (ended when it is ours) and the CLI is used — which
+    /// no longer asks that same server first (`--no-server`).
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
-                           hint: String = "") -> [String: Any]? {
-        var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab]
+                           hint: String = "", audioSeconds: Double) -> [String: Any] {
+        var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab,
+                                  "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
-        if let r = WarmServer.call("asr-serve", req, timeout: 60), r["ok"] as? Bool == true { return r }
+        if WarmServer.running("asr-serve"), !serverGivenUp {
+            let t0 = Date()
+            if let r = WarmServer.call("asr-serve", req, timeout: DictationASRFailure.serverTimeout(audioSeconds: audioSeconds)) {
+                if r["ok"] as? Bool == true { return r }
+                // no model: the CLI would only say the same
+                if r["code"] as? String == "model_missing" { return r }
+            } else if Date().timeIntervalSince(t0) >= DictationASRFailure.serverTimeout(audioSeconds: audioSeconds) - 0.5 {
+                giveUpOnServer()
+            }
+        }
         let sem = DispatchSemaphore(value: 0)
-        var out: [String: Any]?
+        var out: [String: Any] = ["ok": false, "code": "error"]
         Task.detached {
-            out = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", language, "--dictation", "--vocab"], timeout: 120)
+            do {
+                out = try await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", language, "--dictation",
+                                                                           "--vocab", "--no-server", "--no-download"], timeout: 120)
+            } catch ScriptError.failed(_, let stdout, _) {
+                let line = String(decoding: stdout, as: UTF8.self).split(separator: "\n").last { $0.hasPrefix("{") }
+                let o = line.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+                out = ["ok": false, "code": o?["code"] as? String ?? "error", "error": o?["error"] as? String ?? ""]
+            } catch ScriptError.timeout {
+                out = ["ok": false, "code": "timeout"]
+            } catch {
+                out = ["ok": false, "code": "error", "error": "\(error)"]
+            }
             sem.signal()
         }
         sem.wait()
         return out
+    }
+
+    /// A speech server that stopped answering (hung, stopped): its requests go to the CLI for a minute, and the one
+    /// Blurt started is ended, so the next key-down starts a fresh one.
+    private static let serverLock = NSLock()
+    private static var serverGivenUpAt: Date?
+    static var serverGivenUp: Bool {
+        serverLock.lock(); defer { serverLock.unlock() }
+        return serverGivenUpAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+    }
+    private static func giveUpOnServer() {
+        serverLock.lock()
+        serverGivenUpAt = Date()
+        serverLock.unlock()
+        emit(["event": "dictation_asr_server", "state": "given_up"])
+        DispatchQueue.main.async { VoiceInput.endUnresponsiveServer() }
     }
 
     /// An interim request for the live text: the warm server only (no process start, no CLI — a missing server is
@@ -904,105 +1055,6 @@ final class Dictation {
         let req: [String: Any] = ["cmd": "structure", "text": text, "timeout": timeout, "vocab": vocab]
         guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1), r["ok"] as? Bool == true else { return nil }
         return r
-    }
-
-    private func deliver(id: String, r: DictationStream.Result, polishTried: Bool, app: NSRunningApplication?, started: Date,
-                         duration: Double, wav: URL, context: DictationContext?, keyUp: CFTimeInterval) {
-        // the words this dictation wrote: by polish, or (when the speech model was told the words) by the model itself
-        var terms = r.terms
-        if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where r.text.contains(t) && !terms.contains(t) { terms.append(t) } }
-        // the take's style: the structured text when Structured asked for it (the model's pass at key-up), the category's
-        // variant of light (DictationStyles.swift)
-        let styled = styleText(r)
-        var text = styled.text
-        let styleRecord = styled.record
-        phase = .idle
-        // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes, and
-        // the text on either side of the cursor the dictation is fitted into (DictationFit: the words that repeat the
-        // field go, punctuation and spacing follow the sentence). A field whose text can't be read (WeChat) gets the
-        // text as it is; nothing in the field is ever changed, only what is inserted.
-        let field = Dictation.learnOn || Dictation.contextOn ? DictationField.focused() : nil
-        let now = field?.read()
-        let at = now?.selection.location
-        var fitted: [String] = []
-        if Dictation.contextOn, let f = now {
-            let ns = f.text as NSString
-            let loc = min(max(0, f.selection.location), ns.length)
-            let len = min(max(0, f.selection.length), ns.length - loc)
-            let before = String(ns.substring(to: loc).suffix(500))
-            let after = String(ns.substring(from: loc + len).prefix(500))
-            let fit = Dictation.fit(text, before: before, after: after, list: styleRecord.rendered)
-            if fit.changes.count > 0 {
-                emit(["event": "dictation_fit", "id": id, "changes": fit.changes, "from": text.count, "to": fit.text.count])
-                text = fit.text
-                fitted = fit.changes
-            }
-        }
-        let pasteAt = CACurrentMediaTime()
-        let bundle = styleBundle ?? app?.bundleIdentifier      // the app the take went into (tests: `dictation style app`)
-        var timing = r.timing
-        timing["total_ms"] = Int((pasteAt - keyUp) * 1000)
-        inserting = true
-        DictationInsert.insert(text) { [weak self] result in
-            guard let self = self else { return }
-            self.inserting = false
-            if self.sendAfterPaste {
-                self.sendAfterPaste = false
-                if result == .pasted { self.pressReturn(after: "paste") } else {
-                    // left on the clipboard (a password field, Blurt in front …): Return would send without it
-                    emit(["event": "dictation_send", "result": "skipped", "why": "not_pasted", "after": "paste"])
-                }
-            }
-            // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
-            // audio, never the text around the cursor
-            let labKeep = Dictation.labKeepNext > 0
-            if labKeep { Dictation.set("lab_keep_next", Dictation.labKeepNext - 1) }
-            let keep = Dictation.keepAudio || labKeep
-            if !keep { try? FileManager.default.removeItem(at: wav) }
-            let e = DictationEntry(id: id, time: started, app: bundle == app?.bundleIdentifier ? app?.localizedName : bundle, bundle: bundle, duration: duration,
-                                   raw: r.asrText, polished: r.polished, text: text,
-                                   model: r.model, fellBack: r.fellBack, reason: r.reason,
-                                   insert: result.rawValue, audio: keep ? "audio/\(wav.lastPathComponent)" : nil,
-                                   asrModel: r.asrModel, language: r.language,
-                                   termsApplied: terms, contextUsed: r.contextUsed,
-                                   context: Dictation.keepAudio && r.contextUsed ? context?.debugText : nil,
-                                   timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
-                                   repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
-            var entry = e
-            entry.style = styleRecord
-            DictationHistory.shared.append(entry)
-            if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
-            if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
-            // reformat-last's material: the versions, and where the text went (only while it stays untouched)
-            self.rememberPaste(id: id, app: app, bundle: bundle, r: r, record: styleRecord, typed: text, result: result,
-                               field: result == .pasted ? field : nil, location: at)
-            DictationHistoryWindow.shared.reloadIfOpen()
-            if result == .copied {
-                island.toast(Loc.t("dictation.toast.copied", table: "Dictation"), actionTitle: nil, action: nil)
-            } else if result == .pasted, !DictationInsert.lastPasteConfirmed {
-                // pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): in case it didn't land
-                var t = Island.Toast(text: Loc.t("dictation.toast.pasted_unsure", table: "Dictation"),
-                                     actionTitle: Loc.t("dictation.toast.copy_again", table: "Dictation"), action: {
-                    DictationInsert.copy(text)
-                    emit(["event": "dictation_copy_again", "id": id])
-                })
-                t.seconds = 4
-                island.toast(t)
-            }
-            var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": r.raw, "text": text,
-                                      "fell_back": r.fellBack, "reason": r.reason ?? NSNull(),
-                                      "polished": r.polished ?? NSNull(), "model": r.model ?? NSNull(),
-                                      "insert": result.rawValue, "polish_tried": polishTried, "asr_text": r.asrText,
-                                      "terms": terms, "context_used": r.contextUsed, "asr_model": r.asrModel ?? NSNull(),
-                                      "biased": r.biased, "repaired": r.repaired, "fitted": fitted,
-                                      "style": styleRecord.style, "style_source": styleRecord.source,
-                                      "category": styleRecord.category, "structure_reason": r.structureReason ?? NSNull(),
-                                      "rendered": styleRecord.rendered, "variant": styleRecord.variant,
-                                      "style_ms": styled.ms]
-            for (k, v) in timing { out[k] = v }
-            self.lastResult = out
-            emit(out)
-        }
     }
 }
 

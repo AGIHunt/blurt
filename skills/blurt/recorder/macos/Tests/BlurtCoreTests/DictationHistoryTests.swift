@@ -29,6 +29,52 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertTrue(h.load().isEmpty)
     }
 
+    func testClearKeepsTheAudioOfATakeStillOnItsWay() throws {
+        // dogfood D57: Clear History during a take deleted its wav, and the take then said "nothing heard"
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir); DictationHistory.liveIDs = { [] } }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        h.append(entry("d-old", "kept audio", 1000))
+        try FileManager.default.createDirectory(at: h.audioDir, withIntermediateDirectories: true)
+        for n in ["d-old.wav", "d-live.wav", "d-live-p0.wav"] { try Data([1]).write(to: h.audioDir.appendingPathComponent(n)) }
+        DictationHistory.liveIDs = { ["d-live"] }
+        let cleared = expectation(forNotification: DictationHistory.changed, object: h)
+        h.clear()
+        wait(for: [cleared], timeout: 1)
+        XCTAssertTrue(h.load().isEmpty)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: h.audioDir.path).sorted(), ["d-live-p0.wav", "d-live.wav"])
+    }
+
+    func testACorrectionCanBeTakenBack() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        h.append(entry("d-u", "绘画 BA 三", 1000))
+        h.correct("d-u", text: "会话 BA-3")
+        XCTAssertEqual(h.load().first?.finalText, "会话 BA-3")
+        h.correct("d-u", text: nil)                                       // ⌘Z
+        XCTAssertNil(h.load().first?.corrected)
+        XCTAssertEqual(h.load().first?.finalText, "绘画 BA 三")
+    }
+
+    func testAReformatInTheFieldIsTheEntrysTextNow() throws {
+        // dogfood D52: after a chip reformat the detail still showed the old prose as "typed"
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        h.append(entry("d-r", "first a then b", 1000))
+        h.restyle("d-r", DictationReformatRecord(action: "reformat", from: "light", to: "structured", replaced: true,
+                                                 text: "1. a\n2. b", before: "first a then b"))
+        var e = try XCTUnwrap(h.load().first)
+        XCTAssertEqual(e.text, "1. a\n2. b")
+        XCTAssertEqual(e.typedFirst, "first a then b")
+        // copied instead (the user had edited it): the entry's text stays
+        h.restyle("d-r", DictationReformatRecord(action: "reformat", from: "structured", to: "verbatim", replaced: false))
+        e = try XCTUnwrap(h.load().first)
+        XCTAssertEqual(e.text, "1. a\n2. b")
+        XCTAssertEqual(e.style?.reformats.count, 2)
+    }
+
     func testACorrectionIsKeptBesideWhatWasTyped() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

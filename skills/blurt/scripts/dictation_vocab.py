@@ -387,9 +387,67 @@ def fix_kind(heard: str, fixed: str) -> str | None:
     return None
 
 
+SENTENCE_PUNCT = "，。、；：！？,;:!?…"
+
+
+def has_sentence_punctuation(s: str) -> bool:
+    """A term never has sentence or clause punctuation in it — it would be two words run together ("会话，BA-3")
+    (DictationVocabulary.hasSentencePunctuation). Hyphens, apostrophes and dots in a name are fine."""
+    return any(c in SENTENCE_PUNCT for c in s)
+
+
+def _boundary(l, r, s: str) -> bool:
+    """Between two neighbouring tokens: punctuation (anything but spaces), or Chinese next to Latin."""
+    return l[3] != r[3] or bool(s[l[2]:r[1]].strip(" "))
+
+
+def _split(xs: list, ys: list, typed: str, edited: str) -> list[tuple[list, list]]:
+    """A replaced run cut at the edited side's boundaries, the typed tokens shared out so each part pairs with what
+    sounds most like it (DictationLearn.split). One part: the run itself; [] when it can't be shared out."""
+    cuts = [k for k in range(1, len(ys)) if _boundary(ys[k - 1], ys[k], edited)]
+    if not cuts:
+        return [(xs, ys)]
+    bounds = [0] + cuts + [len(ys)]
+    parts = [ys[bounds[i]:bounds[i + 1]] for i in range(len(bounds) - 1)]
+    n, m = len(xs), len(parts)
+    if n < m:
+        return []
+
+    def text(ts, s):
+        return s[ts[0][1]:ts[-1][2]]
+
+    def score(a, b) -> float:
+        h, f = text(a, typed), text(b, edited)
+        if not fix_kind(h, f):
+            return 0.0
+        ph, pf = pinyin(h) or _key(h), pinyin(f) or _key(f)
+        return 1 + 1 - _lev(ph, pf) / max(len(ph), len(pf), 1)
+
+    best = [[-1.0] * (n + 1) for _ in range(m + 1)]
+    frm = [[0] * (n + 1) for _ in range(m + 1)]
+    best[0][0] = 0.0
+    for k in range(1, m + 1):
+        for j in range(k, n + 1):
+            if n - j < m - k:
+                continue
+            for i in range(k - 1, j):
+                if best[k - 1][i] < 0:
+                    continue
+                v = best[k - 1][i] + score(xs[i:j], parts[k - 1])
+                if v > best[k][j]:
+                    best[k][j], frm[k][j] = v, i
+    out, j = [], n
+    for k in range(m, 0, -1):
+        i = frm[k][j]
+        out.append((xs[i:j], parts[k - 1]))
+        j = i
+    return out[::-1]
+
+
 def fixes(typed: str, edited: str) -> list[dict]:
     """What the user fixed in `typed` to get `edited`: [{"heard", "fixed", "kind"}], the app's rules
-    (DictationLearn.fixes): small replaced spans that sound or look alike; nothing when it is a rewrite."""
+    (DictationLearn.fixes): small replaced spans that sound or look alike; nothing when it is a rewrite. Two fixes
+    side by side ("绘画 BA 三" → "会话，BA-3") are two, never one term with a comma in it."""
     a, b = _tokens(typed or ""), _tokens(edited or "")
     if not a or not b or [t[0] for t in a] == [t[0] for t in b]:
         return []
@@ -410,8 +468,13 @@ def fixes(typed: str, edited: str) -> list[dict]:
     def neigh(t) -> bool:
         return not t[3] and t[0].lower() not in _FN
 
-    out = []
+    subs = []
     for xi, xe, yi, ye in reps:
+        for xs_, ys_ in _split(a[xi:xe], b[yi:ye], typed, edited):
+            i0, j0 = a.index(xs_[0]), b.index(ys_[0])
+            subs.append((i0, i0 + len(xs_), j0, j0 + len(ys_)))
+    out = []
+    for xi, xe, yi, ye in subs:
         xs, ys = a[xi:xe], b[yi:ye]
         cjk = all(t[3] for t in xs) and all(t[3] for t in ys)
         words, chars = sum(not t[3] for t in xs), sum(t[3] for t in xs)
@@ -444,8 +507,10 @@ def fixes(typed: str, edited: str) -> list[dict]:
             else:
                 continue
             heard, fixed = text(xs, typed), text(ys, edited)
+        if has_sentence_punctuation(fixed):
+            continue
         out.append({"heard": heard, "fixed": fixed, "kind": kind})
-    return out
+    return out[:MAX_FIXES]
 
 
 def _now() -> str:
@@ -465,7 +530,7 @@ def learn_fix(doc: dict, heard: str, fixed: str, explicit: bool = True) -> str |
     used at once when the correction is explicit (the user saved it) or only case / spacing, else it is a suggestion
     (used the second time). → "learned" | "suggested" | "known" | None (a word the user rejected or removed)."""
     h, f = (heard or "").strip(), (fixed or "").strip()
-    if not h or not f or h == f:
+    if not h or not f or h == f or has_sentence_punctuation(f):
         return None
     spelling = _key(h) == _key(f)
     terms = doc.setdefault("terms", [])

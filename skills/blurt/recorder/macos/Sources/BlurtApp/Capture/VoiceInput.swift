@@ -206,7 +206,18 @@ final class VoiceInput {
             return
         }
         if let s = server, s.isRunning { return }
-        server = WarmSpawn.start("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation"] : []), server: "asr-serve")
+        // dictation's preload never downloads a model (no model: the server waits unloaded; Dictation says so)
+        server = WarmSpawn.start("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation", "--no-download"] : []),
+                                 server: "asr-serve")
+    }
+
+    /// Dictation gave up on a server that stopped answering: the one Blurt started goes (SIGKILL: a stopped process
+    /// doesn't take SIGTERM), so the next key-down starts a fresh one. A server someone else started is left alone.
+    static func endUnresponsiveServer() {
+        guard let s = server, s.isRunning else { return }
+        kill(s.processIdentifier, SIGKILL)
+        server = nil
+        emit(["event": "asr_server_ended", "why": "unresponsive"])
     }
 
     /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).

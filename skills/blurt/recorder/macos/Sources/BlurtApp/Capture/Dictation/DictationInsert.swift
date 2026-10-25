@@ -5,7 +5,11 @@
 //   • no app in front, secure input on / a password field, or no Accessibility (a posted ⌘V wouldn't arrive) →
 //     the text stays on the clipboard and the island says "Copied — paste with ⌘V";
 //   • a paste into a focus Accessibility can't confirm as text → the island offers "Copy again" for a few seconds;
-//   • never into Blurt's own island / panels. Our own windows (the test pad) get a real paste: action, no keystroke.
+//   • never into Blurt's own island / panels. Our own windows (the test pad) get a real paste: action, no keystroke;
+//   • never into an app other than the one the take started in (`appChanged`): copied instead.
+// While pastes overlap (a reformat right after a dictation), one snapshot of the user's clipboard is held: only the
+// last paste to finish puts it back, so it is never replaced by dictated text. Test builds use a private pasteboard
+// (BLURT_TEST_PASTEBOARD, else one of their own): a test never touches the user's clipboard.
 import AppKit
 import ApplicationServices
 import BlurtCore
@@ -19,12 +23,12 @@ enum DictationInsert {
         let items: [[(NSPasteboard.PasteboardType, Data)]]
         let changeCount: Int
 
-        static func take(_ pb: NSPasteboard = .general) -> Saved {
+        static func take(_ pb: NSPasteboard = DictationInsert.pasteboard) -> Saved {
             let items = (pb.pasteboardItems ?? []).map { it in it.types.compactMap { t in it.data(forType: t).map { (t, $0) } } }
             return Saved(items: items, changeCount: pb.changeCount)
         }
 
-        func restore(_ pb: NSPasteboard = .general) {
+        func restore(_ pb: NSPasteboard = DictationInsert.pasteboard) {
             pb.clearContents()
             let objs: [NSPasteboardItem] = items.compactMap { pairs in
                 guard !pairs.isEmpty else { return nil }
@@ -49,9 +53,40 @@ enum DictationInsert {
     }
     static let productionBundleID = "dev.blurt.recorder"
 
-    /// Puts `text` where the user is typing. `done` gets what happened (on the main queue).
-    static func insert(_ text: String, done: @escaping (Result) -> Void) {
+    /// The clipboard dictation pastes through: the general one; a test build's own (BLURT_TEST_PASTEBOARD names it,
+    /// else one for this process), never the user's.
+    static let pasteboard: NSPasteboard = {
+        guard testMode else { return .general }
+        let name = ProcessInfo.processInfo.environment["BLURT_TEST_PASTEBOARD"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? "dev.blurt.test.dictation.\(ProcessInfo.processInfo.processIdentifier)"
+        return NSPasteboard(name: NSPasteboard.Name(name))
+    }()
+
+    /// The user's clipboard while pastes are in flight: taken by the first, put back by the last (`held`).
+    private static var held: (saved: Saved, count: Int)?
+    private static func hold() {
+        if held == nil { held = (Saved.take(), 0) }
+        held?.count += 1
+    }
+    /// A paste finished: the last one puts the clipboard back — unless someone else changed it since (`ours`).
+    private static func release(ours: Int) {
+        guard var h = held else { return }
+        h.count -= 1
+        if h.count > 0 { held = h; return }
+        held = nil
+        if pasteboard.changeCount == ours { h.saved.restore() }
+    }
+
+    /// Puts `text` where the user is typing. `appChanged`: the app in front isn't the one the take started in — the
+    /// text is copied, never pasted there. `done` gets what happened (on the main queue).
+    static func insert(_ text: String, appChanged: Bool = false, done: @escaping (Result) -> Void) {
         guard !text.isEmpty else { return done(.none) }
+        if appChanged {
+            copy(text)
+            lastCopyReason = "app_changed"
+            emit(["event": "dictation_insert", "result": "copied", "why": "app_changed"])
+            return done(.copied)
+        }
         if testMode {
             // only ever the test pad (our own window, focused or not): a paste: action, no keystroke, no other app
             guard let tv = DictationTestPad.textView else {
@@ -75,23 +110,27 @@ enum DictationInsert {
             return insertHere(text, done: done)
         case .copy(let why):
             copy(text)
+            lastCopyReason = why
             emit(["event": "dictation_insert", "result": "copied", "why": why, "role": focus.role ?? ""])
             return done(.copied)
         case .paste(let confirmed):
             lastPasteConfirmed = confirmed
-            let saved = Saved.take()
+            hold()
             put(text, transient: true)
-            let ours = NSPasteboard.general.changeCount
+            let ours = pasteboard.changeCount
             postCommandV()
             emit(["event": "dictation_insert", "result": "pasted", "app": front?.bundleIdentifier ?? "", "role": focus.role ?? "",
                   "confirmed": confirmed])
             // the user's clipboard comes back; the dictated text stays in the history (and "Copy again" on the island)
             DispatchQueue.main.asyncAfter(deadline: .now() + restoreAfter) {
-                if NSPasteboard.general.changeCount == ours { saved.restore() }
+                release(ours: ours)
                 done(.pasted)
             }
         }
     }
+
+    /// Why the last insert copied instead of pasting (app_changed, secure_input, no_accessibility …).
+    static var lastCopyReason: String?
 
     /// The last ⌘V went to a focus Accessibility recognised as a text field (false: WeChat and the like — the island
     /// then offers "Copy again" in case it didn't land).
@@ -111,13 +150,14 @@ enum DictationInsert {
 
     /// Our own text view: the same pasteboard round trip, with the paste: action instead of a keystroke.
     private static func paste(_ text: String, into tv: NSTextView, window w: NSWindow?, done: @escaping (Result) -> Void) {
-        let saved = Saved.take()
+        hold()
         put(text, transient: true)
-        let ours = NSPasteboard.general.changeCount
-        tv.paste(nil)
+        let ours = pasteboard.changeCount
+        // a test build reads its own pasteboard (paste: reads the general one)
+        if testMode { _ = tv.readSelection(from: pasteboard, type: .string) } else { tv.paste(nil) }
         emit(["event": "dictation_insert", "result": "pasted", "app": "self", "window": w?.title ?? ""])
         DispatchQueue.main.asyncAfter(deadline: .now() + restoreAfter) {
-            if NSPasteboard.general.changeCount == ours { saved.restore() }
+            release(ours: ours)
             done(.pasted)
         }
     }
@@ -139,7 +179,7 @@ enum DictationInsert {
     }
 
     private static func put(_ text: String, transient: Bool) {
-        let pb = NSPasteboard.general
+        let pb = pasteboard
         pb.clearContents()
         let it = NSPasteboardItem()
         it.setString(text, forType: .string)

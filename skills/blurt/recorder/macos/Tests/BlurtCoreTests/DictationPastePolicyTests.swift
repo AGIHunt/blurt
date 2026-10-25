@@ -30,6 +30,19 @@ final class DictationPastePolicyTests: XCTestCase {
         XCTAssertEqual(P.decide(s(blurt: true, secure: true)), .own)
     }
 
+    func testASlowTakeNeverGoesIntoAnotherApp() {
+        // dogfood: a take that took long (a cold model, the 5-minute limit) and the user moved to another app (or
+        // into Blurt) — copied, never pasted there
+        var x = s()
+        x.appChanged = true
+        XCTAssertEqual(P.decide(x), .copy(reason: "app_changed"))
+        var b = s(blurt: true)
+        b.appChanged = true
+        XCTAssertEqual(P.decide(b), .copy(reason: "app_changed"))
+        // still the app it started in: pasted as usual
+        XCTAssertEqual(P.decide(s()), .paste(confirmed: true))
+    }
+
     func testBuiltInMicChoice() {
         let c = DictationMicChoice.useBuiltIn
         XCTAssertTrue(c(nil, true, true))          // automatic: AirPods are the default input → the Mac's mic

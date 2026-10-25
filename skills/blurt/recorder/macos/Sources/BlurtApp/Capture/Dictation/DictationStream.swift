@@ -28,7 +28,8 @@
 // model).
 //
 // Safety: a piece the speech model failed on → the whole recording is transcribed (and polished) in one go, the old
-// way. A hard cut (no pause for 20 s) overlaps the pieces by 0.8 s and DictationStitch drops the doubled words. Each
+// way; when that fails too, the result says why (`asrError`: no model, too slow, failed) — never an empty "nothing
+// heard" — and the app keeps the audio for Retry (`retry`). A hard cut (no pause for 20 s) overlaps the pieces by 0.8 s and DictationStitch drops the doubled words. Each
 // piece's polish has the content-loss guard; the joined result is checked once more against the joined transcript
 // (polish.py's `guard`), and falls back to the transcript when it fails. Nothing here touches the microphone or
 // another app; it only gets samples.
@@ -69,6 +70,8 @@ final class DictationStream {
         /// what this piece contributes to the final text ("" when it was polished together with the next one)
         var text = ""
         var asrFailed = false
+        /// the speech model's error code when it failed (model_missing, timeout, …)
+        var asrCode: String?
         /// enqueued at key-up: the dictation ends here, so its ending is final
         let last: Bool
         /// polish's own output for what this piece committed (the history's "polished")
@@ -110,6 +113,8 @@ final class DictationStream {
         var structured: String?
         /// why the structuring pass refused (nil: it didn't, or wasn't asked)
         var structureReason: String?
+        /// the speech model couldn't recognise the take (nil: it did — an empty text is then silence)
+        var asrError: DictationASRFailure?
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
@@ -216,13 +221,16 @@ final class DictationStream {
         let (before, gaps) = lock.locked { (Array(pieces.prefix(p.index).map(\.raw)), pauses) }
         let prior = String(DictationStitch.joinPieces(before, pauses: gaps).suffix(200))
         let t0 = CACurrentMediaTime()
-        let r = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
-                                     hint: lock.locked { context }?.hint ?? "")
+        let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
+                                          hint: lock.locked { context }?.hint ?? "",
+                                          audioSeconds: Double(samples.count) / NoteVoice.rate)
         p.asrSpan = (t0, CACurrentMediaTime())
-        p.loadMS += r?["load_ms"] as? Int ?? 0
+        p.loadMS += answer["load_ms"] as? Int ?? 0
         try? FileManager.default.removeItem(at: url)
+        let ok = answer["ok"] as? Bool == true
+        let r: [String: Any]? = ok ? answer : nil
         p.asr = r
-        if r == nil { p.asrFailed = true }
+        if !ok { p.asrFailed = true; p.asrCode = answer["code"] as? String ?? "error" }
         var text = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         var heard = (r?["asr_text"] as? String ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
         if p.hard, let prev = previous(p) {
@@ -237,7 +245,7 @@ final class DictationStream {
         // the live text: this piece's transcript replaces its interim text (and interim requests may go again)
         DispatchQueue.main.async { self.finalLanded(p.index) }
         emit(["event": "dictation_piece_text", "id": id, "index": p.index, "ms": Int((p.asrSpan.1 - p.asrSpan.0) * 1000),
-              "server_ms": r?["ms"] ?? NSNull(), "chars": text.count, "ok": r != nil])
+              "server_ms": r?["ms"] ?? NSNull(), "chars": text.count, "ok": ok, "code": p.asrCode ?? NSNull()])
         polishQ.async { self.polish(p) }
     }
 
@@ -430,8 +438,10 @@ final class DictationStream {
     private func assemble() -> Result {
         let ps = lock.locked { pieces }
         // the safety path: a piece the speech model failed on → the whole recording, the old way
-        if ps.contains(where: \.asrFailed) {
-            emit(["event": "dictation_stream_fallback", "id": id, "why": "asr_failed"])
+        if let failed = ps.first(where: \.asrFailed) {
+            emit(["event": "dictation_stream_fallback", "id": id, "why": "asr_failed", "code": failed.asrCode ?? NSNull()])
+            // no model: the whole recording would only fail the same way
+            if failed.asrCode == "model_missing" { return failure(.noModel, segments: ps.count) }
             return whole(ps.count)
         }
         let gaps = lock.locked { pauses }
@@ -485,11 +495,37 @@ final class DictationStream {
         return o
     }
 
+    /// A take the speech model couldn't recognise: no text, and why.
+    private func failure(_ f: DictationASRFailure, segments n: Int) -> Result {
+        var r = Result(raw: "", asrText: "", text: "", polished: nil, fellBack: false, reason: nil, model: nil, asrModel: nil,
+                       language: nil, biased: false, terms: [], contextUsed: false, repaired: [], segments: n,
+                       timing: ["total_ms": Int((CACurrentMediaTime() - keyUp) * 1000), "segments": n])
+        r.asrError = f
+        return r
+    }
+
+    /// Retry (the island's, the history's): the whole recording again, after a failure — the same passes as at key-up.
+    /// `done` on the main queue.
+    func retry(structure: Bool, _ done: @escaping (Result) -> Void) {
+        cancelled = false
+        keyUp = CACurrentMediaTime()
+        polishQ.async {
+            var r = self.whole(max(1, self.segments))
+            if structure, !r.empty, r.asrError == nil { self.structure(&r) }
+            DispatchQueue.main.async { done(r) }
+        }
+    }
+
     /// The old path on the whole recording: one transcription, one polish.
     private func whole(_ n: Int) -> Result {
         let t0 = CACurrentMediaTime()
-        let r = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
-                                     hint: lock.locked { context }?.hint ?? "") ?? [:]
+        let answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
+                                          hint: lock.locked { context }?.hint ?? "", audioSeconds: DictationStream.seconds(of: wholeWav))
+        guard answer["ok"] as? Bool == true else {
+            emit(["event": "dictation_asr_failed", "id": id, "code": answer["code"] ?? "error"])
+            return failure(DictationASRFailure(code: answer["code"] as? String), segments: n)
+        }
+        let r = answer
         let t1 = CACurrentMediaTime()
         let raw = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let pol = opt.polish && !raw.isEmpty ? Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget,
@@ -527,6 +563,12 @@ final class DictationStream {
     /// interim requests this take (read off the main thread once the take is over: a copy taken at key-up)
     private var interimCounts: (sent: Int, shown: Int) { lock.locked { finalCounts } }
     private var finalCounts = (sent: 0, shown: 0)
+
+    /// A wav's length (s); 0 when it can't be read.
+    static func seconds(of url: URL) -> Double {
+        guard let f = try? AVAudioFile(forReading: url), f.fileFormat.sampleRate > 0 else { return 0 }
+        return Double(f.length) / f.fileFormat.sampleRate
+    }
 
     static func writeWav(_ x: [Float], to url: URL) {
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: NoteVoice.rate, AVNumberOfChannelsKey: 1,

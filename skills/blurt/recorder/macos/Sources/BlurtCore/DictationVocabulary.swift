@@ -9,7 +9,8 @@
 //   sounds_like what a speech model wrote instead (learned from the user's fixes): it only says when a word is
 //               relevant (dictation_vocab.ranked / relevant), so it is one the models are told about
 //   active      used (the models get it)
-//   suggested   learned once from a fix; accepted by the user, or by itself the second time the same fix is seen
+//   suggested   learned once from a fix (the after-typing watch, or a saved correction); accepted by the user, or by
+//               itself the second time the same fix is seen. A term never has sentence punctuation in it.
 //   rejected    a learned word the user turned down: never suggested again
 //   removed     a seeded word the user removed: never seeded again
 //
@@ -201,6 +202,44 @@ public final class DictationVocabulary {
         edit { all in if let i = DictationVocabulary.index(all, term) { all[i].state = .rejected } }
     }
 
+    /// The words the Words tab's add field holds: one per comma, 、, semicolon or line ("Claude, Codex、tmux" → three),
+    /// trimmed, each once. (The user's own list punctuation — this reads input, not speech.)
+    public static func entries(_ s: String) -> [String] {
+        var out: [String] = []
+        for p in s.components(separatedBy: CharacterSet(charactersIn: ",，、;；\n")) {
+            let t = p.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty, !out.contains(t) { out.append(t) }
+        }
+        return out
+    }
+
+    /// The word is already in use (the add field says so instead of adding it twice).
+    public func isActive(_ term: String) -> Bool {
+        let all = load()
+        return DictationVocabulary.index(all, term.trimmingCharacters(in: .whitespacesAndNewlines)).map { all[$0].state == .active } ?? false
+    }
+
+    /// Puts a word back exactly as it was (the Words tab's Undo of a remove, an accept, an ignore, a rename).
+    public func restore(_ t: VocabTerm) {
+        edit { all in
+            if let i = all.firstIndex(where: { $0.term == t.term }) { all[i] = t } else { all.append(t) }
+        }
+    }
+
+    /// A word spelled differently (the Words tab's double-click): its history stays, under the new spelling. false: empty,
+    /// unknown, or the new spelling is already another word.
+    @discardableResult
+    public func rename(_ term: String, to new: String) -> Bool {
+        let n = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !n.isEmpty, n != term, !DictationVocabulary.hasSentencePunctuation(n) else { return false }
+        return edit { all in
+            guard let i = all.firstIndex(where: { $0.term == term }), !all.contains(where: { $0.term == n }) else { return false }
+            all[i].term = n
+            all[i].soundsLike.removeAll { $0 == n }
+            return true
+        }
+    }
+
     /// The island's "Undo" right after a word was learned: as if it never happened (a later fix may learn it again).
     public func forget(_ term: String) {
         edit { all in if let i = DictationVocabulary.index(all, term), all[i].source == .learned { all.remove(at: i) } }
@@ -276,15 +315,23 @@ public final class DictationVocabulary {
     }
 
     /// The user saved a corrected version of a dictation (the Dictation page's "Save correction"): every recognition
-    /// fix in it (DictationLearn.fixes — small spans that sound or look alike, never a rewrite) is learned at once,
-    /// since the user made it on purpose. This is how a name gets learned where the after-typing watch can't see the
-    /// field (WeChat). It learns words, never replacements. The same rules as `dictation_vocab.py learn`.
+    /// fix in it (DictationLearn.fixes — small spans that sound or look alike, never a rewrite, never two fixes run
+    /// together) is offered. A new word is a suggestion that the page's note adds with one click (and takes back); a
+    /// word already on the list gains what was heard. This is how a name gets learned where the after-typing watch
+    /// can't see the field (WeChat). It learns words, never replacements. `activate`: in use at once. The same rules
+    /// as `dictation_vocab.py learn`.
     @discardableResult
-    public func learnCorrection(typed: String, corrected: String,
+    public func learnCorrection(typed: String, corrected: String, activate: Bool = false,
                                 isCommonWord: (String) -> Bool = DictationLearn.isCommonWord) -> [(fix: DictationLearn.Fix, result: Learned?)] {
         DictationLearn.fixes(typed: typed, edited: corrected, isCommonWord: isCommonWord).map {
-            ($0, learn(heard: $0.heard, fixed: $0.fixed, explicit: true))
+            ($0, learn(heard: $0.heard, fixed: $0.fixed, explicit: activate))
         }
+    }
+
+    /// Sentence or clause punctuation (，。、；：！？ and their ASCII kin): a term never has it — it would be two words
+    /// run together ("会话，BA-3"). Hyphens, apostrophes and dots inside a name (BA-3, don't, Node.js) are fine.
+    public static func hasSentencePunctuation(_ s: String) -> Bool {
+        s.contains { "，。、；：！？,;:!?…".contains($0) }
     }
 
     /// The user changed `heard` into `fixed` in a dictation. A known word gets `heard` as a sounds-like (a hint that the
@@ -295,7 +342,7 @@ public final class DictationVocabulary {
     /// the app.
     public func learn(heard: String, fixed: String, explicit: Bool = false) -> Learned? {
         let h = heard.trimmingCharacters(in: .whitespacesAndNewlines), f = fixed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !h.isEmpty, !f.isEmpty, h != f else { return nil }
+        guard !h.isEmpty, !f.isEmpty, h != f, !DictationVocabulary.hasSentencePunctuation(f) else { return nil }
         let spelling = DictationVocabulary.key(h) == DictationVocabulary.key(f)
         return edit { all -> Learned? in
             if let i = all.firstIndex(where: { $0.term == f }) {

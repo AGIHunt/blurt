@@ -523,7 +523,7 @@ final class Island: NSObject, IslandHosting {
             case .listening:
                 left.set(.dictation(Dictation.shared.levels))
                 // the style chip: a list glyph while Structured, quotes while Verbatim, nothing for light (the default)
-                let clock = Island.clock(Dictation.shared.elapsed)
+                let clock = Dictation.shared.earClock       // from 4:30 the time left before the 5-minute limit
                 switch Dictation.shared.listeningStyle {
                 case .structured?: right.set(.iconText(.list, clock))
                 case .verbatim?: right.set(.iconText(.quote, clock))
@@ -818,6 +818,16 @@ final class Island: NSObject, IslandHosting {
         }
     }
     var currentToast: Toast? { toastNow }
+    /// Toasts with this key go — the one showing and any waiting (dictation: the last take's Undo and list chip when
+    /// the next take starts).
+    func dropToasts(key: String) {
+        toasts.removeAll { $0.key == key }
+        if toastNow?.key == key {
+            toastNow = nil
+            content.rebuild()
+            wake()
+        }
+    }
     /// A toast with this key is showing or waiting to.
     func toastLive(key: String) -> Bool { toastNow?.key == key || toasts.contains { $0.key == key } }
 
