@@ -203,6 +203,21 @@ def test_brand_effects_stay_restrained():
     assert t["brand"]["working"]["width"] == 1
 
 
+def test_capture_lists_draw_designed_tiles():
+    """docs/design/system.md §3.2 (v0.9): Recently Dragged Out and the island menu show captures as CaptureThumb tiles
+    — a voice note is a brand-tint tile with the waveform in brand ink, never the mic glyph scaled up to the tile — and
+    a row's one primary (Copy) is a BrandButton; done toasts carry the ok check."""
+    app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+    taken = (app / "Capture/TakenPanel.swift").read_text()
+    thumb = (app / "Capture/CaptureThumb.swift").read_text()
+    assert "CaptureThumb.draw(" in taken and "CaptureThumb.image(" in taken
+    assert "BrandButton(" in taken and "bezelStyle = .rounded" not in taken
+    assert not re.search(r"BlurtIcon\.mic\.image\(size: *height", taken)
+    assert "BrandColor.tint" in thumb and "BlurtIcon.waveform" in thumb and "BrandColor.ink" in thumb
+    assert "BrandColor.Island.ok" in (app / "Capture/Island/IslandContent.swift").read_text()
+    assert "t.icon = icon" in (app / "App/AppDelegate.swift").read_text()
+
+
 def test_mascot_outputs_are_copied_from_assets_mascot():
     """The 1A chick's frame strips (assets/mascot) reach the mac app and the web package unchanged, and stay small."""
     import json

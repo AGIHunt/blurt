@@ -140,6 +140,8 @@ final class Island: NSObject, IslandHosting {
         var key: String?
         /// A project's key badge before the text ("Filed to …").
         var badge: (text: String, color: NSColor)?
+        /// A small icon before the text: `.check` for a done toast (Saved, Copied), in the island's ok green (§2.3).
+        var icon: BlurtIcon?
         /// A question: the text wraps, two answers under it, and it stays until one is chosen (also over the open
         /// island). `action` is the first answer.
         var secondTitle: String?

@@ -4,6 +4,13 @@
 import Foundation
 
 public enum SearchHit {
+    /// One line for a one-line row: a snippet (or title) spanning lines — an item's steps, "Open /login⏎Click Sign in" —
+    /// joins with " · " instead of wrapping into a clipped second line under the row.
+    public static func oneLine(_ s: String) -> String {
+        s.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
     /// The snippet as plain text: "…the [login] button…" → "the login button".
     public static func plain(_ snippet: String) -> String {
         snippet.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")

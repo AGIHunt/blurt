@@ -314,9 +314,9 @@ final class PaletteCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError() }
     func set(_ e: CommandPalette.Entry) {
         icon.image = e.image
-        title.stringValue = e.title
+        title.stringValue = SearchHit.oneLine(e.title)
         title.textColor = e.enabled ? .labelColor : .tertiaryLabelColor
-        detail.stringValue = e.detail
+        detail.stringValue = SearchHit.oneLine(e.detail)
         keys.stringValue = e.keys
         setAccessibilityLabel([e.title, e.detail, e.keys].filter { !$0.isEmpty }.joined(separator: ", "))
     }

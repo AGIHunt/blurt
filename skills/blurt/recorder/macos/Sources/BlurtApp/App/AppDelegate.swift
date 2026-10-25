@@ -640,13 +640,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// One toast system: the island's quiet line (K4), whenever the island runs — one line, so several lines join
     /// with " · ". The small HUD under the menu bar below is only for a build without the island (the one-shot
     /// recorder a chat starts); there several lines are fine: the first is the headline, the rest a quieter detail.
-    /// `icon: .check` is the HUD's done toast: the check in ok green (§2.3).
+    /// `icon: .check` is a done toast, in the island or the HUD: the check in ok green (§2.3).
     func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil) {
         if island.started {
             emit(["event": "toast", "text": text, "via": "island"])
             var t = Island.Toast(text: text.components(separatedBy: "\n").filter { !$0.isEmpty }.joined(separator: " · "),
                                  actionTitle: nil, action: nil)
             t.seconds = seconds
+            t.icon = icon
             island.toast(t)
             return
         }

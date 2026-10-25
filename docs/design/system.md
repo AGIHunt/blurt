@@ -11,6 +11,7 @@
 > - **"AI 正在处理"** = 原有的转圈 + 一条静止的 **1 pt 薄荷细线**（`brand.working`，半透明的品牌墨绿）围住正在处理的那一行；横幅只换成转圈，不加边框。不旋转、不多色、不发光。
 > - **空状态**统一用一个组件：App 图标（渐变底板上的 4A 小鸡，80 pt 画布、64 pt 底板），下面中性标题、中性说明、最多一个主按钮。
 > - 实时文字面板下的渐变横线去掉了。所有装饰性的渐变、光晕、描边的去留见 §14。
+> - **最近拖走的（v0.9）**：紧凑的行（缩略图、一行备注、拖走时间和保留天数）；鼠标指到的那一行才出现浅薄荷底、「复制」主按钮和「···」，同一时间只有一个主按钮。语音备注的缩略图是浅薄荷小方块 + 品牌墨绿的声波 + 时长，不再是放大的麦克风。完成类提示（已保存、已复制）带叶绿 ✓。
 > - 红 = 正在录，琥珀 = 要你处理，叶绿 + ✓ = 完成。珊瑚只剩画笔。task 类型改为紫色。
 > - **App 图标**：白身黑线的鸡（方案 A）放在渐变 field 底板上。
 > - 唯一来源：`assets/color/tokens.json` + `assets/color/build.py`（生成 Swift `BrandColor`、CSS 变量、`AccentColor`，`--check` 检查过期和对比度）。
@@ -224,6 +225,9 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | "+N" tile (the cards that don't hang) | — | the card surface, the next card's picture at 35 %, one offset edge behind, the count in `ink` (no pill, no colour); opens the overview |
 | Keyboard focus on a card / the tile (⌥⇧H) | `brand.accent` (native) | 2.5 pt ring, 4 pt outside the card (`BrandColor.accent`) |
 | Project folder icons | project colour | `ProjectLook`, minus `.systemMint` / `.systemTeal` |
+| Recently Dragged Out rows (v0.9) | T hover + **B** | compact rows (56 pt): the capture tile, the note on one line, "dragged out … · kept N days" (the days in `attnInk` on the last day). The row under the pointer gets the `brand.tint` wash (r 8) and shows its actions: **Copy** as the one primary (`BrandButton`, 12 pt) and a quiet "···" (the rest; also the right-click). No buttons on the other rows; no row separators; a hairline above the hint |
+| Capture tile (Recently Dragged Out, the island menu) | T + I | `CaptureThumb`: a shot fills a rounded tile (aspect fill, 0.5 pt hairline); a voice note is a `brand.tint` tile with the waveform (`BlurtIcon.waveform`, ≤ 18 pt) in `brand.ink` and its length (10 pt mono, secondary). One size per list (56 × 40 in the panel, 30 × 20 in menus), so titles line up. Never a bare glyph scaled up to the tile |
+| Done toast ("Recording saved", "Copied") | `ok` ✓ | the check (SF `checkmark`, 13 pt semibold) in the island's `ok` before the text (`Island.Toast.icon`) |
 
 ### 3.3 Main window (AppKit) and the Tauri app
 

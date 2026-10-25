@@ -72,7 +72,7 @@
 
 "main.captures.show" = "Show under the notch";
 "main.captures.tip" = "Cards hanging under the notch, waiting for a project: click to bring them all down";
-"main.captures.taken" = "Recently taken: %ld";
+"main.captures.taken" = "Recently dragged out: %ld";
 "main.captures.taken.show" = "Show";
 "main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back";
 "main.cmd.copy_full" = "Copy Full Text";

@@ -280,20 +280,18 @@ final class OverviewTile: NSView, NSDraggingSource {
         face.cornerRadius = 7
         face.masksToBounds = true
         face.borderWidth = 0.5
-        face.borderColor = NSColor.separatorColor.cgColor
         face.contentsGravity = .resizeAspectFill
         layer?.addSublayer(face)
         if s.kind == .shot {
             face.contents = s.markedThumb ?? s.thumb
-            face.backgroundColor = NSColor(white: 0.5, alpha: 0.2).cgColor
         } else {
-            // a voice note is its words, on the card's own surface, with the small mic mark
-            face.backgroundColor = NSColor.controlBackgroundColor.cgColor
+            // a voice note is its words, on the card's own surface, with the small mic mark (colours: restyle())
             let words = NSTextField(wrappingLabelWithString: s.words ?? HangingCards.statusText(s.note.status) ?? "")
             words.font = .systemFont(ofSize: 11.5, weight: .medium)
             words.textColor = s.words == nil ? .secondaryLabelColor : .labelColor
             words.maximumNumberOfLines = 4
-            words.lineBreakMode = .byTruncatingTail
+            words.lineBreakMode = .byWordWrapping            // (truncating-tail made it one line: "Ship the beta o…")
+            words.cell?.truncatesLastVisibleLine = true
             words.frame = NSRect(x: 9, y: 7, width: sz.width - 18, height: sz.height - 22)
             addSubview(words)
             let mic = NSImageView(image: BlurtIcon.mic.image(size: 10, color: BrandColor.ink))
@@ -303,9 +301,9 @@ final class OverviewTile: NSView, NSDraggingSource {
         ring.frame = face.frame.insetBy(dx: -3, dy: -3)
         ring.cornerRadius = 10
         ring.borderWidth = 2.5
-        ring.borderColor = BrandColor.accent.cgColor
         ring.isHidden = true
         layer?.addSublayer(ring)
+        restyle()
         let line = NSTextField(labelWithString: OverviewTile.line(s))
         line.font = .systemFont(ofSize: 11)
         line.textColor = s.kind == .shot && s.words != nil ? .labelColor : .secondaryLabelColor
@@ -331,6 +329,18 @@ final class OverviewTile: NSView, NSDraggingSource {
         setAccessibilityCustomActions(HangingCards.axActions(s))
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The layers' colours in this view's appearance. A CGColor is resolved once, in whatever appearance is current
+    /// when it is read: built outside drawing, the voice tile kept the light surface under dark-mode (white) words.
+    private func restyle() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            face.borderColor = NSColor.separatorColor.cgColor
+            face.backgroundColor = (shot.kind == .shot ? NSColor(white: 0.5, alpha: 0.2) : NSColor.controlBackgroundColor).cgColor
+            ring.borderColor = BrandColor.accent.cgColor
+        }
+    }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); restyle() }
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); restyle() }
 
     override func accessibilityPerformPress() -> Bool { overview?.copy(self, .click); return true }
 

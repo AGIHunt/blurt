@@ -17,6 +17,13 @@ final class SearchHitTests: XCTestCase {
         XCTAssertFalse(SearchHit.adds("…", to: "x"))
     }
 
+    func testAHitOverSeveralLinesIsOneLine() {
+        // the palette showed "Open /login" and a clipped "Cl" under every row (an item's steps, one per line)
+        XCTAssertEqual(SearchHit.oneLine("Open /[login]\nClick Sign in"), "Open /[login] · Click Sign in")
+        XCTAssertEqual(SearchHit.oneLine("  a \r\n\n b  "), "a · b")
+        XCTAssertEqual(SearchHit.oneLine("登录按钮"), "登录按钮")
+    }
+
     func testAHitInAnotherFieldIsShown() {
         XCTAssertTrue(SearchHit.adds("…returns a [500] from /api/avatar…", to: "Avatar upload fails"))
     }

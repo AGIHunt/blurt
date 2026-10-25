@@ -130,3 +130,8 @@
 - [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
 - [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
 - [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)
+- [ ] Brand pass (Mac v0.9, docs/design/system.md §3.2): the overlays have no Recently Dragged Out list yet — when they
+      get one, use the Mac's row (tile, one-line note, "dragged out … · kept N days", Copy as the one primary on the
+      row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in
+      `--brand-ink` and its length; never a bare mic glyph). Done toasts ("Saved", "Copied") carry the `ok` check in
+      the overlay island too; search hits that span lines show on one line (" · ") in the desktop app's lists.

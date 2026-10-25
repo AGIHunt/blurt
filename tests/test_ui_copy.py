@@ -85,6 +85,15 @@ class Glossary(unittest.TestCase):
             island = plural_forms(RES / f"{lang}.lproj" / "Capture.stringsdict", "capture.island.to_review")
             self.assertTrue(all("review" not in f for f in island), island)
 
+    def test_recently_dragged_out_has_one_name(self):
+        # the main window's row said "Recently taken: 6" and opened a panel called "Recently Dragged Out"
+        for lang in ("en", "zh-Hans"):
+            main = strings(RES / f"{lang}.lproj" / "Main.strings")
+            cap = strings(RES / f"{lang}.lproj" / "Capture.strings")
+            name = cap["capture.taken.title"].lower()
+            self.assertTrue(main["main.captures.taken"].lower().startswith(name), (lang, main["main.captures.taken"]))
+            self.assertTrue(cap["capture.taken.menu"].lower().startswith(name), (lang, cap["capture.taken.menu"]))
+
 
 if __name__ == "__main__":
     unittest.main()
