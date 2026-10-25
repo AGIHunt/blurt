@@ -166,12 +166,13 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         // the list — a click opens its panel (copy, drag out again, put back); the menu bar and the island reach it too
         let takenCount = testTaken ?? (AppEnvironment.island == nil ? 0 : snapper.recentlyTaken.count)
         let taken: [SidebarNode] = takenCount > 0 ? [{
-            let n = SidebarNode(Loc.t("capture.taken.title", table: "Capture"), scope: nil, symbol: "arrow.up.right.square", count: takenCount)
+            // short enough for the sidebar; the panel's own name (Recently Dragged Out) is its tooltip and VoiceOver label
+            let n = SidebarNode(T("main.sidebar.taken"), scope: nil, symbol: "arrow.up.right.square", count: takenCount)
             n.action = { [weak self] in
                 let w = self?.view.window
                 TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
             }
-            n.tip = T("main.captures.taken.tip")
+            n.tip = [Loc.t("capture.taken.title", table: "Capture"), T("main.captures.taken.tip")].joined(separator: "\n")
             n.accessibility = Loc.t("capture.taken.title", table: "Capture")
             return n
         }()] : []

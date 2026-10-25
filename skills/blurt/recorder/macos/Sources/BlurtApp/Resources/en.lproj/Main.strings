@@ -661,3 +661,4 @@
 "main.project.unpin" = "Unpin";
 "main.project.pin.undo_name" = "Pin";
 "main.search.tip" = "Searches titles, what was said and every field. ⌘F or /";
+"main.sidebar.taken" = "Dragged Out";

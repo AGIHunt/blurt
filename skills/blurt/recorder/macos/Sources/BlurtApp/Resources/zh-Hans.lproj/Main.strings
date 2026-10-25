@@ -662,3 +662,4 @@
 "main.project.unpin" = "取消置顶";
 "main.project.pin.undo_name" = "置顶";
 "main.search.tip" = "搜索标题、原话和所有字段。⌘F 或 /";
+"main.sidebar.taken" = "最近拖走的";
